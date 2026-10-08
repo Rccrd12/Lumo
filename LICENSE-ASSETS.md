@@ -7,11 +7,12 @@ The [MIT License](LICENSE) covers the **source code** of Lumo. It does **not** c
 - the name **“Lumo”**;
 - the **Lumo character** — the firefly's design, look, expressions and animations as a character;
 - the **app icon** (`windows/src-tauri/icons/`);
-- the **sounds** (`windows/assets/sounds/`).
+- the **sounds** (`windows/assets/sounds/`);
+- the **images** in `windows/screenshots/`.
 
 ## Not covered here
 
-Lumo is a fork of [Coucou](https://github.com/Louis-CFM/coucou) by Louis Raillé. The names **“Coucou”** and **“Mochi”**, the Mochi character, Coucou's icon and sounds, and the images, GIFs and videos in `windows/screenshots/` (which show Mochi) belong to Louis Raillé, under the terms of [Coucou's own asset licence](https://github.com/Louis-CFM/coucou/blob/main/LICENSE-ASSETS.md). This repository does not grant any right to them.
+Lumo is a fork of [Coucou](https://github.com/Louis-CFM/coucou) by Louis Raillé. The names **“Coucou”** and **“Mochi”**, the Mochi character, Coucou's icon, sounds, images and videos belong to Louis Raillé, under the terms of [Coucou's own asset licence](https://github.com/Louis-CFM/coucou/blob/main/LICENSE-ASSETS.md). This repository does not grant any right to them.
 
 ## What you can do
 

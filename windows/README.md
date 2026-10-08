@@ -15,7 +15,7 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 </div>
 
-<img src="screenshots/greeting.png" width="640" alt="Lumo waving hello at launch">
+<img src="screenshots/greeting.png" width="640" alt="Lumo lighting up at launch">
 
 ---
 

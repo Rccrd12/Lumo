@@ -14,7 +14,7 @@ Approve permissions, watch your agents work, drop a file, chat with Claude — a
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=black)
 ![Code: MIT](https://img.shields.io/badge/code-MIT-green)
 
-<img src="windows/screenshots/greeting.png" width="640" alt="Lumo waving hello at launch">
+<img src="windows/screenshots/greeting.png" width="640" alt="Lumo lighting up at launch">
 
 </div>
 
@@ -195,5 +195,5 @@ Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou), the C
 ## License
 
 - **Code:** [MIT](LICENSE) — use it, fork it, learn from it, just keep the copyright notice.
-- **The name Lumo, the Lumo character, its icon and its sounds:** © Riccardo Gentili, all rights reserved — see [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
-- **The names Coucou and Mochi, the Mochi character and Coucou's icon, sounds and media** (including the screenshots in `windows/screenshots/`, which still show Mochi): © Louis Raillé. That is why this fork has a name and a character of its own.
+- **The name Lumo, the Lumo character, its icon, sounds and screenshots:** © Riccardo Gentili, all rights reserved — see [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
+- **The names Coucou and Mochi, the Mochi character and Coucou's icon, sounds and media:** © Louis Raillé. That is why this fork has a name and a character of its own.
