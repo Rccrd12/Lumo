@@ -3,6 +3,7 @@
 ## Windows and Linux 0.3.0 — October 8, 2026
 
 - **Chat with your Claude plan**: a Claude Code choice in the model picker runs your own `claude` CLI, signed in with your subscription, with no API key. It reads the files you drop or attach, can edit files and run commands, and every permission is an Allow/Deny card in the island. Pick its effort level under the models
+- **The chat is the home screen**: the island opens on the chat, with three quick starts in a new one. Claude Code and the other agents have their own Agents tab, with a blue dot while a session works and an orange one when it waits for you. The island takes the keyboard only after a click or a shortcut
 - **Chats**: start a new chat, reopen or delete past ones, attach a file with the paperclip
 - **Your screen, when you ask**: a screen button in the chat sends the list of open windows or a screenshot of one or every display, after a preview you confirm. Nothing is captured before you click (Windows)
 - **The island** is bigger by default (115 %, 80–160 % in Settings or Ctrl +/−/0) with bigger icons (125 %, 100–150 %). Drag it by its top bar and let go near any edge of the screen: it docks there, upright on the sides, centred near the middle, with a bounce. Resize it from any free edge or corner; a double click puts the usual size back. A power button quits Coucou (Windows; on Linux the island stays at the top)
