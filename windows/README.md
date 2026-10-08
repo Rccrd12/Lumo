@@ -251,6 +251,23 @@ once; the key never is.
 No telemetry. The only network requests Coucou makes are to the services you
 configure yourself.
 
+### Chat with your Claude plan (Claude Code)
+
+Pick **Claude Code** above the chat box and the island talks to the Claude Code
+CLI you already use, signed in with your own Claude plan (Pro, Max…): no API key.
+Coucou runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Coucou`
+(`~/Coucou` on Linux); it never reads, stores or forwards any Claude credential,
+and the usage counts against your plan's limits like any Claude Code session.
+
+Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
+from its path, reads and edits files and folders, runs commands and searches the
+web. Every action that needs a permission comes up in the island as the usual
+**Deny / Allow** card, through the hooks of **Settings… → Claude Code**. Without
+those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
+allowed on its own. The conversation continues the same Claude Code session
+until **New chat**. Install Claude Code and run `claude` once in a terminal to
+sign in before using it.
+
 ## GitHub
 
 With a token in **Settings… → Integrations → GitHub** — a classic token with

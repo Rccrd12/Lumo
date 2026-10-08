@@ -3305,6 +3305,72 @@
    "pt-BR": "Só um arquivo solto na ilha pode ser enviado com uma pergunta.",
    "ru": "С вопросом можно отправить только файл, перетащенный на остров.",
    "id": "Hanya file yang dijatuhkan ke pulau yang bisa dikirim bersama pertanyaan."
+  },
+  "Cannot start Claude Code: {error}": {
+   "zh-Hans": "无法启动 Claude Code：{error}",
+   "hi": "Claude Code शुरू नहीं हो सका: {error}",
+   "es": "No se puede iniciar Claude Code: {error}",
+   "ar": "تعذّر تشغيل Claude Code: {error}",
+   "fr": "Impossible de lancer Claude Code : {error}",
+   "bn": "Claude Code চালু করা যায়নি: {error}",
+   "pt-BR": "Não foi possível iniciar o Claude Code: {error}",
+   "ru": "Не удалось запустить Claude Code: {error}",
+   "id": "Tidak dapat menjalankan Claude Code: {error}"
+  },
+  "Claude Code took too long and was stopped.": {
+   "zh-Hans": "Claude Code 用时过长，已被停止。",
+   "hi": "Claude Code ने बहुत समय लिया और उसे रोक दिया गया।",
+   "es": "Claude Code tardó demasiado y se detuvo.",
+   "ar": "استغرق Claude Code وقتًا طويلاً فتم إيقافه.",
+   "fr": "Claude Code a pris trop de temps et a été arrêté.",
+   "bn": "Claude Code অনেক সময় নিয়েছে, তাই থামানো হয়েছে।",
+   "pt-BR": "O Claude Code demorou demais e foi interrompido.",
+   "ru": "Claude Code работал слишком долго и был остановлен.",
+   "id": "Claude Code terlalu lama dan dihentikan."
+  },
+  "Claude Code stopped without an answer (exit {code}). Is it signed in? Run `claude` once in a terminal.": {
+   "zh-Hans": "Claude Code 未给出回答就退出了（退出码 {code}）。是否已登录？请在终端中运行一次 `claude`。",
+   "hi": "Claude Code बिना जवाब के रुक गया (exit {code})। क्या आपने साइन इन किया है? टर्मिनल में एक बार `claude` चलाएँ।",
+   "es": "Claude Code se detuvo sin responder (salida {code}). ¿Has iniciado sesión? Ejecuta `claude` una vez en una terminal.",
+   "ar": "توقف Claude Code دون إجابة (رمز الخروج {code}). هل سجّلت الدخول؟ شغّل `claude` مرة واحدة في الطرفية.",
+   "fr": "Claude Code s'est arrêté sans répondre (code {code}). Êtes-vous connecté ? Lancez `claude` une fois dans un terminal.",
+   "bn": "Claude Code উত্তর ছাড়াই থেমে গেছে (exit {code})। আপনি কি সাইন ইন করেছেন? টার্মিনালে একবার `claude` চালান।",
+   "pt-BR": "O Claude Code parou sem responder (saída {code}). Você entrou na sua conta? Execute `claude` uma vez em um terminal.",
+   "ru": "Claude Code завершился без ответа (код {code}). Вы вошли в аккаунт? Запустите `claude` один раз в терминале.",
+   "id": "Claude Code berhenti tanpa jawaban (exit {code}). Sudah masuk? Jalankan `claude` sekali di terminal."
+  },
+  "Claude Code: {error}": {
+   "zh-Hans": "Claude Code：{error}",
+   "hi": "Claude Code: {error}",
+   "es": "Claude Code: {error}",
+   "ar": "Claude Code: {error}",
+   "fr": "Claude Code : {error}",
+   "bn": "Claude Code: {error}",
+   "pt-BR": "Claude Code: {error}",
+   "ru": "Claude Code: {error}",
+   "id": "Claude Code: {error}"
+  },
+  "Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again.": {
+   "zh-Hans": "未安装 Claude Code。请安装它，在终端中运行 `claude` 登录一次，然后重试。",
+   "hi": "Claude Code इंस्टॉल नहीं है। इसे इंस्टॉल करें, टर्मिनल में `claude` से एक बार साइन इन करें, फिर दोबारा कोशिश करें।",
+   "es": "Claude Code no está instalado. Instálalo, inicia sesión una vez con `claude` en una terminal y vuelve a intentarlo.",
+   "ar": "Claude Code غير مثبّت. ثبّته، وسجّل الدخول مرة واحدة عبر `claude` في الطرفية، ثم أعد المحاولة.",
+   "fr": "Claude Code n'est pas installé. Installez-le, connectez-vous une fois avec `claude` dans un terminal, puis réessayez.",
+   "bn": "Claude Code ইনস্টল করা নেই। এটি ইনস্টল করুন, টার্মিনালে `claude` দিয়ে একবার সাইন ইন করুন, তারপর আবার চেষ্টা করুন।",
+   "pt-BR": "O Claude Code não está instalado. Instale-o, entre uma vez com `claude` em um terminal e tente de novo.",
+   "ru": "Claude Code не установлен. Установите его, войдите один раз через `claude` в терминале и попробуйте снова.",
+   "id": "Claude Code belum terpasang. Pasang, masuk sekali dengan `claude` di terminal, lalu coba lagi."
+  },
+  "Claude Code needed a permission that wasn't given. Install Coucou's hooks to approve actions from the island.": {
+   "zh-Hans": "Claude Code 需要的权限未获批准。安装 Coucou 的 hooks 即可在岛中批准操作。",
+   "hi": "Claude Code को एक अनुमति चाहिए थी जो नहीं मिली। आइलैंड से कार्रवाइयाँ स्वीकृत करने के लिए Coucou के hooks इंस्टॉल करें।",
+   "es": "Claude Code necesitaba un permiso que no se concedió. Instala los hooks de Coucou para aprobar acciones desde la isla.",
+   "ar": "احتاج Claude Code إلى إذن لم يُمنح. ثبّت hooks الخاصة بـ Coucou للموافقة على الإجراءات من الجزيرة.",
+   "fr": "Claude Code avait besoin d'une permission qui n'a pas été donnée. Installez les hooks de Coucou pour approuver les actions depuis l'île.",
+   "bn": "Claude Code-এর একটি অনুমতি দরকার ছিল যা দেওয়া হয়নি। আইল্যান্ড থেকে কাজ অনুমোদন করতে Coucou-র hooks ইনস্টল করুন।",
+   "pt-BR": "O Claude Code precisava de uma permissão que não foi dada. Instale os hooks do Coucou para aprovar ações pela ilha.",
+   "ru": "Claude Code нужно было разрешение, которое не дали. Установите хуки Coucou, чтобы одобрять действия с острова.",
+   "id": "Claude Code butuh izin yang tidak diberikan. Pasang hook Coucou untuk menyetujui tindakan dari pulau."
   }
  }
 }

@@ -13,7 +13,7 @@ use serde_json::{json, Value};
 use tauri::AppHandle;
 
 use crate::settings::Settings;
-use crate::{claude, local_chat, openai_compat, secrets};
+use crate::{claude, claude_code, local_chat, openai_compat, secrets};
 
 pub const ANTHROPIC: &str = "anthropic";
 
@@ -59,6 +59,8 @@ struct Conversation {
     native: Vec<Value>,
     /// `{"role", "content": text}` turns, the same whoever answered.
     plain: Vec<Value>,
+    /// The Claude Code session the island's chat continues (claude_code.rs).
+    cli_session: Option<String>,
 }
 
 /// What a provider needs to build one turn.
@@ -91,6 +93,19 @@ impl Chat {
             provider: provider.to_string(),
             first: c.plain.is_empty(),
             history: c.native.clone(),
+        }
+    }
+
+    /// The Claude Code session to resume, if Claude Code answered this conversation.
+    pub fn cli_session(&self) -> Option<String> {
+        self.inner.lock().unwrap().cli_session.clone()
+    }
+
+    /// Remembers the Claude Code session of `turn`, unless the chat was reset since.
+    pub fn set_cli_session(&self, turn: &Turn, id: &str) {
+        let mut c = self.inner.lock().unwrap();
+        if c.epoch == turn.epoch {
+            c.cli_session = Some(id.to_string());
         }
     }
 
@@ -210,6 +225,9 @@ pub async fn send(
     if provider == ANTHROPIC || provider.is_empty() {
         return claude::send(chat, &model, query, context).await;
     }
+    if provider == claude_code::PROVIDER {
+        return claude_code::send(app, chat, &model, query, context).await;
+    }
     if let Some(p) = openai_compat::provider(provider) {
         return openai_compat::send(chat, p, &model, query, context).await;
     }
@@ -227,6 +245,9 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
     if provider == ANTHROPIC {
         let key = secrets::get(claude::KEY).ok_or_else(no_key)?;
         return claude::models(&key).await;
+    }
+    if provider == claude_code::PROVIDER {
+        return Ok(claude_code::models());
     }
     if let Some(p) = openai_compat::provider(provider) {
         let key = secrets::get(p.key).ok_or_else(no_key)?;

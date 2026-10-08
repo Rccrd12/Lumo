@@ -154,6 +154,22 @@ pub fn codex_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// Where the Claude Code CLI may be, best first: %PATH%, the native installer's
+/// `~\.local\bin\claude.exe`, then npm's global `claude.cmd`. The prompt goes
+/// on stdin (claude_code.rs), never as an argument a `.cmd` would interpret.
+pub fn claude_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = find_on_path("claude").into_iter().collect();
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
+    if let Some(home) = var("USERPROFILE") {
+        out.push(home.join(".local").join("bin").join("claude.exe"));
+    }
+    if let Some(appdata) = var("APPDATA") {
+        out.push(appdata.join("npm").join("claude.cmd"));
+    }
+    out.retain(|p| p.is_file());
+    out
+}
+
 // ── Who we are ────────────────────────────────────────────────────────────────
 //
 // Named pipes share one machine-wide namespace, so the SID in the name is what
