@@ -243,39 +243,6 @@
    "ru": "Некорректный ответ API: {error}",
    "id": "Respons API tidak valid: {error}"
   },
-  "Beanie": {
-   "zh-Hans": "毛线帽",
-   "hi": "ऊनी टोपी",
-   "es": "Gorro de lana",
-   "ar": "قبعة صوفية",
-   "fr": "Bonnet",
-   "bn": "উলের টুপি",
-   "pt-BR": "Gorro",
-   "ru": "Шапка",
-   "id": "Kupluk"
-  },
-  "Bow": {
-   "zh-Hans": "蝴蝶结",
-   "hi": "बो",
-   "es": "Lazo",
-   "ar": "فيونكة",
-   "fr": "Nœud",
-   "bn": "বো",
-   "pt-BR": "Laço",
-   "ru": "Бантик",
-   "id": "Pita"
-  },
-  "Bunny ears": {
-   "zh-Hans": "兔耳朵",
-   "hi": "खरगोश के कान",
-   "es": "Orejas de conejo",
-   "ar": "أذنا أرنب",
-   "fr": "Oreilles de lapin",
-   "bn": "খরগোশের কান",
-   "pt-BR": "Orelhas de coelho",
-   "ru": "Заячьи ушки",
-   "id": "Telinga kelinci"
-  },
   "Can't read {path}: {error}": {
    "zh-Hans": "无法读取 {path}：{error}",
    "hi": "{path} पढ़ा नहीं जा सकता: {error}",
@@ -627,17 +594,6 @@
    "pt-BR": "Somente contagens e nomes de projeto — nunca comandos, arquivos ou prompts. Mantido neste computador por 12 semanas.",
    "ru": "Только счётчики и названия проектов — никогда команды, файлы или промпты. Хранится на этом компьютере 12 недель.",
    "id": "Hanya hitungan dan nama proyek — tidak pernah perintah, file, atau prompt. Disimpan di komputer ini selama 12 minggu."
-  },
-  "Crown": {
-   "zh-Hans": "王冠",
-   "hi": "मुकुट",
-   "es": "Corona",
-   "ar": "تاج",
-   "fr": "Couronne",
-   "bn": "মুকুট",
-   "pt-BR": "Coroa",
-   "ru": "Корона",
-   "id": "Mahkota"
   },
   "Custom server": {
    "zh-Hans": "自定义服务器",
@@ -1585,17 +1541,6 @@
    "ru": "PDF",
    "id": "PDF"
   },
-  "Party hat": {
-   "zh-Hans": "派对帽",
-   "hi": "पार्टी टोपी",
-   "es": "Gorro de fiesta",
-   "ar": "قبعة الحفلة",
-   "fr": "Chapeau de fête",
-   "bn": "পার্টি টুপি",
-   "pt-BR": "Chapéu de festa",
-   "ru": "Праздничный колпак",
-   "id": "Topi pesta"
-  },
   "Payment": {
    "zh-Hans": "付款",
    "hi": "भुगतान",
@@ -1672,17 +1617,6 @@
    "pt-BR": "Aba anterior",
    "ru": "Предыдущая вкладка",
    "id": "Tab sebelumnya"
-  },
-  "Pumpkin": {
-   "zh-Hans": "南瓜",
-   "hi": "कद्दू",
-   "es": "Calabaza",
-   "ar": "يقطينة",
-   "fr": "Citrouille",
-   "bn": "কুমড়া",
-   "pt-BR": "Abóbora",
-   "ru": "Тыква",
-   "id": "Labu"
   },
   "Questions": {
    "zh-Hans": "问题",
@@ -1848,17 +1782,6 @@
    "pt-BR": "Óculos redondos",
    "ru": "Круглые очки",
    "id": "Kacamata bulat"
-  },
-  "Santa hat": {
-   "zh-Hans": "圣诞帽",
-   "hi": "सांता टोपी",
-   "es": "Gorro de Papá Noel",
-   "ar": "قبعة بابا نويل",
-   "fr": "Bonnet de Père Noël",
-   "bn": "সান্তা টুপি",
-   "pt-BR": "Gorro de Papai Noel",
-   "ru": "Шапка Санты",
-   "id": "Topi Sinterklas"
   },
   "Saturday": {
    "zh-Hans": "星期六",
@@ -2167,17 +2090,6 @@
    "pt-BR": "Domingo",
    "ru": "Воскресенье",
    "id": "Minggu"
-  },
-  "Sunglasses": {
-   "zh-Hans": "墨镜",
-   "hi": "धूप का चश्मा",
-   "es": "Gafas de sol",
-   "ar": "نظارة شمسية",
-   "fr": "Lunettes de soleil",
-   "bn": "সানগ্লাস",
-   "pt-BR": "Óculos de sol",
-   "ru": "Солнечные очки",
-   "id": "Kacamata hitam"
   },
   "Switch provider or model": {
    "zh-Hans": "切换服务商或模型",
@@ -2629,17 +2541,6 @@
    "pt-BR": "Onde você programa",
    "ru": "Где вы пишете код",
    "id": "Tempat Anda membuat kode"
-  },
-  "Witch hat": {
-   "zh-Hans": "女巫帽",
-   "hi": "चुड़ैल की टोपी",
-   "es": "Sombrero de bruja",
-   "ar": "قبعة ساحرة",
-   "fr": "Chapeau de sorcière",
-   "bn": "ডাইনির টুপি",
-   "pt-BR": "Chapéu de bruxa",
-   "ru": "Шляпа ведьмы",
-   "id": "Topi penyihir"
   },
   "Work from any app. Click a shortcut to change it, then press the new keys — Esc cancels, Backspace removes it.": {
    "zh-Hans": "在任何应用中都可使用。点击某个快捷键即可修改，然后按下新的按键 — Esc 取消，Backspace 删除。",
@@ -4240,6 +4141,39 @@
    "pt-BR": "Só é possível ler uma pasta compartilhada pelo botão de tela.",
    "ru": "Можно читать только папку, которой поделились кнопкой экрана.",
    "id": "Hanya folder yang dibagikan dari tombol layar yang bisa dibaca."
+  },
+  "Leaf": {
+   "zh-Hans": "叶子",
+   "hi": "पत्ती",
+   "es": "Hoja",
+   "ar": "ورقة",
+   "fr": "Feuille",
+   "bn": "পাতা",
+   "pt-BR": "Folha",
+   "ru": "Листик",
+   "id": "Daun"
+  },
+  "Bow tie": {
+   "zh-Hans": "领结",
+   "hi": "बो टाई",
+   "es": "Pajarita",
+   "ar": "ربطة عنق فراشة",
+   "fr": "Nœud papillon",
+   "bn": "বো টাই",
+   "pt-BR": "Gravata-borboleta",
+   "ru": "Бабочка",
+   "id": "Dasi kupu-kupu"
+  },
+  "Headphones": {
+   "zh-Hans": "耳机",
+   "hi": "हेडफ़ोन",
+   "es": "Auriculares",
+   "ar": "سماعات رأس",
+   "fr": "Casque audio",
+   "bn": "হেডফোন",
+   "pt-BR": "Fones de ouvido",
+   "ru": "Наушники",
+   "id": "Headphone"
   }
  }
 }

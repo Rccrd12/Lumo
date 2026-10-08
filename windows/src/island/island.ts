@@ -12,6 +12,7 @@ import {
   zoomStep,
 } from "../core/layout";
 import { Sound } from "../core/sound";
+import { NEUTRAL_PILL } from "../core/pill-colors";
 import { State, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
@@ -1240,12 +1241,10 @@ export class Island {
     if (!ctx) return;
 
     const focus = State.focusTask;
-    // While a plan card is open Mochi wears the plan's colour, like its pill.
-    this.engine.bodyColor = planCardOpen()
-      ? hexToRGB(openPlanColor())
-      : focus?.isIntegration
-        ? hexToRGB(focus.color)
-        : null;
+    // While a plan card is open Lumo wears the plan's colour, like its pill. A
+    // white pill leaves him in his own butter yellow.
+    const wear = planCardOpen() ? openPlanColor() : focus?.isIntegration ? focus.color : null;
+    this.engine.bodyColor = wear && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
     this.engine.particleOverhang = BOT_OVERHANG;
     this.engine.lookX = this.lookX();
     this.engine.lookY = this.lookY();

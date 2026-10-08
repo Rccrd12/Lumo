@@ -6,6 +6,7 @@
 import { closeCurve } from "../core/anim";
 import { Sound } from "../core/sound";
 import { COMPACT_W, NOTCH_H, NOTCH_W } from "../core/layout";
+import { LUMO_BOTTOM, LUMO_GLOW, LUMO_TOP, drawLumoBehind, drawLumoFront, type RGB } from "./lumo";
 
 // ── Timing (GT in the Swift file) ─────────────────────────────────────────────
 
@@ -365,7 +366,7 @@ function rr(x: CanvasRenderingContext2D, X: number, Y: number, W: number, H: num
   x.closePath();
 }
 
-function mochiPath(hw: number, hh: number): Path2D {
+function lumoPath(hw: number, hh: number): Path2D {
   const n = 3.2;
   const p = new Path2D();
   const steps = 96;
@@ -388,11 +389,15 @@ function whiteFill(
   x0: number, y0: number, x1: number, y1: number,
 ) {
   const g = x.createLinearGradient(x0, y0, x1, y1);
-  g.addColorStop(0, "rgb(251,251,252)");
-  g.addColorStop(1, "rgb(231,233,236)");
+  g.addColorStop(0, css(LUMO_TOP));
+  g.addColorStop(1, css(LUMO_BOTTOM));
   x.fillStyle = g;
   x.fill(path);
 }
+
+const css = (c: RGB) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
+/** The blue he takes on at the end of the greeting, as on the island. */
+const GREET_BLUE: RGB = [127 / 255, 180 / 255, 234 / 255];
 
 function drawHandL(x: CanvasRenderingContext2D, hw: number, hh: number, p: Pose) {
   if (p.handL <= 0.01) return;
@@ -416,8 +421,8 @@ function drawHandR(x: CanvasRenderingContext2D, hw: number, hh: number, p: Pose)
   x.rotate(h.ang);
   rr(x, -h.L / 2, -h.T / 2, h.L, h.T, h.T / 2);
   const g = x.createLinearGradient(h.L / 2, -h.T / 2, -h.L / 2, h.T / 2);
-  g.addColorStop(0, "rgb(251,251,252)");
-  g.addColorStop(1, "rgb(231,233,236)");
+  g.addColorStop(0, css(LUMO_TOP));
+  g.addColorStop(1, css(LUMO_BOTTOM));
   x.fillStyle = g;
   x.fill();
   x.strokeStyle = "rgba(0,0,0,0.08)";
@@ -426,7 +431,7 @@ function drawHandR(x: CanvasRenderingContext2D, hw: number, hh: number, p: Pose)
   x.restore();
 }
 
-function drawMochi(x: CanvasRenderingContext2D, p: Pose) {
+function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
   const hh = p.hb / 2;
   const hw = hh * ASP;
   if (hh <= 0.4) return;
@@ -453,15 +458,35 @@ function drawMochi(x: CanvasRenderingContext2D, p: Pose) {
   x.rotate(p.tilt);
   x.scale(p.sx, p.sy);
 
+  // His wings and light; the light turns blue with him at the end.
+  const k = Math.min(1, p.tint / 0.5);
+  const lumo = {
+    R: hh / 0.88,
+    rx: hw,
+    ry: hh,
+    t,
+    glow: [
+      LUMO_GLOW[0] + (GREET_BLUE[0] - LUMO_GLOW[0]) * k,
+      LUMO_GLOW[1] + (GREET_BLUE[1] - LUMO_GLOW[1]) * k,
+      LUMO_GLOW[2] + (GREET_BLUE[2] - LUMO_GLOW[2]) * k,
+    ] as RGB,
+    shine: 0.5 + 0.5 * p.halo,
+    flap: 0.7,
+    lagX: 0,
+    lagY: 0,
+    presence: 1,
+  };
+  drawLumoBehind(x, lumo);
+
   drawHandL(x, hw, hh, p);
   drawHandR(x, hw, hh, p);
 
-  const body = mochiPath(hw, hh);
+  const body = lumoPath(hw, hh);
   whiteFill(x, body, hw * 0.6, -hh, -hw * 0.6, hh);
 
   if (p.tint > 0) {
     const g = x.createLinearGradient(0, hh, 0, -hh * 0.1);
-    g.addColorStop(0, `rgba(127,180,234,${p.tint})`);
+    g.addColorStop(0, `rgba(127,180,234,${p.tint * 0.4})`);
     g.addColorStop(1, "rgba(127,180,234,0)");
     x.fillStyle = g;
     x.fill(body);
@@ -500,6 +525,7 @@ function drawMochi(x: CanvasRenderingContext2D, p: Pose) {
     x.restore();
   }
   x.restore();
+  drawLumoFront(x, lumo);
 
   // Activity badge
   if (p.badge > 0.01) {
@@ -577,7 +603,7 @@ function drawMinis(x: CanvasRenderingContext2D, alpha: number) {
     const scale = alpha * COMPACT.miniGridScale;
     x.scale(scale, scale);
     x.fillStyle = MINI_COLORS[i];
-    x.fill(mochiPath(5.3, 4));
+    x.fill(lumoPath(5.3, 4));
     x.restore();
   });
 }
@@ -671,6 +697,6 @@ export class Greeting {
     }
 
     drawMinis(x, p.minis);
-    drawMochi(x, p);
+    drawLumo(x, p, t);
   }
 }
