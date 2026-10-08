@@ -6,7 +6,7 @@
 // is shown first and only joins the chat on "Send". What was added goes with
 // one question, then the chat forgets it.
 
-import type { OpenWindow, ScreenContext, ScreenDisplay, ScreenShot } from "./bridge";
+import type { OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText } from "./bridge";
 import type { ProviderDef } from "./providers";
 import { N_, t } from "../i18n/i18n";
 
@@ -22,7 +22,12 @@ export const SCREEN_STRINGS = {
   confirm: N_("Send this to the chat?"),
   needsImages: N_("Screenshots need the Claude Code or Anthropic provider."),
   remove: N_("Remove"),
+  selected: N_("Selected text"),
+  selectedIn: N_("Text from {app}"),
 };
+
+/** How much of the selected text the chip's tooltip shows. */
+const SELECTION_PREVIEW = 400;
 
 export type MenuEntry =
   | { kind: "windows" }
@@ -69,18 +74,20 @@ export interface KeptShot {
   preview: string;
 }
 
-/** What the screen button added, sent with the next question only. */
+/** What the screen button or the shortcuts added, sent with the next question only. */
 export interface PendingScreen {
   windows: OpenWindow[] | null;
   shots: KeptShot[];
+  /** Text selected in another app ("Ask about the selected text"). */
+  selection?: SelectedText | null;
 }
 
 export function emptyScreen(): PendingScreen {
-  return { windows: null, shots: [] };
+  return { windows: null, shots: [], selection: null };
 }
 
 export function hasScreen(p: PendingScreen): boolean {
-  return p.windows !== null || p.shots.length > 0;
+  return p.windows !== null || p.shots.length > 0 || !!p.selection;
 }
 
 /** The previewed screenshots join what is waiting, named after their screen. */
@@ -92,15 +99,35 @@ export function keepShots(p: PendingScreen, shots: ScreenShot[]): PendingScreen 
 /** What chat_send takes, or null when nothing is waiting. */
 export function screenPayload(p: PendingScreen): ScreenContext | null {
   if (!hasScreen(p)) return null;
-  return {
+  const out: ScreenContext = {
     windows: p.windows ?? [],
     shots: p.shots.map((s) => ({ name: s.name, path: s.path })),
   };
+  if (p.selection) out.selection = p.selection;
+  return out;
+}
+
+export type ChipKind = "windows" | "shots" | "selection";
+
+export interface ScreenChipInfo {
+  kind: ChipKind;
+  label: string;
+  title: string;
+  /** The screenshots' previews, shown small on the chip. */
+  thumbs?: string[];
 }
 
 /** The chips above the chat: the window list, and the screenshots together. */
-export function screenChips(p: PendingScreen): { kind: "windows" | "shots"; label: string; title: string }[] {
-  const out: { kind: "windows" | "shots"; label: string; title: string }[] = [];
+export function screenChips(p: PendingScreen): ScreenChipInfo[] {
+  const out: ScreenChipInfo[] = [];
+  if (p.selection) {
+    const { text, app } = p.selection;
+    out.push({
+      kind: "selection",
+      label: app ? t(SCREEN_STRINGS.selectedIn, { app }) : t(SCREEN_STRINGS.selected),
+      title: text.length > SELECTION_PREVIEW ? `${text.slice(0, SELECTION_PREVIEW)}…` : text,
+    });
+  }
   if (p.windows !== null) {
     out.push({
       kind: "windows",
@@ -110,7 +137,7 @@ export function screenChips(p: PendingScreen): { kind: "windows" | "shots"; labe
   }
   if (p.shots.length > 0) {
     const names = p.shots.map((s) => s.name).join(", ");
-    out.push({ kind: "shots", label: names, title: names });
+    out.push({ kind: "shots", label: names, title: names, thumbs: p.shots.map((s) => s.preview) });
   }
   return out;
 }

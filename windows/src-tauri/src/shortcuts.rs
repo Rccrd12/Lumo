@@ -17,6 +17,12 @@
 //   Ctrl+Alt+A       waiting permission      Ctrl+Alt+S      mute Mochi
 //   Ctrl+Alt+T       open the terminal       Ctrl+Alt+G      wardrobe
 //   Ctrl+Alt+N       open / close the island (off by default, as on the Mac)
+//   Ctrl+Alt+P       ask about my screen     Ctrl+Alt+X      ask about the selected text
+//
+// The last two are this version's own (the Mac has no such action yet): they
+// open the chat with a screenshot of the display under the cursor, or with
+// the text selected in the app in front (selection.rs), ready for a question.
+// Each is done on the key press only, and nothing is sent before Enter.
 //
 // ⌃⌥[ and ⌃⌥] became the arrows (brackets are AltGr characters almost
 // everywhere) and ⌃⌥M became S (AltGr+M is µ in German). Layouts outside that
@@ -28,6 +34,7 @@
 
 use std::collections::{BTreeMap, HashMap, HashSet};
 use std::str::FromStr;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
@@ -35,6 +42,8 @@ use tauri::{AppHandle, Emitter, Manager, Runtime};
 use tauri_plugin_global_shortcut::{Code, GlobalShortcut, Modifiers, Shortcut, ShortcutState};
 
 use crate::island::WINDOW_LABEL;
+use crate::screen::{self, Shot};
+use crate::selection::{self, Selected};
 
 /// One global action, as on the Mac (`ShortcutAction`). The ids are the Mac's
 /// raw values and are stored in settings.json: never rename one.
@@ -66,6 +75,10 @@ pub const ACTIONS: &[ActionDef] = &[
     // Mochi on the desktop is not in this version.
     action("desktopToggle", "Ctrl+Alt+D", true, false),
     action("wardrobeToggle", "Ctrl+Alt+G", true, true),
+    // Not on the Mac: see the top of this file. On Linux, where there is no
+    // screenshot yet, the island says so.
+    action("askScreen", "Ctrl+Alt+P", true, true),
+    action("askSelection", "Ctrl+Alt+X", true, true),
 ];
 
 pub fn find(id: &str) -> Option<&'static ActionDef> {
@@ -270,11 +283,53 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
 /// Hands an action to the island.
 pub fn dispatch<R: Runtime>(app: &AppHandle<R>, action: &str) {
     crate::log::line(format!("shortcut {action}"));
-    if action == "wardrobeToggle" {
-        let _ = app.emit_to(WINDOW_LABEL, "open-wardrobe", ());
-    } else {
-        let _ = app.emit_to(WINDOW_LABEL, "shortcut", action.to_string());
+    match action {
+        "wardrobeToggle" => {
+            let _ = app.emit_to(WINDOW_LABEL, "open-wardrobe", ());
+        }
+        "askScreen" | "askSelection" => share(app, action == "askScreen"),
+        _ => {
+            let _ = app.emit_to(WINDOW_LABEL, "shortcut", action.to_string());
+        }
     }
+}
+
+/// What "Ask about my screen" or "Ask about the selected text" hands the chat,
+/// as the `ask-context` event.
+#[derive(Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "camelCase")]
+pub enum Shared {
+    Screen { shots: Vec<Shot> },
+    Selection { selection: Selected },
+    Problem { message: String },
+}
+
+/// One share at a time: a second press while the first is copying is dropped.
+static SHARING: AtomicBool = AtomicBool::new(false);
+
+/// Takes the screenshot or reads the selection now, before the island takes
+/// the keyboard (the copy has to go to the app in front), then hands it over.
+fn share<R: Runtime>(app: &AppHandle<R>, screen_shot: bool) {
+    if SHARING.swap(true, Ordering::AcqRel) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        let shared = if screen_shot {
+            let display = screen::display_under_cursor().unwrap_or(0);
+            match screen::capture_unseen(&app, Some(display)) {
+                Ok(shots) => Shared::Screen { shots },
+                Err(message) => Shared::Problem { message },
+            }
+        } else {
+            match selection::grab() {
+                Ok(selection) => Shared::Selection { selection },
+                Err(message) => Shared::Problem { message },
+            }
+        };
+        SHARING.store(false, Ordering::Release);
+        let _ = app.emit_to(WINDOW_LABEL, "ask-context", shared);
+    });
 }
 
 /// Unregisters everything Coucou holds.
@@ -383,6 +438,8 @@ mod tests {
         "toggleIsland", "openChat", "goToAlert", "jumpToTerminal", "attachFrontWindow",
         "nextPill", "prevPill", "muteToggle", "desktopToggle", "wardrobeToggle",
     ];
+    /// This version's own, after the Mac's.
+    const OWN_IDS: [&str; 2] = ["askScreen", "askSelection"];
 
     fn never(_: &Shortcut) -> Option<String> {
         None
@@ -392,7 +449,8 @@ mod tests {
     #[test]
     fn every_mac_action_has_a_default_and_keeps_its_id() {
         let ids: Vec<_> = ACTIONS.iter().map(|a| a.id).collect();
-        assert_eq!(ids, MAC_IDS);
+        assert_eq!(ids[..MAC_IDS.len()], MAC_IDS);
+        assert_eq!(ids[MAC_IDS.len()..], OWN_IDS);
     }
 
     // testAllDefaultsHaveModifier

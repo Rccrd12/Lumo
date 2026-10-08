@@ -72,6 +72,19 @@ test("what is waiting becomes one payload, chips and a list of files to delete",
   assert.deepEqual(screenPayload({ windows: [], shots: [] }), { windows: [], shots: [] });
 });
 
+test("selected text is something to send, with a chip naming the app and showing the text", () => {
+  const selection = { text: "Le contrat est conclu pour un an.", app: "Acrobat", title: "bail.pdf" };
+  const p = { ...emptyScreen(), selection };
+  assert.ok(hasScreen(p));
+  assert.deepEqual(screenPayload(p), { windows: [], shots: [], selection });
+  assert.deepEqual(screenChips(p), [{ kind: "selection", label: "Text from Acrobat", title: selection.text }]);
+  const long = { ...p, selection: { text: "x".repeat(1000), app: "", title: "" } };
+  const [chip] = screenChips(long);
+  assert.equal(chip.label, "Selected text");
+  assert.equal(chip.title, `${"x".repeat(400)}…`);
+  assert.ok(!("selection" in screenPayload({ ...p, selection: null, windows: [] })));
+});
+
 // ── The chat view ────────────────────────────────────────────────────────────
 
 let answers;
@@ -240,4 +253,44 @@ test("a new chat deletes screenshots that were never sent", async () => {
   assert.deepEqual(sent("screen_discard"), [{ paths: [shot(0).path] }]);
   view.sync();
   assert.equal(view.el.find(".chip").length, 0);
+});
+
+// ── The sharing shortcuts (island/shortcuts.ts runShared hands them over) ─────
+
+test("a screenshot from the shortcut waits as a chip with its picture, and a new one replaces it", () => {
+  State.incomingShare = { kind: "screen", shots: [shot(0)] };
+  view.sync();
+  assert.equal(State.incomingShare, null, "taken");
+  const chip = view.el.find(".chip")[0];
+  assert.equal(chip.find("SPAN")[0].textContent, "Screen 1");
+  assert.equal(chip.find("IMG")[0].getAttribute("src"), shot(0).preview);
+  assert.equal(sent("screen_capture").length, 0, "Rust took it on the key press");
+
+  State.incomingShare = { kind: "screen", shots: [shot(1)] };
+  view.sync();
+  assert.deepEqual(sent("screen_discard"), [{ paths: [shot(0).path] }]);
+  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Screen 2"]);
+});
+
+test("selected text from the shortcut goes with the next question once, and × takes it back", async () => {
+  const selection = { text: "def f(): pass", app: "Code", title: "main.py" };
+  State.incomingShare = { kind: "selection", selection };
+  view.sync();
+  const chip = view.el.find(".chip")[0];
+  assert.equal(chip.find("SPAN")[0].textContent, "Text from Code");
+  assert.equal(chip.getAttribute("title"), "def f(): pass");
+  chip.find(".chip-remove")[0].fire("click");
+  view.sync();
+  assert.equal(view.el.find(".chip").length, 0);
+
+  State.incomingShare = { kind: "selection", selection };
+  view.sync();
+  $(".chat-input").value = "what does it do?";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+  const turn = sent("chat_send")[0];
+  assert.equal(turn.query, "what does it do?");
+  assert.deepEqual(turn.screen, { windows: [], shots: [], selection });
+  assert.equal(view.el.find(".chip").length, 0, "sent once, then forgotten");
 });

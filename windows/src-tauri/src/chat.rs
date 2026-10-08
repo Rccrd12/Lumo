@@ -433,6 +433,7 @@ mod tests {
         let screen = ScreenContext {
             windows: vec![WindowInfo { title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
+            selection: None,
         };
         let (q, images) = with_screen("claude-code", Some(&screen), "what is this?".into()).unwrap();
         assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"));
@@ -456,6 +457,21 @@ mod tests {
         let (q, images) = with_screen("ollama", Some(&windows_only), "q".into()).unwrap();
         assert!(q.starts_with("Windows open on the user's computer") && q.ends_with("q") && images.is_empty());
 
+        // So is a selection, for every provider.
+        let selected = ScreenContext {
+            selection: Some(crate::screen::SelectionRef { text: "Le contrat\n".into(), app: "Acrobat".into(), title: "bail.pdf".into() }),
+            ..Default::default()
+        };
+        for provider in ["claude-code", "anthropic", "openai", "ollama"] {
+            let (q, images) = with_screen(provider, Some(&selected), "translate".into()).unwrap();
+            assert_eq!(
+                q,
+                "The user selected this text in Acrobat (\"bail.pdf\") and shared it just now:\n<selected_text>\nLe contrat\n</selected_text>\n\ntranslate",
+                "{provider}"
+            );
+            assert!(images.is_empty());
+        }
+
         assert_eq!(with_screen("openai", None, "q".into()).unwrap(), ("q".to_string(), vec![]));
         assert_eq!(with_screen("ollama", Some(&ScreenContext::default()), "q".into()).unwrap(), ("q".to_string(), vec![]));
     }
@@ -463,7 +479,7 @@ mod tests {
     #[test]
     fn only_screenshots_in_the_inbox_ride_along() {
         use crate::screen::ShotRef;
-        let outside = ScreenContext { windows: vec![], shots: vec![ShotRef { name: "x".into(), path: "/etc/passwd".into() }] };
+        let outside = ScreenContext { shots: vec![ShotRef { name: "x".into(), path: "/etc/passwd".into() }], ..Default::default() };
         assert!(checked_screen(outside).is_err());
         assert!(checked_screen(ScreenContext::default()).is_ok());
     }

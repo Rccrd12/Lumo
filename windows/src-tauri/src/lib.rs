@@ -24,6 +24,7 @@ mod platform;
 mod recap;
 mod screen;
 mod secrets;
+mod selection;
 mod session_window;
 mod settings;
 mod shortcuts;
@@ -620,17 +621,9 @@ async fn screen_windows() -> Result<Vec<screen::WindowInfo>, String> {
 /// content protection, which Coucou never uses otherwise).
 #[tauri::command]
 async fn screen_capture(app: AppHandle, display: Option<usize>) -> Result<Vec<screen::Shot>, String> {
-    let island = app.get_webview_window(island::WINDOW_LABEL);
-    let hidden = cfg!(windows) && island.as_ref().is_some_and(|w| w.set_content_protected(true).is_ok());
-    let shots = tauri::async_runtime::spawn_blocking(move || screen::capture(display, hidden))
+    tauri::async_runtime::spawn_blocking(move || screen::capture_unseen(&app, display))
         .await
-        .map_err(|e| e.to_string());
-    if hidden {
-        if let Some(w) = &island {
-            let _ = w.set_content_protected(false);
-        }
-    }
-    shots?
+        .map_err(|e| e.to_string())?
 }
 
 /// Cancel in the preview: the screenshots are deleted from the inbox.

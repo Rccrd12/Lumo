@@ -312,11 +312,30 @@ export interface ScreenShot {
   preview: string;
 }
 
-/** What the screen button adds to the next question. */
+/** Text selected in another app, read by the "Ask about the selected text" shortcut. */
+export interface SelectedText {
+  text: string;
+  /** The app it was selected in, when known ("chrome"). */
+  app: string;
+  /** That app's window title, when known. */
+  title: string;
+}
+
+/** What the screen button or the shortcuts add to the next question. */
 export interface ScreenContext {
   windows: OpenWindow[];
   shots: { name: string; path: string }[];
+  selection?: SelectedText;
 }
+
+/**
+ * The `ask-context` event: what "Ask about my screen" or "Ask about the
+ * selected text" took on the key press, or why it couldn't (shortcuts.rs).
+ */
+export type SharedContext =
+  | { kind: "screen"; shots: ScreenShot[] }
+  | { kind: "selection"; selection: SelectedText }
+  | { kind: "problem"; message: string };
 
 export interface ModelInfo {
   id: string;

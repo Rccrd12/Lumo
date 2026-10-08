@@ -29,6 +29,8 @@ export const SHORTCUT_TEXT = {
   muteToggle: N_("Mute or unmute Mochi"),
   desktopToggle: N_("Send Mochi to the desktop"),
   wardrobeToggle: N_("Open the wardrobe"),
+  askScreen: N_("Ask about my screen"),
+  askSelection: N_("Ask about the selected text"),
   island: {
     nextPrev: N_("Next or previous pill"),
     byNumber: N_("Go to pill 1 to 9"),
@@ -42,7 +44,10 @@ export const SHORTCUT_TEXT = {
 
 // ── Actions ───────────────────────────────────────────────────────────────────
 
-/** Mac `ShortcutAction` raw values. Stored in settings.json: never rename one. */
+/**
+ * Mac `ShortcutAction` raw values, then this version's own (askScreen,
+ * askSelection). Stored in settings.json: never rename one.
+ */
 export type ShortcutId =
   | "toggleIsland"
   | "openChat"
@@ -53,7 +58,9 @@ export type ShortcutId =
   | "prevPill"
   | "muteToggle"
   | "desktopToggle"
-  | "wardrobeToggle";
+  | "wardrobeToggle"
+  | "askScreen"
+  | "askSelection";
 
 export interface ShortcutDef {
   id: ShortcutId;
@@ -78,6 +85,8 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   def("muteToggle", "Ctrl+Alt+S", true, true),
   def("desktopToggle", "Ctrl+Alt+D", true, false),
   def("wardrobeToggle", "Ctrl+Alt+G", true, true),
+  def("askScreen", "Ctrl+Alt+P", true, true),
+  def("askSelection", "Ctrl+Alt+X", true, true),
 ];
 
 export interface Binding {

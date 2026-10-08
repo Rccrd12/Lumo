@@ -11,6 +11,7 @@ import type { CodexPlanUsage, PlanUsage } from "./plan";
 import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
+import type { SharedContext } from "./bridge";
 import { DEFAULT_OUTFIT, type Outfit } from "../mochi/wardrobe";
 import { pillColor } from "./pill-colors";
 
@@ -231,6 +232,8 @@ class AppState {
   /** The file added to the chat; `sent` once it went with a question. */
   droppedFile: { name: string; path: string; sent?: boolean } | null = null;
   noteMessage: string | null = null;
+  /** What a sharing shortcut just took, for the chat to pick up (island/shortcuts.ts). */
+  incomingShare: SharedContext | null = null;
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
   /** The model picker or the past chats are open: the chat takes its full height. */

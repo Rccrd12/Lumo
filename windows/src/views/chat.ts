@@ -22,7 +22,7 @@ import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, hasScreen, keepShots, menuEntries, screenChips, screenLabel,
-  screenPayload, seesImages, shotPaths, type MenuEntry,
+  screenPayload, seesImages, shotPaths, type ChipKind, type MenuEntry,
 } from "../core/screen";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
@@ -87,16 +87,25 @@ function contextChip(label: string): HTMLElement {
 }
 
 /** A chip for what the screen button added, with a way to take it back before it is sent. */
-function screenChip(label: string, title: string, onRemove: () => void): HTMLElement {
-  const chip = contextChip(label);
-  chip.classList.add("screen-chip");
-  chip.setAttribute("title", title);
+function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[]): HTMLElement {
   const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
   remove.addEventListener("click", (e) => {
     e.stopPropagation();
     onRemove();
   });
-  chip.append(remove);
+  // Screenshots show themselves, small, so it is clear what goes with the question.
+  const strip = thumbs && thumbs.length > 0
+    ? h("span", { class: "chip-thumbs" }, ...thumbs.map((src) => h("img", { class: "chip-thumb", src, alt: "" })))
+    : null;
+  const chip = h(
+    "div",
+    { class: "chip screen-chip", title },
+    h("i", { class: "chip-dot" }),
+    h("span", { text: label }),
+    strip,
+    remove,
+  );
+  requestAnimationFrame(() => chip.classList.add("settled"));
   return chip;
 }
 
@@ -376,13 +385,28 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     panelChanged();
   }
 
-  /** Forgets what the screen button added and was not sent yet (a new chat, the chip's ×). */
-  function clearScreen(kind?: "windows" | "shots") {
-    if (kind !== "windows") {
+  /** Forgets what the screen button or a shortcut added and was not sent yet (a new chat, the chip's ×). */
+  function clearScreen(kind?: ChipKind) {
+    if (!kind || kind === "shots") {
       dropShots(shotPaths(screen));
       screen = { ...screen, shots: [] };
     }
-    if (kind !== "shots") screen = { ...screen, windows: null };
+    if (!kind || kind === "windows") screen = { ...screen, windows: null };
+    if (!kind || kind === "selection") screen = { ...screen, selection: null };
+  }
+
+  /** What a sharing shortcut just took (island/shortcuts.ts runShared). */
+  function takeShare() {
+    const share = State.incomingShare;
+    if (!share) return;
+    State.incomingShare = null;
+    if (share.kind === "screen") {
+      // A new "Ask about my screen" replaces the screenshots still waiting.
+      clearScreen("shots");
+      screen = keepShots(screen, share.shots);
+    } else if (share.kind === "selection") {
+      screen = { ...screen, selection: share.selection };
+    }
   }
 
   function screenStatus(text: string) {
@@ -732,22 +756,30 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   return {
     el,
     sync() {
+      takeShare();
       const file = State.droppedFile;
       const wantChip = file?.name ?? "";
       const extra = hasScreen(screen) ? screenChips(screen) : [];
-      const chipKey = [wantChip, ...extra.map((c) => `${c.label}\t${c.title}`)].join("\n");
+      const chipKey = [wantChip, ...extra.map((c) => `${c.label}\t${c.title}`), ...shotPaths(screen)].join("\n");
       if (chipRow.dataset.label !== chipKey) {
         chipRow.dataset.label = chipKey;
+        // Something is already attached: the ways to start make room for it.
+        body.classList.toggle("has-context", chipKey !== "");
         clear(chipRow);
         if (wantChip) chipRow.append(contextChip(wantChip));
         for (const c of extra) {
           chipRow.append(
-            screenChip(c.label, c.title, () => {
-              if (sending) return;
-              clearScreen(c.kind);
-              Sound.play("pop");
-              State.notify();
-            }),
+            screenChip(
+              c.label,
+              c.title,
+              () => {
+                if (sending) return;
+                clearScreen(c.kind);
+                Sound.play("pop");
+                State.notify();
+              },
+              c.thumbs,
+            ),
           );
         }
       }

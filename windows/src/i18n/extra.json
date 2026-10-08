@@ -3998,6 +3998,94 @@
    "pt-BR": "Me ajude a escrever uma mensagem para ",
    "ru": "Помоги мне написать сообщение для ",
    "id": "Bantu saya menulis pesan untuk "
+  },
+  "Ask about my screen": {
+   "zh-Hans": "问问我屏幕上的内容",
+   "hi": "मेरी स्क्रीन के बारे में पूछें",
+   "es": "Preguntar sobre mi pantalla",
+   "ar": "اسأل عن شاشتي",
+   "fr": "Poser une question sur mon écran",
+   "bn": "আমার স্ক্রিন নিয়ে জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar sobre minha tela",
+   "ru": "Спросить о моём экране",
+   "id": "Tanya tentang layar saya"
+  },
+  "Ask about the selected text": {
+   "zh-Hans": "问问选中的文字",
+   "hi": "चुने गए टेक्स्ट के बारे में पूछें",
+   "es": "Preguntar sobre el texto seleccionado",
+   "ar": "اسأل عن النص المحدد",
+   "fr": "Poser une question sur le texte sélectionné",
+   "bn": "নির্বাচিত লেখা নিয়ে জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar sobre o texto selecionado",
+   "ru": "Спросить о выделенном тексте",
+   "id": "Tanya tentang teks yang dipilih"
+  },
+  "Selected text": {
+   "zh-Hans": "选中的文字",
+   "hi": "चुना गया टेक्स्ट",
+   "es": "Texto seleccionado",
+   "ar": "النص المحدد",
+   "fr": "Texte sélectionné",
+   "bn": "নির্বাচিত লেখা",
+   "pt-BR": "Texto selecionado",
+   "ru": "Выделенный текст",
+   "id": "Teks yang dipilih"
+  },
+  "Text from {app}": {
+   "zh-Hans": "来自 {app} 的文字",
+   "hi": "{app} से टेक्स्ट",
+   "es": "Texto de {app}",
+   "ar": "نص من {app}",
+   "fr": "Texte de {app}",
+   "bn": "{app} থেকে লেখা",
+   "pt-BR": "Texto de {app}",
+   "ru": "Текст из {app}",
+   "id": "Teks dari {app}"
+  },
+  "Nothing is selected. Select some text in another app, then press the shortcut again.": {
+   "zh-Hans": "没有选中任何内容。请先在其他应用中选中一些文字，然后再按一次快捷键。",
+   "hi": "कुछ भी चुना नहीं गया है। किसी दूसरे ऐप में कुछ टेक्स्ट चुनें, फिर शॉर्टकट दोबारा दबाएँ।",
+   "es": "No hay nada seleccionado. Selecciona texto en otra app y vuelve a pulsar el atajo.",
+   "ar": "لم يتم تحديد أي شيء. حدّد نصًا في تطبيق آخر، ثم اضغط الاختصار مرة أخرى.",
+   "fr": "Rien n'est sélectionné. Sélectionnez du texte dans une autre app, puis appuyez de nouveau sur le raccourci.",
+   "bn": "কিছুই নির্বাচন করা হয়নি। অন্য কোনো অ্যাপে কিছু লেখা নির্বাচন করুন, তারপর আবার শর্টকাট চাপুন।",
+   "pt-BR": "Nada está selecionado. Selecione um texto em outro app e pressione o atalho de novo.",
+   "ru": "Ничего не выделено. Выделите текст в другом приложении и снова нажмите сочетание клавиш.",
+   "id": "Tidak ada yang dipilih. Pilih teks di aplikasi lain, lalu tekan pintasan lagi."
+  },
+  "Let go of the keys, then press the shortcut again.": {
+   "zh-Hans": "请松开按键，然后再按一次快捷键。",
+   "hi": "कुंजियाँ छोड़ें, फिर शॉर्टकट दोबारा दबाएँ।",
+   "es": "Suelta las teclas y vuelve a pulsar el atajo.",
+   "ar": "اترك المفاتيح، ثم اضغط الاختصار مرة أخرى.",
+   "fr": "Relâchez les touches, puis appuyez de nouveau sur le raccourci.",
+   "bn": "কীগুলো ছেড়ে দিন, তারপর আবার শর্টকাট চাপুন।",
+   "pt-BR": "Solte as teclas e pressione o atalho de novo.",
+   "ru": "Отпустите клавиши и снова нажмите сочетание.",
+   "id": "Lepaskan tombolnya, lalu tekan pintasan lagi."
+  },
+  "The clipboard is busy. Try again.": {
+   "zh-Hans": "剪贴板正忙，请重试。",
+   "hi": "क्लिपबोर्ड व्यस्त है। फिर से कोशिश करें।",
+   "es": "El portapapeles está ocupado. Inténtalo de nuevo.",
+   "ar": "الحافظة مشغولة. حاول مرة أخرى.",
+   "fr": "Le presse-papiers est occupé. Réessayez.",
+   "bn": "ক্লিপবোর্ড ব্যস্ত। আবার চেষ্টা করুন।",
+   "pt-BR": "A área de transferência está ocupada. Tente de novo.",
+   "ru": "Буфер обмена занят. Попробуйте ещё раз.",
+   "id": "Papan klip sedang sibuk. Coba lagi."
+  },
+  "Install xclip (or wl-clipboard on Wayland) to share the selected text.": {
+   "zh-Hans": "请安装 xclip（Wayland 上为 wl-clipboard）以分享选中的文字。",
+   "hi": "चुना गया टेक्स्ट साझा करने के लिए xclip (Wayland पर wl-clipboard) इंस्टॉल करें।",
+   "es": "Instala xclip (o wl-clipboard en Wayland) para compartir el texto seleccionado.",
+   "ar": "ثبّت xclip (أو wl-clipboard على Wayland) لمشاركة النص المحدد.",
+   "fr": "Installez xclip (ou wl-clipboard sous Wayland) pour partager le texte sélectionné.",
+   "bn": "নির্বাচিত লেখা শেয়ার করতে xclip (Wayland-এ wl-clipboard) ইনস্টল করুন।",
+   "pt-BR": "Instale o xclip (ou o wl-clipboard no Wayland) para compartilhar o texto selecionado.",
+   "ru": "Установите xclip (или wl-clipboard в Wayland), чтобы делиться выделенным текстом.",
+   "id": "Pasang xclip (atau wl-clipboard di Wayland) untuk membagikan teks yang dipilih."
   }
  }
 }

@@ -50,7 +50,7 @@ pub struct Display {
 }
 
 /// A screenshot just written to the inbox, with a data URL for the preview.
-#[derive(Serialize)]
+#[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Shot {
     /// The display it shows, from 0, in menu order.
@@ -70,7 +70,19 @@ pub struct ShotRef {
     pub path: String,
 }
 
-/// What the user added from the screen button, sent once with the next question.
+/// Text the user selected in another app and shared with the shortcut (selection.rs).
+#[derive(Debug, Clone, Default, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SelectionRef {
+    pub text: String,
+    #[serde(default)]
+    pub app: String,
+    #[serde(default)]
+    pub title: String,
+}
+
+/// What the user added from the screen button or the shortcuts, sent once
+/// with the next question.
 #[derive(Debug, Clone, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ScreenContext {
@@ -78,11 +90,13 @@ pub struct ScreenContext {
     pub windows: Vec<WindowInfo>,
     #[serde(default)]
     pub shots: Vec<ShotRef>,
+    #[serde(default)]
+    pub selection: Option<SelectionRef>,
 }
 
 impl ScreenContext {
     pub fn is_empty(&self) -> bool {
-        self.windows.is_empty() && self.shots.is_empty()
+        self.windows.is_empty() && self.shots.is_empty() && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
     }
 }
 
@@ -182,6 +196,20 @@ pub fn windows_text(list: &[WindowInfo]) -> String {
 /// travel with the message and only their names are said.
 pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
     let mut out = String::new();
+    if let Some(text) = screen.selection.as_ref().and_then(|s| crate::selection::tidy(&s.text).map(|t| (s, t))) {
+        let (sel, text) = text;
+        let app = clip_title(&sel.app);
+        let title = clip_title(&sel.title);
+        let place = match (app.is_empty(), title.is_empty()) {
+            (false, false) => format!(" in {app} (\"{title}\")"),
+            (false, true) => format!(" in {app}"),
+            (true, false) => format!(" in \"{title}\""),
+            (true, true) => String::new(),
+        };
+        out.push_str(&format!(
+            "The user selected this text{place} and shared it just now:\n<selected_text>\n{text}\n</selected_text>\n\n"
+        ));
+    }
     if !screen.shots.is_empty() {
         if with_paths {
             out.push_str("The user shared screenshots of their screen, taken just now at their request. Read them from these paths:\n");
@@ -248,9 +276,33 @@ fn preview_url(path: &Path) -> Result<String, String> {
 
 // ── Platform ──────────────────────────────────────────────────────────────────
 
+/// An app's executable name from its process id ("chrome", "WINWORD").
+#[cfg(windows)]
+pub use imp::exe_name;
+
 /// The displays, in menu order. Asked when the menu opens; captures nothing.
 pub fn displays() -> Result<Vec<Display>, String> {
     imp::displays()
+}
+
+/// `capture` with the island kept out of the picture (Windows 10 2004 and
+/// later: content protection, which Coucou never uses otherwise). Blocking.
+pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Option<usize>) -> Result<Vec<Shot>, String> {
+    use tauri::Manager;
+    let island = app.get_webview_window(crate::island::WINDOW_LABEL);
+    let hidden = cfg!(windows) && island.as_ref().is_some_and(|w| w.set_content_protected(true).is_ok());
+    let shots = capture(index, hidden);
+    if hidden {
+        if let Some(w) = &island {
+            let _ = w.set_content_protected(false);
+        }
+    }
+    shots
+}
+
+/// The display the cursor is on, in menu order: what "Ask about my screen" captures.
+pub fn display_under_cursor() -> Option<usize> {
+    imp::display_under_cursor()
 }
 
 /// The visible top-level windows, front to back, Coucou's own aside.
@@ -295,6 +347,10 @@ mod imp {
 
     pub fn displays() -> Result<Vec<Display>, String> {
         unavailable()
+    }
+
+    pub fn display_under_cursor() -> Option<usize> {
+        None
     }
 
     pub fn windows() -> Result<Vec<WindowInfo>, String> {
@@ -369,6 +425,12 @@ mod imp {
             .collect())
     }
 
+    pub fn display_under_cursor() -> Option<usize> {
+        let (x, y) = crate::platform::cursor_physical()?;
+        let (x, y) = (x as i32, y as i32);
+        monitors().iter().position(|(r, _)| x >= r.left && x < r.right && y >= r.top && y < r.bottom)
+    }
+
     // ── Windows ───────────────────────────────────────────────────────────────
 
     struct Found {
@@ -395,7 +457,7 @@ mod imp {
         String::from_utf16_lossy(&buf[..len.max(0) as usize])
     }
 
-    fn exe_name(pid: u32) -> String {
+    pub fn exe_name(pid: u32) -> String {
         unsafe {
             let Ok(process) = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) else { return String::new() };
             let mut buf = [0u16; 1024];
@@ -675,6 +737,7 @@ mod tests {
                 ShotRef { name: "Screen 1".into(), path: "C:\\inbox\\screenshot-1.png".into() },
                 ShotRef { name: "Screen 2".into(), path: "C:\\inbox\\screenshot-2.png".into() },
             ],
+            selection: None,
         };
         let cli = context_text(&screen, true);
         assert!(cli.contains("Read them from these paths:\n- Screen 1: C:\\inbox\\screenshot-1.png\n- Screen 2: C:\\inbox\\screenshot-2.png\n"));
@@ -684,6 +747,22 @@ mod tests {
         assert!(!api.contains("C:\\inbox"), "the API gets the images, not paths");
         assert_eq!(context_text(&ScreenContext::default(), true), "");
         assert!(ScreenContext::default().is_empty());
+    }
+
+    #[test]
+    fn a_selection_comes_first_says_where_it_was_and_blank_is_nothing() {
+        let sel = |text: &str, app: &str, title: &str| ScreenContext {
+            selection: Some(SelectionRef { text: text.into(), app: app.into(), title: title.into() }),
+            ..Default::default()
+        };
+        let both = ScreenContext { windows: vec![win("Docs", "msedge")], ..sel("  hi  ", "chrome", "News") };
+        let text = context_text(&both, true);
+        assert!(text.starts_with("The user selected this text in chrome (\"News\") and shared it just now:\n<selected_text>\nhi\n</selected_text>\n\nWindows open"));
+        assert!(context_text(&sel("x", "", "Notes"), true).starts_with("The user selected this text in \"Notes\" and"));
+        assert!(context_text(&sel("x", "", ""), true).starts_with("The user selected this text and"));
+        assert!(sel(" \n ", "a", "b").is_empty());
+        assert_eq!(context_text(&sel(" \n ", "a", "b"), true), "");
+        assert!(!sel("x", "", "").is_empty());
     }
 
     #[test]
