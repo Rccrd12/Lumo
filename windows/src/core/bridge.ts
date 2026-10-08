@@ -132,8 +132,13 @@ export const Bridge = {
   // ── Chat, files, secrets ──────────────────────────────────────────────────
   /** One chat turn. The API key and any file bytes never leave Rust. */
   chatSend: (query: string, context: ChatContext | null) =>
-    callOrThrow<{ text: string }>("chat_send", { query, context }),
+    callOrThrow<{ text: string; session?: string }>("chat_send", { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** Reopens a chat from the history, and the Claude Code session that answered it. */
+  chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
+    call<void>("chat_restore", { turns, session }),
+  /** The system's file picker; the picked file is copied into the inbox like a drop. */
+  pickFile: () => callOrThrow<DroppedFile | null>("pick_file"),
   /**
    * The models a provider offers, for the picker in the chat view. Rust asks
    * the provider only when it has a key (or a server address).

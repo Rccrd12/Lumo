@@ -3371,6 +3371,61 @@
    "pt-BR": "O Claude Code precisava de uma permissão que não foi dada. Instale os hooks do Coucou para aprovar ações pela ilha.",
    "ru": "Claude Code нужно было разрешение, которое не дали. Установите хуки Coucou, чтобы одобрять действия с острова.",
    "id": "Claude Code butuh izin yang tidak diberikan. Pasang hook Coucou untuk menyetujui tindakan dari pulau."
+  },
+  "New chat": {
+   "zh-Hans": "新聊天",
+   "hi": "नई चैट",
+   "es": "Nuevo chat",
+   "ar": "محادثة جديدة",
+   "fr": "Nouvelle conversation",
+   "bn": "নতুন চ্যাট",
+   "pt-BR": "Nova conversa",
+   "ru": "Новый чат",
+   "id": "Obrolan baru"
+  },
+  "Past chats": {
+   "zh-Hans": "历史聊天",
+   "hi": "पिछली चैट",
+   "es": "Chats anteriores",
+   "ar": "المحادثات السابقة",
+   "fr": "Conversations passées",
+   "bn": "আগের চ্যাট",
+   "pt-BR": "Conversas anteriores",
+   "ru": "Прошлые чаты",
+   "id": "Obrolan sebelumnya"
+  },
+  "No past chats yet.": {
+   "zh-Hans": "还没有历史聊天。",
+   "hi": "अभी कोई पिछली चैट नहीं है।",
+   "es": "Aún no hay chats anteriores.",
+   "ar": "لا توجد محادثات سابقة بعد.",
+   "fr": "Aucune conversation passée pour l'instant.",
+   "bn": "এখনও কোনো আগের চ্যাট নেই।",
+   "pt-BR": "Ainda não há conversas anteriores.",
+   "ru": "Прошлых чатов пока нет.",
+   "id": "Belum ada obrolan sebelumnya."
+  },
+  "Delete this chat": {
+   "zh-Hans": "删除此聊天",
+   "hi": "यह चैट हटाएँ",
+   "es": "Eliminar este chat",
+   "ar": "حذف هذه المحادثة",
+   "fr": "Supprimer cette conversation",
+   "bn": "এই চ্যাট মুছুন",
+   "pt-BR": "Excluir esta conversa",
+   "ru": "Удалить этот чат",
+   "id": "Hapus obrolan ini"
+  },
+  "Attach a file": {
+   "zh-Hans": "附加文件",
+   "hi": "फ़ाइल संलग्न करें",
+   "es": "Adjuntar un archivo",
+   "ar": "إرفاق ملف",
+   "fr": "Joindre un fichier",
+   "bn": "একটি ফাইল সংযুক্ত করুন",
+   "pt-BR": "Anexar um arquivo",
+   "ru": "Прикрепить файл",
+   "id": "Lampirkan file"
   }
  }
 }

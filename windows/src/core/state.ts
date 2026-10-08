@@ -1,5 +1,6 @@
 // App state — mirror of AppState.swift (the parts the island needs).
 
+import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../mochi/engine";
 import {
@@ -208,10 +209,15 @@ class AppState {
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;
-  droppedFile: { name: string; path: string } | null = null;
+  /** The file added to the chat; `sent` once it went with a question. */
+  droppedFile: { name: string; path: string; sent?: boolean } | null = null;
   noteMessage: string | null = null;
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
+  /** The id of the current chat in the history (chats.ts). */
+  chatId = newChatId();
+  /** The Claude Code session the current chat continues, if Claude Code answered it. */
+  chatSession: string | null = null;
   pendingApproval: ApprovalInfo | null = null;
   /** The pill that was in front when the card came up; it comes back after. */
   focusBeforeApproval: string | null = null;
@@ -284,6 +290,13 @@ class AppState {
    * A permission card or a question comes up: its pill comes to the front, and
    * the pill that was there is remembered (HookServer.focusBeforeApproval).
    */
+  /** A fresh chat: what was said goes, the history keeps the old one. */
+  startChat() {
+    this.chatHistory = [];
+    this.chatId = newChatId();
+    this.chatSession = null;
+  }
+
   beginApproval(info: ApprovalInfo) {
     this.pendingApproval = info;
     this.isPinned = true;

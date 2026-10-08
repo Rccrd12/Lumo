@@ -28,6 +28,10 @@ pub enum ChatContext {
 #[serde(rename_all = "camelCase")]
 pub struct ChatReply {
     pub text: String,
+    /// The Claude Code session that answered (claude_code.rs), so a chat from
+    /// the history can be continued where it left off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
 }
 
 /// A model a provider offers, for the picker in the chat view.
@@ -94,6 +98,19 @@ impl Chat {
             first: c.plain.is_empty(),
             history: c.native.clone(),
         }
+    }
+
+    /// Puts a chat from the history back: its turns as plain text, and the
+    /// Claude Code session to continue, if Claude Code answered it.
+    pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>) {
+        let mut c = self.inner.lock().unwrap();
+        let epoch = c.epoch + 1;
+        let plain = turns
+            .into_iter()
+            .filter(|(role, _)| role == "user" || role == "assistant")
+            .map(|(role, content)| json!({ "role": role, "content": content }))
+            .collect();
+        *c = Conversation { epoch, plain, cli_session, ..Default::default() };
     }
 
     /// The Claude Code session to resume, if Claude Code answered this conversation.
@@ -268,6 +285,18 @@ mod tests {
             .iter()
             .map(|m| (m["role"].as_str().unwrap().to_string(), m["content"].clone()))
             .collect()
+    }
+
+    #[test]
+    fn a_restored_chat_continues_as_plain_turns() {
+        let chat = Chat::default();
+        chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()));
+        assert_eq!(chat.cli_session().as_deref(), Some("s"));
+        let t = chat.begin("openai");
+        assert!(!t.first);
+        assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("hi")), ("assistant".into(), json!("hello"))]);
+        chat.reset();
+        assert_eq!(chat.cli_session(), None);
     }
 
     #[test]

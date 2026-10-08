@@ -279,7 +279,7 @@ pub async fn send(
     }
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { text: answer })
+    Ok(ChatReply { text: answer, session: None })
 }
 
 // ── Streaming ─────────────────────────────────────────────────────────────────

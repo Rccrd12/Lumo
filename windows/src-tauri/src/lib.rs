@@ -464,6 +464,34 @@ fn chat_reset(chat: State<Chat>) {
     chat.reset();
 }
 
+/// One turn of a chat from the history, as the island keeps it.
+#[derive(serde::Deserialize)]
+struct SavedTurn {
+    role: String,
+    content: String,
+}
+
+/// Opens a chat from the history: what was said, and the Claude Code session
+/// that answered it, if any, so the next question continues it.
+#[tauri::command]
+fn chat_restore(chat: State<Chat>, turns: Vec<SavedTurn>, session: Option<String>) {
+    chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);
+}
+
+/// "Attach a file" in the chat: the system's file picker, then the same copy
+/// into the inbox as a drop. Only a file the user picked there can be added.
+#[tauri::command]
+async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    let path = picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+    files::allow_dropped([path.clone()]);
+    files::ingest(&path).map(Some)
+}
+
 /// Copies a dropped file into the inbox and reports its name back.
 #[tauri::command]
 fn ingest_file(path: String) -> Result<DroppedFile, String> {
@@ -632,7 +660,8 @@ pub fn run() {
                 }
             }
         }))
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None));
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_dialog::init());
     // Where no global shortcut can work, the plugin isn't even started.
     if platform::global_shortcuts_blocked().is_none() {
         builder = builder.plugin(shortcuts::plugin());
@@ -682,6 +711,8 @@ pub fn run() {
             local_connect,
             local_set_key,
             chat_reset,
+            chat_restore,
+            pick_file,
             ingest_file,
             secret_present,
             secret_set,

@@ -15,6 +15,7 @@ import {
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
+import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -27,6 +28,11 @@ const STRINGS = {
   loading: N_("Loading models…"),
   noKey: N_("No API key — add it in Settings."),
   openSettings: N_("Open Settings"),
+  newChat: N_("New chat"),
+  pastChats: N_("Past chats"),
+  noPastChats: N_("No past chats yet."),
+  deleteChat: N_("Delete this chat"),
+  attach: N_("Attach a file"),
 };
 
 let nextId = 1;
@@ -211,7 +217,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     spellcheck: "false",
   }) as HTMLInputElement;
   const send = h("button", { class: "send-btn", title: tl(STRINGS.send) }, svg(ICONS.arrowUp, 11));
-  const bar = h("div", { class: "chat-bar" }, input, send);
+  const attachBtn = h("button", { class: "tool-btn", title: tl(STRINGS.attach) }, svg(ICONS.paperclip, 13, { stroke: 1.8 }));
+  const bar = h("div", { class: "chat-bar" }, attachBtn, input, send);
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -222,14 +229,19 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     modelName,
     svg(ICONS.chevronUpDown, 9, { stroke: 2 }),
   );
-  const modelRow = h("div", { class: "model-row" }, modelBtn);
+  const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
+  const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
+  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn), modelBtn);
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
     body.classList.toggle("picking", picker.isOpen);
+    if (picker.isOpen) closeHistory();
     drawModelButton();
   });
-  body.append(chipRow, log, picker.el, modelRow, bar);
+  const historyList = h("div", { class: "picker-list" });
+  const historyEl = h("div", { class: "picker history" }, h("div", { class: "picker-title", text: t(STRINGS.pastChats) }), historyList);
+  body.append(chipRow, log, picker.el, historyEl, modelRow, bar);
 
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
@@ -246,6 +258,126 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     modelBtn.classList.toggle("open", picker.isOpen);
     modelBtn.disabled = sending;
   }
+
+  // ── New chat, past chats, attach ──────────────────────────────────────────
+
+  function closeHistory() {
+    body.classList.remove("browsing");
+    historyBtn.classList.remove("open");
+  }
+
+  function drawHistory() {
+    clear(historyList);
+    const chats = loadChats();
+    if (chats.length === 0) {
+      historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noPastChats) }));
+      return;
+    }
+    for (const c of chats) {
+      const remove = h("button", { class: "history-delete", title: tl(STRINGS.deleteChat) }, svg(ICONS.trash, 12, { stroke: 1.6 }));
+      remove.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteChat(c.id);
+        Sound.play("pop");
+        drawHistory();
+      });
+      const row = h(
+        "div",
+        { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
+        h("span", { class: "picker-model-name", text: c.title || "…" }),
+        h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
+        remove,
+      );
+      row.addEventListener("click", () => openChat(c));
+      historyList.append(row);
+    }
+  }
+
+  function openChat(c: SavedChat) {
+    if (sending) return;
+    State.chatHistory = c.turns.map((turn) => ({ id: nextId++, role: turn.role, content: turn.content }));
+    State.chatId = c.id;
+    State.chatSession = c.session;
+    State.droppedFile = null;
+    State.promptContext = null;
+    void Bridge.chatRestore(c.turns, c.session);
+    closeHistory();
+    Sound.play("blip");
+    renderedCount = -1;
+    State.notify();
+    onHeightChange();
+    input.focus();
+  }
+
+  function newChat() {
+    if (sending) return;
+    State.startChat();
+    State.droppedFile = null;
+    State.promptContext = null;
+    void Bridge.chatReset();
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    Sound.play("blip");
+    renderedCount = -1;
+    State.notify();
+    onHeightChange();
+    input.focus();
+  }
+
+  /** Saves the chat on screen in the history, after each answer. */
+  function remember() {
+    const turns = State.chatHistory.map((m) => ({ role: m.role, content: m.content }));
+    if (turns.length === 0) return;
+    saveChat({
+      id: State.chatId,
+      title: chatTitle(turns),
+      updatedAt: Date.now(),
+      provider: State.settings.chatProvider,
+      session: State.chatSession,
+      turns,
+    });
+  }
+
+  async function attach() {
+    if (sending) return;
+    let file;
+    try {
+      file = await Bridge.pickFile();
+    } catch (err) {
+      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      State.view = "note";
+      Sound.play("error");
+      State.notify();
+      return;
+    }
+    if (!file) return;
+    // Claude Code reads the file from its path, mid-conversation too. The other
+    // providers take a file with the first question only: a new chat, as a drop.
+    if (State.settings.chatProvider !== "claude-code") {
+      State.startChat();
+      void Bridge.chatReset();
+      renderedCount = -1;
+    }
+    State.droppedFile = { name: file.name, path: file.path };
+    State.promptContext = { kind: "file", name: file.name, path: file.path };
+    Sound.play("attach");
+    State.notify();
+    input.focus();
+  }
+
+  newBtn.addEventListener("click", newChat);
+  attachBtn.addEventListener("click", () => void attach());
+  historyBtn.addEventListener("click", () => {
+    if (sending) return;
+    if (body.classList.contains("browsing")) {
+      closeHistory();
+      return;
+    }
+    if (picker.isOpen) picker.close();
+    drawHistory();
+    body.classList.add("browsing");
+    historyBtn.classList.add("open");
+  });
 
   modelBtn.addEventListener("click", () => {
     if (sending) return;
@@ -268,6 +400,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     const query = input.value.trim();
     if (!query || sending) return;
     if (picker.isOpen) picker.close();
+    closeHistory();
     input.value = "";
     sending = true;
     drawModelButton();
@@ -278,13 +411,16 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     State.notify();
     onHeightChange();
 
+    // The file goes with the first question asked after it was added, once.
     const file = State.droppedFile;
-    const context: ChatContext | null =
-      State.chatHistory.length === 1 && file ? { kind: "file", name: file.name, path: file.path } : null;
+    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
 
     try {
       const reply = await Bridge.chatSend(query, context);
       State.chatHistory.push({ id: nextId++, role: "assistant", content: reply.text });
+      if (file) file.sent = true;
+      if (reply.session) State.chatSession = reply.session;
+      remember();
       State.stateOverride = null;
       Sound.play("finish");
     } catch (err) {
@@ -339,6 +475,10 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
       // Leaving the chat folds the picker away.
       if (State.view !== "prompt" && picker.isOpen) picker.close();
+      if (State.view !== "prompt") closeHistory();
+      newBtn.disabled = sending;
+      historyBtn.disabled = sending;
+      attachBtn.disabled = sending;
       drawModelButton();
 
       input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);

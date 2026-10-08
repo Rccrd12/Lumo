@@ -1157,8 +1157,38 @@ input[type="range"]::-webkit-slider-thumb {
 
 .model-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   padding: 0 10px;
+}
+
+/* New chat, past chats, attach: small round buttons in the chat's own style. */
+.chat-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.tool-btn {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #8b929e;
+  cursor: default;
+}
+
+.tool-btn:hover:not(:disabled),
+.tool-btn.open {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.tool-btn:disabled {
+  opacity: 0.5;
 }
 
 .model-btn {
@@ -1218,6 +1248,49 @@ input[type="range"]::-webkit-slider-thumb {
 .chat-body.picking .chat-log,
 .chat-body.picking .chip-row {
   display: none;
+}
+
+.chat-body.browsing .history {
+  display: flex;
+}
+
+.chat-body.browsing .chat-log,
+.chat-body.browsing .chip-row {
+  display: none;
+}
+
+.picker-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b929e;
+}
+
+.history-row {
+  gap: 8px;
+}
+
+.history-date {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #5c6370;
+}
+
+.history-delete {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #5c6370;
+  cursor: default;
+}
+
+.history-delete:hover {
+  background: rgba(255, 90, 90, 0.16);
+  color: #ff8a8a;
 }
 
 .picker-chips {

@@ -110,10 +110,10 @@ fn args(model: &str, session: Option<&str>, inbox: &str) -> Vec<String> {
     a
 }
 
-/// What goes in on stdin: the question, with the dropped file or the window
-/// on the first turn, and — when an earlier provider answered the turns before
+/// What goes in on stdin: the question, with the file or the window when the
+/// island sends one (a file only once, with the question after it was added), and — when an earlier provider answered the turns before
 /// — that conversation as plain text.
-fn prompt(first: bool, context: Option<&ChatContext>, carried: &[Value], query: &str) -> String {
+fn prompt(context: Option<&ChatContext>, carried: &[Value], query: &str) -> String {
     let mut out = String::new();
     if !carried.is_empty() {
         let mut transcript = String::new();
@@ -127,9 +127,9 @@ fn prompt(first: bool, context: Option<&ChatContext>, carried: &[Value], query: 
         out.push_str(&cut);
         out.push_str("---\n\n");
     }
-    match context.filter(|_| first) {
+    match context {
         Some(ChatContext::File { name, path }) => {
-            out.push_str(&format!("The user dropped a file on the island: {name}\nPath: {path}\n\n"));
+            out.push_str(&format!("The user added a file to the chat: {name}\nPath: {path}\n\n"));
         }
         Some(ChatContext::Window { app_name, title, url }) => {
             out.push_str(&chat::window_line(app_name, title, url.as_deref()));
@@ -326,7 +326,7 @@ pub async fn send(
     let session = chat.cli_session();
     // Turns another provider answered are carried over once, as text.
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
-    let input = prompt(turn.first, context.as_ref(), &carried, &query);
+    let input = prompt(context.as_ref(), &carried, &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let args = args(model, session.as_deref(), &inbox);
 
@@ -352,9 +352,9 @@ pub async fn send(
     } else {
         answer
     };
-    let plain = chat::plain_question(turn.first, context.as_ref(), &query);
+    let plain = chat::plain_question(true, context.as_ref(), &query);
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { text: answer })
+    Ok(ChatReply { text: answer, session: chat.cli_session() })
 }
 
 #[cfg(test)]
@@ -407,15 +407,15 @@ mod tests {
     }
 
     #[test]
-    fn the_file_rides_with_the_first_turn_and_other_providers_turns_are_carried_once() {
+    fn the_file_rides_along_and_other_providers_turns_are_carried_once() {
         let file = ChatContext::File { name: "a.pdf".into(), path: "C:\\inbox\\a.pdf".into() };
-        let p = prompt(true, Some(&file), &[], "summary?");
+        let p = prompt(Some(&file), &[], "summary?");
         assert!(p.contains("Path: C:\\inbox\\a.pdf"));
         assert!(p.ends_with("summary?"));
-        assert_eq!(prompt(false, Some(&file), &[], "more"), "more");
+        assert_eq!(prompt(None, &[], "more"), "more");
 
         let carried = vec![json!({"role":"user","content":"hi"}), json!({"role":"assistant","content":"hello"})];
-        let p = prompt(false, None, &carried, "go on");
+        let p = prompt(None, &carried, "go on");
         assert!(p.contains("user: hi") && p.contains("assistant: hello") && p.ends_with("go on"));
     }
 
