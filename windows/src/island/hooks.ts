@@ -28,7 +28,7 @@ function dropPendingCard(island: Island): void {
   State.endApproval();
   island.dropPin();
   if (State.view === "approval" || State.view === "question") {
-    island.setView(State.defaultView());
+    island.setView(State.agentsView());
   }
   State.notify();
 }

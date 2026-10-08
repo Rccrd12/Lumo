@@ -122,17 +122,6 @@
    "ru": "Ответьте в терминале.",
    "id": "Jawab di terminal Anda."
   },
-  "Ask": {
-   "zh-Hans": "提问",
-   "hi": "पूछें",
-   "es": "Preguntar",
-   "ar": "اسأل",
-   "fr": "Demander",
-   "bn": "জিজ্ঞেস করুন",
-   "pt-BR": "Perguntar",
-   "ru": "Спросить",
-   "id": "Tanya"
-  },
   "Asking Codex…": {
    "zh-Hans": "正在询问 Codex…",
    "hi": "Codex से पूछ रहे हैं…",
@@ -3954,6 +3943,61 @@
    "pt-BR": "Essa versão não é mais nova que a instalada.",
    "ru": "Эта версия не новее установленной.",
    "id": "Versi itu tidak lebih baru daripada yang terpasang."
+  },
+  "What can I do for you?": {
+   "zh-Hans": "我能为你做什么？",
+   "hi": "मैं आपके लिए क्या कर सकता हूँ?",
+   "es": "¿Qué puedo hacer por ti?",
+   "ar": "ماذا يمكنني أن أفعل لك؟",
+   "fr": "Que puis-je faire pour vous ?",
+   "bn": "আমি আপনার জন্য কী করতে পারি?",
+   "pt-BR": "O que posso fazer por você?",
+   "ru": "Чем могу помочь?",
+   "id": "Apa yang bisa saya bantu?"
+  },
+  "Ask about a file": {
+   "zh-Hans": "询问一个文件",
+   "hi": "किसी फ़ाइल के बारे में पूछें",
+   "es": "Preguntar sobre un archivo",
+   "ar": "اسأل عن ملف",
+   "fr": "Questions sur un fichier",
+   "bn": "একটি ফাইল সম্পর্কে জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar sobre um arquivo",
+   "ru": "Спросить о файле",
+   "id": "Tanya tentang berkas"
+  },
+  "Look at my screen": {
+   "zh-Hans": "看看我的屏幕",
+   "hi": "मेरी स्क्रीन देखें",
+   "es": "Mira mi pantalla",
+   "ar": "انظر إلى شاشتي",
+   "fr": "Regarde mon écran",
+   "bn": "আমার স্ক্রিন দেখুন",
+   "pt-BR": "Olhe minha tela",
+   "ru": "Посмотри на мой экран",
+   "id": "Lihat layar saya"
+  },
+  "Write a message": {
+   "zh-Hans": "写一条消息",
+   "hi": "एक संदेश लिखें",
+   "es": "Escribir un mensaje",
+   "ar": "اكتب رسالة",
+   "fr": "Écrire un message",
+   "bn": "একটি বার্তা লিখুন",
+   "pt-BR": "Escrever uma mensagem",
+   "ru": "Написать сообщение",
+   "id": "Tulis pesan"
+  },
+  "Help me write a message to ": {
+   "zh-Hans": "帮我写一条消息给",
+   "hi": "इसके लिए एक संदेश लिखने में मेरी मदद करें: ",
+   "es": "Ayúdame a escribir un mensaje para ",
+   "ar": "ساعدني في كتابة رسالة إلى ",
+   "fr": "Aide-moi à écrire un message à ",
+   "bn": "এই জনকে একটি বার্তা লিখতে আমাকে সাহায্য করুন: ",
+   "pt-BR": "Me ajude a escrever uma mensagem para ",
+   "ru": "Помоги мне написать сообщение для ",
+   "id": "Bantu saya menulis pesan untuk "
   }
  }
 }

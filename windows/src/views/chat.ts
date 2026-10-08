@@ -44,6 +44,11 @@ const STRINGS = {
   cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
+  welcome: N_("What can I do for you?"),
+  askFile: N_("Ask about a file"),
+  lookScreen: N_("Look at my screen"),
+  writeMessage: N_("Write a message"),
+  writeMessageStart: N_("Help me write a message to "),
 };
 
 /** What an effort chip says: Claude Code's own names, "Auto" for its default. */
@@ -556,6 +561,31 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     input.focus();
   }
 
+  /** The empty chat: a question, and three ways to start. */
+  function welcome(): HTMLElement {
+    const start = (label: string, run: () => void) =>
+      h("button", { class: "welcome-chip", onclick: () => { if (!sending) run(); } }, h("span", { text: t(label) }));
+    return h(
+      "div",
+      { class: "chat-welcome" },
+      h("div", { class: "welcome-title", text: t(STRINGS.welcome) }),
+      h(
+        "div",
+        { class: "welcome-chips" },
+        start(STRINGS.askFile, () => void attach()),
+        start(STRINGS.lookScreen, () => openScreen()),
+        start(STRINGS.writeMessage, () => {
+          input.value = t(STRINGS.writeMessageStart);
+          void Bridge.focusWindow(true);
+          window.setTimeout(() => {
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+          }, 60);
+        }),
+      ),
+    );
+  }
+
   /** Saves the chat on screen in the history, after each answer. */
   function remember() {
     const turns = State.chatHistory.map((m) => ({ role: m.role, content: m.content }));
@@ -727,6 +757,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
       if (count !== renderedCount && !live) {
         renderedCount = count;
         clear(log);
+        // A new chat opens on a few ways to start, now that it is home.
+        if (count === 0) log.append(welcome());
         for (const m of State.chatHistory) log.append(bubble(m));
         if (thinking) log.append(typingDots());
         log.scrollTop = log.scrollHeight;

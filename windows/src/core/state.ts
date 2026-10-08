@@ -517,9 +517,23 @@ class AppState {
    * What the island opens on. A card waiting for an answer comes first, so
    * reopening a folded island shows it again (Mac #117, #290).
    */
+  /** What the island opens on: a waiting card first, else the chat. */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    return "prompt";
+  }
+
+  /** The Agents tab: the coding sessions and pills, or the empty card. */
+  agentsView(): IslandViewName {
     return this.tasks.length === 0 ? "empty" : "overview";
+  }
+
+  /** What the Agents tab shows on its badge: a session waiting on you, or one at work. */
+  get agentsActivity(): "waiting" | "working" | null {
+    const sessions = this.tasks.filter((t) => !t.isIntegration);
+    if (this.pendingApproval || sessions.some((t) => t.state === "approval" || t.state === "question")) return "waiting";
+    if (sessions.some((t) => t.state === "working" || t.state === "thinking" || t.state === "searching")) return "working";
+    return null;
   }
 }
 

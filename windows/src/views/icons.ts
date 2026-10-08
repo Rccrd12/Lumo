@@ -8,6 +8,8 @@ export const ICONS = {
   bubble: "M12 3.6c-5 0-9 3.3-9 7.4 0 2.3 1.3 4.4 3.3 5.7-.2 1.2-.8 2.4-1.7 3.4 1.9-.2 3.6-.9 4.9-1.9 .8.2 1.6.3 2.5.3 5 0 9-3.3 9-7.5s-4-7.4-9-7.4z",
   // paperclip (stroke)
   paperclip: "M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8.2-8.2a3.3 3.3 0 0 1 4.7 4.7l-8.2 8.2a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4",
+  // chevron.left.forwardslash.chevron.right (stroke)
+  code: "M8.5 7 3.5 12l5 5M15.5 7l5 5-5 5M13.5 4.5l-3 15",
   // power (stroke)
   power: "M12 3.5v8M7.1 6.6a7.5 7.5 0 1 0 9.8 0",
   // clock (stroke)

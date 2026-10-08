@@ -53,6 +53,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
     case "openChat":
       resume();
       host.alert("prompt");
+      host.takeKeyboard();
       break;
 
     case "goToAlert": {

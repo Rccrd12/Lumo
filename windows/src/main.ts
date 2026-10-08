@@ -58,6 +58,7 @@ async function main() {
         break;
       case "open":
         setPaused(false);
+        island.takeKeyboard();
         island.alert(State.defaultView());
         break;
       case "recap":

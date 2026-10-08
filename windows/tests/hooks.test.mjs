@@ -468,7 +468,9 @@ test("the card shows when the island is already open, and is what it reopens on"
   assert.deepEqual(asked, ["alert:approval"]);
   assert.equal(State.defaultView(), "approval");
   State.endApproval();
-  assert.equal(State.defaultView(), "overview");
+  // Then the chat, which is home; the sessions are on the Agents tab.
+  assert.equal(State.defaultView(), "prompt");
+  assert.equal(State.agentsView(), "overview");
 });
 
 test("a question is what the island reopens on while it waits", () => {

@@ -277,7 +277,7 @@ test("the wardrobe shortcut's own event opens the wardrobe", () => {
 
 test("a global shortcut arrives as an event and opens the chat", () => {
   emit("shortcut", "openChat");
-  assert.deepEqual(did, ["resume", "alert:prompt"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
 });
 
 test("island keys are read before the chat field sees them, and only while open", () => {
@@ -309,9 +309,9 @@ test("island keys are read before the chat field sees them, and only while open"
   assert.equal(plain.prevented, false);
 });
 
-test("the island toggle opens with the keyboard, and closes an open island", () => {
+test("the island toggle opens on the chat with the keyboard, and closes an open island", () => {
   runGlobalShortcut(host, "toggleIsland", resume);
-  assert.deepEqual(did, ["resume", "alert:overview", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
   did = [];
   State.mode = "expanded";
   runGlobalShortcut(host, "toggleIsland", resume);

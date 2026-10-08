@@ -27,6 +27,8 @@ import { refreshHookPills } from "./integrations";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
 
+/** A view change this soon after a click or shortcut counts as asked for (ms). */
+const GESTURE_WINDOW = 1500;
 /** How far a press on the island's top travels before it moves the island. */
 const MOVE_THRESHOLD = 4;
 /** The open island's top bar (8 pt inset + 34 pt header): pressing there can move it. */
@@ -79,6 +81,8 @@ export class Island {
   private pendingMove: { x: number; y: number; click: boolean } | null = null;
   /** Between picking the island up and it settling on an edge. */
   private moving = false;
+  /** When the user last pressed on the island or used a shortcut: what lets the chat take the keyboard. */
+  private lastGesture = 0;
   /** Lifted while carried: a little bigger, springing back when put down. */
   private lift = new Tracked(1);
   /** Puts a moved island down should Rust never say where it went. */
@@ -163,7 +167,7 @@ export class Island {
     State.endApproval();
     this.fsm.pinned = false;
     // The chat asked: back to the chat, where the answer is still coming.
-    this.setView(fromChat ? "prompt" : State.defaultView());
+    this.setView(fromChat ? "prompt" : State.agentsView());
   }
 
   /**
@@ -519,7 +523,14 @@ export class Island {
   /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
    *  It gives it back when it closes, or when the chat is left. */
   takeKeyboard() {
+    this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
+  }
+
+  /** The keyboard to the island and the cursor in the chat's field. */
+  private focusChat() {
+    void Bridge.focusWindow(true);
+    window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);
   }
 
   // ── File drop ───────────────────────────────────────────────────────────────
@@ -805,6 +816,13 @@ export class Island {
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
       State.lastActivity = performance.now();
+      this.lastGesture = performance.now();
+      // The chat came up on its own: the first click in it brings the keyboard.
+      if (State.mode === "expanded" && State.view === "prompt" && e.button === 0 && !document.hasFocus()) {
+        void Bridge.focusWindow(true);
+        const target = e.target as Element | null;
+        if (target?.closest(".chat-input")) window.setTimeout(() => (target as HTMLElement).focus(), 60);
+      }
       // Alt + drag moves the island; Rust follows the mouse until it is let go.
       if (e.button === 0 && e.altKey) {
         e.preventDefault();
@@ -1251,13 +1269,15 @@ export class Island {
     }
 
     // The chat is the only view with a text field, so it is the only time the
-    // island is allowed to take keyboard focus.
+    // island is allowed to take keyboard focus — and, now that it is home, only
+    // when you just asked for it (a click, a shortcut). Opened by anything else
+    // (a card going away, a session ending) it waits for a click, so typing in
+    // another app is never cut off.
     if (this.lastSyncedView !== State.view) {
       const wasChat = this.lastSyncedView === "prompt";
       this.lastSyncedView = State.view;
-      if (State.view === "prompt") {
-        void Bridge.focusWindow(true);
-        window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);
+      if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
+        this.focusChat();
       } else if (wasChat) {
         void Bridge.focusWindow(false);
       }
