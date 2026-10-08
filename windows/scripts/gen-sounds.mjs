@@ -338,9 +338,10 @@ function wav(pcm) {
 
 // ── The sounds ────────────────────────────────────────────────────────────────
 // [duration s, peak dBFS, build]. Durations match the previous set's so every
-// timing built around them (the greeting above all) still lines up. Events
-// that need you peak at -6 dBFS; small UI sounds that fire constantly (hover,
-// tick, clicks, whooshes) sit lower so they stay a whisper next to them.
+// timing built around them still lines up; the greeting follows its own, shorter
+// animation. Events that need you peak at -6 dBFS; small UI sounds that fire
+// constantly (hover, tick, clicks, whooshes) sit lower so they stay a whisper
+// next to them.
 
 const SOUNDS = {
   // Island peeking out of hiding: a little breath of air and a glint.
@@ -586,57 +587,32 @@ const SOUNDS = {
   }],
 
   // The launch greeting. Lined up with the animation in src/mochi/greeting.ts:
-  // fall-in sparkles (0–0.55), ring burst 0.45, land 0.56, bounce 0.63,
-  // slide 0.85, plunge 1.2 and spring 1.3, the wave and its little tune
-  // (1.45–2.45, the glow pulsing at the hand's 5 Hz), tuck 2.45, badge 2.72,
-  // glide back 2.85–3.45, blinks 3.05 and 3.7, blue glow chord from 3.85.
-  greeting: [4.173, -6, (tr) => {
-    // Fall-in: warp streaks as a falling breath, sparkles stepping down.
-    whoosh(tr, 0, 0.55, 3000, 800, 0.15, 0.35);
-    ["G7", "E7", "D7", "C7", "A6", "G6", "E6", "D6"].forEach((n, i) =>
-      chime(tr, 0.03 + i * 0.06, hz(n), 0.05 + i * 0.015, 0.05));
-    // Ring burst: a soft bloom.
-    for (const n of ["C5", "G5"]) tone(tr, { at: 0.45, len: 0.6, freq: hz(n), amp: 0.25, attack: 0.05, decay: 0.3 });
-    chime(tr, 0.45, hz("C7"), 0.3, 0.2);
-    // Land, bounce.
-    tone(tr, { at: 0.555, len: 0.2, freq: glide(330, 196, 0.06), amp: 0.7, attack: 0.003, decay: 0.06 });
-    bubble(tr, 0.63, 330, 880, 0.08, 0.55, 0.07);
-    fmPluck(tr, 0.72, hz("C6"), 0.4, 0.1);
-    // Slide to the side.
-    whoosh(tr, 0.85, 0.35, 600, 1200, 0.1, 0.15);
-    // Plunge and spring.
-    tone(tr, { at: 1.2, len: 0.12, freq: glide(hz("C5"), hz("G4"), 0.1), partials: SOFT, amp: 0.25, attack: 0.01, decay: 0.08 });
-    bubble(tr, 1.3, hz("G4"), hz("D6"), 0.06, 0.6, 0.06);
-    fmPluck(tr, 1.36, hz("G6"), 0.5, 0.12);
-    // The wave: a little tune, the glow pulsing at the hand's rate underneath.
-    for (const n of ["C5", "E5", "G5"]) {
-      tone(tr, { at: 1.45, len: 1.0, freq: hz(n), amp: 0.12, env: swell(1.0, 0.35), trem: 0.5, tremRate: 5 });
-    }
-    [["C6", 1.45, 0.55], ["E6", 1.55, 0.5], ["G6", 1.65, 0.6], ["E6", 1.85, 0.55]].forEach(([n, at, a]) => {
-      fmPluck(tr, at, hz(n), a * 0.6, 0.1);
-      bell(tr, at, hz(n), a * 0.5, 0.18);
-    });
-    // "Cou-cou": the brightest moment, two notes falling a third.
-    fmPluck(tr, 2.05, hz("G6"), 0.6, 0.18);
-    bell(tr, 2.05, hz("G6"), 1, 0.3);
-    fmPluck(tr, 2.25, hz("E6"), 0.55, 0.2);
-    bell(tr, 2.25, hz("E6"), 0.95, 0.35, { vib: 0.004, vibRate: 5, vibDelay: 0.1 });
-    // Tuck the hands.
-    tone(tr, { at: 2.45, len: 0.25, freq: glide(hz("G5"), hz("C5"), 0.22), partials: SOFT, amp: 0.25, attack: 0.02, decay: 0.12 });
+  // the light flies in (0–0.32), blooms into Lumo (0.32–0.6), "lu-mo" while he
+  // smiles (0.62, 0.78), a blink 0.95, the badge pops 1.0, the blue glow from
+  // 0.95 to 1.3, then a short ring-out.
+  greeting: [1.7, -6, (tr) => {
+    // The light zipping in: an airy whoosh and sparkles stepping up.
+    whoosh(tr, 0, 0.34, 900, 3200, 0.14, 0.2);
+    ["C6", "E6", "G6", "C7", "E7"].forEach((n, i) => chime(tr, 0.02 + i * 0.055, hz(n), 0.08 + i * 0.03, 0.05));
+    // Bloom: a soft swell and a bright bell.
+    for (const n of ["C5", "G5"]) tone(tr, { at: 0.32, len: 0.45, freq: hz(n), amp: 0.22, attack: 0.04, decay: 0.25 });
+    bubble(tr, 0.33, 300, 900, 0.06, 0.5, 0.05);
+    bell(tr, 0.36, hz("C7"), 0.5, 0.25);
+    // "Lu-mo": two bright notes, rising a fourth.
+    fmPluck(tr, 0.62, hz("G6"), 0.55, 0.14);
+    bell(tr, 0.62, hz("G6"), 0.9, 0.22);
+    fmPluck(tr, 0.78, hz("C7"), 0.5, 0.16);
+    bell(tr, 0.78, hz("C7"), 0.85, 0.28, { vib: 0.004, vibRate: 5, vibDelay: 0.08 });
+    // Blink.
+    tone(tr, { at: 0.95, len: 0.06, freq: hz("G6"), partials: MALLET, amp: 0.12, attack: 0.002, decay: 0.015 });
     // Badge pops in.
-    bubble(tr, 2.72, 300, 950, 0.035, 0.6, 0.03);
-    chime(tr, 2.74, hz("C7"), 0.2, 0.06);
-    // Glide back to the centre, a few motes trailing.
-    whoosh(tr, 2.85, 0.6, 400, 1400, 0.12, 0.3);
-    [["E7", 2.95, 0.12], ["D7", 3.15, 0.1], ["G6", 3.35, 0.1]].forEach(([n, at, a]) => chime(tr, at, hz(n), a, 0.07));
-    // Blinks.
-    for (const at of [3.05, 3.7]) tone(tr, { at, len: 0.06, freq: hz("G6"), partials: MALLET, amp: 0.12, attack: 0.002, decay: 0.015 });
+    bubble(tr, 1.0, 300, 950, 0.035, 0.55, 0.03);
+    chime(tr, 1.02, hz("C7"), 0.2, 0.06);
     // Blue glow: a warm chord swelling in, bells on top.
-    for (const n of ["C5", "E5", "G5", "C6"]) tone(tr, { at: 3.55, freq: hz(n), amp: 0.1, env: swell(0.62, 0.4) });
-    bell(tr, 3.85, hz("C6"), 0.6, 0.4);
-    bell(tr, 3.88, hz("G6"), 0.5, 0.4);
-    bell(tr, 3.91, hz("C7"), 0.35, 0.35);
-    reverb(tr, { mix: 0.25, size: 1.1 });
+    for (const n of ["C5", "E5", "G5", "C6"]) tone(tr, { at: 0.95, freq: hz(n), amp: 0.09, env: swell(0.6, 0.3) });
+    bell(tr, 1.1, hz("E6"), 0.45, 0.3);
+    bell(tr, 1.14, hz("G6"), 0.4, 0.3);
+    reverb(tr, { mix: 0.22, size: 0.9 });
   }],
 };
 
