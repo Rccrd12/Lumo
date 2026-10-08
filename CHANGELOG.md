@@ -4,6 +4,7 @@
 
 - **The app and its character are now called Lumo**, a small glowing firefly, instead of Coucou and Mochi, which belong to the original project. Running the new installer over Coucou 0.3.0 replaces it (Coucou's own Update now does not find it, since the repository is now called Lumo): one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
 - **Lumo has his own look**: clear wings that buzz while an agent works, two antennae with a light at each tip, and a glowing tail that takes the colour of what is going on (blue while working, orange when it waits for you, red on an error). The app icon, the launch greeting and the file drop show him too
+- **A short launch greeting**: a little light loops into the island and blooms into Lumo, who smiles and settles in, in about a second and a half instead of almost five
 - **New sounds**, all 29 made from scratch in code (`npm run sounds`): soft bells, plucks and bubbles, quieter for the small things and clearer when something needs you
 - **A new wardrobe** made for Lumo: a leaf, round glasses, a bow tie, headphones and a scarf. On auto he wears the scarf in winter and the leaf in spring; a Mochi outfit you had chosen goes back to auto
 - **Settings open inside the island**, from the gear, the tray, `Ctrl+,` or a chat link, and stay open while you look something up elsewhere. Escape closes them; the separate window is still there if they cannot load

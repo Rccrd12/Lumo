@@ -22,7 +22,7 @@ Approve permissions, watch your agents work, drop a file, chat with Claude — a
 
 Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou) (Coucou, by Louis Raillé) that keeps only the Windows and Linux app (a [Tauri 2](https://tauri.app) app in [`windows/`](windows/)). The app, its character and the repository are called Lumo here. The full documentation of the app is in [`windows/README.md`](windows/README.md).
 
-Meet **Lumo**: a small glowing firefly that peeks out of the top edge of your screen, waves hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
+Meet **Lumo**: a small glowing firefly that peeks out of the top edge of your screen, lights up to say hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
 
 ## Features
 
