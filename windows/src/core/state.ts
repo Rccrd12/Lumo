@@ -49,6 +49,8 @@ export interface ApprovalInfo {
   command: string;
   /** Set when Claude Code is asking a question rather than for a permission. */
   questions?: AskedQuestion[];
+  /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
+  fromChat?: boolean;
 }
 
 /** One question of an AskUserQuestion call. */
@@ -298,7 +300,7 @@ class AppState {
     if (!req) return;
     this.pendingApproval = null;
     this.isPinned = false;
-    this.updateTask(req.pillId, "working");
+    if (!req.fromChat) this.updateTask(req.pillId, "working");
     this.setPillBadge(req.pillId, null);
     const previous = this.focusBeforeApproval;
     this.focusBeforeApproval = null;

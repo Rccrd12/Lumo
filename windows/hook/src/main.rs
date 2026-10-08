@@ -109,7 +109,12 @@ fn main() {
     let env = |key: &str| std::env::var(key).ok();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
 
-    let Some(event) = prepare(&raw, &args, &env, &cwd) else {
+    // A Claude Code run started by the island's own chat (claude_code.rs) is not a
+    // session to show: only its permission requests go through, as the chat's
+    // Allow / Deny card. Everything else gets the usual "no opinion".
+    let from_island = is_island_run(&env);
+    let prepared = prepare(&raw, &args, &env, &cwd).filter(|e| !from_island || e.name == "PermissionRequest");
+    let Some(event) = prepared else {
         // Nothing we could forward. An agent that needs JSON still gets its
         // "no opinion" — Copilot is fail-closed and would deny without it.
         let name = normalize::event(&args.event);
@@ -159,6 +164,9 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     // session started from the Claude desktop app is tagged `claude-desktop`.
     if let Some(tag) = agent_tag(&args.agent, env) {
         map.insert("coucou_agent".into(), Value::String(tag));
+    }
+    if is_island_run(env) {
+        map.insert("coucou_island".into(), Value::Bool(true));
     }
     // Claude Code in Cursor's terminal goes on the Cursor pill (Mac #120).
     if !map.contains_key("term_editor") {
@@ -222,6 +230,14 @@ fn add_terminal_context(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Opti
 /// a Claude Code session started from the Claude desktop app, which says so in
 /// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
 /// for a plain Claude Code session.
+/// The island's chat started this Claude Code run (claude_code.rs sets the variable).
+fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
+    env(ISLAND_RUN_VAR).as_deref() == Some("1")
+}
+
+/// Set by the app on the `claude -p` runs of its chat; hooks inherit it.
+const ISLAND_RUN_VAR: &str = "COUCOU_ISLAND_RUN";
+
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     if !arg.is_empty() {
         return Some(arg.to_string());
@@ -374,6 +390,18 @@ mod tests {
 
     fn env_of(vars: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
         move |name| vars.iter().find(|(k, _)| *k == name).map(|(_, v)| v.to_string())
+    }
+
+    #[test]
+    fn the_islands_own_runs_are_marked() {
+        let args = Args { agent: String::new(), event: String::new() };
+        let raw = br#"{"hook_event_name":"PermissionRequest","tool_name":"Write"}"#;
+        let ev = prepare(raw, &args, &env_of(&[("COUCOU_ISLAND_RUN", "1")]), "/p").unwrap();
+        assert!(ev.line.contains(r#""coucou_island":true"#));
+        assert!(is_island_run(&env_of(&[("COUCOU_ISLAND_RUN", "1")])));
+        let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
+        assert!(!ev.line.contains("coucou_island"));
+        assert!(!is_island_run(&|_| None));
     }
 
     #[test]

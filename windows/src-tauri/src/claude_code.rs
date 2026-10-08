@@ -218,6 +218,8 @@ fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&
             cmd.env("PATH", joined);
         }
     }
+    // Tells coucou-hook this run is the island's chat, not a session to show.
+    cmd.env("COUCOU_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
     let mut child = cmd
         .spawn()

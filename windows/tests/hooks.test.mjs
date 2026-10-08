@@ -695,3 +695,25 @@ test("a declined permission request leaves the stop timer running", () => {
   assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }, { requestId: "r2" }]);
   assert.equal(task().state, "idle");
 });
+
+// ── The island's own chat (Claude Code provider) ──────────────────────────────
+
+test("the chat's own Claude Code run never shows up as a session", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\Users\\me\\Coucou", coucou_island: true });
+  hook({ hook_event_name: "Stop", cwd: "C:\\Users\\me\\Coucou", coucou_island: true, last_assistant_message: "Done" });
+  assert.equal(task().name, "VS Code");
+  assert.equal(task().state, "idle");
+  assert.deepEqual(asked, []);
+});
+
+test("the chat's permission request is a card over the chat, and leaves the pill alone", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "r1", session_id: "s1", cwd: "C:\\Users\\me\\Coucou",
+    coucou_island: true, tool_name: "Write", tool_input: { file_path: "C:\\Users\\me\\a.txt" },
+  });
+  assert.equal(State.pendingApproval?.fromChat, true);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
+  assert.deepEqual(asked, ["alert:approval"]);
+  assert.equal(task().name, "VS Code");
+  assert.equal(task().state, "idle");
+});

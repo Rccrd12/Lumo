@@ -131,9 +131,11 @@ export class Island {
 
   /** The request has its answer: the card goes and the session carries on. */
   private closeApproval() {
+    const fromChat = State.pendingApproval?.fromChat ?? false;
     State.endApproval();
     this.fsm.pinned = false;
-    this.setView(State.defaultView());
+    // The chat asked: back to the chat, where the answer is still coming.
+    this.setView(fromChat ? "prompt" : State.defaultView());
   }
 
   /**
