@@ -138,10 +138,10 @@ export const Bridge = {
   islandDrag: () => call<void>("island_drag"),
   /** Puts the island back at the top centre of its display. */
   islandRecenter: () => call<void>("island_recenter"),
-  /** Drag on an edge of the island; Rust follows the mouse until it is let go. */
-  islandResize: (edge: "side" | "bottom", height: number) => call<void>("island_resize", { edge, height }),
-  /** Double click on an edge: the usual width, or a chat that grows again. */
-  islandResetSize: (edge: "side" | "bottom") => call<void>("island_reset_size", { edge }),
+  /** Drag on a grip of the island (see layout.gripFactors); Rust follows the mouse until it is let go. */
+  islandResize: (fx: number, fy: number, height: number) => call<void>("island_resize", { fx, fy, height }),
+  /** Double click on a grip: the usual width, height, or both. */
+  islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
   chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
     call<void>("chat_restore", { turns, session }),

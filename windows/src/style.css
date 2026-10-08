@@ -80,7 +80,65 @@ body {
   will-change: width, height, transform;
 }
 
-/* Grips on the open island's edges: drag to resize (both sides together). */
+/* Where the island hangs: against one edge of its window, centred along it.
+   island.ts sets the matching transform (translateX / translateY). */
+.dock-bottom #island {
+  top: auto;
+  bottom: 0;
+}
+
+.dock-left #island,
+.dock-right #island {
+  top: 50%;
+  left: 0;
+}
+
+.dock-right #island {
+  left: auto;
+  right: 0;
+}
+
+.dock-top #island {
+  transform-origin: 50% 0;
+}
+
+.dock-bottom #island {
+  transform-origin: 50% 100%;
+}
+
+.dock-left #island {
+  transform-origin: 0 50%;
+}
+
+.dock-right #island {
+  transform-origin: 100% 50%;
+}
+
+.dock-bottom #wake-strip {
+  top: auto;
+  bottom: 0;
+}
+
+.dock-left #wake-strip,
+.dock-right #wake-strip {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 240px;
+}
+
+.dock-right #wake-strip {
+  left: auto;
+  right: 0;
+}
+
+/* The open island's top bar moves it. */
+.movable #header {
+  cursor: grab;
+}
+
+/* Grips on the open island's free edges and corners: drag to resize. */
 .edge {
   position: absolute;
   display: none;
@@ -93,8 +151,8 @@ body {
 
 .edge-left,
 .edge-right {
-  top: 12px;
-  bottom: 12px;
+  top: 14px;
+  bottom: 14px;
   width: 10px;
   cursor: ew-resize;
 }
@@ -107,12 +165,52 @@ body {
   right: -5px;
 }
 
+.edge-top,
 .edge-bottom {
-  left: 24px;
-  right: 24px;
-  bottom: -5px;
+  left: 14px;
+  right: 14px;
   height: 10px;
   cursor: ns-resize;
+}
+
+.edge-top {
+  top: -5px;
+}
+
+.edge-bottom {
+  bottom: -5px;
+}
+
+.edge-top-left,
+.edge-top-right,
+.edge-bottom-left,
+.edge-bottom-right {
+  width: 18px;
+  height: 18px;
+}
+
+.edge-top-left {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.edge-bottom-right {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+.edge-top-right {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.edge-bottom-left {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
 }
 
 #island-clip {
@@ -293,6 +391,10 @@ body {
 
 .header-actions button.on {
   color: var(--ink);
+}
+
+.header-actions .quit-btn:hover {
+  color: #f4505e;
 }
 
 #views {

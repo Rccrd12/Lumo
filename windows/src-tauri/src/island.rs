@@ -40,26 +40,90 @@ pub fn zoom() -> f64 {
     f64::from_bits(ZOOM_BITS.load(Ordering::Relaxed))
 }
 
+/// Which edge of the display the island hangs from.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Dock {
+    #[default]
+    Top,
+    Bottom,
+    Left,
+    Right,
+}
+
+impl Dock {
+    pub fn parse(s: &str) -> Self {
+        match s {
+            "bottom" => Dock::Bottom,
+            "left" => Dock::Left,
+            "right" => Dock::Right,
+            _ => Dock::Top,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            Dock::Top => "top",
+            Dock::Bottom => "bottom",
+            Dock::Left => "left",
+            Dock::Right => "right",
+        }
+    }
+
+    /// On a side the closed island stands upright.
+    fn upright(self) -> bool {
+        matches!(self, Dock::Left | Dock::Right)
+    }
+}
+
+/// The edge in effect, for Mochi's flights home (desktop.rs).
+static DOCK: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
+
+pub fn dock() -> Dock {
+    match DOCK.load(Ordering::Relaxed) {
+        1 => Dock::Bottom,
+        2 => Dock::Left,
+        3 => Dock::Right,
+        _ => Dock::Top,
+    }
+}
+
+/// Where Mochi sits in the closed island, as a physical point on screen: the
+/// middle of its top for an island on the top edge (what the flights aimed at
+/// before), the same spot of the pill on the other edges. `pos`/`size` are the
+/// window's, `k` its scale times the zoom.
+pub fn anchor(pos: (f64, f64), size: (f64, f64), k: f64) -> (f64, f64) {
+    let (pill_long, pill_thin) = (NOTCH_PILL.0 * k, NOTCH_PILL.1 * k);
+    match dock() {
+        Dock::Top => (pos.0 + size.0 / 2.0, pos.1),
+        Dock::Bottom => (pos.0 + size.0 / 2.0, pos.1 + size.1 - pill_thin),
+        Dock::Left => (pos.0 + pill_thin / 2.0, pos.1 + (size.1 - pill_long) / 2.0),
+        Dock::Right => (pos.0 + size.0 - pill_thin / 2.0, pos.1 + (size.1 - pill_long) / 2.0),
+    }
+}
+
 /// How big the island is and where the user put it.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct Placement {
     pub zoom: f64,
-    /// Offset from the top centre of the display, in logical pixels.
-    pub dx: f64,
-    pub dy: f64,
-    /// The open island's width and the chat's height, in page pixels.
+    pub dock: Dock,
+    /// From the middle of that edge, along it, in logical pixels.
+    pub offset: f64,
+    /// The open island's width, and the height the user gave it (0 = each
+    /// view's own), in page pixels.
     pub width: f64,
-    pub chat_h: f64,
+    pub height: f64,
 }
 
 impl Placement {
     pub fn of(s: &crate::settings::Settings) -> Self {
         Self {
             zoom: s.island_zoom,
-            dx: s.island_dx,
-            dy: s.island_dy,
+            // Moving it needs the cursor poll; without it (Linux) it stays on top.
+            dock: if platform::CURSOR_POLL { Dock::parse(&s.island_dock) } else { Dock::Top },
+            offset: s.island_offset,
             width: s.island_width,
-            chat_h: s.chat_height,
+            height: s.island_height,
         }
     }
 }
@@ -68,9 +132,9 @@ impl Placement {
 pub const DEFAULT_WIDTH: f64 = 640.0;
 const MIN_WIDTH: f64 = 560.0;
 const MAX_WIDTH: f64 = 1200.0;
-/// A chat height the user picked; 0 means it grows with the conversation.
-const MIN_CHAT_H: f64 = 200.0;
-const MAX_CHAT_H: f64 = 640.0;
+/// A height the user picked; 0 means each view keeps its own.
+const MIN_HEIGHT: f64 = 160.0;
+const MAX_HEIGHT: f64 = 640.0;
 /// Room the window keeps around the island, for the hit margin and Mochi's glow.
 const SIDE_ROOM: f64 = PANEL_W - DEFAULT_WIDTH;
 const BOTTOM_ROOM: f64 = 20.0;
@@ -81,46 +145,111 @@ pub fn clamp_width(w: f64) -> f64 {
     if w.is_finite() { w.clamp(MIN_WIDTH, MAX_WIDTH) } else { DEFAULT_WIDTH }
 }
 
-pub fn clamp_chat_h(h: f64) -> f64 {
-    if h.is_finite() && h > 0.0 { h.clamp(MIN_CHAT_H, MAX_CHAT_H) } else { 0.0 }
+pub fn clamp_height(h: f64) -> f64 {
+    if h.is_finite() && h > 0.0 { h.clamp(MIN_HEIGHT, MAX_HEIGHT) } else { 0.0 }
 }
 
-/// The window's logical size: the 720 × 320 panel, or more for a wider island
-/// or a taller chat.
+fn finite(v: f64) -> f64 {
+    if v.is_finite() { v } else { 0.0 }
+}
+
+/// The window's logical size: the 720 × 320 panel, or more for a wider or
+/// taller island. On a side the island is centred up and down, so it needs
+/// room at both ends.
 fn panel_size(p: Placement) -> (f64, f64) {
     let up = |v: f64| (v / PANEL_STEP).ceil() * PANEL_STEP;
+    let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM };
     (
         PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM)),
-        PANEL_H.max(up(clamp_chat_h(p.chat_h) + BOTTOM_ROOM)),
+        PANEL_H.max(up(clamp_height(p.height) + ends)),
     )
 }
 
-/// The window's physical frame (x, y, width, height) on a display at
-/// `(mx, my, mw, mh)`: the panel at the top centre moved by the offset, kept
-/// whole on the display, or the wake strip at the top of where the panel is.
-fn frame(display: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) -> (i32, i32, u32, u32) {
-    let (mx, my, mw, mh) = (display.0 as f64, display.1 as f64, display.2 as f64, display.3 as f64);
+/// The window's physical frame (x, y, width, height) in the display's usable
+/// area `(ax, ay, aw, ah)`: the panel against its edge, moved along it by the
+/// offset and kept whole, or the wake strip along that edge.
+fn frame(area: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) -> (i32, i32, u32, u32) {
+    let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
     let z = clamp_zoom(p.zoom);
     let (lw, lh) = panel_size(p);
-    let pw = (lw * z * scale).round().min(mw).max(1.0);
-    let ph = (lh * z * scale).round().min(mh).max(1.0);
-    let (dx, dy) = (if p.dx.is_finite() { p.dx } else { 0.0 }, if p.dy.is_finite() { p.dy } else { 0.0 });
-    let x = (mx + (mw - pw) / 2.0 + dx * scale).clamp(mx, (mx + mw - pw).max(mx)).round();
-    let y = (my + dy * scale).clamp(my, (my + mh - ph).max(my)).round();
+    let pw = (lw * z * scale).round().min(aw).max(1.0);
+    let ph = (lh * z * scale).round().min(ah).max(1.0);
+    let off = finite(p.offset) * scale;
+    let along_x = (ax + (aw - pw) / 2.0 + off).clamp(ax, (ax + aw - pw).max(ax)).round();
+    let along_y = (ay + (ah - ph) / 2.0 + off).clamp(ay, (ay + ah - ph).max(ay)).round();
+    let (x, y) = match p.dock {
+        Dock::Top => (along_x, ay),
+        Dock::Bottom => (along_x, ay + ah - ph),
+        Dock::Left => (ax, along_y),
+        Dock::Right => (ax + aw - pw, along_y),
+    };
     if collapsed {
-        let sw = (STRIP_W * z * scale).round().max(1.0);
-        let sh = (STRIP_H * z * scale).round().max(1.0);
-        return ((x + ((pw - sw) / 2.0).round()) as i32, y as i32, sw as u32, sh as u32);
+        let long = (STRIP_W * z * scale).round().max(1.0);
+        let thin = (STRIP_H * z * scale).round().max(1.0);
+        let (sx, sy, sw, sh) = match p.dock {
+            Dock::Top => (x + ((pw - long) / 2.0).round(), y, long, thin),
+            Dock::Bottom => (x + ((pw - long) / 2.0).round(), ay + ah - thin, long, thin),
+            Dock::Left => (x, y + ((ph - long) / 2.0).round(), thin, long),
+            Dock::Right => (ax + aw - thin, y + ((ph - long) / 2.0).round(), thin, long),
+        };
+        return (sx as i32, sy as i32, sw as u32, sh as u32);
     }
     (x as i32, y as i32, pw as u32, ph as u32)
 }
 
-/// The offset, in logical pixels, of a panel whose top-left corner is at the
-/// physical point `pos` on the display: what `frame` needs to put it back there.
-fn offset_of(display: (i32, i32, u32, u32), scale: f64, p: Placement, pos: (i32, i32)) -> (f64, f64) {
-    let pw = (panel_size(p).0 * clamp_zoom(p.zoom) * scale).round().min(display.2 as f64);
-    let home_x = display.0 as f64 + (display.2 as f64 - pw) / 2.0;
-    ((pos.0 as f64 - home_x) / scale, (pos.1 - display.1) as f64 / scale)
+/// The edge nearest to a physical point of the area: where a dropped island goes.
+fn nearest_edge(area: (i32, i32, u32, u32), at: (f64, f64)) -> Dock {
+    let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
+    let gaps = [
+        (at.1 - ay, Dock::Top),
+        (ay + ah - at.1, Dock::Bottom),
+        (at.0 - ax, Dock::Left),
+        (ax + aw - at.0, Dock::Right),
+    ];
+    gaps.iter().fold(gaps[0], |best, g| if g.0 < best.0 { *g } else { best }).1
+}
+
+/// Where along `dock` an island whose centre is at the physical point `centre`
+/// sits, in logical pixels from the middle of the edge. Close to the middle it
+/// snaps to it.
+fn offset_along(area: (i32, i32, u32, u32), scale: f64, dock: Dock, centre: (f64, f64)) -> f64 {
+    let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
+    let (pos, mid, len) = if dock.upright() {
+        (centre.1, ay + ah / 2.0, ah)
+    } else {
+        (centre.0, ax + aw / 2.0, aw)
+    };
+    let off = (pos - mid) / scale;
+    let snap = (len / scale * SNAP_FRACTION).max(SNAP_MIN);
+    if off.abs() < snap { 0.0 } else { off.round() }
+}
+
+/// Dropped this close to the middle of an edge (a share of its length, at
+/// least SNAP_MIN logical px), the island centres itself.
+const SNAP_FRACTION: f64 = 0.1;
+const SNAP_MIN: f64 = 80.0;
+
+/// The offset `frame` really used, once it kept the panel whole: what to
+/// remember, so the island never sits further out than it is drawn.
+fn effective_offset(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> f64 {
+    let (x, y, w, h) = frame(area, scale, p, false);
+    let off = if p.dock.upright() {
+        (y as f64 + h as f64 / 2.0) - (area.1 as f64 + area.3 as f64 / 2.0)
+    } else {
+        (x as f64 + w as f64 / 2.0) - (area.0 as f64 + area.2 as f64 / 2.0)
+    };
+    (off / scale).round()
+}
+
+/// Where the island's centre is in a panel of logical size `panel` docked at
+/// `dock`, for an island `w` × `h` drawn in it.
+fn centre_in_panel(dock: Dock, panel: (f64, f64), w: f64, h: f64) -> (f64, f64) {
+    match dock {
+        Dock::Top => (panel.0 / 2.0, h / 2.0),
+        Dock::Bottom => (panel.0 / 2.0, panel.1 - h / 2.0),
+        Dock::Left => (w / 2.0, panel.1 / 2.0),
+        Dock::Right => (panel.0 - w / 2.0, panel.1 / 2.0),
+    }
 }
 
 /// Margin around the island that still counts as "on the island", in logical px.
@@ -403,108 +532,220 @@ fn display_of(m: &Monitor) -> (i32, i32, u32, u32) {
     (p.x, p.y, s.width, s.height)
 }
 
-/// Where a panel dragged to the physical point `pos` sits from its home.
-pub fn offset_for(app: &AppHandle, pref: &str, p: Placement, pos: (i32, i32)) -> Option<(f64, f64)> {
-    let m = target_monitor(app, pref)?;
-    Some(offset_of(display_of(&m), m.scale_factor(), p, pos))
+/// The part of a display the island may use: on Windows, the work area, so it
+/// never hides under the taskbar. On Linux the whole display, as before (the
+/// island goes over the top panel).
+fn area_of(m: &Monitor) -> (i32, i32, u32, u32) {
+    if cfg!(target_os = "linux") {
+        return display_of(m);
+    }
+    let r = m.work_area();
+    if r.size.width == 0 || r.size.height == 0 {
+        return display_of(m);
+    }
+    (r.position.x, r.position.y, r.size.width, r.size.height)
 }
 
-/// Which edge of the island is being dragged.
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Deserialize)]
-#[serde(rename_all = "lowercase")]
-pub enum Edge {
-    /// Left or right: both sides move together, so the island stays centred.
-    Side,
-    /// The bottom of the chat.
-    Bottom,
-}
-
+/// A size dragged from one of the island's grips, as the page hears it.
 #[derive(Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 struct SizePayload {
     width: f64,
-    chat_height: f64,
+    height: f64,
 }
 
-/// The size an edge dragged by `(ddx, ddy)` page pixels gives. `dx` is how much
-/// further from the centre the cursor is than where it started, so a side grows
-/// by twice that: the other side follows it. `room` is how much the display
-/// allows, in page pixels.
-fn resized(p: Placement, edge: Edge, height: f64, d: (f64, f64), room: (f64, f64)) -> Placement {
-    match edge {
-        Edge::Side => {
-            let max = (room.0 - SIDE_ROOM).clamp(MIN_WIDTH, MAX_WIDTH);
-            Placement { width: (clamp_width(p.width) + 2.0 * d.0).clamp(MIN_WIDTH, max).round(), ..p }
-        }
-        Edge::Bottom => {
-            let max = (room.1 - BOTTOM_ROOM).clamp(MIN_CHAT_H, MAX_CHAT_H);
-            Placement { chat_h: (height + d.1).clamp(MIN_CHAT_H, max).round(), ..p }
-        }
+/// The size a grip dragged by `d` page pixels gives. `fx` and `fy` say how
+/// the grip moves the size: 2 for a side whose opposite side follows it (the
+/// island stays centred), 1 or −1 for a free edge, 0 when it leaves that size
+/// alone. `height` is the height drawn when the drag started; `room` is how
+/// much the display allows, in page pixels.
+fn resized(p: Placement, f: (f64, f64), height: f64, d: (f64, f64), room: (f64, f64)) -> Placement {
+    let mut next = p;
+    if f.0 != 0.0 {
+        let max = (room.0 - SIDE_ROOM).clamp(MIN_WIDTH, MAX_WIDTH);
+        next.width = (clamp_width(p.width) + f.0 * d.0).clamp(MIN_WIDTH, max).round();
     }
+    if f.1 != 0.0 {
+        let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM };
+        let max = (room.1 - ends).clamp(MIN_HEIGHT, MAX_HEIGHT);
+        next.height = (height + f.1 * d.1).clamp(MIN_HEIGHT, max).round();
+    }
+    next
 }
 
 /// Resizes the island with the mouse while the left button is held on one of
-/// its edges. `height` is the chat's height as drawn when the drag started.
-/// The page hears each new size (`island-resize`) and the window grows with it.
-/// Returns the size it ended at. Needs the cursor poll (Windows): elsewhere it
-/// returns at once.
-pub fn resize(app: &AppHandle, pref: &str, start: Placement, edge: Edge, height: f64) -> Option<Placement> {
+/// its grips (see `resized`). The page hears each new size (`island-resize`)
+/// and springs to it; the window only grows meanwhile, so the island is never
+/// cut, and fits it again once the button is let go. Returns the size it ended
+/// at. Needs the cursor poll (Windows): elsewhere it returns at once.
+pub fn resize(app: &AppHandle, pref: &str, start: Placement, f: (f64, f64), height: f64) -> Option<Placement> {
     let win = window(app)?;
     let m = target_monitor(app, pref)?;
-    let display = display_of(&m);
+    let area = area_of(&m);
     let scale = m.scale_factor();
     let k = scale * clamp_zoom(start.zoom);
     let (sx, sy) = cursor_physical()?;
-    let pos = win.outer_position().ok()?;
-    let size = win.outer_size().ok()?;
-    let centre = pos.x as f64 + size.width as f64 / 2.0;
-    let room = (
-        display.2 as f64 / k,
-        (display.1 as f64 + display.3 as f64 - pos.y as f64) / k,
-    );
-    let height = if height.is_finite() { height } else { MIN_CHAT_H };
+    let f = (finite(f.0).clamp(-2.0, 2.0), finite(f.1).clamp(-2.0, 2.0));
+    let room = (area.2 as f64 / k, area.3 as f64 / k);
+    let height = if height.is_finite() && height > 0.0 { height } else { MIN_HEIGHT };
     let mut p = start;
-    let mut shown = (size.width, size.height);
+    // The largest size reached: the window keeps room for it until the end.
+    let mut room_for = start;
     while left_button_down() {
         std::thread::sleep(Duration::from_millis(8));
         let Some((cx, cy)) = cursor_physical() else { break };
-        let d = (((cx - centre).abs() - (sx - centre).abs()) / k, (cy - sy) / k);
-        let next = resized(start, edge, height, d, room);
-        if next != p {
-            p = next;
-            // The page first, so a shrinking island is never cut by the window.
-            let _ = app.emit_to(WINDOW_LABEL, "island-resize", SizePayload { width: clamp_width(p.width), chat_height: p.chat_h });
-            let (x, y, w, h) = frame(display, scale, p, false);
-            if (w, h) != shown {
-                let _ = win.set_size(PhysicalSize::new(w, h));
-                let _ = win.set_position(PhysicalPosition::new(x, y));
-                shown = (w, h);
-            }
+        let next = resized(start, f, height, ((cx - sx) / k, (cy - sy) / k), room);
+        if next == p {
+            continue;
         }
+        p = next;
+        let grown = Placement {
+            width: clamp_width(room_for.width).max(clamp_width(p.width)),
+            height: clamp_height(room_for.height).max(clamp_height(p.height)),
+            ..p
+        };
+        if grown != room_for {
+            room_for = grown;
+            let (x, y, w, h) = frame(area, scale, room_for, false);
+            let _ = win.set_size(PhysicalSize::new(w, h));
+            let _ = win.set_position(PhysicalPosition::new(x, y));
+        }
+        let _ = app.emit_to(WINDOW_LABEL, "island-resize", SizePayload { width: clamp_width(p.width), height: p.height });
     }
     Some(p)
 }
 
-/// Moves the island with the mouse while the left button is held — Alt + drag
-/// on the island. Returns where the panel ended up, in physical pixels; the
-/// caller remembers it. Needs the cursor poll (Windows): elsewhere it returns
-/// at once.
-pub fn drag(app: &AppHandle) -> Option<(i32, i32)> {
+/// The page hears where a dropped island is going before the window moves.
+#[derive(Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+struct DockPayload {
+    dock: Dock,
+    offset: f64,
+}
+
+/// One axis of a damped spring, for the window's bounce into place.
+#[derive(Clone, Copy)]
+struct Axis {
+    x: f64,
+    v: f64,
+}
+
+impl Axis {
+    /// Semi-implicit Euler: stable at the 8 ms steps used here.
+    fn step(&mut self, target: f64, dt: f64) {
+        let omega = 2.0 * std::f64::consts::PI / BOUNCE_RESPONSE;
+        let a = -omega * omega * (self.x - target) - 2.0 * BOUNCE_DAMPING * omega * self.v;
+        self.v += a * dt;
+        self.x += self.v * dt;
+    }
+
+    fn settled(&self, target: f64) -> bool {
+        (self.x - target).abs() < 0.5 && self.v.abs() < 20.0
+    }
+}
+
+/// How the island bounces into place: a spring of this period (s) and damping
+/// ratio — under 1, so it overshoots a little and settles.
+const BOUNCE_RESPONSE: f64 = 0.42;
+const BOUNCE_DAMPING: f64 = 0.55;
+/// How quickly the dragged island catches up with the mouse (s).
+const FOLLOW: f64 = 0.045;
+
+/// Where a dragged island ended: its edge, the offset along it, and the
+/// display it was dropped on (its Settings key) when that changed.
+pub struct Dropped {
+    pub placement: Placement,
+    pub screen: Option<String>,
+}
+
+/// Moves the island with the mouse while the left button is held — a drag
+/// from its top, or Alt + drag anywhere on it. It follows the mouse with a
+/// little smoothing; let go, it goes to the nearest edge of the display it is
+/// on (upright on a side), snaps to the middle of that edge when close to it,
+/// and bounces into place. `rect` is the island as last drawn, in page pixels.
+/// Needs the cursor poll (Windows): elsewhere it returns at once.
+pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> Option<Dropped> {
     let win = window(app)?;
     let (sx, sy) = cursor_physical()?;
-    let start = win.outer_position().ok()?;
-    let mut last = (start.x, start.y);
+    let origin = win.outer_position().ok()?;
+    let (ox, oy) = (origin.x as f64, origin.y as f64);
+    let (mut x, mut y) = (ox, oy);
+    let mut shown = (origin.x, origin.y);
+    let mut last = std::time::Instant::now();
+    let (mut cx, mut cy) = (sx, sy);
     while left_button_down() {
         std::thread::sleep(Duration::from_millis(8));
-        let Some((cx, cy)) = cursor_physical() else { break };
-        let pos = (start.x + (cx - sx).round() as i32, start.y + (cy - sy).round() as i32);
-        if pos != last {
-            let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
-            last = pos;
+        let now = std::time::Instant::now();
+        let dt = now.duration_since(last).as_secs_f64();
+        last = now;
+        if let Some(c) = cursor_physical() {
+            (cx, cy) = c;
+        }
+        let pull = 1.0 - (-dt / FOLLOW).exp();
+        x += (ox + cx - sx - x) * pull;
+        y += (oy + cy - sy - y) * pull;
+        let at = (x.round() as i32, y.round() as i32);
+        if at != shown {
+            let _ = win.set_position(PhysicalPosition::new(at.0, at.1));
+            shown = at;
         }
     }
-    Some(last)
+
+    // The display under the mouse, and its edge nearest to it.
+    let monitors = app.available_monitors().ok()?;
+    let m = monitors
+        .iter()
+        .find(|m| monitor_contains(m, cx, cy))
+        .cloned()
+        .or_else(|| target_monitor(app, pref))?;
+    let current = target_monitor(app, pref);
+    let screen = match &current {
+        Some(c) if describe(c) == describe(&m) => None,
+        _ => Some(describe(&m).key()),
+    };
+    let area = area_of(&m);
+    let scale = m.scale_factor();
+    let k = scale * clamp_zoom(start.zoom);
+    let dock = nearest_edge(area, (cx, cy));
+
+    // The island's centre on screen as it was let go.
+    let (rw, rh) = if rect.w > 0.0 { (rect.w, rect.h) } else { (NOTCH_PILL.0, NOTCH_PILL.1) };
+    let centre = (x + (rect.x + rw / 2.0) * k, y + (rect.y + rh / 2.0) * k);
+    let mut p = Placement { dock, offset: offset_along(area, scale, dock, centre), ..start };
+    p.offset = effective_offset(area, scale, p);
+    let _ = app.emit_to(WINDOW_LABEL, "island-dock", DockPayload { dock, offset: p.offset });
+
+    // Re-anchored in its new panel, the island keeps its place on screen for a
+    // moment, then springs to the edge.
+    let (tx, ty, tw, th) = frame(area, scale, p, false);
+    // A closed island turns upright on a side, and back on the top or bottom.
+    let turned = rw.min(rh) < 40.0 && dock.upright() != start.dock.upright();
+    let (iw, ih) = if turned { (rh, rw) } else { (rw, rh) };
+    let inside = centre_in_panel(dock, panel_size(p), iw, ih);
+    let mut ax = Axis { x: centre.0 - inside.0 * k, v: 0.0 };
+    let mut ay = Axis { x: centre.1 - inside.1 * k, v: 0.0 };
+    let _ = win.set_size(PhysicalSize::new(tw, th));
+    let started = std::time::Instant::now();
+    let dt = 0.008;
+    while started.elapsed() < Duration::from_millis(1500) {
+        ax.step(tx as f64, dt);
+        ay.step(ty as f64, dt);
+        let at = (ax.x.round() as i32, ay.x.round() as i32);
+        if at != shown {
+            let _ = win.set_position(PhysicalPosition::new(at.0, at.1));
+            shown = at;
+        }
+        if ax.settled(tx as f64) && ay.settled(ty as f64) {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(8));
+    }
+    let _ = win.set_position(PhysicalPosition::new(tx, ty));
+    Some(Dropped { placement: p, screen })
 }
+
+/// The closed island, in page pixels, when no shape was pushed yet.
+const NOTCH_PILL: (f64, f64) = (288.0, 32.0);
 
 /// Places and sizes the window. `collapsed` picks the wake strip instead of the panel.
 pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collapsed: bool) {
@@ -514,7 +755,14 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let scale = m.scale_factor();
     let zoom = clamp_zoom(placement.zoom);
     ZOOM_BITS.store(zoom.to_bits(), Ordering::Relaxed);
-    let (x, y, pw, ph) = frame(display_of(&m), scale, placement, collapsed);
+    let dock_bits = match placement.dock {
+        Dock::Top => 0,
+        Dock::Bottom => 1,
+        Dock::Left => 2,
+        Dock::Right => 3,
+    };
+    DOCK.store(dock_bits, Ordering::Relaxed);
+    let (x, y, pw, ph) = frame(area_of(&m), scale, placement, collapsed);
 
     // GTK never sizes a non-resizable window below its natural size (200 px
     // here), so on Linux the 6 px wake strip would stay a 200 px block. tao
@@ -539,7 +787,7 @@ mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
-    const HOME: Placement = Placement { zoom: 1.0, dx: 0.0, dy: 0.0, width: DEFAULT_WIDTH, chat_h: 0.0 };
+    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, width: DEFAULT_WIDTH, height: 0.0 };
 
     #[test]
     fn home_is_the_top_centre_and_the_zoom_grows_the_window() {
@@ -554,57 +802,113 @@ mod placement_tests {
     }
 
     #[test]
-    fn a_moved_island_stays_whole_on_its_display() {
-        let moved = Placement { dx: -300.0, dy: 200.0, ..HOME };
-        assert_eq!(frame(FHD, 1.0, moved, false), (300, 200, 720, 320));
-        assert_eq!(frame(FHD, 1.0, moved, true), (540, 200, 240, 6));
-        let far = Placement { dx: 5000.0, dy: -50.0, ..HOME };
-        assert_eq!(frame(FHD, 1.0, far, false), (1200, 0, 720, 320));
+    fn each_edge_holds_the_panel_and_its_wake_strip() {
+        // A taskbar 40 px high at the bottom: the work area stops above it.
+        let work = (0, 0, 1920, 1040);
+        let at = |dock, offset| Placement { dock, offset, ..HOME };
+        assert_eq!(frame(work, 1.0, at(Dock::Bottom, 0.0), false), (600, 720, 720, 320));
+        assert_eq!(frame(work, 1.0, at(Dock::Bottom, 0.0), true), (840, 1034, 240, 6));
+        // On a side the panel is centred up and down, and the strip stands upright.
+        assert_eq!(frame(work, 1.0, at(Dock::Left, 0.0), false), (0, 360, 720, 320));
+        assert_eq!(frame(work, 1.0, at(Dock::Left, 0.0), true), (0, 400, 6, 240));
+        assert_eq!(frame(work, 1.0, at(Dock::Right, -100.0), false), (1200, 260, 720, 320));
+        assert_eq!(frame(work, 1.0, at(Dock::Right, -100.0), true), (1914, 300, 6, 240));
+        // Moved along its edge, it stays whole on the display.
+        assert_eq!(frame(work, 1.0, at(Dock::Top, -300.0), false), (300, 0, 720, 320));
+        assert_eq!(frame(work, 1.0, at(Dock::Top, 5000.0), false), (1200, 0, 720, 320));
+        assert_eq!(frame(work, 1.0, at(Dock::Left, -5000.0), false), (0, 0, 720, 320));
         // A second display to the right, at 150 %.
         let right = (1920, 0, 2560, 1440);
-        assert_eq!(frame(right, 1.5, Placement { dx: 100.0, dy: 10.0, ..HOME }, false), (1920 + 740 + 150, 15, 1080, 480));
+        assert_eq!(frame(right, 1.5, at(Dock::Top, 100.0), false), (1920 + 740 + 150, 0, 1080, 480));
     }
 
     #[test]
-    fn a_drag_is_remembered_as_the_offset_that_puts_it_back() {
-        for (display, scale, zoom, width) in [
-            (FHD, 1.0, 1.0, DEFAULT_WIDTH),
-            (FHD, 1.25, 1.15, DEFAULT_WIDTH),
-            ((1920, 0, 2560, 1440), 1.5, 1.3, DEFAULT_WIDTH),
-            (FHD, 1.0, 1.15, 900.0),
-        ] {
-            let pos = (display.0 + 333, display.1 + 120);
-            let p = Placement { zoom, width, ..HOME };
-            let (dx, dy) = offset_of(display, scale, p, pos);
-            let (x, y, _, _) = frame(display, scale, Placement { dx, dy, ..p }, false);
-            assert!((x - pos.0).abs() <= 1 && (y - pos.1).abs() <= 1, "{display:?} {scale} {zoom}: {x},{y}");
-        }
+    fn a_dropped_island_goes_to_the_nearest_edge() {
+        assert_eq!(nearest_edge(FHD, (900.0, 100.0)), Dock::Top);
+        assert_eq!(nearest_edge(FHD, (900.0, 1000.0)), Dock::Bottom);
+        assert_eq!(nearest_edge(FHD, (30.0, 500.0)), Dock::Left);
+        assert_eq!(nearest_edge(FHD, (1890.0, 300.0)), Dock::Right);
+        // Somewhere in the middle: whichever edge is closest.
+        assert_eq!(nearest_edge(FHD, (400.0, 540.0)), Dock::Left);
     }
 
     #[test]
-    fn a_wider_island_or_a_taller_chat_grows_the_window_round_its_centre() {
+    fn near_the_middle_of_an_edge_it_centres_itself() {
+        // 10 % of 1920 is 192 px: closer than that is the middle.
+        assert_eq!(offset_along(FHD, 1.0, Dock::Top, (960.0 + 150.0, 10.0)), 0.0);
+        assert_eq!(offset_along(FHD, 1.0, Dock::Top, (960.0 - 400.0, 10.0)), -400.0);
+        // Along a side it is the height that counts, in logical pixels.
+        assert_eq!(offset_along(FHD, 2.0, Dock::Left, (5.0, 540.0 + 90.0)), 0.0);
+        assert_eq!(offset_along(FHD, 2.0, Dock::Left, (5.0, 540.0 + 400.0)), 200.0);
+        // What is remembered is where the panel really is, kept whole.
+        let far = Placement { offset: 5000.0, ..HOME };
+        assert_eq!(effective_offset(FHD, 1.0, far), 600.0);
+        assert_eq!(frame(FHD, 1.0, Placement { offset: 600.0, ..HOME }, false), frame(FHD, 1.0, far, false));
+    }
+
+    #[test]
+    fn the_island_centre_follows_its_edge() {
+        assert_eq!(centre_in_panel(Dock::Top, (720.0, 320.0), 288.0, 32.0), (360.0, 16.0));
+        assert_eq!(centre_in_panel(Dock::Bottom, (720.0, 320.0), 288.0, 32.0), (360.0, 304.0));
+        assert_eq!(centre_in_panel(Dock::Left, (720.0, 320.0), 32.0, 288.0), (16.0, 160.0));
+        assert_eq!(centre_in_panel(Dock::Right, (720.0, 320.0), 640.0, 160.0), (400.0, 160.0));
+    }
+
+    #[test]
+    fn a_wider_or_taller_island_grows_the_window_round_its_place() {
         // 900 + 80 of room, rounded up to the next 40.
         assert_eq!(frame(FHD, 1.0, Placement { width: 900.0, ..HOME }, false), (460, 0, 1000, 320));
-        assert_eq!(frame(FHD, 1.0, Placement { chat_h: 500.0, ..HOME }, false), (600, 0, 720, 520));
+        assert_eq!(frame(FHD, 1.0, Placement { height: 500.0, ..HOME }, false), (600, 0, 720, 520));
+        // On a side the height needs room at both ends.
+        assert_eq!(frame(FHD, 1.0, Placement { height: 500.0, dock: Dock::Left, ..HOME }, false), (0, 240, 720, 600));
         // Nothing narrower than the panel, and never more than the display.
         assert_eq!(frame(FHD, 1.0, Placement { width: 100.0, ..HOME }, false).2, 720);
-        assert_eq!(frame(FHD, 1.6, Placement { width: 1200.0, chat_h: 640.0, ..HOME }, false), (0, 0, 1920, 1080));
-        assert_eq!(frame(FHD, 1.0, Placement { width: f64::NAN, chat_h: f64::NAN, ..HOME }, false), (600, 0, 720, 320));
+        assert_eq!(frame(FHD, 1.6, Placement { width: 1200.0, height: 640.0, ..HOME }, false), (0, 0, 1920, 1080));
+        assert_eq!(frame(FHD, 1.0, Placement { width: f64::NAN, height: f64::NAN, offset: f64::NAN, ..HOME }, false), (600, 0, 720, 320));
     }
 
     #[test]
-    fn an_edge_moves_both_sides_and_stops_at_the_limits() {
+    fn a_grip_moves_the_size_it_holds_and_stops_at_the_limits() {
         let room = (1920.0, 1080.0);
-        // 30 px further out on one side: 60 px wider, as the other side follows.
-        assert_eq!(resized(HOME, Edge::Side, 300.0, (30.0, 0.0), room).width, 700.0);
-        assert_eq!(resized(HOME, Edge::Side, 300.0, (-500.0, 0.0), room).width, MIN_WIDTH);
-        assert_eq!(resized(HOME, Edge::Side, 300.0, (5000.0, 0.0), room).width, MAX_WIDTH);
+        // A side whose opposite follows: 30 px out is 60 px wider.
+        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (30.0, 0.0), room).width, 700.0);
+        // A left grip: moving left (negative) widens.
+        assert_eq!(resized(HOME, (-2.0, 0.0), 300.0, (-30.0, 0.0), room).width, 700.0);
+        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (-500.0, 0.0), room).width, MIN_WIDTH);
+        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (5000.0, 0.0), room).width, MAX_WIDTH);
         // A small display keeps the island inside it.
-        assert_eq!(resized(HOME, Edge::Side, 300.0, (5000.0, 0.0), (1000.0, 700.0)).width, 920.0);
+        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (5000.0, 0.0), (1000.0, 700.0)).width, 920.0);
         // The bottom starts from the height drawn and leaves the width alone.
-        let tall = resized(HOME, Edge::Bottom, 280.0, (400.0, 50.0), room);
-        assert_eq!((tall.width, tall.chat_h), (DEFAULT_WIDTH, 330.0));
-        assert_eq!(resized(HOME, Edge::Bottom, 280.0, (0.0, 900.0), (1920.0, 500.0)).chat_h, 480.0);
+        let tall = resized(HOME, (0.0, 1.0), 280.0, (400.0, 50.0), room);
+        assert_eq!((tall.width, tall.height), (DEFAULT_WIDTH, 330.0));
+        assert_eq!(resized(HOME, (0.0, 1.0), 280.0, (0.0, 900.0), (1920.0, 500.0)).height, 480.0);
+        // A corner does both.
+        let both = resized(HOME, (2.0, 1.0), 160.0, (20.0, 40.0), room);
+        assert_eq!((both.width, both.height), (680.0, 200.0));
+        // Never shorter than the smallest view.
+        assert_eq!(resized(HOME, (0.0, 1.0), 160.0, (0.0, -100.0), room).height, MIN_HEIGHT);
+    }
+
+    #[test]
+    fn the_bounce_overshoots_a_little_and_settles() {
+        let mut a = Axis { x: 0.0, v: 0.0 };
+        let mut most: f64 = 0.0;
+        let mut steps = 0;
+        while !a.settled(100.0) && steps < 1000 {
+            a.step(100.0, 0.008);
+            most = most.max(a.x);
+            steps += 1;
+        }
+        assert!(steps < 200, "took {steps} steps");
+        assert!(most > 101.0 && most < 130.0, "overshoot {most}");
+    }
+
+    #[test]
+    fn docks_read_back_from_their_names() {
+        for d in [Dock::Top, Dock::Bottom, Dock::Left, Dock::Right] {
+            assert_eq!(Dock::parse(d.name()), d);
+        }
+        assert_eq!(Dock::parse("nonsense"), Dock::Top);
     }
 }
 

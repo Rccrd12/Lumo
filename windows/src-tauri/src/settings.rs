@@ -24,16 +24,15 @@ pub struct Settings {
     pub screen: String,
     /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
     pub island_zoom: f64,
-    /// Where the user dragged the island, from its home at the top centre of
-    /// its display, in logical pixels. Owned by the Rust side (island.rs) —
-    /// what a webview sends back is ignored.
-    pub island_dx: f64,
-    pub island_dy: f64,
-    /// How wide the open island is, and how tall the chat, in page pixels
-    /// (0 = the chat grows with the conversation). Dragged from the island's
-    /// edges, so owned by the Rust side too.
+    /// The display edge the island hangs from ("top", "bottom", "left",
+    /// "right") and how far from its middle, in logical pixels. Owned by the
+    /// Rust side (island.rs) — what a webview sends back is ignored.
+    pub island_dock: String,
+    pub island_offset: f64,
+    /// How wide the open island is, and how tall (0 = each view's own), in
+    /// page pixels. Dragged from the island's grips, so owned by Rust too.
     pub island_width: f64,
-    pub chat_height: f64,
+    pub island_height: f64,
     /// How big the icons are drawn, against the Mac's size.
     pub icon_scale: f64,
     pub autostart: bool,
@@ -125,10 +124,10 @@ impl Default for Settings {
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
             island_zoom: crate::island::DEFAULT_ZOOM,
-            island_dx: 0.0,
-            island_dy: 0.0,
+            island_dock: "top".into(),
+            island_offset: 0.0,
             island_width: crate::island::DEFAULT_WIDTH,
-            chat_height: 0.0,
+            island_height: 0.0,
             icon_scale: DEFAULT_ICON_SCALE,
             autostart: false,
             hooks_installed: false,
@@ -408,10 +407,10 @@ mod tests {
   "mainPill": "agent_cursor",
   "screen": "cursor",
   "islandZoom": 1.3,
-  "islandDx": -200.5,
-  "islandDy": 40.0,
+  "islandDock": "left",
+  "islandOffset": -200.5,
   "islandWidth": 900.0,
-  "chatHeight": 420.0,
+  "islandHeight": 420.0,
   "iconScale": 1.5,
   "autostart": true,
   "hooksInstalled": true,
@@ -817,10 +816,10 @@ mod tests {
                 "mainPill",
                 "screen",
                 "islandZoom",
-                "islandDx",
-                "islandDy",
+                "islandDock",
+                "islandOffset",
                 "islandWidth",
-                "chatHeight",
+                "islandHeight",
                 "iconScale",
                 "autostart",
                 "hooksInstalled",

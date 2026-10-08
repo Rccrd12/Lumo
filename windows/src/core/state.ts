@@ -112,12 +112,12 @@ export interface Settings {
   screen: string;
   /** How big the island is drawn (1 = the Mac's size). */
   islandZoom: number;
-  /** Where the island was dragged, from the top centre (owned by Rust). */
-  islandDx: number;
-  islandDy: number;
-  /** Width of the open island and height of the chat (0 = grows); owned by Rust. */
+  /** The edge the island hangs from, and how far from its middle (owned by Rust). */
+  islandDock: string;
+  islandOffset: number;
+  /** Width of the open island and its height (0 = each view's own); owned by Rust. */
   islandWidth: number;
-  chatHeight: number;
+  islandHeight: number;
   /** How big the icons are drawn (1 = the Mac's size). */
   iconScale: number;
   autostart: boolean;
@@ -176,10 +176,10 @@ export const DEFAULT_SETTINGS: Settings = {
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
   islandZoom: 1.15,
-  islandDx: 0,
-  islandDy: 0,
+  islandDock: "top",
+  islandOffset: 0,
   islandWidth: 640,
-  chatHeight: 0,
+  islandHeight: 0,
   iconScale: 1.25,
   autostart: false,
   hooksInstalled: false,

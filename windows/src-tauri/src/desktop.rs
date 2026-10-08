@@ -380,7 +380,12 @@ fn island_anchor(app: &AppHandle, d: &Desktop) -> Option<(f64, f64, f64)> {
     let pos = win.outer_position().ok()?;
     let size = win.outer_size().ok()?;
     let scale = win.scale_factor().unwrap_or(1.0);
-    Some((pos.x as f64 + size.width as f64 / 2.0, pos.y as f64, scale))
+    let (x, y) = island::anchor(
+        (pos.x as f64, pos.y as f64),
+        (size.width as f64, size.height as f64),
+        scale * island::zoom(),
+    );
+    Some((x, y, scale))
 }
 
 /// The window side in the mode's space.
