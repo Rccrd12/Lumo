@@ -3943,6 +3943,17 @@
    "pt-BR": "Essa tela não está mais conectada.",
    "ru": "Этот экран больше не подключён.",
    "id": "Layar itu sudah tidak terhubung."
+  },
+  "That version is not newer than the one installed.": {
+   "zh-Hans": "该版本并不比已安装的版本新。",
+   "hi": "यह संस्करण इंस्टॉल किए गए संस्करण से नया नहीं है।",
+   "es": "Esa versión no es más reciente que la instalada.",
+   "ar": "هذا الإصدار ليس أحدث من المثبّت.",
+   "fr": "Cette version n'est pas plus récente que celle installée.",
+   "bn": "এই সংস্করণটি ইনস্টল করা সংস্করণের চেয়ে নতুন নয়।",
+   "pt-BR": "Essa versão não é mais nova que a instalada.",
+   "ru": "Эта версия не новее установленной.",
+   "id": "Versi itu tidak lebih baru daripada yang terpasang."
   }
  }
 }

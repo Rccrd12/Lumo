@@ -175,7 +175,14 @@ fn is_release_download(url: &Url) -> bool {
     let (Some(tag), Some(file), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
     };
-    tag.starts_with(TAG_PREFIX) && is_installer_file(file)
+    // The file carries the tag's own version: windows-v1.2.3 → Coucou-Windows-1.2.3-setup.exe.
+    tag.starts_with(TAG_PREFIX) && is_installer_file(file) && file == installer_name(&tag[TAG_PREFIX.len()..])
+}
+
+/// The version an accepted installer address carries.
+fn installer_version(url: &Url) -> Option<Version> {
+    let file = url.path_segments()?.next_back()?;
+    parse_version(file.strip_prefix("Coucou-Windows-")?.strip_suffix("-setup.exe")?)
 }
 
 /// `Coucou-Windows-<version>-setup.exe`, with nothing but a version in the middle.
@@ -257,6 +264,13 @@ pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
     let url = Url::parse(url.trim()).map_err(|_| t("Only installers from Coucou's GitHub releases can be installed."))?;
     if !is_release_download(&url) {
         return Err(t("Only installers from Coucou's GitHub releases can be installed."));
+    }
+    // Never an older (or the same) build than the one running.
+    let current = parse_version(&app.package_info().version.to_string());
+    if let (Some(offered), Some(current)) = (installer_version(&url), current) {
+        if offered <= current {
+            return Err(t("That version is not newer than the one installed."));
+        }
     }
     if INSTALLING.swap(true, Ordering::SeqCst) {
         return Err(t("An update is already being installed."));
@@ -453,6 +467,10 @@ mod tests {
         assert!(!ok(&format!("https://github.com:8443/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe?x=1")));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-..-setup.exe")));
+        // The file must carry its tag's version.
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Coucou-Windows-0.3.0-setup.exe")));
+        let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Coucou-Windows-0.4.1-setup.exe")).unwrap();
+        assert_eq!(installer_version(&url), parse_version("0.4.1"));
     }
 
     #[test]

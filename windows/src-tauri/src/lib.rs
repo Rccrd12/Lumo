@@ -232,9 +232,13 @@ fn island_drag(app: AppHandle) {
 fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64) {
     std::thread::spawn(move || {
         let (pref, start) = placement(&app.state::<Shared>());
-        let p = island::resize(&app, &pref, start, (fx, fy), height);
-        // Always placed again: the window only grew while the grip was held.
-        let p = p.unwrap_or(start);
+        let Some(p) = island::resize(&app, &pref, start, (fx, fy), height) else { return };
+        // Unchanged (a click, or the first half of a double click): nothing to
+        // save, and nothing to undo a reset with. The window only grows when
+        // the size does.
+        if p == start {
+            return;
+        }
         update_island(&app, |s| {
             s.island_width = island::clamp_width(p.width);
             s.island_height = island::clamp_height(p.height);
@@ -529,7 +533,14 @@ async fn chat_send(
     screen: Option<screen::ScreenContext>,
 ) -> Result<ChatReply, String> {
     let settings = shared.settings.lock().unwrap().clone();
-    chat::send(&app, &chat, &settings, query, context, screen).await
+    let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
+    let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
+    // Screenshots are read once the turn is answered: they don't stay on disk.
+    // A failed turn keeps them, so the same message can be sent again.
+    if reply.is_ok() {
+        screen::discard(&shots);
+    }
+    reply
 }
 
 /// The models a provider offers, for the picker in the chat view. Only asked

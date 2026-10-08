@@ -197,14 +197,17 @@ fn frame(area: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) 
     (x as i32, y as i32, pw as u32, ph as u32)
 }
 
-/// The edge nearest to a physical point of the area: where a dropped island goes.
-fn nearest_edge(area: (i32, i32, u32, u32), at: (f64, f64)) -> Dock {
+/// The edge of the area nearest to the island, given as a physical rectangle
+/// (left, top, right, bottom): where a dropped island goes. An island still
+/// touching its edge stays on it, however it was grabbed.
+fn nearest_edge(area: (i32, i32, u32, u32), island: (f64, f64, f64, f64)) -> Dock {
     let (ax, ay, aw, ah) = (area.0 as f64, area.1 as f64, area.2 as f64, area.3 as f64);
+    let (l, t, r, b) = island;
     let gaps = [
-        (at.1 - ay, Dock::Top),
-        (ay + ah - at.1, Dock::Bottom),
-        (at.0 - ax, Dock::Left),
-        (ax + aw - at.0, Dock::Right),
+        (t - ay, Dock::Top),
+        (ay + ah - b, Dock::Bottom),
+        (l - ax, Dock::Left),
+        (ax + aw - r, Dock::Right),
     ];
     gaps.iter().fold(gaps[0], |best, g| if g.0 < best.0 { *g } else { best }).1
 }
@@ -666,6 +669,8 @@ pub struct Dropped {
 /// Needs the cursor poll (Windows): elsewhere it returns at once.
 pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> Option<Dropped> {
     let win = window(app)?;
+    // A new drag takes over from a bounce still under way.
+    let generation = DRAGS.fetch_add(1, Ordering::SeqCst) + 1;
     let (sx, sy) = cursor_physical()?;
     let origin = win.outer_position().ok()?;
     let (ox, oy) = (origin.x as f64, origin.y as f64);
@@ -706,11 +711,12 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let area = area_of(&m);
     let scale = m.scale_factor();
     let k = scale * clamp_zoom(start.zoom);
-    let dock = nearest_edge(area, (cx, cy));
 
-    // The island's centre on screen as it was let go.
+    // The island on screen as it was let go, and the edge nearest to it.
     let (rw, rh) = if rect.w > 0.0 { (rect.w, rect.h) } else { (NOTCH_PILL.0, NOTCH_PILL.1) };
-    let centre = (x + (rect.x + rw / 2.0) * k, y + (rect.y + rh / 2.0) * k);
+    let (left, top) = (x + rect.x * k, y + rect.y * k);
+    let dock = nearest_edge(area, (left, top, left + rw * k, top + rh * k));
+    let centre = (left + rw * k / 2.0, top + rh * k / 2.0);
     let mut p = Placement { dock, offset: offset_along(area, scale, dock, centre), ..start };
     p.offset = effective_offset(area, scale, p);
     let _ = app.emit_to(WINDOW_LABEL, "island-dock", DockPayload { dock, offset: p.offset });
@@ -728,6 +734,10 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let started = std::time::Instant::now();
     let dt = 0.008;
     while started.elapsed() < Duration::from_millis(1500) {
+        if DRAGS.load(Ordering::SeqCst) != generation {
+            // Picked up again mid-bounce: that drag places it now.
+            return None;
+        }
         ax.step(tx as f64, dt);
         ay.step(ty as f64, dt);
         let at = (ax.x.round() as i32, ay.x.round() as i32);
@@ -743,6 +753,9 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
     let _ = win.set_position(PhysicalPosition::new(tx, ty));
     Some(Dropped { placement: p, screen })
 }
+
+/// Counts drags, so a bounce knows when a newer drag has taken the window.
+static DRAGS: AtomicU64 = AtomicU64::new(0);
 
 /// The closed island, in page pixels, when no shape was pushed yet.
 const NOTCH_PILL: (f64, f64) = (288.0, 32.0);
@@ -824,12 +837,14 @@ mod placement_tests {
 
     #[test]
     fn a_dropped_island_goes_to_the_nearest_edge() {
-        assert_eq!(nearest_edge(FHD, (900.0, 100.0)), Dock::Top);
-        assert_eq!(nearest_edge(FHD, (900.0, 1000.0)), Dock::Bottom);
-        assert_eq!(nearest_edge(FHD, (30.0, 500.0)), Dock::Left);
-        assert_eq!(nearest_edge(FHD, (1890.0, 300.0)), Dock::Right);
-        // Somewhere in the middle: whichever edge is closest.
-        assert_eq!(nearest_edge(FHD, (400.0, 540.0)), Dock::Left);
+        let pill = |x: f64, y: f64| (x, y, x + 288.0, y + 32.0);
+        assert_eq!(nearest_edge(FHD, pill(800.0, 100.0)), Dock::Top);
+        assert_eq!(nearest_edge(FHD, pill(800.0, 1000.0)), Dock::Bottom);
+        assert_eq!(nearest_edge(FHD, pill(30.0, 500.0)), Dock::Left);
+        assert_eq!(nearest_edge(FHD, pill(1600.0, 300.0)), Dock::Right);
+        // An open island on the left, nudged up and grabbed far from the edge,
+        // still touches the left edge: it stays there.
+        assert_eq!(nearest_edge(FHD, (0.0, 200.0, 640.0, 360.0)), Dock::Left);
     }
 
     #[test]

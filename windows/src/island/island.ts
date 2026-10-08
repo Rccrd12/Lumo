@@ -81,6 +81,10 @@ export class Island {
   private moving = false;
   /** Lifted while carried: a little bigger, springing back when put down. */
   private lift = new Tracked(1);
+  /** Puts a moved island down should Rust never say where it went. */
+  private settleTimer: number | null = null;
+  /** The edge last drawn, to notice when Settings or the tray move it. */
+  private lastDock: Dock | null = null;
 
   private header!: ViewHost;
   private views!: Map<IslandViewName, ViewHost>;
@@ -774,7 +778,10 @@ export class Island {
     window.addEventListener("mouseup", () => {
       this.resizing = false;
       // Rust says where a moved island went; should it never say, put it down anyway.
-      if (this.moving) window.setTimeout(() => this.settleMove(), 2500);
+      if (this.moving) {
+        this.clearSettleTimer();
+        this.settleTimer = window.setTimeout(() => this.settleMove(), 2500);
+      }
       // A press on the closed island that never moved is a click.
       const press = this.pendingMove;
       this.pendingMove = null;
@@ -1283,10 +1290,12 @@ export class Island {
     this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     this.applyDock();
-    // A resize saved, or undone with a double click: grow or shrink to it.
+    // A resize saved or undone with a double click, or the island sent back to
+    // the top (Settings, tray): grow, shrink or turn to it.
     const shape = JSON.stringify(this.shape);
-    if (shape !== this.lastShape) {
+    if (shape !== this.lastShape || this.dock !== this.lastDock) {
       this.lastShape = shape;
+      this.lastDock = this.dock;
       this.animateGeometry(false);
     }
     State.notify();
@@ -1305,6 +1314,7 @@ export class Island {
   /** Picked up: Rust carries the window; the island lifts and Mochi notices. */
   private startMove() {
     if (this.moving || !this.canResize) return;
+    this.clearSettleTimer();
     this.moving = true;
     this.cancelBotHover();
     this.lift.springTo(1.04, 0.3, 0.6);
@@ -1321,6 +1331,8 @@ export class Island {
    */
   onDock(place: { dock: string; offset: number }) {
     State.settings = { ...State.settings, islandDock: place.dock, islandOffset: place.offset };
+    this.lastDock = this.dock;
+    this.clearSettleTimer();
     this.applyDock();
     // Turned upright (or back), the closed island morphs into its new shape.
     const { w, h, r } = this.targetSize();
@@ -1334,8 +1346,14 @@ export class Island {
     this.ensureRunning();
   }
 
+  private clearSettleTimer() {
+    if (this.settleTimer != null) window.clearTimeout(this.settleTimer);
+    this.settleTimer = null;
+  }
+
   /** Ends a move that never reported where it went. */
   private settleMove() {
+    this.settleTimer = null;
     if (!this.moving) return;
     this.moving = false;
     this.lift.springTo(1, 0.45, 0.45);

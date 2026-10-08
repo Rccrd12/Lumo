@@ -246,7 +246,10 @@ fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&
     let err_text = std::thread::spawn(move || {
         let mut s = String::new();
         if let Some(e) = stderr {
-            let _ = e.take(64 * 1024).read_to_string(&mut s);
+            let mut e = e;
+            let _ = (&mut e).take(64 * 1024).read_to_string(&mut s);
+            // Past the cap, keep the pipe flowing: a full one would stall claude.
+            let _ = std::io::copy(&mut e, &mut std::io::sink());
         }
         s
     });
@@ -267,6 +270,9 @@ fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&
                 }
             }
         }
+        // Whatever is left is read and dropped, so claude never blocks on a
+        // full pipe while the turn winds down.
+        let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
 
     let started = Instant::now();
