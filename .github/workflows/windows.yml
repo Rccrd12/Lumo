@@ -1,7 +1,7 @@
 name: Windows
 
 # Builds the Windows app and publishes the installer.
-# Triggered by tags like `windows-v0.1.0`; the macOS workflows are untouched.
+# Triggered by tags like `windows-v0.1.0`.
 
 on:
   push:
@@ -126,10 +126,8 @@ jobs:
           code-signed yet, so Windows SmartScreen shows a warning: click
           **More info → Run anyway**.
           "@
-          # --latest=false is not cosmetic: without it GitHub hands "Latest" to
-          # whichever release was published last, and the site's Download for Mac
-          # button points at /releases/latest. A Windows tag would silently send
-          # Mac users to the .exe. The macOS `v*` releases own that slot.
+          # --latest=false: the download links point at the rolling
+          # windows-latest release below, not at GitHub's Latest slot.
           gh release create "${{ github.ref_name }}" `
             "release/Coucou-Windows-$v-setup.exe" `
             "release/Coucou-Windows-$v.msi" `

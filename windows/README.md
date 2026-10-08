@@ -21,8 +21,8 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 ## Install
 
-Download **[Coucou-Windows.msi](https://github.com/Louis-CFM/coucou/releases/download/windows-latest/Coucou-Windows.msi)**
-(Windows Installer) or **[Coucou-Windows-setup.exe](https://github.com/Louis-CFM/coucou/releases/download/windows-latest/Coucou-Windows-setup.exe)**,
+Download **[Coucou-Windows.msi](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Coucou-Windows.msi)**
+(Windows Installer) or **[Coucou-Windows-setup.exe](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Coucou-Windows-setup.exe)**,
 always the newest version, and run it. The .exe installs for the current user only, with no admin prompt; the .msi may ask for admin rights.
 
 **Windows will show a warning the first time — that's expected.** The installer isn't code-signed yet, so SmartScreen doesn't know the publisher:
@@ -222,7 +222,7 @@ header stay where they are, and commands, code and file paths stay left to
 right. Steps already in a session's ticker keep the language they were written
 in, as on the Mac.
 
-The translations are the Mac's own (`NotchBuddy/Resources/Localizable.xcstrings`,
+The translations are the Mac's own (`i18n-source/Localizable.xcstrings`,
 turned into `src/i18n/strings.json` by `node scripts/gen-strings.mjs`), plus
 `src/i18n/extra.json` for what only Windows and Linux show. Both are keyed by
 the English text; a string missing in a language shows in English. The Rust
@@ -343,7 +343,8 @@ You need [Rust](https://rustup.rs), [Node 20+](https://nodejs.org), and the
 C++"). WebView2 ships with Windows 10/11.
 
 ```powershell
-cd windows
+git clone https://github.com/Rccrd12/coucou-agent.git
+cd coucou-agent/windows
 npm install
 npm run tauri dev      # live-reloading development build
 npm run pack           # builds the installer and drops it in windows/release/
@@ -368,9 +369,9 @@ Installing is optional — `target/release/coucou.exe` runs on its own. There is
 window in the taskbar and no console: the island at the top of the screen and the
 Mochi in the notification area are the whole app, and Quit lives in its menu.
 
-The 29 sounds are the macOS app's own files; they are never duplicated in this
-folder. The path is declared once, in `SOUNDS_DIR` at the top of
-`vite.config.ts` — when they move to `shared/sounds/`, change that one line.
+The 29 sounds live in `assets/sounds/`. The path is declared once, in
+`SOUNDS_DIR` at the top of `vite.config.ts`, which serves them in development
+and copies them into `dist/sounds` on build.
 
 The app icon and the tray icon are drawn in code, like Mochi itself:
 
@@ -547,16 +548,9 @@ npm run tauri dev      # live-reloading development build
 npm run pack           # AppImage, .deb and .rpm in windows/release/
 ```
 
-On Arch Linux, build and install the package from `linux/arch/`:
-
-```bash
-git clone https://github.com/Louis-CFM/coucou.git
-cd coucou/linux/arch
-makepkg -si
-```
-
-It needs `webkit2gtk-4.1`, `gtk-layer-shell` and `libayatana-appindicator`
-(pulled in as dependencies); store API keys with GNOME Keyring or KWallet.
+On Arch Linux, install `webkit2gtk-4.1`, `gtk-layer-shell` and
+`libayatana-appindicator` and build the same way; store API keys with GNOME
+Keyring or KWallet.
 
 What changes on Linux:
 

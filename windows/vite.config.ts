@@ -3,15 +3,14 @@ import { existsSync, mkdirSync, readdirSync, copyFileSync, createReadStream } fr
 import { resolve, join, extname } from "node:path";
 
 // ───────────────────────────────────────────────────────────────────────────────
-// THE one and only place the shared sound folder is declared.
-// The 29 WAVs live in the macOS app and are NOT duplicated in the repo; when they
-// move to `shared/sounds/`, change this single line.
-export const SOUNDS_DIR = resolve(__dirname, "../NotchBuddy/Resources/sounds");
+// THE one and only place the sound folder is declared: the 29 WAVs in
+// windows/assets/sounds/.
+export const SOUNDS_DIR = resolve(__dirname, "assets/sounds");
 // ───────────────────────────────────────────────────────────────────────────────
 
 /**
  * Serves SOUNDS_DIR at /sounds/*.wav in dev, and copies it into dist/sounds on build.
- * Keeps the WAVs out of windows/ while still shipping them inside the installer.
+ * The WAVs ship inside the installer from there.
  */
 function sharedSounds(): Plugin {
   const prefix = "/sounds/";

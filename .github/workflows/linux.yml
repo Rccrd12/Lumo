@@ -2,8 +2,8 @@ name: Linux
 
 # Builds the Linux app (AppImage, .deb, .rpm) from the same Tauri project as
 # Windows. Triggered by tags like `linux-v0.1.0`, by hand, and by pull requests
-# that touch windows/ or this file (build and test only); the macOS and Windows
-# workflows are untouched.
+# that touch windows/ or this file (build and test only); the Windows workflow
+# is untouched.
 #
 # Two jobs on purpose. `build` runs npm, cargo and the AppImage tooling (which
 # downloads its own helpers) with a read-only token that is not even kept on
@@ -164,8 +164,8 @@ jobs:
 
           The island sits on the top edge on compositors with layer-shell (COSMIC,
           KDE Plasma, Hyprland, Sway…). On GNOME it opens as a regular window."
-          # --latest=false: the macOS \`v*\` releases own the Latest slot, which
-          # the site's Download for Mac button points at.
+          # --latest=false, as on Windows: the download links point at the
+          # rolling linux-latest release below.
           gh release create "$GITHUB_REF_NAME" \
             "release/Coucou-Linux-$v-x86_64.AppImage" \
             "release/Coucou-Linux-$v-amd64.deb" \
