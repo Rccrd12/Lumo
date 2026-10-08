@@ -384,9 +384,11 @@ Installing is optional — `target/release/coucou.exe` runs on its own. There is
 window in the taskbar and no console: the island at the top of the screen and the
 Mochi in the notification area are the whole app, and Quit lives in its menu.
 
-The 29 sounds live in `assets/sounds/`. The path is declared once, in
-`SOUNDS_DIR` at the top of `vite.config.ts`, which serves them in development
-and copies them into `dist/sounds` on build.
+The 29 sounds live in `assets/sounds/`. They are synthesised from code by
+`scripts/gen-sounds.mjs` (`npm run sounds` rewrites them, byte for byte the
+same). The path is declared once, in `SOUNDS_DIR` at the top of
+`vite.config.ts`, which serves them in development and copies them into
+`dist/sounds` on build.
 
 The app icon and the tray icon are drawn in code, like Mochi itself:
 
