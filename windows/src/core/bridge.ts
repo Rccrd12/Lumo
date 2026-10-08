@@ -21,6 +21,16 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
   }
 }
 
+/** Settings → Updates: what a check found (updater.rs). */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  notes: string;
+  /** Coucou-Windows-<latest>-setup.exe of that release, when it has one. */
+  assetUrl: string | null;
+}
+
 export interface BootInfo {
   settings: Settings;
   /** Logical screen rect of the monitor the island lives on. */
@@ -194,6 +204,12 @@ export const Bridge = {
   recapSavePng: (data: string, week: string) => callOrThrow<string>("recap_save_png", { data, week }),
   /** Opens the folder of the image saved last. */
   recapRevealSaved: () => call<void>("recap_reveal_saved"),
+
+  // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
+  /** Asks GitHub for the newest Windows release and compares it with this build. */
+  updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
+  /** Downloads that release's installer, starts it and quits Coucou. */
+  updateInstall: (url: string) => callOrThrow<void>("update_install", { url }),
 
   // ── Mochi on the desktop (src-tauri/src/desktop.rs) ───────────────────────
   desktopInfo: () => call<DesktopInfo>("desktop_mochi_info"),

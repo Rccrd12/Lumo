@@ -3503,6 +3503,127 @@
    "pt-BR": "Arraste uma lateral da ilha aberta para alargá-la, ou a parte de baixo do chat para deixá-lo mais alto. Um clique duplo a deixa como antes.",
    "ru": "Потяните за край открытого острова, чтобы расширить его, или за низ чата, чтобы сделать его выше. Двойной щелчок возвращает прежний размер.",
    "id": "Seret sisi pulau yang terbuka untuk melebarkannya, atau bagian bawah obrolan untuk membuatnya lebih tinggi. Klik dua kali untuk mengembalikannya."
+  },
+  "No Windows release has been published yet.": {
+   "zh-Hans": "尚未发布任何 Windows 版本。",
+   "hi": "अभी तक कोई Windows रिलीज़ प्रकाशित नहीं हुई है।",
+   "es": "Todavía no se ha publicado ninguna versión para Windows.",
+   "ar": "لم يُنشر أي إصدار لنظام Windows بعد.",
+   "fr": "Aucune version Windows n'a encore été publiée.",
+   "bn": "এখনও কোনো Windows রিলিজ প্রকাশিত হয়নি।",
+   "pt-BR": "Nenhuma versão para Windows foi publicada ainda.",
+   "ru": "Версий для Windows пока не опубликовано.",
+   "id": "Belum ada rilis Windows yang diterbitkan."
+  },
+  "Updating from Settings is only available on Windows. On Linux, update Coucou the way you installed it.": {
+   "zh-Hans": "只有 Windows 上才能从设置中更新。在 Linux 上，请用你安装 Coucou 的方式来更新它。",
+   "hi": "सेटिंग्स से अपडेट करना सिर्फ़ Windows पर उपलब्ध है। Linux पर Coucou को उसी तरह अपडेट करें जैसे आपने उसे इंस्टॉल किया था।",
+   "es": "Actualizar desde Ajustes solo está disponible en Windows. En Linux, actualiza Coucou de la misma forma en que lo instalaste.",
+   "ar": "التحديث من الإعدادات متاح على Windows فقط. على Linux، حدّث Coucou بالطريقة التي ثبّته بها.",
+   "fr": "La mise à jour depuis les Réglages n'existe que sur Windows. Sous Linux, mettez Coucou à jour comme vous l'avez installé.",
+   "bn": "সেটিংস থেকে আপডেট শুধু Windows-এ পাওয়া যায়। Linux-এ যেভাবে Coucou ইনস্টল করেছেন সেভাবেই আপডেট করুন।",
+   "pt-BR": "Atualizar pelos Ajustes só está disponível no Windows. No Linux, atualize o Coucou do mesmo jeito que você o instalou.",
+   "ru": "Обновление из настроек доступно только в Windows. В Linux обновляйте Coucou тем же способом, которым устанавливали.",
+   "id": "Memperbarui dari Pengaturan hanya tersedia di Windows. Di Linux, perbarui Coucou dengan cara Anda menginstalnya."
+  },
+  "Could not reach GitHub: {error}": {
+   "zh-Hans": "无法连接 GitHub：{error}",
+   "hi": "GitHub तक नहीं पहुँच सके: {error}",
+   "es": "No se pudo conectar con GitHub: {error}",
+   "ar": "تعذّر الوصول إلى GitHub: {error}",
+   "fr": "Impossible de joindre GitHub : {error}",
+   "bn": "GitHub-এ পৌঁছানো যায়নি: {error}",
+   "pt-BR": "Não foi possível acessar o GitHub: {error}",
+   "ru": "Не удалось связаться с GitHub: {error}",
+   "id": "Tidak dapat menjangkau GitHub: {error}"
+  },
+  "GitHub is limiting requests right now. Try again in a few minutes.": {
+   "zh-Hans": "GitHub 目前正在限制请求。请过几分钟再试。",
+   "hi": "GitHub अभी अनुरोध सीमित कर रहा है। कुछ मिनट बाद फिर कोशिश करें।",
+   "es": "GitHub está limitando las solicitudes ahora mismo. Inténtalo de nuevo en unos minutos.",
+   "ar": "يحدّ GitHub من الطلبات حاليًا. حاول مرة أخرى بعد بضع دقائق.",
+   "fr": "GitHub limite les requêtes en ce moment. Réessayez dans quelques minutes.",
+   "bn": "GitHub এখন অনুরোধ সীমিত করছে। কয়েক মিনিট পরে আবার চেষ্টা করুন।",
+   "pt-BR": "O GitHub está limitando as solicitações agora. Tente de novo em alguns minutos.",
+   "ru": "GitHub сейчас ограничивает запросы. Попробуйте через несколько минут.",
+   "id": "GitHub sedang membatasi permintaan. Coba lagi dalam beberapa menit."
+  },
+  "GitHub answered with an error ({status}).": {
+   "zh-Hans": "GitHub 返回了错误（{status}）。",
+   "hi": "GitHub ने एक त्रुटि लौटाई ({status})।",
+   "es": "GitHub respondió con un error ({status}).",
+   "ar": "ردّ GitHub بخطأ ({status}).",
+   "fr": "GitHub a répondu par une erreur ({status}).",
+   "bn": "GitHub একটি ত্রুটি ফেরত দিয়েছে ({status})।",
+   "pt-BR": "O GitHub respondeu com um erro ({status}).",
+   "ru": "GitHub ответил ошибкой ({status}).",
+   "id": "GitHub menjawab dengan galat ({status})."
+  },
+  "GitHub's answer could not be read.": {
+   "zh-Hans": "无法读取 GitHub 的响应。",
+   "hi": "GitHub का जवाब पढ़ा नहीं जा सका।",
+   "es": "No se pudo leer la respuesta de GitHub.",
+   "ar": "تعذّرت قراءة رد GitHub.",
+   "fr": "La réponse de GitHub est illisible.",
+   "bn": "GitHub-এর উত্তর পড়া যায়নি।",
+   "pt-BR": "Não foi possível ler a resposta do GitHub.",
+   "ru": "Не удалось прочитать ответ GitHub.",
+   "id": "Jawaban GitHub tidak dapat dibaca."
+  },
+  "Only installers from Coucou's GitHub releases can be installed.": {
+   "zh-Hans": "只能安装来自 Coucou GitHub 发布页的安装程序。",
+   "hi": "सिर्फ़ Coucou की GitHub रिलीज़ के इंस्टॉलर ही इंस्टॉल किए जा सकते हैं।",
+   "es": "Solo se pueden instalar instaladores de las versiones de Coucou en GitHub.",
+   "ar": "لا يمكن تثبيت إلا المثبّتات القادمة من إصدارات Coucou على GitHub.",
+   "fr": "Seuls les installateurs des versions de Coucou publiées sur GitHub peuvent être installés.",
+   "bn": "শুধু GitHub-এ Coucou-র রিলিজের ইনস্টলারই ইনস্টল করা যায়।",
+   "pt-BR": "Só é possível instalar instaladores das versões do Coucou no GitHub.",
+   "ru": "Можно установить только установщики из релизов Coucou на GitHub.",
+   "id": "Hanya penginstal dari rilis Coucou di GitHub yang dapat diinstal."
+  },
+  "An update is already being installed.": {
+   "zh-Hans": "已有一个更新正在安装。",
+   "hi": "एक अपडेट पहले से इंस्टॉल हो रहा है।",
+   "es": "Ya se está instalando una actualización.",
+   "ar": "يجري تثبيت تحديث بالفعل.",
+   "fr": "Une mise à jour est déjà en cours d'installation.",
+   "bn": "একটি আপডেট ইতিমধ্যে ইনস্টল হচ্ছে।",
+   "pt-BR": "Uma atualização já está sendo instalada.",
+   "ru": "Обновление уже устанавливается.",
+   "id": "Pembaruan sedang diinstal."
+  },
+  "The download failed: {error}": {
+   "zh-Hans": "下载失败：{error}",
+   "hi": "डाउनलोड विफल रहा: {error}",
+   "es": "La descarga falló: {error}",
+   "ar": "فشل التنزيل: {error}",
+   "fr": "Le téléchargement a échoué : {error}",
+   "bn": "ডাউনলোড ব্যর্থ হয়েছে: {error}",
+   "pt-BR": "O download falhou: {error}",
+   "ru": "Не удалось загрузить: {error}",
+   "id": "Unduhan gagal: {error}"
+  },
+  "Could not save the installer: {error}": {
+   "zh-Hans": "无法保存安装程序：{error}",
+   "hi": "इंस्टॉलर सहेजा नहीं जा सका: {error}",
+   "es": "No se pudo guardar el instalador: {error}",
+   "ar": "تعذّر حفظ المثبّت: {error}",
+   "fr": "Impossible d'enregistrer l'installateur : {error}",
+   "bn": "ইনস্টলার সংরক্ষণ করা যায়নি: {error}",
+   "pt-BR": "Não foi possível salvar o instalador: {error}",
+   "ru": "Не удалось сохранить установщик: {error}",
+   "id": "Tidak dapat menyimpan penginstal: {error}"
+  },
+  "Could not start the installer: {error}": {
+   "zh-Hans": "无法启动安装程序：{error}",
+   "hi": "इंस्टॉलर शुरू नहीं हो सका: {error}",
+   "es": "No se pudo iniciar el instalador: {error}",
+   "ar": "تعذّر تشغيل المثبّت: {error}",
+   "fr": "Impossible de lancer l'installateur : {error}",
+   "bn": "ইনস্টলার চালু করা যায়নি: {error}",
+   "pt-BR": "Não foi possível iniciar o instalador: {error}",
+   "ru": "Не удалось запустить установщик: {error}",
+   "id": "Tidak dapat memulai penginstal: {error}"
   }
  }
 }

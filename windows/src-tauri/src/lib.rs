@@ -27,6 +27,7 @@ mod session_window;
 mod settings;
 mod shortcuts;
 mod tray;
+mod updater;
 #[cfg(windows)]
 mod webview_drop;
 
@@ -830,6 +831,8 @@ pub fn run() {
             recap::recap_clear,
             recap::recap_save_png,
             recap::recap_reveal_saved,
+            updater::update_check,
+            updater::update_install,
             desktop::desktop_mochi_info,
             desktop::desktop_mochi_pick_up,
             desktop::desktop_mochi_carry,
