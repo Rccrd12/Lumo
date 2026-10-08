@@ -702,8 +702,9 @@ fn create_settings_window(app: &AppHandle) {
     match WebviewWindowBuilder::new(app, "settings", url)
         .additional_browser_args(BROWSER_ARGS)
         .title(i18n::t("Settings — Coucou"))
-        .inner_size(560.0, 680.0)
-        .min_inner_size(460.0, 480.0)
+        // Room for the section list on the left and the section beside it.
+        .inner_size(780.0, 680.0)
+        .min_inner_size(600.0, 480.0)
         .resizable(true)
         .visible(false)
         .center()
