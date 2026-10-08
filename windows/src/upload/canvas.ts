@@ -8,7 +8,9 @@
 import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
-import { LUMO_BOTTOM, LUMO_GLOW, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose, type RGB } from "../mochi/lumo";
+import {
+  LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose, type RGB,
+} from "../mochi/lumo";
 import {
   USC, eIn, eInOut, eOut, lerp, progressAt,
   type UploadEyeShape, type UploadFrame,
@@ -36,9 +38,9 @@ const css = (c: RGB) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)}
 /** Superellipse body — port of usBodyPath(m, R). */
 function bodyPath(ctx: CanvasRenderingContext2D, m: number, R: number): { rx: number; ry: number } {
   const mc = Math.max(0, Math.min(m, 1));
-  const n = 2.15 + (5.5 - 2.15) * mc;
-  const rx = R * (1.04 - 0.04 * mc);
-  const ry = R * (0.97 - 0.03 * mc);
+  const n = LUMO_EXP + (5.5 - LUMO_EXP) * mc;
+  const rx = R * (LUMO_RX + (1.0 - LUMO_RX) * mc);
+  const ry = R * (LUMO_RY + (0.94 - LUMO_RY) * mc);
   ctx.beginPath();
   for (let i = 0; i <= 96; i++) {
     const a = (i / 96) * Math.PI * 2;
@@ -374,8 +376,8 @@ export class UploadCanvas {
     // Lumo's wings and light, fading as he turns into a box.
     const lumo: LumoPose = {
       R,
-      rx: R * (1.04 - 0.04 * mc),
-      ry: R * (0.97 - 0.03 * mc),
+      rx: R * (LUMO_RX + (1.0 - LUMO_RX) * mc),
+      ry: R * (LUMO_RY + (0.94 - LUMO_RY) * mc),
       t: f.t,
       glow: LUMO_GLOW,
       shine: 0.6,
@@ -445,8 +447,8 @@ export class UploadCanvas {
     }
 
     // Eyes.
-    const ew = R * 0.25;
-    const eh = R * (0.62 - 0.16 * mc);
+    const ew = R * 0.3;
+    const eh = R * (0.34 + 0.12 * mc);
     const ey = R * (0.02 + 0.28 * mc);
     const sp = R * 0.3;
     const lx = f.lookX * R * (0.34 - 0.08 * mc);

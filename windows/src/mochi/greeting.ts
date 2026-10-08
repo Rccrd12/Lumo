@@ -6,7 +6,9 @@
 import { closeCurve } from "../core/anim";
 import { Sound } from "../core/sound";
 import { COMPACT_W, NOTCH_H, NOTCH_W } from "../core/layout";
-import { LUMO_BOTTOM, LUMO_GLOW, LUMO_TOP, drawLumoBehind, drawLumoFront, type RGB } from "./lumo";
+import {
+  LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type RGB,
+} from "./lumo";
 
 // ── Timing (GT in the Swift file) ─────────────────────────────────────────────
 
@@ -38,7 +40,8 @@ export const GREETING_W = 640;
 export const GREETING_H = 150;
 const C0 = { x: 320, y: 90 };
 const HB = 58;
-export const ASP = 1.34;
+/** Lumo's width over his height. */
+export const ASP = LUMO_RX / LUMO_RY;
 const EAR_X = 40;
 const EAR_HB = 17;
 const CARD = { x: 10, y: 36, w: 620, h: 104 };
@@ -367,7 +370,7 @@ function rr(x: CanvasRenderingContext2D, X: number, Y: number, W: number, H: num
 }
 
 function lumoPath(hw: number, hh: number): Path2D {
-  const n = 3.2;
+  const n = LUMO_EXP;
   const p = new Path2D();
   const steps = 96;
   for (let i = 0; i <= steps; i++) {
@@ -461,7 +464,7 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
   // His wings and light; the light turns blue with him at the end.
   const k = Math.min(1, p.tint / 0.5);
   const lumo = {
-    R: hh / 0.88,
+    R: hh / LUMO_RY,
     rx: hw,
     ry: hh,
     t,
@@ -497,8 +500,8 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
   x.clip(body);
   x.fillStyle = "#16171A";
   x.strokeStyle = "#16171A";
-  const er = p.hb * 0.06;
-  const sp = p.hb * 0.19;
+  const er = p.hb * 0.078;
+  const sp = p.hb * 0.21;
   const lx = p.lookX * hw * 0.42;
   const ly = p.lookY * hh * 0.28 + hh * 0.12 + p.eyeRoll * hh * 1.25;
   for (const sd of [-1, 1]) {
@@ -521,6 +524,14 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
       x.beginPath();
       x.arc(0, 0, er, 0, Math.PI * 2);
       x.fill();
+      if (p.open > 0.6) {
+        // The sparkle in his eyes, as on the island.
+        x.fillStyle = "rgba(255,255,255,0.92)";
+        x.beginPath();
+        x.arc(er * 0.3, -er * 0.4, er * 0.4, 0, Math.PI * 2);
+        x.fill();
+        x.fillStyle = "#16171A";
+      }
     }
     x.restore();
   }

@@ -3,23 +3,23 @@
 // but the leaf's stem, between them.
 //
 // Coordinates are BotEngine's body space: origin at the body centre, y down,
-// R = W × 0.3, rx = 1.14 R, ry = 0.88 R. The head is a superellipsoid whose
-// horizontal radius at height y (y up, −1…1) is (1 − |y|^2.7)^(1/2.7), so its
+// R = W × 0.3, rx = LUMO_RX R, ry = LUMO_RY R. The head is a superellipsoid whose
+// horizontal radius at height y (y up, −1…1) is (1 − |y|^e)^(1/e), e = LUMO_EXP, so its
 // silhouette matches the body at yaw = pitch = 0. Accessories are seen slightly
 // from above and follow the head pitch only partly.
 
 import { Ease } from "../core/anim";
 import type { Outfit, OutfitSelection } from "./wardrobe";
 import { SCRIPT_FONTS } from "../core/fonts";
-import { LUMO_BOTTOM, LUMO_GLOW, LUMO_TOP, drawLumoFront } from "./lumo";
+import { LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoFront } from "./lumo";
 
-const EXP = 2.7;
+const EXP = LUMO_EXP;
 const VIEW_TILT = -0.3;
 const ACC_PITCH = 0.4;
-const EYE_W = 0.25;
-const EYE_H = 0.27;
-const EYE_SP = 0.37;
-const EYE_P = -0.12;
+const EYE_W = LUMO_EYE.w;
+const EYE_H = LUMO_EYE.h;
+const EYE_SP = LUMO_EYE.spread;
+const EYE_P = LUMO_EYE.pitch;
 
 /** Below this radius the small details (veins, dots, stitches) are left out. */
 const SIMPLIFY_BELOW_R = 16;
@@ -40,7 +40,7 @@ export interface Head {
 }
 
 export function makeHead(R: number, yaw = 0, pitch = 0, physDx = 0, physDy = 0): Head {
-  return { R, rx: R * 1.14, ry: R * 0.88, yaw, pitch, physDx, physDy };
+  return { R, rx: R * LUMO_RX, ry: R * LUMO_RY, yaw, pitch, physDx, physDy };
 }
 
 // ── 3D helpers ────────────────────────────────────────────────────────────────
@@ -641,7 +641,7 @@ export function drawWardrobeIcon(ctx: Ctx, size: number, selection: OutfitSelect
   iconLumo(ctx, size, selection === "auto" ? seasonal : selection);
   if (selection !== "auto") return;
   const R = 9;
-  const by = size / 2 + R * 0.45 + R * 0.88 * 0.72;
+  const by = size / 2 + R * 0.45 + R * LUMO_RY * 0.72;
   const bw = 14;
   const bh = 6.5;
   ctx.save();

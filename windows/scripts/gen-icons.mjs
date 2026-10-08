@@ -27,9 +27,13 @@ const SS = 4; // supersampling factor
 const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const mixc = (a, b, t) => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t);
 
-/** Superellipse (exponent 2.7) test in body-local coordinates. */
+// His shape and eyes: LUMO_RX, LUMO_RY, LUMO_EXP and LUMO_EYE in src/mochi/lumo.ts.
+const SHAPE = { rx: 1.0, ry: 0.96, exp: 2.2 };
+const EYE = { w: 0.3, h: 0.33, spread: 0.42, pitch: -0.1 };
+
+/** Superellipse test in body-local coordinates. */
 function insideBody(x, y, rx, ry) {
-  const n = 2.7;
+  const n = SHAPE.exp;
   return Math.pow(Math.abs(x / rx), n) + Math.pow(Math.abs(y / ry), n) <= 1;
 }
 
@@ -69,8 +73,8 @@ function distToPolyline(x, y, pts) {
 /** The layers, back to front: each returns [r, g, b, a] at a body-local point, or null. */
 function lumoLayers(size) {
   const R = size * 0.29;
-  const rx = R * 1.14;
-  const ry = R * 0.88;
+  const rx = R * SHAPE.rx;
+  const ry = R * SHAPE.ry;
   const rim = Math.max(0.6, R * 0.05); // dark outline so the tray icon reads on light themes
   const withWings = size >= 48;
   const layers = [];
@@ -122,12 +126,12 @@ function lumoLayers(size) {
     return [...c, 1];
   });
 
-  // Eyes — same geometry as BotEngine (yaw ±0.37, pitch −0.12), with their sparkle.
-  const cp = Math.cos(-0.12);
-  const ex = Math.sin(0.37) * cp * rx;
-  const ey = -Math.sin(-0.12) * ry;
-  const ew = R * 0.25 * Math.max(0.18, Math.cos(0.37));
-  const eh = R * 0.27 * Math.max(0.18, cp);
+  // Eyes — same geometry as BotEngine, with their sparkle.
+  const cp = Math.cos(EYE.pitch);
+  const ex = Math.sin(EYE.spread) * cp * rx;
+  const ey = -Math.sin(EYE.pitch) * ry;
+  const ew = R * EYE.w * Math.max(0.18, Math.cos(EYE.spread));
+  const eh = R * EYE.h * Math.max(0.18, cp);
   const sparkle = size >= 32;
   layers.push((x, y) => {
     for (const sd of [-1, 1]) {

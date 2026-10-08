@@ -7,7 +7,9 @@
 import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
-import { LUMO_BOTTOM, LUMO_GLOW, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose } from "./lumo";
+import {
+  LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose,
+} from "./lumo";
 import { drawOutfitBehind, drawOutfitFront, makeHead } from "./outfits";
 import type { Outfit } from "./wardrobe";
 
@@ -64,10 +66,10 @@ interface Particle {
 
 // ── Constants (MochiConst / PISTES.mochi) ─────────────────────────────────────
 
-const EYE_W = 0.25;
-const EYE_H = 0.27;
-const EYE_SP = 0.37;
-const EYE_P = -0.12;
+const EYE_W = LUMO_EYE.w;
+const EYE_H = LUMO_EYE.h;
+const EYE_SP = LUMO_EYE.spread;
+const EYE_P = LUMO_EYE.pitch;
 const BASE_TOP: RGB = LUMO_TOP;
 const BASE_BOTTOM: RGB = LUMO_BOTTOM;
 const INK = "rgb(26,20,18)"; // #1A1412
@@ -717,8 +719,8 @@ export class BotEngine {
    */
   draw(x: CanvasRenderingContext2D, W: number, H: number) {
     const R = W * 0.3;
-    const rx = R * 1.14;
-    const ry = R * 0.88;
+    const rx = R * LUMO_RX;
+    const ry = R * LUMO_RY;
     const cx = W / 2 + this.ox * R;
     const cy = H / 2 + this.particleOverhang / 2 + this.oy * R + R * 0.06;
 
@@ -802,7 +804,7 @@ export class BotEngine {
 
   private bodyPath(rx: number, ry: number, R: number): Path2D {
     const n = 72;
-    const expN = 2.0 / 2.7;
+    const expN = 2.0 / LUMO_EXP;
     const tw = R * 1.0;
     const th = R * 0.94;
     const tr = R * 0.42;
