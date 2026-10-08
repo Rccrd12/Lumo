@@ -280,6 +280,27 @@ kept on this computer only, 40 at most. The paperclip in the text field opens
 the file picker: with Claude Code the file joins the conversation, with the
 other providers it starts a new chat, as a drop does.
 
+### Show the chat your screen
+
+The screen button next to the paperclip lets the assistant see what you have
+open, only when you ask. Its menu offers **Open windows** (the titles and app
+names of your visible windows, the one you were in marked as active), one
+**Screen 1**, **Screen 2**… entry per display, and **All screens** when there
+are several. Nothing is listed or captured until you click an entry, and never
+in the background. A screenshot (one PNG per display, scaled down to 1568 px on
+its long edge) shows first with **Send** and **Cancel**: Cancel deletes it, Send
+adds it to the chat, with the question already typed if there is one. The window
+list shows as a chip you can remove before sending. Either goes with your next
+question only. Screenshots are saved only in the inbox
+(`%LOCALAPPDATA%\Coucou\inbox`), like dropped files, and are deleted after a
+week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
+
+Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
+and OpenRouter receive them as images; the local model servers take the window
+list only. Claude Code is told to ask you to press the screen button when it
+needs to see something, never to capture the screen itself. On Linux the button
+says it isn't available yet.
+
 ## GitHub
 
 With a token in **Settings… → Integrations → GitHub** — a classic token with
@@ -572,6 +593,8 @@ What changes on Linux:
   shorter `$PATH` than your shell.
 - **Mochi's greeting** uses the full name in your account's GECOS field
   (`chfn` sets it); without one the chat stays neutral.
+- **The chat's screen button** (open windows, screenshots) isn't available yet:
+  its menu says so, and nothing is listed or captured.
 - **Files**: preferences in `~/.config/coucou/`, the log at
   `~/.local/share/coucou/coucou.log`, the weekly recap history beside it in
   `recap.json`. A saved recap image goes to the pictures folder named in

@@ -5,17 +5,25 @@
 // answer: Rust sends `chat-delta` events with the text visible so far. The
 // model name above the text field opens the picker: provider chips, then the
 // models of the chosen provider, asked for only once it is picked.
+//
+// The screen button next to the paperclip adds what is on the user's screen,
+// only when they ask: "Open windows" (titles and app names) or a screenshot of
+// one display or all of them, shown first with Send / Cancel (core/screen.ts).
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { renderMarkdown } from "./markdown";
-import { Bridge, onEvent, type ChatContext, type ModelInfo } from "../core/bridge";
+import { Bridge, onEvent, type ChatContext, type ModelInfo, type ScreenDisplay, type ScreenShot } from "../core/bridge";
 import {
   EFFORTS, activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
+import {
+  SCREEN_STRINGS, emptyScreen, entryLabel, hasScreen, keepShots, menuEntries, screenChips, screenLabel,
+  screenPayload, seesImages, shotPaths, type MenuEntry,
+} from "../core/screen";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -33,6 +41,7 @@ const STRINGS = {
   noPastChats: N_("No past chats yet."),
   deleteChat: N_("Delete this chat"),
   attach: N_("Attach a file"),
+  cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
 };
@@ -69,6 +78,20 @@ function typingDots(): HTMLElement {
 function contextChip(label: string): HTMLElement {
   const chip = h("div", { class: "chip" }, h("i", { class: "chip-dot" }), h("span", { text: label }));
   requestAnimationFrame(() => chip.classList.add("settled"));
+  return chip;
+}
+
+/** A chip for what the screen button added, with a way to take it back before it is sent. */
+function screenChip(label: string, title: string, onRemove: () => void): HTMLElement {
+  const chip = contextChip(label);
+  chip.classList.add("screen-chip");
+  chip.setAttribute("title", title);
+  const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onRemove();
+  });
+  chip.append(remove);
   return chip;
 }
 
@@ -253,7 +276,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   }) as HTMLInputElement;
   const send = h("button", { class: "send-btn", title: tl(STRINGS.send) }, svg(ICONS.arrowUp, 11));
   const attachBtn = h("button", { class: "tool-btn", title: tl(STRINGS.attach) }, svg(ICONS.paperclip, 13, { stroke: 1.8 }));
-  const bar = h("div", { class: "chat-bar" }, attachBtn, input, send);
+  const screenBtn = h("button", { class: "tool-btn screen-btn", title: tl(SCREEN_STRINGS.button) }, svg(ICONS.display, 13, { stroke: 1.8 }));
+  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, input, send);
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -271,27 +295,40 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
     body.classList.toggle("picking", picker.isOpen);
-    if (picker.isOpen) closeHistory();
+    if (picker.isOpen) {
+      closeHistory();
+      closeScreen();
+    }
     panelChanged();
     drawModelButton();
   });
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || body.classList.contains("browsing");
+    const open = picker.isOpen || body.classList.contains("browsing") || body.classList.contains("screening");
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
   }
   const historyList = h("div", { class: "picker-list" });
   const historyEl = h("div", { class: "picker history" }, h("div", { class: "picker-title", text: t(STRINGS.pastChats) }), historyList);
-  body.append(chipRow, log, picker.el, historyEl, modelRow, bar);
+  // The screen button's menu, then the preview of a screenshot.
+  const screenTitle = h("div", { class: "picker-title" });
+  const screenList = h("div", { class: "picker-list" });
+  const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
+  body.append(chipRow, log, picker.el, historyEl, screenEl, modelRow, bar);
 
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
   let renderedCount = -1;
+  /** What the screen button added, waiting for the next question. */
+  let screen = emptyScreen();
+  /** Screenshots taken and shown, not yet kept or cancelled. */
+  let preview: ScreenShot[] | null = null;
+  /** Bumped when the panel closes, so a late answer is dropped (and its screenshots deleted). */
+  let screenTicket = 0;
   // A local model answers token by token: where its text so far is shown.
   let live: HTMLElement | null = null;
 
@@ -311,6 +348,150 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     body.classList.remove("browsing");
     historyBtn.classList.remove("open");
     panelChanged();
+  }
+
+  // ── Screen button ─────────────────────────────────────────────────────────
+  //
+  // Opening the menu only asks which displays there are. A window list or a
+  // screenshot is made when its entry is clicked, never before; a screenshot
+  // is previewed and joins the chat only on Send. Cancel deletes it.
+
+  /** Forgets the screenshots that were not sent, and deletes them. */
+  function dropShots(paths: string[]) {
+    if (paths.length > 0) void Bridge.screenDiscard(paths);
+  }
+
+  function closeScreen() {
+    if (!body.classList.contains("screening")) return;
+    screenTicket++;
+    if (preview) dropShots(preview.map((s) => s.path));
+    preview = null;
+    body.classList.remove("screening");
+    screenBtn.classList.remove("open");
+    panelChanged();
+  }
+
+  /** Forgets what the screen button added and was not sent yet (a new chat, the chip's ×). */
+  function clearScreen(kind?: "windows" | "shots") {
+    if (kind !== "windows") {
+      dropShots(shotPaths(screen));
+      screen = { ...screen, shots: [] };
+    }
+    if (kind !== "shots") screen = { ...screen, windows: null };
+  }
+
+  function screenStatus(text: string) {
+    screenList.append(h("div", { class: "picker-status", text }));
+  }
+
+  function openScreen() {
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    body.classList.add("screening");
+    screenBtn.classList.add("open");
+    panelChanged();
+    void drawScreenMenu();
+  }
+
+  async function drawScreenMenu() {
+    const ticket = ++screenTicket;
+    screenTitle.textContent = t(SCREEN_STRINGS.title);
+    clear(screenList);
+    let displays: ScreenDisplay[] = [];
+    let problem = "";
+    try {
+      displays = await Bridge.screenDisplays();
+    } catch (err) {
+      problem = String(err).replace(/^Error:\s*/, "");
+    }
+    if (ticket !== screenTicket) return;
+    clear(screenList);
+    const images = seesImages(providerDef(State.settings.chatProvider));
+    for (const entry of menuEntries(displays)) {
+      const shot = entry.kind !== "windows";
+      const row = h(
+        "button",
+        { class: "picker-model screen-entry", disabled: shot && !images },
+        h("span", { class: "picker-model-name", text: entryLabel(entry) }),
+        entry.kind === "display" ? h("span", { class: "history-date", text: `${entry.width} × ${entry.height}` }) : null,
+      );
+      if (!shot || images) row.addEventListener("click", () => void pickEntry(entry));
+      screenList.append(row);
+    }
+    if (problem) screenStatus(problem);
+    else if (displays.length > 0 && !images) screenStatus(t(SCREEN_STRINGS.needsImages));
+    screenStatus(t(SCREEN_STRINGS.nothingYet));
+  }
+
+  async function pickEntry(entry: MenuEntry) {
+    if (sending) return;
+    const ticket = ++screenTicket;
+    clear(screenList);
+    if (entry.kind === "windows") {
+      try {
+        const list = await Bridge.screenWindows();
+        if (ticket !== screenTicket) return;
+        screen = { ...screen, windows: list };
+        closeScreen();
+        Sound.play("attach");
+        State.notify();
+        input.focus();
+      } catch (err) {
+        if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
+      }
+      return;
+    }
+    screenStatus(t(SCREEN_STRINGS.capturing));
+    let shots: ScreenShot[];
+    try {
+      shots = await Bridge.screenCapture(entry.kind === "display" ? entry.index : null);
+    } catch (err) {
+      if (ticket !== screenTicket) return;
+      clear(screenList);
+      screenStatus(String(err).replace(/^Error:\s*/, ""));
+      return;
+    }
+    if (ticket !== screenTicket) {
+      dropShots(shots.map((s) => s.path)); // the panel was closed meanwhile
+      return;
+    }
+    preview = shots;
+    drawPreview(shots);
+  }
+
+  function drawPreview(shots: ScreenShot[]) {
+    screenTitle.textContent = t(SCREEN_STRINGS.confirm);
+    clear(screenList);
+    const row = h("div", { class: "screen-shots" });
+    for (const s of shots) {
+      row.append(
+        h(
+          "figure",
+          { class: "screen-shot" },
+          h("img", { src: s.preview, alt: screenLabel(s.display) }),
+          h("figcaption", { text: screenLabel(s.display) }),
+        ),
+      );
+    }
+    const keep = h("button", { class: "btn primary", text: t(STRINGS.send) });
+    const cancel = h("button", { class: "btn secondary", text: t(STRINGS.cancel) });
+    keep.addEventListener("click", () => {
+      if (!preview) return;
+      screen = keepShots(screen, preview);
+      preview = null; // kept: closing must not delete them
+      closeScreen();
+      Sound.play("attach");
+      State.notify();
+      // A question already typed goes with it right away.
+      if (input.value.trim()) void submit();
+      else input.focus();
+    });
+    cancel.addEventListener("click", () => {
+      closeScreen(); // deletes the previewed screenshots
+      Sound.play("pop");
+      input.focus();
+    });
+    screenList.append(row, h("div", { class: "screen-actions" }, cancel, keep));
   }
 
   function drawHistory() {
@@ -347,6 +528,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     State.chatSession = c.session;
     State.droppedFile = null;
     State.promptContext = null;
+    closeScreen();
+    clearScreen();
     void Bridge.chatRestore(c.turns, c.session);
     closeHistory();
     Sound.play("blip");
@@ -361,6 +544,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     State.startChat();
     State.droppedFile = null;
     State.promptContext = null;
+    closeScreen();
+    clearScreen();
     void Bridge.chatReset();
     if (picker.isOpen) picker.close();
     closeHistory();
@@ -414,6 +599,11 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
   newBtn.addEventListener("click", newChat);
   attachBtn.addEventListener("click", () => void attach());
+  screenBtn.addEventListener("click", () => {
+    if (sending) return;
+    if (body.classList.contains("screening")) closeScreen();
+    else openScreen();
+  });
   historyBtn.addEventListener("click", () => {
     if (sending) return;
     if (body.classList.contains("browsing")) {
@@ -421,6 +611,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
       return;
     }
     if (picker.isOpen) picker.close();
+    closeScreen();
     drawHistory();
     body.classList.add("browsing");
     historyBtn.classList.add("open");
@@ -449,6 +640,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     if (!query || sending) return;
     if (picker.isOpen) picker.close();
     closeHistory();
+    closeScreen();
     input.value = "";
     sending = true;
     drawModelButton();
@@ -462,11 +654,15 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     // The file goes with the first question asked after it was added, once.
     const file = State.droppedFile;
     const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
+    // So does what the screen button added: once, then the chip goes.
+    const shared = screen;
+    const screenContext = screenPayload(shared);
 
     try {
-      const reply = await Bridge.chatSend(query, context);
+      const reply = await Bridge.chatSend(query, context, screenContext);
       State.chatHistory.push({ id: nextId++, role: "assistant", content: reply.text });
       if (file) file.sent = true;
+      if (screen === shared) screen = emptyScreen();
       if (reply.session) State.chatSession = reply.session;
       remember();
       State.stateOverride = null;
@@ -496,6 +692,9 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     } else if (key === "Escape" && picker.isOpen) {
       e.preventDefault();
       picker.close();
+    } else if (key === "Escape" && body.classList.contains("screening")) {
+      e.preventDefault();
+      closeScreen();
     }
     e.stopPropagation(); // Escape closes the island, not the chat
   });
@@ -505,10 +704,22 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     sync() {
       const file = State.droppedFile;
       const wantChip = file?.name ?? "";
-      if (chipRow.dataset.label !== wantChip) {
-        chipRow.dataset.label = wantChip;
+      const extra = hasScreen(screen) ? screenChips(screen) : [];
+      const chipKey = [wantChip, ...extra.map((c) => `${c.label}\t${c.title}`)].join("\n");
+      if (chipRow.dataset.label !== chipKey) {
+        chipRow.dataset.label = chipKey;
         clear(chipRow);
         if (wantChip) chipRow.append(contextChip(wantChip));
+        for (const c of extra) {
+          chipRow.append(
+            screenChip(c.label, c.title, () => {
+              if (sending) return;
+              clearScreen(c.kind);
+              Sound.play("pop");
+              State.notify();
+            }),
+          );
+        }
       }
 
       const thinking = State.stateOverride === "thinking";
@@ -523,10 +734,14 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
       // Leaving the chat folds the picker away.
       if (State.view !== "prompt" && picker.isOpen) picker.close();
-      if (State.view !== "prompt") closeHistory();
+      if (State.view !== "prompt") {
+        closeHistory();
+        closeScreen();
+      }
       newBtn.disabled = sending;
       historyBtn.disabled = sending;
       attachBtn.disabled = sending;
+      screenBtn.disabled = sending;
       drawModelButton();
 
       input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);

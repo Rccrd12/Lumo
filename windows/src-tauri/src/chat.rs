@@ -12,6 +12,7 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
+use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
 use crate::{claude, claude_code, local_chat, openai_compat, secrets};
 
@@ -228,25 +229,58 @@ fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
         && std::fs::symlink_metadata(&file).map(|m| m.is_file()).unwrap_or(false)
 }
 
-/// One chat turn with the provider chosen in the settings.
+/// Screenshots ride along only from the inbox, where screen.rs writes them —
+/// the same rule as a dropped file.
+fn checked_screen(screen: ScreenContext) -> Result<ScreenContext, String> {
+    let inbox = crate::files::inbox_dir();
+    if screen.shots.iter().any(|s| !is_inside(&inbox, std::path::Path::new(&s.path))) {
+        return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
+    }
+    Ok(screen)
+}
+
+/// Who can look at a screenshot: Claude Code reads it from the inbox, the
+/// Anthropic API and the OpenAI-compatible clouds take it as an image. The
+/// local model servers get text only.
+fn sees_images(provider: &str) -> bool {
+    provider.is_empty() || provider == ANTHROPIC || provider == claude_code::PROVIDER || openai_compat::provider(provider).is_some()
+}
+
+/// The question with the screen context in front of it, and the screenshots
+/// to send as images (none for Claude Code, which is given their paths).
+fn with_screen(provider: &str, screen: Option<&ScreenContext>, query: String) -> Result<(String, Vec<String>), String> {
+    let Some(screen) = screen.filter(|s| !s.is_empty()) else { return Ok((query, Vec::new())) };
+    if !screen.shots.is_empty() && !sees_images(provider) {
+        return Err(crate::i18n::t("Screenshots need the Claude Code or Anthropic provider."));
+    }
+    let cli = provider == claude_code::PROVIDER;
+    let images = if cli { Vec::new() } else { screen.shots.iter().map(|s| s.path.clone()).collect() };
+    Ok((format!("{}{query}", screen::context_text(screen, cli)), images))
+}
+
+/// One chat turn with the provider chosen in the settings. `screen` is what
+/// the user added from the screen button, sent with this question only.
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     settings: &Settings,
     query: String,
     context: Option<ChatContext>,
+    screen: Option<ScreenContext>,
 ) -> Result<ChatReply, String> {
     let context = context.map(checked_context).transpose()?;
+    let screen = screen.map(checked_screen).transpose()?;
     let provider = settings.chat_provider.as_str();
     let model = model_for(settings, provider);
+    let (query, images) = with_screen(provider, screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
-        return claude::send(chat, &model, query, context).await;
+        return claude::send(chat, &model, query, context, &images).await;
     }
     if provider == claude_code::PROVIDER {
         return claude_code::send(app, chat, &model, &settings.chat_effort, query, context).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
-        return openai_compat::send(chat, p, &model, query, context).await;
+        return openai_compat::send(chat, p, &model, query, context, &images).await;
     }
     if let Some(server) = local_chat::server(settings, provider) {
         return local_chat::send(app, chat, &server, &model, query, context).await;
@@ -391,6 +425,47 @@ mod tests {
         assert_eq!(model_for(&s, "openai"), "gpt-x");
         assert_eq!(model_for(&s, "ollama"), "llama3.2");
         assert_eq!(model_for(&s, "anthropic"), "claude-haiku-4-5");
+    }
+
+    #[test]
+    fn the_screen_goes_in_front_of_the_question_as_paths_images_or_a_refusal() {
+        use crate::screen::{ShotRef, WindowInfo};
+        let screen = ScreenContext {
+            windows: vec![WindowInfo { title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
+            shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
+        };
+        let (q, images) = with_screen("claude-code", Some(&screen), "what is this?".into()).unwrap();
+        assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"));
+        assert!(q.contains("- Docs — msedge (active)"));
+        assert!(q.ends_with("what is this?"));
+        assert!(images.is_empty(), "Claude Code reads the file itself");
+
+        for provider in ["anthropic", "openai", "google", "openrouter"] {
+            let (q, images) = with_screen(provider, Some(&screen), "q".into()).unwrap();
+            assert_eq!(images, vec!["/inbox/s1.png".to_string()], "{provider}");
+            assert!(!q.contains("/inbox/s1.png"));
+            assert!(q.contains("(attached: Screen 1)"));
+        }
+
+        assert_eq!(
+            with_screen("ollama", Some(&screen), "q".into()).unwrap_err(),
+            "Screenshots need the Claude Code or Anthropic provider."
+        );
+        // The window list alone is text: every provider takes it.
+        let windows_only = ScreenContext { shots: vec![], ..screen.clone() };
+        let (q, images) = with_screen("ollama", Some(&windows_only), "q".into()).unwrap();
+        assert!(q.starts_with("Windows open on the user's computer") && q.ends_with("q") && images.is_empty());
+
+        assert_eq!(with_screen("openai", None, "q".into()).unwrap(), ("q".to_string(), vec![]));
+        assert_eq!(with_screen("ollama", Some(&ScreenContext::default()), "q".into()).unwrap(), ("q".to_string(), vec![]));
+    }
+
+    #[test]
+    fn only_screenshots_in_the_inbox_ride_along() {
+        use crate::screen::ShotRef;
+        let outside = ScreenContext { windows: vec![], shots: vec![ShotRef { name: "x".into(), path: "/etc/passwd".into() }] };
+        assert!(checked_screen(outside).is_err());
+        assert!(checked_screen(ScreenContext::default()).is_ok());
     }
 
     #[test]

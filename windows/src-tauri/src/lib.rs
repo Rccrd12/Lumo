@@ -22,6 +22,7 @@ mod openai_compat;
 mod pipe;
 mod platform;
 mod recap;
+mod screen;
 mod secrets;
 mod session_window;
 mod settings;
@@ -527,9 +528,10 @@ async fn chat_send(
     chat: State<'_, Chat>,
     query: String,
     context: Option<ChatContext>,
+    screen: Option<screen::ScreenContext>,
 ) -> Result<ChatReply, String> {
     let settings = shared.settings.lock().unwrap().clone();
-    chat::send(&app, &chat, &settings, query, context).await
+    chat::send(&app, &chat, &settings, query, context, screen).await
 }
 
 /// The models a provider offers, for the picker in the chat view. Only asked
@@ -584,6 +586,48 @@ async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
     let path = picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
     files::allow_dropped([path.clone()]);
     files::ingest(&path).map(Some)
+}
+
+// ── The chat's screen button ──────────────────────────────────────────────────
+//
+// Each of these runs only when the user clicks its entry in the menu
+// (screen.rs): nothing is listed or captured in the background.
+
+/// The displays, for the menu's "Screen 1", "Screen 2"… entries. Captures nothing.
+#[tauri::command]
+async fn screen_displays() -> Result<Vec<screen::Display>, String> {
+    tauri::async_runtime::spawn_blocking(screen::displays).await.map_err(|e| e.to_string())?
+}
+
+/// "Open windows": titles and app names of the visible windows.
+#[tauri::command]
+async fn screen_windows() -> Result<Vec<screen::WindowInfo>, String> {
+    tauri::async_runtime::spawn_blocking(screen::windows).await.map_err(|e| e.to_string())?
+}
+
+/// A screenshot of one display (`display`, from 0) or all of them, into the
+/// inbox, with a preview for the island to show before anything is sent. The
+/// island keeps itself out of the picture meanwhile (Windows 10 2004 and later:
+/// content protection, which Coucou never uses otherwise).
+#[tauri::command]
+async fn screen_capture(app: AppHandle, display: Option<usize>) -> Result<Vec<screen::Shot>, String> {
+    let island = app.get_webview_window(island::WINDOW_LABEL);
+    let hidden = cfg!(windows) && island.as_ref().is_some_and(|w| w.set_content_protected(true).is_ok());
+    let shots = tauri::async_runtime::spawn_blocking(move || screen::capture(display, hidden))
+        .await
+        .map_err(|e| e.to_string());
+    if hidden {
+        if let Some(w) = &island {
+            let _ = w.set_content_protected(false);
+        }
+    }
+    shots?
+}
+
+/// Cancel in the preview: the screenshots are deleted from the inbox.
+#[tauri::command]
+fn screen_discard(paths: Vec<String>) {
+    screen::discard(&paths);
 }
 
 /// Copies a dropped file into the inbox and reports its name back.
@@ -811,6 +855,10 @@ pub fn run() {
             island_reset_size,
             island_recenter,
             pick_file,
+            screen_displays,
+            screen_windows,
+            screen_capture,
+            screen_discard,
             ingest_file,
             secret_present,
             secret_set,

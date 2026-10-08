@@ -130,9 +130,12 @@ export const Bridge = {
   approvalDecline: (requestId: string) => call<void>("approval_decline", { requestId }),
 
   // ── Chat, files, secrets ──────────────────────────────────────────────────
-  /** One chat turn. The API key and any file bytes never leave Rust. */
-  chatSend: (query: string, context: ChatContext | null) =>
-    callOrThrow<{ text: string; session?: string }>("chat_send", { query, context }),
+  /**
+   * One chat turn. The API key and any file bytes never leave Rust. `screen`
+   * is what the user added from the screen button, sent with this turn only.
+   */
+  chatSend: (query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
+    callOrThrow<{ text: string; session?: string }>("chat_send", screen ? { query, context, screen } : { query, context }),
   chatReset: () => call<void>("chat_reset"),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
   islandDrag: () => call<void>("island_drag"),
@@ -147,6 +150,15 @@ export const Bridge = {
     call<void>("chat_restore", { turns, session }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: () => callOrThrow<DroppedFile | null>("pick_file"),
+  // The chat's screen button (screen.rs). Each runs on the user's click only.
+  /** The displays, for the menu. Captures nothing. */
+  screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),
+  /** Titles and app names of the open windows, front to back. */
+  screenWindows: () => callOrThrow<OpenWindow[]>("screen_windows"),
+  /** Screenshots of one display (from 0) or all (null), saved in the inbox, with a preview. */
+  screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
+  /** Deletes screenshots the user did not keep. */
+  screenDiscard: (paths: string[]) => call<void>("screen_discard", { paths }),
   /**
    * The models a provider offers, for the picker in the chat view. Rust asks
    * the provider only when it has a key (or a server address).
@@ -256,6 +268,39 @@ export interface IntegrationUpdate {
 export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
+
+/** A display the screen button can capture; `index` is its place in the menu. */
+export interface ScreenDisplay {
+  index: number;
+  width: number;
+  height: number;
+  primary: boolean;
+}
+
+/** One open window: its title and the app it belongs to. */
+export interface OpenWindow {
+  title: string;
+  app: string;
+  /** The window the user was in. */
+  active: boolean;
+  minimized: boolean;
+}
+
+/** A screenshot in the inbox; `preview` is a data URL of it. */
+export interface ScreenShot {
+  display: number;
+  name: string;
+  path: string;
+  width: number;
+  height: number;
+  preview: string;
+}
+
+/** What the screen button adds to the next question. */
+export interface ScreenContext {
+  windows: OpenWindow[];
+  shots: { name: string; path: string }[];
+}
 
 export interface ModelInfo {
   id: string;
