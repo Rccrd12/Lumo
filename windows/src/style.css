@@ -1599,6 +1599,91 @@ input[type="range"]::-webkit-slider-thumb {
   transform: scale(0.94);
 }
 
+/* ── Screen button: menu, preview, chips (views/chat.ts) ─────────────────── */
+
+.chat-body .screen-panel {
+  display: none;
+}
+
+.chat-body.screening .screen-panel {
+  display: flex;
+}
+
+.chat-body.screening .chat-log,
+.chat-body.screening .chip-row {
+  display: none;
+}
+
+.screen-entry:disabled {
+  opacity: 0.4;
+}
+
+.screen-entry:disabled:hover {
+  background: transparent;
+}
+
+.screen-shots {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.screen-shot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.screen-shot img {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  align-self: center;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.screen-shot figcaption {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  text-align: center;
+}
+
+.screen-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chip + .chip {
+  margin-left: 6px;
+}
+
+.chip-remove {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.chip-remove:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
 /* ── Drop zone ──────────────────────────────────────────────────────────── */
 
 .drop-card {

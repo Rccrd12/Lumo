@@ -3789,6 +3789,160 @@
    "pt-BR": "Arraste uma borda ou um canto da ilha aberta para redimensioná-la. Um clique duplo nele volta ao tamanho normal.",
    "ru": "Потяните за край или угол открытого острова, чтобы изменить его размер. Двойной щелчок возвращает обычный размер.",
    "id": "Seret tepi atau sudut pulau yang terbuka untuk mengubah ukurannya. Klik dua kali untuk kembali ke ukuran biasa."
+  },
+  "Share your screen or open windows": {
+   "zh-Hans": "分享你的屏幕或打开的窗口",
+   "hi": "अपनी स्क्रीन या खुली विंडो साझा करें",
+   "es": "Compartir tu pantalla o las ventanas abiertas",
+   "ar": "شارك شاشتك أو النوافذ المفتوحة",
+   "fr": "Partager votre écran ou les fenêtres ouvertes",
+   "bn": "আপনার স্ক্রিন বা খোলা উইন্ডো শেয়ার করুন",
+   "pt-BR": "Compartilhar sua tela ou as janelas abertas",
+   "ru": "Показать экран или открытые окна",
+   "id": "Bagikan layar atau jendela yang terbuka"
+  },
+  "Share with the chat": {
+   "zh-Hans": "分享到聊天",
+   "hi": "चैट के साथ साझा करें",
+   "es": "Compartir con el chat",
+   "ar": "شارك مع المحادثة",
+   "fr": "Partager avec le chat",
+   "bn": "চ্যাটে শেয়ার করুন",
+   "pt-BR": "Compartilhar com o chat",
+   "ru": "Поделиться с чатом",
+   "id": "Bagikan ke obrolan"
+  },
+  "Open windows": {
+   "zh-Hans": "打开的窗口",
+   "hi": "खुली विंडो",
+   "es": "Ventanas abiertas",
+   "ar": "النوافذ المفتوحة",
+   "fr": "Fenêtres ouvertes",
+   "bn": "খোলা উইন্ডো",
+   "pt-BR": "Janelas abertas",
+   "ru": "Открытые окна",
+   "id": "Jendela yang terbuka"
+  },
+  "Open windows ({count})": {
+   "zh-Hans": "打开的窗口（{count}）",
+   "hi": "खुली विंडो ({count})",
+   "es": "Ventanas abiertas ({count})",
+   "ar": "النوافذ المفتوحة ({count})",
+   "fr": "Fenêtres ouvertes ({count})",
+   "bn": "খোলা উইন্ডো ({count})",
+   "pt-BR": "Janelas abertas ({count})",
+   "ru": "Открытые окна ({count})",
+   "id": "Jendela yang terbuka ({count})"
+  },
+  "Screen {number}": {
+   "zh-Hans": "屏幕 {number}",
+   "hi": "स्क्रीन {number}",
+   "es": "Pantalla {number}",
+   "ar": "الشاشة {number}",
+   "fr": "Écran {number}",
+   "bn": "স্ক্রিন {number}",
+   "pt-BR": "Tela {number}",
+   "ru": "Экран {number}",
+   "id": "Layar {number}"
+  },
+  "All screens": {
+   "zh-Hans": "所有屏幕",
+   "hi": "सभी स्क्रीन",
+   "es": "Todas las pantallas",
+   "ar": "كل الشاشات",
+   "fr": "Tous les écrans",
+   "bn": "সব স্ক্রিন",
+   "pt-BR": "Todas as telas",
+   "ru": "Все экраны",
+   "id": "Semua layar"
+  },
+  "Nothing is captured until you pick one.": {
+   "zh-Hans": "在你选择之前，不会截取任何内容。",
+   "hi": "जब तक आप कोई एक नहीं चुनते, कुछ भी कैप्चर नहीं होता।",
+   "es": "No se captura nada hasta que elijas una opción.",
+   "ar": "لا يُلتقط أي شيء حتى تختار أحدها.",
+   "fr": "Rien n'est capturé tant que vous n'avez pas choisi.",
+   "bn": "আপনি একটি বেছে না নেওয়া পর্যন্ত কিছুই ক্যাপচার হয় না।",
+   "pt-BR": "Nada é capturado até você escolher uma opção.",
+   "ru": "Ничего не снимается, пока вы не выберете пункт.",
+   "id": "Tidak ada yang diambil sampai Anda memilih salah satu."
+  },
+  "Taking the screenshot…": {
+   "zh-Hans": "正在截图…",
+   "hi": "स्क्रीनशॉट लिया जा रहा है…",
+   "es": "Haciendo la captura…",
+   "ar": "جارٍ التقاط لقطة الشاشة…",
+   "fr": "Capture en cours…",
+   "bn": "স্ক্রিনশট নেওয়া হচ্ছে…",
+   "pt-BR": "Capturando a tela…",
+   "ru": "Делаю снимок экрана…",
+   "id": "Mengambil tangkapan layar…"
+  },
+  "Send this to the chat?": {
+   "zh-Hans": "要把这个发送到聊天吗？",
+   "hi": "इसे चैट में भेजें?",
+   "es": "¿Enviar esto al chat?",
+   "ar": "هل تريد إرسال هذا إلى المحادثة؟",
+   "fr": "Envoyer ceci dans le chat ?",
+   "bn": "এটি চ্যাটে পাঠাবেন?",
+   "pt-BR": "Enviar isto para o chat?",
+   "ru": "Отправить это в чат?",
+   "id": "Kirim ini ke obrolan?"
+  },
+  "Screenshots need the Claude Code or Anthropic provider.": {
+   "zh-Hans": "截图需要使用 Claude Code 或 Anthropic 提供方。",
+   "hi": "स्क्रीनशॉट के लिए Claude Code या Anthropic प्रदाता चाहिए।",
+   "es": "Las capturas de pantalla necesitan el proveedor Claude Code o Anthropic.",
+   "ar": "تتطلب لقطات الشاشة مزوّد Claude Code أو Anthropic.",
+   "fr": "Les captures d'écran nécessitent le fournisseur Claude Code ou Anthropic.",
+   "bn": "স্ক্রিনশটের জন্য Claude Code বা Anthropic প্রোভাইডার প্রয়োজন।",
+   "pt-BR": "Capturas de tela precisam do provedor Claude Code ou Anthropic.",
+   "ru": "Для снимков экрана нужен провайдер Claude Code или Anthropic.",
+   "id": "Tangkapan layar memerlukan penyedia Claude Code atau Anthropic."
+  },
+  "Not available on Linux yet.": {
+   "zh-Hans": "Linux 上暂不可用。",
+   "hi": "Linux पर अभी उपलब्ध नहीं है।",
+   "es": "Aún no está disponible en Linux.",
+   "ar": "غير متاح على Linux بعد.",
+   "fr": "Pas encore disponible sous Linux.",
+   "bn": "Linux-এ এখনও উপলব্ধ নয়।",
+   "pt-BR": "Ainda não disponível no Linux.",
+   "ru": "Пока недоступно в Linux.",
+   "id": "Belum tersedia di Linux."
+  },
+  "Couldn't list the windows: {error}": {
+   "zh-Hans": "无法列出窗口：{error}",
+   "hi": "विंडो की सूची नहीं बन सकी: {error}",
+   "es": "No se pudieron listar las ventanas: {error}",
+   "ar": "تعذّر سرد النوافذ: {error}",
+   "fr": "Impossible de lister les fenêtres : {error}",
+   "bn": "উইন্ডোর তালিকা তৈরি করা যায়নি: {error}",
+   "pt-BR": "Não foi possível listar as janelas: {error}",
+   "ru": "Не удалось получить список окон: {error}",
+   "id": "Tidak dapat menampilkan daftar jendela: {error}"
+  },
+  "Couldn't take the screenshot: {error}": {
+   "zh-Hans": "无法截图：{error}",
+   "hi": "स्क्रीनशॉट नहीं लिया जा सका: {error}",
+   "es": "No se pudo hacer la captura: {error}",
+   "ar": "تعذّر التقاط لقطة الشاشة: {error}",
+   "fr": "Impossible de faire la capture d'écran : {error}",
+   "bn": "স্ক্রিনশট নেওয়া যায়নি: {error}",
+   "pt-BR": "Não foi possível capturar a tela: {error}",
+   "ru": "Не удалось сделать снимок экрана: {error}",
+   "id": "Tidak dapat mengambil tangkapan layar: {error}"
+  },
+  "That screen isn't connected anymore.": {
+   "zh-Hans": "该屏幕已断开连接。",
+   "hi": "वह स्क्रीन अब कनेक्ट नहीं है।",
+   "es": "Esa pantalla ya no está conectada.",
+   "ar": "لم تعد تلك الشاشة متصلة.",
+   "fr": "Cet écran n'est plus connecté.",
+   "bn": "সেই স্ক্রিনটি আর সংযুক্ত নেই।",
+   "pt-BR": "Essa tela não está mais conectada.",
+   "ru": "Этот экран больше не подключён.",
+   "id": "Layar itu sudah tidak terhubung."
   }
  }
 }

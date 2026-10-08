@@ -48,6 +48,7 @@ const MAX_CARRIED_CHARS: usize = 24_000;
 const APPEND_PROMPT: &str = "You are Mochi, the user's personal assistant, answering from the Coucou island at the top of their screen. \
 The chat window is small: answer in the user's language, keep answers focused, and use light Markdown (short paragraphs, lists, bold, code blocks), no tables or big headings. \
 When the user drops a file, its path is given in the message: read it from there. \
+You cannot see the user's screen or their open windows unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally.";
 
 /// The models Claude Code takes by alias. "default": whatever the user set in Claude Code.
@@ -390,6 +391,7 @@ mod tests {
         assert!(!a.contains(&"--model".to_string()));
         assert!(!a.contains(&"--resume".to_string()));
         assert!(!APPEND_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
+        assert!(APPEND_PROMPT.contains("press the screen button"), "Claude asks, never captures");
     }
 
     #[test]

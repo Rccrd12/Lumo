@@ -108,6 +108,28 @@ fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Valu
     }
 }
 
+/// Screenshots the user shared from the chat's screen button (screen.rs):
+/// image parts ahead of the message's text, on whichever turn they were added.
+fn with_images(mut user: Value, images: &[String]) -> Value {
+    let parts: Vec<Value> = images
+        .iter()
+        .filter_map(|path| match file_part(path) {
+            Some(FilePart::Image(part)) => Some(part),
+            _ => None,
+        })
+        .collect();
+    if parts.is_empty() {
+        return user;
+    }
+    let rest = match user["content"].take() {
+        Value::Array(items) => items,
+        Value::String(text) => vec![json!({ "type": "text", "text": text })],
+        other => vec![other],
+    };
+    user["content"] = Value::Array(parts.into_iter().chain(rest).collect());
+    user
+}
+
 fn request_body(p: &Provider, model: &str, system: &str, history: &[Value], user: &Value) -> Value {
     let mut messages = vec![json!({ "role": "system", "content": system })];
     messages.extend(history.iter().cloned());
@@ -158,13 +180,14 @@ pub async fn send(
     model: &str,
     query: String,
     context: Option<ChatContext>,
+    images: &[String],
 ) -> Result<ChatReply, String> {
     let key = secrets::get(p.key).ok_or_else(|| tf("{name} API key missing. Add it in Settings.", &[("name", p.name)]))?;
     if model.is_empty() {
         return Err(tf("Pick a {name} model above the chat box.", &[("name", p.name)]));
     }
     let turn = chat.begin(p.id);
-    let user = user_message(turn.first, context.as_ref(), &query);
+    let user = with_images(user_message(turn.first, context.as_ref(), &query), images);
     let body = request_body(p, model, &chat::system_prompt(false), &turn.history, &user);
 
     let endpoint = url(p, "chat/completions")?;
@@ -331,6 +354,33 @@ mod tests {
         let body = request_body(p("openai"), "gpt-5", "sys", &[], &user);
         assert_eq!(body["max_completion_tokens"], MAX_TOKENS);
         assert!(body.get("max_tokens").is_none());
+    }
+
+    #[test]
+    fn screenshots_go_ahead_of_the_text_on_any_turn() {
+        let dir = std::env::temp_dir().join(format!("coucou-oai-shots-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("screenshot-screen1.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
+        let shots = vec![png.to_string_lossy().to_string()];
+
+        let msg = with_images(user_message(false, None, "what's on screen?"), &shots);
+        let parts = msg["content"].as_array().unwrap();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[0]["type"], "image_url");
+        assert_eq!(parts[1], json!({"type":"text","text":"what's on screen?"}));
+
+        // A dropped picture and a screenshot: both images, then the text.
+        let ctx = ChatContext::File { name: "pic.png".into(), path: png.to_string_lossy().into() };
+        let msg = with_images(user_message(true, Some(&ctx), "compare"), &shots);
+        let kinds: Vec<&str> = msg["content"].as_array().unwrap().iter().map(|p| p["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, ["image_url", "image_url", "text"]);
+
+        // Nothing readable: the message is left as it was.
+        let plain = user_message(false, None, "q");
+        assert_eq!(with_images(plain.clone(), &["/no/such.png".into()]), plain);
+        assert_eq!(with_images(plain.clone(), &[]), plain);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
