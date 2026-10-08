@@ -70,8 +70,9 @@ Linux, update Coucou the way you installed it.
 | On the desktop: click / right-click / double-click Mochi | Poke him / the wardrobe / he flies home. Drag him to move him |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
-| Hold `Alt` and drag the island | Moves it anywhere on its display; it stays there. **Put the island back in the centre** (tray menu or Settings) brings it home |
-| Drag a side of the open island | Widens or narrows it, both sides together so it stays centred (560–1200 px). Dragging the bottom of the chat makes it taller. A double click on the edge puts it back |
+| Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
+| Power button at the top right of the open island | Quits Coucou (open it again from the Start menu) |
+| Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
@@ -546,9 +547,10 @@ What changes on Linux:
   window anywhere.
 - **Click-through** is the window's input region, kept equal to the island
   shape, so the compositor sends every other click to what is underneath.
-- **Moving and resizing the island** (`Alt` + drag, dragging its edges) follow
-  the cursor across the screen, which Linux does not give Coucou: the island
-  stays at the top centre at its usual width there. Zoom and icon size work.
+- **Moving, docking and resizing the island** (dragging its top bar, its
+  grips) follow the cursor across the screen, which Linux does not give
+  Coucou: the island stays at the top centre at its usual size there. Zoom and
+  icon size work.
 - **Mochi's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else. On the desktop, likewise,
   they follow it only while it is over him, and "the cursor is far away" (so

@@ -3471,17 +3471,6 @@
    "ru": "Вернуть остров в центр",
    "id": "Kembalikan pulau ke tengah"
   },
-  "Hold Alt and drag the island to move it.": {
-   "zh-Hans": "按住 Alt 拖动岛即可移动它。",
-   "hi": "आइलैंड को हिलाने के लिए Alt दबाकर उसे खींचें।",
-   "es": "Mantén Alt y arrastra la isla para moverla.",
-   "ar": "اضغط Alt مع السحب لتحريك الجزيرة.",
-   "fr": "Maintenez Alt et faites glisser l'île pour la déplacer.",
-   "bn": "আইল্যান্ড সরাতে Alt চেপে ধরে টেনে নিন।",
-   "pt-BR": "Segure Alt e arraste a ilha para movê-la.",
-   "ru": "Удерживайте Alt и перетащите остров, чтобы переместить его.",
-   "id": "Tahan Alt dan seret pulau untuk memindahkannya."
-  },
   "Icon size": {
    "zh-Hans": "图标大小",
    "hi": "आइकन का आकार",
@@ -3492,17 +3481,6 @@
    "pt-BR": "Tamanho dos ícones",
    "ru": "Размер значков",
    "id": "Ukuran ikon"
-  },
-  "Drag a side of the open island to widen it, or the bottom of the chat to make it taller. A double click puts it back.": {
-   "zh-Hans": "拖动展开的岛的侧边可以加宽，拖动聊天的底部可以加高。双击即可复原。",
-   "hi": "खुले आइलैंड का एक किनारा खींचकर उसे चौड़ा करें, या चैट का निचला हिस्सा खींचकर उसे ऊँचा करें। डबल क्लिक से वह पहले जैसा हो जाता है।",
-   "es": "Arrastra un lado de la isla abierta para ensancharla, o la parte inferior del chat para hacerlo más alto. Un doble clic la devuelve a su tamaño.",
-   "ar": "اسحب أحد جانبي الجزيرة المفتوحة لتوسيعها، أو أسفل المحادثة لزيادة ارتفاعها. النقر المزدوج يعيدها كما كانت.",
-   "fr": "Faites glisser un côté de l'île ouverte pour l'élargir, ou le bas du chat pour l'agrandir. Un double clic la remet comme avant.",
-   "bn": "খোলা আইল্যান্ডের একটি পাশ টেনে চওড়া করুন, বা চ্যাটের নিচের অংশ টেনে লম্বা করুন। ডাবল ক্লিকে আগের মতো হয়ে যায়।",
-   "pt-BR": "Arraste uma lateral da ilha aberta para alargá-la, ou a parte de baixo do chat para deixá-lo mais alto. Um clique duplo a deixa como antes.",
-   "ru": "Потяните за край открытого острова, чтобы расширить его, или за низ чата, чтобы сделать его выше. Двойной щелчок возвращает прежний размер.",
-   "id": "Seret sisi pulau yang terbuka untuk melebarkannya, atau bagian bawah obrolan untuk membuatnya lebih tinggi. Klik dua kali untuk mengembalikannya."
   },
   "No Windows release has been published yet.": {
    "zh-Hans": "尚未发布任何 Windows 版本。",
@@ -3789,6 +3767,28 @@
    "pt-BR": "O Coucou só procura atualizações quando você clica: nada é verificado em segundo plano.",
    "ru": "Coucou ищет обновления только по нажатию кнопки: в фоне ничего не проверяется.",
    "id": "Coucou hanya mencari pembaruan saat Anda mengeklik: tidak ada pemeriksaan di latar belakang."
+  },
+  "Drag the island by its top bar (or the closed island anywhere) to move it: let go near an edge of the screen and it docks there, upright on the sides, centred when you drop it near the middle.": {
+   "zh-Hans": "拖动岛的顶部栏（或收起时的任意位置）即可移动它：在屏幕边缘附近松开，它就会停靠在那里，在左右两侧竖直显示，在中间附近松开时会自动居中。",
+   "hi": "आइलैंड को हिलाने के लिए उसकी ऊपरी पट्टी (या बंद आइलैंड को कहीं से भी) खींचें: स्क्रीन के किसी किनारे के पास छोड़ें तो वह वहीं जुड़ जाता है, किनारों पर खड़ा होकर, और बीच के पास छोड़ने पर बीच में आ जाता है।",
+   "es": "Arrastra la isla por su barra superior (o la isla cerrada desde cualquier punto) para moverla: suéltala cerca de un borde de la pantalla y se acopla ahí, en vertical en los laterales y centrada si la sueltas cerca del medio.",
+   "ar": "اسحب الجزيرة من شريطها العلوي (أو الجزيرة المغلقة من أي مكان) لتحريكها: أفلتها قرب حافة الشاشة فتلتصق بها، عمودية على الجانبين، وفي المنتصف إن أفلتها قربه.",
+   "fr": "Faites glisser l'île par sa barre du haut (ou l'île fermée n'importe où) pour la déplacer : lâchez-la près d'un bord de l'écran et elle s'y accroche, debout sur les côtés, centrée si vous la lâchez près du milieu.",
+   "bn": "আইল্যান্ড সরাতে তার উপরের বার (বা বন্ধ আইল্যান্ডের যেকোনো জায়গা) টেনে নিন: স্ক্রিনের কোনো প্রান্তের কাছে ছাড়লে সেখানে লেগে যায়, পাশে খাড়া হয়ে, আর মাঝের কাছে ছাড়লে মাঝখানে বসে।",
+   "pt-BR": "Arraste a ilha pela barra de cima (ou a ilha fechada de qualquer ponto) para movê-la: solte perto de uma borda da tela e ela se encaixa ali, em pé nas laterais, centralizada se você soltar perto do meio.",
+   "ru": "Перетащите остров за верхнюю панель (а закрытый — за любое место), чтобы переместить его: отпустите у края экрана, и он прикрепится к нему, вертикально по бокам и по центру, если отпустить рядом с серединой.",
+   "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di dekat tepi layar dan pulau menempel di sana, tegak di sisi kiri dan kanan, dan ke tengah jika dilepas di dekat bagian tengah."
+  },
+  "Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.": {
+   "zh-Hans": "拖动展开的岛的边缘或角即可调整大小。双击即可恢复常规大小。",
+   "hi": "खुले आइलैंड का आकार बदलने के लिए उसका कोई किनारा या कोना खींचें। उस पर डबल क्लिक करने से सामान्य आकार लौट आता है।",
+   "es": "Arrastra un borde o una esquina de la isla abierta para cambiar su tamaño. Un doble clic devuelve el tamaño habitual.",
+   "ar": "اسحب حافة أو زاوية الجزيرة المفتوحة لتغيير حجمها. النقر المزدوج عليها يعيد الحجم المعتاد.",
+   "fr": "Faites glisser un bord ou un coin de l'île ouverte pour la redimensionner. Un double clic dessus remet la taille habituelle.",
+   "bn": "খোলা আইল্যান্ডের আকার বদলাতে তার একটি প্রান্ত বা কোণ টেনে নিন। তাতে ডাবল ক্লিক করলে স্বাভাবিক আকার ফিরে আসে।",
+   "pt-BR": "Arraste uma borda ou um canto da ilha aberta para redimensioná-la. Um clique duplo nele volta ao tamanho normal.",
+   "ru": "Потяните за край или угол открытого острова, чтобы изменить его размер. Двойной щелчок возвращает обычный размер.",
+   "id": "Seret tepi atau sudut pulau yang terbuka untuk mengubah ukurannya. Klik dua kali untuk kembali ke ukuran biasa."
   }
  }
 }

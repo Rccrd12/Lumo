@@ -978,10 +978,10 @@ function islandSection(): HTMLElement {
       icons,
     ),
     h("div", { class: "row" },
-      h("span", { class: "hint", text: t("Hold Alt and drag the island to move it.") }),
+      h("span", { class: "hint", text: t("Drag the island by its top bar (or the closed island anywhere) to move it: let go near an edge of the screen and it docks there, upright on the sides, centred when you drop it near the middle.") }),
     ),
     h("div", { class: "row" },
-      h("span", { class: "hint", text: t("Drag a side of the open island to widen it, or the bottom of the chat to make it taller. A double click puts it back.") }),
+      h("span", { class: "hint", text: t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.") }),
     ),
   );
 }
