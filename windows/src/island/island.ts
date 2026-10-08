@@ -773,6 +773,8 @@ export class Island {
     }
     window.addEventListener("mouseup", () => {
       this.resizing = false;
+      // Rust says where a moved island went; should it never say, put it down anyway.
+      if (this.moving) window.setTimeout(() => this.settleMove(), 2500);
       // A press on the closed island that never moved is a click.
       const press = this.pendingMove;
       this.pendingMove = null;
@@ -1302,7 +1304,7 @@ export class Island {
 
   /** Picked up: Rust carries the window; the island lifts and Mochi notices. */
   private startMove() {
-    if (this.moving) return;
+    if (this.moving || !this.canResize) return;
     this.moving = true;
     this.cancelBotHover();
     this.lift.springTo(1.04, 0.3, 0.6);
@@ -1329,6 +1331,14 @@ export class Island {
     this.moving = false;
     this.engine.triggerEmote("happy");
     Sound.play("pop");
+    this.ensureRunning();
+  }
+
+  /** Ends a move that never reported where it went. */
+  private settleMove() {
+    if (!this.moving) return;
+    this.moving = false;
+    this.lift.springTo(1, 0.45, 0.45);
     this.ensureRunning();
   }
 
