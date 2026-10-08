@@ -907,6 +907,19 @@ function generalSection(): HTMLElement {
     void save();
   });
 
+  // How big the island is drawn; Ctrl + / Ctrl − in the island do the same.
+  const size = h("select", {}) as HTMLSelectElement;
+  for (const pct of [80, 90, 100, 115, 130, 145, 160]) {
+    size.append(h("option", { value: String(pct / 100), text: `${pct} %` }));
+  }
+  const nearest = [...size.options].reduce((best, o) =>
+    Math.abs(Number(o.value) - settings.islandZoom) < Math.abs(Number(best.value) - settings.islandZoom) ? o : best);
+  size.value = nearest.value;
+  size.addEventListener("change", () => {
+    settings.islandZoom = Number(size.value);
+    void save();
+  });
+
   return h(
     "section",
     {},
@@ -924,6 +937,14 @@ function generalSection(): HTMLElement {
     h("div", { class: "row" },
       h("label", { text: t("Island lives on") }),
       screen,
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Island size") }),
+      size,
+      h("button", { text: t("Put the island back in the centre"), onclick: () => void Bridge.islandRecenter() }),
+    ),
+    h("div", { class: "row" },
+      h("span", { class: "hint", text: t("Hold Alt and drag the island to move it.") }),
     ),
     h("div", { class: "row" },
       h("label", { text: t("Launch at startup") }),

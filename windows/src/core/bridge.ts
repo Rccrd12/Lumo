@@ -134,6 +134,10 @@ export const Bridge = {
   chatSend: (query: string, context: ChatContext | null) =>
     callOrThrow<{ text: string; session?: string }>("chat_send", { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
+  islandDrag: () => call<void>("island_drag"),
+  /** Puts the island back at the top centre of its display. */
+  islandRecenter: () => call<void>("island_recenter"),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
   chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
     call<void>("chat_restore", { turns, session }),

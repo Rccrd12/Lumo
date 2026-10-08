@@ -5,7 +5,7 @@
 // centre of the main display inside a borderless, transparent, always-on-top
 // window that never takes focus.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::Duration;
 
@@ -22,6 +22,65 @@ pub const STRIP_W: f64 = 240.0;
 pub const STRIP_H: f64 = 6.0;
 
 pub const WINDOW_LABEL: &str = "island";
+
+/// How big the island is drawn, as a zoom of the whole page: 1 is the Mac's
+/// size. A little bigger by default on a PC, where screens sit further away.
+pub const DEFAULT_ZOOM: f64 = 1.15;
+const MIN_ZOOM: f64 = 0.8;
+const MAX_ZOOM: f64 = 1.6;
+
+/// The zoom in effect, for the cursor poll and the input region.
+static ZOOM_BITS: AtomicU64 = AtomicU64::new(DEFAULT_ZOOM.to_bits());
+
+pub fn clamp_zoom(zoom: f64) -> f64 {
+    if zoom.is_finite() { zoom.clamp(MIN_ZOOM, MAX_ZOOM) } else { DEFAULT_ZOOM }
+}
+
+pub fn zoom() -> f64 {
+    f64::from_bits(ZOOM_BITS.load(Ordering::Relaxed))
+}
+
+/// How big the island is and where the user put it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct Placement {
+    pub zoom: f64,
+    /// Offset from the top centre of the display, in logical pixels.
+    pub dx: f64,
+    pub dy: f64,
+}
+
+impl Placement {
+    pub fn of(s: &crate::settings::Settings) -> Self {
+        Self { zoom: s.island_zoom, dx: s.island_dx, dy: s.island_dy }
+    }
+}
+
+/// The window's physical frame (x, y, width, height) on a display at
+/// `(mx, my, mw, mh)`: the panel at the top centre moved by the offset, kept
+/// whole on the display, or the wake strip at the top of where the panel is.
+fn frame(display: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) -> (i32, i32, u32, u32) {
+    let (mx, my, mw, mh) = (display.0 as f64, display.1 as f64, display.2 as f64, display.3 as f64);
+    let z = clamp_zoom(p.zoom);
+    let pw = (PANEL_W * z * scale).round().max(1.0);
+    let ph = (PANEL_H * z * scale).round().max(1.0);
+    let (dx, dy) = (if p.dx.is_finite() { p.dx } else { 0.0 }, if p.dy.is_finite() { p.dy } else { 0.0 });
+    let x = (mx + (mw - pw) / 2.0 + dx * scale).clamp(mx, (mx + mw - pw).max(mx)).round();
+    let y = (my + dy * scale).clamp(my, (my + mh - ph).max(my)).round();
+    if collapsed {
+        let sw = (STRIP_W * z * scale).round().max(1.0);
+        let sh = (STRIP_H * z * scale).round().max(1.0);
+        return ((x + ((pw - sw) / 2.0).round()) as i32, y as i32, sw as u32, sh as u32);
+    }
+    (x as i32, y as i32, pw as u32, ph as u32)
+}
+
+/// The offset, in logical pixels, of a panel whose top-left corner is at the
+/// physical point `pos` on the display: what `frame` needs to put it back there.
+fn offset_of(display: (i32, i32, u32, u32), scale: f64, zoom: f64, pos: (i32, i32)) -> (f64, f64) {
+    let pw = (PANEL_W * clamp_zoom(zoom) * scale).round();
+    let home_x = display.0 as f64 + (display.2 as f64 - pw) / 2.0;
+    ((pos.0 as f64 - home_x) / scale, (pos.1 - display.1) as f64 / scale)
+}
 
 /// Margin around the island that still counts as "on the island", in logical px.
 /// Wider than the macOS 6 pt because a click must never be swallowed.
@@ -298,20 +357,47 @@ pub fn screen_info(app: &AppHandle, pref: &str) -> ScreenInfo {
     }
 }
 
+fn display_of(m: &Monitor) -> (i32, i32, u32, u32) {
+    let (p, s) = (m.position(), m.size());
+    (p.x, p.y, s.width, s.height)
+}
+
+/// Where a panel dragged to the physical point `pos` sits from its home.
+pub fn offset_for(app: &AppHandle, pref: &str, zoom: f64, pos: (i32, i32)) -> Option<(f64, f64)> {
+    let m = target_monitor(app, pref)?;
+    Some(offset_of(display_of(&m), m.scale_factor(), zoom, pos))
+}
+
+/// Moves the island with the mouse while the left button is held — Alt + drag
+/// on the island. Returns where the panel ended up, in physical pixels; the
+/// caller remembers it. Needs the cursor poll (Windows): elsewhere it returns
+/// at once.
+pub fn drag(app: &AppHandle) -> Option<(i32, i32)> {
+    let win = window(app)?;
+    let (sx, sy) = cursor_physical()?;
+    let start = win.outer_position().ok()?;
+    let mut last = (start.x, start.y);
+    while left_button_down() {
+        std::thread::sleep(Duration::from_millis(8));
+        let Some((cx, cy)) = cursor_physical() else { break };
+        let pos = (start.x + (cx - sx).round() as i32, start.y + (cy - sy).round() as i32);
+        if pos != last {
+            let _ = win.set_position(PhysicalPosition::new(pos.0, pos.1));
+            last = pos;
+        }
+    }
+    Some(last)
+}
+
 /// Places and sizes the window. `collapsed` picks the wake strip instead of the panel.
-pub fn apply_geometry(app: &AppHandle, pref: &str, collapsed: bool) {
+pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collapsed: bool) {
     let Some(win) = window(app) else { return };
     let Some(m) = target_monitor(app, pref) else { return };
 
     let scale = m.scale_factor();
-    let mp = *m.position();
-    let ms = *m.size();
-
-    let (lw, lh) = if collapsed { (STRIP_W, STRIP_H) } else { (PANEL_W, PANEL_H) };
-    let pw = (lw * scale).round().max(1.0) as u32;
-    let ph = (lh * scale).round().max(1.0) as u32;
-    let x = mp.x + (ms.width as i32 - pw as i32) / 2;
-    let y = mp.y;
+    let zoom = clamp_zoom(placement.zoom);
+    ZOOM_BITS.store(zoom.to_bits(), Ordering::Relaxed);
+    let (x, y, pw, ph) = frame(display_of(&m), scale, placement, collapsed);
 
     // GTK never sizes a non-resizable window below its natural size (200 px
     // here), so on Linux the 6 px wake strip would stay a 200 px block. tao
@@ -326,7 +412,51 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, collapsed: bool) {
     platform::pin_to_monitor(&win, lx, ly);
     // Moving across displays can rescale the window: re-assert the physical size.
     let _ = win.set_size(PhysicalSize::new(pw, ph));
+    // The page keeps its 720 × 320 layout; the webview draws it bigger.
+    let _ = win.set_zoom(zoom);
     let _ = win.set_always_on_top(true);
+}
+
+#[cfg(test)]
+mod placement_tests {
+    use super::*;
+
+    const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
+    const HOME: Placement = Placement { zoom: 1.0, dx: 0.0, dy: 0.0 };
+
+    #[test]
+    fn home_is_the_top_centre_and_the_zoom_grows_the_window() {
+        assert_eq!(frame(FHD, 1.0, HOME, false), (600, 0, 720, 320));
+        assert_eq!(frame(FHD, 1.0, Placement { zoom: 1.5, ..HOME }, false), (420, 0, 1080, 480));
+        assert_eq!(frame(FHD, 2.0, HOME, false), (240, 0, 1440, 640));
+        // The wake strip sits at the top of where the panel is.
+        assert_eq!(frame(FHD, 1.0, HOME, true), (840, 0, 240, 6));
+        // Silly zooms are brought back into range.
+        assert_eq!(frame(FHD, 1.0, Placement { zoom: f64::NAN, ..HOME }, false).2, (720.0 * DEFAULT_ZOOM).round() as u32);
+        assert_eq!(frame(FHD, 1.0, Placement { zoom: 9.0, ..HOME }, false).2, (720.0 * MAX_ZOOM) as u32);
+    }
+
+    #[test]
+    fn a_moved_island_stays_whole_on_its_display() {
+        let moved = Placement { zoom: 1.0, dx: -300.0, dy: 200.0 };
+        assert_eq!(frame(FHD, 1.0, moved, false), (300, 200, 720, 320));
+        assert_eq!(frame(FHD, 1.0, moved, true), (540, 200, 240, 6));
+        let far = Placement { zoom: 1.0, dx: 5000.0, dy: -50.0 };
+        assert_eq!(frame(FHD, 1.0, far, false), (1200, 0, 720, 320));
+        // A second display to the right, at 150 %.
+        let right = (1920, 0, 2560, 1440);
+        assert_eq!(frame(right, 1.5, Placement { zoom: 1.0, dx: 100.0, dy: 10.0 }, false), (1920 + 740 + 150, 15, 1080, 480));
+    }
+
+    #[test]
+    fn a_drag_is_remembered_as_the_offset_that_puts_it_back() {
+        for (display, scale, zoom) in [(FHD, 1.0, 1.0), (FHD, 1.25, 1.15), ((1920, 0, 2560, 1440), 1.5, 1.3)] {
+            let pos = (display.0 + 333, display.1 + 120);
+            let (dx, dy) = offset_of(display, scale, zoom, pos);
+            let (x, y, _, _) = frame(display, scale, Placement { zoom, dx, dy }, false);
+            assert!((x - pos.0).abs() <= 1 && (y - pos.1).abs() <= 1, "{display:?} {scale} {zoom}: {x},{y}");
+        }
+    }
 }
 
 /// Position, size and scale of the monitor the island lives on. Any change here
@@ -380,7 +510,8 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
 
                 let Some(win) = window(&app) else { continue };
                 let Ok(origin) = win.outer_position() else { continue };
-                let scale = win.scale_factor().unwrap_or(1.0);
+                // Page pixels: the monitor's scale times the island's zoom.
+                let scale = win.scale_factor().unwrap_or(1.0) * zoom();
                 let Some((cx, cy)) = cursor_physical() else { continue };
                 let x = (cx - origin.x as f64) / scale;
                 let y = (cy - origin.y as f64) / scale;
@@ -467,6 +598,9 @@ pub fn refresh_click_through(app: &AppHandle, gate: &PollGate) {
             Some((x0, y0, x1 - x0, y1 - y0))
         }
     };
+    // The region is in window pixels; the island is drawn zoomed.
+    let z = zoom();
+    let region = region.map(|(x, y, w, h)| (x * z, y * z, w * z, h * z));
     platform::set_input_region(&win, region);
 }
 

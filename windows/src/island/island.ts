@@ -9,6 +9,7 @@ import {
   islandSize,
   QUESTION_PICKER_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
+  zoomStep,
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -641,7 +642,8 @@ export class Island {
     const r = this.radius.value;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
-    this.islandEl.style.borderRadius = `0 0 ${r}px ${r}px`;
+    // Moved down from the top edge, the island is rounded all round.
+    this.islandEl.style.borderRadius = State.settings.islandDy > 0 ? `${r}px` : `0 0 ${r}px ${r}px`;
     this.islandEl.style.transform = `translateX(-50%)`;
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
@@ -700,6 +702,12 @@ export class Island {
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
       State.lastActivity = performance.now();
+      // Alt + drag moves the island; Rust follows the mouse until it is let go.
+      if (e.button === 0 && e.altKey) {
+        e.preventDefault();
+        void Bridge.islandDrag();
+        return;
+      }
       // A press on Mochi may become a drag out to the desktop.
       if (e.button === 0 && this.isBotHit(e.clientX, e.clientY)) {
         this.botPress = { x: e.clientX, y: e.clientY };
@@ -753,6 +761,14 @@ export class Island {
     // a terminal — so it may fold a waiting card away, as Escape in the notch
     // does on macOS.
     window.addEventListener("keydown", (e) => {
+      // Ctrl + / Ctrl − / Ctrl 0: a bigger or smaller island, or the usual size.
+      const zoom = e.ctrlKey && !e.altKey ? zoomStep(e.key, State.settings.islandZoom) : null;
+      if (zoom != null) {
+        e.preventDefault();
+        State.settings = { ...State.settings, islandZoom: zoom };
+        void Bridge.saveSettings(State.settings);
+        return;
+      }
       if (e.key === "Escape" && State.mode === "expanded") {
         if (State.pendingApproval) this.foldApproval();
         else if (!State.isPinned) this.collapse();

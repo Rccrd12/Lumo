@@ -3448,6 +3448,39 @@
    "pt-BR": "Auto",
    "ru": "Авто",
    "id": "Otomatis"
+  },
+  "Island size": {
+   "zh-Hans": "岛的大小",
+   "hi": "आइलैंड का आकार",
+   "es": "Tamaño de la isla",
+   "ar": "حجم الجزيرة",
+   "fr": "Taille de l'île",
+   "bn": "আইল্যান্ডের আকার",
+   "pt-BR": "Tamanho da ilha",
+   "ru": "Размер острова",
+   "id": "Ukuran pulau"
+  },
+  "Put the island back in the centre": {
+   "zh-Hans": "将岛放回中间",
+   "hi": "आइलैंड को वापस बीच में रखें",
+   "es": "Volver a centrar la isla",
+   "ar": "أعد الجزيرة إلى المنتصف",
+   "fr": "Remettre l'île au centre",
+   "bn": "আইল্যান্ড আবার মাঝখানে রাখুন",
+   "pt-BR": "Voltar a ilha para o centro",
+   "ru": "Вернуть остров в центр",
+   "id": "Kembalikan pulau ke tengah"
+  },
+  "Hold Alt and drag the island to move it.": {
+   "zh-Hans": "按住 Alt 拖动岛即可移动它。",
+   "hi": "आइलैंड को हिलाने के लिए Alt दबाकर उसे खींचें।",
+   "es": "Mantén Alt y arrastra la isla para moverla.",
+   "ar": "اضغط Alt مع السحب لتحريك الجزيرة.",
+   "fr": "Maintenez Alt et faites glisser l'île pour la déplacer.",
+   "bn": "আইল্যান্ড সরাতে Alt চেপে ধরে টেনে নিন।",
+   "pt-BR": "Segure Alt e arraste a ilha para movê-la.",
+   "ru": "Удерживайте Alt и перетащите остров, чтобы переместить его.",
+   "id": "Tahan Alt dan seret pulau untuk memindahkannya."
   }
  }
 }

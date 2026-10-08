@@ -22,6 +22,13 @@ pub struct Settings {
     pub main_pill: String,
     /// "primary" = the main display, "cursor" = whichever display the mouse is on.
     pub screen: String,
+    /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
+    pub island_zoom: f64,
+    /// Where the user dragged the island, from its home at the top centre of
+    /// its display, in logical pixels. Owned by the Rust side (island.rs) —
+    /// what a webview sends back is ignored.
+    pub island_dx: f64,
+    pub island_dy: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -107,6 +114,9 @@ impl Default for Settings {
             ],
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
+            island_zoom: crate::island::DEFAULT_ZOOM,
+            island_dx: 0.0,
+            island_dy: 0.0,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -384,6 +394,9 @@ mod tests {
   "activeIntegrations": ["integration_notion"],
   "mainPill": "agent_cursor",
   "screen": "cursor",
+  "islandZoom": 1.3,
+  "islandDx": -200.5,
+  "islandDy": 40.0,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -392,6 +405,7 @@ mod tests {
   "showCodexPlanInNotch": true,
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
+  "chatEffort": "high",
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
@@ -786,6 +800,9 @@ mod tests {
                 "activeIntegrations",
                 "mainPill",
                 "screen",
+                "islandZoom",
+                "islandDx",
+                "islandDy",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -794,6 +811,7 @@ mod tests {
                 "showCodexPlanInNotch",
                 "chatProvider",
                 "chatModels",
+                "chatEffort",
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",

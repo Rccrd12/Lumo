@@ -53,6 +53,10 @@ export interface ViewLayout {
 // The window is a fixed 720×320 (largest view) like the macOS panel; the island is
 // drawn inside it, glued to the top edge and horizontally centred.
 export const PANEL_W = 720;
+/** The island's zoom range and default — island.rs has the same. */
+export const DEFAULT_ISLAND_ZOOM = 1.15;
+export const MIN_ISLAND_ZOOM = 0.8;
+export const MAX_ISLAND_ZOOM = 1.6;
 export const PANEL_H = 320;
 
 // No notch on a PC: these are the hidden/compact sizes from docs/SPEC.md.
@@ -250,4 +254,14 @@ export function washRGBA(wash: Wash): string {
     default:
       return "rgba(0,0,0,0)";
   }
+}
+
+/** The island's size after Ctrl + "+", "-" or "0", or null for any other key. */
+export function zoomStep(key: string, current: number): number | null {
+  const now = Number.isFinite(current) ? current : DEFAULT_ISLAND_ZOOM;
+  const round = (z: number) => Math.round(Math.min(MAX_ISLAND_ZOOM, Math.max(MIN_ISLAND_ZOOM, z)) * 100) / 100;
+  if (key === "+" || key === "=") return round(now + 0.1);
+  if (key === "-" || key === "_") return round(now - 0.1);
+  if (key === "0") return DEFAULT_ISLAND_ZOOM;
+  return null;
 }

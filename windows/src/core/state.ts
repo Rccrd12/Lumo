@@ -110,6 +110,11 @@ export interface Settings {
   mainPill: string;
   /** "primary", "cursor", or `at:<x>,<y>` for one display (logical origin). */
   screen: string;
+  /** How big the island is drawn (1 = the Mac's size). */
+  islandZoom: number;
+  /** Where the island was dragged, from the top centre (owned by Rust). */
+  islandDx: number;
+  islandDy: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -165,6 +170,9 @@ export const DEFAULT_SETTINGS: Settings = {
   ],
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
+  islandZoom: 1.15,
+  islandDx: 0,
+  islandDy: 0,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5",
