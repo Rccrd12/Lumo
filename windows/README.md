@@ -40,6 +40,17 @@ in PowerShell) and try again.
 
 You can also [build it yourself](#build-it-yourself).
 
+### Updates
+
+**Settings… → Updates** shows the version you run. **Check for updates** asks
+GitHub for the newest `windows-v*` release of
+[Rccrd12/coucou-agent](https://github.com/Rccrd12/coucou-agent/releases) — only
+when you click it, never in the background. When there is a newer one, **Update
+now** downloads its `Coucou-Windows-X.Y.Z-setup.exe` into a temporary folder,
+starts it with its usual window, and Coucou quits so the installer can replace
+it. Only installers from that repository's GitHub releases are accepted. On
+Linux, update Coucou the way you installed it.
+
 ## Using it
 
 <img src="screenshots/compact.png" width="292" alt="The compact island, with the integration pills as mini Mochis">
@@ -61,7 +72,7 @@ You can also [build it yourself](#build-it-yourself).
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Hold `Alt` and drag the island | Moves it anywhere on its display; it stays there. **Put the island back in the centre** (tray menu or Settings) brings it home |
 | Drag a side of the open island | Widens or narrows it, both sides together so it stays centred (560–1200 px). Dragging the bottom of the chat makes it taller. A double click on the edge puts it back |
-| In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → General → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
+| In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
@@ -126,7 +137,7 @@ answer on one line, still, until the next prompt.
 
 ## Your pills
 
-**Settings… → Active pills** lists the tools you use, from the same catalog as
+**Settings… → Pills & integrations** lists the tools you use, from the same catalog as
 the Mac app. Pick your **main tool** — VS Code, Cursor, Codex or Antigravity —
 which is always there and doesn't take a slot, then declare up to four more:
 agents (Gemini CLI, Copilot CLI, Muse Code, OpenCode, Amp, Hermes, Claude
@@ -140,7 +151,7 @@ declare still shows up, for as long as it runs.
 
 <img src="screenshots/settings.png" width="562" alt="The settings window">
 
-Open **Settings… → Claude Code → Install hooks…**. You get the exact diff of what
+Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
 that will be taken, and nothing is written until you click. Your own hooks are
 never touched, and uninstalling removes only Coucou's entries.
@@ -158,7 +169,7 @@ It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 As on the Mac, the island's header can show your plan limits: a small pill
 ("Claude 73%", green below 50 %, orange up to 80 %, red above) for the 5-hour and
 weekly Claude limits, and another for Codex. Click one for the details and the
-reset times. Both are off by default; turn them on in **Settings… → Plan usage**.
+reset times. Both are off by default; turn them on in **Settings… → Agents → Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
   line. **Show in notch** first shows you the diff of the `statusLine` change in
@@ -216,19 +227,19 @@ side (tray, errors) embeds the same two files.
 
 ## Chat and keys
 
-**Settings… → Claude** takes your Anthropic API key. Keys live in the **Windows
+**Settings… → Chat → Claude** takes your Anthropic API key. Keys live in the **Windows
 Credential Manager**, never on disk and never in the interface — the island can
 only ask whether a key exists. Same for every integration key.
 
 The chat also talks to **Google AI (Gemini)**, **OpenAI** and **OpenRouter**:
-add their keys in **Settings… → Chat providers**, then click the model name
+add their keys in **Settings… → Chat → Chat providers**, then click the model name
 above the chat box to switch provider and model, as on the Mac. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
 provider's format is ever sent to another. These providers get no web search
 and no tools — they answer, they never act on your PC.
 
-**Local models**: **Settings… → Local models** connects **Ollama** or **LM
+**Local models**: **Settings… → Chat → Local models** connects **Ollama** or **LM
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
 llama.cpp…), with an optional key kept in the credential store. Answers stream
@@ -265,7 +276,7 @@ and the usage counts against your plan's limits like any Claude Code session.
 Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
 from its path, reads and edits files and folders, runs commands and searches the
 web. Every action that needs a permission comes up in the island as the usual
-**Deny / Allow** card, through the hooks of **Settings… → Claude Code**. Without
+**Deny / Allow** card, through the hooks of **Settings… → Agents → Claude Code**. Without
 those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
 allowed on its own. The conversation continues the same Claude Code session
 until **New chat**. Install Claude Code and run `claude` once in a terminal to
@@ -282,7 +293,7 @@ other providers it starts a new chat, as a drop does.
 
 ## GitHub
 
-With a token in **Settings… → Integrations → GitHub** — a classic token with
+With a token in **Settings… → Pills & integrations → GitHub** — a classic token with
 the `repo` scope, or a fine-grained one with read access to Pull requests,
 Commit statuses and Actions — the GitHub pill shows:
 
@@ -376,7 +387,7 @@ Linux.
 
 | Agent | Installs | Permissions |
 |---|---|---|
-| Claude Code | `.claude\settings.json` (**Settings → Claude Code**) | Allow / Deny and questions in the island |
+| Claude Code | `.claude\settings.json` (**Settings → Agents → Claude Code**) | Allow / Deny and questions in the island |
 | Codex | `.codex\hooks.json` — then trust the hooks once with `/hooks` in Codex | Allow / Deny in the island |
 | GitHub Copilot CLI | `.copilot\hooks\coucou.json` | Allow / Deny in the island |
 | Muse Code | `.config\muse\settings.json` | Allow / Deny in the island |
