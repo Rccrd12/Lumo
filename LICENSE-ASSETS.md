@@ -28,4 +28,4 @@ If you fork Lumo to ship your own app, that's welcome under the MIT License: jus
 
 ## Questions or permission requests
 
-Open an issue on [GitHub](https://github.com/Rccrd12/coucou-agent/issues).
+Open an issue on [GitHub](https://github.com/Rccrd12/Lumo/issues).

@@ -30,7 +30,7 @@ const T = {
   get longestSession() { return t("Longest session"); },
   get approved() { return t("Approved"); },
   get denied() { return t("Denied"); },
-  footer: "Lumo · github.com/Rccrd12/coucou-agent",
+  footer: "Lumo · github.com/Rccrd12/Lumo",
 };
 
 /**

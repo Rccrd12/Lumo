@@ -8,7 +8,7 @@
 
 Approve permissions, watch your agents work, drop a file, chat with Claude — all without leaving what you're doing.
 
-[![Version](https://img.shields.io/github/v/release/Rccrd12/coucou-agent?filter=windows-v*&label=version&color=0A84FF)](https://github.com/Rccrd12/coucou-agent/releases)
+[![Version](https://img.shields.io/github/v/release/Rccrd12/Lumo?filter=windows-v*&label=version&color=0A84FF)](https://github.com/Rccrd12/Lumo/releases)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&logoColor=white)
 ![Linux](https://img.shields.io/badge/Linux-AppImage%20%7C%20deb%20%7C%20rpm-FCC624?logo=linux&logoColor=black)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=black)
@@ -20,7 +20,7 @@ Approve permissions, watch your agents work, drop a file, chat with Claude — a
 
 ---
 
-Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou) (Coucou, by Louis Raillé) that keeps only the Windows and Linux app (a [Tauri 2](https://tauri.app) app in [`windows/`](windows/)). The app and its character are called Lumo here; the repository keeps its name, `coucou-agent`. The full documentation of the app is in [`windows/README.md`](windows/README.md).
+Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou) (Coucou, by Louis Raillé) that keeps only the Windows and Linux app (a [Tauri 2](https://tauri.app) app in [`windows/`](windows/)). The app, its character and the repository are called Lumo here. The full documentation of the app is in [`windows/README.md`](windows/README.md).
 
 Meet **Lumo**: a small glowing firefly that peeks out of the top edge of your screen, waves hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
 
@@ -60,18 +60,18 @@ Meet **Lumo**: a small glowing firefly that peeks out of the top edge of your sc
 
 ## Versions
 
-Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` tags; the newest Windows installer is always at [`windows-latest`](https://github.com/Rccrd12/coucou-agent/releases/tag/windows-latest). See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
+Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` tags; the newest Windows installer is always at [`windows-latest`](https://github.com/Rccrd12/Lumo/releases/tag/windows-latest). See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
-| [0.3.1](https://github.com/Rccrd12/coucou-agent/releases/tag/windows-v0.3.1) | Oct 8, 2026 | Now called Lumo, settings inside the island, a floating island that docks near the edges, choose how it opens and closes, it no longer disappears on its own |
-| [0.3.0](https://github.com/Rccrd12/coucou-agent/releases/tag/windows-v0.3.0) | Oct 8, 2026 | Chat with your Claude plan through Claude Code, your screen on request, an island that docks on any edge and resizes, Settings in sections with updates |
+| [0.3.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.1) | Oct 8, 2026 | Now called Lumo, settings inside the island, a floating island that docks near the edges, choose how it opens and closes, it no longer disappears on its own |
+| [0.3.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.0) | Oct 8, 2026 | Chat with your Claude plan through Claude Code, your screen on request, an island that docks on any edge and resizes, Settings in sections with updates |
 
 ## Install
 
 ### Windows
 
-Download **[Lumo-Windows.msi](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Lumo-Windows.msi)** or **[Lumo-Windows-setup.exe](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Lumo-Windows-setup.exe)** (Windows 10/11, always the newest version) and run it. You can also [build it from source](#build-from-source).
+Download **[Lumo-Windows.msi](https://github.com/Rccrd12/Lumo/releases/download/windows-latest/Lumo-Windows.msi)** or **[Lumo-Windows-setup.exe](https://github.com/Rccrd12/Lumo/releases/download/windows-latest/Lumo-Windows-setup.exe)** (Windows 10/11, always the newest version) and run it. You can also [build it from source](#build-from-source).
 
 **Windows will show a warning the first time — that's expected.** The installer isn't code-signed yet, so SmartScreen doesn't know the publisher:
 
@@ -83,7 +83,7 @@ This is only because the app isn't signed with a paid certificate yet. Lumo is o
 
 **Settings… → Updates → Check for updates** looks for the newest `windows-v*` release of this repository, only when you click it.
 
-**Coming from Coucou 0.3.0?** The app was called Coucou before 0.3.1. **Update now** in Coucou's Settings, or the new installer run by hand, replaces it with Lumo: one app in Settings → Apps, one Start menu entry, one autostart entry, with your settings, keys, hooks and history as they were.
+**Coming from Coucou 0.3.0?** The app was called Coucou before 0.3.1. Download the installer above and run it: it replaces Coucou with Lumo, one app in Settings → Apps, one Start menu entry, one autostart entry, with your settings, keys, hooks and history as they were.
 
 There is no notch on a PC, so the island slides out of the top edge of the screen
 instead of hiding inside one. See [`windows/README.md`](windows/README.md) for the
@@ -91,7 +91,7 @@ rest of the differences.
 
 ### Linux
 
-Linux builds are published from `linux-v*` tags in [Releases](https://github.com/Rccrd12/coucou-agent/releases), x86_64 only; until one is there, [build it from source](#build-from-source).
+Linux builds are published from `linux-v*` tags in [Releases](https://github.com/Rccrd12/Lumo/releases), x86_64 only; until one is there, [build it from source](#build-from-source).
 
 - **AppImage** (any distribution): `chmod +x Lumo-Linux-*.AppImage`, then run it.
 - **Debian / Ubuntu**: `sudo apt install ./Lumo-Linux-*.deb` (replaces the `coucou` package)
@@ -108,8 +108,8 @@ so there it runs through XWayland as a dock window at the top of the screen. See
 **Windows** — requirements: [Rust](https://rustup.rs), Node 22.18+, MSVC build tools.
 
 ```powershell
-git clone https://github.com/Rccrd12/coucou-agent.git
-cd coucou-agent/windows
+git clone https://github.com/Rccrd12/Lumo.git
+cd Lumo/windows
 npm install
 npm run tauri dev           # live-reloading development build
 npm run pack                # installer lands in windows/release/
@@ -123,8 +123,8 @@ sudo apt install build-essential pkg-config \
   libwebkit2gtk-4.1-dev libgtk-layer-shell-dev libayatana-appindicator3-dev \
   librsvg2-dev libssl-dev libdbus-1-dev patchelf \
   gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-git clone https://github.com/Rccrd12/coucou-agent.git
-cd coucou-agent/windows
+git clone https://github.com/Rccrd12/Lumo.git
+cd Lumo/windows
 npm install
 npm run pack                # AppImage, .deb and .rpm land in windows/release/
 ```

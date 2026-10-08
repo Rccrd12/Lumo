@@ -21,8 +21,8 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 ## Install
 
-Download **[Lumo-Windows.msi](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Lumo-Windows.msi)**
-(Windows Installer) or **[Lumo-Windows-setup.exe](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Lumo-Windows-setup.exe)**,
+Download **[Lumo-Windows.msi](https://github.com/Rccrd12/Lumo/releases/download/windows-latest/Lumo-Windows.msi)**
+(Windows Installer) or **[Lumo-Windows-setup.exe](https://github.com/Rccrd12/Lumo/releases/download/windows-latest/Lumo-Windows-setup.exe)**,
 always the newest version, and run it. The .exe installs for the current user only, with no admin prompt; the .msi may ask for admin rights.
 
 **Windows will show a warning the first time — that's expected.** The installer isn't code-signed yet, so SmartScreen doesn't know the publisher:
@@ -44,7 +44,7 @@ You can also [build it yourself](#build-it-yourself).
 
 **Settings… → Updates** shows the version you run. **Check for updates** asks
 GitHub for the newest `windows-v*` release of
-[Rccrd12/coucou-agent](https://github.com/Rccrd12/coucou-agent/releases) — only
+[Rccrd12/Lumo](https://github.com/Rccrd12/Lumo/releases) — only
 when you click it, never in the background. When there is a newer one, **Update
 now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder,
 starts it with its usual window, and Lumo quits so the installer can replace
@@ -53,10 +53,11 @@ Linux, update Lumo the way you installed it.
 
 ### Coming from Coucou
 
-Up to 0.3.0 the app was called Coucou, and its character Mochi. Every release
-also carries its installer as `Coucou-Windows-X.Y.Z-setup.exe`, the file
-Coucou 0.3.0's **Update now** looks for, so updating from Coucou works as
-before. The Lumo installer then retires the Coucou install: its program files
+Up to 0.3.0 the app was called Coucou, and its character Mochi, and the
+repository was `Rccrd12/coucou-agent`. Coucou 0.3.0's **Update now** only
+trusts installers from that old repository name, so it does not find Lumo:
+download the Lumo installer and run it by hand once. It retires the Coucou
+install: its program files
 in `%LOCALAPPDATA%\Coucou`, its entry in Settings → Apps, its Start menu and
 desktop shortcuts (a desktop one becomes a Lumo one) and its autostart entry,
 which moves over to Lumo. A Coucou installed from the .msi is uninstalled
@@ -379,8 +380,8 @@ You need [Rust](https://rustup.rs), [Node 20+](https://nodejs.org), and the
 C++"). WebView2 ships with Windows 10/11.
 
 ```powershell
-git clone https://github.com/Rccrd12/coucou-agent.git
-cd coucou-agent/windows
+git clone https://github.com/Rccrd12/Lumo.git
+cd Lumo/windows
 npm install
 npm run tauri dev      # live-reloading development build
 npm run pack           # builds the installer and drops it in windows/release/

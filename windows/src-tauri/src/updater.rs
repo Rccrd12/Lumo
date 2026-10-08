@@ -24,7 +24,7 @@ use crate::i18n::{t, tf};
 use crate::{log, net};
 
 /// The GitHub repository whose releases are checked: the one place it is named.
-pub const UPDATE_REPO: &str = "Rccrd12/coucou-agent";
+pub const UPDATE_REPO: &str = "Rccrd12/Lumo";
 
 /// Windows releases are tagged `windows-v0.2.1` (the `windows-latest` rolling
 /// release does not match, and neither do the Mac's `v*` or `linux-v*` tags).
@@ -488,7 +488,9 @@ mod tests {
     fn only_this_repositorys_installers_are_downloaded() {
         let ok = |s: &str| is_release_download(&Url::parse(s).unwrap());
         assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(ok("https://github.com/rccrd12/Coucou-Agent/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
+        assert!(ok("https://github.com/rccrd12/lumo/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
+        // The repository before its rename is not trusted any more.
+        assert!(!ok("https://github.com/Rccrd12/coucou-agent/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
         // Another repository, host, scheme, file or tag.
         assert!(!ok("https://github.com/someone/else/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
         assert!(!ok(&format!("https://evil.example/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
