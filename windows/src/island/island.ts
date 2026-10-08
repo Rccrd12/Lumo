@@ -2,9 +2,9 @@
 // Mirrors IslandRootView.swift + IslandWindowController.swift.
 
 import { Tracked, Spring, clamp } from "../core/anim";
-import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
+import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  CHAT_PANEL_OPEN, EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -12,7 +12,7 @@ import {
   zoomStep,
 } from "../core/layout";
 import { Sound } from "../core/sound";
-import { State } from "../core/state";
+import { State, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
@@ -33,6 +33,10 @@ const GESTURE_WINDOW = 1500;
 const MOVE_THRESHOLD = 4;
 /** The open island's top bar (8 pt inset + 34 pt header): pressing there can move it. */
 const TOP_BAR_H = 42;
+/** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
+const LEAVE_CLOSE_DELAY = 0.6;
+/** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
+const HOVER_OPEN_DELAY = 350;
 
 /** Buttons, fields and links keep their own press: they never start a move. */
 function isControl(target: EventTarget | null): boolean {
@@ -87,6 +91,8 @@ export class Island {
   private lift = new Tracked(1);
   /** Puts a moved island down should Rust never say where it went. */
   private settleTimer: number | null = null;
+  /** Opens the closed island once the mouse has rested on it (Settings → Island). */
+  private hoverOpenTimer: number | null = null;
   /** The edge last drawn, to notice when Settings or the tray move it. */
   private lastDock: Dock | null = null;
 
@@ -259,12 +265,6 @@ export class Island {
         void Bridge.saveSettings(State.settings);
         State.notify();
       },
-      setAutoClose: (s) => {
-        State.settings.autoCloseInterval = s;
-        this.fsm.homeToPetitDelay = s;
-        void Bridge.saveSettings(State.settings);
-        State.notify();
-      },
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
       blip: () => Sound.play("blip"),
       chooseOutfit: (selection) => {
@@ -338,7 +338,7 @@ export class Island {
   // ── FSM ─────────────────────────────────────────────────────────────────────
 
   private wireFsm() {
-    this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    this.applyBehaviour();
     this.fsm.onTransition = (from, to) => {
       // The greeting is over, however it ended: back to his desktop spot.
       if (from === "coucou" && to !== "coucou") this.desktop.launch();
@@ -491,6 +491,50 @@ export class Island {
     }
     if (State.paused) return;
     this.alert("wardrobe");
+  }
+
+  // ── How the island opens and closes on its own (Settings → Island) ─────────
+
+  /** The close mode, the auto-close delay and auto-hide, into the state machine. */
+  private applyBehaviour() {
+    const s = State.settings;
+    const mode = parseCloseMode(s.islandClose);
+    // Settings stay open while you look something up elsewhere: they close on
+    // Escape, a click on a tab, or a click outside when set to.
+    const holding = State.view === "settings";
+    this.fsm.closeOnLeave = !holding && (mode === "timer" || mode === "leave");
+    this.fsm.homeToPetitDelay = mode === "leave" ? LEAVE_CLOSE_DELAY : s.autoCloseInterval;
+    this.fsm.autoHide = s.islandAutoHide === true;
+  }
+
+  /** The mouse came to rest on the closed island: open it, when that is asked for. */
+  private scheduleHoverOpen() {
+    this.cancelHoverOpen();
+    if (!State.settings.islandHoverOpen || this.fsm.state !== "petit" || State.paused) return;
+    this.hoverOpenTimer = window.setTimeout(() => {
+      this.hoverOpenTimer = null;
+      // Still there, and not picking the island up to move it.
+      if (this.wasInIsland && this.fsm.state === "petit" && !this.moving && !this.pendingMove) this.fsm.click();
+    }, HOVER_OPEN_DELAY);
+  }
+
+  private cancelHoverOpen() {
+    if (this.hoverOpenTimer != null) window.clearTimeout(this.hoverOpenTimer);
+    this.hoverOpenTimer = null;
+  }
+
+  /**
+   * A press somewhere else on the screen (island.rs), or the island losing the
+   * keyboard where there is no cursor poll: closes the open island when it is
+   * set to close on a click elsewhere. Never while a card waits for an answer,
+   * the island is pinned, a file picker of ours is open, or it is being moved.
+   */
+  onOutsidePress() {
+    if (parseCloseMode(State.settings.islandClose) !== "click") return;
+    if (State.mode !== "expanded" || this.fsm.state !== "home") return;
+    if (this.fsm.pinned || State.isPinned || State.pendingApproval || isDialogOpen()) return;
+    if (this.moving || this.resizing || this.uploadActive) return;
+    this.collapse();
   }
 
   /** An alert stopped waiting for an answer: let the island auto-close again. */
@@ -921,6 +965,13 @@ export class Island {
    */
   followPageCursor() {
     this.canResize = false;
+    // No global mouse here: a click elsewhere shows as the island losing the
+    // keyboard (not to the settings frame inside it, which keeps it ours).
+    window.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        if (document.activeElement?.tagName !== "IFRAME") this.onOutsidePress();
+      }, 0);
+    });
     this.applyDock();
     window.addEventListener("mousemove", (e) => this.onCursor(e.clientX, e.clientY));
     window.addEventListener("mouseout", (e) => {
@@ -965,8 +1016,10 @@ export class Island {
       if (inIsland && !this.wasInIsland) {
         if (this.fsm.state === "coucou") this.greeting.hover();
         this.fsm.mouseEntered();
+        this.scheduleHoverOpen();
       }
       if (!inIsland && this.wasInIsland) {
+        this.cancelHoverOpen();
         this.fsm.mouseLeft();
       }
       this.wasInIsland = inIsland;
@@ -1273,12 +1326,16 @@ export class Island {
     // when you just asked for it (a click, a shortcut). Opened by anything else
     // (a card going away, a session ending) it waits for a click, so typing in
     // another app is never cut off.
+    // Settings have fields too, and are only ever opened on purpose.
     if (this.lastSyncedView !== State.view) {
-      const wasChat = this.lastSyncedView === "prompt";
+      const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings";
       this.lastSyncedView = State.view;
+      this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
         this.focusChat();
-      } else if (wasChat) {
+      } else if (State.view === "settings" && expanded) {
+        void Bridge.focusWindow(true);
+      } else if (wasTyping) {
         void Bridge.focusWindow(false);
       }
     }
@@ -1307,7 +1364,7 @@ export class Island {
   applySettings() {
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
-    this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    this.applyBehaviour();
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
@@ -1406,6 +1463,6 @@ export class Island {
 
   /** What the chat's height follows: its messages, or the most room while a list is open. */
   private get chatCount(): number {
-    return State.chatPanelOpen ? 99 : State.chatHistory.length;
+    return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
   }
 }

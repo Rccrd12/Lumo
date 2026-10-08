@@ -100,6 +100,17 @@ export interface IntegrationInfo {
   configured: boolean;
 }
 
+/**
+ * When the open island closes on its own: some seconds after the mouse
+ * leaves ("timer", the Mac's way), as soon as it leaves, on a click
+ * elsewhere, or never (Esc, a shortcut or the tray).
+ */
+export type IslandCloseMode = "timer" | "leave" | "click" | "never";
+
+export function parseCloseMode(v: unknown): IslandCloseMode {
+  return v === "leave" || v === "click" || v === "never" ? v : "timer";
+}
+
 export interface Settings {
   soundEnabled: boolean;
   soundVolume: number;
@@ -121,6 +132,12 @@ export interface Settings {
   islandHeight: number;
   /** How big the icons are drawn (1 = the Mac's size). */
   iconScale: number;
+  /** When the open island closes on its own (settings.rs island_close). */
+  islandClose: IslandCloseMode;
+  /** The closed island opens when the mouse rests on it. */
+  islandHoverOpen: boolean;
+  /** The closed island goes away a minute after the mouse left it. */
+  islandAutoHide: boolean;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -182,6 +199,9 @@ export const DEFAULT_SETTINGS: Settings = {
   islandWidth: 640,
   islandHeight: 0,
   iconScale: 1.25,
+  islandClose: "timer",
+  islandHoverOpen: false,
+  islandAutoHide: false,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5",

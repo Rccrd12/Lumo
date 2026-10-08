@@ -169,7 +169,8 @@ export function runIslandKey(host: ShortcutHost, action: IslandKeyAction) {
       host.setView("prompt");
       break;
     case "settings":
-      void Bridge.openSettingsWindow();
+      host.alert("settings");
+      host.takeKeyboard();
       break;
     case "pin":
       // A permission card keeps the island pinned until it is answered.

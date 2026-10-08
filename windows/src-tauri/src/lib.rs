@@ -769,7 +769,7 @@ fn create_settings_window(app: &AppHandle) {
     }
 }
 
-pub fn show_settings_window(app: &AppHandle) {
+fn show_settings_window(app: &AppHandle) {
     let Some(win) = app.get_webview_window("settings") else {
         log::line("settings window missing");
         return;

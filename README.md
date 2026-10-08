@@ -122,6 +122,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.3.1](https://github.com/Rccrd12/coucou-agent/releases/tag/windows-v0.3.1) | Oct 8, 2026 | Settings inside the island, choose how the island opens and closes, it no longer disappears on its own |
 | [0.3.0](https://github.com/Rccrd12/coucou-agent/releases/tag/windows-v0.3.0) | Oct 8, 2026 | Chat with your Claude plan through Claude Code, your screen on request, an island that docks on any edge and resizes, Settings in sections with updates |
 
 ## Demo mode

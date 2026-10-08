@@ -8,13 +8,44 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 
+/**
+ * Settings open inside the island (an iframe of settings.html, see
+ * views/settings-frame.ts) talk to Rust through the island page: a frame has
+ * no Tauri connection of its own on Linux, and on Windows Rust's events never
+ * reach one.
+ */
+export interface TauriHost {
+  invoke: typeof invoke;
+  listen: typeof listen;
+}
+
+const HOST: TauriHost | null = (() => {
+  if (typeof window === "undefined" || window.parent === window) return null;
+  try {
+    return (window.parent as unknown as { __COUCOU_HOST__?: TauriHost }).__COUCOU_HOST__ ?? null;
+  } catch {
+    return null;
+  }
+})();
+
+/** This page is the Settings inside the island, not the Settings window. */
+export const EMBEDDED = HOST != null;
+
+/** The island page lends its connection to Rust to the Settings inside it. */
+export function lendTauri() {
+  (window as unknown as { __COUCOU_HOST__?: TauriHost }).__COUCOU_HOST__ = { invoke, listen };
+}
+
 export const IS_TAURI =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || HOST != null);
+
+const tauriInvoke: typeof invoke = (cmd, args, options) => (HOST?.invoke ?? invoke)(cmd, args, options);
+const tauriListen: typeof listen = (event, handler, options) => (HOST?.listen ?? listen)(event, handler, options);
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   if (!IS_TAURI) return null;
   try {
-    return await invoke<T>(cmd, args);
+    return await tauriInvoke<T>(cmd, args);
   } catch (err) {
     console.error(`[coucou] ${cmd} failed`, err);
     return null;
@@ -40,6 +71,10 @@ export interface BootInfo {
   /** False where the OS has no global cursor (Wayland): see Island.followPageCursor. */
   cursorPoll: boolean;
 }
+
+/** System dialogs of ours open right now (the file picker): a click in them is not "elsewhere". */
+let dialogs = 0;
+export const isDialogOpen = () => dialogs > 0;
 
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),
@@ -159,7 +194,14 @@ export const Bridge = {
   chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
     call<void>("chat_restore", { turns, session }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
-  pickFile: () => callOrThrow<DroppedFile | null>("pick_file"),
+  pickFile: async () => {
+    dialogs++;
+    try {
+      return await callOrThrow<DroppedFile | null>("pick_file");
+    } finally {
+      dialogs--;
+    }
+  },
   // The chat's screen button (screen.rs). Each runs on the user's click only.
   /** The displays, for the menu. Captures nothing. */
   screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),
@@ -399,7 +441,7 @@ export interface HookPreview {
 /** Same as `call`, but surfaces the error so the UI can show what went wrong. */
 async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
   if (!IS_TAURI) throw new Error("not running inside Coucou");
-  return invoke<T>(cmd, args);
+  return tauriInvoke<T>(cmd, args);
 }
 
 export type BridgeEvent =
@@ -469,7 +511,7 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   window.addEventListener("dragover", onOver);
   window.addEventListener("dragleave", onLeave);
   window.addEventListener("drop", onDrop);
-  const unlisten = await listen<DragDropPayload>("file-drag", (e) => handler(e.payload));
+  const unlisten = await tauriListen<DragDropPayload>("file-drag", (e) => handler(e.payload));
   return () => {
     window.removeEventListener("dragenter", onEnter);
     window.removeEventListener("dragover", onOver);
@@ -481,5 +523,5 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
 
 export async function onEvent<T>(name: string, handler: (payload: T) => void) {
   if (!IS_TAURI) return () => {};
-  return listen<T>(name, (e) => handler(e.payload));
+  return tauriListen<T>(name, (e) => handler(e.payload));
 }

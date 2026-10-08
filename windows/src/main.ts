@@ -1,7 +1,7 @@
 // Entry point: boot the bridge, wire the island, start the greeting.
 
 import "./style.css";
-import { Bridge, IS_TAURI, onEvent } from "./core/bridge";
+import { Bridge, IS_TAURI, lendTauri, onEvent } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
@@ -21,6 +21,8 @@ async function main() {
   if (!root) return;
 
   void Sound.preload();
+  // The Settings view is settings.html in a frame: it reaches Rust through us.
+  if (IS_TAURI) lendTauri();
 
   const island = new Island(root);
 
@@ -42,6 +44,8 @@ async function main() {
 
   await onEvent<{ x: number; y: number }>("cursor", ({ x, y }) => island.onCursor(x, y));
   await onEvent<boolean>("pointer-inside", (inside) => island.setPointerInside(inside));
+  // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
+  await onEvent<null>("outside-press", () => island.onOutsidePress());
 
   /** Pause has to reach Rust too, or the pollers keep calling out. */
   const setPaused = (on: boolean) => {
@@ -55,6 +59,7 @@ async function main() {
       case "settings":
         setPaused(false);
         island.alert("settings");
+        island.takeKeyboard();
         break;
       case "open":
         setPaused(false);

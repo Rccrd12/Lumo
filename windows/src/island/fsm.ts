@@ -23,6 +23,27 @@ export class IslandStateMachine {
   }
   /** petit → hidden delay, seconds. */
   petitToHiddenDelay = 60;
+
+  /**
+   * The open island folds once the mouse has left it (after `homeToPetitDelay`).
+   * Off when it only closes on a click elsewhere or never (Settings → Island).
+   */
+  get closeOnLeave(): boolean {
+    return this.leaveCloses;
+  }
+  set closeOnLeave(on: boolean) {
+    this.leaveCloses = on;
+    if (!on) this.clear("homeCollapse");
+  }
+
+  /** The closed island goes away `petitToHiddenDelay` after the mouse left it. */
+  get autoHide(): boolean {
+    return this.hides;
+  }
+  set autoHide(on: boolean) {
+    this.hides = on;
+    if (!on) this.clear("petitHide");
+  }
   /** coucou → petit once the greeting animation ends (no hover). */
   greetAutoCollapseDelay = 0.6;
   /** coucou → petit while the mouse hovers the greeting. */
@@ -38,6 +59,8 @@ export class IslandStateMachine {
   homeCollapseDueAt: number | null = null;
 
   private homeDelay = 15;
+  private leaveCloses = true;
+  private hides = true;
   private petitHide: number | null = null;
   private homeCollapse: number | null = null;
   private greetCollapse: number | null = null;
@@ -127,7 +150,7 @@ export class IslandStateMachine {
     this.clear("petitHide");
     // A card folded away while it waits for an answer keeps the compact island
     // on screen, so it can be reopened (isHeldOpen on macOS).
-    if (this.pinned) return;
+    if (this.pinned || !this.hides) return;
     this.petitHide = window.setTimeout(() => {
       this.petitHide = null;
       if (this.state === "petit" && !this.pinned) this.transition("hidden");
@@ -136,7 +159,7 @@ export class IslandStateMachine {
 
   private scheduleHomeCollapse() {
     this.clear("homeCollapse");
-    if (this.pinned) return;
+    if (this.pinned || !this.leaveCloses) return;
     const ms = this.homeDelay * 1000;
     this.homeCollapseDueAt = performance.now() + ms;
     this.homeCollapse = window.setTimeout(() => {

@@ -177,17 +177,6 @@
    "ru": "Авто · {outfit}",
    "id": "Otomatis · {outfit}"
   },
-  "Auto-close": {
-   "zh-Hans": "自动关闭",
-   "hi": "अपने आप बंद",
-   "es": "Cierre automático",
-   "ar": "الإغلاق التلقائي",
-   "fr": "Fermeture auto",
-   "bn": "স্বয়ংক্রিয় বন্ধ",
-   "pt-BR": "Fechar sozinho",
-   "ru": "Автозакрытие",
-   "id": "Tutup otomatis"
-  },
   "Back": {
    "zh-Hans": "返回",
    "hi": "वापस",
@@ -4086,6 +4075,127 @@
    "pt-BR": "Instale o xclip (ou o wl-clipboard no Wayland) para compartilhar o texto selecionado.",
    "ru": "Установите xclip (или wl-clipboard в Wayland), чтобы делиться выделенным текстом.",
    "id": "Pasang xclip (atau wl-clipboard di Wayland) untuk membagikan teks yang dipilih."
+  },
+  "A few seconds after the mouse leaves": {
+   "zh-Hans": "鼠标离开几秒后",
+   "hi": "माउस हटने के कुछ सेकंड बाद",
+   "es": "Unos segundos después de que salga el ratón",
+   "ar": "بعد بضع ثوانٍ من مغادرة الفأرة",
+   "fr": "Quelques secondes après le départ de la souris",
+   "bn": "মাউস সরে যাওয়ার কয়েক সেকেন্ড পরে",
+   "pt-BR": "Alguns segundos depois que o mouse sai",
+   "ru": "Через несколько секунд после ухода мыши",
+   "id": "Beberapa detik setelah mouse pergi"
+  },
+  "As soon as the mouse leaves": {
+   "zh-Hans": "鼠标一离开就收起",
+   "hi": "माउस हटते ही",
+   "es": "En cuanto sale el ratón",
+   "ar": "فور مغادرة الفأرة",
+   "fr": "Dès que la souris s’en va",
+   "bn": "মাউস সরে যাওয়ামাত্র",
+   "pt-BR": "Assim que o mouse sai",
+   "ru": "Как только мышь уходит",
+   "id": "Begitu mouse pergi"
+  },
+  "On a click outside the island": {
+   "zh-Hans": "在岛外点击时",
+   "hi": "द्वीप के बाहर क्लिक करने पर",
+   "es": "Al hacer clic fuera de la isla",
+   "ar": "عند النقر خارج الجزيرة",
+   "fr": "Sur un clic en dehors de l’île",
+   "bn": "দ্বীপের বাইরে ক্লিক করলে",
+   "pt-BR": "Ao clicar fora da ilha",
+   "ru": "По щелчку вне острова",
+   "id": "Saat klik di luar pulau"
+  },
+  "Only when I close it": {
+   "zh-Hans": "仅在我关闭时",
+   "hi": "केवल जब मैं इसे बंद करूँ",
+   "es": "Solo cuando la cierro",
+   "ar": "فقط عندما أغلقها",
+   "fr": "Seulement quand je la ferme",
+   "bn": "শুধু আমি বন্ধ করলে",
+   "pt-BR": "Só quando eu fecho",
+   "ru": "Только когда я её закрываю",
+   "id": "Hanya saat saya menutupnya"
+  },
+  "Close the open island": {
+   "zh-Hans": "收起展开的岛",
+   "hi": "खुले द्वीप को बंद करें",
+   "es": "Cerrar la isla abierta",
+   "ar": "إغلاق الجزيرة المفتوحة",
+   "fr": "Fermer l’île ouverte",
+   "bn": "খোলা দ্বীপ বন্ধ করা",
+   "pt-BR": "Fechar a ilha aberta",
+   "ru": "Закрывать открытый остров",
+   "id": "Tutup pulau yang terbuka"
+  },
+  "Open on hover": {
+   "zh-Hans": "悬停时打开",
+   "hi": "होवर पर खोलें",
+   "es": "Abrir al pasar el ratón",
+   "ar": "الفتح عند التمرير",
+   "fr": "Ouvrir au survol",
+   "bn": "হোভারে খুলুন",
+   "pt-BR": "Abrir ao passar o mouse",
+   "ru": "Открывать при наведении",
+   "id": "Buka saat diarahkan"
+  },
+  "opens the closed island when the mouse rests on it": {
+   "zh-Hans": "鼠标停在收起的岛上时将其打开",
+   "hi": "माउस बंद द्वीप पर रुकने पर उसे खोलता है",
+   "es": "abre la isla cerrada cuando el ratón se detiene sobre ella",
+   "ar": "يفتح الجزيرة المغلقة عندما تستقر الفأرة عليها",
+   "fr": "ouvre l’île fermée quand la souris s’y pose",
+   "bn": "মাউস বন্ধ দ্বীপের ওপর থামলে সেটি খোলে",
+   "pt-BR": "abre a ilha fechada quando o mouse para sobre ela",
+   "ru": "открывает закрытый остров, когда мышь задерживается на нём",
+   "id": "membuka pulau yang tertutup saat mouse berhenti di atasnya"
+  },
+  "Hide when unused": {
+   "zh-Hans": "闲置时隐藏",
+   "hi": "उपयोग न होने पर छिपाएँ",
+   "es": "Ocultar si no se usa",
+   "ar": "إخفاء عند عدم الاستخدام",
+   "fr": "Masquer si inutilisée",
+   "bn": "ব্যবহার না হলে লুকান",
+   "pt-BR": "Ocultar quando sem uso",
+   "ru": "Скрывать без использования",
+   "id": "Sembunyikan saat tidak dipakai"
+  },
+  "the closed island slips into the edge of the screen a minute after you leave it": {
+   "zh-Hans": "离开一分钟后，收起的岛会缩进屏幕边缘",
+   "hi": "आपके हटने के एक मिनट बाद बंद द्वीप स्क्रीन के किनारे में चला जाता है",
+   "es": "la isla cerrada se esconde en el borde de la pantalla un minuto después de que la dejes",
+   "ar": "تنزلق الجزيرة المغلقة إلى حافة الشاشة بعد دقيقة من مغادرتك لها",
+   "fr": "l’île fermée se glisse dans le bord de l’écran une minute après que vous l’avez quittée",
+   "bn": "আপনি সরে যাওয়ার এক মিনিট পরে বন্ধ দ্বীপটি স্ক্রিনের কিনারায় ঢুকে যায়",
+   "pt-BR": "a ilha fechada se esconde na borda da tela um minuto depois que você sai dela",
+   "ru": "закрытый остров уходит за край экрана через минуту после того, как вы с него ушли",
+   "id": "pulau yang tertutup masuk ke tepi layar semenit setelah Anda meninggalkannya"
+  },
+  "Opening Settings…": {
+   "zh-Hans": "正在打开设置…",
+   "hi": "सेटिंग्स खुल रही हैं…",
+   "es": "Abriendo Ajustes…",
+   "ar": "جارٍ فتح الإعدادات…",
+   "fr": "Ouverture des réglages…",
+   "bn": "সেটিংস খোলা হচ্ছে…",
+   "pt-BR": "Abrindo Ajustes…",
+   "ru": "Открываются настройки…",
+   "id": "Membuka Pengaturan…"
+  },
+  "Open in a window": {
+   "zh-Hans": "在窗口中打开",
+   "hi": "विंडो में खोलें",
+   "es": "Abrir en una ventana",
+   "ar": "فتح في نافذة",
+   "fr": "Ouvrir dans une fenêtre",
+   "bn": "উইন্ডোতে খুলুন",
+   "pt-BR": "Abrir em uma janela",
+   "ru": "Открыть в окне",
+   "id": "Buka di jendela"
   }
  }
 }

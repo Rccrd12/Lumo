@@ -460,11 +460,12 @@ test("island keys: pills by number, new chat, settings, pin", () => {
   assert.deepEqual(State.chatHistory, []);
   assert.equal(sent("chat_reset").length, 1);
 
+  // Settings open inside the island now, with the keyboard for their fields.
   runIslandKey(host, { kind: "settings" });
-  assert.equal(sent("open_settings_window").length, 1);
+  assert.equal(sent("open_settings_window").length, 0);
 
   runIslandKey(host, { kind: "pin" });
   State.pendingApproval = { requestId: "r1", sessionId: "s", pillId: "integration_claude", tool: "Bash", command: "ls" };
   runIslandKey(host, { kind: "pin" });
-  assert.deepEqual(did, ["setView:overview", "setView:overview", "setView:prompt", "pin:true"]);
+  assert.deepEqual(did, ["setView:overview", "setView:overview", "setView:prompt", "alert:settings", "keyboard", "pin:true"]);
 });

@@ -47,6 +47,8 @@ export function colorDot(
     };
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
+      // Only the palette: in the island, Escape would close the island too.
+      e.preventDefault();
       close();
       dot.focus();
     };

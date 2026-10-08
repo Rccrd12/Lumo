@@ -34,9 +34,6 @@ const DOWNLOAD_HOSTS: [&str; 3] = [
 /// No installer is anywhere near this; a bigger answer is not one.
 const MAX_INSTALLER: u64 = 400 * 1024 * 1024;
 
-/// The settings window, which shows the download's progress.
-const SETTINGS_WINDOW: &str = "settings";
-
 /// What Settings shows after a check.
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -337,7 +334,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
 
     let mut bytes: Vec<u8> = Vec::with_capacity(total as usize);
     let mut last = Instant::now();
-    let _ = app.emit_to(SETTINGS_WINDOW, "update-progress", Progress { received: 0, total });
+    let _ = app.emit("update-progress", Progress { received: 0, total });
     loop {
         let chunk = tokio::time::timeout(Duration::from_secs(60), response.chunk())
             .await
@@ -350,7 +347,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         bytes.extend_from_slice(&chunk);
         if last.elapsed() >= Duration::from_millis(150) {
             last = Instant::now();
-            let _ = app.emit_to(SETTINGS_WINDOW, "update-progress", Progress { received: bytes.len() as u64, total });
+            let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total });
         }
     }
     if total > 0 && bytes.len() as u64 != total {
@@ -360,7 +357,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     if !bytes.starts_with(b"MZ") {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
-    let _ = app.emit_to(SETTINGS_WINDOW, "update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
+    let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
     // %TEMP%\Coucou-update\Coucou-Windows-<v>-setup.exe; installers from earlier
     // updates are cleared first.

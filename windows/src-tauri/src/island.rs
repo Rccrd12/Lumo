@@ -987,11 +987,6 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     Ok(s) => (s.width as f64 / scale, s.height as f64 / scale),
                     Err(_) => (PANEL_W, PANEL_H),
                 };
-                if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 {
-                    continue;
-                }
-                last = (x, y);
-
                 // Click-through: the window only takes the mouse over the island
                 // shape. A small entry margin means the flag is already off by the
                 // time a moving cursor reaches a button.
@@ -1002,6 +997,26 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     && y >= r.y - HIT_MARGIN
                     && y <= r.y + r.h + HIT_MARGIN;
 
+                // A press anywhere else on the screen: the open island may close
+                // on it (Settings → Island → "On a click outside the island").
+                // Read before the "has the cursor moved" check, since a click
+                // often comes without a move. A press may also be the start of a
+                // file drag: make sure the drop target is ours before it arrives.
+                let down = left_button_down();
+                if down && !was_down {
+                    if !on_island {
+                        let _ = win.emit("outside-press", ());
+                    }
+                    let handle = app.clone();
+                    let _ = app.run_on_main_thread(move || platform::unblock_webview_drops(&handle));
+                }
+                was_down = down;
+
+                if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 {
+                    continue;
+                }
+                last = (x, y);
+
                 // A file being dragged has to be able to find us. WS_EX_TRANSPARENT
                 // — what click-through is on Windows — hides the window from
                 // WindowFromPoint, so OLE finds no drop target and shows the "no
@@ -1009,15 +1024,6 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // registered destinations whatever ignoresMouseEvents says. So while
                 // a button is held anywhere over the panel, the whole panel takes
                 // the mouse, which also makes the drop zone as forgiving as the Mac's.
-                // A press may be the start of a drag: make sure the drop target is
-                // ours before the file arrives.
-                let down = left_button_down();
-                if down && !was_down {
-                    let handle = app.clone();
-                    let _ = app.run_on_main_thread(move || platform::unblock_webview_drops(&handle));
-                }
-                was_down = down;
-
                 let dragging = down
                     && x >= 0.0
                     && x <= size.0

@@ -35,6 +35,14 @@ pub struct Settings {
     pub island_height: f64,
     /// How big the icons are drawn, against the Mac's size.
     pub icon_scale: f64,
+    /// When the open island closes on its own: "timer" (`auto_close_interval`
+    /// seconds after the mouse leaves), "leave" (as soon as it leaves),
+    /// "click" (a click outside it) or "never" (only Esc or a shortcut).
+    pub island_close: String,
+    /// The closed island opens as soon as the mouse rests on it.
+    pub island_hover_open: bool,
+    /// The closed island goes away a minute after the mouse left it.
+    pub island_auto_hide: bool,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -129,6 +137,9 @@ impl Default for Settings {
             island_width: crate::island::DEFAULT_WIDTH,
             island_height: 0.0,
             icon_scale: DEFAULT_ICON_SCALE,
+            island_close: "timer".into(),
+            island_hover_open: false,
+            island_auto_hide: false,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -412,6 +423,9 @@ mod tests {
   "islandWidth": 900.0,
   "islandHeight": 420.0,
   "iconScale": 1.5,
+  "islandClose": "click",
+  "islandHoverOpen": true,
+  "islandAutoHide": true,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -821,6 +835,9 @@ mod tests {
                 "islandWidth",
                 "islandHeight",
                 "iconScale",
+                "islandClose",
+                "islandHoverOpen",
+                "islandAutoHide",
                 "autostart",
                 "hooksInstalled",
                 "model",

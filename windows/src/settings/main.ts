@@ -3,13 +3,13 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
-import { Bridge, onEvent, type HookPreview, type HookStatus, type ShortcutsReport } from "../core/bridge";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ShortcutsReport } from "../core/bridge";
 import { CUSTOM_SERVER_KEY, providerDef, urlExposure } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
   recordPress, type Binding,
 } from "../core/shortcuts";
-import { DEFAULT_SETTINGS, type Settings } from "../core/state";
+import { DEFAULT_SETTINGS, parseCloseMode, type Settings } from "../core/state";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, isComingSoon, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -19,6 +19,7 @@ import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
 import { renderDiff, statusDot } from "./parts";
 import { updatesSection } from "./updates";
+import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
 import {
   LANGUAGES, N_, isRtl, onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t, tn,
 } from "../i18n/i18n";
@@ -871,17 +872,6 @@ function generalSection(): HTMLElement {
     void save();
   });
 
-  const autoClose = h("input", {
-    type: "number", min: "5", max: "120", step: "1",
-    value: String(Math.round(settings.autoCloseInterval)),
-    style: "width:72px",
-  }) as HTMLInputElement;
-  autoClose.addEventListener("change", () => {
-    settings.autoCloseInterval = Math.max(5, Math.min(120, Number(autoClose.value) || 15));
-    autoClose.value = String(settings.autoCloseInterval);
-    void save();
-  });
-
   return h(
     "section",
     {},
@@ -890,11 +880,6 @@ function generalSection(): HTMLElement {
       h("label", { text: t("Sound") }),
       toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
       volume,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Auto-close") }),
-      autoClose,
-      h("span", { class: "hint", text: t("seconds after you leave the island") }),
     ),
     languageRow(),
     h("div", { class: "row" },
@@ -964,6 +949,7 @@ function islandSection(): HTMLElement {
     "section",
     {},
     h("h2", {}, h("span", { text: t("Island") })),
+    ...behaviourRows(),
     h("div", { class: "row" },
       h("label", { text: t("Island lives on") }),
       screen,
@@ -984,6 +970,60 @@ function islandSection(): HTMLElement {
       h("span", { class: "hint", text: t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.") }),
     ),
   );
+}
+
+/** When the island opens and closes by itself. */
+function behaviourRows(): HTMLElement[] {
+  const close = h("select", {}) as HTMLSelectElement;
+  close.append(
+    h("option", { value: "timer", text: t("A few seconds after the mouse leaves") }),
+    h("option", { value: "leave", text: t("As soon as the mouse leaves") }),
+    h("option", { value: "click", text: t("On a click outside the island") }),
+    h("option", { value: "never", text: t("Only when I close it") }),
+  );
+  close.value = parseCloseMode(settings.islandClose);
+
+  const seconds = h("input", {
+    type: "number", min: "5", max: "120", step: "1",
+    value: String(Math.round(settings.autoCloseInterval)),
+    style: "width:72px",
+  }) as HTMLInputElement;
+  seconds.addEventListener("change", () => {
+    settings.autoCloseInterval = Math.max(5, Math.min(120, Number(seconds.value) || 15));
+    seconds.value = String(settings.autoCloseInterval);
+    void save();
+  });
+  const secondsHint = h("span", { class: "hint", text: t("seconds after you leave the island") });
+  const showSeconds = () => {
+    const on = close.value === "timer";
+    seconds.style.display = on ? "" : "none";
+    secondsHint.style.display = on ? "" : "none";
+  };
+  showSeconds();
+  close.addEventListener("change", () => {
+    settings.islandClose = parseCloseMode(close.value);
+    showSeconds();
+    void save();
+  });
+
+  return [
+    h("div", { class: "row" },
+      h("label", { text: t("Close the open island") }),
+      close,
+      seconds,
+      secondsHint,
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Open on hover") }),
+      toggle(settings.islandHoverOpen, (v) => { settings.islandHoverOpen = v; void save(); }),
+      h("span", { class: "hint", text: t("opens the closed island when the mouse rests on it") }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Hide when unused") }),
+      toggle(settings.islandAutoHide, (v) => { settings.islandAutoHide = v; void save(); }),
+      h("span", { class: "hint", text: t("the closed island slips into the edge of the screen a minute after you leave it") }),
+    ),
+  ];
 }
 
 /**
@@ -1345,7 +1385,24 @@ function showPage(id: PageId, fromClick = true) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+/** Shown inside the island (views/settings-frame.ts) rather than in its own window. */
+const embedded = EMBEDDED || new URLSearchParams(location.search).has("embedded");
+
+function tellIsland(message: string) {
+  window.parent.postMessage(message, location.origin);
+}
+
 async function main() {
+  if (embedded) {
+    document.body.classList.add("embedded");
+    // settings.html paints its window colour inline, before any style loads.
+    document.body.style.background = "transparent";
+    // Escape closes the island, as it does from any other view. The shortcut
+    // recorder takes its own Escape first (capture), and so does a colour palette.
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !e.defaultPrevented) tellIsland(FRAME_CLOSE);
+    });
+  }
   const boot = await Bridge.boot();
   if (boot) {
     settings = { ...settings, ...boot.settings };
@@ -1358,6 +1415,7 @@ async function main() {
     void rerender();
   });
   await render();
+  if (embedded) tellIsland(FRAME_READY);
 
   void onEvent<ShortcutsReport>("shortcuts-status", (fresh) => shortcutsListener?.report(fresh));
   void onEvent<Settings>("settings-changed", (s) => {

@@ -123,7 +123,7 @@ interface Picker {
 }
 
 /** Provider chips, then the chosen provider's models — ModelPickerView. */
-function buildPicker(onChange: () => void): Picker {
+function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
   // Claude Code only: how hard it thinks (claude --effort).
@@ -191,7 +191,7 @@ function buildPicker(onChange: () => void): Picker {
         h("button", {
           class: "picker-link",
           text: tl(STRINGS.openSettings),
-          onclick: () => void Bridge.openSettingsWindow(),
+          onclick: () => openSettings(),
         }),
       );
     }
@@ -279,7 +279,11 @@ function buildPicker(onChange: () => void): Picker {
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
-export function buildPrompt(onHeightChange: () => void): ViewHost {
+/** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
+export function buildPrompt(
+  onHeightChange: () => void,
+  openSettings: () => void = () => void Bridge.openSettingsWindow(),
+): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   const input = h("input", {
@@ -315,7 +319,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     }
     panelChanged();
     drawModelButton();
-  });
+  }, openSettings);
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
