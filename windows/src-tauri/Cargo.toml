@@ -1,6 +1,6 @@
 [package]
 name = "coucou"
-description = "Coucou for Windows and Linux — Mochi lives at the top of your screen"
+description = "Lumo for Windows and Linux — a small glowing firefly at the top of your screen"
 authors = ["Louis Raille"]
 version.workspace = true
 edition.workspace = true
@@ -17,6 +17,9 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
+# The autostart plugin's own crate, to remove the entry it wrote under the
+# app's old name (autostart.rs). Already in the tree, nothing new is compiled.
+auto-launch = "0.5"
 tauri-plugin-global-shortcut = "2"
 # "Attach a file" in the chat: the native file picker, called from Rust only.
 tauri-plugin-dialog = "2"

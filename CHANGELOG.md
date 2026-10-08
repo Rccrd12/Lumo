@@ -2,6 +2,7 @@
 
 ## Windows and Linux 0.3.1 — October 8, 2026
 
+- **The app and its character are now called Lumo**, a small glowing firefly, instead of Coucou and Mochi, which belong to the original project. Updating from Coucou 0.3.0 (Settings → Updates, or the new installer) replaces it: one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
 - **Settings open inside the island**, from the gear, the tray, `Ctrl+,` or a chat link, and stay open while you look something up elsewhere. Escape closes them; the separate window is still there if they cannot load
 - **Choose how the island closes** (Settings → Island): a few seconds after the mouse leaves (as before), as soon as it leaves, on a click outside the island, or only when you close it. It can also open when the mouse rests on it
 - **The island floats**: rounded all round and a little off the edge of the screen. Let it go anywhere and it stays there, growing down in the upper half of the screen and up in the lower half; near an edge it docks to it, still with the small gap

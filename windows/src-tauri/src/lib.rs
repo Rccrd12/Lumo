@@ -2,6 +2,7 @@
 
 mod agent_hooks;
 mod agents;
+mod autostart;
 mod chat;
 mod claude;
 mod claude_code;
@@ -146,7 +147,7 @@ fn set_system_languages(app: AppHandle, languages: Vec<String>) {
 fn language_changed(app: &AppHandle) {
     tray::retitle(app);
     if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.set_title(&i18n::t("Settings — Coucou"));
+        let _ = window.set_title(&i18n::t("Settings — Lumo"));
     }
 }
 
@@ -775,7 +776,7 @@ fn create_settings_window(app: &AppHandle) {
     let url = settings_page_url(app);
     match WebviewWindowBuilder::new(app, "settings", url)
         .additional_browser_args(BROWSER_ARGS)
-        .title(i18n::t("Settings — Coucou"))
+        .title(i18n::t("Settings — Lumo"))
         // Room for the section list on the left and the section beside it.
         .inner_size(780.0, 680.0)
         .min_inner_size(600.0, 480.0)
@@ -959,13 +960,14 @@ pub fn run() {
 
             log::line(format!("--- Coucou {} started ---", env!("CARGO_PKG_VERSION")));
             hooks::ensure_hook_exe(&handle);
+            autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             integrations::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Coucou");
+        .expect("error while running Lumo");
 }
 
 #[cfg(test)]

@@ -45,7 +45,7 @@ const MAX_TOTAL: usize = 64 * 1024 * 1024;
 const MAX_CARRIED_CHARS: usize = 24_000;
 
 /// Added to Claude Code's own instructions. Plain words only: it is an argument.
-const APPEND_PROMPT: &str = "You are Mochi, the user's personal assistant, answering from the Coucou island at the top of their screen. \
+const APPEND_PROMPT: &str = "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
 The chat window is small: answer in the user's language, keep answers focused, and use light Markdown (short paragraphs, lists, bold, code blocks), no tables or big headings. \
 When the user drops a file, its path is given in the message: read it from there. \
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
@@ -383,7 +383,7 @@ pub async fn send(
         None => unreachable!("run() returns an error without a result"),
     };
     let answer = if answer.trim().is_empty() && state.denied > 0 {
-        t("Claude Code needed a permission that wasn't given. Install Coucou's hooks to approve actions from the island.")
+        t("Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island.")
     } else {
         answer
     };

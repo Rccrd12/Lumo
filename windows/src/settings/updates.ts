@@ -12,16 +12,16 @@ const TEXT = {
   get version() { return t("Version"); },
   get check() { return t("Check for updates"); },
   get checking() { return t("Checking…"); },
-  get upToDate() { return t("Coucou is up to date."); },
+  get upToDate() { return t("Lumo is up to date."); },
   available: (version: string) => t("Version {version} is available.", { version }),
   noInstaller: (version: string) =>
     t("Version {version} is out, but its installer isn't there yet. Try again later.", { version }),
   get notes() { return t("What's new"); },
   get updateNow() { return t("Update now"); },
-  get updateHint() { return t("The installer opens and Coucou closes while it runs."); },
+  get updateHint() { return t("The installer opens and Lumo closes while it runs."); },
   get downloading() { return t("Downloading the installer…"); },
-  get launching() { return t("The installer is starting. Coucou closes now so it can be updated."); },
-  get onClick() { return t("Coucou only looks for updates when you click: nothing is checked in the background."); },
+  get launching() { return t("The installer is starting. Lumo closes now so it can be updated."); },
+  get onClick() { return t("Lumo only looks for updates when you click: nothing is checked in the background."); },
   get noTelemetry() { return t("No telemetry. Network requests only go to the services you configure yourself."); },
 };
 

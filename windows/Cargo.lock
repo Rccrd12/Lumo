@@ -612,6 +612,7 @@ dependencies = [
 name = "coucou"
 version = "0.3.1"
 dependencies = [
+ "auto-launch",
  "gtk",
  "keyring",
  "libc",

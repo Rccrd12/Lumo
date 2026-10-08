@@ -17,11 +17,20 @@
       "deb": {
         "depends": [
           "libgtk-layer-shell0 (>= 0.6)"
+        ],
+        "conflicts": [
+          "coucou"
+        ],
+        "replaces": [
+          "coucou"
         ]
       },
       "rpm": {
         "depends": [
           "gtk-layer-shell"
+        ],
+        "obsoletes": [
+          "coucou"
         ]
       }
     }
@@ -30,7 +39,7 @@
     "windows": [
       {
         "label": "island",
-        "title": "Coucou",
+        "title": "Lumo",
         "url": "index.html",
         "width": 240,
         "height": 6,

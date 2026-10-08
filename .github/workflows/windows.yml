@@ -86,8 +86,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
-          name: Coucou-Windows-setup
-          path: windows/release/Coucou-Windows-${{ steps.pack.outputs.version }}-setup.exe
+          name: Lumo-Windows-setup
+          path: windows/release/Lumo-Windows-${{ steps.pack.outputs.version }}-setup.exe
           retention-days: 3
 
       # MSI installer generated via WiX toolset. Bypasses NSIS extractor false-positives
@@ -95,8 +95,8 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
-          name: Coucou-Windows-msi
-          path: windows/release/Coucou-Windows-${{ steps.pack.outputs.version }}.msi
+          name: Lumo-Windows-msi
+          path: windows/release/Lumo-Windows-${{ steps.pack.outputs.version }}.msi
           retention-days: 3
 
       # The unsigned NSIS installer is what Defender false-positives on, so the
@@ -106,12 +106,15 @@ jobs:
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
-          name: Coucou-Windows-portable
+          name: Lumo-Windows-portable
           path: |
             windows/target/release/coucou.exe
             windows/target/release/coucou-hook.exe
           retention-days: 3
 
+      # Coucou-Windows-$v-setup.exe is the same installer under the app's old
+      # name: an installed Coucou 0.3.0 updates itself from that file only
+      # (see scripts/pack.mjs). Keep it in every release.
       - name: Publish the release
         if: env.PUBLISH == 'true' && startsWith(github.ref, 'refs/tags/windows-v')
         shell: pwsh
@@ -120,18 +123,20 @@ jobs:
         run: |
           $v = "${{ steps.pack.outputs.version }}"
           $notes = @"
-          Coucou for Windows $v — Mochi at the top of your screen.
+          Lumo for Windows $v — a small glowing firefly at the top of your screen (formerly Coucou).
 
-          Download ``Coucou-Windows-$v.msi`` (Windows Installer) or ``Coucou-Windows-$v-setup.exe`` and run it. The installer is not
+          Download ``Lumo-Windows-$v.msi`` (Windows Installer) or ``Lumo-Windows-$v-setup.exe`` and run it. The installer is not
           code-signed yet, so Windows SmartScreen shows a warning: click
-          **More info → Run anyway**.
+          **More info → Run anyway**. ``Coucou-Windows-$v-setup.exe`` is the same
+          installer under the old name, for the in-app updater of Coucou 0.3.0.
           "@
           # --latest=false: the download links point at the rolling
           # windows-latest release below, not at GitHub's Latest slot.
           gh release create "${{ github.ref_name }}" `
+            "release/Lumo-Windows-$v-setup.exe" `
+            "release/Lumo-Windows-$v.msi" `
             "release/Coucou-Windows-$v-setup.exe" `
-            "release/Coucou-Windows-$v.msi" `
-            --title "Coucou for Windows $v" `
+            --title "Lumo for Windows $v" `
             --notes $notes `
             --latest=false
 
@@ -149,13 +154,16 @@ jobs:
             # from it gets an old tree.
             git tag -f windows-latest "${{ github.sha }}"
             git push -f origin windows-latest
-            gh release edit windows-latest --title "Coucou for Windows (latest)" --notes "Always the newest Windows build — currently $v."
-            gh release upload windows-latest "release/Coucou-Windows-setup.exe" "release/Coucou-Windows.msi" --clobber
+            gh release edit windows-latest --title "Lumo for Windows (latest)" --notes "Always the newest Windows build — currently $v."
+            # The Coucou-… copies keep links from before the rename working.
+            gh release upload windows-latest "release/Lumo-Windows-setup.exe" "release/Lumo-Windows.msi" "release/Coucou-Windows-setup.exe" "release/Coucou-Windows.msi" --clobber
           } else {
             gh release create windows-latest `
+              "release/Lumo-Windows-setup.exe" `
+              "release/Lumo-Windows.msi" `
               "release/Coucou-Windows-setup.exe" `
               "release/Coucou-Windows.msi" `
-              --title "Coucou for Windows (latest)" `
+              --title "Lumo for Windows (latest)" `
               --notes "Always the newest Windows build — currently $v." `
               --latest=false
           }

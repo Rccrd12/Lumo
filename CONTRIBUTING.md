@@ -1,6 +1,6 @@
-# Contributing to Coucou
+# Contributing to Lumo
 
-Thanks for wanting to help Mochi grow up! 🫶
+Thanks for wanting to help Lumo grow up! 🫶
 
 ## Getting started
 
@@ -35,7 +35,7 @@ in `windows/src/i18n/extra.json`, keyed by the English text, with every language
 ## Good first contributions
 
 - A new agent: any agent already gets its own automatic pill by sending `coucou_agent` in its hook payload (see `docs/AGENTS.md`). Add an entry in `windows/src/core/pills.ts` only if you want it to be declarable in Settings.
-- A new emote or sound for Mochi.
+- A new emote or sound for Lumo.
 - Bug fixes — please describe how to reproduce.
 
 ## Rules of the house

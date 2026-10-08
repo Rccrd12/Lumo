@@ -1,10 +1,10 @@
 <div align="center">
 
-<img src="src-tauri/icons/128x128.png" width="96" alt="Coucou icon">
+<img src="src-tauri/icons/128x128.png" width="96" alt="Lumo icon">
 
-# Coucou for Windows
+# Lumo for Windows
 
-**Mochi doesn't get a notch on a PC — so it lives at the top of your screen instead.**
+**Lumo doesn't get a notch on a PC — so it lives at the top of your screen instead.**
 
 Approve Claude Code permissions, watch your session work, drop a file, chat with Claude, keep an eye on your services — without leaving what you're doing.
 
@@ -15,14 +15,14 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 </div>
 
-<img src="screenshots/greeting.png" width="640" alt="Mochi waving hello at launch">
+<img src="screenshots/greeting.png" width="640" alt="Lumo waving hello at launch">
 
 ---
 
 ## Install
 
-Download **[Coucou-Windows.msi](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Coucou-Windows.msi)**
-(Windows Installer) or **[Coucou-Windows-setup.exe](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Coucou-Windows-setup.exe)**,
+Download **[Lumo-Windows.msi](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Lumo-Windows.msi)**
+(Windows Installer) or **[Lumo-Windows-setup.exe](https://github.com/Rccrd12/coucou-agent/releases/download/windows-latest/Lumo-Windows-setup.exe)**,
 always the newest version, and run it. The .exe installs for the current user only, with no admin prompt; the .msi may ask for admin rights.
 
 **Windows will show a warning the first time — that's expected.** The installer isn't code-signed yet, so SmartScreen doesn't know the publisher:
@@ -31,7 +31,7 @@ always the newest version, and run it. The .exe installs for the current user on
 2. Click **More info** (*Informations complémentaires* in French). This reveals a **Run anyway** button.
 3. Click **Run anyway** (*Exécuter quand même*). The installer starts normally.
 
-This is only because the app isn't signed with a paid certificate yet. Coucou is open source, and Microsoft Defender scans the installer as clean.
+This is only because the app isn't signed with a paid certificate yet. Lumo is open source, and Microsoft Defender scans the installer as clean.
 
 Microsoft Defender once flagged the installer by mistake (`Trojan:Win32/Wacatac.H!ml`,
 a machine-learning false positive); Microsoft reviewed it and removed the detection.
@@ -46,44 +46,65 @@ You can also [build it yourself](#build-it-yourself).
 GitHub for the newest `windows-v*` release of
 [Rccrd12/coucou-agent](https://github.com/Rccrd12/coucou-agent/releases) — only
 when you click it, never in the background. When there is a newer one, **Update
-now** downloads its `Coucou-Windows-X.Y.Z-setup.exe` into a temporary folder,
-starts it with its usual window, and Coucou quits so the installer can replace
+now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder,
+starts it with its usual window, and Lumo quits so the installer can replace
 it. Only installers from that repository's GitHub releases are accepted. On
-Linux, update Coucou the way you installed it.
+Linux, update Lumo the way you installed it.
+
+### Coming from Coucou
+
+Up to 0.3.0 the app was called Coucou, and its character Mochi. Every release
+also carries its installer as `Coucou-Windows-X.Y.Z-setup.exe`, the file
+Coucou 0.3.0's **Update now** looks for, so updating from Coucou works as
+before. The Lumo installer then retires the Coucou install: its program files
+in `%LOCALAPPDATA%\Coucou`, its entry in Settings → Apps, its Start menu and
+desktop shortcuts (a desktop one becomes a Lumo one) and its autostart entry,
+which moves over to Lumo. A Coucou installed from the .msi is uninstalled
+through Windows Installer, which asks first; a Lumo .msi upgrades a Coucou
+.msi in place. On Linux the `lumo` .deb and .rpm replace the `coucou` package.
+
+Nothing of yours moves. Settings, keys, Claude Code's and the other agents'
+hooks, chats, the weekly recap and the log stay where they were: the folders
+keep the old name (`%APPDATA%\Coucou`, `%LOCALAPPDATA%\Coucou`,
+`%USERPROFILE%\Coucou`; `~/.config/coucou`, `~/.local/share/coucou` and
+`~/Coucou` on Linux), and so do the relay `coucou-hook`, the app identifier
+`fr.louisraille.coucou` and its entries in the credential store. At launch,
+with **Open at login** on, Lumo writes its autostart entry again for the exe
+it runs from and removes one left under the name Coucou.
 
 ## Using it
 
-<img src="screenshots/compact.png" width="292" alt="The compact island, with the integration pills as mini Mochis">
+<img src="screenshots/compact.png" width="292" alt="The compact island, with the integration pills as mini Lumos">
 <img src="screenshots/overview.png" width="640" alt="The overview: the focused integration on the left, the other pills on the right">
 <img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny and Allow">
 <img src="screenshots/chat.png" width="640" alt="Chatting with Claude from the island">
-<img src="screenshots/drop.png" width="640" alt="Mochi turned into a box, waiting for a file">
+<img src="screenshots/drop.png" width="640" alt="Lumo turned into a box, waiting for a file">
 
 | What you do | What happens |
 |---|---|
-| Move the mouse to the very top-centre of the screen | Mochi peeks out |
+| Move the mouse to the very top-centre of the screen | Lumo peeks out |
 | Click the small island | It opens |
-| Click Mochi | It gets annoyed. Three times in a row and it goes dizzy |
-| Rest the pointer on Mochi for two seconds | Hearts |
-| Right-click Mochi | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (witch hat in October, Santa hat in December…) |
-| Drag Mochi out of the island | He moves onto your desktop and hangs out there, in his outfit, watching your cursor. Drop him back on the island to bring him home |
-| On the desktop: click / right-click / double-click Mochi | Poke him / the wardrobe / he flies home. Drag him to move him |
-| Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
+| Click Lumo | It gets annoyed. Three times in a row and it goes dizzy |
+| Rest the pointer on Lumo for two seconds | Hearts |
+| Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (witch hat in October, Santa hat in December…) |
+| Drag Lumo out of the island | He moves onto your desktop and hangs out there, in his outfit, watching your cursor. Drop him back on the island to bring him home |
+| On the desktop: click / right-click / double-click Lumo | Poke him / the wardrobe / he flies home. Drag him to move him |
+| Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
-| Power button at the top right of the open island | Quits Coucou (open it again from the Start menu) |
+| Power button at the top right of the open island | Quits Lumo (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
-| `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Coucou copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
+| `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
 | `Ctrl+Alt+→` / `Ctrl+Alt+←` | Next / previous pill |
-| `Ctrl+Alt+S` | Mutes or unmutes Mochi |
+| `Ctrl+Alt+S` | Mutes or unmutes Lumo |
 | `Ctrl+Alt+G` | Opens the wardrobe |
 | `Ctrl+Alt+N` | Opens and closes the island (off until you turn it on) |
 | In the open island: `Ctrl+→` `Ctrl+←`, `Ctrl+1`–`Ctrl+9` | Switch pills |
@@ -94,8 +115,8 @@ Linux, update Coucou the way you installed it.
 
 Every global shortcut can be changed or turned off in **Settings… → Shortcuts**:
 click it and press the new keys. A combination another app already holds is
-flagged *In use*, and two Coucou shortcuts on the same keys are flagged *Used
-twice*. While you record a new one, Coucou lets go of its own so the keys reach
+flagged *In use*, and two Lumo shortcuts on the same keys are flagged *Used
+twice*. While you record a new one, Lumo lets go of its own so the keys reach
 the recorder.
 
 The defaults are not the Mac's `⌃⌥` letters. On Windows, `Ctrl+Alt` is `AltGr`,
@@ -103,7 +124,7 @@ so a global `Ctrl+Alt+E` would swallow every `€` typed on a French or German
 keyboard. The defaults were checked against the AltGr layer of the French,
 German, Spanish, Italian, Portuguese and Brazilian (ABNT2) layouts — that is why
 pill switching uses the arrows rather than `[` `]`, and mute is `S` rather than
-`M` (`AltGr+M` is `µ` in German). On top of that, Coucou asks Windows what each
+`M` (`AltGr+M` is `µ` in German). On top of that, Lumo asks Windows what each
 `Ctrl+Alt` combination types on the layouts you have installed and leaves any
 that types a character unregistered, flagged *Types “ą”* in Settings: Polish,
 for one, puts `ą` on `AltGr+A` and `ś` on `AltGr+S`. The recorder refuses such
@@ -115,7 +136,7 @@ still does, those two show up as *In use*.
 Everything else happens on its own: a Claude Code permission request opens the
 island with **Deny / Allow**, a question from Claude Code shows its options to
 pick from, a finished session shows what it did, and
-your integrations sit in the coloured pills next to Mochi.
+your integrations sit in the coloured pills next to Lumo.
 
 A permission card or a question stays until you answer it: the mouse leaving
 never folds it, it comes up even when the island is already open or another
@@ -125,7 +146,7 @@ island shrinks to its compact size and stays on screen, nothing is answered, and
 opening it again shows the card. **Open terminal** brings the window the session
 runs in to the front.
 
-When Mochi lives on the desktop, he flies back to the island with a permission
+When Lumo lives on the desktop, he flies back to the island with a permission
 request or a question and returns to his spot once you have answered; he does a
 little jump when a task finishes, and dozes off when nothing has happened for
 two minutes and your cursor is elsewhere — asleep, he costs nothing: no cursor
@@ -158,13 +179,13 @@ declare still shows up, for as long as it runs.
 Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
 that will be taken, and nothing is written until you click. Your own hooks are
-never touched, and uninstalling removes only Coucou's entries.
+never touched, and uninstalling removes only Lumo's entries.
 
 The relay is a tiny executable, `coucou-hook.exe`, copied to
-`%LOCALAPPDATA%\Coucou\bin\` at launch. It is given 300 ms to reach Coucou and
+`%LOCALAPPDATA%\Coucou\bin\` at launch. It is given 300 ms to reach Lumo and
 exits cleanly if the app is closed, slow or crashed — **a Claude Code session is
-never blocked or slowed down by Coucou.** If nobody answers a permission request
-in time, Coucou stays quiet and Claude Code asks in the terminal as usual.
+never blocked or slowed down by Lumo.** If nobody answers a permission request
+in time, Lumo stays quiet and Claude Code asks in the terminal as usual.
 
 It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
@@ -187,21 +208,21 @@ reset times. Both are off by default; turn them on in **Settings… → Agents �
   and 64 KB of output. **Uninstall relay** puts your status line back. The
   numbers arrive with Claude Code's replies.
 - **Codex**: nothing is installed. When the pill shows (or is clicked, at most
-  once a minute) Coucou starts `codex app-server` and asks it
+  once a minute) Lumo starts `codex app-server` and asks it
   `account/rateLimits/read`, as Codex's `/status` does, then stops it (15 s at
   most, never while paused). Codex must be signed in with ChatGPT.
 
 ## Weekly recap
 
-On Monday from 8 am, the first time Coucou starts, an agent starts working or
+On Monday from 8 am, the first time Lumo starts, an agent starts working or
 you wake the island, a card sums up the past week: time spent, sessions, files
 and lines changed, commands run, permissions and questions, your top agent,
 top project, busiest day and longest session. **Tray → Weekly recap** opens it
 any day.
 
-**Share image** turns it into a 1080 × 1920 picture with Mochi. **Save image**
+**Share image** turns it into a 1080 × 1920 picture with Lumo. **Save image**
 writes it to your Pictures folder (Downloads if there is none) as
-`Coucou weekly recap YYYY-MM-DD.png`, never over an existing file; **Copy** puts
+`Lumo weekly recap YYYY-MM-DD.png`, never over an existing file; **Copy** puts
 it on the clipboard. **Hide project names** leaves the project out of the image.
 
 The history is `recap.json` next to the log, a 12-week rolling window: counts,
@@ -211,14 +232,14 @@ Weekly recap** turns it off or clears it.
 
 ## Languages
 
-Coucou speaks the same ten languages as the Mac app: English, 简体中文, हिन्दी,
+Lumo speaks the same ten languages as the Mac app: English, 简体中文, हिन्दी,
 Español, العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa
 Indonesia. **Settings… → General → Language** picks one; **System** (the
 default) follows your system's language when it is one of these, English
 otherwise. The island, the settings window and the tray menu switch at once —
 nothing restarts, and the island keeps its sessions, steps and chat.
 
-In Arabic the island's cards read right to left; Mochi, the pills and the
+In Arabic the island's cards read right to left; Lumo, the pills and the
 header stay where they are, and commands, code and file paths stay left to
 right. Steps already in a session's ticker keep the language they were written
 in, as on the Mac.
@@ -255,7 +276,7 @@ PC — nothing leaves it then — and warns before a key would travel over plain
 
 Answers from every provider are shown as **Markdown**: headings, lists, bold,
 inline code, quotes, and code blocks with a copy button. It is built from text
-nodes, never parsed as HTML, and only `http`/`https` links open. Mochi greets
+nodes, never parsed as HTML, and only `http`/`https` links open. Lumo greets
 you by your first name when your account has one (the Windows display name or
 the Linux GECOS full name; a bare login name is not used).
 
@@ -263,17 +284,17 @@ To send the Claude chat through an Anthropic-compatible gateway, set
 `COUCOU_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
 `/v1/messages` is added). It must be `https://`, or `http://` to this PC only.
 Claude Code's own `ANTHROPIC_BASE_URL` is deliberately ignored: your key only
-goes where you told Coucou to send it. The gateway's host is written to the log
+goes where you told Lumo to send it. The gateway's host is written to the log
 once; the key never is.
 
-No telemetry. The only network requests Coucou makes are to the services you
+No telemetry. The only network requests Lumo makes are to the services you
 configure yourself.
 
 ### Chat with your Claude plan (Claude Code)
 
 Pick **Claude Code** above the chat box and the island talks to the Claude Code
 CLI you already use, signed in with your own Claude plan (Pro, Max…): no API key.
-Coucou runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Coucou`
+Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Coucou`
 (`~/Coucou` on Linux); it never reads, stores or forwards any Claude credential,
 and the usage counts against your plan's limits like any Claude Code session.
 
@@ -349,7 +370,7 @@ a badge and a sound when the CI of one of your pull requests turns red or green
 someone requests your review. Pull requests are checked every 5 minutes, every
 minute while a CI is running, and as soon as you open the card on data older
 than a minute; contributions every 30 minutes. Nothing is fetched while the pill
-is off or Coucou is paused.
+is off or Lumo is paused.
 
 ## Build it yourself
 
@@ -376,13 +397,17 @@ ships in the app.
 workflow publishes:
 
 ```
-Coucou-Windows-X.Y.Z-setup.exe    the versioned installer
-Coucou-Windows-setup.exe          the same file under the rolling name
+Lumo-Windows-X.Y.Z-setup.exe      the versioned installer
+Lumo-Windows-setup.exe            the same file under the rolling name
+Coucou-Windows-X.Y.Z-setup.exe    the same file again, for Coucou 0.3.0's updater
+Coucou-Windows-setup.exe          and under the old rolling name, for old links
 ```
+
+(and the .msi as `Lumo-Windows-X.Y.Z.msi`, `Lumo-Windows.msi` and `Coucou-Windows.msi`).
 
 Installing is optional — `target/release/coucou.exe` runs on its own. There is no
 window in the taskbar and no console: the island at the top of the screen and the
-Mochi in the notification area are the whole app, and Quit lives in its menu.
+Lumo in the notification area are the whole app, and Quit lives in its menu.
 
 The 29 sounds live in `assets/sounds/`. They are synthesised from code by
 `scripts/gen-sounds.mjs` (`npm run sounds` rewrites them, byte for byte the
@@ -390,7 +415,7 @@ same). The path is declared once, in `SOUNDS_DIR` at the top of
 `vite.config.ts`, which serves them in development and copies them into
 `dist/sounds` on build.
 
-The app icon and the tray icon are drawn in code, like Mochi itself:
+The app icon and the tray icon are drawn in code, like Lumo itself:
 
 ```powershell
 npm run icons          # regenerates src-tauri/icons from scripts/gen-icons.mjs
@@ -401,8 +426,8 @@ npm run icons          # regenerates src-tauri/icons from scripts/gen-icons.mjs
 ```
 windows/
   src/                 island front end (TypeScript, no framework)
-    mochi/             Mochi and the launch greeting, in Canvas 2D
-    desktop/           Mochi's own little window, when he lives on the desktop
+    mochi/             Lumo and the launch greeting, in Canvas 2D
+    desktop/           Lumo's own little window, when he lives on the desktop
     island/            state machine, hooks, integrations
     views/             every island view
     settings/          the settings window
@@ -421,7 +446,7 @@ problems. It stays on your machine. The weekly recap's history sits beside it in
 
 Every agent below is installed from **Settings → Agents** with the same steps as
 Claude Code: the exact diff, the path of the dated backup, nothing written until
-you click, and uninstalling removes only Coucou's entries. A config Coucou cannot
+you click, and uninstalling removes only Lumo's entries. A config Lumo cannot
 read, or where it finds something it does not expect, is left alone and the
 reason is shown. Each agent gets its own pill (`agent_<name>`, the Mac's ids and
 colours). The files are the Mac's, under `%USERPROFILE%` on Windows and `~` on
@@ -447,11 +472,11 @@ CLI's `BeforeTool`, Copilot's `preToolUse`, Cursor's `beforeSubmitPrompt`…), a
 answers each agent the way it expects. It never lets anything through on its
 own: with no click it prints no decision at all (`{}` for the agents that need
 JSON, `"ask"` for Copilot, which is fail-closed), so the agent asks in its own
-terminal exactly as without Coucou — including when Coucou is closed.
+terminal exactly as without Lumo — including when Lumo is closed.
 
 The plugins start the relay directly, with no shell in between, and never wait
 for it. Amp's steps appear as each tool finishes: its "before" hook must return
-a verdict, and Coucou never gives one.
+a verdict, and Lumo never gives one.
 
 **How each agent runs the relay on Windows.** Hook commands are written for the
 shell that runs them: Git Bash for Claude Code (quoted, forward slashes),
@@ -461,10 +486,10 @@ path is written bare when it has no space or special character — which works i
 cmd, PowerShell and when started directly — and in double quotes otherwise.
 These three are untested on Windows.
 
-A pill is **connected** when Coucou finds its own entries in the files above —
+A pill is **connected** when Lumo finds its own entries in the files above —
 the same check as Settings → Agents (for Claude Code: a SessionStart hook
-running Coucou's relay; the Cursor pill also counts Claude Code's hooks).
-Coucou only reads these files, each time the island opens. Permission requests
+running Lumo's relay; the Cursor pill also counts Claude Code's hooks).
+Lumo only reads these files, each time the island opens. Permission requests
 get the island's card for Claude Code (in any terminal, and in Cursor's),
 Codex, Copilot CLI and Muse Code; other agents and Claude Desktop ask in their
 own window.
@@ -484,14 +509,14 @@ own window.
   `Esc` in the island, and reopened by clicking the island or Open in the tray.
 - Apple Music, the one pill from the Mac catalog with nothing behind it here,
   is left out.
-- Not in this version: sending a dropped file by email and dragging Mochi onto
+- Not in this version: sending a dropped file by email and dragging Lumo onto
   a window to attach it as context. On the Mac, email goes through Resend or
   Apple Mail's scripting; neither has a safe equivalent that attaches a file
   here, and the drop card would need a third button it doesn't have.
 - Cal.com shows the next bookings as a list rather than the Mac's calendar.
 - The Cursor pill carries both Cursor Agent's own hooks and Claude Code running
   in Cursor's terminal.
-- Hermes: Coucou writes the plugin but does not run the `hermes` CLI, so it is
+- Hermes: Lumo writes the plugin but does not run the `hermes` CLI, so it is
   turned on once by hand. Hermes runs natively on Linux; on Windows it is
   untested.
 - Plan usage: the user's previous status line runs through Git Bash on Windows
@@ -514,7 +539,7 @@ own window.
 - Keyboard shortcuts use `Ctrl+Alt` where the Mac uses `⌃⌥`, with different
   keys (see [Keyboard shortcuts](#keyboard-shortcuts)), and `Ctrl` where the
   Mac uses `⌘` inside the island. "Bring the terminal forward" is "Open
-  terminal" here. Not in this version: sending Mochi to the desktop from the
+  terminal" here. Not in this version: sending Lumo to the desktop from the
   keyboard (drag him out instead) and attaching the front window (their ids are
   kept for later), moving through a card's
   list (`⌘↑` `⌘↓` `⌘O`) and the diff (`⌘E`). The island only reads its own
@@ -537,14 +562,14 @@ own window.
     leaves to the image. A turn cut short by the session ending still counts.
   - Tray → Pause doesn't stop the history (it stays on the machine anyway);
     switch it off in Settings → General.
-- The wardrobe opens with a right-click on Mochi, from the tray menu, or with
+- The wardrobe opens with a right-click on Lumo, from the tray menu, or with
   its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
   is cut by the top edge of the screen, as it is by the notch on a Mac.
 - Languages: chosen in Settings, independently of the system, and applied
   without a restart (the Mac's **Restart Coucou** isn't needed). Arabic turns
-  the island's text right to left but not its layout: Mochi and the pills keep
+  the island's text right to left but not its layout: Lumo and the pills keep
   their sides.
-- Mochi on the desktop doesn't dance: there is no music integration to dance
+- Lumo on the desktop doesn't dance: there is no music integration to dance
   to. Dropping him on a window doesn't attach it to the chat, and the Mac's
   ⌃⌥D shortcut isn't there — drag him out, double-click him home. While he
   sleeps, the transparent square around him (120 px) takes the first mouse
@@ -574,7 +599,7 @@ What changes on Linux:
 - **The island** is a gtk-layer-shell overlay anchored to the top edge, over any
   top panel, on compositors that support it: COSMIC, KDE Plasma, Hyprland, Sway
   and other wlroots compositors. GNOME has no layer-shell and ignores where a
-  Wayland window asks to go, so there Coucou runs through XWayland as a dock
+  Wayland window asks to go, so there Lumo runs through XWayland as a dock
   window: top centre, on every workspace, still there after Super+D.
   `COUCOU_X11=0` keeps the native Wayland window, `COUCOU_DOCK=0` makes it a
   utility window instead of a dock. `COUCOU_LAYER_SHELL=0` forces the regular
@@ -583,17 +608,17 @@ What changes on Linux:
   shape, so the compositor sends every other click to what is underneath.
 - **Moving, docking and resizing the island** (dragging its top bar, its
   grips) follow the cursor across the screen, which Linux does not give
-  Coucou: the island stays at the top centre at its usual size there. Zoom and
+  Lumo: the island stays at the top centre at its usual size there. Zoom and
   icon size work.
-- **Mochi's eyes** follow the pointer only while it is over the island: Wayland
+- **Lumo's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else. On the desktop, likewise,
   they follow it only while it is over him, and "the cursor is far away" (so
   he may fall asleep) means it hasn't been over him for a few seconds.
-- **Mochi on the desktop** is a layer-shell surface on the island's display
+- **Lumo on the desktop** is a layer-shell surface on the island's display
   (KDE Plasma, COSMIC, Hyprland, Sway…), placed with margins and dragged within
   that display; on X11 it is an ordinary always-on-top window that goes
   anywhere. **GNOME on Wayland** has no layer-shell and lets no app place its
-  own window, so there Mochi can't leave the island: dragging him does nothing.
+  own window, so there Lumo can't leave the island: dragging him does nothing.
 - **Claude Code hooks** go through `~/.local/share/coucou/bin/coucou-hook` and a
   Unix socket at `$XDG_RUNTIME_DIR/coucou.sock`. Both ends check that the other
   runs as the same user. Every other agent uses the same relay, single-quoted
@@ -608,7 +633,7 @@ What changes on Linux:
   registered there, and **Settings → Shortcuts** lists commands to bind in your
   desktop's own keyboard settings instead:
   `coucou --shortcut openChat` (or the AppImage's path) runs the action in the
-  Coucou that is already open. The ids are `toggleIsland`, `openChat`,
+  Lumo that is already open. The ids are `toggleIsland`, `openChat`,
   `goToAlert`, `jumpToTerminal`, `nextPill`, `prevPill`, `muteToggle` and
   `wardrobeToggle`.
 - **Keys** live in the Secret Service (GNOME Keyring, KWallet).
@@ -617,7 +642,7 @@ What changes on Linux:
   Code. Codex is found on `$PATH`, in `~/.local/bin`, npm's global prefix, Volta,
   Bun, pnpm, or nvm (newest Node first), since a desktop launch often has a
   shorter `$PATH` than your shell.
-- **Mochi's greeting** uses the full name in your account's GECOS field
+- **Lumo's greeting** uses the full name in your account's GECOS field
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
   its menu says so, and nothing is listed or captured.
@@ -626,14 +651,14 @@ What changes on Linux:
   `recap.json`. A saved recap image goes to the pictures folder named in
   `~/.config/user-dirs.dirs`, else `~/Pictures`, else `~/Downloads`.
 - **Languages**: Hindi, Bengali, Chinese and Arabic need fonts that carry those
-  scripts; Coucou asks for the Noto families (`fonts-noto-core` and
+  scripts; Lumo asks for the Noto families (`fonts-noto-core` and
   `fonts-noto-cjk` on Debian and Ubuntu, `noto-fonts` and `noto-fonts-cjk` on
   Arch). **System** reads the language from the webview, which follows
   `LANGUAGE` / `LANG`.
 - **Copying the recap image** needs a WebKitGTK with image clipboard support;
   where it is missing, the island says so and Save still works.
 - What the Windows build leaves out, this one does too: sending a file by
-  email and dragging Mochi onto a window.
+  email and dragging Lumo onto a window.
 - **Open terminal** opens the folder in VS Code: Wayland lets no app bring
   another app's window forward, and X11 would need a window-manager client this
   build doesn't carry.
