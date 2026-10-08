@@ -225,6 +225,8 @@ class AppState {
   noteMessage: string | null = null;
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
+  /** The model picker or the past chats are open: the chat takes its full height. */
+  chatPanelOpen = false;
   /** The id of the current chat in the history (chats.ts). */
   chatId = newChatId();
   /** The Claude Code session the current chat continues, if Claude Code answered it. */

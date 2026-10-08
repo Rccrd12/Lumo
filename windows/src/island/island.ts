@@ -614,7 +614,7 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    let { w, h } = islandSize(State.mode, State.view, State.chatHistory.length);
+    let { w, h } = islandSize(State.mode, State.view, this.chatCount);
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -1172,6 +1172,11 @@ export class Island {
   }
 
   get chatHeight() {
-    return chatPromptHeight(State.chatHistory.length);
+    return chatPromptHeight(this.chatCount);
+  }
+
+  /** What the chat's height follows: its messages, or the most room while a list is open. */
+  private get chatCount(): number {
+    return State.chatPanelOpen ? 99 : State.chatHistory.length;
   }
 }

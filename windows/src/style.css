@@ -1250,6 +1250,15 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* The history shares the picker's look, never its visibility. */
+.chat-body .history {
+  display: none;
+}
+
+.chat-body.picking .history {
+  display: none;
+}
+
 .chat-body.browsing .history {
   display: flex;
 }

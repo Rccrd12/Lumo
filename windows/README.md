@@ -59,6 +59,8 @@ You can also [build it yourself](#build-it-yourself).
 | On the desktop: click / right-click / double-click Mochi | Poke him / the wardrobe / he flies home. Drag him to move him |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
+| Hold `Alt` and drag the island | Moves it anywhere on its display; it stays there. **Put the island back in the centre** (tray menu or Settings) brings it home |
+| In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → General → Island size**, 80–160 %, 115 % by default) |
 | `Esc` | Closes the island |
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
@@ -266,7 +268,16 @@ web. Every action that needs a permission comes up in the island as the usual
 those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
 allowed on its own. The conversation continues the same Claude Code session
 until **New chat**. Install Claude Code and run `claude` once in a terminal to
-sign in before using it.
+sign in before using it. Its **Effort** (Auto, low … max) is picked under the
+models, and goes to Claude Code as `--effort`. Claude Code's own run never shows
+up as a session in the island: only its permission requests do, as a card over
+the chat.
+
+Next to the model name, **+** starts a new chat and the clock lists your past
+chats, to reopen (a Claude Code chat continues its session) or delete; they are
+kept on this computer only, 40 at most. The paperclip in the text field opens
+the file picker: with Claude Code the file joins the conversation, with the
+other providers it starts a new chat, as a drop does.
 
 ## GitHub
 

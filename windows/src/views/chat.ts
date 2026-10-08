@@ -272,8 +272,17 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   const picker = buildPicker(() => {
     body.classList.toggle("picking", picker.isOpen);
     if (picker.isOpen) closeHistory();
+    panelChanged();
     drawModelButton();
   });
+
+  /** An open list gets the chat's full height; closing it gives the room back. */
+  function panelChanged() {
+    const open = picker.isOpen || body.classList.contains("browsing");
+    if (open === State.chatPanelOpen) return;
+    State.chatPanelOpen = open;
+    onHeightChange();
+  }
   const historyList = h("div", { class: "picker-list" });
   const historyEl = h("div", { class: "picker history" }, h("div", { class: "picker-title", text: t(STRINGS.pastChats) }), historyList);
   body.append(chipRow, log, picker.el, historyEl, modelRow, bar);
@@ -301,6 +310,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   function closeHistory() {
     body.classList.remove("browsing");
     historyBtn.classList.remove("open");
+    panelChanged();
   }
 
   function drawHistory() {
@@ -414,6 +424,7 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     drawHistory();
     body.classList.add("browsing");
     historyBtn.classList.add("open");
+    panelChanged();
   });
 
   modelBtn.addEventListener("click", () => {
