@@ -60,7 +60,8 @@ You can also [build it yourself](#build-it-yourself).
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Hold `Alt` and drag the island | Moves it anywhere on its display; it stays there. **Put the island back in the centre** (tray menu or Settings) brings it home |
-| In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → General → Island size**, 80–160 %, 115 % by default) |
+| Drag a side of the open island | Widens or narrows it, both sides together so it stays centred (560–1200 px). Dragging the bottom of the chat makes it taller. A double click on the edge puts it back |
+| In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → General → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
@@ -534,6 +535,9 @@ What changes on Linux:
   window anywhere.
 - **Click-through** is the window's input region, kept equal to the island
   shape, so the compositor sends every other click to what is underneath.
+- **Moving and resizing the island** (`Alt` + drag, dragging its edges) follow
+  the cursor across the screen, which Linux does not give Coucou: the island
+  stays at the top centre at its usual width there. Zoom and icon size work.
 - **Mochi's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else. On the desktop, likewise,
   they follow it only while it is over him, and "the cursor is far away" (so

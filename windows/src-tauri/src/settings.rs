@@ -29,6 +29,13 @@ pub struct Settings {
     /// what a webview sends back is ignored.
     pub island_dx: f64,
     pub island_dy: f64,
+    /// How wide the open island is, and how tall the chat, in page pixels
+    /// (0 = the chat grows with the conversation). Dragged from the island's
+    /// edges, so owned by the Rust side too.
+    pub island_width: f64,
+    pub chat_height: f64,
+    /// How big the icons are drawn, against the Mac's size.
+    pub icon_scale: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -95,6 +102,9 @@ pub struct DesktopSpot {
     pub space: String,
 }
 
+/// A little bigger than the Mac's icons, which sit closer to the eye.
+pub const DEFAULT_ICON_SCALE: f64 = 1.25;
+
 fn default_model() -> String {
     crate::claude::DEFAULT_MODEL.to_string()
 }
@@ -117,6 +127,9 @@ impl Default for Settings {
             island_zoom: crate::island::DEFAULT_ZOOM,
             island_dx: 0.0,
             island_dy: 0.0,
+            island_width: crate::island::DEFAULT_WIDTH,
+            chat_height: 0.0,
+            icon_scale: DEFAULT_ICON_SCALE,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -397,6 +410,9 @@ mod tests {
   "islandZoom": 1.3,
   "islandDx": -200.5,
   "islandDy": 40.0,
+  "islandWidth": 900.0,
+  "chatHeight": 420.0,
+  "iconScale": 1.5,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -803,6 +819,9 @@ mod tests {
                 "islandZoom",
                 "islandDx",
                 "islandDy",
+                "islandWidth",
+                "chatHeight",
+                "iconScale",
                 "autostart",
                 "hooksInstalled",
                 "model",

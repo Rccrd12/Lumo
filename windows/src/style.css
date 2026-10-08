@@ -80,6 +80,41 @@ body {
   will-change: width, height, transform;
 }
 
+/* Grips on the open island's edges: drag to resize (both sides together). */
+.edge {
+  position: absolute;
+  display: none;
+  z-index: 5;
+}
+
+.edge.on {
+  display: block;
+}
+
+.edge-left,
+.edge-right {
+  top: 12px;
+  bottom: 12px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.edge-left {
+  left: -5px;
+}
+
+.edge-right {
+  right: -5px;
+}
+
+.edge-bottom {
+  left: 24px;
+  right: 24px;
+  bottom: -5px;
+  height: 10px;
+  cursor: ns-resize;
+}
+
 #island-clip {
   position: absolute;
   inset: 0;

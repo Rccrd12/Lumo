@@ -92,6 +92,8 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         // Where the island was dragged is island.rs's to say, too.
         settings.island_dx = current.island_dx;
         settings.island_dy = current.island_dy;
+        settings.island_width = current.island_width;
+        settings.chat_height = current.chat_height;
         *current = settings;
         (screen_changed, autostart_changed, shortcuts_changed)
     };
@@ -208,15 +210,53 @@ fn set_island_offset(app: &AppHandle, dx: f64, dy: f64) {
 fn island_drag(app: AppHandle) {
     std::thread::spawn(move || {
         let Some(pos) = island::drag(&app) else { return };
-        let (pref, zoom) = {
-            let shared = app.state::<Shared>();
-            let s = shared.settings.lock().unwrap();
-            (s.screen.clone(), s.island_zoom)
-        };
-        if let Some((dx, dy)) = island::offset_for(&app, &pref, zoom, pos) {
+        let (pref, p) = placement(&app.state::<Shared>());
+        if let Some((dx, dy)) = island::offset_for(&app, &pref, p, pos) {
             set_island_offset(&app, dx, dy);
         }
     });
+}
+
+/// Remembers the island's width and the chat's height, sizes the window for
+/// them and tells both windows.
+fn set_island_size(app: &AppHandle, width: f64, chat_h: f64) {
+    let shared = app.state::<Shared>();
+    let settings = {
+        let mut s = shared.settings.lock().unwrap();
+        s.island_width = island::clamp_width(width);
+        s.chat_height = island::clamp_chat_h(chat_h);
+        s.clone()
+    };
+    if let Err(err) = settings::save(&settings) {
+        log::line(format!("could not save settings: {err}"));
+    }
+    let collapsed = shared.gate.collapsed.load(Ordering::Relaxed);
+    island::apply_geometry(app, &settings.screen, island::Placement::of(&settings), collapsed);
+    let _ = app.emit("settings-changed", settings);
+}
+
+/// A drag on one of the island's edges: it follows the mouse until the button
+/// is let go. `height` is the chat's height as drawn.
+#[tauri::command]
+fn island_resize(app: AppHandle, edge: island::Edge, height: f64) {
+    std::thread::spawn(move || {
+        let (pref, start) = placement(&app.state::<Shared>());
+        let Some(p) = island::resize(&app, &pref, start, edge, height) else { return };
+        if p != start {
+            set_island_size(&app, p.width, p.chat_h);
+        }
+    });
+}
+
+/// A double click on an edge: back to the usual width, or to a chat that
+/// grows with the conversation.
+#[tauri::command]
+fn island_reset_size(app: AppHandle, edge: island::Edge) {
+    let (_, p) = placement(&app.state::<Shared>());
+    match edge {
+        island::Edge::Side => set_island_size(&app, island::DEFAULT_WIDTH, p.chat_h),
+        island::Edge::Bottom => set_island_size(&app, p.width, 0.0),
+    }
 }
 
 /// Puts the island back at the top centre of its display.
@@ -767,6 +807,8 @@ pub fn run() {
             chat_reset,
             chat_restore,
             island_drag,
+            island_resize,
+            island_reset_size,
             island_recenter,
             pick_file,
             ingest_file,

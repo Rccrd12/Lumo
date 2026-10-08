@@ -920,6 +920,18 @@ function generalSection(): HTMLElement {
     void save();
   });
 
+  // The island's icons, against the Mac's size.
+  const icons = h("select", {}) as HTMLSelectElement;
+  for (const pct of [100, 125, 150]) {
+    icons.append(h("option", { value: String(pct / 100), text: `${pct} %` }));
+  }
+  icons.value = [...icons.options].reduce((best, o) =>
+    Math.abs(Number(o.value) - settings.iconScale) < Math.abs(Number(best.value) - settings.iconScale) ? o : best).value;
+  icons.addEventListener("change", () => {
+    settings.iconScale = Number(icons.value);
+    void save();
+  });
+
   return h(
     "section",
     {},
@@ -944,7 +956,14 @@ function generalSection(): HTMLElement {
       h("button", { text: t("Put the island back in the centre"), onclick: () => void Bridge.islandRecenter() }),
     ),
     h("div", { class: "row" },
+      h("label", { text: t("Icon size") }),
+      icons,
+    ),
+    h("div", { class: "row" },
       h("span", { class: "hint", text: t("Hold Alt and drag the island to move it.") }),
+    ),
+    h("div", { class: "row" },
+      h("span", { class: "hint", text: t("Drag a side of the open island to widen it, or the bottom of the chat to make it taller. A double click puts it back.") }),
     ),
     h("div", { class: "row" },
       h("label", { text: t("Launch at startup") }),

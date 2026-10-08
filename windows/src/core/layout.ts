@@ -111,10 +111,49 @@ export function chatPromptHeight(messageCount: number): number {
   return Math.min(300, 240 + messageCount * 40);
 }
 
+/** Room the window keeps round the island — island.rs has the same. */
+const SIDE_ROOM = PANEL_W - EXPANDED_W;
+const BOTTOM_ROOM = 20;
+const PANEL_STEP = 40;
+export const MIN_ISLAND_W = 560;
+export const MAX_ISLAND_W = 1200;
+export const MIN_CHAT_H = 200;
+export const MAX_CHAT_H = 640;
+
+/** What the user dragged the edges to: the open island's width, the chat's height (0 = grows). */
+export interface IslandShape {
+  width: number;
+  chatHeight: number;
+}
+
+export const DEFAULT_SHAPE: IslandShape = { width: EXPANDED_W, chatHeight: 0 };
+
+export function islandWidth(shape: IslandShape): number {
+  return Number.isFinite(shape.width) ? Math.min(MAX_ISLAND_W, Math.max(MIN_ISLAND_W, shape.width)) : EXPANDED_W;
+}
+
+/** The chat's height: the one picked, or one that grows with the messages. */
+export function chatHeight(shape: IslandShape, messageCount: number): number {
+  const picked = shape.chatHeight;
+  if (!Number.isFinite(picked) || picked <= 0) return chatPromptHeight(messageCount);
+  return Math.min(MAX_CHAT_H, Math.max(MIN_CHAT_H, picked));
+}
+
+/** The window's logical size for that shape, as island.rs sizes it. */
+export function panelSize(shape: IslandShape): { w: number; h: number } {
+  const up = (v: number) => Math.ceil(v / PANEL_STEP) * PANEL_STEP;
+  const h = shape.chatHeight > 0 ? chatHeight(shape, 0) : 0;
+  return {
+    w: Math.max(PANEL_W, up(islandWidth(shape) + SIDE_ROOM)),
+    h: Math.max(PANEL_H, up(h + BOTTOM_ROOM)),
+  };
+}
+
 export function islandSize(
   mode: IslandMode,
   view: IslandViewName,
   chatCount = 0,
+  shape: IslandShape = DEFAULT_SHAPE,
 ): { w: number; h: number } {
   switch (mode) {
     case "hidden":
@@ -124,8 +163,8 @@ export function islandSize(
     case "compact":
       return { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
-      const h = view === "prompt" ? chatPromptHeight(chatCount) : VIEW_LAYOUTS[view].height;
-      return { w: EXPANDED_W, h };
+      const h = view === "prompt" ? chatHeight(shape, chatCount) : VIEW_LAYOUTS[view].height;
+      return { w: islandWidth(shape), h };
     }
   }
 }

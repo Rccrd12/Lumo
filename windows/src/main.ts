@@ -77,6 +77,8 @@ async function main() {
   });
 
   await onEvent<null>("screen-changed", () => void Bridge.reposition());
+  // An edge of the island being dragged: island.rs sends each new size.
+  await onEvent<{ width: number; chatHeight: number }>("island-resize", (size) => island.onResize(size));
 
   // The settings window writes preferences; apply them here without a restart.
   await onEvent<Settings>("settings-changed", (s) => {

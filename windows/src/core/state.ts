@@ -115,6 +115,11 @@ export interface Settings {
   /** Where the island was dragged, from the top centre (owned by Rust). */
   islandDx: number;
   islandDy: number;
+  /** Width of the open island and height of the chat (0 = grows); owned by Rust. */
+  islandWidth: number;
+  chatHeight: number;
+  /** How big the icons are drawn (1 = the Mac's size). */
+  iconScale: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -173,6 +178,9 @@ export const DEFAULT_SETTINGS: Settings = {
   islandZoom: 1.15,
   islandDx: 0,
   islandDy: 0,
+  islandWidth: 640,
+  chatHeight: 0,
+  iconScale: 1.25,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5",

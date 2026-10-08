@@ -3481,6 +3481,28 @@
    "pt-BR": "Segure Alt e arraste a ilha para movê-la.",
    "ru": "Удерживайте Alt и перетащите остров, чтобы переместить его.",
    "id": "Tahan Alt dan seret pulau untuk memindahkannya."
+  },
+  "Icon size": {
+   "zh-Hans": "图标大小",
+   "hi": "आइकन का आकार",
+   "es": "Tamaño de los iconos",
+   "ar": "حجم الأيقونات",
+   "fr": "Taille des icônes",
+   "bn": "আইকনের আকার",
+   "pt-BR": "Tamanho dos ícones",
+   "ru": "Размер значков",
+   "id": "Ukuran ikon"
+  },
+  "Drag a side of the open island to widen it, or the bottom of the chat to make it taller. A double click puts it back.": {
+   "zh-Hans": "拖动展开的岛的侧边可以加宽，拖动聊天的底部可以加高。双击即可复原。",
+   "hi": "खुले आइलैंड का एक किनारा खींचकर उसे चौड़ा करें, या चैट का निचला हिस्सा खींचकर उसे ऊँचा करें। डबल क्लिक से वह पहले जैसा हो जाता है।",
+   "es": "Arrastra un lado de la isla abierta para ensancharla, o la parte inferior del chat para hacerlo más alto. Un doble clic la devuelve a su tamaño.",
+   "ar": "اسحب أحد جانبي الجزيرة المفتوحة لتوسيعها، أو أسفل المحادثة لزيادة ارتفاعها. النقر المزدوج يعيدها كما كانت.",
+   "fr": "Faites glisser un côté de l'île ouverte pour l'élargir, ou le bas du chat pour l'agrandir. Un double clic la remet comme avant.",
+   "bn": "খোলা আইল্যান্ডের একটি পাশ টেনে চওড়া করুন, বা চ্যাটের নিচের অংশ টেনে লম্বা করুন। ডাবল ক্লিকে আগের মতো হয়ে যায়।",
+   "pt-BR": "Arraste uma lateral da ilha aberta para alargá-la, ou a parte de baixo do chat para deixá-lo mais alto. Um clique duplo a deixa como antes.",
+   "ru": "Потяните за край открытого острова, чтобы расширить его, или за низ чата, чтобы сделать его выше. Двойной щелчок возвращает прежний размер.",
+   "id": "Seret sisi pulau yang terbuka untuk melebarkannya, atau bagian bawah obrolan untuk membuatnya lebih tinggi. Klik dua kali untuk mengembalikannya."
   }
  }
 }

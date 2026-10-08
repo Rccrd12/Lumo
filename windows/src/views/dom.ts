@@ -114,6 +114,12 @@ export function svg(
   el.setAttribute("viewBox", "0 0 24 24");
   el.setAttribute("width", String(size));
   el.setAttribute("height", String(size));
+  // Settings › Icon size scales the icons; the tiny marks inside badges and
+  // text rows stay as they are, or they would outgrow what holds them.
+  if (size >= 10) {
+    el.style.width = el.style.height = `calc(${size}px * var(--icon-scale, 1))`;
+    el.style.flex = "none";
+  }
   el.setAttribute("aria-hidden", "true");
   const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
   p.setAttribute("d", path);

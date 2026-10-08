@@ -4,9 +4,9 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
 import {
-  EXPANDED_CORNER, EXPANDED_W, NOTCH_W, PANEL_H, PANEL_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight,
-  islandSize,
+  EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
+  islandSize, panelSize, type IslandShape,
   QUESTION_PICKER_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
   zoomStep,
@@ -58,6 +58,12 @@ export class Island {
   private miniGrid!: HTMLElement;
   private countdown!: HTMLElement;
   private wakeStrip!: HTMLElement;
+  /** Grips on the island's sides and bottom: dragging them resizes it. */
+  private edges: { el: HTMLElement; edge: "side" | "bottom" }[] = [];
+  private resizing = false;
+  /** Resizing follows the global cursor, which Wayland does not give. */
+  private canResize = true;
+  private lastShape = "";
 
   private header!: ViewHost;
   private views!: Map<IslandViewName, ViewHost>;
@@ -282,6 +288,10 @@ export class Island {
       this.uploadCanvas.el,
       this.contentEl,
     );
+    this.edges = (["left", "right", "bottom"] as const).map((side) => ({
+      el: h("div", { class: `edge edge-${side}` }),
+      edge: side === "bottom" ? "bottom" : "side",
+    }));
     this.islandEl = h(
       "div",
       { id: "island" },
@@ -290,6 +300,7 @@ export class Island {
       this.botCanvas,
       this.miniGrid,
       this.countdown,
+      ...this.edges.map((e) => e.el),
     );
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -614,7 +625,7 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    let { w, h } = islandSize(State.mode, State.view, this.chatCount);
+    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape);
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -652,7 +663,7 @@ export class Island {
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
 
-    const rect = { x: (PANEL_W - w) / 2, y: 0, w, h: hh };
+    const rect = { x: (panelSize(this.shape).w - w) / 2, y: 0, w, h: hh };
     const p = this.pushedRect;
     if (Math.abs(p.x - rect.x) > 0.5 || Math.abs(p.w - rect.w) > 0.5 || Math.abs(p.h - rect.h) > 0.5) {
       this.pushedRect = rect;
@@ -664,7 +675,7 @@ export class Island {
   private islandRect(): { x: number; y: number; w: number; h: number } {
     const w = this.width.value;
     const hh = this.height.value;
-    return { x: (PANEL_W - w) / 2, y: 0, w, h: hh };
+    return { x: (panelSize(this.shape).w - w) / 2, y: 0, w, h: hh };
   }
 
   // ── Window collapse (hidden → tiny wake strip, zero polling) ────────────────
@@ -698,6 +709,23 @@ export class Island {
       Sound.resume();
       if (State.mode === "hidden") this.fsm.mouseEntered();
     });
+
+    // The edges resize the island, both sides together; Rust follows the mouse.
+    for (const { el, edge } of this.edges) {
+      el.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        if (e.button !== 0 || e.altKey) return;
+        e.preventDefault();
+        this.resizing = true;
+        void Bridge.islandResize(edge, this.height.value);
+      });
+      el.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        void Bridge.islandResetSize(edge);
+      });
+    }
+    window.addEventListener("mouseup", () => { this.resizing = false; });
+    window.addEventListener("mousemove", (e) => { if (!(e.buttons & 1)) this.resizing = false; });
 
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
@@ -790,6 +818,7 @@ export class Island {
    * reported as a cursor far away, which is what the poll would have said.
    */
   followPageCursor() {
+    this.canResize = false;
     window.addEventListener("mousemove", (e) => this.onCursor(e.clientX, e.clientY));
     window.addEventListener("mouseout", (e) => {
       if (e.relatedTarget == null) this.onCursor(-10_000, -10_000);
@@ -828,14 +857,17 @@ export class Island {
       x >= rect.x - HIT_MARGIN && x <= rect.x + rect.w + HIT_MARGIN &&
       y >= rect.y - HIT_MARGIN && y <= rect.y + rect.h + HIT_MARGIN;
 
-    if (inIsland && !this.wasInIsland) {
-      if (this.fsm.state === "coucou") this.greeting.hover();
-      this.fsm.mouseEntered();
+    // Mid-resize the cursor rides the edge, a little in or out: not a leave.
+    if (!this.resizing) {
+      if (inIsland && !this.wasInIsland) {
+        if (this.fsm.state === "coucou") this.greeting.hover();
+        this.fsm.mouseEntered();
+      }
+      if (!inIsland && this.wasInIsland) {
+        this.fsm.mouseLeft();
+      }
+      this.wasInIsland = inIsland;
     }
-    if (!inIsland && this.wasInIsland) {
-      this.fsm.mouseLeft();
-    }
-    this.wasInIsland = inIsland;
 
     // Bot hover → love
     const overBot = State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
@@ -962,6 +994,10 @@ export class Island {
     if (uploadActive) this.uploadCanvas.draw(UploadSeq.frame(), nowMs / 1000);
     this.uploadCanvas.el.classList.toggle("on", uploadActive);
     this.viewsEl.classList.toggle("hidden-by-upload", uploadActive);
+    const resizable = this.canResize && State.mode === "expanded" && !uploadActive && State.view !== "greeting";
+    for (const { el, edge } of this.edges) {
+      el.classList.toggle("on", resizable && (edge === "side" || State.view === "prompt"));
+    }
 
     tickMiniBots(dt);
     // A ticker scroll that loses its frames freezes mid-way, rows overlapping.
@@ -1164,15 +1200,37 @@ export class Island {
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
     this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
+    // A resize saved, or undone with a double click: grow or shrink to it.
+    const shape = JSON.stringify(this.shape);
+    if (shape !== this.lastShape) {
+      this.lastShape = shape;
+      this.animateGeometry(false);
+    }
     State.notify();
   }
 
+  /** A new size while an edge is dragged: followed at once, no spring. */
+  onResize(size: { width: number; chatHeight: number }) {
+    State.settings = { ...State.settings, islandWidth: size.width, chatHeight: size.chatHeight };
+    this.lastShape = JSON.stringify(this.shape);
+    const { w, h } = this.targetSize();
+    this.width.jump(w);
+    this.height.jump(h);
+    this.ensureRunning();
+  }
+
+  /** What the edges were dragged to. */
+  private get shape(): IslandShape {
+    return { width: State.settings.islandWidth, chatHeight: State.settings.chatHeight };
+  }
+
   get panelSize() {
-    return { w: PANEL_W, h: PANEL_H };
+    return panelSize(this.shape);
   }
 
   get chatHeight() {
-    return chatPromptHeight(this.chatCount);
+    return chatHeight(this.shape, this.chatCount);
   }
 
   /** What the chat's height follows: its messages, or the most room while a list is open. */
