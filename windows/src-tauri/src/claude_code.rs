@@ -48,6 +48,7 @@ const MAX_CARRIED_CHARS: usize = 24_000;
 const APPEND_PROMPT: &str = "You are Mochi, the user's personal assistant, answering from the Coucou island at the top of their screen. \
 The chat window is small: answer in the user's language, keep answers focused, and use light Markdown (short paragraphs, lists, bold, code blocks), no tables or big headings. \
 When the user drops a file, its path is given in the message: read it from there. \
+When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen or their open windows unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally.";
 
@@ -87,8 +88,18 @@ fn safe_session(id: &str) -> Option<&str> {
     (id.len() == 36 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')).then_some(id)
 }
 
+/// A shared folder we are willing to put on the command line: a full path with
+/// nothing cmd.exe would read as syntax (an npm install is a `.cmd`). Any other
+/// is left out, and Claude Code asks before reading there.
+fn safe_dir(dir: &str) -> Option<&str> {
+    let full = dir.starts_with("\\\\") || dir.starts_with('/') || dir.as_bytes().get(1) == Some(&b':');
+    (full && dir.len() <= 1024 && !dir.chars().any(|c| c.is_control() || matches!(c, '"' | '%' | '^' | '&' | '|' | '<' | '>' | '!' | '`')))
+        .then_some(dir)
+}
+
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
-fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str) -> Vec<String> {
+/// `folders`: what the user shared from File Explorer in this chat.
+fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
     let mut a: Vec<String> = [
         "-p",
         "--output-format",
@@ -107,6 +118,10 @@ fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str) -> Vec<St
     .collect();
     a.push("--add-dir".into());
     a.push(inbox.to_string());
+    for dir in folders.iter().filter_map(|d| safe_dir(d)) {
+        a.push("--add-dir".into());
+        a.push(dir.to_string());
+    }
     if let Some(m) = safe_model(model) {
         a.push("--model".into());
         a.push(m.to_string());
@@ -335,6 +350,7 @@ pub async fn send(
     effort: &str,
     query: String,
     context: Option<ChatContext>,
+    folder: Option<String>,
 ) -> Result<ChatReply, String> {
     let exe = platform::claude_candidates()
         .into_iter()
@@ -347,7 +363,7 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, effort, session.as_deref(), &inbox);
+    let args = args(model, effort, session.as_deref(), &inbox, &chat.cli_dirs(folder));
 
     let app2 = app.clone();
     let state = tauri::async_runtime::spawn_blocking(move || {
@@ -384,17 +400,18 @@ mod tests {
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let a = args("opus", "high", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox");
+        let a = args("opus", "high", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
         assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--model", "opus"]));
         assert!(a.windows(2).any(|w| w == ["--resume", SID]));
         assert!(a.windows(2).any(|w| w == ["--permission-mode", "default"]));
         assert_eq!(a[0], "-p");
 
-        let a = args("opus & del *", "high & calc", Some("x\" & calc"), "/inbox");
+        let a = args("opus & del *", "high & calc", Some("x\" & calc"), "/inbox", &["C:\\A & calc".into(), "%TEMP%".into()]);
         assert!(!a.contains(&"--effort".to_string()));
         assert!(!a.iter().any(|s| s.contains('&')), "{a:?}");
         assert!(!a.contains(&"--model".to_string()));
+        assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 1, "only the inbox: {a:?}");
         assert!(!a.contains(&"--resume".to_string()));
         assert!(!APPEND_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
         assert!(APPEND_PROMPT.contains("press the screen button"), "Claude asks, never captures");
@@ -439,6 +456,19 @@ mod tests {
         let carried = vec![json!({"role":"user","content":"hi"}), json!({"role":"assistant","content":"hello"})];
         let p = prompt(None, &carried, "go on");
         assert!(p.contains("user: hi") && p.contains("assistant: hello") && p.ends_with("go on"));
+    }
+
+    #[test]
+    fn a_shared_folder_is_added_only_when_cmd_exe_would_read_it_as_a_path() {
+        let a = args("default", "", None, "/inbox", &["C:\\Users\\me\\My PDFs".into(), "\\\\nas\\docs".into()]);
+        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\My PDFs"]));
+        assert!(a.windows(2).any(|w| w == ["--add-dir", "\\\\nas\\docs"]));
+        assert_eq!(safe_dir("C:\\Tom & Jerry"), None);
+        assert_eq!(safe_dir("C:\\100%"), None);
+        assert_eq!(safe_dir("relative\\dir"), None);
+        assert_eq!(safe_dir("C:\\a\nb"), None);
+        assert_eq!(safe_dir(""), None);
+        assert_eq!(safe_dir("/home/me/pdfs"), Some("/home/me/pdfs"));
     }
 
     #[test]

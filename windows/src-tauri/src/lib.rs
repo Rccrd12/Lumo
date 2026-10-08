@@ -8,6 +8,7 @@ mod claude_code;
 mod codex_plan;
 mod config_file;
 mod desktop;
+mod explorer;
 mod files;
 mod github;
 mod hooks;
@@ -639,6 +640,27 @@ fn screen_discard(paths: Vec<String>) {
     screen::discard(&paths);
 }
 
+/// The folder open in File Explorer, its name only, for the menu's label.
+/// Lists nothing; remembers nothing.
+#[tauri::command]
+async fn screen_explorer_peek() -> Result<Option<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(explorer::peek).await.map_err(|e| e.to_string())?
+}
+
+/// "Folder open in File Explorer": that folder and what is in it (names,
+/// sizes, dates), now shared with the chat.
+#[tauri::command]
+async fn screen_explorer() -> Result<Option<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(explorer::share).await.map_err(|e| e.to_string())?
+}
+
+/// A question sent with a shared folder: the file of it that the question
+/// names, copied into the inbox like a picked file, or nothing.
+#[tauri::command]
+async fn explorer_attach(folder: String, query: String) -> Result<Option<DroppedFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || explorer::attach(&folder, &query)).await.map_err(|e| e.to_string())?
+}
+
 /// Copies a dropped file into the inbox and reports its name back.
 #[tauri::command]
 fn ingest_file(path: String) -> Result<DroppedFile, String> {
@@ -869,6 +891,9 @@ pub fn run() {
             screen_windows,
             screen_capture,
             screen_discard,
+            screen_explorer_peek,
+            screen_explorer,
+            explorer_attach,
             ingest_file,
             secret_present,
             secret_set,

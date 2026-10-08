@@ -219,6 +219,16 @@ export const Bridge = {
   screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
   /** Deletes screenshots the user did not keep. */
   screenDiscard: (paths: string[]) => call<void>("screen_discard", { paths }),
+  /** The folder open in File Explorer, its name only, for the menu. Lists nothing. */
+  screenExplorerPeek: () => callOrThrow<ExplorerFolder | null>("screen_explorer_peek"),
+  /** That folder and what is in it, shared with the chat (explorer.rs). */
+  screenExplorer: () => callOrThrow<ExplorerFolder | null>("screen_explorer"),
+  /**
+   * The file of a shared folder that `query` names, copied into the inbox
+   * like a picked one; null when it names none.
+   */
+  explorerAttach: (folder: string, query: string) =>
+    callOrThrow<DroppedFile | null>("explorer_attach", { folder, query }),
   /**
    * The models a provider offers, for the picker in the chat view. Rust asks
    * the provider only when it has a key (or a server address).
@@ -371,11 +381,30 @@ export interface SelectedText {
   title: string;
 }
 
+/** One file or subfolder of the folder open in File Explorer. */
+export interface FolderEntry {
+  name: string;
+  dir: boolean;
+  size: number;
+  /** Local time, "2026-10-08 09:05"; "" when unknown. */
+  modified: string;
+}
+
+/** The folder open in File Explorer; `entries` stays empty until it is shared. */
+export interface ExplorerFolder {
+  path: string;
+  name: string;
+  entries: FolderEntry[];
+  /** Entries left out of the listing. */
+  omitted: number;
+}
+
 /** What the screen button or the shortcuts add to the next question. */
 export interface ScreenContext {
   windows: OpenWindow[];
   shots: { name: string; path: string }[];
   selection?: SelectedText;
+  folder?: ExplorerFolder;
 }
 
 /**

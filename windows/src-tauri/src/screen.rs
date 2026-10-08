@@ -92,11 +92,17 @@ pub struct ScreenContext {
     pub shots: Vec<ShotRef>,
     #[serde(default)]
     pub selection: Option<SelectionRef>,
+    /// The folder open in File Explorer, with what is in it (explorer.rs).
+    #[serde(default)]
+    pub folder: Option<crate::explorer::ExplorerFolder>,
 }
 
 impl ScreenContext {
     pub fn is_empty(&self) -> bool {
-        self.windows.is_empty() && self.shots.is_empty() && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
+        self.windows.is_empty()
+            && self.shots.is_empty()
+            && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
+            && self.folder.is_none()
     }
 }
 
@@ -227,6 +233,10 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
     }
     if !screen.windows.is_empty() {
         out.push_str(&windows_text(&screen.windows));
+        out.push('\n');
+    }
+    if let Some(folder) = &screen.folder {
+        out.push_str(&crate::explorer::context_text(folder, with_paths));
         out.push('\n');
     }
     out
@@ -738,6 +748,7 @@ mod tests {
                 ShotRef { name: "Screen 2".into(), path: "C:\\inbox\\screenshot-2.png".into() },
             ],
             selection: None,
+            folder: None,
         };
         let cli = context_text(&screen, true);
         assert!(cli.contains("Read them from these paths:\n- Screen 1: C:\\inbox\\screenshot-1.png\n- Screen 2: C:\\inbox\\screenshot-2.png\n"));
@@ -747,6 +758,23 @@ mod tests {
         assert!(!api.contains("C:\\inbox"), "the API gets the images, not paths");
         assert_eq!(context_text(&ScreenContext::default(), true), "");
         assert!(ScreenContext::default().is_empty());
+    }
+
+    #[test]
+    fn a_shared_folder_comes_last_as_its_own_block() {
+        use crate::explorer::{ExplorerFolder, FolderEntry};
+        let folder = ExplorerFolder {
+            path: "C:\\Users\\me\\PDFs".into(),
+            name: "PDFs".into(),
+            entries: vec![FolderEntry { name: "file.pdf".into(), dir: false, size: 2048, modified: "2026-10-08 09:05".into() }],
+            omitted: 0,
+        };
+        let screen = ScreenContext { windows: vec![win("Docs", "msedge")], folder: Some(folder), ..Default::default() };
+        assert!(!screen.is_empty());
+        let text = context_text(&screen, true);
+        let windows = text.find("Windows open").unwrap();
+        let block = text.find("<explorer_folder path=\"C:\\Users\\me\\PDFs\">\n- file.pdf — 2.0 KB, 2026-10-08 09:05\n</explorer_folder>").unwrap();
+        assert!(windows < block, "{text}");
     }
 
     #[test]

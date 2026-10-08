@@ -4196,6 +4196,50 @@
    "pt-BR": "Arraste a ilha pela barra superior (ou a ilha fechada por qualquer ponto) para movê-la: solte onde quiser e ela fica ali; perto de uma borda da tela ela se prende a ela, em pé nas laterais, centralizada se você soltar perto do meio.",
    "ru": "Перетащите остров за верхнюю панель (или закрытый остров за любое место): отпустите где угодно — он там и останется; у края экрана он прилипает к нему, по бокам встаёт вертикально, а у середины выравнивается по центру.",
    "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di mana saja dan ia tetap di sana; dekat tepi layar ia menempel ke tepi itu, tegak di sisi kiri dan kanan, di tengah jika dilepas dekat bagian tengah."
+  },
+  "Folder open in File Explorer": {
+   "zh-Hans": "文件资源管理器中打开的文件夹",
+   "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर",
+   "es": "Carpeta abierta en el Explorador de archivos",
+   "ar": "المجلد المفتوح في مستكشف الملفات",
+   "fr": "Dossier ouvert dans l'Explorateur de fichiers",
+   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার",
+   "pt-BR": "Pasta aberta no Explorador de Arquivos",
+   "ru": "Папка, открытая в Проводнике",
+   "id": "Folder yang terbuka di File Explorer"
+  },
+  "No folder is open in File Explorer.": {
+   "zh-Hans": "文件资源管理器中没有打开的文件夹。",
+   "hi": "फ़ाइल एक्सप्लोरर में कोई फ़ोल्डर खुला नहीं है।",
+   "es": "No hay ninguna carpeta abierta en el Explorador de archivos.",
+   "ar": "لا يوجد مجلد مفتوح في مستكشف الملفات.",
+   "fr": "Aucun dossier n'est ouvert dans l'Explorateur de fichiers.",
+   "bn": "ফাইল এক্সপ্লোরারে কোনো ফোল্ডার খোলা নেই।",
+   "pt-BR": "Nenhuma pasta está aberta no Explorador de Arquivos.",
+   "ru": "В Проводнике не открыта ни одна папка.",
+   "id": "Tidak ada folder yang terbuka di File Explorer."
+  },
+  "Couldn't read the folder: {error}": {
+   "zh-Hans": "无法读取该文件夹：{error}",
+   "hi": "फ़ोल्डर पढ़ा नहीं जा सका: {error}",
+   "es": "No se pudo leer la carpeta: {error}",
+   "ar": "تعذّرت قراءة المجلد: {error}",
+   "fr": "Impossible de lire le dossier : {error}",
+   "bn": "ফোল্ডারটি পড়া যায়নি: {error}",
+   "pt-BR": "Não foi possível ler a pasta: {error}",
+   "ru": "Не удалось прочитать папку: {error}",
+   "id": "Tidak dapat membaca folder: {error}"
+  },
+  "Only a folder shared from the screen button can be read.": {
+   "zh-Hans": "只能读取通过屏幕按钮共享的文件夹。",
+   "hi": "केवल स्क्रीन बटन से साझा किया गया फ़ोल्डर ही पढ़ा जा सकता है।",
+   "es": "Solo se puede leer una carpeta compartida con el botón de pantalla.",
+   "ar": "لا يمكن قراءة إلا مجلد تمت مشاركته من زر الشاشة.",
+   "fr": "Seul un dossier partagé avec le bouton d'écran peut être lu.",
+   "bn": "শুধু স্ক্রিন বোতাম থেকে শেয়ার করা ফোল্ডারই পড়া যায়।",
+   "pt-BR": "Só é possível ler uma pasta compartilhada pelo botão de tela.",
+   "ru": "Можно читать только папку, которой поделились кнопкой экрана.",
+   "id": "Hanya folder yang dibagikan dari tombol layar yang bisa dibaca."
   }
  }
 }

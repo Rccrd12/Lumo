@@ -79,6 +79,7 @@ Linux, update Coucou the way you installed it.
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Coucou copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
+| In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
 | `Ctrl+Alt+→` / `Ctrl+Alt+←` | Next / previous pill |
@@ -314,6 +315,20 @@ and OpenRouter receive them as images; the local model servers take the window
 list only. Claude Code is told to ask you to press the screen button when it
 needs to see something, never to capture the screen itself. On Linux the button
 says it isn't available yet.
+
+**Folder open in File Explorer**, at the bottom of the same menu, shows the name
+of the folder in the File Explorer window you used last (the tab in front, on
+Windows 11); it is greyed out when that window shows no folder on disk (This PC,
+Quick access, a library). Opening the menu only reads that name. Clicking the
+entry lists the folder — names, sizes and dates of its files and subfolders, up
+to 300, never their contents — and adds it as a chip you can remove. With your
+next question, a file of that folder you name, with or without its extension
+(*mi leggi il file 'file.pdf'?*), is copied into the inbox and attached exactly
+as if you had picked it with the paperclip, one per question and up to 32 MB.
+Claude Code is also given the folder itself, for the rest of that chat, so it
+can open its other files, each with its usual permission card. Folders whose
+path has characters such as `&` or `%` are left out of that, and Claude Code
+asks before reading there. Not available on Linux yet.
 
 ## GitHub
 

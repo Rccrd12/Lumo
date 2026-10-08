@@ -66,6 +66,9 @@ struct Conversation {
     plain: Vec<Value>,
     /// The Claude Code session the island's chat continues (claude_code.rs).
     cli_session: Option<String>,
+    /// Folders the user shared from File Explorer in this chat: Claude Code
+    /// keeps reading them on the turns after (explorer.rs).
+    cli_dirs: Vec<String>,
 }
 
 /// What a provider needs to build one turn.
@@ -117,6 +120,17 @@ impl Chat {
     /// The Claude Code session to resume, if Claude Code answered this conversation.
     pub fn cli_session(&self) -> Option<String> {
         self.inner.lock().unwrap().cli_session.clone()
+    }
+
+    /// The folders Claude Code may read in this chat, with `shared` added.
+    pub fn cli_dirs(&self, shared: Option<String>) -> Vec<String> {
+        let mut c = self.inner.lock().unwrap();
+        if let Some(dir) = shared.filter(|d| !c.cli_dirs.contains(d)) {
+            c.cli_dirs.push(dir);
+            let excess = c.cli_dirs.len().saturating_sub(8);
+            c.cli_dirs.drain(..excess);
+        }
+        c.cli_dirs.clone()
     }
 
     /// Remembers the Claude Code session of `turn`, unless the chat was reset since.
@@ -223,7 +237,7 @@ fn checked_context(context: ChatContext) -> Result<ChatContext, String> {
 
 /// True when `path` is a regular file directly inside `dir`, both resolved
 /// (no `..`, no symlink pointing out of it).
-fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
+pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
     let (Ok(dir), Ok(file)) = (dir.canonicalize(), path.canonicalize()) else { return false };
     file.parent() == Some(dir.as_path())
         && std::fs::symlink_metadata(&file).map(|m| m.is_file()).unwrap_or(false)
@@ -277,7 +291,9 @@ pub async fn send(
         return claude::send(chat, &model, query, context, &images).await;
     }
     if provider == claude_code::PROVIDER {
-        return claude_code::send(app, chat, &model, &settings.chat_effort, query, context).await;
+        // A folder shared from File Explorer: Claude Code may read the rest of it itself.
+        let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
+        return claude_code::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         return openai_compat::send(chat, p, &model, query, context, &images).await;
@@ -331,6 +347,21 @@ mod tests {
         assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("hi")), ("assistant".into(), json!("hello"))]);
         chat.reset();
         assert_eq!(chat.cli_session(), None);
+    }
+
+    #[test]
+    fn a_shared_folder_stays_readable_until_the_chat_ends() {
+        let chat = Chat::default();
+        assert!(chat.cli_dirs(None).is_empty());
+        assert_eq!(chat.cli_dirs(Some("C:\\PDFs".into())), ["C:\\PDFs"]);
+        assert_eq!(chat.cli_dirs(Some("C:\\PDFs".into())), ["C:\\PDFs"], "once");
+        assert_eq!(chat.cli_dirs(None), ["C:\\PDFs"], "the next turn too");
+        chat.reset();
+        assert!(chat.cli_dirs(None).is_empty());
+        for i in 0..20 {
+            chat.cli_dirs(Some(format!("C:\\d{i}")));
+        }
+        assert_eq!(chat.cli_dirs(None).len(), 8);
     }
 
     #[test]
@@ -434,6 +465,7 @@ mod tests {
             windows: vec![WindowInfo { title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
             selection: None,
+            folder: None,
         };
         let (q, images) = with_screen("claude-code", Some(&screen), "what is this?".into()).unwrap();
         assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"));

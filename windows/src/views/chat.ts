@@ -8,12 +8,16 @@
 //
 // The screen button next to the paperclip adds what is on the user's screen,
 // only when they ask: "Open windows" (titles and app names) or a screenshot of
-// one display or all of them, shown first with Send / Cancel (core/screen.ts).
+// one display or all of them, shown first with Send / Cancel (core/screen.ts),
+// or the folder open in File Explorer: its listing goes with the question, and
+// a file of it the question names is attached as if picked with the paperclip.
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { renderMarkdown } from "./markdown";
-import { Bridge, onEvent, type ChatContext, type ModelInfo, type ScreenDisplay, type ScreenShot } from "../core/bridge";
+import {
+  Bridge, onEvent, type ChatContext, type ExplorerFolder, type ModelInfo, type ScreenDisplay, type ScreenShot,
+} from "../core/bridge";
 import {
   EFFORTS, activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
 } from "../core/providers";
@@ -22,7 +26,7 @@ import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, hasScreen, keepShots, menuEntries, screenChips, screenLabel,
-  screenPayload, seesImages, shotPaths, type ChipKind, type MenuEntry,
+  screenPayload, seesImages, shotPaths, type ChipKind, type ExplorerPeek, type MenuEntry,
 } from "../core/screen";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
@@ -397,6 +401,7 @@ export function buildPrompt(
     }
     if (!kind || kind === "windows") screen = { ...screen, windows: null };
     if (!kind || kind === "selection") screen = { ...screen, selection: null };
+    if (!kind || kind === "folder") screen = { ...screen, folder: null };
   }
 
   /** What a sharing shortcut just took (island/shortcuts.ts runShared). */
@@ -432,27 +437,42 @@ export function buildPrompt(
     clear(screenList);
     let displays: ScreenDisplay[] = [];
     let problem = "";
+    // Only the folder's name, for the label: nothing is listed before a click.
+    const peek: Promise<ExplorerPeek> = Bridge.screenExplorerPeek().then(
+      (folder) => ({ folder, problem: "" }),
+      (err) => ({ folder: null, problem: String(err).replace(/^Error:\s*/, "") }),
+    );
     try {
       displays = await Bridge.screenDisplays();
     } catch (err) {
       problem = String(err).replace(/^Error:\s*/, "");
     }
+    const explorer = await peek;
     if (ticket !== screenTicket) return;
     clear(screenList);
     const images = seesImages(providerDef(State.settings.chatProvider));
-    for (const entry of menuEntries(displays)) {
-      const shot = entry.kind !== "windows";
+    let why = "";
+    for (const entry of menuEntries(displays, explorer)) {
+      const shot = entry.kind === "display" || entry.kind === "all";
+      const off = (shot && !images) || (entry.kind === "explorer" && !entry.folder);
+      const detail =
+        entry.kind === "display" ? `${entry.width} × ${entry.height}`
+        : entry.kind === "explorer" && entry.folder ? entry.folder.name
+        : "";
       const row = h(
         "button",
-        { class: "picker-model screen-entry", disabled: shot && !images },
+        { class: "picker-model screen-entry", disabled: off },
         h("span", { class: "picker-model-name", text: entryLabel(entry) }),
-        entry.kind === "display" ? h("span", { class: "history-date", text: `${entry.width} × ${entry.height}` }) : null,
+        detail ? h("span", { class: "history-date", text: detail }) : null,
       );
-      if (!shot || images) row.addEventListener("click", () => void pickEntry(entry));
+      if (entry.kind === "explorer" && entry.folder) row.title = entry.folder.path;
+      if (entry.kind === "explorer" && entry.reason !== problem) why = entry.reason;
+      if (!off) row.addEventListener("click", () => void pickEntry(entry));
       screenList.append(row);
     }
     if (problem) screenStatus(problem);
     else if (displays.length > 0 && !images) screenStatus(t(SCREEN_STRINGS.needsImages));
+    if (why) screenStatus(why);
     screenStatus(t(SCREEN_STRINGS.nothingYet));
   }
 
@@ -460,11 +480,21 @@ export function buildPrompt(
     if (sending) return;
     const ticket = ++screenTicket;
     clear(screenList);
-    if (entry.kind === "windows") {
+    if (entry.kind === "windows" || entry.kind === "explorer") {
       try {
-        const list = await Bridge.screenWindows();
-        if (ticket !== screenTicket) return;
-        screen = { ...screen, windows: list };
+        if (entry.kind === "windows") {
+          const list = await Bridge.screenWindows();
+          if (ticket !== screenTicket) return;
+          screen = { ...screen, windows: list };
+        } else {
+          const folder = await Bridge.screenExplorer();
+          if (ticket !== screenTicket) return;
+          if (!folder) {
+            screenStatus(t(SCREEN_STRINGS.noExplorer));
+            return;
+          }
+          screen = { ...screen, folder };
+        }
         closeScreen();
         Sound.play("attach");
         State.notify();
@@ -641,18 +671,39 @@ export function buildPrompt(
       return;
     }
     if (!file) return;
+    void useFile(file);
+    input.focus();
+  }
+
+  /** A file joins the chat: picked with the paperclip, or named from a shared folder. */
+  async function useFile(file: { name: string; path: string }) {
+    let reset: Promise<unknown> = Promise.resolve();
     // Claude Code reads the file from its path, mid-conversation too. The other
     // providers take a file with the first question only: a new chat, as a drop.
     if (State.settings.chatProvider !== "claude-code") {
       State.startChat();
-      void Bridge.chatReset();
+      reset = Bridge.chatReset();
       renderedCount = -1;
     }
     State.droppedFile = { name: file.name, path: file.path };
     State.promptContext = { kind: "file", name: file.name, path: file.path };
     Sound.play("attach");
     State.notify();
-    input.focus();
+    await reset;
+  }
+
+  /**
+   * A question sent with a shared folder: the file of it the question names
+   * goes with it, unless a file the user added is still waiting.
+   */
+  async function attachNamed(folder: ExplorerFolder, query: string) {
+    if (State.droppedFile && !State.droppedFile.sent) return;
+    try {
+      const file = await Bridge.explorerAttach(folder.path, query);
+      if (file) await useFile(file);
+    } catch (err) {
+      void Bridge.log(`[explorer] ${String(err)}`);
+    }
   }
 
   newBtn.addEventListener("click", newChat);
@@ -704,6 +755,10 @@ export function buildPrompt(
     drawModelButton();
     Sound.play("send");
 
+    // What the screen button added goes once, then the chip goes.
+    const shared = screen;
+    if (shared.folder) await attachNamed(shared.folder, query);
+
     State.chatHistory.push({ id: nextId++, role: "user", content: query });
     State.stateOverride = "thinking";
     State.notify();
@@ -712,8 +767,6 @@ export function buildPrompt(
     // The file goes with the first question asked after it was added, once.
     const file = State.droppedFile;
     const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
-    // So does what the screen button added: once, then the chip goes.
-    const shared = screen;
     const screenContext = screenPayload(shared);
 
     try {

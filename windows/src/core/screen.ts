@@ -5,8 +5,12 @@
 // Nothing is listed or captured until the user clicks an entry; a screenshot
 // is shown first and only joins the chat on "Send". What was added goes with
 // one question, then the chat forgets it.
+//
+// "Folder open in File Explorer" shares that folder's listing (explorer.rs);
+// the menu only asks its name. A file the question names is then attached
+// from it, as with the paperclip (views/chat.ts).
 
-import type { OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText } from "./bridge";
+import type { ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText } from "./bridge";
 import type { ProviderDef } from "./providers";
 import { N_, t } from "../i18n/i18n";
 
@@ -24,21 +28,38 @@ export const SCREEN_STRINGS = {
   remove: N_("Remove"),
   selected: N_("Selected text"),
   selectedIn: N_("Text from {app}"),
+  explorer: N_("Folder open in File Explorer"),
+  noExplorer: N_("No folder is open in File Explorer."),
 };
 
 /** How much of the selected text the chip's tooltip shows. */
 const SELECTION_PREVIEW = 400;
 
+/** What the menu learned about File Explorer: the folder's name, or why there is none. */
+export interface ExplorerPeek {
+  folder: ExplorerFolder | null;
+  /** The error, on Linux for one; "" otherwise. */
+  problem: string;
+}
+
 export type MenuEntry =
   | { kind: "windows" }
   | { kind: "display"; index: number; width: number; height: number }
-  | { kind: "all" };
+  | { kind: "all" }
+  | { kind: "explorer"; folder: ExplorerFolder | null; reason: string };
 
-/** "Open windows", one entry per display, and "All screens" when there are several. */
-export function menuEntries(displays: ScreenDisplay[]): MenuEntry[] {
+/**
+ * "Open windows", one entry per display, "All screens" when there are several,
+ * then the folder open in File Explorer when the menu asked for it.
+ */
+export function menuEntries(displays: ScreenDisplay[], explorer?: ExplorerPeek): MenuEntry[] {
   const out: MenuEntry[] = [{ kind: "windows" }];
   for (const d of displays) out.push({ kind: "display", index: d.index, width: d.width, height: d.height });
   if (displays.length > 1) out.push({ kind: "all" });
+  if (explorer) {
+    const folder = explorer.problem ? null : explorer.folder;
+    out.push({ kind: "explorer", folder, reason: explorer.problem || (folder ? "" : t(SCREEN_STRINGS.noExplorer)) });
+  }
   return out;
 }
 
@@ -55,6 +76,8 @@ export function entryLabel(entry: MenuEntry): string {
       return screenLabel(entry.index);
     case "all":
       return t(SCREEN_STRINGS.allScreens);
+    case "explorer":
+      return t(SCREEN_STRINGS.explorer);
   }
 }
 
@@ -80,14 +103,16 @@ export interface PendingScreen {
   shots: KeptShot[];
   /** Text selected in another app ("Ask about the selected text"). */
   selection?: SelectedText | null;
+  /** The folder open in File Explorer, with what is in it. */
+  folder?: ExplorerFolder | null;
 }
 
 export function emptyScreen(): PendingScreen {
-  return { windows: null, shots: [], selection: null };
+  return { windows: null, shots: [], selection: null, folder: null };
 }
 
 export function hasScreen(p: PendingScreen): boolean {
-  return p.windows !== null || p.shots.length > 0 || !!p.selection;
+  return p.windows !== null || p.shots.length > 0 || !!p.selection || !!p.folder;
 }
 
 /** The previewed screenshots join what is waiting, named after their screen. */
@@ -104,10 +129,11 @@ export function screenPayload(p: PendingScreen): ScreenContext | null {
     shots: p.shots.map((s) => ({ name: s.name, path: s.path })),
   };
   if (p.selection) out.selection = p.selection;
+  if (p.folder) out.folder = p.folder;
   return out;
 }
 
-export type ChipKind = "windows" | "shots" | "selection";
+export type ChipKind = "windows" | "shots" | "selection" | "folder";
 
 export interface ScreenChipInfo {
   kind: ChipKind;
@@ -139,6 +165,7 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
     const names = p.shots.map((s) => s.name).join(", ");
     out.push({ kind: "shots", label: names, title: names, thumbs: p.shots.map((s) => s.preview) });
   }
+  if (p.folder) out.push({ kind: "folder", label: p.folder.name, title: p.folder.path });
   return out;
 }
 

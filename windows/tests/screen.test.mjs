@@ -1,7 +1,8 @@
 // The chat's screen button (src/core/screen.ts and the chat view): nothing is
 // listed or captured before a click, a screenshot is previewed and joins the
-// chat only on Send (Cancel deletes it), the window list rides as text, and
-// what was added goes with one question only.
+// chat only on Send (Cancel deletes it), the window list rides as text, the
+// folder open in File Explorer is listed only on a click and attaches the file
+// the question names, and what was added goes with one question only.
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -26,6 +27,17 @@ const WINDOWS = [
   { title: "main.rs — coucou", app: "Code", active: true, minimized: false },
   { title: "Inbox", app: "outlook", active: false, minimized: true },
 ];
+const FOLDER = {
+  path: "C:\\Users\\me\\Documents\\PDFs",
+  name: "PDFs",
+  entries: [
+    { name: "Old", dir: true, size: 0, modified: "2026-10-01 14:02" },
+    { name: "file.pdf", dir: false, size: 1536, modified: "2026-10-08 09:05" },
+  ],
+  omitted: 0,
+};
+const PEEKED = { ...FOLDER, entries: [] };
+const COPIED = { name: "file.pdf", path: "C:\\Coucou\\inbox\\file.pdf", size: 1536 };
 const shot = (display) => ({
   display,
   name: `screenshot-2026-10-08-090503-screen${display + 1}.png`,
@@ -41,6 +53,24 @@ test("the menu: open windows, one entry per screen, all screens only when there 
   assert.deepEqual(menuEntries([]).map(entryLabel), ["Open windows"]);
   assert.deepEqual(menuEntries(DISPLAYS.slice(0, 1)).map(entryLabel), ["Open windows", "Screen 1"]);
   assert.deepEqual(menuEntries(DISPLAYS).map(entryLabel), ["Open windows", "Screen 1", "Screen 2", "All screens"]);
+});
+
+test("the File Explorer entry comes last, with its folder or the reason there is none", () => {
+  const [, found] = menuEntries([], { folder: PEEKED, problem: "" });
+  assert.deepEqual(found, { kind: "explorer", folder: PEEKED, reason: "" });
+  assert.equal(entryLabel(found), "Folder open in File Explorer");
+  const [, none] = menuEntries([], { folder: null, problem: "" });
+  assert.equal(none.reason, "No folder is open in File Explorer.");
+  const [, linux] = menuEntries([], { folder: PEEKED, problem: "Not available on Linux yet." });
+  assert.deepEqual(linux, { kind: "explorer", folder: null, reason: "Not available on Linux yet." });
+});
+
+test("a shared folder is something to send, with a chip naming it", () => {
+  const p = { ...emptyScreen(), folder: FOLDER };
+  assert.ok(hasScreen(p));
+  assert.deepEqual(screenPayload(p), { windows: [], shots: [], folder: FOLDER });
+  assert.deepEqual(screenChips(p), [{ kind: "folder", label: "PDFs", title: FOLDER.path }]);
+  assert.ok(!("folder" in screenPayload({ ...p, folder: null, windows: [] })));
 });
 
 test("only the local model servers can't look at a screenshot", () => {
@@ -103,6 +133,9 @@ beforeEach(() => {
     screen_windows: WINDOWS,
     screen_capture: (args) => (args.display === null ? [shot(0), shot(1)] : [shot(args.display)]),
     chat_send: { text: "I see VS Code." },
+    screen_explorer_peek: PEEKED,
+    screen_explorer: FOLDER,
+    explorer_attach: (args) => (/file\.pdf/i.test(args.query) ? COPIED : null),
   };
   State.settings = { ...DEFAULT_SETTINGS, chatModels: {}, chatProvider: "claude-code" };
   State.chatHistory = [];
@@ -116,7 +149,9 @@ beforeEach(() => {
 
 const $ = (cls) => view.el.querySelector(cls);
 const entries = () => view.el.find(".screen-entry");
-const nothingCaptured = () => sent("screen_capture").length === 0 && sent("screen_windows").length === 0;
+const nothingCaptured = () =>
+  sent("screen_capture").length === 0 && sent("screen_windows").length === 0 && sent("screen_explorer").length === 0;
+const explorerEntry = () => entries().find((e) => e.find(".picker-model-name")[0].textContent === "Folder open in File Explorer");
 
 async function openMenu() {
   $(".screen-btn").fire("click");
@@ -126,8 +161,12 @@ async function openMenu() {
 test("opening the menu only asks which screens there are", async () => {
   await openMenu();
   assert.ok($(".chat-body").classList.contains("screening"));
-  assert.deepEqual(entries().map((e) => e.find(".picker-model-name")[0].textContent), ["Open windows", "Screen 1", "Screen 2", "All screens"]);
+  assert.deepEqual(
+    entries().map((e) => e.find(".picker-model-name")[0].textContent),
+    ["Open windows", "Screen 1", "Screen 2", "All screens", "Folder open in File Explorer"],
+  );
   assert.equal(sent("screen_displays").length, 1);
+  assert.equal(sent("screen_explorer_peek").length, 1, "the folder's name, for the label");
   assert.ok(nothingCaptured(), "nothing until an entry is clicked");
   $(".screen-btn").fire("click");
   assert.ok(!$(".chat-body").classList.contains("screening"));
@@ -293,4 +332,112 @@ test("selected text from the shortcut goes with the next question once, and × t
   assert.equal(turn.query, "what does it do?");
   assert.deepEqual(turn.screen, { windows: [], shots: [], selection });
   assert.equal(view.el.find(".chip").length, 0, "sent once, then forgotten");
+});
+
+// ── The folder open in File Explorer ─────────────────────────────────────────
+
+test("the File Explorer entry names the folder, and only a click lists it", async () => {
+  await openMenu();
+  const row = explorerEntry();
+  assert.equal(row.getAttribute("disabled"), null);
+  assert.equal(row.find(".history-date")[0].textContent, "PDFs");
+  assert.equal(sent("screen_explorer").length, 0, "nothing listed yet");
+
+  row.fire("click");
+  await flush();
+  view.sync();
+  assert.equal(sent("screen_explorer").length, 1);
+  assert.ok(!$(".chat-body").classList.contains("screening"));
+  const chip = view.el.find(".chip")[0];
+  assert.equal(chip.find("SPAN")[0].textContent, "PDFs");
+  assert.equal(chip.getAttribute("title"), FOLDER.path);
+
+  chip.find(".chip-remove")[0].fire("click");
+  view.sync();
+  assert.equal(view.el.find(".chip").length, 0);
+  $(".chat-input").value = "hi";
+  $(".send-btn").fire("click");
+  await flush();
+  assert.equal(sent("chat_send")[0].screen, undefined, "taken back: nothing goes");
+  assert.equal(sent("explorer_attach").length, 0);
+});
+
+test("no File Explorer window, or Linux: the entry is greyed out and says why", async () => {
+  answers.screen_explorer_peek = null;
+  await openMenu();
+  assert.equal(explorerEntry().getAttribute("disabled"), "");
+  explorerEntry().fire("click");
+  await flush();
+  assert.equal(sent("screen_explorer").length, 0);
+  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "No folder is open in File Explorer."));
+
+  $(".screen-btn").fire("click");
+  answers.screen_explorer_peek = () => Promise.reject(new Error("Not available on Linux yet."));
+  await openMenu();
+  assert.equal(explorerEntry().getAttribute("disabled"), "");
+  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "Not available on Linux yet."));
+});
+
+async function shareFolder() {
+  await openMenu();
+  explorerEntry().fire("click");
+  await flush();
+}
+
+test("the folder goes with the question, and the file it names is attached like a picked one", async () => {
+  await shareFolder();
+  $(".chat-input").value = "mi leggi il file 'file.pdf'?";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  view.sync();
+  assert.deepEqual(sent("explorer_attach"), [{ folder: FOLDER.path, query: "mi leggi il file 'file.pdf'?" }]);
+  const turn = sent("chat_send")[0];
+  assert.deepEqual(turn.context, { kind: "file", name: "file.pdf", path: COPIED.path });
+  assert.deepEqual(turn.screen, { windows: [], shots: [], folder: FOLDER });
+  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["file.pdf"], "the file's chip, as with the paperclip");
+  assert.equal(sent("chat_reset").length, 0, "Claude Code reads it mid-conversation too");
+
+  $(".chat-input").value = "and the next page?";
+  $(".send-btn").fire("click");
+  await flush();
+  assert.equal(sent("chat_send")[1].screen, undefined, "the folder went once");
+  assert.equal(sent("chat_send")[1].context, null, "so did the file");
+  assert.equal(sent("explorer_attach").length, 1);
+});
+
+test("a question naming no file sends the folder alone", async () => {
+  await shareFolder();
+  $(".chat-input").value = "what's in here?";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  const turn = sent("chat_send")[0];
+  assert.equal(turn.context, null);
+  assert.deepEqual(turn.screen.folder, FOLDER);
+});
+
+test("a file the user added and hasn't sent yet is never replaced", async () => {
+  State.droppedFile = { name: "contract.docx", path: "C:\\Coucou\\inbox\\contract.docx" };
+  await shareFolder();
+  $(".chat-input").value = "compare with file.pdf";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  assert.equal(sent("explorer_attach").length, 0);
+  assert.equal(sent("chat_send")[0].context.name, "contract.docx");
+});
+
+test("another provider takes the named file in a new chat, as with the paperclip", async () => {
+  State.settings = { ...State.settings, chatProvider: "anthropic" };
+  State.chatHistory = [{ id: 1, role: "user", content: "hi" }, { id: 2, role: "assistant", content: "hello" }];
+  await shareFolder();
+  $(".chat-input").value = "read file.pdf";
+  $(".send-btn").fire("click");
+  await flush();
+  await flush();
+  const order = calls.map(([cmd]) => cmd).filter((cmd) => cmd === "chat_reset" || cmd === "chat_send");
+  assert.deepEqual(order, ["chat_reset", "chat_send"]);
+  assert.deepEqual(sent("chat_send")[0].context, { kind: "file", name: "file.pdf", path: COPIED.path });
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["read file.pdf", "I see VS Code."]);
 });

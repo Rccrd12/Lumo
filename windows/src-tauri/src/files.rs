@@ -66,7 +66,15 @@ pub fn ingest(source: &str) -> Result<DroppedFile, String> {
     if !take_dropped(source) {
         return Err(crate::i18n::t("Only files dropped on the island can be added."));
     }
-    let src = Path::new(source);
+    copy_in(Path::new(source))
+}
+
+/// Copies `src` into the inbox, as a drop does. Callers check first that the
+/// user chose it: a real drop or the picker (`ingest`), or a file of a folder
+/// they shared that their question names (explorer.rs).
+pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
+    let source = src.to_string_lossy();
+    let source = source.as_ref();
     let meta = std::fs::metadata(src)
         .map_err(|e| crate::i18n::tf("Cannot read {path}: {error}", &[("path", source), ("error", &e.to_string())]))?;
     if meta.is_dir() {
