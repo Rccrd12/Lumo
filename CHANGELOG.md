@@ -8,6 +8,7 @@
 - **The island stays on screen**: the closed island no longer slips away a minute after you leave it. "Hide when unused" in Settings → Island brings that back
 - **The model picker** shows on its own, without the screen panel behind it, and gets enough room even when the island is small
 - **The folder open in File Explorer** joins the chat when you pick it from the screen button: the chat gets its list of files, a file you name in your question is attached as with the paperclip, and Claude Code can read the rest of the folder. Nothing is listed before you click it (Windows)
+
 ## Windows and Linux 0.3.0 — October 8, 2026
 
 - **Chat with your Claude plan**: a Claude Code choice in the model picker runs your own `claude` CLI, signed in with your subscription, with no API key. It reads the files you drop or attach, can edit files and run commands, and every permission is an Allow/Deny card in the island. Pick its effort level under the models
