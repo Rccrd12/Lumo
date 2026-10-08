@@ -195,4 +195,5 @@ Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou), the C
 ## License
 
 - **Code:** [MIT](LICENSE) — use it, fork it, learn from it, just keep the copyright notice.
-- **The names Coucou and Mochi, the Mochi character and Coucou's icon, sounds and media:** © Louis Raillé, all rights reserved — see [LICENSE-ASSETS.md](LICENSE-ASSETS.md). That is why this fork has a name and a character of its own.
+- **The name Lumo, the Lumo character, its icon and its sounds:** © Riccardo Gentili, all rights reserved — see [LICENSE-ASSETS.md](LICENSE-ASSETS.md).
+- **The names Coucou and Mochi, the Mochi character and Coucou's icon, sounds and media** (including the screenshots in `windows/screenshots/`, which still show Mochi): © Louis Raillé. That is why this fork has a name and a character of its own.
