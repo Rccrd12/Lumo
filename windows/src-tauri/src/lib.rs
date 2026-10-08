@@ -63,6 +63,8 @@ pub struct BootInfo {
     /// False where the OS has no global cursor (Wayland): the page then reports
     /// the cursor from its own mouse events.
     cursor_poll: bool,
+    /// Where the island is drawn in its window (island::shift).
+    shift: island::ShiftPayload,
 }
 
 #[tauri::command]
@@ -73,12 +75,14 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
     settings.hooks_installed = hooks_status.installed;
     settings.plan_relay_installed = hooks_status.plan_relay_installed;
     let screen = island::screen_info(&app, &settings.screen);
+    let shift = island::current_shift(&app, &settings.screen, island::Placement::of(&settings));
     BootInfo {
         settings,
         screen,
         version: env!("CARGO_PKG_VERSION").to_string(),
         hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
         cursor_poll: platform::CURSOR_POLL,
+        shift,
     }
 }
 
@@ -95,6 +99,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         // Where the island was dragged is island.rs's to say, too.
         settings.island_dock = current.island_dock.clone();
         settings.island_offset = current.island_offset;
+        settings.island_float = current.island_float;
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
         *current = settings;
@@ -219,6 +224,7 @@ fn island_drag(app: AppHandle) {
         update_island(&app, |s| {
             s.island_dock = p.dock.name().to_string();
             s.island_offset = p.offset;
+            s.island_float = p.float;
             if let Some(screen) = dropped.screen {
                 s.screen = screen;
             }
@@ -270,6 +276,7 @@ pub(crate) fn recenter_island(app: &AppHandle) {
     update_island(app, |s| {
         s.island_dock = "top".into();
         s.island_offset = 0.0;
+        s.island_float = 0.0;
     });
 }
 

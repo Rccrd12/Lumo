@@ -66,6 +66,8 @@ export const COMPACT_W = 288; // NOTCH_W + 104
 export const EXPANDED_W = 640;
 
 export const ROUNDED_CORNER = 14; // hidden / compact
+/** Between the island and the edge of the screen it is docked to (island.rs EDGE_GAP). */
+export const EDGE_GAP = 10;
 export const EXPANDED_CORNER = 22;
 
 /** Invisible hover strip that wakes the island when hidden. */
@@ -92,7 +94,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   note: { height: 160, botX: 60, botY: null, botDiameter: 50, agentMode: "column" },
   // The whole Settings page in a frame (views/settings-frame.ts): room for it,
   // and Mochi steps aside to leave it the full width.
-  settings: { height: 460, botX: 54, botY: 64, botDiameter: 0, agentMode: "none" },
+  settings: { height: 440, botX: 54, botY: 64, botDiameter: 0, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
   // Mac: 160. The extra 24 hold the two lines with top agent, project, busiest
   // day, longest session, permissions and questions, which the Mac card leaves

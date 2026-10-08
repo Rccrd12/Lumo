@@ -29,6 +29,9 @@ pub struct Settings {
     /// Rust side (island.rs) — what a webview sends back is ignored.
     pub island_dock: String,
     pub island_offset: f64,
+    /// Let go away from every edge, the island floats: how far its window is
+    /// from the top or bottom edge it grows from, in logical pixels (0 = against it).
+    pub island_float: f64,
     /// How wide the open island is, and how tall (0 = each view's own), in
     /// page pixels. Dragged from the island's grips, so owned by Rust too.
     pub island_width: f64,
@@ -134,6 +137,7 @@ impl Default for Settings {
             island_zoom: crate::island::DEFAULT_ZOOM,
             island_dock: "top".into(),
             island_offset: 0.0,
+            island_float: 0.0,
             island_width: crate::island::DEFAULT_WIDTH,
             island_height: 0.0,
             icon_scale: DEFAULT_ICON_SCALE,
@@ -420,6 +424,7 @@ mod tests {
   "islandZoom": 1.3,
   "islandDock": "left",
   "islandOffset": -200.5,
+  "islandFloat": 240.0,
   "islandWidth": 900.0,
   "islandHeight": 420.0,
   "iconScale": 1.5,
@@ -832,6 +837,7 @@ mod tests {
                 "islandZoom",
                 "islandDock",
                 "islandOffset",
+                "islandFloat",
                 "islandWidth",
                 "islandHeight",
                 "iconScale",

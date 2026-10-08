@@ -4,7 +4,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_PANEL_OPEN, EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  CHAT_PANEL_OPEN, EDGE_GAP, EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -93,6 +93,8 @@ export class Island {
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
   private hoverOpenTimer: number | null = null;
+  /** Page pixels the island is drawn off its usual place (a floating island, island.rs shift). */
+  private shift = { x: 0, y: 0 };
   /** The edge last drawn, to notice when Settings or the tray move it. */
   private lastDock: Dock | null = null;
 
@@ -727,16 +729,13 @@ export class Island {
     const dock = this.dock;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
-    // Square against its edge, rounded on the others.
-    this.islandEl.style.borderRadius = {
-      top: `0 0 ${r}px ${r}px`,
-      bottom: `${r}px ${r}px 0 0`,
-      left: `0 ${r}px ${r}px 0`,
-      right: `${r}px 0 0 ${r}px`,
-    }[dock];
-    const centre = isUpright(dock) ? "translateY(-50%)" : "translateX(-50%)";
+    // Rounded all round, a little off the edge of the screen.
+    this.islandEl.style.borderRadius = `${r}px`;
+    const at = this.islandRect();
+    this.islandEl.style.left = `${at.x}px`;
+    this.islandEl.style.top = `${at.y}px`;
     const lift = this.lift.value;
-    this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `${centre} scale(${lift})` : centre;
+    this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync. Upright, the mini grid sits below Mochi.
     if (isUpright(dock) && State.mode !== "expanded") {
@@ -761,20 +760,27 @@ export class Island {
   }
 
   /**
-   * Island rect in window coordinates: against its edge of the window, centred
-   * along it — what the CSS anchoring draws (see .dock-* in style.css).
+   * Island rect in window coordinates: a gap off its edge of the window,
+   * centred along it, moved by the shift of a floating island — and kept
+   * inside the window, so an island floating low still opens whole.
    */
   private islandRect(): { x: number; y: number; w: number; h: number } {
     const w = this.width.value;
     const hh = this.height.value;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const { x: sx, y: sy } = this.shift;
+    let x: number;
+    let y: number;
     switch (this.dock) {
-      case "bottom": return { x: (vw - w) / 2, y: vh - hh, w, h: hh };
-      case "left": return { x: 0, y: (vh - hh) / 2, w, h: hh };
-      case "right": return { x: vw - w, y: (vh - hh) / 2, w, h: hh };
-      default: return { x: (vw - w) / 2, y: 0, w, h: hh };
+      case "bottom": x = (vw - w) / 2 + sx; y = vh - EDGE_GAP - hh + sy; break;
+      case "left": x = EDGE_GAP; y = (vh - hh) / 2 + sy; break;
+      case "right": x = vw - EDGE_GAP - w; y = (vh - hh) / 2 + sy; break;
+      default: x = (vw - w) / 2 + sx; y = EDGE_GAP + sy;
     }
+    x = Math.min(Math.max(x, 0), Math.max(vw - w, 0));
+    y = Math.min(Math.max(y, 0), Math.max(vh - hh, 0));
+    return { x, y, w, h: hh };
   }
 
   /** The edge the island hangs from: always the top where it cannot be moved. */
@@ -1406,8 +1412,11 @@ export class Island {
    * there. The island re-anchors, turns upright on a side, and settles with a
    * bounce of its own.
    */
-  onDock(place: { dock: string; offset: number }) {
-    State.settings = { ...State.settings, islandDock: place.dock, islandOffset: place.offset };
+  onDock(place: { dock: string; offset: number; float?: number; shiftX?: number; shiftY?: number }) {
+    State.settings = {
+      ...State.settings, islandDock: place.dock, islandOffset: place.offset, islandFloat: place.float ?? 0,
+    };
+    this.shift = { x: place.shiftX ?? 0, y: place.shiftY ?? 0 };
     this.lastDock = this.dock;
     this.clearSettleTimer();
     this.applyDock();
@@ -1420,6 +1429,14 @@ export class Island {
     this.moving = false;
     this.engine.triggerEmote("happy");
     Sound.play("pop");
+    this.ensureRunning();
+  }
+
+  /** Where Rust put the window: the island is drawn this far off its usual place. */
+  onShift(shift: { x: number; y: number }) {
+    if (!Number.isFinite(shift.x) || !Number.isFinite(shift.y)) return;
+    if (shift.x === this.shift.x && shift.y === this.shift.y) return;
+    this.shift = { x: shift.x, y: shift.y };
     this.ensureRunning();
   }
 

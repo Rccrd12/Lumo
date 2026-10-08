@@ -3746,17 +3746,6 @@
    "ru": "Coucou ищет обновления только по нажатию кнопки: в фоне ничего не проверяется.",
    "id": "Coucou hanya mencari pembaruan saat Anda mengeklik: tidak ada pemeriksaan di latar belakang."
   },
-  "Drag the island by its top bar (or the closed island anywhere) to move it: let go near an edge of the screen and it docks there, upright on the sides, centred when you drop it near the middle.": {
-   "zh-Hans": "拖动岛的顶部栏（或收起时的任意位置）即可移动它：在屏幕边缘附近松开，它就会停靠在那里，在左右两侧竖直显示，在中间附近松开时会自动居中。",
-   "hi": "आइलैंड को हिलाने के लिए उसकी ऊपरी पट्टी (या बंद आइलैंड को कहीं से भी) खींचें: स्क्रीन के किसी किनारे के पास छोड़ें तो वह वहीं जुड़ जाता है, किनारों पर खड़ा होकर, और बीच के पास छोड़ने पर बीच में आ जाता है।",
-   "es": "Arrastra la isla por su barra superior (o la isla cerrada desde cualquier punto) para moverla: suéltala cerca de un borde de la pantalla y se acopla ahí, en vertical en los laterales y centrada si la sueltas cerca del medio.",
-   "ar": "اسحب الجزيرة من شريطها العلوي (أو الجزيرة المغلقة من أي مكان) لتحريكها: أفلتها قرب حافة الشاشة فتلتصق بها، عمودية على الجانبين، وفي المنتصف إن أفلتها قربه.",
-   "fr": "Faites glisser l'île par sa barre du haut (ou l'île fermée n'importe où) pour la déplacer : lâchez-la près d'un bord de l'écran et elle s'y accroche, debout sur les côtés, centrée si vous la lâchez près du milieu.",
-   "bn": "আইল্যান্ড সরাতে তার উপরের বার (বা বন্ধ আইল্যান্ডের যেকোনো জায়গা) টেনে নিন: স্ক্রিনের কোনো প্রান্তের কাছে ছাড়লে সেখানে লেগে যায়, পাশে খাড়া হয়ে, আর মাঝের কাছে ছাড়লে মাঝখানে বসে।",
-   "pt-BR": "Arraste a ilha pela barra de cima (ou a ilha fechada de qualquer ponto) para movê-la: solte perto de uma borda da tela e ela se encaixa ali, em pé nas laterais, centralizada se você soltar perto do meio.",
-   "ru": "Перетащите остров за верхнюю панель (а закрытый — за любое место), чтобы переместить его: отпустите у края экрана, и он прикрепится к нему, вертикально по бокам и по центру, если отпустить рядом с серединой.",
-   "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di dekat tepi layar dan pulau menempel di sana, tegak di sisi kiri dan kanan, dan ke tengah jika dilepas di dekat bagian tengah."
-  },
   "Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.": {
    "zh-Hans": "拖动展开的岛的边缘或角即可调整大小。双击即可恢复常规大小。",
    "hi": "खुले आइलैंड का आकार बदलने के लिए उसका कोई किनारा या कोना खींचें। उस पर डबल क्लिक करने से सामान्य आकार लौट आता है।",
@@ -4196,6 +4185,17 @@
    "pt-BR": "Abrir em uma janela",
    "ru": "Открыть в окне",
    "id": "Buka di jendela"
+  },
+  "Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle.": {
+   "zh-Hans": "拖动岛的顶栏（或收起的岛的任意位置）即可移动：在任意位置松开，它就停在那里；靠近屏幕边缘时会贴靠到边缘，在左右两侧竖立，靠近中间时自动居中。",
+   "hi": "द्वीप को खिसकाने के लिए उसकी ऊपरी पट्टी (या बंद द्वीप को कहीं से भी) खींचें: कहीं भी छोड़ें, वह वहीं रहेगा; स्क्रीन के किनारे के पास वह किनारे से जुड़ जाता है, किनारों पर खड़ा, और बीच के पास छोड़ने पर बीच में।",
+   "es": "Arrastra la isla por su barra superior (o la isla cerrada desde cualquier punto) para moverla: suéltala donde quieras y se queda ahí; cerca de un borde de la pantalla se acopla a él, en vertical en los laterales, centrada si la sueltas cerca del medio.",
+   "ar": "اسحب الجزيرة من شريطها العلوي (أو الجزيرة المغلقة من أي مكان) لتحريكها: اتركها في أي مكان فتبقى هناك؛ وقرب حافة الشاشة تلتصق بها، عموديةً على الجانبين، وفي المنتصف إذا تركتها قربه.",
+   "fr": "Faites glisser l’île par sa barre du haut (ou l’île fermée n’importe où) pour la déplacer : lâchez-la où vous voulez, elle y reste ; près d’un bord de l’écran elle s’y accroche, debout sur les côtés, centrée si vous la lâchez près du milieu.",
+   "bn": "দ্বীপটি সরাতে এর ওপরের বার (বা বন্ধ দ্বীপের যেকোনো জায়গা) টেনে নিন: যেখানে খুশি ছেড়ে দিন, সেখানেই থাকবে; স্ক্রিনের কিনারার কাছে সেটি কিনারায় লেগে যায়, পাশে খাড়া হয়ে, মাঝের কাছে ছাড়লে মাঝখানে।",
+   "pt-BR": "Arraste a ilha pela barra superior (ou a ilha fechada por qualquer ponto) para movê-la: solte onde quiser e ela fica ali; perto de uma borda da tela ela se prende a ela, em pé nas laterais, centralizada se você soltar perto do meio.",
+   "ru": "Перетащите остров за верхнюю панель (или закрытый остров за любое место): отпустите где угодно — он там и останется; у края экрана он прилипает к нему, по бокам встаёт вертикально, а у середины выравнивается по центру.",
+   "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di mana saja dan ia tetap di sana; dekat tepi layar ia menempel ke tepi itu, tegak di sisi kiri dan kanan, di tengah jika dilepas dekat bagian tengah."
   }
  }
 }

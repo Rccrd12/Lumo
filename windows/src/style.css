@@ -70,34 +70,19 @@ body {
 
 /* ── Island ─────────────────────────────────────────────────────────────── */
 
+/* island.ts places it (left / top): a gap off one edge of its window, centred
+   along it, or wherever a floating island was left. */
 #island {
   position: absolute;
-  top: 0;
-  left: 50%;
+  top: 10px;
+  left: 0;
   background: #000;
-  border-radius: 0 0 14px 14px;
+  border-radius: 14px;
   overflow: visible;
   will-change: width, height, transform;
 }
 
-/* Where the island hangs: against one edge of its window, centred along it.
-   island.ts sets the matching transform (translateX / translateY). */
-.dock-bottom #island {
-  top: auto;
-  bottom: 0;
-}
-
-.dock-left #island,
-.dock-right #island {
-  top: 50%;
-  left: 0;
-}
-
-.dock-right #island {
-  left: auto;
-  right: 0;
-}
-
+/* It grows away from its edge, and lifts from there when picked up. */
 .dock-top #island {
   transform-origin: 50% 0;
 }

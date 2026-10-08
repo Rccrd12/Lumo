@@ -1,7 +1,7 @@
 // Entry point: boot the bridge, wire the island, start the greeting.
 
 import "./style.css";
-import { Bridge, IS_TAURI, lendTauri, onEvent } from "./core/bridge";
+import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
@@ -40,6 +40,7 @@ async function main() {
   island.applySettings();
   State.loadIntegrationTasks();
   if (boot && !boot.cursorPoll) island.followPageCursor();
+  if (boot?.shift) island.onShift(boot.shift);
   await island.desktop.init();
 
   await onEvent<{ x: number; y: number }>("cursor", ({ x, y }) => island.onCursor(x, y));
@@ -86,7 +87,9 @@ async function main() {
   // An edge of the island being dragged: island.rs sends each new size.
   await onEvent<{ width: number; height: number }>("island-resize", (size) => island.onResize(size));
   // A moved island was let go: island.rs says which edge it is heading for.
-  await onEvent<{ dock: string; offset: number }>("island-dock", (place) => island.onDock(place));
+  await onEvent<{ dock: string; offset: number; float: number; shiftX: number; shiftY: number }>(
+    "island-dock", (place) => island.onDock(place));
+  await onEvent<IslandShift>("island-shift", (shift) => island.onShift(shift));
 
   // The settings window writes preferences; apply them here without a restart.
   await onEvent<Settings>("settings-changed", (s) => {

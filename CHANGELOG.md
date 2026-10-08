@@ -4,6 +4,7 @@
 
 - **Settings open inside the island**, from the gear, the tray, `Ctrl+,` or a chat link, and stay open while you look something up elsewhere. Escape closes them; the separate window is still there if they cannot load
 - **Choose how the island closes** (Settings → Island): a few seconds after the mouse leaves (as before), as soon as it leaves, on a click outside the island, or only when you close it. It can also open when the mouse rests on it
+- **The island floats**: rounded all round and a little off the edge of the screen. Let it go anywhere and it stays there, growing down in the upper half of the screen and up in the lower half; near an edge it docks to it, still with the small gap
 - **The island stays on screen**: the closed island no longer slips away a minute after you leave it. "Hide when unused" in Settings → Island brings that back
 - **The model picker** shows on its own, without the screen panel behind it, and gets enough room even when the island is small
 ## Windows and Linux 0.3.0 — October 8, 2026

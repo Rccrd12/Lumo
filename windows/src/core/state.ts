@@ -127,6 +127,8 @@ export interface Settings {
   /** The edge the island hangs from, and how far from its middle (owned by Rust). */
   islandDock: string;
   islandOffset: number;
+  /** Floating: how far from the top or bottom edge it grows from (island.rs owns it). */
+  islandFloat: number;
   /** Width of the open island and its height (0 = each view's own); owned by Rust. */
   islandWidth: number;
   islandHeight: number;
@@ -196,6 +198,7 @@ export const DEFAULT_SETTINGS: Settings = {
   islandZoom: 1.15,
   islandDock: "top",
   islandOffset: 0,
+  islandFloat: 0,
   islandWidth: 640,
   islandHeight: 0,
   iconScale: 1.25,

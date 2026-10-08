@@ -82,8 +82,9 @@ pub mod logic {
     pub const BODY_RADIUS_FRACTION: f64 = 0.24;
 
     /// Island panel, logical pixels: dropping Mochi on it brings him home.
+    /// The panel's usual size, not the window's (taller for Settings).
     pub const HOME_ZONE_W: f64 = crate::island::PANEL_W;
-    pub const HOME_ZONE_H: f64 = crate::island::PANEL_H;
+    pub const HOME_ZONE_H: f64 = 320.0;
 
     /// Hit test of the round body inside the square window (window-local).
     pub fn is_over_body(local: (f64, f64), size: f64) -> bool {
@@ -380,10 +381,12 @@ fn island_anchor(app: &AppHandle, d: &Desktop) -> Option<(f64, f64, f64)> {
     let pos = win.outer_position().ok()?;
     let size = win.outer_size().ok()?;
     let scale = win.scale_factor().unwrap_or(1.0);
+    let rect = *app.state::<crate::Shared>().gate.rect.lock().unwrap();
     let (x, y) = island::anchor(
         (pos.x as f64, pos.y as f64),
         (size.width as f64, size.height as f64),
         scale * island::zoom(),
+        rect,
     );
     Some((x, y, scale))
 }

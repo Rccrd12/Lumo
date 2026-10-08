@@ -62,6 +62,12 @@ export interface UpdateInfo {
   assetUrl: string | null;
 }
 
+/** Page pixels the island is drawn off its usual place: a floating island kept on its display. */
+export interface IslandShift {
+  x: number;
+  y: number;
+}
+
 export interface BootInfo {
   settings: Settings;
   /** Logical screen rect of the monitor the island lives on. */
@@ -70,6 +76,8 @@ export interface BootInfo {
   hookPath: string;
   /** False where the OS has no global cursor (Wayland): see Island.followPageCursor. */
   cursorPoll: boolean;
+  /** Where the island is drawn in its window, off its usual place (island.rs shift). */
+  shift: IslandShift;
 }
 
 /** System dialogs of ours open right now (the file picker): a click in them is not "elsewhere". */
