@@ -67,6 +67,13 @@ pub fn models() -> Vec<ModelInfo> {
         .collect()
 }
 
+/// The effort levels `claude --effort` takes; anything else leaves Claude Code's default.
+pub const EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+
+fn safe_effort(effort: &str) -> Option<&'static str> {
+    EFFORTS.iter().copied().find(|e| *e == effort.trim())
+}
+
 /// A model alias or id we are willing to put on the command line.
 fn safe_model(model: &str) -> Option<&str> {
     let m = model.trim();
@@ -80,7 +87,7 @@ fn safe_session(id: &str) -> Option<&str> {
 }
 
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
-fn args(model: &str, session: Option<&str>, inbox: &str) -> Vec<String> {
+fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str) -> Vec<String> {
     let mut a: Vec<String> = [
         "-p",
         "--output-format",
@@ -102,6 +109,10 @@ fn args(model: &str, session: Option<&str>, inbox: &str) -> Vec<String> {
     if let Some(m) = safe_model(model) {
         a.push("--model".into());
         a.push(m.to_string());
+    }
+    if let Some(e) = safe_effort(effort) {
+        a.push("--effort".into());
+        a.push(e.to_string());
     }
     if let Some(s) = session.and_then(safe_session) {
         a.push("--resume".into());
@@ -314,6 +325,7 @@ pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
+    effort: &str,
     query: String,
     context: Option<ChatContext>,
 ) -> Result<ChatReply, String> {
@@ -328,7 +340,7 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, session.as_deref(), &inbox);
+    let args = args(model, effort, session.as_deref(), &inbox);
 
     let app2 = app.clone();
     let state = tauri::async_runtime::spawn_blocking(move || {
@@ -365,13 +377,15 @@ mod tests {
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let a = args("opus", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox");
+        let a = args("opus", "high", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox");
+        assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--model", "opus"]));
         assert!(a.windows(2).any(|w| w == ["--resume", SID]));
         assert!(a.windows(2).any(|w| w == ["--permission-mode", "default"]));
         assert_eq!(a[0], "-p");
 
-        let a = args("opus & del *", Some("x\" & calc"), "/inbox");
+        let a = args("opus & del *", "high & calc", Some("x\" & calc"), "/inbox");
+        assert!(!a.contains(&"--effort".to_string()));
         assert!(!a.iter().any(|s| s.contains('&')), "{a:?}");
         assert!(!a.contains(&"--model".to_string()));
         assert!(!a.contains(&"--resume".to_string()));

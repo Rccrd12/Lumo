@@ -11,7 +11,7 @@ import { ICONS } from "./icons";
 import { renderMarkdown } from "./markdown";
 import { Bridge, onEvent, type ChatContext, type ModelInfo } from "../core/bridge";
 import {
-  activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
+  EFFORTS, activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
@@ -33,7 +33,14 @@ const STRINGS = {
   noPastChats: N_("No past chats yet."),
   deleteChat: N_("Delete this chat"),
   attach: N_("Attach a file"),
+  effort: N_("Effort"),
+  effortAuto: N_("Auto"),
 };
+
+/** What an effort chip says: Claude Code's own names, "Auto" for its default. */
+function effortLabel(effort: string): string {
+  return effort ? effort : t(STRINGS.effortAuto);
+}
 
 let nextId = 1;
 
@@ -82,7 +89,33 @@ interface Picker {
 function buildPicker(onChange: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
-  const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list);
+  // Claude Code only: how hard it thinks (claude --effort).
+  const efforts = h("div", { class: "picker-chips picker-efforts" });
+  const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list, efforts);
+
+  function drawEfforts() {
+    clear(efforts);
+    const p = providerDef(State.settings.chatProvider);
+    efforts.hidden = p.id !== "claude-code";
+    if (efforts.hidden) return;
+    efforts.append(h("span", { class: "picker-label", text: t(STRINGS.effort) }));
+    for (const e of EFFORTS) {
+      const on = e === (State.settings.chatEffort ?? "");
+      const chip = h(
+        "button",
+        { class: on ? "picker-chip on" : "picker-chip", style: `--accent:${p.accent}` },
+        h("span", { text: effortLabel(e) }),
+      );
+      chip.addEventListener("click", () => {
+        State.settings = { ...State.settings, chatEffort: e };
+        saveSettings();
+        Sound.play("blip");
+        drawEfforts();
+        onChange();
+      });
+      efforts.append(chip);
+    }
+  }
 
   /** Models already asked for, by provider; a model server is asked again each time. */
   const cache = new Map<string, ModelInfo[]>();
@@ -105,6 +138,7 @@ function buildPicker(onChange: () => void): Picker {
         saveSettings();
         Sound.play("pop");
         drawChips();
+        drawEfforts();
         void loadModels();
         onChange();
       });
@@ -184,6 +218,7 @@ function buildPicker(onChange: () => void): Picker {
     isOpen = true;
     el.classList.add("on");
     drawChips();
+    drawEfforts();
     onChange();
     void loadModels();
   }
@@ -254,7 +289,9 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   function drawModelButton() {
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
-    modelName.textContent = activeModel(State.settings) || t(STRINGS.noModel);
+    const model = activeModel(State.settings) || t(STRINGS.noModel);
+    const effort = p.id === "claude-code" ? State.settings.chatEffort : "";
+    modelName.textContent = effort ? `${model} · ${effort}` : model;
     modelBtn.classList.toggle("open", picker.isOpen);
     modelBtn.disabled = sending;
   }

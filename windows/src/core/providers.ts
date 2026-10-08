@@ -35,6 +35,9 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "custom", name: N_("Custom server"), accent: "#C0C4CC", key: null, urlField: "customUrl", defaultModel: "", prefer: null },
 ];
 
+/** Claude Code's effort levels (claude --effort), "" for its own default. */
+export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
+
 /** Credential store entry of the custom server's optional key. */
 export const CUSTOM_SERVER_KEY = "openai-compatible-key";
 

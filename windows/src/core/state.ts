@@ -124,6 +124,8 @@ export interface Settings {
   chatProvider: ProviderId;
   /** The model picked for each provider other than Anthropic, by provider id. */
   chatModels: Record<string, string>;
+  /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
+  chatEffort: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -171,6 +173,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showCodexPlanInNotch: false,
   chatProvider: "anthropic",
   chatModels: {},
+  chatEffort: "",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

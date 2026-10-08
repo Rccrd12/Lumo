@@ -3426,6 +3426,28 @@
    "pt-BR": "Anexar um arquivo",
    "ru": "Прикрепить файл",
    "id": "Lampirkan file"
+  },
+  "Effort": {
+   "zh-Hans": "推理强度",
+   "hi": "प्रयास",
+   "es": "Esfuerzo",
+   "ar": "الجهد",
+   "fr": "Effort",
+   "bn": "প্রচেষ্টা",
+   "pt-BR": "Esforço",
+   "ru": "Усилие",
+   "id": "Upaya"
+  },
+  "Auto": {
+   "zh-Hans": "自动",
+   "hi": "स्वचालित",
+   "es": "Auto",
+   "ar": "تلقائي",
+   "fr": "Auto",
+   "bn": "স্বয়ংক্রিয়",
+   "pt-BR": "Auto",
+   "ru": "Авто",
+   "id": "Otomatis"
   }
  }
 }
