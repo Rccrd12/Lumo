@@ -52,9 +52,16 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen or their open windows unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally.";
 
-/// The models Claude Code takes by alias. "default": whatever the user set in Claude Code.
+/// The models offered for Claude Code: the current ones by id, so the picker
+/// says which version runs. "default": whatever the user set in Claude Code.
+/// Older chats saved an alias ("opus"…), which still goes on the command line.
 const DEFAULT_MODEL: &str = "default";
-const MODELS: &[(&str, &str)] = &[(DEFAULT_MODEL, "Default"), ("opus", "Opus"), ("sonnet", "Sonnet"), ("haiku", "Haiku")];
+const MODELS: &[(&str, &str)] = &[
+    (DEFAULT_MODEL, "Default"),
+    ("claude-opus-5-5", "Opus 5.5"),
+    ("claude-sonnet-5-5", "Sonnet 5.5"),
+    ("claude-haiku-5-5", "Haiku 5.5"),
+];
 
 /// Where Claude Code works when Coucou starts it: `~/Coucou`. Files outside it
 /// can still be read or edited, each time with the user's Allow.

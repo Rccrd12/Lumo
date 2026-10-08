@@ -207,7 +207,7 @@ export const DEFAULT_SETTINGS: Settings = {
   islandAutoHide: false,
   autostart: false,
   hooksInstalled: false,
-  model: "claude-opus-5",
+  model: "claude-opus-5-5",
   showPlanInNotch: false,
   planRelayInstalled: false,
   showCodexPlanInNotch: false,

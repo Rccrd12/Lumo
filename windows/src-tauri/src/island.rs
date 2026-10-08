@@ -430,25 +430,46 @@ pub struct MonitorChoice {
 
 pub fn monitor_choices(app: &AppHandle) -> Vec<MonitorChoice> {
     let Ok(monitors) = app.available_monitors() else { return Vec::new() };
-    monitors
-        .iter()
-        .map(|m| {
-            let d = describe(m);
-            MonitorChoice {
-                key: d.key(),
-                label: crate::i18n::tf(
-                    "{name} — {width}×{height} at {x},{y}",
-                    &[
-                        ("name", &d.name),
-                        ("width", &d.w.to_string()),
-                        ("height", &d.h.to_string()),
-                        ("x", &d.x.to_string()),
-                        ("y", &d.y.to_string()),
-                    ],
-                ),
-            }
-        })
-        .collect()
+    let ids: Vec<DisplayId> = monitors.iter().map(describe).collect();
+    let primary = app.primary_monitor().ok().flatten().map(|p| describe(&p));
+    let main = primary.and_then(|p| ids.iter().position(|d| *d == p));
+    let labels = display_labels(&ids, main);
+    ids.iter().zip(labels).map(|(d, label)| MonitorChoice { key: d.key(), label }).collect()
+}
+
+/// Where a display sits next to the main one, for its label.
+fn side_of(d: &DisplayId, main: &DisplayId) -> &'static str {
+    let (cx, cy) = (d.x * 2 + d.w - main.x * 2 - main.w, d.y * 2 + d.h - main.y * 2 - main.h);
+    if cx.abs() >= cy.abs() {
+        if cx < 0 { crate::i18n::n_("{display} · on the left") } else { crate::i18n::n_("{display} · on the right") }
+    } else if cy < 0 {
+        crate::i18n::n_("{display} · above")
+    } else {
+        crate::i18n::n_("{display} · below")
+    }
+}
+
+/// "Display 2 — 1440×900 · on the left": numbered from left to right, the
+/// main one said so, the others placed next to it. The system's own names
+/// (`\\.\DISPLAY5` on Windows) mean nothing to people.
+fn display_labels(ids: &[DisplayId], main: Option<usize>) -> Vec<String> {
+    let mut order: Vec<usize> = (0..ids.len()).collect();
+    order.sort_by_key(|&i| (ids[i].x, ids[i].y));
+    let mut out = vec![String::new(); ids.len()];
+    for (n, &i) in order.iter().enumerate() {
+        let d = &ids[i];
+        let display = crate::i18n::tf(
+            "Display {n} — {width}×{height}",
+            &[("n", &(n + 1).to_string()), ("width", &d.w.to_string()), ("height", &d.h.to_string())],
+        );
+        out[i] = match main {
+            _ if ids.len() == 1 => display,
+            Some(m) if m == i => crate::i18n::tf("{display} · main", &[("display", &display)]),
+            Some(m) => crate::i18n::tf(side_of(d, &ids[m]), &[("display", &display)]),
+            None => display,
+        };
+    }
+    out
 }
 
 /// What a display is remembered by: its logical origin, plus its name and
@@ -1066,6 +1087,17 @@ mod placement_tests {
             assert_eq!(Dock::parse(d.name()), d);
         }
         assert_eq!(Dock::parse("nonsense"), Dock::Top);
+    }
+
+    #[test]
+    fn displays_get_plain_names_numbered_from_the_left() {
+        let d = |x, y, w, h| DisplayId { name: r"\\.\DISPLAY5".into(), x, y, w, h };
+        let ids = vec![d(0, 0, 2560, 1440), d(-1440, -87, 1440, 900), d(560, -1080, 1920, 1080)];
+        let labels = display_labels(&ids, Some(0));
+        assert_eq!(labels[1], "Display 1 — 1440×900 · on the left");
+        assert_eq!(labels[0], "Display 2 — 2560×1440 · main");
+        assert_eq!(labels[2], "Display 3 — 1920×1080 · above");
+        assert_eq!(display_labels(&ids[..1], Some(0)), vec!["Display 1 — 2560×1440"]);
     }
 }
 

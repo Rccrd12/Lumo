@@ -30,7 +30,7 @@ const MAX_TOKENS: u32 = 4096;
 /// Text and code files are inlined; anything larger is skipped, as on macOS.
 const MAX_INLINE_TEXT: u64 = 200_000;
 
-pub const DEFAULT_MODEL: &str = "claude-opus-5";
+pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 
 /// The Messages endpoint: Anthropic's, or the gateway in COUCOU_ANTHROPIC_BASE_URL.
 /// Read once; the gateway's host (never the key) goes to the log once.

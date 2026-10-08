@@ -320,14 +320,24 @@ function planSection(status: HookStatus): HTMLElement {
 // ── Claude API section ────────────────────────────────────────────────────────
 
 const MODELS: [string, string][] = [
-  ["claude-opus-5", "Claude Opus 5"],
-  ["claude-sonnet-5", "Claude Sonnet 5"],
-  ["claude-haiku-4-5", "Claude Haiku 4.5"],
+  ["claude-opus-5-5", "Claude Opus 5.5"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5"],
 ];
+
+/** What Claude Code runs: its own default, or one of the current models. */
+const CLAUDE_CODE_MODELS: [string, string][] = [
+  ["default", N_("Default")],
+  ["claude-opus-5-5", "Opus 5.5"],
+  ["claude-sonnet-5-5", "Sonnet 5.5"],
+  ["claude-haiku-5-5", "Haiku 5.5"],
+];
+
+const NO_KEY = N_("No key yet. Only the Anthropic API needs one: Claude Code uses your Claude plan.");
 
 function apiSection(hasKey: boolean): HTMLElement {
   const dot = statusDot(hasKey);
-  const state = h("span", { class: "hint", text: hasKey ? t("Key saved in the {store}.", { store: KEY_STORE }) : t("No key yet — the chat needs one.") });
+  const state = h("span", { class: "hint", text: hasKey ? t("Key saved in the {store}.", { store: KEY_STORE }) : t(NO_KEY) });
 
   const field = h("input", {
     type: "password",
@@ -346,7 +356,7 @@ function apiSection(hasKey: boolean): HTMLElement {
     dot.style.background = present ? "#22c55e" : "#f4505e";
     state.textContent = present
       ? t("Key saved in the {store}.", { store: KEY_STORE })
-      : t("No key yet — the chat needs one.");
+      : t(NO_KEY);
     field.placeholder = present ? `••••••••••••  ${t("(stored)")}` : "sk-ant-...";
     clearBtn.style.display = present ? "" : "none";
   }
@@ -389,10 +399,25 @@ function apiSection(hasKey: boolean): HTMLElement {
 
   clearBtn.style.display = hasKey ? "" : "none";
 
+  // Claude Code needs no key: it runs with the plan the user signed in with.
+  const ccModel = h("select", {}) as HTMLSelectElement;
+  for (const [id, label] of CLAUDE_CODE_MODELS) ccModel.append(h("option", { value: id, text: t(label) }));
+  const ccSaved = settings.chatModels["claude-code"] || "default";
+  if (!CLAUDE_CODE_MODELS.some(([id]) => id === ccSaved)) {
+    ccModel.append(h("option", { value: ccSaved, text: ccSaved }));
+  }
+  ccModel.value = ccSaved;
+  ccModel.addEventListener("change", () => {
+    settings.chatModels = { ...settings.chatModels, "claude-code": ccModel.value };
+    void save();
+  });
+
   return h(
     "section",
     {},
     h("h2", {}, dot, h("span", { text: "Claude" })),
+    h("div", { class: "row" }, h("label", { text: "Claude Code" }), ccModel),
+    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Uses your Claude plan. No key needed.") }),
     state,
     h("div", { class: "row" }, h("label", { text: t("API key") }), field, saveBtn, clearBtn),
     h("div", { class: "row" }, h("label", { text: t("Model") }), model),

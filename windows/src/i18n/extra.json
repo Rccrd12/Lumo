@@ -1299,16 +1299,16 @@
    "ru": "Файла пока нет — нечего сохранять.",
    "id": "Belum ada file — tidak ada yang perlu dicadangkan."
   },
-  "No key yet — the chat needs one.": {
-   "zh-Hans": "还没有密钥 — 聊天需要一个。",
-   "hi": "अभी कोई कुंजी नहीं — चैट को एक चाहिए।",
-   "es": "Aún no hay clave — el chat necesita una.",
-   "ar": "لا يوجد مفتاح بعد — تحتاج الدردشة إلى مفتاح.",
-   "fr": "Pas encore de clé — le chat en a besoin.",
-   "bn": "এখনো কোনো কী নেই — চ্যাটের একটি লাগবে।",
-   "pt-BR": "Ainda não há chave — o chat precisa de uma.",
-   "ru": "Ключа пока нет — он нужен для чата.",
-   "id": "Belum ada kunci — obrolan membutuhkannya."
+  "No key yet. Only the Anthropic API needs one: Claude Code uses your Claude plan.": {
+   "zh-Hans": "还没有密钥。只有 Anthropic API 需要密钥：Claude Code 使用你的 Claude 订阅。",
+   "hi": "अभी कोई कुंजी नहीं। केवल Anthropic API को इसकी ज़रूरत है: Claude Code आपके Claude प्लान का उपयोग करता है।",
+   "es": "Todavía no hay clave. Solo la API de Anthropic la necesita: Claude Code usa tu plan de Claude.",
+   "ar": "لا يوجد مفتاح بعد. واجهة Anthropic API وحدها تحتاجه: يستخدم Claude Code خطة Claude الخاصة بك.",
+   "fr": "Pas encore de clé. Seule l'API Anthropic en a besoin : Claude Code utilise ton abonnement Claude.",
+   "bn": "এখনও কোনো কী নেই। শুধু Anthropic API-এর এটি দরকার: Claude Code আপনার Claude প্ল্যান ব্যবহার করে।",
+   "pt-BR": "Ainda sem chave. Só a API da Anthropic precisa de uma: o Claude Code usa seu plano do Claude.",
+   "ru": "Ключа пока нет. Он нужен только для Anthropic API: Claude Code работает по вашему тарифу Claude.",
+   "id": "Belum ada kunci. Hanya Anthropic API yang memerlukannya: Claude Code memakai paket Claude Anda."
   },
   "No models yet. Download one in {name} first.": {
    "zh-Hans": "还没有模型。请先在 {name} 中下载一个。",
@@ -2498,6 +2498,17 @@
    "ru": "Используется дважды",
    "id": "Dipakai dua kali"
   },
+  "Uses your Claude plan. No key needed.": {
+   "zh-Hans": "使用你的 Claude 订阅，无需密钥。",
+   "hi": "आपके Claude प्लान का उपयोग करता है। कोई कुंजी नहीं चाहिए।",
+   "es": "Usa tu plan de Claude. No hace falta clave.",
+   "ar": "يستخدم خطة Claude الخاصة بك. لا حاجة إلى مفتاح.",
+   "fr": "Utilise ton abonnement Claude. Aucune clé nécessaire.",
+   "bn": "আপনার Claude প্ল্যান ব্যবহার করে। কোনো কী লাগবে না।",
+   "pt-BR": "Usa seu plano do Claude. Não precisa de chave.",
+   "ru": "Работает по вашему тарифу Claude. Ключ не нужен.",
+   "id": "Memakai paket Claude Anda. Tidak perlu kunci."
+  },
   "Wardrobe…": {
    "zh-Hans": "衣橱…",
    "hi": "अलमारी…",
@@ -3009,16 +3020,71 @@
    "ru": "{name} записан не Lumo — Lumo его не трогал.",
    "id": "{name} tidak ditulis oleh Lumo — Lumo tidak menyentuhnya."
   },
-  "{name} — {width}×{height} at {x},{y}": {
-   "zh-Hans": "{name} — {width}×{height}，位于 {x},{y}",
-   "hi": "{name} — {width}×{height}, स्थिति {x},{y}",
-   "es": "{name} — {width}×{height} en {x},{y}",
-   "ar": "{name} — {width}×{height} عند {x},{y}",
-   "fr": "{name} — {width}×{height} à {x},{y}",
-   "bn": "{name} — {width}×{height}, অবস্থান {x},{y}",
-   "pt-BR": "{name} — {width}×{height} em {x},{y}",
-   "ru": "{name} — {width}×{height} в точке {x},{y}",
-   "id": "{name} — {width}×{height} di {x},{y}"
+  "Display {n} — {width}×{height}": {
+   "zh-Hans": "显示器 {n} — {width}×{height}",
+   "hi": "डिस्प्ले {n} — {width}×{height}",
+   "es": "Pantalla {n} — {width}×{height}",
+   "ar": "الشاشة {n} — {width}×{height}",
+   "fr": "Écran {n} — {width}×{height}",
+   "bn": "ডিসপ্লে {n} — {width}×{height}",
+   "pt-BR": "Tela {n} — {width}×{height}",
+   "ru": "Дисплей {n} — {width}×{height}",
+   "id": "Layar {n} — {width}×{height}"
+  },
+  "{display} · main": {
+   "zh-Hans": "{display} · 主显示器",
+   "hi": "{display} · मुख्य",
+   "es": "{display} · principal",
+   "ar": "{display} · الرئيسية",
+   "fr": "{display} · principal",
+   "bn": "{display} · প্রধান",
+   "pt-BR": "{display} · principal",
+   "ru": "{display} · основной",
+   "id": "{display} · utama"
+  },
+  "{display} · on the left": {
+   "zh-Hans": "{display} · 在左侧",
+   "hi": "{display} · बाईं ओर",
+   "es": "{display} · a la izquierda",
+   "ar": "{display} · على اليسار",
+   "fr": "{display} · à gauche",
+   "bn": "{display} · বাঁ দিকে",
+   "pt-BR": "{display} · à esquerda",
+   "ru": "{display} · слева",
+   "id": "{display} · di kiri"
+  },
+  "{display} · on the right": {
+   "zh-Hans": "{display} · 在右侧",
+   "hi": "{display} · दाईं ओर",
+   "es": "{display} · a la derecha",
+   "ar": "{display} · على اليمين",
+   "fr": "{display} · à droite",
+   "bn": "{display} · ডান দিকে",
+   "pt-BR": "{display} · à direita",
+   "ru": "{display} · справа",
+   "id": "{display} · di kanan"
+  },
+  "{display} · above": {
+   "zh-Hans": "{display} · 在上方",
+   "hi": "{display} · ऊपर",
+   "es": "{display} · arriba",
+   "ar": "{display} · في الأعلى",
+   "fr": "{display} · au-dessus",
+   "bn": "{display} · উপরে",
+   "pt-BR": "{display} · acima",
+   "ru": "{display} · сверху",
+   "id": "{display} · di atas"
+  },
+  "{display} · below": {
+   "zh-Hans": "{display} · 在下方",
+   "hi": "{display} · नीचे",
+   "es": "{display} · abajo",
+   "ar": "{display} · في الأسفل",
+   "fr": "{display} · en dessous",
+   "bn": "{display} · নিচে",
+   "pt-BR": "{display} · abaixo",
+   "ru": "{display} · снизу",
+   "id": "{display} · di bawah"
   },
   "{name}: model not found (404). Pick another one above the chat box. {detail}": {
    "zh-Hans": "{name}：未找到模型（404）。请在聊天框上方选择其他模型。{detail}",
