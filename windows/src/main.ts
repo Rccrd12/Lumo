@@ -58,6 +58,7 @@ async function main() {
         break;
       case "open":
         setPaused(false);
+        island.takeKeyboard();
         island.alert(State.defaultView());
         break;
       case "recap":
@@ -77,6 +78,10 @@ async function main() {
   });
 
   await onEvent<null>("screen-changed", () => void Bridge.reposition());
+  // An edge of the island being dragged: island.rs sends each new size.
+  await onEvent<{ width: number; height: number }>("island-resize", (size) => island.onResize(size));
+  // A moved island was let go: island.rs says which edge it is heading for.
+  await onEvent<{ dock: string; offset: number }>("island-dock", (place) => island.onDock(place));
 
   // The settings window writes preferences; apply them here without a restart.
   await onEvent<Settings>("settings-changed", (s) => {

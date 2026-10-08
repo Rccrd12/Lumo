@@ -40,6 +40,17 @@ in PowerShell) and try again.
 
 You can also [build it yourself](#build-it-yourself).
 
+### Updates
+
+**Settings… → Updates** shows the version you run. **Check for updates** asks
+GitHub for the newest `windows-v*` release of
+[Rccrd12/coucou-agent](https://github.com/Rccrd12/coucou-agent/releases) — only
+when you click it, never in the background. When there is a newer one, **Update
+now** downloads its `Coucou-Windows-X.Y.Z-setup.exe` into a temporary folder,
+starts it with its usual window, and Coucou quits so the installer can replace
+it. Only installers from that repository's GitHub releases are accepted. On
+Linux, update Coucou the way you installed it.
+
 ## Using it
 
 <img src="screenshots/compact.png" width="292" alt="The compact island, with the integration pills as mini Mochis">
@@ -59,9 +70,15 @@ You can also [build it yourself](#build-it-yourself).
 | On the desktop: click / right-click / double-click Mochi | Poke him / the wardrobe / he flies home. Drag him to move him |
 | Drag a file onto the island | Mochi turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
+| Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
+| Power button at the top right of the open island | Quits Coucou (open it again from the Start menu) |
+| Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
+| In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
+| `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
+| `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Coucou copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
 | `Ctrl+Alt+→` / `Ctrl+Alt+←` | Next / previous pill |
@@ -123,7 +140,7 @@ answer on one line, still, until the next prompt.
 
 ## Your pills
 
-**Settings… → Active pills** lists the tools you use, from the same catalog as
+**Settings… → Pills & integrations** lists the tools you use, from the same catalog as
 the Mac app. Pick your **main tool** — VS Code, Cursor, Codex or Antigravity —
 which is always there and doesn't take a slot, then declare up to four more:
 agents (Gemini CLI, Copilot CLI, Muse Code, OpenCode, Amp, Hermes, Claude
@@ -137,7 +154,7 @@ declare still shows up, for as long as it runs.
 
 <img src="screenshots/settings.png" width="562" alt="The settings window">
 
-Open **Settings… → Claude Code → Install hooks…**. You get the exact diff of what
+Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
 that will be taken, and nothing is written until you click. Your own hooks are
 never touched, and uninstalling removes only Coucou's entries.
@@ -155,7 +172,7 @@ It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 As on the Mac, the island's header can show your plan limits: a small pill
 ("Claude 73%", green below 50 %, orange up to 80 %, red above) for the 5-hour and
 weekly Claude limits, and another for Codex. Click one for the details and the
-reset times. Both are off by default; turn them on in **Settings… → Plan usage**.
+reset times. Both are off by default; turn them on in **Settings… → Agents → Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
   line. **Show in notch** first shows you the diff of the `statusLine` change in
@@ -213,19 +230,19 @@ side (tray, errors) embeds the same two files.
 
 ## Chat and keys
 
-**Settings… → Claude** takes your Anthropic API key. Keys live in the **Windows
+**Settings… → Chat → Claude** takes your Anthropic API key. Keys live in the **Windows
 Credential Manager**, never on disk and never in the interface — the island can
 only ask whether a key exists. Same for every integration key.
 
 The chat also talks to **Google AI (Gemini)**, **OpenAI** and **OpenRouter**:
-add their keys in **Settings… → Chat providers**, then click the model name
+add their keys in **Settings… → Chat → Chat providers**, then click the model name
 above the chat box to switch provider and model, as on the Mac. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
 provider's format is ever sent to another. These providers get no web search
 and no tools — they answer, they never act on your PC.
 
-**Local models**: **Settings… → Local models** connects **Ollama** or **LM
+**Local models**: **Settings… → Chat → Local models** connects **Ollama** or **LM
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
 llama.cpp…), with an optional key kept in the credential store. Answers stream
@@ -251,9 +268,56 @@ once; the key never is.
 No telemetry. The only network requests Coucou makes are to the services you
 configure yourself.
 
+### Chat with your Claude plan (Claude Code)
+
+Pick **Claude Code** above the chat box and the island talks to the Claude Code
+CLI you already use, signed in with your own Claude plan (Pro, Max…): no API key.
+Coucou runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Coucou`
+(`~/Coucou` on Linux); it never reads, stores or forwards any Claude credential,
+and the usage counts against your plan's limits like any Claude Code session.
+
+Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
+from its path, reads and edits files and folders, runs commands and searches the
+web. Every action that needs a permission comes up in the island as the usual
+**Deny / Allow** card, through the hooks of **Settings… → Agents → Claude Code**. Without
+those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
+allowed on its own. The conversation continues the same Claude Code session
+until **New chat**. Install Claude Code and run `claude` once in a terminal to
+sign in before using it. Its **Effort** (Auto, low … max) is picked under the
+models, and goes to Claude Code as `--effort`. Claude Code's own run never shows
+up as a session in the island: only its permission requests do, as a card over
+the chat.
+
+Next to the model name, **+** starts a new chat and the clock lists your past
+chats, to reopen (a Claude Code chat continues its session) or delete; they are
+kept on this computer only, 40 at most. The paperclip in the text field opens
+the file picker: with Claude Code the file joins the conversation, with the
+other providers it starts a new chat, as a drop does.
+
+### Show the chat your screen
+
+The screen button next to the paperclip lets the assistant see what you have
+open, only when you ask. Its menu offers **Open windows** (the titles and app
+names of your visible windows, the one you were in marked as active), one
+**Screen 1**, **Screen 2**… entry per display, and **All screens** when there
+are several. Nothing is listed or captured until you click an entry, and never
+in the background. A screenshot (one PNG per display, scaled down to 1568 px on
+its long edge) shows first with **Send** and **Cancel**: Cancel deletes it, Send
+adds it to the chat, with the question already typed if there is one. The window
+list shows as a chip you can remove before sending. Either goes with your next
+question only. Screenshots are saved only in the inbox
+(`%LOCALAPPDATA%\Coucou\inbox`), like dropped files, and are deleted after a
+week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
+
+Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
+and OpenRouter receive them as images; the local model servers take the window
+list only. Claude Code is told to ask you to press the screen button when it
+needs to see something, never to capture the screen itself. On Linux the button
+says it isn't available yet.
+
 ## GitHub
 
-With a token in **Settings… → Integrations → GitHub** — a classic token with
+With a token in **Settings… → Pills & integrations → GitHub** — a classic token with
 the `repo` scope, or a fine-grained one with read access to Pull requests,
 Commit statuses and Actions — the GitHub pill shows:
 
@@ -347,7 +411,7 @@ Linux.
 
 | Agent | Installs | Permissions |
 |---|---|---|
-| Claude Code | `.claude\settings.json` (**Settings → Claude Code**) | Allow / Deny and questions in the island |
+| Claude Code | `.claude\settings.json` (**Settings → Agents → Claude Code**) | Allow / Deny and questions in the island |
 | Codex | `.codex\hooks.json` — then trust the hooks once with `/hooks` in Codex | Allow / Deny in the island |
 | GitHub Copilot CLI | `.copilot\hooks\coucou.json` | Allow / Deny in the island |
 | Muse Code | `.config\muse\settings.json` | Allow / Deny in the island |
@@ -506,6 +570,10 @@ What changes on Linux:
   window anywhere.
 - **Click-through** is the window's input region, kept equal to the island
   shape, so the compositor sends every other click to what is underneath.
+- **Moving, docking and resizing the island** (dragging its top bar, its
+  grips) follow the cursor across the screen, which Linux does not give
+  Coucou: the island stays at the top centre at its usual size there. Zoom and
+  icon size work.
 - **Mochi's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else. On the desktop, likewise,
   they follow it only while it is over him, and "the cursor is far away" (so
@@ -540,6 +608,8 @@ What changes on Linux:
   shorter `$PATH` than your shell.
 - **Mochi's greeting** uses the full name in your account's GECOS field
   (`chfn` sets it); without one the chat stays neutral.
+- **The chat's screen button** (open windows, screenshots) isn't available yet:
+  its menu says so, and nothing is listed or captured.
 - **Files**: preferences in `~/.config/coucou/`, the log at
   `~/.local/share/coucou/coucou.log`, the weekly recap history beside it in
   `recap.json`. A saved recap image goes to the pictures folder named in

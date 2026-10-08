@@ -80,6 +80,202 @@ body {
   will-change: width, height, transform;
 }
 
+/* Where the island hangs: against one edge of its window, centred along it.
+   island.ts sets the matching transform (translateX / translateY). */
+.dock-bottom #island {
+  top: auto;
+  bottom: 0;
+}
+
+.dock-left #island,
+.dock-right #island {
+  top: 50%;
+  left: 0;
+}
+
+.dock-right #island {
+  left: auto;
+  right: 0;
+}
+
+.dock-top #island {
+  transform-origin: 50% 0;
+}
+
+.dock-bottom #island {
+  transform-origin: 50% 100%;
+}
+
+.dock-left #island {
+  transform-origin: 0 50%;
+}
+
+.dock-right #island {
+  transform-origin: 100% 50%;
+}
+
+.dock-bottom #wake-strip {
+  top: auto;
+  bottom: 0;
+}
+
+.dock-left #wake-strip,
+.dock-right #wake-strip {
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  width: 6px;
+  height: 240px;
+}
+
+.dock-right #wake-strip {
+  left: auto;
+  right: 0;
+}
+
+/* The open island's top bar moves it. */
+.movable #header {
+  cursor: grab;
+}
+
+/* The Agents tab's dot: blue while a session works, orange while one waits on you. */
+.tab {
+  position: relative;
+}
+
+.tab-badge {
+  position: absolute;
+  top: 2px;
+  right: 4px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  display: none;
+}
+
+.tab-badge.working {
+  display: block;
+  background: #60a5fa;
+}
+
+.tab-badge.waiting {
+  display: block;
+  background: #f5a524;
+}
+
+/* A new chat: a question and three ways to start. */
+.chat-welcome {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.welcome-title {
+  font: 600 15px var(--font);
+  color: var(--ink);
+}
+
+.chat-body.has-context .welcome-chips {
+  display: none;
+}
+
+.welcome-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.welcome-chip {
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #c9cdd4;
+  font: 500 12px var(--font);
+  padding: 5px 11px;
+  border-radius: 999px;
+  cursor: default;
+}
+
+.welcome-chip:hover {
+  background: rgba(255, 255, 255, 0.11);
+  color: var(--ink);
+}
+
+/* Grips on the open island's free edges and corners: drag to resize. */
+.edge {
+  position: absolute;
+  display: none;
+  z-index: 5;
+}
+
+.edge.on {
+  display: block;
+}
+
+.edge-left,
+.edge-right {
+  top: 14px;
+  bottom: 14px;
+  width: 10px;
+  cursor: ew-resize;
+}
+
+.edge-left {
+  left: -5px;
+}
+
+.edge-right {
+  right: -5px;
+}
+
+.edge-top,
+.edge-bottom {
+  left: 14px;
+  right: 14px;
+  height: 10px;
+  cursor: ns-resize;
+}
+
+.edge-top {
+  top: -5px;
+}
+
+.edge-bottom {
+  bottom: -5px;
+}
+
+.edge-top-left,
+.edge-top-right,
+.edge-bottom-left,
+.edge-bottom-right {
+  width: 18px;
+  height: 18px;
+}
+
+.edge-top-left {
+  top: -5px;
+  left: -5px;
+  cursor: nwse-resize;
+}
+
+.edge-bottom-right {
+  bottom: -5px;
+  right: -5px;
+  cursor: nwse-resize;
+}
+
+.edge-top-right {
+  top: -5px;
+  right: -5px;
+  cursor: nesw-resize;
+}
+
+.edge-bottom-left {
+  bottom: -5px;
+  left: -5px;
+  cursor: nesw-resize;
+}
+
 #island-clip {
   position: absolute;
   inset: 0;
@@ -258,6 +454,10 @@ body {
 
 .header-actions button.on {
   color: var(--ink);
+}
+
+.header-actions .quit-btn:hover {
+  color: #f4505e;
 }
 
 #views {
@@ -1157,8 +1357,38 @@ input[type="range"]::-webkit-slider-thumb {
 
 .model-row {
   display: flex;
-  justify-content: flex-end;
+  justify-content: space-between;
+  align-items: center;
   padding: 0 10px;
+}
+
+/* New chat, past chats, attach: small round buttons in the chat's own style. */
+.chat-tools {
+  display: flex;
+  gap: 4px;
+}
+
+.tool-btn {
+  width: 24px;
+  height: 24px;
+  flex: 0 0 24px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #8b929e;
+  cursor: default;
+}
+
+.tool-btn:hover:not(:disabled),
+.tool-btn.open {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.tool-btn:disabled {
+  opacity: 0.5;
 }
 
 .model-btn {
@@ -1218,6 +1448,72 @@ input[type="range"]::-webkit-slider-thumb {
 .chat-body.picking .chat-log,
 .chat-body.picking .chip-row {
   display: none;
+}
+
+/* The history shares the picker's look, never its visibility. */
+.chat-body .history {
+  display: none;
+}
+
+.chat-body.picking .history {
+  display: none;
+}
+
+.chat-body.browsing .history {
+  display: flex;
+}
+
+.chat-body.browsing .chat-log,
+.chat-body.browsing .chip-row {
+  display: none;
+}
+
+.picker-efforts {
+  align-items: center;
+}
+
+.picker-efforts[hidden] {
+  display: none;
+}
+
+.picker-label {
+  font-size: 11px;
+  color: #8b929e;
+  margin-right: 2px;
+}
+
+.picker-title {
+  font-size: 11px;
+  font-weight: 600;
+  color: #8b929e;
+}
+
+.history-row {
+  gap: 8px;
+}
+
+.history-date {
+  flex: 0 0 auto;
+  font-size: 10px;
+  color: #5c6370;
+}
+
+.history-delete {
+  flex: 0 0 auto;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: #5c6370;
+  cursor: default;
+}
+
+.history-delete:hover {
+  background: rgba(255, 90, 90, 0.16);
+  color: #ff8a8a;
 }
 
 .picker-chips {
@@ -1364,6 +1660,104 @@ input[type="range"]::-webkit-slider-thumb {
 
 .send-btn:active {
   transform: scale(0.94);
+}
+
+/* ── Screen button: menu, preview, chips (views/chat.ts) ─────────────────── */
+
+.chat-body .screen-panel {
+  display: none;
+}
+
+.chat-body.screening .screen-panel {
+  display: flex;
+}
+
+.chat-body.screening .chat-log,
+.chat-body.screening .chip-row {
+  display: none;
+}
+
+.screen-entry:disabled {
+  opacity: 0.4;
+}
+
+.screen-entry:disabled:hover {
+  background: transparent;
+}
+
+.screen-shots {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 8px;
+}
+
+.screen-shot {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.screen-shot img {
+  flex: 0 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  align-self: center;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.screen-shot figcaption {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  text-align: center;
+}
+
+.screen-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+.chip + .chip {
+  margin-left: 6px;
+}
+
+.chip-remove {
+  display: grid;
+  place-items: center;
+  width: 14px;
+  height: 14px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink-2);
+  cursor: default;
+}
+
+.chip-remove:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.chip-thumbs {
+  display: inline-flex;
+  gap: 3px;
+}
+
+.chip-thumb {
+  height: 16px;
+  max-width: 34px;
+  object-fit: cover;
+  border-radius: 3px;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.25);
 }
 
 /* ── Drop zone ──────────────────────────────────────────────────────────── */

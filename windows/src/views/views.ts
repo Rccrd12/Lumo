@@ -101,12 +101,19 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
 // ── Header ────────────────────────────────────────────────────────────────────
 
 export function buildHeader(actions: ViewActions): ViewHost {
-  const tabHome = h("button", { class: "tab", title: tl("Overview"), onclick: () => go("overview") }, svg(ICONS.house, 13));
-  const tabChat = h("button", { class: "tab", title: tl("Ask"), onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
+  // The chat is home; the coding agents and pills have their own tab, with a
+  // dot while a session works (or waits on you).
+  const tabChat = h("button", { class: "tab", title: tl("Chat"), onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
+  const agentsBadge = h("i", { class: "tab-badge" });
+  const tabAgents = h("button", { class: "tab", title: tl("Agents"), onclick: () => go(State.agentsView()) },
+    svg(ICONS.code, 13, { stroke: 2 }), agentsBadge);
   const tabDrop = h("button", { class: "tab", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
 
   const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
   const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
+  // Closes Coucou altogether; it opens again from the Start menu.
+  const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
+    svg(ICONS.power, 13, { stroke: 2 }));
   // Plan usage pills (off by default): before the gear, Claude first, as on the Mac.
   const claudePill = buildPlanPill(false);
   const codexPill = buildPlanPill(true);
@@ -121,8 +128,8 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabHome, tabChat, tabDrop),
-    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn),
+    h("div", { class: "tabs" }, tabChat, tabAgents, tabDrop),
+    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, quitBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
 
@@ -130,8 +137,10 @@ export function buildHeader(actions: ViewActions): ViewHost {
     el,
     sync() {
       const v = State.view;
-      tabHome.classList.toggle("on", v === "overview" || v === "empty");
       tabChat.classList.toggle("on", v === "prompt");
+      tabAgents.classList.toggle("on", v === "overview" || v === "empty");
+      const activity = State.agentsActivity;
+      agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
       gearBtn.classList.toggle("on", v === "settings");
       clear(gearBtn);
@@ -595,7 +604,7 @@ function buildError(actions: ViewActions): ViewHost {
   const title = h("div", { class: "title" });
   const detail = h("div", { class: "detail" });
   const row = h("div", { class: "actions" },
-    btn(tl("Retry"), "primary", () => actions.setView(State.defaultView())),
+    btn(tl("Retry"), "primary", () => actions.setView(State.agentsView())),
     btn(tl("Open in n8n"), "secondary", () => actions.openUrl("")),
   );
   const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, row)));

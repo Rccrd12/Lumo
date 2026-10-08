@@ -308,6 +308,23 @@ pub fn codex_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// Where the Claude Code CLI may be, best first: $PATH, the native installer's
+/// `~/.local/bin`, then the older `~/.claude/local` and npm's global folders.
+pub fn claude_candidates() -> Vec<PathBuf> {
+    let home = home_dir();
+    let mut out: Vec<PathBuf> = find_on_path("claude").into_iter().collect();
+    for dir in [".local/bin", ".claude/local", ".npm-global/bin", ".volta/bin", ".bun/bin"] {
+        out.push(home.join(dir).join("claude"));
+    }
+    out.push(PathBuf::from("/usr/local/bin/claude"));
+    out.retain(|p| {
+        std::fs::metadata(p)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    });
+    out
+}
+
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
 /// Nothing polls the cursor here: the page reports it over the island, and the

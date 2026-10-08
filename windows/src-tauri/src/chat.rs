@@ -12,8 +12,9 @@ use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use tauri::AppHandle;
 
+use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
-use crate::{claude, local_chat, openai_compat, secrets};
+use crate::{claude, claude_code, local_chat, openai_compat, secrets};
 
 pub const ANTHROPIC: &str = "anthropic";
 
@@ -28,6 +29,10 @@ pub enum ChatContext {
 #[serde(rename_all = "camelCase")]
 pub struct ChatReply {
     pub text: String,
+    /// The Claude Code session that answered (claude_code.rs), so a chat from
+    /// the history can be continued where it left off.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub session: Option<String>,
 }
 
 /// A model a provider offers, for the picker in the chat view.
@@ -59,6 +64,8 @@ struct Conversation {
     native: Vec<Value>,
     /// `{"role", "content": text}` turns, the same whoever answered.
     plain: Vec<Value>,
+    /// The Claude Code session the island's chat continues (claude_code.rs).
+    cli_session: Option<String>,
 }
 
 /// What a provider needs to build one turn.
@@ -91,6 +98,32 @@ impl Chat {
             provider: provider.to_string(),
             first: c.plain.is_empty(),
             history: c.native.clone(),
+        }
+    }
+
+    /// Puts a chat from the history back: its turns as plain text, and the
+    /// Claude Code session to continue, if Claude Code answered it.
+    pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>) {
+        let mut c = self.inner.lock().unwrap();
+        let epoch = c.epoch + 1;
+        let plain = turns
+            .into_iter()
+            .filter(|(role, _)| role == "user" || role == "assistant")
+            .map(|(role, content)| json!({ "role": role, "content": content }))
+            .collect();
+        *c = Conversation { epoch, plain, cli_session, ..Default::default() };
+    }
+
+    /// The Claude Code session to resume, if Claude Code answered this conversation.
+    pub fn cli_session(&self) -> Option<String> {
+        self.inner.lock().unwrap().cli_session.clone()
+    }
+
+    /// Remembers the Claude Code session of `turn`, unless the chat was reset since.
+    pub fn set_cli_session(&self, turn: &Turn, id: &str) {
+        let mut c = self.inner.lock().unwrap();
+        if c.epoch == turn.epoch {
+            c.cli_session = Some(id.to_string());
         }
     }
 
@@ -196,22 +229,58 @@ fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
         && std::fs::symlink_metadata(&file).map(|m| m.is_file()).unwrap_or(false)
 }
 
-/// One chat turn with the provider chosen in the settings.
+/// Screenshots ride along only from the inbox, where screen.rs writes them —
+/// the same rule as a dropped file.
+fn checked_screen(screen: ScreenContext) -> Result<ScreenContext, String> {
+    let inbox = crate::files::inbox_dir();
+    if screen.shots.iter().any(|s| !is_inside(&inbox, std::path::Path::new(&s.path))) {
+        return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
+    }
+    Ok(screen)
+}
+
+/// Who can look at a screenshot: Claude Code reads it from the inbox, the
+/// Anthropic API and the OpenAI-compatible clouds take it as an image. The
+/// local model servers get text only.
+fn sees_images(provider: &str) -> bool {
+    provider.is_empty() || provider == ANTHROPIC || provider == claude_code::PROVIDER || openai_compat::provider(provider).is_some()
+}
+
+/// The question with the screen context in front of it, and the screenshots
+/// to send as images (none for Claude Code, which is given their paths).
+fn with_screen(provider: &str, screen: Option<&ScreenContext>, query: String) -> Result<(String, Vec<String>), String> {
+    let Some(screen) = screen.filter(|s| !s.is_empty()) else { return Ok((query, Vec::new())) };
+    if !screen.shots.is_empty() && !sees_images(provider) {
+        return Err(crate::i18n::t("Screenshots need the Claude Code or Anthropic provider."));
+    }
+    let cli = provider == claude_code::PROVIDER;
+    let images = if cli { Vec::new() } else { screen.shots.iter().map(|s| s.path.clone()).collect() };
+    Ok((format!("{}{query}", screen::context_text(screen, cli)), images))
+}
+
+/// One chat turn with the provider chosen in the settings. `screen` is what
+/// the user added from the screen button, sent with this question only.
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     settings: &Settings,
     query: String,
     context: Option<ChatContext>,
+    screen: Option<ScreenContext>,
 ) -> Result<ChatReply, String> {
     let context = context.map(checked_context).transpose()?;
+    let screen = screen.map(checked_screen).transpose()?;
     let provider = settings.chat_provider.as_str();
     let model = model_for(settings, provider);
+    let (query, images) = with_screen(provider, screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
-        return claude::send(chat, &model, query, context).await;
+        return claude::send(chat, &model, query, context, &images).await;
+    }
+    if provider == claude_code::PROVIDER {
+        return claude_code::send(app, chat, &model, &settings.chat_effort, query, context).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
-        return openai_compat::send(chat, p, &model, query, context).await;
+        return openai_compat::send(chat, p, &model, query, context, &images).await;
     }
     if let Some(server) = local_chat::server(settings, provider) {
         return local_chat::send(app, chat, &server, &model, query, context).await;
@@ -227,6 +296,9 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
     if provider == ANTHROPIC {
         let key = secrets::get(claude::KEY).ok_or_else(no_key)?;
         return claude::models(&key).await;
+    }
+    if provider == claude_code::PROVIDER {
+        return Ok(claude_code::models());
     }
     if let Some(p) = openai_compat::provider(provider) {
         let key = secrets::get(p.key).ok_or_else(no_key)?;
@@ -247,6 +319,18 @@ mod tests {
             .iter()
             .map(|m| (m["role"].as_str().unwrap().to_string(), m["content"].clone()))
             .collect()
+    }
+
+    #[test]
+    fn a_restored_chat_continues_as_plain_turns() {
+        let chat = Chat::default();
+        chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()));
+        assert_eq!(chat.cli_session().as_deref(), Some("s"));
+        let t = chat.begin("openai");
+        assert!(!t.first);
+        assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("hi")), ("assistant".into(), json!("hello"))]);
+        chat.reset();
+        assert_eq!(chat.cli_session(), None);
     }
 
     #[test]
@@ -341,6 +425,63 @@ mod tests {
         assert_eq!(model_for(&s, "openai"), "gpt-x");
         assert_eq!(model_for(&s, "ollama"), "llama3.2");
         assert_eq!(model_for(&s, "anthropic"), "claude-haiku-4-5");
+    }
+
+    #[test]
+    fn the_screen_goes_in_front_of_the_question_as_paths_images_or_a_refusal() {
+        use crate::screen::{ShotRef, WindowInfo};
+        let screen = ScreenContext {
+            windows: vec![WindowInfo { title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
+            shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
+            selection: None,
+        };
+        let (q, images) = with_screen("claude-code", Some(&screen), "what is this?".into()).unwrap();
+        assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"));
+        assert!(q.contains("- Docs — msedge (active)"));
+        assert!(q.ends_with("what is this?"));
+        assert!(images.is_empty(), "Claude Code reads the file itself");
+
+        for provider in ["anthropic", "openai", "google", "openrouter"] {
+            let (q, images) = with_screen(provider, Some(&screen), "q".into()).unwrap();
+            assert_eq!(images, vec!["/inbox/s1.png".to_string()], "{provider}");
+            assert!(!q.contains("/inbox/s1.png"));
+            assert!(q.contains("(attached: Screen 1)"));
+        }
+
+        assert_eq!(
+            with_screen("ollama", Some(&screen), "q".into()).unwrap_err(),
+            "Screenshots need the Claude Code or Anthropic provider."
+        );
+        // The window list alone is text: every provider takes it.
+        let windows_only = ScreenContext { shots: vec![], ..screen.clone() };
+        let (q, images) = with_screen("ollama", Some(&windows_only), "q".into()).unwrap();
+        assert!(q.starts_with("Windows open on the user's computer") && q.ends_with("q") && images.is_empty());
+
+        // So is a selection, for every provider.
+        let selected = ScreenContext {
+            selection: Some(crate::screen::SelectionRef { text: "Le contrat\n".into(), app: "Acrobat".into(), title: "bail.pdf".into() }),
+            ..Default::default()
+        };
+        for provider in ["claude-code", "anthropic", "openai", "ollama"] {
+            let (q, images) = with_screen(provider, Some(&selected), "translate".into()).unwrap();
+            assert_eq!(
+                q,
+                "The user selected this text in Acrobat (\"bail.pdf\") and shared it just now:\n<selected_text>\nLe contrat\n</selected_text>\n\ntranslate",
+                "{provider}"
+            );
+            assert!(images.is_empty());
+        }
+
+        assert_eq!(with_screen("openai", None, "q".into()).unwrap(), ("q".to_string(), vec![]));
+        assert_eq!(with_screen("ollama", Some(&ScreenContext::default()), "q".into()).unwrap(), ("q".to_string(), vec![]));
+    }
+
+    #[test]
+    fn only_screenshots_in_the_inbox_ride_along() {
+        use crate::screen::ShotRef;
+        let outside = ScreenContext { shots: vec![ShotRef { name: "x".into(), path: "/etc/passwd".into() }], ..Default::default() };
+        assert!(checked_screen(outside).is_err());
+        assert!(checked_screen(ScreenContext::default()).is_ok());
     }
 
     #[test]

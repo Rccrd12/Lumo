@@ -18,6 +18,8 @@ tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-global-shortcut = "2"
+# "Attach a file" in the chat: the native file picker, called from Rust only.
+tauri-plugin-dialog = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "rt"] }
@@ -31,9 +33,20 @@ webview2-com = "0.39"
 wv2_core = { package = "windows-core", version = "0.62" }
 windows = { version = "0.61", features = [
   "Win32_Foundation",
+  # The chat's screen button (screen.rs): the window list skips cloaked
+  # windows, GDI copies a display, WIC writes the PNG.
+  "Win32_Graphics_Dwm",
+  "Win32_Graphics_Gdi",
+  "Win32_Graphics_Imaging",
   "Win32_Security",
   "Win32_Security_Authorization",
   # "Open terminal": the relay's process tree leads to the session's window.
+  "Win32_System_Com",
+  "Win32_System_Com_StructuredStorage",
+  # "Ask about the selected text": copy in the app in front, then put the
+  # clipboard back (selection.rs).
+  "Win32_System_DataExchange",
+  "Win32_System_Memory",
   "Win32_System_Diagnostics_ToolHelp",
   "Win32_System_Ole",
   "Win32_System_Pipes",

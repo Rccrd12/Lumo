@@ -21,8 +21,8 @@ const MAC_IDS = [
 
 // ── Defaults (testDefaultsExhaustive, testAllDefaultsHaveModifier, testNoDefaultDuplicates) ──
 
-test("every Mac action has a default, in the Mac's order, with its Mac id", () => {
-  assert.deepEqual(SHORTCUTS.map((d) => d.id), MAC_IDS);
+test("every Mac action has a default, in the Mac's order, with its Mac id, then this version's own", () => {
+  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...MAC_IDS, "askScreen", "askSelection"]);
   for (const d of SHORTCUTS) assert.ok(SHORTCUT_TEXT[d.id], `${d.id} has no label`);
 });
 
@@ -72,6 +72,7 @@ test("only the island toggle is off by default; the two not ported yet are reser
   }
   assert.deepEqual(activeKeys({}).map(([id]) => id), [
     "openChat", "goToAlert", "jumpToTerminal", "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
+    "askScreen", "askSelection",
   ]);
 });
 
@@ -277,7 +278,37 @@ test("the wardrobe shortcut's own event opens the wardrobe", () => {
 
 test("a global shortcut arrives as an event and opens the chat", () => {
   emit("shortcut", "openChat");
-  assert.deepEqual(did, ["resume", "alert:prompt"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+});
+
+test("the sharing shortcuts open the chat with what Rust took, or say what went wrong", () => {
+  const selection = { text: "hello", app: "chrome", title: "News" };
+  emit("ask-context", { kind: "selection", selection });
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+  assert.deepEqual(State.incomingShare, { kind: "selection", selection });
+
+  did = [];
+  State.incomingShare = null;
+  emit("ask-context", { kind: "problem", message: "Nothing is selected." });
+  assert.deepEqual(did, ["resume", "alert:note", "emote:annoyed"]);
+  assert.equal(State.noteMessage, "Nothing is selected.");
+  assert.equal(State.incomingShare, null);
+
+  // A local model can't look at a screenshot: it is deleted at once.
+  did = [];
+  State.settings = { ...State.settings, chatProvider: "ollama" };
+  const shot = { display: 0, name: "s.png", path: "C:\\inbox\\s.png", width: 1, height: 1, preview: "" };
+  emit("ask-context", { kind: "screen", shots: [shot] });
+  assert.deepEqual(sent("screen_discard"), [{ paths: [shot.path] }]);
+  assert.deepEqual(did, ["resume", "alert:note", "emote:annoyed"]);
+  assert.equal(State.noteMessage, "Screenshots need the Claude Code or Anthropic provider.");
+
+  did = [];
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  emit("ask-context", { kind: "screen", shots: [shot] });
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+  assert.deepEqual(State.incomingShare, { kind: "screen", shots: [shot] });
+  State.incomingShare = null;
 });
 
 test("island keys are read before the chat field sees them, and only while open", () => {
@@ -309,9 +340,9 @@ test("island keys are read before the chat field sees them, and only while open"
   assert.equal(plain.prevented, false);
 });
 
-test("the island toggle opens with the keyboard, and closes an open island", () => {
+test("the island toggle opens on the chat with the keyboard, and closes an open island", () => {
   runGlobalShortcut(host, "toggleIsland", resume);
-  assert.deepEqual(did, ["resume", "alert:overview", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
   did = [];
   State.mode = "expanded";
   runGlobalShortcut(host, "toggleIsland", resume);

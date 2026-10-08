@@ -6,6 +6,16 @@ export const ICONS = {
   house: "M12 3.2 2.8 10.6V21h6.6v-5.4h5.2V21h6.6V10.6L12 3.2z",
   // bubble.left.fill
   bubble: "M12 3.6c-5 0-9 3.3-9 7.4 0 2.3 1.3 4.4 3.3 5.7-.2 1.2-.8 2.4-1.7 3.4 1.9-.2 3.6-.9 4.9-1.9 .8.2 1.6.3 2.5.3 5 0 9-3.3 9-7.5s-4-7.4-9-7.4z",
+  // paperclip (stroke)
+  paperclip: "M20 11.5 12.2 19.3a5 5 0 0 1-7.1-7.1l8.2-8.2a3.3 3.3 0 0 1 4.7 4.7l-8.2 8.2a1.7 1.7 0 0 1-2.4-2.4l7.4-7.4",
+  // chevron.left.forwardslash.chevron.right (stroke)
+  code: "M8.5 7 3.5 12l5 5M15.5 7l5 5-5 5M13.5 4.5l-3 15",
+  // power (stroke)
+  power: "M12 3.5v8M7.1 6.6a7.5 7.5 0 1 0 9.8 0",
+  // clock (stroke)
+  clock: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 7.5V12l3 2",
+  // trash (stroke)
+  trash: "M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10.2 10v6.5M13.8 10v6.5",
   // plus
   plus: "M11 4h2v7h7v2h-7v7h-2v-7H4v-2h7V4z",
   // gearshape
@@ -54,4 +64,6 @@ export const ICONS = {
   octagonX: "M21.61 15.98 15.98 21.61 8.02 21.61 2.39 15.98 2.39 8.02 8.02 2.39 15.98 2.39 21.61 8.02zM8.53 7.66 12 11.13 15.47 7.66 16.34 8.53 12.87 12 16.34 15.47 15.47 16.34 12 12.87 8.53 16.34 7.66 15.47 11.13 12 7.66 8.53z",
   // doc.text
   doc: "M6.5 2.6h7l4 4v14.8h-11V2.6zm6.6 1.6v3.3h3.3l-3.3-3.3zM8.6 11h6.8v1.5H8.6V11zm0 3.4h6.8v1.5H8.6v-1.5z",
+  // display (stroke) — the chat's screen button
+  display: "M3.5 4.5h17v11.5h-17zM12 16v3.5M8 19.5h8",
 } as const;

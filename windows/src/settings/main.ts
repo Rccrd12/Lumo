@@ -18,6 +18,7 @@ import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
 import { renderDiff, statusDot } from "./parts";
+import { updatesSection } from "./updates";
 import {
   LANGUAGES, N_, isRtl, onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t, tn,
 } from "../i18n/i18n";
@@ -881,6 +882,33 @@ function generalSection(): HTMLElement {
     void save();
   });
 
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: t("General") })),
+    h("div", { class: "row" },
+      h("label", { text: t("Sound") }),
+      toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
+      volume,
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Auto-close") }),
+      autoClose,
+      h("span", { class: "hint", text: t("seconds after you leave the island") }),
+    ),
+    languageRow(),
+    h("div", { class: "row" },
+      h("label", { text: t("Launch at startup") }),
+      toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }),
+    ),
+    ...recapRows(),
+  );
+}
+
+// ── Island section ────────────────────────────────────────────────────────────
+
+/** Where the island lives and how big it is drawn. */
+function islandSection(): HTMLElement {
   const screen = h("select", {}) as HTMLSelectElement;
   screen.append(
     h("option", { value: "primary", text: t("Main display") }),
@@ -907,30 +935,54 @@ function generalSection(): HTMLElement {
     void save();
   });
 
+  // How big the island is drawn; Ctrl + / Ctrl − in the island do the same.
+  const size = h("select", {}) as HTMLSelectElement;
+  for (const pct of [80, 90, 100, 115, 130, 145, 160]) {
+    size.append(h("option", { value: String(pct / 100), text: `${pct} %` }));
+  }
+  const nearest = [...size.options].reduce((best, o) =>
+    Math.abs(Number(o.value) - settings.islandZoom) < Math.abs(Number(best.value) - settings.islandZoom) ? o : best);
+  size.value = nearest.value;
+  size.addEventListener("change", () => {
+    settings.islandZoom = Number(size.value);
+    void save();
+  });
+
+  // The island's icons, against the Mac's size.
+  const icons = h("select", {}) as HTMLSelectElement;
+  for (const pct of [100, 125, 150]) {
+    icons.append(h("option", { value: String(pct / 100), text: `${pct} %` }));
+  }
+  icons.value = [...icons.options].reduce((best, o) =>
+    Math.abs(Number(o.value) - settings.iconScale) < Math.abs(Number(best.value) - settings.iconScale) ? o : best).value;
+  icons.addEventListener("change", () => {
+    settings.iconScale = Number(icons.value);
+    void save();
+  });
+
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: t("General") })),
-    h("div", { class: "row" },
-      h("label", { text: t("Sound") }),
-      toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
-      volume,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Auto-close") }),
-      autoClose,
-      h("span", { class: "hint", text: t("seconds after you leave the island") }),
-    ),
+    h("h2", {}, h("span", { text: t("Island") })),
     h("div", { class: "row" },
       h("label", { text: t("Island lives on") }),
       screen,
     ),
     h("div", { class: "row" },
-      h("label", { text: t("Launch at startup") }),
-      toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }),
+      h("label", { text: t("Island size") }),
+      size,
+      h("button", { text: t("Put the island back in the centre"), onclick: () => void Bridge.islandRecenter() }),
     ),
-    ...recapRows(),
-    languageRow(),
+    h("div", { class: "row" },
+      h("label", { text: t("Icon size") }),
+      icons,
+    ),
+    h("div", { class: "row" },
+      h("span", { class: "hint", text: t("Drag the island by its top bar (or the closed island anywhere) to move it: let go near an edge of the screen and it docks there, upright on the sides, centred when you drop it near the middle.") }),
+    ),
+    h("div", { class: "row" },
+      h("span", { class: "hint", text: t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.") }),
+    ),
   );
 }
 
@@ -1120,6 +1172,9 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
     settingsChanged() {
       if (!stopRecording) draw();
     },
+    stop() {
+      stopRecording?.();
+    },
   };
 
   draw();
@@ -1186,7 +1241,12 @@ function recapRows(): HTMLElement[] {
 // ── Language ──────────────────────────────────────────────────────────────────
 
 /** The shortcuts section on screen, told about the events listened to once in main. */
-let shortcutsListener: { report(fresh: ShortcutsReport): void; settingsChanged(): void } | null = null;
+let shortcutsListener: {
+  report(fresh: ShortcutsReport): void;
+  settingsChanged(): void;
+  /** Ends a recording in progress (the section is being left). */
+  stop(): void;
+} | null = null;
 
 /**
  * Shows the language Settings asks for. A change redraws the window in place,
@@ -1221,6 +1281,65 @@ async function rerender() {
   if (renderAgain) {
     renderAgain = false;
     await rerender();
+  }
+}
+
+// ── Sections ──────────────────────────────────────────────────────────────────
+
+/** The list on the left, in its order; each entry shows one page of cards. */
+const PAGES = [
+  { id: "general", label: N_("General") },
+  { id: "island", label: N_("Island") },
+  { id: "chat", label: N_("Chat") },
+  { id: "agents", label: N_("Agents") },
+  { id: "pills", label: N_("Pills & integrations") },
+  { id: "shortcuts", label: N_("Shortcuts") },
+  { id: "updates", label: N_("Updates") },
+] as const;
+
+type PageId = (typeof PAGES)[number]["id"];
+
+/** Where the selected section is remembered between openings (this window only). */
+const PAGE_KEY = "coucou.settings.page";
+
+function isPage(id: unknown): id is PageId {
+  return PAGES.some((p) => p.id === id);
+}
+
+function storedPage(): PageId {
+  try {
+    const id = window.localStorage.getItem(PAGE_KEY);
+    if (isPage(id)) return id;
+  } catch {
+    // No storage (private mode, blocked): start on the first section.
+  }
+  return "general";
+}
+
+/** The section on screen; it survives every redraw of the window. */
+let currentPage: PageId = storedPage();
+
+/** Shows one section and marks it in the list; `fromClick` also scrolls back to the top. */
+function showPage(id: PageId, fromClick = true) {
+  if (fromClick && id !== currentPage) {
+    // A shortcut being recorded would otherwise catch keys typed elsewhere.
+    shortcutsListener?.stop();
+    currentPage = id;
+    try {
+      window.localStorage.setItem(PAGE_KEY, id);
+    } catch {
+      // Not remembered next time; it still shows now.
+    }
+    if (document.scrollingElement) document.scrollingElement.scrollTop = 0;
+  }
+  for (const el of root.querySelectorAll<HTMLElement>("[data-page]")) {
+    const on = el.dataset.page === currentPage;
+    if (el.classList.contains("page")) el.hidden = !on;
+    else {
+      el.classList.toggle("on", on);
+      if (on) el.setAttribute("aria-current", "page");
+      else el.removeAttribute("aria-current");
+    }
   }
 }
 
@@ -1294,24 +1413,41 @@ async function render() {
   declaredViews.length = 0;
   localRedraw = null;
   shortcutsListener = null;
+
+  // Every section is built, so what one redraws (declaredViews, the local
+  // models, the shortcuts) works as before; only the selected one shows.
+  const pages: Record<PageId, HTMLElement[]> = {
+    general: [generalSection()],
+    island: [islandSection()],
+    chat: [apiSection(hasKey), chatProvidersSection(chatKeys, keyChanged), localSection(customKey)],
+    agents: [claudeSection(status), agentsSection(agents), planSection(status)],
+    pills: [activePillsSection(connected), integrationsSection(present)],
+    shortcuts: [shortcutsSection(shortcutReport)],
+    updates: [updatesSection(version)],
+  };
+
+  const nav = h("nav", { class: "nav", "aria-label": t("Settings") });
+  const content = h("main", { class: "content" });
+  for (const page of PAGES) {
+    const button = h("button", {
+      class: "nav-item",
+      "data-page": page.id,
+      text: t(page.label),
+      onclick: () => showPage(page.id),
+    });
+    nav.append(button);
+    content.append(h("div", { class: "page", "data-page": page.id }, ...pages[page.id]));
+  }
+
   clear(root);
   root.append(
-    h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
-    claudeSection(status),
-    agentsSection(agents),
-    planSection(status),
-    apiSection(hasKey),
-    chatProvidersSection(chatKeys, keyChanged),
-    localSection(customKey),
-    activePillsSection(connected),
-    integrationsSection(present),
-    generalSection(),
-    shortcutsSection(shortcutReport),
-    h("div", {
-      class: "hint",
-      text: t("No telemetry. Network requests only go to the services you configure yourself."),
-    }),
+    h("aside", { class: "sidebar" },
+      h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
+      nav,
+    ),
+    content,
   );
+  showPage(currentPage, false);
 }
 
 void main();

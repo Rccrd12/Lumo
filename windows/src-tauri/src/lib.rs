@@ -4,6 +4,7 @@ mod agent_hooks;
 mod agents;
 mod chat;
 mod claude;
+mod claude_code;
 mod codex_plan;
 mod config_file;
 mod desktop;
@@ -21,11 +22,14 @@ mod openai_compat;
 mod pipe;
 mod platform;
 mod recap;
+mod screen;
 mod secrets;
+mod selection;
 mod session_window;
 mod settings;
 mod shortcuts;
 mod tray;
+mod updater;
 #[cfg(windows)]
 mod webview_drop;
 
@@ -82,12 +86,17 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     let (screen_changed, autostart_changed, shortcuts_changed) = {
         let mut current = shared.settings.lock().unwrap();
-        let screen_changed = current.screen != settings.screen;
+        let screen_changed = current.screen != settings.screen || current.island_zoom != settings.island_zoom;
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         // Where Mochi sits on the desktop is desktop.rs's to say, not a webview's.
         let mut settings = settings.clone();
         settings.desktop_mochi = current.desktop_mochi.clone();
+        // Where the island was dragged is island.rs's to say, too.
+        settings.island_dock = current.island_dock.clone();
+        settings.island_offset = current.island_offset;
+        settings.island_width = current.island_width;
+        settings.island_height = current.island_height;
         *current = settings;
         (screen_changed, autostart_changed, shortcuts_changed)
     };
@@ -104,7 +113,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     }
     if screen_changed {
         let collapsed = shared.gate.collapsed.load(Ordering::Relaxed);
-        island::apply_geometry(&app, &settings.screen, collapsed);
+        island::apply_geometry(&app, &settings.screen, island::Placement::of(&settings), collapsed);
     }
     integrations::settings_saved(&app, &settings.active_integrations);
     if shortcuts_changed {
@@ -139,9 +148,9 @@ fn language_changed(app: &AppHandle) {
 /// cursor poll; anything else → full panel and 60 Hz polling.
 #[tauri::command]
 fn set_collapsed(app: AppHandle, shared: State<Shared>, collapsed: bool) {
-    let pref = shared.settings.lock().unwrap().screen.clone();
+    let (pref, placement) = placement(&shared);
     shared.gate.collapsed.store(collapsed, Ordering::Relaxed);
-    island::apply_geometry(&app, &pref, collapsed);
+    island::apply_geometry(&app, &pref, placement, collapsed);
     // The wake strip must always take the mouse, and a resize invalidates the flag.
     island::refresh_click_through(&app, &shared.gate);
     shared.gate.set_active(!collapsed);
@@ -169,9 +178,99 @@ fn focus_window(app: AppHandle, focused: bool) {
 
 #[tauri::command]
 fn reposition(app: AppHandle, shared: State<Shared>) {
-    let pref = shared.settings.lock().unwrap().screen.clone();
+    let (pref, placement) = placement(&shared);
     let collapsed = shared.gate.collapsed.load(Ordering::Relaxed);
-    island::apply_geometry(&app, &pref, collapsed);
+    island::apply_geometry(&app, &pref, placement, collapsed);
+}
+
+/// The island's display preference and placement, as the settings say.
+fn placement(shared: &Shared) -> (String, island::Placement) {
+    let s = shared.settings.lock().unwrap();
+    (s.screen.clone(), island::Placement::of(&s))
+}
+
+/// Saves what `change` does to the settings, places the island for them and
+/// tells both windows.
+fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
+    let shared = app.state::<Shared>();
+    let settings = {
+        let mut s = shared.settings.lock().unwrap();
+        change(&mut s);
+        s.clone()
+    };
+    if let Err(err) = settings::save(&settings) {
+        log::line(format!("could not save settings: {err}"));
+    }
+    let collapsed = shared.gate.collapsed.load(Ordering::Relaxed);
+    island::apply_geometry(app, &settings.screen, island::Placement::of(&settings), collapsed);
+    let _ = app.emit("settings-changed", settings);
+}
+
+/// A drag from the island's top (or Alt + drag): it follows the mouse until
+/// the button is let go, then goes to the nearest edge.
+#[tauri::command]
+fn island_drag(app: AppHandle) {
+    std::thread::spawn(move || {
+        let shared = app.state::<Shared>();
+        let (pref, start) = placement(&shared);
+        let rect = *shared.gate.rect.lock().unwrap();
+        let Some(dropped) = island::drag(&app, &pref, start, rect) else { return };
+        let p = dropped.placement;
+        update_island(&app, |s| {
+            s.island_dock = p.dock.name().to_string();
+            s.island_offset = p.offset;
+            if let Some(screen) = dropped.screen {
+                s.screen = screen;
+            }
+        });
+    });
+}
+
+/// A drag on one of the island's grips: it follows the mouse until the button
+/// is let go. `fx`/`fy` say how the grip changes the width and height (see
+/// island::resized); `height` is the island's height as drawn.
+#[tauri::command]
+fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64) {
+    std::thread::spawn(move || {
+        let (pref, start) = placement(&app.state::<Shared>());
+        let Some(p) = island::resize(&app, &pref, start, (fx, fy), height) else { return };
+        // Unchanged (a click, or the first half of a double click): nothing to
+        // save, and nothing to undo a reset with. The window only grows when
+        // the size does.
+        if p == start {
+            return;
+        }
+        update_island(&app, |s| {
+            s.island_width = island::clamp_width(p.width);
+            s.island_height = island::clamp_height(p.height);
+        });
+    });
+}
+
+/// A double click on a grip: back to the usual width, height, or both.
+#[tauri::command]
+fn island_reset_size(app: AppHandle, width: bool, height: bool) {
+    update_island(&app, |s| {
+        if width {
+            s.island_width = island::DEFAULT_WIDTH;
+        }
+        if height {
+            s.island_height = 0.0;
+        }
+    });
+}
+
+/// Puts the island back at the top centre of its display.
+#[tauri::command]
+fn island_recenter(app: AppHandle) {
+    recenter_island(&app);
+}
+
+pub(crate) fn recenter_island(app: &AppHandle) {
+    update_island(app, |s| {
+        s.island_dock = "top".into();
+        s.island_offset = 0.0;
+    });
 }
 
 /// The displays the island can be pinned to, for Settings.
@@ -432,9 +531,17 @@ async fn chat_send(
     chat: State<'_, Chat>,
     query: String,
     context: Option<ChatContext>,
+    screen: Option<screen::ScreenContext>,
 ) -> Result<ChatReply, String> {
     let settings = shared.settings.lock().unwrap().clone();
-    chat::send(&app, &chat, &settings, query, context).await
+    let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
+    let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
+    // Screenshots are read once the turn is answered: they don't stay on disk.
+    // A failed turn keeps them, so the same message can be sent again.
+    if reply.is_ok() {
+        screen::discard(&shots);
+    }
+    reply
 }
 
 /// The models a provider offers, for the picker in the chat view. Only asked
@@ -461,6 +568,68 @@ fn local_set_key(url: String, key: String) -> Result<(), String> {
 #[tauri::command]
 fn chat_reset(chat: State<Chat>) {
     chat.reset();
+}
+
+/// One turn of a chat from the history, as the island keeps it.
+#[derive(serde::Deserialize)]
+struct SavedTurn {
+    role: String,
+    content: String,
+}
+
+/// Opens a chat from the history: what was said, and the Claude Code session
+/// that answered it, if any, so the next question continues it.
+#[tauri::command]
+fn chat_restore(chat: State<Chat>, turns: Vec<SavedTurn>, session: Option<String>) {
+    chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);
+}
+
+/// "Attach a file" in the chat: the system's file picker, then the same copy
+/// into the inbox as a drop. Only a file the user picked there can be added.
+#[tauri::command]
+async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_file())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    let path = picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
+    files::allow_dropped([path.clone()]);
+    files::ingest(&path).map(Some)
+}
+
+// ── The chat's screen button ──────────────────────────────────────────────────
+//
+// Each of these runs only when the user clicks its entry in the menu
+// (screen.rs): nothing is listed or captured in the background.
+
+/// The displays, for the menu's "Screen 1", "Screen 2"… entries. Captures nothing.
+#[tauri::command]
+async fn screen_displays() -> Result<Vec<screen::Display>, String> {
+    tauri::async_runtime::spawn_blocking(screen::displays).await.map_err(|e| e.to_string())?
+}
+
+/// "Open windows": titles and app names of the visible windows.
+#[tauri::command]
+async fn screen_windows() -> Result<Vec<screen::WindowInfo>, String> {
+    tauri::async_runtime::spawn_blocking(screen::windows).await.map_err(|e| e.to_string())?
+}
+
+/// A screenshot of one display (`display`, from 0) or all of them, into the
+/// inbox, with a preview for the island to show before anything is sent. The
+/// island keeps itself out of the picture meanwhile (Windows 10 2004 and later:
+/// content protection, which Coucou never uses otherwise).
+#[tauri::command]
+async fn screen_capture(app: AppHandle, display: Option<usize>) -> Result<Vec<screen::Shot>, String> {
+    tauri::async_runtime::spawn_blocking(move || screen::capture_unseen(&app, display))
+        .await
+        .map_err(|e| e.to_string())?
+}
+
+/// Cancel in the preview: the screenshots are deleted from the inbox.
+#[tauri::command]
+fn screen_discard(paths: Vec<String>) {
+    screen::discard(&paths);
 }
 
 /// Copies a dropped file into the inbox and reports its name back.
@@ -578,8 +747,9 @@ fn create_settings_window(app: &AppHandle) {
     match WebviewWindowBuilder::new(app, "settings", url)
         .additional_browser_args(BROWSER_ARGS)
         .title(i18n::t("Settings — Coucou"))
-        .inner_size(560.0, 680.0)
-        .min_inner_size(460.0, 480.0)
+        // Room for the section list on the left and the section beside it.
+        .inner_size(780.0, 680.0)
+        .min_inner_size(600.0, 480.0)
         .resizable(true)
         .visible(false)
         .center()
@@ -631,7 +801,8 @@ pub fn run() {
                 }
             }
         }))
-        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None));
+        .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
+        .plugin(tauri_plugin_dialog::init());
     // Where no global shortcut can work, the plugin isn't even started.
     if platform::global_shortcuts_blocked().is_none() {
         builder = builder.plugin(shortcuts::plugin());
@@ -681,6 +852,16 @@ pub fn run() {
             local_connect,
             local_set_key,
             chat_reset,
+            chat_restore,
+            island_drag,
+            island_resize,
+            island_reset_size,
+            island_recenter,
+            pick_file,
+            screen_displays,
+            screen_windows,
+            screen_capture,
+            screen_discard,
             ingest_file,
             secret_present,
             secret_set,
@@ -700,6 +881,8 @@ pub fn run() {
             recap::recap_clear,
             recap::recap_save_png,
             recap::recap_reveal_saved,
+            updater::update_check,
+            updater::update_install,
             desktop::desktop_mochi_info,
             desktop::desktop_mochi_pick_up,
             desktop::desktop_mochi_carry,
@@ -730,7 +913,7 @@ pub fn run() {
                 platform::make_non_activating(&win);
                 #[cfg(windows)]
                 webview_drop::install(&handle);
-                island::apply_geometry(&handle, &loaded.screen, false);
+                island::apply_geometry(&handle, &loaded.screen, island::Placement::of(&loaded), false);
                 let _ = win.show();
             }
             gate.collapsed.store(false, Ordering::Relaxed);

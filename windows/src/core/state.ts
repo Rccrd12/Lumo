@@ -1,5 +1,6 @@
 // App state — mirror of AppState.swift (the parts the island needs).
 
+import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../mochi/engine";
 import {
@@ -10,6 +11,7 @@ import type { CodexPlanUsage, PlanUsage } from "./plan";
 import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
+import type { SharedContext } from "./bridge";
 import { DEFAULT_OUTFIT, type Outfit } from "../mochi/wardrobe";
 import { pillColor } from "./pill-colors";
 
@@ -49,6 +51,8 @@ export interface ApprovalInfo {
   command: string;
   /** Set when Claude Code is asking a question rather than for a permission. */
   questions?: AskedQuestion[];
+  /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
+  fromChat?: boolean;
 }
 
 /** One question of an AskUserQuestion call. */
@@ -107,6 +111,16 @@ export interface Settings {
   mainPill: string;
   /** "primary", "cursor", or `at:<x>,<y>` for one display (logical origin). */
   screen: string;
+  /** How big the island is drawn (1 = the Mac's size). */
+  islandZoom: number;
+  /** The edge the island hangs from, and how far from its middle (owned by Rust). */
+  islandDock: string;
+  islandOffset: number;
+  /** Width of the open island and its height (0 = each view's own); owned by Rust. */
+  islandWidth: number;
+  islandHeight: number;
+  /** How big the icons are drawn (1 = the Mac's size). */
+  iconScale: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -121,6 +135,8 @@ export interface Settings {
   chatProvider: ProviderId;
   /** The model picked for each provider other than Anthropic, by provider id. */
   chatModels: Record<string, string>;
+  /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
+  chatEffort: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -160,6 +176,12 @@ export const DEFAULT_SETTINGS: Settings = {
   ],
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
+  islandZoom: 1.15,
+  islandDock: "top",
+  islandOffset: 0,
+  islandWidth: 640,
+  islandHeight: 0,
+  iconScale: 1.25,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5",
@@ -168,6 +190,7 @@ export const DEFAULT_SETTINGS: Settings = {
   showCodexPlanInNotch: false,
   chatProvider: "anthropic",
   chatModels: {},
+  chatEffort: "",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
@@ -206,10 +229,19 @@ class AppState {
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;
-  droppedFile: { name: string; path: string } | null = null;
+  /** The file added to the chat; `sent` once it went with a question. */
+  droppedFile: { name: string; path: string; sent?: boolean } | null = null;
   noteMessage: string | null = null;
+  /** What a sharing shortcut just took, for the chat to pick up (island/shortcuts.ts). */
+  incomingShare: SharedContext | null = null;
   searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
+  /** The model picker or the past chats are open: the chat takes its full height. */
+  chatPanelOpen = false;
+  /** The id of the current chat in the history (chats.ts). */
+  chatId = newChatId();
+  /** The Claude Code session the current chat continues, if Claude Code answered it. */
+  chatSession: string | null = null;
   pendingApproval: ApprovalInfo | null = null;
   /** The pill that was in front when the card came up; it comes back after. */
   focusBeforeApproval: string | null = null;
@@ -282,6 +314,13 @@ class AppState {
    * A permission card or a question comes up: its pill comes to the front, and
    * the pill that was there is remembered (HookServer.focusBeforeApproval).
    */
+  /** A fresh chat: what was said goes, the history keeps the old one. */
+  startChat() {
+    this.chatHistory = [];
+    this.chatId = newChatId();
+    this.chatSession = null;
+  }
+
   beginApproval(info: ApprovalInfo) {
     this.pendingApproval = info;
     this.isPinned = true;
@@ -298,7 +337,7 @@ class AppState {
     if (!req) return;
     this.pendingApproval = null;
     this.isPinned = false;
-    this.updateTask(req.pillId, "working");
+    if (!req.fromChat) this.updateTask(req.pillId, "working");
     this.setPillBadge(req.pillId, null);
     const previous = this.focusBeforeApproval;
     this.focusBeforeApproval = null;
@@ -481,9 +520,23 @@ class AppState {
    * What the island opens on. A card waiting for an answer comes first, so
    * reopening a folded island shows it again (Mac #117, #290).
    */
+  /** What the island opens on: a waiting card first, else the chat. */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    return "prompt";
+  }
+
+  /** The Agents tab: the coding sessions and pills, or the empty card. */
+  agentsView(): IslandViewName {
     return this.tasks.length === 0 ? "empty" : "overview";
+  }
+
+  /** What the Agents tab shows on its badge: a session waiting on you, or one at work. */
+  get agentsActivity(): "waiting" | "working" | null {
+    const sessions = this.tasks.filter((t) => !t.isIntegration);
+    if (this.pendingApproval || sessions.some((t) => t.state === "approval" || t.state === "question")) return "waiting";
+    if (sessions.some((t) => t.state === "working" || t.state === "thinking" || t.state === "searching")) return "working";
+    return null;
   }
 }
 

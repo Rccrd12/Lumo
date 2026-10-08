@@ -21,6 +21,16 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
   }
 }
 
+/** Settings → Updates: what a check found (updater.rs). */
+export interface UpdateInfo {
+  current: string;
+  latest: string;
+  newer: boolean;
+  notes: string;
+  /** Coucou-Windows-<latest>-setup.exe of that release, when it has one. */
+  assetUrl: string | null;
+}
+
 export interface BootInfo {
   settings: Settings;
   /** Logical screen rect of the monitor the island lives on. */
@@ -130,10 +140,35 @@ export const Bridge = {
   approvalDecline: (requestId: string) => call<void>("approval_decline", { requestId }),
 
   // ── Chat, files, secrets ──────────────────────────────────────────────────
-  /** One chat turn. The API key and any file bytes never leave Rust. */
-  chatSend: (query: string, context: ChatContext | null) =>
-    callOrThrow<{ text: string }>("chat_send", { query, context }),
+  /**
+   * One chat turn. The API key and any file bytes never leave Rust. `screen`
+   * is what the user added from the screen button, sent with this turn only.
+   */
+  chatSend: (query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
+    callOrThrow<{ text: string; session?: string }>("chat_send", screen ? { query, context, screen } : { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
+  islandDrag: () => call<void>("island_drag"),
+  /** Puts the island back at the top centre of its display. */
+  islandRecenter: () => call<void>("island_recenter"),
+  /** Drag on a grip of the island (see layout.gripFactors); Rust follows the mouse until it is let go. */
+  islandResize: (fx: number, fy: number, height: number) => call<void>("island_resize", { fx, fy, height }),
+  /** Double click on a grip: the usual width, height, or both. */
+  islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
+  /** Reopens a chat from the history, and the Claude Code session that answered it. */
+  chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
+    call<void>("chat_restore", { turns, session }),
+  /** The system's file picker; the picked file is copied into the inbox like a drop. */
+  pickFile: () => callOrThrow<DroppedFile | null>("pick_file"),
+  // The chat's screen button (screen.rs). Each runs on the user's click only.
+  /** The displays, for the menu. Captures nothing. */
+  screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),
+  /** Titles and app names of the open windows, front to back. */
+  screenWindows: () => callOrThrow<OpenWindow[]>("screen_windows"),
+  /** Screenshots of one display (from 0) or all (null), saved in the inbox, with a preview. */
+  screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
+  /** Deletes screenshots the user did not keep. */
+  screenDiscard: (paths: string[]) => call<void>("screen_discard", { paths }),
   /**
    * The models a provider offers, for the picker in the chat view. Rust asks
    * the provider only when it has a key (or a server address).
@@ -181,6 +216,12 @@ export const Bridge = {
   recapSavePng: (data: string, week: string) => callOrThrow<string>("recap_save_png", { data, week }),
   /** Opens the folder of the image saved last. */
   recapRevealSaved: () => call<void>("recap_reveal_saved"),
+
+  // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
+  /** Asks GitHub for the newest Windows release and compares it with this build. */
+  updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
+  /** Downloads that release's installer, starts it and quits Coucou. */
+  updateInstall: (url: string) => callOrThrow<void>("update_install", { url }),
 
   // ── Mochi on the desktop (src-tauri/src/desktop.rs) ───────────────────────
   desktopInfo: () => call<DesktopInfo>("desktop_mochi_info"),
@@ -243,6 +284,58 @@ export interface IntegrationUpdate {
 export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
+
+/** A display the screen button can capture; `index` is its place in the menu. */
+export interface ScreenDisplay {
+  index: number;
+  width: number;
+  height: number;
+  primary: boolean;
+}
+
+/** One open window: its title and the app it belongs to. */
+export interface OpenWindow {
+  title: string;
+  app: string;
+  /** The window the user was in. */
+  active: boolean;
+  minimized: boolean;
+}
+
+/** A screenshot in the inbox; `preview` is a data URL of it. */
+export interface ScreenShot {
+  display: number;
+  name: string;
+  path: string;
+  width: number;
+  height: number;
+  preview: string;
+}
+
+/** Text selected in another app, read by the "Ask about the selected text" shortcut. */
+export interface SelectedText {
+  text: string;
+  /** The app it was selected in, when known ("chrome"). */
+  app: string;
+  /** That app's window title, when known. */
+  title: string;
+}
+
+/** What the screen button or the shortcuts add to the next question. */
+export interface ScreenContext {
+  windows: OpenWindow[];
+  shots: { name: string; path: string }[];
+  selection?: SelectedText;
+}
+
+/**
+ * The `ask-context` event: what "Ask about my screen" or "Ask about the
+ * selected text" took on the key press, or why it couldn't (shortcuts.rs).
+ */
+export type SharedContext =
+  | { kind: "screen"; shots: ScreenShot[] }
+  | { kind: "selection"; selection: SelectedText }
+  | { kind: "problem"; message: string };
 
 export interface ModelInfo {
   id: string;

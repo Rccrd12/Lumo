@@ -28,7 +28,7 @@ function dropPendingCard(island: Island): void {
   State.endApproval();
   island.dropPin();
   if (State.view === "approval" || State.view === "question") {
-    island.setView(State.defaultView());
+    island.setView(State.agentsView());
   }
   State.notify();
 }
@@ -67,6 +67,8 @@ interface HookPayload {
   platform?: string;
   /** "cursor" when Claude Code runs in Cursor's terminal (set by the relay). */
   term_editor?: string;
+  /** The island's own chat started this Claude Code run (only its permission requests arrive). */
+  coucou_island?: boolean;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
   rate_limits?: unknown;
 }
@@ -248,6 +250,9 @@ function handleHook(island: Island, payload: HookPayload) {
   }
 
   const name = payload.hook_event_name ?? "";
+  // The island's own chat is not a session: the relay only lets its permission
+  // requests through, and anything else that slips by is ignored here too.
+  if (payload.coucou_island === true && name !== "PermissionRequest") return;
   const cwd = payload.cwd ?? "";
   const raw = lastPathComponent(cwd);
   const projectName = aliasProjectName(raw || "Session");
@@ -470,8 +475,12 @@ function handleHook(island: Island, payload: HookPayload) {
         if (requestId) void Bridge.approvalDecline(requestId);
         break;
       }
-      ensurePill();
-      supersedeStop();
+      // The island's own chat asked: no session pill, the card stays over the chat.
+      const fromChat = payload.coucou_island === true;
+      if (!fromChat) {
+        ensurePill();
+        supersedeStop();
+      }
       if (pendingTimeout != null) window.clearTimeout(pendingTimeout);
       const tool = payload.tool_name ?? "Tool";
       const input = payload.tool_input ?? {};
@@ -486,15 +495,16 @@ function handleHook(island: Island, payload: HookPayload) {
       State.beginApproval({
         requestId,
         sessionId,
-        pillId: agentId,
+        pillId: fromChat ? (State.focusId ?? agentId) : agentId,
         tool,
         command: approvalTarget(tool, input),
         ...(questions ? { questions } : {}),
+        ...(fromChat ? { fromChat } : {}),
       });
       // The relay's short ack window closes in 800 ms; everything below this
       // line is synchronous, so the card really is up by the time it lands.
       if (requestId) void Bridge.approvalAck(requestId);
-      State.updateTask(agentId, view);
+      if (!fromChat) State.updateTask(agentId, view);
       Sound.play(view);
       // Any agent's card (Claude Code, Codex, Copilot CLI, Muse Code) comes up
       // the same way: beginApproval brought its pill to the front.

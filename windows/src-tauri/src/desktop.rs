@@ -380,7 +380,12 @@ fn island_anchor(app: &AppHandle, d: &Desktop) -> Option<(f64, f64, f64)> {
     let pos = win.outer_position().ok()?;
     let size = win.outer_size().ok()?;
     let scale = win.scale_factor().unwrap_or(1.0);
-    Some((pos.x as f64 + size.width as f64 / 2.0, pos.y as f64, scale))
+    let (x, y) = island::anchor(
+        (pos.x as f64, pos.y as f64),
+        (size.width as f64, size.height as f64),
+        scale * island::zoom(),
+    );
+    Some((x, y, scale))
 }
 
 /// The window side in the mode's space.
@@ -417,12 +422,14 @@ fn from_island_client(app: &AppHandle, d: &Desktop, x: f64, y: f64) -> Option<(f
             let (dw, _) = d.inner.lock().unwrap().display?;
             let scale = island.scale_factor().unwrap_or(1.0);
             let iw = island.inner_size().ok()?.width as f64 / scale;
-            Some(((dw - iw) / 2.0 + x, y))
+            // Page pixels are drawn zoomed.
+            let z = island::zoom();
+            Some(((dw - iw) / 2.0 + x * z, y * z))
         }
         DesktopMode::Window => {
             let pos = island.outer_position().ok()?;
-            let scale = island.scale_factor().unwrap_or(1.0);
-            Some((pos.x as f64 + x * scale, pos.y as f64 + y * scale))
+            let k = island.scale_factor().unwrap_or(1.0) * island::zoom();
+            Some((pos.x as f64 + x * k, pos.y as f64 + y * k))
         }
         _ => None,
     }

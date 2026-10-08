@@ -5,16 +5,25 @@
 // answer: Rust sends `chat-delta` events with the text visible so far. The
 // model name above the text field opens the picker: provider chips, then the
 // models of the chosen provider, asked for only once it is picked.
+//
+// The screen button next to the paperclip adds what is on the user's screen,
+// only when they ask: "Open windows" (titles and app names) or a screenshot of
+// one display or all of them, shown first with Send / Cancel (core/screen.ts).
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { renderMarkdown } from "./markdown";
-import { Bridge, onEvent, type ChatContext, type ModelInfo } from "../core/bridge";
+import { Bridge, onEvent, type ChatContext, type ModelInfo, type ScreenDisplay, type ScreenShot } from "../core/bridge";
 import {
-  activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
+  EFFORTS, activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
+import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
+import {
+  SCREEN_STRINGS, emptyScreen, entryLabel, hasScreen, keepShots, menuEntries, screenChips, screenLabel,
+  screenPayload, seesImages, shotPaths, type ChipKind, type MenuEntry,
+} from "../core/screen";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -27,7 +36,25 @@ const STRINGS = {
   loading: N_("Loading models…"),
   noKey: N_("No API key — add it in Settings."),
   openSettings: N_("Open Settings"),
+  newChat: N_("New chat"),
+  pastChats: N_("Past chats"),
+  noPastChats: N_("No past chats yet."),
+  deleteChat: N_("Delete this chat"),
+  attach: N_("Attach a file"),
+  cancel: N_("Cancel"),
+  effort: N_("Effort"),
+  effortAuto: N_("Auto"),
+  welcome: N_("What can I do for you?"),
+  askFile: N_("Ask about a file"),
+  lookScreen: N_("Look at my screen"),
+  writeMessage: N_("Write a message"),
+  writeMessageStart: N_("Help me write a message to "),
 };
+
+/** What an effort chip says: Claude Code's own names, "Auto" for its default. */
+function effortLabel(effort: string): string {
+  return effort ? effort : t(STRINGS.effortAuto);
+}
 
 let nextId = 1;
 
@@ -59,6 +86,29 @@ function contextChip(label: string): HTMLElement {
   return chip;
 }
 
+/** A chip for what the screen button added, with a way to take it back before it is sent. */
+function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[]): HTMLElement {
+  const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onRemove();
+  });
+  // Screenshots show themselves, small, so it is clear what goes with the question.
+  const strip = thumbs && thumbs.length > 0
+    ? h("span", { class: "chip-thumbs" }, ...thumbs.map((src) => h("img", { class: "chip-thumb", src, alt: "" })))
+    : null;
+  const chip = h(
+    "div",
+    { class: "chip screen-chip", title },
+    h("i", { class: "chip-dot" }),
+    h("span", { text: label }),
+    strip,
+    remove,
+  );
+  requestAnimationFrame(() => chip.classList.add("settled"));
+  return chip;
+}
+
 function saveSettings() {
   void Bridge.saveSettings(State.settings);
 }
@@ -76,7 +126,33 @@ interface Picker {
 function buildPicker(onChange: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
-  const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list);
+  // Claude Code only: how hard it thinks (claude --effort).
+  const efforts = h("div", { class: "picker-chips picker-efforts" });
+  const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list, efforts);
+
+  function drawEfforts() {
+    clear(efforts);
+    const p = providerDef(State.settings.chatProvider);
+    efforts.hidden = p.id !== "claude-code";
+    if (efforts.hidden) return;
+    efforts.append(h("span", { class: "picker-label", text: t(STRINGS.effort) }));
+    for (const e of EFFORTS) {
+      const on = e === (State.settings.chatEffort ?? "");
+      const chip = h(
+        "button",
+        { class: on ? "picker-chip on" : "picker-chip", style: `--accent:${p.accent}` },
+        h("span", { text: effortLabel(e) }),
+      );
+      chip.addEventListener("click", () => {
+        State.settings = { ...State.settings, chatEffort: e };
+        saveSettings();
+        Sound.play("blip");
+        drawEfforts();
+        onChange();
+      });
+      efforts.append(chip);
+    }
+  }
 
   /** Models already asked for, by provider; a model server is asked again each time. */
   const cache = new Map<string, ModelInfo[]>();
@@ -99,6 +175,7 @@ function buildPicker(onChange: () => void): Picker {
         saveSettings();
         Sound.play("pop");
         drawChips();
+        drawEfforts();
         void loadModels();
         onChange();
       });
@@ -178,6 +255,7 @@ function buildPicker(onChange: () => void): Picker {
     isOpen = true;
     el.classList.add("on");
     drawChips();
+    drawEfforts();
     onChange();
     void loadModels();
   }
@@ -211,7 +289,9 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     spellcheck: "false",
   }) as HTMLInputElement;
   const send = h("button", { class: "send-btn", title: tl(STRINGS.send) }, svg(ICONS.arrowUp, 11));
-  const bar = h("div", { class: "chat-bar" }, input, send);
+  const attachBtn = h("button", { class: "tool-btn", title: tl(STRINGS.attach) }, svg(ICONS.paperclip, 13, { stroke: 1.8 }));
+  const screenBtn = h("button", { class: "tool-btn screen-btn", title: tl(SCREEN_STRINGS.button) }, svg(ICONS.display, 13, { stroke: 1.8 }));
+  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, input, send);
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -222,30 +302,375 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     modelName,
     svg(ICONS.chevronUpDown, 9, { stroke: 2 }),
   );
-  const modelRow = h("div", { class: "model-row" }, modelBtn);
+  const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
+  const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
+  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn), modelBtn);
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
     body.classList.toggle("picking", picker.isOpen);
+    if (picker.isOpen) {
+      closeHistory();
+      closeScreen();
+    }
+    panelChanged();
     drawModelButton();
   });
-  body.append(chipRow, log, picker.el, modelRow, bar);
+
+  /** An open list gets the chat's full height; closing it gives the room back. */
+  function panelChanged() {
+    const open = picker.isOpen || body.classList.contains("browsing") || body.classList.contains("screening");
+    if (open === State.chatPanelOpen) return;
+    State.chatPanelOpen = open;
+    onHeightChange();
+  }
+  const historyList = h("div", { class: "picker-list" });
+  const historyEl = h("div", { class: "picker history" }, h("div", { class: "picker-title", text: t(STRINGS.pastChats) }), historyList);
+  // The screen button's menu, then the preview of a screenshot.
+  const screenTitle = h("div", { class: "picker-title" });
+  const screenList = h("div", { class: "picker-list" });
+  const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
+  body.append(chipRow, log, picker.el, historyEl, screenEl, modelRow, bar);
 
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
   let renderedCount = -1;
+  /** What the screen button added, waiting for the next question. */
+  let screen = emptyScreen();
+  /** Screenshots taken and shown, not yet kept or cancelled. */
+  let preview: ScreenShot[] | null = null;
+  /** Bumped when the panel closes, so a late answer is dropped (and its screenshots deleted). */
+  let screenTicket = 0;
   // A local model answers token by token: where its text so far is shown.
   let live: HTMLElement | null = null;
 
   function drawModelButton() {
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
-    modelName.textContent = activeModel(State.settings) || t(STRINGS.noModel);
+    const model = activeModel(State.settings) || t(STRINGS.noModel);
+    const effort = p.id === "claude-code" ? State.settings.chatEffort : "";
+    modelName.textContent = effort ? `${model} · ${effort}` : model;
     modelBtn.classList.toggle("open", picker.isOpen);
     modelBtn.disabled = sending;
   }
+
+  // ── New chat, past chats, attach ──────────────────────────────────────────
+
+  function closeHistory() {
+    body.classList.remove("browsing");
+    historyBtn.classList.remove("open");
+    panelChanged();
+  }
+
+  // ── Screen button ─────────────────────────────────────────────────────────
+  //
+  // Opening the menu only asks which displays there are. A window list or a
+  // screenshot is made when its entry is clicked, never before; a screenshot
+  // is previewed and joins the chat only on Send. Cancel deletes it.
+
+  /** Forgets the screenshots that were not sent, and deletes them. */
+  function dropShots(paths: string[]) {
+    if (paths.length > 0) void Bridge.screenDiscard(paths);
+  }
+
+  function closeScreen() {
+    if (!body.classList.contains("screening")) return;
+    screenTicket++;
+    if (preview) dropShots(preview.map((s) => s.path));
+    preview = null;
+    body.classList.remove("screening");
+    screenBtn.classList.remove("open");
+    panelChanged();
+  }
+
+  /** Forgets what the screen button or a shortcut added and was not sent yet (a new chat, the chip's ×). */
+  function clearScreen(kind?: ChipKind) {
+    if (!kind || kind === "shots") {
+      dropShots(shotPaths(screen));
+      screen = { ...screen, shots: [] };
+    }
+    if (!kind || kind === "windows") screen = { ...screen, windows: null };
+    if (!kind || kind === "selection") screen = { ...screen, selection: null };
+  }
+
+  /** What a sharing shortcut just took (island/shortcuts.ts runShared). */
+  function takeShare() {
+    const share = State.incomingShare;
+    if (!share) return;
+    State.incomingShare = null;
+    if (share.kind === "screen") {
+      // A new "Ask about my screen" replaces the screenshots still waiting.
+      clearScreen("shots");
+      screen = keepShots(screen, share.shots);
+    } else if (share.kind === "selection") {
+      screen = { ...screen, selection: share.selection };
+    }
+  }
+
+  function screenStatus(text: string) {
+    screenList.append(h("div", { class: "picker-status", text }));
+  }
+
+  function openScreen() {
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    body.classList.add("screening");
+    screenBtn.classList.add("open");
+    panelChanged();
+    void drawScreenMenu();
+  }
+
+  async function drawScreenMenu() {
+    const ticket = ++screenTicket;
+    screenTitle.textContent = t(SCREEN_STRINGS.title);
+    clear(screenList);
+    let displays: ScreenDisplay[] = [];
+    let problem = "";
+    try {
+      displays = await Bridge.screenDisplays();
+    } catch (err) {
+      problem = String(err).replace(/^Error:\s*/, "");
+    }
+    if (ticket !== screenTicket) return;
+    clear(screenList);
+    const images = seesImages(providerDef(State.settings.chatProvider));
+    for (const entry of menuEntries(displays)) {
+      const shot = entry.kind !== "windows";
+      const row = h(
+        "button",
+        { class: "picker-model screen-entry", disabled: shot && !images },
+        h("span", { class: "picker-model-name", text: entryLabel(entry) }),
+        entry.kind === "display" ? h("span", { class: "history-date", text: `${entry.width} × ${entry.height}` }) : null,
+      );
+      if (!shot || images) row.addEventListener("click", () => void pickEntry(entry));
+      screenList.append(row);
+    }
+    if (problem) screenStatus(problem);
+    else if (displays.length > 0 && !images) screenStatus(t(SCREEN_STRINGS.needsImages));
+    screenStatus(t(SCREEN_STRINGS.nothingYet));
+  }
+
+  async function pickEntry(entry: MenuEntry) {
+    if (sending) return;
+    const ticket = ++screenTicket;
+    clear(screenList);
+    if (entry.kind === "windows") {
+      try {
+        const list = await Bridge.screenWindows();
+        if (ticket !== screenTicket) return;
+        screen = { ...screen, windows: list };
+        closeScreen();
+        Sound.play("attach");
+        State.notify();
+        input.focus();
+      } catch (err) {
+        if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
+      }
+      return;
+    }
+    screenStatus(t(SCREEN_STRINGS.capturing));
+    let shots: ScreenShot[];
+    try {
+      shots = await Bridge.screenCapture(entry.kind === "display" ? entry.index : null);
+    } catch (err) {
+      if (ticket !== screenTicket) return;
+      clear(screenList);
+      screenStatus(String(err).replace(/^Error:\s*/, ""));
+      return;
+    }
+    if (ticket !== screenTicket) {
+      dropShots(shots.map((s) => s.path)); // the panel was closed meanwhile
+      return;
+    }
+    preview = shots;
+    drawPreview(shots);
+  }
+
+  function drawPreview(shots: ScreenShot[]) {
+    screenTitle.textContent = t(SCREEN_STRINGS.confirm);
+    clear(screenList);
+    const row = h("div", { class: "screen-shots" });
+    for (const s of shots) {
+      row.append(
+        h(
+          "figure",
+          { class: "screen-shot" },
+          h("img", { src: s.preview, alt: screenLabel(s.display) }),
+          h("figcaption", { text: screenLabel(s.display) }),
+        ),
+      );
+    }
+    const keep = h("button", { class: "btn primary", text: t(STRINGS.send) });
+    const cancel = h("button", { class: "btn secondary", text: t(STRINGS.cancel) });
+    keep.addEventListener("click", () => {
+      if (!preview) return;
+      screen = keepShots(screen, preview);
+      preview = null; // kept: closing must not delete them
+      closeScreen();
+      Sound.play("attach");
+      State.notify();
+      // A question already typed goes with it right away.
+      if (input.value.trim()) void submit();
+      else input.focus();
+    });
+    cancel.addEventListener("click", () => {
+      closeScreen(); // deletes the previewed screenshots
+      Sound.play("pop");
+      input.focus();
+    });
+    screenList.append(row, h("div", { class: "screen-actions" }, cancel, keep));
+  }
+
+  function drawHistory() {
+    clear(historyList);
+    const chats = loadChats();
+    if (chats.length === 0) {
+      historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noPastChats) }));
+      return;
+    }
+    for (const c of chats) {
+      const remove = h("button", { class: "history-delete", title: tl(STRINGS.deleteChat) }, svg(ICONS.trash, 12, { stroke: 1.6 }));
+      remove.addEventListener("click", (e) => {
+        e.stopPropagation();
+        deleteChat(c.id);
+        Sound.play("pop");
+        drawHistory();
+      });
+      const row = h(
+        "div",
+        { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
+        h("span", { class: "picker-model-name", text: c.title || "…" }),
+        h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
+        remove,
+      );
+      row.addEventListener("click", () => openChat(c));
+      historyList.append(row);
+    }
+  }
+
+  function openChat(c: SavedChat) {
+    if (sending) return;
+    State.chatHistory = c.turns.map((turn) => ({ id: nextId++, role: turn.role, content: turn.content }));
+    State.chatId = c.id;
+    State.chatSession = c.session;
+    State.droppedFile = null;
+    State.promptContext = null;
+    closeScreen();
+    clearScreen();
+    void Bridge.chatRestore(c.turns, c.session);
+    closeHistory();
+    Sound.play("blip");
+    renderedCount = -1;
+    State.notify();
+    onHeightChange();
+    input.focus();
+  }
+
+  function newChat() {
+    if (sending) return;
+    State.startChat();
+    State.droppedFile = null;
+    State.promptContext = null;
+    closeScreen();
+    clearScreen();
+    void Bridge.chatReset();
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    Sound.play("blip");
+    renderedCount = -1;
+    State.notify();
+    onHeightChange();
+    input.focus();
+  }
+
+  /** The empty chat: a question, and three ways to start. */
+  function welcome(): HTMLElement {
+    const start = (label: string, run: () => void) =>
+      h("button", { class: "welcome-chip", onclick: () => { if (!sending) run(); } }, h("span", { text: t(label) }));
+    return h(
+      "div",
+      { class: "chat-welcome" },
+      h("div", { class: "welcome-title", text: t(STRINGS.welcome) }),
+      h(
+        "div",
+        { class: "welcome-chips" },
+        start(STRINGS.askFile, () => void attach()),
+        start(STRINGS.lookScreen, () => openScreen()),
+        start(STRINGS.writeMessage, () => {
+          input.value = t(STRINGS.writeMessageStart);
+          void Bridge.focusWindow(true);
+          window.setTimeout(() => {
+            input.focus();
+            input.setSelectionRange(input.value.length, input.value.length);
+          }, 60);
+        }),
+      ),
+    );
+  }
+
+  /** Saves the chat on screen in the history, after each answer. */
+  function remember() {
+    const turns = State.chatHistory.map((m) => ({ role: m.role, content: m.content }));
+    if (turns.length === 0) return;
+    saveChat({
+      id: State.chatId,
+      title: chatTitle(turns),
+      updatedAt: Date.now(),
+      provider: State.settings.chatProvider,
+      session: State.chatSession,
+      turns,
+    });
+  }
+
+  async function attach() {
+    if (sending) return;
+    let file;
+    try {
+      file = await Bridge.pickFile();
+    } catch (err) {
+      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      State.view = "note";
+      Sound.play("error");
+      State.notify();
+      return;
+    }
+    if (!file) return;
+    // Claude Code reads the file from its path, mid-conversation too. The other
+    // providers take a file with the first question only: a new chat, as a drop.
+    if (State.settings.chatProvider !== "claude-code") {
+      State.startChat();
+      void Bridge.chatReset();
+      renderedCount = -1;
+    }
+    State.droppedFile = { name: file.name, path: file.path };
+    State.promptContext = { kind: "file", name: file.name, path: file.path };
+    Sound.play("attach");
+    State.notify();
+    input.focus();
+  }
+
+  newBtn.addEventListener("click", newChat);
+  attachBtn.addEventListener("click", () => void attach());
+  screenBtn.addEventListener("click", () => {
+    if (sending) return;
+    if (body.classList.contains("screening")) closeScreen();
+    else openScreen();
+  });
+  historyBtn.addEventListener("click", () => {
+    if (sending) return;
+    if (body.classList.contains("browsing")) {
+      closeHistory();
+      return;
+    }
+    if (picker.isOpen) picker.close();
+    closeScreen();
+    drawHistory();
+    body.classList.add("browsing");
+    historyBtn.classList.add("open");
+    panelChanged();
+  });
 
   modelBtn.addEventListener("click", () => {
     if (sending) return;
@@ -268,6 +693,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     const query = input.value.trim();
     if (!query || sending) return;
     if (picker.isOpen) picker.close();
+    closeHistory();
+    closeScreen();
     input.value = "";
     sending = true;
     drawModelButton();
@@ -278,13 +705,20 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     State.notify();
     onHeightChange();
 
+    // The file goes with the first question asked after it was added, once.
     const file = State.droppedFile;
-    const context: ChatContext | null =
-      State.chatHistory.length === 1 && file ? { kind: "file", name: file.name, path: file.path } : null;
+    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
+    // So does what the screen button added: once, then the chip goes.
+    const shared = screen;
+    const screenContext = screenPayload(shared);
 
     try {
-      const reply = await Bridge.chatSend(query, context);
+      const reply = await Bridge.chatSend(query, context, screenContext);
       State.chatHistory.push({ id: nextId++, role: "assistant", content: reply.text });
+      if (file) file.sent = true;
+      if (screen === shared) screen = emptyScreen();
+      if (reply.session) State.chatSession = reply.session;
+      remember();
       State.stateOverride = null;
       Sound.play("finish");
     } catch (err) {
@@ -312,6 +746,9 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
     } else if (key === "Escape" && picker.isOpen) {
       e.preventDefault();
       picker.close();
+    } else if (key === "Escape" && body.classList.contains("screening")) {
+      e.preventDefault();
+      closeScreen();
     }
     e.stopPropagation(); // Escape closes the island, not the chat
   });
@@ -319,12 +756,32 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
   return {
     el,
     sync() {
+      takeShare();
       const file = State.droppedFile;
       const wantChip = file?.name ?? "";
-      if (chipRow.dataset.label !== wantChip) {
-        chipRow.dataset.label = wantChip;
+      const extra = hasScreen(screen) ? screenChips(screen) : [];
+      const chipKey = [wantChip, ...extra.map((c) => `${c.label}\t${c.title}`), ...shotPaths(screen)].join("\n");
+      if (chipRow.dataset.label !== chipKey) {
+        chipRow.dataset.label = chipKey;
+        // Something is already attached: the ways to start make room for it.
+        body.classList.toggle("has-context", chipKey !== "");
         clear(chipRow);
         if (wantChip) chipRow.append(contextChip(wantChip));
+        for (const c of extra) {
+          chipRow.append(
+            screenChip(
+              c.label,
+              c.title,
+              () => {
+                if (sending) return;
+                clearScreen(c.kind);
+                Sound.play("pop");
+                State.notify();
+              },
+              c.thumbs,
+            ),
+          );
+        }
       }
 
       const thinking = State.stateOverride === "thinking";
@@ -332,6 +789,8 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
       if (count !== renderedCount && !live) {
         renderedCount = count;
         clear(log);
+        // A new chat opens on a few ways to start, now that it is home.
+        if (count === 0) log.append(welcome());
         for (const m of State.chatHistory) log.append(bubble(m));
         if (thinking) log.append(typingDots());
         log.scrollTop = log.scrollHeight;
@@ -339,6 +798,14 @@ export function buildPrompt(onHeightChange: () => void): ViewHost {
 
       // Leaving the chat folds the picker away.
       if (State.view !== "prompt" && picker.isOpen) picker.close();
+      if (State.view !== "prompt") {
+        closeHistory();
+        closeScreen();
+      }
+      newBtn.disabled = sending;
+      historyBtn.disabled = sending;
+      attachBtn.disabled = sending;
+      screenBtn.disabled = sending;
       drawModelButton();
 
       input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);

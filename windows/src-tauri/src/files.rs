@@ -73,27 +73,14 @@ pub fn ingest(source: &str) -> Result<DroppedFile, String> {
         return Err(crate::i18n::t("Folders can't be dropped yet."));
     }
 
-    let dir = inbox_dir();
-    crate::platform::ensure_private_dir(&settings::local_dir()).map_err(|e| e.to_string())?;
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let dir = ready_inbox()?;
 
     let name = src
         .file_name()
         .map(|n| n.to_string_lossy().to_string())
         .unwrap_or_else(|| "file".into());
 
-    let mut dest = dir.join(&name);
-    if dest.exists() {
-        let stem = src.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
-        let ext = src.extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
-        for i in 2..1000 {
-            let candidate = dir.join(format!("{stem} ({i}){ext}"));
-            if !candidate.exists() {
-                dest = candidate;
-                break;
-            }
-        }
-    }
+    let dest = unique_in(&dir, &name);
 
     std::fs::copy(src, &dest).map_err(|e| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]))?;
     // CopyFileEx carries the source's timestamps across, so a file last edited
@@ -109,6 +96,39 @@ pub fn ingest(source: &str) -> Result<DroppedFile, String> {
         path: dest.to_string_lossy().to_string(),
         size: meta.len(),
     })
+}
+
+/// The inbox, created if needed, inside Coucou's private folder.
+fn ready_inbox() -> Result<PathBuf, String> {
+    let dir = inbox_dir();
+    crate::platform::ensure_private_dir(&settings::local_dir()).map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    Ok(dir)
+}
+
+/// `dir/name`, or `dir/stem (2).ext`… when that name is taken: nothing in the
+/// inbox is ever overwritten.
+fn unique_in(dir: &Path, name: &str) -> PathBuf {
+    let dest = dir.join(name);
+    if !dest.exists() {
+        return dest;
+    }
+    let as_path = Path::new(name);
+    let stem = as_path.file_stem().map(|s| s.to_string_lossy().to_string()).unwrap_or_default();
+    let ext = as_path.extension().map(|s| format!(".{}", s.to_string_lossy())).unwrap_or_default();
+    (2..1000)
+        .map(|i| dir.join(format!("{stem} ({i}){ext}")))
+        .find(|candidate| !candidate.exists())
+        .unwrap_or(dest)
+}
+
+/// Where Coucou writes a file of its own for the chat (a screenshot): a fresh
+/// path in the inbox under `name`, next to the dropped files Claude Code may read.
+#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
+pub fn new_inbox_file(name: &str) -> Result<PathBuf, String> {
+    let dir = ready_inbox()?;
+    sweep(&dir);
+    Ok(unique_in(&dir, name))
 }
 
 /// Drops anything copied here more than a week ago. `ingest` stamps every copy

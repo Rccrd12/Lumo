@@ -53,6 +53,10 @@ export interface ViewLayout {
 // The window is a fixed 720×320 (largest view) like the macOS panel; the island is
 // drawn inside it, glued to the top edge and horizontally centred.
 export const PANEL_W = 720;
+/** The island's zoom range and default — island.rs has the same. */
+export const DEFAULT_ISLAND_ZOOM = 1.15;
+export const MIN_ISLAND_ZOOM = 0.8;
+export const MAX_ISLAND_ZOOM = 1.6;
 export const PANEL_H = 320;
 
 // No notch on a PC: these are the hidden/compact sizes from docs/SPEC.md.
@@ -107,21 +111,97 @@ export function chatPromptHeight(messageCount: number): number {
   return Math.min(300, 240 + messageCount * 40);
 }
 
+export const MIN_ISLAND_W = 560;
+export const MAX_ISLAND_W = 1200;
+/** A height the user dragged the island to — island.rs clamps it the same. */
+export const MIN_ISLAND_H = 160;
+export const MAX_ISLAND_H = 640;
+/** The chat never gets shorter than this, whatever height was picked. */
+const MIN_CHAT_H = 200;
+
+/** The display edge the island hangs from. */
+export type Dock = "top" | "bottom" | "left" | "right";
+
+export function parseDock(v: unknown): Dock {
+  return v === "bottom" || v === "left" || v === "right" ? v : "top";
+}
+
+/** On a side the closed island stands upright. */
+export function isUpright(dock: Dock): boolean {
+  return dock === "left" || dock === "right";
+}
+
+/** What the user dragged the grips to: the open island's width, its height (0 = each view's own). */
+export interface IslandShape {
+  width: number;
+  height: number;
+}
+
+export const DEFAULT_SHAPE: IslandShape = { width: EXPANDED_W, height: 0 };
+
+export function islandWidth(shape: IslandShape): number {
+  return Number.isFinite(shape.width) ? Math.min(MAX_ISLAND_W, Math.max(MIN_ISLAND_W, shape.width)) : EXPANDED_W;
+}
+
+/** The picked height, in range, or 0 when none was picked. */
+export function pickedHeight(shape: IslandShape): number {
+  const h = shape.height;
+  if (!Number.isFinite(h) || h <= 0) return 0;
+  return Math.min(MAX_ISLAND_H, Math.max(MIN_ISLAND_H, h));
+}
+
+/** The chat's height: the one picked, or one that grows with the messages. */
+export function chatHeight(shape: IslandShape, messageCount: number): number {
+  const picked = pickedHeight(shape);
+  return picked > 0 ? Math.max(MIN_CHAT_H, picked) : chatPromptHeight(messageCount);
+}
+
+/** The island's resize grips: its four edges and four corners. */
+export type Grip = "left" | "right" | "top" | "bottom" | "top-left" | "top-right" | "bottom-left" | "bottom-right";
+
+export const GRIPS: Grip[] = ["left", "right", "top", "bottom", "top-left", "top-right", "bottom-left", "bottom-right"];
+
+/**
+ * How a grip changes the size, given the edge the island hangs from: 2 for a
+ * side whose opposite side follows it (the island stays centred), ±1 for a
+ * free edge, 0 for a size it leaves alone. Null: that grip is on the docked
+ * edge, so it is not offered. island.rs applies the same factors.
+ */
+export function gripFactors(grip: Grip, dock: Dock): { fx: number; fy: number } | null {
+  const sides = grip.split("-");
+  if (sides.includes(dock)) return null;
+  const across = isUpright(dock);
+  let fx = 0;
+  let fy = 0;
+  for (const side of sides) {
+    if (side === "left") fx = across ? -1 : -2;
+    if (side === "right") fx = across ? 1 : 2;
+    if (side === "top") fy = across ? -2 : -1;
+    if (side === "bottom") fy = across ? 2 : 1;
+  }
+  return { fx, fy };
+}
+
 export function islandSize(
   mode: IslandMode,
   view: IslandViewName,
   chatCount = 0,
+  shape: IslandShape = DEFAULT_SHAPE,
+  dock: Dock = "top",
 ): { w: number; h: number } {
+  const upright = isUpright(dock);
   switch (mode) {
     case "hidden":
-      // No notch to hide inside on a PC: the island retracts to zero height and
-      // slides into the top edge of the screen instead of sitting there as a bar.
-      return { w: NOTCH_W, h: 0 };
+      // No notch to hide inside on a PC: the island retracts into the edge of
+      // the screen instead of sitting there as a bar.
+      return upright ? { w: 0, h: NOTCH_W } : { w: NOTCH_W, h: 0 };
     case "compact":
-      return { w: COMPACT_W, h: NOTCH_H };
+      return upright ? { w: NOTCH_H, h: COMPACT_W } : { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
-      const h = view === "prompt" ? chatPromptHeight(chatCount) : VIEW_LAYOUTS[view].height;
-      return { w: EXPANDED_W, h };
+      const h = view === "prompt"
+        ? chatHeight(shape, chatCount)
+        : Math.max(VIEW_LAYOUTS[view].height, pickedHeight(shape));
+      return { w: islandWidth(shape), h };
     }
   }
 }
@@ -250,4 +330,14 @@ export function washRGBA(wash: Wash): string {
     default:
       return "rgba(0,0,0,0)";
   }
+}
+
+/** The island's size after Ctrl + "+", "-" or "0", or null for any other key. */
+export function zoomStep(key: string, current: number): number | null {
+  const now = Number.isFinite(current) ? current : DEFAULT_ISLAND_ZOOM;
+  const round = (z: number) => Math.round(Math.min(MAX_ISLAND_ZOOM, Math.max(MIN_ISLAND_ZOOM, z)) * 100) / 100;
+  if (key === "+" || key === "=") return round(now + 0.1);
+  if (key === "-" || key === "_") return round(now - 0.1);
+  if (key === "0") return DEFAULT_ISLAND_ZOOM;
+  return null;
 }

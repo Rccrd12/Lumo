@@ -7,8 +7,11 @@
 // island has the keyboard: it takes it for the chat, and when a global
 // shortcut opens it.
 
-import { Bridge, onEvent } from "../core/bridge";
+import { Bridge, onEvent, type SharedContext } from "../core/bridge";
 import type { BotEmoteName, IslandViewName } from "../core/layout";
+import { providerDef } from "../core/providers";
+import { SCREEN_STRINGS, seesImages } from "../core/screen";
+import { t } from "../i18n/i18n";
 import { cyclePill, islandKeyAction, pillByNumber, type IslandKeyAction } from "../core/shortcuts";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -53,6 +56,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
     case "openChat":
       resume();
       host.alert("prompt");
+      host.takeKeyboard();
       break;
 
     case "goToAlert": {
@@ -110,11 +114,38 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       break;
     }
 
-    // wardrobeToggle never comes this way (Rust sends `open-wardrobe`), and
+    // wardrobeToggle never comes this way (Rust sends `open-wardrobe`), nor do
+    // askScreen / askSelection (`ask-context`, runShared), and
     // attachFrontWindow / desktopToggle aren't in this version.
     default:
       break;
   }
+}
+
+/**
+ * "Ask about my screen" or "Ask about the selected text": Rust took the
+ * screenshot or read the selection on the key press (shortcuts.rs). The chat
+ * opens with it waiting as a chip, for the user to type a question and press
+ * Enter; nothing is sent before that, and the chip's × takes it back.
+ */
+export function runShared(host: ShortcutHost, shared: SharedContext, resume: () => void) {
+  resume();
+  let problem = shared.kind === "problem" ? shared.message : null;
+  if (shared.kind === "screen" && !seesImages(providerDef(State.settings.chatProvider))) {
+    void Bridge.screenDiscard(shared.shots.map((s) => s.path));
+    problem = t(SCREEN_STRINGS.needsImages);
+  }
+  if (problem !== null) {
+    State.noteMessage = problem;
+    host.alert("note");
+    host.emote("annoyed");
+    Sound.play("error");
+    return;
+  }
+  State.incomingShare = shared;
+  Sound.play("attach");
+  host.alert("prompt");
+  host.takeKeyboard();
 }
 
 /** A key the island acts on while it has the keyboard. */
@@ -130,7 +161,7 @@ export function runIslandKey(host: ShortcutHost, action: IslandKeyAction) {
     case "newChat":
       // Not while an answer is on its way: it would land in the new chat.
       if (State.stateOverride === "thinking") return;
-      State.chatHistory = [];
+      State.startChat();
       State.droppedFile = null;
       State.promptContext = null;
       void Bridge.chatReset();
@@ -155,6 +186,7 @@ function inTextField(target: EventTarget | null): boolean {
 
 export function registerShortcutHandlers(host: ShortcutHost, resume: () => void) {
   void onEvent<string>("shortcut", (action) => runGlobalShortcut(host, action, resume));
+  void onEvent<SharedContext>("ask-context", (shared) => runShared(host, shared, resume));
   // The wardrobe shortcut comes as its own event (shortcuts.rs): it opens the
   // wardrobe (mochi/wardrobe.ts, views/wardrobe.ts), or closes it again.
   void onEvent<null>("open-wardrobe", () => {

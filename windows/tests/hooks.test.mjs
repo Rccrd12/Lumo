@@ -468,7 +468,9 @@ test("the card shows when the island is already open, and is what it reopens on"
   assert.deepEqual(asked, ["alert:approval"]);
   assert.equal(State.defaultView(), "approval");
   State.endApproval();
-  assert.equal(State.defaultView(), "overview");
+  // Then the chat, which is home; the sessions are on the Agents tab.
+  assert.equal(State.defaultView(), "prompt");
+  assert.equal(State.agentsView(), "overview");
 });
 
 test("a question is what the island reopens on while it waits", () => {
@@ -693,5 +695,27 @@ test("a declined permission request leaves the stop timer running", () => {
   ask("r1");
   afterStop(() => ask("r2"));
   assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }, { requestId: "r2" }]);
+  assert.equal(task().state, "idle");
+});
+
+// ── The island's own chat (Claude Code provider) ──────────────────────────────
+
+test("the chat's own Claude Code run never shows up as a session", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\Users\\me\\Coucou", coucou_island: true });
+  hook({ hook_event_name: "Stop", cwd: "C:\\Users\\me\\Coucou", coucou_island: true, last_assistant_message: "Done" });
+  assert.equal(task().name, "VS Code");
+  assert.equal(task().state, "idle");
+  assert.deepEqual(asked, []);
+});
+
+test("the chat's permission request is a card over the chat, and leaves the pill alone", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "r1", session_id: "s1", cwd: "C:\\Users\\me\\Coucou",
+    coucou_island: true, tool_name: "Write", tool_input: { file_path: "C:\\Users\\me\\a.txt" },
+  });
+  assert.equal(State.pendingApproval?.fromChat, true);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
+  assert.deepEqual(asked, ["alert:approval"]);
+  assert.equal(task().name, "VS Code");
   assert.equal(task().state, "idle");
 });

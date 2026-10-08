@@ -22,6 +22,19 @@ pub struct Settings {
     pub main_pill: String,
     /// "primary" = the main display, "cursor" = whichever display the mouse is on.
     pub screen: String,
+    /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
+    pub island_zoom: f64,
+    /// The display edge the island hangs from ("top", "bottom", "left",
+    /// "right") and how far from its middle, in logical pixels. Owned by the
+    /// Rust side (island.rs) — what a webview sends back is ignored.
+    pub island_dock: String,
+    pub island_offset: f64,
+    /// How wide the open island is, and how tall (0 = each view's own), in
+    /// page pixels. Dragged from the island's grips, so owned by Rust too.
+    pub island_width: f64,
+    pub island_height: f64,
+    /// How big the icons are drawn, against the Mac's size.
+    pub icon_scale: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -42,6 +55,9 @@ pub struct Settings {
     /// The model picked for each provider other than Anthropic (whose model is
     /// `model`), by provider id.
     pub chat_models: BTreeMap<String, String>,
+    /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
+    /// Code's own default. Only the Claude Code provider uses it.
+    pub chat_effort: String,
     /// Addresses of the model servers once connected; empty means not connected.
     pub ollama_url: String,
     pub lmstudio_url: String,
@@ -85,6 +101,9 @@ pub struct DesktopSpot {
     pub space: String,
 }
 
+/// A little bigger than the Mac's icons, which sit closer to the eye.
+pub const DEFAULT_ICON_SCALE: f64 = 1.25;
+
 fn default_model() -> String {
     crate::claude::DEFAULT_MODEL.to_string()
 }
@@ -104,6 +123,12 @@ impl Default for Settings {
             ],
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
+            island_zoom: crate::island::DEFAULT_ZOOM,
+            island_dock: "top".into(),
+            island_offset: 0.0,
+            island_width: crate::island::DEFAULT_WIDTH,
+            island_height: 0.0,
+            icon_scale: DEFAULT_ICON_SCALE,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -112,6 +137,7 @@ impl Default for Settings {
             show_codex_plan_in_notch: false,
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
+            chat_effort: String::new(),
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
@@ -380,6 +406,12 @@ mod tests {
   "activeIntegrations": ["integration_notion"],
   "mainPill": "agent_cursor",
   "screen": "cursor",
+  "islandZoom": 1.3,
+  "islandDock": "left",
+  "islandOffset": -200.5,
+  "islandWidth": 900.0,
+  "islandHeight": 420.0,
+  "iconScale": 1.5,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -388,6 +420,7 @@ mod tests {
   "showCodexPlanInNotch": true,
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
+  "chatEffort": "high",
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
@@ -782,6 +815,12 @@ mod tests {
                 "activeIntegrations",
                 "mainPill",
                 "screen",
+                "islandZoom",
+                "islandDock",
+                "islandOffset",
+                "islandWidth",
+                "islandHeight",
+                "iconScale",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -790,6 +829,7 @@ mod tests {
                 "showCodexPlanInNotch",
                 "chatProvider",
                 "chatModels",
+                "chatEffort",
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",

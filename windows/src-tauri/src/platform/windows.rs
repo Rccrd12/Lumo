@@ -21,12 +21,12 @@ use ::windows::Win32::System::SystemInformation::GetLocalTime;
 use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetKeyboardLayoutList, MapVirtualKeyExW, ToUnicodeEx, HKL, MAPVK_VK_TO_VSC,
-    VK_CONTROL, VK_LBUTTON, VK_MENU, VK_SHIFT,
+    VK_CONTROL, VK_LBUTTON, VK_MENU, VK_RBUTTON, VK_SHIFT,
 };
 use ::windows::Win32::UI::WindowsAndMessaging::{
-    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetWindow, GetWindowLongPtrW,
+    EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetSystemMetrics, GetWindow, GetWindowLongPtrW,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-    SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, GW_OWNER, SW_RESTORE, WS_EX_NOACTIVATE,
+    SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, GW_OWNER, SM_SWAPBUTTON, SW_RESTORE, WS_EX_NOACTIVATE,
     WS_EX_TOOLWINDOW,
 };
 
@@ -154,6 +154,22 @@ pub fn codex_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// Where the Claude Code CLI may be, best first: %PATH%, the native installer's
+/// `~\.local\bin\claude.exe`, then npm's global `claude.cmd`. The prompt goes
+/// on stdin (claude_code.rs), never as an argument a `.cmd` would interpret.
+pub fn claude_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = find_on_path("claude").into_iter().collect();
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
+    if let Some(home) = var("USERPROFILE") {
+        out.push(home.join(".local").join("bin").join("claude.exe"));
+    }
+    if let Some(appdata) = var("APPDATA") {
+        out.push(appdata.join("npm").join("claude.cmd"));
+    }
+    out.retain(|p| p.is_file());
+    out
+}
+
 // ── Who we are ────────────────────────────────────────────────────────────────
 //
 // Named pipes share one machine-wide namespace, so the SID in the name is what
@@ -269,10 +285,13 @@ pub fn cursor_physical() -> Option<(f64, f64)> {
     Some((p.x as f64, p.y as f64))
 }
 
-/// True while the left mouse button is held — the only signal we get that a
-/// drag might be in flight before it reaches the window.
+/// True while the primary mouse button is held — the only signal we get that a
+/// drag might be in flight before it reaches the window. GetAsyncKeyState reads
+/// the physical button, so a left-handed mouse (buttons swapped) asks the right.
 pub fn left_button_down() -> bool {
-    unsafe { (GetAsyncKeyState(VK_LBUTTON.0 as i32) as u16 & 0x8000) != 0 }
+    let swapped = unsafe { GetSystemMetrics(SM_SWAPBUTTON) } != 0;
+    let button = if swapped { VK_RBUTTON } else { VK_LBUTTON };
+    unsafe { (GetAsyncKeyState(button.0 as i32) as u16 & 0x8000) != 0 }
 }
 
 // ── Island window ─────────────────────────────────────────────────────────────

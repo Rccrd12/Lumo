@@ -88,6 +88,12 @@ fn user_content(first: bool, context: Option<&ChatContext>, query: &str) -> Vec<
     content
 }
 
+/// Screenshots the user shared from the chat's screen button (screen.rs), as
+/// image blocks ahead of the question, on whichever turn they were added.
+fn image_blocks(images: &[String]) -> Vec<Value> {
+    images.iter().filter_map(|path| file_block(path)).collect()
+}
+
 fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> Value {
     let mut messages = history.to_vec();
     messages.push(user.clone());
@@ -142,12 +148,15 @@ pub async fn send(
     model: &str,
     query: String,
     context: Option<ChatContext>,
+    images: &[String],
 ) -> Result<ChatReply, String> {
     let key = secrets::get(KEY).ok_or_else(|| t("API key missing. Open settings."))?;
     let endpoint = endpoint()?;
 
     let turn = chat.begin(chat::ANTHROPIC);
-    let user = json!({ "role": "user", "content": user_content(turn.first, context.as_ref(), &query) });
+    let mut content = image_blocks(images);
+    content.extend(user_content(turn.first, context.as_ref(), &query));
+    let user = json!({ "role": "user", "content": content });
     let body = request_body(model, &chat::system_prompt(true), &turn.history, &user);
 
     let response = call(&endpoint, &key, &body).await?;
@@ -157,7 +166,7 @@ pub async fn send(
     // next turn has the right context.
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": blocks }), &plain, &text);
-    Ok(ChatReply { text })
+    Ok(ChatReply { text, session: None })
 }
 
 async fn call(endpoint: &Url, key: &str, body: &Value) -> Result<Value, String> {
@@ -343,6 +352,20 @@ mod tests {
         assert_eq!(body["tools"][0]["name"], "web_search");
         assert_eq!(body["messages"].as_array().unwrap().len(), 3);
         assert_eq!(body["messages"][2], user);
+    }
+
+    #[test]
+    fn screenshots_become_image_blocks() {
+        let dir = std::env::temp_dir().join(format!("coucou-claude-shots-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("screenshot-screen1.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
+        let blocks = image_blocks(&[png.to_string_lossy().to_string(), "/no/such.png".into()]);
+        assert_eq!(blocks.len(), 1, "a missing file is skipped");
+        assert_eq!(blocks[0]["type"], "image");
+        assert_eq!(blocks[0]["source"]["media_type"], "image/png");
+        assert!(image_blocks(&[]).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

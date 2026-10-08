@@ -4,11 +4,12 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
 import {
-  EXPANDED_CORNER, EXPANDED_W, NOTCH_W, PANEL_H, PANEL_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatPromptHeight,
-  islandSize,
+  EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
+  GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
+  zoomStep,
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -25,6 +26,19 @@ import { IslandStateMachine } from "./fsm";
 import { refreshHookPills } from "./integrations";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
+
+/** A view change this soon after a click or shortcut counts as asked for (ms). */
+const GESTURE_WINDOW = 1500;
+/** How far a press on the island's top travels before it moves the island. */
+const MOVE_THRESHOLD = 4;
+/** The open island's top bar (8 pt inset + 34 pt header): pressing there can move it. */
+const TOP_BAR_H = 42;
+
+/** Buttons, fields and links keep their own press: they never start a move. */
+function isControl(target: EventTarget | null): boolean {
+  return target instanceof Element &&
+    target.closest("button, input, textarea, select, a, [contenteditable], .edge, .picker") != null;
+}
 
 const BOT_OVERHANG = 40;
 const CLAUDE_DESKTOP_ID = "agent_claude-desktop";
@@ -57,6 +71,24 @@ export class Island {
   private miniGrid!: HTMLElement;
   private countdown!: HTMLElement;
   private wakeStrip!: HTMLElement;
+  /** Grips on the island's free edges and corners: dragging them resizes it. */
+  private grips: { el: HTMLElement; grip: Grip }[] = [];
+  private resizing = false;
+  /** Moving and resizing follow the global cursor, which Wayland does not give. */
+  private canResize = true;
+  private lastShape = "";
+  /** A press on the island's top that becomes a move once the mouse travels. */
+  private pendingMove: { x: number; y: number; click: boolean } | null = null;
+  /** Between picking the island up and it settling on an edge. */
+  private moving = false;
+  /** When the user last pressed on the island or used a shortcut: what lets the chat take the keyboard. */
+  private lastGesture = 0;
+  /** Lifted while carried: a little bigger, springing back when put down. */
+  private lift = new Tracked(1);
+  /** Puts a moved island down should Rust never say where it went. */
+  private settleTimer: number | null = null;
+  /** The edge last drawn, to notice when Settings or the tray move it. */
+  private lastDock: Dock | null = null;
 
   private header!: ViewHost;
   private views!: Map<IslandViewName, ViewHost>;
@@ -131,9 +163,11 @@ export class Island {
 
   /** The request has its answer: the card goes and the session carries on. */
   private closeApproval() {
+    const fromChat = State.pendingApproval?.fromChat ?? false;
     State.endApproval();
     this.fsm.pinned = false;
-    this.setView(State.defaultView());
+    // The chat asked: back to the chat, where the answer is still coming.
+    this.setView(fromChat ? "prompt" : State.agentsView());
   }
 
   /**
@@ -279,6 +313,7 @@ export class Island {
       this.uploadCanvas.el,
       this.contentEl,
     );
+    this.grips = GRIPS.map((grip) => ({ el: h("div", { class: `edge edge-${grip}` }), grip }));
     this.islandEl = h(
       "div",
       { id: "island" },
@@ -287,6 +322,7 @@ export class Island {
       this.botCanvas,
       this.miniGrid,
       this.countdown,
+      ...this.grips.map((g) => g.el),
     );
 
     const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -487,7 +523,14 @@ export class Island {
   /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
    *  It gives it back when it closes, or when the chat is left. */
   takeKeyboard() {
+    this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
+  }
+
+  /** The keyboard to the island and the cursor in the chat's field. */
+  private focusChat() {
+    void Bridge.focusWindow(true);
+    window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);
   }
 
   // ── File drop ───────────────────────────────────────────────────────────────
@@ -539,7 +582,7 @@ export class Island {
     const name = path.split(/[\\/]/).pop() || "file";
     State.droppedFile = { name, path };
     State.promptContext = { kind: "file", name, path };
-    State.chatHistory = [];
+    State.startChat();
     void Bridge.chatReset();
 
     UploadSeq.performDrop(State.uploadDuration);
@@ -611,7 +654,7 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    let { w, h } = islandSize(State.mode, State.view, State.chatHistory.length);
+    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock);
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -637,30 +680,62 @@ export class Island {
     const w = this.width.value;
     const hh = this.height.value;
     const r = this.radius.value;
+    const dock = this.dock;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
-    this.islandEl.style.borderRadius = `0 0 ${r}px ${r}px`;
-    this.islandEl.style.transform = `translateX(-50%)`;
+    // Square against its edge, rounded on the others.
+    this.islandEl.style.borderRadius = {
+      top: `0 0 ${r}px ${r}px`,
+      bottom: `${r}px ${r}px 0 0`,
+      left: `0 ${r}px ${r}px 0`,
+      right: `${r}px 0 0 ${r}px`,
+    }[dock];
+    const centre = isUpright(dock) ? "translateY(-50%)" : "translateX(-50%)";
+    const lift = this.lift.value;
+    this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `${centre} scale(${lift})` : centre;
     // These follow the island as it resizes, so they belong here rather than in
-    // the state-driven DOM sync.
-    this.miniGrid.style.left = `${w - 40 - 14.5}px`;
-    this.miniGrid.style.top = `${hh / 2 - 14.5}px`;
+    // the state-driven DOM sync. Upright, the mini grid sits below Mochi.
+    if (isUpright(dock) && State.mode !== "expanded") {
+      this.miniGrid.style.left = `${w / 2 - 14.5}px`;
+      this.miniGrid.style.top = `${hh - 40 - 14.5}px`;
+    } else {
+      this.miniGrid.style.left = `${w - 40 - 14.5}px`;
+      this.miniGrid.style.top = `${hh / 2 - 14.5}px`;
+    }
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
 
-    const rect = { x: (PANEL_W - w) / 2, y: 0, w, h: hh };
+    const rect = this.islandRect();
     const p = this.pushedRect;
-    if (Math.abs(p.x - rect.x) > 0.5 || Math.abs(p.w - rect.w) > 0.5 || Math.abs(p.h - rect.h) > 0.5) {
+    if (
+      Math.abs(p.x - rect.x) > 0.5 || Math.abs(p.y - rect.y) > 0.5 ||
+      Math.abs(p.w - rect.w) > 0.5 || Math.abs(p.h - rect.h) > 0.5
+    ) {
       this.pushedRect = rect;
       void Bridge.setIslandRect(rect.x, rect.y, rect.w, rect.h);
     }
   }
 
-  /** Island rect in window coordinates (origin top-left of the 720×320 window). */
+  /**
+   * Island rect in window coordinates: against its edge of the window, centred
+   * along it — what the CSS anchoring draws (see .dock-* in style.css).
+   */
   private islandRect(): { x: number; y: number; w: number; h: number } {
     const w = this.width.value;
     const hh = this.height.value;
-    return { x: (PANEL_W - w) / 2, y: 0, w, h: hh };
+    const vw = window.innerWidth;
+    const vh = window.innerHeight;
+    switch (this.dock) {
+      case "bottom": return { x: (vw - w) / 2, y: vh - hh, w, h: hh };
+      case "left": return { x: 0, y: (vh - hh) / 2, w, h: hh };
+      case "right": return { x: vw - w, y: (vh - hh) / 2, w, h: hh };
+      default: return { x: (vw - w) / 2, y: 0, w, h: hh };
+    }
+  }
+
+  /** The edge the island hangs from: always the top where it cannot be moved. */
+  private get dock(): Dock {
+    return this.canResize ? parseDock(State.settings.islandDock) : "top";
   }
 
   // ── Window collapse (hidden → tiny wake strip, zero polling) ────────────────
@@ -695,9 +770,74 @@ export class Island {
       if (State.mode === "hidden") this.fsm.mouseEntered();
     });
 
+    // The grips resize the island; Rust follows the mouse.
+    for (const { el, grip } of this.grips) {
+      el.addEventListener("mousedown", (e) => {
+        e.stopPropagation();
+        const f = gripFactors(grip, this.dock);
+        if (e.button !== 0 || e.altKey || !f) return;
+        e.preventDefault();
+        this.resizing = true;
+        void Bridge.islandResize(f.fx, f.fy, this.height.value);
+      });
+      el.addEventListener("dblclick", (e) => {
+        e.stopPropagation();
+        const f = gripFactors(grip, this.dock);
+        if (f) void Bridge.islandResetSize(f.fx !== 0, f.fy !== 0);
+      });
+    }
+    window.addEventListener("mouseup", () => {
+      this.resizing = false;
+      // Rust says where a moved island went; should it never say, put it down anyway.
+      if (this.moving) {
+        this.clearSettleTimer();
+        this.settleTimer = window.setTimeout(() => this.settleMove(), 2500);
+      }
+      // A press on the closed island that never moved is a click.
+      const press = this.pendingMove;
+      this.pendingMove = null;
+      if (press?.click) this.fsm.click();
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!(e.buttons & 1)) {
+        this.resizing = false;
+        this.pendingMove = null;
+        return;
+      }
+      const press = this.pendingMove;
+      if (press && Math.hypot(e.clientX - press.x, e.clientY - press.y) > MOVE_THRESHOLD) {
+        this.pendingMove = null;
+        this.startMove();
+      }
+    });
+    // The window grows and shrinks around the island: its rect moves with it.
+    window.addEventListener("resize", () => this.ensureRunning());
+
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
       State.lastActivity = performance.now();
+      this.lastGesture = performance.now();
+      // The chat came up on its own: the first click in it brings the keyboard.
+      if (State.mode === "expanded" && State.view === "prompt" && e.button === 0 && !document.hasFocus()) {
+        void Bridge.focusWindow(true);
+        const target = e.target as Element | null;
+        if (target?.closest(".chat-input")) window.setTimeout(() => (target as HTMLElement).focus(), 60);
+      }
+      // Alt + drag moves the island; Rust follows the mouse until it is let go.
+      if (e.button === 0 && e.altKey) {
+        e.preventDefault();
+        this.startMove();
+        return;
+      }
+      // So does a drag from its top (or anywhere on the closed island), once
+      // the mouse has moved a little: a plain click stays a click.
+      const movable = e.button === 0 && this.canResize && !this.isBotHit(e.clientX, e.clientY) &&
+        !isControl(e.target) && (State.mode !== "expanded" || this.onTopBar(e.clientY));
+      if (movable && State.mode !== "expanded") {
+        this.pendingMove = { x: e.clientX, y: e.clientY, click: true };
+        return;
+      }
+      if (movable) this.pendingMove = { x: e.clientX, y: e.clientY, click: false };
       // A press on Mochi may become a drag out to the desktop.
       if (e.button === 0 && this.isBotHit(e.clientX, e.clientY)) {
         this.botPress = { x: e.clientX, y: e.clientY };
@@ -751,6 +891,14 @@ export class Island {
     // a terminal — so it may fold a waiting card away, as Escape in the notch
     // does on macOS.
     window.addEventListener("keydown", (e) => {
+      // Ctrl + / Ctrl − / Ctrl 0: a bigger or smaller island, or the usual size.
+      const zoom = e.ctrlKey && !e.altKey ? zoomStep(e.key, State.settings.islandZoom) : null;
+      if (zoom != null) {
+        e.preventDefault();
+        State.settings = { ...State.settings, islandZoom: zoom };
+        void Bridge.saveSettings(State.settings);
+        return;
+      }
       if (e.key === "Escape" && State.mode === "expanded") {
         if (State.pendingApproval) this.foldApproval();
         else if (!State.isPinned) this.collapse();
@@ -772,6 +920,8 @@ export class Island {
    * reported as a cursor far away, which is what the poll would have said.
    */
   followPageCursor() {
+    this.canResize = false;
+    this.applyDock();
     window.addEventListener("mousemove", (e) => this.onCursor(e.clientX, e.clientY));
     window.addEventListener("mouseout", (e) => {
       if (e.relatedTarget == null) this.onCursor(-10_000, -10_000);
@@ -810,14 +960,17 @@ export class Island {
       x >= rect.x - HIT_MARGIN && x <= rect.x + rect.w + HIT_MARGIN &&
       y >= rect.y - HIT_MARGIN && y <= rect.y + rect.h + HIT_MARGIN;
 
-    if (inIsland && !this.wasInIsland) {
-      if (this.fsm.state === "coucou") this.greeting.hover();
-      this.fsm.mouseEntered();
+    // Mid-resize the cursor rides the edge, a little in or out: not a leave.
+    if (!this.resizing && !this.moving) {
+      if (inIsland && !this.wasInIsland) {
+        if (this.fsm.state === "coucou") this.greeting.hover();
+        this.fsm.mouseEntered();
+      }
+      if (!inIsland && this.wasInIsland) {
+        this.fsm.mouseLeft();
+      }
+      this.wasInIsland = inIsland;
     }
-    if (!inIsland && this.wasInIsland) {
-      this.fsm.mouseLeft();
-    }
-    this.wasInIsland = inIsland;
 
     // Bot hover → love
     const overBot = State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
@@ -914,6 +1067,7 @@ export class Island {
     this.width.step(dt, nowMs);
     this.height.step(dt, nowMs);
     this.radius.step(dt, nowMs);
+    this.lift.step(dt, nowMs);
     this.applyGeometry();
 
     if (this.dirty) {
@@ -944,6 +1098,10 @@ export class Island {
     if (uploadActive) this.uploadCanvas.draw(UploadSeq.frame(), nowMs / 1000);
     this.uploadCanvas.el.classList.toggle("on", uploadActive);
     this.viewsEl.classList.toggle("hidden-by-upload", uploadActive);
+    const resizable = this.canResize && State.mode === "expanded" && !uploadActive && State.view !== "greeting";
+    for (const { el, grip } of this.grips) {
+      el.classList.toggle("on", resizable && gripFactors(grip, this.dock) != null);
+    }
 
     tickMiniBots(dt);
     // A ticker scroll that loses its frames freezes mid-way, rows overlapping.
@@ -975,8 +1133,10 @@ export class Island {
 
   private updateBotTargets() {
     const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress);
-    this.botCx.target = p.cx;
-    this.botCy.target = p.cy;
+    // Upright on a side, the closed island has Mochi at its top end.
+    const turned = isUpright(this.dock) && State.mode !== "expanded";
+    this.botCx.target = turned ? p.cy : p.cx;
+    this.botCy.target = turned ? p.cx : p.cy;
     this.botSize.target = p.diameter / 0.6;
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
@@ -1109,13 +1269,15 @@ export class Island {
     }
 
     // The chat is the only view with a text field, so it is the only time the
-    // island is allowed to take keyboard focus.
+    // island is allowed to take keyboard focus — and, now that it is home, only
+    // when you just asked for it (a click, a shortcut). Opened by anything else
+    // (a card going away, a session ending) it waits for a click, so typing in
+    // another app is never cut off.
     if (this.lastSyncedView !== State.view) {
       const wasChat = this.lastSyncedView === "prompt";
       this.lastSyncedView = State.view;
-      if (State.view === "prompt") {
-        void Bridge.focusWindow(true);
-        window.setTimeout(() => this.views.get("prompt")?.focus?.(), 120);
+      if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
+        this.focusChat();
       } else if (wasChat) {
         void Bridge.focusWindow(false);
       }
@@ -1146,14 +1308,104 @@ export class Island {
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
     this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
+    this.applyDock();
+    // A resize saved or undone with a double click, or the island sent back to
+    // the top (Settings, tray): grow, shrink or turn to it.
+    const shape = JSON.stringify(this.shape);
+    if (shape !== this.lastShape || this.dock !== this.lastDock) {
+      this.lastShape = shape;
+      this.lastDock = this.dock;
+      this.animateGeometry(false);
+    }
     State.notify();
   }
 
-  get panelSize() {
-    return { w: PANEL_W, h: PANEL_H };
+  /** A new size while a grip is dragged: followed closely, on a stiff spring. */
+  onResize(size: { width: number; height: number }) {
+    State.settings = { ...State.settings, islandWidth: size.width, islandHeight: size.height };
+    this.lastShape = JSON.stringify(this.shape);
+    const { w, h } = this.targetSize();
+    this.width.springTo(w, 0.22, 0.9);
+    this.height.springTo(h, 0.22, 0.9);
+    this.ensureRunning();
+  }
+
+  /** Picked up: Rust carries the window; the island lifts and Mochi notices. */
+  private startMove() {
+    if (this.moving || !this.canResize) return;
+    this.clearSettleTimer();
+    this.moving = true;
+    this.cancelBotHover();
+    this.lift.springTo(1.04, 0.3, 0.6);
+    this.engine.triggerEmote("surprised");
+    Sound.play("blip");
+    this.ensureRunning();
+    void Bridge.islandDrag();
+  }
+
+  /**
+   * Let go: Rust says which edge it is going to before the window bounces
+   * there. The island re-anchors, turns upright on a side, and settles with a
+   * bounce of its own.
+   */
+  onDock(place: { dock: string; offset: number }) {
+    State.settings = { ...State.settings, islandDock: place.dock, islandOffset: place.offset };
+    this.lastDock = this.dock;
+    this.clearSettleTimer();
+    this.applyDock();
+    // Turned upright (or back), the closed island morphs into its new shape.
+    const { w, h, r } = this.targetSize();
+    this.width.springTo(w, 0.45, 0.6);
+    this.height.springTo(h, 0.45, 0.6);
+    this.radius.springTo(r);
+    this.lift.springTo(1, 0.45, 0.45);
+    this.moving = false;
+    this.engine.triggerEmote("happy");
+    Sound.play("pop");
+    this.ensureRunning();
+  }
+
+  private clearSettleTimer() {
+    if (this.settleTimer != null) window.clearTimeout(this.settleTimer);
+    this.settleTimer = null;
+  }
+
+  /** Ends a move that never reported where it went. */
+  private settleMove() {
+    this.settleTimer = null;
+    if (!this.moving) return;
+    this.moving = false;
+    this.lift.springTo(1, 0.45, 0.45);
+    this.ensureRunning();
+  }
+
+  /** The dock as classes, for the CSS that anchors the island and the wake strip. */
+  private applyDock() {
+    const dock = this.dock;
+    for (const d of ["top", "bottom", "left", "right"] as const) {
+      this.root.classList.toggle(`dock-${d}`, d === dock);
+    }
+    this.root.classList.toggle("movable", this.canResize);
+    this.ensureRunning();
+  }
+
+  /** What the grips were dragged to. */
+  private get shape(): IslandShape {
+    return { width: State.settings.islandWidth, height: State.settings.islandHeight };
+  }
+
+  /** The bar at the top of the open island: tabs, settings, sound. */
+  private onTopBar(clientY: number): boolean {
+    return clientY - this.islandRect().y < TOP_BAR_H;
   }
 
   get chatHeight() {
-    return chatPromptHeight(State.chatHistory.length);
+    return chatHeight(this.shape, this.chatCount);
+  }
+
+  /** What the chat's height follows: its messages, or the most room while a list is open. */
+  private get chatCount(): number {
+    return State.chatPanelOpen ? 99 : State.chatHistory.length;
   }
 }
