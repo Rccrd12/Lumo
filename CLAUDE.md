@@ -8,7 +8,7 @@ Coucou for Windows and Linux is a Tauri app (`windows/`), forked from the origin
 - `windows/assets/sounds/` — the 29 WAV sounds (served and bundled by `windows/vite.config.ts`).
 - `windows/i18n-source/Localizable.xcstrings` — the string catalog; `node windows/scripts/gen-strings.mjs` turns it into `windows/src/i18n/strings.json` (never edit by hand). Windows/Linux-only strings live in `windows/src/i18n/extra.json`.
 - `windows/screenshots/` — reference screenshots of the shipped views.
-- `docs/AGENTS.md` — the hook payload protocol for agents. `docs/*.html` — the GitHub Pages site (privacy, terms, support, legal notice).
+- `docs/AGENTS.md` — the hook payload protocol for agents.
 
 ## Build
 ```
