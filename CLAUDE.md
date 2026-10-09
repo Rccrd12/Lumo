@@ -1,6 +1,6 @@
 # Lumo — guide for AI coding agents
 
-Lumo for Windows and Linux is a Tauri app (`windows/`), forked from the original Coucou macOS app (Louis-CFM/coucou), which is not in this repository. Lumo, a small glowing firefly living at the top of the screen, shows AI coding agent sessions (Claude Code, Codex, Gemini CLI, Antigravity and more) and a few integrations, and lets the user approve, answer, chat and drop files from the island.
+Lumo for Windows and Linux is a Tauri app (`windows/`), forked from the original Coucou macOS app (Louis-CFM/coucou), which is not in this repository. Lumo, a small ring of light living at the top of the screen, shows AI coding agent sessions (Claude Code, Codex, Gemini CLI, Antigravity and more) and a few integrations, and lets the user approve, answer, chat and drop files from the island.
 
 ## Where things are
 - `windows/` — the Tauri app for Windows and Linux: Rust in `src-tauri/`, TypeScript in `src/`, the `coucou-hook` relay in `hook/`. `windows/README.md` documents the app and lists what differs from the Mac.
