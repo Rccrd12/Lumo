@@ -66,6 +66,8 @@ the exe it runs from.
 ## Using it
 
 <img src="screenshots/compact.png" width="292" alt="The compact island">
+<img src="screenshots/compact-activities.png" width="480" alt="The closed island: the next meeting, a timer and the music playing, side by side">
+<img src="screenshots/mail.png" width="468" alt="A new email peeking out of the closed island, with Summarize and Draft a reply">
 <img src="screenshots/overview.png" width="640" alt="The overview: the focused integration on the left, the other pills on the right">
 <img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny and Allow">
 <img src="screenshots/chat.png" width="640" alt="Chatting with Claude from the island">
@@ -134,13 +136,15 @@ them never opens the island, even with Open on hover.
 
 ### Live activities
 
+<img src="screenshots/activities.png" width="640" alt="The open island with the live activities beside it">
+
 Beside the open island (on the top and bottom edges) a second island holds
 what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
 or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
 previous, play/pause and next), **Calendar** (the next events) and **Email**
 (the newest unread: a click on one opens it, with Summarize, Draft a reply and
 the eye, which puts it away so the next one moves up). Its **–** (top right)
-folds it, with a flight, into an icon right of the **+** in the island's top
+folds it, with a flight, into an icon left of the **+** in the island's top
 bar; that icon brings it back. Settings → Island → **Live Activities** turns
 it off.
 

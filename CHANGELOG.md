@@ -1,5 +1,10 @@
 # Changelog
 
+## Unreleased
+
+- **The live activities' last card stays inside the panel's rounded corners** when the list scrolls to the bottom
+- The README shows the live activities, the closed island and a new email, lists 0.5.0's features and the Email and Calendar setup, and links the Linux AppImage directly
+
 ## Windows and Linux 0.5.0 — October 9, 2026
 
 - **Gemini Live types in the text box you clicked in**, in any app, when you ask it to write something there. It never presses Enter or sends: line breaks are Shift+Enter, or spaces in a terminal. Nothing is typed into Lumo itself or while a key like Ctrl is held. Linux needs `xdotool` (X11) or `wtype` (Wayland)
