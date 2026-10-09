@@ -156,6 +156,8 @@ export function buildLive(openSettings: () => void): ViewHost {
 
       const label = Live.doing ?? (Live.phase === "thinking" ? t(S.thinking) : "");
       doing.hidden = !on || !label;
+      // A line that says something is over has no dots going.
+      doing.classList.toggle("done", Live.doingDone && label === Live.doing);
       if (doingLabel.textContent !== label) doingLabel.textContent = label;
       drawLog();
     },

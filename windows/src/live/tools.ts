@@ -11,18 +11,9 @@ import { t } from "../i18n/i18n";
 import { TOOL, type FunctionCall, type ToolAnswer } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
 
-/** One display of the last screenshot the model saw, left to right as it was shown. */
-export interface ShownScreen {
-  display: number;
-  width: number;
-  height: number;
-}
-
 export interface ToolHost {
   /** Settings → Voice allows the screen. */
   screen: boolean;
-  /** The displays of the last screenshot shown to the model (point_at reads it). */
-  shownScreens: ShownScreen[] | null;
   /** "Claude Code" or "Antigravity CLI". */
   helper: string;
   /** Shows the model these pictures (data URLs), as one frame. */
@@ -65,31 +56,6 @@ export function readingResult(r: LiveReading): Record<string, unknown> {
   }
 }
 
-/**
- * Where a point of the last screenshot is: which display, and how far across
- * and down it (0…1). `x` and `y` go from 0 to 1000 over the whole picture,
- * whose displays sit side by side from the left, top-aligned, as
- * session.ts's toJpeg draws them. Null when the point is off every display.
- */
-export function locate(shown: ShownScreen[], x: number, y: number): { display: number; x: number; y: number } | null {
-  const width = shown.reduce((w, s) => w + s.width, 0);
-  const height = Math.max(0, ...shown.map((s) => s.height));
-  if (!width || !height || !Number.isFinite(x) || !Number.isFinite(y)) return null;
-  if (x < 0 || x > 1000 || y < 0 || y > 1000) return null;
-  const px = (x / 1000) * width;
-  const py = (y / 1000) * height;
-  let left = 0;
-  for (const [i, s] of shown.entries()) {
-    const last = i === shown.length - 1;
-    if (px < left + s.width || last) {
-      if (py > s.height) return null;
-      return { display: s.display, x: Math.min(1, (px - left) / s.width), y: Math.min(1, py / s.height) };
-    }
-    left += s.width;
-  }
-  return null;
-}
-
 /** Runs one call of the model's; never throws (a failure is the answer's `error`). */
 export async function runTool(call: FunctionCall, host: ToolHost): Promise<ToolAnswer> {
   const base = { id: call.id, name: call.name };
@@ -116,7 +82,6 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       void Bridge.screenDiscard(shots.map((s) => s.path));
       if (shots.length === 0) throw new Error("No screen was captured.");
       await host.showPictures(shots.map((s) => s.preview));
-      host.shownScreens = shots.map((s) => ({ display: s.display, width: s.width, height: s.height }));
       return {
         shown: shots.length === 1 ? "The screenshot is now shown to you." : `Screenshots of ${shots.length} displays, side by side from display 0, are now shown to you.`,
         displays: shots.map((s) => ({ display: s.display, width: s.width, height: s.height })),
@@ -173,12 +138,11 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
     }
     case TOOL.point: {
       if (!host.screen) throw new Error("The user turned screenshots off in Lumo's settings.");
-      if (!host.shownScreens) throw new Error("Call look_at_screen first: the point is a spot of its screenshot.");
-      const spot = locate(host.shownScreens, Number(a.x), Number(a.y));
-      if (!spot) throw new Error("That point is off the screen: x and y go from 0 to 1000 over the last screenshot.");
+      const target = str(a.target);
+      if (!target) throw new Error("Say which element to point at.");
       host.doing(t(S.pointing));
-      await Bridge.livePoint(spot.display, spot.x, spot.y, str(a.label).slice(0, 60));
-      return { shown: "A pointer now shows that spot on the user's screen for a few seconds. Say what to do there." };
+      await Bridge.livePoint(target, str(a.label).slice(0, 60));
+      return { shown: "A pointer now shows that element on the user's screen for a few seconds. Say what to do there." };
     }
     case TOOL.type: {
       const text = typeof a.text === "string" ? a.text : "";

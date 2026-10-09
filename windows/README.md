@@ -435,10 +435,11 @@ Gemini uses the computer by itself, when it decides it needs to:
 - **It opens** documents, folders and web pages, and **starts apps** by
   their name, from the Start menu (or the Linux app menu). It never runs a
   program or a script by its file.
-- **It shows you where to click** (Windows): ask "what do I do here?" and,
-  after a look at the screen, an animated pointer glides to the spot with a
-  few words beside it ("Click here"), rings around it for a few seconds and
-  fades. It is only a picture: it never moves your mouse or clicks, clicks
+- **It shows you where to click** (Windows): ask "what do I do here?" and
+  Gemini describes the element; Lumo takes a fresh screenshot, Gemini Flash
+  finds that element on it (the screenshot is deleted at once), and an
+  animated pointer glides to it with a few words beside it ("Click here"),
+  rings around it for a few seconds and fades. It is only a picture: it never moves your mouse or clicks, clicks
   go through it, and screenshots leave it out.
 - **It types in the text box you clicked in**, in any app, when you ask it
   to write something there. It never presses Enter and never sends: a line

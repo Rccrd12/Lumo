@@ -971,7 +971,7 @@ pub fn run() {
             live::live_help_stop,
             live::live_microphone,
             typing::live_type,
-            pointer::live_point,
+            live::live_point,
             pointer::live_point_hide,
             pointer::live_pointer_current,
             ingest_file,

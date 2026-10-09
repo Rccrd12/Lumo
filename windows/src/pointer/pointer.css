@@ -124,7 +124,8 @@ body {
   position: absolute;
   left: calc(50% + 24px);
   top: calc(50% + 30px);
-  max-width: 150px;
+  max-width: 200px;
+  box-sizing: border-box;
   padding: 6px 11px 6px 9px;
   display: flex;
   align-items: center;

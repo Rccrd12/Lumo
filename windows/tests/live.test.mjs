@@ -12,8 +12,8 @@ installFakeDom();
 
 const P = await import("../src/live/protocol.ts");
 const { Transcript } = await import("../src/live/transcript.ts");
-const { runTool, readingResult, baseName, errorText, locate } = await import("../src/live/tools.ts");
-const { Live, liveBotState, helperName } = await import("../src/live/session.ts");
+const { runTool, readingResult, baseName, errorText } = await import("../src/live/tools.ts");
+const { Live, liveBotState, helperName, DONE_SHOWS_MS } = await import("../src/live/session.ts");
 const { buildLive, liveModelName } = await import("../src/views/live.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { VIEW_LAYOUTS, islandSize } = await import("../src/core/layout.ts");
@@ -82,7 +82,7 @@ test("every tool runs without blocking the voice; the screen tool exists only wh
   const off = P.toolDeclarations({ ...CFG, screen: false }).map((d) => d.name);
   assert.ok(!off.includes("look_at_screen") && !off.includes("point_at"), "no pointing without the screen");
   assert.ok(off.includes("type_text"));
-  assert.deepEqual(on.find((d) => d.name === "point_at").parameters.required, ["x", "y"]);
+  assert.deepEqual(on.find((d) => d.name === "point_at").parameters.required, ["target"]);
   const find = on.find((d) => d.name === "find_files");
   assert.deepEqual(find.parameters.required, ["name"]);
   assert.equal(find.parameters.type, "OBJECT");
@@ -232,7 +232,6 @@ function host(overrides = {}) {
     log,
     host: {
       screen: true,
-      shownScreens: null,
       helper: "Claude Code",
       showPictures: async (urls) => log.pictures.push(urls),
       doing: (label) => log.doing.push(label),
@@ -328,34 +327,17 @@ test("the helper is offered for the user's connected accounts, and asked before 
   assert.doesNotMatch(P.systemInstruction({ ...CFG, screen: false }), /point_at/);
 });
 
-test("a point of the last screenshot is found on its display, side by side from the left", () => {
-  const two = [{ display: 0, width: 1568, height: 882 }, { display: 1, width: 1568, height: 1176 }];
-  // The picture is 3136 wide and 1176 high: the first display's bottom is empty.
-  assert.deepEqual(locate(two, 250, 375), { display: 0, x: 0.5, y: 0.5 });
-  assert.deepEqual(locate(two, 750, 1000), { display: 1, x: 0.5, y: 1 });
-  assert.equal(locate(two, 250, 900), null, "under the shorter display");
-  assert.equal(locate(two, 1200, 10), null);
-  assert.equal(locate(two, Number.NaN, 10), null);
-  assert.deepEqual(locate([{ display: 2, width: 1000, height: 500 }], 1000, 0), { display: 2, x: 1, y: 0 });
-});
-
-test("point_at needs a screenshot first, then shows the pointer where the model said", async () => {
+test("point_at hands the description to Rust, which finds it on the screen as it is now", async () => {
   const { host: h, log } = host();
-  const early = await runTool({ id: "p0", name: "point_at", args: { x: 500, y: 500 } }, h);
-  assert.match(early.error, /look_at_screen first/);
-  const shot = { display: 1, name: "s.png", path: "C:\\inbox\\s.png", width: 1568, height: 882, preview: "data:image/png;base64,AA" };
-  await withRust((cmd) => (cmd === "screen_capture" ? [shot] : null), () =>
-    runTool({ id: "p1", name: "look_at_screen", args: { display: 1 } }, h));
-  assert.deepEqual(h.shownScreens, [{ display: 1, width: 1568, height: 882 }]);
-  const a = await withRust(() => null, () =>
-    runTool({ id: "p2", name: "point_at", args: { x: 250, y: 800, label: "Clicca qui" } }, h));
-  assert.deepEqual(sent("live_point").at(-1), { display: 1, x: 0.25, y: 0.8, label: "Clicca qui" });
+  const a = await withRust((cmd) => (cmd === "live_point" ? 0 : null), () =>
+    runTool({ id: "p1", name: "point_at", args: { target: "the send button at the right of the message box", label: "Clicca qui" } }, h));
+  assert.deepEqual(sent("live_point").at(-1), { target: "the send button at the right of the message box", label: "Clicca qui" });
   assert.match(a.result.shown, /pointer/);
   assert.ok(log.doing.includes("Showing where to click"));
-  const off = await runTool({ id: "p3", name: "point_at", args: { x: 1500, y: 10 } }, h);
-  assert.match(off.error, /off the screen/);
-  const { host: noScreen } = host({ screen: false, shownScreens: h.shownScreens });
-  assert.match((await runTool({ id: "p4", name: "point_at", args: { x: 1, y: 1 } }, noScreen)).error, /turned screenshots off/);
+  const none = await runTool({ id: "p2", name: "point_at", args: { label: "x" } }, h);
+  assert.match(none.error, /which element/);
+  const { host: noScreen } = host({ screen: false });
+  assert.match((await runTool({ id: "p3", name: "point_at", args: { target: "x" } }, noScreen)).error, /turned screenshots off/);
 });
 
 test("type_text types what the model said into the window in front, and says where", async () => {
@@ -409,6 +391,29 @@ test("Lumo speaks, thinks and works with the call; a waiting card shows over it"
 test("the call view has the chat's room", () => {
   assert.equal(VIEW_LAYOUTS.live.height, 240);
   assert.deepEqual(islandSize("expanded", "live"), { w: 640, h: 240 });
+});
+
+test("\"Claude Code answered\" has no dots going, and goes by itself", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = buildLive(() => {});
+  Live.phase = "listening";
+  try {
+    Live.setDoing("Reading a.pdf");
+    view.sync();
+    const doing = view.el.querySelector(".live-doing");
+    assert.equal(doing.hidden, false);
+    assert.ok(!doing.classList.contains("done"), "work going on: dots");
+    Live.setDoing("Antigravity CLI answered", true);
+    view.sync();
+    assert.ok(doing.classList.contains("done"), "over: no dots");
+    t.mock.timers.tick(DONE_SHOWS_MS);
+    assert.equal(Live.doing, null);
+    view.sync();
+    assert.equal(doing.hidden, true);
+  } finally {
+    Live.setDoing(null);
+    Live.phase = "off";
+  }
 });
 
 test("before a call, the view says what Gemini can do and offers to start", () => {

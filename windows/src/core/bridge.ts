@@ -316,9 +316,8 @@ export const Bridge = {
   liveHelpStop: () => call<void>("live_help_stop"),
   /** Types `text` into the window in front, as the keyboard would; never Enter. */
   liveType: (text: string) => callOrThrow<LiveTyped>("live_type", { text }),
-  /** Shows the animated pointer on display `display`, `x` and `y` across and down it (0…1). */
-  livePoint: (display: number, x: number, y: number, label: string) =>
-    callOrThrow<void>("live_point", { display, x, y, label }),
+  /** Finds `target` on the screen and shows the animated pointer on it; the display it is on. */
+  livePoint: (target: string, label: string) => callOrThrow<number>("live_point", { target, label }),
   /** The pointer goes (the call ended). */
   livePointHide: () => call<void>("live_point_hide"),
   /** The pointer page: what it should show now, if anything. */

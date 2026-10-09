@@ -28,7 +28,7 @@ import {
   type ServerEvent, type ToolAnswer,
 } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
-import { runTool, type ShownScreen } from "./tools";
+import { runTool } from "./tools";
 import { Transcript } from "./transcript";
 
 export type LivePhase = "off" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting";
@@ -97,12 +97,17 @@ async function toJpeg(dataUrls: string[]): Promise<string> {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** How long "Claude Code answered" stays under the call. */
+export const DONE_SHOWS_MS = 4000;
+
 class LiveSession {
   phase: LivePhase = "off";
   readonly transcript = new Transcript();
   muted = false;
   /** What a tool or the helper is doing, for the call view. */
   doing: string | null = null;
+  /** `doing` says what is over ("Claude Code answered"): no dots, and it goes by itself. */
+  doingDone = false;
   /** Why the last call ended, when it did not end on End. */
   problem: string | null = null;
   /** The problem is a missing or refused key: the view offers Settings. */
@@ -128,6 +133,7 @@ class LiveSession {
   private silenceTimer: ReturnType<typeof setInterval> | null = null;
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  private doneTimer: ReturnType<typeof setTimeout> | null = null;
   /** Google said it closes this connection: move between sentences, or by this time. */
   private moveBy: number | null = null;
   private moveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -136,8 +142,6 @@ class LiveSession {
   private unlisten: (() => void) | null = null;
   /** Bumped by every start: an older start still waiting on Rust or the microphone gives up. */
   private call = 0;
-  /** The displays of the last screenshot Gemini saw: point_at's spots are on it. */
-  private shownScreens: ShownScreen[] | null = null;
 
   get active(): boolean {
     return this.phase !== "off";
@@ -172,13 +176,12 @@ class LiveSession {
     this.problem = null;
     this.problemIsKey = false;
     this.muted = false;
-    this.doing = null;
+    this.setDoing(null);
     this.handle = null;
     this.busy = false;
     this.ending = false;
     this.reconnects = 0;
     this.moveBy = null;
-    this.shownScreens = null;
     this.transcript.clear();
     this.chatId = newChatId();
     this.setPhase("connecting");
@@ -223,9 +226,9 @@ class LiveSession {
     this.mic = mic;
 
     void onEvent<LiveHelperActivity>("live-helper-activity", (a) => {
-      if (!this.active) return;
-      this.doing = `${a.helper}: ${activityLabel({ kind: a.kind, detail: a.detail })}`;
-      this.changed();
+      // What comes after the helper's answer is not news any more.
+      if (!this.active || ![...this.running.values()].some((r) => r.name === TOOL.helper && !r.cancelled)) return;
+      this.setDoing(`${a.helper}: ${activityLabel({ kind: a.kind, detail: a.detail })}`);
     }).then((un) => {
       if (this.active) this.unlisten = un;
       else un();
@@ -268,7 +271,7 @@ class LiveSession {
     this.unlisten?.();
     this.unlisten = null;
     void Bridge.liveMicrophone(false);
-    this.doing = null;
+    this.setDoing(null);
     this.busy = false;
     this.setPhase("off");
   }
@@ -486,25 +489,15 @@ class LiveSession {
   }
 
   private async runCall(call: FunctionCall) {
-    const session = this;
     const generation = this.generation;
     this.running.set(call.id, { name: call.name, generation, cancelled: false });
     this.lastVoice = performance.now();
     this.update();
     const answer = await runTool(call, {
       screen: this.cfg?.screen ?? false,
-      get shownScreens() {
-        return session.shownScreens;
-      },
-      set shownScreens(v) {
-        session.shownScreens = v;
-      },
       helper: this.cfg?.helper ?? "Claude Code",
       showPictures: (urls) => this.showPictures(urls),
-      doing: (label) => {
-        this.doing = label;
-        this.changed();
-      },
+      doing: (label) => this.setDoing(label),
       end: () => this.finishAfterGoodbye(),
     });
     const run = this.running.get(call.id);
@@ -514,8 +507,7 @@ class LiveSession {
       return;
     }
     if (call.name === TOOL.helper) {
-      this.doing = t(answer.error != null ? S.helperStopped : S.helperDone, { helper: this.cfg?.helper ?? "" });
-      this.changed();
+      this.setDoing(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: this.cfg?.helper ?? "" }), true);
     }
     this.answer(answer, run.generation);
     this.update();
@@ -567,6 +559,21 @@ class LiveSession {
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
+
+  /** What the call view says is going on; `done` lines go by themselves after a moment. */
+  private setDoing(label: string | null, done = false) {
+    if (this.doneTimer) clearTimeout(this.doneTimer);
+    this.doneTimer = null;
+    this.doing = label;
+    this.doingDone = done && label != null;
+    if (this.doingDone) {
+      this.doneTimer = setTimeout(() => {
+        this.doneTimer = null;
+        if (this.doing === label) this.setDoing(null);
+      }, DONE_SHOWS_MS);
+    }
+    this.changed();
+  }
 
   /** Works out the phase from what is going on, and when to look again. */
   private update() {

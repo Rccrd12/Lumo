@@ -25,8 +25,8 @@ use crate::platform;
 pub const LABEL: &str = "pointer";
 
 /// The window, in logical pixels; the pointer's tip is at its centre, so its
-/// label fits on any side of it.
-const W: f64 = 360.0;
+/// label fits on any side of it (pointer.css keeps the label narrower than half).
+const W: f64 = 480.0;
 const H: f64 = 220.0;
 /// How long it shows, then how long it takes to fade.
 const SHOW: Duration = Duration::from_secs(9);
@@ -63,10 +63,10 @@ pub fn origin(rect: (i32, i32, u32, u32), x: f64, y: f64, scale: f64) -> ((i32, 
 /// The label, one short line.
 pub fn tidy_label(label: &str) -> String {
     let line = label.split_whitespace().collect::<Vec<_>>().join(" ");
-    if line.chars().count() <= 40 {
+    if line.chars().count() <= 32 {
         return line;
     }
-    let cut: String = line.chars().take(39).collect();
+    let cut: String = line.chars().take(31).collect();
     format!("{}…", cut.trim_end())
 }
 
@@ -126,7 +126,9 @@ fn scale_at(app: &AppHandle, p: (f64, f64)) -> f64 {
 }
 
 /// Points at `x`, `y` (0…1 across and down) of display `display` (screen.rs's
-/// menu order), with `label` next to the pointer, for a few seconds.
+/// menu order), with `label` next to the pointer, for a few seconds. Blocking
+/// only briefly; the window is made the first time (off the main thread: the
+/// caller is an async command).
 pub fn point(app: &AppHandle, display: usize, x: f64, y: f64, label: &str) -> Result<(), String> {
     if !x.is_finite() || !y.is_finite() {
         return Err("That point is off the screen.".into());
@@ -200,12 +202,7 @@ pub fn close(app: &AppHandle) {
 }
 
 // ── Commands ──────────────────────────────────────────────────────────────────
-
-/// Async: the window is made off the main thread the first time.
-#[tauri::command]
-pub async fn live_point(app: AppHandle, display: usize, x: f64, y: f64, label: String) -> Result<(), String> {
-    point(&app, display, x, y, &label)
-}
+// Pointing itself is live.rs's live_point: it finds the spot first.
 
 #[tauri::command]
 pub async fn live_point_hide(app: AppHandle) {
@@ -228,7 +225,7 @@ mod tests {
         let rect = (1920, 0, 2560, 1440);
         let ((x, y), tip) = origin(rect, 0.5, 0.25, 1.5);
         assert_eq!(tip, (3200.0, 360.0));
-        assert_eq!((x, y), (3200 - 270, 360 - 165));
+        assert_eq!((x, y), (3200 - 360, 360 - 165));
         // Out of range is brought back to the display's edge.
         let (_, tip) = origin((0, 0, 1000, 800), 1.4, -0.2, 1.0);
         assert_eq!(tip, (1000.0, 0.0));
@@ -238,7 +235,7 @@ mod tests {
     fn the_label_is_one_short_line() {
         assert_eq!(tidy_label("  Clicca\nqui  "), "Clicca qui");
         let long = tidy_label(&"parola ".repeat(20));
-        assert_eq!(long.chars().count(), 40);
+        assert_eq!(long.chars().count(), 32);
         assert!(long.ends_with('…'));
     }
 }
