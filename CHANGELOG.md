@@ -3,9 +3,10 @@
 ## Windows and Linux 0.3.1 — October 8, 2026
 
 - **The app and its character are now called Lumo**, a small glowing firefly, instead of Coucou and Mochi, which belong to the original project. Running the new installer over Coucou 0.3.0 replaces it (Coucou's own Update now does not find it, since the repository is now called Lumo): one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
-- **Lumo has his own look**, calm and simple: an ivory oval with small upright eyes, one slim pair of glass wings that buzz while an agent works, two fine antennae with a light at each tip, and a soft light behind him that takes the colour of what is going on (blue while working, orange when it waits for you, red on an error). The app icon, the launch greeting and the file drop show him too
+- **Lumo has his own look**: clear wings that buzz while an agent works, two antennae with a light at each tip, and a glowing tail that takes the colour of what is going on (blue while working, orange when it waits for you, red on an error). The app icon, the launch greeting and the file drop show him too
 - **Lumo moves on his own** (Settings → Island → Lumo moves): calm by default, he hovers, breathes and looks around once the mouse is still; lively does more; "Only when something happens" keeps him still. It all stops when the island hides
 - **Lumo stays himself while the chat writes**, without a colour or a badge: the chat already shows its answer coming
+- **No more "too many hits" scene**: poking Lumo several times only annoys him for a moment
 - **The current Claude models**: Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 in the model picker, for the Anthropic API and for Claude Code. Settings → Chat shows Claude Code's model too and says the API key is only for the Anthropic API: Claude Code uses your Claude plan
 - **Remaining usage in the chat** (Settings → Chat, off by default): next to the model, what is left of your Claude plan with Claude Code, of your rate limits with the Anthropic API or OpenAI, or of your OpenRouter credits
 - **Plain display names**: Settings → Island lists "Display 1 — 2560×1440 · main", numbered from left to right, instead of the system's device names

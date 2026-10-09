@@ -68,8 +68,6 @@ class DesktopMochi {
     canvas.height = Math.round(PANEL_SIZE * dpr);
     this.engine.particleOverhang = 0;
     this.engine.setState("idle", true);
-    // Three pokes: dizzy, and the island shows the confused view (as on macOS).
-    this.engine.onDizzy = () => void emitToWindow(ISLAND, DESKTOP_EVENTS.dizzy);
     this.wireInput();
   }
 

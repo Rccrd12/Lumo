@@ -66,8 +66,10 @@ interface Particle {
 
 // ── Constants (MochiConst / PISTES.mochi) ─────────────────────────────────────
 
-/** The agents' minis keep the eyes they always had; Lumo has his own. */
-const MINI_EYE = { w: 0.25, h: 0.27, spread: 0.37, pitch: -0.12 } as const;
+const EYE_W = LUMO_EYE.w;
+const EYE_H = LUMO_EYE.h;
+const EYE_SP = LUMO_EYE.spread;
+const EYE_P = LUMO_EYE.pitch;
 const BASE_TOP: RGB = LUMO_TOP;
 const BASE_BOTTOM: RGB = LUMO_BOTTOM;
 const INK = "rgb(26,20,18)"; // #1A1412
@@ -242,12 +244,8 @@ export class BotEngine {
   waveStart = 0;
   private greetToken = 0;
   private lastAmbient = 0;
-  private slapTimes: number[] = [];
   private miniLookTarget = { x: 0, y: 0 };
   private miniLookNextTime = 0;
-
-  /** Fired when three slaps land inside 1.7 s (→ dizzy + confused view). */
-  onDizzy: (() => void) | null = null;
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -329,21 +327,15 @@ export class BotEngine {
   slap() {
     this.interruptGreet();
     if (this.state === "dizzy") return;
+    // A poke only annoys him: no "too many hits" scene however often it comes.
     const t = now();
-    this.slapTimes = this.slapTimes.filter((s) => t - s < 1.7);
-    this.slapTimes.push(t);
     Sound.play("slap");
     this.squash();
     this.physVy -= 1.2;
     this.physVx += Math.random() < 0.5 ? 0.7 : -0.7;
-    if (this.slapTimes.length >= 3) {
-      this.slapTimes = [];
-      this.onDizzy?.();
-    } else {
-      this.eyeOverride = "line";
-      this.eyeOverrideUntil = t + 0.8;
-      setTimeout(() => Sound.play("annoyed"), 60);
-    }
+    this.eyeOverride = "line";
+    this.eyeOverrideUntil = t + 0.8;
+    setTimeout(() => Sound.play("annoyed"), 60);
   }
 
   doRoll(durationMs: number, turns: number) {
@@ -786,8 +778,7 @@ export class BotEngine {
     const body = this.bodyPath(rx, ry, R);
     this.drawBody(x, body, R, rx, ry);
 
-    // Lumo blushes only when he means it (an emote), never just from a state.
-    const blushVal = (this.isMini ? Math.max(this.blush, this.tint * 0.5) : this.blush * 0.6) * (1 - this.morph);
+    const blushVal = Math.max(this.blush, this.tint * 0.5) * (1 - this.morph);
     if (blushVal > 0.01) {
       x.save();
       x.clip(body);
@@ -880,7 +871,7 @@ export class BotEngine {
     x.save();
 
     // Lumo's light carries the state's colour; his body only takes a wash of it.
-    const effectiveTint = this.tint * (1 - this.morph) * (this.isMini ? 1 : 0.18);
+    const effectiveTint = this.tint * (1 - this.morph) * (this.isMini ? 1 : 0.4);
     if (effectiveTint > 0.01) {
       const tg = x.createLinearGradient(0, ry, 0, -ry);
       tg.addColorStop(0, rgba(this.col, 0.72 * effectiveTint));
@@ -918,10 +909,9 @@ export class BotEngine {
     x.strokeStyle = ink;
 
     for (const sd of [-1, 1]) {
-      const E = this.isMini ? MINI_EYE : LUMO_EYE;
-      const eyeYaw = sd * E.spread + this.yaw;
+      const eyeYaw = sd * EYE_SP + this.yaw;
       // Rolling with an outfit on, the whole body turns: the eyes must not roll again.
-      let eyePitch = E.pitch + this.pitch + (this.rigidRoll ? 0 : this.roll);
+      let eyePitch = EYE_P + this.pitch + (this.rigidRoll ? 0 : this.roll);
       eyePitch = (((eyePitch + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
       const cp = Math.cos(eyePitch);
       if (Math.cos(eyeYaw) * cp <= 0.04) continue;
@@ -931,8 +921,8 @@ export class BotEngine {
       const fx = lerp(Math.max(0.18, Math.cos(eyeYaw)), 1, this.morph * 0.7);
       const fy = lerp(Math.max(0.18, cp), 1, this.morph * 0.7);
       const eyeMult = this.isMini ? 1.9 : 1.0;
-      const ew = R * E.w * this.es * eyeMult;
-      const eh = R * E.h * this.es * eyeMult;
+      const ew = R * EYE_W * this.es * eyeMult;
+      const eh = R * EYE_H * this.es * eyeMult;
 
       x.save();
       x.translate(ex, ey);
@@ -957,10 +947,10 @@ export class BotEngine {
         roundRectPath(x, -w / 2, -hh / 2, w, hh, Math.min(w / 2, hh / 2));
         x.fill();
         // Lumo's eyes catch the light: a little sparkle while they are open.
-        if (!this.isMini && hh > w * 0.9 && w > 2.4) {
-          x.fillStyle = "rgba(255,255,255,0.85)";
+        if (!this.isMini && hh > w * 0.7 && w > 2.4) {
+          x.fillStyle = "rgba(255,255,255,0.92)";
           x.beginPath();
-          x.arc(w * 0.12, -hh * 0.24, w * 0.17, 0, Math.PI * 2);
+          x.arc(w * 0.14, -hh * 0.2, w * 0.2, 0, Math.PI * 2);
           x.fill();
           x.fillStyle = ink;
         }

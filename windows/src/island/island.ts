@@ -133,8 +133,6 @@ export class Island {
   private lastLoveTime = 0;
   private botHoverStart = { x: 0, y: 0 };
 
-  private confusedRecovery: number | null = null;
-  private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
 
   /** The launch greeting ended, or the island came out of hidden — two of the
@@ -154,12 +152,10 @@ export class Island {
     this.desktop = new DesktopLink({
       reveal: () => this.reveal(),
       wardrobeFromDesktop: () => this.wardrobeFromDesktop(),
-      dizzyFromDesktop: () => this.handleDizzy(),
     });
     this.build();
     this.wireFsm();
     this.wireInput();
-    this.engine.onDizzy = () => this.handleDizzy();
     this.greeting.onComplete = () => {
       this.fsm.greetComplete();
       this.onGreetingDone?.();
@@ -1089,26 +1085,6 @@ export class Island {
     if (this.botHoverTimer != null) window.clearTimeout(this.botHoverTimer);
     this.botHoverTimer = null;
     this.engine.tgEs = 1;
-  }
-
-  /** Three slaps → dizzy + confused view for 3.3 s, then back. */
-  handleDizzy() {
-    this.prevViewBeforeConfused = State.view;
-    State.stateOverride = "dizzy";
-    this.engine.setState("dizzy");
-    Sound.play("dizzy");
-    this.alert("confused");
-    if (this.confusedRecovery != null) window.clearTimeout(this.confusedRecovery);
-    this.confusedRecovery = window.setTimeout(() => {
-      this.confusedRecovery = null;
-      State.stateOverride = null;
-      this.engine.setState(State.shownState);
-      if (State.view === "confused") {
-        const fallback = State.defaultView();
-        this.setView(this.prevViewBeforeConfused === "confused" ? fallback : this.prevViewBeforeConfused);
-      }
-      this.engine.triggerEmote("happy");
-    }, 3300);
   }
 
   // ── Frame loop ──────────────────────────────────────────────────────────────
