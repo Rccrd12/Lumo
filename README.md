@@ -20,9 +20,9 @@ Approve permissions, watch your agents work, drop a file, chat with Claude — a
 
 ---
 
-Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou) (Coucou, by Louis Raillé) that keeps only the Windows and Linux app (a [Tauri 2](https://tauri.app) app in [`windows/`](windows/)). The app, its character and the repository are called Lumo here. The full documentation of the app is in [`windows/README.md`](windows/README.md).
+The full documentation of the app is in [`windows/README.md`](windows/README.md).
 
-Meet **Lumo**: a small ring of light that peeks out of the top edge of your screen, lights up to say hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
+Meet **Lumo**: a small ring of light that peeks out of the top edge of your screen, lights up to say hello, follows your cursor with its eyes, gets annoyed when you poke it, and tells you the moment Claude Code needs you.
 
 ## Features
 
@@ -153,7 +153,7 @@ The full list of supported agents, what each one installs and how it answers is 
 |---|---|
 | Move the mouse to the very top-centre of the screen | peeks out and says hi 👋 |
 | Click the small island | opens |
-| Click Lumo | squish + annoyed; 3 times fast and he's 😵‍💫 dizzy |
+| Click Lumo | squish + annoyed for a moment |
 | Right-click Lumo | the wardrobe |
 | Drag a file onto the island | turns into a box and swallows it |
 | Drag Lumo out of the island | he moves onto your desktop |

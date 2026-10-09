@@ -5,7 +5,7 @@ Copyright (c) 2026 Riccardo Gentili. All rights reserved, except as stated below
 The [MIT License](LICENSE) covers the **source code** of Lumo. It does **not** cover the brand and the artwork listed here, which remain the property of Riccardo Gentili:
 
 - the name **“Lumo”**;
-- the **Lumo character** — the firefly's design, look, expressions and animations as a character;
+- the **Lumo character** — its looks (the ring of light, the dot, the drop and the firefly), expressions and animations as a character;
 - the **app icon** (`windows/src-tauri/icons/`);
 - the **sounds** (`windows/assets/sounds/`);
 - the **images** in `windows/screenshots/`.
