@@ -72,6 +72,8 @@ export interface LiveConfig {
   helper: string;
   /** The model may look at the screen (Settings → Voice). */
   screen: boolean;
+  /** Google Search is offered (some keys may not use it in a call). */
+  search: boolean;
   /** The interface language's English name, for when the user's own is unclear. */
   languageName: string;
   /** "Windows" or "Linux". */
@@ -109,7 +111,9 @@ export function systemInstruction(cfg: LiveConfig): string {
     "- find_files finds a file or folder by name. read_file reads a text file, shows you an image, or lists a folder. Paths are absolute; ~/ is the user's home folder.",
     "- read_document reads a PDF, a Word, Excel or PowerPoint file and answers a question about it.",
     "- open opens a file, a folder or a web page for the user. open_app starts an app by its name.",
-    "- Google Search finds facts, news and anything recent.",
+    cfg.search
+      ? "- Google Search finds facts, news and anything recent."
+      : "- You have no web search of your own: for facts, news and anything recent, use ask_helper.",
     `- ask_helper hands a task to ${cfg.helper}, an agent on this computer that can run commands, edit and create files, write code, and use the web. Use it for anything your other tools can't do, instead of saying you can't. It can take a while: tell the user you've asked ${cfg.helper}, keep talking if they want, and tell them what it found or did when its answer comes back. What it may not do alone, the user approves on a card in Lumo.`,
     "- end_conversation ends the call. Say goodbye first, then call it, when the user says goodbye or asks you to stop.",
     "",
@@ -222,7 +226,7 @@ export function setupMessage(cfg: LiveConfig, resume: string | null): Record<str
       model: `models/${cfg.model}`,
       generationConfig,
       systemInstruction: { parts: [{ text: systemInstruction(cfg) }] },
-      tools: [{ functionDeclarations: toolDeclarations(cfg) }, { googleSearch: {} }],
+      tools: [{ functionDeclarations: toolDeclarations(cfg) }, ...(cfg.search ? [{ googleSearch: {} }] : [])],
       inputAudioTranscription: {},
       outputAudioTranscription: {},
       sessionResumption: resume ? { handle: resume } : {},

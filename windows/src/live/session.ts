@@ -33,6 +33,9 @@ import { Transcript } from "./transcript";
 
 export type LivePhase = "off" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting";
 
+/** Google refused Google Search in a call with this key: left out until Lumo restarts. */
+let searchRefused = false;
+
 /** Who takes what Gemini can't do (Settings → Voice). */
 export function helperName(id: string): string {
   return id === "antigravity-cli" ? "Antigravity CLI" : "Claude Code";
@@ -156,6 +159,7 @@ class LiveSession {
       voice: parseVoice(s.liveVoice),
       helper: helperName(s.liveHelper),
       screen: s.liveScreen && HOST_OS === "windows",
+      search: !searchRefused,
       languageName: languageName(),
       os: HOST_OS === "windows" ? "Windows" : "Linux",
       now: localNow(),
@@ -345,13 +349,23 @@ class LiveSession {
       void this.reconnect();
       return;
     }
+    const quota = /quota|RESOURCE_EXHAUSTED/i.test(detail);
+    // Some keys may not use Google Search in a call, and Google refuses the
+    // whole setup over "quota": the call starts again without it, and later
+    // calls leave it out until Lumo restarts.
+    if (quota && !wasReady && this.cfg?.search) {
+      searchRefused = true;
+      this.cfg.search = false;
+      void this.reconnect("connecting");
+      return;
+    }
     const key = /API key|API_KEY|permission|unauthenticated/i.test(detail);
-    if (/quota|RESOURCE_EXHAUSTED/i.test(detail)) this.fail(t(S.quota, { model: liveModelName(this.model) }), true);
+    if (quota) this.fail(t(S.quota, { model: liveModelName(this.model) }), true);
     else this.fail(detail ? t(S.closedBecause, { detail }) : t(S.lost), key);
   }
 
   /** A new connection carrying on the same conversation. */
-  private async reconnect() {
+  private async reconnect(phase: LivePhase = "reconnecting") {
     if (!this.active) return;
     this.reconnects++;
     this.moveBy = null;
@@ -370,7 +384,7 @@ class LiveSession {
         // Already closed.
       }
     }
-    this.setPhase("reconnecting");
+    this.setPhase(phase);
     if (this.reconnects > 1) await wait(600 * this.reconnects);
     let token;
     try {

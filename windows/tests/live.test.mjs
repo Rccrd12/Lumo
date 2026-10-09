@@ -19,7 +19,7 @@ const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { VIEW_LAYOUTS, islandSize } = await import("../src/core/layout.ts");
 
 const CFG = {
-  model: P.LIVE_MODEL, thinking: "medium", voice: "", helper: "Claude Code", screen: true,
+  model: P.LIVE_MODEL, thinking: "medium", voice: "", helper: "Claude Code", screen: true, search: true,
   languageName: "French", os: "Windows", now: "Friday 9 October 2026 at 16:00",
 };
 
@@ -387,4 +387,14 @@ test("a close reason loses the link Google's 123 bytes cut in half", () => {
   assert.equal(P.closeDetail("  Invalid argument.  "), "Invalid argument.");
   assert.equal(P.closeDetail(""), "");
   assert.equal(P.liveModelName(P.LIVE_EXTENDED), "Gemini 3.8 Live Extended Thinking");
+});
+
+test("without Google Search the setup leaves it out and the model is told to ask the helper", () => {
+  const s = P.setupMessage({ ...CFG, search: false }, null).setup;
+  assert.equal(s.tools.length, 1);
+  assert.ok(!JSON.stringify(s.tools).includes("googleSearch"));
+  const text = P.systemInstruction({ ...CFG, search: false });
+  assert.doesNotMatch(text, /Google Search finds/);
+  assert.match(text, /no web search of your own/);
+  assert.match(P.systemInstruction(CFG), /Google Search finds/);
 });
