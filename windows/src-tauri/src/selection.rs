@@ -55,12 +55,15 @@ const TERMINAL_APPS: &[&str] = &[
 #[cfg_attr(not(windows), allow(dead_code))]
 const TERMINAL_CLASSES: &[&str] = &["ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "PseudoConsoleWindow"];
 
+/// A terminal, or an editor with one inside: where a key can stop or run something.
+pub fn is_terminal(app: &str, class: &str) -> bool {
+    TERMINAL_APPS.iter().any(|a| a.eq_ignore_ascii_case(app)) || TERMINAL_CLASSES.iter().any(|c| c.eq_ignore_ascii_case(class))
+}
+
 /// How to copy in the app `app` whose window class is `class`.
 #[cfg_attr(not(windows), allow(dead_code))]
 pub fn copy_keys(app: &str, class: &str) -> CopyKeys {
-    let terminal = TERMINAL_APPS.iter().any(|a| a.eq_ignore_ascii_case(app))
-        || TERMINAL_CLASSES.iter().any(|c| c.eq_ignore_ascii_case(class));
-    if terminal {
+    if is_terminal(app, class) {
         CopyKeys::CtrlInsert
     } else {
         CopyKeys::CtrlC
@@ -344,7 +347,7 @@ mod imp {
 
     /// Waits for Ctrl, Alt, Shift and the Windows key to come up, so the copy
     /// isn't read as Ctrl+Alt+C. False if they are still down after `wait`.
-    fn keys_released(wait: Duration) -> bool {
+    pub(crate) fn keys_released(wait: Duration) -> bool {
         let deadline = Instant::now() + wait;
         while [VK_CONTROL, VK_MENU, VK_SHIFT, VK_LWIN, VK_RWIN].into_iter().any(held) {
             if Instant::now() >= deadline {
@@ -375,13 +378,13 @@ mod imp {
         unsafe { SendInput(&inputs, std::mem::size_of::<INPUT>() as i32) as usize == inputs.len() }
     }
 
-    fn window_text(hwnd: HWND) -> String {
+    pub(crate) fn window_text(hwnd: HWND) -> String {
         let mut buf = [0u16; 512];
         let len = unsafe { GetWindowTextW(hwnd, &mut buf) };
         String::from_utf16_lossy(&buf[..len.max(0) as usize])
     }
 
-    fn class_name(hwnd: HWND) -> String {
+    pub(crate) fn class_name(hwnd: HWND) -> String {
         let mut buf = [0u16; 128];
         let len = unsafe { GetClassNameW(hwnd, &mut buf) };
         String::from_utf16_lossy(&buf[..len.max(0) as usize])
@@ -425,6 +428,9 @@ mod imp {
         Ok(Selected { text, app, title })
     }
 }
+
+#[cfg(windows)]
+pub(crate) use imp::{class_name, keys_released, window_text};
 
 #[cfg(test)]
 mod tests {

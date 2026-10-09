@@ -635,10 +635,27 @@ struct HelperActivity {
     detail: String,
 }
 
+/// Who helps and how, as picked in Settings → Voice.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Helper {
+    /// "claude-code" or "antigravity-cli".
+    pub id: String,
+    /// "default" or a model id; each CLI checks it before its command line.
+    pub model: String,
+    /// Claude Code's effort, "" for its own; Antigravity CLI takes none.
+    pub effort: String,
+}
+
+impl Helper {
+    pub fn of(s: &crate::settings::Settings) -> Self {
+        Helper { id: s.live_helper.clone(), model: s.live_helper_model.clone(), effort: s.live_helper_effort.clone() }
+    }
+}
+
 /// Hands `task` to Claude Code or Antigravity CLI (Settings → Voice), in
 /// `folder` when given; the island hears what it is doing as
 /// `live-helper-activity`. Its answer, for the model to say.
-pub async fn help(app: &AppHandle, helper: &str, mode: &str, task: String, folder: Option<String>) -> Result<String, String> {
+pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, folder: Option<String>) -> Result<String, String> {
     let task = task.trim().to_string();
     if task.is_empty() {
         return Err(t("No response text."));
@@ -651,9 +668,10 @@ pub async fn help(app: &AppHandle, helper: &str, mode: &str, task: String, folde
             old.stop();
         }
     }
-    let name = helper_name(helper);
-    let agy = helper == crate::antigravity_cli::PROVIDER;
+    let name = helper_name(&helper.id);
+    let agy = helper.id == crate::antigravity_cli::PROVIDER;
     let mode = mode.to_string();
+    let (model, effort) = (helper.model.clone(), helper.effort.clone());
     let app2 = app.clone();
     let stop2 = stop.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -665,9 +683,9 @@ pub async fn help(app: &AppHandle, helper: &str, mode: &str, task: String, folde
             );
         };
         if agy {
-            crate::antigravity_cli::help(&task, folder.as_deref(), &mode, stop2, tell)
+            crate::antigravity_cli::help(&task, folder.as_deref(), &model, &mode, stop2, tell)
         } else {
-            crate::claude_code::help(&task, folder.as_deref(), &mode, stop2, tell)
+            crate::claude_code::help(&task, folder.as_deref(), &model, &effort, &mode, stop2, tell)
         }
     })
     .await
@@ -741,8 +759,9 @@ pub async fn live_open_app(name: String) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || open_app(&name)).await.map_err(|e| e.to_string())?
 }
 
-/// Hands a task to the helper picked in Settings → Voice, with the chat's
-/// permission mode: what it may not do alone is a card in the island.
+/// Hands a task to the helper picked in Settings → Voice (with its model and
+/// effort), with the chat's permission mode: what it may not do alone is a
+/// card in the island.
 #[tauri::command]
 pub async fn live_help(
     app: AppHandle,
@@ -752,7 +771,7 @@ pub async fn live_help(
 ) -> Result<String, String> {
     let (helper, mode) = {
         let s = shared.settings.lock().unwrap();
-        (s.live_helper.clone(), s.chat_permission_mode.clone())
+        (Helper::of(&s), s.chat_permission_mode.clone())
     };
     help(&app, &helper, &mode, task, folder.filter(|f| !f.trim().is_empty())).await
 }

@@ -764,17 +764,20 @@ pub async fn send(
 /// Added to Claude Code's instructions when Gemini Live hands it a task (live.rs).
 const HELPER_PROMPT: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
 Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
-Do the task. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
+Do the task with every tool you have, including the apps and accounts the user connected, such as their calendar, email or documents: the task may need them. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. \
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran.";
 
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Coucou folder otherwise), with the chat's permission `mode`: what it
-/// may not do by itself is an Allow / Deny card in the island, as in the chat.
-/// No session is kept: each task starts afresh. Blocking.
+/// (the Coucou folder otherwise), with the `model` and `effort` of Settings →
+/// Voice and the chat's permission `mode`: what it may not do by itself is an
+/// Allow / Deny card in the island, as in the chat. No session is kept: each
+/// task starts afresh. Blocking.
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
+    model: &str,
+    effort: &str,
     mode: &str,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
@@ -787,7 +790,7 @@ pub(crate) fn help(
     let dir = folder.map(PathBuf::from).unwrap_or_else(work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
-    let args = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", mode, None, &inbox, &folders);
+    let args = args_with(HELPER_PROMPT, model, effort, mode, None, &inbox, &folders);
     let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -816,6 +819,13 @@ mod tests {
         assert!(!a.iter().any(|s| s == APPEND_PROMPT || s == "--resume" || s == "--model" || s == "--effort"));
         assert!(a.windows(2).any(|w| w == ["--permission-mode", "acceptEdits"]));
         assert!(a.windows(2).any(|w| w == ["--add-dir", "/home/me/docs"]));
+
+        // The model and effort picked in Settings → Voice, checked like the chat's.
+        let a = args_with(HELPER_PROMPT, "claude-sonnet-5-5", "max", "default", None, "/inbox", &[]);
+        assert!(a.windows(2).any(|w| w == ["--model", "claude-sonnet-5-5"]));
+        assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
+        let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
+        assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
     }
 
     #[test]
@@ -834,6 +844,7 @@ mod tests {
         assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 1, "only the inbox: {a:?}");
         assert!(!a.contains(&"--resume".to_string()));
         assert!(!APPEND_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
+        assert!(!HELPER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`', '(', ')']));
         assert!(APPEND_PROMPT.contains("press the screen button"), "Claude asks, never captures");
         assert!(APPEND_PROMPT.contains("Always share the folder open in File Explorer"), "names the Settings switch");
     }

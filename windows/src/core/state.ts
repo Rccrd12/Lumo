@@ -223,6 +223,10 @@ export interface Settings {
   liveVoice: string;
   /** Who takes what Gemini can't do: "claude-code" or "antigravity-cli". */
   liveHelper: string;
+  /** The helper's model: "default" (its own choice), else one the chat's picker offers for it. */
+  liveHelperModel: string;
+  /** Claude Code's effort for the helper ("low" … "max"); "" = its own default. */
+  liveHelperEffort: string;
   /** Gemini may take a screenshot when it decides it needs one, during a call. */
   liveScreen: boolean;
   /** Mochi on the desktop. Rust owns it: whatever the page sends back is ignored. */
@@ -277,6 +281,8 @@ export const DEFAULT_SETTINGS: Settings = {
   liveThinking: "medium",
   liveVoice: "",
   liveHelper: "claude-code",
+  liveHelperModel: "default",
+  liveHelperEffort: "",
   liveScreen: true,
 };
 

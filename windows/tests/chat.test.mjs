@@ -75,7 +75,10 @@ test("Claude Code's effort is a slider from faster to smarter, with Auto beside 
   assert.ok($(".effort-track").classList.contains("auto"), "no knob while Auto");
   assert.equal($(".effort-slider").getAttribute("max"), "4", "low, medium, high, extra high, max");
   assert.equal($(".effort-ticks").children.length, 5);
-  assert.deepEqual($(".effort-ends").children.map((c) => c.textContent), ["Faster", "Smarter"]);
+  // The ends sit beside the slider, on its row: the block stays two rows high.
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-end", "effort-track", "effort-end"]);
+  assert.deepEqual([0, 2].map((i) => $(".effort-row").children[i].textContent), ["Faster", "Smarter"]);
+  assert.equal($(".picker-efforts").children.length, 2);
 
   const slider = $(".effort-slider");
   slider.value = "4";

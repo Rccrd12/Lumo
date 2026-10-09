@@ -5461,6 +5461,50 @@
    "pt-BR": "O Google recusou a chamada: diz que a cota desta chave para {model} acabou. Os limites estão no Google AI Studio, em Rate limit.",
    "ru": "Google отклонил звонок: по его словам, квота этого ключа для {model} исчерпана. Лимиты есть в Google AI Studio, в разделе Rate limit.",
    "id": "Google menolak panggilan: katanya kuota kunci ini untuk {model} sudah habis. Batasnya ada di Google AI Studio, di bagian Rate limit."
+  },
+  "Showing where to click": {
+   "zh-Hans": "正在指出点击位置",
+   "hi": "दिखा रहा है कि कहाँ क्लिक करें",
+   "es": "Mostrando dónde hacer clic",
+   "ar": "يُظهر مكان النقر",
+   "fr": "Montre où cliquer",
+   "bn": "কোথায় ক্লিক করতে হবে দেখাচ্ছে",
+   "pt-BR": "Mostrando onde clicar",
+   "ru": "Показывает, где нажать",
+   "id": "Menunjukkan tempat mengeklik"
+  },
+  "Typing the text": {
+   "zh-Hans": "正在输入文字",
+   "hi": "टेक्स्ट टाइप कर रहा है",
+   "es": "Escribiendo el texto",
+   "ar": "يكتب النص",
+   "fr": "Saisit le texte",
+   "bn": "টেক্সট টাইপ করছে",
+   "pt-BR": "Digitando o texto",
+   "ru": "Вводит текст",
+   "id": "Mengetik teks"
+  },
+  "Helper's model": {
+   "zh-Hans": "助手的模型",
+   "hi": "सहायक का मॉडल",
+   "es": "Modelo del asistente",
+   "ar": "نموذج المساعد",
+   "fr": "Modèle de l'assistant",
+   "bn": "সহকারীর মডেল",
+   "pt-BR": "Modelo do assistente",
+   "ru": "Модель помощника",
+   "id": "Model asisten"
+  },
+  "Helper's effort": {
+   "zh-Hans": "助手的推理强度",
+   "hi": "सहायक का प्रयास",
+   "es": "Esfuerzo del asistente",
+   "ar": "جهد المساعد",
+   "fr": "Effort de l'assistant",
+   "bn": "সহকারীর প্রচেষ্টা",
+   "pt-BR": "Esforço do assistente",
+   "ru": "Усилие помощника",
+   "id": "Upaya asisten"
   }
  }
 }

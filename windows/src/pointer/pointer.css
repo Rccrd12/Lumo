@@ -1,0 +1,191 @@
+/* Gemini Live's pointer (pointer.html): the tip sits at the window's centre.
+   Every animation runs a set number of times, so nothing is drawn once it has
+   played; the window never takes the mouse (pointer.rs). */
+
+:root {
+  --accent: #22d3ee;
+  --font: system-ui, "Segoe UI Variable Text", "Segoe UI", "Segoe UI Emoji", "Nirmala UI",
+    "Microsoft YaHei UI", "Microsoft YaHei", "Noto Sans", "Noto Sans Devanagari", "Noto Sans Bengali",
+    "Noto Sans Arabic", "Noto Sans CJK SC", "Noto Sans SC", "Droid Sans Fallback", sans-serif;
+}
+
+html,
+body {
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  background: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+  pointer-events: none;
+}
+
+.pointer {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+}
+
+.pointer.on {
+  opacity: 1;
+}
+
+.pointer.out {
+  opacity: 0;
+  transition: opacity 0.4s ease-in;
+}
+
+/* Where to click: a soft light and rings that spread from it. */
+.halo,
+.ring {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.halo {
+  width: 34px;
+  height: 34px;
+  background: radial-gradient(circle, rgba(34, 211, 238, 0.55) 0%, rgba(34, 211, 238, 0.18) 45%, transparent 70%);
+  opacity: 0;
+}
+
+.ring {
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--accent);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.6);
+  opacity: 0;
+}
+
+.on .halo {
+  animation: halo 1.6s ease-in-out 0.55s 5 alternate forwards;
+}
+
+.on .ring {
+  animation: ring 1.5s cubic-bezier(0.2, 0.7, 0.3, 1) 4 forwards;
+}
+
+.on .ring.r1 { animation-delay: 0.62s; }
+.on .ring.r2 { animation-delay: 1.12s; }
+.on .ring.r3 { animation-delay: 1.62s; }
+
+@keyframes halo {
+  from { opacity: 0.35; transform: translate(-50%, -50%) scale(0.8); }
+  to { opacity: 1; transform: translate(-50%, -50%) scale(1.25); }
+}
+
+@keyframes ring {
+  0% { opacity: 0.95; transform: translate(-50%, -50%) scale(0.4); }
+  100% { opacity: 0; transform: translate(-50%, -50%) scale(3.4); }
+}
+
+/* The arrow: its tip is the svg's top-left corner. It glides in from above,
+   presses once, then rocks gently. */
+.arrow {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 30px;
+  height: 38px;
+  margin: -2px 0 0 -3px;
+  transform-origin: 3px 2px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.55)) drop-shadow(0 0 8px rgba(34, 211, 238, 0.65));
+  opacity: 0;
+}
+
+.on .arrow {
+  animation:
+    arrive 0.55s cubic-bezier(0.2, 1.25, 0.4, 1) both,
+    press 0.32s ease-in-out 0.6s both,
+    rock 1.2s ease-in-out 1s 6 alternate;
+}
+
+@keyframes arrive {
+  from { opacity: 0; transform: translate(-64px, -86px) scale(0.7) rotate(-14deg); }
+  to { opacity: 1; transform: translate(0, 0) scale(1) rotate(0); }
+}
+
+@keyframes press {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  45% { opacity: 1; transform: scale(0.82); }
+}
+
+@keyframes rock {
+  from { opacity: 1; transform: translate(0, 0); }
+  to { opacity: 1; transform: translate(4px, 5px); }
+}
+
+/* The few words: below and right of the tip, or on the other side near an edge. */
+.label {
+  position: absolute;
+  left: calc(50% + 24px);
+  top: calc(50% + 30px);
+  max-width: 150px;
+  padding: 6px 11px 6px 9px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  border-radius: 999px;
+  background: rgba(16, 17, 21, 0.94);
+  border: 1px solid rgba(34, 211, 238, 0.45);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
+  color: #eef1f5;
+  font: 600 12.5px var(--font);
+  white-space: nowrap;
+  opacity: 0;
+}
+
+.label[hidden] {
+  display: none;
+}
+
+.label i {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 6px var(--accent);
+}
+
+.label span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.flip-x .label {
+  left: auto;
+  right: calc(50% + 16px);
+}
+
+.flip-y .label {
+  top: auto;
+  bottom: calc(50% + 14px);
+}
+
+.on .label {
+  animation: label 0.35s ease-out 0.7s both;
+}
+
+@keyframes label {
+  from { opacity: 0; transform: translateY(4px) scale(0.96); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .on .arrow,
+  .on .label {
+    animation: label 0.2s ease-out both;
+  }
+  .on .ring,
+  .on .halo {
+    animation: none;
+  }
+  .on .halo {
+    opacity: 0.8;
+  }
+}

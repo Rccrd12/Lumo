@@ -209,6 +209,11 @@ section > h2 {
   flex-wrap: wrap;
 }
 
+/* `display: flex` would otherwise win over the hidden attribute. */
+.row[hidden] {
+  display: none;
+}
+
 .row > label {
   min-width: 132px;
   color: var(--dim);

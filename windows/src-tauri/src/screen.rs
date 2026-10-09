@@ -295,19 +295,30 @@ pub fn displays() -> Result<Vec<Display>, String> {
     imp::displays()
 }
 
-/// `capture` with the island kept out of the picture (Windows 10 2004 and
-/// later: content protection, which Coucou never uses otherwise). Blocking.
+/// `capture` with the island, and Gemini Live's pointer, kept out of the
+/// picture (Windows 10 2004 and later: content protection, which Coucou never
+/// uses otherwise). Blocking.
 pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Option<usize>) -> Result<Vec<Shot>, String> {
     use tauri::Manager;
     let island = app.get_webview_window(crate::island::WINDOW_LABEL);
     let hidden = cfg!(windows) && island.as_ref().is_some_and(|w| w.set_content_protected(true).is_ok());
-    let shots = capture(index, hidden);
+    let pointer = app.get_webview_window(crate::pointer::LABEL).filter(|w| cfg!(windows) && w.set_content_protected(true).is_ok());
+    let shots = capture(index, hidden || pointer.is_some());
     if hidden {
         if let Some(w) = &island {
             let _ = w.set_content_protected(false);
         }
     }
+    if let Some(w) = &pointer {
+        let _ = w.set_content_protected(false);
+    }
     shots
+}
+
+/// Display `index` (menu order) in physical desktop pixels: left, top, width,
+/// height. None when there is no such display (or, on Linux, no capture).
+pub fn display_rect(index: usize) -> Option<(i32, i32, u32, u32)> {
+    imp::display_rect(index)
 }
 
 /// The display the cursor is on, in menu order: what "Ask about my screen" captures.
@@ -360,6 +371,10 @@ mod imp {
     }
 
     pub fn display_under_cursor() -> Option<usize> {
+        None
+    }
+
+    pub fn display_rect(_index: usize) -> Option<(i32, i32, u32, u32)> {
         None
     }
 
@@ -433,6 +448,11 @@ mod imp {
                 primary,
             })
             .collect())
+    }
+
+    pub fn display_rect(index: usize) -> Option<(i32, i32, u32, u32)> {
+        let (r, _) = *monitors().get(index)?;
+        Some((r.left, r.top, (r.right - r.left).max(0) as u32, (r.bottom - r.top).max(0) as u32))
     }
 
     pub fn display_under_cursor() -> Option<usize> {

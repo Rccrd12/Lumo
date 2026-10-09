@@ -738,7 +738,7 @@ pub async fn send(
 /// In front of a task Gemini Live hands over (live.rs), instead of the chat's instructions.
 const HELPER_INSTRUCTIONS: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
 Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
-Do the task. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
+Do the task with every tool you have, including the apps and accounts the user connected, such as their calendar, email or documents: the task may need them. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran. Do not mention these instructions.";
 
@@ -748,11 +748,13 @@ fn helper_input(task: &str) -> String {
 }
 
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Coucou folder otherwise), with the chat's permission `mode` and agy's
-/// own model. A fresh conversation each time. Blocking.
+/// (the Coucou folder otherwise), with the `model` of Settings → Voice
+/// ("default": agy's own) and the chat's permission `mode`. A fresh
+/// conversation each time. Blocking.
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
+    model: &str,
     mode: &str,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
@@ -761,7 +763,7 @@ pub(crate) fn help(
     let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
     let work = folder.map(PathBuf::from).unwrap_or_else(claude_code::work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(DEFAULT_MODEL, mode, None, &work.to_string_lossy(), &inbox, &[]);
+    let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &[]);
     let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));

@@ -3,8 +3,8 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ShortcutsReport } from "../core/bridge";
-import { CUSTOM_SERVER_KEY, providerDef, urlExposure } from "../core/providers";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
+import { CUSTOM_SERVER_KEY, effortFor, effortsFor, providerDef, urlExposure } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
   recordPress, type Binding,
@@ -708,6 +708,10 @@ function chatSharingSection(): HTMLElement {
 // ── Voice: Gemini Live ────────────────────────────────────────────────────────
 
 const THINKING_NAMES: Record<string, string> = { low: N_("Low"), medium: N_("Medium"), high: N_("High") };
+/** Claude Code's effort levels, as the chat's picker names them. */
+const EFFORT_NAMES: Record<string, string> = {
+  low: N_("Low"), medium: N_("Medium"), high: N_("High"), xhigh: N_("Extra high"), max: N_("Max"),
+};
 
 function select(options: [string, string][], value: string, onChange: (v: string) => void): HTMLSelectElement {
   const el = h("select", {}) as HTMLSelectElement;
@@ -782,6 +786,9 @@ function voiceSection(
   };
   showThinking(model);
 
+  const { modelRow: helperModelRow, problem: helperProblem, effortRow: helperEffortRow, draw: drawHelper } = helperChoices();
+  drawHelper();
+
   const windows = navigator.userAgent.includes("Windows");
   const def = SHORTCUTS.find((s) => s.id === "talkToGemini");
   const binding = shortcuts && def ? effective(def, settings.shortcuts) : null;
@@ -824,13 +831,78 @@ function voiceSection(
     h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(windows ? VOICE_SETTINGS.screenHint : VOICE_SETTINGS.screenLinux) }),
     h("div", { class: "row" },
       h("label", { text: t(VOICE_SETTINGS.helper) }),
-      select([["claude-code", "Claude Code"], ["antigravity-cli", "Antigravity CLI"]], settings.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code", (v) => {
+      select([["claude-code", "Claude Code"], ["antigravity-cli", "Antigravity CLI"]], helperId(), (v) => {
         settings.liveHelper = v;
+        // Each helper has its own models: the new one starts on its own choice.
+        settings.liveHelperModel = "default";
         void save();
+        drawHelper();
       }),
     ),
     h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(VOICE_SETTINGS.helperHint) }),
+    helperModelRow,
+    helperProblem,
+    helperEffortRow,
   );
+}
+
+const helperId = () => (settings.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code");
+
+/**
+ * The helper's model and effort (Settings → Voice): the models the chat's
+ * picker offers for that helper, asked only when this page is drawn (agy
+ * lists its own); the effort for Claude Code only, as in the chat.
+ */
+function helperChoices(): { modelRow: HTMLElement; problem: HTMLElement; effortRow: HTMLElement; draw: () => void } {
+  const models = h("select", {}) as HTMLSelectElement;
+  const efforts = h("select", {}) as HTMLSelectElement;
+  const modelRow = h("div", { class: "row" }, h("label", { text: t(VOICE_SETTINGS.helperModel) }), models);
+  const effortRow = h("div", { class: "row" }, h("label", { text: t(VOICE_SETTINGS.helperEffort) }), efforts);
+  const problem = h("div", { class: "hint", style: "margin:-4px 0 0 144px" });
+  models.addEventListener("change", () => {
+    settings.liveHelperModel = models.value;
+    void save();
+  });
+  efforts.addEventListener("change", () => {
+    settings.liveHelperEffort = efforts.value;
+    void save();
+  });
+  let ticket = 0;
+
+  const fill = (list: ModelInfo[]) => {
+    clear(models);
+    const saved = settings.liveHelperModel || "default";
+    const all = list.some((m) => m.id === saved) ? list : [...list, { id: saved, label: saved }];
+    for (const m of all) models.append(h("option", { value: m.id, text: m.id === "default" ? t("Default") : m.label }));
+    models.value = saved;
+  };
+
+  const draw = () => {
+    const id = helperId();
+    const mine = ++ticket;
+    problem.hidden = true;
+    fill([{ id: "default", label: t("Default") }]);
+    models.disabled = true;
+    void Bridge.chatModels(id).then(
+      (list) => {
+        if (mine !== ticket) return;
+        models.disabled = false;
+        fill(list.length ? list : [{ id: "default", label: t("Default") }]);
+      },
+      (err) => {
+        if (mine !== ticket) return;
+        models.disabled = false;
+        problem.textContent = String(err).replace(/^Error:\s*/, "");
+        problem.hidden = false;
+      },
+    );
+    const levels = effortsFor(id);
+    effortRow.hidden = levels.length === 0;
+    clear(efforts);
+    for (const e of levels) efforts.append(h("option", { value: e, text: e ? t(EFFORT_NAMES[e] ?? e) : t("Auto") }));
+    efforts.value = effortFor(id, settings.liveHelperEffort);
+  };
+  return { modelRow, problem, effortRow, draw };
 }
 
 // ── Local models section ──────────────────────────────────────────────────────

@@ -28,7 +28,7 @@ import {
   type ServerEvent, type ToolAnswer,
 } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
-import { runTool } from "./tools";
+import { runTool, type ShownScreen } from "./tools";
 import { Transcript } from "./transcript";
 
 export type LivePhase = "off" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting";
@@ -136,6 +136,8 @@ class LiveSession {
   private unlisten: (() => void) | null = null;
   /** Bumped by every start: an older start still waiting on Rust or the microphone gives up. */
   private call = 0;
+  /** The displays of the last screenshot Gemini saw: point_at's spots are on it. */
+  private shownScreens: ShownScreen[] | null = null;
 
   get active(): boolean {
     return this.phase !== "off";
@@ -176,6 +178,7 @@ class LiveSession {
     this.ending = false;
     this.reconnects = 0;
     this.moveBy = null;
+    this.shownScreens = null;
     this.transcript.clear();
     this.chatId = newChatId();
     this.setPhase("connecting");
@@ -256,6 +259,7 @@ class LiveSession {
     this.speaker?.close();
     this.speaker = null;
     if (this.running.size) void Bridge.liveHelpStop();
+    void Bridge.livePointHide();
     this.running.clear();
     for (const timer of [this.drainTimer, this.moveTimer, this.notifyTimer]) if (timer) clearTimeout(timer);
     if (this.silenceTimer) clearInterval(this.silenceTimer);
@@ -482,12 +486,19 @@ class LiveSession {
   }
 
   private async runCall(call: FunctionCall) {
+    const session = this;
     const generation = this.generation;
     this.running.set(call.id, { name: call.name, generation, cancelled: false });
     this.lastVoice = performance.now();
     this.update();
     const answer = await runTool(call, {
       screen: this.cfg?.screen ?? false,
+      get shownScreens() {
+        return session.shownScreens;
+      },
+      set shownScreens(v) {
+        session.shownScreens = v;
+      },
       helper: this.cfg?.helper ?? "Claude Code",
       showPictures: (urls) => this.showPictures(urls),
       doing: (label) => {

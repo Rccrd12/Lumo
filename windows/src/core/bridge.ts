@@ -314,6 +314,15 @@ export const Bridge = {
   /** Hands a task to the helper of Settings → Voice; its answer. Cards ask for what it may not do alone. */
   liveHelp: (task: string, folder: string | null) => callOrThrow<string>("live_help", { task, folder }),
   liveHelpStop: () => call<void>("live_help_stop"),
+  /** Types `text` into the window in front, as the keyboard would; never Enter. */
+  liveType: (text: string) => callOrThrow<LiveTyped>("live_type", { text }),
+  /** Shows the animated pointer on display `display`, `x` and `y` across and down it (0…1). */
+  livePoint: (display: number, x: number, y: number, label: string) =>
+    callOrThrow<void>("live_point", { display, x, y, label }),
+  /** The pointer goes (the call ended). */
+  livePointHide: () => call<void>("live_point_hide"),
+  /** The pointer page: what it should show now, if anything. */
+  livePointerCurrent: () => call<Pointing>("live_pointer_current"),
   /** The page asks for the microphone now (true), or has its answer (false). */
   liveMicrophone: (on: boolean) => call<void>("live_microphone", { on }),
 
@@ -362,6 +371,23 @@ export interface LiveFound {
   dir: boolean;
   size: number;
   modified: string;
+}
+
+/** What the pointer shows (pointer.rs Pointing). */
+export interface Pointing {
+  seq: number;
+  label: string;
+  flipX: boolean;
+  flipY: boolean;
+}
+
+/** What live_type typed, and where (live.rs Typed). */
+export interface LiveTyped {
+  chars: number;
+  app: string;
+  title: string;
+  /** Line breaks went as spaces: the window in front is a terminal. */
+  flattened: boolean;
 }
 
 /** The `live-helper-activity` event: what the helper is doing (claude_code.rs Activity). */

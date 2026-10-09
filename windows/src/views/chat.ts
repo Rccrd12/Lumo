@@ -351,6 +351,8 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     slider.addEventListener("change", choose);
     slider.addEventListener("pointerup", choose);
 
+    // Two short rows, so a small window leaves the models their room: the
+    // ends sit beside the slider rather than over it.
     efforts.append(
       h(
         "div",
@@ -361,11 +363,11 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
       ),
       h(
         "div",
-        { class: "effort-ends" },
-        h("span", { text: t(STRINGS.faster) }),
-        h("span", { text: t(STRINGS.smarter) }),
+        { class: "effort-row" },
+        h("span", { class: "effort-end", text: t(STRINGS.faster) }),
+        track,
+        h("span", { class: "effort-end", text: t(STRINGS.smarter) }),
       ),
-      track,
     );
   }
 

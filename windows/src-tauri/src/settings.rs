@@ -95,6 +95,14 @@ pub struct Settings {
     /// Who Gemini asks when it cannot do something itself: "claude-code" or
     /// "antigravity-cli". Anything else reads as "claude-code".
     pub live_helper: String,
+    /// The helper's model: "default" (whatever the user set in Claude Code or
+    /// agy), else an id the chat's picker offers for that helper
+    /// (claude_code::MODELS, or what `agy models` lists). Checked before it
+    /// reaches a command line.
+    pub live_helper_model: String,
+    /// Claude Code's effort for the helper ("low" … "max"); empty: its own
+    /// default. Antigravity CLI has none (its models carry it in their name).
+    pub live_helper_effort: String,
     /// Gemini may take a screenshot when it needs to see the screen, without
     /// asking first (the island says when it looks). On until turned off.
     pub live_screen: bool,
@@ -196,6 +204,8 @@ impl Default for Settings {
             live_thinking: "medium".into(),
             live_voice: String::new(),
             live_helper: "claude-code".into(),
+            live_helper_model: "default".into(),
+            live_helper_effort: String::new(),
             live_screen: true,
             ollama_url: String::new(),
             lmstudio_url: String::new(),
@@ -498,6 +508,8 @@ mod tests {
   "liveThinking": "high",
   "liveVoice": "Kore",
   "liveHelper": "antigravity-cli",
+  "liveHelperModel": "gemini-3.8-flash-high",
+  "liveHelperEffort": "max",
   "liveScreen": false,
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
@@ -946,6 +958,8 @@ mod tests {
                 "liveThinking",
                 "liveVoice",
                 "liveHelper",
+                "liveHelperModel",
+                "liveHelperEffort",
                 "liveScreen",
                 "ollamaUrl",
                 "lmstudioUrl",
@@ -970,6 +984,8 @@ mod tests {
         assert_eq!(s.live_thinking, "medium");
         assert_eq!(s.live_voice, "");
         assert_eq!(s.live_helper, "claude-code");
+        assert_eq!(s.live_helper_model, "default");
+        assert_eq!(s.live_helper_effort, "");
         assert!(s.live_screen);
     }
 

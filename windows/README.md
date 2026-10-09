@@ -435,11 +435,27 @@ Gemini uses the computer by itself, when it decides it needs to:
 - **It opens** documents, folders and web pages, and **starts apps** by
   their name, from the Start menu (or the Linux app menu). It never runs a
   program or a script by its file.
+- **It shows you where to click** (Windows): ask "what do I do here?" and,
+  after a look at the screen, an animated pointer glides to the spot with a
+  few words beside it ("Click here"), rings around it for a few seconds and
+  fades. It is only a picture: it never moves your mouse or clicks, clicks
+  go through it, and screenshots leave it out.
+- **It types in the text box you clicked in**, in any app, when you ask it
+  to write something there. It never presses Enter and never sends: a line
+  break is Shift+Enter (a new line in a message or an email), and in a
+  terminal line breaks are typed as spaces, so nothing runs. Nothing is
+  typed into Lumo itself, or while a key like Ctrl is held, and it stops if
+  you move to another window. On Linux it needs `xdotool` (X11) or `wtype`
+  (Wayland).
 - **Anything else goes to Claude Code or Antigravity CLI** (Settings →
-  Voice → Helper), which works on the task in its own session and reports
-  back; Gemini tells you what it found or did. What the helper may do
-  without asking follows the chat's permissions (the shield); anything else
-  comes up as an Allow / Deny card in the island, over the call.
+  Voice → Helper, with the helper's model and, for Claude Code, its
+  effort), which works on the task in its own session and reports back;
+  Gemini tells you what it found or did. That includes the apps and
+  accounts you connected to the helper, such as your calendar or email:
+  "add this to my calendar" goes to Claude Code with its connectors. What
+  the helper may do without asking follows the chat's permissions (the
+  shield); anything else comes up as an Allow / Deny card in the island,
+  over the call.
 
 The Google AI key stays in the system keychain: Rust asks Google for a
 short-lived token that opens one connection, and the island connects with
@@ -736,7 +752,10 @@ What changes on Linux:
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
   its menu says so, and nothing is listed or captured. For the same reason
-  Gemini Live can't look at the screen there; everything else in a call works.
+  Gemini Live can't look at the screen or point at it there; everything else
+  in a call works. Typing in the text box you clicked in needs `xdotool` on
+  X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland
+  doesn't say which window is in front).
 - **Files**: preferences in `~/.config/coucou/`, the log at
   `~/.local/share/coucou/coucou.log`, the weekly recap history beside it in
   `recap.json`. A saved recap image goes to the pictures folder named in

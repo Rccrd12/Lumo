@@ -1514,12 +1514,14 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
-/* Claude Code's effort: a slider from faster to smarter, Auto beside it. */
+/* Claude Code's effort: a slider from faster to smarter, Auto beside it.
+   Kept to two short rows, so the model list keeps its room in a small window. */
 .picker-efforts {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 2px 2px 0;
+  gap: 3px;
+  padding: 0 2px;
 }
 
 .picker-efforts[hidden] {
@@ -1542,7 +1544,7 @@ input[type="range"]::-webkit-slider-thumb {
   align-items: center;
   gap: 5px;
   margin-left: auto;
-  padding: 3px 9px;
+  padding: 1px 8px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
@@ -1566,16 +1568,23 @@ input[type="range"]::-webkit-slider-thumb {
   color: #8b929e;
 }
 
-.effort-ends {
+.effort-row {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.effort-end {
+  flex: 0 0 auto;
   font-size: 10.5px;
   color: #8b929e;
 }
 
 .effort-track {
   position: relative;
-  height: 22px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -1583,7 +1592,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* One dot per level, under the knob's stops. */
 .effort-ticks {
   position: absolute;
-  inset: 0 11px;
+  inset: 0 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1610,15 +1619,15 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .effort-track .effort-slider::-webkit-slider-runnable-track {
-  height: 22px;
+  height: 16px;
   background: transparent;
 }
 
 .effort-track .effort-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #e9ebef;
   background: color-mix(in srgb, var(--accent) 35%, #e9ebef);
