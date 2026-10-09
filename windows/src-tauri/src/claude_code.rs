@@ -110,13 +110,14 @@ pub(crate) fn safe_dir(dir: &str) -> Option<&str> {
 }
 
 /// What the chat's CLIs may do without a card, as picked in the chat's field
-/// (Settings::chat_permission_mode): "default" asks for everything,
-/// "acceptEdits" lets file edits through, "plan" changes nothing. Anything
-/// else — `auto`, `bypassPermissions`, a typo — is "default": nothing is ever
-/// allowed wholesale.
+/// (Settings::chat_permission_mode): "default" asks for everything, "auto"
+/// lets the CLI decide what is safe to do without asking (Claude Code's own
+/// auto mode; "acceptEdits", picked before, reads as it), "plan" changes
+/// nothing. Anything else — `bypassPermissions`, `dontAsk`, a typo — is
+/// "default": nothing is ever allowed wholesale.
 pub(crate) fn permission_mode(raw: &str) -> &'static str {
     match raw.trim() {
-        "acceptEdits" => "acceptEdits",
+        "auto" | "acceptEdits" => "auto",
         "plan" => "plan",
         _ => "default",
     }
@@ -820,10 +821,10 @@ mod tests {
 
     #[test]
     fn a_task_from_gemini_gets_the_helper_instructions_and_no_session() {
-        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "acceptEdits", None, "/home/me/.local/share/lumo/inbox", &["/home/me/docs".into()]);
+        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "auto", None, "/home/me/.local/share/lumo/inbox", &["/home/me/docs".into()]);
         assert!(a.windows(2).any(|w| w == ["--append-system-prompt", HELPER_PROMPT]));
         assert!(!a.iter().any(|s| s == APPEND_PROMPT || s == "--resume" || s == "--model" || s == "--effort"));
-        assert!(a.windows(2).any(|w| w == ["--permission-mode", "acceptEdits"]));
+        assert!(a.windows(2).any(|w| w == ["--permission-mode", "auto"]));
         assert!(a.windows(2).any(|w| w == ["--add-dir", "/home/me/docs"]));
 
         // The model and effort picked in Settings → Voice, checked like the chat's.
@@ -877,10 +878,11 @@ mod tests {
             let i = a.iter().position(|s| s == "--permission-mode").unwrap();
             a[i + 1].clone()
         };
-        assert_eq!(mode("acceptEdits"), "acceptEdits");
+        assert_eq!(mode("auto"), "auto");
+        assert_eq!(mode("acceptEdits"), "auto", "picked before Auto replaced it");
         assert_eq!(mode("plan"), "plan");
         assert_eq!(mode("default"), "default");
-        for wholesale in ["bypassPermissions", "auto", "dontAsk", "", "plan & calc"] {
+        for wholesale in ["bypassPermissions", "dontAsk", "", "plan & calc"] {
             assert_eq!(mode(wholesale), "default", "{wholesale}");
         }
     }

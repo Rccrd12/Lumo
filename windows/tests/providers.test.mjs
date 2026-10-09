@@ -81,9 +81,10 @@ test("Antigravity CLI is a keyless CLI whose models carry their effort", () => {
 });
 
 test("the permission modes never include one that lets everything through", () => {
-  assert.deepEqual([...PERMISSION_MODES], ["default", "acceptEdits", "plan"]);
+  assert.deepEqual([...PERMISSION_MODES], ["default", "auto", "plan"]);
   for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m), m);
-  for (const m of ["bypassPermissions", "auto", "dontAsk", "", undefined, 3]) assert.equal(parsePermissionMode(m), "default", String(m));
+  assert.equal(parsePermissionMode("acceptEdits"), "auto", "picked before Auto replaced it");
+  for (const m of ["bypassPermissions", "dontAsk", "", undefined, 3]) assert.equal(parsePermissionMode(m), "default", String(m));
 });
 
 test("loopback hosts match net.rs", () => {

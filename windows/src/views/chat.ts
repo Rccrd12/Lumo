@@ -105,7 +105,7 @@ const EFFORT_NAMES: Record<string, string> = {
 /** Each permission mode: its name and what it lets through. */
 const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = {
   default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
-  acceptEdits: { name: N_("Accept edits"), note: N_("Edits files without asking; asks for everything else.") },
+  auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
 };
 

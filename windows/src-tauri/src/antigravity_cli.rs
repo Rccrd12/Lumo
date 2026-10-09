@@ -142,10 +142,10 @@ fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: 
         a.push("--model".into());
         a.push(m.to_string());
     }
-    match crate::claude_code::permission_mode(mode) {
-        "acceptEdits" => a.extend(["--mode".to_string(), "accept-edits".to_string()]),
-        "plan" => a.extend(["--mode".to_string(), "plan".to_string()]),
-        _ => {}
+    // Auto is agy's own judgement, which is what it does without `--mode`:
+    // what it may not do alone is soft-denied, or a card with Lumo's hooks.
+    if crate::claude_code::permission_mode(mode) == "plan" {
+        a.extend(["--mode".to_string(), "plan".to_string()]);
     }
     if let Some(id) = conversation.and_then(safe_session) {
         a.push("--conversation".into());
@@ -296,6 +296,8 @@ struct Run {
     activity_changed: bool,
     /// Tool steps still running, oldest first: step index and what each is doing.
     pending: Vec<(u64, Activity)>,
+    /// The last lines agy wrote on stderr: why an answer came back empty.
+    stderr_tail: String,
 }
 
 impl Run {
@@ -446,6 +448,25 @@ fn failure(stderr: &str, code: &str) -> String {
     }
 }
 
+/// The last few lines of stderr, joined, for the log and an empty answer's message.
+fn stderr_tail(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines[lines.len().saturating_sub(3)..].join(" · ")
+}
+
+/// What to say when agy's turn ended without any text: what it wrote on
+/// stderr when it wrote anything (a refused permission is said there), else
+/// that a permission was refused when one was.
+fn empty_answer(denied: usize, stderr_tail: &str) -> String {
+    if !stderr_tail.is_empty() {
+        tf("Antigravity CLI gave no answer: {error}", &[("error", stderr_tail)])
+    } else if denied > 0 {
+        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+    } else {
+        t("Antigravity CLI gave no answer.")
+    }
+}
+
 /// The error a `result` reported, for the island.
 fn result_error(error: &str) -> String {
     if is_auth_error(error) {
@@ -568,6 +589,7 @@ fn run(
     let status = child.wait().ok();
     let stderr = err_text.join().unwrap_or_default();
     state.denied += stderr_denials(&stderr);
+    state.stderr_tail = stderr_tail(&stderr);
     if state.result.is_none() {
         let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_default();
         return Err(failure(&stderr, &code));
@@ -724,8 +746,9 @@ pub async fn send(
         Some(Err(e)) => return Err(result_error(&e)),
         None => unreachable!("run() returns an error without a result"),
     };
-    let answer = if answer.trim().is_empty() && state.denied > 0 {
-        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+    let answer = if answer.trim().is_empty() {
+        crate::log::line(format!("antigravity: empty answer; {} denied; stderr: {}", state.denied, state.stderr_tail));
+        empty_answer(state.denied, &state.stderr_tail)
     } else {
         answer
     };
@@ -821,7 +844,8 @@ mod tests {
             let a = args("default", m, None, "/w", "/inbox", &[]);
             a.iter().position(|s| s == "--mode").map(|i| a[i + 1].clone())
         };
-        assert_eq!(mode("acceptEdits").as_deref(), Some("accept-edits"));
+        assert_eq!(mode("auto"), None, "agy's own judgement");
+        assert_eq!(mode("acceptEdits"), None);
         assert_eq!(mode("plan").as_deref(), Some("plan"));
         assert_eq!(mode("default"), None);
     }
@@ -1013,6 +1037,15 @@ mod tests {
     fn soft_denials_on_stderr_are_counted() {
         assert_eq!(stderr_denials("Tool run_command denied: requires approval\nok\nPermission required for tool write_to_file\n"), 2);
         assert_eq!(stderr_denials("warning: unrecognized event skipped\n"), 0);
+    }
+
+    #[test]
+    fn an_empty_answer_says_what_agy_said_rather_than_guessing() {
+        let tail = stderr_tail("\n a\nb\n\nTool run_command denied: requires approval\nquota exceeded for gemini-3.8-pro\n");
+        assert_eq!(tail, "b · Tool run_command denied: requires approval · quota exceeded for gemini-3.8-pro");
+        assert!(empty_answer(1, &tail).contains("quota exceeded"), "the real reason, not a guess");
+        assert!(empty_answer(1, "").contains("permission"));
+        assert_eq!(empty_answer(0, ""), "Antigravity CLI gave no answer.");
     }
 
     #[test]

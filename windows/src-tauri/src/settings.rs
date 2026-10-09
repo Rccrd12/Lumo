@@ -70,9 +70,10 @@ pub struct Settings {
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
     /// What the chat's CLIs (Claude Code, Antigravity CLI) may do without a
-    /// card: "default" (ask for everything), "acceptEdits" (file edits go
-    /// through) or "plan" (plan only, change nothing). Picked from the chat's
-    /// field; anything else reads as "default".
+    /// card: "default" (ask for everything), "auto" (the CLI decides what is
+    /// safe; "acceptEdits", from before, reads as it) or "plan" (plan only,
+    /// change nothing). Picked from the chat's field; anything else reads as
+    /// "default".
     pub chat_permission_mode: String,
     /// A quiet line next to the chat's model picker with what the provider has
     /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits

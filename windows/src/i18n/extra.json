@@ -4945,28 +4945,6 @@
    "ru": "Спрашивает перед каждым действием, которому нужно разрешение.",
    "id": "Bertanya sebelum setiap tindakan yang memerlukan izin."
   },
-  "Accept edits": {
-   "zh-Hans": "接受编辑",
-   "hi": "संपादन स्वीकारें",
-   "es": "Aceptar ediciones",
-   "ar": "قبول التعديلات",
-   "fr": "Accepter les modifications",
-   "bn": "সম্পাদনা গ্রহণ করুন",
-   "pt-BR": "Aceitar edições",
-   "ru": "Принимать правки",
-   "id": "Terima suntingan"
-  },
-  "Edits files without asking; asks for everything else.": {
-   "zh-Hans": "编辑文件时不询问；其他操作仍会询问。",
-   "hi": "फ़ाइलें बिना पूछे संपादित करता है; बाकी सब के लिए पूछता है।",
-   "es": "Edita archivos sin preguntar; pregunta por todo lo demás.",
-   "ar": "يعدّل الملفات دون أن يسأل، ويسأل عن كل ما عدا ذلك.",
-   "fr": "Modifie les fichiers sans demander ; demande pour tout le reste.",
-   "bn": "জিজ্ঞাসা না করেই ফাইল সম্পাদনা করে; বাকি সবকিছুর জন্য জিজ্ঞাসা করে।",
-   "pt-BR": "Edita arquivos sem perguntar; pergunta sobre todo o resto.",
-   "ru": "Правит файлы без вопросов; обо всём остальном спрашивает.",
-   "id": "Menyunting file tanpa bertanya; bertanya untuk hal lainnya."
-  },
   "Plan only": {
    "zh-Hans": "仅规划",
    "hi": "सिर्फ़ योजना",
@@ -5516,6 +5494,39 @@
    "pt-BR": "{label}: sobra bastante",
    "ru": "{label}: ещё много",
    "id": "{label}: masih banyak"
+  },
+  "The AI decides what is safe to do without asking, and asks for the rest.": {
+   "zh-Hans": "由 AI 判断哪些操作可以安全地直接执行，其余的会先询问。",
+   "hi": "AI तय करता है कि बिना पूछे क्या करना सुरक्षित है, और बाकी के लिए पूछता है।",
+   "es": "La IA decide qué es seguro hacer sin preguntar y pregunta por lo demás.",
+   "ar": "يقرّر الذكاء الاصطناعي ما يمكن فعله بأمان دون سؤال، ويسأل عن الباقي.",
+   "fr": "L'IA décide de ce qu'elle peut faire sans risque sans demander, et demande pour le reste.",
+   "bn": "কোনটা না জিজ্ঞেস করে করা নিরাপদ তা AI ঠিক করে, আর বাকিগুলোর জন্য জিজ্ঞেস করে।",
+   "pt-BR": "A IA decide o que é seguro fazer sem perguntar e pergunta sobre o resto.",
+   "ru": "ИИ сам решает, что безопасно сделать без вопроса, а об остальном спрашивает.",
+   "id": "AI menentukan apa yang aman dilakukan tanpa bertanya, dan bertanya untuk sisanya."
+  },
+  "Antigravity CLI gave no answer: {error}": {
+   "zh-Hans": "Antigravity CLI 没有给出回答：{error}",
+   "hi": "Antigravity CLI ने कोई जवाब नहीं दिया: {error}",
+   "es": "Antigravity CLI no dio ninguna respuesta: {error}",
+   "ar": "لم يقدّم Antigravity CLI أي إجابة: {error}",
+   "fr": "Antigravity CLI n'a donné aucune réponse : {error}",
+   "bn": "Antigravity CLI কোনো উত্তর দেয়নি: {error}",
+   "pt-BR": "O Antigravity CLI não deu resposta: {error}",
+   "ru": "Antigravity CLI не дал ответа: {error}",
+   "id": "Antigravity CLI tidak memberi jawaban: {error}"
+  },
+  "Antigravity CLI gave no answer.": {
+   "zh-Hans": "Antigravity CLI 没有给出回答。",
+   "hi": "Antigravity CLI ने कोई जवाब नहीं दिया।",
+   "es": "Antigravity CLI no dio ninguna respuesta.",
+   "ar": "لم يقدّم Antigravity CLI أي إجابة.",
+   "fr": "Antigravity CLI n'a donné aucune réponse.",
+   "bn": "Antigravity CLI কোনো উত্তর দেয়নি।",
+   "pt-BR": "O Antigravity CLI não deu resposta.",
+   "ru": "Antigravity CLI не дал ответа.",
+   "id": "Antigravity CLI tidak memberi jawaban."
   }
  }
 }

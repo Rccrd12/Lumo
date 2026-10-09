@@ -299,8 +299,9 @@ permission requests do, as a card over the chat.
 
 **The shield** next to the screen button (Claude Code and Antigravity CLI only)
 says what the CLI may do without a card, from the next message on: **Ask every
-time** (the default), **Accept edits** (file edits go through, everything else
-still asks) or **Plan only** (it reads and plans, and changes nothing). It
+time** (the default), **Auto** (the AI decides what is safe to do without
+asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
+(it reads and plans, and changes nothing). It
 lights up while it may do more than ask. There is no mode that lets every
 action through: Lumo never passes `bypassPermissions` or
 `--dangerously-skip-permissions`.
@@ -323,8 +324,8 @@ continues the same conversation (`--conversation`) until **New chat**. Its
 models come from `agy models` (**Default** leaves agy's own choice), in the
 picker and in **Settings… → Chat → Antigravity CLI**. There is no effort to
 pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
-refuses a mismatched `--effort`. The shield's **Accept edits** and **Plan only**
-go to agy as `--mode accept-edits` and `--mode plan`. Headless agy never prompts: it reads and writes workspace files
+refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
+`--mode plan`; **Auto** leaves agy to its own judgement, as it does without a mode. Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
 card over the chat (reinstall the hooks if they predate this version, or the
