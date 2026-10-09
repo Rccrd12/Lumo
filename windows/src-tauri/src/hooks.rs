@@ -3,7 +3,7 @@
 // The rule from CLAUDE.md is strict and is followed to the letter:
 // read %USERPROFILE%\.claude\settings.json, take a dated backup, merge without
 // touching anybody else's hooks, show the diff, and write only after an explicit
-// click. Uninstall removes Coucou's entries and nothing else.
+// click. Uninstall removes Lumo's entries and nothing else.
 //
 // The command is only the quoted exe path in forward slashes plus the event name:
 // on Windows Claude Code runs hook commands through Git Bash, and anything with
@@ -38,17 +38,17 @@ pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("SubagentStop", 10),
 ];
 
-/// A command Lumo wrote: it runs the relay, under its name (lumo-hook) or
-/// the one it had up to 0.3.1 (coucou-hook), which installs from then still use.
+/// A command Lumo wrote: it runs the relay (lumo-hook), or the relay by the
+/// name hooks installed before still use (migrate.rs).
 pub(crate) fn is_relay_command(command: &str) -> bool {
-    command.contains("lumo-hook") || command.contains("coucou-hook")
+    command.contains("lumo-hook") || command.contains(crate::migrate::OLD_RELAY)
 }
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HookStatus {
     pub installed: bool,
-    /// Coucou's status line relay (plan usage) is the one in settings.json.
+    /// Lumo's status line relay (plan usage) is the one in settings.json.
     pub plan_relay_installed: bool,
     pub settings_path: String,
     pub hook_path: String,
@@ -102,13 +102,12 @@ fn entry_is_ours(entry: &Value) -> bool {
 }
 
 /// The status line in settings.json is Lumo's relay (old installs wrote
-/// `coucou-hook StatusLine`, later ones `coucou-hook --statusline`, now
-/// `lumo-hook --statusline`; all match).
+/// `StatusLine`, later ones `--statusline`; both match).
 fn status_line_is_ours(v: &Value) -> bool {
     v.get("command").and_then(Value::as_str).is_some_and(is_relay_command)
 }
 
-/// Settings with Coucou's hooks added; everything else is left untouched. A
+/// Settings with Lumo's hooks added; everything else is left untouched. A
 /// `hooks` (or one of its events) that is not what Claude Code documents is
 /// refused rather than replaced.
 fn merged(existing: &Value) -> Result<Value, String> {
@@ -144,7 +143,7 @@ fn unexpected(what: &str) -> String {
     crate::i18n::tf("settings.json: {what} has an unexpected type — Lumo has not touched it.", &[("what", what)])
 }
 
-/// Settings with every Coucou entry removed, and nothing else changed.
+/// Settings with every Lumo entry removed, and nothing else changed.
 fn without_ours(existing: &Value) -> Result<Value, String> {
     let mut root = existing.as_object().cloned().unwrap_or_default();
     let hooks = match root.get("hooks") {
@@ -234,7 +233,7 @@ pub fn write(install: bool, fingerprint: &str) -> Result<String, String> {
 
 // ── Status line (plan usage) ──────────────────────────────────────────────────
 //
-// Claude Code runs one `statusLine` command and hands it the plan limits. Coucou
+// Claude Code runs one `statusLine` command and hands it the plan limits. Lumo
 // puts its relay there; a status line the user already had is kept in
 // statusline-previous.json beside the relay, and the relay still runs it, so it
 // keeps working. Installing and removing it is separate from the hooks, and
@@ -251,7 +250,7 @@ fn read_status_line_previous() -> Option<Value> {
     serde_json::from_slice::<Value>(&bytes).ok().filter(Value::is_object)
 }
 
-/// True when the `statusLine` in settings.json is Coucou's relay.
+/// True when the `statusLine` in settings.json is Lumo's relay.
 pub fn plan_relay_installed(settings: &Value) -> bool {
     settings.get("statusLine").is_some_and(status_line_is_ours)
 }
@@ -343,9 +342,7 @@ fn save_status_line_previous(status_line: &Value) -> std::io::Result<()> {
 }
 
 /// Copies the relay (lumo-hook.exe / lumo-hook) into the local data dir's
-/// bin/ on launch, and the same file as coucou-hook(.exe) beside it: the hooks
-/// written up to 0.3.1 (Claude Code's, the other agents') run it by that name,
-/// and must keep working until they are installed again. In a bundled install it comes from the app resources; in
+/// bin/ on launch. In a bundled install it comes from the app resources; in
 /// `tauri dev` it sits next to the app binary in the workspace target directory.
 ///
 /// Every candidate is tried rather than just the first, because getting this
@@ -388,7 +385,12 @@ pub fn ensure_hook_exe(app: &AppHandle) {
         return;
     };
     install_relay(&src, &dest);
-    install_relay(&src, &settings::legacy_hook_exe_path());
+    // Hooks installed before run it from the folder Lumo had then, until they
+    // are installed again (Settings → Agents).
+    let home = platform::home_dir();
+    let mut configs = vec![settings_path()];
+    configs.extend(agents::config_files(&home));
+    crate::migrate::old_relay(&src, &configs, install_relay);
 }
 
 #[cfg(windows)]
@@ -434,13 +436,12 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_relay_is_known_by_its_name_now_and_up_to_0_3_1() {
-        assert!(is_relay_command(r#""C:/Users/me/AppData/Local/Coucou/bin/lumo-hook.exe" SessionStart"#));
-        assert!(is_relay_command(r#""C:/Users/me/AppData/Local/Coucou/bin/coucou-hook.exe" SessionStart"#));
-        assert!(is_relay_command("'/home/me/.local/share/coucou/bin/lumo-hook' --statusline"));
+    fn the_relay_is_known_by_its_name() {
+        assert!(is_relay_command(r#""C:/Users/me/AppData/Local/com.rccrd12.lumo/bin/lumo-hook.exe" SessionStart"#));
+        assert!(is_relay_command("'/home/me/.local/share/lumo/bin/lumo-hook' --statusline"));
+        assert!(is_relay_command(&format!("'/x/bin/{}' Stop", crate::migrate::OLD_RELAY)), "hooks installed before");
         assert!(!is_relay_command("node ~/.claude/other-hook.js"));
         assert_eq!(platform::HOOK_EXE.trim_end_matches(".exe"), "lumo-hook");
-        assert_eq!(platform::LEGACY_HOOK_EXE.trim_end_matches(".exe"), "coucou-hook");
     }
 
     #[test]
@@ -547,7 +548,7 @@ mod tests {
     /// the home directory at a temp directory, and that is process-wide.
     #[test]
     fn writing_backs_up_preserves_and_refuses_a_changed_file() {
-        let tmp = std::env::temp_dir().join(format!("coucou-hooks-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("lumo-hooks-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join(".claude")).unwrap();
         std::env::set_var(platform::HOME_VAR, &tmp);

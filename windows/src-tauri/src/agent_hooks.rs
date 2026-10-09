@@ -1,12 +1,12 @@
 // Whether each hook-driven pill is connected.
 //
 // A pill fed by hook events has no key: it is connected once the agent's config
-// routes its events to coucou-hook (Mac #183 — the idle card used to say "Key
+// routes its events to lumo-hook (Mac #183 — the idle card used to say "Key
 // not configured" for these). Only reads; nothing here ever writes.
 //
 // Claude Code is read here, with the Mac's own rule. Every other agent is read
 // by agents.rs — the code that writes their configs is the one source of truth
-// for where those files are and what Coucou's entries look like, so the pill
+// for where those files are and what Lumo's entries look like, so the pill
 // and Settings → Agents always agree.
 
 use std::collections::HashMap;
@@ -15,11 +15,9 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 
-/// Port of `coucouHooksPresent(inSettings:)` (ClaudeHookDetection.swift): true
-/// when a parsed `~/.claude/settings.json` routes Claude Code's SessionStart
-/// events to Coucou. The command text is what tells: Coucou's relay here is
-/// `coucou-hook`, the Mac's is `~/.claude/coucou/nb-hook` (or NotchBuddy in the
-/// App Store build), so a settings file shared between machines reads the same.
+/// Port of the Mac app's ClaudeHookDetection.swift: true when a parsed
+/// `~/.claude/settings.json` routes Claude Code's SessionStart events to Lumo.
+/// The command text is what tells: it runs Lumo's relay (hooks.rs).
 pub fn claude_hooks_present(settings: &Value) -> bool {
     let Some(groups) = settings
         .get("hooks")
@@ -30,11 +28,7 @@ pub fn claude_hooks_present(settings: &Value) -> bool {
     };
     groups.iter().any(|group| {
         group.get("hooks").and_then(Value::as_array).is_some_and(|hooks| {
-            hooks.iter().any(|hook| {
-                hook.get("command")
-                    .and_then(Value::as_str)
-                    .is_some_and(|c| c.contains("NotchBuddy") || c.contains("coucou") || c.contains("lumo-hook"))
-            })
+            hooks.iter().any(|hook| hook.get("command").and_then(Value::as_str).is_some_and(crate::hooks::is_relay_command))
         })
     })
 }
@@ -74,29 +68,17 @@ mod tests {
         serde_json::from_str(json).unwrap_or(Value::Null)
     }
 
-    // The ten cases of tests/ClaudeHookDetectionTests.swift, plus this build's relay.
+    // The cases of the Mac app's ClaudeHookDetectionTests.swift, for this build's relay.
 
     #[test]
-    fn the_hook_coucou_writes_is_installed() {
+    fn the_hook_lumo_writes_is_installed() {
         assert!(claude_hooks_present(&settings(
             r#"{"hooks":{"SessionStart":[{"hooks":[
-              {"type":"command","command":"\"C:/Users/me/AppData/Local/Coucou/bin/coucou-hook.exe\" SessionStart"}]}]}}"#
+              {"type":"command","command":"\"C:/Users/me/AppData/Local/com.rccrd12.lumo/bin/lumo-hook.exe\" SessionStart"}]}]}}"#
         )));
         assert!(claude_hooks_present(&settings(
             r#"{"hooks":{"SessionStart":[{"hooks":[
-              {"type":"command","command":"'/home/me/.local/share/coucou/bin/coucou-hook' SessionStart"}]}]}}"#
-        )));
-    }
-
-    #[test]
-    fn the_mac_builds_hooks_count_too() {
-        assert!(claude_hooks_present(&settings(
-            r#"{"hooks":{"SessionStart":[{"hooks":[
-              {"type":"command","command":"$HOME/.claude/coucou/nb-hook"}]}]}}"#
-        )));
-        assert!(claude_hooks_present(&settings(
-            r#"{"hooks":{"SessionStart":[{"hooks":[
-              {"type":"command","command":"/Applications/NotchBuddy.app/.../nb-hook"}]}]}}"#
+              {"type":"command","command":"'/home/me/.local/share/lumo/bin/lumo-hook' SessionStart"}]}]}}"#
         )));
     }
 
@@ -105,7 +87,7 @@ mod tests {
         assert!(claude_hooks_present(&settings(
             r#"{"hooks":{"SessionStart":[
               {"hooks":[{"type":"command","command":"/usr/local/bin/other-tool"}]},
-              {"hooks":[{"type":"command","command":"$HOME/.claude/coucou/nb-hook"}]}]}}"#
+              {"hooks":[{"type":"command","command":"'/home/me/.local/share/lumo/bin/lumo-hook' SessionStart"}]}]}}"#
         )));
     }
 
@@ -123,7 +105,7 @@ mod tests {
     fn hooks_for_other_events_do_not_count() {
         assert!(!claude_hooks_present(&settings(
             r#"{"hooks":{"PreToolUse":[{"hooks":[
-              {"type":"command","command":"$HOME/.claude/coucou/nb-hook"}]}]}}"#
+              {"type":"command","command":"'/home/me/.local/share/lumo/bin/lumo-hook' PreToolUse"}]}]}}"#
         )));
     }
 

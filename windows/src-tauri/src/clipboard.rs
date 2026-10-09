@@ -94,7 +94,7 @@ mod tests {
 
     #[test]
     fn the_first_regular_file_is_the_one_pasted() {
-        let dir = std::env::temp_dir().join(format!("coucou-clipboard-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-clipboard-{}", std::process::id()));
         std::fs::create_dir_all(dir.join("Folder")).unwrap();
         std::fs::write(dir.join("b.txt"), b"b").unwrap();
         std::fs::write(dir.join("a.pdf"), b"a").unwrap();

@@ -2,6 +2,7 @@
 // Stage 2 covers the Claude Code hooks and the general preferences; API keys and
 // integrations land here too in a later stage.
 
+import "../core/legacy";
 import "./settings.css";
 import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
 import { CUSTOM_SERVER_KEY, effortFor, effortsFor, providerDef, urlExposure } from "../core/providers";
@@ -201,7 +202,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     if (!status.hookReady) {
       body.append(h("div", {
         class: "notice warn",
-        text: t("lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`."),
+        text: t("lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p lumo-hook`."),
       }));
     }
 
@@ -304,7 +305,7 @@ function planSection(status: HookStatus): HTMLElement {
               onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
             }),
       ),
-      // Codex: nothing to install, Coucou asks the Codex CLI when the pill shows.
+      // Codex: nothing to install, Lumo asks the Codex CLI when the pill shows.
       h("div", { class: "hint", text: PLAN_SETTINGS_TEXT.codex }),
       h("div", { class: "row" },
         h("label", { text: PLAN_SETTINGS_TEXT.showCodex }),
@@ -1374,7 +1375,7 @@ function behaviourRows(): HTMLElement[] {
 
 /**
  * Settings → General → Language, as on the Mac: "System" follows the
- * system's language when Coucou has it (else English), or one of the ten.
+ * system's language when Lumo has it (else English), or one of the ten.
  * Both windows and the tray switch in place, without a restart.
  */
 function languageRow(): HTMLElement {
@@ -1687,7 +1688,7 @@ const PAGES = [
 type PageId = (typeof PAGES)[number]["id"];
 
 /** Where the selected section is remembered between openings (this window only). */
-const PAGE_KEY = "coucou.settings.page";
+const PAGE_KEY = "lumo.settings.page";
 
 function isPage(id: unknown): id is PageId {
   return PAGES.some((p) => p.id === id);

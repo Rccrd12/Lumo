@@ -25,7 +25,7 @@ const DISPLAYS = [
   { index: 1, width: 1920, height: 1080, primary: false },
 ];
 const WINDOWS = [
-  { title: "main.rs — coucou", app: "Code", active: true, minimized: false },
+  { title: "main.rs — lumo", app: "Code", active: true, minimized: false },
   { title: "Inbox", app: "outlook", active: false, minimized: true },
 ];
 const FOLDER = {
@@ -38,11 +38,11 @@ const FOLDER = {
   omitted: 0,
 };
 const PEEKED = { ...FOLDER, entries: [] };
-const COPIED = { name: "file.pdf", path: "C:\\Coucou\\inbox\\file.pdf", size: 1536 };
+const COPIED = { name: "file.pdf", path: "C:\\Lumo\\inbox\\file.pdf", size: 1536 };
 const shot = (display) => ({
   display,
   name: `screenshot-2026-10-08-090503-screen${display + 1}.png`,
-  path: `C:\\Coucou\\inbox\\screenshot-2026-10-08-090503-screen${display + 1}.png`,
+  path: `C:\\Lumo\\inbox\\screenshot-2026-10-08-090503-screen${display + 1}.png`,
   width: 1568,
   height: 882,
   preview: "data:image/png;base64,iVBORw0KGgo=",
@@ -97,7 +97,7 @@ test("what is waiting becomes one payload, chips and a list of files to delete",
   });
   const chips = screenChips(p);
   assert.deepEqual(chips.map((c) => c.label), ["Open windows (2)", "Screen 1, Screen 2"]);
-  assert.equal(chips[0].title, "main.rs — coucou — Code\nInbox — outlook");
+  assert.equal(chips[0].title, "main.rs — lumo — Code\nInbox — outlook");
   assert.deepEqual(shotPaths(p), [shot(0).path, shot(1).path]);
   // A window list on its own is still something to send.
   assert.deepEqual(screenPayload({ windows: [], shots: [] }), { windows: [], shots: [] });
@@ -419,7 +419,7 @@ test("a question naming no file sends the folder alone", async () => {
 });
 
 test("a file the user added and hasn't sent yet is never replaced", async () => {
-  State.droppedFile = { name: "contract.docx", path: "C:\\Coucou\\inbox\\contract.docx" };
+  State.droppedFile = { name: "contract.docx", path: "C:\\Lumo\\inbox\\contract.docx" };
   await shareFolder();
   $(".chat-input").value = "compare with file.pdf";
   $(".send-btn").fire("click");

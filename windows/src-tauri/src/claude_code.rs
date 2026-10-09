@@ -1,13 +1,13 @@
 // Chat through Claude Code itself: the `claude` CLI the user installed and
-// signed in to with their own Claude plan (Pro, Max…). No API key: Coucou runs
+// signed in to with their own Claude plan (Pro, Max…). No API key: Lumo runs
 // the unmodified binary as `claude -p`, and Claude Code answers with its own
-// sign-in, exactly as in a terminal. Coucou never reads, stores or forwards any
+// sign-in, exactly as in a terminal. Lumo never reads, stores or forwards any
 // Claude credential.
 //
 // Unlike the other providers, Claude Code can act: read a dropped PDF or image,
 // read and edit files, run commands, search the web. Every action that needs a
 // permission goes through Claude Code's own PermissionRequest hook — the one
-// Coucou already installs — so it shows up in the island as the usual
+// Lumo already installs — so it shows up in the island as the usual
 // Allow / Deny card. Without the hooks, or with nobody clicking, Claude Code
 // denies the action: `-p` never allows anything on its own.
 //
@@ -68,10 +68,10 @@ const MODELS: &[(&str, &str)] = &[
     ("claude-haiku-5-5", "Haiku 5.5"),
 ];
 
-/// Where Claude Code works when Coucou starts it: `~/Coucou`. Files outside it
+/// Where Claude Code works when Lumo starts it: `~/Lumo`. Files outside it
 /// can still be read or edited, each time with the user's Allow.
 pub fn work_dir() -> PathBuf {
-    platform::home_dir().join("Coucou")
+    platform::home_dir().join("Lumo")
 }
 
 pub fn models() -> Vec<ModelInfo> {
@@ -555,8 +555,8 @@ fn run(
             cmd.env("PATH", joined);
         }
     }
-    // Tells coucou-hook this run is the island's chat, not a session to show.
-    cmd.env("COUCOU_ISLAND_RUN", "1");
+    // Tells lumo-hook this run is the island's chat, not a session to show.
+    cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
     // Its own process group, so Stop ends the tools and hooks it started too.
     #[cfg(target_os = "linux")]
@@ -769,7 +769,7 @@ Every action that needs a permission is approved by the user in the island, so a
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran.";
 
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Coucou folder otherwise), with the `model` and `effort` of Settings →
+/// (the Lumo folder otherwise), with the `model` and `effort` of Settings →
 /// Voice and the chat's permission `mode`: what it may not do by itself is an
 /// Allow / Deny card in the island, as in the chat. No session is kept: each
 /// task starts afresh. Blocking.
@@ -814,7 +814,7 @@ mod tests {
 
     #[test]
     fn a_task_from_gemini_gets_the_helper_instructions_and_no_session() {
-        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "acceptEdits", None, "/home/me/.local/share/coucou/inbox", &["/home/me/docs".into()]);
+        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "acceptEdits", None, "/home/me/.local/share/lumo/inbox", &["/home/me/docs".into()]);
         assert!(a.windows(2).any(|w| w == ["--append-system-prompt", HELPER_PROMPT]));
         assert!(!a.iter().any(|s| s == APPEND_PROMPT || s == "--resume" || s == "--model" || s == "--effort"));
         assert!(a.windows(2).any(|w| w == ["--permission-mode", "acceptEdits"]));
@@ -830,7 +830,7 @@ mod tests {
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let a = args("opus", "high", "default", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
+        let a = args("opus", "high", "default", Some(SID), "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox", &[]);
         assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--model", "opus"]));
         assert!(a.windows(2).any(|w| w == ["--resume", SID]));
@@ -912,7 +912,7 @@ mod tests {
         assert_eq!(a("Read", json!({"file_path": "/home/me/notes.md"})), Activity::new("read", "notes.md"));
         assert_eq!(a("Read", json!({})), Activity::new("read", ""), "before the input is known");
         assert_eq!(
-            a("Read", json!({"file_path": "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox\\screenshot-2026-10-09-101500-screen1.png"})),
+            a("Read", json!({"file_path": "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox\\screenshot-2026-10-09-101500-screen1.png"})),
             Activity::new("screen", ""),
             "Lumo's own screenshots are the screen"
         );

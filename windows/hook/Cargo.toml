@@ -1,13 +1,10 @@
 [package]
-name = "coucou-hook"
-description = "Relays Claude Code hook events to Coucou over a named pipe (Windows) or a Unix socket (Linux)"
+name = "lumo-hook"
+description = "Relays Claude Code hook events to Lumo over a named pipe (Windows) or a Unix socket (Linux)"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 
-# The package keeps its name (`cargo build -p coucou-hook`); the relay itself
-# is lumo-hook since 0.3.2. The app also stages it as coucou-hook, for hooks
-# written before (hooks.rs).
 [[bin]]
 name = "lumo-hook"
 path = "src/main.rs"

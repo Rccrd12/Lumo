@@ -57,8 +57,8 @@ test("a clipboard image is named after when it was pasted, a file keeps its name
 
 // ── The chat view ────────────────────────────────────────────────────────────
 
-const SAVED = { name: "pasted-2026-10-08-090503.png", path: "C:\\Coucou\\inbox\\pasted-2026-10-08-090503.png", size: 4 };
-const COPIED = { name: "contract.pdf", path: "C:\\Coucou\\inbox\\contract.pdf", size: 2048 };
+const SAVED = { name: "pasted-2026-10-08-090503.png", path: "C:\\Lumo\\inbox\\pasted-2026-10-08-090503.png", size: 4 };
+const COPIED = { name: "contract.pdf", path: "C:\\Lumo\\inbox\\contract.pdf", size: 2048 };
 
 let answers;
 /** The raw invoke options (headers) of each paste_file. */
@@ -108,7 +108,7 @@ test("a pasted screenshot lands in the inbox and is attached like a picked file"
   assert.equal(sent("paste_copied_file").length, 1, "File Explorer's files first");
   const [bytes] = sent("paste_file");
   assert.deepEqual([...bytes], [0x89, 0x50, 0x4e, 0x47]);
-  assert.match(decodeURIComponent(pasteOptions[0].headers["x-coucou-name"]), /^pasted-\d{4}-\d\d-\d\d-\d{6}\.png$/);
+  assert.match(decodeURIComponent(pasteOptions[0].headers["x-lumo-name"]), /^pasted-\d{4}-\d\d-\d\d-\d{6}\.png$/);
   assert.deepEqual(State.droppedFile, { name: SAVED.name, path: SAVED.path });
   assert.deepEqual(chips(), [SAVED.name]);
   assert.equal(input().value, "what's this error?", "the question typed so far stays");

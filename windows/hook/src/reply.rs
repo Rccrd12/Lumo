@@ -4,7 +4,7 @@
 //! The one rule that matters: **nothing that allows anything is ever printed
 //! without a decision a human clicked.** With no decision the reply is silence,
 //! an empty `{}`, or Copilot's explicit "ask", and every agent then asks in its
-//! own terminal exactly as if Coucou were not installed.
+//! own terminal exactly as if Lumo were not installed.
 
 use serde_json::{json, Map, Value};
 
@@ -27,7 +27,7 @@ fn wants_json(agent: &str) -> bool {
 pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option<&Value>) -> Option<String> {
     if event != "PermissionRequest" {
         // Antigravity reads "{}" on PreToolUse as a denial. "ask" keeps its own prompt
-        // (and the user's Always Allow): Coucou never allows a tool by itself.
+        // (and the user's Always Allow): Lumo never allows a tool by itself.
         if agent.eq_ignore_ascii_case("antigravity") && event == "PreToolUse" {
             return Some(r#"{"decision":"ask"}"#.to_string());
         }

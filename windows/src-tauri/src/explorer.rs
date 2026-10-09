@@ -614,7 +614,7 @@ mod tests {
 
     #[test]
     fn only_a_shared_folder_gives_its_named_file_and_only_a_regular_file_inside_it() {
-        let base = std::env::temp_dir().join(format!("coucou-explorer-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("lumo-explorer-{}", std::process::id()));
         let dir = base.join("Docs");
         std::fs::create_dir_all(dir.join("Sub")).unwrap();
         std::fs::write(dir.join("file.pdf"), b"%PDF").unwrap();

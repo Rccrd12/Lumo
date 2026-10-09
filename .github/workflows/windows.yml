@@ -43,8 +43,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             windows/target
-          # The build caches absolute paths, so a cache from before the repo's
-          # rename (coucou-agent → Lumo) breaks the build: the key names the repo.
+          # The build caches absolute paths: the key names the repo, so a cache
+          # from a repository under another name is never restored.
           key: windows-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
           restore-keys: windows-cargo-${{ github.repository }}-
 
@@ -106,7 +106,7 @@ jobs:
       # lumo-hook.exe next to the app's exe, which is exactly this layout, so
       # the portable pair runs with working Claude Code hooks and no installer.
       # `tauri build` names the app's exe lumo.exe (mainBinaryName in
-      # src-tauri/tauri.windows.conf.json); cargo alone still makes coucou.exe.
+      # src-tauri/tauri.windows.conf.json), as cargo does.
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
@@ -116,9 +116,6 @@ jobs:
             windows/target/release/lumo-hook.exe
           retention-days: 3
 
-      # Coucou-Windows-$v-setup.exe is the same installer under the app's old
-      # name: an installed Coucou 0.3.0 updates itself from that file only
-      # (see scripts/pack.mjs). Keep it in every release.
       - name: Publish the release
         if: env.PUBLISH == 'true' && startsWith(github.ref, 'refs/tags/windows-v')
         shell: pwsh
@@ -127,19 +124,17 @@ jobs:
         run: |
           $v = "${{ steps.pack.outputs.version }}"
           $notes = @"
-          Lumo for Windows $v — a small ring of light at the top of your screen (formerly Coucou).
+          Lumo for Windows $v — a small ring of light at the top of your screen.
 
           Download ``Lumo-Windows-$v.msi`` (Windows Installer) or ``Lumo-Windows-$v-setup.exe`` and run it. The installer is not
           code-signed yet, so Windows SmartScreen shows a warning: click
-          **More info → Run anyway**. ``Coucou-Windows-$v-setup.exe`` is the same
-          installer under the old name, for the in-app updater of Coucou 0.3.0.
+          **More info → Run anyway**.
           "@
           # --latest=false: the download links point at the rolling
           # windows-latest release below, not at GitHub's Latest slot.
           gh release create "${{ github.ref_name }}" `
             "release/Lumo-Windows-$v-setup.exe" `
             "release/Lumo-Windows-$v.msi" `
-            "release/Coucou-Windows-$v-setup.exe" `
             --title "Lumo for Windows $v" `
             --notes $notes `
             --latest=false
@@ -159,14 +154,11 @@ jobs:
             git tag -f windows-latest "${{ github.sha }}"
             git push -f origin windows-latest
             gh release edit windows-latest --title "Lumo for Windows (latest)" --notes "Always the newest Windows build — currently $v."
-            # The Coucou-… copies keep links from before the rename working.
-            gh release upload windows-latest "release/Lumo-Windows-setup.exe" "release/Lumo-Windows.msi" "release/Coucou-Windows-setup.exe" "release/Coucou-Windows.msi" --clobber
+            gh release upload windows-latest "release/Lumo-Windows-setup.exe" "release/Lumo-Windows.msi" --clobber
           } else {
             gh release create windows-latest `
               "release/Lumo-Windows-setup.exe" `
               "release/Lumo-Windows.msi" `
-              "release/Coucou-Windows-setup.exe" `
-              "release/Coucou-Windows.msi" `
               --title "Lumo for Windows (latest)" `
               --notes "Always the newest Windows build — currently $v." `
               --latest=false

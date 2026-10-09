@@ -72,8 +72,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             windows/target
-          # The build caches absolute paths, so a cache from before the repo's
-          # rename (coucou-agent → Lumo) breaks the build: the key names the repo.
+          # The build caches absolute paths: the key names the repo, so a cache
+          # from a repository under another name is never restored.
           key: linux-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
           restore-keys: linux-cargo-${{ github.repository }}-
 
@@ -95,11 +95,11 @@ jobs:
           [ "$tag" = "$cargo" ] || bad="$bad Cargo.toml says $cargo;"
           if [ -n "$bad" ]; then echo "tag says $tag but$bad"; exit 1; fi
 
-      # The app bundles target/release/lumo-hook (package coucou-hook) as a resource, and its build
+      # The app bundles target/release/lumo-hook as a resource, and its build
       # script refuses to run until that file exists.
       - name: Test
         run: |
-          cargo build --release -p coucou-hook
+          cargo build --release -p lumo-hook
           cargo test --workspace
 
       # linuxdeploy is itself an AppImage; runners have no FUSE, so it unpacks
@@ -112,7 +112,7 @@ jobs:
           npm run pack
           echo "version=$(node -p "require('./src-tauri/tauri.conf.json').version")" >> "$GITHUB_OUTPUT"
           cd release
-          sha256sum Lumo-Linux-* Coucou-Linux-* > SHA256SUMS
+          sha256sum Lumo-Linux-* > SHA256SUMS
           ls -la
           cat SHA256SUMS
 
@@ -129,7 +129,6 @@ jobs:
           name: Lumo-Linux
           path: |
             windows/release/Lumo-Linux-*
-            windows/release/Coucou-Linux-*
             windows/release/SHA256SUMS
           retention-days: 3
 
@@ -157,11 +156,11 @@ jobs:
           VERSION: ${{ needs.build.outputs.version }}
         run: |
           v="$VERSION"
-          notes="Lumo for Linux $v — a small ring of light at the top of your screen (formerly Coucou).
+          notes="Lumo for Linux $v — a small ring of light at the top of your screen.
 
           - **AppImage** (any distribution): \`chmod +x Lumo-Linux-$v-x86_64.AppImage\` and run it.
-          - **Debian / Ubuntu**: \`sudo apt install ./Lumo-Linux-$v-amd64.deb\` (replaces the coucou package)
-          - **Fedora / openSUSE**: \`sudo dnf install ./Lumo-Linux-$v-x86_64.rpm\` (replaces the coucou package)
+          - **Debian / Ubuntu**: \`sudo apt install ./Lumo-Linux-$v-amd64.deb\`
+          - **Fedora / openSUSE**: \`sudo dnf install ./Lumo-Linux-$v-x86_64.rpm\`
 
           Check a download with \`sha256sum -c SHA256SUMS --ignore-missing\`.
 
@@ -189,12 +188,10 @@ jobs:
             git tag -f linux-latest "$GITHUB_SHA"
             git push -f origin linux-latest
             gh release edit linux-latest --title "Lumo for Linux (latest)" --notes "Always the newest Linux build — currently $v."
-            # The Coucou-… copy keeps links from before the rename working.
-            gh release upload linux-latest "release/Lumo-Linux-x86_64.AppImage" "release/Coucou-Linux-x86_64.AppImage" --clobber
+            gh release upload linux-latest "release/Lumo-Linux-x86_64.AppImage" --clobber
           else
             gh release create linux-latest \
               "release/Lumo-Linux-x86_64.AppImage" \
-              "release/Coucou-Linux-x86_64.AppImage" \
               --title "Lumo for Linux (latest)" \
               --notes "Always the newest Linux build — currently $v." \
               --latest=false

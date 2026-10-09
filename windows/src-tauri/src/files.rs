@@ -1,4 +1,4 @@
-// Dropped files are copied into %LOCALAPPDATA%\Coucou\inbox so the original is
+// Dropped files are copied into %LOCALAPPDATA%\com.rccrd12.lumo\inbox so the original is
 // never touched and the copy survives the drag source going away.
 // The inbox is swept of anything older than a week, as on macOS.
 
@@ -106,7 +106,7 @@ pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
     })
 }
 
-/// The inbox, created if needed, inside Coucou's private folder.
+/// The inbox, created if needed, inside Lumo's private folder.
 fn ready_inbox() -> Result<PathBuf, String> {
     let dir = inbox_dir();
     crate::platform::ensure_private_dir(&settings::local_dir()).map_err(|e| e.to_string())?;
@@ -130,7 +130,7 @@ fn unique_in(dir: &Path, name: &str) -> PathBuf {
         .unwrap_or(dest)
 }
 
-/// Where Coucou writes a file of its own for the chat (a screenshot): a fresh
+/// Where Lumo writes a file of its own for the chat (a screenshot): a fresh
 /// path in the inbox under `name`, next to the dropped files Claude Code may read.
 pub fn new_inbox_file(name: &str) -> Result<PathBuf, String> {
     let dir = ready_inbox()?;
@@ -214,7 +214,7 @@ mod tests {
 
     #[test]
     fn ingest_copies_and_never_overwrites() {
-        let tmp = std::env::temp_dir().join(format!("coucou-test-{}", std::process::id()));
+        let tmp = std::env::temp_dir().join(format!("lumo-test-{}", std::process::id()));
         std::fs::create_dir_all(&tmp).unwrap();
         let source = tmp.join("note.txt");
         std::fs::write(&source, b"hello").unwrap();
@@ -307,7 +307,7 @@ mod drop_tests {
     // One test: the list is process-wide and tests run in parallel.
     #[test]
     fn only_a_dropped_path_is_ingested_once_and_the_list_stays_bounded() {
-        let p = "/tmp/coucou-test-not-dropped.txt".to_string();
+        let p = "/tmp/lumo-test-not-dropped.txt".to_string();
         assert!(ingest(&p).is_err(), "never dropped");
         allow_dropped([p.clone()]);
         assert!(take_dropped(&p));

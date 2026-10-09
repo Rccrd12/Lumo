@@ -5,7 +5,7 @@ Thanks for wanting to help Lumo grow up! 🫶
 ## Getting started
 
 The app lives in `windows/` (Tauri: Rust in `src-tauri/`, TypeScript in `src/`,
-the `lumo-hook` relay in `hook/`, package `coucou-hook`). You need [Rust](https://rustup.rs) and
+the `lumo-hook` relay in `hook/`). You need [Rust](https://rustup.rs) and
 [Node 22.18+](https://nodejs.org); on Linux, also the system libraries listed in
 [windows/README.md](windows/README.md#linux).
 
@@ -21,7 +21,7 @@ Run the checks before opening a pull request:
 cd windows
 npx tsc --noEmit                        # type check
 npm test                                # island tests
-cargo build --release -p coucou-hook    # the app bundles the relay
+cargo build --release -p lumo-hook    # the app bundles the relay
 cargo test --workspace                  # Rust tests
 ```
 
@@ -34,7 +34,7 @@ in `windows/src/i18n/extra.json`, keyed by the English text, with every language
 
 ## Good first contributions
 
-- A new agent: any agent already gets its own automatic pill by sending `coucou_agent` in its hook payload (see `docs/AGENTS.md`). Add an entry in `windows/src/core/pills.ts` only if you want it to be declarable in Settings.
+- A new agent: any agent already gets its own automatic pill by sending `lumo_agent` in its hook payload (see `docs/AGENTS.md`). Add an entry in `windows/src/core/pills.ts` only if you want it to be declarable in Settings.
 - A new emote or sound for Lumo.
 - Bug fixes — please describe how to reproduce.
 

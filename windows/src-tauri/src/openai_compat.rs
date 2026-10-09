@@ -370,7 +370,7 @@ mod tests {
 
     #[test]
     fn screenshots_go_ahead_of_the_text_on_any_turn() {
-        let dir = std::env::temp_dir().join(format!("coucou-oai-shots-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-oai-shots-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let png = dir.join("screenshot-screen1.png");
         std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
@@ -397,7 +397,7 @@ mod tests {
 
     #[test]
     fn context_rides_with_the_first_turn_as_text_or_an_image() {
-        let dir = std::env::temp_dir().join(format!("coucou-oai-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-oai-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let txt = dir.join("notes.txt");
         std::fs::write(&txt, "hello").unwrap();

@@ -1,13 +1,13 @@
-//! coucou-hook — the relay Claude Code (and every other agent) runs on each hook
+//! lumo-hook — the relay Claude Code (and every other agent) runs on each hook
 //! event.
 //!
 //! Reads the hook JSON on stdin, maps the agent's event and field names onto
 //! Claude Code's (normalize.rs), adds a little terminal context, and hands it to
-//! Coucou over the named pipe `\\.\pipe\coucou-<sid>` (Windows) or the Unix
-//! socket `$XDG_RUNTIME_DIR/coucou.sock` (Linux).
+//! Lumo over the named pipe `\\.\pipe\lumo-<sid>` (Windows) or the Unix
+//! socket `$XDG_RUNTIME_DIR/lumo.sock` (Linux).
 //!
 //! Hard rule (docs/CLAUDE.md): **never block the agent.**
-//! * If the pipe does not exist — Coucou is closed — we exit 0 immediately, with
+//! * If the pipe does not exist — Lumo is closed — we exit 0 immediately, with
 //!   only the "no opinion" reply the agent expects (reply.rs), and the session
 //!   carries on untouched.
 //! * Every step runs under a deadline enforced by the main thread, so a pipe that
@@ -15,11 +15,11 @@
 //!   either: we abandon the worker and exit.
 //! * Only `PermissionRequest` waits for an answer, because approving from the
 //!   island is the whole point. No answer means no decision, and the agent asks
-//!   in its terminal exactly as if Coucou were not installed.
+//!   in its terminal exactly as if Lumo were not installed.
 //!
-//! Usage: `coucou-hook [--agent <name>] [<EventName>]` (the event name is also
+//! Usage: `lumo-hook [--agent <name>] [<EventName>]` (the event name is also
 //! read from the JSON; `--agent` is absent for Claude Code), or
-//! `coucou-hook --statusline` as Claude Code's status line command (plan usage,
+//! `lumo-hook --statusline` as Claude Code's status line command (plan usage,
 //! see statusline.rs): it passes the plan limits on and runs the status line the
 //! user had before, so that keeps working.
 
@@ -40,7 +40,7 @@ const FIRE_AND_FORGET_BUDGET: Duration = Duration::from_secs(2);
 const DECISION_BUDGET: Duration = Duration::from_secs(110);
 /// A card of the island's Antigravity CLI chat must be answered before
 /// Antigravity gives up on the hook: the hook's `timeout` in hooks.json, which
-/// Coucou's own hooks pass on as `--wait`. Without it (hooks installed before
+/// Lumo's own hooks pass on as `--wait`. Without it (hooks installed before
 /// the chat came, which give 10 s) the relay waits this long, no more.
 const ANTIGRAVITY_SHORT_WAIT: u64 = 8;
 
@@ -191,10 +191,10 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     // unchanged; invalid names are discarded by the app, not here. A Claude Code
     // session started from the Claude desktop app is tagged `claude-desktop`.
     if let Some(tag) = agent_tag(&args.agent, env) {
-        map.insert("coucou_agent".into(), Value::String(tag));
+        map.insert("lumo_agent".into(), Value::String(tag));
     }
     if is_island_run(env) {
-        map.insert("coucou_island".into(), Value::Bool(true));
+        map.insert("lumo_island".into(), Value::Bool(true));
     }
     // Claude Code in Cursor's terminal goes on the Cursor pill (Mac #120).
     if !map.contains_key("term_editor") {
@@ -221,7 +221,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let name = if island_card { "PermissionRequest".to_string() } else { name };
     if island_card {
         // The island takes the card down just before the relay stops waiting.
-        map.insert("coucou_card_secs".into(), Value::from(card_budget(args.wait).as_secs()));
+        map.insert("lumo_card_secs".into(), Value::from(card_budget(args.wait).as_secs()));
     }
     map.insert("hook_event_name".into(), Value::String(name.clone()));
 
@@ -250,7 +250,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     Some(Event { line, name, question, island_card })
 }
 
-/// Which terminal the session runs in. Unlike macOS, Coucou here accepts events
+/// Which terminal the session runs in. Unlike macOS, Lumo here accepts events
 /// from every terminal, so this is context only — never a filter.
 fn add_terminal_context(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Option<String>) {
     for (key, var) in [
@@ -266,7 +266,7 @@ fn add_terminal_context(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Opti
     }
 }
 
-/// The `coucou_agent` tag: `--agent` when given, otherwise `claude-desktop` for
+/// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
 /// a Claude Code session started from the Claude desktop app, which says so in
 /// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
 /// for a plain Claude Code session.
@@ -276,7 +276,7 @@ fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
 }
 
 /// Set by the app on the `claude -p` and headless `agy` runs of its chat; hooks inherit it.
-const ISLAND_RUN_VAR: &str = "COUCOU_ISLAND_RUN";
+const ISLAND_RUN_VAR: &str = "LUMO_ISLAND_RUN";
 
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     if !arg.is_empty() {
@@ -300,7 +300,7 @@ fn term_editor(env: &dyn Fn(&str) -> Option<String>) -> Option<&'static str> {
 
 /// Caps the strings of a payload: every field to MAX_FIELD_LEN, except the edit
 /// strings of a finished Edit / MultiEdit / Write, which the live diff needs
-/// whole. If even those had to be cut, `coucou_diff_truncated` tells the island
+/// whole. If even those had to be cut, `lumo_diff_truncated` tells the island
 /// not to show counts it cannot trust.
 fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
     let keeps_diff = event == "PostToolUse"
@@ -323,7 +323,7 @@ fn truncate_payload(payload: &mut serde_json::Value, event: &str) {
         if let Some(map) = payload.as_object_mut() {
             map.insert("tool_input".into(), input);
             if cut_any {
-                map.insert("coucou_diff_truncated".into(), serde_json::Value::Bool(true));
+                map.insert("lumo_diff_truncated".into(), serde_json::Value::Bool(true));
             }
         }
     }
@@ -436,17 +436,17 @@ mod tests {
     fn the_islands_own_runs_are_marked() {
         let args = Args { agent: String::new(), event: String::new(), wait: None };
         let raw = br#"{"hook_event_name":"PermissionRequest","tool_name":"Write"}"#;
-        let ev = prepare(raw, &args, &env_of(&[("COUCOU_ISLAND_RUN", "1")]), "/p").unwrap();
-        assert!(ev.line.contains(r#""coucou_island":true"#));
-        assert!(is_island_run(&env_of(&[("COUCOU_ISLAND_RUN", "1")])));
+        let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap();
+        assert!(ev.line.contains(r#""lumo_island":true"#));
+        assert!(is_island_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
-        assert!(!ev.line.contains("coucou_island"));
+        assert!(!ev.line.contains("lumo_island"));
         assert!(!is_island_run(&|_| None));
     }
 
     #[test]
     fn a_shell_command_of_the_islands_antigravity_chat_is_a_permission_request() {
-        let island = env_of(&[("COUCOU_ISLAND_RUN", "1")]);
+        let island = env_of(&[("LUMO_ISLAND_RUN", "1")]);
         let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100) };
         let command = br#"{"hook_event_name":"PreToolUse","conversationId":"c1","toolCall":{"name":"run_command","args":{"CommandLine":"npm test"}}}"#;
         let ev = prepare(command, &agy, &island, "/p").unwrap();
@@ -454,10 +454,10 @@ mod tests {
         assert_eq!(ev.name, "PermissionRequest");
         let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
         assert_eq!(v["hook_event_name"], "PermissionRequest");
-        assert_eq!(v["coucou_agent"], "antigravity");
-        assert_eq!(v["coucou_island"], true);
+        assert_eq!(v["lumo_agent"], "antigravity");
+        assert_eq!(v["lumo_island"], true);
         assert_eq!(v["tool_input"]["command"], "npm test");
-        assert_eq!(v["coucou_card_secs"], 100, "what --wait allows");
+        assert_eq!(v["lumo_card_secs"], 100, "what --wait allows");
         // Hooks installed before the chat came give the relay 10 s: it waits 8.
         assert_eq!(card_budget(None), Duration::from_secs(8));
         assert_eq!(card_budget(Some(100)), Duration::from_secs(100));
@@ -524,7 +524,7 @@ mod tests {
     fn claude_code_payloads_are_forwarded_as_they_are() {
         let (v, ev) = run(r#"{"hook_event_name":"PreToolUse","tool_name":"Bash","cwd":"/p"}"#, "", "PreToolUse");
         assert_eq!(ev.name, "PreToolUse");
-        assert!(v.get("coucou_agent").is_none());
+        assert!(v.get("lumo_agent").is_none());
         assert_eq!(v["cwd"], "/p");
         assert_eq!(v["tool_name"], "Bash");
     }
@@ -535,7 +535,7 @@ mod tests {
         let (v, ev) = run(r#"{"hook_event_name":"BeforeTool","toolCall":{"name":"shell","args":{"CommandLine":"ls"}}}"#, "gemini", "PreToolUse");
         assert_eq!(ev.name, "PreToolUse");
         assert_eq!(v["hook_event_name"], "PreToolUse");
-        assert_eq!(v["coucou_agent"], "gemini");
+        assert_eq!(v["lumo_agent"], "gemini");
         assert_eq!(v["tool_input"]["command"], "ls");
         assert_eq!(v["cwd"], "/home/me/here");
 
@@ -603,7 +603,7 @@ mod tests {
         assert_eq!(v["tool_input"]["new_string"].as_str().unwrap().len(), big.len());
         // Everything else keeps the ordinary cap, and nothing says "cut".
         assert!(v["cwd"].as_str().unwrap().len() <= MAX_FIELD_LEN + 4);
-        assert!(v.get("coucou_diff_truncated").is_none());
+        assert!(v.get("lumo_diff_truncated").is_none());
 
         let mut multi = serde_json::json!({
             "tool_name": "MultiEdit",
@@ -632,7 +632,7 @@ mod tests {
         });
         truncate_payload(&mut v, "PostToolUse");
         assert!(v["tool_input"]["content"].as_str().unwrap().len() <= MAX_DIFF_FIELD_LEN + 4);
-        assert_eq!(v["coucou_diff_truncated"], serde_json::Value::Bool(true));
+        assert_eq!(v["lumo_diff_truncated"], serde_json::Value::Bool(true));
 
         // Together, the edit strings never pass the shared budget.
         let half = "y".repeat(MAX_DIFF_FIELD_LEN - 1);
@@ -642,6 +642,6 @@ mod tests {
         let mut multi = serde_json::json!({ "tool_name": "MultiEdit", "tool_input": { "edits": edits } });
         truncate_payload(&mut multi, "PostToolUse");
         assert!(multi.to_string().len() < MAX_DIFF_TOTAL + 64 * 1024);
-        assert_eq!(multi["coucou_diff_truncated"], serde_json::Value::Bool(true));
+        assert_eq!(multi["lumo_diff_truncated"], serde_json::Value::Bool(true));
     }
 }

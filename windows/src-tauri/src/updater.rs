@@ -6,12 +6,6 @@
 // same NSIS setup.exe the release workflow publishes (.github/workflows/windows.yml,
 // named by scripts/pack.mjs), run with its own window so the user sees every
 // step; Lumo quits right after starting it so its files can be replaced.
-//
-// The app was called Coucou up to 0.3.0, and the installers were named
-// `Coucou-Windows-<v>-setup.exe`. Releases from 0.3.1 on carry
-// `Lumo-Windows-<v>-setup.exe` plus the same file under its old name, which is
-// what an installed 0.3.0 looks for; this build prefers the new name and still
-// accepts the old one.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -53,7 +47,7 @@ pub struct UpdateInfo {
     /// The release's notes, cut to a readable length.
     notes: String,
     /// `Lumo-Windows-<latest>-setup.exe` of that release, or the same
-    /// installer under its old name `Coucou-Windows-<latest>-setup.exe`.
+    /// installer, `Lumo-Windows-<latest>-setup.exe`.
     asset_url: Option<String>,
 }
 
@@ -122,22 +116,18 @@ fn newest_windows_release(releases: Vec<Release>) -> Option<(Version, String, Re
         .max_by(|a, b| a.0.cmp(&b.0))
 }
 
-/// What an installer's file name starts with, best first: the current name,
-/// then the one releases kept for installs from before the rename.
-const INSTALLER_PREFIXES: [&str; 2] = ["Lumo-Windows-", "Coucou-Windows-"];
+/// What an installer's file name starts and ends with, as scripts/pack.mjs writes it.
+const INSTALLER_PREFIX: &str = "Lumo-Windows-";
 const INSTALLER_SUFFIX: &str = "-setup.exe";
 
-/// The installer's names for `version`, best first, as scripts/pack.mjs writes them.
-fn installer_names(version: &str) -> [String; 2] {
-    INSTALLER_PREFIXES.map(|prefix| format!("{prefix}{version}{INSTALLER_SUFFIX}"))
+/// The installer's name for `version`.
+fn installer_name(version: &str) -> String {
+    format!("{INSTALLER_PREFIX}{version}{INSTALLER_SUFFIX}")
 }
 
-/// The version in the middle of an installer's file name, either name.
+/// The version in the middle of an installer's file name.
 fn installer_middle(name: &str) -> Option<&str> {
-    INSTALLER_PREFIXES
-        .iter()
-        .find_map(|prefix| name.strip_prefix(prefix))?
-        .strip_suffix(INSTALLER_SUFFIX)
+    name.strip_prefix(INSTALLER_PREFIX)?.strip_suffix(INSTALLER_SUFFIX)
 }
 
 /// Release notes, without trailing blank space and cut to a length that fits.
@@ -157,14 +147,13 @@ fn compare(current: &str, releases: Vec<Release>) -> Result<UpdateInfo, String> 
         return Err(t("No Windows release has been published yet."));
     };
     let newer = parse_version(current).is_none_or(|mine| latest > mine);
-    let asset_url = installer_names(&raw).iter().find_map(|name| {
-        release
-            .assets
-            .iter()
-            .find(|a| &a.name == name)
-            .map(|a| a.browser_download_url.clone())
-            .filter(|u| Url::parse(u).is_ok_and(|u| is_release_download(&u)))
-    });
+    let name = installer_name(&raw);
+    let asset_url = release
+        .assets
+        .iter()
+        .find(|a| a.name == name)
+        .map(|a| a.browser_download_url.clone())
+        .filter(|u| Url::parse(u).is_ok_and(|u| is_release_download(&u)));
     Ok(UpdateInfo {
         current: current.to_string(),
         latest: raw,
@@ -174,8 +163,7 @@ fn compare(current: &str, releases: Vec<Release>) -> Result<UpdateInfo, String> 
     })
 }
 
-/// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Lumo-Windows-<v>-setup.exe`
-/// (or `Coucou-Windows-<v>-setup.exe`, its name before the rename):
+/// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Lumo-Windows-<v>-setup.exe`:
 /// the only address `update_install` starts a download from.
 fn is_release_download(url: &Url) -> bool {
     if url.scheme() != "https" || url.host_str() != Some("github.com") || url.port().is_some() {
@@ -197,7 +185,7 @@ fn is_release_download(url: &Url) -> bool {
     // The file carries the tag's own version: windows-v1.2.3 → Lumo-Windows-1.2.3-setup.exe.
     tag.starts_with(TAG_PREFIX)
         && is_installer_file(file)
-        && installer_names(&tag[TAG_PREFIX.len()..]).iter().any(|name| name == file)
+        && installer_name(&tag[TAG_PREFIX.len()..]) == file
 }
 
 /// The version an accepted installer address carries.
@@ -206,8 +194,7 @@ fn installer_version(url: &Url) -> Option<Version> {
     parse_version(installer_middle(file)?)
 }
 
-/// `Lumo-Windows-<version>-setup.exe` (or its old `Coucou-Windows-` name), with
-/// nothing but a version in the middle.
+/// `Lumo-Windows-<version>-setup.exe`, with nothing but a version in the middle.
 fn is_installer_file(name: &str) -> bool {
     let Some(middle) = installer_middle(name) else {
         return false;
@@ -223,7 +210,7 @@ fn is_download_host(url: &Url) -> bool {
 }
 
 fn user_agent(app: &AppHandle) -> String {
-    format!("Coucou/{} (+https://github.com/{UPDATE_REPO})", app.package_info().version)
+    format!("Lumo/{} (+https://github.com/{UPDATE_REPO})", app.package_info().version)
 }
 
 /// Settings → Updates → Check for updates. Asks GitHub for the repository's
@@ -384,9 +371,9 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     }
     let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
-    // %TEMP%\Coucou-update\Lumo-Windows-<v>-setup.exe (the folder kept its old
-    // name); installers from earlier updates are cleared first.
-    let dir = std::env::temp_dir().join("Coucou-update");
+    // %TEMP%\Lumo-update\Lumo-Windows-<v>-setup.exe; installers from earlier
+    // updates are cleared first.
+    let dir = std::env::temp_dir().join("Lumo-update");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
     let path = dir.join(&file_name);
@@ -445,19 +432,18 @@ mod tests {
         let mut beta = release("windows-v0.9.0", &["Lumo-Windows-0.9.0-setup.exe"]);
         beta.prerelease = true;
         let releases = vec![
-            release("windows-v0.2.1", &["Coucou-Windows-0.2.1-setup.exe", "Coucou-Windows-0.2.1.msi"]),
-            release("windows-latest", &["Lumo-Windows-setup.exe", "Coucou-Windows-setup.exe"]),
-            release("v0.5.0", &["Coucou.dmg"]),
+            release("windows-v0.2.1", &["Lumo-Windows-0.2.1-setup.exe", "Lumo-Windows-0.2.1.msi"]),
+            release("windows-latest", &["Lumo-Windows-setup.exe"]),
+            release("v0.5.0", &["Lumo.dmg"]),
             release("linux-v0.4.0", &[]),
-            release("windows-v0.3.1", &["Coucou-Windows-0.3.1-setup.exe", "Lumo-Windows-0.3.1-setup.exe", "Lumo-Windows-0.3.1.msi"]),
-            release("windows-v0.3.0", &["Coucou-Windows-0.3.0-setup.exe"]),
+            release("windows-v0.3.1", &["Lumo-Windows-0.3.1.msi", "Lumo-Windows-0.3.1-setup.exe"]),
+            release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"]),
             beta,
         ];
         let info = compare("0.2.0", releases).unwrap();
         assert_eq!(info.latest, "0.3.1");
         assert!(info.newer);
         assert_eq!(info.notes, "Notes");
-        // The new name wins over the copy kept under the old one, whatever their order.
         assert_eq!(
             info.asset_url.as_deref(),
             Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe").as_str())
@@ -465,17 +451,8 @@ mod tests {
     }
 
     #[test]
-    fn a_release_with_only_the_old_installer_name_still_updates() {
-        let info = compare("0.2.0", vec![release("windows-v0.3.0", &["Coucou-Windows-0.3.0-setup.exe"])]).unwrap();
-        assert_eq!(
-            info.asset_url.as_deref(),
-            Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe").as_str())
-        );
-    }
-
-    #[test]
     fn the_same_or_an_older_release_is_not_newer() {
-        let info = compare("0.3.0", vec![release("windows-v0.3.0", &["Coucou-Windows-0.3.0-setup.exe"])]).unwrap();
+        let info = compare("0.3.0", vec![release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"])]).unwrap();
         assert!(!info.newer);
         let info = compare("0.4.0", vec![release("windows-v0.3.0", &[])]).unwrap();
         assert!(!info.newer);
@@ -487,41 +464,26 @@ mod tests {
     #[test]
     fn only_this_repositorys_installers_are_downloaded() {
         let ok = |s: &str| is_release_download(&Url::parse(s).unwrap());
-        assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(ok("https://github.com/rccrd12/lumo/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
-        // The repository before its rename is not trusted any more.
-        assert!(!ok("https://github.com/Rccrd12/coucou-agent/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
-        // Another repository, host, scheme, file or tag.
-        assert!(!ok("https://github.com/someone/else/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
-        assert!(!ok(&format!("https://evil.example/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(!ok(&format!("http://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0.msi")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/payload.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/x/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(!ok(&format!("https://github.com:8443/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe?x=1")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-..-setup.exe")));
-        // The file must carry its tag's version.
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Coucou-Windows-0.3.0-setup.exe")));
-        let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Coucou-Windows-0.4.1-setup.exe")).unwrap();
-        assert_eq!(installer_version(&url), parse_version("0.4.1"));
-    }
-
-    #[test]
-    fn the_new_installer_name_is_held_to_the_same_rules() {
-        let ok = |s: &str| is_release_download(&Url::parse(s).unwrap());
         assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-..-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Lumo-Windows-0.3.1-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-0.3.1-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-Coucou-Windows-0.3.1-setup.exe")));
+        assert!(ok("https://github.com/rccrd12/lumo/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe"));
+        // Another repository, host, scheme, file or tag.
         assert!(!ok("https://github.com/someone/else/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe"));
+        assert!(!ok(&format!("https://evil.example/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("http://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/payload.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/x/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com:8443/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe?x=1")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-..-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-0.3.1-setup.exe")));
+        // The file must carry its tag's version.
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Lumo-Windows-0.3.1-setup.exe")));
         let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Lumo-Windows-0.4.1-setup.exe")).unwrap();
         assert_eq!(installer_version(&url), parse_version("0.4.1"));
         assert!(is_installer_file("Lumo-Windows-0.4.1-setup.exe"));
-        assert!(is_installer_file("Coucou-Windows-0.4.1-setup.exe"));
+        assert!(!is_installer_file("Other-Windows-0.4.1-setup.exe"));
         assert!(!is_installer_file("Lumo-Windows-setup.exe"));
     }
 

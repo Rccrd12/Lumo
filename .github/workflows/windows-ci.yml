@@ -45,8 +45,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             windows/target
-          # The build caches absolute paths, so a cache from before the repo's
-          # rename (coucou-agent → Lumo) breaks the build: the key names the repo.
+          # The build caches absolute paths: the key names the repo, so a cache
+          # from a repository under another name is never restored.
           key: windows-ci-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
           restore-keys: windows-ci-cargo-${{ github.repository }}-
 
@@ -59,11 +59,11 @@ jobs:
       - name: Island tests
         run: npm test
 
-      # The app bundles target/release/lumo-hook.exe (package coucou-hook) as a resource, and its
+      # The app bundles target/release/lumo-hook.exe as a resource, and its
       # build script refuses to run until that file exists. One command per
       # step: PowerShell carries on after a failed command in the same step.
       - name: Build the relay
-        run: cargo build --release -p coucou-hook
+        run: cargo build --release -p lumo-hook
 
       - name: Rust tests
         run: cargo test --workspace --locked

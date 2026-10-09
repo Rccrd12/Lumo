@@ -1,8 +1,8 @@
 // Chat through Antigravity CLI: the `agy` command the user installed and signed
-// in to with their own Google account. No API key: Coucou runs the unmodified
+// in to with their own Google account. No API key: Lumo runs the unmodified
 // binary in headless mode (`agy --input-format stream-json`), and it answers
 // with its own sign-in (cached in the system keyring), exactly as in a
-// terminal. Coucou never reads, stores or forwards any Google credential.
+// terminal. Lumo never reads, stores or forwards any Google credential.
 //
 // The same shape as claude_code.rs, whose helpers it borrows:
 //
@@ -21,7 +21,7 @@
 // written freely; a tool that needs approval (a shell command, by default) is
 // soft-denied — the run carries on without it. With Lumo's Antigravity hooks
 // installed, a shell command of this run is an Allow / Deny card in the island
-// instead (coucou-hook, `COUCOU_ISLAND_RUN`); no click, and it stays denied.
+// instead (lumo-hook, `LUMO_ISLAND_RUN`); no click, and it stays denied.
 // `--dangerously-skip-permissions` is never passed.
 
 use std::io::{BufRead, BufReader, Read, Write};
@@ -471,8 +471,8 @@ fn run(
 
     let mut cmd = Command::new(&exe);
     cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    // Tells coucou-hook this run is the island's chat, not a session to show.
-    cmd.env("COUCOU_ISLAND_RUN", "1");
+    // Tells lumo-hook this run is the island's chat, not a session to show.
+    cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
     // Its own process group, so Stop ends the tools and hooks it started too.
     #[cfg(target_os = "linux")]
@@ -748,7 +748,7 @@ fn helper_input(task: &str) -> String {
 }
 
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Coucou folder otherwise), with the `model` of Settings → Voice
+/// (the Lumo folder otherwise), with the `model` of Settings → Voice
 /// ("default": agy's own) and the chat's permission `mode`. A fresh
 /// conversation each time. Blocking.
 pub(crate) fn help(
@@ -784,8 +784,8 @@ mod tests {
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let inbox = "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox";
-        let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Coucou", inbox, &[]);
+        let inbox = "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox";
+        let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Lumo", inbox, &[]);
         assert_eq!(
             &a[..7],
             ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "15m"]
@@ -794,7 +794,7 @@ mod tests {
         assert!(!a.contains(&"--effort".to_string()), "the model's name carries its effort: {a:?}");
         assert!(a.windows(2).any(|w| w == ["--model", "gemini-3-pro"]));
         assert!(a.windows(2).any(|w| w == ["--conversation", CID]));
-        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\Coucou"]), "its own folder, not agy's scratch one");
+        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\Lumo"]), "its own folder, not agy's scratch one");
         assert!(a.windows(2).any(|w| w == ["--add-dir", inbox]));
         assert!(!a.contains(&"--mode".to_string()), "default: agy's own request-review");
         assert!(!a.iter().any(|s| s.contains("dangerously")), "never skips permissions: {a:?}");
@@ -881,7 +881,7 @@ mod tests {
     fn the_stream_gives_the_text_the_conversation_and_the_answer() {
         let mut run = Run::default();
         let lines = [
-            r#"{"event":"init","cwd":"/home/me/Coucou","tools":["view_file"],"permission_mode":"default"}"#.to_string(),
+            r#"{"event":"init","cwd":"/home/me/Lumo","tools":["view_file"],"permission_mode":"default"}"#.to_string(),
             format!(r#"{{"event":"step_update","conversation_id":"{CID}","step_index":0,"state":"DONE","step_type":"user_input"}}"#),
             format!(r#"{{"event":"step_update","conversation_id":"{CID}","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Let me "}}"#),
             format!(r#"{{"event":"step_update","conversation_id":"{CID}","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"read it."}}"#),
@@ -940,7 +940,7 @@ mod tests {
         assert_eq!(a("view_file", json!({"AbsolutePath": "C:\\Users\\me\\Docs\\report.pdf"})), Activity::new("read", "report.pdf"));
         assert_eq!(a("view_file", json!({})), Activity::new("read", ""), "before the parameters are known");
         assert_eq!(
-            a("view_file", json!({"AbsolutePath": "/home/me/.local/share/Coucou/inbox/screenshot-2026-10-09-101500-screen1.png"})),
+            a("view_file", json!({"AbsolutePath": "/home/me/.local/share/Lumo/inbox/screenshot-2026-10-09-101500-screen1.png"})),
             Activity::new("screen", ""),
             "Lumo's own screenshots are the screen"
         );
@@ -1039,7 +1039,7 @@ mod tests {
         // for stdin to close as agy does.
         #[cfg(unix)]
         {
-            let dir = std::env::temp_dir().join(format!("coucou-agy-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("lumo-agy-{}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             let (exe, args) = script(&format!(
                 r#"read -r line; printf '%s\n' "$line" > got.json

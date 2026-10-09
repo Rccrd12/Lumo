@@ -17,7 +17,7 @@ use serde_json::{json, Map, Value};
 use crate::config_file::{self, FileEdit, Plan};
 use crate::{platform, settings};
 
-/// Marker that identifies a Lumo entry: the relay's file name, now or up to 0.3.1.
+/// Marker that identifies a Lumo entry: the relay's file name.
 use crate::hooks::is_relay_command;
 #[cfg(test)]
 const MARKER: &str = "lumo-hook";
@@ -144,28 +144,53 @@ impl Agent {
             Agent::Antigravity => vec![home.join(".gemini").join("config").join("hooks.json")],
             Agent::Cursor => vec![home.join(".cursor").join("hooks.json")],
             Agent::Codex => vec![home.join(".codex").join("hooks.json")],
-            Agent::Copilot => vec![home.join(".copilot").join("hooks").join("coucou.json")],
+            Agent::Copilot => vec![home.join(".copilot").join("hooks").join("lumo.json")],
             Agent::Muse => vec![home.join(".config").join("muse").join("settings.json")],
             // OpenCode and Amp read ~/.config on Windows too.
-            Agent::OpenCode => vec![home.join(".config").join("opencode").join("plugins").join("coucou.js")],
-            Agent::Amp => vec![home.join(".config").join("amp").join("plugins").join("coucou.ts")],
+            Agent::OpenCode => vec![home.join(".config").join("opencode").join("plugins").join("lumo.js")],
+            Agent::Amp => vec![home.join(".config").join("amp").join("plugins").join("lumo.ts")],
             Agent::Hermes => {
-                let dir = home.join(".hermes").join("plugins").join("coucou");
+                let dir = home.join(".hermes").join("plugins").join("lumo");
                 vec![dir.join("__init__.py"), dir.join("plugin.yaml")]
             }
         }
     }
 
-    /// The edits that install (or remove) Coucou for this agent.
+    /// The edits that install (or remove) Lumo for this agent. Either way, the
+    /// files Lumo wrote under its old name go (migrate.rs), so the agent never
+    /// runs both.
     fn edits(self, home: &Path, relay: &Relay, install: bool) -> Vec<FileEdit<'static>> {
         let files = self.files(home);
-        if let Some(contents) = self.plugin(relay) {
-            return files.into_iter().zip(contents).map(|(path, text)| plugin_edit(path, text, install)).collect();
+        let mut edits: Vec<FileEdit<'static>> = if let Some(contents) = self.plugin(relay) {
+            files.into_iter().zip(contents).map(|(path, text)| plugin_edit(path, text, install)).collect()
+        } else {
+            let path = files[0].clone();
+            let label = path.display().to_string();
+            let change = self.json_change(relay, install);
+            vec![FileEdit { path, edit: config_file::json_edit(label, change) }]
+        };
+        for old in self.old_files(home) {
+            let label = old.display().to_string();
+            if self == Agent::Copilot {
+                edits.push(FileEdit { path: old, edit: config_file::json_edit(label, Box::new(copilot_uninstall)) });
+            } else {
+                edits.push(plugin_edit(old, String::new(), false));
+            }
         }
-        let path = files[0].clone();
-        let label = path.display().to_string();
-        let change = self.json_change(relay, install);
-        vec![FileEdit { path, edit: config_file::json_edit(label, change) }]
+        edits
+    }
+
+    /// The files Lumo wrote for this agent under its old name that are still
+    /// there and still Lumo's.
+    fn old_files(self, home: &Path) -> Vec<PathBuf> {
+        crate::migrate::agent_files(self.id(), home)
+            .into_iter()
+            .filter(|p| match std::fs::read_to_string(p) {
+                Ok(text) if self == Agent::Copilot => is_relay_command(&text),
+                Ok(text) => is_our_plugin(&text),
+                Err(_) => false,
+            })
+            .collect()
     }
 
     /// For an agent that loads a plugin rather than running hook commands, the
@@ -182,7 +207,7 @@ impl Agent {
     }
 
     /// The change to this agent's JSON config: the new object, or `None` to
-    /// remove a file that is Coucou's alone. Command lines are built here, up
+    /// remove a file that is Lumo's alone. Command lines are built here, up
     /// front, so the change itself is pure.
     fn json_change(self, relay: &Relay, install: bool) -> JsonChange {
         match (self, install) {
@@ -238,9 +263,12 @@ impl Agent {
         }
     }
 
-    /// True when the agent's config already routes to Coucou. Never fails: a
+    /// True when the agent's config already routes to Lumo. Never fails: a
     /// file we cannot read just reads as "not installed".
     fn installed(self, home: &Path) -> bool {
+        if !self.old_files(home).is_empty() {
+            return true;
+        }
         let files = self.files(home);
         if matches!(self, Agent::OpenCode | Agent::Amp | Agent::Hermes) {
             return std::fs::read_to_string(&files[0]).is_ok_and(|text| is_our_plugin(&text));
@@ -254,7 +282,10 @@ impl Agent {
         };
         match self {
             Agent::Gemini => groups_have_ours(&json(), "gemini"),
-            Agent::Antigravity => json().get("coucou").is_some_and(antigravity_is_ours),
+            Agent::Antigravity => {
+                let root = json();
+                [ANTIGRAVITY_GROUP, crate::migrate::OLD_GROUP].iter().any(|g| root.get(*g).is_some_and(antigravity_is_ours))
+            }
             Agent::Cursor => groups_have_ours(&json(), "cursor"),
             Agent::Codex => groups_have_ours(&json(), "codex"),
             Agent::Copilot => json()
@@ -304,7 +335,7 @@ impl Agent {
             Agent::Muse => t("Start a new Muse Code session to pick the hooks up."),
             Agent::OpenCode => t("Restart OpenCode to load the plugin."),
             Agent::Amp => t("Restart Amp to load the plugin."),
-            Agent::Hermes => t("Turn it on once with `hermes plugins enable coucou`, then start a new Hermes session."),
+            Agent::Hermes => t("Turn it on once with `hermes plugins enable lumo`, then start a new Hermes session."),
         }
     }
 }
@@ -317,7 +348,7 @@ pub struct AgentStatus {
     pub id: &'static str,
     pub name: &'static str,
     pub installed: bool,
-    /// The file (or files, one per line) Coucou writes.
+    /// The file (or files, one per line) Lumo writes.
     pub path: String,
     pub hook_ready: bool,
     /// The island can allow or deny this agent's permission requests.
@@ -327,6 +358,15 @@ pub struct AgentStatus {
 
 fn find(id: &str) -> Result<Agent, String> {
     Agent::from_id(id).ok_or_else(|| crate::i18n::tf("Unknown agent \"{id}\".", &[("id", id)]))
+}
+
+/// Every file any agent's install may touch, Lumo's and those of its old
+/// name: what the relay's old folder is kept for while one still runs it.
+pub fn config_files(home: &Path) -> Vec<PathBuf> {
+    Agent::ALL
+        .iter()
+        .flat_map(|a| a.files(home).into_iter().chain(crate::migrate::agent_files(a.id(), home)))
+        .collect()
 }
 
 pub fn list() -> Vec<AgentStatus> {
@@ -362,9 +402,13 @@ pub fn apply(id: &str, install: bool, fingerprint: &str) -> Result<String, Strin
 
 fn apply_in(agent: Agent, home: &Path, relay: &Relay, install: bool, fingerprint: &str) -> Result<String, String> {
     let backups = config_file::apply(&agent.edits(home, relay, install), fingerprint)?;
-    // Hermes loads every folder under plugins/: an empty `coucou` one goes too.
-    if agent == Agent::Hermes && !install {
-        if let Some(dir) = agent.files(home)[0].parent() {
+    // Hermes loads every folder under plugins/: an empty one of Lumo's goes too.
+    if agent == Agent::Hermes {
+        let mut dirs: Vec<PathBuf> = crate::migrate::agent_files(agent.id(), home).iter().filter_map(|p| p.parent().map(Path::to_path_buf)).collect();
+        if !install {
+            dirs.extend(agent.files(home)[0].parent().map(Path::to_path_buf));
+        }
+        for dir in dirs {
             let _ = std::fs::remove_dir(dir);
         }
     }
@@ -395,7 +439,7 @@ fn list_at(hooks: &Map<String, Value>, event: &str) -> Result<Vec<Value>, String
     }
 }
 
-/// A command line written by Coucou for `agent`.
+/// A command line written by Lumo for `agent`.
 fn is_our_command(command: Option<&Value>, agent: &str) -> bool {
     command
         .and_then(Value::as_str)
@@ -403,7 +447,7 @@ fn is_our_command(command: Option<&Value>, agent: &str) -> bool {
 }
 
 /// Claude-style groups (`{"matcher"?, "hooks": [{"command"}]}`, or a legacy
-/// flat `{"command"}`) without Coucou's entries for `agent`. A group left
+/// flat `{"command"}`) without Lumo's entries for `agent`. A group left
 /// empty goes; everything else stays exactly as it was.
 fn without_ours_in_groups(groups: &[Value], agent: &str) -> Vec<Value> {
     groups
@@ -430,8 +474,8 @@ fn without_ours_in_groups(groups: &[Value], agent: &str) -> Vec<Value> {
         .collect()
 }
 
-/// `root` with one Coucou group per event, built by `group(event)`. Earlier
-/// Coucou entries for `agent` are replaced; nobody else's are touched.
+/// `root` with one Lumo group per event, built by `group(event)`. Earlier
+/// Lumo entries for `agent` are replaced; nobody else's are touched.
 fn groups_install(
     root: &Value,
     agent: &str,
@@ -448,7 +492,7 @@ fn groups_install(
     Ok(root)
 }
 
-/// `root` without any Coucou group for `agent`; an event left empty goes, and
+/// `root` without any Lumo group for `agent`; an event left empty goes, and
 /// so does `hooks` when nothing is left in it.
 fn groups_uninstall(root: &Value, agent: &str) -> Result<Value, String> {
     let mut root = root.as_object().cloned().unwrap_or_default();
@@ -519,7 +563,7 @@ fn gemini_install(root: &Value, commands: &[(String, String, u64)]) -> Result<Va
 
 // ── Antigravity — ~/.gemini/config/hooks.json ─────────────────────────────────
 //
-// Hooks are named groups at the top level; Coucou's is `coucou`. Tool events
+// Hooks are named groups at the top level; Lumo's is `lumo`. Tool events
 // take matcher groups, lifecycle events take handlers directly; timeouts are
 // in seconds. Merge and removal come from #298 (kobaltgit). The relay answers
 // PreToolUse with "ask" — no decision — never with an allow: Antigravity's own
@@ -557,26 +601,32 @@ fn antigravity_block(relay: &Relay) -> Value {
     Value::Object(block)
 }
 
-/// A `coucou` group Coucou wrote (it runs the relay as `--agent antigravity`).
+/// Lumo's group in hooks.json.
+const ANTIGRAVITY_GROUP: &str = "lumo";
+
+/// A group Lumo wrote (it runs the relay as `--agent antigravity`).
 fn antigravity_is_ours(group: &Value) -> bool {
     let text = group.to_string();
     is_relay_command(&text) && text.contains("--agent antigravity")
 }
 
+/// Lumo's group in, the one of its old name (migrate.rs) out.
 fn antigravity_install(root: &Value, block: &Value) -> Result<Value, String> {
-    let mut root = root.as_object().cloned().unwrap_or_default();
-    if root.get("coucou").is_some_and(|g| !antigravity_is_ours(g)) {
-        return Err(crate::i18n::t("A hook group named \"coucou\" that Lumo did not write is already there — Lumo has not touched it."));
+    let mut root = antigravity_uninstall(root)?.as_object().cloned().unwrap_or_default();
+    if root.contains_key(ANTIGRAVITY_GROUP) {
+        return Err(crate::i18n::t("A hook group named \"lumo\" that Lumo did not write is already there — Lumo has not touched it."));
     }
-    root.insert("coucou".into(), block.clone());
+    root.insert(ANTIGRAVITY_GROUP.into(), block.clone());
     Ok(Value::Object(root))
 }
 
-/// Removes Coucou's group, and only if it is Coucou's.
+/// Removes Lumo's group (under its name now or before), and only if it is Lumo's.
 fn antigravity_uninstall(root: &Value) -> Result<Value, String> {
     let mut root = root.as_object().cloned().unwrap_or_default();
-    if root.get("coucou").is_some_and(antigravity_is_ours) {
-        root.remove("coucou");
+    for group in [ANTIGRAVITY_GROUP, crate::migrate::OLD_GROUP] {
+        if root.get(group).is_some_and(antigravity_is_ours) {
+            root.remove(group);
+        }
     }
     Ok(Value::Object(root))
 }
@@ -641,14 +691,14 @@ fn codex_install(root: &Value, command: &str) -> Result<Value, String> {
     groups_install(root, "codex", events).map(Value::Object)
 }
 
-// ── GitHub Copilot CLI — ~/.copilot/hooks/coucou.json ─────────────────────────
+// ── GitHub Copilot CLI — ~/.copilot/hooks/lumo.json ─────────────────────────
 //
-// A file of Coucou's own in Copilot's hooks folder: camelCase events, each
+// A file of Lumo's own in Copilot's hooks folder: camelCase events, each
 // entry `{"type": "command", "bash": …, "timeoutSec": N}`, plus `powershell`
 // on Windows, where Copilot runs that one. The event goes on the command line
 // because Copilot does not put it in the payload. Copilot is fail-closed on
 // permissionRequest: the relay always answers it with valid JSON — "ask" when
-// nobody clicked. Removing the last of Coucou's entries removes the file.
+// nobody clicked. Removing the last of Lumo's entries removes the file.
 
 const COPILOT_EVENTS: &[(&str, u64)] = &[
     ("sessionStart", 10),
@@ -704,7 +754,7 @@ fn copilot_uninstall(root: &Value) -> Result<Option<Value>, String> {
             root.insert("hooks".into(), Value::Object(hooks));
         }
     }
-    // Nothing of anyone else's left: the file was Coucou's, and goes.
+    // Nothing of anyone else's left: the file was Lumo's, and goes.
     if root.keys().all(|k| k == "version") {
         return Ok(None);
     }
@@ -747,16 +797,16 @@ fn muse_install(root: &Value, commands: &[(String, String, u64)]) -> Result<Valu
 // These agents load code rather than run hook commands. The Mac's plugins
 // start `/bin/sh` on a script at a macOS path; these start the relay itself,
 // at this machine's path, with no shell in between. Every one is
-// fire-and-forget: the agent never waits on Coucou, and if Coucou is closed
+// fire-and-forget: the agent never waits on Lumo, and if Lumo is closed
 // nothing happens. None of them ever answers a permission: Hermes keeps its
 // approvals (as on the Mac), and Amp's steps come from `tool.result` so the
 // plugin never has to return a verdict from `tool.call`.
 
-/// Every plugin file Coucou writes says so; only such a file is replaced or removed.
-const GENERATED: &str = "generated by Coucou";
+/// Every plugin file Lumo writes says so; only such a file is replaced or removed.
+const GENERATED: &str = "generated by Lumo";
 
 fn is_our_plugin(text: &str) -> bool {
-    text.contains(GENERATED)
+    text.contains(GENERATED) || text.contains(crate::migrate::OLD_MARKER)
 }
 
 fn plugin_edit(path: PathBuf, content: String, install: bool) -> FileEdit<'static> {
@@ -772,9 +822,9 @@ fn plugin_edit(path: PathBuf, content: String, install: bool) -> FileEdit<'stati
     FileEdit { path, edit }
 }
 
-const OPENCODE_PLUGIN: &str = r#"// Coucou plugin for OpenCode — generated by Coucou.
-// Forwards OpenCode's events to Coucou's relay (coucou-hook), fire-and-forget:
-// OpenCode never waits on it, and nothing happens when Coucou is closed.
+const OPENCODE_PLUGIN: &str = r#"// Lumo plugin for OpenCode — generated by Lumo.
+// Forwards OpenCode's events to Lumo's relay (lumo-hook), fire-and-forget:
+// OpenCode never waits on it, and nothing happens when Lumo is closed.
 import { spawn } from 'node:child_process';
 
 const HOOK = {HOOK};
@@ -799,7 +849,7 @@ function forward(hook_event_name, payload) {
   } catch {}
 }
 
-export const CoucouPlugin = async ({ directory } = {}) => ({
+export const LumoPlugin = async ({ directory } = {}) => ({
   event: async ({ event }) => {
     const hook_event_name = EVENT_MAP[event?.type];
     if (!hook_event_name) return;
@@ -827,8 +877,8 @@ export const CoucouPlugin = async ({ directory } = {}) => ({
 });
 "#;
 
-const AMP_PLUGIN: &str = r#"// Coucou plugin for Amp — generated by Coucou.
-// Forwards Amp's events to Coucou's relay (coucou-hook), fire-and-forget and
+const AMP_PLUGIN: &str = r#"// Lumo plugin for Amp — generated by Lumo.
+// Forwards Amp's events to Lumo's relay (lumo-hook), fire-and-forget and
 // display only: Amp never waits on it, and it never decides anything for Amp.
 import { spawn } from 'node:child_process';
 
@@ -855,7 +905,7 @@ export default function (amp: any): void {
     forward('UserPromptSubmit', { ...session(e), prompt: typeof e?.message === 'string' ? e.message : '' });
   });
   // A step per tool once it has run: listening to tool.call would mean
-  // returning a verdict for Amp, and Coucou never makes one.
+  // returning a verdict for Amp, and Lumo never makes one.
   amp.on('tool.result', (e: any) => {
     forward('PreToolUse', { ...session(e), tool_name: typeof e?.tool === 'string' ? e.tool : '', tool_input: e?.input ?? null });
   });
@@ -863,8 +913,8 @@ export default function (amp: any): void {
 }
 "#;
 
-const HERMES_PLUGIN: &str = r#"# Coucou plugin for Hermes Agent — generated by Coucou.
-# Session and tool events go to Coucou's relay (coucou-hook), fire-and-forget:
+const HERMES_PLUGIN: &str = r#"# Lumo plugin for Hermes Agent — generated by Lumo.
+# Session and tool events go to Lumo's relay (lumo-hook), fire-and-forget:
 # Hermes never waits on it, and keeps every approval decision to itself.
 import json, os, subprocess, threading
 
@@ -933,9 +983,9 @@ def register(ctx):
     ctx.register_hook('pre_approval_request', pre_approval_request)
 "#;
 
-const HERMES_PLUGIN_YAML: &str = r#"name: coucou
+const HERMES_PLUGIN_YAML: &str = r#"name: lumo
 version: "1.0"
-description: Coucou island integration — generated by Coucou
+description: Lumo island integration — generated by Lumo
 "#;
 
 #[cfg(test)]
@@ -944,15 +994,15 @@ mod tests {
     use crate::config_file::tests::scratch;
 
     fn linux() -> Relay {
-        Relay { exe: "/home/me/.local/share/coucou/bin/lumo-hook".into(), windows: false }
+        Relay { exe: "/home/me/.local/share/lumo/bin/lumo-hook".into(), windows: false }
     }
 
     fn windows(exe: &str) -> Relay {
         Relay { exe: exe.into(), windows: true }
     }
 
-    const WIN: &str = r"C:\Users\me\AppData\Local\Coucou\bin\lumo-hook.exe";
-    const WIN_SPACE: &str = r"C:\Users\Jane O'Neil\AppData\Local\Coucou\bin\lumo-hook.exe";
+    const WIN: &str = r"C:\Users\me\AppData\Local\com.rccrd12.lumo\bin\lumo-hook.exe";
+    const WIN_SPACE: &str = r"C:\Users\Jane O'Neil\AppData\Local\com.rccrd12.lumo\bin\lumo-hook.exe";
 
     /// Installs then uninstalls `agent` in a fresh home holding `existing` in
     /// its first file, and returns (installed file, uninstalled file).
@@ -988,12 +1038,12 @@ mod tests {
     fn the_command_is_quoted_for_the_shell_that_runs_it() {
         assert_eq!(
             linux().command(Shell::Cmd, "--agent codex"),
-            "'/home/me/.local/share/coucou/bin/lumo-hook' --agent codex"
+            "'/home/me/.local/share/lumo/bin/lumo-hook' --agent codex"
         );
         let w = windows(WIN);
         assert_eq!(
             w.command(Shell::Sh, "Stop"),
-            "\"C:/Users/me/AppData/Local/Coucou/bin/lumo-hook.exe\" Stop"
+            "\"C:/Users/me/AppData/Local/com.rccrd12.lumo/bin/lumo-hook.exe\" Stop"
         );
         assert_eq!(
             w.command(Shell::PowerShell, "--agent gemini Stop"),
@@ -1006,7 +1056,7 @@ mod tests {
         assert_eq!(spaced.command(Shell::Cmd, "x"), format!("\"{WIN_SPACE}\" x"));
         assert_eq!(
             spaced.command(Shell::PowerShell, "x"),
-            r"& 'C:\Users\Jane O''Neil\AppData\Local\Coucou\bin\lumo-hook.exe' x"
+            r"& 'C:\Users\Jane O''Neil\AppData\Local\com.rccrd12.lumo\bin\lumo-hook.exe' x"
         );
     }
 
@@ -1015,6 +1065,33 @@ mod tests {
         assert_eq!(sh_quote("/home/a b/x"), "'/home/a b/x'");
         assert_eq!(sh_quote(r#"/h/$(id)`x`\"y"#), r#"'/h/$(id)`x`\"y'"#);
         assert_eq!(sh_quote("/h/it's"), r"'/h/it'\''s'");
+    }
+
+    #[test]
+    fn installing_removes_what_lumo_wrote_under_its_old_name() {
+        // Antigravity: the old group goes, Lumo's comes, the user's stays.
+        let mut root = Map::new();
+        root.insert(crate::migrate::OLD_GROUP.into(), antigravity_block(&linux()));
+        root.insert("mine".into(), json!({}));
+        let after = antigravity_install(&Value::Object(root), &antigravity_block(&linux())).unwrap();
+        assert!(after.get(crate::migrate::OLD_GROUP).is_none());
+        assert!(after.get(ANTIGRAVITY_GROUP).is_some() && after.get("mine").is_some());
+
+        // A plugin: the old file of Lumo's goes with the install; one that
+        // isn't Lumo's under that name is left alone.
+        let home = scratch("old-files");
+        let old = crate::migrate::agent_files("opencode", &home)[0].clone();
+        std::fs::create_dir_all(old.parent().unwrap()).unwrap();
+        std::fs::write(&old, format!("// {}\n", crate::migrate::OLD_MARKER)).unwrap();
+        assert!(Agent::OpenCode.installed(&home), "counts as installed until replaced");
+        let edits = Agent::OpenCode.edits(&home, &linux(), true);
+        let plan = config_file::preview(&edits).unwrap();
+        config_file::apply(&edits, &plan.fingerprint).unwrap();
+        assert!(!old.exists());
+        assert!(Agent::OpenCode.files(&home)[0].exists());
+        std::fs::write(&old, "// somebody's own plugin\n").unwrap();
+        assert_eq!(Agent::OpenCode.edits(&home, &linux(), true).len(), 1, "not Lumo's: not touched");
+        let _ = std::fs::remove_dir_all(home);
     }
 
     #[test]
@@ -1046,8 +1123,8 @@ mod tests {
 
     #[test]
     fn installing_twice_leaves_one_entry_per_event() {
-        let once = gemini_install(&json!({}), &[("BeforeTool".into(), "'x/coucou-hook' --agent gemini PreToolUse".into(), 5000)]).unwrap();
-        let twice = gemini_install(&once, &[("BeforeTool".into(), "'y/coucou-hook' --agent gemini PreToolUse".into(), 5000)]).unwrap();
+        let once = gemini_install(&json!({}), &[("BeforeTool".into(), "'x/lumo-hook' --agent gemini PreToolUse".into(), 5000)]).unwrap();
+        let twice = gemini_install(&once, &[("BeforeTool".into(), "'y/lumo-hook' --agent gemini PreToolUse".into(), 5000)]).unwrap();
         assert_eq!(twice["hooks"]["BeforeTool"].as_array().unwrap().len(), 1);
     }
 
@@ -1059,7 +1136,7 @@ mod tests {
             if file.extension().is_some_and(|e| e == "json") {
                 std::fs::create_dir_all(file.parent().unwrap()).unwrap();
                 let shaped: &[&str] = match agent {
-                    Agent::Antigravity => &[r#"{"coucou":"nope"}"#],
+                    Agent::Antigravity => &[r#"{"lumo":"nope"}"#],
                     _ => &[r#"{"hooks":"nope"}"#, r#"{"hooks":[1]}"#],
                 };
                 for odd in shaped.iter().copied().chain(["[1,2]", "{ broken", "\"text\""]) {
@@ -1078,7 +1155,7 @@ mod tests {
         let existing = r#"{"my-guard":{"PreToolUse":[{"matcher":"run_command","hooks":[{"command":"/bin/guard"}]}]}}"#;
         let (home, installed, removed) = round_trip(Agent::Antigravity, Some(existing));
         assert_eq!(installed["my-guard"]["PreToolUse"][0]["matcher"], "run_command");
-        let ours = &installed["coucou"];
+        let ours = &installed["lumo"];
         for event in ANTIGRAVITY_TOOL_EVENTS {
             assert_eq!(ours[event][0]["matcher"], "*");
             let cmd = ours[event][0]["hooks"][0]["command"].as_str().unwrap();
@@ -1100,8 +1177,8 @@ mod tests {
     }
 
     #[test]
-    fn a_coucou_group_someone_else_wrote_is_neither_replaced_nor_removed() {
-        let theirs = json!({ "coucou": { "Stop": [{ "command": "/bin/notify" }] } });
+    fn a_lumo_group_someone_else_wrote_is_neither_replaced_nor_removed() {
+        let theirs = json!({ "lumo": { "Stop": [{ "command": "/bin/notify" }] } });
         assert!(antigravity_install(&theirs, &antigravity_block(&linux())).is_err());
         assert_eq!(antigravity_uninstall(&theirs).unwrap(), theirs);
     }
@@ -1131,7 +1208,7 @@ mod tests {
 
     #[test]
     fn a_new_cursor_file_gets_its_version() {
-        let after = cursor_install(&json!({}), "'x/coucou-hook' --agent cursor").unwrap();
+        let after = cursor_install(&json!({}), "'x/lumo-hook' --agent cursor").unwrap();
         assert_eq!(after["version"], 1);
         // A version the user set is theirs.
         let after = cursor_install(&json!({ "version": 2 }), "c").unwrap();
@@ -1162,7 +1239,7 @@ mod tests {
     }
 
     #[test]
-    fn copilot_gets_a_file_of_its_own_which_goes_when_coucou_leaves() {
+    fn copilot_gets_a_file_of_its_own_which_goes_when_lumo_leaves() {
         let (home, installed, removed) = round_trip(Agent::Copilot, None);
         assert_eq!(installed["version"], 1);
         for (event, timeout) in COPILOT_EVENTS {
@@ -1191,7 +1268,7 @@ mod tests {
         assert_eq!(entry["powershell"], format!("& '{WIN}' --agent copilot preToolUse"));
         assert_eq!(
             entry["bash"],
-            "\"C:/Users/me/AppData/Local/Coucou/bin/lumo-hook.exe\" --agent copilot preToolUse"
+            "\"C:/Users/me/AppData/Local/com.rccrd12.lumo/bin/lumo-hook.exe\" --agent copilot preToolUse"
         );
     }
 
@@ -1202,7 +1279,7 @@ mod tests {
         assert_eq!(installed["hooks"]["PermissionRequest"][0]["hooks"][0]["timeout"], 120_000);
         assert_eq!(installed["hooks"]["PreToolUse"][0]["matcher"], "*");
         assert!(installed["hooks"]["Stop"][0]["hooks"][0]["command"].as_str().unwrap().ends_with("--agent muse Stop"));
-        // Only Coucou's hooks go; the file and its schema_version stay.
+        // Only Lumo's hooks go; the file and its schema_version stay.
         assert_eq!(removed.unwrap(), json!({ "schema_version": 1 }));
         let _ = std::fs::remove_dir_all(home);
 
@@ -1230,7 +1307,7 @@ mod tests {
             let main = std::fs::read_to_string(&agent.files(&home)[0]).unwrap();
             // The relay itself, at this machine's path, as a string literal: no
             // shell, no macOS path.
-            assert!(main.contains(r#""/home/me/.local/share/coucou/bin/lumo-hook""#), "{agent:?}");
+            assert!(main.contains(r#""/home/me/.local/share/lumo/bin/lumo-hook""#), "{agent:?}");
             assert!(!main.contains("/bin/sh") && !main.contains("nb-hook"), "{agent:?}");
             assert!(main.contains(&format!("'--agent', '{}'", agent.id())), "{agent:?}");
             // Never a verdict for the agent.
@@ -1247,7 +1324,7 @@ mod tests {
     }
 
     #[test]
-    fn a_plugin_file_coucou_did_not_write_is_left_alone() {
+    fn a_plugin_file_lumo_did_not_write_is_left_alone() {
         let home = scratch("plugin-foreign");
         let file = Agent::OpenCode.files(&home)[0].clone();
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();

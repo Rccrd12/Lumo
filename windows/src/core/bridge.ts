@@ -23,7 +23,7 @@ export interface TauriHost {
 const HOST: TauriHost | null = (() => {
   if (typeof window === "undefined" || window.parent === window) return null;
   try {
-    return (window.parent as unknown as { __COUCOU_HOST__?: TauriHost }).__COUCOU_HOST__ ?? null;
+    return (window.parent as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ ?? null;
   } catch {
     return null;
   }
@@ -34,7 +34,7 @@ export const EMBEDDED = HOST != null;
 
 /** The island page lends its connection to Rust to the Settings inside it. */
 export function lendTauri() {
-  (window as unknown as { __COUCOU_HOST__?: TauriHost }).__COUCOU_HOST__ = { invoke, listen };
+  (window as unknown as { __LUMO_HOST__?: TauriHost }).__LUMO_HOST__ = { invoke, listen };
 }
 
 export const IS_TAURI =
@@ -48,7 +48,7 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
   try {
     return await tauriInvoke<T>(cmd, args);
   } catch (err) {
-    console.error(`[coucou] ${cmd} failed`, err);
+    console.error(`[lumo] ${cmd} failed`, err);
     return null;
   }
 }
@@ -59,7 +59,7 @@ export interface UpdateInfo {
   latest: string;
   newer: boolean;
   notes: string;
-  /** Coucou-Windows-<latest>-setup.exe of that release, when it has one. */
+  /** Lumo-Windows-<latest>-setup.exe of that release, when it has one. */
   assetUrl: string | null;
 }
 
@@ -132,12 +132,12 @@ export const Bridge = {
 
   openSettingsWindow: () => call<void>("open_settings_window"),
 
-  /** Writes to %LOCALAPPDATA%\Coucou\coucou.log, next to the Rust lines. */
+  /** Writes to %LOCALAPPDATA%\com.rccrd12.lumo\lumo.log, next to the Rust lines. */
   log: (message: string) => call<void>("log_line", { message }),
 
   // ── Claude Code hooks ─────────────────────────────────────────────────────
   hooksStatus: () => call<HookStatus>("hooks_status"),
-  /** Pill ID → whether that agent's hooks reach Coucou (read-only, Mac #183). */
+  /** Pill ID → whether that agent's hooks reach Lumo (read-only, Mac #183). */
   agentHooksStatus: () => call<Record<string, boolean>>("agent_hooks_status"),
   /** Diff to show before anything is written. `install: false` previews removal. */
   hooksPreview: (install: boolean) => callOrThrow<HookPreview>("hooks_preview", { install }),
@@ -259,7 +259,7 @@ export const Bridge = {
    */
   pasteFile: (name: string, bytes: Uint8Array) => {
     if (!IS_TAURI) return Promise.reject(new Error("not running inside Lumo"));
-    return tauriInvoke<DroppedFile>("paste_file", bytes, { headers: { "x-coucou-name": encodeURIComponent(name) } });
+    return tauriInvoke<DroppedFile>("paste_file", bytes, { headers: { "x-lumo-name": encodeURIComponent(name) } });
   },
   /** Ctrl+V in the chat with no text and no image: the file copied in File Explorer, copied into the inbox. */
   pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
@@ -328,7 +328,7 @@ export const Bridge = {
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
   /** Asks GitHub for the newest Windows release and compares it with this build. */
   updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
-  /** Downloads that release's installer, starts it and quits Coucou. */
+  /** Downloads that release's installer, starts it and quits Lumo. */
   updateInstall: (url: string) => callOrThrow<void>("update_install", { url }),
 
   // ── Mochi on the desktop (src-tauri/src/desktop.rs) ───────────────────────
@@ -423,7 +423,7 @@ export async function emitToWindow(label: string, event: string, payload?: unkno
   try {
     await emitTo(label, event, payload);
   } catch (err) {
-    console.error(`[coucou] emit ${event} failed`, err);
+    console.error(`[lumo] emit ${event} failed`, err);
   }
 }
 
@@ -552,7 +552,7 @@ export interface DroppedFile {
 
 export interface HookStatus {
   installed: boolean;
-  /** Coucou's status line relay (plan usage) is the status line in settings.json. */
+  /** Lumo's status line relay (plan usage) is the status line in settings.json. */
   planRelayInstalled: boolean;
   settingsPath: string;
   hookPath: string;
@@ -565,7 +565,7 @@ export interface AgentHookStatus {
   id: string;
   name: string;
   installed: boolean;
-  /** The file (or files, one per line) Coucou writes. */
+  /** The file (or files, one per line) Lumo writes. */
   path: string;
   hookReady: boolean;
   /** The island can allow or deny this agent's permission requests. */
@@ -656,7 +656,7 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
       handler({ type: "drop", paths: [] });
       return;
     }
-    webview.postMessageWithAdditionalObjects("coucou-file-drop", files);
+    webview.postMessageWithAdditionalObjects("lumo-file-drop", files);
   };
 
   window.addEventListener("dragenter", onEnter);

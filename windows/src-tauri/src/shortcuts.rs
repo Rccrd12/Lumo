@@ -125,7 +125,7 @@ pub enum Status {
     Off,
     /// Another app already holds this combination.
     InUse,
-    /// Another Coucou shortcut has the same combination.
+    /// Another Lumo shortcut has the same combination.
     Duplicate,
     /// Not a combination the OS can register.
     Invalid,
@@ -258,7 +258,7 @@ pub fn plan(
         .collect()
 }
 
-/// `coucou --shortcut <id>` → the action id, when it names a ported one.
+/// `lumo --shortcut <id>` → the action id, when it names a ported one.
 pub fn from_args(args: &[String]) -> Option<&'static str> {
     let at = args.iter().position(|a| a == "--shortcut")?;
     let def = find(args.get(at + 1)?)?;
@@ -335,7 +335,7 @@ fn share<R: Runtime>(app: &AppHandle<R>, screen_shot: bool) {
     });
 }
 
-/// Unregisters everything Coucou holds.
+/// Unregisters everything Lumo holds.
 fn release<R: Runtime>(app: &AppHandle<R>) {
     if let Some(gs) = app.try_state::<GlobalShortcut<R>>() {
         if let Err(err) = gs.unregister_all() {
@@ -392,7 +392,7 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, stored: &Bindings) {
 }
 
 /// Lets go of every shortcut while a new one is being recorded in Settings,
-/// so pressing a combination Coucou already holds records it instead of
+/// so pressing a combination Lumo already holds records it instead of
 /// running it.
 pub fn suspend<R: Runtime>(app: &AppHandle<R>) {
     release(app);
@@ -417,7 +417,7 @@ fn launch_command() -> String {
         .map(std::path::PathBuf::from)
         .or_else(|| std::env::current_exe().ok())
         .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "coucou".to_string());
+        .unwrap_or_else(|| "lumo".to_string());
     if exe.contains(' ') {
         format!("\"{exe}\"")
     } else {
@@ -602,11 +602,11 @@ mod tests {
     #[test]
     fn the_command_line_names_an_action() {
         let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(from_args(&args(&["coucou", "--shortcut", "openChat"])), Some("openChat"));
-        assert_eq!(from_args(&args(&["coucou", "--shortcut", "wardrobeToggle"])), Some("wardrobeToggle"));
-        assert_eq!(from_args(&args(&["coucou", "--shortcut"])), None);
-        assert_eq!(from_args(&args(&["coucou", "--shortcut", "rm -rf"])), None);
-        assert_eq!(from_args(&args(&["coucou", "--shortcut", "desktopToggle"])), None);
-        assert_eq!(from_args(&args(&["coucou"])), None);
+        assert_eq!(from_args(&args(&["lumo", "--shortcut", "openChat"])), Some("openChat"));
+        assert_eq!(from_args(&args(&["lumo", "--shortcut", "wardrobeToggle"])), Some("wardrobeToggle"));
+        assert_eq!(from_args(&args(&["lumo", "--shortcut"])), None);
+        assert_eq!(from_args(&args(&["lumo", "--shortcut", "rm -rf"])), None);
+        assert_eq!(from_args(&args(&["lumo", "--shortcut", "desktopToggle"])), None);
+        assert_eq!(from_args(&args(&["lumo"])), None);
     }
 }

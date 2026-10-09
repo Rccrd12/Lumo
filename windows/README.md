@@ -51,27 +51,17 @@ starts it with its usual window, and Lumo quits so the installer can replace
 it. Only installers from that repository's GitHub releases are accepted. On
 Linux, update Lumo the way you installed it.
 
-### Coming from Coucou
+### Your data
 
-Up to 0.3.0 the app was called Coucou, and its character Mochi, and the
-repository was `Rccrd12/coucou-agent`. Coucou 0.3.0's **Update now** only
-trusts installers from that old repository name, so it does not find Lumo:
-download the Lumo installer and run it by hand once. It retires the Coucou
-install: its program files
-in `%LOCALAPPDATA%\Coucou`, its entry in Settings → Apps, its Start menu and
-desktop shortcuts (a desktop one becomes a Lumo one) and its autostart entry,
-which moves over to Lumo. A Coucou installed from the .msi is uninstalled
-through Windows Installer, which asks first; a Lumo .msi upgrades a Coucou
-.msi in place. On Linux the `lumo` .deb and .rpm replace the `coucou` package.
-
-Nothing of yours moves. Settings, keys, Claude Code's and the other agents'
-hooks, chats, the weekly recap and the log stay where they were: the folders
-keep the old name (`%APPDATA%\Coucou`, `%LOCALAPPDATA%\Coucou`,
-`%USERPROFILE%\Coucou`; `~/.config/coucou`, `~/.local/share/coucou` and
-`~/Coucou` on Linux), and so do the app identifier
-`fr.louisraille.coucou` and its entries in the credential store. At launch,
-with **Open at login** on, Lumo writes its autostart entry again for the exe
-it runs from and removes one left under the name Coucou.
+Settings are in `%APPDATA%\com.rccrd12.lumo` (`~/.config/lumo` on Linux); the
+relay, the inbox, the log, the weekly recap and the chat history in
+`%LOCALAPPDATA%\com.rccrd12.lumo` (`~/.local/share/lumo`); keys in the system
+keychain under `com.rccrd12.lumo`. Updating from 0.4.0 or earlier moves them
+there at the first launch, keys and chat history included. Hooks you installed
+before keep working; installing them again (Settings → Agents → Reinstall)
+points them at the new folder, and once none uses the old one it goes. With
+**Open at login** on, Lumo writes its autostart entry again at every launch for
+the exe it runs from.
 
 ## Using it
 
@@ -178,10 +168,7 @@ that will be taken, and nothing is written until you click. Your own hooks are
 never touched, and uninstalling removes only Lumo's entries.
 
 The relay is a tiny executable, `lumo-hook.exe`, copied to
-`%LOCALAPPDATA%\Coucou\bin\` at launch. Up to 0.3.1 it was `coucou-hook.exe`:
-Lumo still puts the same relay there under that name too, so hooks installed
-before keep working, and reinstalling them (Settings → Agents) moves them to
-`lumo-hook`. It is given 300 ms to reach Lumo and
+`%LOCALAPPDATA%\com.rccrd12.lumo\bin\` at launch. It is given 300 ms to reach Lumo and
 exits cleanly if the app is closed, slow or crashed — **a Claude Code session is
 never blocked or slowed down by Lumo.** If nobody answers a permission request
 in time, Lumo stays quiet and Claude Code asks in the terminal as usual.
@@ -280,7 +267,7 @@ you by your first name when your account has one (the Windows display name or
 the Linux GECOS full name; a bare login name is not used).
 
 To send the Claude chat through an Anthropic-compatible gateway, set
-`COUCOU_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
+`LUMO_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
 `/v1/messages` is added). It must be `https://`, or `http://` to this PC only.
 Claude Code's own `ANTHROPIC_BASE_URL` is deliberately ignored: your key only
 goes where you told Lumo to send it. The gateway's host is written to the log
@@ -293,8 +280,8 @@ configure yourself.
 
 Pick **Claude Code** above the chat box and the island talks to the Claude Code
 CLI you already use, signed in with your own Claude plan (Pro, Max…): no API key.
-Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Coucou`
-(`~/Coucou` on Linux); it never reads, stores or forwards any Claude credential,
+Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Lumo`
+(`~/Lumo` on Linux); it never reads, stores or forwards any Claude credential,
 and the usage counts against your plan's limits like any Claude Code session.
 
 Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
@@ -370,7 +357,7 @@ its long edge) shows first with **Send** and **Cancel**: Cancel deletes it, Send
 adds it to the chat, with the question already typed if there is one. The window
 list shows as a chip you can remove before sending. Either goes with your next
 question only. Screenshots are saved only in the inbox
-(`%LOCALAPPDATA%\Coucou\inbox`), like dropped files, and are deleted after a
+(`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
@@ -509,21 +496,19 @@ otherwise needs a real drag from Explorer to see — and `dev/recap-preview.html
 the weekly recap card and its shared image on a sample week. None of these pages
 ships in the app.
 
-`npm run pack` leaves two files in `windows/release/`, the same names the release
+`npm run pack` leaves the files in `windows/release/`, the same names the release
 workflow publishes:
 
 ```
 Lumo-Windows-X.Y.Z-setup.exe      the versioned installer
 Lumo-Windows-setup.exe            the same file under the rolling name
-Coucou-Windows-X.Y.Z-setup.exe    the same file again, for Coucou 0.3.0's updater
-Coucou-Windows-setup.exe          and under the old rolling name, for old links
 ```
 
-(and the .msi as `Lumo-Windows-X.Y.Z.msi`, `Lumo-Windows.msi` and `Coucou-Windows.msi`).
+(and the .msi as `Lumo-Windows-X.Y.Z.msi` and `Lumo-Windows.msi`).
 
 Installing is optional — `target/release/lumo.exe` runs on its own (`tauri build`
-names it after Lumo through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`;
-the crate, and the binary on Linux, keep the name `coucou`). There is no
+names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`; on Linux
+the binary is `lumo`). There is no
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
@@ -556,7 +541,7 @@ windows/
 
 ### Log
 
-`%LOCALAPPDATA%\Coucou\coucou.log` — hook events, permission decisions, poller
+`%LOCALAPPDATA%\com.rccrd12.lumo\lumo.log` — hook events, permission decisions, poller
 problems. It stays on your machine. The weekly recap's history sits beside it in
 `recap.json`.
 
@@ -574,15 +559,15 @@ Linux.
 |---|---|---|
 | Claude Code | `.claude\settings.json` (**Settings → Agents → Claude Code**) | Allow / Deny and questions in the island |
 | Codex | `.codex\hooks.json` — then trust the hooks once with `/hooks` in Codex | Allow / Deny in the island |
-| GitHub Copilot CLI | `.copilot\hooks\coucou.json` | Allow / Deny in the island |
+| GitHub Copilot CLI | `.copilot\hooks\lumo.json` | Allow / Deny in the island |
 | Muse Code | `.config\muse\settings.json` | Allow / Deny in the island |
 | Gemini CLI (retired) | `.gemini\settings.json` — listed in Settings only when installed before, to remove it | asked in Gemini CLI |
-| Antigravity and Antigravity CLI | `.gemini\config\hooks.json` (a `coucou` hook group) | asked in Antigravity |
+| Antigravity and Antigravity CLI | `.gemini\config\hooks.json` (a `lumo` hook group) | asked in Antigravity |
 | Cursor Agent | `.cursor\hooks.json` — Claude Code in Cursor's terminal also goes on the Cursor pill, through the Claude Code hooks | asked in Cursor |
 | Claude Desktop (Windows) | nothing to install: Claude Code sessions from the Claude app are tagged by the relay | asked in the Claude app |
-| OpenCode | plugin `.config\opencode\plugins\coucou.js` | asked in OpenCode |
-| Amp | plugin `.config\amp\plugins\coucou.ts` | asked in Amp |
-| Hermes Agent | plugin `.hermes\plugins\coucou\` — then `hermes plugins enable coucou` once | asked in Hermes |
+| OpenCode | plugin `.config\opencode\plugins\lumo.js` | asked in OpenCode |
+| Amp | plugin `.config\amp\plugins\lumo.ts` | asked in Amp |
+| Hermes Agent | plugin `.hermes\plugins\lumo\` — then `hermes plugins enable lumo` once | asked in Hermes |
 | Any other | run `lumo-hook --agent <name> [<Event>]` from your tool's hooks | asked in the tool |
 
 The relay maps every agent's event and field names onto Claude Code's (Gemini
@@ -683,7 +668,7 @@ own window.
   its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
   is cut by the top edge of the screen, as it is by the notch on a Mac.
 - Languages: chosen in Settings, independently of the system, and applied
-  without a restart (the Mac's **Restart Coucou** isn't needed). Arabic turns
+  without a restart. Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep
   their sides.
 - Lumo doesn't go out onto the desktop: he stays in the island, and the Mac's
@@ -715,8 +700,8 @@ What changes on Linux:
   and other wlroots compositors. GNOME has no layer-shell and ignores where a
   Wayland window asks to go, so there Lumo runs through XWayland as a dock
   window: top centre, on every workspace, still there after Super+D.
-  `COUCOU_X11=0` keeps the native Wayland window, `COUCOU_DOCK=0` makes it a
-  utility window instead of a dock. `COUCOU_LAYER_SHELL=0` forces the regular
+  `LUMO_X11=0` keeps the native Wayland window, `LUMO_DOCK=0` makes it a
+  utility window instead of a dock. `LUMO_LAYER_SHELL=0` forces the regular
   window anywhere.
 - **Click-through** is the window's input region, kept equal to the island
   shape, so the compositor sends every other click to what is underneath.
@@ -726,8 +711,8 @@ What changes on Linux:
   icon size work.
 - **Lumo's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else.
-- **Claude Code hooks** go through `~/.local/share/coucou/bin/lumo-hook` and a
-  Unix socket at `$XDG_RUNTIME_DIR/coucou.sock`. Both ends check that the other
+- **Claude Code hooks** go through `~/.local/share/lumo/bin/lumo-hook` and a
+  Unix socket at `$XDG_RUNTIME_DIR/lumo.sock`. Both ends check that the other
   runs as the same user. Every other agent uses the same relay, single-quoted
   for `sh`, and its config under `~` (see Supported agents). A config that is a
   symlink (dotfiles) is written through to its target, with its permissions
@@ -739,12 +724,12 @@ What changes on Linux:
   key grabs — the GlobalShortcuts portal isn't supported yet — so nothing is
   registered there, and **Settings → Shortcuts** lists commands to bind in your
   desktop's own keyboard settings instead:
-  `coucou --shortcut openChat` (or the AppImage's path) runs the action in the
+  `lumo --shortcut openChat` (or the AppImage's path) runs the action in the
   Lumo that is already open. The ids are `toggleIsland`, `openChat`,
   `goToAlert`, `jumpToTerminal`, `nextPill`, `prevPill`, `muteToggle` and
   `wardrobeToggle`.
 - **Keys** live in the Secret Service (GNOME Keyring, KWallet).
-- **Plan usage**: the status line relay is `~/.local/share/coucou/bin/lumo-hook
+- **Plan usage**: the status line relay is `~/.local/share/lumo/bin/lumo-hook
   --statusline` and runs your previous status line with `/bin/sh -c`, like Claude
   Code. Codex is found on `$PATH`, in `~/.local/bin`, npm's global prefix, Volta,
   Bun, pnpm, or nvm (newest Node first), since a desktop launch often has a
@@ -757,8 +742,8 @@ What changes on Linux:
   in a call works. Typing in the text box you clicked in needs `xdotool` on
   X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland
   doesn't say which window is in front).
-- **Files**: preferences in `~/.config/coucou/`, the log at
-  `~/.local/share/coucou/coucou.log`, the weekly recap history beside it in
+- **Files**: preferences in `~/.config/lumo/`, the log at
+  `~/.local/share/lumo/lumo.log`, the weekly recap history beside it in
   `recap.json`. A saved recap image goes to the pictures folder named in
   `~/.config/user-dirs.dirs`, else `~/Pictures`, else `~/Downloads`.
 - **Languages**: Hindi, Bengali, Chinese and Arabic need fonts that carry those

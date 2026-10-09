@@ -34,16 +34,16 @@
    "ru": "+ субагент",
    "id": "+ subagen"
   },
-  "A hook group named \"coucou\" that Lumo did not write is already there — Lumo has not touched it.": {
-   "zh-Hans": "已存在一个并非 Lumo 写入的名为“coucou”的 hook 组 — Lumo 没有修改它。",
-   "hi": "“coucou” नाम का एक hook समूह पहले से है जिसे Lumo ने नहीं लिखा — Lumo ने इसे नहीं छुआ।",
-   "es": "Ya existe un grupo de hooks llamado «coucou» que no escribió Lumo — Lumo no lo ha tocado.",
-   "ar": "توجد بالفعل مجموعة hooks باسم «coucou» لم يكتبها Lumo — لم يمسّها Lumo.",
-   "fr": "Un groupe de hooks nommé « coucou » que Lumo n'a pas écrit existe déjà — Lumo n'y a pas touché.",
-   "bn": "“coucou” নামে একটি hook গ্রুপ আগে থেকেই আছে যা Lumo লেখেনি — Lumo এতে হাত দেয়নি।",
-   "pt-BR": "Já existe um grupo de hooks chamado “coucou” que não foi escrito pelo Lumo — o Lumo não mexeu nele.",
-   "ru": "Уже есть группа хуков «coucou», которую написал не Lumo, — Lumo её не трогал.",
-   "id": "Sudah ada grup hook bernama “coucou” yang tidak ditulis Lumo — Lumo tidak menyentuhnya."
+  "A hook group named \"lumo\" that Lumo did not write is already there — Lumo has not touched it.": {
+   "zh-Hans": "已存在一个并非 Lumo 写入的名为“lumo”的 hook 组 — Lumo 没有修改它。",
+   "hi": "“lumo” नाम का एक hook समूह पहले से है जिसे Lumo ने नहीं लिखा — Lumo ने इसे नहीं छुआ।",
+   "es": "Ya existe un grupo de hooks llamado «lumo» que no escribió Lumo — Lumo no lo ha tocado.",
+   "ar": "توجد بالفعل مجموعة hooks باسم «lumo» لم يكتبها Lumo — لم يمسّها Lumo.",
+   "fr": "Un groupe de hooks nommé « lumo » que Lumo n'a pas écrit existe déjà — Lumo n'y a pas touché.",
+   "bn": "“lumo” নামে একটি hook গ্রুপ আগে থেকেই আছে যা Lumo লেখেনি — Lumo এতে হাত দেয়নি।",
+   "pt-BR": "Já existe um grupo de hooks chamado “lumo” que não foi escrito pelo Lumo — o Lumo não mexeu nele.",
+   "ru": "Уже есть группа хуков «lumo», которую написал не Lumo, — Lumo её не трогал.",
+   "id": "Sudah ada grup hook bernama “lumo” yang tidak ditulis Lumo — Lumo tidak menyentuhnya."
   },
   "AI for the chat": {
    "zh-Hans": "聊天用的 AI",
@@ -2564,16 +2564,16 @@
    "ru": "Вторник",
    "id": "Selasa"
   },
-  "Turn it on once with `hermes plugins enable coucou`, then start a new Hermes session.": {
-   "zh-Hans": "先用 `hermes plugins enable coucou` 启用一次，然后开启新的 Hermes 会话。",
-   "hi": "इसे एक बार `hermes plugins enable coucou` से चालू करें, फिर Hermes का नया सत्र शुरू करें।",
-   "es": "Actívalo una vez con `hermes plugins enable coucou` y luego abre una nueva sesión de Hermes.",
-   "ar": "فعّله مرة واحدة بالأمر `hermes plugins enable coucou`، ثم ابدأ جلسة Hermes جديدة.",
-   "fr": "Active-le une fois avec `hermes plugins enable coucou`, puis lance une nouvelle session Hermes.",
-   "bn": "একবার `hermes plugins enable coucou` দিয়ে চালু করুন, তারপর Hermes-এর নতুন সেশন শুরু করুন।",
-   "pt-BR": "Ative uma vez com `hermes plugins enable coucou` e depois inicie uma nova sessão do Hermes.",
-   "ru": "Включите его один раз командой `hermes plugins enable coucou`, затем начните новую сессию Hermes.",
-   "id": "Aktifkan sekali dengan `hermes plugins enable coucou`, lalu mulai sesi Hermes baru."
+  "Turn it on once with `hermes plugins enable lumo`, then start a new Hermes session.": {
+   "zh-Hans": "先用 `hermes plugins enable lumo` 启用一次，然后开启新的 Hermes 会话。",
+   "hi": "इसे एक बार `hermes plugins enable lumo` से चालू करें, फिर Hermes का नया सत्र शुरू करें।",
+   "es": "Actívalo una vez con `hermes plugins enable lumo` y luego abre una nueva sesión de Hermes.",
+   "ar": "فعّله مرة واحدة بالأمر `hermes plugins enable lumo`، ثم ابدأ جلسة Hermes جديدة.",
+   "fr": "Active-le une fois avec `hermes plugins enable lumo`, puis lance une nouvelle session Hermes.",
+   "bn": "একবার `hermes plugins enable lumo` দিয়ে চালু করুন, তারপর Hermes-এর নতুন সেশন শুরু করুন।",
+   "pt-BR": "Ative uma vez com `hermes plugins enable lumo` e depois inicie uma nova sessão do Hermes.",
+   "ru": "Включите его один раз командой `hermes plugins enable lumo`, затем начните новую сессию Hermes.",
+   "id": "Aktifkan sekali dengan `hermes plugins enable lumo`, lalu mulai sesi Hermes baru."
   },
   "Types “{char}”": {
    "zh-Hans": "输入“{char}”",
@@ -4989,16 +4989,16 @@
    "ru": "Читает и планирует, ничего не меняя.",
    "id": "Membaca dan merencanakan, tanpa mengubah apa pun."
   },
-  "lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`.": {
-   "zh-Hans": "lumo-hook.exe 尚未就位。请重启 Lumo；如果仍然失败，请用 `cargo build -p coucou-hook` 构建它。",
-   "hi": "lumo-hook.exe अभी अपनी जगह पर नहीं है। Lumo फिर से शुरू करें; अगर फिर भी न हो, तो इसे `cargo build -p coucou-hook` से बनाएँ।",
-   "es": "lumo-hook.exe aún no está en su sitio. Reinicia Lumo; si sigue fallando, compílalo con `cargo build -p coucou-hook`.",
-   "ar": "lumo-hook.exe ليس في مكانه بعد. أعد تشغيل Lumo؛ وإن استمر الفشل فابنِه بالأمر `cargo build -p coucou-hook`.",
-   "fr": "lumo-hook.exe n'est pas encore en place. Redémarre Lumo ; si ça échoue encore, compile-le avec `cargo build -p coucou-hook`.",
-   "bn": "lumo-hook.exe এখনো জায়গামতো নেই। Lumo আবার চালু করুন; তবুও না হলে `cargo build -p coucou-hook` দিয়ে এটি বানান।",
-   "pt-BR": "O lumo-hook.exe ainda não está no lugar. Reinicie o Lumo; se continuar falhando, compile-o com `cargo build -p coucou-hook`.",
-   "ru": "lumo-hook.exe ещё не на месте. Перезапустите Lumo; если не поможет, соберите его командой `cargo build -p coucou-hook`.",
-   "id": "lumo-hook.exe belum ada di tempatnya. Mulai ulang Lumo; jika masih gagal, build dengan `cargo build -p coucou-hook`."
+  "lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p lumo-hook`.": {
+   "zh-Hans": "lumo-hook.exe 尚未就位。请重启 Lumo；如果仍然失败，请用 `cargo build -p lumo-hook` 构建它。",
+   "hi": "lumo-hook.exe अभी अपनी जगह पर नहीं है। Lumo फिर से शुरू करें; अगर फिर भी न हो, तो इसे `cargo build -p lumo-hook` से बनाएँ।",
+   "es": "lumo-hook.exe aún no está en su sitio. Reinicia Lumo; si sigue fallando, compílalo con `cargo build -p lumo-hook`.",
+   "ar": "lumo-hook.exe ليس في مكانه بعد. أعد تشغيل Lumo؛ وإن استمر الفشل فابنِه بالأمر `cargo build -p lumo-hook`.",
+   "fr": "lumo-hook.exe n'est pas encore en place. Redémarre Lumo ; si ça échoue encore, compile-le avec `cargo build -p lumo-hook`.",
+   "bn": "lumo-hook.exe এখনো জায়গামতো নেই। Lumo আবার চালু করুন; তবুও না হলে `cargo build -p lumo-hook` দিয়ে এটি বানান।",
+   "pt-BR": "O lumo-hook.exe ainda não está no lugar. Reinicie o Lumo; se continuar falhando, compile-o com `cargo build -p lumo-hook`.",
+   "ru": "lumo-hook.exe ещё не на месте. Перезапустите Lumo; если не поможет, соберите его командой `cargo build -p lumo-hook`.",
+   "id": "lumo-hook.exe belum ada di tempatnya. Mulai ulang Lumo; jika masih gagal, build dengan `cargo build -p lumo-hook`."
   },
   "Talk with Gemini Live": {
    "zh-Hans": "与 Gemini Live 对话",

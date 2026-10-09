@@ -1,7 +1,7 @@
 // Island open/close FSM — port of IslandStateMachine.swift.
 // No DOM, no Tauri: it only reports transitions.
 
-export type FsmState = "hidden" | "petit" | "home" | "coucou";
+export type FsmState = "hidden" | "petit" | "home" | "greeting";
 
 export class IslandStateMachine {
   state: FsmState = "hidden";
@@ -45,7 +45,7 @@ export class IslandStateMachine {
     if (!on) this.clear("petitHide");
   }
   /**
-   * coucou → petit once the greeting animation ends. The mouse resting on the
+   * greeting → petit once the greeting animation ends. The mouse resting on the
    * island does not hold it open: the greeting always finishes on its own.
    */
   greetAutoCollapseDelay = 0.6;
@@ -87,7 +87,7 @@ export class IslandStateMachine {
 
   launch() {
     this.cancelTimers();
-    this.transition("coucou");
+    this.transition("greeting");
   }
 
   mouseEntered() {
@@ -103,7 +103,7 @@ export class IslandStateMachine {
       case "home":
         this.clear("homeCollapse");
         break;
-      case "coucou":
+      case "greeting":
         break;
     }
   }
@@ -119,7 +119,7 @@ export class IslandStateMachine {
       case "home":
         this.scheduleHomeCollapse();
         break;
-      case "coucou":
+      case "greeting":
         this.clear("greetCollapse");
         this.transition("petit");
         break;
@@ -134,7 +134,7 @@ export class IslandStateMachine {
 
   /** Greeting animation finished (T.end). */
   greetComplete() {
-    if (this.state !== "coucou") return;
+    if (this.state !== "greeting") return;
     if (this.greetCollapse == null) this.scheduleGreetCollapse(this.greetAutoCollapseDelay);
   }
 
@@ -193,7 +193,7 @@ export class IslandStateMachine {
     this.clear("greetCollapse");
     this.greetCollapse = window.setTimeout(() => {
       this.greetCollapse = null;
-      if (this.state === "coucou") this.transition("petit");
+      if (this.state === "greeting") this.transition("petit");
     }, delay * 1000);
   }
 

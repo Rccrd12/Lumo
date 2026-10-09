@@ -117,7 +117,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
   const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
   const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
-  // Closes Coucou altogether; it opens again from the Start menu.
+  // Closes Lumo altogether; it opens again from the Start menu.
   const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
     svg(ICONS.power, 13, { stroke: 2 }));
   // Plan usage pills (off by default): before the gear, Claude first, as on the Mac.

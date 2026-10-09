@@ -1,4 +1,4 @@
-// Coucou for Windows — app wiring and the commands the island calls.
+// Lumo for Windows — app wiring and the commands the island calls.
 
 mod agent_hooks;
 mod agents;
@@ -23,6 +23,7 @@ mod island;
 mod live;
 mod local_chat;
 mod log;
+mod migrate;
 mod net;
 mod openai_compat;
 mod pipe;
@@ -121,7 +122,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let manager = app.autolaunch();
         let result = if settings.autostart { manager.enable() } else { manager.disable() };
         if let Err(err) = result {
-            eprintln!("[coucou] autostart: {err}");
+            eprintln!("[lumo] autostart: {err}");
         }
     }
     if screen_changed {
@@ -402,7 +403,7 @@ fn hooks_status() -> HookStatus {
     hooks::status()
 }
 
-/// Pill ID → whether that agent's hooks reach Coucou. Read-only.
+/// Pill ID → whether that agent's hooks reach Lumo. Read-only.
 #[tauri::command]
 fn agent_hooks_status() -> std::collections::HashMap<String, bool> {
     agent_hooks::status()
@@ -662,7 +663,7 @@ async fn screen_windows() -> Result<Vec<screen::WindowInfo>, String> {
 /// A screenshot of one display (`display`, from 0) or all of them, into the
 /// inbox, with a preview for the island to show before anything is sent. The
 /// island keeps itself out of the picture meanwhile (Windows 10 2004 and later:
-/// content protection, which Coucou never uses otherwise).
+/// content protection, which Lumo never uses otherwise).
 #[tauri::command]
 async fn screen_capture(app: AppHandle, display: Option<usize>) -> Result<Vec<screen::Shot>, String> {
     tauri::async_runtime::spawn_blocking(move || screen::capture_unseen(&app, display))
@@ -705,7 +706,7 @@ fn ingest_file(path: String) -> Result<DroppedFile, String> {
 
 /// Ctrl+V in the chat with an image (or a file the page can read): its bytes,
 /// sent raw, written into the inbox like a dropped file. The name rides in the
-/// `x-coucou-name` header, percent-encoded.
+/// `x-lumo-name` header, percent-encoded.
 #[tauri::command]
 async fn paste_file(request: tauri::ipc::Request<'_>) -> Result<DroppedFile, String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -716,7 +717,7 @@ async fn paste_file(request: tauri::ipc::Request<'_>) -> Result<DroppedFile, Str
     }
     let name = request
         .headers()
-        .get("x-coucou-name")
+        .get("x-lumo-name")
         .and_then(|v| v.to_str().ok())
         .and_then(explorer::percent_decode_text)
         .unwrap_or_default();
@@ -877,7 +878,14 @@ fn open_settings_window(app: AppHandle) {
     show_settings_window(&app);
 }
 
+/// The app identifier (tauri.conf.json): the keychain service, and the folder
+/// of Lumo's data and of its WebView's.
+pub const IDENTIFIER: &str = "com.rccrd12.lumo";
+
 pub fn run() {
+    // Before anything opens a folder or a WebView starts.
+    migrate::folders();
+    migrate::keys();
     platform::prepare_environment();
     let loaded = settings::load();
     i18n::set_picked(&loaded.language);
@@ -885,7 +893,7 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // `coucou --shortcut <action>`: what a desktop's own keyboard
+            // `lumo --shortcut <action>`: what a desktop's own keyboard
             // settings run where we can't listen for keys ourselves (Wayland).
             match shortcuts::from_args(&argv) {
                 Some(action) => shortcuts::dispatch(app, action),
@@ -1040,7 +1048,7 @@ pub fn run() {
             gate.set_active(true);
             island::spawn_cursor_poll(handle.clone(), gate.clone());
 
-            log::line(format!("--- Coucou {} started ---", env!("CARGO_PKG_VERSION")));
+            log::line(format!("--- Lumo {} started ---", env!("CARGO_PKG_VERSION")));
             hooks::ensure_hook_exe(&handle);
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
@@ -1058,7 +1066,7 @@ mod tests {
 
     #[test]
     fn only_an_existing_file_by_its_full_path_reaches_the_editor() {
-        let dir = std::env::temp_dir().join(format!("coucou-diff-file-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-diff-file-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("edited.ts");
         std::fs::write(&file, "x").unwrap();
