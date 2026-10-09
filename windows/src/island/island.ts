@@ -13,7 +13,7 @@ import {
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { NEUTRAL_PILL } from "../core/pill-colors";
-import { State, parseCloseMode } from "../core/state";
+import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
@@ -1102,7 +1102,7 @@ export class Island {
     this.confusedRecovery = window.setTimeout(() => {
       this.confusedRecovery = null;
       State.stateOverride = null;
-      this.engine.setState(State.effectiveState);
+      this.engine.setState(State.shownState);
       if (State.view === "confused") {
         const fallback = State.defaultView();
         this.setView(this.prevViewBeforeConfused === "confused" ? fallback : this.prevViewBeforeConfused);
@@ -1185,6 +1185,11 @@ export class Island {
 
     if (busy) {
       requestAnimationFrame(this.frame);
+    } else if (State.mode !== "hidden" && this.engine.ambientActive) {
+      // Only Lumo's own motion is left: about 30 frames a second is plenty, and
+      // it stops with everything else once the island hides.
+      window.setTimeout(() => requestAnimationFrame(this.frame), 22);
+      Sound.idle();
     } else {
       this.running = false;
       Sound.idle();
@@ -1208,14 +1213,14 @@ export class Island {
 
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !away) {
       const d = p.diameter;
-      const color = botGlowColor(State.effectiveState);
+      const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";
       this.botGlow.style.width = `${d * 2.2}px`;
       this.botGlow.style.height = `${d * 2.2}px`;
       this.botGlow.style.left = `${this.botCx.value - d * 1.1}px`;
       this.botGlow.style.top = `${this.botCy.value - d * 1.1}px`;
       this.botGlow.style.background = `radial-gradient(circle, ${color} 0%, transparent 62%)`;
-      this.botGlow.style.opacity = String(botGlowOpacity(State.effectiveState));
+      this.botGlow.style.opacity = String(botGlowOpacity(State.shownState));
     } else {
       this.botGlow.style.display = "none";
     }
@@ -1362,11 +1367,13 @@ export class Island {
     }
 
     syncMiniBotStates(State.tasks);
-    this.engine.setState(State.effectiveState);
+    this.engine.setState(State.shownState);
   }
 
   /** Applies settings coming from Rust at boot. */
   applySettings() {
+    this.engine.ambient = motionAmount(State.settings.lumoMotion);
+    this.ensureRunning();
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
     this.applyBehaviour();

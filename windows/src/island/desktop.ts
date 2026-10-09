@@ -150,13 +150,13 @@ export class DesktopLink {
 
   private sync() {
     this.controller.updateAlert(alertActive(State));
-    this.controller.updateState(State.effectiveState);
+    this.controller.updateState(State.shownState);
     this.push();
   }
 
   private push() {
     const snapshot: DesktopSnapshot = {
-      state: State.effectiveState,
+      state: State.shownState,
       outfit: State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.mochiOutfit)),
       soundEnabled: State.settings.soundEnabled,
       soundVolume: State.settings.soundVolume,

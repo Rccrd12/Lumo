@@ -9,7 +9,7 @@ import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
   recordPress, type Binding,
 } from "../core/shortcuts";
-import { DEFAULT_SETTINGS, parseCloseMode, type Settings } from "../core/state";
+import { DEFAULT_SETTINGS, parseCloseMode, parseMotion, type Settings } from "../core/state";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, isComingSoon, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -970,11 +970,28 @@ function islandSection(): HTMLElement {
     void save();
   });
 
+  // How much Lumo moves on his own.
+  const motion = h("select", {}) as HTMLSelectElement;
+  for (const [value, label] of [
+    ["calm", N_("Calm")],
+    ["lively", N_("Lively")],
+    ["still", N_("Only when something happens")],
+  ] as const) motion.append(h("option", { value, text: t(label) }));
+  motion.value = parseMotion(settings.lumoMotion);
+  motion.addEventListener("change", () => {
+    settings.lumoMotion = motion.value;
+    void save();
+  });
+
   return h(
     "section",
     {},
     h("h2", {}, h("span", { text: t("Island") })),
     ...behaviourRows(),
+    h("div", { class: "row" },
+      h("label", { text: t("Lumo moves") }),
+      motion,
+    ),
     h("div", { class: "row" },
       h("label", { text: t("Island lives on") }),
       screen,

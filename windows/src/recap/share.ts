@@ -134,6 +134,7 @@ function badge(x: Ctx, left: number, top: number, w: number, label: string, valu
 /** A still Mochi, drawn by the same engine as the island's. */
 function drawMochi(x: Ctx, cx: number, top: number, size: number) {
   const engine = new BotEngine();
+  engine.ambient = 0; // a still picture
   engine.setState("idle", true);
   engine.update(1 / 60);
   x.save();

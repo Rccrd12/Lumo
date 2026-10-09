@@ -14,13 +14,13 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "ic
 
 // ── Lumo ──────────────────────────────────────────────────────────────────────
 
-const BODY_TOP = [255, 246, 216]; // #FFF6D8
-const BODY_BOTTOM = [243, 217, 138]; // #F3D98A
-const GLOW = [217, 255, 107]; // #D9FF6B
-const GLOW_DEEP = [150, 190, 50];
+const BODY_TOP = [253, 249, 240]; // #FDF9F0
+const BODY_BOTTOM = [229, 217, 193]; // #E5D9C1
+const GLOW = [255, 213, 122]; // #FFD57A
 const INK = [26, 20, 18]; // #1A1412
+const STEM = [58, 52, 48];
 const RIM = [26, 20, 18];
-const WING = [214, 232, 250];
+const WING = [205, 222, 240];
 
 const SS = 4; // supersampling factor
 
@@ -28,8 +28,8 @@ const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const mixc = (a, b, t) => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t);
 
 // His shape and eyes: LUMO_RX, LUMO_RY, LUMO_EXP and LUMO_EYE in src/mochi/lumo.ts.
-const SHAPE = { rx: 1.0, ry: 0.96, exp: 2.2 };
-const EYE = { w: 0.3, h: 0.33, spread: 0.42, pitch: -0.1 };
+const SHAPE = { rx: 0.9, ry: 0.98, exp: 2.05 };
+const EYE = { w: 0.17, h: 0.27, spread: 0.35, pitch: -0.06 };
 
 /** Superellipse test in body-local coordinates. */
 function insideBody(x, y, rx, ry) {
@@ -79,10 +79,10 @@ function lumoLayers(size) {
   const withWings = size >= 48;
   const layers = [];
 
-  // Wings: a forewing and a hindwing on each side.
+  // Wings: one slim pair, swept back.
   if (withWings) {
     for (const sd of [-1, 1]) {
-      for (const [len, wid, ang, ox, oy] of [[0.66, 0.31, -0.66, 0.28, -0.44], [0.48, 0.24, -0.16, 0.4, -0.2]]) {
+      for (const [len, wid, ang, ox, oy] of [[0.5, 0.17, -0.46, 0.55, -0.4], [0.38, 0.12, 0.04, 0.66, -0.1]]) {
         const tx = sd * rx * ox;
         const ty = ry * oy;
         const ca = Math.cos(-sd * ang);
@@ -93,25 +93,18 @@ function lumoLayers(size) {
           const e = ((qx - sd * R * len) / (R * len)) ** 2 + (qy / (R * wid)) ** 2;
           if (e > 1) return null;
           const edge = 1 - Math.sqrt(e) < rim / (R * wid) ? 1 : 0;
-          return edge ? [255, 255, 255, 0.95] : [...WING, 0.78];
+          return edge ? [130, 150, 175, 0.9] : [...WING, 0.8];
         });
       }
     }
   }
 
-  // The tail's halo and lantern, under him.
-  const ty = ry * 0.98;
+  // His light: a soft glow low behind him.
+  const ty = ry * 0.8;
   layers.push((x, y) => {
-    const d = Math.hypot(x, y - ty) / (R * 0.95);
+    const d = Math.hypot(x, y - ty) / (R * 1.0);
     if (d >= 1) return null;
-    return [...GLOW, 0.55 * (1 - d) ** 1.6];
-  });
-  layers.push((x, y) => {
-    const e = (x / (R * 0.6)) ** 2 + ((y - ty) / (R * 0.44)) ** 2;
-    if (e > 1) return null;
-    const d = clamp01(Math.hypot(x, y - ty - R * 0.1) / (R * 0.52));
-    const c = d < 0.5 ? mixc([255, 255, 235], GLOW, d / 0.5) : mixc(GLOW, GLOW_DEEP, (d - 0.5) / 0.5);
-    return [...c, 1];
+    return [...GLOW, 0.7 * (1 - d) ** 1.5];
   });
 
   // The body, with its outline.
@@ -138,19 +131,19 @@ function lumoLayers(size) {
       const lx = x - sd * ex;
       const ly = y - ey;
       if (!insidePill(lx, ly, ew, eh)) continue;
-      if (sparkle && Math.hypot(lx - ew * 0.14, ly + eh * 0.2) < ew * 0.22) return [255, 255, 255, 1];
+      if (sparkle && Math.hypot(lx - ew * 0.12, ly + eh * 0.24) < ew * 0.19) return [255, 255, 255, 1];
       return [...INK, 1];
     }
     return null;
   });
 
   // Antennae, each with a little light at the tip.
-  const lw = Math.max(0.9, R * 0.07);
-  const tipR = Math.max(1, R * 0.13);
+  const lw = Math.max(0.9, R * 0.05);
+  const tipR = Math.max(1, R * 0.09);
   for (const sd of [-1, 1]) {
-    const tip = [sd * R * 0.62, -R * 1.42];
-    const pts = quad([sd * R * 0.3, -ry * 0.86], [sd * R * 0.28, -R * 1.25], tip);
-    layers.push((x, y) => (distToPolyline(x, y, pts) <= lw / 2 ? [...INK, 1] : null));
+    const tip = [sd * R * 0.5, -R * 1.36];
+    const pts = quad([sd * R * 0.2, -ry * 0.94], [sd * R * 0.24, -R * 1.28], tip);
+    layers.push((x, y) => (distToPolyline(x, y, pts) <= lw / 2 ? [...STEM, 1] : null));
     layers.push((x, y) => {
       const d = Math.hypot(x - tip[0], y - tip[1]);
       if (d <= tipR) return [...mixc([255, 255, 240], GLOW, d / tipR), 1];

@@ -447,10 +447,11 @@ export class UploadCanvas {
     }
 
     // Eyes.
-    const ew = R * 0.3;
-    const eh = R * (0.34 + 0.12 * mc);
+    // Lumo's calm eyes, opening up as he turns into the drop box.
+    const ew = R * (0.17 + 0.13 * mc);
+    const eh = R * (0.27 + 0.19 * mc);
     const ey = R * (0.02 + 0.28 * mc);
-    const sp = R * 0.3;
+    const sp = R * (0.27 + 0.03 * mc);
     const lx = f.lookX * R * (0.34 - 0.08 * mc);
     const ly = f.lookY * R * (0.16 - 0.09 * mc);
     for (const sd of [-1, 1]) {

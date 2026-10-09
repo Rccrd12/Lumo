@@ -111,6 +111,22 @@ export function parseCloseMode(v: unknown): IslandCloseMode {
   return v === "leave" || v === "click" || v === "never" ? v : "timer";
 }
 
+/**
+ * How much Lumo moves on his own: "still" (only when something happens, as
+ * before 0.3.1), "calm" (he hovers, breathes and looks around) or "lively".
+ */
+export type LumoMotion = "still" | "calm" | "lively";
+
+export function parseMotion(v: unknown): LumoMotion {
+  return v === "still" || v === "lively" ? v : "calm";
+}
+
+/** The engine's ambient amount for a motion setting. */
+export function motionAmount(v: unknown): number {
+  const m = parseMotion(v);
+  return m === "still" ? 0 : m === "lively" ? 1.8 : 1;
+}
+
 export interface Settings {
   soundEnabled: boolean;
   soundVolume: number;
@@ -167,6 +183,8 @@ export interface Settings {
    * Same raw values as the Mac's "mochiOutfit"; read it through parseOutfit.
    */
   mochiOutfit: string;
+  /** How much Lumo moves on his own; read it through parseMotion. */
+  lumoMotion: string;
   /**
    * A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
@@ -219,6 +237,7 @@ export const DEFAULT_SETTINGS: Settings = {
   customUrl: "",
   shortcuts: {},
   mochiOutfit: DEFAULT_OUTFIT,
+  lumoMotion: "calm",
   pillColors: {},
   language: "",
 };
@@ -318,6 +337,14 @@ class AppState {
 
   get effectiveState(): BotStateName {
     return this.stateOverride ?? this.focusTask?.state ?? "idle";
+  }
+
+  /**
+   * What Lumo looks like: the effective state, except while the chat writes
+   * its answer — the chat shows that itself, and Lumo stays his calm self.
+   */
+  get shownState(): BotStateName {
+    return this.stateOverride === "thinking" ? "idle" : this.effectiveState;
   }
 
   get otherTasks(): AgentTask[] {

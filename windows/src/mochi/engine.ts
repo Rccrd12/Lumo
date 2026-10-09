@@ -66,10 +66,8 @@ interface Particle {
 
 // ── Constants (MochiConst / PISTES.mochi) ─────────────────────────────────────
 
-const EYE_W = LUMO_EYE.w;
-const EYE_H = LUMO_EYE.h;
-const EYE_SP = LUMO_EYE.spread;
-const EYE_P = LUMO_EYE.pitch;
+/** The agents' minis keep the eyes they always had; Lumo has his own. */
+const MINI_EYE = { w: 0.25, h: 0.27, spread: 0.37, pitch: -0.12 } as const;
 const BASE_TOP: RGB = LUMO_TOP;
 const BASE_BOTTOM: RGB = LUMO_BOTTOM;
 const INK = "rgb(26,20,18)"; // #1A1412
@@ -227,6 +225,15 @@ export class BotEngine {
 
   lookX = 0;
   lookY = 0;
+  /**
+   * How much Lumo moves on his own (0 = only when something happens): he
+   * hovers, breathes, sways and, once the mouse has been still a while,
+   * looks around. The main character only.
+   */
+  ambient = 1;
+  private lastLook = { x: 0, y: 0, at: 0 };
+  private glance = { x: 0, y: 0, next: 0 };
+  private glanceW = 0;
 
   lastTime = now();
   private t0 = now() - Math.random() * 5;
@@ -509,6 +516,11 @@ export class BotEngine {
     return !this.isMini && this.outfit !== "none" && this.outfitPresence > 0.05;
   }
 
+  /** He moves on his own: the island keeps drawing him, at a gentler frame rate. */
+  get ambientActive(): boolean {
+    return !this.isMini && this.ambient > 0 && this.state !== "sleeping" && this.morph < 0.05;
+  }
+
   /** True while anything is still moving — lets the island stop its RAF loop. */
   get busy(): boolean {
     return (
@@ -573,6 +585,26 @@ export class BotEngine {
       ty = Math.sin(t * 2.6) * 0.6;
       tp = -0.06;
     }
+    // The mouse has been still a while: he looks around on his own, gently.
+    const amb = this.ambientActive ? this.ambient : 0;
+    if (this.lookX !== this.lastLook.x || this.lookY !== this.lastLook.y) {
+      this.lastLook = { x: this.lookX, y: this.lookY, at: n };
+    }
+    const wander = amb > 0 && !this.cfg.look && !this.cfg.scans && n - this.lastLook.at > 3;
+    this.glanceW += ((wander ? 1 : 0) - this.glanceW) * (1 - Math.pow(0.2, dt));
+    if (wander && n > this.glance.next) {
+      const reach = Math.min(1, 0.45 * amb);
+      this.glance = {
+        x: (Math.random() * 2 - 1) * reach,
+        y: (Math.random() * 1.4 - 0.6) * reach * 0.6,
+        next: n + 2.4 + Math.random() * 3.2 / amb,
+      };
+    }
+    if (this.glanceW > 0.001) {
+      ty = lerp(ty, this.glance.x * 0.62, this.glanceW);
+      tp = lerp(tp, this.glance.y * 0.5, this.glanceW);
+    }
+
     if (this.state === "sleeping") { ty = 0; tp = -0.14; }
     if (this.state === "dizzy") { ty = Math.sin(t * 9) * 0.25; }
 
@@ -591,14 +623,15 @@ export class BotEngine {
 
     this.tgYaw = ty;
     this.tgPitch = tp;
-    this.tgTilt = this.cfg.tilt;
+    this.tgTilt = this.cfg.tilt + Math.sin(t * 0.83) * 0.02 * amb;
 
     if (n > this.waveStart && n < this.waveUntil) {
       const wt = n - this.waveStart;
       this.tgTilt = -0.06 + Math.sin(2 * Math.PI * 1.2 * wt) * 0.07;
     }
 
-    const bounce = this.cfg.bounces ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0;
+    const hover = Math.sin(t * 1.5) * 0.03 * amb;
+    const bounce = (this.cfg.bounces ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0) + hover;
     const kGen = 1 - Math.pow(0.0008, dt);
     if (!this.locks.has("oy")) this.oy += (bounce - this.oy) * kGen;
 
@@ -610,8 +643,9 @@ export class BotEngine {
       this.tgSy = 1 + Math.sin(t * 2.2) * 0.04;
       this.tgSx = 1 - Math.sin(t * 2.2) * 0.02;
     } else {
-      this.tgSy = 1;
-      this.tgSx = 1;
+      // At rest he still breathes, barely.
+      this.tgSy = 1 + Math.sin(t * 1.9) * 0.01 * amb;
+      this.tgSx = 1 - Math.sin(t * 1.9) * 0.006 * amb;
     }
 
     if (this.isMini && n > this.miniNextBehavior) this.doMiniBehaviorLoop();
@@ -752,7 +786,8 @@ export class BotEngine {
     const body = this.bodyPath(rx, ry, R);
     this.drawBody(x, body, R, rx, ry);
 
-    const blushVal = Math.max(this.blush, this.tint * 0.5) * (1 - this.morph);
+    // Lumo blushes only when he means it (an emote), never just from a state.
+    const blushVal = (this.isMini ? Math.max(this.blush, this.tint * 0.5) : this.blush * 0.6) * (1 - this.morph);
     if (blushVal > 0.01) {
       x.save();
       x.clip(body);
@@ -845,7 +880,7 @@ export class BotEngine {
     x.save();
 
     // Lumo's light carries the state's colour; his body only takes a wash of it.
-    const effectiveTint = this.tint * (1 - this.morph) * (this.isMini ? 1 : 0.4);
+    const effectiveTint = this.tint * (1 - this.morph) * (this.isMini ? 1 : 0.18);
     if (effectiveTint > 0.01) {
       const tg = x.createLinearGradient(0, ry, 0, -ry);
       tg.addColorStop(0, rgba(this.col, 0.72 * effectiveTint));
@@ -883,9 +918,10 @@ export class BotEngine {
     x.strokeStyle = ink;
 
     for (const sd of [-1, 1]) {
-      const eyeYaw = sd * EYE_SP + this.yaw;
+      const E = this.isMini ? MINI_EYE : LUMO_EYE;
+      const eyeYaw = sd * E.spread + this.yaw;
       // Rolling with an outfit on, the whole body turns: the eyes must not roll again.
-      let eyePitch = EYE_P + this.pitch + (this.rigidRoll ? 0 : this.roll);
+      let eyePitch = E.pitch + this.pitch + (this.rigidRoll ? 0 : this.roll);
       eyePitch = (((eyePitch + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
       const cp = Math.cos(eyePitch);
       if (Math.cos(eyeYaw) * cp <= 0.04) continue;
@@ -895,8 +931,8 @@ export class BotEngine {
       const fx = lerp(Math.max(0.18, Math.cos(eyeYaw)), 1, this.morph * 0.7);
       const fy = lerp(Math.max(0.18, cp), 1, this.morph * 0.7);
       const eyeMult = this.isMini ? 1.9 : 1.0;
-      const ew = R * EYE_W * this.es * eyeMult;
-      const eh = R * EYE_H * this.es * eyeMult;
+      const ew = R * E.w * this.es * eyeMult;
+      const eh = R * E.h * this.es * eyeMult;
 
       x.save();
       x.translate(ex, ey);
@@ -921,10 +957,10 @@ export class BotEngine {
         roundRectPath(x, -w / 2, -hh / 2, w, hh, Math.min(w / 2, hh / 2));
         x.fill();
         // Lumo's eyes catch the light: a little sparkle while they are open.
-        if (!this.isMini && hh > w * 0.7 && w > 2.4) {
-          x.fillStyle = "rgba(255,255,255,0.92)";
+        if (!this.isMini && hh > w * 0.9 && w > 2.4) {
+          x.fillStyle = "rgba(255,255,255,0.85)";
           x.beginPath();
-          x.arc(w * 0.14, -hh * 0.2, w * 0.2, 0, Math.PI * 2);
+          x.arc(w * 0.12, -hh * 0.24, w * 0.17, 0, Math.PI * 2);
           x.fill();
           x.fillStyle = ink;
         }

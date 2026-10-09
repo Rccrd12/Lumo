@@ -4240,6 +4240,50 @@
    "pt-BR": "Fones de ouvido",
    "ru": "Наушники",
    "id": "Headphone"
+  },
+  "Calm": {
+   "zh-Hans": "平静",
+   "hi": "शांत",
+   "es": "Tranquilo",
+   "ar": "هادئ",
+   "fr": "Calme",
+   "bn": "শান্ত",
+   "pt-BR": "Calmo",
+   "ru": "Спокойно",
+   "id": "Tenang"
+  },
+  "Lively": {
+   "zh-Hans": "活泼",
+   "hi": "चंचल",
+   "es": "Animado",
+   "ar": "نشيط",
+   "fr": "Vif",
+   "bn": "চঞ্চল",
+   "pt-BR": "Animado",
+   "ru": "Живо",
+   "id": "Lincah"
+  },
+  "Only when something happens": {
+   "zh-Hans": "仅在有事发生时",
+   "hi": "केवल जब कुछ होता है",
+   "es": "Solo cuando pasa algo",
+   "ar": "فقط عندما يحدث شيء",
+   "fr": "Seulement quand il se passe quelque chose",
+   "bn": "শুধু যখন কিছু ঘটে",
+   "pt-BR": "Só quando algo acontece",
+   "ru": "Только когда что-то происходит",
+   "id": "Hanya saat ada sesuatu terjadi"
+  },
+  "Lumo moves": {
+   "zh-Hans": "Lumo 的动作",
+   "hi": "Lumo की हलचल",
+   "es": "Movimiento de Lumo",
+   "ar": "حركة Lumo",
+   "fr": "Mouvements de Lumo",
+   "bn": "Lumo-র নড়াচড়া",
+   "pt-BR": "Movimento do Lumo",
+   "ru": "Движения Lumo",
+   "id": "Gerakan Lumo"
   }
  }
 }
