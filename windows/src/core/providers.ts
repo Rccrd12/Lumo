@@ -6,7 +6,7 @@ import type { Settings } from "./state";
 import { N_ } from "../i18n/i18n";
 
 export type ProviderId =
-  | "anthropic" | "claude-code" | "openai" | "google" | "openrouter"
+  | "anthropic" | "claude-code" | "antigravity-cli" | "openai" | "google" | "openrouter"
   | "ollama" | "lmstudio" | "custom";
 
 export interface ProviderDef {
@@ -27,6 +27,9 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "anthropic", name: "Anthropic", accent: "#E07950", key: "anthropic-api-key", urlField: null, defaultModel: "claude-opus-5-5", prefer: "opus" },
   // Claude Code itself, signed in with the user's Claude plan: no key (claude_code.rs).
   { id: "claude-code", name: "Claude Code", accent: "#D97757", key: null, urlField: null, defaultModel: "default", prefer: null },
+  // Antigravity CLI (`agy`), signed in with the user's Google account: no key
+  // (antigravity_cli.rs). The Antigravity pill's colour.
+  { id: "antigravity-cli", name: "Antigravity CLI", accent: "#E879F9", key: null, urlField: null, defaultModel: "default", prefer: null },
   { id: "google", name: "Google", accent: "#4285F4", key: "google-api-key", urlField: null, defaultModel: "gemini-2.0-flash", prefer: "flash" },
   { id: "openai", name: "OpenAI", accent: "#10A37F", key: "openai-api-key", urlField: null, defaultModel: "gpt-4o", prefer: "mini" },
   { id: "openrouter", name: "OpenRouter", accent: "#6467F2", key: "openrouter-api-key", urlField: null, defaultModel: "openrouter/auto", prefer: null },
@@ -37,6 +40,31 @@ export const PROVIDERS: readonly ProviderDef[] = [
 
 /** Claude Code's effort levels (claude --effort), "" for its own default. */
 export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
+
+/** Antigravity CLI's (agy --effort), "" for its own default. */
+export const AGY_EFFORTS = ["", "low", "medium", "high"] as const;
+
+/**
+ * The providers that run a signed-in CLI on this computer (claude_code.rs,
+ * antigravity_cli.rs): they say what they are doing as they go, and read a
+ * file added mid-conversation from its path.
+ */
+export function isCliProvider(id: string): boolean {
+  return id === "claude-code" || id === "antigravity-cli";
+}
+
+/** The effort levels the picker offers for `id`; none for a provider without any. */
+export function effortsFor(id: string): readonly string[] {
+  if (id === "claude-code") return EFFORTS;
+  if (id === "antigravity-cli") return AGY_EFFORTS;
+  return [];
+}
+
+/** The effort the chat sends `id`: the saved one if that provider takes it, else its default (""). */
+export function effortFor(id: string, saved: string | undefined): string {
+  const effort = saved ?? "";
+  return effortsFor(id).includes(effort) ? effort : "";
+}
 
 /** Credential store entry of the custom server's optional key. */
 export const CUSTOM_SERVER_KEY = "openai-compatible-key";

@@ -4,14 +4,15 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PROVIDERS, activeModel, isLoopbackHost, pickModel, providerDef, urlExposure, visibleProviders, withModel,
+  PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, isLoopbackHost, pickModel, providerDef, urlExposure,
+  visibleProviders, withModel,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 
 const settings = (over = {}) => ({ ...DEFAULT_SETTINGS, ...over });
 
 test("the ids and key names match the Rust side and the Mac", () => {
-  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "google", "openai", "openrouter", "ollama", "lmstudio", "custom"]);
+  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "ollama", "lmstudio", "custom"]);
   assert.equal(providerDef("google").key, "google-api-key");
   assert.equal(providerDef("openai").key, "openai-api-key");
   assert.equal(providerDef("openrouter").key, "openrouter-api-key");
@@ -37,9 +38,9 @@ test("Claude's model is the existing setting; the others are kept per provider",
 
 test("model servers show in the picker once connected, or while in use", () => {
   const ids = (s) => visibleProviders(s).map((p) => p.id);
-  assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "google", "openai", "openrouter"]);
-  assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "google", "openai", "openrouter", "ollama"]);
-  assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "google", "openai", "openrouter", "custom"]);
+  assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter"]);
+  assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "ollama"]);
+  assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "custom"]);
 });
 
 test("the saved model is kept when offered, else a sensible one is picked", () => {
@@ -55,6 +56,29 @@ test("the saved model is kept when offered, else a sensible one is picked", () =
   const offered = ["default", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
   assert.equal(pickModel(cc, offered, "haiku"), "claude-haiku-5-5");
   assert.equal(pickModel(cc, offered, "opus"), "claude-opus-5-5");
+  // Antigravity CLI: "Default" (agy's own choice) when the saved one is gone.
+  const agy = providerDef("antigravity-cli");
+  assert.equal(pickModel(agy, ["default", "gemini-3-pro", "gemini-3-flash"], "gemini-3-flash"), "gemini-3-flash");
+  assert.equal(pickModel(agy, ["default", "gemini-3-pro"], "gone"), "default");
+  assert.equal(activeModel(settings({ chatProvider: "antigravity-cli" })), "default");
+});
+
+test("Antigravity CLI is a keyless CLI with its own effort levels", () => {
+  const agy = providerDef("antigravity-cli");
+  assert.equal(agy.name, "Antigravity CLI");
+  assert.equal(agy.key, null);
+  assert.equal(agy.urlField, null);
+  assert.equal(agy.accent, "#E879F9", "the Antigravity pill's colour");
+  for (const id of ["claude-code", "antigravity-cli"]) assert.ok(isCliProvider(id), id);
+  for (const id of ["anthropic", "google", "openai", "openrouter", "ollama", "custom"]) assert.ok(!isCliProvider(id), id);
+  assert.deepEqual(effortsFor("antigravity-cli"), ["", "low", "medium", "high"]);
+  assert.deepEqual(effortsFor("claude-code"), ["", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(effortsFor("openai"), []);
+  assert.equal(effortFor("antigravity-cli", "high"), "high");
+  assert.equal(effortFor("antigravity-cli", "max"), "", "agy has no max: its own default");
+  assert.equal(effortFor("claude-code", "max"), "max");
+  assert.equal(effortFor("openai", "high"), "");
+  assert.equal(effortFor("claude-code", undefined), "");
 });
 
 test("loopback hosts match net.rs", () => {

@@ -719,3 +719,42 @@ test("the chat's permission request is a card over the chat, and leaves the pill
   assert.equal(task().name, "VS Code");
   assert.equal(task().state, "idle");
 });
+
+// ── The island's own chat (Antigravity CLI provider) ──────────────────────────
+
+test("a shell command of the chat's Antigravity CLI run is a card over the chat, gone before the relay gives up", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a1", session_id: "c1", cwd: "C:\\Users\\me\\Coucou",
+    coucou_island: true, coucou_agent: "antigravity", tool_name: "run_command", tool_input: { command: "npm test" },
+    coucou_card_secs: 100,
+  });
+  assert.equal(State.pendingApproval?.fromChat, true);
+  assert.equal(State.pendingApproval?.command, "run_command · npm test");
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "a1" }]);
+  assert.deepEqual(sent("approval_decline"), []);
+  assert.deepEqual(asked, ["alert:approval"]);
+  assert.equal(task("agent_antigravity"), undefined, "no session pill for the chat's own run");
+  seconds(98);
+  assert.ok(State.pendingApproval, "still waiting for a click");
+  seconds(1);
+  assert.equal(State.pendingApproval, null, "the relay stops waiting at 100 s: the card goes first");
+
+  // Hooks that do not say how long: the relay waits 8 s.
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a3", coucou_island: true, coucou_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "ls" },
+  });
+  seconds(6.9);
+  assert.ok(State.pendingApproval);
+  seconds(0.2);
+  assert.equal(State.pendingApproval, null);
+});
+
+test("an Antigravity session outside the chat still keeps its approvals in the agent", () => {
+  hook({ hook_event_name: "PermissionRequest", request_id: "a2", coucou_agent: "antigravity", tool_name: "run_command" });
+  assert.deepEqual(sent("approval_decline"), [{ requestId: "a2" }]);
+  assert.equal(State.pendingApproval, null);
+  // And the chat's other events never make a session.
+  hook({ hook_event_name: "PreToolUse", coucou_island: true, coucou_agent: "antigravity", tool_name: "view_file" });
+  assert.equal(task("agent_antigravity"), undefined);
+});

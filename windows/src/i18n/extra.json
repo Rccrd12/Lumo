@@ -4636,6 +4636,105 @@
    "pt-BR": "Usando {tool}",
    "ru": "Использует {tool}",
    "id": "Menggunakan {tool}"
+  },
+  "Antigravity CLI isn't installed. Install it with {command}, sign in once with `agy` in a terminal, then try again.": {
+   "zh-Hans": "未安装 Antigravity CLI。请用 {command} 安装，在终端中运行一次 `agy` 登录，然后重试。",
+   "hi": "Antigravity CLI इंस्टॉल नहीं है। इसे {command} से इंस्टॉल करें, टर्मिनल में एक बार `agy` से साइन इन करें, फिर दोबारा कोशिश करें।",
+   "es": "Antigravity CLI no está instalado. Instálalo con {command}, inicia sesión una vez con `agy` en una terminal y vuelve a intentarlo.",
+   "ar": "Antigravity CLI غير مثبّت. ثبّته باستخدام {command}، وسجّل الدخول مرة واحدة باستخدام `agy` في الطرفية، ثم أعد المحاولة.",
+   "fr": "Antigravity CLI n'est pas installé. Installez-le avec {command}, connectez-vous une fois avec `agy` dans un terminal, puis réessayez.",
+   "bn": "Antigravity CLI ইনস্টল করা নেই। {command} দিয়ে ইনস্টল করুন, টার্মিনালে একবার `agy` দিয়ে সাইন ইন করুন, তারপর আবার চেষ্টা করুন।",
+   "pt-BR": "O Antigravity CLI não está instalado. Instale com {command}, entre uma vez com `agy` em um terminal e tente de novo.",
+   "ru": "Antigravity CLI не установлен. Установите его командой {command}, один раз войдите через `agy` в терминале и попробуйте снова.",
+   "id": "Antigravity CLI belum terpasang. Pasang dengan {command}, masuk sekali dengan `agy` di terminal, lalu coba lagi."
+  },
+  "Antigravity CLI isn't signed in. Run `agy` once in a terminal to sign in with your Google account, then try again.": {
+   "zh-Hans": "Antigravity CLI 尚未登录。请在终端中运行一次 `agy`，用你的 Google 账号登录，然后重试。",
+   "hi": "Antigravity CLI में साइन इन नहीं है। अपने Google खाते से साइन इन करने के लिए टर्मिनल में एक बार `agy` चलाएँ, फिर दोबारा कोशिश करें।",
+   "es": "Antigravity CLI no tiene la sesión iniciada. Ejecuta `agy` una vez en una terminal para iniciar sesión con tu cuenta de Google y vuelve a intentarlo.",
+   "ar": "لم يتم تسجيل الدخول إلى Antigravity CLI. شغّل `agy` مرة واحدة في الطرفية لتسجيل الدخول بحساب Google، ثم أعد المحاولة.",
+   "fr": "Antigravity CLI n'est pas connecté. Lancez `agy` une fois dans un terminal pour vous connecter avec votre compte Google, puis réessayez.",
+   "bn": "Antigravity CLI-তে সাইন ইন করা নেই। আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন করতে টার্মিনালে একবার `agy` চালান, তারপর আবার চেষ্টা করুন।",
+   "pt-BR": "O Antigravity CLI não está conectado. Execute `agy` uma vez em um terminal para entrar com sua conta do Google e tente de novo.",
+   "ru": "В Antigravity CLI не выполнен вход. Запустите `agy` один раз в терминале, чтобы войти с аккаунтом Google, и попробуйте снова.",
+   "id": "Antigravity CLI belum masuk. Jalankan `agy` sekali di terminal untuk masuk dengan akun Google Anda, lalu coba lagi."
+  },
+  "Antigravity CLI stopped without an answer (exit {code}). Is it signed in? Run `agy` once in a terminal.": {
+   "zh-Hans": "Antigravity CLI 未给出回答就退出了（退出码 {code}）。是否已登录？请在终端中运行一次 `agy`。",
+   "hi": "Antigravity CLI बिना जवाब के रुक गया (exit {code})। क्या आपने साइन इन किया है? टर्मिनल में एक बार `agy` चलाएँ।",
+   "es": "Antigravity CLI se detuvo sin responder (salida {code}). ¿Has iniciado sesión? Ejecuta `agy` una vez en una terminal.",
+   "ar": "توقف Antigravity CLI دون إجابة (رمز الخروج {code}). هل سجّلت الدخول؟ شغّل `agy` مرة واحدة في الطرفية.",
+   "fr": "Antigravity CLI s'est arrêté sans répondre (code {code}). Êtes-vous connecté ? Lancez `agy` une fois dans un terminal.",
+   "bn": "Antigravity CLI উত্তর ছাড়াই থেমে গেছে (exit {code})। আপনি কি সাইন ইন করেছেন? টার্মিনালে একবার `agy` চালান।",
+   "pt-BR": "O Antigravity CLI parou sem responder (saída {code}). Você entrou na sua conta? Execute `agy` uma vez em um terminal.",
+   "ru": "Antigravity CLI завершился без ответа (код {code}). Вы вошли в аккаунт? Запустите `agy` один раз в терминале.",
+   "id": "Antigravity CLI berhenti tanpa jawaban (exit {code}). Sudah masuk? Jalankan `agy` sekali di terminal."
+  },
+  "Antigravity CLI: {error}": {
+   "zh-Hans": "Antigravity CLI：{error}",
+   "hi": "Antigravity CLI: {error}",
+   "es": "Antigravity CLI: {error}",
+   "ar": "Antigravity CLI: {error}",
+   "fr": "Antigravity CLI : {error}",
+   "bn": "Antigravity CLI: {error}",
+   "pt-BR": "Antigravity CLI: {error}",
+   "ru": "Antigravity CLI: {error}",
+   "id": "Antigravity CLI: {error}"
+  },
+  "Cannot start Antigravity CLI: {error}": {
+   "zh-Hans": "无法启动 Antigravity CLI：{error}",
+   "hi": "Antigravity CLI शुरू नहीं हो सका: {error}",
+   "es": "No se puede iniciar Antigravity CLI: {error}",
+   "ar": "تعذّر تشغيل Antigravity CLI: {error}",
+   "fr": "Impossible de lancer Antigravity CLI : {error}",
+   "bn": "Antigravity CLI চালু করা যাচ্ছে না: {error}",
+   "pt-BR": "Não foi possível iniciar o Antigravity CLI: {error}",
+   "ru": "Не удалось запустить Antigravity CLI: {error}",
+   "id": "Tidak dapat memulai Antigravity CLI: {error}"
+  },
+  "Antigravity CLI took too long and was stopped.": {
+   "zh-Hans": "Antigravity CLI 耗时过长，已被停止。",
+   "hi": "Antigravity CLI ने बहुत समय लिया और उसे रोक दिया गया।",
+   "es": "Antigravity CLI tardó demasiado y se detuvo.",
+   "ar": "استغرق Antigravity CLI وقتًا طويلًا جدًا فتم إيقافه.",
+   "fr": "Antigravity CLI a mis trop de temps et a été arrêté.",
+   "bn": "Antigravity CLI অনেক বেশি সময় নিয়েছে, তাই থামানো হয়েছে।",
+   "pt-BR": "O Antigravity CLI demorou demais e foi interrompido.",
+   "ru": "Antigravity CLI работал слишком долго и был остановлен.",
+   "id": "Antigravity CLI terlalu lama dan dihentikan."
+  },
+  "Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.": {
+   "zh-Hans": "Antigravity CLI 需要的权限未获批准。安装 Lumo 的 Antigravity hooks，即可在灵动岛中批准命令。",
+   "hi": "Antigravity CLI को एक अनुमति चाहिए थी जो नहीं मिली। आइलैंड से कमांड मंज़ूर करने के लिए Lumo के Antigravity hooks इंस्टॉल करें।",
+   "es": "Antigravity CLI necesitaba un permiso que no se concedió. Instala los hooks de Antigravity de Lumo para aprobar comandos desde la isla.",
+   "ar": "احتاج Antigravity CLI إلى إذن لم يُمنح. ثبّت hooks Antigravity الخاصة بـ Lumo للموافقة على الأوامر من الجزيرة.",
+   "fr": "Antigravity CLI avait besoin d'une autorisation qui n'a pas été donnée. Installez les hooks Antigravity de Lumo pour approuver les commandes depuis l'île.",
+   "bn": "Antigravity CLI-এর একটি অনুমতি দরকার ছিল যা দেওয়া হয়নি। আইল্যান্ড থেকে কমান্ড অনুমোদন করতে Lumo-র Antigravity hooks ইনস্টল করুন।",
+   "pt-BR": "O Antigravity CLI precisava de uma permissão que não foi dada. Instale os hooks do Antigravity do Lumo para aprovar comandos pela ilha.",
+   "ru": "Antigravity CLI требовалось разрешение, которое не было дано. Установите хуки Antigravity от Lumo, чтобы одобрять команды из острова.",
+   "id": "Antigravity CLI membutuhkan izin yang tidak diberikan. Pasang hook Antigravity dari Lumo untuk menyetujui perintah dari pulau."
+  },
+  "Uses your Google account. No key needed.": {
+   "zh-Hans": "使用你的 Google 账号，无需密钥。",
+   "hi": "आपके Google खाते का उपयोग करता है। कोई कुंजी नहीं चाहिए।",
+   "es": "Usa tu cuenta de Google. No hace falta clave.",
+   "ar": "يستخدم حساب Google الخاص بك. لا حاجة إلى مفتاح.",
+   "fr": "Utilise ton compte Google. Aucune clé nécessaire.",
+   "bn": "আপনার Google অ্যাকাউন্ট ব্যবহার করে। কোনো কী লাগবে না।",
+   "pt-BR": "Usa sua conta do Google. Não precisa de chave.",
+   "ru": "Работает с вашим аккаунтом Google. Ключ не нужен.",
+   "id": "Memakai akun Google Anda. Tidak perlu kunci."
+  },
+  "For personal Google accounts, Gemini CLI was replaced by Antigravity CLI: install the Antigravity hooks instead. Work accounts can keep Gemini CLI.": {
+   "zh-Hans": "对于个人 Google 账号，Gemini CLI 已被 Antigravity CLI 取代：请改为安装 Antigravity hooks。工作账号可以继续使用 Gemini CLI。",
+   "hi": "निजी Google खातों के लिए Gemini CLI की जगह Antigravity CLI आ गया है: इसके बजाय Antigravity hooks इंस्टॉल करें। ऑफ़िस खाते Gemini CLI रख सकते हैं।",
+   "es": "En las cuentas personales de Google, Antigravity CLI sustituyó a Gemini CLI: instala los hooks de Antigravity. Las cuentas de trabajo pueden seguir con Gemini CLI.",
+   "ar": "في حسابات Google الشخصية، حلّ Antigravity CLI محلّ Gemini CLI: ثبّت hooks Antigravity بدلًا منها. يمكن لحسابات العمل الاستمرار في استخدام Gemini CLI.",
+   "fr": "Pour les comptes Google personnels, Gemini CLI a été remplacé par Antigravity CLI : installe plutôt les hooks Antigravity. Les comptes professionnels peuvent garder Gemini CLI.",
+   "bn": "ব্যক্তিগত Google অ্যাকাউন্টে Gemini CLI-এর জায়গায় Antigravity CLI এসেছে: এর বদলে Antigravity hooks ইনস্টল করুন। কাজের অ্যাকাউন্টে Gemini CLI রাখা যায়।",
+   "pt-BR": "Nas contas pessoais do Google, o Gemini CLI foi substituído pelo Antigravity CLI: instale os hooks do Antigravity. Contas de trabalho podem continuar com o Gemini CLI.",
+   "ru": "Для личных аккаунтов Google Gemini CLI заменён на Antigravity CLI: установите вместо этого хуки Antigravity. Рабочие аккаунты могут оставить Gemini CLI.",
+   "id": "Untuk akun Google pribadi, Gemini CLI digantikan oleh Antigravity CLI: pasang hook Antigravity sebagai gantinya. Akun kerja tetap bisa memakai Gemini CLI."
   }
  }
 }

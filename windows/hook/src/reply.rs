@@ -56,6 +56,25 @@ pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option
     }
 }
 
+/// The Antigravity tools the island's own chat (antigravity_cli.rs) shows a
+/// card for: shell commands, the ones headless agy needs an approval for and
+/// would otherwise quietly deny. Reading and writing workspace files needs none.
+pub fn island_card_tool(tool: &str) -> bool {
+    let tool = tool.to_ascii_lowercase();
+    ["command", "shell", "terminal"].iter().any(|w| tool.contains(w))
+}
+
+/// Antigravity's PreToolUse reply to such a card: `allow` or `deny` only after
+/// a click. Anything else is `ask`, which headless agy turns into its own
+/// soft denial — the command does not run.
+pub fn antigravity_island(decision: Option<&str>) -> String {
+    match decision.map(str::trim) {
+        Some("allow" | "always") => r#"{"decision":"allow"}"#.to_string(),
+        Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
+        _ => r#"{"decision":"ask"}"#.to_string(),
+    }
+}
+
 /// The documented PermissionRequest output. Anything we do not recognise prints
 /// nothing at all rather than guessing — silence is the safe answer.
 /// See https://code.claude.com/docs/en/hooks
@@ -217,6 +236,24 @@ mod tests {
         }
         // Hermes approvals are not supported: its decisions are never relayed.
         assert_eq!(stdout("hermes", "PermissionRequest", Some("allow"), None), None);
+    }
+
+    #[test]
+    fn the_islands_antigravity_chat_is_allowed_only_after_a_click() {
+        assert_eq!(antigravity_island(Some("allow")), r#"{"decision":"allow"}"#);
+        assert_eq!(antigravity_island(Some("always")), r#"{"decision":"allow"}"#);
+        assert_eq!(antigravity_island(Some("deny")), r#"{"decision":"deny","reason":"Denied from Lumo"}"#);
+        for not_a_decision in [None, Some(""), Some("ask"), Some("maybe"), Some(r#"{"permissionDecision":"allow"}"#)] {
+            let out = antigravity_island(not_a_decision);
+            assert_eq!(out, r#"{"decision":"ask"}"#, "{not_a_decision:?}");
+            assert!(!allows(&out));
+        }
+        assert!(island_card_tool("run_command"));
+        assert!(island_card_tool("send_command_input"));
+        assert!(island_card_tool("Shell"));
+        assert!(!island_card_tool("view_file"));
+        assert!(!island_card_tool("write_to_file"));
+        assert!(!island_card_tool(""));
     }
 
     #[test]

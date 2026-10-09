@@ -170,6 +170,22 @@ pub fn claude_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// Where the Antigravity CLI (`agy`) may be, best first: %PATH%, then the
+/// install script's `%LOCALAPPDATA%\agy\bin`. The prompt goes on stdin
+/// (antigravity_cli.rs), never as an argument.
+pub fn agy_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = find_on_path("agy").into_iter().collect();
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
+    if let Some(local) = var("LOCALAPPDATA") {
+        out.push(local.join("agy").join("bin").join("agy.exe"));
+    }
+    if let Some(home) = var("USERPROFILE") {
+        out.push(home.join(".local").join("bin").join("agy.exe"));
+    }
+    out.retain(|p| p.is_file());
+    out
+}
+
 // ── Who we are ────────────────────────────────────────────────────────────────
 //
 // Named pipes share one machine-wide namespace, so the SID in the name is what

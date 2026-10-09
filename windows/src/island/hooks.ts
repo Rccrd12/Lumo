@@ -22,6 +22,16 @@ const CURSOR_ID = "agent_cursor";
 /** Clears the approval card if no decision was made before the hook gave up. */
 let pendingTimeout: number | null = null;
 
+/**
+ * How long a card of the chat's Antigravity CLI run stays: a little less than
+ * the relay waits for it (`coucou_card_secs`, 8 s when it does not say), after
+ * which Antigravity goes on without the command.
+ */
+export function agyCardMs(secs: unknown): number {
+  const wait = typeof secs === "number" && Number.isFinite(secs) ? Math.min(110, Math.max(1, secs)) : 8;
+  return Math.max(500, wait * 1000 - 1000);
+}
+
 /** Takes the approval or question card down and gives the island back. */
 function dropPendingCard(island: Island): void {
   if (!State.pendingApproval) return;
@@ -69,6 +79,8 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   coucou_island?: boolean;
+  /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
+  coucou_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
   rate_limits?: unknown;
 }
@@ -461,8 +473,11 @@ function handleHook(island: Island, payload: HookPayload) {
     case "PermissionRequest": {
       // Only Claude Code and the agents the relay can answer for (Codex, Copilot
       // CLI, Muse Code — same as the Mac) get a card. Anyone else's request is
-      // declined at once, so the agent asks in its own terminal.
-      if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!)) {
+      // declined at once, so the agent asks in its own terminal. And a shell
+      // command of the chat's own Antigravity CLI run (antigravity_cli.rs), which
+      // the relay turns into a request: headless agy has no terminal to ask in.
+      const chatAgy = payload.coucou_island === true && validAgent === "antigravity";
+      if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!) && !chatAgy) {
         if (payload.request_id) void Bridge.approvalDecline(payload.request_id);
         break;
       }
@@ -510,11 +525,12 @@ function handleHook(island: Island, payload: HookPayload) {
       // the same way: beginApproval brought its pill to the front.
       island.alert(view);
       // Coucou answers within 108 s or not at all; after that the terminal has
-      // taken over and the card would be lying.
+      // taken over and the card would be lying. For the chat's Antigravity CLI
+      // run, the relay says how long it waits: the card goes just before.
       pendingTimeout = window.setTimeout(() => {
         pendingTimeout = null;
         dropPendingCard(island);
-      }, 110_000);
+      }, chatAgy ? agyCardMs(payload.coucou_card_secs) : 110_000);
       break;
     }
 

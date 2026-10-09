@@ -140,6 +140,16 @@ island's `tool_name` / `session_id`.
 | `PostInvocation` | `PostToolUse` |
 | `Stop` | `Stop` |
 
+The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
+rules decide. One exception, on Windows and Linux: the island's own chat with **Antigravity
+CLI** runs `agy -p` headless with `COUCOU_ISLAND_RUN=1`, where nothing can prompt. For that
+run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
+`terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
+chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a click, or `ask`
+(headless agy then skips the command) with no click. The `PreToolUse` hook is installed as
+`--agent antigravity PreToolUse --wait 100` with a 110 s `timeout`, so the relay knows how long
+it may wait; hooks installed without `--wait` (10 s timeout) give the card 8 s.
+
 ### GitHub Copilot CLI (macOS)
 
 Lumo supports Copilot CLI out of the box via **Settings → GitHub Copilot CLI Hooks → Install hooks**.

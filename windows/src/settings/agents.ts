@@ -20,6 +20,9 @@ const TEXT = {
   get reinstall() { return t("Reinstall…"); },
   get uninstall() { return t("Uninstall…"); },
   get relayMissing() { return t("The relay isn't installed yet. Restart Lumo."); },
+  get geminiReplaced() {
+    return t("For personal Google accounts, Gemini CLI was replaced by Antigravity CLI: install the Antigravity hooks instead. Work accounts can keep Gemini CLI.");
+  },
   previewInstall: (name: string) => t("This is exactly what changes for {name}. Nothing else is touched.", { name }),
   get previewRemove() { return t("This removes Lumo's entries only. Everything else stays."); },
   backup: (to: string) => (to ? t("Backup → {path}", { path: to }) : t("No existing file — nothing to back up.")),
@@ -97,6 +100,7 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
       }));
     }
     body.append(h("span", { class: "path", text: status.path }));
+    if (status.id === "gemini") body.append(h("div", { class: "hint", text: TEXT.geminiReplaced }));
   }
 
   async function showPreview(install: boolean) {

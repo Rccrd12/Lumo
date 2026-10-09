@@ -42,7 +42,7 @@ import {
   type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
-  EFFORTS, activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
+  activeModel, effortFor, effortsFor, isCliProvider, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
@@ -188,12 +188,12 @@ export function activityLabel(activity: ChatActivity | null): string {
 }
 
 /**
- * What the answer is shown doing first. Claude Code says for itself as it
- * goes (`chat-activity`); the other providers stream no tools, so the
+ * What the answer is shown doing first. The CLIs (Claude Code, Antigravity
+ * CLI) say for themselves as they go (`chat-activity`); the other providers stream no tools, so the
  * screenshots or the file that ride along show first, then Thinking….
  */
 export function firstActivity(provider: string, context: ChatContext | null, screen: ScreenContext | null): ChatActivity {
-  if (provider !== "claude-code") {
+  if (!isCliProvider(provider)) {
     if (screen?.shots.length) return { kind: "screen", detail: "" };
     if (context?.kind === "file") return { kind: "read", detail: context.name };
   }
@@ -257,18 +257,19 @@ interface Picker {
 function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
-  // Claude Code only: how hard it thinks (claude --effort).
+  // The CLIs only: how hard they think (claude --effort, agy --effort).
   const efforts = h("div", { class: "picker-chips picker-efforts" });
   const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list, efforts);
 
   function drawEfforts() {
     clear(efforts);
     const p = providerDef(State.settings.chatProvider);
-    efforts.hidden = p.id !== "claude-code";
+    const levels = effortsFor(p.id);
+    efforts.hidden = levels.length === 0;
     if (efforts.hidden) return;
     efforts.append(h("span", { class: "picker-label", text: t(STRINGS.effort) }));
-    for (const e of EFFORTS) {
-      const on = e === (State.settings.chatEffort ?? "");
+    for (const e of levels) {
+      const on = e === effortFor(p.id, State.settings.chatEffort);
       const chip = h(
         "button",
         { class: on ? "picker-chip on" : "picker-chip", style: `--accent:${p.accent}` },
@@ -561,7 +562,7 @@ export function buildPrompt(
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
     const model = activeModel(State.settings) || t(STRINGS.noModel);
-    const effort = p.id === "claude-code" ? State.settings.chatEffort : "";
+    const effort = effortFor(p.id, State.settings.chatEffort);
     modelName.textContent = effort ? `${model} · ${effort}` : model;
     modelBtn.classList.toggle("open", picker.isOpen);
     modelBtn.disabled = sending;
@@ -996,9 +997,9 @@ export function buildPrompt(
   /** A file joins the chat: picked with the paperclip, or named from a shared folder. */
   async function useFile(file: { name: string; path: string }) {
     let reset: Promise<unknown> = Promise.resolve();
-    // Claude Code reads the file from its path, mid-conversation too. The other
+    // The CLIs read the file from its path, mid-conversation too. The other
     // providers take a file with the first question only: a new chat, as a drop.
-    if (State.settings.chatProvider !== "claude-code") {
+    if (!isCliProvider(State.settings.chatProvider)) {
       State.startChat();
       reset = Bridge.chatReset();
       renderedCount = -1;

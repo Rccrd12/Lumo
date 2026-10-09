@@ -425,6 +425,48 @@ function apiSection(hasKey: boolean): HTMLElement {
   );
 }
 
+// ── Antigravity CLI section ───────────────────────────────────────────────────
+
+/**
+ * Antigravity CLI needs no key either: it runs with the Google account signed
+ * in to `agy` (antigravity_cli.rs). Its models come from `agy models`, asked
+ * only once the list is opened.
+ */
+function agyCliSection(): HTMLElement {
+  const p = providerDef("antigravity-cli");
+  const model = h("select", {}) as HTMLSelectElement;
+  const fill = (offered: { id: string; label: string }[]) => {
+    const saved = settings.chatModels[p.id] || "default";
+    const list = offered.some((m) => m.id === "default") ? offered : [{ id: "default", label: t("Default") }, ...offered];
+    clear(model);
+    for (const m of list) model.append(h("option", { value: m.id, text: m.label }));
+    if (!list.some((m) => m.id === saved)) model.append(h("option", { value: saved, text: saved }));
+    model.value = saved;
+  };
+  fill([]);
+  let asked = false;
+  const ask = () => {
+    if (asked) return;
+    asked = true;
+    // Not installed or not signed in: "Default" stays, and the chat says why.
+    Bridge.chatModels(p.id).then(fill, () => {});
+  };
+  model.addEventListener("focus", ask);
+  model.addEventListener("pointerdown", ask);
+  model.addEventListener("change", () => {
+    settings.chatModels = { ...settings.chatModels, [p.id]: model.value };
+    void save();
+  });
+
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("i", { class: "dot", style: `background:${p.accent};margin-right:8px` }), h("span", { text: p.name })),
+    h("div", { class: "row" }, h("label", { text: t("Model") }), model),
+    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Uses your Google account. No key needed.") }),
+  );
+}
+
 // ── Active pills section ──────────────────────────────────────────────────────
 
 /**
@@ -1565,7 +1607,7 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
+    chat: [apiSection(hasKey), agyCliSection(), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     agents: [claudeSection(status), agentsSection(agents), planSection(status)],
     pills: [activePillsSection(connected), integrationsSection(present)],
     shortcuts: [shortcutsSection(shortcutReport)],

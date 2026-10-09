@@ -16,7 +16,7 @@ export interface SavedChat {
   updatedAt: number;
   /** Who answered last (a providers.ts id). */
   provider: string;
-  /** The Claude Code session that answered, so reopening continues it. */
+  /** The CLI session that answered (Claude Code, Antigravity CLI), so reopening continues it. */
   session: string | null;
   turns: SavedTurn[];
 }

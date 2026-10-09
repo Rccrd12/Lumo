@@ -517,18 +517,29 @@ fn gemini_install(root: &Value, commands: &[(String, String, u64)]) -> Result<Va
 // Hooks are named groups at the top level; Coucou's is `coucou`. Tool events
 // take matcher groups, lifecycle events take handlers directly; timeouts are
 // in seconds. Merge and removal come from #298 (kobaltgit). The relay answers
-// PreToolUse with "{}" — no decision — never with an allow: Antigravity's own
-// permission rules stay in charge.
+// PreToolUse with "ask" — no decision — never with an allow: Antigravity's own
+// permission rules stay in charge. The one exception is the island's own
+// Antigravity CLI chat (antigravity_cli.rs): there a shell command is an
+// Allow / Deny card, so PreToolUse gets the time to wait for a click, and
+// tells the relay how long that is (`--wait`, after the event name so an
+// older relay ignores it). Every other PreToolUse is answered at once.
 
 const ANTIGRAVITY_TOOL_EVENTS: &[&str] = &["PreToolUse", "PostToolUse"];
 const ANTIGRAVITY_LIFECYCLE_EVENTS: &[&str] = &["PreInvocation", "PostInvocation", "Stop"];
+/// How long the relay may wait for a click on a card of the island's chat.
+const ANTIGRAVITY_CARD_WAIT: u64 = 100;
 
 fn antigravity_block(relay: &Relay) -> Value {
     let handler = |event: &str| {
+        let (args, timeout) = if event == "PreToolUse" {
+            (format!("--agent antigravity {event} --wait {ANTIGRAVITY_CARD_WAIT}"), ANTIGRAVITY_CARD_WAIT + 10)
+        } else {
+            (format!("--agent antigravity {event}"), 10)
+        };
         json!({
             "type": "command",
-            "command": relay.command(Shell::Cmd, &format!("--agent antigravity {event}")),
-            "timeout": 10,
+            "command": relay.command(Shell::Cmd, &args),
+            "timeout": timeout,
         })
     };
     let mut block = Map::new();
@@ -1066,8 +1077,15 @@ mod tests {
         for event in ANTIGRAVITY_TOOL_EVENTS {
             assert_eq!(ours[event][0]["matcher"], "*");
             let cmd = ours[event][0]["hooks"][0]["command"].as_str().unwrap();
-            assert!(cmd.ends_with(&format!("--agent antigravity {event}")), "{cmd}");
+            assert!(cmd.contains(&format!("--agent antigravity {event}")), "{cmd}");
         }
+        // PreToolUse may wait for a click on a card of the island's own chat, and says how long.
+        let pre = &ours["PreToolUse"][0]["hooks"][0];
+        assert!(pre["command"].as_str().unwrap().ends_with("--agent antigravity PreToolUse --wait 100"), "{pre}");
+        assert_eq!(pre["timeout"], 110);
+        let post = &ours["PostToolUse"][0]["hooks"][0];
+        assert!(post["command"].as_str().unwrap().ends_with("--agent antigravity PostToolUse"), "{post}");
+        assert_eq!(post["timeout"], 10);
         for event in ANTIGRAVITY_LIFECYCLE_EVENTS {
             assert_eq!(ours[event][0]["timeout"], 10);
             assert!(ours[event][0]["command"].as_str().unwrap().contains(MARKER));

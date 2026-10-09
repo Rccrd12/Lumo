@@ -96,14 +96,14 @@ fn safe_model(model: &str) -> Option<&str> {
 }
 
 /// A Claude Code session id: a UUID, nothing else.
-fn safe_session(id: &str) -> Option<&str> {
+pub(crate) fn safe_session(id: &str) -> Option<&str> {
     (id.len() == 36 && id.chars().all(|c| c.is_ascii_hexdigit() || c == '-')).then_some(id)
 }
 
 /// A shared folder we are willing to put on the command line: a full path with
 /// nothing cmd.exe would read as syntax (an npm install is a `.cmd`). Any other
 /// is left out, and Claude Code asks before reading there.
-fn safe_dir(dir: &str) -> Option<&str> {
+pub(crate) fn safe_dir(dir: &str) -> Option<&str> {
     let full = dir.starts_with("\\\\") || dir.starts_with('/') || dir.as_bytes().get(1) == Some(&b':');
     (full && dir.len() <= 1024 && !dir.chars().any(|c| c.is_control() || matches!(c, '"' | '%' | '^' | '&' | '|' | '<' | '>' | '!' | '`')))
         .then_some(dir)
@@ -154,7 +154,7 @@ fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str, folders: 
 /// and — when this session has not seen the turns before (another provider
 /// answered them, or a message was edited) — that conversation as plain text,
 /// with the files added in it (`files`: name, path).
-fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[(String, String)], query: &str) -> String {
+pub(crate) fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[(String, String)], query: &str) -> String {
     let mut out = String::new();
     if !carried.is_empty() {
         let mut transcript = String::new();
@@ -208,11 +208,11 @@ pub struct Activity {
 }
 
 impl Activity {
-    fn new(kind: &'static str, detail: impl Into<String>) -> Self {
+    pub(crate) fn new(kind: &'static str, detail: impl Into<String>) -> Self {
         Activity { kind, detail: detail.into() }
     }
 
-    fn thinking() -> Self {
+    pub(crate) fn thinking() -> Self {
         Activity::new("thinking", "")
     }
 }
@@ -220,7 +220,7 @@ impl Activity {
 /// A detail shows on one short line.
 const MAX_DETAIL: usize = 48;
 
-fn short(text: &str) -> String {
+pub(crate) fn short(text: &str) -> String {
     let line = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if line.chars().count() <= MAX_DETAIL {
         return line;
@@ -230,12 +230,12 @@ fn short(text: &str) -> String {
 }
 
 /// The last part of a path, Windows or Unix.
-fn file_name(path: &str) -> String {
+pub(crate) fn file_name(path: &str) -> String {
     short(path.trim_end_matches(['/', '\\']).rsplit(['/', '\\']).next().unwrap_or(""))
 }
 
 /// The host of a URL, without "www.", a port or a sign-in.
-fn host(url: &str) -> String {
+pub(crate) fn host(url: &str) -> String {
     let rest = url.split_once("://").map(|(_, r)| r).unwrap_or(url);
     let authority = rest.split(['/', '?', '#']).next().unwrap_or("");
     let authority = authority.rsplit('@').next().unwrap_or("");
@@ -244,13 +244,13 @@ fn host(url: &str) -> String {
 }
 
 /// The screenshots screen.rs writes to the inbox (`screen::shot_file_name`).
-fn is_screenshot(name: &str) -> bool {
+pub(crate) fn is_screenshot(name: &str) -> bool {
     name.starts_with("screenshot-") && name.contains("-screen") && name.ends_with(".png")
 }
 
 /// A tool's name as words: `ToolSearch` → "Tool Search", `mcp__github__create_issue`
 /// → "create issue (github)".
-fn pretty_tool(name: &str) -> String {
+pub(crate) fn pretty_tool(name: &str) -> String {
     fn words(s: &str) -> String {
         let mut out = String::new();
         let mut prev_lower = false;
@@ -613,7 +613,7 @@ fn run(
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
 /// On Linux the whole process group goes (run() starts the CLI in its own).
-fn kill_tree(child: &mut std::process::Child) {
+pub(crate) fn kill_tree(child: &mut std::process::Child) {
     #[cfg(windows)]
     {
         let mut kill = Command::new("taskkill");
@@ -648,7 +648,8 @@ pub async fn send(
         .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
 
     let turn = chat.begin(PROVIDER);
-    let session = chat.cli_session();
+    // Only a Claude Code session: never an Antigravity CLI conversation.
+    let session = chat.cli_session_for(PROVIDER);
     // Turns this session has not seen (another provider answered them, or a
     // message was edited) are carried over once, as text.
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };

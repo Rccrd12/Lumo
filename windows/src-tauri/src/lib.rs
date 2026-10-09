@@ -2,6 +2,7 @@
 
 mod agent_hooks;
 mod agents;
+mod antigravity_cli;
 mod autostart;
 mod chat;
 mod chat_usage;
@@ -617,7 +618,8 @@ struct SavedTurn {
 }
 
 /// Opens a chat from the history: what was said, and the Claude Code session
-/// that answered it, if any, so the next question continues it.
+/// or Antigravity CLI conversation that answered it, if any, so the next
+/// question continues it.
 #[tauri::command]
 fn chat_restore(chat: State<Chat>, turns: Vec<SavedTurn>, session: Option<String>) {
     chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);

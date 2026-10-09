@@ -38,6 +38,11 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const FIRE_AND_FORGET_BUDGET: Duration = Duration::from_secs(2);
 /// How long a permission prompt may stay on screen before the terminal takes over.
 const DECISION_BUDGET: Duration = Duration::from_secs(110);
+/// A card of the island's Antigravity CLI chat must be answered before
+/// Antigravity gives up on the hook: the hook's `timeout` in hooks.json, which
+/// Coucou's own hooks pass on as `--wait`. Without it (hooks installed before
+/// the chat came, which give 10 s) the relay waits this long, no more.
+const ANTIGRAVITY_SHORT_WAIT: u64 = 8;
 
 /// Fields that are pointless to forward and can be enormous (a whole file read,
 /// a full command output). The island never shows them.
@@ -69,24 +74,35 @@ mod unix;
 #[cfg(target_os = "linux")]
 use unix::connect;
 
-/// What the command line says: `--agent <name>` and the event name.
+/// What the command line says: `--agent <name>`, the event name, and
+/// `--wait <seconds>`: how long the agent lets this hook run (Antigravity's
+/// PreToolUse, after the event name so an older relay ignores it).
 struct Args {
     agent: String,
     event: String,
+    wait: Option<u64>,
 }
 
 fn args() -> Args {
     let mut agent = String::new();
     let mut event = String::new();
+    let mut wait = None;
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         if arg == "--agent" {
             agent = it.next().unwrap_or_default();
+        } else if arg == "--wait" {
+            wait = it.next().and_then(|s| s.parse().ok());
         } else if event.is_empty() {
             event = arg;
         }
     }
-    Args { agent, event }
+    Args { agent, event, wait }
+}
+
+/// How long a card of the island's Antigravity CLI chat may wait for a click.
+fn card_budget(wait: Option<u64>) -> Duration {
+    Duration::from_secs(wait.unwrap_or(ANTIGRAVITY_SHORT_WAIT).clamp(1, DECISION_BUDGET.as_secs()))
 }
 
 /// One event, ready to forward.
@@ -97,6 +113,9 @@ struct Event {
     name: String,
     /// For Claude Code's AskUserQuestion, the question as it was asked.
     question: Option<Value>,
+    /// A shell command of the island's own Antigravity CLI chat, forwarded as
+    /// a permission request (see `prepare`).
+    island_card: bool,
 }
 
 fn main() {
@@ -109,9 +128,10 @@ fn main() {
     let env = |key: &str| std::env::var(key).ok();
     let cwd = std::env::current_dir().map(|p| p.to_string_lossy().to_string()).unwrap_or_default();
 
-    // A Claude Code run started by the island's own chat (claude_code.rs) is not a
-    // session to show: only its permission requests go through, as the chat's
-    // Allow / Deny card. Everything else gets the usual "no opinion".
+    // A Claude Code or Antigravity CLI run started by the island's own chat
+    // (claude_code.rs, antigravity_cli.rs) is not a session to show: only its
+    // permission requests go through, as the chat's Allow / Deny card.
+    // Everything else gets the usual "no opinion".
     let from_island = is_island_run(&env);
     let prepared = prepare(&raw, &args, &env, &cwd).filter(|e| !from_island || e.name == "PermissionRequest");
     let Some(event) = prepared else {
@@ -124,8 +144,12 @@ fn main() {
 
     // Only an agent whose decisions the island can give waits for one; any other
     // would be held for nothing, its decision being thrown away (reply.rs).
-    let waits_for_answer = event.name == "PermissionRequest" && reply::takes_decisions(&args.agent);
-    let budget = if waits_for_answer { DECISION_BUDGET } else { FIRE_AND_FORGET_BUDGET };
+    let waits_for_answer = event.name == "PermissionRequest" && (event.island_card || reply::takes_decisions(&args.agent));
+    let budget = match (waits_for_answer, event.island_card) {
+        (true, true) => card_budget(args.wait),
+        (true, false) => DECISION_BUDGET,
+        _ => FIRE_AND_FORGET_BUDGET,
+    };
 
     // The worker owns every blocking call. If it overruns the budget we simply
     // stop listening and exit: the process dying takes the pipe handle with it.
@@ -138,7 +162,11 @@ fn main() {
     });
 
     let decision = rx.recv_timeout(budget).ok().flatten();
-    print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
+    if event.island_card {
+        print(Some(reply::antigravity_island(decision.as_deref())));
+    } else {
+        print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
+    }
     std::process::exit(0);
 }
 
@@ -183,6 +211,18 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         .unwrap_or_else(|| args.event.clone());
     normalize::fields(map, env);
     let name = normalize::refine(normalize::event(&raw_event), map);
+    // The island's own Antigravity CLI chat runs agy headless, which quietly
+    // denies a shell command nobody approved. Its PreToolUse for one goes to
+    // the island as a permission request instead: the chat's Allow / Deny card.
+    let island_card = is_island_run(env)
+        && args.agent == "antigravity"
+        && name == "PreToolUse"
+        && map.get("tool_name").and_then(Value::as_str).is_some_and(reply::island_card_tool);
+    let name = if island_card { "PermissionRequest".to_string() } else { name };
+    if island_card {
+        // The island takes the card down just before the relay stops waiting.
+        map.insert("coucou_card_secs".into(), Value::from(card_budget(args.wait).as_secs()));
+    }
     map.insert("hook_event_name".into(), Value::String(name.clone()));
 
     for field in DROPPED_FIELDS {
@@ -207,7 +247,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some(Event { line, name, question })
+    Some(Event { line, name, question, island_card })
 }
 
 /// Which terminal the session runs in. Unlike macOS, Coucou here accepts events
@@ -230,12 +270,12 @@ fn add_terminal_context(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Opti
 /// a Claude Code session started from the Claude desktop app, which says so in
 /// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
 /// for a plain Claude Code session.
-/// The island's chat started this Claude Code run (claude_code.rs sets the variable).
+/// The island's chat started this run (claude_code.rs and antigravity_cli.rs set the variable).
 fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
     env(ISLAND_RUN_VAR).as_deref() == Some("1")
 }
 
-/// Set by the app on the `claude -p` runs of its chat; hooks inherit it.
+/// Set by the app on the `claude -p` and `agy -p` runs of its chat; hooks inherit it.
 const ISLAND_RUN_VAR: &str = "COUCOU_ISLAND_RUN";
 
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
@@ -382,7 +422,7 @@ mod tests {
     use super::*;
 
     fn run(raw: &str, agent: &str, event: &str) -> (Value, Event) {
-        let args = Args { agent: agent.into(), event: event.into() };
+        let args = Args { agent: agent.into(), event: event.into(), wait: None };
         let ev = prepare(raw.as_bytes(), &args, &|_| None, "/home/me/here").expect("forwarded");
         let v = serde_json::from_str(ev.line.trim_end()).unwrap();
         (v, ev)
@@ -394,7 +434,7 @@ mod tests {
 
     #[test]
     fn the_islands_own_runs_are_marked() {
-        let args = Args { agent: String::new(), event: String::new() };
+        let args = Args { agent: String::new(), event: String::new(), wait: None };
         let raw = br#"{"hook_event_name":"PermissionRequest","tool_name":"Write"}"#;
         let ev = prepare(raw, &args, &env_of(&[("COUCOU_ISLAND_RUN", "1")]), "/p").unwrap();
         assert!(ev.line.contains(r#""coucou_island":true"#));
@@ -402,6 +442,43 @@ mod tests {
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
         assert!(!ev.line.contains("coucou_island"));
         assert!(!is_island_run(&|_| None));
+    }
+
+    #[test]
+    fn a_shell_command_of_the_islands_antigravity_chat_is_a_permission_request() {
+        let island = env_of(&[("COUCOU_ISLAND_RUN", "1")]);
+        let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100) };
+        let command = br#"{"hook_event_name":"PreToolUse","conversationId":"c1","toolCall":{"name":"run_command","args":{"CommandLine":"npm test"}}}"#;
+        let ev = prepare(command, &agy, &island, "/p").unwrap();
+        assert!(ev.island_card);
+        assert_eq!(ev.name, "PermissionRequest");
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["hook_event_name"], "PermissionRequest");
+        assert_eq!(v["coucou_agent"], "antigravity");
+        assert_eq!(v["coucou_island"], true);
+        assert_eq!(v["tool_input"]["command"], "npm test");
+        assert_eq!(v["coucou_card_secs"], 100, "what --wait allows");
+        // Hooks installed before the chat came give the relay 10 s: it waits 8.
+        assert_eq!(card_budget(None), Duration::from_secs(8));
+        assert_eq!(card_budget(Some(100)), Duration::from_secs(100));
+        assert_eq!(card_budget(Some(10_000)), DECISION_BUDGET, "never longer than any card");
+        assert_eq!(card_budget(Some(0)), Duration::from_secs(1));
+
+        // A file read is no card: agy allows it by itself.
+        let read = br#"{"hook_event_name":"PreToolUse","toolCall":{"name":"view_file","args":{"AbsolutePath":"/a"}}}"#;
+        let ev = prepare(read, &agy, &island, "/p").unwrap();
+        assert!(!ev.island_card);
+        assert_eq!(ev.name, "PreToolUse");
+
+        // Outside the island's chat, Antigravity's own prompt keeps the command.
+        let ev = prepare(command, &agy, &|_| None, "/p").unwrap();
+        assert!(!ev.island_card);
+        assert_eq!(ev.name, "PreToolUse");
+        // And no other agent's PreToolUse turns into a request.
+        let gemini = Args { agent: "gemini".into(), event: "PreToolUse".into(), wait: None };
+        let ev = prepare(command, &gemini, &island, "/p").unwrap();
+        assert!(!ev.island_card);
+        assert_eq!(ev.name, "PreToolUse");
     }
 
     #[test]
@@ -485,7 +562,7 @@ mod tests {
 
     #[test]
     fn what_cannot_be_read_is_not_forwarded() {
-        let args = Args { agent: "copilot".into(), event: "preToolUse".into() };
+        let args = Args { agent: "copilot".into(), event: "preToolUse".into(), wait: None };
         for raw in ["", "not json", "[1,2]"] {
             assert!(prepare(raw.as_bytes(), &args, &|_| None, "/").is_none());
         }
