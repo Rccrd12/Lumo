@@ -129,6 +129,8 @@ export function installFakeDom() {
     createElementNS: (ns, tag) => new FakeElement(tag, ns),
     createTextNode: (text) => new FakeText(text),
     body: new FakeElement("body"),
+    // The chat closes its lists on a press anywhere: nothing presses here.
+    addEventListener: () => {},
   };
   return { root: () => new FakeElement("div") };
 }

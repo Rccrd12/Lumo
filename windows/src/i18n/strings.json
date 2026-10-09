@@ -3038,16 +3038,16 @@
    "ru": "Записывает",
    "id": "Menulis"
   },
-  "Writes:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (backup created first)": {
-   "zh-Hans": "将写入：\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json（先创建备份）",
-   "hi": "लिखेगा:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (पहले बैकअप बनाया जाएगा)",
-   "es": "Escribirá:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (se crea una copia de seguridad primero)",
-   "ar": "سيكتب:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (يُنشئ نسخة احتياطية أولاً)",
-   "fr": "Écrira :\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (sauvegarde créée d'abord)",
-   "bn": "লিখবে:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (আগে ব্যাকআপ তৈরি হবে)",
-   "pt-BR": "Vai escrever:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (backup criado antes)",
-   "ru": "Запишет:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (резервная копия создаётся сначала)",
-   "id": "Akan menulis:\n• ~/.claude/coucou/nb-hook\n• ~/.claude/settings.json (backup dibuat terlebih dahulu)"
+  "Writes:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (backup created first)": {
+   "zh-Hans": "将写入：\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json（先创建备份）",
+   "hi": "लिखेगा:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (पहले बैकअप बनाया जाएगा)",
+   "es": "Escribirá:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (se crea una copia de seguridad primero)",
+   "ar": "سيكتب:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (يُنشئ نسخة احتياطية أولاً)",
+   "fr": "Écrira :\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (sauvegarde créée d'abord)",
+   "bn": "লিখবে:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (আগে ব্যাকআপ তৈরি হবে)",
+   "pt-BR": "Vai escrever:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (backup criado antes)",
+   "ru": "Запишет:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (резервная копия создаётся сначала)",
+   "id": "Akan menulis:\n• ~/.claude/lumo/nb-hook\n• ~/.claude/settings.json (backup dibuat terlebih dahulu)"
   },
   "Your answer…": {
    "zh-Hans": "您的答案…",
@@ -3280,16 +3280,16 @@
    "ru": "{n} мин назад",
    "id": "{n} menit lalu"
   },
-  "✓ Amp plugin installed in ~/.config/amp/plugins/coucou.ts": {
-   "zh-Hans": "✓ Amp 插件已安装至 ~/.config/amp/plugins/coucou.ts",
-   "hi": "✓ ~/.config/amp/plugins/coucou.ts में Amp प्लगइन इंस्टॉल हुआ",
-   "es": "✓ Plugin de Amp instalado en ~/.config/amp/plugins/coucou.ts",
-   "ar": "✓ ملحق Amp مثبَّت في ~/.config/amp/plugins/coucou.ts",
-   "fr": "✓ Plugin Amp installé dans ~/.config/amp/plugins/coucou.ts",
-   "bn": "✓ ~/.config/amp/plugins/coucou.ts-এ Amp প্লাগইন ইনস্টল হয়েছে",
-   "pt-BR": "✓ Plugin do Amp instalado em ~/.config/amp/plugins/coucou.ts",
-   "ru": "✓ Плагин Amp установлен в ~/.config/amp/plugins/coucou.ts",
-   "id": "✓ Plugin Amp terpasang di ~/.config/amp/plugins/coucou.ts"
+  "✓ Amp plugin installed in ~/.config/amp/plugins/lumo.ts": {
+   "zh-Hans": "✓ Amp 插件已安装至 ~/.config/amp/plugins/lumo.ts",
+   "hi": "✓ ~/.config/amp/plugins/lumo.ts में Amp प्लगइन इंस्टॉल हुआ",
+   "es": "✓ Plugin de Amp instalado en ~/.config/amp/plugins/lumo.ts",
+   "ar": "✓ ملحق Amp مثبَّت في ~/.config/amp/plugins/lumo.ts",
+   "fr": "✓ Plugin Amp installé dans ~/.config/amp/plugins/lumo.ts",
+   "bn": "✓ ~/.config/amp/plugins/lumo.ts-এ Amp প্লাগইন ইনস্টল হয়েছে",
+   "pt-BR": "✓ Plugin do Amp instalado em ~/.config/amp/plugins/lumo.ts",
+   "ru": "✓ Плагин Amp установлен в ~/.config/amp/plugins/lumo.ts",
+   "id": "✓ Plugin Amp terpasang di ~/.config/amp/plugins/lumo.ts"
   },
   "✓ Amp plugin removed.": {
    "zh-Hans": "✓ Amp 插件已移除。",
@@ -3388,16 +3388,16 @@
     "other": "✓ Connected · {count} models"
    }
   },
-  "✓ Copilot CLI hooks installed in ~/.copilot/hooks/coucou.json": {
-   "zh-Hans": "✓ Copilot CLI Hooks 已安装至 ~/.copilot/hooks/coucou.json",
-   "hi": "✓ ~/.copilot/hooks/coucou.json में Copilot CLI हुक इंस्टॉल हुए",
-   "es": "✓ Hooks de Copilot CLI instalados en ~/.copilot/hooks/coucou.json",
-   "ar": "✓ خطافات Copilot CLI مثبَّتة في ~/.copilot/hooks/coucou.json",
-   "fr": "✓ Hooks Copilot CLI installés dans ~/.copilot/hooks/coucou.json",
-   "bn": "✓ ~/.copilot/hooks/coucou.json-এ Copilot CLI হুক ইনস্টল হয়েছে",
-   "pt-BR": "✓ Hooks do Copilot CLI instalados em ~/.copilot/hooks/coucou.json",
-   "ru": "✓ Хуки Copilot CLI установлены в ~/.copilot/hooks/coucou.json",
-   "id": "✓ Hooks Copilot CLI terpasang di ~/.copilot/hooks/coucou.json"
+  "✓ Copilot CLI hooks installed in ~/.copilot/hooks/lumo.json": {
+   "zh-Hans": "✓ Copilot CLI Hooks 已安装至 ~/.copilot/hooks/lumo.json",
+   "hi": "✓ ~/.copilot/hooks/lumo.json में Copilot CLI हुक इंस्टॉल हुए",
+   "es": "✓ Hooks de Copilot CLI instalados en ~/.copilot/hooks/lumo.json",
+   "ar": "✓ خطافات Copilot CLI مثبَّتة في ~/.copilot/hooks/lumo.json",
+   "fr": "✓ Hooks Copilot CLI installés dans ~/.copilot/hooks/lumo.json",
+   "bn": "✓ ~/.copilot/hooks/lumo.json-এ Copilot CLI হুক ইনস্টল হয়েছে",
+   "pt-BR": "✓ Hooks do Copilot CLI instalados em ~/.copilot/hooks/lumo.json",
+   "ru": "✓ Хуки Copilot CLI установлены в ~/.copilot/hooks/lumo.json",
+   "id": "✓ Hooks Copilot CLI terpasang di ~/.copilot/hooks/lumo.json"
   },
   "✓ Copilot CLI hooks removed.": {
    "zh-Hans": "✓ Copilot CLI Hooks 已移除。",
@@ -3454,16 +3454,16 @@
    "ru": "✓ Плагин Hermes установлен",
    "id": "✓ Plugin Hermes terpasang"
   },
-  "✓ Hermes plugin installed in ~/.hermes/plugins/coucou/": {
-   "zh-Hans": "✓ Hermes 插件已安装至 ~/.hermes/plugins/coucou/",
-   "hi": "✓ Hermes प्लगइन ~/.hermes/plugins/coucou/ में इंस्टॉल हुआ",
-   "es": "✓ Plugin de Hermes instalado en ~/.hermes/plugins/coucou/",
-   "ar": "✓ ملحق Hermes مثبَّت في ~/.hermes/plugins/coucou/",
-   "fr": "✓ Plugin Hermes installé dans ~/.hermes/plugins/coucou/",
-   "bn": "✓ Hermes প্লাগইন ~/.hermes/plugins/coucou/-এ ইনস্টল হয়েছে",
-   "pt-BR": "✓ Plugin do Hermes instalado em ~/.hermes/plugins/coucou/",
-   "ru": "✓ Плагин Hermes установлен в ~/.hermes/plugins/coucou/",
-   "id": "✓ Plugin Hermes terpasang di ~/.hermes/plugins/coucou/"
+  "✓ Hermes plugin installed in ~/.hermes/plugins/lumo/": {
+   "zh-Hans": "✓ Hermes 插件已安装至 ~/.hermes/plugins/lumo/",
+   "hi": "✓ Hermes प्लगइन ~/.hermes/plugins/lumo/ में इंस्टॉल हुआ",
+   "es": "✓ Plugin de Hermes instalado en ~/.hermes/plugins/lumo/",
+   "ar": "✓ ملحق Hermes مثبَّت في ~/.hermes/plugins/lumo/",
+   "fr": "✓ Plugin Hermes installé dans ~/.hermes/plugins/lumo/",
+   "bn": "✓ Hermes প্লাগইন ~/.hermes/plugins/lumo/-এ ইনস্টল হয়েছে",
+   "pt-BR": "✓ Plugin do Hermes instalado em ~/.hermes/plugins/lumo/",
+   "ru": "✓ Плагин Hermes установлен в ~/.hermes/plugins/lumo/",
+   "id": "✓ Plugin Hermes terpasang di ~/.hermes/plugins/lumo/"
   },
   "✓ Hooks installed in ~/.claude/settings.json": {
    "zh-Hans": "✓ Hooks 已安装至 ~/.claude/settings.json",
@@ -3553,16 +3553,16 @@
    "ru": "✓ Ключ OpenAI сохранён.",
    "id": "✓ Kunci OpenAI tersimpan."
   },
-  "✓ OpenCode plugin installed in ~/.config/opencode/plugins/coucou.js": {
-   "zh-Hans": "✓ OpenCode 插件已安装至 ~/.config/opencode/plugins/coucou.js",
-   "hi": "✓ ~/.config/opencode/plugins/coucou.js में OpenCode प्लगइन इंस्टॉल हुआ",
-   "es": "✓ Plugin de OpenCode instalado en ~/.config/opencode/plugins/coucou.js",
-   "ar": "✓ ملحق OpenCode مثبَّت في ~/.config/opencode/plugins/coucou.js",
-   "fr": "✓ Plugin OpenCode installé dans ~/.config/opencode/plugins/coucou.js",
-   "bn": "✓ ~/.config/opencode/plugins/coucou.js-এ OpenCode প্লাগইন ইনস্টল হয়েছে",
-   "pt-BR": "✓ Plugin do OpenCode instalado em ~/.config/opencode/plugins/coucou.js",
-   "ru": "✓ Плагин OpenCode установлен в ~/.config/opencode/plugins/coucou.js",
-   "id": "✓ Plugin OpenCode terpasang di ~/.config/opencode/plugins/coucou.js"
+  "✓ OpenCode plugin installed in ~/.config/opencode/plugins/lumo.js": {
+   "zh-Hans": "✓ OpenCode 插件已安装至 ~/.config/opencode/plugins/lumo.js",
+   "hi": "✓ ~/.config/opencode/plugins/lumo.js में OpenCode प्लगइन इंस्टॉल हुआ",
+   "es": "✓ Plugin de OpenCode instalado en ~/.config/opencode/plugins/lumo.js",
+   "ar": "✓ ملحق OpenCode مثبَّت في ~/.config/opencode/plugins/lumo.js",
+   "fr": "✓ Plugin OpenCode installé dans ~/.config/opencode/plugins/lumo.js",
+   "bn": "✓ ~/.config/opencode/plugins/lumo.js-এ OpenCode প্লাগইন ইনস্টল হয়েছে",
+   "pt-BR": "✓ Plugin do OpenCode instalado em ~/.config/opencode/plugins/lumo.js",
+   "ru": "✓ Плагин OpenCode установлен в ~/.config/opencode/plugins/lumo.js",
+   "id": "✓ Plugin OpenCode terpasang di ~/.config/opencode/plugins/lumo.js"
   },
   "✓ OpenCode plugin removed.": {
    "zh-Hans": "✓ OpenCode 插件已移除。",

@@ -156,6 +156,8 @@ export function buildLive(openSettings: () => void): ViewHost {
 
       const label = Live.doing ?? (Live.phase === "thinking" ? t(S.thinking) : "");
       doing.hidden = !on || !label;
+      // A line that says something is over has no dots going.
+      doing.classList.toggle("done", Live.doingDone && label === Live.doing);
       if (doingLabel.textContent !== label) doingLabel.textContent = label;
       drawLog();
     },
@@ -179,7 +181,7 @@ export function buildLive(openSettings: () => void): ViewHost {
 /** The settings button inside the island opens Settings on the Voice page. */
 export function openVoiceSettings(setView: (v: "settings") => void) {
   try {
-    window.localStorage.setItem("coucou.settings.page", "voice");
+    window.localStorage.setItem("lumo.settings.page", "voice");
   } catch {
     // Settings open on the page they were on.
   }

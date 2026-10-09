@@ -1,7 +1,7 @@
 // Island open/close FSM — port of IslandStateMachine.swift.
 // No DOM, no Tauri: it only reports transitions.
 
-export type FsmState = "hidden" | "petit" | "home" | "coucou";
+export type FsmState = "hidden" | "petit" | "home" | "greeting";
 
 export class IslandStateMachine {
   state: FsmState = "hidden";
@@ -45,7 +45,7 @@ export class IslandStateMachine {
     if (!on) this.clear("petitHide");
   }
   /**
-   * coucou → petit once the greeting animation ends. The mouse resting on the
+   * greeting → petit once the greeting animation ends. The mouse resting on the
    * island does not hold it open: the greeting always finishes on its own.
    */
   greetAutoCollapseDelay = 0.6;
@@ -65,6 +65,24 @@ export class IslandStateMachine {
     if (on) this.clear("petitHide");
     else if (this.state === "petit" && !this.mouseInside) this.schedulePetitHide();
   }
+  /**
+   * Until when (performance.now() ms) the open island does not fold because
+   * the mouse is elsewhere: a sharing shortcut opened it while the mouse is on
+   * the text just selected. The mouse coming onto the island ends it.
+   */
+  private graceUntil = 0;
+
+  /** The open island stays open `seconds` with the mouse elsewhere (see graceUntil). */
+  holdOpen(seconds: number) {
+    this.graceUntil = performance.now() + seconds * 1000;
+    if (this.homeCollapse != null) this.scheduleHomeCollapse();
+  }
+
+  /** The grace of holdOpen is still running. */
+  get inGrace(): boolean {
+    return performance.now() < this.graceUntil;
+  }
+
   /** The mouse is on the island, as the last enter/leave said. */
   private mouseInside = false;
   private holding = false;
@@ -87,11 +105,12 @@ export class IslandStateMachine {
 
   launch() {
     this.cancelTimers();
-    this.transition("coucou");
+    this.transition("greeting");
   }
 
   mouseEntered() {
     this.mouseInside = true;
+    this.graceUntil = 0;
     switch (this.state) {
       case "hidden":
         this.cancelTimers();
@@ -103,7 +122,7 @@ export class IslandStateMachine {
       case "home":
         this.clear("homeCollapse");
         break;
-      case "coucou":
+      case "greeting":
         break;
     }
   }
@@ -119,7 +138,7 @@ export class IslandStateMachine {
       case "home":
         this.scheduleHomeCollapse();
         break;
-      case "coucou":
+      case "greeting":
         this.clear("greetCollapse");
         this.transition("petit");
         break;
@@ -134,7 +153,7 @@ export class IslandStateMachine {
 
   /** Greeting animation finished (T.end). */
   greetComplete() {
-    if (this.state !== "coucou") return;
+    if (this.state !== "greeting") return;
     if (this.greetCollapse == null) this.scheduleGreetCollapse(this.greetAutoCollapseDelay);
   }
 
@@ -179,7 +198,7 @@ export class IslandStateMachine {
   private scheduleHomeCollapse() {
     this.clear("homeCollapse");
     if (this.pinned || !this.leaveCloses) return;
-    const ms = this.homeDelay * 1000;
+    const ms = Math.max(this.homeDelay * 1000, this.graceUntil - performance.now());
     this.homeCollapseDueAt = performance.now() + ms;
     this.homeCollapse = window.setTimeout(() => {
       this.homeCollapse = null;
@@ -193,7 +212,7 @@ export class IslandStateMachine {
     this.clear("greetCollapse");
     this.greetCollapse = window.setTimeout(() => {
       this.greetCollapse = null;
-      if (this.state === "coucou") this.transition("petit");
+      if (this.state === "greeting") this.transition("petit");
     }, delay * 1000);
   }
 

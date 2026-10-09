@@ -304,6 +304,16 @@ impl Chat {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
+/// How any model sets a timer on the island: Lumo starts it from that line and
+/// hides it (src/core/compact.ts takeTimers). Plain words only: it also goes
+/// on Claude Code's command line.
+macro_rules! timer_note {
+    () => {
+        "Lumo can show a timer on the island. When the user asks for a timer or to be reminded in some time, write on a line of its own [[timer 10m: what it is for]], with the length as 90s, 10m or 1h30m, and say in a few words that it is set; Lumo starts it and hides that line. Only when they ask for one."
+    };
+}
+pub(crate) use timer_note;
+
 /// Mochi's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the
 /// provider runs it (Claude).
@@ -324,7 +334,9 @@ fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
     format!(
         "{opening} {abilities} \
 Respond in the user's language. Be thorough and complete — use as much detail as the task requires. \
-Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small."
+Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
+Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}",
+        timer_note!()
     )
 }
 
@@ -365,7 +377,7 @@ pub fn model_for(settings: &Settings, provider: &str) -> String {
         .unwrap_or_default()
 }
 
-/// A file rides along only if it is one of Coucou's own copies of a dropped
+/// A file rides along only if it is one of Lumo's own copies of a dropped
 /// file (files.rs puts them in the inbox). The page names the path, so without
 /// this any file the user can read could be sent to a chat provider.
 fn checked_context(context: ChatContext) -> Result<ChatContext, String> {
@@ -463,8 +475,29 @@ async fn dispatch(
     screen: Option<ScreenContext>,
     usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
-    let context = context.map(checked_context).transpose()?;
-    let screen = screen.map(checked_screen).transpose()?;
+    let mut context = context.map(checked_context).transpose()?;
+    let mut screen = screen.map(checked_screen).transpose()?;
+    // Settings → Chat → "Tell the AI what's open": the windows and their
+    // documents go with every question (desk.rs).
+    if settings.chat_share_open {
+        let (windows, documents) = tauri::async_runtime::spawn_blocking(crate::desk::now).await.unwrap_or_default();
+        let s = screen.get_or_insert_with(ScreenContext::default);
+        if s.windows.is_empty() {
+            s.windows = windows;
+        }
+        // The providers that cannot read files: the document in front goes
+        // along, when the question is about it and nothing else does.
+        if !is_cli(&settings.chat_provider) && context.is_none() {
+            let front = documents.iter().find(|d| d.active).or(documents.first());
+            if let Some(doc) = front.filter(|d| crate::desk::asks_about(&query, d)) {
+                match crate::files::copy_in(std::path::Path::new(&doc.path)) {
+                    Ok(f) => context = Some(ChatContext::File { name: f.name, path: f.path }),
+                    Err(e) => crate::log::line(format!("[desk] {e}")),
+                }
+            }
+        }
+        s.documents = documents;
+    }
     chat.arm();
     let mut reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await?;
     // Remembered once it went, for a fresh Claude Code session after an edit.
@@ -493,6 +526,12 @@ async fn send_to(
     if is_cli(provider) {
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
         let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
+        // So may it the folders of the documents open (found by Rust, desk.rs).
+        for doc in screen.as_ref().map(|s| s.documents.as_slice()).unwrap_or_default() {
+            if let Some(dir) = std::path::Path::new(&doc.path).parent() {
+                chat.cli_dirs(Some(dir.to_string_lossy().to_string()));
+            }
+        }
         if provider == antigravity_cli::PROVIDER {
             return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
         }
@@ -781,6 +820,7 @@ mod tests {
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
             selection: None,
             folder: None,
+            documents: Vec::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {
             let (q, images) = with_screen(cli, Some(&screen), "what is this?".into()).unwrap();
@@ -835,7 +875,7 @@ mod tests {
 
     #[test]
     fn only_files_in_the_inbox_ride_along() {
-        let base = std::env::temp_dir().join(format!("coucou-chat-ctx-{}", std::process::id()));
+        let base = std::env::temp_dir().join(format!("lumo-chat-ctx-{}", std::process::id()));
         let inbox = base.join("inbox");
         std::fs::create_dir_all(inbox.join("sub")).unwrap();
         std::fs::write(inbox.join("a.txt"), b"a").unwrap();

@@ -7,6 +7,7 @@
 // is taken from them: nothing of the screen is kept on this computer.
 
 import { Bridge, type LiveReading } from "../core/bridge";
+import { compactTimer, parseDuration, timerLeft } from "../core/compact";
 import { t } from "../i18n/i18n";
 import { TOOL, type FunctionCall, type ToolAnswer } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
@@ -136,6 +137,17 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       host.doing(t(S.opening, { name }));
       return { started: await Bridge.liveOpenApp(name) };
     }
+    case TOOL.type: {
+      const text = typeof a.text === "string" ? a.text : "";
+      if (!text.trim()) throw new Error("Say which text to type.");
+      host.doing(t(S.typing));
+      const typed = await Bridge.liveType(text);
+      return {
+        typed: typed.chars,
+        into: typed.title ? `${typed.title} (${typed.app})` : typed.app,
+        ...(typed.flattened ? { note: "Line breaks were typed as spaces: the window in front is a terminal, where a line break would run a command." } : {}),
+      };
+    }
     case TOOL.helper: {
       const task = str(a.task);
       if (!task) throw new Error("Say what the task is.");
@@ -146,6 +158,20 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
     case TOOL.stopHelper:
       await Bridge.liveHelpStop();
       return { stopped: true };
+    case TOOL.timer: {
+      const ms = parseDuration(str(a.duration));
+      if (ms == null) throw new Error("Say how long, e.g. \"10m\".");
+      const timer = compactTimer(ms, str(a.label));
+      return { started: true, rings_in: timerLeft(timer.total) };
+    }
+    case TOOL.music: {
+      const action = str(a.action);
+      const which = action === "next" ? "next" : action === "previous" ? "previous" : action === "play_pause" ? "toggle" : null;
+      if (!which) throw new Error("Say play_pause, next or previous.");
+      const done = await Bridge.mediaControl(which);
+      if (!done) throw new Error("Nothing is playing that can be controlled.");
+      return { done: true };
+    }
     case TOOL.end:
       host.end();
       return { ending: true };

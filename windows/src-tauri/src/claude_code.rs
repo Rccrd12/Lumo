@@ -1,13 +1,13 @@
 // Chat through Claude Code itself: the `claude` CLI the user installed and
-// signed in to with their own Claude plan (Pro, Max…). No API key: Coucou runs
+// signed in to with their own Claude plan (Pro, Max…). No API key: Lumo runs
 // the unmodified binary as `claude -p`, and Claude Code answers with its own
-// sign-in, exactly as in a terminal. Coucou never reads, stores or forwards any
+// sign-in, exactly as in a terminal. Lumo never reads, stores or forwards any
 // Claude credential.
 //
 // Unlike the other providers, Claude Code can act: read a dropped PDF or image,
 // read and edit files, run commands, search the web. Every action that needs a
 // permission goes through Claude Code's own PermissionRequest hook — the one
-// Coucou already installs — so it shows up in the island as the usual
+// Lumo already installs — so it shows up in the island as the usual
 // Allow / Deny card. Without the hooks, or with nobody clicking, Claude Code
 // denies the action: `-p` never allows anything on its own.
 //
@@ -50,12 +50,15 @@ const MAX_TOTAL: usize = 64 * 1024 * 1024;
 const MAX_CARRIED_CHARS: usize = 24_000;
 
 /// Added to Claude Code's own instructions. Plain words only: it is an argument.
-const APPEND_PROMPT: &str = "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
+const APPEND_PROMPT: &str = concat!(
+    "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
 The chat window is small: answer in the user's language, keep answers focused, and use light Markdown (short paragraphs, lists, bold, code blocks), no tables or big headings. \
 When the user drops a file, its path is given in the message: read it from there. \
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
-Every action that needs a permission is approved by the user in the island, so ask for it normally.";
+Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
+    crate::chat::timer_note!()
+);
 
 /// The models offered for Claude Code: the current ones by id, so the picker
 /// says which version runs. "default": whatever the user set in Claude Code.
@@ -68,10 +71,10 @@ const MODELS: &[(&str, &str)] = &[
     ("claude-haiku-5-5", "Haiku 5.5"),
 ];
 
-/// Where Claude Code works when Coucou starts it: `~/Coucou`. Files outside it
+/// Where Claude Code works when Lumo starts it: `~/Lumo`. Files outside it
 /// can still be read or edited, each time with the user's Allow.
 pub fn work_dir() -> PathBuf {
-    platform::home_dir().join("Coucou")
+    platform::home_dir().join("Lumo")
 }
 
 pub fn models() -> Vec<ModelInfo> {
@@ -110,13 +113,14 @@ pub(crate) fn safe_dir(dir: &str) -> Option<&str> {
 }
 
 /// What the chat's CLIs may do without a card, as picked in the chat's field
-/// (Settings::chat_permission_mode): "default" asks for everything,
-/// "acceptEdits" lets file edits through, "plan" changes nothing. Anything
-/// else — `auto`, `bypassPermissions`, a typo — is "default": nothing is ever
-/// allowed wholesale.
+/// (Settings::chat_permission_mode): "default" asks for everything, "auto"
+/// lets the CLI decide what is safe to do without asking (Claude Code's own
+/// auto mode; "acceptEdits", picked before, reads as it), "plan" changes
+/// nothing. Anything else — `bypassPermissions`, `dontAsk`, a typo — is
+/// "default": nothing is ever allowed wholesale.
 pub(crate) fn permission_mode(raw: &str) -> &'static str {
     match raw.trim() {
-        "acceptEdits" => "acceptEdits",
+        "auto" | "acceptEdits" => "auto",
         "plan" => "plan",
         _ => "default",
     }
@@ -369,17 +373,23 @@ struct Run {
 }
 
 /// One `rate_limit_event` of the stream, in the status line's shape — the
-/// plan gauge reads only that. Its `utilization` is a fraction; an event
-/// without one (Claude Code leaves it out while all is well) says nothing.
+/// plan gauge reads only that. Its `utilization` is a fraction. Claude Code
+/// leaves it out while the window is far from its limit: the window is then
+/// `low` (no figure, but its reset time), which the gauge shows as such.
 fn plan_window(info: &Value) -> Option<(String, Value)> {
     let get = |camel: &str, snake: &str| info.get(camel).or_else(|| info.get(snake)).cloned().unwrap_or(Value::Null);
     let kind = get("rateLimitType", "rate_limit_type");
     let kind = kind.as_str().filter(|k| matches!(*k, "five_hour" | "seven_day"))?;
-    let used = get("utilization", "utilization").as_f64().filter(|u| u.is_finite() && *u >= 0.0)?;
     let resets = get("resetsAt", "resets_at").as_f64().filter(|r| r.is_finite() && *r > 0.0)?;
     // Epoch seconds, as the status line has them; milliseconds are brought back.
     let resets = if resets > 1e12 { resets / 1000.0 } else { resets };
-    Some((kind.to_string(), json!({ "used_percentage": (used * 100.0).min(200.0), "resets_at": resets.round() })))
+    match get("utilization", "utilization").as_f64().filter(|u| u.is_finite() && *u >= 0.0) {
+        Some(used) => Some((kind.to_string(), json!({ "used_percentage": (used * 100.0).min(200.0), "resets_at": resets.round() }))),
+        None if get("status", "status").as_str() == Some("allowed") => {
+            Some((kind.to_string(), json!({ "low": true, "resets_at": resets.round() })))
+        }
+        None => None,
+    }
 }
 
 impl Run {
@@ -555,8 +565,8 @@ fn run(
             cmd.env("PATH", joined);
         }
     }
-    // Tells coucou-hook this run is the island's chat, not a session to show.
-    cmd.env("COUCOU_ISLAND_RUN", "1");
+    // Tells lumo-hook this run is the island's chat, not a session to show.
+    cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
     // Its own process group, so Stop ends the tools and hooks it started too.
     #[cfg(target_os = "linux")]
@@ -764,17 +774,20 @@ pub async fn send(
 /// Added to Claude Code's instructions when Gemini Live hands it a task (live.rs).
 const HELPER_PROMPT: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
 Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
-Do the task. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
+Do the task with every tool you have, including the apps and accounts the user connected, such as their calendar, email or documents: the task may need them. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. \
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran.";
 
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Coucou folder otherwise), with the chat's permission `mode`: what it
-/// may not do by itself is an Allow / Deny card in the island, as in the chat.
-/// No session is kept: each task starts afresh. Blocking.
+/// (the Lumo folder otherwise), with the `model` and `effort` of Settings →
+/// Voice and the chat's permission `mode`: what it may not do by itself is an
+/// Allow / Deny card in the island, as in the chat. No session is kept: each
+/// task starts afresh. Blocking.
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
+    model: &str,
+    effort: &str,
     mode: &str,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
@@ -787,7 +800,7 @@ pub(crate) fn help(
     let dir = folder.map(PathBuf::from).unwrap_or_else(work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
-    let args = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", mode, None, &inbox, &folders);
+    let args = args_with(HELPER_PROMPT, model, effort, mode, None, &inbox, &folders);
     let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -811,16 +824,23 @@ mod tests {
 
     #[test]
     fn a_task_from_gemini_gets_the_helper_instructions_and_no_session() {
-        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "acceptEdits", None, "/home/me/.local/share/coucou/inbox", &["/home/me/docs".into()]);
+        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "auto", None, "/home/me/.local/share/lumo/inbox", &["/home/me/docs".into()]);
         assert!(a.windows(2).any(|w| w == ["--append-system-prompt", HELPER_PROMPT]));
         assert!(!a.iter().any(|s| s == APPEND_PROMPT || s == "--resume" || s == "--model" || s == "--effort"));
-        assert!(a.windows(2).any(|w| w == ["--permission-mode", "acceptEdits"]));
+        assert!(a.windows(2).any(|w| w == ["--permission-mode", "auto"]));
         assert!(a.windows(2).any(|w| w == ["--add-dir", "/home/me/docs"]));
+
+        // The model and effort picked in Settings → Voice, checked like the chat's.
+        let a = args_with(HELPER_PROMPT, "claude-sonnet-5-5", "max", "default", None, "/inbox", &[]);
+        assert!(a.windows(2).any(|w| w == ["--model", "claude-sonnet-5-5"]));
+        assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
+        let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
+        assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
     }
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let a = args("opus", "high", "default", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
+        let a = args("opus", "high", "default", Some(SID), "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox", &[]);
         assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--model", "opus"]));
         assert!(a.windows(2).any(|w| w == ["--resume", SID]));
@@ -834,6 +854,7 @@ mod tests {
         assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 1, "only the inbox: {a:?}");
         assert!(!a.contains(&"--resume".to_string()));
         assert!(!APPEND_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
+        assert!(!HELPER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`', '(', ')']));
         assert!(APPEND_PROMPT.contains("press the screen button"), "Claude asks, never captures");
         assert!(APPEND_PROMPT.contains("Always share the folder open in File Explorer"), "names the Settings switch");
     }
@@ -843,12 +864,14 @@ mod tests {
         let mut run = Run::default();
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.42,"resetsAt":1791560000}}"#);
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"seven_day","utilization":0.1,"resetsAt":1791900000000}}"#);
-        // No utilization (all is well), or a limit the gauge has no place for: nothing.
-        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1}}"#);
+        // A limit the gauge has no place for: nothing.
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"overage","utilization":0.5,"resetsAt":1}}"#);
         assert_eq!(run.rate_limits.len(), 2);
         assert_eq!(run.rate_limits["five_hour"], json!({ "used_percentage": 42.0, "resets_at": 1791560000.0 }));
         assert_eq!(run.rate_limits["seven_day"]["resets_at"], json!(1791900000.0));
+        // No utilization while all is well: low, with its reset time.
+        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1791570000}}"#);
+        assert_eq!(run.rate_limits["five_hour"], json!({ "low": true, "resets_at": 1791570000.0 }));
     }
 
     #[test]
@@ -858,10 +881,11 @@ mod tests {
             let i = a.iter().position(|s| s == "--permission-mode").unwrap();
             a[i + 1].clone()
         };
-        assert_eq!(mode("acceptEdits"), "acceptEdits");
+        assert_eq!(mode("auto"), "auto");
+        assert_eq!(mode("acceptEdits"), "auto", "picked before Auto replaced it");
         assert_eq!(mode("plan"), "plan");
         assert_eq!(mode("default"), "default");
-        for wholesale in ["bypassPermissions", "auto", "dontAsk", "", "plan & calc"] {
+        for wholesale in ["bypassPermissions", "dontAsk", "", "plan & calc"] {
             assert_eq!(mode(wholesale), "default", "{wholesale}");
         }
     }
@@ -901,7 +925,7 @@ mod tests {
         assert_eq!(a("Read", json!({"file_path": "/home/me/notes.md"})), Activity::new("read", "notes.md"));
         assert_eq!(a("Read", json!({})), Activity::new("read", ""), "before the input is known");
         assert_eq!(
-            a("Read", json!({"file_path": "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox\\screenshot-2026-10-09-101500-screen1.png"})),
+            a("Read", json!({"file_path": "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox\\screenshot-2026-10-09-101500-screen1.png"})),
             Activity::new("screen", ""),
             "Lumo's own screenshots are the screen"
         );

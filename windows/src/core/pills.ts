@@ -132,6 +132,10 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("stripe-api-key") },
   { id: "integration_music", name: "Apple Music", color: "#FA2D48", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "no", connect: none },
+  // Windows and Linux only, after the Mac's: new emails over IMAP, for the
+  // closed island's preview (mail.rs).
+  { id: "integration_mail", name: "Email", color: "#EA4335", category: "service",
+    subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("mail-app-password") },
 ];
 
 /** The always-on pill unless the user picks another workspace tool. */

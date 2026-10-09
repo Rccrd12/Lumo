@@ -1,9 +1,11 @@
-// Coucou for Windows — app wiring and the commands the island calls.
+// Lumo for Windows — app wiring and the commands the island calls.
 
+mod activities;
 mod agent_hooks;
 mod agents;
 mod antigravity_cli;
 mod autostart;
+mod calendar;
 mod chat;
 mod chat_usage;
 mod claude;
@@ -11,6 +13,7 @@ mod claude_code;
 mod clipboard;
 mod codex_plan;
 mod config_file;
+mod desk;
 mod desktop;
 mod explorer;
 mod files;
@@ -23,6 +26,9 @@ mod island;
 mod live;
 mod local_chat;
 mod log;
+mod mail;
+mod media;
+mod migrate;
 mod net;
 mod openai_compat;
 mod pipe;
@@ -35,6 +41,7 @@ mod session_window;
 mod settings;
 mod shortcuts;
 mod tray;
+mod typing;
 mod updater;
 #[cfg(windows)]
 mod webview_drop;
@@ -96,7 +103,9 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     let (screen_changed, autostart_changed, shortcuts_changed) = {
         let mut current = shared.settings.lock().unwrap();
-        let screen_changed = current.screen != settings.screen || current.island_zoom != settings.island_zoom;
+        let screen_changed = current.screen != settings.screen
+            || current.island_zoom != settings.island_zoom
+            || activities::room_of(&current) != activities::room_of(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         // Where Mochi sits on the desktop is desktop.rs's to say, not a webview's.
@@ -108,6 +117,13 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.island_float = current.island_float;
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
+        // So are where the live activities were left and how big.
+        settings.activities_detached = current.activities_detached;
+        settings.activities_side = current.activities_side.clone();
+        settings.activities_x = current.activities_x;
+        settings.activities_y = current.activities_y;
+        settings.activities_width = current.activities_width;
+        settings.activities_height = current.activities_height;
         *current = settings;
         (screen_changed, autostart_changed, shortcuts_changed)
     };
@@ -119,7 +135,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let manager = app.autolaunch();
         let result = if settings.autostart { manager.enable() } else { manager.disable() };
         if let Err(err) = result {
-            eprintln!("[coucou] autostart: {err}");
+            eprintln!("[lumo] autostart: {err}");
         }
     }
     if screen_changed {
@@ -202,7 +218,7 @@ fn placement(shared: &Shared) -> (String, island::Placement) {
 
 /// Saves what `change` does to the settings, places the island for them and
 /// tells both windows.
-fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
+pub(crate) fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
     let shared = app.state::<Shared>();
     let settings = {
         let mut s = shared.settings.lock().unwrap();
@@ -400,7 +416,7 @@ fn hooks_status() -> HookStatus {
     hooks::status()
 }
 
-/// Pill ID → whether that agent's hooks reach Coucou. Read-only.
+/// Pill ID → whether that agent's hooks reach Lumo. Read-only.
 #[tauri::command]
 fn agent_hooks_status() -> std::collections::HashMap<String, bool> {
     agent_hooks::status()
@@ -660,7 +676,7 @@ async fn screen_windows() -> Result<Vec<screen::WindowInfo>, String> {
 /// A screenshot of one display (`display`, from 0) or all of them, into the
 /// inbox, with a preview for the island to show before anything is sent. The
 /// island keeps itself out of the picture meanwhile (Windows 10 2004 and later:
-/// content protection, which Coucou never uses otherwise).
+/// content protection, which Lumo never uses otherwise).
 #[tauri::command]
 async fn screen_capture(app: AppHandle, display: Option<usize>) -> Result<Vec<screen::Shot>, String> {
     tauri::async_runtime::spawn_blocking(move || screen::capture_unseen(&app, display))
@@ -703,7 +719,7 @@ fn ingest_file(path: String) -> Result<DroppedFile, String> {
 
 /// Ctrl+V in the chat with an image (or a file the page can read): its bytes,
 /// sent raw, written into the inbox like a dropped file. The name rides in the
-/// `x-coucou-name` header, percent-encoded.
+/// `x-lumo-name` header, percent-encoded.
 #[tauri::command]
 async fn paste_file(request: tauri::ipc::Request<'_>) -> Result<DroppedFile, String> {
     let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
@@ -714,7 +730,7 @@ async fn paste_file(request: tauri::ipc::Request<'_>) -> Result<DroppedFile, Str
     }
     let name = request
         .headers()
-        .get("x-coucou-name")
+        .get("x-lumo-name")
         .and_then(|v| v.to_str().ok())
         .and_then(explorer::percent_decode_text)
         .unwrap_or_default();
@@ -743,6 +759,13 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     }
     let before = (key == "github-token").then(|| secrets::get(&key));
     secrets::set(&key, &value)?;
+    if key.starts_with("mail-") {
+        mail::keys_changed();
+    }
+    // The live activities fetch the new calendar at once.
+    if key == calendar::URL_KEY {
+        let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
+    }
     if let Some(before) = before {
         if secrets::get(&key) != before {
             integrations::github_token_changed(&app);
@@ -875,7 +898,14 @@ fn open_settings_window(app: AppHandle) {
     show_settings_window(&app);
 }
 
+/// The app identifier (tauri.conf.json): the keychain service, and the folder
+/// of Lumo's data and of its WebView's.
+pub const IDENTIFIER: &str = "com.rccrd12.lumo";
+
 pub fn run() {
+    // Before anything opens a folder or a WebView starts.
+    migrate::folders();
+    migrate::keys();
     platform::prepare_environment();
     let loaded = settings::load();
     i18n::set_picked(&loaded.language);
@@ -883,7 +913,7 @@ pub fn run() {
 
     let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // `coucou --shortcut <action>`: what a desktop's own keyboard
+            // `lumo --shortcut <action>`: what a desktop's own keyboard
             // settings run where we can't listen for keys ourselves (Wayland).
             match shortcuts::from_args(&argv) {
                 Some(action) => shortcuts::dispatch(app, action),
@@ -968,6 +998,15 @@ pub fn run() {
             live::live_help,
             live::live_help_stop,
             live::live_microphone,
+            typing::live_type,
+            media::media_now,
+            activities::activities_resize,
+            activities::activities_show,
+            activities::activities_drag,
+            activities::activities_window_resize,
+            activities::activities_focus,
+            calendar::calendar_fetch,
+            media::media_control,
             ingest_file,
             paste_file,
             paste_copied_file,
@@ -1034,7 +1073,7 @@ pub fn run() {
             gate.set_active(true);
             island::spawn_cursor_poll(handle.clone(), gate.clone());
 
-            log::line(format!("--- Coucou {} started ---", env!("CARGO_PKG_VERSION")));
+            log::line(format!("--- Lumo {} started ---", env!("CARGO_PKG_VERSION")));
             hooks::ensure_hook_exe(&handle);
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
@@ -1052,7 +1091,7 @@ mod tests {
 
     #[test]
     fn only_an_existing_file_by_its_full_path_reaches_the_editor() {
-        let dir = std::env::temp_dir().join(format!("coucou-diff-file-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-diff-file-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("edited.ts");
         std::fs::write(&file, "x").unwrap();

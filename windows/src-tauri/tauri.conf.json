@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Lumo",
-  "version": "0.4.0",
-  "identifier": "fr.louisraille.coucou",
+  "version": "0.5.0",
+  "identifier": "com.rccrd12.lumo",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",

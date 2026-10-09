@@ -21,7 +21,7 @@ export interface SavedChat {
   turns: SavedTurn[];
 }
 
-const KEY = "coucou.chats.v1";
+const KEY = "lumo.chats.v1";
 /** The oldest chats go past this many. */
 export const MAX_CHATS = 40;
 const TITLE_CHARS = 60;

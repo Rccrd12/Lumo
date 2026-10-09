@@ -1,0 +1,384 @@
+/* The live activities panel (views/activities-view.ts): beside the island and in its own window. */
+
+.activities {
+  position: relative;
+  width: 264px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-radius: 22px;
+  color: var(--ink);
+  font-size: 11.5px;
+  transform-origin: 50% 50%;
+  /* A layer of its own: folding moves only transform and opacity, so it stays smooth. */
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transition: opacity 0.22s ease-in-out, transform 0.4s cubic-bezier(0.32, 0, 0.18, 1);
+}
+
+.activities.instant {
+  transition: none;
+}
+
+.activities.folding {
+  pointer-events: none;
+  transition: opacity 0.4s ease-in, transform 0.4s cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+/* Folded away: out of sight until it is shown again. */
+.activities.gone {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+.activities .act-head {
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px 0 16px;
+  cursor: default;
+}
+
+/* The "–" that folds it, as a window's. */
+.activities .act-fold {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--dim-2);
+  cursor: pointer;
+}
+
+.activities .act-fold i {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.activities .act-fold:hover {
+  background: var(--tab-on);
+  color: var(--ink);
+}
+
+.activities .act-title {
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.activities .act-body {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 10px 12px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.activities .act-card {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 9px 10px 10px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+}
+
+.activities .act-card-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.activities .act-icon {
+  display: flex;
+}
+
+.activities .act-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.activities .act-row {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  overflow: hidden;
+}
+
+.activities .act-text {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.activities .act-sub {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim);
+  font-size: 10.5px;
+}
+
+.activities .act-time {
+  color: var(--amber);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+.activities .act-progress {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: var(--amber);
+  opacity: 0.7;
+}
+
+.activities .act-when {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.activities .act-row.event.now {
+  background: rgba(66, 133, 244, 0.16);
+}
+
+.activities .act-row.event.now .act-when {
+  color: #8ab4f8;
+}
+
+.activities .act-empty {
+  color: var(--dim-3);
+  font: inherit;
+  font-size: 11px;
+  line-height: 1.35;
+  text-align: left;
+  border: 0;
+  padding: 0;
+  background: none;
+  overflow-wrap: anywhere;
+}
+
+.activities .act-empty.link {
+  cursor: pointer;
+}
+
+.activities .act-empty.link:hover {
+  color: var(--ink);
+}
+
+.activities .act-empty.bad {
+  color: var(--red-text);
+}
+
+.activities .act-chips,
+.activities .act-form,
+.activities .act-mail-actions {
+  display: flex;
+  gap: 5px;
+}
+
+.activities .act-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  height: 22px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.activities .act-chips .act-chip {
+  flex: 1;
+}
+
+.activities .act-chip:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.activities .act-chip.go {
+  background: rgba(245, 165, 36, 0.2);
+}
+
+.activities .act-chip.quiet {
+  background: transparent;
+  color: var(--dim);
+}
+
+.activities .act-input {
+  flex: 1;
+  min-width: 0;
+  height: 22px;
+  padding: 0 9px;
+  border: 1px solid var(--hairline);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  outline: none;
+}
+
+.activities .act-input:focus {
+  border-color: rgba(245, 165, 36, 0.5);
+}
+
+.activities .act-input.bad {
+  border-color: var(--red);
+}
+
+.activities .act-x {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+.activities .act-x:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+
+.activities .act-song {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.activities .act-media {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 14px;
+}
+
+.activities .act-media-btn {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border: 0;
+  border-radius: 13px;
+  background: transparent;
+  color: var(--ink);
+  cursor: pointer;
+}
+
+.activities .act-media-btn.big {
+  width: 32px;
+  height: 32px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.activities .act-media-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.activities .act-mail {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  padding: 6px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+/* An email: a click on it (not on a button) opens it. */
+.activities .act-mail.link {
+  cursor: pointer;
+}
+
+.activities .act-mail.link:hover {
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.activities .act-chip.eye {
+  margin-left: auto;
+  padding: 0 7px;
+}
+
+/* Grips on its free edges and corners: dragging them resizes it. */
+.activities .act-grip {
+  position: absolute;
+  z-index: 2;
+}
+
+.activities .act-grip.e-left,
+.activities .act-grip.e-right {
+  top: 22px;
+  bottom: 22px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.activities .act-grip.e-left {
+  left: -4px;
+}
+
+.activities .act-grip.e-right {
+  right: -4px;
+}
+
+.activities .act-grip.e-bottom {
+  left: 22px;
+  right: 22px;
+  bottom: -4px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.activities .act-grip.c-bl,
+.activities .act-grip.c-br {
+  bottom: -4px;
+  width: 16px;
+  height: 16px;
+}
+
+.activities .act-grip.c-bl {
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+.activities .act-grip.c-br {
+  right: -4px;
+  cursor: nwse-resize;
+}

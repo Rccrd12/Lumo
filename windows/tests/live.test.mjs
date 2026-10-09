@@ -13,7 +13,7 @@ installFakeDom();
 const P = await import("../src/live/protocol.ts");
 const { Transcript } = await import("../src/live/transcript.ts");
 const { runTool, readingResult, baseName, errorText } = await import("../src/live/tools.ts");
-const { Live, liveBotState, helperName } = await import("../src/live/session.ts");
+const { Live, liveBotState, helperName, DONE_SHOWS_MS } = await import("../src/live/session.ts");
 const { buildLive, liveModelName } = await import("../src/views/live.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { VIEW_LAYOUTS, islandSize } = await import("../src/core/layout.ts");
@@ -77,9 +77,11 @@ test("every tool runs without blocking the voice; the screen tool exists only wh
   assert.ok(on.every((d) => d.behavior === "NON_BLOCKING"));
   assert.deepEqual(on.map((d) => d.name), [
     "look_at_screen", "list_windows", "explorer_folder", "find_files", "read_file", "read_document",
-    "open", "open_app", "ask_helper", "stop_helper", "end_conversation",
+    "open", "open_app", "type_text", "ask_helper", "stop_helper", "set_timer", "control_music", "end_conversation",
   ]);
-  assert.ok(!P.toolDeclarations({ ...CFG, screen: false }).some((d) => d.name === "look_at_screen"));
+  const off = P.toolDeclarations({ ...CFG, screen: false }).map((d) => d.name);
+  assert.ok(!off.includes("look_at_screen"));
+  assert.ok(off.includes("type_text"));
   const find = on.find((d) => d.name === "find_files");
   assert.deepEqual(find.parameters.required, ["name"]);
   assert.equal(find.parameters.type, "OBJECT");
@@ -314,6 +316,30 @@ test("ask_helper hands the task to Rust and brings back the answer; end_conversa
   assert.equal(log.ended, 1);
 });
 
+test("the helper is offered for the user's connected accounts, and asked before saying no", () => {
+  const text = P.systemInstruction(CFG);
+  assert.match(text, /calendar/);
+  assert.match(text, /Never tell the user you can't do something before Claude Code has tried/);
+  assert.match(P.toolDeclarations(CFG).find((d) => d.name === "ask_helper").description, /calendar, email/);
+  assert.match(text, /type_text writes text into the text box/);
+});
+
+test("type_text types what the model said into the window in front, and says where", async () => {
+  const { host: h, log } = host();
+  const typed = { chars: 18, app: "chrome", title: "Gmail", flattened: false };
+  const a = await withRust((cmd) => (cmd === "live_type" ? typed : null), () =>
+    runTool({ id: "t1", name: "type_text", args: { text: "Ciao,\na domani" } }, h));
+  assert.deepEqual(sent("live_type").at(-1), { text: "Ciao,\na domani" });
+  assert.deepEqual(a.result, { typed: 18, into: "Gmail (chrome)" });
+  assert.ok(log.doing.includes("Typing the text"));
+  const term = await withRust((cmd) => (cmd === "live_type" ? { ...typed, app: "WindowsTerminal", title: "", flattened: true } : null), () =>
+    runTool({ id: "t2", name: "type_text", args: { text: "a\nb" } }, h));
+  assert.equal(term.result.into, "WindowsTerminal");
+  assert.match(term.result.note, /terminal/);
+  const empty = await runTool({ id: "t3", name: "type_text", args: { text: "  " } }, h);
+  assert.match(empty.error, /which text/);
+});
+
 test("small helpers", () => {
   assert.equal(baseName("C:\\Users\\me\\report.pdf"), "report.pdf");
   assert.equal(baseName("/home/me/folder/"), "folder");
@@ -351,6 +377,29 @@ test("the call view has the chat's room", () => {
   assert.deepEqual(islandSize("expanded", "live"), { w: 640, h: 240 });
 });
 
+test("\"Claude Code answered\" has no dots going, and goes by itself", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const view = buildLive(() => {});
+  Live.phase = "listening";
+  try {
+    Live.setDoing("Reading a.pdf");
+    view.sync();
+    const doing = view.el.querySelector(".live-doing");
+    assert.equal(doing.hidden, false);
+    assert.ok(!doing.classList.contains("done"), "work going on: dots");
+    Live.setDoing("Antigravity CLI answered", true);
+    view.sync();
+    assert.ok(doing.classList.contains("done"), "over: no dots");
+    t.mock.timers.tick(DONE_SHOWS_MS);
+    assert.equal(Live.doing, null);
+    view.sync();
+    assert.equal(doing.hidden, true);
+  } finally {
+    Live.setDoing(null);
+    Live.phase = "off";
+  }
+});
+
 test("before a call, the view says what Gemini can do and offers to start", () => {
   State.settings = { ...DEFAULT_SETTINGS, liveHelper: "antigravity-cli" };
   const view = buildLive(() => {});
@@ -369,7 +418,7 @@ test("the shortcut opens the call view and starts a call; with no answer from Ru
   const opened = [];
   const shortcutHost = {
     alert: (v) => opened.push(v), setView: () => {}, collapse: () => {}, emote: () => {},
-    setPinned: () => {}, takeKeyboard: () => {}, wardrobeAnywhere: () => {},
+    setPinned: () => {}, takeKeyboard: () => {}, wardrobeAnywhere: () => {}, holdOpen: () => {},
   };
   runGlobalShortcut(shortcutHost, "talkToGemini", () => {});
   assert.deepEqual(opened, ["live"]);

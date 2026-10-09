@@ -26,7 +26,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 ## Features
 
-- 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Antigravity (IDE and CLI), Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
+- 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Antigravity (IDE and CLI), Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `lumo_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
 - See what Claude is editing, live: each file modification shows the file name and +N −M counts in the ticker, click it to read the full diff.
 - ✅ **Approve and answer from the island** — permission requests show up with **Allow / Deny** for Claude Code (from any terminal), Codex, Copilot CLI and Muse Code; `AskUserQuestion` prompts show the choices right in the island. Nothing is ever allowed without your click.
 - 🧑‍💻 **Open terminal** — brings the window a session runs in to the front.
@@ -64,6 +64,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.5.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.0) | Oct 9, 2026 | Live activities (timers, music, calendar, email) on the closed island and beside the open one, the Email pill, the chat knows what's open on your PC, math in answers, Italiano, Lumo's own names everywhere |
 | [0.4.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.4.0) | Oct 9, 2026 | Talk with Gemini Live, which sees your screen, reads your files and asks Claude Code for help; Lumo animates every state; the wardrobe in two parts |
 | [0.3.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.2) | Oct 9, 2026 | Antigravity CLI answers in the chat, an effort slider, a permissions button in the chat, a centred launch greeting, the app is lumo.exe |
 | [0.3.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.1) | Oct 8, 2026 | Now called Lumo, settings inside the island, a floating island that docks near the edges, choose how it opens and closes, it no longer disappears on its own |
@@ -85,8 +86,6 @@ This is only because the app isn't signed with a paid certificate yet. Lumo is o
 
 **Settings… → Updates → Check for updates** looks for the newest `windows-v*` release of this repository, only when you click it.
 
-**Coming from Coucou 0.3.0?** The app was called Coucou before 0.3.1. Download the installer above and run it: it replaces Coucou with Lumo, one app in Settings → Apps, one Start menu entry, one autostart entry, with your settings, keys, hooks and history as they were.
-
 There is no notch on a PC, so the island slides out of the top edge of the screen
 instead of hiding inside one. See [`windows/README.md`](windows/README.md) for the
 rest of the differences.
@@ -96,8 +95,8 @@ rest of the differences.
 Linux builds are published from `linux-v*` tags in [Releases](https://github.com/Rccrd12/Lumo/releases), x86_64 only; until one is there, [build it from source](#build-from-source).
 
 - **AppImage** (any distribution): `chmod +x Lumo-Linux-*.AppImage`, then run it.
-- **Debian / Ubuntu**: `sudo apt install ./Lumo-Linux-*.deb` (replaces the `coucou` package)
-- **Fedora / openSUSE**: `sudo dnf install ./Lumo-Linux-*.rpm` (replaces the `coucou` package)
+- **Debian / Ubuntu**: `sudo apt install ./Lumo-Linux-*.deb`
+- **Fedora / openSUSE**: `sudo dnf install ./Lumo-Linux-*.rpm`
 
 Check a download with `sha256sum -c SHA256SUMS --ignore-missing`.
 

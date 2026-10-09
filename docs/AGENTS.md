@@ -2,9 +2,9 @@
 
 Any tool that can write to a Unix domain socket (macOS, Linux) or a named pipe (Windows) can send events to Lumo and have its own pill next to Claude Code.
 
-## The `coucou_agent` field
+## The `lumo_agent` field
 
-Add the optional field `coucou_agent` to any hook JSON payload. Lumo will create a pill labelled with the agent name and route all events to it.
+Add the optional field `lumo_agent` to any hook JSON payload. Lumo will create a pill labelled with the agent name and route all events to it.
 
 **Validation:** the name must match `^[a-z0-9-]{1,24}$` (lowercase letters, digits and hyphens, 1–24 characters). An absent or invalid name routes the event to the Claude Code pill instead.
 
@@ -40,7 +40,7 @@ Same pattern with the Windows relay:
 
 ## Hook command (Linux)
 
-Same pattern with the Linux relay. Lumo copies the relay to `~/.local/share/coucou/bin/lumo-hook` at startup.
+Same pattern with the Linux relay. Lumo copies the relay to `~/.local/share/lumo/bin/lumo-hook` at startup.
 
 ```json
 {
@@ -54,22 +54,21 @@ Same pattern with the Linux relay. Lumo copies the relay to `~/.local/share/couc
 
 ## Payload format
 
-The relay adds `coucou_agent` to the JSON it forwards. You can also add it yourself if you talk to the socket directly:
+The relay adds `lumo_agent` to the JSON it forwards. You can also add it yourself if you talk to the socket directly:
 
 ```json
 {
   "hook_event_name": "UserPromptSubmit",
   "session_id": "my-session-1",
-  "coucou_agent": "my-tool",
+  "lumo_agent": "my-tool",
   "prompt": "Running task…"
 }
 ```
 
 Send newline-terminated JSON to the socket:
 - **macOS (GitHub build):** `~/Library/Application Support/NotchBuddy/nb.sock`
-- **macOS (App Store build):** `~/Library/Containers/fr.louisraille.Coucou/Data/nb.sock`
-- **Windows:** `\\.\pipe\coucou-<user-SID>`
-- **Linux:** `$XDG_RUNTIME_DIR/coucou.sock` (usually `/run/user/<uid>/coucou.sock`). Only your own user account can connect.
+- **Windows:** `\\.\pipe\lumo-<user-SID>`
+- **Linux:** `$XDG_RUNTIME_DIR/lumo.sock` (usually `/run/user/<uid>/lumo.sock`). Only your own user account can connect.
 
 ## Supported events
 
@@ -105,7 +104,7 @@ Amp (`agent_amp`) and Hermes (`agent_hermes`) in Settings → Active pills. Curs
 (`agent_codex`, GitHub build only) are there too — their pills can be declared and set as
 the main pill; session support is coming in a future version.
 
-Claude Desktop (`agent_claude-desktop`, every build) is there as well. Claude Code sessions started from the Claude desktop app's Code tab carry `CLAUDE_CODE_ENTRYPOINT=claude-desktop`; the relay tags them `coucou_agent: claude-desktop` on its own (an explicit `--agent` still wins), so nothing extra is installed. Declare the pill to keep it after the session ends; the ↗ button opens the Claude app.
+Claude Desktop (`agent_claude-desktop`, every build) is there as well. Claude Code sessions started from the Claude desktop app's Code tab carry `CLAUDE_CODE_ENTRYPOINT=claude-desktop`; the relay tags them `lumo_agent: claude-desktop` on its own (an explicit `--agent` still wins), so nothing extra is installed. Declare the pill to keep it after the session ends; the ↗ button opens the Claude app.
 
 ## Real-world examples
 
@@ -142,7 +141,7 @@ island's `tool_name` / `session_id`.
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
 rules decide. One exception, on Windows and Linux: the island's own chat with **Antigravity
-CLI** runs `agy` headless (stream-json on stdin) with `COUCOU_ISLAND_RUN=1`, where nothing can prompt. For that
+CLI** runs `agy` headless (stream-json on stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that
 run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
 `terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
 chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a click, or `ask`
@@ -153,7 +152,7 @@ it may wait; hooks installed without `--wait` (10 s timeout) give the card 8 s.
 ### GitHub Copilot CLI (macOS)
 
 Lumo supports Copilot CLI out of the box via **Settings → GitHub Copilot CLI Hooks → Install hooks**.
-The installer writes to `~/.copilot/hooks/coucou.json` and uses `--agent copilot`.
+The installer writes to `~/.copilot/hooks/lumo.json` and uses `--agent copilot`.
 Copilot CLI uses camelCase event names and `{"bash":"…","timeoutSec":N}` entries.
 Copilot CLI is fail-closed on `permissionRequest`: the relay always outputs valid JSON
 and returns `{"permissionDecision":"ask"}` on timeout so Copilot re-prompts in the terminal.
@@ -189,7 +188,7 @@ Muse uses PascalCase event names. Lumo shows a real Allow / Deny card for Muse a
 ### OpenCode (macOS)
 
 Lumo supports OpenCode via **Settings → OpenCode Plugin → Install plugin**.
-The installer writes a JS plugin to `~/.config/opencode/plugins/coucou.js`.
+The installer writes a JS plugin to `~/.config/opencode/plugins/lumo.js`.
 The plugin maps OpenCode event types to canonical Lumo names and forwards them fire-and-forget; OpenCode is never blocked.
 
 | OpenCode event | Canonical event |
@@ -205,7 +204,7 @@ The plugin maps OpenCode event types to canonical Lumo names and forwards them f
 ### Amp (macOS)
 
 Lumo supports Amp via **Settings → Amp Plugin → Install plugin**.
-The installer writes a TypeScript plugin to `~/.config/amp/plugins/coucou.ts`.
+The installer writes a TypeScript plugin to `~/.config/amp/plugins/lumo.ts`.
 The `tool.call` handler returns `{ action: 'allow' }` so Amp always proceeds; all events are forwarded display-only.
 
 | Amp event | Canonical event |
@@ -219,7 +218,7 @@ The `tool.call` handler returns `{ action: 'allow' }` so Amp always proceeds; al
 ### Hermes Agent (macOS)
 
 Lumo supports Hermes via **Settings → Agents → Hermes → Install plugin**.
-The installer writes a Python plugin to `~/.hermes/plugins/coucou/` and enables it in
+The installer writes a Python plugin to `~/.hermes/plugins/lumo/` and enables it in
 `~/.hermes/config.yaml`. The plugin uses `on_session_start` (sends the platform when running
 via the gateway), `post_llm_call` (sends the final response), and a `pre_approval_request`
 observer hook that fires a `⏳ Approval pending in Hermes` step in the notch.
@@ -237,7 +236,7 @@ Every event is fire-and-forget: if the app is closed or unreachable, nothing is 
 
 Follow the generic pattern: call `nb-hook --agent <your-name> <EventName>` (macOS),
 `lumo-hook.exe --agent <your-name> <EventName>` (Windows)
-or `~/.local/share/coucou/bin/lumo-hook --agent <your-name> <EventName>` (Linux)
+or `~/.local/share/lumo/bin/lumo-hook --agent <your-name> <EventName>` (Linux)
 and let the relay forward the event.
 
 ## Quick test (Linux)
@@ -245,8 +244,8 @@ and let the relay forward the event.
 With Lumo running:
 
 ```sh
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
-  | ~/.local/share/coucou/bin/lumo-hook --agent demo
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","lumo_agent":"demo"}' \
+  | ~/.local/share/lumo/bin/lumo-hook --agent demo
 ```
 
 A "demo" pill should appear in the island.
@@ -256,7 +255,7 @@ A "demo" pill should appear in the island.
 With Lumo running:
 
 ```sh
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
+echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","lumo_agent":"demo"}' \
   | /bin/sh ~/Library/Application\ Support/NotchBuddy/nb-hook --agent demo
 ```
 

@@ -160,13 +160,30 @@ export interface Settings {
   islandHoverOpen: boolean;
   /** The closed island goes away a minute after the mouse left it. */
   islandAutoHide: boolean;
+  /** The closed island says what the AI is doing and what just happened (core/compact.ts). */
+  compactActivity: boolean;
+  /** The closed island shows the music playing (media.rs). */
+  compactMedia: boolean;
+  /** The live activities (island/activities.ts) are on. */
+  activitiesPanel: boolean;
+  /** Folded into their icon in the open island's top bar. */
+  activitiesFolded: boolean;
+  /** Beside the island: "left" or "right". */
+  activitiesSide: string;
+  /** Their size; a height of 0 follows the island. */
+  activitiesWidth: number;
+  activitiesHeight: number;
+  /** In a window of their own (Windows), at this physical position. */
+  activitiesDetached: boolean;
+  activitiesX: number;
+  activitiesY: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
   model: string;
   /** Show the Claude plan pill (5 h and weekly limits) in the island's header. */
   showPlanInNotch: boolean;
-  /** Coucou's status line relay is installed in Claude Code's settings. */
+  /** Lumo's status line relay is installed in Claude Code's settings. */
   planRelayInstalled: boolean;
   /** Show the Codex plan pill in the island's header. */
   showCodexPlanInNotch: boolean;
@@ -185,6 +202,8 @@ export interface Settings {
    * from the screen button. Off until the user turns it on in Settings → Chat.
    */
   chatShareExplorer: boolean;
+  /** Every message carries the open windows and their documents (desk.rs). */
+  chatShareOpen: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -211,7 +230,7 @@ export interface Settings {
    */
   pillColors: Record<string, string>;
   /**
-   * Interface language: "" follows the system (when Coucou has its language,
+   * Interface language: "" follows the system (when Lumo has its language,
    * else English), or one of src/i18n's ten codes ("fr", "pt-BR", "zh-Hans"…).
    */
   language: string;
@@ -223,6 +242,10 @@ export interface Settings {
   liveVoice: string;
   /** Who takes what Gemini can't do: "claude-code" or "antigravity-cli". */
   liveHelper: string;
+  /** The helper's model: "default" (its own choice), else one the chat's picker offers for it. */
+  liveHelperModel: string;
+  /** Claude Code's effort for the helper ("low" … "max"); "" = its own default. */
+  liveHelperEffort: string;
   /** Gemini may take a screenshot when it decides it needs one, during a call. */
   liveScreen: boolean;
   /** Mochi on the desktop. Rust owns it: whatever the page sends back is ignored. */
@@ -252,6 +275,16 @@ export const DEFAULT_SETTINGS: Settings = {
   islandClose: "timer",
   islandHoverOpen: false,
   islandAutoHide: false,
+  compactActivity: true,
+  compactMedia: true,
+  activitiesPanel: true,
+  activitiesFolded: false,
+  activitiesSide: "left",
+  activitiesWidth: 264,
+  activitiesHeight: 0,
+  activitiesDetached: false,
+  activitiesX: 0,
+  activitiesY: 0,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -264,6 +297,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatPermissionMode: "default",
   chatShowUsage: false,
   chatShareExplorer: false,
+  chatShareOpen: true,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
@@ -277,6 +311,8 @@ export const DEFAULT_SETTINGS: Settings = {
   liveThinking: "medium",
   liveVoice: "",
   liveHelper: "claude-code",
+  liveHelperModel: "default",
+  liveHelperEffort: "",
   liveScreen: true,
 };
 
@@ -299,6 +335,15 @@ class AppState {
   liveState: BotStateName | null = null;
   /** A Gemini Live call is on: the island opens on it, and the compact island stays. */
   liveActive = false;
+  /**
+   * The chat is answering: what it is doing, in words ("Reading main.ts"), or
+   * null once the answer is being written. For the closed island (core/compact.ts).
+   */
+  chatActivity: { label: string | null } | null = null;
+  /** A question the chat asks as soon as it is on screen (an email's buttons). */
+  chatAsk: string | null = null;
+  /** The live activities can show beside the open island (an edge with room for them). */
+  activitiesRoom = false;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };

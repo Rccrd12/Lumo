@@ -3,6 +3,7 @@
 // the pill isn't focused, plays a sound, and clears itself after 60 s.
 
 import { onEvent, Bridge, type IntegrationUpdate } from "../core/bridge";
+import { compactNotice } from "../core/compact";
 import { gitHubAlert, type GitHubEvent } from "../core/github";
 import { availablePills } from "../core/pills";
 import { Sound } from "../core/sound";
@@ -115,6 +116,7 @@ function handle(island: Island, update: IntegrationUpdate) {
       // Same as the Swift pollers: show the compact island so the badge is seen,
       // but never steal the screen for a successful deploy.
       island.reveal();
+      if (State.mode !== "expanded") compactNotice(`${task.name} · ${event.label}`, task.color);
 
       const existing = clearTimers.get(update.id);
       if (existing != null) window.clearTimeout(existing);

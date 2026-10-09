@@ -1,7 +1,8 @@
 // Markdown in the chat's answers, as on the Mac (ChatMarkdown.swift and
 // ChatMarkdownView.swift): headings, paragraphs, fenced code with a copy button,
 // bullet and numbered lists, quotes and rules, with bold, italic, `code` and
-// links inside the text.
+// links inside the text — and TeX math ($…$, $$…$$, \(…\), \[…\]), drawn
+// by math.ts.
 //
 // Everything is built as DOM nodes with textContent, never as HTML, so nothing
 // a model writes can inject markup. Links open only when they are http(s), and
@@ -10,6 +11,7 @@
 import { Bridge } from "../core/bridge";
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
+import { renderMath } from "./math";
 import { N_, t } from "../i18n/i18n";
 
 const STRINGS = {
@@ -24,6 +26,7 @@ export type Block =
   /** `prefix` is "•" or "1."; `indent` the nesting level, from 0. */
   | { kind: "item"; prefix: string; text: string; indent: number }
   | { kind: "quote"; text: string }
+  | { kind: "math"; tex: string }
   | { kind: "rule" };
 
 const isRule = (s: string) => s === "---" || s === "***" || s === "___";
@@ -44,6 +47,28 @@ export function parseMarkdown(input: string): Block[] {
       const code: string[] = [];
       for (i++; i < lines.length && !lines[i].startsWith("```"); i++) code.push(lines[i]);
       blocks.push({ kind: "code", lang, code: code.join("\n") });
+      i++;
+      continue;
+    }
+
+    // $$ … $$ or \[ … \] on lines of their own: a formula on a line of its own.
+    const opener = line.trim().startsWith("$$") ? "$$" : line.trim().startsWith("\\[") ? "\\[" : null;
+    if (opener) {
+      const closer = opener === "$$" ? "$$" : "\\]";
+      const first = line.trim().slice(2);
+      const done = first.indexOf(closer);
+      if (done >= 0) {
+        // On one line; anything after it goes on as text.
+        blocks.push({ kind: "math", tex: first.slice(0, done) });
+        const rest = first.slice(done + 2).trim();
+        if (rest) blocks.push({ kind: "paragraph", text: rest });
+        i++;
+        continue;
+      }
+      const tex: string[] = [first];
+      for (i++; i < lines.length && !lines[i].includes(closer); i++) tex.push(lines[i]);
+      if (i < lines.length) tex.push(lines[i].slice(0, lines[i].indexOf(closer)));
+      blocks.push({ kind: "math", tex: tex.join("\n") });
       i++;
       continue;
     }
@@ -92,6 +117,7 @@ export function parseMarkdown(input: string): Block[] {
       const next = lines[i];
       const s = next.trim();
       if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || isBullet(s) || isRule(s) || ordered(s)) break;
+      if (s.startsWith("$$") || s.startsWith("\\[")) break;
       para.push(next);
     }
     blocks.push({ kind: "paragraph", text: para.join("\n") });
@@ -104,6 +130,7 @@ export function parseMarkdown(input: string): Block[] {
 export type Inline =
   | { kind: "text"; text: string }
   | { kind: "code"; text: string }
+  | { kind: "math"; tex: string; display: boolean }
   | { kind: "strong"; children: Inline[] }
   | { kind: "em"; children: Inline[] }
   /** `url` is null when the target is not a web address: the text stays, the link goes. */
@@ -128,6 +155,14 @@ export function safeWebUrl(raw: string): string | null {
   }
 }
 
+/**
+ * Math is found with the rest, whichever comes first: $$…$$, \(…\), \[…\]
+ * and $…$. A $…$ needs no space just inside its dollars and no digit just
+ * after, so "$5 and $10" stays text.
+ */
+const MATH = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$([^$\n]+?)\$/;
+const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}`, "g");
+
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
   const pushText = (t: string) => {
@@ -136,21 +171,28 @@ export function parseInline(text: string): Inline[] {
     if (last?.kind === "text") last.text += t;
     else out.push({ kind: "text", text: t });
   };
-  const re = new RegExp(INLINE.source, "g");
+  const re = new RegExp(ALL.source, "g");
   let at = 0;
   let m: RegExpExecArray | null;
+  // Groups: 1 code; 2 $$, 3 \(, 4 \[, 5 $; 6 **, 7 __, 8 *, 9 _; 10 link text, 11 its address.
   while ((m = re.exec(text))) {
+    if (m[5] != null && (/^\s|\s$/.test(m[5]) || /\d/.test(text[m.index + m[0].length] ?? ""))) {
+      re.lastIndex = m.index + 1;
+      continue;
+    }
     // snake_case_words are not italics: an opening _ must not follow a letter.
-    if (m[5] != null && isWordChar(text[m.index - 1])) {
+    if (m[9] != null && isWordChar(text[m.index - 1])) {
       re.lastIndex = m.index + 1;
       continue;
     }
     pushText(text.slice(at, m.index));
     at = m.index + m[0].length;
-    if (m[1] != null) out.push({ kind: "code", text: m[1] });
-    else if (m[6] != null) out.push({ kind: "link", url: safeWebUrl(m[7]), children: parseInline(m[6]) });
-    else if (m[2] != null || m[3] != null) out.push({ kind: "strong", children: parseInline(m[2] ?? m[3]) });
-    else out.push({ kind: "em", children: parseInline(m[4] ?? m[5]) });
+    if (m[1] != null) out.push({ kind: "code", text: m[1].slice(1, -1) });
+    else if (m[2] != null || m[3] != null || m[4] != null || m[5] != null) {
+      out.push({ kind: "math", tex: m[2] ?? m[3] ?? m[4] ?? m[5], display: m[2] != null || m[4] != null });
+    } else if (m[10] != null) out.push({ kind: "link", url: safeWebUrl(m[11]), children: parseInline(m[10]) });
+    else if (m[6] != null || m[7] != null) out.push({ kind: "strong", children: parseInline(m[6] ?? m[7]) });
+    else out.push({ kind: "em", children: parseInline(m[8] ?? m[9]) });
   }
   pushText(text.slice(at));
   return out;
@@ -164,6 +206,9 @@ function appendInline(into: HTMLElement, nodes: Inline[]) {
         break;
       case "code":
         into.append(h("code", { class: "md-code", text: node.text }));
+        break;
+      case "math":
+        into.append(renderMath(node.tex, node.display));
         break;
       case "strong":
       case "em": {
@@ -260,6 +305,8 @@ function render(block: Block): HTMLElement {
     }
     case "rule":
       return h("hr", { class: "md-rule" });
+    case "math":
+      return renderMath(block.tex, true);
   }
 }
 

@@ -2,9 +2,10 @@
 // Stage 2 covers the Claude Code hooks and the general preferences; API keys and
 // integrations land here too in a later stage.
 
+import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ShortcutsReport } from "../core/bridge";
-import { CUSTOM_SERVER_KEY, providerDef, urlExposure } from "../core/providers";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
+import { CUSTOM_SERVER_KEY, effortFor, effortsFor, providerDef, urlExposure } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
   recordPress, type Binding,
@@ -201,7 +202,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     if (!status.hookReady) {
       body.append(h("div", {
         class: "notice warn",
-        text: t("lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`."),
+        text: t("lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p lumo-hook`."),
       }));
     }
 
@@ -304,7 +305,7 @@ function planSection(status: HookStatus): HTMLElement {
               onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
             }),
       ),
-      // Codex: nothing to install, Coucou asks the Codex CLI when the pill shows.
+      // Codex: nothing to install, Lumo asks the Codex CLI when the pill shows.
       h("div", { class: "hint", text: PLAN_SETTINGS_TEXT.codex }),
       h("div", { class: "row" },
         h("label", { text: PLAN_SETTINGS_TEXT.showCodex }),
@@ -695,6 +696,14 @@ function chatSharingSection(): HTMLElement {
     h("h2", {}, h("span", { text: SHARING_TEXT.title })),
     h("div", { class: "hint", text: SHARING_TEXT.hint }),
     h("div", { class: "row" },
+      h("label", { text: t("Tell the AI what's open") }),
+      toggle(settings.chatShareOpen !== false, (on) => {
+        settings.chatShareOpen = on;
+        void save();
+      }),
+    ),
+    h("div", { class: "hint", text: t("With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message.") }),
+    h("div", { class: "row" },
       h("label", { text: SHARING_TEXT.explorer }),
       toggle(settings.chatShareExplorer, (on) => {
         settings.chatShareExplorer = on;
@@ -708,6 +717,10 @@ function chatSharingSection(): HTMLElement {
 // ── Voice: Gemini Live ────────────────────────────────────────────────────────
 
 const THINKING_NAMES: Record<string, string> = { low: N_("Low"), medium: N_("Medium"), high: N_("High") };
+/** Claude Code's effort levels, as the chat's picker names them. */
+const EFFORT_NAMES: Record<string, string> = {
+  low: N_("Low"), medium: N_("Medium"), high: N_("High"), xhigh: N_("Extra high"), max: N_("Max"),
+};
 
 function select(options: [string, string][], value: string, onChange: (v: string) => void): HTMLSelectElement {
   const el = h("select", {}) as HTMLSelectElement;
@@ -782,6 +795,9 @@ function voiceSection(
   };
   showThinking(model);
 
+  const { modelRow: helperModelRow, problem: helperProblem, effortRow: helperEffortRow, draw: drawHelper } = helperChoices();
+  drawHelper();
+
   const windows = navigator.userAgent.includes("Windows");
   const def = SHORTCUTS.find((s) => s.id === "talkToGemini");
   const binding = shortcuts && def ? effective(def, settings.shortcuts) : null;
@@ -824,13 +840,78 @@ function voiceSection(
     h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(windows ? VOICE_SETTINGS.screenHint : VOICE_SETTINGS.screenLinux) }),
     h("div", { class: "row" },
       h("label", { text: t(VOICE_SETTINGS.helper) }),
-      select([["claude-code", "Claude Code"], ["antigravity-cli", "Antigravity CLI"]], settings.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code", (v) => {
+      select([["claude-code", "Claude Code"], ["antigravity-cli", "Antigravity CLI"]], helperId(), (v) => {
         settings.liveHelper = v;
+        // Each helper has its own models: the new one starts on its own choice.
+        settings.liveHelperModel = "default";
         void save();
+        drawHelper();
       }),
     ),
     h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(VOICE_SETTINGS.helperHint) }),
+    helperModelRow,
+    helperProblem,
+    helperEffortRow,
   );
+}
+
+const helperId = () => (settings.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code");
+
+/**
+ * The helper's model and effort (Settings → Voice): the models the chat's
+ * picker offers for that helper, asked only when this page is drawn (agy
+ * lists its own); the effort for Claude Code only, as in the chat.
+ */
+function helperChoices(): { modelRow: HTMLElement; problem: HTMLElement; effortRow: HTMLElement; draw: () => void } {
+  const models = h("select", {}) as HTMLSelectElement;
+  const efforts = h("select", {}) as HTMLSelectElement;
+  const modelRow = h("div", { class: "row" }, h("label", { text: t(VOICE_SETTINGS.helperModel) }), models);
+  const effortRow = h("div", { class: "row" }, h("label", { text: t(VOICE_SETTINGS.helperEffort) }), efforts);
+  const problem = h("div", { class: "hint", style: "margin:-4px 0 0 144px" });
+  models.addEventListener("change", () => {
+    settings.liveHelperModel = models.value;
+    void save();
+  });
+  efforts.addEventListener("change", () => {
+    settings.liveHelperEffort = efforts.value;
+    void save();
+  });
+  let ticket = 0;
+
+  const fill = (list: ModelInfo[]) => {
+    clear(models);
+    const saved = settings.liveHelperModel || "default";
+    const all = list.some((m) => m.id === saved) ? list : [...list, { id: saved, label: saved }];
+    for (const m of all) models.append(h("option", { value: m.id, text: m.id === "default" ? t("Default") : m.label }));
+    models.value = saved;
+  };
+
+  const draw = () => {
+    const id = helperId();
+    const mine = ++ticket;
+    problem.hidden = true;
+    fill([{ id: "default", label: t("Default") }]);
+    models.disabled = true;
+    void Bridge.chatModels(id).then(
+      (list) => {
+        if (mine !== ticket) return;
+        models.disabled = false;
+        fill(list.length ? list : [{ id: "default", label: t("Default") }]);
+      },
+      (err) => {
+        if (mine !== ticket) return;
+        models.disabled = false;
+        problem.textContent = String(err).replace(/^Error:\s*/, "");
+        problem.hidden = false;
+      },
+    );
+    const levels = effortsFor(id);
+    effortRow.hidden = levels.length === 0;
+    clear(efforts);
+    for (const e of levels) efforts.append(h("option", { value: e, text: e ? t(EFFORT_NAMES[e] ?? e) : t("Auto") }));
+    efforts.value = effortFor(id, settings.liveHelperEffort);
+  };
+  return { modelRow, problem, effortRow, draw };
 }
 
 // ── Local models section ──────────────────────────────────────────────────────
@@ -1018,6 +1099,14 @@ const INTEGRATIONS: IntegrationDef[] = [
     fields: [{ key: "notion-api-key", label: N_("Integration token"), placeholder: "ntn_…", secret: true }] },
   { id: "integration_calcom", name: "Cal.com", color: "#C9956A",
     fields: [{ key: "calcom-api-key", label: N_("API key"), placeholder: "cal_…", secret: true }] },
+  // The inbox over IMAP (mail.rs): read only, never sends.
+  { id: "integration_mail", name: N_("Email"), color: "#EA4335",
+    fields: [
+      { key: "mail-address", label: N_("Address"), placeholder: "you@gmail.com", secret: false },
+      { key: "mail-app-password", label: N_("App password"), placeholder: "abcd efgh ijkl mnop", secret: true },
+      { key: "mail-imap-server", label: N_("IMAP server"), placeholder: N_("found from the address"), secret: false },
+    ],
+    hint: N_("New emails show on the closed island, with Summarize and Draft a reply. Lumo only reads the inbox: it never sends, deletes or marks anything as read. Gmail: turn on 2-Step Verification, then create an app password at myaccount.google.com/apppasswords. The server is needed only for providers other than Gmail, Outlook, iCloud and Yahoo.") },
 ];
 
 const MAX_ACTIVE = MAX_DECLARED;
@@ -1059,7 +1148,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
     for (const field of def.fields) {
       const input = h("input", {
         type: field.secret ? "password" : "text",
-        placeholder: present[field.key] ? CHAT_STRINGS.stored : field.placeholder,
+        placeholder: present[field.key] ? CHAT_STRINGS.stored : t(field.placeholder),
         autocomplete: "off",
         spellcheck: "false",
         style: "flex:1 1 auto;min-width:0",
@@ -1072,7 +1161,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
           await Bridge.secretSet(field.key, value);
           present[field.key] = value.length > 0;
           input.value = "";
-          input.placeholder = value ? CHAT_STRINGS.stored : field.placeholder;
+          input.placeholder = value ? CHAT_STRINGS.stored : t(field.placeholder);
           dotEl.style.background = value ? "#22c55e" : "#f4505e";
         } catch {
           dotEl.style.background = "#f5a524";
@@ -1093,7 +1182,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
         h("div", { style: "display:flex;align-items:center;gap:8px;min-width:132px;padding-top:4px" },
           sw,
           colorDot(def, "", () => settings.pillColors, pickColor),
-          h("span", { style: "font-size:12.5px", text: def.name }),
+          h("span", { style: "font-size:12.5px", text: t(def.name) }),
         ),
         rows,
       ),
@@ -1297,12 +1386,63 @@ function behaviourRows(): HTMLElement[] {
       toggle(settings.islandAutoHide, (v) => { settings.islandAutoHide = v; void save(); }),
       h("span", { class: "hint", text: t("the closed island slips into the edge of the screen a minute after you leave it") }),
     ),
+    h("div", { class: "row" },
+      h("label", { text: t("Say what's going on") }),
+      toggle(settings.compactActivity, (v) => { settings.compactActivity = v; void save(); }),
+      h("span", { class: "hint", text: t("the closed island says what the AI is doing, and when an answer or an email arrives") }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Show the music playing") }),
+      toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); }),
+      h("span", { class: "hint", text: t("with play, pause and skip, when nothing else is showing") }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Live Activities") }),
+      toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); }),
+      h("span", { class: "hint", text: t("beside the open island: timers, the music, the calendar and the newest emails") }),
+    ),
+    calendarRow(),
   ];
+}
+
+/** The live activities' calendar: its iCal address, kept in the credential store (calendar.rs). */
+function calendarRow(): HTMLElement {
+  const key = "calendar-ics-url";
+  const input = h("input", {
+    type: "password",
+    placeholder: "https://calendar.google.com/calendar/ical/…/basic.ics",
+    autocomplete: "off",
+    spellcheck: "false",
+    style: "flex:1 1 auto;min-width:0",
+  }) as HTMLInputElement;
+  const dotEl = statusDot(false);
+  void Bridge.secretPresent(key).then((on) => {
+    if (on) {
+      input.placeholder = CHAT_STRINGS.stored;
+      dotEl.style.background = "#22c55e";
+    }
+  });
+  const saveBtn = h("button", { text: t("Save") });
+  saveBtn.addEventListener("click", async () => {
+    const value = input.value.trim();
+    try {
+      await Bridge.secretSet(key, value);
+      input.value = "";
+      input.placeholder = value ? CHAT_STRINGS.stored : "https://calendar.google.com/calendar/ical/…/basic.ics";
+      dotEl.style.background = value ? "#22c55e" : "#f4505e";
+    } catch {
+      dotEl.style.background = "#f5a524";
+    }
+  });
+  return h("div", { style: "display:flex;flex-direction:column;gap:4px" },
+    h("div", { class: "row" }, h("label", { text: t("Calendar") }), input, saveBtn, dotEl),
+    h("div", { class: "hint", text: t("The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.", { store: KEY_STORE }) }),
+  );
 }
 
 /**
  * Settings → General → Language, as on the Mac: "System" follows the
- * system's language when Coucou has it (else English), or one of the ten.
+ * system's language when Lumo has it (else English), or one of the ten.
  * Both windows and the tray switch in place, without a restart.
  */
 function languageRow(): HTMLElement {
@@ -1615,7 +1755,7 @@ const PAGES = [
 type PageId = (typeof PAGES)[number]["id"];
 
 /** Where the selected section is remembered between openings (this window only). */
-const PAGE_KEY = "coucou.settings.page";
+const PAGE_KEY = "lumo.settings.page";
 
 function isPage(id: unknown): id is PageId {
   return PAGES.some((p) => p.id === id);
@@ -1717,6 +1857,7 @@ async function render() {
   const keys = [
     "stripe-api-key", "github-token", "vercel-token",
     "n8n-url", "n8n-api-key", "resend-api-key", "notion-api-key", "calcom-api-key",
+    "mail-address", "mail-app-password", "mail-imap-server",
   ];
   const present: Record<string, boolean> = {};
   for (const k of keys) present[k] = (await Bridge.secretPresent(k)) ?? false;

@@ -35,8 +35,6 @@ use crate::session_window::{self, Proc};
 
 /// File name of the Claude Code relay.
 pub const HOOK_EXE: &str = "lumo-hook.exe";
-/// Its name up to 0.3.1, still in the hooks written then (hooks.rs).
-pub const LEGACY_HOOK_EXE: &str = "coucou-hook.exe";
 
 /// Environment variable holding the home directory.
 pub const HOME_VAR: &str = "USERPROFILE";
@@ -46,20 +44,22 @@ const CREATE_NO_WINDOW: u32 = 0x0800_0000;
 
 // ── Files ─────────────────────────────────────────────────────────────────────
 
-/// %APPDATA%\Coucou — preferences.
+/// %APPDATA%\com.rccrd12.lumo — preferences.
 pub fn config_dir() -> PathBuf {
     let base = std::env::var_os("APPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Coucou")
+    base.join(crate::IDENTIFIER)
 }
 
-/// %LOCALAPPDATA%\Coucou — where coucou-hook.exe, the inbox and the log live.
+/// %LOCALAPPDATA%\com.rccrd12.lumo — where lumo-hook.exe, the inbox and the
+/// log live, beside the WebView's own data (EBWebView). Not %LOCALAPPDATA%\Lumo:
+/// that is where the installer puts the app.
 pub fn local_dir() -> PathBuf {
     let base = std::env::var_os("LOCALAPPDATA")
         .map(PathBuf::from)
         .unwrap_or_else(|| PathBuf::from("."));
-    base.join("Coucou")
+    base.join(crate::IDENTIFIER)
 }
 
 /// Where a saved image goes, best first: Pictures (also where OneDrive moves
@@ -191,8 +191,8 @@ pub fn agy_candidates() -> Vec<PathBuf> {
 // ── Who we are ────────────────────────────────────────────────────────────────
 //
 // Named pipes share one machine-wide namespace, so the SID in the name is what
-// keeps two accounts on the same machine from ever meeting on `coucou-*`.
-// coucou-hook computes the same string (hook/src/win.rs) and additionally checks
+// keeps two accounts on the same machine from ever meeting on `lumo-*`.
+// lumo-hook computes the same string (hook/src/win.rs) and additionally checks
 // that the process serving the pipe really is us.
 
 /// The SID of the account this process runs as, as `S-1-5-21-…`.

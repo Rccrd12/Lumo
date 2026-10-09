@@ -43,6 +43,7 @@ export interface SeenUsage extends ChatUsage {
 
 export const USAGE_TEXT = {
   pctLeft: (label: string, pct: number) => t("{label}: {pct}% left", { label, pct }),
+  plenty: (label: string) => t("{label}: plenty left", { label }),
   tokens: (n: string) => t("Tokens left: {n}", { n }),
   requests: (n: string) => t("Requests left: {n}", { n }),
   creditsLeft: (n: string) => t("Credits left: {n}", { n }),
@@ -106,8 +107,10 @@ function planLine(settings: Settings, plan: PlanUsage | null, now: number): Usag
   if (!plan || (!plan.fiveHour && !plan.sevenDay)) {
     return { text: USAGE_TEXT.notYet, title: USAGE_TEXT.notYetTitle, color: planColor(null) };
   }
-  const part = (label: string, w: PlanWindow, weekly: boolean) =>
-    `${USAGE_TEXT.pctLeft(label, Math.round(100 - effectivePct(w, now)))} (${resetLabel(w, weekly, now)})`;
+  const part = (label: string, w: PlanWindow, weekly: boolean) => {
+    const left = w.low && w.resetsAt > now ? USAGE_TEXT.plenty(label) : USAGE_TEXT.pctLeft(label, Math.round(100 - effectivePct(w, now)));
+    return `${left} (${resetLabel(w, weekly, now)})`;
+  };
   const parts: string[] = [];
   if (plan.fiveHour) parts.push(part(PLAN_TEXT.fiveHours, plan.fiveHour, false));
   if (plan.sevenDay) parts.push(part(PLAN_TEXT.week, plan.sevenDay, true));

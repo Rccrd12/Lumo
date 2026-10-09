@@ -122,6 +122,10 @@ pub struct Placement {
     /// view's own), in page pixels.
     pub width: f64,
     pub height: f64,
+    /// The live activities beside the open island (on the top and bottom
+    /// edges), as (width, height) page pixels, or (0, 0) when they are not:
+    /// the window is wider by their room on each side, and tall enough.
+    pub activities: (f64, f64),
 }
 
 impl Placement {
@@ -134,6 +138,7 @@ impl Placement {
             float: if platform::CURSOR_POLL { s.island_float.max(0.0) } else { 0.0 },
             width: s.island_width,
             height: s.island_height,
+            activities: crate::activities::room_of(s),
         }
     }
 }
@@ -148,6 +153,7 @@ const MAX_HEIGHT: f64 = 640.0;
 /// Room the window keeps around the island, for the hit margin and Mochi's glow.
 const SIDE_ROOM: f64 = PANEL_W - DEFAULT_WIDTH;
 const BOTTOM_ROOM: f64 = 20.0;
+
 /// The window grows in steps of this much, so a resize does not resize it at every pixel.
 const PANEL_STEP: f64 = 40.0;
 
@@ -169,9 +175,13 @@ fn finite(v: f64) -> f64 {
 fn panel_size(p: Placement) -> (f64, f64) {
     let up = |v: f64| (v / PANEL_STEP).ceil() * PANEL_STEP;
     let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + EDGE_GAP };
+    // The live activities on one side: the same room on the other keeps the
+    // island centred (activities.rs GAP).
+    let (aw, ah) = if p.dock.upright() { (0.0, 0.0) } else { p.activities };
+    let beside = if aw > 0.0 { 2.0 * (aw + crate::activities::GAP) } else { 0.0 };
     (
-        PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM)),
-        PANEL_H.max(up(clamp_height(p.height) + ends)),
+        PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM + beside)),
+        PANEL_H.max(up(clamp_height(p.height).max(ah) + ends)),
     )
 }
 
@@ -330,6 +340,8 @@ const HIT_MARGIN: f64 = 14.0;
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
+    /// Over the live activities' own window, which counts as the island.
+    pub panel: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -929,7 +941,7 @@ mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
-    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0 };
+    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: (0.0, 0.0) };
 
     #[test]
     fn home_is_the_top_centre_and_the_zoom_grows_the_window() {
@@ -1048,6 +1060,10 @@ mod placement_tests {
         assert_eq!(frame(FHD, 1.0, Placement { height: 500.0, dock: Dock::Left, ..HOME }, false), (0, 240, 720, 600));
         // Nothing narrower than the panel, and never more than the display.
         assert_eq!(frame(FHD, 1.0, Placement { width: 100.0, ..HOME }, false).2, 720);
+        // The live activities beside it: room on both sides, the island still centred.
+        assert_eq!(frame(FHD, 1.0, Placement { activities: (264.0, 0.0), ..HOME }, false), (320, 0, 1280, 480));
+        assert_eq!(frame(FHD, 1.0, Placement { activities: (264.0, 0.0), dock: Dock::Left, ..HOME }, false).2, 720);
+        assert_eq!(frame(FHD, 1.0, Placement { activities: (264.0, 600.0), ..HOME }, false).3, 640);
         assert_eq!(frame(FHD, 1.6, Placement { width: 1200.0, height: 640.0, ..HOME }, false), (0, 0, 1920, 1080));
         assert_eq!(frame(FHD, 1.0, Placement { width: f64::NAN, height: f64::NAN, offset: f64::NAN, ..HOME }, false), (600, 0, 720, 480));
     }
@@ -1184,8 +1200,9 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // often comes without a move. A press may also be the start of a
                 // file drag: make sure the drop target is ours before it arrives.
                 let down = left_button_down();
+                let on_panel = crate::activities::cursor_over((cx, cy));
                 if down && !was_down {
-                    if !on_island {
+                    if !on_island && !on_panel {
                         let _ = win.emit("outside-press", ());
                     }
                     let handle = app.clone();
@@ -1217,7 +1234,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     let _ = win.set_ignore_cursor_events(!accept);
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y });
+                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel });
             }
         }
     });

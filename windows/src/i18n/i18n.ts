@@ -1,11 +1,13 @@
-// Interface language — the same ten languages as the Mac (0.2.0).
+// Interface language — the Mac's ten languages (0.2.0), and Italian.
 //
 // Strings are looked up by their English text, like the Mac's catalog:
 // `t("Allow")`, `t("Uploading {name}", { name })`. Two tables, both keyed by
 // the English text:
 // - strings.json, generated from the Mac's Localizable.xcstrings by
 //   scripts/gen-strings.mjs (never edited by hand);
-// - extra.json, the strings only Windows and Linux have, written by hand.
+// - extra.json, the strings only Windows and Linux have, written by hand;
+// - strings-it.json, Italian for the Mac's strings, which its catalog has not
+//   (Italian for extra.json's is in extra.json, as for every language).
 // A string missing from both, or from one language, shows in English.
 //
 // The Rust side (src-tauri/src/i18n.rs) embeds the same two files and looks up
@@ -17,8 +19,9 @@
 
 import MAC from "./strings.json";
 import EXTRA from "./extra.json";
+import ITALIAN from "./strings-it.json";
 
-export const LANGUAGE_CODES = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id"] as const;
+export const LANGUAGE_CODES = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id", "it"] as const;
 export type Language = (typeof LANGUAGE_CODES)[number];
 
 /** The picker's entries, each in its own language, in the Mac's order. */
@@ -33,6 +36,7 @@ export const LANGUAGES: readonly { code: Language; name: string }[] = [
   { code: "pt-BR", name: "Português (Brasil)" },
   { code: "ru", name: "Русский" },
   { code: "id", name: "Bahasa Indonesia" },
+  { code: "it", name: "Italiano" },
 ];
 
 export type Vars = Record<string, string | number>;
@@ -40,11 +44,17 @@ type Plural = Partial<Record<Intl.LDMLPluralRule, string>>;
 type Entry = Partial<Record<Language, string | Plural>>;
 type Table = Record<string, Entry>;
 
-/** extra.json wins over the Mac's table where both have a string. */
+/** The Mac's table with its Italian added, then extra.json, which wins where both have a string. */
 const TABLE: Table = {
-  ...((MAC as { strings: Table }).strings),
+  ...withItalian((MAC as { strings: Table }).strings, (ITALIAN as { strings: Record<string, string | Plural> }).strings),
   ...((EXTRA as { strings: Table }).strings),
 };
+
+function withItalian(table: Table, italian: Record<string, string | Plural>): Table {
+  const out: Table = {};
+  for (const [key, entry] of Object.entries(table)) out[key] = italian[key] !== undefined ? { ...entry, it: italian[key] } : entry;
+  return out;
+}
 
 let current: Language = "en";
 const listeners = new Set<(lang: Language) => void>();

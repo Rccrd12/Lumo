@@ -28,6 +28,7 @@ import {
   type ServerEvent, type ToolAnswer,
 } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
+import { LIVE_COLOR, compactNotice, speakerName } from "../core/compact";
 import { runTool } from "./tools";
 import { Transcript } from "./transcript";
 
@@ -39,6 +40,13 @@ let searchRefused = false;
 /** Who takes what Gemini can't do (Settings → Voice). */
 export function helperName(id: string): string {
   return id === "antigravity-cli" ? "Antigravity CLI" : "Claude Code";
+}
+
+/** The helper, short, by its model when one is picked ("Haiku"), for the closed island. */
+export function liveHelperSpeaker(): string {
+  const s = State.settings;
+  const provider = s.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code";
+  return speakerName(provider, helperName(s.liveHelper), s.liveHelperModel || "default");
 }
 
 /** What Lumo looks like during a call. */
@@ -97,12 +105,17 @@ async function toJpeg(dataUrls: string[]): Promise<string> {
 
 const wait = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+/** How long "Claude Code answered" stays under the call. */
+export const DONE_SHOWS_MS = 4000;
+
 class LiveSession {
   phase: LivePhase = "off";
   readonly transcript = new Transcript();
   muted = false;
   /** What a tool or the helper is doing, for the call view. */
   doing: string | null = null;
+  /** `doing` says what is over ("Claude Code answered"): no dots, and it goes by itself. */
+  doingDone = false;
   /** Why the last call ended, when it did not end on End. */
   problem: string | null = null;
   /** The problem is a missing or refused key: the view offers Settings. */
@@ -128,6 +141,7 @@ class LiveSession {
   private silenceTimer: ReturnType<typeof setInterval> | null = null;
   private drainTimer: ReturnType<typeof setTimeout> | null = null;
   private notifyTimer: ReturnType<typeof setTimeout> | null = null;
+  private doneTimer: ReturnType<typeof setTimeout> | null = null;
   /** Google said it closes this connection: move between sentences, or by this time. */
   private moveBy: number | null = null;
   private moveTimer: ReturnType<typeof setTimeout> | null = null;
@@ -170,7 +184,7 @@ class LiveSession {
     this.problem = null;
     this.problemIsKey = false;
     this.muted = false;
-    this.doing = null;
+    this.setDoing(null);
     this.handle = null;
     this.busy = false;
     this.ending = false;
@@ -220,9 +234,9 @@ class LiveSession {
     this.mic = mic;
 
     void onEvent<LiveHelperActivity>("live-helper-activity", (a) => {
-      if (!this.active) return;
-      this.doing = `${a.helper}: ${activityLabel({ kind: a.kind, detail: a.detail })}`;
-      this.changed();
+      // What comes after the helper's answer is not news any more.
+      if (!this.active || ![...this.running.values()].some((r) => r.name === TOOL.helper && !r.cancelled)) return;
+      this.setDoing(`${a.helper}: ${activityLabel({ kind: a.kind, detail: a.detail })}`);
     }).then((un) => {
       if (this.active) this.unlisten = un;
       else un();
@@ -264,9 +278,13 @@ class LiveSession {
     this.unlisten?.();
     this.unlisten = null;
     void Bridge.liveMicrophone(false);
-    this.doing = null;
+    this.setDoing(null);
     this.busy = false;
     this.setPhase("off");
+    // Why it ended, on the closed island, when the call is not on screen.
+    if (problem && !(State.mode === "expanded" && State.view === "live")) {
+      compactNotice(`Gemini Live · ${problem}`, LIVE_COLOR, 7000);
+    }
   }
 
   private fail(problem: string, key = false) {
@@ -490,12 +508,13 @@ class LiveSession {
       screen: this.cfg?.screen ?? false,
       helper: this.cfg?.helper ?? "Claude Code",
       showPictures: (urls) => this.showPictures(urls),
-      doing: (label) => {
-        this.doing = label;
-        this.changed();
-      },
+      doing: (label) => this.setDoing(label),
       end: () => this.finishAfterGoodbye(),
     });
+    // In the log, to trace what the model asked and what came of it.
+    // What is typed for the user stays out of it.
+    const args = call.name === TOOL.type ? "" : ` ${JSON.stringify(call.args).slice(0, 300)}`;
+    void Bridge.log(`[live] ${call.name}${args} → ${answer.error != null ? `error: ${answer.error}` : "ok"}`);
     const run = this.running.get(call.id);
     this.running.delete(call.id);
     if (!this.active || !run || run.cancelled) {
@@ -503,8 +522,11 @@ class LiveSession {
       return;
     }
     if (call.name === TOOL.helper) {
-      this.doing = t(answer.error != null ? S.helperStopped : S.helperDone, { helper: this.cfg?.helper ?? "" });
-      this.changed();
+      this.setDoing(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: this.cfg?.helper ?? "" }), true);
+      // On the closed island too, by its model's name: "Haiku answered".
+      if (!(State.mode === "expanded" && State.view === "live")) {
+        compactNotice(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: liveHelperSpeaker() }), LIVE_COLOR);
+      }
     }
     this.answer(answer, run.generation);
     this.update();
@@ -556,6 +578,21 @@ class LiveSession {
   }
 
   // ── State ─────────────────────────────────────────────────────────────────
+
+  /** What the call view says is going on; `done` lines go by themselves after a moment. */
+  private setDoing(label: string | null, done = false) {
+    if (this.doneTimer) clearTimeout(this.doneTimer);
+    this.doneTimer = null;
+    this.doing = label;
+    this.doingDone = done && label != null;
+    if (this.doingDone) {
+      this.doneTimer = setTimeout(() => {
+        this.doneTimer = null;
+        if (this.doing === label) this.setDoing(null);
+      }, DONE_SHOWS_MS);
+    }
+    this.changed();
+  }
 
   /** Works out the phase from what is going on, and when to look again. */
   private update() {

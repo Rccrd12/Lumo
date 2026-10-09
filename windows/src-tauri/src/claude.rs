@@ -4,7 +4,7 @@
 // Everything happens here rather than in the island: the API key never leaves
 // the credential store, and file bytes never cross the IPC boundary.
 //
-// COUCOU_ANTHROPIC_BASE_URL points the chat at an Anthropic-compatible gateway
+// LUMO_ANTHROPIC_BASE_URL points the chat at an Anthropic-compatible gateway
 // instead (issue #180). Only that variable is read: Claude Code's own
 // ANTHROPIC_BASE_URL may name a proxy the user never meant to hand this key to.
 
@@ -22,7 +22,7 @@ use crate::{net, secrets};
 /// Credential store entry of the Anthropic API key.
 pub const KEY: &str = "anthropic-api-key";
 const DEFAULT_ENDPOINT: &str = "https://api.anthropic.com/v1/messages";
-const BASE_URL_VAR: &str = "COUCOU_ANTHROPIC_BASE_URL";
+const BASE_URL_VAR: &str = "LUMO_ANTHROPIC_BASE_URL";
 const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// Server-side fallback: on a policy decline the API retries the same request on
 /// a fallback model inside the same call, so the island never shows a dead end.
@@ -33,7 +33,7 @@ const MAX_INLINE_TEXT: u64 = 200_000;
 
 pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 
-/// The Messages endpoint: Anthropic's, or the gateway in COUCOU_ANTHROPIC_BASE_URL.
+/// The Messages endpoint: Anthropic's, or the gateway in LUMO_ANTHROPIC_BASE_URL.
 /// Read once; the gateway's host (never the key) goes to the log once.
 fn endpoint() -> Result<Url, String> {
     static ENDPOINT: OnceLock<Result<Url, String>> = OnceLock::new();
@@ -364,7 +364,7 @@ mod tests {
 
     #[test]
     fn screenshots_become_image_blocks() {
-        let dir = std::env::temp_dir().join(format!("coucou-claude-shots-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-claude-shots-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let png = dir.join("screenshot-screen1.png");
         std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();

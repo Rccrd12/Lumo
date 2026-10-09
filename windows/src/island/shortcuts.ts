@@ -30,6 +30,8 @@ export interface ShortcutHost {
   takeKeyboard(): void;
   /** The wardrobe from any state, or back if it is open (Island.wardrobeAnywhere). */
   wardrobeAnywhere(): void;
+  /** Keeps the open island open while the mouse is elsewhere, for a while (Island.holdOpen). */
+  holdOpen(): void;
 }
 
 function focusPill(host: ShortcutHost, id: string | null, open: boolean) {
@@ -161,6 +163,9 @@ export function runShared(host: ShortcutHost, shared: SharedContext, resume: () 
   Sound.play("attach");
   host.alert("prompt");
   host.takeKeyboard();
+  // The mouse is still on what was selected, away from the island: it must
+  // not fold before the question is typed.
+  host.holdOpen();
 }
 
 /** A key the island acts on while it has the keyboard. */

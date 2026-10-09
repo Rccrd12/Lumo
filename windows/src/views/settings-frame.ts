@@ -9,8 +9,8 @@ import { h } from "./dom";
 import type { ViewActions, ViewHost } from "./views";
 
 /** What the page in the frame tells the island (src/settings/main.ts). */
-export const FRAME_READY = "coucou-settings:ready";
-export const FRAME_CLOSE = "coucou-settings:close";
+export const FRAME_READY = "lumo-settings:ready";
+export const FRAME_CLOSE = "lumo-settings:close";
 
 export function buildSettingsFrame(actions: ViewActions): ViewHost {
   let frame: HTMLIFrameElement | null = null;

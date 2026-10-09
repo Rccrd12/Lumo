@@ -55,6 +55,8 @@ export interface ViewActions {
   chooseLook(look: LumoLook): void;
   /** Wardrobe hover on a look: shows it without keeping it; null ends it. */
   previewLook(look: LumoLook | null): void;
+  /** The folded live activities' icon: they come back beside the island. */
+  showActivities(): void;
 }
 
 export interface ViewHost {
@@ -113,11 +115,19 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const agentsBadge = h("i", { class: "tab-badge" });
   const tabAgents = h("button", { class: "tab", title: tl("Agents"), onclick: () => go(State.agentsView()) },
     svg(ICONS.code, 13, { stroke: 2 }), agentsBadge);
-  const tabDrop = h("button", { class: "tab", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
+  const tabDrop = h("button", { class: "tab tab-drop", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
+  // The live activities, folded (island/activities.ts): left of the "+".
+  const tabActivities = h("button", {
+    class: "tab tab-activities", title: tl("Live Activities"),
+    onclick: () => {
+      actions.blip();
+      actions.showActivities();
+    },
+  }, svg(ICONS.activities, 12, { stroke: 1.9 }));
 
   const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
   const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
-  // Closes Coucou altogether; it opens again from the Start menu.
+  // Closes Lumo altogether; it opens again from the Start menu.
   const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
     svg(ICONS.power, 13, { stroke: 2 }));
   // Plan usage pills (off by default): before the gear, Claude first, as on the Mac.
@@ -134,7 +144,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabChat, tabAgents, tabDrop),
+    h("div", { class: "tabs" }, tabChat, tabAgents, tabActivities, tabDrop),
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, quitBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
@@ -148,6 +158,14 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const activity = State.agentsActivity;
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
+      const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
+      if (folded && tabActivities.style.display === "none") {
+        // It just landed: a little pop.
+        tabActivities.classList.remove("pop");
+        void tabActivities.offsetWidth;
+        tabActivities.classList.add("pop");
+      }
+      tabActivities.style.display = folded ? "" : "none";
       gearBtn.classList.toggle("on", v === "settings");
       clear(gearBtn);
       gearBtn.append(svg(v === "settings" ? ICONS.gearFill : ICONS.gear, 14));
@@ -248,6 +266,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       State.notify();
     },
     openSettings: () => actions.openSettingsWindow(),
+    openChat: () => actions.setView("prompt"),
   };
 
   /** The countdowns move every 30 s while a card is open, and only then. */

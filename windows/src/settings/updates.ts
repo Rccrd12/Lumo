@@ -1,7 +1,7 @@
 // Settings → Updates: this build's version, and a newer one from GitHub when
 // there is one. Nothing is checked in the background: only the button asks
 // (src-tauri/src/updater.rs), and only "Update now" downloads and runs the
-// installer, which then replaces Coucou.
+// installer, which then replaces Lumo.
 
 import { Bridge, onEvent, type UpdateInfo } from "../core/bridge";
 import { clear, h } from "../views/dom";

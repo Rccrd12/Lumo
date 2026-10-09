@@ -5,6 +5,7 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
+import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
 import { Sound } from "../core/sound";
@@ -12,7 +13,7 @@ import { State, type AskedQuestion } from "../core/state";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
-import { parseClaudePlan, restorePlanUsage } from "../core/plan";
+import { mergeWindow, parseClaudePlan, restorePlanUsage, type PlanUsage } from "../core/plan";
 import { setClaudePlanUsage, storedClaudePlanUsage } from "../views/usage";
 import { N_, t } from "../i18n/i18n";
 
@@ -24,7 +25,7 @@ let pendingTimeout: number | null = null;
 
 /**
  * How long a card of the chat's Antigravity CLI run stays: a little less than
- * the relay waits for it (`coucou_card_secs`, 8 s when it does not say), after
+ * the relay waits for it (`lumo_card_secs`, 8 s when it does not say), after
  * which Antigravity goes on without the command.
  */
 export function agyCardMs(secs: unknown): number {
@@ -70,17 +71,17 @@ interface HookPayload {
   tool_name?: string;
   tool_input?: Record<string, unknown>;
   /** Set by the relay when an edit was too big to forward whole (> 256 KB). */
-  coucou_diff_truncated?: boolean;
+  lumo_diff_truncated?: boolean;
   /** Optional agent tag: lowercase, digits and hyphens, ≤ 24 chars. */
-  coucou_agent?: string;
+  lumo_agent?: string;
   /** Hermes: where the session runs (telegram, discord…; "cli" in a terminal). */
   platform?: string;
   /** "cursor" when Claude Code runs in Cursor's terminal (set by the relay). */
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
-  coucou_island?: boolean;
+  lumo_island?: boolean;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
-  coucou_card_secs?: number;
+  lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
   rate_limits?: unknown;
 }
@@ -230,7 +231,7 @@ function clearFinalLine(id: string) {
  * would give wrong counts: the PreToolUse step ("Edits · file") stands alone.
  */
 function recordDiff(agentId: string, payload: HookPayload) {
-  if (payload.coucou_diff_truncated) return;
+  if (payload.lumo_diff_truncated) return;
   if (!State.tasks.some((t) => t.id === agentId)) return;
   const diff = buildFileDiff(payload.tool_name ?? "", payload.tool_input ?? {});
   if (!diff) return;
@@ -248,11 +249,12 @@ export function registerHookHandlers(island: Island) {
     const usage = parseClaudePlan(rateLimits);
     if (!usage) return;
     const prev = State.planUsage;
-    setClaudePlanUsage({
-      ...usage,
-      fiveHour: usage.fiveHour ?? prev?.fiveHour,
-      sevenDay: usage.sevenDay ?? prev?.sevenDay,
-    });
+    const merged: PlanUsage = { updatedAt: usage.updatedAt };
+    const fiveHour = mergeWindow(usage.fiveHour, prev?.fiveHour);
+    const sevenDay = mergeWindow(usage.sevenDay, prev?.sevenDay);
+    if (fiveHour) merged.fiveHour = fiveHour;
+    if (sevenDay) merged.sevenDay = sevenDay;
+    setClaudePlanUsage(merged);
   });
 }
 
@@ -276,15 +278,15 @@ function handleHook(island: Island, payload: HookPayload) {
   const name = payload.hook_event_name ?? "";
   // The island's own chat is not a session: the relay only lets its permission
   // requests through, and anything else that slips by is ignored here too.
-  if (payload.coucou_island === true && name !== "PermissionRequest") return;
+  if (payload.lumo_island === true && name !== "PermissionRequest") return;
   const cwd = payload.cwd ?? "";
   const raw = lastPathComponent(cwd);
   const projectName = aliasProjectName(raw || "Session");
 
-  // Route to the right pill. Valid coucou_agent → dynamic "agent_<name>" pill.
+  // Route to the right pill. Valid lumo_agent → dynamic "agent_<name>" pill.
   // "claude" is reserved; absent or invalid → Claude Code's own pill: Cursor's
   // when it runs in Cursor's terminal (Mac #120), VS Code's otherwise.
-  const validAgent = validateAgent(payload.coucou_agent);
+  const validAgent = validateAgent(payload.lumo_agent);
   const workspaceId = payload.term_editor === "cursor" ? CURSOR_ID : CLAUDE_ID;
   const agentId = validAgent ? `agent_${validAgent}` : workspaceId;
   const isExternalAgent = validAgent !== null;
@@ -429,7 +431,12 @@ function handleHook(island: Island, payload: HookPayload) {
       Sound.play("finish");
       // A card waiting for an answer is never covered by another alert.
       if (focused && !State.pendingApproval) surface("finished", true);
-      else State.setPillBadge(agentId, "finished");
+      else {
+        State.setPillBadge(agentId, "finished");
+        // Said on the closed island too, as it is not the one in front.
+        const done = State.tasks.find((x) => x.id === agentId);
+        if (done && State.mode !== "expanded") compactNotice(t(COMPACT_TEXT.finished, { helper: done.name }), done.color);
+      }
       cancelStopTimer(agentId);
       stopTimers.set(
         agentId,
@@ -488,7 +495,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // declined at once, so the agent asks in its own terminal. And a shell
       // command of the chat's own Antigravity CLI run (antigravity_cli.rs), which
       // the relay turns into a request: headless agy has no terminal to ask in.
-      const chatAgy = payload.coucou_island === true && validAgent === "antigravity";
+      const chatAgy = payload.lumo_island === true && validAgent === "antigravity";
       if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!) && !chatAgy) {
         if (payload.request_id) void Bridge.approvalDecline(payload.request_id);
         break;
@@ -503,7 +510,7 @@ function handleHook(island: Island, payload: HookPayload) {
         break;
       }
       // The island's own chat asked: no session pill, the card stays over the chat.
-      const fromChat = payload.coucou_island === true;
+      const fromChat = payload.lumo_island === true;
       if (!fromChat) {
         ensurePill();
         supersedeStop();
@@ -536,13 +543,13 @@ function handleHook(island: Island, payload: HookPayload) {
       // Any agent's card (Claude Code, Codex, Copilot CLI, Muse Code) comes up
       // the same way: beginApproval brought its pill to the front.
       island.alert(view);
-      // Coucou answers within 108 s or not at all; after that the terminal has
+      // Lumo answers within 108 s or not at all; after that the terminal has
       // taken over and the card would be lying. For the chat's Antigravity CLI
       // run, the relay says how long it waits: the card goes just before.
       pendingTimeout = window.setTimeout(() => {
         pendingTimeout = null;
         dropPendingCard(island);
-      }, chatAgy ? agyCardMs(payload.coucou_card_secs) : 110_000);
+      }, chatAgy ? agyCardMs(payload.lumo_card_secs) : 110_000);
       break;
     }
 

@@ -1,8 +1,8 @@
 // Chat through Antigravity CLI: the `agy` command the user installed and signed
-// in to with their own Google account. No API key: Coucou runs the unmodified
+// in to with their own Google account. No API key: Lumo runs the unmodified
 // binary in headless mode (`agy --input-format stream-json`), and it answers
 // with its own sign-in (cached in the system keyring), exactly as in a
-// terminal. Coucou never reads, stores or forwards any Google credential.
+// terminal. Lumo never reads, stores or forwards any Google credential.
 //
 // The same shape as claude_code.rs, whose helpers it borrows:
 //
@@ -19,10 +19,14 @@
 //
 // Permissions: headless agy never prompts. Workspace files are read and
 // written freely; a tool that needs approval (a shell command, by default) is
-// soft-denied — the run carries on without it. With Lumo's Antigravity hooks
-// installed, a shell command of this run is an Allow / Deny card in the island
-// instead (coucou-hook, `COUCOU_ISLAND_RUN`); no click, and it stays denied.
-// `--dangerously-skip-permissions` is never passed.
+// soft-denied — the run carries on without it. Headless agy also ignores a
+// hook's "allow" (google-antigravity/antigravity-cli#548): only a "deny" is
+// honoured. So with Lumo's Antigravity hooks installed, agy's own
+// confirmation is switched off (`--dangerously-skip-permissions`) and Lumo's
+// hook takes its place: every shell command, MCP or browser tool of this run
+// is an Allow / Deny card in the island (lumo-hook, `LUMO_ISLAND_RUN`), and
+// without a click it is denied. Without the hooks the flag is never passed,
+// and Plan only keeps agy's own confirmation too.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -65,13 +69,16 @@ const INSTALL: &str = "irm https://antigravity.google/cli/install.ps1 | iex";
 const INSTALL: &str = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 
 /// In front of the first prompt of a conversation: agy takes no system prompt.
-const INSTRUCTIONS: &str = "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
+const INSTRUCTIONS: &str = concat!(
+    "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
 The chat window is small: answer in the user's language, keep answers focused, and use light Markdown (short paragraphs, lists, bold, code blocks), no tables or big headings. \
 When the user drops a file, its path is given in the message: read it from there. \
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
-When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions.";
+When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
+    crate::chat::timer_note!()
+);
 
 /// "default": no `--model`, whatever the user picked in agy itself.
 const DEFAULT_MODEL: &str = "default";
@@ -113,6 +120,19 @@ fn safe_model(model: &str) -> Option<&str> {
 /// models` lists carries its effort in its name (`gemini-3.8-flash-low`), and
 /// a mismatched `--effort` stops agy at startup.
 fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: &str, folders: &[String]) -> Vec<String> {
+    args_with_cards(model, mode, conversation, work, inbox, folders, crate::agents::antigravity_cards_ready())
+}
+
+/// `cards`: Lumo's hooks gate this run's tools (see the top of this file).
+fn args_with_cards(
+    model: &str,
+    mode: &str,
+    conversation: Option<&str>,
+    work: &str,
+    inbox: &str,
+    folders: &[String],
+    cards: bool,
+) -> Vec<String> {
     let mut a: Vec<String> = [
         "--input-format",
         "stream-json",
@@ -142,10 +162,14 @@ fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: 
         a.push("--model".into());
         a.push(m.to_string());
     }
-    match crate::claude_code::permission_mode(mode) {
-        "acceptEdits" => a.extend(["--mode".to_string(), "accept-edits".to_string()]),
-        "plan" => a.extend(["--mode".to_string(), "plan".to_string()]),
-        _ => {}
+    // Auto is agy's own judgement, which is what it does without `--mode`:
+    // what it may not do alone is soft-denied, or a card with Lumo's hooks.
+    if crate::claude_code::permission_mode(mode) == "plan" {
+        a.extend(["--mode".to_string(), "plan".to_string()]);
+    } else if cards {
+        // Lumo's cards take the place of agy's own confirmation, which in
+        // headless mode can only say no.
+        a.push("--dangerously-skip-permissions".into());
     }
     if let Some(id) = conversation.and_then(safe_session) {
         a.push("--conversation".into());
@@ -296,6 +320,8 @@ struct Run {
     activity_changed: bool,
     /// Tool steps still running, oldest first: step index and what each is doing.
     pending: Vec<(u64, Activity)>,
+    /// The last lines agy wrote on stderr: why an answer came back empty.
+    stderr_tail: String,
 }
 
 impl Run {
@@ -446,6 +472,30 @@ fn failure(stderr: &str, code: &str) -> String {
     }
 }
 
+/// The last few lines of stderr, joined, for the log and an empty answer's message.
+fn stderr_tail(stderr: &str) -> String {
+    let lines: Vec<&str> = stderr.lines().map(str::trim).filter(|l| !l.is_empty()).collect();
+    lines[lines.len().saturating_sub(3)..].join(" · ")
+}
+
+/// What to say when agy's turn ended without any text: what it wrote on
+/// stderr when it wrote anything (a refused permission is said there), else
+/// that a permission was refused when one was.
+fn empty_answer(denied: usize, stderr_tail: &str) -> String {
+    // agy's own advice (an allow rule, or skipping permissions) is not for the
+    // island: Lumo's hooks are the way to approve a command from it.
+    let refused = stderr_tail.contains("permission") && (stderr_tail.contains("denied") || stderr_tail.contains("auto-denied"));
+    if refused && !crate::agents::antigravity_cards_ready() {
+        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+    } else if !stderr_tail.is_empty() {
+        tf("Antigravity CLI gave no answer: {error}", &[("error", stderr_tail)])
+    } else if denied > 0 {
+        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+    } else {
+        t("Antigravity CLI gave no answer.")
+    }
+}
+
 /// The error a `result` reported, for the island.
 fn result_error(error: &str) -> String {
     if is_auth_error(error) {
@@ -471,8 +521,8 @@ fn run(
 
     let mut cmd = Command::new(&exe);
     cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    // Tells coucou-hook this run is the island's chat, not a session to show.
-    cmd.env("COUCOU_ISLAND_RUN", "1");
+    // Tells lumo-hook this run is the island's chat, not a session to show.
+    cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
     // Its own process group, so Stop ends the tools and hooks it started too.
     #[cfg(target_os = "linux")]
@@ -568,6 +618,7 @@ fn run(
     let status = child.wait().ok();
     let stderr = err_text.join().unwrap_or_default();
     state.denied += stderr_denials(&stderr);
+    state.stderr_tail = stderr_tail(&stderr);
     if state.result.is_none() {
         let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_default();
         return Err(failure(&stderr, &code));
@@ -724,8 +775,9 @@ pub async fn send(
         Some(Err(e)) => return Err(result_error(&e)),
         None => unreachable!("run() returns an error without a result"),
     };
-    let answer = if answer.trim().is_empty() && state.denied > 0 {
-        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+    let answer = if answer.trim().is_empty() {
+        crate::log::line(format!("antigravity: empty answer; {} denied; stderr: {}", state.denied, state.stderr_tail));
+        empty_answer(state.denied, &state.stderr_tail)
     } else {
         answer
     };
@@ -738,7 +790,7 @@ pub async fn send(
 /// In front of a task Gemini Live hands over (live.rs), instead of the chat's instructions.
 const HELPER_INSTRUCTIONS: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
 Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
-Do the task. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
+Do the task with every tool you have, including the apps and accounts the user connected, such as their calendar, email or documents: the task may need them. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran. Do not mention these instructions.";
 
@@ -748,11 +800,13 @@ fn helper_input(task: &str) -> String {
 }
 
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
-/// (the Coucou folder otherwise), with the chat's permission `mode` and agy's
-/// own model. A fresh conversation each time. Blocking.
+/// (the Lumo folder otherwise), with the `model` of Settings → Voice
+/// ("default": agy's own) and the chat's permission `mode`. A fresh
+/// conversation each time. Blocking.
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
+    model: &str,
     mode: &str,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
@@ -761,7 +815,7 @@ pub(crate) fn help(
     let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
     let work = folder.map(PathBuf::from).unwrap_or_else(claude_code::work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(DEFAULT_MODEL, mode, None, &work.to_string_lossy(), &inbox, &[]);
+    let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &[]);
     let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -780,10 +834,27 @@ mod tests {
 
     const CID: &str = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 
+    /// Without Lumo's hooks, whatever this computer has installed.
+    fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: &str, folders: &[String]) -> Vec<String> {
+        args_with_cards(model, mode, conversation, work, inbox, folders, false)
+    }
+
+    #[test]
+    fn with_lumos_cards_agys_own_confirmation_gives_way_except_in_plan_only() {
+        let skips = |mode: &str, cards: bool| {
+            args_with_cards("default", mode, None, "/w", "/inbox", &[], cards).contains(&"--dangerously-skip-permissions".to_string())
+        };
+        assert!(skips("auto", true));
+        assert!(skips("default", true));
+        assert!(!skips("plan", true), "Plan only keeps agy's own confirmation");
+        assert!(!skips("auto", false), "never without the cards");
+        assert!(!skips("default", false));
+    }
+
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let inbox = "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox";
-        let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Coucou", inbox, &[]);
+        let inbox = "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox";
+        let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Lumo", inbox, &[]);
         assert_eq!(
             &a[..7],
             ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "15m"]
@@ -792,7 +863,7 @@ mod tests {
         assert!(!a.contains(&"--effort".to_string()), "the model's name carries its effort: {a:?}");
         assert!(a.windows(2).any(|w| w == ["--model", "gemini-3-pro"]));
         assert!(a.windows(2).any(|w| w == ["--conversation", CID]));
-        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\Coucou"]), "its own folder, not agy's scratch one");
+        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\Lumo"]), "its own folder, not agy's scratch one");
         assert!(a.windows(2).any(|w| w == ["--add-dir", inbox]));
         assert!(!a.contains(&"--mode".to_string()), "default: agy's own request-review");
         assert!(!a.iter().any(|s| s.contains("dangerously")), "never skips permissions: {a:?}");
@@ -819,7 +890,8 @@ mod tests {
             let a = args("default", m, None, "/w", "/inbox", &[]);
             a.iter().position(|s| s == "--mode").map(|i| a[i + 1].clone())
         };
-        assert_eq!(mode("acceptEdits").as_deref(), Some("accept-edits"));
+        assert_eq!(mode("auto"), None, "agy's own judgement");
+        assert_eq!(mode("acceptEdits"), None);
         assert_eq!(mode("plan").as_deref(), Some("plan"));
         assert_eq!(mode("default"), None);
     }
@@ -879,7 +951,7 @@ mod tests {
     fn the_stream_gives_the_text_the_conversation_and_the_answer() {
         let mut run = Run::default();
         let lines = [
-            r#"{"event":"init","cwd":"/home/me/Coucou","tools":["view_file"],"permission_mode":"default"}"#.to_string(),
+            r#"{"event":"init","cwd":"/home/me/Lumo","tools":["view_file"],"permission_mode":"default"}"#.to_string(),
             format!(r#"{{"event":"step_update","conversation_id":"{CID}","step_index":0,"state":"DONE","step_type":"user_input"}}"#),
             format!(r#"{{"event":"step_update","conversation_id":"{CID}","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Let me "}}"#),
             format!(r#"{{"event":"step_update","conversation_id":"{CID}","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"read it."}}"#),
@@ -938,7 +1010,7 @@ mod tests {
         assert_eq!(a("view_file", json!({"AbsolutePath": "C:\\Users\\me\\Docs\\report.pdf"})), Activity::new("read", "report.pdf"));
         assert_eq!(a("view_file", json!({})), Activity::new("read", ""), "before the parameters are known");
         assert_eq!(
-            a("view_file", json!({"AbsolutePath": "/home/me/.local/share/Coucou/inbox/screenshot-2026-10-09-101500-screen1.png"})),
+            a("view_file", json!({"AbsolutePath": "/home/me/.local/share/Lumo/inbox/screenshot-2026-10-09-101500-screen1.png"})),
             Activity::new("screen", ""),
             "Lumo's own screenshots are the screen"
         );
@@ -1014,6 +1086,15 @@ mod tests {
     }
 
     #[test]
+    fn an_empty_answer_says_what_agy_said_rather_than_guessing() {
+        let tail = stderr_tail("\n a\nb\n\nTool run_command denied: requires approval\nquota exceeded for gemini-3.8-pro\n");
+        assert_eq!(tail, "b · Tool run_command denied: requires approval · quota exceeded for gemini-3.8-pro");
+        assert!(empty_answer(1, &tail).contains("quota exceeded"), "the real reason, not a guess");
+        assert!(empty_answer(1, "").contains("permission"));
+        assert_eq!(empty_answer(0, ""), "Antigravity CLI gave no answer.");
+    }
+
+    #[test]
     fn the_models_are_read_off_whatever_agy_models_prints() {
         let text = "Available models:\n  gemini-3-pro (current)\n  gemini-3-flash\n* claude-opus-4-6\n\nUse --model <slug> to pick one.\n";
         assert_eq!(parse_models(text), ["gemini-3-pro", "gemini-3-flash", "claude-opus-4-6"]);
@@ -1037,7 +1118,7 @@ mod tests {
         // for stdin to close as agy does.
         #[cfg(unix)]
         {
-            let dir = std::env::temp_dir().join(format!("coucou-agy-{}", std::process::id()));
+            let dir = std::env::temp_dir().join(format!("lumo-agy-{}", std::process::id()));
             std::fs::create_dir_all(&dir).unwrap();
             let (exe, args) = script(&format!(
                 r#"read -r line; printf '%s\n' "$line" > got.json

@@ -51,27 +51,17 @@ starts it with its usual window, and Lumo quits so the installer can replace
 it. Only installers from that repository's GitHub releases are accepted. On
 Linux, update Lumo the way you installed it.
 
-### Coming from Coucou
+### Your data
 
-Up to 0.3.0 the app was called Coucou, and its character Mochi, and the
-repository was `Rccrd12/coucou-agent`. Coucou 0.3.0's **Update now** only
-trusts installers from that old repository name, so it does not find Lumo:
-download the Lumo installer and run it by hand once. It retires the Coucou
-install: its program files
-in `%LOCALAPPDATA%\Coucou`, its entry in Settings → Apps, its Start menu and
-desktop shortcuts (a desktop one becomes a Lumo one) and its autostart entry,
-which moves over to Lumo. A Coucou installed from the .msi is uninstalled
-through Windows Installer, which asks first; a Lumo .msi upgrades a Coucou
-.msi in place. On Linux the `lumo` .deb and .rpm replace the `coucou` package.
-
-Nothing of yours moves. Settings, keys, Claude Code's and the other agents'
-hooks, chats, the weekly recap and the log stay where they were: the folders
-keep the old name (`%APPDATA%\Coucou`, `%LOCALAPPDATA%\Coucou`,
-`%USERPROFILE%\Coucou`; `~/.config/coucou`, `~/.local/share/coucou` and
-`~/Coucou` on Linux), and so do the app identifier
-`fr.louisraille.coucou` and its entries in the credential store. At launch,
-with **Open at login** on, Lumo writes its autostart entry again for the exe
-it runs from and removes one left under the name Coucou.
+Settings are in `%APPDATA%\com.rccrd12.lumo` (`~/.config/lumo` on Linux); the
+relay, the inbox, the log, the weekly recap and the chat history in
+`%LOCALAPPDATA%\com.rccrd12.lumo` (`~/.local/share/lumo`); keys in the system
+keychain under `com.rccrd12.lumo`. Updating from 0.4.0 or earlier moves them
+there at the first launch, keys and chat history included. Hooks you installed
+before keep working; installing them again (Settings → Agents → Reinstall)
+points them at the new folder, and once none uses the old one it goes. With
+**Open at login** on, Lumo writes its autostart entry again at every launch for
+the exe it runs from.
 
 ## Using it
 
@@ -110,6 +100,65 @@ it runs from and removes one left under the name Coucou.
 | In the open island: `Ctrl+→` `Ctrl+←`, `Ctrl+1`–`Ctrl+9` | Switch pills |
 | In the open island: `Ctrl+Enter`, `Ctrl+K` | Send, start a new chat |
 | In the open island: `Ctrl+,`, `Ctrl+P` | Settings, keep the island open |
+
+### The closed island
+
+Like a Dynamic Island, the closed island says what is going on next to Lumo,
+and grows a little to say it (on the top and bottom edges; upright on a side
+it stays as it is), only as wide as what it says. One thing alone sits in
+the middle; several sit side by side, each more compact (what the AI is doing, the next
+event, up to two timers, the music). Their buttons work: resting the mouse on
+them never opens the island, even with Open on hover.
+
+- **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
+  "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
+  OK". Nothing at all while nothing is going on.
+- **What just happened**, for a few seconds: "Haiku answered" when the chat
+  answers while it isn't on screen, "Haiku answered" or "Claude Code
+  answered" when Gemini Live's helper is done, a session on another pill
+  that finished, a deploy or a workflow.
+- **A new email** (the **Email** pill): the sender, the subject and the
+  first lines, with **Summarize**, **Draft a reply** and **Open**. It stays
+  while the mouse is on it. Summarize and Draft a reply open the chat with
+  the email attached and ask; nothing is ever sent: you copy the draft and
+  send it yourself.
+- **Timers**: ask any model in the chat or Gemini Live ("set a 10 minute
+  timer for the pasta"), type `/timer 10m pasta`, or start one in the live
+  activities. The time left counts down; it rings and says so when it is
+  over.
+- **The next event**: "Stand-up · in 5 min", from the calendar in the live
+  activities.
+- **The music playing**, with previous, play/pause and next: Spotify, a
+  browser, any player that shows in the system's media controls (Windows)
+  or speaks MPRIS (Linux). Gemini Live can play, pause and skip too.
+
+### Live activities
+
+Beside the open island (on the top and bottom edges) a second island holds
+what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
+or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
+previous, play/pause and next), **Calendar** (the next events) and **Email**
+(the newest unread: a click on one opens it, with Summarize, Draft a reply and
+the eye, which puts it away so the next one moves up). Its **–** (top right)
+folds it, with a flight, into an icon right of the **+** in the island's top
+bar; that icon brings it back. Settings → Island → **Live Activities** turns
+it off.
+
+On Windows it can be moved and resized like the island: drag its top bar and
+it comes off the island into a window of its own, which stays wherever you
+leave it (it shows while the island is open); drop it against the island's
+left or right side and it joins it there. Its edges and bottom corners resize
+it. On Linux it stays on the island's left.
+
+The calendar is read from its **secret iCal address**, pasted in Settings →
+Island → Calendar (Google Calendar: Settings → your calendar → Integrate
+calendar → Secret address in iCal format; Outlook and iCloud publish one
+too). It stays in the system keychain, and is fetched every 15 minutes, only
+read.
+
+Settings → Island → **Say what's going on** and **Show the music playing**
+turn them off. While the island is hidden nothing is asked or counted: the
+music is only asked about while the closed island is on screen.
 
 ### Keyboard shortcuts
 
@@ -168,6 +217,27 @@ hooks are installed, never asks for a key; a local model server's pill says
 whether the chat is connected to it. A session on a pill you didn't
 declare still shows up, for as long as it runs.
 
+### Email
+
+The **Email** pill (Settings… → Pills & integrations) reads your inbox over
+IMAP: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an **app
+password**. The connection stays open and the server says when an email
+arrives (IMAP IDLE); Lumo also looks every 20 seconds in case the server is
+slow to say, fetching only new emails. A server without IDLE is asked every
+30 seconds. Its card lists the newest unread emails, and a new one
+shows on the closed island (see [The closed island](#the-closed-island)).
+Lumo only reads: the inbox is opened read only, emails stay unread, and
+nothing is ever sent, moved or deleted. The address, the server and the app
+password are in the system keychain.
+
+For Gmail: turn on 2-Step Verification in your Google account, create an app
+password at <https://myaccount.google.com/apppasswords>, and paste it in
+Settings with your address; the server is found from the address. Your
+Google account's own password is refused ("Application-specific password
+required"). Claude
+Code and Antigravity CLI see the email only when you press Summarize or
+Draft a reply: it goes with that question, like a selected text.
+
 ## Claude Code
 
 <img src="screenshots/settings.png" width="562" alt="The settings window">
@@ -178,10 +248,7 @@ that will be taken, and nothing is written until you click. Your own hooks are
 never touched, and uninstalling removes only Lumo's entries.
 
 The relay is a tiny executable, `lumo-hook.exe`, copied to
-`%LOCALAPPDATA%\Coucou\bin\` at launch. Up to 0.3.1 it was `coucou-hook.exe`:
-Lumo still puts the same relay there under that name too, so hooks installed
-before keep working, and reinstalling them (Settings → Agents) moves them to
-`lumo-hook`. It is given 300 ms to reach Lumo and
+`%LOCALAPPDATA%\com.rccrd12.lumo\bin\` at launch. It is given 300 ms to reach Lumo and
 exits cleanly if the app is closed, slow or crashed — **a Claude Code session is
 never blocked or slowed down by Lumo.** If nobody answers a permission request
 in time, Lumo stays quiet and Claude Code asks in the terminal as usual.
@@ -231,9 +298,10 @@ Weekly recap** turns it off or clears it.
 
 ## Languages
 
-Lumo speaks the same ten languages as the Mac app: English, 简体中文, हिन्दी,
-Español, العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa
-Indonesia. **Settings… → General → Language** picks one; **System** (the
+Lumo speaks the Mac app's ten languages — English, 简体中文, हिन्दी, Español,
+العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa Indonesia —
+and Italiano, which only Windows and Linux have (the Mac's strings in Italian
+are in `src/i18n/strings-it.json`). **Settings… → General → Language** picks one; **System** (the
 default) follows your system's language when it is one of these, English
 otherwise. The island, the settings window and the tray menu switch at once —
 nothing restarts, and the island keeps its sessions, steps and chat.
@@ -280,7 +348,7 @@ you by your first name when your account has one (the Windows display name or
 the Linux GECOS full name; a bare login name is not used).
 
 To send the Claude chat through an Anthropic-compatible gateway, set
-`COUCOU_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
+`LUMO_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
 `/v1/messages` is added). It must be `https://`, or `http://` to this PC only.
 Claude Code's own `ANTHROPIC_BASE_URL` is deliberately ignored: your key only
 goes where you told Lumo to send it. The gateway's host is written to the log
@@ -293,8 +361,8 @@ configure yourself.
 
 Pick **Claude Code** above the chat box and the island talks to the Claude Code
 CLI you already use, signed in with your own Claude plan (Pro, Max…): no API key.
-Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Coucou`
-(`~/Coucou` on Linux); it never reads, stores or forwards any Claude credential,
+Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Lumo`
+(`~/Lumo` on Linux); it never reads, stores or forwards any Claude credential,
 and the usage counts against your plan's limits like any Claude Code session.
 
 Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
@@ -312,8 +380,9 @@ permission requests do, as a card over the chat.
 
 **The shield** next to the screen button (Claude Code and Antigravity CLI only)
 says what the CLI may do without a card, from the next message on: **Ask every
-time** (the default), **Accept edits** (file edits go through, everything else
-still asks) or **Plan only** (it reads and plans, and changes nothing). It
+time** (the default), **Auto** (the AI decides what is safe to do without
+asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
+(it reads and plans, and changes nothing). It
 lights up while it may do more than ask. There is no mode that lets every
 action through: Lumo never passes `bypassPermissions` or
 `--dangerously-skip-permissions`.
@@ -336,8 +405,8 @@ continues the same conversation (`--conversation`) until **New chat**. Its
 models come from `agy models` (**Default** leaves agy's own choice), in the
 picker and in **Settings… → Chat → Antigravity CLI**. There is no effort to
 pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
-refuses a mismatched `--effort`. The shield's **Accept edits** and **Plan only**
-go to agy as `--mode accept-edits` and `--mode plan`. Headless agy never prompts: it reads and writes workspace files
+refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
+`--mode plan`; **Auto** leaves agy to its own judgement, as it does without a mode. Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
 card over the chat (reinstall the hooks if they predate this version, or the
@@ -358,6 +427,26 @@ another image is saved in the inbox (up to 32 MB), and a file copied in File
 Explorer is copied there like a dropped one (the first, when you copied
 several). Text pastes as usual.
 
+### The chat knows what's open
+
+With **Settings → Chat → Tell the AI what's open** (on by default), every
+message carries the titles of the open windows and the documents they show:
+Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
+"Budget - Excel") and finds them on disk, from Windows' recent files or a
+quick search of your folders. So "explain page 45 of the PDF I have open"
+just works: Claude Code and Antigravity CLI get the path and read the file
+themselves (its folder is opened to them for this chat); the other providers
+get the document in front attached, when the question is about it. Only the
+chat's provider gets this, with that message; nothing is kept. Windows only
+for now: Linux lists no windows yet.
+
+### Math in answers
+
+Formulas in the chat's answers are drawn as math, not shown as TeX: `$…$`
+and `\(…\)` inside the text, `$$…$$` and `\[…\]` on lines of their own,
+with Greek letters, fractions, roots, vectors, ℝ and friends, sums, integrals
+and matrices. "$5 and $10" stays money.
+
 ### Show the chat your screen
 
 The screen button next to the paperclip lets the assistant see what you have
@@ -370,7 +459,7 @@ its long edge) shows first with **Send** and **Cancel**: Cancel deletes it, Send
 adds it to the chat, with the question already typed if there is one. The window
 list shows as a chip you can remove before sending. Either goes with your next
 question only. Screenshots are saved only in the inbox
-(`%LOCALAPPDATA%\Coucou\inbox`), like dropped files, and are deleted after a
+(`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
@@ -435,11 +524,22 @@ Gemini uses the computer by itself, when it decides it needs to:
 - **It opens** documents, folders and web pages, and **starts apps** by
   their name, from the Start menu (or the Linux app menu). It never runs a
   program or a script by its file.
+- **It types in the text box you clicked in**, in any app, when you ask it
+  to write something there. It never presses Enter and never sends: a line
+  break is Shift+Enter (a new line in a message or an email), and in a
+  terminal line breaks are typed as spaces, so nothing runs. Nothing is
+  typed into Lumo itself, or while a key like Ctrl is held, and it stops if
+  you move to another window. On Linux it needs `xdotool` (X11) or `wtype`
+  (Wayland).
 - **Anything else goes to Claude Code or Antigravity CLI** (Settings →
-  Voice → Helper), which works on the task in its own session and reports
-  back; Gemini tells you what it found or did. What the helper may do
-  without asking follows the chat's permissions (the shield); anything else
-  comes up as an Allow / Deny card in the island, over the call.
+  Voice → Helper, with the helper's model and, for Claude Code, its
+  effort), which works on the task in its own session and reports back;
+  Gemini tells you what it found or did. That includes the apps and
+  accounts you connected to the helper, such as your calendar or email:
+  "add this to my calendar" goes to Claude Code with its connectors. What
+  the helper may do without asking follows the chat's permissions (the
+  shield); anything else comes up as an Allow / Deny card in the island,
+  over the call.
 
 The Google AI key stays in the system keychain: Rust asks Google for a
 short-lived token that opens one connection, and the island connects with
@@ -492,21 +592,19 @@ otherwise needs a real drag from Explorer to see — and `dev/recap-preview.html
 the weekly recap card and its shared image on a sample week. None of these pages
 ships in the app.
 
-`npm run pack` leaves two files in `windows/release/`, the same names the release
+`npm run pack` leaves the files in `windows/release/`, the same names the release
 workflow publishes:
 
 ```
 Lumo-Windows-X.Y.Z-setup.exe      the versioned installer
 Lumo-Windows-setup.exe            the same file under the rolling name
-Coucou-Windows-X.Y.Z-setup.exe    the same file again, for Coucou 0.3.0's updater
-Coucou-Windows-setup.exe          and under the old rolling name, for old links
 ```
 
-(and the .msi as `Lumo-Windows-X.Y.Z.msi`, `Lumo-Windows.msi` and `Coucou-Windows.msi`).
+(and the .msi as `Lumo-Windows-X.Y.Z.msi` and `Lumo-Windows.msi`).
 
 Installing is optional — `target/release/lumo.exe` runs on its own (`tauri build`
-names it after Lumo through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`;
-the crate, and the binary on Linux, keep the name `coucou`). There is no
+names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`; on Linux
+the binary is `lumo`). There is no
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
@@ -539,7 +637,7 @@ windows/
 
 ### Log
 
-`%LOCALAPPDATA%\Coucou\coucou.log` — hook events, permission decisions, poller
+`%LOCALAPPDATA%\com.rccrd12.lumo\lumo.log` — hook events, permission decisions, poller
 problems. It stays on your machine. The weekly recap's history sits beside it in
 `recap.json`.
 
@@ -557,15 +655,15 @@ Linux.
 |---|---|---|
 | Claude Code | `.claude\settings.json` (**Settings → Agents → Claude Code**) | Allow / Deny and questions in the island |
 | Codex | `.codex\hooks.json` — then trust the hooks once with `/hooks` in Codex | Allow / Deny in the island |
-| GitHub Copilot CLI | `.copilot\hooks\coucou.json` | Allow / Deny in the island |
+| GitHub Copilot CLI | `.copilot\hooks\lumo.json` | Allow / Deny in the island |
 | Muse Code | `.config\muse\settings.json` | Allow / Deny in the island |
 | Gemini CLI (retired) | `.gemini\settings.json` — listed in Settings only when installed before, to remove it | asked in Gemini CLI |
-| Antigravity and Antigravity CLI | `.gemini\config\hooks.json` (a `coucou` hook group) | asked in Antigravity |
+| Antigravity and Antigravity CLI | `.gemini\config\hooks.json` (a `lumo` hook group) | asked in Antigravity |
 | Cursor Agent | `.cursor\hooks.json` — Claude Code in Cursor's terminal also goes on the Cursor pill, through the Claude Code hooks | asked in Cursor |
 | Claude Desktop (Windows) | nothing to install: Claude Code sessions from the Claude app are tagged by the relay | asked in the Claude app |
-| OpenCode | plugin `.config\opencode\plugins\coucou.js` | asked in OpenCode |
-| Amp | plugin `.config\amp\plugins\coucou.ts` | asked in Amp |
-| Hermes Agent | plugin `.hermes\plugins\coucou\` — then `hermes plugins enable coucou` once | asked in Hermes |
+| OpenCode | plugin `.config\opencode\plugins\lumo.js` | asked in OpenCode |
+| Amp | plugin `.config\amp\plugins\lumo.ts` | asked in Amp |
+| Hermes Agent | plugin `.hermes\plugins\lumo\` — then `hermes plugins enable lumo` once | asked in Hermes |
 | Any other | run `lumo-hook --agent <name> [<Event>]` from your tool's hooks | asked in the tool |
 
 The relay maps every agent's event and field names onto Claude Code's (Gemini
@@ -599,6 +697,9 @@ own window.
 
 - No notch, so the island lives at the top centre of the screen and retracts into
   the top edge instead of hiding in a notch.
+- The closed island says what is going on (the AI at work, notes, a new
+  email, timers, the music playing), and the **Email** pill reads an inbox
+  over IMAP: neither is in the Mac app.
 - Permission approval works from **any** terminal; the Mac build only listens to
   VS Code sessions.
 - "Open terminal" finds the session's window by walking up from the relay's
@@ -666,7 +767,7 @@ own window.
   its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
   is cut by the top edge of the screen, as it is by the notch on a Mac.
 - Languages: chosen in Settings, independently of the system, and applied
-  without a restart (the Mac's **Restart Coucou** isn't needed). Arabic turns
+  without a restart. Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep
   their sides.
 - Lumo doesn't go out onto the desktop: he stays in the island, and the Mac's
@@ -698,8 +799,8 @@ What changes on Linux:
   and other wlroots compositors. GNOME has no layer-shell and ignores where a
   Wayland window asks to go, so there Lumo runs through XWayland as a dock
   window: top centre, on every workspace, still there after Super+D.
-  `COUCOU_X11=0` keeps the native Wayland window, `COUCOU_DOCK=0` makes it a
-  utility window instead of a dock. `COUCOU_LAYER_SHELL=0` forces the regular
+  `LUMO_X11=0` keeps the native Wayland window, `LUMO_DOCK=0` makes it a
+  utility window instead of a dock. `LUMO_LAYER_SHELL=0` forces the regular
   window anywhere.
 - **Click-through** is the window's input region, kept equal to the island
   shape, so the compositor sends every other click to what is underneath.
@@ -709,8 +810,8 @@ What changes on Linux:
   icon size work.
 - **Lumo's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else.
-- **Claude Code hooks** go through `~/.local/share/coucou/bin/lumo-hook` and a
-  Unix socket at `$XDG_RUNTIME_DIR/coucou.sock`. Both ends check that the other
+- **Claude Code hooks** go through `~/.local/share/lumo/bin/lumo-hook` and a
+  Unix socket at `$XDG_RUNTIME_DIR/lumo.sock`. Both ends check that the other
   runs as the same user. Every other agent uses the same relay, single-quoted
   for `sh`, and its config under `~` (see Supported agents). A config that is a
   symlink (dotfiles) is written through to its target, with its permissions
@@ -722,12 +823,12 @@ What changes on Linux:
   key grabs — the GlobalShortcuts portal isn't supported yet — so nothing is
   registered there, and **Settings → Shortcuts** lists commands to bind in your
   desktop's own keyboard settings instead:
-  `coucou --shortcut openChat` (or the AppImage's path) runs the action in the
+  `lumo --shortcut openChat` (or the AppImage's path) runs the action in the
   Lumo that is already open. The ids are `toggleIsland`, `openChat`,
   `goToAlert`, `jumpToTerminal`, `nextPill`, `prevPill`, `muteToggle` and
   `wardrobeToggle`.
 - **Keys** live in the Secret Service (GNOME Keyring, KWallet).
-- **Plan usage**: the status line relay is `~/.local/share/coucou/bin/lumo-hook
+- **Plan usage**: the status line relay is `~/.local/share/lumo/bin/lumo-hook
   --statusline` and runs your previous status line with `/bin/sh -c`, like Claude
   Code. Codex is found on `$PATH`, in `~/.local/bin`, npm's global prefix, Volta,
   Bun, pnpm, or nvm (newest Node first), since a desktop launch often has a
@@ -736,9 +837,12 @@ What changes on Linux:
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
   its menu says so, and nothing is listed or captured. For the same reason
-  Gemini Live can't look at the screen there; everything else in a call works.
-- **Files**: preferences in `~/.config/coucou/`, the log at
-  `~/.local/share/coucou/coucou.log`, the weekly recap history beside it in
+  Gemini Live can't look at the screen there; everything else
+  in a call works. Typing in the text box you clicked in needs `xdotool` on
+  X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland
+  doesn't say which window is in front).
+- **Files**: preferences in `~/.config/lumo/`, the log at
+  `~/.local/share/lumo/lumo.log`, the weekly recap history beside it in
   `recap.json`. A saved recap image goes to the pictures folder named in
   `~/.config/user-dirs.dirs`, else `~/Pictures`, else `~/Downloads`.
 - **Languages**: Hindi, Bengali, Chinese and Arabic need fonts that carry those

@@ -3,9 +3,9 @@
 
 use keyring::Entry;
 
-const SERVICE: &str = "fr.louisraille.coucou";
+const SERVICE: &str = crate::IDENTIFIER;
 
-/// Every key Coucou may store. Anything outside this list is refused.
+/// Every key Lumo may store. Anything outside this list is refused.
 pub const KNOWN_KEYS: &[&str] = &[
     "anthropic-api-key",
     "openai-api-key",
@@ -20,6 +20,12 @@ pub const KNOWN_KEYS: &[&str] = &[
     "resend-api-key",
     "notion-api-key",
     "calcom-api-key",
+    // The Email pill (mail.rs): the inbox's address, its IMAP server and an app password.
+    "mail-address",
+    "mail-imap-server",
+    "mail-app-password",
+    // The live activities' calendar (calendar.rs): its iCal address, secret by nature.
+    "calendar-ics-url",
 ];
 
 fn entry(key: &str) -> Option<Entry> {

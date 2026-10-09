@@ -6,7 +6,7 @@ import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import {
   claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct, effectivePct,
-  parseClaudePlan, parseCodexPlan, pillLabel, planColor, resetLabel, restorePlanUsage,
+  mergeWindow, parseClaudePlan, parseCodexPlan, pillLabel, planColor, resetLabel, restorePlanUsage,
 } from "../src/core/plan.ts";
 import { emit } from "./tauri.mjs";
 import { registerHookHandlers } from "../src/island/hooks.ts";
@@ -121,6 +121,18 @@ test("subtitles say how old the numbers are", () => {
   assert.equal(claudeSubtitle({ updatedAt: NOW - 3 * 3600_000 }, NOW), "3 h ago");
   assert.equal(codexSubtitle(null, NOW), "Asking Codex…");
   assert.equal(codexSubtitle({ planType: "plus", updatedAt: NOW - 120_000 }, NOW), "plus · 2 min ago");
+});
+
+test("a window Claude Code reports without a figure is low, and never hides a real one", () => {
+  const P = parseClaudePlan({ five_hour: { low: true, resets_at: NOW / 1000 + 3600 }, seven_day: { used_percentage: 58, resets_at: NOW / 1000 + 86400 } }, NOW);
+  assert.deepEqual(P.fiveHour, { usedPct: 0, resetsAt: NOW + 3600_000, low: true });
+  assert.equal(P.sevenDay.usedPct, 58);
+  const real = { usedPct: 30, resetsAt: NOW + 3600_000 };
+  assert.equal(mergeWindow(P.fiveHour, real, NOW), real, "same period: the figure stays");
+  assert.equal(mergeWindow(P.fiveHour, { usedPct: 30, resetsAt: NOW - 1 }, NOW), P.fiveHour, "a new period: low it is");
+  assert.equal(mergeWindow(undefined, real, NOW), real);
+  assert.equal(mergeWindow(undefined, { ...P.fiveHour, resetsAt: NOW - 1 }, NOW), undefined, "an old low window goes");
+  assert.deepEqual(restorePlanUsage(JSON.stringify({ updatedAt: NOW, fiveHour: P.fiveHour })).fiveHour, P.fiveHour);
 });
 
 test("the last Claude numbers survive a restart, and junk does not", () => {

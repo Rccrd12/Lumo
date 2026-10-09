@@ -58,6 +58,7 @@ import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } 
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
+import { COMPACT_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -105,7 +106,7 @@ const EFFORT_NAMES: Record<string, string> = {
 /** Each permission mode: its name and what it lets through. */
 const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = {
   default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
-  acceptEdits: { name: N_("Accept edits"), note: N_("Edits files without asking; asks for everything else.") },
+  auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
 };
 
@@ -201,6 +202,19 @@ export function settle(state: "finished" | "error" | null) {
     State.stateOverride = null;
     State.notify();
   }, SETTLE_MS);
+}
+
+/** Who answers in the chat, short ("Haiku", "Claude Code", "gpt-4o"), in its colour. */
+export function chatSpeaker(): { who: string; color: string } {
+  const p = providerDef(State.settings.chatProvider);
+  return { who: speakerName(p.id, t(p.name), activeModel(State.settings)), color: p.accent };
+}
+
+/** Says on the closed island how the answer went, unless the chat is on screen. */
+function noticeAway(text: string) {
+  if (State.mode === "expanded" && State.view === "prompt") return;
+  const { who, color } = chatSpeaker();
+  compactNotice(t(text, { helper: who }), color);
 }
 
 /** The words for what the answer is doing; anything unknown is Thinking…. */
@@ -351,6 +365,8 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     slider.addEventListener("change", choose);
     slider.addEventListener("pointerup", choose);
 
+    // Two short rows, so a small window leaves the models their room: the
+    // ends sit beside the slider rather than over it.
     efforts.append(
       h(
         "div",
@@ -361,11 +377,11 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
       ),
       h(
         "div",
-        { class: "effort-ends" },
-        h("span", { text: t(STRINGS.faster) }),
-        h("span", { text: t(STRINGS.smarter) }),
+        { class: "effort-row" },
+        h("span", { class: "effort-end", text: t(STRINGS.faster) }),
+        track,
+        h("span", { class: "effort-end", text: t(STRINGS.smarter) }),
       ),
-      track,
     );
   }
 
@@ -565,6 +581,19 @@ export function buildPrompt(
   const permList = h("div", { class: "picker-list" });
   const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
   body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, modelRow, bar);
+
+  // A click anywhere else — in the island or, through Rust's outside-press,
+  // anywhere on the screen — closes the list that is open: the models, the
+  // past chats, the screen menu, the permissions.
+  function closeListsBut(target: Node | null) {
+    const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
+    if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
+    if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
+    if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
+    if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
+  }
+  document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
+  void onEvent<null>("outside-press", () => closeListsBut(null));
 
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
@@ -1218,13 +1247,18 @@ export function buildPrompt(
 
   void onEvent<string>("chat-delta", (text) => {
     if (!sending || !text) return; // nothing visible yet: the dots stay
+    // The closed island says it is writing now.
+    if (State.chatActivity?.label != null) {
+      State.chatActivity = { label: null };
+      State.notify();
+    }
     // The text shows: the dots and what the answer was doing go.
     log.querySelector(".typing")?.parentElement?.remove();
     if (!live) {
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    renderMarkdown(live, text);
+    renderMarkdown(live, takeTimers(text).text);
     log.scrollTop = log.scrollHeight;
   });
 
@@ -1235,6 +1269,10 @@ export function buildPrompt(
    */
   function showActivity(next: ChatActivity, again = false) {
     activity = next;
+    if (sending) {
+      State.chatActivity = { label: activityLabel(activity) };
+      State.notify();
+    }
     const label = log.querySelector(".typing-label");
     if (label) label.textContent = activityLabel(activity);
     else if (again && live) log.append(typingDots(activityLabel(activity)));
@@ -1250,6 +1288,15 @@ export function buildPrompt(
   async function submit() {
     const query = input.value.trim();
     if (!query || sending) return;
+    // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
+    const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
+    const timerMs = timer ? parseDuration(timer[1]) : null;
+    if (timer && timerMs != null) {
+      input.value = "";
+      compactTimer(timerMs, timer[2]);
+      Sound.play("blip");
+      return;
+    }
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1284,6 +1331,7 @@ export function buildPrompt(
     const question: ChatMessage = { id: nextId++, role: "user", content: query };
     State.chatHistory.push(question);
     State.stateOverride = "thinking";
+    State.chatActivity = { label: activityLabel(activity) };
     State.notify();
     onHeightChange();
 
@@ -1293,11 +1341,14 @@ export function buildPrompt(
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
+      // A timer the answer asked for starts now; its line is not shown.
+      const answered = takeTimers(reply.text);
+      for (const timer of answered.timers) compactTimer(timer.ms, timer.label);
       if (recorded) {
         State.chatHistory.push({
           id: nextId++,
           role: "assistant",
-          content: reply.text,
+          content: answered.text,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
         });
@@ -1314,14 +1365,17 @@ export function buildPrompt(
       askOpenRouter(true);
       settle(reply.stopped ? null : "finished");
       Sound.play(reply.stopped ? "pop" : "finish");
+      if (!reply.stopped) noticeAway(COMPACT_TEXT.answered);
     } catch (err) {
       settle("error");
+      noticeAway(COMPACT_TEXT.failed);
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       State.view = "note";
       Sound.play("error");
     } finally {
       sending = false;
       stopping = false;
+      State.chatActivity = null;
       live = null;
       clearTimeout(activityTimer);
       activity = THINKING;
@@ -1395,6 +1449,13 @@ export function buildPrompt(
     el,
     sync() {
       takeShare();
+      // An email's button asked something: it goes at once (after this draw).
+      const ask = State.chatAsk;
+      if (ask && !sending) {
+        State.chatAsk = null;
+        input.value = ask;
+        window.setTimeout(() => void submit(), 0);
+      }
       if (State.settings.chatShareExplorer !== sharesExplorer) {
         sharesExplorer = State.settings.chatShareExplorer;
         if (sharesExplorer) void peekExplorer(true);

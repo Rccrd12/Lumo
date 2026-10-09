@@ -1,5 +1,33 @@
 # Changelog
 
+## Windows and Linux 0.5.0 — October 9, 2026
+
+- **Gemini Live types in the text box you clicked in**, in any app, when you ask it to write something there. It never presses Enter or sends: line breaks are Shift+Enter, or spaces in a terminal. Nothing is typed into Lumo itself or while a key like Ctrl is held. Linux needs `xdotool` (X11) or `wtype` (Wayland)
+- **Gemini Live asks its helper before saying it can't**: "add this to my calendar", "check my agenda", "draft an email" go to Claude Code (or Antigravity CLI) with the apps and accounts you connected to it, instead of Gemini answering that it can't
+- **Settings → Voice picks the helper's model**, and for Claude Code its effort, as the chat's picker does
+- **The model picker's Effort block takes half the height**: Faster and Smarter sit beside a thinner slider, so a small island leaves the model list its room
+- **Auto replaces Accept edits** in the chat's permissions (the shield): the AI decides what is safe to do without asking and asks for the rest (Claude Code's auto mode; Antigravity CLI's own judgement). Accept edits, if you had picked it, becomes Auto
+- **Antigravity CLI no longer claims a permission was refused when it wasn't**: an empty answer now says what agy itself reported, and the permission mode no longer goes to agy as `--mode accept-edits`, which left it without an answer
+- **The closed island says what is going on**, like a Dynamic Island: what the AI is doing ("Haiku · Reading main.ts", "Gemini Live · Looking at the screen", "Claude Code · Waiting for your OK"), and for a few seconds what just happened ("Haiku answered", a session that finished, a deploy). Nothing while nothing is going on. Settings → Island → Say what's going on turns it off
+- **The Email pill**: new emails in your inbox (Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an app password) show on the closed island with the sender, the subject and the first lines, and **Summarize**, **Draft a reply** and **Open**. Lumo only reads the inbox: emails stay unread, and nothing is ever sent, moved or deleted. The server says when one arrives (IMAP IDLE), so it shows within seconds. A refused sign-in says what to do (Gmail wants an app password, not the account's), and a long error no longer runs off the card
+- **Live activities beside the open island**: a second island with the timers (one click for 1, 5, 10 or 25 minutes, or type `15m pasta`), the music playing with its buttons, the calendar's next events and the newest emails with Summarize and Draft a reply. Its "–" folds it into an icon right of the "+" in the top bar, and that icon brings it back. The calendar is read from its secret iCal address (Settings → Island → Calendar), and an event about to start shows on the closed island ("Stand-up · in 5 min")
+- **Italiano**: the island, the settings and the tray in Italian (Settings → General → Language, or System on an Italian Windows or Linux)
+- **Math in answers**: formulas ($…$, $$…$$) are drawn as math — fractions, roots, vectors, ℝ, sums, matrices — instead of showing as TeX
+- **Antigravity CLI runs what you allow**: with Lumo's Antigravity hooks, Allow on a command's card now lets it run (headless agy ignored a hook's allow and refused it anyway); no click is a refusal
+- **The chat's lists close on a click outside**: the models, the past chats, the screen menu and the permissions
+- **The live activities start level with the island**, and keep their height when it changes size; folded, their icon sits left of the "+"
+- **The chat knows what's open on your PC**: every message carries the open windows and the documents they show (a PDF, a Word or Excel file…), found on disk, so "explain page 45 of the PDF I have open" works without sharing anything. Claude Code and Antigravity CLI read the file themselves; the other providers get the document in front attached when the question is about it. Settings → Chat → Tell the AI what's open turns it off (Windows)
+- **The live activities move and resize** (Windows): drag their top bar to take them off the island and leave them anywhere, drop them against the island's left or right side to join it there, and resize them from their edges like the island. Their "–" is at the top right, and folding is smooth
+- **The closed island shows several live activities at once**, and is only as wide as what it says: one alone sits in the middle; more sit side by side, each more compact. Its music and timer buttons work, as resting the mouse on them no longer opens the island
+- **Emails read right**: senders and subjects in Windows-1252 ("McDonald’s") and HTML entities (&rsquo;, &egrave;…) no longer show as "�"
+- **Emails in the live activities**: a click on one opens it, and the eye puts it away so the next one moves up. New emails show sooner: Lumo also looks every 20 seconds, fetching only the new ones
+- **Any model sets timers**: ask the chat for one, whichever model answers, and it starts on the island
+- **Timers and the music on the closed island**: ask Gemini Live for a timer, or type `/timer 10m pasta` in the chat, and it counts down next to Lumo and rings at the end. The music playing (the system's media controls on Windows, MPRIS on Linux) shows with previous, play/pause and next, and Gemini Live can play, pause and skip. Settings → Island → Show the music playing turns it off
+- **The Claude plan's 5-hour limit shows again**: while it is low Claude Code leaves its figure out, and the line now says "plenty left" instead of showing the week alone
+- **A sharing shortcut's island waits for your question**: after Ctrl+Alt+X (or Ctrl+Alt+P) it no longer folds as soon as the mouse is elsewhere; it stays a few seconds, longer while you type, and a click outside closes it at once
+- **"Claude Code answered" no longer looks busy**: the line under a call says it without the moving dots, and goes after a few seconds
+- **Lumo's own names everywhere**: settings in `%APPDATA%\com.rccrd12.lumo` (`~/.config/lumo`), the relay, the inbox, the log (`lumo.log`), the recap and the chat history in `%LOCALAPPDATA%\com.rccrd12.lumo` (`~/.local/share/lumo`), the keys under `com.rccrd12.lumo` in the keychain, Claude Code's folder `~/Lumo`. Everything moves there by itself at the first launch. Hooks installed before keep working; Settings → Agents → Reinstall points them at the new folder. On Linux the command is `lumo` (a desktop shortcut bound to the old one needs `lumo --shortcut …`) and the variables are `LUMO_X11`, `LUMO_DOCK`, `LUMO_LAYER_SHELL` and `LUMO_ANTHROPIC_BASE_URL`. From 0.3.1 or earlier, uninstall the old app before installing this one
+
 ## Windows and Linux 0.4.0 — October 9, 2026
 
 - **Talk with Gemini Live**: the microphone button in the chat box, or `Ctrl+Alt+L` from any app, starts a spoken call with Gemini 3.8 Live or Gemini 3.8 Live Extended Thinking, with your Google AI key. You can speak over it, type to it or turn the microphone off; what is said is written in the island as you go, and kept in the past chats. Gemini looks at the screen by itself when it needs to (Windows; Settings → Voice can turn that off), sees the open windows and the folder open in File Explorer, finds files by name, reads text files, images, folders, PDFs and Office documents, opens documents, folders and web pages, starts apps by name, and hands anything else to Claude Code or Antigravity CLI, whose actions come up as Allow / Deny cards over the call. The call goes on when the island closes, moves to a new connection when Google asks without you hearing it, and ends on its own after 5 minutes of silence. The key never leaves the keychain: each connection opens with a short-lived token
@@ -20,12 +48,12 @@
 - **Lumo sits closer to the left end** of the compact island
 - **Gemini CLI is gone from Settings**: Google replaced it with Antigravity CLI. Its pill is no longer offered, and Settings → Agents only lists its hooks when they were installed before, so they can be removed
 - **Lumo stays in the island**: he can no longer be dragged out onto the desktop. One left there by an earlier version comes home
-- **The relay is `lumo-hook`** (`lumo-hook.exe` on Windows) instead of `coucou-hook`. Lumo still puts the same relay beside it under the old name, so the hooks Claude Code and the other agents already have keep working; installing them again from Settings → Agents moves them to the new name
-- **The Windows app is `lumo.exe`** instead of `coucou.exe`. Installing over an older Lumo closes and removes `coucou.exe`, and its Start menu and desktop shortcuts and its autostart entry start `lumo.exe`
+- **The relay is `lumo-hook`** (`lumo-hook.exe` on Windows) instead of its earlier name. Lumo still puts the same relay beside it under the old name, so the hooks Claude Code and the other agents already have keep working; installing them again from Settings → Agents moves them to the new name
+- **The Windows app is `lumo.exe`**. Installing over an older Lumo closes and removes the exe it had before, and its Start menu and desktop shortcuts and its autostart entry start `lumo.exe`
 
 ## Windows and Linux 0.3.1 — October 8, 2026
 
-- **The app and its character are now called Lumo**, a small ring of light, instead of Coucou and Mochi, which belong to the original project. Running the new installer over Coucou 0.3.0 replaces it (Coucou's own Update now does not find it, since the repository is now called Lumo): one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
+- **The app and its character are now called Lumo**, a small ring of light, instead of the names of the original project, which belong to it. Running the new installer over 0.3.0 replaces it (0.3.0's own Update now does not find it, since the repository is now called Lumo): one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
 - **Lumo has his own look**: a ring of light with two lit eyes, whose colour tells what is going on. He breathes softly at rest; blue, he pulses and reads along while an agent works; orange, his light beats twice and sends out a ripple when it waits for you; red, he flashes and shakes, then shows × eyes on an error; green, he hops and smiles ^^ when it is done. The app icon, the launch greeting, the file drop and the weekly recap image show him too. The wardrobe (and Settings → Island → Lumo's look) offers three more looks: Punto, a dot of light, Goccia, a soft drop, and Lucciola, the firefly with clear wings and a glowing tail. The outfits fit every look
 - **Lumo moves on his own** (Settings → Island → Lumo moves): calm by default, he hovers, breathes and looks around once the mouse is still; lively does more; "Only when something happens" keeps him still. It all stops when the island hides
 - **Lumo stays himself while the chat writes**, without a colour or a badge: the chat already shows its answer coming
@@ -55,7 +83,7 @@
 - **Ask from anywhere**: `Ctrl+Alt+P` opens the chat with a screenshot of the screen under the mouse, `Ctrl+Alt+X` with the text selected in the app in front (a PDF, a web page). Each waits as a chip until you type the question and press Enter; the clipboard is put back as it was
 - **Chats**: start a new chat, reopen or delete past ones, attach a file with the paperclip
 - **Your screen, when you ask**: a screen button in the chat sends the list of open windows or a screenshot of one or every display, after a preview you confirm. Nothing is captured before you click (Windows)
-- **The island** is bigger by default (115 %, 80–160 % in Settings or Ctrl +/−/0) with bigger icons (125 %, 100–150 %). Drag it by its top bar and let go near any edge of the screen: it docks there, upright on the sides, centred near the middle, with a bounce. Resize it from any free edge or corner; a double click puts the usual size back. A power button quits Coucou (Windows; on Linux the island stays at the top)
+- **The island** is bigger by default (115 %, 80–160 % in Settings or Ctrl +/−/0) with bigger icons (125 %, 100–150 %). Drag it by its top bar and let go near any edge of the screen: it docks there, upright on the sides, centred near the middle, with a bounce. Resize it from any free edge or corner; a double click puts the usual size back. A power button quits the app (Windows; on Linux the island stays at the top)
 - **Settings** are split into sections, with an Updates section that checks GitHub for a newer Windows release and runs its installer, only when you click
 - The chat's answers no longer show up as a finished VS Code session
 
@@ -66,7 +94,7 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 - **Agents**: Codex, GitHub Copilot CLI and Muse Code sessions with Allow / Deny in the island; Gemini CLI, Antigravity, Cursor Agent, OpenCode, Amp and Hermes sessions on their own pills; Claude Code sessions from the Claude app on Windows. Install them all from Settings → Agents, which shows the diff and takes a dated backup before writing — one hardened writer for every agent's config (#278 by @Totopo27, #298 by @kobaltgit, #231 by @BeyondBirthday07)
 - **Questions**: answer Claude Code's multiple-choice questions from the island; answers are checked against the questions asked, and a question answered in the terminal takes the card down (#216 by @PythonTilk)
 - **The permission card** comes up for every agent, brings its pill forward, can be folded without answering, and never decides on its own
-- **Chat**: Anthropic, Google AI, OpenAI and OpenRouter, switchable by clicking the model name; local models through Ollama, LM Studio or any OpenAI-compatible server, streamed, thinking hidden; Markdown answers with a copy button; full answers; your first name in the greeting; `COUCOU_ANTHROPIC_BASE_URL` for a gateway, https only (#161 by @4rchila, #166 by @AlphaIsYour, #173 by @AinzDerErste, #206 by @Totopo27)
+- **Chat**: Anthropic, Google AI, OpenAI and OpenRouter, switchable by clicking the model name; local models through Ollama, LM Studio or any OpenAI-compatible server, streamed, thinking hidden; Markdown answers with a copy button; full answers; your first name in the greeting; `LUMO_ANTHROPIC_BASE_URL` for a gateway, https only (#161 by @4rchila, #166 by @AlphaIsYour, #173 by @AinzDerErste, #206 by @Totopo27)
 - **Plan usage**: Claude's 5-hour and weekly limits and Codex's, in the island header (#171 by @AinzDerErste)
 - **Live diff**: each file Claude edits shows in the ticker with its +N −M, and a click opens the diff; the finished card shows Claude's final message
 - **GitHub**: your pull requests with their CI, reviews waiting for you, the CI of your default branches, alerts when CI turns red or green, and your contribution grid
@@ -89,25 +117,25 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 - Pills that run on hooks (Claude Code, Cursor, Codex, Gemini CLI, Antigravity, Copilot CLI, Muse Code, OpenCode, Amp, Hermes) say whether their hooks are installed instead of asking for a key (#183 by @TheodoreRiant)
 - The chat keeps Claude's whole answer — web-search answers were cut after the first block (#67 by @RAMZI0TO99)
 - `~/.claude/settings.json` is never rewritten from scratch when it can't be read, the backup must succeed before anything is written, and nothing is written if the file changed since the preview (#243 by @Fabian-2026)
-- The auto-close delay set in Settings is respected (#25 by @Kamasoutra); reopening Coucou brings the island back (#270 by @AndersonPGS)
+- The auto-close delay set in Settings is respected (#25 by @Kamasoutra); reopening the app brings the island back (#270 by @AndersonPGS)
 - Fixed a crash an hour after a file edit (#286 by @i87ce)
 - Lighter when hidden: the island checks the pointer 8 times a second instead of 60 while it is hidden and the pointer is away from it
 
 ## 0.2.1 — October 7, 2026
 
-- **Hermes Agent** (Nous Research, open-source): sessions appear in the notch — live tool steps, the final response when done, and the platform (Telegram, Discord…) when running via the gateway. Install from Settings → Agents → Hermes: it writes a small Python plugin to `~/.hermes/plugins/coucou/` and enables it in `~/.hermes/config.yaml`, with the same preview, backup and confirmation flow as other agents *(macOS, GitHub build)* (#288)
+- **Hermes Agent** (Nous Research, open-source): sessions appear in the notch — live tool steps, the final response when done, and the platform (Telegram, Discord…) when running via the gateway. Install from Settings → Agents → Hermes: it writes a small Python plugin to `~/.hermes/plugins/lumo/` and enables it in `~/.hermes/config.yaml`, with the same preview, backup and confirmation flow as other agents *(macOS, GitHub build)* (#288)
 - Hermes approval requests show a "⏳ Approval pending in Hermes" step in the notch. Approving directly from the notch isn't supported yet — current Hermes versions (0.15.x) don't expose the transport API. The Approvals toggle in Settings will activate automatically once Hermes adds it (#288)
-- Coucou never blocks Hermes: if the app is closed or unreachable, Hermes continues normally and handles approvals itself (#288)
+- The app never blocks Hermes: if the app is closed or unreachable, Hermes continues normally and handles approvals itself (#288)
 
 ## 0.2.0 — October 6, 2026
 
 - GitHub Copilot CLI and Muse Code sessions show up in the notch: see every step live and approve or deny permissions right from the island. Install from Settings → Agents → Copilot CLI / Muse Code, which shows what will change in your config and backs it up before writing *(GitHub build)* (#263)
-- OpenCode sessions appear in the notch via a small JavaScript plugin: install it from Settings → Agents → OpenCode. Same installer flow — preview, backup, confirm. OpenCode never blocks on the plugin (fire-and-forget), so Coucou never slows it down *(macOS, GitHub build)* (#263)
+- OpenCode sessions appear in the notch via a small JavaScript plugin: install it from Settings → Agents → OpenCode. Same installer flow — preview, backup, confirm. OpenCode never blocks on the plugin (fire-and-forget), so the app never slows it down *(macOS, GitHub build)* (#263)
 - Amp sessions appear in the notch the same way, via a TypeScript plugin: Settings → Agents → Amp *(macOS, GitHub build)* (#263)
-- Weekly recap: on Monday morning, the first time an agent starts working or your Mac wakes, Coucou shows a card for the past week — time spent, sessions, files and lines changed, commands run, permissions and questions, plus your top agent, top project, busiest day and longest session. Open it any time from the menu bar with "Weekly recap" (#264)
+- Weekly recap: on Monday morning, the first time an agent starts working or your Mac wakes, the app shows a card for the past week — time spent, sessions, files and lines changed, commands run, permissions and questions, plus your top agent, top project, busiest day and longest session. Open it any time from the menu bar with "Weekly recap" (#264)
 - Share your week as a 1080 × 1920 image with Mochi: copy it, save it or share it from the notch. A privacy toggle lets you hide project names before sharing (#264)
 - Everything stays on your Mac: the recap reads from a local history file (12-week rolling window) that never leaves your machine. Clear it any time in Settings → General → Weekly recap (#264)
-- Coucou now speaks English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português, Русский and Bahasa Indonesia. Pick your language in Settings → General → Language, independent of your system locale. Translations welcome — open a pull request (#268)
+- The app now speaks English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português, Русский and Bahasa Indonesia. Pick your language in Settings → General → Language, independent of your system locale. Translations welcome — open a pull request (#268)
 
 ## 0.1.9 — October 6, 2026
 
@@ -120,7 +148,7 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 
 ## 0.1.8 — October 5, 2026
 
-- Coucou on iPhone: turn on Settings → General → iPhone (off by default) and your agent sessions show up live in the Coucou iPhone app and its widgets, through your own private iCloud. Project names, commands and questions are encrypted with your iCloud keys; turning it off deletes them (#209, #211, #212, #213)
+- On iPhone: turn on Settings → General → iPhone (off by default) and your agent sessions show up live in the iPhone app and its widgets, through your own private iCloud. Project names, commands and questions are encrypted with your iCloud keys; turning it off deletes them (#209, #211, #212, #213)
 - Allow or deny a permission from the iPhone: a notification with the command, Deny right from it, Allow behind Face ID. Your Mac only applies a decision meant for the exact request it is waiting on, and the request expires after 2 minutes. The iPhone keeps a history of your decisions (#220)
 - Lock your Mac while an agent works and Mochi moves to your iPhone's Lock Screen and Dynamic Island, then comes back to the notch when you unlock. Turn it on under Settings → General → iPhone. It goes through a small relay that only sees the agent's name and state (#221)
 - Mochi, the pills and the diff engine now live in a shared package used by both apps; nothing changes in the notch (#210)
@@ -128,7 +156,7 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 - Send the next instruction to Claude Code from the iPhone (GitHub build, off by default): your Mac picks it up within 15 seconds and continues the session in its own folder (#224)
 - Answer Claude's questions from the iPhone: your Mac applies an answer only if it matches the question still waiting (#241)
 - The Live Activity counts the time since Mochi left, and shows Allow and Deny while a command waits for you (#232, #241)
-- A new coucou sound for Mochi's greeting (#241)
+- A new greeting sound for Mochi (#241)
 
 ## 0.1.7 — October 4, 2026
 
@@ -191,7 +219,7 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 - The island always reopens after folding, and Settings opens below it, resizable — thanks @rouderz
 - Choose the Claude model for the chat in Settings; the list comes from your Anthropic account, and Claude Sonnet 4.6 stays the default — thanks @rouderz
 - Windows build artifacts are now downloadable from a manual CI run — thanks @MysJofR
-- Any agent can talk to Mochi: tag a hook payload with `coucou_agent` (e.g. `nb-hook --agent my-agent`) and it gets its own pill in the island (#7, #9) — thanks @lacatu5
+- Any agent can talk to Mochi: tag a hook payload with `lumo_agent` (e.g. `nb-hook --agent my-agent`) and it gets its own pill in the island (#7, #9) — thanks @lacatu5
 - Gemini CLI and Antigravity (agy) hook support on macOS: install from Settings and their sessions show up in the island — thanks @corefusiion
 
 ## 0.1.0 — September 27, 2026

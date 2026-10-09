@@ -33,9 +33,9 @@ test("the oldest chats go past the cap, and a deleted one is gone", () => {
 });
 
 test("unreadable storage reads as no chats", () => {
-  mem.set("coucou.chats.v1", "{not json");
+  mem.set("lumo.chats.v1", "{not json");
   assert.deepEqual(loadChats(), []);
-  mem.set("coucou.chats.v1", JSON.stringify([{ nope: 1 }, chat("ok")]));
+  mem.set("lumo.chats.v1", JSON.stringify([{ nope: 1 }, chat("ok")]));
   assert.deepEqual(loadChats().map((c) => c.id), ["ok"]);
 });
 

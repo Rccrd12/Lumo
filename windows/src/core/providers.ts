@@ -53,13 +53,16 @@ export function isCliProvider(id: string): boolean {
 
 /**
  * What the chat's CLIs may do without asking (Settings.chatPermissionMode,
- * claude_code::permission_mode): ask for everything, let file edits through,
- * or only plan. Nothing that lets every action through.
+ * claude_code::permission_mode): ask for everything, let the AI decide what
+ * is safe to do without asking (Claude Code's auto mode), or only plan.
+ * Nothing that lets every action through.
  */
-export const PERMISSION_MODES = ["default", "acceptEdits", "plan"] as const;
+export const PERMISSION_MODES = ["default", "auto", "plan"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
+/** "acceptEdits", picked before Auto took its place, reads as Auto. */
 export function parsePermissionMode(v: unknown): PermissionMode {
+  if (v === "acceptEdits") return "auto";
   return PERMISSION_MODES.includes(v as PermissionMode) ? (v as PermissionMode) : "default";
 }
 

@@ -21,15 +21,15 @@ const seconds = (n) => mock.timers.tick(n * 1000);
 test("starts hidden and opens on the greeting at launch", () => {
   assert.equal(fsm.state, "hidden");
   fsm.launch();
-  assert.equal(fsm.state, "coucou");
-  assert.deepEqual(transitions, ["hidden>coucou"]);
+  assert.equal(fsm.state, "greeting");
+  assert.deepEqual(transitions, ["hidden>greeting"]);
 });
 
 test("the greeting collapses to the compact island 0.6 s after it ends", () => {
   fsm.launch();
   fsm.greetComplete();
   seconds(0.5);
-  assert.equal(fsm.state, "coucou");
+  assert.equal(fsm.state, "greeting");
   seconds(0.1);
   assert.equal(fsm.state, "petit");
 });
@@ -38,7 +38,7 @@ test("a hovered greeting is not held: it ends on its own, as when nobody hovers 
   fsm.launch();
   fsm.mouseEntered();
   seconds(5);
-  assert.equal(fsm.state, "coucou", "only the animation's end moves it on");
+  assert.equal(fsm.state, "greeting", "only the animation's end moves it on");
   fsm.greetComplete();
   seconds(0.6);
   assert.equal(fsm.state, "petit");
@@ -227,7 +227,7 @@ test("the greeting keeps its own timing whatever the auto-close delay", () => {
   fsm.greetComplete();
   fsm.homeToPetitDelay = 0.01;
   seconds(0.05);
-  assert.equal(fsm.state, "coucou");
+  assert.equal(fsm.state, "greeting");
   seconds(0.1);
   assert.equal(fsm.state, "petit");
 });
@@ -347,5 +347,23 @@ test("turning autoHide off stops a hide already counting down", () => {
   seconds(30);
   fsm.autoHide = false;
   seconds(60);
+  assert.equal(fsm.state, "petit");
+});
+
+test("a sharing shortcut's grace keeps the island open with the mouse elsewhere, until the mouse comes", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const fsm = new IslandStateMachine();
+  fsm.homeToPetitDelay = 0.6;
+  fsm.forceHome();
+  fsm.holdOpen(12);
+  assert.equal(fsm.inGrace, true);
+  fsm.mouseLeft();
+  t.mock.timers.tick(5_000);
+  assert.equal(fsm.state, "home", "the mouse is on the selected text: still open");
+  // Once the mouse has been on the island, leaving it closes as usual.
+  fsm.mouseEntered();
+  assert.equal(fsm.inGrace, false);
+  fsm.mouseLeft();
+  t.mock.timers.tick(600);
   assert.equal(fsm.state, "petit");
 });

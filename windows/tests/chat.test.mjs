@@ -75,7 +75,10 @@ test("Claude Code's effort is a slider from faster to smarter, with Auto beside 
   assert.ok($(".effort-track").classList.contains("auto"), "no knob while Auto");
   assert.equal($(".effort-slider").getAttribute("max"), "4", "low, medium, high, extra high, max");
   assert.equal($(".effort-ticks").children.length, 5);
-  assert.deepEqual($(".effort-ends").children.map((c) => c.textContent), ["Faster", "Smarter"]);
+  // The ends sit beside the slider, on its row: the block stays two rows high.
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-end", "effort-track", "effort-end"]);
+  assert.deepEqual([0, 2].map((i) => $(".effort-row").children[i].textContent), ["Faster", "Smarter"]);
+  assert.equal($(".picker-efforts").children.length, 2);
 
   const slider = $(".effort-slider");
   slider.value = "4";
@@ -107,12 +110,12 @@ test("the shield picks what Claude Code and Antigravity CLI may do without askin
   shield.fire("click");
   assert.ok($(".chat-body").classList.contains("authorizing"));
   const rows = () => view.el.find(".perm-row");
-  assert.deepEqual(rows().map((r) => r.querySelector(".picker-model-name").textContent), ["Ask every time", "Accept edits", "Plan only"]);
+  assert.deepEqual(rows().map((r) => r.querySelector(".picker-model-name").textContent), ["Ask every time", "Auto", "Plan only"]);
   assert.ok(rows()[0].classList.contains("on"));
 
   rows()[1].fire("click");
-  assert.equal(State.settings.chatPermissionMode, "acceptEdits");
-  assert.equal(sent("save_settings").at(-1).settings.chatPermissionMode, "acceptEdits");
+  assert.equal(State.settings.chatPermissionMode, "auto");
+  assert.equal(sent("save_settings").at(-1).settings.chatPermissionMode, "auto");
   assert.ok(!$(".chat-body").classList.contains("authorizing"), "picking closes the list");
   view.sync();
   assert.ok($(".perm-btn").classList.contains("lit"), "lit while it may do more than ask");

@@ -22,6 +22,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const WINDOWS = join(here, "..");
 const MAC = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/strings.json"), "utf8"));
 const EXTRA = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/extra.json"), "utf8"));
+const ITALIAN = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/strings-it.json"), "utf8"));
+/** The Mac's strings with their Italian, as the app reads them. */
+const MAC_ALL = Object.fromEntries(
+  Object.entries(MAC.strings).map(([k, v]) => [k, ITALIAN.strings[k] !== undefined ? { ...v, it: ITALIAN.strings[k] } : v]),
+);
 const OTHERS = LANGUAGE_CODES.filter((l) => l !== "en");
 
 /** Runs `fn` in `lang`, then puts English back for the other tests. */
@@ -101,7 +106,7 @@ test("labels() tables and dates read in the current language", () => {
 
 // ── Choosing the language ─────────────────────────────────────────────────────
 
-test("System follows the system's language when Coucou has it, else English", () => {
+test("System follows the system's language when Lumo has it, else English", () => {
   assert.equal(resolveLanguage("", ["fr-FR", "en-US"]), "fr");
   assert.equal(resolveLanguage("", ["de-DE", "es-MX"]), "es");
   assert.equal(resolveLanguage("", ["pt-PT"]), "pt-BR");
@@ -116,8 +121,9 @@ test("System follows the system's language when Coucou has it, else English", ()
   assert.equal(resolveLanguage("xx", ["bn-IN"]), "bn");
 });
 
-test("the picker offers the Mac's ten languages, Arabic reads right to left", () => {
-  assert.deepEqual(LANGUAGES.map((l) => l.code), ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id"]);
+test("the picker offers the Mac's ten languages and Italian, Arabic reads right to left", () => {
+  assert.deepEqual(LANGUAGES.map((l) => l.code), ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id", "it"]);
+  assert.equal(resolveLanguage("", ["it-IT", "en-US"]), "it");
   assert.equal(isRtl("ar"), true);
   assert.equal(OTHERS.some((l) => l !== "ar" && isRtl(l)), false);
 });
@@ -163,7 +169,7 @@ test("the generator turns format specifiers into placeholders", () => {
 
 const placeholders = (s) => [...new Set(s.match(/\{\w+\}/g) ?? [])].sort();
 
-for (const [name, table] of [["strings.json", MAC.strings], ["extra.json", EXTRA.strings]]) {
+for (const [name, table] of [["strings.json", MAC_ALL], ["extra.json", EXTRA.strings]]) {
   test(`${name}: every string in every language, with the key's placeholders`, () => {
     for (const [key, entry] of Object.entries(table)) {
       for (const lang of OTHERS) {
@@ -262,7 +268,7 @@ const NOT_TEXT = new Set([
 
 test("no known user-facing English literal outside t() in the views and settings", () => {
   const translated = new Set(
-    [...Object.entries(MAC.strings), ...Object.entries(EXTRA.strings)]
+    [...Object.entries(MAC_ALL), ...Object.entries(EXTRA.strings)]
       .filter(([key, entry]) => OTHERS.some((l) => typeof entry[l] !== "string" || entry[l] !== key))
       .map(([key]) => key),
   );

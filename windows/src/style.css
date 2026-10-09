@@ -1,4 +1,4 @@
-/* Coucou for Windows — same palette, sizes and type scale as the macOS island.
+/* Lumo for Windows — same palette, sizes and type scale as the macOS island.
    Every colour below is copied from the Swift views. */
 
 :root {
@@ -342,6 +342,272 @@ body {
   border-radius: 2px;
   background: rgba(255, 255, 255, 0.35);
   width: 0;
+}
+
+/* ── The closed island's line, timer, music and email (island/compact.ts) ── */
+
+/* As much room on the right as Lumo takes on the left, so what it says sits in
+   the middle of the island. */
+#compact {
+  position: absolute;
+  top: 0;
+  left: 36px;
+  right: 36px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  font-size: 11.5px;
+  line-height: 1.25;
+  color: var(--ink);
+  white-space: nowrap;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.22s ease-in-out;
+}
+
+/* Laid out as wide as what it says, for an instant, to measure it. */
+#compact.measure {
+  right: auto;
+  width: max-content;
+}
+
+#compact.shown.on {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+#compact .cp-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* One live activity: in the middle, as wide as it needs. Several: side by
+   side, sharing the width, a thin line between them. */
+#compact .cp-item {
+  flex: 0 1 auto;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+}
+
+#compact.many .cp-item {
+  flex: 0 1 auto;
+}
+
+#compact.many .cp-item + .cp-item {
+  border-left: 1px solid rgba(255, 255, 255, 0.12);
+  padding-left: 8px;
+}
+
+#compact .cp-controls {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+#compact .cp-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+}
+
+#compact .cp-dot.notice {
+  box-shadow: 0 0 0 3px rgba(255, 255, 255, 0.08);
+}
+
+#compact .cp-icon {
+  flex: none;
+  display: flex;
+}
+
+#compact .cp-time {
+  flex: none;
+  color: var(--amber);
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
+}
+
+#compact .cp-btn,
+#compact .cp-close {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+#compact .cp-btn:hover,
+#compact .cp-close:hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+
+#compact .cp-media {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+/* Three still bars, lit while it plays: no animation, so it costs nothing. */
+#compact .cp-eq {
+  flex: none;
+  display: flex;
+  align-items: flex-end;
+  gap: 1.5px;
+  height: 10px;
+  margin-right: 3px;
+  opacity: 0.45;
+}
+
+#compact .cp-eq.playing {
+  opacity: 1;
+}
+
+#compact .cp-eq b {
+  width: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+#compact .cp-eq b:nth-child(1) { height: 6px; }
+#compact .cp-eq b:nth-child(2) { height: 10px; }
+#compact .cp-eq b:nth-child(3) { height: 4px; }
+
+#compact.mail {
+  height: auto;
+  bottom: 0;
+  right: 10px;
+  align-items: stretch;
+  justify-content: stretch;
+}
+
+#compact .cp-mail {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 0 9px;
+}
+
+#compact .cp-mail-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 20px;
+}
+
+#compact .cp-mail-from {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+#compact .cp-mail-more {
+  flex: none;
+  color: var(--dim);
+  font-size: 10.5px;
+}
+
+#compact .cp-mail-subject {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+#compact .cp-mail-preview {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: normal;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+#compact .cp-mail-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+#compact .cp-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#compact .cp-action:hover {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+#compact .cp-action.quiet {
+  background: transparent;
+  color: var(--dim);
+}
+
+#compact .cp-action.quiet:hover {
+  color: var(--ink);
+}
+
+/* ── The live activities beside the open island (island/activities.ts; the
+   panel's own look is in views/activities.css) ── */
+
+#activities {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#activities.shown {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* The folded live activities' icon, landing in the top bar. */
+.tab-activities.pop {
+  animation: tab-pop 0.36s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+@keyframes tab-pop {
+  from {
+    transform: scale(0.3);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 /* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
@@ -1242,6 +1508,145 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 600;
 }
 
+/* TeX math in answers (views/math.ts): a serif face for it, letters in italic. */
+.mx {
+  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
+  font-size: 1.06em;
+  white-space: nowrap;
+}
+
+.mx-display {
+  display: block;
+  margin: 6px 0;
+  text-align: center;
+  white-space: normal;
+  overflow-x: auto;
+}
+
+.mx-var {
+  font-style: italic;
+}
+
+.mx-op,
+.mx-rm,
+.mx-text {
+  font-style: normal;
+}
+
+.mx-op {
+  margin: 0 0.12em;
+}
+
+.mx-text {
+  font-family: var(--font);
+  font-size: 0.94em;
+}
+
+.mx-bold {
+  font-weight: 700;
+}
+
+.mx-script {
+  display: inline;
+}
+
+.mx-sup,
+.mx-sub {
+  font-size: 0.72em;
+  line-height: 0;
+}
+
+.mx-supsub {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.mx-supsub .mx-sup,
+.mx-supsub .mx-sub {
+  line-height: 1.1;
+}
+
+.mx-frac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  margin: 0 0.1em;
+  font-size: 0.9em;
+}
+
+.mx-num {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.15em;
+}
+
+.mx-den {
+  padding: 0 0.15em;
+}
+
+.mx-sqrt {
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.mx-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0 0.1em;
+}
+
+.mx-root {
+  font-size: 0.6em;
+  margin-right: -0.3em;
+}
+
+.mx-over {
+  text-decoration: overline;
+}
+
+.mx-under {
+  text-decoration: underline;
+}
+
+.mx-vecover {
+  display: inline-block;
+  position: relative;
+  line-height: 1.15;
+  font-style: italic;
+}
+
+.mx-vecover::before {
+  content: "\2192";
+  position: absolute;
+  top: -0.62em;
+  left: 50%;
+  transform: translateX(-45%) scaleX(0.9);
+  font-size: 0.62em;
+  font-style: normal;
+  line-height: 1;
+}
+
+.mx-matrix {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  gap: 0.15em;
+}
+
+.mx-delim {
+  font-size: 1.8em;
+  font-weight: 200;
+  line-height: 1;
+}
+
+.mx-grid {
+  display: inline-grid;
+  column-gap: 0.8em;
+  row-gap: 0.1em;
+  text-align: center;
+}
+
 .md-code {
   padding: 1px 4px;
   border-radius: 4px;
@@ -1514,12 +1919,14 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
-/* Claude Code's effort: a slider from faster to smarter, Auto beside it. */
+/* Claude Code's effort: a slider from faster to smarter, Auto beside it.
+   Kept to two short rows, so the model list keeps its room in a small window. */
 .picker-efforts {
+  flex: 0 0 auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
-  padding: 2px 2px 0;
+  gap: 3px;
+  padding: 0 2px;
 }
 
 .picker-efforts[hidden] {
@@ -1542,7 +1949,7 @@ input[type="range"]::-webkit-slider-thumb {
   align-items: center;
   gap: 5px;
   margin-left: auto;
-  padding: 3px 9px;
+  padding: 1px 8px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
@@ -1566,16 +1973,23 @@ input[type="range"]::-webkit-slider-thumb {
   color: #8b929e;
 }
 
-.effort-ends {
+.effort-row {
   display: flex;
-  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+.effort-end {
+  flex: 0 0 auto;
   font-size: 10.5px;
   color: #8b929e;
 }
 
 .effort-track {
   position: relative;
-  height: 22px;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 16px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -1583,7 +1997,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* One dot per level, under the knob's stops. */
 .effort-ticks {
   position: absolute;
-  inset: 0 11px;
+  inset: 0 8px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -1610,15 +2024,15 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .effort-track .effort-slider::-webkit-slider-runnable-track {
-  height: 22px;
+  height: 16px;
   background: transparent;
 }
 
 .effort-track .effort-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 22px;
-  height: 22px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: #e9ebef;
   background: color-mix(in srgb, var(--accent) 35%, #e9ebef);
@@ -2258,6 +2672,12 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--dim-3);
 }
 
+/* A long error (an address with no space in it) wraps instead of running off the card. */
+.int-status-label {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
 .int-actions {
   display: flex;
   align-items: center;
@@ -2303,6 +2723,28 @@ input[type="range"]::-webkit-slider-thumb {
   font: 400 10px var(--font);
   color: var(--dim-3);
   flex: 0 0 auto;
+}
+
+/* The Email card's two buttons, for its newest message. */
+.int-mail-actions {
+  display: flex;
+  gap: 6px;
+  padding: 3px 8px 0;
+}
+
+.int-mail-action {
+  height: 20px;
+  padding: 0 9px;
+  border: 0;
+  border-radius: 10px;
+  background: rgba(234, 67, 53, 0.16);
+  color: #f1f2f4;
+  font: 600 10.5px var(--font);
+  cursor: pointer;
+}
+
+.int-mail-action:hover {
+  background: rgba(234, 67, 53, 0.28);
 }
 
 .int-sub {
@@ -3141,6 +3583,10 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .live-doing {
   align-items: center;
   min-height: 16px;
+}
+
+.live-doing.done i {
+  display: none;
 }
 
 .live-start {

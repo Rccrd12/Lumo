@@ -24,6 +24,10 @@ import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
+import { CompactStrip } from "./compact";
+import { ACTIVITIES_GAP, IslandActivities } from "./activities";
+import { setCompactNewsHandler } from "../core/compact";
+import type { MailMessage } from "../core/bridge";
 import { refreshHookPills } from "./integrations";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
@@ -36,6 +40,11 @@ const MOVE_THRESHOLD = 4;
 const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
+/**
+ * After a sharing shortcut opened the island, how long it stays open with the
+ * mouse elsewhere (s); each key typed in it gives it this long again.
+ */
+const SHARE_GRACE = 12;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
 
@@ -58,6 +67,9 @@ const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"
 /** Seconds between the drop and the moment the progress bar starts filling. */
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
 
+/** Views the live activities stay away from: the greeting, Settings, the wardrobe, a drop. */
+const NO_ACTIVITIES: ReadonlySet<IslandViewName> = new Set(["greeting", "settings", "wardrobe", "upload", "uploading", "choose"]);
+
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
 
 export class Island {
@@ -74,6 +86,12 @@ export class Island {
   private botGlow!: HTMLElement;
   private greetingCanvas!: HTMLCanvasElement;
   private countdown!: HTMLElement;
+  /** What the closed island says next to Lumo (island/compact.ts). */
+  private compact!: CompactStrip;
+  /** The live activities beside the open island (island/activities.ts). */
+  private activities!: IslandActivities;
+  /** The island's height when the live activities first showed: theirs since. */
+  private activitiesStartH: number | null = null;
   private wakeStrip!: HTMLElement;
   /** Grips on the island's free edges and corners: dragging them resizes it. */
   private grips: { el: HTMLElement; grip: Grip }[] = [];
@@ -93,6 +111,8 @@ export class Island {
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
   private hoverOpenTimer: number | null = null;
+  /** The mouse is on the closed island's own buttons. */
+  private onControls = false;
   /** Page pixels the island is drawn off its usual place (a floating island, island.rs shift). */
   private shift = { x: 0, y: 0 };
   /** The edge last drawn, to notice when Settings or the tray move it. */
@@ -162,6 +182,11 @@ export class Island {
       this.fsm.greetComplete();
       this.onGreetingDone?.();
     };
+    // News for the closed island (a note, an email): out it comes.
+    setCompactNewsHandler(() => {
+      if (State.mode === "hidden" && !State.paused) this.reveal();
+      State.notify();
+    });
     State.subscribe(() => {
       this.fsm.held = State.liveActive;
       this.dirty = true;
@@ -290,6 +315,7 @@ export class Island {
         this.engine.triggerEmote("happy");
         State.notify();
       },
+      showActivities: () => this.activities.unfold(),
       previewLook: (look) => {
         State.lookPreview = look;
         State.notify();
@@ -301,6 +327,14 @@ export class Island {
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.countdown = h("div", { id: "countdown" });
+    this.compact = new CompactStrip({
+      reveal: () => this.reveal(),
+      openChat: () => {
+        this.alert("prompt");
+        this.takeKeyboard();
+      },
+      changed: () => State.notify(),
+    });
 
     this.header = buildHeader(actions);
     this.views = buildViews(actions, () => this.animateGeometry(false));
@@ -326,6 +360,7 @@ export class Island {
       this.greetingCanvas,
       this.uploadCanvas.el,
       this.contentEl,
+      this.compact.el,
     );
     this.grips = GRIPS.map((grip) => ({ el: h("div", { class: `edge edge-${grip}` }), grip }));
     this.islandEl = h(
@@ -342,7 +377,29 @@ export class Island {
     this.greetingCanvas.style.width = `${EXPANDED_W}px`;
     this.greetingCanvas.style.height = "150px";
 
-    this.root.append(this.wakeStrip, this.islandEl);
+    this.activities = new IslandActivities({
+      openChat: () => {
+        this.setView("prompt");
+        this.takeKeyboard();
+      },
+      openSettings: () => void Bridge.openSettingsWindow(),
+      iconPoint: () => {
+        // Left of the "+": where the folded icon sits (or will).
+        const icon = this.header.el.querySelector(".tab-activities") as HTMLElement | null;
+        if (icon && icon.style.display !== "none") {
+          const r = icon.getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
+        const plus = this.header.el.querySelector(".tab-drop");
+        if (!plus) return null;
+        const r = plus.getBoundingClientRect();
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+      },
+      movable: this.canResize && IS_TAURI,
+      changed: () => State.notify(),
+    });
+
+    this.root.append(this.wakeStrip, this.activities.view.el, this.islandEl);
     this.applyGeometry();
   }
 
@@ -352,16 +409,16 @@ export class Island {
     this.applyBehaviour();
     this.fsm.onTransition = (from, to) => {
       // The greeting is over, however it ended: back to his desktop spot.
-      if (from === "coucou" && to !== "coucou") this.desktop.launch();
+      if (from === "greeting" && to !== "greeting") this.desktop.launch();
       switch (to) {
         case "hidden":
           this.setMode("hidden");
           break;
         case "petit":
-          if (from === "coucou") this.greeting.interrupt();
+          if (from === "greeting") this.greeting.interrupt();
           else if (from === "hidden") Sound.play("peek");
           this.setMode("compact");
-          if (from === "coucou") State.view = State.defaultView();
+          if (from === "greeting") State.view = State.defaultView();
           if (!this.wasInIsland) this.fsm.mouseLeft();
           break;
         case "home":
@@ -371,7 +428,7 @@ export class Island {
           // say so on the next open, without polling while the island is shut.
           void refreshHookPills();
           break;
-        case "coucou":
+        case "greeting":
           this.expand("greeting");
           this.greeting.start();
           break;
@@ -522,9 +579,12 @@ export class Island {
   private scheduleHoverOpen() {
     this.cancelHoverOpen();
     if (!State.settings.islandHoverOpen || this.fsm.state !== "petit" || State.paused) return;
+    // An email is showing: the mouse goes to its buttons, not to open the island.
+    if (this.compact.mail) return;
     this.hoverOpenTimer = window.setTimeout(() => {
       this.hoverOpenTimer = null;
-      // Still there, and not picking the island up to move it.
+      // Still there, not on one of its own buttons, and not picking the island up to move it.
+      if (this.compact.overControls(State.mouse.x, State.mouse.y)) return;
       if (this.wasInIsland && this.fsm.state === "petit" && !this.moving && !this.pendingMove) this.fsm.click();
     }, HOVER_OPEN_DELAY);
   }
@@ -541,7 +601,9 @@ export class Island {
    * the island is pinned, a file picker of ours is open, or it is being moved.
    */
   onOutsidePress() {
-    if (parseCloseMode(State.settings.islandClose) !== "click") return;
+    // While a sharing shortcut holds it open, a click elsewhere closes it in
+    // any mode: that is how the user says they are done.
+    if (parseCloseMode(State.settings.islandClose) !== "click" && !this.fsm.inGrace) return;
     if (State.mode !== "expanded" || this.fsm.state !== "home") return;
     if (this.fsm.pinned || State.isPinned || State.pendingApproval || isDialogOpen()) return;
     if (this.moving || this.resizing || this.uploadActive) return;
@@ -553,6 +615,11 @@ export class Island {
     this.fsm.pinned = false;
     // The countdown the pin held back starts now, if the mouse is elsewhere.
     if (!this.wasInIsland) this.fsm.mouseLeft();
+  }
+
+  /** New emails from the Email pill (mail.rs): the closed island shows the newest. */
+  newMail(messages: MailMessage[]) {
+    this.compact.newMail(messages);
   }
 
   // ── Keyboard shortcuts (island/shortcuts.ts) ────────────────────────────────
@@ -577,6 +644,11 @@ export class Island {
 
   /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
    *  It gives it back when it closes, or when the chat is left. */
+  /** A sharing shortcut opened the island: it waits for the question (SHARE_GRACE). */
+  holdOpen() {
+    this.fsm.holdOpen(SHARE_GRACE);
+  }
+
   takeKeyboard() {
     this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
@@ -709,7 +781,7 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock);
+    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size);
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -746,10 +818,12 @@ export class Island {
     this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
+    const beside = this.activitiesPlace();
+    this.activities.place(beside.show, beside.x, beside.y, beside.h);
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
 
-    const rect = this.islandRect();
+    const rect = this.hitRect();
     const p = this.pushedRect;
     if (
       Math.abs(p.x - rect.x) > 0.5 || Math.abs(p.y - rect.y) > 0.5 ||
@@ -758,6 +832,41 @@ export class Island {
       this.pushedRect = rect;
       void Bridge.setIslandRect(rect.x, rect.y, rect.w, rect.h);
     }
+  }
+
+  /** Whether the live activities show beside the open island, and where. */
+  private activitiesPlace(): { show: boolean; x: number; y: number; h: number } {
+    const at = this.islandRect();
+    const w = this.activities.width;
+    const right = State.settings.activitiesSide === "right";
+    const x = right ? at.x + at.w + ACTIVITIES_GAP : at.x - ACTIVITIES_GAP - w;
+    const s = State.settings;
+    const fits = this.activities.detached || (x >= 0 && x + w <= window.innerWidth);
+    const show = State.mode === "expanded" && !isUpright(this.dock) && s.activitiesPanel !== false &&
+      s.activitiesFolded !== true && !NO_ACTIVITIES.has(State.view) && fits && at.h >= 120;
+    // The height picked with its grip, else as tall as the island or taller
+    // when the window has the room: its cards need more than a short view gives.
+    const bottom = this.dock === "bottom";
+    const room = bottom ? at.y + at.h - 10 : window.innerHeight - at.y - 14;
+    // Unless a height was picked with its grip, the island's height when the
+    // panel first showed: level with it then, and not following its later sizes.
+    const picked = this.activities.pickedHeight;
+    if (show && this.activitiesStartH == null) this.activitiesStartH = this.targetSize().h;
+    const start = this.activitiesStartH ?? at.h;
+    const h = Math.min(room, picked > 0 ? picked : start);
+    return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
+  }
+
+  /** What takes the mouse: the island, and the live activities beside it. */
+  private hitRect(): { x: number; y: number; w: number; h: number } {
+    const rect = this.islandRect();
+    if (!this.activities?.isVisible) return rect;
+    const beside = this.activitiesPlace();
+    const y = Math.min(rect.y, beside.y);
+    const bottom = Math.max(rect.y + rect.h, beside.y + beside.h);
+    const left = Math.min(rect.x, beside.x);
+    const right = Math.max(rect.x + rect.w, beside.x + this.activities.width);
+    return { x: left, y, w: right - left, h: bottom - y };
   }
 
   /**
@@ -920,7 +1029,8 @@ export class Island {
         return;
       }
       if (State.mode !== "expanded") {
-        this.fsm.click();
+        // The closed island's own buttons (an email's, the music's) keep their click.
+        if (!isControl(e.target)) this.fsm.click();
         return;
       }
       if (this.isBotHit(e.clientX, e.clientY)) {
@@ -957,6 +1067,12 @@ export class Island {
       this.botPress = null;
       if (this.desktop.carrying) this.desktop.carryEnd(e.clientX, e.clientY);
     });
+
+    // Typing the question keeps a shortcut's grace going (capture phase: the
+    // chat field stops its own keys from bubbling).
+    window.addEventListener("keydown", () => {
+      if (this.fsm.inGrace) this.fsm.holdOpen(SHARE_GRACE);
+    }, true);
 
     // Only keys typed into the island itself land here, never Escape typed in
     // a terminal — so it may fold a waiting card away, as Escape in the notch
@@ -1017,7 +1133,7 @@ export class Island {
   }
 
   /** Cursor in window-logical coordinates. */
-  onCursor(x: number, y: number) {
+  onCursor(x: number, y: number, overPanel = false) {
     // WebKitGTK can deliver a mousemove after the pointer has left the layer
     // surface; trusting it re-enters the island and the auto-close never runs.
     if (this.pointerInside === false) {
@@ -1034,9 +1150,11 @@ export class Island {
       UploadSeq.updateCursor(State.mouseInIsland.x, State.mouseInIsland.y);
     }
 
-    const inIsland =
-      x >= rect.x - HIT_MARGIN && x <= rect.x + rect.w + HIT_MARGIN &&
-      y >= rect.y - HIT_MARGIN && y <= rect.y + rect.h + HIT_MARGIN;
+    // The live activities in their own window count as the island.
+    const hit = this.hitRect();
+    const inIsland = overPanel || (
+      x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
+      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1047,6 +1165,16 @@ export class Island {
       if (!inIsland && this.wasInIsland) {
         this.cancelHoverOpen();
         this.fsm.mouseLeft();
+      }
+      // The closed island's own buttons (the music, a timer) are for clicking:
+      // resting on them never opens it; leaving them for the rest of it does.
+      if (inIsland && this.fsm.state === "petit") {
+        const onControls = this.compact.overControls(x, y);
+        if (onControls) this.cancelHoverOpen();
+        else if (this.onControls) this.scheduleHoverOpen();
+        this.onControls = onControls;
+      } else {
+        this.onControls = false;
       }
       this.wasInIsland = inIsland;
     }
@@ -1365,6 +1493,15 @@ export class Island {
         void Bridge.focusWindow(false);
       }
     }
+
+    // What the closed island says next to Lumo. Standing upright on a side
+    // there is no room for it. A change of what it shows resizes the island.
+    const compactOn = State.mode === "compact" && !isUpright(this.dock);
+    State.activitiesRoom = !isUpright(this.dock);
+    if (this.compact.sync(compactOn, compactOn || this.activities.isVisible) && State.mode === "compact") {
+      this.animateGeometry(this.compact.size == null);
+    }
+    this.activities.sync();
 
     // The compact island shows Lumo alone: the other pills' mini Lumos are
     // only in the open island.

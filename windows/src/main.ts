@@ -1,7 +1,8 @@
 // Entry point: boot the bridge, wire the island, start the greeting.
 
+import "./core/legacy";
 import "./style.css";
-import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift } from "./core/bridge";
+import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift, type MailMessage } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
@@ -11,7 +12,7 @@ import { registerShortcutHandlers } from "./island/shortcuts";
 import { Recap } from "./recap/recap";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages } from "./i18n/i18n";
 
-/** Shows the language Settings asks for ("" = the system's, when Coucou has it). */
+/** Shows the language Settings asks for ("" = the system's, when Lumo has it). */
 function applyLanguage() {
   setLanguage(resolveLanguage(State.settings.language, systemLanguages()));
 }
@@ -43,10 +44,11 @@ async function main() {
   if (boot?.shift) island.onShift(boot.shift);
   await island.desktop.init();
 
-  await onEvent<{ x: number; y: number }>("cursor", ({ x, y }) => island.onCursor(x, y));
+  await onEvent<{ x: number; y: number; panel?: boolean }>("cursor", ({ x, y, panel }) => island.onCursor(x, y, panel === true));
   await onEvent<boolean>("pointer-inside", (inside) => island.setPointerInside(inside));
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
   await onEvent<null>("outside-press", () => island.onOutsidePress());
+  await onEvent<MailMessage[]>("mail-new", (messages) => island.newMail(messages));
 
   /** Pause has to reach Rust too, or the pollers keep calling out. */
   const setPaused = (on: boolean) => {

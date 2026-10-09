@@ -35,6 +35,7 @@ export const LIVE_STRINGS = {
   reading: N_("Reading {name}"),
   searchingFor: N_("Searching for {pattern}"),
   opening: N_("Opening {name}"),
+  typing: N_("Typing the text"),
   asked: N_("Asked {helper}"),
   helperDone: N_("{helper} answered"),
   helperStopped: N_("{helper} stopped"),
@@ -55,4 +56,6 @@ export const VOICE_SETTINGS = {
   screenLinux: N_("Not available on Linux yet."),
   helper: N_("Helper"),
   helperHint: N_("What Gemini can't do itself, it hands to this agent, which works in its own session. What the agent may do without asking follows the chat's permissions; anything else comes up as a card in the island for you to allow or deny."),
+  helperModel: N_("Helper's model"),
+  helperEffort: N_("Helper's effort"),
 };

@@ -15,7 +15,7 @@ export const SOUNDS_DIR = resolve(__dirname, "assets/sounds");
 function sharedSounds(): Plugin {
   const prefix = "/sounds/";
   return {
-    name: "coucou-shared-sounds",
+    name: "lumo-shared-sounds",
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         if (!req.url?.startsWith(prefix)) return next();
@@ -63,6 +63,7 @@ export default defineConfig({
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
         mochi: resolve(__dirname, "mochi.html"),
+        activities: resolve(__dirname, "activities.html"),
       },
     },
   },

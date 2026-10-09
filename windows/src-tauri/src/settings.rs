@@ -46,6 +46,24 @@ pub struct Settings {
     pub island_hover_open: bool,
     /// The closed island goes away a minute after the mouse left it.
     pub island_auto_hide: bool,
+    /// The closed island says what the AI is doing and what just happened.
+    pub compact_activity: bool,
+    /// The closed island shows the music playing, with its buttons (media.rs).
+    pub compact_media: bool,
+    /// The live activities (src/island/activities.ts): on or off.
+    pub activities_panel: bool,
+    /// Folded into their icon in the open island's top bar.
+    pub activities_folded: bool,
+    /// Beside the island: "left" or "right".
+    pub activities_side: String,
+    /// Their size in page pixels; a height of 0 follows the island.
+    pub activities_width: f64,
+    pub activities_height: f64,
+    /// Moved off the island into a window of their own (activities.rs), at
+    /// this physical desktop position. Windows only.
+    pub activities_detached: bool,
+    pub activities_x: f64,
+    pub activities_y: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -53,7 +71,7 @@ pub struct Settings {
     /// Show the Claude plan pill (5 h and weekly limits) in the island's header.
     /// Off until the user turns it on, so the header stays as it shipped.
     pub show_plan_in_notch: bool,
-    /// Coucou's status line relay is the one in Claude Code's settings.json.
+    /// Lumo's status line relay is the one in Claude Code's settings.json.
     /// Like `hooks_installed`, the real state wins at launch over what was stored.
     pub plan_relay_installed: bool,
     /// Show the Codex plan pill (5 h / weekly limits from `codex app-server`).
@@ -70,9 +88,10 @@ pub struct Settings {
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
     /// What the chat's CLIs (Claude Code, Antigravity CLI) may do without a
-    /// card: "default" (ask for everything), "acceptEdits" (file edits go
-    /// through) or "plan" (plan only, change nothing). Picked from the chat's
-    /// field; anything else reads as "default".
+    /// card: "default" (ask for everything), "auto" (the CLI decides what is
+    /// safe; "acceptEdits", from before, reads as it) or "plan" (plan only,
+    /// change nothing). Picked from the chat's field; anything else reads as
+    /// "default".
     pub chat_permission_mode: String,
     /// A quiet line next to the chat's model picker with what the provider has
     /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits
@@ -83,6 +102,9 @@ pub struct Settings {
     /// and listing, explorer.rs), as if picked from the screen button. Off
     /// until the user turns it on in Settings → Chat.
     pub chat_share_explorer: bool,
+    /// Every chat message carries the open windows and the documents they
+    /// show, found on disk (desk.rs). On until the user turns it off.
+    pub chat_share_open: bool,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
     /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
@@ -95,6 +117,14 @@ pub struct Settings {
     /// Who Gemini asks when it cannot do something itself: "claude-code" or
     /// "antigravity-cli". Anything else reads as "claude-code".
     pub live_helper: String,
+    /// The helper's model: "default" (whatever the user set in Claude Code or
+    /// agy), else an id the chat's picker offers for that helper
+    /// (claude_code::MODELS, or what `agy models` lists). Checked before it
+    /// reaches a command line.
+    pub live_helper_model: String,
+    /// Claude Code's effort for the helper ("low" … "max"); empty: its own
+    /// default. Antigravity CLI has none (its models carry it in their name).
+    pub live_helper_effort: String,
     /// Gemini may take a screenshot when it needs to see the screen, without
     /// asking first (the island says when it looks). On until turned off.
     pub live_screen: bool,
@@ -180,6 +210,16 @@ impl Default for Settings {
             island_close: "timer".into(),
             island_hover_open: false,
             island_auto_hide: false,
+            compact_activity: true,
+            compact_media: true,
+            activities_panel: true,
+            activities_folded: false,
+            activities_side: "left".into(),
+            activities_width: crate::activities::DEFAULT_WIDTH,
+            activities_height: 0.0,
+            activities_detached: false,
+            activities_x: 0.0,
+            activities_y: 0.0,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -192,10 +232,13 @@ impl Default for Settings {
             chat_permission_mode: "default".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
+            chat_share_open: true,
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
             live_helper: "claude-code".into(),
+            live_helper_model: "default".into(),
+            live_helper_effort: String::new(),
             live_screen: true,
             ollama_url: String::new(),
             lmstudio_url: String::new(),
@@ -215,11 +258,6 @@ pub use crate::platform::{config_dir, local_dir};
 
 pub fn hook_exe_path() -> PathBuf {
     local_dir().join("bin").join(crate::platform::HOOK_EXE)
-}
-
-/// The relay under its name up to 0.3.1, where the hooks written then point.
-pub fn legacy_hook_exe_path() -> PathBuf {
-    local_dir().join("bin").join(crate::platform::LEGACY_HOOK_EXE)
 }
 
 fn settings_path() -> PathBuf {
@@ -249,7 +287,7 @@ fn not_loaded() -> MutexGuard<'static, Vec<PathBuf>> {
     NOT_LOADED.lock().unwrap_or_else(PoisonError::into_inner)
 }
 
-/// One line in coucou.log. Tests must never write to the real one.
+/// One line in lumo.log. Tests must never write to the real one.
 fn note(message: String) {
     #[cfg(not(test))]
     crate::log::line(message);
@@ -294,7 +332,7 @@ fn salvage(fields: Map<String, Value>) -> Settings {
 
 /// The log line for a field `salvage` had to drop. The name comes straight from
 /// the file, so it is written escaped: a line break in it must not be able to
-/// start what looks like another line of coucou.log.
+/// start what looks like another line of lumo.log.
 fn unusable_field(key: &str) -> String {
     format!("settings.json: {key:?} is not usable — its default is used instead")
 }
@@ -447,7 +485,7 @@ fn save_to(path: &Path, settings: &Settings) -> std::io::Result<()> {
 
     // Write beside the target and rename over it: a crash, a full disk or a
     // power cut leaves the previous settings.json intact rather than half a file.
-    let temp = path.with_extension(format!("json.coucou-{}", std::process::id()));
+    let temp = path.with_extension(format!("json.lumo-{}", std::process::id()));
     let written = std::fs::File::create(&temp)
         .and_then(|mut file| write_whole(&mut file, &json))
         .and_then(|()| std::fs::rename(&temp, path));
@@ -482,6 +520,16 @@ mod tests {
   "islandClose": "click",
   "islandHoverOpen": true,
   "islandAutoHide": true,
+  "compactActivity": false,
+  "compactMedia": false,
+  "activitiesPanel": false,
+  "activitiesFolded": true,
+  "activitiesSide": "right",
+  "activitiesWidth": 300.0,
+  "activitiesHeight": 360.0,
+  "activitiesDetached": true,
+  "activitiesX": 120.0,
+  "activitiesY": 80.0,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -494,10 +542,13 @@ mod tests {
   "chatPermissionMode": "plan",
   "chatShowUsage": true,
   "chatShareExplorer": true,
+  "chatShareOpen": false,
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
   "liveHelper": "antigravity-cli",
+  "liveHelperModel": "gemini-3.8-flash-high",
+  "liveHelperEffort": "max",
   "liveScreen": false,
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
@@ -537,7 +588,7 @@ mod tests {
     /// A fresh directory of our own, and the settings.json it will hold.
     fn scratch(name: &str) -> (PathBuf, PathBuf) {
         let dir = std::env::temp_dir()
-            .join(format!("coucou-settings-{name}-{}", std::process::id()));
+            .join(format!("lumo-settings-{name}-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&dir);
         std::fs::create_dir_all(&dir).unwrap();
         let file = dir.join("settings.json");
@@ -930,6 +981,16 @@ mod tests {
                 "islandClose",
                 "islandHoverOpen",
                 "islandAutoHide",
+                "compactActivity",
+                "compactMedia",
+                "activitiesPanel",
+                "activitiesFolded",
+                "activitiesSide",
+                "activitiesWidth",
+                "activitiesHeight",
+                "activitiesDetached",
+                "activitiesX",
+                "activitiesY",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -942,10 +1003,13 @@ mod tests {
                 "chatPermissionMode",
                 "chatShowUsage",
                 "chatShareExplorer",
+                "chatShareOpen",
                 "liveModel",
                 "liveThinking",
                 "liveVoice",
                 "liveHelper",
+                "liveHelperModel",
+                "liveHelperEffort",
                 "liveScreen",
                 "ollamaUrl",
                 "lmstudioUrl",
@@ -970,6 +1034,8 @@ mod tests {
         assert_eq!(s.live_thinking, "medium");
         assert_eq!(s.live_voice, "");
         assert_eq!(s.live_helper, "claude-code");
+        assert_eq!(s.live_helper_model, "default");
+        assert_eq!(s.live_helper_effort, "");
         assert!(s.live_screen);
     }
 
@@ -997,7 +1063,7 @@ mod tests {
         // directory squatting on that name, the write cannot even start.
         let (dir, file) = scratch("blocked");
         std::fs::write(&file, CUSTOM).unwrap();
-        let temp = dir.join(format!("settings.json.coucou-{}", std::process::id()));
+        let temp = dir.join(format!("settings.json.lumo-{}", std::process::id()));
         std::fs::create_dir(&temp).unwrap();
 
         assert!(save_to(&file, &Settings::default()).is_err());

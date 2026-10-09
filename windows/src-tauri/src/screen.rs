@@ -32,7 +32,7 @@ const MAX_TITLE_CHARS: usize = 160;
 pub struct WindowInfo {
     pub title: String,
     pub app: String,
-    /// The window the user was in (the one in front, Coucou aside).
+    /// The window the user was in (the one in front, Lumo aside).
     #[serde(default)]
     pub active: bool,
     #[serde(default)]
@@ -95,6 +95,10 @@ pub struct ScreenContext {
     /// The folder open in File Explorer, with what is in it (explorer.rs).
     #[serde(default)]
     pub folder: Option<crate::explorer::ExplorerFolder>,
+    /// The documents the windows show (desk.rs). Only Rust fills it: what a
+    /// page sends here is never read.
+    #[serde(skip_deserializing)]
+    pub documents: Vec<crate::desk::OpenDocument>,
 }
 
 impl ScreenContext {
@@ -103,6 +107,7 @@ impl ScreenContext {
             && self.shots.is_empty()
             && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
             && self.folder.is_none()
+            && self.documents.is_empty()
     }
 }
 
@@ -162,7 +167,7 @@ pub fn clip_title(title: &str) -> String {
 }
 
 /// Marks the window the user was in: the foreground one when it is in the
-/// list, else the first (front-most) one — Coucou's own island, which the
+/// list, else the first (front-most) one — Lumo's own island, which the
 /// click just went to, is never listed.
 #[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn mark_active(list: &mut [WindowInfo], foreground: Option<usize>) {
@@ -239,6 +244,10 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
         out.push_str(&crate::explorer::context_text(folder, with_paths));
         out.push('\n');
     }
+    if !screen.documents.is_empty() {
+        out.push_str(&crate::desk::documents_text(&screen.documents, with_paths));
+        out.push('\n');
+    }
     out
 }
 
@@ -254,7 +263,7 @@ pub fn display_order(rects: &[(i32, i32, bool)]) -> Vec<usize> {
     order
 }
 
-// ── Screenshots Coucou wrote ──────────────────────────────────────────────────
+// ── Screenshots Lumo wrote ──────────────────────────────────────────────────
 
 /// Screenshots taken this session: only these can be deleted from the page.
 static TAKEN: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
@@ -296,7 +305,7 @@ pub fn displays() -> Result<Vec<Display>, String> {
 }
 
 /// `capture` with the island kept out of the picture (Windows 10 2004 and
-/// later: content protection, which Coucou never uses otherwise). Blocking.
+/// later: content protection, which Lumo never uses otherwise). Blocking.
 pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Option<usize>) -> Result<Vec<Shot>, String> {
     use tauri::Manager;
     let island = app.get_webview_window(crate::island::WINDOW_LABEL);
@@ -315,7 +324,7 @@ pub fn display_under_cursor() -> Option<usize> {
     imp::display_under_cursor()
 }
 
-/// The visible top-level windows, front to back, Coucou's own aside.
+/// The visible top-level windows, front to back, Lumo's own aside.
 pub fn windows() -> Result<Vec<WindowInfo>, String> {
     imp::windows()
 }
@@ -727,12 +736,12 @@ mod tests {
 
     #[test]
     fn the_window_list_reads_front_to_back() {
-        let mut list = vec![win("main.rs — coucou", "Code"), win("Inbox", "outlook"), win("Notes", "")];
+        let mut list = vec![win("main.rs — lumo", "Code"), win("Inbox", "outlook"), win("Notes", "")];
         list[0].active = true;
         list[1].minimized = true;
         let text = windows_text(&list);
         assert!(text.starts_with("Windows open on the user's computer, front to back"));
-        assert!(text.contains("- main.rs — coucou — Code (active)\n"));
+        assert!(text.contains("- main.rs — lumo — Code (active)\n"));
         assert!(text.contains("- Inbox — outlook (minimized)\n"));
         assert!(text.contains("- Notes\n"));
         let many: Vec<WindowInfo> = (0..100).map(|i| win(&format!("w{i}"), "a")).collect();
@@ -749,6 +758,7 @@ mod tests {
             ],
             selection: None,
             folder: None,
+            documents: Vec::new(),
         };
         let cli = context_text(&screen, true);
         assert!(cli.contains("Read them from these paths:\n- Screen 1: C:\\inbox\\screenshot-1.png\n- Screen 2: C:\\inbox\\screenshot-2.png\n"));
@@ -802,7 +812,7 @@ mod tests {
 
     #[test]
     fn only_this_sessions_screenshots_can_be_discarded() {
-        let dir = std::env::temp_dir().join(format!("coucou-screen-{}", std::process::id()));
+        let dir = std::env::temp_dir().join(format!("lumo-screen-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let ours = dir.join("screenshot-a.png");
         let other = dir.join("other.png");
@@ -811,7 +821,7 @@ mod tests {
         remember(&ours);
         discard(&[ours.to_string_lossy().to_string(), other.to_string_lossy().to_string()]);
         assert!(!ours.exists());
-        assert!(other.exists(), "never taken by Coucou: left alone");
+        assert!(other.exists(), "never taken by Lumo: left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
