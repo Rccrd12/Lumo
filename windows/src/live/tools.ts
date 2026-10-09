@@ -136,14 +136,6 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       host.doing(t(S.opening, { name }));
       return { started: await Bridge.liveOpenApp(name) };
     }
-    case TOOL.point: {
-      if (!host.screen) throw new Error("The user turned screenshots off in Lumo's settings.");
-      const target = str(a.target);
-      if (!target) throw new Error("Say which element to point at.");
-      host.doing(t(S.pointing));
-      const what = await Bridge.livePoint(target, str(a.name), str(a.label).slice(0, 60));
-      return { shown: `A pointer now shows it on the user's screen for a few seconds: ${what}. Say what to do there.` };
-    }
     case TOOL.type: {
       const text = typeof a.text === "string" ? a.text : "";
       if (!text.trim()) throw new Error("Say which text to type.");

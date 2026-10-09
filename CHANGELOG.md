@@ -2,7 +2,6 @@
 
 ## Unreleased
 
-- **Gemini Live shows you where to click** (Windows): ask "what do I do here?" and an animated pointer glides to the spot on your screen, with a few words beside it, rings around it for a few seconds and fades. Lumo asks Windows where the element is (UI Automation, as screen readers do: the desktop's icons, the taskbar and the window you are in), so the pointer lands on it exactly, on whichever display it is; only what Windows doesn't list is looked for on a fresh screenshot by Gemini Flash, then on a close-up of that spot. The screenshots are deleted at once. It never moves your mouse or clicks for you, and screenshots leave it out
 - **Gemini Live types in the text box you clicked in**, in any app, when you ask it to write something there. It never presses Enter or sends: line breaks are Shift+Enter, or spaces in a terminal. Nothing is typed into Lumo itself or while a key like Ctrl is held. Linux needs `xdotool` (X11) or `wtype` (Wayland)
 - **Gemini Live asks its helper before saying it can't**: "add this to my calendar", "check my agenda", "draft an email" go to Claude Code (or Antigravity CLI) with the apps and accounts you connected to it, instead of Gemini answering that it can't
 - **Settings → Voice picks the helper's model**, and for Claude Code its effort, as the chat's picker does
