@@ -10,8 +10,9 @@ use std::sync::Mutex;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
+use crate::chat_usage::ChatUsage;
 use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
 use crate::{claude, claude_code, local_chat, openai_compat, secrets};
@@ -282,13 +283,33 @@ pub async fn send(
     context: Option<ChatContext>,
     screen: Option<ScreenContext>,
 ) -> Result<ChatReply, String> {
+    let mut usage = None;
+    let reply = dispatch(app, chat, settings, query, context, screen, &mut usage).await;
+    // What the provider said is left, read off this very answer (chat_usage.rs).
+    if settings.chat_show_usage {
+        if let Some(usage) = usage {
+            let _ = app.emit("chat-usage", usage);
+        }
+    }
+    reply
+}
+
+async fn dispatch(
+    app: &AppHandle,
+    chat: &Chat,
+    settings: &Settings,
+    query: String,
+    context: Option<ChatContext>,
+    screen: Option<ScreenContext>,
+    usage: &mut Option<ChatUsage>,
+) -> Result<ChatReply, String> {
     let context = context.map(checked_context).transpose()?;
     let screen = screen.map(checked_screen).transpose()?;
     let provider = settings.chat_provider.as_str();
     let model = model_for(settings, provider);
     let (query, images) = with_screen(provider, screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
-        return claude::send(chat, &model, query, context, &images).await;
+        return claude::send(chat, &model, query, context, &images, usage).await;
     }
     if provider == claude_code::PROVIDER {
         // A folder shared from File Explorer: Claude Code may read the rest of it itself.
@@ -296,7 +317,7 @@ pub async fn send(
         return claude_code::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
-        return openai_compat::send(chat, p, &model, query, context, &images).await;
+        return openai_compat::send(chat, p, &model, query, context, &images, usage).await;
     }
     if let Some(server) = local_chat::server(settings, provider) {
         return local_chat::send(app, chat, &server, &model, query, context).await;

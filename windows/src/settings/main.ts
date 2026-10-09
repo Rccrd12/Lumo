@@ -589,6 +589,25 @@ function chatProvidersSection(
   );
 }
 
+// ── Remaining usage in the chat ───────────────────────────────────────────────
+
+/** The quiet line next to the chat's model picker (core/chat-usage.ts). Off until turned on. */
+function chatUsageSection(): HTMLElement {
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: t("Remaining usage") })),
+    h("div", { class: "hint", text: t("Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.", { path: `${t("Agents")} → ${t("Plan usage")}` }) }),
+    h("div", { class: "row" },
+      h("label", { text: t("Show remaining usage in the chat") }),
+      toggle(settings.chatShowUsage, (on) => {
+        settings.chatShowUsage = on;
+        void save();
+      }),
+    ),
+  );
+}
+
 // ── Local models section ──────────────────────────────────────────────────────
 
 type LocalId = "ollama" | "lmstudio" | "custom";
@@ -1477,7 +1496,7 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), chatProvidersSection(chatKeys, keyChanged), localSection(customKey)],
+    chat: [apiSection(hasKey), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     agents: [claudeSection(status), agentsSection(agents), planSection(status)],
     pills: [activePillsSection(connected), integrationsSection(present)],
     shortcuts: [shortcutsSection(shortcutReport)],

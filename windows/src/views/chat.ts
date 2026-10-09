@@ -11,6 +11,9 @@
 // one display or all of them, shown first with Send / Cancel (core/screen.ts),
 // or the folder open in File Explorer: its listing goes with the question, and
 // a file of it the question names is attached as if picked with the paperclip.
+//
+// With Settings → Chat → "Show remaining usage in the chat" on, a quiet line
+// next to the model button says what the provider has left (core/chat-usage.ts).
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
@@ -24,6 +27,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
+import { OPENROUTER_STALE_MS, usageLine, type ChatUsage, type SeenUsage } from "../core/chat-usage";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, hasScreen, keepShots, menuEntries, screenChips, screenLabel,
   screenPayload, seesImages, shotPaths, type ChipKind, type ExplorerPeek, type MenuEntry,
@@ -312,7 +316,12 @@ export function buildPrompt(
   );
   const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
   const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
-  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn), modelBtn);
+  // What the provider has left, when the option is on and it is known.
+  const usageDot = h("i", { class: "model-dot" });
+  const usageText = h("span", { class: "chat-usage-text" });
+  const usageEl = h("button", { class: "chat-usage" }, usageDot, usageText);
+  usageEl.style.display = "none";
+  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn), usageEl, modelBtn);
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -323,6 +332,7 @@ export function buildPrompt(
     }
     panelChanged();
     drawModelButton();
+    drawUsage();
   }, openSettings);
 
   /** An open list gets the chat's full height; closing it gives the room back. */
@@ -353,6 +363,66 @@ export function buildPrompt(
   let screenTicket = 0;
   // A local model answers token by token: where its text so far is shown.
   let live: HTMLElement | null = null;
+
+  // ── Remaining usage ───────────────────────────────────────────────────────
+
+  /** The last numbers each provider came back with (Anthropic, OpenAI, OpenRouter). */
+  const seenUsage = new Map<string, SeenUsage>();
+  let usageKey = "";
+  let usageSetup = false;
+  /** The chat was on screen with OpenRouter and the option on, at the last sync. */
+  let openRouterShown = false;
+  let openRouterAsking = false;
+
+  function drawUsage(now = Date.now()) {
+    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now);
+    // The countdowns move once a minute: the line is redrawn when they do.
+    const key = line ? `${line.text}\t${line.title}\t${line.color}\t${Math.floor(now / 60_000)}` : "";
+    if (key === usageKey) return;
+    usageKey = key;
+    usageEl.style.display = line ? "" : "none";
+    usageSetup = Boolean(line?.setup);
+    usageEl.classList.toggle("setup", usageSetup);
+    usageText.textContent = line?.text ?? "";
+    usageEl.title = line?.title ?? "";
+    usageDot.style.display = line?.color ? "" : "none";
+    usageDot.style.background = line?.color ?? "";
+  }
+
+  usageEl.addEventListener("click", () => {
+    if (usageSetup && !sending) openSettings();
+  });
+
+  function keepUsage(u: ChatUsage | null | undefined) {
+    if (!u || typeof u.provider !== "string") return;
+    seenUsage.set(u.provider, { ...u, at: Date.now() });
+    State.notify();
+  }
+
+  /**
+   * OpenRouter's key credits: asked when the chat opens on OpenRouter (unless
+   * asked less than a minute ago) and after each of its answers. Never on a timer.
+   */
+  function askOpenRouter(force: boolean) {
+    if (openRouterAsking || State.paused) return;
+    if (!State.settings.chatShowUsage || State.settings.chatProvider !== "openrouter") return;
+    const seen = seenUsage.get("openrouter");
+    if (!force && seen && Date.now() - seen.at < OPENROUTER_STALE_MS) return;
+    openRouterAsking = true;
+    void Bridge.chatUsage()
+      .then(keepUsage)
+      .finally(() => {
+        openRouterAsking = false;
+      });
+  }
+
+  // Anthropic and OpenAI: read off each answer by Rust, only while the option is on.
+  void onEvent<ChatUsage>("chat-usage", keepUsage);
+  // sync() only runs while the chat is on screen: leaving it is seen here, so
+  // coming back counts as opening the chat again.
+  State.subscribe(() => {
+    if (State.view !== "prompt" || State.mode !== "expanded") openRouterShown = false;
+  });
 
   function drawModelButton() {
     const p = providerDef(State.settings.chatProvider);
@@ -776,6 +846,7 @@ export function buildPrompt(
       if (screen === shared) screen = emptyScreen();
       if (reply.session) State.chatSession = reply.session;
       remember();
+      askOpenRouter(true);
       State.stateOverride = null;
       Sound.play("finish");
     } catch (err) {
@@ -864,6 +935,11 @@ export function buildPrompt(
       attachBtn.disabled = sending;
       screenBtn.disabled = sending;
       drawModelButton();
+      const openRouter = State.mode === "expanded" && State.view === "prompt"
+        && State.settings.chatShowUsage && State.settings.chatProvider === "openrouter";
+      if (openRouter && !openRouterShown) askOpenRouter(false);
+      openRouterShown = openRouter;
+      drawUsage();
 
       input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
       input.disabled = sending;
