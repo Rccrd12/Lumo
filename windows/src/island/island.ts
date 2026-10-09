@@ -25,7 +25,7 @@ import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../vie
 import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
 import { CompactStrip } from "./compact";
-import { ACTIVITIES_GAP, ACTIVITIES_TALL, IslandActivities } from "./activities";
+import { ACTIVITIES_GAP, IslandActivities } from "./activities";
 import { setCompactNewsHandler } from "../core/compact";
 import type { MailMessage } from "../core/bridge";
 import { refreshHookPills } from "./integrations";
@@ -90,6 +90,8 @@ export class Island {
   private compact!: CompactStrip;
   /** The live activities beside the open island (island/activities.ts). */
   private activities!: IslandActivities;
+  /** The island's height when the live activities first showed: theirs since. */
+  private activitiesStartH: number | null = null;
   private wakeStrip!: HTMLElement;
   /** Grips on the island's free edges and corners: dragging them resizes it. */
   private grips: { el: HTMLElement; grip: Grip }[] = [];
@@ -382,11 +384,16 @@ export class Island {
       },
       openSettings: () => void Bridge.openSettingsWindow(),
       iconPoint: () => {
-        // Right of the "+": where the folded icon sits (or will).
+        // Left of the "+": where the folded icon sits (or will).
+        const icon = this.header.el.querySelector(".tab-activities") as HTMLElement | null;
+        if (icon && icon.style.display !== "none") {
+          const r = icon.getBoundingClientRect();
+          return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
         const plus = this.header.el.querySelector(".tab-drop");
         if (!plus) return null;
         const r = plus.getBoundingClientRect();
-        return { x: r.right + 4 + r.width / 2, y: r.top + r.height / 2 };
+        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
       },
       movable: this.canResize && IS_TAURI,
       changed: () => State.notify(),
@@ -841,8 +848,12 @@ export class Island {
     // when the window has the room: its cards need more than a short view gives.
     const bottom = this.dock === "bottom";
     const room = bottom ? at.y + at.h - 10 : window.innerHeight - at.y - 14;
+    // Unless a height was picked with its grip, the island's height when the
+    // panel first showed: level with it then, and not following its later sizes.
     const picked = this.activities.pickedHeight;
-    const h = Math.min(room, picked > 0 ? picked : Math.max(at.h, Math.min(ACTIVITIES_TALL, room)));
+    if (show && this.activitiesStartH == null) this.activitiesStartH = this.targetSize().h;
+    const start = this.activitiesStartH ?? at.h;
+    const h = Math.min(room, picked > 0 ? picked : start);
     return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
   }
 

@@ -582,6 +582,19 @@ export function buildPrompt(
   const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
   body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, modelRow, bar);
 
+  // A click anywhere else — in the island or, through Rust's outside-press,
+  // anywhere on the screen — closes the list that is open: the models, the
+  // past chats, the screen menu, the permissions.
+  function closeListsBut(target: Node | null) {
+    const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
+    if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
+    if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
+    if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
+    if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
+  }
+  document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
+  void onEvent<null>("outside-press", () => closeListsBut(null));
+
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 

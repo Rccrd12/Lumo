@@ -116,7 +116,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const tabAgents = h("button", { class: "tab", title: tl("Agents"), onclick: () => go(State.agentsView()) },
     svg(ICONS.code, 13, { stroke: 2 }), agentsBadge);
   const tabDrop = h("button", { class: "tab tab-drop", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
-  // The live activities, folded (island/activities.ts): right of the "+".
+  // The live activities, folded (island/activities.ts): left of the "+".
   const tabActivities = h("button", {
     class: "tab tab-activities", title: tl("Live Activities"),
     onclick: () => {
@@ -144,7 +144,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabChat, tabAgents, tabDrop, tabActivities),
+    h("div", { class: "tabs" }, tabChat, tabAgents, tabActivities, tabDrop),
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, quitBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
