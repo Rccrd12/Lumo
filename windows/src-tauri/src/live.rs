@@ -395,9 +395,13 @@ fn skipped_folder(name: &str) -> bool {
 /// Files and folders whose name matches `query`, best first, in `within`
 /// when given (else the user's folders). Bounded in depth, size and time. Blocking.
 pub fn find(query: &str, within: Option<&str>) -> Result<Vec<Found>, String> {
-    let roots = match within.and_then(full_path) {
-        Some(dir) if dir.is_dir() => vec![dir],
-        Some(_) => return Err(missing(within.unwrap_or_default())),
+    // A folder that was named but can't be used is an error, never a search
+    // of everything else.
+    let roots = match within.map(str::trim).filter(|w| !w.is_empty()) {
+        Some(raw) => match full_path(raw) {
+            Some(dir) if dir.is_dir() => vec![dir],
+            _ => return Err(missing(raw)),
+        },
         None => search_roots(explorer::peek().ok().flatten().map(|f| PathBuf::from(f.path))),
     };
     let started = Instant::now();
@@ -1068,7 +1072,9 @@ mod tests {
         assert_eq!(found.len(), 1, "{found:?}");
         assert!(found[0].path.ends_with("Fattura marzo.pdf"));
         assert!(!found[0].dir);
-        assert!(find("fattura", Some("/no/such/folder/anywhere")).is_err());
+        let gone = dir.join("no such folder");
+        assert!(find("fattura", Some(&gone.to_string_lossy())).is_err());
+        assert!(find("fattura", Some("relative/folder")).is_err());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
