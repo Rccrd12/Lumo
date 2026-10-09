@@ -123,12 +123,11 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   }
   const reply = h("div", { class: "reply" });
   renderMarkdown(reply, message.content);
-  const foot = h(
-    "div",
-    { class: "reply-foot" },
-    message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null,
-    actions,
-  );
+  // A stopped answer says so on a line of its own, Copy beside it; otherwise
+  // Copy floats over the answer's bottom right corner and takes no room.
+  const foot = message.stopped
+    ? h("div", { class: "reply-foot" }, h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }), actions)
+    : h("div", { class: "reply-foot floating" }, actions);
   return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, foot));
 }
 
