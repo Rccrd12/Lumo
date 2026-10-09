@@ -84,7 +84,10 @@ export class CompactStrip {
   /** The closed island is on screen: only then does a timer tick every second. */
   private visible = false;
 
-  constructor(private host: CompactHost) {
+  private host: CompactHost;
+
+  constructor(host: CompactHost) {
+    this.host = host;
     // The email stays while the mouse is on it, and a little after.
     this.el.addEventListener("mouseenter", () => {
       if (this.shown?.kind === "mail") Feed.holdMail(Infinity);

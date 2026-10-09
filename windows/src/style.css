@@ -1508,6 +1508,145 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 600;
 }
 
+/* TeX math in answers (views/math.ts): a serif face for it, letters in italic. */
+.mx {
+  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
+  font-size: 1.06em;
+  white-space: nowrap;
+}
+
+.mx-display {
+  display: block;
+  margin: 6px 0;
+  text-align: center;
+  white-space: normal;
+  overflow-x: auto;
+}
+
+.mx-var {
+  font-style: italic;
+}
+
+.mx-op,
+.mx-rm,
+.mx-text {
+  font-style: normal;
+}
+
+.mx-op {
+  margin: 0 0.12em;
+}
+
+.mx-text {
+  font-family: var(--font);
+  font-size: 0.94em;
+}
+
+.mx-bold {
+  font-weight: 700;
+}
+
+.mx-script {
+  display: inline;
+}
+
+.mx-sup,
+.mx-sub {
+  font-size: 0.72em;
+  line-height: 0;
+}
+
+.mx-supsub {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  line-height: 1;
+}
+
+.mx-supsub .mx-sup,
+.mx-supsub .mx-sub {
+  line-height: 1.1;
+}
+
+.mx-frac {
+  display: inline-flex;
+  flex-direction: column;
+  vertical-align: middle;
+  text-align: center;
+  margin: 0 0.1em;
+  font-size: 0.9em;
+}
+
+.mx-num {
+  border-bottom: 1px solid currentColor;
+  padding: 0 0.15em;
+}
+
+.mx-den {
+  padding: 0 0.15em;
+}
+
+.mx-sqrt {
+  display: inline-flex;
+  align-items: flex-start;
+}
+
+.mx-radicand {
+  border-top: 1px solid currentColor;
+  padding: 0 0.1em;
+}
+
+.mx-root {
+  font-size: 0.6em;
+  margin-right: -0.3em;
+}
+
+.mx-over {
+  text-decoration: overline;
+}
+
+.mx-under {
+  text-decoration: underline;
+}
+
+.mx-vecover {
+  display: inline-block;
+  position: relative;
+  line-height: 1.15;
+  font-style: italic;
+}
+
+.mx-vecover::before {
+  content: "\2192";
+  position: absolute;
+  top: -0.62em;
+  left: 50%;
+  transform: translateX(-45%) scaleX(0.9);
+  font-size: 0.62em;
+  font-style: normal;
+  line-height: 1;
+}
+
+.mx-matrix {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+  gap: 0.15em;
+}
+
+.mx-delim {
+  font-size: 1.8em;
+  font-weight: 200;
+  line-height: 1;
+}
+
+.mx-grid {
+  display: inline-grid;
+  column-gap: 0.8em;
+  row-gap: 0.1em;
+  text-align: center;
+}
+
 .md-code {
   padding: 1px 4px;
   border-radius: 4px;

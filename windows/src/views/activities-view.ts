@@ -117,7 +117,12 @@ export class ActivitiesView {
   private folding = false;
   private grips: HTMLElement[] = [];
 
-  constructor(private hooks: ViewHooks, private side: () => "left" | "right" | "free") {
+  private hooks: ViewHooks;
+  private side: () => "left" | "right" | "free";
+
+  constructor(hooks: ViewHooks, side: () => "left" | "right" | "free") {
+    this.hooks = hooks;
+    this.side = side;
     this.timerInput = h("input", {
       class: "act-input", type: "text", spellcheck: "false", autocomplete: "off",
       placeholder: t(ACTIVITIES_TEXT.timerHint),

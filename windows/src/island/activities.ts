@@ -128,7 +128,10 @@ export class IslandActivities {
   private sentKey = "";
   private unfolding = false;
 
-  constructor(private host: IslandActivitiesHost) {
+  private host: IslandActivitiesHost;
+
+  constructor(host: IslandActivitiesHost) {
+    this.host = host;
     this.view = new ActivitiesView({
       act: (a) => this.act(a),
       drag: () => {
