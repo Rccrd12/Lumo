@@ -270,7 +270,6 @@ class LiveSession {
     this.speaker?.close();
     this.speaker = null;
     if (this.running.size) void Bridge.liveHelpStop();
-    void Bridge.livePointHide();
     this.running.clear();
     for (const timer of [this.drainTimer, this.moveTimer, this.notifyTimer]) if (timer) clearTimeout(timer);
     if (this.silenceTimer) clearInterval(this.silenceTimer);

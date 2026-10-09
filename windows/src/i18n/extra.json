@@ -5440,17 +5440,6 @@
    "ru": "Google отклонил звонок: по его словам, квота этого ключа для {model} исчерпана. Лимиты есть в Google AI Studio, в разделе Rate limit.",
    "id": "Google menolak panggilan: katanya kuota kunci ini untuk {model} sudah habis. Batasnya ada di Google AI Studio, di bagian Rate limit."
   },
-  "Showing where to click": {
-   "zh-Hans": "正在指出点击位置",
-   "hi": "दिखा रहा है कि कहाँ क्लिक करें",
-   "es": "Mostrando dónde hacer clic",
-   "ar": "يُظهر مكان النقر",
-   "fr": "Montre où cliquer",
-   "bn": "কোথায় ক্লিক করতে হবে দেখাচ্ছে",
-   "pt-BR": "Mostrando onde clicar",
-   "ru": "Показывает, где нажать",
-   "id": "Menunjukkan tempat mengeklik"
-  },
   "Typing the text": {
    "zh-Hans": "正在输入文字",
    "hi": "टेक्स्ट टाइप कर रहा है",

@@ -32,7 +32,6 @@ mod net;
 mod openai_compat;
 mod pipe;
 mod platform;
-mod pointer;
 mod recap;
 mod screen;
 mod secrets;
@@ -42,7 +41,6 @@ mod settings;
 mod shortcuts;
 mod tray;
 mod typing;
-mod uia;
 mod updater;
 #[cfg(windows)]
 mod webview_drop;
@@ -1008,9 +1006,6 @@ pub fn run() {
             activities::activities_focus,
             calendar::calendar_fetch,
             media::media_control,
-            live::live_point,
-            pointer::live_point_hide,
-            pointer::live_pointer_current,
             ingest_file,
             paste_file,
             paste_copied_file,

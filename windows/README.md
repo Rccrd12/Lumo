@@ -503,15 +503,6 @@ Gemini uses the computer by itself, when it decides it needs to:
 - **It opens** documents, folders and web pages, and **starts apps** by
   their name, from the Start menu (or the Linux app menu). It never runs a
   program or a script by its file.
-- **It shows you where to click** (Windows): ask "what do I do here?" and
-  Gemini names the element; Lumo asks Windows where it is (UI Automation,
-  as screen readers do: the desktop's icons, the taskbar and the window you
-  are in), so the pointer lands on it exactly on any display. Only what
-  Windows doesn't list is looked for by Gemini Flash on a fresh screenshot,
-  then on a close-up of that spot (deleted at once). An animated pointer
-  glides to it with a few words beside it ("Click here"),
-  rings around it for a few seconds and fades. It is only a picture: it never moves your mouse or clicks, clicks
-  go through it, and screenshots leave it out.
 - **It types in the text box you clicked in**, in any app, when you ask it
   to write something there. It never presses Enter and never sends: a line
   break is Shift+Enter (a new line in a message or an email), and in a
@@ -825,7 +816,7 @@ What changes on Linux:
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
   its menu says so, and nothing is listed or captured. For the same reason
-  Gemini Live can't look at the screen or point at it there; everything else
+  Gemini Live can't look at the screen there; everything else
   in a call works. Typing in the text box you clicked in needs `xdotool` on
   X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland
   doesn't say which window is in front).

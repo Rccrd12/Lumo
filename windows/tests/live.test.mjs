@@ -76,13 +76,12 @@ test("every tool runs without blocking the voice; the screen tool exists only wh
   const on = P.toolDeclarations(CFG);
   assert.ok(on.every((d) => d.behavior === "NON_BLOCKING"));
   assert.deepEqual(on.map((d) => d.name), [
-    "look_at_screen", "point_at", "list_windows", "explorer_folder", "find_files", "read_file", "read_document",
+    "look_at_screen", "list_windows", "explorer_folder", "find_files", "read_file", "read_document",
     "open", "open_app", "type_text", "ask_helper", "stop_helper", "set_timer", "control_music", "end_conversation",
   ]);
   const off = P.toolDeclarations({ ...CFG, screen: false }).map((d) => d.name);
-  assert.ok(!off.includes("look_at_screen") && !off.includes("point_at"), "no pointing without the screen");
+  assert.ok(!off.includes("look_at_screen"));
   assert.ok(off.includes("type_text"));
-  assert.deepEqual(on.find((d) => d.name === "point_at").parameters.required, ["target"]);
   const find = on.find((d) => d.name === "find_files");
   assert.deepEqual(find.parameters.required, ["name"]);
   assert.equal(find.parameters.type, "OBJECT");
@@ -323,21 +322,6 @@ test("the helper is offered for the user's connected accounts, and asked before 
   assert.match(text, /Never tell the user you can't do something before Claude Code has tried/);
   assert.match(P.toolDeclarations(CFG).find((d) => d.name === "ask_helper").description, /calendar, email/);
   assert.match(text, /type_text writes text into the text box/);
-  assert.match(text, /point_at shows the user where to click/);
-  assert.doesNotMatch(P.systemInstruction({ ...CFG, screen: false }), /point_at/);
-});
-
-test("point_at hands the description to Rust, which finds it on the screen as it is now", async () => {
-  const { host: h, log } = host();
-  const a = await withRust((cmd) => (cmd === "live_point" ? "button \"Send\" (claude)" : null), () =>
-    runTool({ id: "p1", name: "point_at", args: { target: "the send button at the right of the message box", name: "Send", label: "Clicca qui" } }, h));
-  assert.deepEqual(sent("live_point").at(-1), { target: "the send button at the right of the message box", name: "Send", label: "Clicca qui" });
-  assert.match(a.result.shown, /pointer.*button "Send"/);
-  assert.ok(log.doing.includes("Showing where to click"));
-  const none = await runTool({ id: "p2", name: "point_at", args: { label: "x" } }, h);
-  assert.match(none.error, /which element/);
-  const { host: noScreen } = host({ screen: false });
-  assert.match((await runTool({ id: "p3", name: "point_at", args: { target: "x" } }, noScreen)).error, /turned screenshots off/);
 });
 
 test("type_text types what the model said into the window in front, and says where", async () => {

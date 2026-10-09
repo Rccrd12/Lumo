@@ -63,7 +63,6 @@ export default defineConfig({
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
         mochi: resolve(__dirname, "mochi.html"),
-        pointer: resolve(__dirname, "pointer.html"),
         activities: resolve(__dirname, "activities.html"),
       },
     },
