@@ -34,16 +34,16 @@
    "ru": "+ субагент",
    "id": "+ subagen"
   },
-  "A hook group named \"coucou\" that Coucou did not write is already there — Coucou has not touched it.": {
-   "zh-Hans": "已存在一个并非 Coucou 写入的名为“coucou”的 hook 组 — Coucou 没有修改它。",
-   "hi": "“coucou” नाम का एक hook समूह पहले से है जिसे Coucou ने नहीं लिखा — Coucou ने इसे नहीं छुआ।",
-   "es": "Ya existe un grupo de hooks llamado «coucou» que no escribió Coucou — Coucou no lo ha tocado.",
-   "ar": "توجد بالفعل مجموعة hooks باسم «coucou» لم يكتبها Coucou — لم يمسّها Coucou.",
-   "fr": "Un groupe de hooks nommé « coucou » que Coucou n'a pas écrit existe déjà — Coucou n'y a pas touché.",
-   "bn": "“coucou” নামে একটি hook গ্রুপ আগে থেকেই আছে যা Coucou লেখেনি — Coucou এতে হাত দেয়নি।",
-   "pt-BR": "Já existe um grupo de hooks chamado “coucou” que não foi escrito pelo Coucou — o Coucou não mexeu nele.",
-   "ru": "Уже есть группа хуков «coucou», которую написал не Coucou, — Coucou её не трогал.",
-   "id": "Sudah ada grup hook bernama “coucou” yang tidak ditulis Coucou — Coucou tidak menyentuhnya."
+  "A hook group named \"coucou\" that Lumo did not write is already there — Lumo has not touched it.": {
+   "zh-Hans": "已存在一个并非 Lumo 写入的名为“coucou”的 hook 组 — Lumo 没有修改它。",
+   "hi": "“coucou” नाम का एक hook समूह पहले से है जिसे Lumo ने नहीं लिखा — Lumo ने इसे नहीं छुआ।",
+   "es": "Ya existe un grupo de hooks llamado «coucou» que no escribió Lumo — Lumo no lo ha tocado.",
+   "ar": "توجد بالفعل مجموعة hooks باسم «coucou» لم يكتبها Lumo — لم يمسّها Lumo.",
+   "fr": "Un groupe de hooks nommé « coucou » que Lumo n'a pas écrit existe déjà — Lumo n'y a pas touché.",
+   "bn": "“coucou” নামে একটি hook গ্রুপ আগে থেকেই আছে যা Lumo লেখেনি — Lumo এতে হাত দেয়নি।",
+   "pt-BR": "Já existe um grupo de hooks chamado “coucou” que não foi escrito pelo Lumo — o Lumo não mexeu nele.",
+   "ru": "Уже есть группа хуков «coucou», которую написал не Lumo, — Lumo её не трогал.",
+   "id": "Sudah ada grup hook bernama “coucou” yang tidak ditulis Lumo — Lumo tidak menyentuhnya."
   },
   "AI for the chat": {
    "zh-Hans": "聊天用的 AI",
@@ -55,6 +55,17 @@
    "pt-BR": "IA para o chat",
    "ru": "ИИ для чата",
    "id": "AI untuk obrolan"
+  },
+  "Always share the folder open in File Explorer": {
+   "zh-Hans": "始终共享文件资源管理器中打开的文件夹",
+   "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर हमेशा साझा करें",
+   "es": "Compartir siempre la carpeta abierta en el Explorador de archivos",
+   "ar": "مشاركة المجلد المفتوح في مستكشف الملفات دائمًا",
+   "fr": "Toujours partager le dossier ouvert dans l'Explorateur de fichiers",
+   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার সবসময় শেয়ার করুন",
+   "pt-BR": "Sempre compartilhar a pasta aberta no Explorador de Arquivos",
+   "ru": "Всегда передавать папку, открытую в Проводнике",
+   "id": "Selalu bagikan folder yang terbuka di File Explorer"
   },
   "API error {code}": {
    "zh-Hans": "API 错误 {code}",
@@ -177,17 +188,6 @@
    "ru": "Авто · {outfit}",
    "id": "Otomatis · {outfit}"
   },
-  "Auto-close": {
-   "zh-Hans": "自动关闭",
-   "hi": "अपने आप बंद",
-   "es": "Cierre automático",
-   "ar": "الإغلاق التلقائي",
-   "fr": "Fermeture auto",
-   "bn": "স্বয়ংক্রিয় বন্ধ",
-   "pt-BR": "Fechar sozinho",
-   "ru": "Автозакрытие",
-   "id": "Tutup otomatis"
-  },
   "Back": {
    "zh-Hans": "返回",
    "hi": "वापस",
@@ -253,39 +253,6 @@
    "pt-BR": "Resposta da API inválida: {error}",
    "ru": "Некорректный ответ API: {error}",
    "id": "Respons API tidak valid: {error}"
-  },
-  "Beanie": {
-   "zh-Hans": "毛线帽",
-   "hi": "ऊनी टोपी",
-   "es": "Gorro de lana",
-   "ar": "قبعة صوفية",
-   "fr": "Bonnet",
-   "bn": "উলের টুপি",
-   "pt-BR": "Gorro",
-   "ru": "Шапка",
-   "id": "Kupluk"
-  },
-  "Bow": {
-   "zh-Hans": "蝴蝶结",
-   "hi": "बो",
-   "es": "Lazo",
-   "ar": "فيونكة",
-   "fr": "Nœud",
-   "bn": "বো",
-   "pt-BR": "Laço",
-   "ru": "Бантик",
-   "id": "Pita"
-  },
-  "Bunny ears": {
-   "zh-Hans": "兔耳朵",
-   "hi": "खरगोश के कान",
-   "es": "Orejas de conejo",
-   "ar": "أذنا أرنب",
-   "fr": "Oreilles de lapin",
-   "bn": "খরগোশের কান",
-   "pt-BR": "Orelhas de coelho",
-   "ru": "Заячьи ушки",
-   "id": "Telinga kelinci"
   },
   "Can't read {path}: {error}": {
    "zh-Hans": "无法读取 {path}：{error}",
@@ -529,38 +496,93 @@
    "ru": "Копировать изображения здесь нельзя — используйте «Сохранить изображение».",
    "id": "Menyalin gambar tidak tersedia di sini — gunakan Simpan gambar."
   },
-  "Coucou could not list the agents.": {
-   "zh-Hans": "Coucou 无法列出代理。",
-   "hi": "Coucou एजेंटों की सूची नहीं बना सका।",
-   "es": "Coucou no pudo listar los agentes.",
-   "ar": "تعذّر على Coucou سرد الوكلاء.",
-   "fr": "Coucou n'a pas pu lister les agents.",
-   "bn": "Coucou এজেন্টদের তালিকা করতে পারেনি।",
-   "pt-BR": "O Coucou não conseguiu listar os agentes.",
-   "ru": "Coucou не удалось получить список агентов.",
-   "id": "Coucou tidak dapat menampilkan daftar agen."
+  "Credits left: {n}": {
+   "zh-Hans": "剩余额度：{n}",
+   "hi": "बाकी क्रेडिट: {n}",
+   "es": "Créditos restantes: {n}",
+   "ar": "الرصيد المتبقي: {n}",
+   "fr": "Crédits restants : {n}",
+   "bn": "বাকি ক্রেডিট: {n}",
+   "pt-BR": "Créditos restantes: {n}",
+   "ru": "Осталось кредитов: {n}",
+   "id": "Sisa kredit: {n}"
   },
-  "Coucou counts your agent sessions as they happen — check back next Monday.": {
-   "zh-Hans": "Coucou 会实时统计你的代理会话 — 下周一再来看看吧。",
-   "hi": "Coucou आपके एजेंट सत्रों को होते-होते गिनता है — अगले सोमवार फिर देखें।",
-   "es": "Coucou cuenta tus sesiones de agentes a medida que ocurren — vuelve el próximo lunes.",
-   "ar": "يحسب Coucou جلسات وكلائك أثناء حدوثها — عُد يوم الاثنين القادم.",
-   "fr": "Coucou compte tes sessions d'agents au fil de l'eau — reviens lundi prochain.",
-   "bn": "Coucou আপনার এজেন্ট সেশন ঘটার সঙ্গে সঙ্গে গোনে — পরের সোমবার আবার দেখুন।",
-   "pt-BR": "O Coucou conta suas sessões de agentes conforme acontecem — volte na próxima segunda-feira.",
-   "ru": "Coucou считает ваши сессии агентов по ходу дела — загляните в следующий понедельник.",
-   "id": "Coucou menghitung sesi agen Anda saat berlangsung — cek lagi Senin depan."
+  "Credits used: {n}": {
+   "zh-Hans": "已用额度：{n}",
+   "hi": "इस्तेमाल हुए क्रेडिट: {n}",
+   "es": "Créditos usados: {n}",
+   "ar": "الرصيد المستخدم: {n}",
+   "fr": "Crédits utilisés : {n}",
+   "bn": "ব্যবহৃত ক্রেডিট: {n}",
+   "pt-BR": "Créditos usados: {n}",
+   "ru": "Использовано кредитов: {n}",
+   "id": "Kredit terpakai: {n}"
   },
-  "Coucou is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.": {
-   "zh-Hans": "Coucou 已接入你的 Claude Code 会话。工具调用、问题和权限请求都会显示在岛中，你可以直接在那里回应。",
-   "hi": "Coucou आपके Claude Code सत्रों से जुड़ा है। टूल कॉल, प्रश्न और अनुमति अनुरोध आइलैंड में दिखते हैं, और आप वहीं उनका जवाब दे सकते हैं।",
-   "es": "Coucou está conectado a tus sesiones de Claude Code. Las llamadas a herramientas, las preguntas y las solicitudes de permiso aparecen en la isla y puedes responderlas ahí.",
-   "ar": "Coucou متصل بجلسات Claude Code لديك. تظهر استدعاءات الأدوات والأسئلة وطلبات الإذن في الشريط، ويمكنك الرد عليها من هناك.",
-   "fr": "Coucou est branché sur tes sessions Claude Code. Les appels d'outils, les questions et les demandes de permission s'affichent dans l'île, et tu peux y répondre directement.",
-   "bn": "Coucou আপনার Claude Code সেশনের সঙ্গে যুক্ত। টুল কল, প্রশ্ন আর অনুমতির অনুরোধ আইল্যান্ডে দেখা যায়, এবং আপনি সেখানেই উত্তর দিতে পারেন।",
-   "pt-BR": "O Coucou está conectado às suas sessões do Claude Code. Chamadas de ferramentas, perguntas e pedidos de permissão aparecem na ilha, e você pode respondê-los ali.",
-   "ru": "Coucou подключён к вашим сессиям Claude Code. Вызовы инструментов, вопросы и запросы разрешений появляются в острове, и отвечать можно прямо там.",
-   "id": "Coucou terhubung ke sesi Claude Code Anda. Panggilan alat, pertanyaan, dan permintaan izin muncul di pulau, dan Anda bisa menjawabnya di sana."
+  "Couldn't paste this.": {
+   "zh-Hans": "无法粘贴此内容。",
+   "hi": "इसे चिपकाया नहीं जा सका।",
+   "es": "No se pudo pegar.",
+   "ar": "تعذّر لصق هذا.",
+   "fr": "Impossible de coller ceci.",
+   "bn": "এটি পেস্ট করা যায়নি।",
+   "pt-BR": "Não foi possível colar.",
+   "ru": "Не удалось вставить.",
+   "id": "Tidak dapat menempel ini."
+  },
+  "Edit": {
+   "zh-Hans": "编辑",
+   "hi": "संपादित करें",
+   "es": "Editar",
+   "ar": "تعديل",
+   "fr": "Modifier",
+   "bn": "সম্পাদনা",
+   "pt-BR": "Editar",
+   "ru": "Изменить",
+   "id": "Edit"
+  },
+  "Editing a message": {
+   "zh-Hans": "正在编辑消息",
+   "hi": "संदेश संपादित हो रहा है",
+   "es": "Editando un mensaje",
+   "ar": "تعديل رسالة",
+   "fr": "Modification d'un message",
+   "bn": "একটি বার্তা সম্পাদনা হচ্ছে",
+   "pt-BR": "Editando uma mensagem",
+   "ru": "Редактирование сообщения",
+   "id": "Mengedit pesan"
+  },
+  "Lumo could not list the agents.": {
+   "zh-Hans": "Lumo 无法列出代理。",
+   "hi": "Lumo एजेंटों की सूची नहीं बना सका।",
+   "es": "Lumo no pudo listar los agentes.",
+   "ar": "تعذّر على Lumo سرد الوكلاء.",
+   "fr": "Lumo n'a pas pu lister les agents.",
+   "bn": "Lumo এজেন্টদের তালিকা করতে পারেনি।",
+   "pt-BR": "O Lumo não conseguiu listar os agentes.",
+   "ru": "Lumo не удалось получить список агентов.",
+   "id": "Lumo tidak dapat menampilkan daftar agen."
+  },
+  "Lumo counts your agent sessions as they happen — check back next Monday.": {
+   "zh-Hans": "Lumo 会实时统计你的代理会话 — 下周一再来看看吧。",
+   "hi": "Lumo आपके एजेंट सत्रों को होते-होते गिनता है — अगले सोमवार फिर देखें।",
+   "es": "Lumo cuenta tus sesiones de agentes a medida que ocurren — vuelve el próximo lunes.",
+   "ar": "يحسب Lumo جلسات وكلائك أثناء حدوثها — عُد يوم الاثنين القادم.",
+   "fr": "Lumo compte tes sessions d'agents au fil de l'eau — reviens lundi prochain.",
+   "bn": "Lumo আপনার এজেন্ট সেশন ঘটার সঙ্গে সঙ্গে গোনে — পরের সোমবার আবার দেখুন।",
+   "pt-BR": "O Lumo conta suas sessões de agentes conforme acontecem — volte na próxima segunda-feira.",
+   "ru": "Lumo считает ваши сессии агентов по ходу дела — загляните в следующий понедельник.",
+   "id": "Lumo menghitung sesi agen Anda saat berlangsung — cek lagi Senin depan."
+  },
+  "Lumo is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.": {
+   "zh-Hans": "Lumo 已接入你的 Claude Code 会话。工具调用、问题和权限请求都会显示在岛中，你可以直接在那里回应。",
+   "hi": "Lumo आपके Claude Code सत्रों से जुड़ा है। टूल कॉल, प्रश्न और अनुमति अनुरोध आइलैंड में दिखते हैं, और आप वहीं उनका जवाब दे सकते हैं।",
+   "es": "Lumo está conectado a tus sesiones de Claude Code. Las llamadas a herramientas, las preguntas y las solicitudes de permiso aparecen en la isla y puedes responderlas ahí.",
+   "ar": "Lumo متصل بجلسات Claude Code لديك. تظهر استدعاءات الأدوات والأسئلة وطلبات الإذن في الشريط، ويمكنك الرد عليها من هناك.",
+   "fr": "Lumo est branché sur tes sessions Claude Code. Les appels d'outils, les questions et les demandes de permission s'affichent dans l'île, et tu peux y répondre directement.",
+   "bn": "Lumo আপনার Claude Code সেশনের সঙ্গে যুক্ত। টুল কল, প্রশ্ন আর অনুমতির অনুরোধ আইল্যান্ডে দেখা যায়, এবং আপনি সেখানেই উত্তর দিতে পারেন।",
+   "pt-BR": "O Lumo está conectado às suas sessões do Claude Code. Chamadas de ferramentas, perguntas e pedidos de permissão aparecem na ilha, e você pode respondê-los ali.",
+   "ru": "Lumo подключён к вашим сессиям Claude Code. Вызовы инструментов, вопросы и запросы разрешений появляются в острове, и отвечать можно прямо там.",
+   "id": "Lumo terhubung ke sesi Claude Code Anda. Panggilan alat, pertanyaan, dan permintaan izin muncul di pulau, dan Anda bisa menjawabnya di sana."
   },
   "Could not remove {path}: {error}": {
    "zh-Hans": "无法删除 {path}：{error}",
@@ -638,17 +660,6 @@
    "pt-BR": "Somente contagens e nomes de projeto — nunca comandos, arquivos ou prompts. Mantido neste computador por 12 semanas.",
    "ru": "Только счётчики и названия проектов — никогда команды, файлы или промпты. Хранится на этом компьютере 12 недель.",
    "id": "Hanya hitungan dan nama proyek — tidak pernah perintah, file, atau prompt. Disimpan di komputer ini selama 12 minggu."
-  },
-  "Crown": {
-   "zh-Hans": "王冠",
-   "hi": "मुकुट",
-   "es": "Corona",
-   "ar": "تاج",
-   "fr": "Couronne",
-   "bn": "মুকুট",
-   "pt-BR": "Coroa",
-   "ru": "Корона",
-   "id": "Mahkota"
   },
   "Custom server": {
    "zh-Hans": "自定义服务器",
@@ -1233,16 +1244,16 @@
    "ru": "Без звука",
    "id": "Bisukan"
   },
-  "Mute or unmute Mochi": {
-   "zh-Hans": "静音或取消静音 Mochi",
-   "hi": "Mochi को म्यूट या अनम्यूट करें",
-   "es": "Silenciar o activar a Mochi",
-   "ar": "كتم صوت Mochi أو إلغاء كتمه",
-   "fr": "Couper ou remettre le son de Mochi",
-   "bn": "Mochi-কে মিউট বা আনমিউট করুন",
-   "pt-BR": "Silenciar ou ativar o som do Mochi",
-   "ru": "Выключить или включить звук Mochi",
-   "id": "Bisukan atau bunyikan Mochi"
+  "Mute or unmute Lumo": {
+   "zh-Hans": "静音或取消静音 Lumo",
+   "hi": "Lumo को म्यूट या अनम्यूट करें",
+   "es": "Silenciar o activar a Lumo",
+   "ar": "كتم صوت Lumo أو إلغاء كتمه",
+   "fr": "Couper ou remettre le son de Lumo",
+   "bn": "Lumo-কে মিউট বা আনমিউট করুন",
+   "pt-BR": "Silenciar ou ativar o som do Lumo",
+   "ru": "Выключить или включить звук Lumo",
+   "id": "Bisukan atau bunyikan Lumo"
   },
   "Network error: {error}": {
    "zh-Hans": "网络错误：{error}",
@@ -1354,16 +1365,16 @@
    "ru": "Файла пока нет — нечего сохранять.",
    "id": "Belum ada file — tidak ada yang perlu dicadangkan."
   },
-  "No key yet — the chat needs one.": {
-   "zh-Hans": "还没有密钥 — 聊天需要一个。",
-   "hi": "अभी कोई कुंजी नहीं — चैट को एक चाहिए।",
-   "es": "Aún no hay clave — el chat necesita una.",
-   "ar": "لا يوجد مفتاح بعد — تحتاج الدردشة إلى مفتاح.",
-   "fr": "Pas encore de clé — le chat en a besoin.",
-   "bn": "এখনো কোনো কী নেই — চ্যাটের একটি লাগবে।",
-   "pt-BR": "Ainda não há chave — o chat precisa de uma.",
-   "ru": "Ключа пока нет — он нужен для чата.",
-   "id": "Belum ada kunci — obrolan membutuhkannya."
+  "No key yet. Only the Anthropic API needs one: Claude Code uses your Claude plan.": {
+   "zh-Hans": "还没有密钥。只有 Anthropic API 需要密钥：Claude Code 使用你的 Claude 订阅。",
+   "hi": "अभी कोई कुंजी नहीं। केवल Anthropic API को इसकी ज़रूरत है: Claude Code आपके Claude प्लान का उपयोग करता है।",
+   "es": "Todavía no hay clave. Solo la API de Anthropic la necesita: Claude Code usa tu plan de Claude.",
+   "ar": "لا يوجد مفتاح بعد. واجهة Anthropic API وحدها تحتاجه: يستخدم Claude Code خطة Claude الخاصة بك.",
+   "fr": "Pas encore de clé. Seule l'API Anthropic en a besoin : Claude Code utilise ton abonnement Claude.",
+   "bn": "এখনও কোনো কী নেই। শুধু Anthropic API-এর এটি দরকার: Claude Code আপনার Claude প্ল্যান ব্যবহার করে।",
+   "pt-BR": "Ainda sem chave. Só a API da Anthropic precisa de uma: o Claude Code usa seu plano do Claude.",
+   "ru": "Ключа пока нет. Он нужен только для Anthropic API: Claude Code работает по вашему тарифу Claude.",
+   "id": "Belum ada kunci. Hanya Anthropic API yang memerlukannya: Claude Code memakai paket Claude Anda."
   },
   "No models yet. Download one in {name} first.": {
    "zh-Hans": "还没有模型。请先在 {name} 中下载一个。",
@@ -1596,17 +1607,6 @@
    "ru": "PDF",
    "id": "PDF"
   },
-  "Party hat": {
-   "zh-Hans": "派对帽",
-   "hi": "पार्टी टोपी",
-   "es": "Gorro de fiesta",
-   "ar": "قبعة الحفلة",
-   "fr": "Chapeau de fête",
-   "bn": "পার্টি টুপি",
-   "pt-BR": "Chapéu de festa",
-   "ru": "Праздничный колпак",
-   "id": "Topi pesta"
-  },
   "Payment": {
    "zh-Hans": "付款",
    "hi": "भुगतान",
@@ -1651,16 +1651,27 @@
    "ru": "Выберите модель {name} над полем чата.",
    "id": "Pilih model {name} di atas kotak obrolan."
   },
-  "Pick up to {max} pills to show next to Mochi — {used}/{max} in use. Keys are stored in the {store}, never on disk.": {
-   "zh-Hans": "最多选择 {max} 个标签显示在 Mochi 旁边 — 已用 {used}/{max}。密钥保存在 {store} 中，绝不写入磁盘。",
-   "hi": "Mochi के बगल में दिखाने के लिए अधिकतम {max} टैब चुनें — {used}/{max} उपयोग में। कुंजियाँ {store} में रखी जाती हैं, डिस्क पर कभी नहीं।",
-   "es": "Elige hasta {max} pestañas para mostrar junto a Mochi — {used}/{max} en uso. Las claves se guardan en {store}, nunca en el disco.",
-   "ar": "اختر حتى {max} تبويبات لعرضها بجانب Mochi — {used}/{max} مستخدمة. تُحفظ المفاتيح في {store}، ولا تُكتب على القرص أبدًا.",
-   "fr": "Choisis jusqu'à {max} onglets à afficher à côté de Mochi — {used}/{max} utilisés. Les clés sont stockées dans {store}, jamais sur le disque.",
-   "bn": "Mochi-র পাশে দেখাতে সর্বোচ্চ {max}টি ট্যাব বেছে নিন — {used}/{max} ব্যবহৃত। কী {store}-এ রাখা হয়, কখনো ডিস্কে নয়।",
-   "pt-BR": "Escolha até {max} abas para mostrar ao lado do Mochi — {used}/{max} em uso. As chaves ficam em {store}, nunca no disco.",
-   "ru": "Выберите до {max} вкладок рядом с Mochi — занято {used}/{max}. Ключи хранятся в {store}, никогда на диске.",
-   "id": "Pilih hingga {max} tab untuk ditampilkan di samping Mochi — {used}/{max} terpakai. Kunci disimpan di {store}, tidak pernah di disk."
+  "Pick up to {max} pills to show next to Lumo — {used}/{max} in use. Keys are stored in the {store}, never on disk.": {
+   "zh-Hans": "最多选择 {max} 个标签显示在 Lumo 旁边 — 已用 {used}/{max}。密钥保存在 {store} 中，绝不写入磁盘。",
+   "hi": "Lumo के बगल में दिखाने के लिए अधिकतम {max} टैब चुनें — {used}/{max} उपयोग में। कुंजियाँ {store} में रखी जाती हैं, डिस्क पर कभी नहीं।",
+   "es": "Elige hasta {max} pestañas para mostrar junto a Lumo — {used}/{max} en uso. Las claves se guardan en {store}, nunca en el disco.",
+   "ar": "اختر حتى {max} تبويبات لعرضها بجانب Lumo — {used}/{max} مستخدمة. تُحفظ المفاتيح في {store}، ولا تُكتب على القرص أبدًا.",
+   "fr": "Choisis jusqu'à {max} onglets à afficher à côté de Lumo — {used}/{max} utilisés. Les clés sont stockées dans {store}, jamais sur le disque.",
+   "bn": "Lumo-র পাশে দেখাতে সর্বোচ্চ {max}টি ট্যাব বেছে নিন — {used}/{max} ব্যবহৃত। কী {store}-এ রাখা হয়, কখনো ডিস্কে নয়।",
+   "pt-BR": "Escolha até {max} abas para mostrar ao lado do Lumo — {used}/{max} em uso. As chaves ficam em {store}, nunca no disco.",
+   "ru": "Выберите до {max} вкладок рядом с Lumo — занято {used}/{max}. Ключи хранятся в {store}, никогда на диске.",
+   "id": "Pilih hingga {max} tab untuk ditampilkan di samping Lumo — {used}/{max} terpakai. Kunci disimpan di {store}, tidak pernah di disk."
+  },
+  "Plan usage: install the relay in {path}": {
+   "zh-Hans": "计划用量：请在 {path} 中安装中继",
+   "hi": "प्लान उपयोग: {path} में रिले इंस्टॉल करें",
+   "es": "Uso del plan: instala el relay en {path}",
+   "ar": "استخدام الخطة: ثبّت المُرحِّل في {path}",
+   "fr": "Utilisation du forfait : installez le relais dans {path}",
+   "bn": "প্ল্যান ব্যবহার: {path}-এ রিলে ইনস্টল করুন",
+   "pt-BR": "Uso do plano: instale o relay em {path}",
+   "ru": "Использование плана: установите ретранслятор в {path}",
+   "id": "Penggunaan paket: pasang relay di {path}"
   },
   "Press keys…": {
    "zh-Hans": "请按键…",
@@ -1683,17 +1694,6 @@
    "pt-BR": "Aba anterior",
    "ru": "Предыдущая вкладка",
    "id": "Tab sebelumnya"
-  },
-  "Pumpkin": {
-   "zh-Hans": "南瓜",
-   "hi": "कद्दू",
-   "es": "Calabaza",
-   "ar": "يقطينة",
-   "fr": "Citrouille",
-   "bn": "কুমড়া",
-   "pt-BR": "Abóbora",
-   "ru": "Тыква",
-   "id": "Labu"
   },
   "Questions": {
    "zh-Hans": "问题",
@@ -1761,6 +1761,17 @@
    "ru": "Ретранслятор",
    "id": "Relay"
   },
+  "Remaining usage": {
+   "zh-Hans": "剩余用量",
+   "hi": "बचा हुआ उपयोग",
+   "es": "Uso restante",
+   "ar": "الاستخدام المتبقي",
+   "fr": "Utilisation restante",
+   "bn": "বাকি ব্যবহার",
+   "pt-BR": "Uso restante",
+   "ru": "Оставшийся лимит",
+   "id": "Sisa penggunaan"
+  },
   "Remove": {
    "zh-Hans": "移除",
    "hi": "हटाएँ",
@@ -1783,6 +1794,17 @@
    "ru": "Репозитории",
    "id": "Repositori"
   },
+  "Requests left: {n}": {
+   "zh-Hans": "剩余请求：{n}",
+   "hi": "बाकी अनुरोध: {n}",
+   "es": "Solicitudes restantes: {n}",
+   "ar": "الطلبات المتبقية: {n}",
+   "fr": "Requêtes restantes : {n}",
+   "bn": "বাকি অনুরোধ: {n}",
+   "pt-BR": "Solicitações restantes: {n}",
+   "ru": "Осталось запросов: {n}",
+   "id": "Sisa permintaan: {n}"
+  },
   "Reset to defaults": {
    "zh-Hans": "恢复默认",
    "hi": "डिफ़ॉल्ट पर रीसेट करें",
@@ -1804,6 +1826,17 @@
    "pt-BR": "Redefinições",
    "ru": "Сбросы",
    "id": "Reset"
+  },
+  "Resets at {time}": {
+   "zh-Hans": "{time} 重置",
+   "hi": "{time} पर रीसेट",
+   "es": "Se restablece a las {time}",
+   "ar": "يُعاد التعيين في {time}",
+   "fr": "Réinitialisation à {time}",
+   "bn": "{time}-এ রিসেট হবে",
+   "pt-BR": "Reinicia às {time}",
+   "ru": "Сброс в {time}",
+   "id": "Direset pukul {time}"
   },
   "Restart Amp to load the plugin.": {
    "zh-Hans": "重启 Amp 以加载插件。",
@@ -1859,17 +1892,6 @@
    "pt-BR": "Óculos redondos",
    "ru": "Круглые очки",
    "id": "Kacamata bulat"
-  },
-  "Santa hat": {
-   "zh-Hans": "圣诞帽",
-   "hi": "सांता टोपी",
-   "es": "Gorro de Papá Noel",
-   "ar": "قبعة بابا نويل",
-   "fr": "Bonnet de Père Noël",
-   "bn": "সান্তা টুপি",
-   "pt-BR": "Gorro de Papai Noel",
-   "ru": "Шапка Санты",
-   "id": "Topi Sinterklas"
   },
   "Saturday": {
    "zh-Hans": "星期六",
@@ -1959,16 +1981,16 @@
    "ru": "Секретный ключ",
    "id": "Kunci rahasia"
   },
-  "Send Mochi to the desktop": {
-   "zh-Hans": "把 Mochi 送到桌面",
-   "hi": "Mochi को डेस्कटॉप पर भेजें",
-   "es": "Enviar a Mochi al escritorio",
-   "ar": "إرسال Mochi إلى سطح المكتب",
-   "fr": "Envoyer Mochi sur le bureau",
-   "bn": "Mochi-কে ডেস্কটপে পাঠান",
-   "pt-BR": "Enviar o Mochi para a área de trabalho",
-   "ru": "Отправить Mochi на рабочий стол",
-   "id": "Kirim Mochi ke desktop"
+  "Send Lumo to the desktop": {
+   "zh-Hans": "把 Lumo 送到桌面",
+   "hi": "Lumo को डेस्कटॉप पर भेजें",
+   "es": "Enviar a Lumo al escritorio",
+   "ar": "إرسال Lumo إلى سطح المكتب",
+   "fr": "Envoyer Lumo sur le bureau",
+   "bn": "Lumo-কে ডেস্কটপে পাঠান",
+   "pt-BR": "Enviar o Lumo para a área de trabalho",
+   "ru": "Отправить Lumo на рабочий стол",
+   "id": "Kirim Lumo ke desktop"
   },
   "Send the message": {
    "zh-Hans": "发送消息",
@@ -1991,6 +2013,17 @@
    "pt-BR": "O envio por e-mail não está nesta versão.",
    "ru": "Отправки по почте в этой версии нет.",
    "id": "Mengirim lewat email belum ada di versi ini."
+  },
+  "Sending replaces this message and everything after it.": {
+   "zh-Hans": "发送后将替换这条消息及其后的所有内容。",
+   "hi": "भेजने पर यह संदेश और इसके बाद का सब कुछ बदल जाएगा।",
+   "es": "Al enviar, se reemplazan este mensaje y todo lo que le sigue.",
+   "ar": "عند الإرسال تُستبدل هذه الرسالة وكل ما بعدها.",
+   "fr": "L'envoi remplace ce message et tout ce qui le suit.",
+   "bn": "পাঠালে এই বার্তা এবং এর পরের সবকিছু প্রতিস্থাপিত হবে।",
+   "pt-BR": "Ao enviar, esta mensagem e tudo o que vem depois dela são substituídos.",
+   "ru": "При отправке это сообщение и всё, что после него, будут заменены.",
+   "id": "Mengirim akan mengganti pesan ini dan semua yang ada setelahnya."
   },
   "Services": {
    "zh-Hans": "服务",
@@ -2080,38 +2113,60 @@
    "ru": "Показать в папке",
    "id": "Tampilkan di folder"
   },
-  "Show other coding agents in the island. Coucou adds its entries to each agent's own config: you see the exact change and where the backup goes before anything is written, and uninstalling removes only what Coucou added.": {
-   "zh-Hans": "在岛中显示其他编程代理。Coucou 会把自己的条目添加到各代理的配置中：写入之前，你会看到确切的改动和备份位置；卸载只会移除 Coucou 添加的内容。",
-   "hi": "दूसरे कोडिंग एजेंटों को आइलैंड में दिखाएँ। Coucou हर एजेंट की अपनी कॉन्फ़िग में अपनी प्रविष्टियाँ जोड़ता है: कुछ भी लिखे जाने से पहले आप सटीक बदलाव और बैकअप की जगह देखते हैं, और अनइंस्टॉल करने पर केवल वही हटता है जो Coucou ने जोड़ा था।",
-   "es": "Muestra otros agentes de programación en la isla. Coucou añade sus entradas a la configuración de cada agente: ves el cambio exacto y dónde va la copia de seguridad antes de que se escriba nada, y al desinstalar solo se quita lo que añadió Coucou.",
-   "ar": "اعرض وكلاء البرمجة الآخرين في الشريط. يضيف Coucou إدخالاته إلى إعدادات كل وكيل: ترى التغيير بالضبط ومكان النسخة الاحتياطية قبل كتابة أي شيء، وإلغاء التثبيت يزيل فقط ما أضافه Coucou.",
-   "fr": "Affiche les autres agents de code dans l'île. Coucou ajoute ses entrées à la configuration de chaque agent : tu vois la modification exacte et l'emplacement de la sauvegarde avant que quoi que ce soit soit écrit, et la désinstallation ne retire que ce que Coucou a ajouté.",
-   "bn": "অন্যান্য কোডিং এজেন্টকে আইল্যান্ডে দেখান। Coucou প্রতিটি এজেন্টের নিজস্ব কনফিগে তার এন্ট্রি যোগ করে: কিছু লেখার আগে আপনি সঠিক পরিবর্তন এবং ব্যাকআপ কোথায় যাবে তা দেখতে পান, আর আনইনস্টল করলে শুধু Coucou যা যোগ করেছিল তা-ই সরানো হয়।",
-   "pt-BR": "Mostre outros agentes de programação na ilha. O Coucou adiciona as próprias entradas à configuração de cada agente: você vê a alteração exata e para onde vai o backup antes de qualquer gravação, e desinstalar remove só o que o Coucou adicionou.",
-   "ru": "Показывайте другие агенты для кода в острове. Coucou добавляет свои записи в конфигурацию каждого агента: до любой записи вы видите точное изменение и куда пойдёт резервная копия, а удаление убирает только то, что добавил Coucou.",
-   "id": "Tampilkan agen coding lain di pulau. Coucou menambahkan entrinya ke konfigurasi masing-masing agen: Anda melihat perubahan persisnya dan lokasi cadangan sebelum apa pun ditulis, dan mencopot pemasangan hanya menghapus yang ditambahkan Coucou."
+  "Show other coding agents in the island. Lumo adds its entries to each agent's own config: you see the exact change and where the backup goes before anything is written, and uninstalling removes only what Lumo added.": {
+   "zh-Hans": "在岛中显示其他编程代理。Lumo 会把自己的条目添加到各代理的配置中：写入之前，你会看到确切的改动和备份位置；卸载只会移除 Lumo 添加的内容。",
+   "hi": "दूसरे कोडिंग एजेंटों को आइलैंड में दिखाएँ। Lumo हर एजेंट की अपनी कॉन्फ़िग में अपनी प्रविष्टियाँ जोड़ता है: कुछ भी लिखे जाने से पहले आप सटीक बदलाव और बैकअप की जगह देखते हैं, और अनइंस्टॉल करने पर केवल वही हटता है जो Lumo ने जोड़ा था।",
+   "es": "Muestra otros agentes de programación en la isla. Lumo añade sus entradas a la configuración de cada agente: ves el cambio exacto y dónde va la copia de seguridad antes de que se escriba nada, y al desinstalar solo se quita lo que añadió Lumo.",
+   "ar": "اعرض وكلاء البرمجة الآخرين في الشريط. يضيف Lumo إدخالاته إلى إعدادات كل وكيل: ترى التغيير بالضبط ومكان النسخة الاحتياطية قبل كتابة أي شيء، وإلغاء التثبيت يزيل فقط ما أضافه Lumo.",
+   "fr": "Affiche les autres agents de code dans l'île. Lumo ajoute ses entrées à la configuration de chaque agent : tu vois la modification exacte et l'emplacement de la sauvegarde avant que quoi que ce soit soit écrit, et la désinstallation ne retire que ce que Lumo a ajouté.",
+   "bn": "অন্যান্য কোডিং এজেন্টকে আইল্যান্ডে দেখান। Lumo প্রতিটি এজেন্টের নিজস্ব কনফিগে তার এন্ট্রি যোগ করে: কিছু লেখার আগে আপনি সঠিক পরিবর্তন এবং ব্যাকআপ কোথায় যাবে তা দেখতে পান, আর আনইনস্টল করলে শুধু Lumo যা যোগ করেছিল তা-ই সরানো হয়।",
+   "pt-BR": "Mostre outros agentes de programação na ilha. O Lumo adiciona as próprias entradas à configuração de cada agente: você vê a alteração exata e para onde vai o backup antes de qualquer gravação, e desinstalar remove só o que o Lumo adicionou.",
+   "ru": "Показывайте другие агенты для кода в острове. Lumo добавляет свои записи в конфигурацию каждого агента: до любой записи вы видите точное изменение и куда пойдёт резервная копия, а удаление убирает только то, что добавил Lumo.",
+   "id": "Tampilkan agen coding lain di pulau. Lumo menambahkan entrinya ke konfigurasi masing-masing agen: Anda melihat perubahan persisnya dan lokasi cadangan sebelum apa pun ditulis, dan mencopot pemasangan hanya menghapus yang ditambahkan Lumo."
   },
-  "Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Coucou adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.": {
-   "zh-Hans": "在岛的顶栏显示你的 Claude 套餐用量（5 小时和每周限额）。Coucou 会在 ~/.claude/settings.json 中添加一个状态栏中继。如果你已有状态栏，它会照常工作。仅限 Pro 和 Max 套餐。",
-   "hi": "आइलैंड के हेडर में आपके Claude प्लान का उपयोग (5 घंटे और साप्ताहिक सीमा) दिखाता है। Coucou ~/.claude/settings.json में एक स्टेटस लाइन रिले जोड़ता है। अगर आपके पास पहले से स्टेटस लाइन है, तो वह पहले की तरह चलती रहेगी। केवल Pro और Max प्लान।",
-   "es": "Muestra el uso de tu plan de Claude (límites de 5 horas y semanal) en la cabecera de la isla. Coucou añade un relay de línea de estado en ~/.claude/settings.json. Si ya tienes una línea de estado, sigue funcionando como antes. Solo planes Pro y Max.",
-   "ar": "يعرض استخدام خطة Claude (حدّا الخمس ساعات والأسبوع) في رأس الشريط. يضيف Coucou مُرحِّلًا لسطر الحالة في ~/.claude/settings.json. إن كان لديك سطر حالة فسيستمر في العمل كما كان. لخطتَي Pro وMax فقط.",
-   "fr": "Affiche l'utilisation de ton forfait Claude (limites sur 5 heures et à la semaine) dans l'en-tête de l'île. Coucou ajoute un relais de ligne d'état dans ~/.claude/settings.json. Si tu as déjà une ligne d'état, elle continue de fonctionner comme avant. Forfaits Pro et Max uniquement.",
-   "bn": "আইল্যান্ডের হেডারে আপনার Claude প্ল্যানের ব্যবহার (৫ ঘণ্টা ও সাপ্তাহিক সীমা) দেখায়। Coucou ~/.claude/settings.json-এ একটি স্ট্যাটাস লাইন রিলে যোগ করে। আপনার আগে থেকে স্ট্যাটাস লাইন থাকলে সেটি আগের মতোই চলবে। শুধু Pro ও Max প্ল্যান।",
-   "pt-BR": "Mostra o uso do seu plano Claude (limites de 5 horas e semanal) no cabeçalho da ilha. O Coucou adiciona um relay de linha de status em ~/.claude/settings.json. Se você já tem uma linha de status, ela continua funcionando como antes. Apenas planos Pro e Max.",
-   "ru": "Показывает использование тарифа Claude (лимиты на 5 часов и на неделю) в заголовке острова. Coucou добавляет ретранслятор строки состояния в ~/.claude/settings.json. Если у вас уже есть строка состояния, она работает как прежде. Только тарифы Pro и Max.",
-   "id": "Menampilkan pemakaian paket Claude Anda (batas 5 jam dan mingguan) di header pulau. Coucou menambahkan relay baris status di ~/.claude/settings.json. Jika Anda sudah punya baris status, baris itu tetap berjalan seperti biasa. Khusus paket Pro dan Max."
+  "Show remaining usage in the chat": {
+   "zh-Hans": "在聊天中显示剩余用量",
+   "hi": "चैट में बचा हुआ उपयोग दिखाएं",
+   "es": "Mostrar el uso restante en el chat",
+   "ar": "إظهار الاستخدام المتبقي في الدردشة",
+   "fr": "Afficher l'utilisation restante dans le chat",
+   "bn": "চ্যাটে বাকি ব্যবহার দেখান",
+   "pt-BR": "Mostrar o uso restante no chat",
+   "ru": "Показывать оставшийся лимит в чате",
+   "id": "Tampilkan sisa penggunaan di obrolan"
   },
-  "Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Coucou asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT.": {
-   "zh-Hans": "在岛的顶栏显示你的 Codex 套餐用量（每周限额和剩余的免费重置次数）。标签显示时，Coucou 会询问 Codex CLI（codex app-server），不会安装任何东西。Codex 必须已用 ChatGPT 登录。",
-   "hi": "आइलैंड के हेडर में आपके Codex प्लान का उपयोग (साप्ताहिक सीमा और बचे मुफ़्त रीसेट) दिखाता है। टैब दिखने पर Coucou Codex CLI (codex app-server) से पूछता है; कुछ भी इंस्टॉल नहीं होता। Codex में ChatGPT से साइन इन होना ज़रूरी है।",
-   "es": "Muestra el uso de tu plan de Codex (límite semanal y reinicios gratuitos restantes) en la cabecera de la isla. Coucou consulta a la CLI de Codex (codex app-server) cuando aparece la pestaña; no se instala nada. Codex debe tener la sesión iniciada con ChatGPT.",
-   "ar": "يعرض استخدام خطة Codex (الحد الأسبوعي وإعادات التعيين المجانية المتبقية) في رأس الشريط. يسأل Coucou واجهة Codex CLI (codex app-server) عند ظهور التبويب، ولا يُثبَّت أي شيء. يجب تسجيل الدخول إلى Codex بحساب ChatGPT.",
-   "fr": "Affiche l'utilisation de ton forfait Codex (limite hebdomadaire et réinitialisations gratuites restantes) dans l'en-tête de l'île. Coucou interroge la CLI Codex (codex app-server) quand l'onglet s'affiche ; rien n'est installé. Codex doit être connecté avec ChatGPT.",
-   "bn": "আইল্যান্ডের হেডারে আপনার Codex প্ল্যানের ব্যবহার (সাপ্তাহিক সীমা ও বাকি ফ্রি রিসেট) দেখায়। ট্যাব দেখা গেলে Coucou Codex CLI (codex app-server)-কে জিজ্ঞেস করে; কিছুই ইনস্টল হয় না। Codex-এ ChatGPT দিয়ে সাইন ইন থাকতে হবে।",
-   "pt-BR": "Mostra o uso do seu plano Codex (limite semanal e redefinições grátis restantes) no cabeçalho da ilha. O Coucou consulta a CLI do Codex (codex app-server) quando a aba aparece; nada é instalado. O Codex precisa estar conectado com o ChatGPT.",
-   "ru": "Показывает использование тарифа Codex (недельный лимит и оставшиеся бесплатные сбросы) в заголовке острова. Coucou спрашивает Codex CLI (codex app-server), когда видна вкладка; ничего не устанавливается. В Codex нужно войти через ChatGPT.",
-   "id": "Menampilkan pemakaian paket Codex Anda (batas mingguan dan sisa reset gratis) di header pulau. Coucou menanyakan Codex CLI (codex app-server) saat tab tampil; tidak ada yang dipasang. Codex harus masuk dengan ChatGPT."
+  "Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
+   "zh-Hans": "在聊天框上方模型名称旁边用一小行显示当前提供商还剩多少：Claude Code 显示你的 Claude 计划的 5 小时和每周限额（需要 {path} 中的中继），Anthropic 和 OpenAI 显示它们随每次回答返回的速率限制，OpenRouter 显示你的密钥额度（在打开聊天时和每次回答后向 OpenRouter 查询）。Google 和本地模型不显示任何内容。",
+   "hi": "चैट बॉक्स के ऊपर मॉडल के नाम के पास एक छोटी लाइन में दिखाता है कि इस्तेमाल हो रहे प्रोवाइडर में कितना बाकी है: Claude Code के लिए आपके Claude प्लान की 5 घंटे और साप्ताहिक सीमाएं ({path} वाले रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट लिमिट भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और हर जवाब के बाद OpenRouter से पूछे जाते हैं। Google या लोकल मॉडल के लिए कुछ नहीं दिखता।",
+   "es": "Muestra lo que le queda al proveedor en uso, en una pequeña línea junto al nombre del modelo encima del cuadro de chat: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y después de cada respuesta. No se muestra nada para Google ni para los modelos locales.",
+   "ar": "يعرض ما تبقى لدى المزوّد المستخدَم، في سطر صغير بجانب اسم النموذج فوق مربع الدردشة: حدود الـ 5 ساعات والحدود الأسبوعية لخطة Claude الخاصة بك مع Claude Code (مع المُرحِّل من {path})، وحدود المعدّل التي يعيدها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter الخاص بك، الذي يُطلب من OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
+   "fr": "Indique ce qu'il reste au fournisseur utilisé, dans une petite ligne à côté du nom du modèle au-dessus de la zone de chat : les limites sur 5 heures et à la semaine de votre forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de votre clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après chaque réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
+   "bn": "চ্যাট বক্সের উপরে মডেলের নামের পাশে একটি ছোট লাইনে দেখায় ব্যবহৃত প্রোভাইডারের কতটা বাকি আছে: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সাথে Anthropic ও OpenAI যে রেট লিমিট পাঠায়, এবং আপনার OpenRouter কী-এর ক্রেডিট, যা চ্যাট খোলার সময় ও প্রতিটি উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া হয়। Google বা লোকাল মডেলের জন্য কিছু দেখানো হয় না।",
+   "pt-BR": "Mostra o que resta ao provedor em uso, numa linha pequena ao lado do nome do modelo acima da caixa de chat: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e depois de cada resposta. Nada é mostrado para o Google nem para os modelos locais.",
+   "ru": "Показывает, сколько осталось у используемого провайдера, в небольшой строке рядом с названием модели над полем чата: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI возвращают с каждым ответом, и кредиты вашего ключа OpenRouter, которые запрашиваются у OpenRouter при открытии чата и после каждого ответа. Для Google и локальных моделей ничего не показывается.",
+   "id": "Menampilkan sisa milik penyedia yang dipakai, dalam satu baris kecil di samping nama model di atas kotak obrolan: batas 5 jam dan mingguan paket Claude Anda untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter Anda, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah setiap jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal."
+  },
+  "Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.": {
+   "zh-Hans": "在岛的顶栏显示你的 Claude 套餐用量（5 小时和每周限额）。Lumo 会在 ~/.claude/settings.json 中添加一个状态栏中继。如果你已有状态栏，它会照常工作。仅限 Pro 和 Max 套餐。",
+   "hi": "आइलैंड के हेडर में आपके Claude प्लान का उपयोग (5 घंटे और साप्ताहिक सीमा) दिखाता है। Lumo ~/.claude/settings.json में एक स्टेटस लाइन रिले जोड़ता है। अगर आपके पास पहले से स्टेटस लाइन है, तो वह पहले की तरह चलती रहेगी। केवल Pro और Max प्लान।",
+   "es": "Muestra el uso de tu plan de Claude (límites de 5 horas y semanal) en la cabecera de la isla. Lumo añade un relay de línea de estado en ~/.claude/settings.json. Si ya tienes una línea de estado, sigue funcionando como antes. Solo planes Pro y Max.",
+   "ar": "يعرض استخدام خطة Claude (حدّا الخمس ساعات والأسبوع) في رأس الشريط. يضيف Lumo مُرحِّلًا لسطر الحالة في ~/.claude/settings.json. إن كان لديك سطر حالة فسيستمر في العمل كما كان. لخطتَي Pro وMax فقط.",
+   "fr": "Affiche l'utilisation de ton forfait Claude (limites sur 5 heures et à la semaine) dans l'en-tête de l'île. Lumo ajoute un relais de ligne d'état dans ~/.claude/settings.json. Si tu as déjà une ligne d'état, elle continue de fonctionner comme avant. Forfaits Pro et Max uniquement.",
+   "bn": "আইল্যান্ডের হেডারে আপনার Claude প্ল্যানের ব্যবহার (৫ ঘণ্টা ও সাপ্তাহিক সীমা) দেখায়। Lumo ~/.claude/settings.json-এ একটি স্ট্যাটাস লাইন রিলে যোগ করে। আপনার আগে থেকে স্ট্যাটাস লাইন থাকলে সেটি আগের মতোই চলবে। শুধু Pro ও Max প্ল্যান।",
+   "pt-BR": "Mostra o uso do seu plano Claude (limites de 5 horas e semanal) no cabeçalho da ilha. O Lumo adiciona um relay de linha de status em ~/.claude/settings.json. Se você já tem uma linha de status, ela continua funcionando como antes. Apenas planos Pro e Max.",
+   "ru": "Показывает использование тарифа Claude (лимиты на 5 часов и на неделю) в заголовке острова. Lumo добавляет ретранслятор строки состояния в ~/.claude/settings.json. Если у вас уже есть строка состояния, она работает как прежде. Только тарифы Pro и Max.",
+   "id": "Menampilkan pemakaian paket Claude Anda (batas 5 jam dan mingguan) di header pulau. Lumo menambahkan relay baris status di ~/.claude/settings.json. Jika Anda sudah punya baris status, baris itu tetap berjalan seperti biasa. Khusus paket Pro dan Max."
+  },
+  "Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Lumo asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT.": {
+   "zh-Hans": "在岛的顶栏显示你的 Codex 套餐用量（每周限额和剩余的免费重置次数）。标签显示时，Lumo 会询问 Codex CLI（codex app-server），不会安装任何东西。Codex 必须已用 ChatGPT 登录。",
+   "hi": "आइलैंड के हेडर में आपके Codex प्लान का उपयोग (साप्ताहिक सीमा और बचे मुफ़्त रीसेट) दिखाता है। टैब दिखने पर Lumo Codex CLI (codex app-server) से पूछता है; कुछ भी इंस्टॉल नहीं होता। Codex में ChatGPT से साइन इन होना ज़रूरी है।",
+   "es": "Muestra el uso de tu plan de Codex (límite semanal y reinicios gratuitos restantes) en la cabecera de la isla. Lumo consulta a la CLI de Codex (codex app-server) cuando aparece la pestaña; no se instala nada. Codex debe tener la sesión iniciada con ChatGPT.",
+   "ar": "يعرض استخدام خطة Codex (الحد الأسبوعي وإعادات التعيين المجانية المتبقية) في رأس الشريط. يسأل Lumo واجهة Codex CLI (codex app-server) عند ظهور التبويب، ولا يُثبَّت أي شيء. يجب تسجيل الدخول إلى Codex بحساب ChatGPT.",
+   "fr": "Affiche l'utilisation de ton forfait Codex (limite hebdomadaire et réinitialisations gratuites restantes) dans l'en-tête de l'île. Lumo interroge la CLI Codex (codex app-server) quand l'onglet s'affiche ; rien n'est installé. Codex doit être connecté avec ChatGPT.",
+   "bn": "আইল্যান্ডের হেডারে আপনার Codex প্ল্যানের ব্যবহার (সাপ্তাহিক সীমা ও বাকি ফ্রি রিসেট) দেখায়। ট্যাব দেখা গেলে Lumo Codex CLI (codex app-server)-কে জিজ্ঞেস করে; কিছুই ইনস্টল হয় না। Codex-এ ChatGPT দিয়ে সাইন ইন থাকতে হবে।",
+   "pt-BR": "Mostra o uso do seu plano Codex (limite semanal e redefinições grátis restantes) no cabeçalho da ilha. O Lumo consulta a CLI do Codex (codex app-server) quando a aba aparece; nada é instalado. O Codex precisa estar conectado com o ChatGPT.",
+   "ru": "Показывает использование тарифа Codex (недельный лимит и оставшиеся бесплатные сбросы) в заголовке острова. Lumo спрашивает Codex CLI (codex app-server), когда видна вкладка; ничего не устанавливается. В Codex нужно войти через ChatGPT.",
+   "id": "Menampilkan pemakaian paket Codex Anda (batas mingguan dan sisa reset gratis) di header pulau. Lumo menanyakan Codex CLI (codex app-server) saat tab tampil; tidak ada yang dipasang. Codex harus masuk dengan ChatGPT."
   },
   "Start a new Antigravity conversation to pick the hooks up.": {
    "zh-Hans": "开启新的 Antigravity 对话即可启用 hooks。",
@@ -2168,6 +2223,28 @@
    "ru": "Начать новый чат",
    "id": "Mulai obrolan baru"
   },
+  "Stop": {
+   "zh-Hans": "停止",
+   "hi": "रोकें",
+   "es": "Detener",
+   "ar": "إيقاف",
+   "fr": "Arrêter",
+   "bn": "থামান",
+   "pt-BR": "Parar",
+   "ru": "Остановить",
+   "id": "Hentikan"
+  },
+  "Stopped": {
+   "zh-Hans": "已停止",
+   "hi": "रोका गया",
+   "es": "Detenido",
+   "ar": "تم الإيقاف",
+   "fr": "Arrêté",
+   "bn": "থামানো হয়েছে",
+   "pt-BR": "Interrompido",
+   "ru": "Остановлено",
+   "id": "Dihentikan"
+  },
   "Sunday": {
    "zh-Hans": "星期日",
    "hi": "रविवार",
@@ -2178,17 +2255,6 @@
    "pt-BR": "Domingo",
    "ru": "Воскресенье",
    "id": "Minggu"
-  },
-  "Sunglasses": {
-   "zh-Hans": "墨镜",
-   "hi": "धूप का चश्मा",
-   "es": "Gafas de sol",
-   "ar": "نظارة شمسية",
-   "fr": "Lunettes de soleil",
-   "bn": "সানগ্লাস",
-   "pt-BR": "Óculos de sol",
-   "ru": "Солнечные очки",
-   "id": "Kacamata hitam"
   },
   "Switch provider or model": {
    "zh-Hans": "切换服务商或模型",
@@ -2278,16 +2344,16 @@
    "ru": "Ретранслятор ещё не установлен.",
    "id": "Relay belum terpasang."
   },
-  "The relay isn't installed yet. Restart Coucou.": {
-   "zh-Hans": "中继尚未安装。请重启 Coucou。",
-   "hi": "रिले अभी इंस्टॉल नहीं है। Coucou को फिर से शुरू करें।",
-   "es": "El relay aún no está instalado. Reinicia Coucou.",
-   "ar": "المُرحِّل غير مثبَّت بعد. أعد تشغيل Coucou.",
-   "fr": "Le relais n'est pas encore installé. Redémarre Coucou.",
-   "bn": "রিলে এখনো ইনস্টল হয়নি। Coucou আবার চালু করুন।",
-   "pt-BR": "O relay ainda não está instalado. Reinicie o Coucou.",
-   "ru": "Ретранслятор ещё не установлен. Перезапустите Coucou.",
-   "id": "Relay belum terpasang. Mulai ulang Coucou."
+  "The relay isn't installed yet. Restart Lumo.": {
+   "zh-Hans": "中继尚未安装。请重启 Lumo。",
+   "hi": "रिले अभी इंस्टॉल नहीं है। Lumo को फिर से शुरू करें।",
+   "es": "El relay aún no está instalado. Reinicia Lumo.",
+   "ar": "المُرحِّل غير مثبَّت بعد. أعد تشغيل Lumo.",
+   "fr": "Le relais n'est pas encore installé. Redémarre Lumo.",
+   "bn": "রিলে এখনো ইনস্টল হয়নি। Lumo আবার চালু করুন।",
+   "pt-BR": "O relay ainda não está instalado. Reinicie o Lumo.",
+   "ru": "Ретранслятор ещё не установлен. Перезапустите Lumo.",
+   "id": "Relay belum terpasang. Mulai ulang Lumo."
   },
   "The server refused the key. Check it, then connect again.": {
    "zh-Hans": "服务器拒绝了该密钥。请检查后重新连接。",
@@ -2344,6 +2410,17 @@
    "ru": "Этот агент использует плагин, а не записи хуков.",
    "id": "Agen ini memakai plugin, bukan entri hook."
   },
+  "This file is too big to paste. Attach it with the paperclip instead.": {
+   "zh-Hans": "此文件太大，无法粘贴。请改用回形针附加。",
+   "hi": "यह फ़ाइल चिपकाने के लिए बहुत बड़ी है। इसके बजाय पेपरक्लिप से संलग्न करें।",
+   "es": "Este archivo es demasiado grande para pegarlo. Adjúntalo con el clip.",
+   "ar": "هذا الملف أكبر من أن يُلصق. أرفقه بمشبك الورق بدلًا من ذلك.",
+   "fr": "Ce fichier est trop gros pour être collé. Joignez-le plutôt avec le trombone.",
+   "bn": "এই ফাইলটি পেস্ট করার জন্য খুব বড়। বরং পেপারক্লিপ দিয়ে সংযুক্ত করুন।",
+   "pt-BR": "Este arquivo é grande demais para colar. Anexe-o com o clipe.",
+   "ru": "Файл слишком большой для вставки. Прикрепите его скрепкой.",
+   "id": "File ini terlalu besar untuk ditempel. Lampirkan dengan tombol klip."
+  },
   "This is exactly what changes for {name}. Nothing else is touched.": {
    "zh-Hans": "这正是 {name} 将发生的改动。其他内容不会被触碰。",
    "hi": "{name} के लिए ठीक यही बदलेगा। और कुछ नहीं छुआ जाता।",
@@ -2366,16 +2443,16 @@
    "ru": "Вот что именно изменится в вашем settings.json. Ваши собственные хуки не затрагиваются.",
    "id": "Inilah persisnya yang akan berubah di settings.json Anda. Hooks milik Anda tidak disentuh."
   },
-  "This is exactly what will change: only the status line. If you already have one it keeps working, Coucou's relay runs it for you.": {
-   "zh-Hans": "这正是将发生的改动：只涉及状态栏。如果你已有状态栏，它会照常工作，由 Coucou 的中继替你运行。",
-   "hi": "ठीक यही बदलेगा: केवल स्टेटस लाइन। अगर आपके पास पहले से एक है तो वह चलती रहेगी, Coucou का रिले उसे आपके लिए चलाता है।",
-   "es": "Esto es exactamente lo que cambiará: solo la línea de estado. Si ya tienes una, sigue funcionando: el relay de Coucou la ejecuta por ti.",
-   "ar": "هذا بالضبط ما سيتغيّر: سطر الحالة فقط. إن كان لديك سطر حالة فسيستمر في العمل، إذ يشغّله مُرحِّل Coucou نيابةً عنك.",
-   "fr": "Voici exactement ce qui va changer : seulement la ligne d'état. Si tu en as déjà une, elle continue de fonctionner, le relais de Coucou la lance pour toi.",
-   "bn": "ঠিক এটাই বদলাবে: শুধু স্ট্যাটাস লাইন। আপনার আগে থেকে একটি থাকলে সেটি চলতেই থাকবে, Coucou-র রিলে আপনার হয়ে সেটি চালায়।",
-   "pt-BR": "Isto é exatamente o que vai mudar: apenas a linha de status. Se você já tem uma, ela continua funcionando: o relay do Coucou a executa para você.",
-   "ru": "Вот что именно изменится: только строка состояния. Если она у вас уже есть, она продолжит работать — её запускает ретранслятор Coucou.",
-   "id": "Inilah persisnya yang akan berubah: hanya baris status. Jika Anda sudah punya, baris itu tetap berjalan, relay Coucou menjalankannya untuk Anda."
+  "This is exactly what will change: only the status line. If you already have one it keeps working, Lumo's relay runs it for you.": {
+   "zh-Hans": "这正是将发生的改动：只涉及状态栏。如果你已有状态栏，它会照常工作，由 Lumo 的中继替你运行。",
+   "hi": "ठीक यही बदलेगा: केवल स्टेटस लाइन। अगर आपके पास पहले से एक है तो वह चलती रहेगी, Lumo का रिले उसे आपके लिए चलाता है।",
+   "es": "Esto es exactamente lo que cambiará: solo la línea de estado. Si ya tienes una, sigue funcionando: el relay de Lumo la ejecuta por ti.",
+   "ar": "هذا بالضبط ما سيتغيّر: سطر الحالة فقط. إن كان لديك سطر حالة فسيستمر في العمل، إذ يشغّله مُرحِّل Lumo نيابةً عنك.",
+   "fr": "Voici exactement ce qui va changer : seulement la ligne d'état. Si tu en as déjà une, elle continue de fonctionner, le relais de Lumo la lance pour toi.",
+   "bn": "ঠিক এটাই বদলাবে: শুধু স্ট্যাটাস লাইন। আপনার আগে থেকে একটি থাকলে সেটি চলতেই থাকবে, Lumo-র রিলে আপনার হয়ে সেটি চালায়।",
+   "pt-BR": "Isto é exatamente o que vai mudar: apenas a linha de status. Se você já tem uma, ela continua funcionando: o relay do Lumo a executa para você.",
+   "ru": "Вот что именно изменится: только строка состояния. Если она у вас уже есть, она продолжит работать — её запускает ретранслятор Lumo.",
+   "id": "Inilah persisnya yang akan berubah: hanya baris status. Jika Anda sudah punya, baris itu tetap berjalan, relay Lumo menjalankannya untuk Anda."
   },
   "This puts your previous status line back, or removes the entry if there was none.": {
    "zh-Hans": "这会恢复你之前的状态栏；如果之前没有，则移除该条目。",
@@ -2388,27 +2465,27 @@
    "ru": "Возвращается ваша прежняя строка состояния, а если её не было — запись удаляется.",
    "id": "Ini mengembalikan baris status Anda sebelumnya, atau menghapus entri jika sebelumnya tidak ada."
   },
-  "This removes Coucou's entries only. Everything else stays.": {
-   "zh-Hans": "这只会移除 Coucou 的条目，其余内容保持不变。",
-   "hi": "यह केवल Coucou की प्रविष्टियाँ हटाता है। बाकी सब वैसा ही रहता है।",
-   "es": "Esto solo quita las entradas de Coucou. Todo lo demás se queda.",
-   "ar": "يزيل هذا إدخالات Coucou فقط. يبقى كل شيء آخر كما هو.",
-   "fr": "Seules les entrées de Coucou sont retirées. Tout le reste est conservé.",
-   "bn": "এটি শুধু Coucou-র এন্ট্রি সরায়। বাকি সব থেকে যায়।",
-   "pt-BR": "Isto remove apenas as entradas do Coucou. O resto continua.",
-   "ru": "Удаляются только записи Coucou. Всё остальное остаётся.",
-   "id": "Ini hanya menghapus entri Coucou. Yang lain tetap ada."
+  "This removes Lumo's entries only. Everything else stays.": {
+   "zh-Hans": "这只会移除 Lumo 的条目，其余内容保持不变。",
+   "hi": "यह केवल Lumo की प्रविष्टियाँ हटाता है। बाकी सब वैसा ही रहता है।",
+   "es": "Esto solo quita las entradas de Lumo. Todo lo demás se queda.",
+   "ar": "يزيل هذا إدخالات Lumo فقط. يبقى كل شيء آخر كما هو.",
+   "fr": "Seules les entrées de Lumo sont retirées. Tout le reste est conservé.",
+   "bn": "এটি শুধু Lumo-র এন্ট্রি সরায়। বাকি সব থেকে যায়।",
+   "pt-BR": "Isto remove apenas as entradas do Lumo. O resto continua.",
+   "ru": "Удаляются только записи Lumo. Всё остальное остаётся.",
+   "id": "Ini hanya menghapus entri Lumo. Yang lain tetap ada."
   },
-  "This removes Coucou's entries only. Your own hooks are left untouched.": {
-   "zh-Hans": "这只会移除 Coucou 的条目。你自己的 hooks 不会被触碰。",
-   "hi": "यह केवल Coucou की प्रविष्टियाँ हटाता है। आपके अपने hooks नहीं छुए जाते।",
-   "es": "Esto solo quita las entradas de Coucou. Tus propios hooks no se tocan.",
-   "ar": "يزيل هذا إدخالات Coucou فقط. لن تُمسّ hooks الخاصة بك.",
-   "fr": "Seules les entrées de Coucou sont retirées. Tes propres hooks ne sont pas touchés.",
-   "bn": "এটি শুধু Coucou-র এন্ট্রি সরায়। আপনার নিজের hooks-এ হাত দেওয়া হয় না।",
-   "pt-BR": "Isto remove apenas as entradas do Coucou. Seus próprios hooks não são alterados.",
-   "ru": "Удаляются только записи Coucou. Ваши собственные хуки не затрагиваются.",
-   "id": "Ini hanya menghapus entri Coucou. Hooks milik Anda tidak disentuh."
+  "This removes Lumo's entries only. Your own hooks are left untouched.": {
+   "zh-Hans": "这只会移除 Lumo 的条目。你自己的 hooks 不会被触碰。",
+   "hi": "यह केवल Lumo की प्रविष्टियाँ हटाता है। आपके अपने hooks नहीं छुए जाते।",
+   "es": "Esto solo quita las entradas de Lumo. Tus propios hooks no se tocan.",
+   "ar": "يزيل هذا إدخالات Lumo فقط. لن تُمسّ hooks الخاصة بك.",
+   "fr": "Seules les entrées de Lumo sont retirées. Tes propres hooks ne sont pas touchés.",
+   "bn": "এটি শুধু Lumo-র এন্ট্রি সরায়। আপনার নিজের hooks-এ হাত দেওয়া হয় না।",
+   "pt-BR": "Isto remove apenas as entradas do Lumo. Seus próprios hooks não são alterados.",
+   "ru": "Удаляются только записи Lumo. Ваши собственные хуки не затрагиваются.",
+   "id": "Ini hanya menghapus entri Lumo. Hooks milik Anda tidak disentuh."
   },
   "Thursday": {
    "zh-Hans": "星期四",
@@ -2453,6 +2530,17 @@
    "pt-BR": "Falta ao token o escopo necessário",
    "ru": "У токена нет нужной области доступа",
    "id": "Token tidak memiliki cakupan yang diperlukan"
+  },
+  "Tokens left: {n}": {
+   "zh-Hans": "剩余 token：{n}",
+   "hi": "बाकी टोकन: {n}",
+   "es": "Tokens restantes: {n}",
+   "ar": "الرموز المتبقية: {n}",
+   "fr": "Jetons restants : {n}",
+   "bn": "বাকি টোকেন: {n}",
+   "pt-BR": "Tokens restantes: {n}",
+   "ru": "Осталось токенов: {n}",
+   "id": "Sisa token: {n}"
   },
   "Total stars": {
    "zh-Hans": "星标总数",
@@ -2597,6 +2685,17 @@
    "ru": "Используется дважды",
    "id": "Dipakai dua kali"
   },
+  "Uses your Claude plan. No key needed.": {
+   "zh-Hans": "使用你的 Claude 订阅，无需密钥。",
+   "hi": "आपके Claude प्लान का उपयोग करता है। कोई कुंजी नहीं चाहिए।",
+   "es": "Usa tu plan de Claude. No hace falta clave.",
+   "ar": "يستخدم خطة Claude الخاصة بك. لا حاجة إلى مفتاح.",
+   "fr": "Utilise ton abonnement Claude. Aucune clé nécessaire.",
+   "bn": "আপনার Claude প্ল্যান ব্যবহার করে। কোনো কী লাগবে না।",
+   "pt-BR": "Usa seu plano do Claude. Não precisa de chave.",
+   "ru": "Работает по вашему тарифу Claude. Ключ не нужен.",
+   "id": "Memakai paket Claude Anda. Tidak perlu kunci."
+  },
   "Wardrobe…": {
    "zh-Hans": "衣橱…",
    "hi": "अलमारी…",
@@ -2630,6 +2729,17 @@
    "ru": "Среда",
    "id": "Rabu"
   },
+  "When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message.": {
+   "zh-Hans": "开启后，你发送的每条消息都会附带文件资源管理器中打开的文件夹的路径及其内容列表（名称、大小、日期），就像你通过屏幕按钮选择了它一样。发送前它的标签会显示在聊天上方；点击 × 可让这条消息不附带它。",
+   "hi": "चालू होने पर, आपका भेजा हर संदेश फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर का पथ और उसमें मौजूद चीज़ों की सूची (नाम, आकार, तारीख़ें) साथ ले जाता है, मानो आपने उसे स्क्रीन बटन से चुना हो। भेजने से पहले उसका लेबल चैट के ऊपर दिखता है; उसका × उसे उस संदेश से हटा देता है।",
+   "es": "Si está activado, cada mensaje que envías lleva la ruta de la carpeta abierta en el Explorador de archivos y la lista de lo que contiene (nombres, tamaños, fechas), como si la eligieras con el botón de pantalla. Su etiqueta aparece sobre el chat antes de enviar; su × la quita de ese mensaje.",
+   "ar": "عند التفعيل، تحمل كل رسالة ترسلها مسار المجلد المفتوح في مستكشف الملفات وقائمة بما فيه (الأسماء والأحجام والتواريخ)، كأنك اخترته من زر الشاشة. تظهر بطاقته فوق المحادثة قبل الإرسال، وزر × يستبعده من تلك الرسالة.",
+   "fr": "Quand c'est activé, chaque message envoyé emporte le chemin du dossier ouvert dans l'Explorateur de fichiers et la liste de ce qu'il contient (noms, tailles, dates), comme si vous l'aviez choisi avec le bouton d'écran. Son étiquette s'affiche au-dessus du chat avant l'envoi ; son × le retire de ce message.",
+   "bn": "চালু থাকলে, আপনার পাঠানো প্রতিটি বার্তার সঙ্গে ফাইল এক্সপ্লোরারে খোলা ফোল্ডারের পাথ আর তার ভেতরের জিনিসের তালিকা (নাম, আকার, তারিখ) যায়, যেন আপনি স্ক্রিন বোতাম থেকে সেটি বেছে নিয়েছেন। পাঠানোর আগে চ্যাটের ওপরে এর লেবেল দেখা যায়; এর × সেটিকে ওই বার্তা থেকে বাদ দেয়।",
+   "pt-BR": "Quando ativado, cada mensagem que você envia leva o caminho da pasta aberta no Explorador de Arquivos e a lista do que há nela (nomes, tamanhos, datas), como se você a escolhesse pelo botão de tela. A etiqueta dela aparece acima do chat antes do envio; o × a tira dessa mensagem.",
+   "ru": "Если включено, каждое ваше сообщение несёт путь к папке, открытой в Проводнике, и список её содержимого (имена, размеры, даты), как если бы вы выбрали её кнопкой экрана. Её метка видна над чатом перед отправкой; × убирает её из этого сообщения.",
+   "id": "Jika aktif, setiap pesan yang Anda kirim membawa jalur folder yang terbuka di File Explorer beserta daftar isinya (nama, ukuran, tanggal), seolah Anda memilihnya dari tombol layar. Labelnya tampil di atas obrolan sebelum dikirim; tombol × mengecualikannya dari pesan itu."
+  },
   "Where you code": {
    "zh-Hans": "编程环境",
    "hi": "जहाँ आप कोड करते हैं",
@@ -2640,17 +2750,6 @@
    "pt-BR": "Onde você programa",
    "ru": "Где вы пишете код",
    "id": "Tempat Anda membuat kode"
-  },
-  "Witch hat": {
-   "zh-Hans": "女巫帽",
-   "hi": "चुड़ैल की टोपी",
-   "es": "Sombrero de bruja",
-   "ar": "قبعة ساحرة",
-   "fr": "Chapeau de sorcière",
-   "bn": "ডাইনির টুপি",
-   "pt-BR": "Chapéu de bruxa",
-   "ru": "Шляпа ведьмы",
-   "id": "Topi penyihir"
   },
   "Work from any app. Click a shortcut to change it, then press the new keys — Esc cancels, Backspace removes it.": {
    "zh-Hans": "在任何应用中都可使用。点击某个快捷键即可修改，然后按下新的按键 — Esc 取消，Backspace 删除。",
@@ -2707,16 +2806,16 @@
    "ru": "всё зелёное",
    "id": "semua hijau"
   },
-  "coucou-hook.exe is not in place yet. Restart Coucou; if it still fails, build it with `cargo build -p coucou-hook`.": {
-   "zh-Hans": "coucou-hook.exe 尚未就位。请重启 Coucou；如果仍然失败，请用 `cargo build -p coucou-hook` 构建它。",
-   "hi": "coucou-hook.exe अभी अपनी जगह पर नहीं है। Coucou फिर से शुरू करें; अगर फिर भी न हो, तो इसे `cargo build -p coucou-hook` से बनाएँ।",
-   "es": "coucou-hook.exe aún no está en su sitio. Reinicia Coucou; si sigue fallando, compílalo con `cargo build -p coucou-hook`.",
-   "ar": "coucou-hook.exe ليس في مكانه بعد. أعد تشغيل Coucou؛ وإن استمر الفشل فابنِه بالأمر `cargo build -p coucou-hook`.",
-   "fr": "coucou-hook.exe n'est pas encore en place. Redémarre Coucou ; si ça échoue encore, compile-le avec `cargo build -p coucou-hook`.",
-   "bn": "coucou-hook.exe এখনো জায়গামতো নেই। Coucou আবার চালু করুন; তবুও না হলে `cargo build -p coucou-hook` দিয়ে এটি বানান।",
-   "pt-BR": "O coucou-hook.exe ainda não está no lugar. Reinicie o Coucou; se continuar falhando, compile-o com `cargo build -p coucou-hook`.",
-   "ru": "coucou-hook.exe ещё не на месте. Перезапустите Coucou; если не поможет, соберите его командой `cargo build -p coucou-hook`.",
-   "id": "coucou-hook.exe belum ada di tempatnya. Mulai ulang Coucou; jika masih gagal, build dengan `cargo build -p coucou-hook`."
+  "coucou-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`.": {
+   "zh-Hans": "coucou-hook.exe 尚未就位。请重启 Lumo；如果仍然失败，请用 `cargo build -p coucou-hook` 构建它。",
+   "hi": "coucou-hook.exe अभी अपनी जगह पर नहीं है। Lumo फिर से शुरू करें; अगर फिर भी न हो, तो इसे `cargo build -p coucou-hook` से बनाएँ।",
+   "es": "coucou-hook.exe aún no está en su sitio. Reinicia Lumo; si sigue fallando, compílalo con `cargo build -p coucou-hook`.",
+   "ar": "coucou-hook.exe ليس في مكانه بعد. أعد تشغيل Lumo؛ وإن استمر الفشل فابنِه بالأمر `cargo build -p coucou-hook`.",
+   "fr": "coucou-hook.exe n'est pas encore en place. Redémarre Lumo ; si ça échoue encore, compile-le avec `cargo build -p coucou-hook`.",
+   "bn": "coucou-hook.exe এখনো জায়গামতো নেই। Lumo আবার চালু করুন; তবুও না হলে `cargo build -p coucou-hook` দিয়ে এটি বানান।",
+   "pt-BR": "O coucou-hook.exe ainda não está no lugar. Reinicie o Lumo; se continuar falhando, compile-o com `cargo build -p coucou-hook`.",
+   "ru": "coucou-hook.exe ещё не на месте. Перезапустите Lumo; если не поможет, соберите его командой `cargo build -p coucou-hook`.",
+   "id": "coucou-hook.exe belum ada di tempatnya. Mulai ulang Lumo; jika masih gagal, build dengan `cargo build -p coucou-hook`."
   },
   "failing": {
    "zh-Hans": "失败",
@@ -2850,16 +2949,16 @@
    "ru": "секунд после ухода с острова",
    "id": "detik setelah Anda meninggalkan pulau"
   },
-  "settings.json: {what} has an unexpected type — Coucou has not touched it.": {
-   "zh-Hans": "settings.json：{what} 的类型不符合预期 — Coucou 没有修改它。",
-   "hi": "settings.json: {what} का प्रकार अपेक्षित नहीं है — Coucou ने इसे नहीं छुआ।",
-   "es": "settings.json: {what} tiene un tipo inesperado — Coucou no lo ha tocado.",
-   "ar": "settings.json: {what} من نوع غير متوقع — لم يمسّه Coucou.",
-   "fr": "settings.json : {what} a un type inattendu — Coucou n'y a pas touché.",
-   "bn": "settings.json: {what}-এর ধরন অপ্রত্যাশিত — Coucou এতে হাত দেয়নি।",
-   "pt-BR": "settings.json: {what} tem um tipo inesperado — o Coucou não mexeu nele.",
-   "ru": "settings.json: у {what} неожиданный тип — Coucou его не трогал.",
-   "id": "settings.json: {what} bertipe tak terduga — Coucou tidak menyentuhnya."
+  "settings.json: {what} has an unexpected type — Lumo has not touched it.": {
+   "zh-Hans": "settings.json：{what} 的类型不符合预期 — Lumo 没有修改它。",
+   "hi": "settings.json: {what} का प्रकार अपेक्षित नहीं है — Lumo ने इसे नहीं छुआ।",
+   "es": "settings.json: {what} tiene un tipo inesperado — Lumo no lo ha tocado.",
+   "ar": "settings.json: {what} من نوع غير متوقع — لم يمسّه Lumo.",
+   "fr": "settings.json : {what} a un type inattendu — Lumo n'y a pas touché.",
+   "bn": "settings.json: {what}-এর ধরন অপ্রত্যাশিত — Lumo এতে হাত দেয়নি।",
+   "pt-BR": "settings.json: {what} tem um tipo inesperado — o Lumo não mexeu nele.",
+   "ru": "settings.json: у {what} неожиданный тип — Lumo его не трогал.",
+   "id": "settings.json: {what} bertipe tak terduga — Lumo tidak menyentuhnya."
   },
   "unknown": {
    "zh-Hans": "未知",
@@ -3009,38 +3108,38 @@
     "other": "{count} repositori"
    }
   },
-  "{file} isn't UTF-8 text — Coucou won't touch it.": {
-   "zh-Hans": "{file} 不是 UTF-8 文本 — Coucou 不会修改它。",
-   "hi": "{file} UTF-8 टेक्स्ट नहीं है — Coucou इसे नहीं छुएगा।",
-   "es": "{file} no es texto UTF-8 — Coucou no lo tocará.",
-   "ar": "{file} ليس نصًا بترميز UTF-8 — لن يمسّه Coucou.",
-   "fr": "{file} n'est pas du texte UTF-8 — Coucou n'y touchera pas.",
-   "bn": "{file} UTF-8 টেক্সট নয় — Coucou এতে হাত দেবে না।",
-   "pt-BR": "{file} não é texto UTF-8 — o Coucou não vai mexer nele.",
-   "ru": "{file} — не текст в UTF-8, Coucou его не тронет.",
-   "id": "{file} bukan teks UTF-8 — Coucou tidak akan menyentuhnya."
+  "{file} isn't UTF-8 text — Lumo won't touch it.": {
+   "zh-Hans": "{file} 不是 UTF-8 文本 — Lumo 不会修改它。",
+   "hi": "{file} UTF-8 टेक्स्ट नहीं है — Lumo इसे नहीं छुएगा।",
+   "es": "{file} no es texto UTF-8 — Lumo no lo tocará.",
+   "ar": "{file} ليس نصًا بترميز UTF-8 — لن يمسّه Lumo.",
+   "fr": "{file} n'est pas du texte UTF-8 — Lumo n'y touchera pas.",
+   "bn": "{file} UTF-8 টেক্সট নয় — Lumo এতে হাত দেবে না।",
+   "pt-BR": "{file} não é texto UTF-8 — o Lumo não vai mexer nele.",
+   "ru": "{file} — не текст в UTF-8, Lumo его не тронет.",
+   "id": "{file} bukan teks UTF-8 — Lumo tidak akan menyentuhnya."
   },
-  "{file} isn't a JSON object — Coucou won't touch it.": {
-   "zh-Hans": "{file} 不是 JSON 对象 — Coucou 不会修改它。",
-   "hi": "{file} JSON ऑब्जेक्ट नहीं है — Coucou इसे नहीं छुएगा।",
-   "es": "{file} no es un objeto JSON — Coucou no lo tocará.",
-   "ar": "{file} ليس كائن JSON — لن يمسّه Coucou.",
-   "fr": "{file} n'est pas un objet JSON — Coucou n'y touchera pas.",
-   "bn": "{file} JSON অবজেক্ট নয় — Coucou এতে হাত দেবে না।",
-   "pt-BR": "{file} não é um objeto JSON — o Coucou não vai mexer nele.",
-   "ru": "{file} — не объект JSON, Coucou его не тронет.",
-   "id": "{file} bukan objek JSON — Coucou tidak akan menyentuhnya."
+  "{file} isn't a JSON object — Lumo won't touch it.": {
+   "zh-Hans": "{file} 不是 JSON 对象 — Lumo 不会修改它。",
+   "hi": "{file} JSON ऑब्जेक्ट नहीं है — Lumo इसे नहीं छुएगा।",
+   "es": "{file} no es un objeto JSON — Lumo no lo tocará.",
+   "ar": "{file} ليس كائن JSON — لن يمسّه Lumo.",
+   "fr": "{file} n'est pas un objet JSON — Lumo n'y touchera pas.",
+   "bn": "{file} JSON অবজেক্ট নয় — Lumo এতে হাত দেবে না।",
+   "pt-BR": "{file} não é um objeto JSON — o Lumo não vai mexer nele.",
+   "ru": "{file} — не объект JSON, Lumo его не тронет.",
+   "id": "{file} bukan objek JSON — Lumo tidak akan menyentuhnya."
   },
-  "{file} isn't valid JSON ({error}). Fix or move it, then try again — Coucou won't overwrite it.": {
-   "zh-Hans": "{file} 不是有效的 JSON（{error}）。请修复或移走它后重试 — Coucou 不会覆盖它。",
-   "hi": "{file} मान्य JSON नहीं है ({error})। इसे ठीक करें या हटाएँ, फिर दोबारा कोशिश करें — Coucou इसे ओवरराइट नहीं करेगा।",
-   "es": "{file} no es un JSON válido ({error}). Corrígelo o muévelo y vuelve a intentarlo — Coucou no lo sobrescribirá.",
-   "ar": "{file} ليس JSON صالحًا ({error}). أصلحه أو انقله ثم حاول مجددًا — لن يكتب Coucou فوقه.",
-   "fr": "{file} n'est pas un JSON valide ({error}). Corrige-le ou déplace-le, puis réessaie — Coucou ne l'écrasera pas.",
-   "bn": "{file} বৈধ JSON নয় ({error})। এটি ঠিক করুন বা সরান, তারপর আবার চেষ্টা করুন — Coucou এটি ওভাররাইট করবে না।",
-   "pt-BR": "{file} não é um JSON válido ({error}). Corrija ou mova o arquivo e tente de novo — o Coucou não vai sobrescrevê-lo.",
-   "ru": "{file} — некорректный JSON ({error}). Исправьте или переместите его и попробуйте снова — Coucou не будет его перезаписывать.",
-   "id": "{file} bukan JSON yang valid ({error}). Perbaiki atau pindahkan, lalu coba lagi — Coucou tidak akan menimpanya."
+  "{file} isn't valid JSON ({error}). Fix or move it, then try again — Lumo won't overwrite it.": {
+   "zh-Hans": "{file} 不是有效的 JSON（{error}）。请修复或移走它后重试 — Lumo 不会覆盖它。",
+   "hi": "{file} मान्य JSON नहीं है ({error})। इसे ठीक करें या हटाएँ, फिर दोबारा कोशिश करें — Lumo इसे ओवरराइट नहीं करेगा।",
+   "es": "{file} no es un JSON válido ({error}). Corrígelo o muévelo y vuelve a intentarlo — Lumo no lo sobrescribirá.",
+   "ar": "{file} ليس JSON صالحًا ({error}). أصلحه أو انقله ثم حاول مجددًا — لن يكتب Lumo فوقه.",
+   "fr": "{file} n'est pas un JSON valide ({error}). Corrige-le ou déplace-le, puis réessaie — Lumo ne l'écrasera pas.",
+   "bn": "{file} বৈধ JSON নয় ({error})। এটি ঠিক করুন বা সরান, তারপর আবার চেষ্টা করুন — Lumo এটি ওভাররাইট করবে না।",
+   "pt-BR": "{file} não é um JSON válido ({error}). Corrija ou mova o arquivo e tente de novo — o Lumo não vai sobrescrevê-lo.",
+   "ru": "{file} — некорректный JSON ({error}). Исправьте или переместите его и попробуйте снова — Lumo не будет его перезаписывать.",
+   "id": "{file} bukan JSON yang valid ({error}). Perbaiki atau pindahkan, lalu coba lagi — Lumo tidak akan menimpanya."
   },
   "{h}h {m}m": {
    "zh-Hans": "{h} 小时 {m} 分钟",
@@ -3063,6 +3162,17 @@
    "pt-BR": "{keys} digita “{char}” no seu teclado, então não pode ser um atalho. Escolha outra tecla.",
    "ru": "{keys} вводит «{char}» на вашей клавиатуре, поэтому не может быть сочетанием. Выберите другую клавишу.",
    "id": "{keys} mengetik “{char}” di keyboard Anda, jadi tidak bisa menjadi pintasan. Pilih tombol lain."
+  },
+  "{label}: {pct}% left": {
+   "zh-Hans": "{label}：剩余 {pct}%",
+   "hi": "{label}: {pct}% बाकी",
+   "es": "{label}: queda un {pct}%",
+   "ar": "{label}: يتبقى {pct}%",
+   "fr": "{label} : {pct} % restants",
+   "bn": "{label}: {pct}% বাকি",
+   "pt-BR": "{label}: {pct}% restantes",
+   "ru": "{label}: осталось {pct}%",
+   "id": "{label}: sisa {pct}%"
   },
   "{model} isn't installed. Pick another model above the chat box.": {
    "zh-Hans": "{model} 未安装。请在聊天框上方选择其他模型。",
@@ -3108,27 +3218,82 @@
    "ru": "{name} отклонил API-ключ ({status}). Проверьте его в настройках.",
    "id": "{name} menolak kunci API ({status}). Periksa di Pengaturan."
   },
-  "{name} wasn't written by Coucou — Coucou has not touched it.": {
-   "zh-Hans": "{name} 不是由 Coucou 写入的 — Coucou 没有修改它。",
-   "hi": "{name} Coucou ने नहीं लिखा था — Coucou ने इसे नहीं छुआ।",
-   "es": "{name} no lo escribió Coucou — Coucou no lo ha tocado.",
-   "ar": "لم يكتب Coucou الملف {name} — لم يمسّه Coucou.",
-   "fr": "{name} n'a pas été écrit par Coucou — Coucou n'y a pas touché.",
-   "bn": "{name} Coucou লেখেনি — Coucou এতে হাত দেয়নি।",
-   "pt-BR": "{name} não foi escrito pelo Coucou — o Coucou não mexeu nele.",
-   "ru": "{name} записан не Coucou — Coucou его не трогал.",
-   "id": "{name} tidak ditulis oleh Coucou — Coucou tidak menyentuhnya."
+  "{name} wasn't written by Lumo — Lumo has not touched it.": {
+   "zh-Hans": "{name} 不是由 Lumo 写入的 — Lumo 没有修改它。",
+   "hi": "{name} Lumo ने नहीं लिखा था — Lumo ने इसे नहीं छुआ।",
+   "es": "{name} no lo escribió Lumo — Lumo no lo ha tocado.",
+   "ar": "لم يكتب Lumo الملف {name} — لم يمسّه Lumo.",
+   "fr": "{name} n'a pas été écrit par Lumo — Lumo n'y a pas touché.",
+   "bn": "{name} Lumo লেখেনি — Lumo এতে হাত দেয়নি।",
+   "pt-BR": "{name} não foi escrito pelo Lumo — o Lumo não mexeu nele.",
+   "ru": "{name} записан не Lumo — Lumo его не трогал.",
+   "id": "{name} tidak ditulis oleh Lumo — Lumo tidak menyentuhnya."
   },
-  "{name} — {width}×{height} at {x},{y}": {
-   "zh-Hans": "{name} — {width}×{height}，位于 {x},{y}",
-   "hi": "{name} — {width}×{height}, स्थिति {x},{y}",
-   "es": "{name} — {width}×{height} en {x},{y}",
-   "ar": "{name} — {width}×{height} عند {x},{y}",
-   "fr": "{name} — {width}×{height} à {x},{y}",
-   "bn": "{name} — {width}×{height}, অবস্থান {x},{y}",
-   "pt-BR": "{name} — {width}×{height} em {x},{y}",
-   "ru": "{name} — {width}×{height} в точке {x},{y}",
-   "id": "{name} — {width}×{height} di {x},{y}"
+  "Display {n} — {width}×{height}": {
+   "zh-Hans": "显示器 {n} — {width}×{height}",
+   "hi": "डिस्प्ले {n} — {width}×{height}",
+   "es": "Pantalla {n} — {width}×{height}",
+   "ar": "الشاشة {n} — {width}×{height}",
+   "fr": "Écran {n} — {width}×{height}",
+   "bn": "ডিসপ্লে {n} — {width}×{height}",
+   "pt-BR": "Tela {n} — {width}×{height}",
+   "ru": "Дисплей {n} — {width}×{height}",
+   "id": "Layar {n} — {width}×{height}"
+  },
+  "{display} · main": {
+   "zh-Hans": "{display} · 主显示器",
+   "hi": "{display} · मुख्य",
+   "es": "{display} · principal",
+   "ar": "{display} · الرئيسية",
+   "fr": "{display} · principal",
+   "bn": "{display} · প্রধান",
+   "pt-BR": "{display} · principal",
+   "ru": "{display} · основной",
+   "id": "{display} · utama"
+  },
+  "{display} · on the left": {
+   "zh-Hans": "{display} · 在左侧",
+   "hi": "{display} · बाईं ओर",
+   "es": "{display} · a la izquierda",
+   "ar": "{display} · على اليسار",
+   "fr": "{display} · à gauche",
+   "bn": "{display} · বাঁ দিকে",
+   "pt-BR": "{display} · à esquerda",
+   "ru": "{display} · слева",
+   "id": "{display} · di kiri"
+  },
+  "{display} · on the right": {
+   "zh-Hans": "{display} · 在右侧",
+   "hi": "{display} · दाईं ओर",
+   "es": "{display} · a la derecha",
+   "ar": "{display} · على اليمين",
+   "fr": "{display} · à droite",
+   "bn": "{display} · ডান দিকে",
+   "pt-BR": "{display} · à direita",
+   "ru": "{display} · справа",
+   "id": "{display} · di kanan"
+  },
+  "{display} · above": {
+   "zh-Hans": "{display} · 在上方",
+   "hi": "{display} · ऊपर",
+   "es": "{display} · arriba",
+   "ar": "{display} · في الأعلى",
+   "fr": "{display} · au-dessus",
+   "bn": "{display} · উপরে",
+   "pt-BR": "{display} · acima",
+   "ru": "{display} · сверху",
+   "id": "{display} · di atas"
+  },
+  "{display} · below": {
+   "zh-Hans": "{display} · 在下方",
+   "hi": "{display} · नीचे",
+   "es": "{display} · abajo",
+   "ar": "{display} · في الأسفل",
+   "fr": "{display} · en dessous",
+   "bn": "{display} · নিচে",
+   "pt-BR": "{display} · abaixo",
+   "ru": "{display} · снизу",
+   "id": "{display} · di bawah"
   },
   "{name}: model not found (404). Pick another one above the chat box. {detail}": {
    "zh-Hans": "{name}：未找到模型（404）。请在聊天框上方选择其他模型。{detail}",
@@ -3240,16 +3405,16 @@
    "ru": "Занято мест: {used}/{max} — основной инструмент место не занимает.",
    "id": "{used}/{max} slot terpakai — alat utama tidak memakai slot."
   },
-  "{what} has an unexpected type — Coucou has not touched it.": {
-   "zh-Hans": "{what} 的类型不符合预期 — Coucou 没有修改它。",
-   "hi": "{what} का प्रकार अपेक्षित नहीं है — Coucou ने इसे नहीं छुआ।",
-   "es": "{what} tiene un tipo inesperado — Coucou no lo ha tocado.",
-   "ar": "{what} من نوع غير متوقع — لم يمسّه Coucou.",
-   "fr": "{what} a un type inattendu — Coucou n'y a pas touché.",
-   "bn": "{what}-এর ধরন অপ্রত্যাশিত — Coucou এতে হাত দেয়নি।",
-   "pt-BR": "{what} tem um tipo inesperado — o Coucou não mexeu nele.",
-   "ru": "У {what} неожиданный тип — Coucou его не трогал.",
-   "id": "{what} bertipe tak terduga — Coucou tidak menyentuhnya."
+  "{what} has an unexpected type — Lumo has not touched it.": {
+   "zh-Hans": "{what} 的类型不符合预期 — Lumo 没有修改它。",
+   "hi": "{what} का प्रकार अपेक्षित नहीं है — Lumo ने इसे नहीं छुआ।",
+   "es": "{what} tiene un tipo inesperado — Lumo no lo ha tocado.",
+   "ar": "{what} من نوع غير متوقع — لم يمسّه Lumo.",
+   "fr": "{what} a un type inattendu — Lumo n'y a pas touché.",
+   "bn": "{what}-এর ধরন অপ্রত্যাশিত — Lumo এতে হাত দেয়নি।",
+   "pt-BR": "{what} tem um tipo inesperado — o Lumo não mexeu nele.",
+   "ru": "У {what} неожиданный тип — Lumo его не трогал.",
+   "id": "{what} bertipe tak terduga — Lumo tidak menyentuhnya."
   },
   "• subagent done": {
    "zh-Hans": "• 子代理完成",
@@ -3350,16 +3515,16 @@
    "ru": "Claude Code не установлен. Установите его, войдите один раз через `claude` в терминале и попробуйте снова.",
    "id": "Claude Code belum terpasang. Pasang, masuk sekali dengan `claude` di terminal, lalu coba lagi."
   },
-  "Claude Code needed a permission that wasn't given. Install Coucou's hooks to approve actions from the island.": {
-   "zh-Hans": "Claude Code 需要的权限未获批准。安装 Coucou 的 hooks 即可在岛中批准操作。",
-   "hi": "Claude Code को एक अनुमति चाहिए थी जो नहीं मिली। आइलैंड से कार्रवाइयाँ स्वीकृत करने के लिए Coucou के hooks इंस्टॉल करें।",
-   "es": "Claude Code necesitaba un permiso que no se concedió. Instala los hooks de Coucou para aprobar acciones desde la isla.",
-   "ar": "احتاج Claude Code إلى إذن لم يُمنح. ثبّت hooks الخاصة بـ Coucou للموافقة على الإجراءات من الجزيرة.",
-   "fr": "Claude Code avait besoin d'une permission qui n'a pas été donnée. Installez les hooks de Coucou pour approuver les actions depuis l'île.",
-   "bn": "Claude Code-এর একটি অনুমতি দরকার ছিল যা দেওয়া হয়নি। আইল্যান্ড থেকে কাজ অনুমোদন করতে Coucou-র hooks ইনস্টল করুন।",
-   "pt-BR": "O Claude Code precisava de uma permissão que não foi dada. Instale os hooks do Coucou para aprovar ações pela ilha.",
-   "ru": "Claude Code нужно было разрешение, которое не дали. Установите хуки Coucou, чтобы одобрять действия с острова.",
-   "id": "Claude Code butuh izin yang tidak diberikan. Pasang hook Coucou untuk menyetujui tindakan dari pulau."
+  "Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island.": {
+   "zh-Hans": "Claude Code 需要的权限未获批准。安装 Lumo 的 hooks 即可在岛中批准操作。",
+   "hi": "Claude Code को एक अनुमति चाहिए थी जो नहीं मिली। आइलैंड से कार्रवाइयाँ स्वीकृत करने के लिए Lumo के hooks इंस्टॉल करें।",
+   "es": "Claude Code necesitaba un permiso que no se concedió. Instala los hooks de Lumo para aprobar acciones desde la isla.",
+   "ar": "احتاج Claude Code إلى إذن لم يُمنح. ثبّت hooks الخاصة بـ Lumo للموافقة على الإجراءات من الجزيرة.",
+   "fr": "Claude Code avait besoin d'une permission qui n'a pas été donnée. Installez les hooks de Lumo pour approuver les actions depuis l'île.",
+   "bn": "Claude Code-এর একটি অনুমতি দরকার ছিল যা দেওয়া হয়নি। আইল্যান্ড থেকে কাজ অনুমোদন করতে Lumo-র hooks ইনস্টল করুন।",
+   "pt-BR": "O Claude Code precisava de uma permissão que não foi dada. Instale os hooks do Lumo para aprovar ações pela ilha.",
+   "ru": "Claude Code нужно было разрешение, которое не дали. Установите хуки Lumo, чтобы одобрять действия с острова.",
+   "id": "Claude Code butuh izin yang tidak diberikan. Pasang hook Lumo untuk menyetujui tindakan dari pulau."
   },
   "New chat": {
    "zh-Hans": "新聊天",
@@ -3482,16 +3647,16 @@
    "ru": "Версий для Windows пока не опубликовано.",
    "id": "Belum ada rilis Windows yang diterbitkan."
   },
-  "Updating from Settings is only available on Windows. On Linux, update Coucou the way you installed it.": {
-   "zh-Hans": "只有 Windows 上才能从设置中更新。在 Linux 上，请用你安装 Coucou 的方式来更新它。",
-   "hi": "सेटिंग्स से अपडेट करना सिर्फ़ Windows पर उपलब्ध है। Linux पर Coucou को उसी तरह अपडेट करें जैसे आपने उसे इंस्टॉल किया था।",
-   "es": "Actualizar desde Ajustes solo está disponible en Windows. En Linux, actualiza Coucou de la misma forma en que lo instalaste.",
-   "ar": "التحديث من الإعدادات متاح على Windows فقط. على Linux، حدّث Coucou بالطريقة التي ثبّته بها.",
-   "fr": "La mise à jour depuis les Réglages n'existe que sur Windows. Sous Linux, mettez Coucou à jour comme vous l'avez installé.",
-   "bn": "সেটিংস থেকে আপডেট শুধু Windows-এ পাওয়া যায়। Linux-এ যেভাবে Coucou ইনস্টল করেছেন সেভাবেই আপডেট করুন।",
-   "pt-BR": "Atualizar pelos Ajustes só está disponível no Windows. No Linux, atualize o Coucou do mesmo jeito que você o instalou.",
-   "ru": "Обновление из настроек доступно только в Windows. В Linux обновляйте Coucou тем же способом, которым устанавливали.",
-   "id": "Memperbarui dari Pengaturan hanya tersedia di Windows. Di Linux, perbarui Coucou dengan cara Anda menginstalnya."
+  "Updating from Settings is only available on Windows. On Linux, update Lumo the way you installed it.": {
+   "zh-Hans": "只有 Windows 上才能从设置中更新。在 Linux 上，请用你安装 Lumo 的方式来更新它。",
+   "hi": "सेटिंग्स से अपडेट करना सिर्फ़ Windows पर उपलब्ध है। Linux पर Lumo को उसी तरह अपडेट करें जैसे आपने उसे इंस्टॉल किया था।",
+   "es": "Actualizar desde Ajustes solo está disponible en Windows. En Linux, actualiza Lumo de la misma forma en que lo instalaste.",
+   "ar": "التحديث من الإعدادات متاح على Windows فقط. على Linux، حدّث Lumo بالطريقة التي ثبّته بها.",
+   "fr": "La mise à jour depuis les Réglages n'existe que sur Windows. Sous Linux, mettez Lumo à jour comme vous l'avez installé.",
+   "bn": "সেটিংস থেকে আপডেট শুধু Windows-এ পাওয়া যায়। Linux-এ যেভাবে Lumo ইনস্টল করেছেন সেভাবেই আপডেট করুন।",
+   "pt-BR": "Atualizar pelos Ajustes só está disponível no Windows. No Linux, atualize o Lumo do mesmo jeito que você o instalou.",
+   "ru": "Обновление из настроек доступно только в Windows. В Linux обновляйте Lumo тем же способом, которым устанавливали.",
+   "id": "Memperbarui dari Pengaturan hanya tersedia di Windows. Di Linux, perbarui Lumo dengan cara Anda menginstalnya."
   },
   "Could not reach GitHub: {error}": {
    "zh-Hans": "无法连接 GitHub：{error}",
@@ -3537,16 +3702,16 @@
    "ru": "Не удалось прочитать ответ GitHub.",
    "id": "Jawaban GitHub tidak dapat dibaca."
   },
-  "Only installers from Coucou's GitHub releases can be installed.": {
-   "zh-Hans": "只能安装来自 Coucou GitHub 发布页的安装程序。",
-   "hi": "सिर्फ़ Coucou की GitHub रिलीज़ के इंस्टॉलर ही इंस्टॉल किए जा सकते हैं।",
-   "es": "Solo se pueden instalar instaladores de las versiones de Coucou en GitHub.",
-   "ar": "لا يمكن تثبيت إلا المثبّتات القادمة من إصدارات Coucou على GitHub.",
-   "fr": "Seuls les installateurs des versions de Coucou publiées sur GitHub peuvent être installés.",
-   "bn": "শুধু GitHub-এ Coucou-র রিলিজের ইনস্টলারই ইনস্টল করা যায়।",
-   "pt-BR": "Só é possível instalar instaladores das versões do Coucou no GitHub.",
-   "ru": "Можно установить только установщики из релизов Coucou на GitHub.",
-   "id": "Hanya penginstal dari rilis Coucou di GitHub yang dapat diinstal."
+  "Only installers from Lumo's GitHub releases can be installed.": {
+   "zh-Hans": "只能安装来自 Lumo GitHub 发布页的安装程序。",
+   "hi": "सिर्फ़ Lumo की GitHub रिलीज़ के इंस्टॉलर ही इंस्टॉल किए जा सकते हैं।",
+   "es": "Solo se pueden instalar instaladores de las versiones de Lumo en GitHub.",
+   "ar": "لا يمكن تثبيت إلا المثبّتات القادمة من إصدارات Lumo على GitHub.",
+   "fr": "Seuls les installateurs des versions de Lumo publiées sur GitHub peuvent être installés.",
+   "bn": "শুধু GitHub-এ Lumo-র রিলিজের ইনস্টলারই ইনস্টল করা যায়।",
+   "pt-BR": "Só é possível instalar instaladores das versões do Lumo no GitHub.",
+   "ru": "Можно установить только установщики из релизов Lumo на GitHub.",
+   "id": "Hanya penginstal dari rilis Lumo di GitHub yang dapat diinstal."
   },
   "An update is already being installed.": {
    "zh-Hans": "已有一个更新正在安装。",
@@ -3658,16 +3823,16 @@
    "ru": "Проверка…",
    "id": "Memeriksa…"
   },
-  "Coucou is up to date.": {
-   "zh-Hans": "Coucou 已是最新版本。",
-   "hi": "Coucou अप टू डेट है।",
-   "es": "Coucou está actualizado.",
-   "ar": "Coucou محدَّث.",
-   "fr": "Coucou est à jour.",
-   "bn": "Coucou হালনাগাদ আছে।",
-   "pt-BR": "O Coucou está atualizado.",
-   "ru": "У вас последняя версия Coucou.",
-   "id": "Coucou sudah versi terbaru."
+  "Lumo is up to date.": {
+   "zh-Hans": "Lumo 已是最新版本。",
+   "hi": "Lumo अप टू डेट है।",
+   "es": "Lumo está actualizado.",
+   "ar": "Lumo محدَّث.",
+   "fr": "Lumo est à jour.",
+   "bn": "Lumo হালনাগাদ আছে।",
+   "pt-BR": "O Lumo está atualizado.",
+   "ru": "У вас последняя версия Lumo.",
+   "id": "Lumo sudah versi terbaru."
   },
   "Version {version} is available.": {
    "zh-Hans": "版本 {version} 已可用。",
@@ -3713,16 +3878,16 @@
    "ru": "Обновить сейчас",
    "id": "Perbarui sekarang"
   },
-  "The installer opens and Coucou closes while it runs.": {
-   "zh-Hans": "安装程序会打开，运行期间 Coucou 会关闭。",
-   "hi": "इंस्टॉलर खुलता है और उसके चलते समय Coucou बंद रहता है।",
-   "es": "Se abre el instalador y Coucou se cierra mientras se ejecuta.",
-   "ar": "يفتح المثبّت ويُغلق Coucou أثناء عمله.",
-   "fr": "L'installateur s'ouvre et Coucou se ferme pendant qu'il travaille.",
-   "bn": "ইনস্টলার খুলবে এবং সেটি চলার সময় Coucou বন্ধ থাকবে।",
-   "pt-BR": "O instalador abre e o Coucou fecha enquanto ele é executado.",
-   "ru": "Откроется установщик, а Coucou закроется на время его работы.",
-   "id": "Penginstal terbuka dan Coucou ditutup selama penginstal berjalan."
+  "The installer opens and Lumo closes while it runs.": {
+   "zh-Hans": "安装程序会打开，运行期间 Lumo 会关闭。",
+   "hi": "इंस्टॉलर खुलता है और उसके चलते समय Lumo बंद रहता है।",
+   "es": "Se abre el instalador y Lumo se cierra mientras se ejecuta.",
+   "ar": "يفتح المثبّت ويُغلق Lumo أثناء عمله.",
+   "fr": "L'installateur s'ouvre et Lumo se ferme pendant qu'il travaille.",
+   "bn": "ইনস্টলার খুলবে এবং সেটি চলার সময় Lumo বন্ধ থাকবে।",
+   "pt-BR": "O instalador abre e o Lumo fecha enquanto ele é executado.",
+   "ru": "Откроется установщик, а Lumo закроется на время его работы.",
+   "id": "Penginstal terbuka dan Lumo ditutup selama penginstal berjalan."
   },
   "Downloading the installer…": {
    "zh-Hans": "正在下载安装程序…",
@@ -3735,38 +3900,27 @@
    "ru": "Загрузка установщика…",
    "id": "Mengunduh penginstal…"
   },
-  "The installer is starting. Coucou closes now so it can be updated.": {
-   "zh-Hans": "安装程序正在启动。Coucou 现在关闭以便完成更新。",
-   "hi": "इंस्टॉलर शुरू हो रहा है। अपडेट के लिए Coucou अब बंद हो रहा है।",
-   "es": "El instalador se está iniciando. Coucou se cierra ahora para poder actualizarse.",
-   "ar": "يبدأ المثبّت الآن. يُغلق Coucou حتى يمكن تحديثه.",
-   "fr": "L'installateur démarre. Coucou se ferme maintenant pour pouvoir être mis à jour.",
-   "bn": "ইনস্টলার চালু হচ্ছে। আপডেটের জন্য Coucou এখন বন্ধ হচ্ছে।",
-   "pt-BR": "O instalador está iniciando. O Coucou fecha agora para poder ser atualizado.",
-   "ru": "Запускается установщик. Coucou закрывается, чтобы его можно было обновить.",
-   "id": "Penginstal sedang dimulai. Coucou ditutup sekarang agar bisa diperbarui."
+  "The installer is starting. Lumo closes now so it can be updated.": {
+   "zh-Hans": "安装程序正在启动。Lumo 现在关闭以便完成更新。",
+   "hi": "इंस्टॉलर शुरू हो रहा है। अपडेट के लिए Lumo अब बंद हो रहा है।",
+   "es": "El instalador se está iniciando. Lumo se cierra ahora para poder actualizarse.",
+   "ar": "يبدأ المثبّت الآن. يُغلق Lumo حتى يمكن تحديثه.",
+   "fr": "L'installateur démarre. Lumo se ferme maintenant pour pouvoir être mis à jour.",
+   "bn": "ইনস্টলার চালু হচ্ছে। আপডেটের জন্য Lumo এখন বন্ধ হচ্ছে।",
+   "pt-BR": "O instalador está iniciando. O Lumo fecha agora para poder ser atualizado.",
+   "ru": "Запускается установщик. Lumo закрывается, чтобы его можно было обновить.",
+   "id": "Penginstal sedang dimulai. Lumo ditutup sekarang agar bisa diperbarui."
   },
-  "Coucou only looks for updates when you click: nothing is checked in the background.": {
-   "zh-Hans": "Coucou 只在你点击时检查更新，不会在后台检查。",
-   "hi": "Coucou सिर्फ़ आपके क्लिक करने पर अपडेट देखता है: बैकग्राउंड में कुछ भी जाँचा नहीं जाता।",
-   "es": "Coucou solo busca actualizaciones cuando haces clic: no se comprueba nada en segundo plano.",
-   "ar": "لا يبحث Coucou عن التحديثات إلا عند النقر: لا يُفحص شيء في الخلفية.",
-   "fr": "Coucou ne cherche des mises à jour que lorsque vous cliquez : rien n'est vérifié en arrière-plan.",
-   "bn": "আপনি ক্লিক করলেই কেবল Coucou আপডেট খোঁজে: ব্যাকগ্রাউন্ডে কিছুই যাচাই হয় না।",
-   "pt-BR": "O Coucou só procura atualizações quando você clica: nada é verificado em segundo plano.",
-   "ru": "Coucou ищет обновления только по нажатию кнопки: в фоне ничего не проверяется.",
-   "id": "Coucou hanya mencari pembaruan saat Anda mengeklik: tidak ada pemeriksaan di latar belakang."
-  },
-  "Drag the island by its top bar (or the closed island anywhere) to move it: let go near an edge of the screen and it docks there, upright on the sides, centred when you drop it near the middle.": {
-   "zh-Hans": "拖动岛的顶部栏（或收起时的任意位置）即可移动它：在屏幕边缘附近松开，它就会停靠在那里，在左右两侧竖直显示，在中间附近松开时会自动居中。",
-   "hi": "आइलैंड को हिलाने के लिए उसकी ऊपरी पट्टी (या बंद आइलैंड को कहीं से भी) खींचें: स्क्रीन के किसी किनारे के पास छोड़ें तो वह वहीं जुड़ जाता है, किनारों पर खड़ा होकर, और बीच के पास छोड़ने पर बीच में आ जाता है।",
-   "es": "Arrastra la isla por su barra superior (o la isla cerrada desde cualquier punto) para moverla: suéltala cerca de un borde de la pantalla y se acopla ahí, en vertical en los laterales y centrada si la sueltas cerca del medio.",
-   "ar": "اسحب الجزيرة من شريطها العلوي (أو الجزيرة المغلقة من أي مكان) لتحريكها: أفلتها قرب حافة الشاشة فتلتصق بها، عمودية على الجانبين، وفي المنتصف إن أفلتها قربه.",
-   "fr": "Faites glisser l'île par sa barre du haut (ou l'île fermée n'importe où) pour la déplacer : lâchez-la près d'un bord de l'écran et elle s'y accroche, debout sur les côtés, centrée si vous la lâchez près du milieu.",
-   "bn": "আইল্যান্ড সরাতে তার উপরের বার (বা বন্ধ আইল্যান্ডের যেকোনো জায়গা) টেনে নিন: স্ক্রিনের কোনো প্রান্তের কাছে ছাড়লে সেখানে লেগে যায়, পাশে খাড়া হয়ে, আর মাঝের কাছে ছাড়লে মাঝখানে বসে।",
-   "pt-BR": "Arraste a ilha pela barra de cima (ou a ilha fechada de qualquer ponto) para movê-la: solte perto de uma borda da tela e ela se encaixa ali, em pé nas laterais, centralizada se você soltar perto do meio.",
-   "ru": "Перетащите остров за верхнюю панель (а закрытый — за любое место), чтобы переместить его: отпустите у края экрана, и он прикрепится к нему, вертикально по бокам и по центру, если отпустить рядом с серединой.",
-   "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di dekat tepi layar dan pulau menempel di sana, tegak di sisi kiri dan kanan, dan ke tengah jika dilepas di dekat bagian tengah."
+  "Lumo only looks for updates when you click: nothing is checked in the background.": {
+   "zh-Hans": "Lumo 只在你点击时检查更新，不会在后台检查。",
+   "hi": "Lumo सिर्फ़ आपके क्लिक करने पर अपडेट देखता है: बैकग्राउंड में कुछ भी जाँचा नहीं जाता।",
+   "es": "Lumo solo busca actualizaciones cuando haces clic: no se comprueba nada en segundo plano.",
+   "ar": "لا يبحث Lumo عن التحديثات إلا عند النقر: لا يُفحص شيء في الخلفية.",
+   "fr": "Lumo ne cherche des mises à jour que lorsque vous cliquez : rien n'est vérifié en arrière-plan.",
+   "bn": "আপনি ক্লিক করলেই কেবল Lumo আপডেট খোঁজে: ব্যাকগ্রাউন্ডে কিছুই যাচাই হয় না।",
+   "pt-BR": "O Lumo só procura atualizações quando você clica: nada é verificado em segundo plano.",
+   "ru": "Lumo ищет обновления только по нажатию кнопки: в фоне ничего не проверяется.",
+   "id": "Lumo hanya mencari pembaruan saat Anda mengeklik: tidak ada pemeriksaan di latar belakang."
   },
   "Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.": {
    "zh-Hans": "拖动展开的岛的边缘或角即可调整大小。双击即可恢复常规大小。",
@@ -4086,6 +4240,402 @@
    "pt-BR": "Instale o xclip (ou o wl-clipboard no Wayland) para compartilhar o texto selecionado.",
    "ru": "Установите xclip (или wl-clipboard в Wayland), чтобы делиться выделенным текстом.",
    "id": "Pasang xclip (atau wl-clipboard di Wayland) untuk membagikan teks yang dipilih."
+  },
+  "A few seconds after the mouse leaves": {
+   "zh-Hans": "鼠标离开几秒后",
+   "hi": "माउस हटने के कुछ सेकंड बाद",
+   "es": "Unos segundos después de que salga el ratón",
+   "ar": "بعد بضع ثوانٍ من مغادرة الفأرة",
+   "fr": "Quelques secondes après le départ de la souris",
+   "bn": "মাউস সরে যাওয়ার কয়েক সেকেন্ড পরে",
+   "pt-BR": "Alguns segundos depois que o mouse sai",
+   "ru": "Через несколько секунд после ухода мыши",
+   "id": "Beberapa detik setelah mouse pergi"
+  },
+  "As soon as the mouse leaves": {
+   "zh-Hans": "鼠标一离开就收起",
+   "hi": "माउस हटते ही",
+   "es": "En cuanto sale el ratón",
+   "ar": "فور مغادرة الفأرة",
+   "fr": "Dès que la souris s’en va",
+   "bn": "মাউস সরে যাওয়ামাত্র",
+   "pt-BR": "Assim que o mouse sai",
+   "ru": "Как только мышь уходит",
+   "id": "Begitu mouse pergi"
+  },
+  "On a click outside the island": {
+   "zh-Hans": "在岛外点击时",
+   "hi": "द्वीप के बाहर क्लिक करने पर",
+   "es": "Al hacer clic fuera de la isla",
+   "ar": "عند النقر خارج الجزيرة",
+   "fr": "Sur un clic en dehors de l’île",
+   "bn": "দ্বীপের বাইরে ক্লিক করলে",
+   "pt-BR": "Ao clicar fora da ilha",
+   "ru": "По щелчку вне острова",
+   "id": "Saat klik di luar pulau"
+  },
+  "Only when I close it": {
+   "zh-Hans": "仅在我关闭时",
+   "hi": "केवल जब मैं इसे बंद करूँ",
+   "es": "Solo cuando la cierro",
+   "ar": "فقط عندما أغلقها",
+   "fr": "Seulement quand je la ferme",
+   "bn": "শুধু আমি বন্ধ করলে",
+   "pt-BR": "Só quando eu fecho",
+   "ru": "Только когда я её закрываю",
+   "id": "Hanya saat saya menutupnya"
+  },
+  "Close the open island": {
+   "zh-Hans": "收起展开的岛",
+   "hi": "खुले द्वीप को बंद करें",
+   "es": "Cerrar la isla abierta",
+   "ar": "إغلاق الجزيرة المفتوحة",
+   "fr": "Fermer l’île ouverte",
+   "bn": "খোলা দ্বীপ বন্ধ করা",
+   "pt-BR": "Fechar a ilha aberta",
+   "ru": "Закрывать открытый остров",
+   "id": "Tutup pulau yang terbuka"
+  },
+  "Open on hover": {
+   "zh-Hans": "悬停时打开",
+   "hi": "होवर पर खोलें",
+   "es": "Abrir al pasar el ratón",
+   "ar": "الفتح عند التمرير",
+   "fr": "Ouvrir au survol",
+   "bn": "হোভারে খুলুন",
+   "pt-BR": "Abrir ao passar o mouse",
+   "ru": "Открывать при наведении",
+   "id": "Buka saat diarahkan"
+  },
+  "opens the closed island when the mouse rests on it": {
+   "zh-Hans": "鼠标停在收起的岛上时将其打开",
+   "hi": "माउस बंद द्वीप पर रुकने पर उसे खोलता है",
+   "es": "abre la isla cerrada cuando el ratón se detiene sobre ella",
+   "ar": "يفتح الجزيرة المغلقة عندما تستقر الفأرة عليها",
+   "fr": "ouvre l’île fermée quand la souris s’y pose",
+   "bn": "মাউস বন্ধ দ্বীপের ওপর থামলে সেটি খোলে",
+   "pt-BR": "abre a ilha fechada quando o mouse para sobre ela",
+   "ru": "открывает закрытый остров, когда мышь задерживается на нём",
+   "id": "membuka pulau yang tertutup saat mouse berhenti di atasnya"
+  },
+  "Hide when unused": {
+   "zh-Hans": "闲置时隐藏",
+   "hi": "उपयोग न होने पर छिपाएँ",
+   "es": "Ocultar si no se usa",
+   "ar": "إخفاء عند عدم الاستخدام",
+   "fr": "Masquer si inutilisée",
+   "bn": "ব্যবহার না হলে লুকান",
+   "pt-BR": "Ocultar quando sem uso",
+   "ru": "Скрывать без использования",
+   "id": "Sembunyikan saat tidak dipakai"
+  },
+  "the closed island slips into the edge of the screen a minute after you leave it": {
+   "zh-Hans": "离开一分钟后，收起的岛会缩进屏幕边缘",
+   "hi": "आपके हटने के एक मिनट बाद बंद द्वीप स्क्रीन के किनारे में चला जाता है",
+   "es": "la isla cerrada se esconde en el borde de la pantalla un minuto después de que la dejes",
+   "ar": "تنزلق الجزيرة المغلقة إلى حافة الشاشة بعد دقيقة من مغادرتك لها",
+   "fr": "l’île fermée se glisse dans le bord de l’écran une minute après que vous l’avez quittée",
+   "bn": "আপনি সরে যাওয়ার এক মিনিট পরে বন্ধ দ্বীপটি স্ক্রিনের কিনারায় ঢুকে যায়",
+   "pt-BR": "a ilha fechada se esconde na borda da tela um minuto depois que você sai dela",
+   "ru": "закрытый остров уходит за край экрана через минуту после того, как вы с него ушли",
+   "id": "pulau yang tertutup masuk ke tepi layar semenit setelah Anda meninggalkannya"
+  },
+  "Opening Settings…": {
+   "zh-Hans": "正在打开设置…",
+   "hi": "सेटिंग्स खुल रही हैं…",
+   "es": "Abriendo Ajustes…",
+   "ar": "جارٍ فتح الإعدادات…",
+   "fr": "Ouverture des réglages…",
+   "bn": "সেটিংস খোলা হচ্ছে…",
+   "pt-BR": "Abrindo Ajustes…",
+   "ru": "Открываются настройки…",
+   "id": "Membuka Pengaturan…"
+  },
+  "Open in a window": {
+   "zh-Hans": "在窗口中打开",
+   "hi": "विंडो में खोलें",
+   "es": "Abrir en una ventana",
+   "ar": "فتح في نافذة",
+   "fr": "Ouvrir dans une fenêtre",
+   "bn": "উইন্ডোতে খুলুন",
+   "pt-BR": "Abrir em uma janela",
+   "ru": "Открыть в окне",
+   "id": "Buka di jendela"
+  },
+  "Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle.": {
+   "zh-Hans": "拖动岛的顶栏（或收起的岛的任意位置）即可移动：在任意位置松开，它就停在那里；靠近屏幕边缘时会贴靠到边缘，在左右两侧竖立，靠近中间时自动居中。",
+   "hi": "द्वीप को खिसकाने के लिए उसकी ऊपरी पट्टी (या बंद द्वीप को कहीं से भी) खींचें: कहीं भी छोड़ें, वह वहीं रहेगा; स्क्रीन के किनारे के पास वह किनारे से जुड़ जाता है, किनारों पर खड़ा, और बीच के पास छोड़ने पर बीच में।",
+   "es": "Arrastra la isla por su barra superior (o la isla cerrada desde cualquier punto) para moverla: suéltala donde quieras y se queda ahí; cerca de un borde de la pantalla se acopla a él, en vertical en los laterales, centrada si la sueltas cerca del medio.",
+   "ar": "اسحب الجزيرة من شريطها العلوي (أو الجزيرة المغلقة من أي مكان) لتحريكها: اتركها في أي مكان فتبقى هناك؛ وقرب حافة الشاشة تلتصق بها، عموديةً على الجانبين، وفي المنتصف إذا تركتها قربه.",
+   "fr": "Faites glisser l’île par sa barre du haut (ou l’île fermée n’importe où) pour la déplacer : lâchez-la où vous voulez, elle y reste ; près d’un bord de l’écran elle s’y accroche, debout sur les côtés, centrée si vous la lâchez près du milieu.",
+   "bn": "দ্বীপটি সরাতে এর ওপরের বার (বা বন্ধ দ্বীপের যেকোনো জায়গা) টেনে নিন: যেখানে খুশি ছেড়ে দিন, সেখানেই থাকবে; স্ক্রিনের কিনারার কাছে সেটি কিনারায় লেগে যায়, পাশে খাড়া হয়ে, মাঝের কাছে ছাড়লে মাঝখানে।",
+   "pt-BR": "Arraste a ilha pela barra superior (ou a ilha fechada por qualquer ponto) para movê-la: solte onde quiser e ela fica ali; perto de uma borda da tela ela se prende a ela, em pé nas laterais, centralizada se você soltar perto do meio.",
+   "ru": "Перетащите остров за верхнюю панель (или закрытый остров за любое место): отпустите где угодно — он там и останется; у края экрана он прилипает к нему, по бокам встаёт вертикально, а у середины выравнивается по центру.",
+   "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di mana saja dan ia tetap di sana; dekat tepi layar ia menempel ke tepi itu, tegak di sisi kiri dan kanan, di tengah jika dilepas dekat bagian tengah."
+  },
+  "Folder open in File Explorer": {
+   "zh-Hans": "文件资源管理器中打开的文件夹",
+   "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर",
+   "es": "Carpeta abierta en el Explorador de archivos",
+   "ar": "المجلد المفتوح في مستكشف الملفات",
+   "fr": "Dossier ouvert dans l'Explorateur de fichiers",
+   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার",
+   "pt-BR": "Pasta aberta no Explorador de Arquivos",
+   "ru": "Папка, открытая в Проводнике",
+   "id": "Folder yang terbuka di File Explorer"
+  },
+  "No folder is open in File Explorer.": {
+   "zh-Hans": "文件资源管理器中没有打开的文件夹。",
+   "hi": "फ़ाइल एक्सप्लोरर में कोई फ़ोल्डर खुला नहीं है।",
+   "es": "No hay ninguna carpeta abierta en el Explorador de archivos.",
+   "ar": "لا يوجد مجلد مفتوح في مستكشف الملفات.",
+   "fr": "Aucun dossier n'est ouvert dans l'Explorateur de fichiers.",
+   "bn": "ফাইল এক্সপ্লোরারে কোনো ফোল্ডার খোলা নেই।",
+   "pt-BR": "Nenhuma pasta está aberta no Explorador de Arquivos.",
+   "ru": "В Проводнике не открыта ни одна папка.",
+   "id": "Tidak ada folder yang terbuka di File Explorer."
+  },
+  "Couldn't read the folder: {error}": {
+   "zh-Hans": "无法读取该文件夹：{error}",
+   "hi": "फ़ोल्डर पढ़ा नहीं जा सका: {error}",
+   "es": "No se pudo leer la carpeta: {error}",
+   "ar": "تعذّرت قراءة المجلد: {error}",
+   "fr": "Impossible de lire le dossier : {error}",
+   "bn": "ফোল্ডারটি পড়া যায়নি: {error}",
+   "pt-BR": "Não foi possível ler a pasta: {error}",
+   "ru": "Не удалось прочитать папку: {error}",
+   "id": "Tidak dapat membaca folder: {error}"
+  },
+  "Only a folder shared from the screen button can be read.": {
+   "zh-Hans": "只能读取通过屏幕按钮共享的文件夹。",
+   "hi": "केवल स्क्रीन बटन से साझा किया गया फ़ोल्डर ही पढ़ा जा सकता है।",
+   "es": "Solo se puede leer una carpeta compartida con el botón de pantalla.",
+   "ar": "لا يمكن قراءة إلا مجلد تمت مشاركته من زر الشاشة.",
+   "fr": "Seul un dossier partagé avec le bouton d'écran peut être lu.",
+   "bn": "শুধু স্ক্রিন বোতাম থেকে শেয়ার করা ফোল্ডারই পড়া যায়।",
+   "pt-BR": "Só é possível ler uma pasta compartilhada pelo botão de tela.",
+   "ru": "Можно читать только папку, которой поделились кнопкой экрана.",
+   "id": "Hanya folder yang dibagikan dari tombol layar yang bisa dibaca."
+  },
+  "Leaf": {
+   "zh-Hans": "叶子",
+   "hi": "पत्ती",
+   "es": "Hoja",
+   "ar": "ورقة",
+   "fr": "Feuille",
+   "bn": "পাতা",
+   "pt-BR": "Folha",
+   "ru": "Листик",
+   "id": "Daun"
+  },
+  "Bow tie": {
+   "zh-Hans": "领结",
+   "hi": "बो टाई",
+   "es": "Pajarita",
+   "ar": "ربطة عنق فراشة",
+   "fr": "Nœud papillon",
+   "bn": "বো টাই",
+   "pt-BR": "Gravata-borboleta",
+   "ru": "Бабочка",
+   "id": "Dasi kupu-kupu"
+  },
+  "Headphones": {
+   "zh-Hans": "耳机",
+   "hi": "हेडफ़ोन",
+   "es": "Auriculares",
+   "ar": "سماعات رأس",
+   "fr": "Casque audio",
+   "bn": "হেডফোন",
+   "pt-BR": "Fones de ouvido",
+   "ru": "Наушники",
+   "id": "Headphone"
+  },
+  "Calm": {
+   "zh-Hans": "平静",
+   "hi": "शांत",
+   "es": "Tranquilo",
+   "ar": "هادئ",
+   "fr": "Calme",
+   "bn": "শান্ত",
+   "pt-BR": "Calmo",
+   "ru": "Спокойно",
+   "id": "Tenang"
+  },
+  "Lively": {
+   "zh-Hans": "活泼",
+   "hi": "चंचल",
+   "es": "Animado",
+   "ar": "نشيط",
+   "fr": "Vif",
+   "bn": "চঞ্চল",
+   "pt-BR": "Animado",
+   "ru": "Живо",
+   "id": "Lincah"
+  },
+  "Only when something happens": {
+   "zh-Hans": "仅在有事发生时",
+   "hi": "केवल जब कुछ होता है",
+   "es": "Solo cuando pasa algo",
+   "ar": "فقط عندما يحدث شيء",
+   "fr": "Seulement quand il se passe quelque chose",
+   "bn": "শুধু যখন কিছু ঘটে",
+   "pt-BR": "Só quando algo acontece",
+   "ru": "Только когда что-то происходит",
+   "id": "Hanya saat ada sesuatu terjadi"
+  },
+  "Lumo moves": {
+   "zh-Hans": "Lumo 的动作",
+   "hi": "Lumo की हलचल",
+   "es": "Movimiento de Lumo",
+   "ar": "حركة Lumo",
+   "fr": "Mouvements de Lumo",
+   "bn": "Lumo-র নড়াচড়া",
+   "pt-BR": "Movimento do Lumo",
+   "ru": "Движения Lumo",
+   "id": "Gerakan Lumo"
+  },
+  "Thinking…": {
+   "zh-Hans": "思考中…",
+   "hi": "सोच रहा है…",
+   "es": "Pensando…",
+   "ar": "يفكّر…",
+   "fr": "Réfléchit…",
+   "bn": "ভাবছে…",
+   "pt-BR": "Pensando…",
+   "ru": "Думает…",
+   "id": "Berpikir…"
+  },
+  "Reading {name}": {
+   "zh-Hans": "正在读取 {name}",
+   "hi": "{name} पढ़ रहा है",
+   "es": "Leyendo {name}",
+   "ar": "يقرأ {name}",
+   "fr": "Lit {name}",
+   "bn": "{name} পড়ছে",
+   "pt-BR": "Lendo {name}",
+   "ru": "Читает {name}",
+   "id": "Membaca {name}"
+  },
+  "Reading a file": {
+   "zh-Hans": "正在读取文件",
+   "hi": "फ़ाइल पढ़ रहा है",
+   "es": "Leyendo un archivo",
+   "ar": "يقرأ ملفًا",
+   "fr": "Lit un fichier",
+   "bn": "একটি ফাইল পড়ছে",
+   "pt-BR": "Lendo um arquivo",
+   "ru": "Читает файл",
+   "id": "Membaca file"
+  },
+  "Searching for {pattern}": {
+   "zh-Hans": "正在搜索 {pattern}",
+   "hi": "{pattern} खोज रहा है",
+   "es": "Buscando {pattern}",
+   "ar": "يبحث عن {pattern}",
+   "fr": "Cherche {pattern}",
+   "bn": "{pattern} খুঁজছে",
+   "pt-BR": "Procurando {pattern}",
+   "ru": "Ищет {pattern}",
+   "id": "Mencari {pattern}"
+  },
+  "Searching the folder": {
+   "zh-Hans": "正在搜索文件夹",
+   "hi": "फ़ोल्डर में खोज रहा है",
+   "es": "Buscando en la carpeta",
+   "ar": "يبحث في المجلد",
+   "fr": "Cherche dans le dossier",
+   "bn": "ফোল্ডারে খুঁজছে",
+   "pt-BR": "Procurando na pasta",
+   "ru": "Ищет в папке",
+   "id": "Mencari di folder"
+  },
+  "Running a command": {
+   "zh-Hans": "正在运行命令",
+   "hi": "कमांड चला रहा है",
+   "es": "Ejecutando un comando",
+   "ar": "ينفّذ أمرًا",
+   "fr": "Lance une commande",
+   "bn": "একটি কমান্ড চালাচ্ছে",
+   "pt-BR": "Executando um comando",
+   "ru": "Выполняет команду",
+   "id": "Menjalankan perintah"
+  },
+  "Editing {name}": {
+   "zh-Hans": "正在编辑 {name}",
+   "hi": "{name} संपादित कर रहा है",
+   "es": "Editando {name}",
+   "ar": "يحرّر {name}",
+   "fr": "Modifie {name}",
+   "bn": "{name} সম্পাদনা করছে",
+   "pt-BR": "Editando {name}",
+   "ru": "Редактирует {name}",
+   "id": "Mengedit {name}"
+  },
+  "Editing a file": {
+   "zh-Hans": "正在编辑文件",
+   "hi": "फ़ाइल संपादित कर रहा है",
+   "es": "Editando un archivo",
+   "ar": "يحرّر ملفًا",
+   "fr": "Modifie un fichier",
+   "bn": "একটি ফাইল সম্পাদনা করছে",
+   "pt-BR": "Editando um arquivo",
+   "ru": "Редактирует файл",
+   "id": "Mengedit file"
+  },
+  "Searching the web": {
+   "zh-Hans": "正在搜索网页",
+   "hi": "वेब पर खोज रहा है",
+   "es": "Buscando en la web",
+   "ar": "يبحث في الويب",
+   "fr": "Cherche sur le web",
+   "bn": "ওয়েবে খুঁজছে",
+   "pt-BR": "Pesquisando na web",
+   "ru": "Ищет в интернете",
+   "id": "Mencari di web"
+  },
+  "Working on a sub-task": {
+   "zh-Hans": "正在处理子任务",
+   "hi": "एक उप-कार्य पर काम कर रहा है",
+   "es": "Trabajando en una subtarea",
+   "ar": "يعمل على مهمة فرعية",
+   "fr": "Travaille sur une sous-tâche",
+   "bn": "একটি উপ-কাজ করছে",
+   "pt-BR": "Trabalhando em uma subtarefa",
+   "ru": "Работает над подзадачей",
+   "id": "Mengerjakan subtugas"
+  },
+  "Planning": {
+   "zh-Hans": "正在规划",
+   "hi": "योजना बना रहा है",
+   "es": "Planificando",
+   "ar": "يخطّط",
+   "fr": "Planifie",
+   "bn": "পরিকল্পনা করছে",
+   "pt-BR": "Planejando",
+   "ru": "Планирует",
+   "id": "Merencanakan"
+  },
+  "Looking at the screen": {
+   "zh-Hans": "正在查看屏幕",
+   "hi": "स्क्रीन देख रहा है",
+   "es": "Mirando la pantalla",
+   "ar": "ينظر إلى الشاشة",
+   "fr": "Regarde l'écran",
+   "bn": "স্ক্রিন দেখছে",
+   "pt-BR": "Olhando a tela",
+   "ru": "Смотрит на экран",
+   "id": "Melihat layar"
+  },
+  "Using {tool}": {
+   "zh-Hans": "正在使用 {tool}",
+   "hi": "{tool} का उपयोग कर रहा है",
+   "es": "Usando {tool}",
+   "ar": "يستخدم {tool}",
+   "fr": "Utilise {tool}",
+   "bn": "{tool} ব্যবহার করছে",
+   "pt-BR": "Usando {tool}",
+   "ru": "Использует {tool}",
+   "id": "Menggunakan {tool}"
   }
  }
 }

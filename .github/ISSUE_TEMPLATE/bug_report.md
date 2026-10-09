@@ -10,8 +10,6 @@ labels: bug
 
 **How to reproduce**
 
-**macOS version**
+**Windows or Linux version** (e.g. Windows 11 24H2, or Ubuntu 24.04 with GNOME)
 
-**Mac model**
-
-**Coucou version**
+**Lumo version**

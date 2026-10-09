@@ -2,9 +2,9 @@
 // Mirrors IslandRootView.swift + IslandWindowController.swift.
 
 import { Tracked, Spring, clamp } from "../core/anim";
-import { Bridge, IS_TAURI, onDragDrop } from "../core/bridge";
+import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  CHAT_PANEL_OPEN, EDGE_GAP, EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -12,7 +12,8 @@ import {
   zoomStep,
 } from "../core/layout";
 import { Sound } from "../core/sound";
-import { State } from "../core/state";
+import { NEUTRAL_PILL } from "../core/pill-colors";
+import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
@@ -33,6 +34,10 @@ const GESTURE_WINDOW = 1500;
 const MOVE_THRESHOLD = 4;
 /** The open island's top bar (8 pt inset + 34 pt header): pressing there can move it. */
 const TOP_BAR_H = 42;
+/** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
+const LEAVE_CLOSE_DELAY = 0.6;
+/** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
+const HOVER_OPEN_DELAY = 350;
 
 /** Buttons, fields and links keep their own press: they never start a move. */
 function isControl(target: EventTarget | null): boolean {
@@ -87,6 +92,10 @@ export class Island {
   private lift = new Tracked(1);
   /** Puts a moved island down should Rust never say where it went. */
   private settleTimer: number | null = null;
+  /** Opens the closed island once the mouse has rested on it (Settings → Island). */
+  private hoverOpenTimer: number | null = null;
+  /** Page pixels the island is drawn off its usual place (a floating island, island.rs shift). */
+  private shift = { x: 0, y: 0 };
   /** The edge last drawn, to notice when Settings or the tray move it. */
   private lastDock: Dock | null = null;
 
@@ -124,8 +133,6 @@ export class Island {
   private lastLoveTime = 0;
   private botHoverStart = { x: 0, y: 0 };
 
-  private confusedRecovery: number | null = null;
-  private prevViewBeforeConfused: IslandViewName = "overview";
   private lastSyncedView: IslandViewName | null = null;
 
   /** The launch greeting ended, or the island came out of hidden — two of the
@@ -145,12 +152,10 @@ export class Island {
     this.desktop = new DesktopLink({
       reveal: () => this.reveal(),
       wardrobeFromDesktop: () => this.wardrobeFromDesktop(),
-      dizzyFromDesktop: () => this.handleDizzy(),
     });
     this.build();
     this.wireFsm();
     this.wireInput();
-    this.engine.onDizzy = () => this.handleDizzy();
     this.greeting.onComplete = () => {
       this.fsm.greetComplete();
       this.onGreetingDone?.();
@@ -259,12 +264,6 @@ export class Island {
         void Bridge.saveSettings(State.settings);
         State.notify();
       },
-      setAutoClose: (s) => {
-        State.settings.autoCloseInterval = s;
-        this.fsm.homeToPetitDelay = s;
-        void Bridge.saveSettings(State.settings);
-        State.notify();
-      },
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
       blip: () => Sound.play("blip"),
       chooseOutfit: (selection) => {
@@ -338,7 +337,7 @@ export class Island {
   // ── FSM ─────────────────────────────────────────────────────────────────────
 
   private wireFsm() {
-    this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    this.applyBehaviour();
     this.fsm.onTransition = (from, to) => {
       // The greeting is over, however it ended: back to his desktop spot.
       if (from === "coucou" && to !== "coucou") this.desktop.launch();
@@ -491,6 +490,50 @@ export class Island {
     }
     if (State.paused) return;
     this.alert("wardrobe");
+  }
+
+  // ── How the island opens and closes on its own (Settings → Island) ─────────
+
+  /** The close mode, the auto-close delay and auto-hide, into the state machine. */
+  private applyBehaviour() {
+    const s = State.settings;
+    const mode = parseCloseMode(s.islandClose);
+    // Settings stay open while you look something up elsewhere: they close on
+    // Escape, a click on a tab, or a click outside when set to.
+    const holding = State.view === "settings";
+    this.fsm.closeOnLeave = !holding && (mode === "timer" || mode === "leave");
+    this.fsm.homeToPetitDelay = mode === "leave" ? LEAVE_CLOSE_DELAY : s.autoCloseInterval;
+    this.fsm.autoHide = s.islandAutoHide === true;
+  }
+
+  /** The mouse came to rest on the closed island: open it, when that is asked for. */
+  private scheduleHoverOpen() {
+    this.cancelHoverOpen();
+    if (!State.settings.islandHoverOpen || this.fsm.state !== "petit" || State.paused) return;
+    this.hoverOpenTimer = window.setTimeout(() => {
+      this.hoverOpenTimer = null;
+      // Still there, and not picking the island up to move it.
+      if (this.wasInIsland && this.fsm.state === "petit" && !this.moving && !this.pendingMove) this.fsm.click();
+    }, HOVER_OPEN_DELAY);
+  }
+
+  private cancelHoverOpen() {
+    if (this.hoverOpenTimer != null) window.clearTimeout(this.hoverOpenTimer);
+    this.hoverOpenTimer = null;
+  }
+
+  /**
+   * A press somewhere else on the screen (island.rs), or the island losing the
+   * keyboard where there is no cursor poll: closes the open island when it is
+   * set to close on a click elsewhere. Never while a card waits for an answer,
+   * the island is pinned, a file picker of ours is open, or it is being moved.
+   */
+  onOutsidePress() {
+    if (parseCloseMode(State.settings.islandClose) !== "click") return;
+    if (State.mode !== "expanded" || this.fsm.state !== "home") return;
+    if (this.fsm.pinned || State.isPinned || State.pendingApproval || isDialogOpen()) return;
+    if (this.moving || this.resizing || this.uploadActive) return;
+    this.collapse();
   }
 
   /** An alert stopped waiting for an answer: let the island auto-close again. */
@@ -683,16 +726,13 @@ export class Island {
     const dock = this.dock;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
-    // Square against its edge, rounded on the others.
-    this.islandEl.style.borderRadius = {
-      top: `0 0 ${r}px ${r}px`,
-      bottom: `${r}px ${r}px 0 0`,
-      left: `0 ${r}px ${r}px 0`,
-      right: `${r}px 0 0 ${r}px`,
-    }[dock];
-    const centre = isUpright(dock) ? "translateY(-50%)" : "translateX(-50%)";
+    // Rounded all round, a little off the edge of the screen.
+    this.islandEl.style.borderRadius = `${r}px`;
+    const at = this.islandRect();
+    this.islandEl.style.left = `${at.x}px`;
+    this.islandEl.style.top = `${at.y}px`;
     const lift = this.lift.value;
-    this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `${centre} scale(${lift})` : centre;
+    this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync. Upright, the mini grid sits below Mochi.
     if (isUpright(dock) && State.mode !== "expanded") {
@@ -717,20 +757,27 @@ export class Island {
   }
 
   /**
-   * Island rect in window coordinates: against its edge of the window, centred
-   * along it — what the CSS anchoring draws (see .dock-* in style.css).
+   * Island rect in window coordinates: a gap off its edge of the window,
+   * centred along it, moved by the shift of a floating island — and kept
+   * inside the window, so an island floating low still opens whole.
    */
   private islandRect(): { x: number; y: number; w: number; h: number } {
     const w = this.width.value;
     const hh = this.height.value;
     const vw = window.innerWidth;
     const vh = window.innerHeight;
+    const { x: sx, y: sy } = this.shift;
+    let x: number;
+    let y: number;
     switch (this.dock) {
-      case "bottom": return { x: (vw - w) / 2, y: vh - hh, w, h: hh };
-      case "left": return { x: 0, y: (vh - hh) / 2, w, h: hh };
-      case "right": return { x: vw - w, y: (vh - hh) / 2, w, h: hh };
-      default: return { x: (vw - w) / 2, y: 0, w, h: hh };
+      case "bottom": x = (vw - w) / 2 + sx; y = vh - EDGE_GAP - hh + sy; break;
+      case "left": x = EDGE_GAP; y = (vh - hh) / 2 + sy; break;
+      case "right": x = vw - EDGE_GAP - w; y = (vh - hh) / 2 + sy; break;
+      default: x = (vw - w) / 2 + sx; y = EDGE_GAP + sy;
     }
+    x = Math.min(Math.max(x, 0), Math.max(vw - w, 0));
+    y = Math.min(Math.max(y, 0), Math.max(vh - hh, 0));
+    return { x, y, w, h: hh };
   }
 
   /** The edge the island hangs from: always the top where it cannot be moved. */
@@ -921,6 +968,13 @@ export class Island {
    */
   followPageCursor() {
     this.canResize = false;
+    // No global mouse here: a click elsewhere shows as the island losing the
+    // keyboard (not to the settings frame inside it, which keeps it ours).
+    window.addEventListener("blur", () => {
+      window.setTimeout(() => {
+        if (document.activeElement?.tagName !== "IFRAME") this.onOutsidePress();
+      }, 0);
+    });
     this.applyDock();
     window.addEventListener("mousemove", (e) => this.onCursor(e.clientX, e.clientY));
     window.addEventListener("mouseout", (e) => {
@@ -965,8 +1019,10 @@ export class Island {
       if (inIsland && !this.wasInIsland) {
         if (this.fsm.state === "coucou") this.greeting.hover();
         this.fsm.mouseEntered();
+        this.scheduleHoverOpen();
       }
       if (!inIsland && this.wasInIsland) {
+        this.cancelHoverOpen();
         this.fsm.mouseLeft();
       }
       this.wasInIsland = inIsland;
@@ -1029,26 +1085,6 @@ export class Island {
     if (this.botHoverTimer != null) window.clearTimeout(this.botHoverTimer);
     this.botHoverTimer = null;
     this.engine.tgEs = 1;
-  }
-
-  /** Three slaps → dizzy + confused view for 3.3 s, then back. */
-  handleDizzy() {
-    this.prevViewBeforeConfused = State.view;
-    State.stateOverride = "dizzy";
-    this.engine.setState("dizzy");
-    Sound.play("dizzy");
-    this.alert("confused");
-    if (this.confusedRecovery != null) window.clearTimeout(this.confusedRecovery);
-    this.confusedRecovery = window.setTimeout(() => {
-      this.confusedRecovery = null;
-      State.stateOverride = null;
-      this.engine.setState(State.effectiveState);
-      if (State.view === "confused") {
-        const fallback = State.defaultView();
-        this.setView(this.prevViewBeforeConfused === "confused" ? fallback : this.prevViewBeforeConfused);
-      }
-      this.engine.triggerEmote("happy");
-    }, 3300);
   }
 
   // ── Frame loop ──────────────────────────────────────────────────────────────
@@ -1125,6 +1161,11 @@ export class Island {
 
     if (busy) {
       requestAnimationFrame(this.frame);
+    } else if (State.mode !== "hidden" && this.engine.ambientActive) {
+      // Only Lumo's own motion is left: about 30 frames a second is plenty, and
+      // it stops with everything else once the island hides.
+      window.setTimeout(() => requestAnimationFrame(this.frame), 22);
+      Sound.idle();
     } else {
       this.running = false;
       Sound.idle();
@@ -1148,14 +1189,14 @@ export class Island {
 
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !away) {
       const d = p.diameter;
-      const color = botGlowColor(State.effectiveState);
+      const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";
       this.botGlow.style.width = `${d * 2.2}px`;
       this.botGlow.style.height = `${d * 2.2}px`;
       this.botGlow.style.left = `${this.botCx.value - d * 1.1}px`;
       this.botGlow.style.top = `${this.botCy.value - d * 1.1}px`;
       this.botGlow.style.background = `radial-gradient(circle, ${color} 0%, transparent 62%)`;
-      this.botGlow.style.opacity = String(botGlowOpacity(State.effectiveState));
+      this.botGlow.style.opacity = String(botGlowOpacity(State.shownState));
     } else {
       this.botGlow.style.display = "none";
     }
@@ -1181,12 +1222,10 @@ export class Island {
     if (!ctx) return;
 
     const focus = State.focusTask;
-    // While a plan card is open Mochi wears the plan's colour, like its pill.
-    this.engine.bodyColor = planCardOpen()
-      ? hexToRGB(openPlanColor())
-      : focus?.isIntegration
-        ? hexToRGB(focus.color)
-        : null;
+    // While a plan card is open Lumo wears the plan's colour, like its pill. A
+    // white pill leaves him in his own butter yellow.
+    const wear = planCardOpen() ? openPlanColor() : focus?.isIntegration ? focus.color : null;
+    this.engine.bodyColor = wear && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
     this.engine.particleOverhang = BOT_OVERHANG;
     this.engine.lookX = this.lookX();
     this.engine.lookY = this.lookY();
@@ -1273,12 +1312,16 @@ export class Island {
     // when you just asked for it (a click, a shortcut). Opened by anything else
     // (a card going away, a session ending) it waits for a click, so typing in
     // another app is never cut off.
+    // Settings have fields too, and are only ever opened on purpose.
     if (this.lastSyncedView !== State.view) {
-      const wasChat = this.lastSyncedView === "prompt";
+      const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings";
       this.lastSyncedView = State.view;
+      this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
         this.focusChat();
-      } else if (wasChat) {
+      } else if (State.view === "settings" && expanded) {
+        void Bridge.focusWindow(true);
+      } else if (wasTyping) {
         void Bridge.focusWindow(false);
       }
     }
@@ -1300,14 +1343,16 @@ export class Island {
     }
 
     syncMiniBotStates(State.tasks);
-    this.engine.setState(State.effectiveState);
+    this.engine.setState(State.shownState);
   }
 
   /** Applies settings coming from Rust at boot. */
   applySettings() {
+    this.engine.ambient = motionAmount(State.settings.lumoMotion);
+    this.ensureRunning();
     Sound.setEnabled(State.settings.soundEnabled);
     Sound.setVolume(State.settings.soundVolume);
-    this.fsm.homeToPetitDelay = State.settings.autoCloseInterval;
+    this.applyBehaviour();
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
@@ -1349,8 +1394,11 @@ export class Island {
    * there. The island re-anchors, turns upright on a side, and settles with a
    * bounce of its own.
    */
-  onDock(place: { dock: string; offset: number }) {
-    State.settings = { ...State.settings, islandDock: place.dock, islandOffset: place.offset };
+  onDock(place: { dock: string; offset: number; float?: number; shiftX?: number; shiftY?: number }) {
+    State.settings = {
+      ...State.settings, islandDock: place.dock, islandOffset: place.offset, islandFloat: place.float ?? 0,
+    };
+    this.shift = { x: place.shiftX ?? 0, y: place.shiftY ?? 0 };
     this.lastDock = this.dock;
     this.clearSettleTimer();
     this.applyDock();
@@ -1363,6 +1411,14 @@ export class Island {
     this.moving = false;
     this.engine.triggerEmote("happy");
     Sound.play("pop");
+    this.ensureRunning();
+  }
+
+  /** Where Rust put the window: the island is drawn this far off its usual place. */
+  onShift(shift: { x: number; y: number }) {
+    if (!Number.isFinite(shift.x) || !Number.isFinite(shift.y)) return;
+    if (shift.x === this.shift.x && shift.y === this.shift.y) return;
+    this.shift = { x: shift.x, y: shift.y };
     this.ensureRunning();
   }
 
@@ -1406,6 +1462,6 @@ export class Island {
 
   /** What the chat's height follows: its messages, or the most room while a list is open. */
   private get chatCount(): number {
-    return State.chatPanelOpen ? 99 : State.chatHistory.length;
+    return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
   }
 }

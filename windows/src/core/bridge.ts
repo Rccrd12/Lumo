@@ -6,15 +6,47 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
+import type { ChatUsage } from "./chat-usage";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 
+/**
+ * Settings open inside the island (an iframe of settings.html, see
+ * views/settings-frame.ts) talk to Rust through the island page: a frame has
+ * no Tauri connection of its own on Linux, and on Windows Rust's events never
+ * reach one.
+ */
+export interface TauriHost {
+  invoke: typeof invoke;
+  listen: typeof listen;
+}
+
+const HOST: TauriHost | null = (() => {
+  if (typeof window === "undefined" || window.parent === window) return null;
+  try {
+    return (window.parent as unknown as { __COUCOU_HOST__?: TauriHost }).__COUCOU_HOST__ ?? null;
+  } catch {
+    return null;
+  }
+})();
+
+/** This page is the Settings inside the island, not the Settings window. */
+export const EMBEDDED = HOST != null;
+
+/** The island page lends its connection to Rust to the Settings inside it. */
+export function lendTauri() {
+  (window as unknown as { __COUCOU_HOST__?: TauriHost }).__COUCOU_HOST__ = { invoke, listen };
+}
+
 export const IS_TAURI =
-  typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
+  typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || HOST != null);
+
+const tauriInvoke: typeof invoke = (cmd, args, options) => (HOST?.invoke ?? invoke)(cmd, args, options);
+const tauriListen: typeof listen = (event, handler, options) => (HOST?.listen ?? listen)(event, handler, options);
 
 async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T | null> {
   if (!IS_TAURI) return null;
   try {
-    return await invoke<T>(cmd, args);
+    return await tauriInvoke<T>(cmd, args);
   } catch (err) {
     console.error(`[coucou] ${cmd} failed`, err);
     return null;
@@ -31,6 +63,12 @@ export interface UpdateInfo {
   assetUrl: string | null;
 }
 
+/** Page pixels the island is drawn off its usual place: a floating island kept on its display. */
+export interface IslandShift {
+  x: number;
+  y: number;
+}
+
 export interface BootInfo {
   settings: Settings;
   /** Logical screen rect of the monitor the island lives on. */
@@ -39,7 +77,13 @@ export interface BootInfo {
   hookPath: string;
   /** False where the OS has no global cursor (Wayland): see Island.followPageCursor. */
   cursorPoll: boolean;
+  /** Where the island is drawn in its window, off its usual place (island.rs shift). */
+  shift: IslandShift;
 }
+
+/** System dialogs of ours open right now (the file picker): a click in them is not "elsewhere". */
+let dialogs = 0;
+export const isDialogOpen = () => dialogs > 0;
 
 export const Bridge = {
   boot: () => call<BootInfo>("boot"),
@@ -145,8 +189,12 @@ export const Bridge = {
    * is what the user added from the screen button, sent with this turn only.
    */
   chatSend: (query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
-    callOrThrow<{ text: string; session?: string }>("chat_send", screen ? { query, context, screen } : { query, context }),
+    callOrThrow<ChatReply>("chat_send", screen ? { query, context, screen } : { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** The Stop button: `chatSend` then returns what was written so far, `stopped`. */
+  chatStop: () => call<void>("chat_stop"),
+  /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
+  chatRewind: (keep: number) => call<void>("chat_rewind", { keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
   islandDrag: () => call<void>("island_drag"),
   /** Puts the island back at the top centre of its display. */
@@ -159,7 +207,14 @@ export const Bridge = {
   chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
     call<void>("chat_restore", { turns, session }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
-  pickFile: () => callOrThrow<DroppedFile | null>("pick_file"),
+  pickFile: async () => {
+    dialogs++;
+    try {
+      return await callOrThrow<DroppedFile | null>("pick_file");
+    } finally {
+      dialogs--;
+    }
+  },
   // The chat's screen button (screen.rs). Each runs on the user's click only.
   /** The displays, for the menu. Captures nothing. */
   screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),
@@ -169,11 +224,27 @@ export const Bridge = {
   screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
   /** Deletes screenshots the user did not keep. */
   screenDiscard: (paths: string[]) => call<void>("screen_discard", { paths }),
+  /** The folder open in File Explorer, its name only, for the menu. Lists nothing. */
+  screenExplorerPeek: () => callOrThrow<ExplorerFolder | null>("screen_explorer_peek"),
+  /** That folder and what is in it, shared with the chat (explorer.rs). */
+  screenExplorer: () => callOrThrow<ExplorerFolder | null>("screen_explorer"),
+  /**
+   * The file of a shared folder that `query` names, copied into the inbox
+   * like a picked one; null when it names none.
+   */
+  explorerAttach: (folder: string, query: string) =>
+    callOrThrow<DroppedFile | null>("explorer_attach", { folder, query }),
   /**
    * The models a provider offers, for the picker in the chat view. Rust asks
    * the provider only when it has a key (or a server address).
    */
   chatModels: (provider: string) => callOrThrow<ModelInfo[]>("chat_models", { provider }),
+  /**
+   * The OpenRouter key's credits, for the chat's usage line. Rust asks
+   * OpenRouter only while the option is on, OpenRouter is the chat's provider
+   * and it has a key; null otherwise or on any failure.
+   */
+  chatUsage: () => call<ChatUsage | null>("chat_usage"),
   /** Settings → Local models → Connect: does the server answer, and with which models? */
   /** The custom server's key, bound to the address it is entered for. */
   localSetKey: (url: string, key: string) => call<void>("local_set_key", { url, key }),
@@ -182,6 +253,16 @@ export const Bridge = {
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
+  /**
+   * Ctrl+V in the chat: what the page got from the clipboard (an image, a
+   * file), sent raw and written into the inbox like a drop.
+   */
+  pasteFile: (name: string, bytes: Uint8Array) => {
+    if (!IS_TAURI) return Promise.reject(new Error("not running inside Lumo"));
+    return tauriInvoke<DroppedFile>("paste_file", bytes, { headers: { "x-coucou-name": encodeURIComponent(name) } });
+  },
+  /** Ctrl+V in the chat with no text and no image: the file copied in File Explorer, copied into the inbox. */
+  pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
   secretSet: (key: string, value: string) => callOrThrow<void>("secret_set", { key, value }),
@@ -285,6 +366,28 @@ export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
 
+/**
+ * The `chat-activity` event: what an answer is doing while no text shows
+ * (claude_code.rs Activity). `kind`: thinking, read, search, command, edit,
+ * web, subtask, plan, screen or tool; `detail`: a file name, a host, a search
+ * pattern or a tool's name, maybe empty.
+ */
+export interface ChatActivity {
+  kind: string;
+  detail: string;
+}
+
+/** One answered chat turn (chat.rs ChatReply). */
+export interface ChatReply {
+  text: string;
+  /** The Claude Code session that answered. */
+  session?: string;
+  /** The user pressed Stop: `text` is what was written until then, maybe nothing. */
+  stopped?: boolean;
+  /** How many turns Rust's conversation holds after this one (`chatRewind`). */
+  turns?: number;
+}
+
 /** A display the screen button can capture; `index` is its place in the menu. */
 export interface ScreenDisplay {
   index: number;
@@ -321,11 +424,30 @@ export interface SelectedText {
   title: string;
 }
 
+/** One file or subfolder of the folder open in File Explorer. */
+export interface FolderEntry {
+  name: string;
+  dir: boolean;
+  size: number;
+  /** Local time, "2026-10-08 09:05"; "" when unknown. */
+  modified: string;
+}
+
+/** The folder open in File Explorer; `entries` stays empty until it is shared. */
+export interface ExplorerFolder {
+  path: string;
+  name: string;
+  entries: FolderEntry[];
+  /** Entries left out of the listing. */
+  omitted: number;
+}
+
 /** What the screen button or the shortcuts add to the next question. */
 export interface ScreenContext {
   windows: OpenWindow[];
   shots: { name: string; path: string }[];
   selection?: SelectedText;
+  folder?: ExplorerFolder;
 }
 
 /**
@@ -398,8 +520,8 @@ export interface HookPreview {
 
 /** Same as `call`, but surfaces the error so the UI can show what went wrong. */
 async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (!IS_TAURI) throw new Error("not running inside Coucou");
-  return invoke<T>(cmd, args);
+  if (!IS_TAURI) throw new Error("not running inside Lumo");
+  return tauriInvoke<T>(cmd, args);
 }
 
 export type BridgeEvent =
@@ -469,7 +591,7 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   window.addEventListener("dragover", onOver);
   window.addEventListener("dragleave", onLeave);
   window.addEventListener("drop", onDrop);
-  const unlisten = await listen<DragDropPayload>("file-drag", (e) => handler(e.payload));
+  const unlisten = await tauriListen<DragDropPayload>("file-drag", (e) => handler(e.payload));
   return () => {
     window.removeEventListener("dragenter", onEnter);
     window.removeEventListener("dragover", onOver);
@@ -481,5 +603,5 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
 
 export async function onEvent<T>(name: string, handler: (payload: T) => void) {
   if (!IS_TAURI) return () => {};
-  return listen<T>(name, (e) => handler(e.payload));
+  return tauriListen<T>(name, (e) => handler(e.payload));
 }

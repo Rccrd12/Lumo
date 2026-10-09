@@ -3,13 +3,13 @@
 // integrations land here too in a later stage.
 
 import "./settings.css";
-import { Bridge, onEvent, type HookPreview, type HookStatus, type ShortcutsReport } from "../core/bridge";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ShortcutsReport } from "../core/bridge";
 import { CUSTOM_SERVER_KEY, providerDef, urlExposure } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
   recordPress, type Binding,
 } from "../core/shortcuts";
-import { DEFAULT_SETTINGS, type Settings } from "../core/state";
+import { DEFAULT_SETTINGS, parseCloseMode, parseMotion, type Settings } from "../core/state";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, isComingSoon, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -19,6 +19,7 @@ import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
 import { renderDiff, statusDot } from "./parts";
 import { updatesSection } from "./updates";
+import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
 import {
   LANGUAGES, N_, isRtl, onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t, tn,
 } from "../i18n/i18n";
@@ -73,7 +74,7 @@ const HOOKS_CHANGE: Change = {
   preview: Bridge.hooksPreview,
   apply: Bridge.hooksApply,
   get installText() { return t("This is exactly what will change in your settings.json. Your own hooks are left untouched."); },
-  get removeText() { return t("This removes Coucou's entries only. Your own hooks are left untouched."); },
+  get removeText() { return t("This removes Lumo's entries only. Your own hooks are left untouched."); },
   get installButton() { return t("Back up and write"); },
   get removeButton() { return t("Back up and remove"); },
   done: (backup) => backup
@@ -84,7 +85,7 @@ const HOOKS_CHANGE: Change = {
 const STATUS_LINE_CHANGE: Change = {
   preview: Bridge.statusLinePreview,
   apply: Bridge.statusLineApply,
-  get installText() { return t("This is exactly what will change: only the status line. If you already have one it keeps working, Coucou's relay runs it for you."); },
+  get installText() { return t("This is exactly what will change: only the status line. If you already have one it keeps working, Lumo's relay runs it for you."); },
   get removeText() { return t("This puts your previous status line back, or removes the entry if there was none."); },
   get installButton() { return t("Back up and write"); },
   get removeButton() { return t("Back up and remove"); },
@@ -180,7 +181,7 @@ function claudeSection(status: HookStatus): HTMLElement {
       h("div", {
         class: "hint",
         text: status.installed
-          ? t("Coucou is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.")
+          ? t("Lumo is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.")
           : t("Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing."),
       }),
       h("div", { class: "row" },
@@ -197,7 +198,7 @@ function claudeSection(status: HookStatus): HTMLElement {
     if (!status.hookReady) {
       body.append(h("div", {
         class: "notice warn",
-        text: t("coucou-hook.exe is not in place yet. Restart Coucou; if it still fails, build it with `cargo build -p coucou-hook`."),
+        text: t("coucou-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`."),
       }));
     }
 
@@ -237,9 +238,9 @@ function claudeSection(status: HookStatus): HTMLElement {
  * that has been confirmed. A status line the user had keeps working.
  */
 const PLAN_SETTINGS_TEXT = {
-  get claude() { return t("Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Coucou adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only."); },
+  get claude() { return t("Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only."); },
   get showClaude() { return t("Show in notch"); },
-  get codex() { return t("Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Coucou asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT."); },
+  get codex() { return t("Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Lumo asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT."); },
   get showCodex() { return t("Show Codex plan in the notch"); },
 };
 
@@ -319,14 +320,24 @@ function planSection(status: HookStatus): HTMLElement {
 // ── Claude API section ────────────────────────────────────────────────────────
 
 const MODELS: [string, string][] = [
-  ["claude-opus-5", "Claude Opus 5"],
-  ["claude-sonnet-5", "Claude Sonnet 5"],
-  ["claude-haiku-4-5", "Claude Haiku 4.5"],
+  ["claude-opus-5-5", "Claude Opus 5.5"],
+  ["claude-sonnet-5-5", "Claude Sonnet 5.5"],
+  ["claude-haiku-5-5", "Claude Haiku 5.5"],
 ];
+
+/** What Claude Code runs: its own default, or one of the current models. */
+const CLAUDE_CODE_MODELS: [string, string][] = [
+  ["default", N_("Default")],
+  ["claude-opus-5-5", "Opus 5.5"],
+  ["claude-sonnet-5-5", "Sonnet 5.5"],
+  ["claude-haiku-5-5", "Haiku 5.5"],
+];
+
+const NO_KEY = N_("No key yet. Only the Anthropic API needs one: Claude Code uses your Claude plan.");
 
 function apiSection(hasKey: boolean): HTMLElement {
   const dot = statusDot(hasKey);
-  const state = h("span", { class: "hint", text: hasKey ? t("Key saved in the {store}.", { store: KEY_STORE }) : t("No key yet — the chat needs one.") });
+  const state = h("span", { class: "hint", text: hasKey ? t("Key saved in the {store}.", { store: KEY_STORE }) : t(NO_KEY) });
 
   const field = h("input", {
     type: "password",
@@ -345,7 +356,7 @@ function apiSection(hasKey: boolean): HTMLElement {
     dot.style.background = present ? "#22c55e" : "#f4505e";
     state.textContent = present
       ? t("Key saved in the {store}.", { store: KEY_STORE })
-      : t("No key yet — the chat needs one.");
+      : t(NO_KEY);
     field.placeholder = present ? `••••••••••••  ${t("(stored)")}` : "sk-ant-...";
     clearBtn.style.display = present ? "" : "none";
   }
@@ -388,10 +399,25 @@ function apiSection(hasKey: boolean): HTMLElement {
 
   clearBtn.style.display = hasKey ? "" : "none";
 
+  // Claude Code needs no key: it runs with the plan the user signed in with.
+  const ccModel = h("select", {}) as HTMLSelectElement;
+  for (const [id, label] of CLAUDE_CODE_MODELS) ccModel.append(h("option", { value: id, text: t(label) }));
+  const ccSaved = settings.chatModels["claude-code"] || "default";
+  if (!CLAUDE_CODE_MODELS.some(([id]) => id === ccSaved)) {
+    ccModel.append(h("option", { value: ccSaved, text: ccSaved }));
+  }
+  ccModel.value = ccSaved;
+  ccModel.addEventListener("change", () => {
+    settings.chatModels = { ...settings.chatModels, "claude-code": ccModel.value };
+    void save();
+  });
+
   return h(
     "section",
     {},
     h("h2", {}, dot, h("span", { text: "Claude" })),
+    h("div", { class: "row" }, h("label", { text: "Claude Code" }), ccModel),
+    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Uses your Claude plan. No key needed.") }),
     state,
     h("div", { class: "row" }, h("label", { text: t("API key") }), field, saveBtn, clearBtn),
     h("div", { class: "row" }, h("label", { text: t("Model") }), model),
@@ -474,7 +500,7 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
     "section",
     {},
     h("h2", {}, h("span", { text: t("Active pills") })),
-    h("div", { class: "hint", text: t("Choose the tools you use. Coucou only shows what you declare here.") }),
+    h("div", { class: "hint", text: t("Choose the tools you use. Lumo only shows what you declare here.") }),
     slots,
     h("div", { class: "row" }, h("label", { text: t("Main tool") }), main),
     groups,
@@ -585,6 +611,52 @@ function chatProvidersSection(
     h("h2", {}, h("span", { text: CHAT_STRINGS.providersTitle })),
     h("div", { class: "hint", text: CHAT_STRINGS.providersHint }),
     list,
+  );
+}
+
+// ── Remaining usage in the chat ───────────────────────────────────────────────
+
+/** The quiet line next to the chat's model picker (core/chat-usage.ts). Off until turned on. */
+function chatUsageSection(): HTMLElement {
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: t("Remaining usage") })),
+    h("div", { class: "hint", text: t("Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.", { path: `${t("Agents")} → ${t("Plan usage")}` }) }),
+    h("div", { class: "row" },
+      h("label", { text: t("Show remaining usage in the chat") }),
+      toggle(settings.chatShowUsage, (on) => {
+        settings.chatShowUsage = on;
+        void save();
+      }),
+    ),
+  );
+}
+
+// ── What goes with every message ─────────────────────────────────────────────
+
+const SHARING_TEXT = {
+  get title() { return t("Share with the chat"); },
+  get hint() { return t("When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message."); },
+  get explorer() { return t("Always share the folder open in File Explorer"); },
+  get linux() { return t("Not available on Linux yet."); },
+};
+
+function chatSharingSection(): HTMLElement {
+  const windows = navigator.userAgent.includes("Windows");
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: SHARING_TEXT.title })),
+    h("div", { class: "hint", text: SHARING_TEXT.hint }),
+    h("div", { class: "row" },
+      h("label", { text: SHARING_TEXT.explorer }),
+      toggle(settings.chatShareExplorer, (on) => {
+        settings.chatShareExplorer = on;
+        void save();
+      }),
+    ),
+    windows ? null : h("div", { class: "hint", text: SHARING_TEXT.linux }),
   );
 }
 
@@ -791,7 +863,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
 
   function updateNote() {
     const used = settings.activeIntegrations.length;
-    note.textContent = t("Pick up to {max} pills to show next to Mochi — {used}/{max} in use. Keys are stored in the {store}, never on disk.", { max: MAX_ACTIVE, used, store: KEY_STORE });
+    note.textContent = t("Pick up to {max} pills to show next to Lumo — {used}/{max} in use. Keys are stored in the {store}, never on disk.", { max: MAX_ACTIVE, used, store: KEY_STORE });
   }
   declaredViews.push(updateNote);
 
@@ -871,17 +943,6 @@ function generalSection(): HTMLElement {
     void save();
   });
 
-  const autoClose = h("input", {
-    type: "number", min: "5", max: "120", step: "1",
-    value: String(Math.round(settings.autoCloseInterval)),
-    style: "width:72px",
-  }) as HTMLInputElement;
-  autoClose.addEventListener("change", () => {
-    settings.autoCloseInterval = Math.max(5, Math.min(120, Number(autoClose.value) || 15));
-    autoClose.value = String(settings.autoCloseInterval);
-    void save();
-  });
-
   return h(
     "section",
     {},
@@ -890,11 +951,6 @@ function generalSection(): HTMLElement {
       h("label", { text: t("Sound") }),
       toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
       volume,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Auto-close") }),
-      autoClose,
-      h("span", { class: "hint", text: t("seconds after you leave the island") }),
     ),
     languageRow(),
     h("div", { class: "row" },
@@ -960,10 +1016,28 @@ function islandSection(): HTMLElement {
     void save();
   });
 
+  // How much Lumo moves on his own.
+  const motion = h("select", {}) as HTMLSelectElement;
+  for (const [value, label] of [
+    ["calm", N_("Calm")],
+    ["lively", N_("Lively")],
+    ["still", N_("Only when something happens")],
+  ] as const) motion.append(h("option", { value, text: t(label) }));
+  motion.value = parseMotion(settings.lumoMotion);
+  motion.addEventListener("change", () => {
+    settings.lumoMotion = motion.value;
+    void save();
+  });
+
   return h(
     "section",
     {},
     h("h2", {}, h("span", { text: t("Island") })),
+    ...behaviourRows(),
+    h("div", { class: "row" },
+      h("label", { text: t("Lumo moves") }),
+      motion,
+    ),
     h("div", { class: "row" },
       h("label", { text: t("Island lives on") }),
       screen,
@@ -978,12 +1052,66 @@ function islandSection(): HTMLElement {
       icons,
     ),
     h("div", { class: "row" },
-      h("span", { class: "hint", text: t("Drag the island by its top bar (or the closed island anywhere) to move it: let go near an edge of the screen and it docks there, upright on the sides, centred when you drop it near the middle.") }),
+      h("span", { class: "hint", text: t("Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle.") }),
     ),
     h("div", { class: "row" },
       h("span", { class: "hint", text: t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.") }),
     ),
   );
+}
+
+/** When the island opens and closes by itself. */
+function behaviourRows(): HTMLElement[] {
+  const close = h("select", {}) as HTMLSelectElement;
+  close.append(
+    h("option", { value: "timer", text: t("A few seconds after the mouse leaves") }),
+    h("option", { value: "leave", text: t("As soon as the mouse leaves") }),
+    h("option", { value: "click", text: t("On a click outside the island") }),
+    h("option", { value: "never", text: t("Only when I close it") }),
+  );
+  close.value = parseCloseMode(settings.islandClose);
+
+  const seconds = h("input", {
+    type: "number", min: "5", max: "120", step: "1",
+    value: String(Math.round(settings.autoCloseInterval)),
+    style: "width:72px",
+  }) as HTMLInputElement;
+  seconds.addEventListener("change", () => {
+    settings.autoCloseInterval = Math.max(5, Math.min(120, Number(seconds.value) || 15));
+    seconds.value = String(settings.autoCloseInterval);
+    void save();
+  });
+  const secondsHint = h("span", { class: "hint", text: t("seconds after you leave the island") });
+  const showSeconds = () => {
+    const on = close.value === "timer";
+    seconds.style.display = on ? "" : "none";
+    secondsHint.style.display = on ? "" : "none";
+  };
+  showSeconds();
+  close.addEventListener("change", () => {
+    settings.islandClose = parseCloseMode(close.value);
+    showSeconds();
+    void save();
+  });
+
+  return [
+    h("div", { class: "row" },
+      h("label", { text: t("Close the open island") }),
+      close,
+      seconds,
+      secondsHint,
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Open on hover") }),
+      toggle(settings.islandHoverOpen, (v) => { settings.islandHoverOpen = v; void save(); }),
+      h("span", { class: "hint", text: t("opens the closed island when the mouse rests on it") }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Hide when unused") }),
+      toggle(settings.islandAutoHide, (v) => { settings.islandAutoHide = v; void save(); }),
+      h("span", { class: "hint", text: t("the closed island slips into the edge of the screen a minute after you leave it") }),
+    ),
+  ];
 }
 
 /**
@@ -1258,7 +1386,7 @@ function applyLanguage() {
 
 function applyDirection() {
   document.documentElement.dir = isRtl() ? "rtl" : "ltr";
-  document.title = t("Settings — Coucou");
+  document.title = t("Settings — Lumo");
 }
 
 let rendering: Promise<void> | null = null;
@@ -1345,7 +1473,24 @@ function showPage(id: PageId, fromClick = true) {
 
 // ── Boot ──────────────────────────────────────────────────────────────────────
 
+/** Shown inside the island (views/settings-frame.ts) rather than in its own window. */
+const embedded = EMBEDDED || new URLSearchParams(location.search).has("embedded");
+
+function tellIsland(message: string) {
+  window.parent.postMessage(message, location.origin);
+}
+
 async function main() {
+  if (embedded) {
+    document.body.classList.add("embedded");
+    // settings.html paints its window colour inline, before any style loads.
+    document.body.style.background = "transparent";
+    // Escape closes the island, as it does from any other view. The shortcut
+    // recorder takes its own Escape first (capture), and so does a colour palette.
+    window.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && !e.defaultPrevented) tellIsland(FRAME_CLOSE);
+    });
+  }
   const boot = await Bridge.boot();
   if (boot) {
     settings = { ...settings, ...boot.settings };
@@ -1358,6 +1503,7 @@ async function main() {
     void rerender();
   });
   await render();
+  if (embedded) tellIsland(FRAME_READY);
 
   void onEvent<ShortcutsReport>("shortcuts-status", (fresh) => shortcutsListener?.report(fresh));
   void onEvent<Settings>("settings-changed", (s) => {
@@ -1419,12 +1565,14 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), chatProvidersSection(chatKeys, keyChanged), localSection(customKey)],
+    chat: [apiSection(hasKey), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     agents: [claudeSection(status), agentsSection(agents), planSection(status)],
     pills: [activePillsSection(connected), integrationsSection(present)],
     shortcuts: [shortcutsSection(shortcutReport)],
     updates: [updatesSection(version)],
   };
+  // The chat page ends on what goes with every message.
+  pages.chat.push(chatSharingSection());
 
   const nav = h("nav", { class: "nav", "aria-label": t("Settings") });
   const content = h("main", { class: "content" });
@@ -1442,7 +1590,7 @@ async function render() {
   clear(root);
   root.append(
     h("aside", { class: "sidebar" },
-      h("h1", {}, h("span", { text: "Coucou" }), h("span", { class: "version", text: version })),
+      h("h1", {}, h("span", { text: "Lumo" }), h("span", { class: "version", text: version })),
       nav,
     ),
     content,

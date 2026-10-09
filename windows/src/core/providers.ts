@@ -24,7 +24,7 @@ export interface ProviderDef {
 }
 
 export const PROVIDERS: readonly ProviderDef[] = [
-  { id: "anthropic", name: "Anthropic", accent: "#E07950", key: "anthropic-api-key", urlField: null, defaultModel: "claude-opus-5", prefer: "opus" },
+  { id: "anthropic", name: "Anthropic", accent: "#E07950", key: "anthropic-api-key", urlField: null, defaultModel: "claude-opus-5-5", prefer: "opus" },
   // Claude Code itself, signed in with the user's Claude plan: no key (claude_code.rs).
   { id: "claude-code", name: "Claude Code", accent: "#D97757", key: null, urlField: null, defaultModel: "default", prefer: null },
   { id: "google", name: "Google", accent: "#4285F4", key: "google-api-key", urlField: null, defaultModel: "gemini-2.0-flash", prefer: "flash" },
@@ -73,6 +73,9 @@ export function visibleProviders(settings: Settings): ProviderDef[] {
 export function pickModel(provider: ProviderDef, offered: string[], current: string): string | null {
   if (offered.length === 0) return null;
   if (offered.includes(current)) return current;
+  // A bare alias saved before ("haiku") becomes the model it named.
+  const named = /^[a-z]+$/.test(current) ? offered.find((id) => id.includes(`-${current}-`)) : undefined;
+  if (named) return named;
   const preferred = provider.prefer ? offered.find((id) => id.includes(provider.prefer!)) : undefined;
   if (preferred) return preferred;
   return offered.includes(provider.defaultModel) ? provider.defaultModel : offered[0];

@@ -9,6 +9,9 @@ import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
 import {
+  LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose, type RGB,
+} from "../mochi/lumo";
+import {
   USC, eIn, eInOut, eOut, lerp, progressAt,
   type UploadEyeShape, type UploadFrame,
 } from "./sequence";
@@ -30,12 +33,14 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   ctx.roundRect(x, y, w, h, rad);
 }
 
+const css = (c: RGB) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
+
 /** Superellipse body — port of usBodyPath(m, R). */
 function bodyPath(ctx: CanvasRenderingContext2D, m: number, R: number): { rx: number; ry: number } {
   const mc = Math.max(0, Math.min(m, 1));
-  const n = 2.15 + (5.5 - 2.15) * mc;
-  const rx = R * (1.04 - 0.04 * mc);
-  const ry = R * (0.97 - 0.03 * mc);
+  const n = LUMO_EXP + (5.5 - LUMO_EXP) * mc;
+  const rx = R * (LUMO_RX + (1.0 - LUMO_RX) * mc);
+  const ry = R * (LUMO_RY + (0.94 - LUMO_RY) * mc);
   ctx.beginPath();
   for (let i = 0; i <= 96; i++) {
     const a = (i / 96) * Math.PI * 2;
@@ -357,7 +362,7 @@ export class UploadCanvas {
     ctx.restore();
   }
 
-  // ── Mochi ─────────────────────────────────────────────────────────────────
+  // ── Lumo ──────────────────────────────────────────────────────────────────
 
   private drawMochi(ctx: CanvasRenderingContext2D, f: UploadFrame) {
     const R = f.d / 2 / 1.04;
@@ -368,12 +373,27 @@ export class UploadCanvas {
     ctx.rotate(f.tilt);
     ctx.scale(f.sx, f.sy);
 
+    // Lumo's wings and light, fading as he turns into a box.
+    const lumo: LumoPose = {
+      R,
+      rx: R * (LUMO_RX + (1.0 - LUMO_RX) * mc),
+      ry: R * (LUMO_RY + (0.94 - LUMO_RY) * mc),
+      t: f.t,
+      glow: LUMO_GLOW,
+      shine: 0.6,
+      flap: 0.6,
+      lagX: 0,
+      lagY: 0,
+      presence: 1 - Math.min(1, mc * 1.6),
+    };
+    drawLumoBehind(ctx, lumo);
+
     const { rx, ry } = bodyPath(ctx, f.morph, R);
 
     // Body.
     const bg = ctx.createLinearGradient(rx * 0.7, -ry * 0.9, -rx * 0.8, ry * 0.9);
-    bg.addColorStop(0, "#EDEDEF");
-    bg.addColorStop(1, "#C4C5CA");
+    bg.addColorStop(0, css(LUMO_TOP));
+    bg.addColorStop(1, css(LUMO_BOTTOM));
     ctx.fillStyle = bg;
     ctx.fill();
 
@@ -427,8 +447,8 @@ export class UploadCanvas {
     }
 
     // Eyes.
-    const ew = R * 0.25;
-    const eh = R * (0.62 - 0.16 * mc);
+    const ew = R * 0.3;
+    const eh = R * (0.34 + 0.12 * mc);
     const ey = R * (0.02 + 0.28 * mc);
     const sp = R * 0.3;
     const lx = f.lookX * R * (0.34 - 0.08 * mc);
@@ -441,6 +461,7 @@ export class UploadCanvas {
     }
 
     ctx.restore(); // body clip
+    drawLumoFront(ctx, lumo);
     ctx.restore(); // transform
   }
 

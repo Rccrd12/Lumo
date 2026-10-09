@@ -86,11 +86,11 @@ test("plurals follow each language's rules", () => {
 });
 
 test("labels() tables and dates read in the current language", () => {
-  const table = labels({ bow: N_("Bow"), hat: N_("Party hat") });
-  assert.equal(table.bow, "Bow");
+  const table = labels({ leaf: N_("Leaf"), tie: N_("Bow tie") });
+  assert.equal(table.leaf, "Leaf");
   inLanguage("fr", () => {
-    assert.equal(table.bow, "Nœud");
-    assert.deepEqual(Object.keys(table), ["bow", "hat"]);
+    assert.equal(table.leaf, "Feuille");
+    assert.deepEqual(Object.keys(table), ["leaf", "tie"]);
     assert.match(monthShort(9), /^oct/);
   });
   assert.equal(monthShort(9), "Oct");
@@ -150,7 +150,7 @@ test("a language change relabels what was built, in place, and says so once", ()
 // ── The tables ────────────────────────────────────────────────────────────────
 
 test("strings.json is what the generator makes of the Mac's catalog", () => {
-  const catalog = JSON.parse(readFileSync(join(WINDOWS, "../NotchBuddy/Resources/Localizable.xcstrings"), "utf8"));
+  const catalog = JSON.parse(readFileSync(join(WINDOWS, "i18n-source/Localizable.xcstrings"), "utf8"));
   assert.deepEqual(generate(catalog), MAC);
 });
 
@@ -257,6 +257,7 @@ const NOT_TEXT = new Set([
   "finished", // a task state and a pill badge
   "unknown", // a CI state
   "Resend", // the service's name (the Mac's "Resend" is a button: send again)
+  "Stop", // a Claude Code hook event (island/hooks.ts); the chat's Stop button is t()
 ]);
 
 test("no known user-facing English literal outside t() in the views and settings", () => {

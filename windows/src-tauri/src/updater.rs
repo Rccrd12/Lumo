@@ -5,7 +5,13 @@
 // a click in Settings (no telemetry, no background calls). The installer is the
 // same NSIS setup.exe the release workflow publishes (.github/workflows/windows.yml,
 // named by scripts/pack.mjs), run with its own window so the user sees every
-// step; Coucou quits right after starting it so its files can be replaced.
+// step; Lumo quits right after starting it so its files can be replaced.
+//
+// The app was called Coucou up to 0.3.0, and the installers were named
+// `Coucou-Windows-<v>-setup.exe`. Releases from 0.3.1 on carry
+// `Lumo-Windows-<v>-setup.exe` plus the same file under its old name, which is
+// what an installed 0.3.0 looks for; this build prefers the new name and still
+// accepts the old one.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -18,7 +24,7 @@ use crate::i18n::{t, tf};
 use crate::{log, net};
 
 /// The GitHub repository whose releases are checked: the one place it is named.
-pub const UPDATE_REPO: &str = "Rccrd12/coucou-agent";
+pub const UPDATE_REPO: &str = "Rccrd12/Lumo";
 
 /// Windows releases are tagged `windows-v0.2.1` (the `windows-latest` rolling
 /// release does not match, and neither do the Mac's `v*` or `linux-v*` tags).
@@ -34,9 +40,6 @@ const DOWNLOAD_HOSTS: [&str; 3] = [
 /// No installer is anywhere near this; a bigger answer is not one.
 const MAX_INSTALLER: u64 = 400 * 1024 * 1024;
 
-/// The settings window, which shows the download's progress.
-const SETTINGS_WINDOW: &str = "settings";
-
 /// What Settings shows after a check.
 #[derive(Serialize, Debug, Clone, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -49,7 +52,8 @@ pub struct UpdateInfo {
     newer: bool,
     /// The release's notes, cut to a readable length.
     notes: String,
-    /// `Coucou-Windows-<latest>-setup.exe` of that release, when it has one.
+    /// `Lumo-Windows-<latest>-setup.exe` of that release, or the same
+    /// installer under its old name `Coucou-Windows-<latest>-setup.exe`.
     asset_url: Option<String>,
 }
 
@@ -118,9 +122,22 @@ fn newest_windows_release(releases: Vec<Release>) -> Option<(Version, String, Re
         .max_by(|a, b| a.0.cmp(&b.0))
 }
 
-/// The installer's name, as scripts/pack.mjs writes it.
-fn installer_name(version: &str) -> String {
-    format!("Coucou-Windows-{version}-setup.exe")
+/// What an installer's file name starts with, best first: the current name,
+/// then the one releases kept for installs from before the rename.
+const INSTALLER_PREFIXES: [&str; 2] = ["Lumo-Windows-", "Coucou-Windows-"];
+const INSTALLER_SUFFIX: &str = "-setup.exe";
+
+/// The installer's names for `version`, best first, as scripts/pack.mjs writes them.
+fn installer_names(version: &str) -> [String; 2] {
+    INSTALLER_PREFIXES.map(|prefix| format!("{prefix}{version}{INSTALLER_SUFFIX}"))
+}
+
+/// The version in the middle of an installer's file name, either name.
+fn installer_middle(name: &str) -> Option<&str> {
+    INSTALLER_PREFIXES
+        .iter()
+        .find_map(|prefix| name.strip_prefix(prefix))?
+        .strip_suffix(INSTALLER_SUFFIX)
 }
 
 /// Release notes, without trailing blank space and cut to a length that fits.
@@ -140,13 +157,14 @@ fn compare(current: &str, releases: Vec<Release>) -> Result<UpdateInfo, String> 
         return Err(t("No Windows release has been published yet."));
     };
     let newer = parse_version(current).is_none_or(|mine| latest > mine);
-    let name = installer_name(&raw);
-    let asset_url = release
-        .assets
-        .iter()
-        .find(|a| a.name == name)
-        .map(|a| a.browser_download_url.clone())
-        .filter(|u| Url::parse(u).is_ok_and(|u| is_release_download(&u)));
+    let asset_url = installer_names(&raw).iter().find_map(|name| {
+        release
+            .assets
+            .iter()
+            .find(|a| &a.name == name)
+            .map(|a| a.browser_download_url.clone())
+            .filter(|u| Url::parse(u).is_ok_and(|u| is_release_download(&u)))
+    });
     Ok(UpdateInfo {
         current: current.to_string(),
         latest: raw,
@@ -156,7 +174,8 @@ fn compare(current: &str, releases: Vec<Release>) -> Result<UpdateInfo, String> 
     })
 }
 
-/// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Coucou-Windows-<v>-setup.exe`:
+/// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Lumo-Windows-<v>-setup.exe`
+/// (or `Coucou-Windows-<v>-setup.exe`, its name before the rename):
 /// the only address `update_install` starts a download from.
 fn is_release_download(url: &Url) -> bool {
     if url.scheme() != "https" || url.host_str() != Some("github.com") || url.port().is_some() {
@@ -175,19 +194,22 @@ fn is_release_download(url: &Url) -> bool {
     let (Some(tag), Some(file), None) = (parts.next(), parts.next(), parts.next()) else {
         return false;
     };
-    // The file carries the tag's own version: windows-v1.2.3 → Coucou-Windows-1.2.3-setup.exe.
-    tag.starts_with(TAG_PREFIX) && is_installer_file(file) && file == installer_name(&tag[TAG_PREFIX.len()..])
+    // The file carries the tag's own version: windows-v1.2.3 → Lumo-Windows-1.2.3-setup.exe.
+    tag.starts_with(TAG_PREFIX)
+        && is_installer_file(file)
+        && installer_names(&tag[TAG_PREFIX.len()..]).iter().any(|name| name == file)
 }
 
 /// The version an accepted installer address carries.
 fn installer_version(url: &Url) -> Option<Version> {
     let file = url.path_segments()?.next_back()?;
-    parse_version(file.strip_prefix("Coucou-Windows-")?.strip_suffix("-setup.exe")?)
+    parse_version(installer_middle(file)?)
 }
 
-/// `Coucou-Windows-<version>-setup.exe`, with nothing but a version in the middle.
+/// `Lumo-Windows-<version>-setup.exe` (or its old `Coucou-Windows-` name), with
+/// nothing but a version in the middle.
 fn is_installer_file(name: &str) -> bool {
-    let Some(middle) = name.strip_prefix("Coucou-Windows-").and_then(|n| n.strip_suffix("-setup.exe")) else {
+    let Some(middle) = installer_middle(name) else {
         return false;
     };
     !middle.is_empty()
@@ -210,7 +232,7 @@ fn user_agent(app: &AppHandle) -> String {
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> Result<UpdateInfo, String> {
     if !cfg!(windows) {
-        return Err(t("Updating from Settings is only available on Windows. On Linux, update Coucou the way you installed it."));
+        return Err(t("Updating from Settings is only available on Windows. On Linux, update Lumo the way you installed it."));
     }
     let current = app.package_info().version.to_string();
     let url = Url::parse(&format!("https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=30"))
@@ -254,16 +276,16 @@ struct Progress {
 
 /// Settings → Updates → Update now. Downloads the installer `update_check`
 /// found into a temporary folder, starts it with its own window, then quits so
-/// it can replace Coucou's files. Only GitHub release downloads of this
+/// it can replace Lumo's files. Only GitHub release downloads of this
 /// repository are accepted.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
     if !cfg!(windows) {
-        return Err(t("Updating from Settings is only available on Windows. On Linux, update Coucou the way you installed it."));
+        return Err(t("Updating from Settings is only available on Windows. On Linux, update Lumo the way you installed it."));
     }
-    let url = Url::parse(url.trim()).map_err(|_| t("Only installers from Coucou's GitHub releases can be installed."))?;
+    let url = Url::parse(url.trim()).map_err(|_| t("Only installers from Lumo's GitHub releases can be installed."))?;
     if !is_release_download(&url) {
-        return Err(t("Only installers from Coucou's GitHub releases can be installed."));
+        return Err(t("Only installers from Lumo's GitHub releases can be installed."));
     }
     // Never an older (or the same) build than the one running.
     let current = parse_version(&app.package_info().version.to_string());
@@ -299,7 +321,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         .path_segments()
         .and_then(|mut s| s.next_back())
         .filter(|n| is_installer_file(n))
-        .ok_or_else(|| t("Only installers from Coucou's GitHub releases can be installed."))?
+        .ok_or_else(|| t("Only installers from Lumo's GitHub releases can be installed."))?
         .to_string();
 
     // Redirects stay on GitHub and its download CDN.
@@ -325,7 +347,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         .await
         .map_err(|e| tf("The download failed: {error}", &[("error", &e.to_string())]))?;
     if !is_download_host(response.url()) {
-        return Err(t("Only installers from Coucou's GitHub releases can be installed."));
+        return Err(t("Only installers from Lumo's GitHub releases can be installed."));
     }
     if !response.status().is_success() {
         return Err(tf("The download failed: {error}", &[("error", response.status().as_str())]));
@@ -337,7 +359,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
 
     let mut bytes: Vec<u8> = Vec::with_capacity(total as usize);
     let mut last = Instant::now();
-    let _ = app.emit_to(SETTINGS_WINDOW, "update-progress", Progress { received: 0, total });
+    let _ = app.emit("update-progress", Progress { received: 0, total });
     loop {
         let chunk = tokio::time::timeout(Duration::from_secs(60), response.chunk())
             .await
@@ -350,7 +372,7 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         bytes.extend_from_slice(&chunk);
         if last.elapsed() >= Duration::from_millis(150) {
             last = Instant::now();
-            let _ = app.emit_to(SETTINGS_WINDOW, "update-progress", Progress { received: bytes.len() as u64, total });
+            let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total });
         }
     }
     if total > 0 && bytes.len() as u64 != total {
@@ -360,10 +382,10 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     if !bytes.starts_with(b"MZ") {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
-    let _ = app.emit_to(SETTINGS_WINDOW, "update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
+    let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
-    // %TEMP%\Coucou-update\Coucou-Windows-<v>-setup.exe; installers from earlier
-    // updates are cleared first.
+    // %TEMP%\Coucou-update\Lumo-Windows-<v>-setup.exe (the folder kept its old
+    // name); installers from earlier updates are cleared first.
     let dir = std::env::temp_dir().join("Coucou-update");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
@@ -420,20 +442,31 @@ mod tests {
 
     #[test]
     fn the_newest_windows_release_wins_whatever_the_order() {
-        let mut beta = release("windows-v0.9.0", &["Coucou-Windows-0.9.0-setup.exe"]);
+        let mut beta = release("windows-v0.9.0", &["Lumo-Windows-0.9.0-setup.exe"]);
         beta.prerelease = true;
         let releases = vec![
             release("windows-v0.2.1", &["Coucou-Windows-0.2.1-setup.exe", "Coucou-Windows-0.2.1.msi"]),
-            release("windows-latest", &["Coucou-Windows-setup.exe"]),
+            release("windows-latest", &["Lumo-Windows-setup.exe", "Coucou-Windows-setup.exe"]),
             release("v0.5.0", &["Coucou.dmg"]),
             release("linux-v0.4.0", &[]),
+            release("windows-v0.3.1", &["Coucou-Windows-0.3.1-setup.exe", "Lumo-Windows-0.3.1-setup.exe", "Lumo-Windows-0.3.1.msi"]),
             release("windows-v0.3.0", &["Coucou-Windows-0.3.0-setup.exe"]),
             beta,
         ];
         let info = compare("0.2.0", releases).unwrap();
-        assert_eq!(info.latest, "0.3.0");
+        assert_eq!(info.latest, "0.3.1");
         assert!(info.newer);
         assert_eq!(info.notes, "Notes");
+        // The new name wins over the copy kept under the old one, whatever their order.
+        assert_eq!(
+            info.asset_url.as_deref(),
+            Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe").as_str())
+        );
+    }
+
+    #[test]
+    fn a_release_with_only_the_old_installer_name_still_updates() {
+        let info = compare("0.2.0", vec![release("windows-v0.3.0", &["Coucou-Windows-0.3.0-setup.exe"])]).unwrap();
         assert_eq!(
             info.asset_url.as_deref(),
             Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe").as_str())
@@ -455,7 +488,9 @@ mod tests {
     fn only_this_repositorys_installers_are_downloaded() {
         let ok = |s: &str| is_release_download(&Url::parse(s).unwrap());
         assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
-        assert!(ok("https://github.com/rccrd12/Coucou-Agent/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
+        assert!(ok("https://github.com/rccrd12/lumo/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
+        // The repository before its rename is not trusted any more.
+        assert!(!ok("https://github.com/Rccrd12/coucou-agent/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
         // Another repository, host, scheme, file or tag.
         assert!(!ok("https://github.com/someone/else/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe"));
         assert!(!ok(&format!("https://evil.example/{UPDATE_REPO}/releases/download/windows-v0.3.0/Coucou-Windows-0.3.0-setup.exe")));
@@ -471,6 +506,23 @@ mod tests {
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Coucou-Windows-0.3.0-setup.exe")));
         let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Coucou-Windows-0.4.1-setup.exe")).unwrap();
         assert_eq!(installer_version(&url), parse_version("0.4.1"));
+    }
+
+    #[test]
+    fn the_new_installer_name_is_held_to_the_same_rules() {
+        let ok = |s: &str| is_release_download(&Url::parse(s).unwrap());
+        assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-..-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Lumo-Windows-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-0.3.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-Coucou-Windows-0.3.1-setup.exe")));
+        assert!(!ok("https://github.com/someone/else/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe"));
+        let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Lumo-Windows-0.4.1-setup.exe")).unwrap();
+        assert_eq!(installer_version(&url), parse_version("0.4.1"));
+        assert!(is_installer_file("Lumo-Windows-0.4.1-setup.exe"));
+        assert!(is_installer_file("Coucou-Windows-0.4.1-setup.exe"));
+        assert!(!is_installer_file("Lumo-Windows-setup.exe"));
     }
 
     #[test]

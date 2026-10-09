@@ -15,6 +15,7 @@ use reqwest::Url;
 use serde_json::{json, Value};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
+use crate::chat_usage::{self, ChatUsage};
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
 
@@ -30,7 +31,7 @@ const MAX_TOKENS: u32 = 4096;
 /// Text and code files are inlined; anything larger is skipped, as on macOS.
 const MAX_INLINE_TEXT: u64 = 200_000;
 
-pub const DEFAULT_MODEL: &str = "claude-opus-5";
+pub const DEFAULT_MODEL: &str = "claude-opus-5-5";
 
 /// The Messages endpoint: Anthropic's, or the gateway in COUCOU_ANTHROPIC_BASE_URL.
 /// Read once; the gateway's host (never the key) goes to the log once.
@@ -142,13 +143,15 @@ fn interpret(response: &Value) -> Result<(Vec<Value>, String), String> {
 }
 
 /// One chat turn. Returns the assistant's text, or a message the island shows
-/// in the note view.
+/// in the note view. `usage` gets the rate limits the answer came back with
+/// (chat_usage.rs), a refused one included.
 pub async fn send(
     chat: &Chat,
     model: &str,
     query: String,
     context: Option<ChatContext>,
     images: &[String],
+    usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
     let key = secrets::get(KEY).ok_or_else(|| t("API key missing. Open settings."))?;
     let endpoint = endpoint()?;
@@ -159,17 +162,20 @@ pub async fn send(
     let user = json!({ "role": "user", "content": content });
     let body = request_body(model, &chat::system_prompt(true), &turn.history, &user);
 
-    let response = call(&endpoint, &key, &body).await?;
-    let (blocks, text) = interpret(&response)?;
+    // Not streamed: Stop drops the request, and nothing was written yet.
+    let Some(response) = chat.unless_stopped(call(&endpoint, &key, &body, usage)).await else {
+        return Ok(ChatReply::stopped(String::new(), None));
+    };
+    let (blocks, text) = interpret(&response?)?;
 
     // Store the whole content — tool_use / tool_result blocks included — so the
     // next turn has the right context.
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": blocks }), &plain, &text);
-    Ok(ChatReply { text, session: None })
+    Ok(ChatReply::answer(text, None))
 }
 
-async fn call(endpoint: &Url, key: &str, body: &Value) -> Result<Value, String> {
+async fn call(endpoint: &Url, key: &str, body: &Value, usage: &mut Option<ChatUsage>) -> Result<Value, String> {
     let response = net::client(endpoint, Duration::from_secs(90))?
         .post(endpoint.clone())
         .header("x-api-key", key)
@@ -181,6 +187,8 @@ async fn call(endpoint: &Url, key: &str, body: &Value) -> Result<Value, String> 
         .await
         .map_err(|e| tf("Network error: {error}", &[("error", &e.to_string())]))?;
 
+    // Every answer, a 429 too, says what is left: no call of its own for it.
+    *usage = chat_usage::from_anthropic(response.headers());
     let status = response.status();
     if !status.is_success() {
         // Surface the API's own message, which is what makes a bad key obvious.

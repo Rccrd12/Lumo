@@ -66,6 +66,10 @@ export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
+  /** An answer cut short by the Stop button. */
+  stopped?: boolean;
+  /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
+  turn?: number;
 }
 
 export type PromptContext =
@@ -100,6 +104,33 @@ export interface IntegrationInfo {
   configured: boolean;
 }
 
+/**
+ * When the open island closes on its own: some seconds after the mouse
+ * leaves ("timer", the Mac's way), as soon as it leaves, on a click
+ * elsewhere, or never (Esc, a shortcut or the tray).
+ */
+export type IslandCloseMode = "timer" | "leave" | "click" | "never";
+
+export function parseCloseMode(v: unknown): IslandCloseMode {
+  return v === "leave" || v === "click" || v === "never" ? v : "timer";
+}
+
+/**
+ * How much Lumo moves on his own: "still" (only when something happens, as
+ * before 0.3.1), "calm" (he hovers, breathes and looks around) or "lively".
+ */
+export type LumoMotion = "still" | "calm" | "lively";
+
+export function parseMotion(v: unknown): LumoMotion {
+  return v === "still" || v === "lively" ? v : "calm";
+}
+
+/** The engine's ambient amount for a motion setting. */
+export function motionAmount(v: unknown): number {
+  const m = parseMotion(v);
+  return m === "still" ? 0 : m === "lively" ? 1.8 : 1;
+}
+
 export interface Settings {
   soundEnabled: boolean;
   soundVolume: number;
@@ -116,11 +147,19 @@ export interface Settings {
   /** The edge the island hangs from, and how far from its middle (owned by Rust). */
   islandDock: string;
   islandOffset: number;
+  /** Floating: how far from the top or bottom edge it grows from (island.rs owns it). */
+  islandFloat: number;
   /** Width of the open island and its height (0 = each view's own); owned by Rust. */
   islandWidth: number;
   islandHeight: number;
   /** How big the icons are drawn (1 = the Mac's size). */
   iconScale: number;
+  /** When the open island closes on its own (settings.rs island_close). */
+  islandClose: IslandCloseMode;
+  /** The closed island opens when the mouse rests on it. */
+  islandHoverOpen: boolean;
+  /** The closed island goes away a minute after the mouse left it. */
+  islandAutoHide: boolean;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -137,6 +176,13 @@ export interface Settings {
   chatModels: Record<string, string>;
   /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
   chatEffort: string;
+  /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
+  chatShowUsage: boolean;
+  /**
+   * Every chat message carries the folder open in File Explorer, as if picked
+   * from the screen button. Off until the user turns it on in Settings → Chat.
+   */
+  chatShareExplorer: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -148,6 +194,8 @@ export interface Settings {
    * Same raw values as the Mac's "mochiOutfit"; read it through parseOutfit.
    */
   mochiOutfit: string;
+  /** How much Lumo moves on his own; read it through parseMotion. */
+  lumoMotion: string;
   /**
    * A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
@@ -179,23 +227,30 @@ export const DEFAULT_SETTINGS: Settings = {
   islandZoom: 1.15,
   islandDock: "top",
   islandOffset: 0,
+  islandFloat: 0,
   islandWidth: 640,
   islandHeight: 0,
   iconScale: 1.25,
+  islandClose: "timer",
+  islandHoverOpen: false,
+  islandAutoHide: false,
   autostart: false,
   hooksInstalled: false,
-  model: "claude-opus-5",
+  model: "claude-opus-5-5",
   showPlanInNotch: false,
   planRelayInstalled: false,
   showCodexPlanInNotch: false,
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",
+  chatShowUsage: false,
+  chatShareExplorer: false,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
   shortcuts: {},
   mochiOutfit: DEFAULT_OUTFIT,
+  lumoMotion: "calm",
   pillColors: {},
   language: "",
 };
@@ -229,8 +284,11 @@ class AppState {
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;
-  /** The file added to the chat; `sent` once it went with a question. */
-  droppedFile: { name: string; path: string; sent?: boolean } | null = null;
+  /**
+   * The file added to the chat; `sent` once it went with a question, and
+   * `sentWith` that question's id, so editing it sends the file again (views/chat.ts).
+   */
+  droppedFile: { name: string; path: string; sent?: boolean; sentWith?: number } | null = null;
   noteMessage: string | null = null;
   /** What a sharing shortcut just took, for the chat to pick up (island/shortcuts.ts). */
   incomingShare: SharedContext | null = null;
@@ -295,6 +353,14 @@ class AppState {
 
   get effectiveState(): BotStateName {
     return this.stateOverride ?? this.focusTask?.state ?? "idle";
+  }
+
+  /**
+   * What Lumo looks like: the effective state, except while the chat writes
+   * its answer — the chat shows that itself, and Lumo stays his calm self.
+   */
+  get shownState(): BotStateName {
+    return this.stateOverride === "thinking" ? "idle" : this.effectiveState;
   }
 
   get otherTasks(): AgentTask[] {

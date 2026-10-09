@@ -14,6 +14,9 @@ export const PILL_PALETTE: readonly string[] = [
   "#2DD4BF", "#38BDF8", "#818CF8", "#C084FC", "#E879F9",
 ];
 
+/** The palette's white: on a pill, it leaves Lumo in his own colour. */
+export const NEUTRAL_PILL = "#F5F6F8";
+
 /** "#RRGGBB" in upper case, or null for anything that is not six hex digits. */
 export function normalizeHex(raw: unknown): string | null {
   if (typeof raw !== "string") return null;

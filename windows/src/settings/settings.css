@@ -133,6 +133,42 @@ body.settings-window {
   }
 }
 
+/* Inside the island (views/settings-frame.ts): the island's card shows through,
+   and everything sits a little tighter. */
+body.settings-window.embedded {
+  background: transparent;
+  --bg: transparent;
+  --card: rgba(255, 255, 255, 0.035);
+}
+
+body.embedded #settings-root {
+  grid-template-columns: 148px minmax(0, 1fr);
+}
+
+body.embedded .sidebar {
+  padding: 14px 8px 16px;
+  gap: 12px;
+}
+
+body.embedded .page {
+  padding: 14px 16px 24px;
+  gap: 14px;
+}
+
+body.embedded section {
+  padding: 14px 16px;
+}
+
+body.embedded h1 {
+  font-size: 15px;
+}
+
+@media (max-width: 560px) {
+  body.embedded #settings-root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 h1 {
   font: 600 17px var(--font);
   letter-spacing: -0.01em;

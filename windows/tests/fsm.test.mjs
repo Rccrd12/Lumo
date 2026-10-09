@@ -307,3 +307,45 @@ test("an unusable delay is ignored", () => {
   for (const bad of [NaN, -1, Infinity]) fsm.homeToPetitDelay = bad;
   assert.equal(fsm.homeToPetitDelay, 15);
 });
+
+test("closeOnLeave off: the open island stays open after the mouse leaves", () => {
+  fsm.forceHome();
+  fsm.closeOnLeave = false;
+  fsm.mouseLeft();
+  seconds(120);
+  assert.equal(fsm.state, "home");
+  // Turned back on, the next leave folds it again.
+  fsm.closeOnLeave = true;
+  fsm.mouseEntered();
+  fsm.mouseLeft();
+  seconds(15);
+  assert.equal(fsm.state, "petit");
+});
+
+test("turning closeOnLeave off stops a countdown already running", () => {
+  fsm.forceHome();
+  fsm.mouseLeft();
+  seconds(10);
+  fsm.closeOnLeave = false;
+  seconds(30);
+  assert.equal(fsm.state, "home");
+});
+
+test("autoHide off: the compact island stays on screen", () => {
+  fsm.autoHide = false;
+  fsm.forcePetit();
+  fsm.mouseLeft();
+  seconds(600);
+  assert.equal(fsm.state, "petit");
+  fsm.reveal();
+  assert.equal(fsm.state, "petit");
+});
+
+test("turning autoHide off stops a hide already counting down", () => {
+  fsm.forcePetit();
+  fsm.mouseLeft();
+  seconds(30);
+  fsm.autoHide = false;
+  seconds(60);
+  assert.equal(fsm.state, "petit");
+});

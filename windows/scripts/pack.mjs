@@ -15,6 +15,13 @@ const { version } = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.
 // What each platform ships: where Tauri puts it, how to recognise it, and the
 // names it is published under (the rolling name, when there is one, always
 // points at the latest release).
+//
+// The app was called Coucou up to 0.3.0. Every package is also published under
+// its old name where something out there still asks for it: an installed 0.3.0
+// updates itself only from `Coucou-Windows-<version>-setup.exe` of the newest
+// windows-v* release (src-tauri/src/updater.rs at windows-v0.3.0), and older
+// links point at the rolling `Coucou-…` names of windows-latest / linux-latest.
+// The copies are byte for byte the Lumo package.
 const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
 const debArch = process.arch === "arm64" ? "arm64" : "amd64";
 const PACKAGES = {
@@ -22,22 +29,25 @@ const PACKAGES = {
     {
       dir: "nsis",
       suffix: "-setup.exe",
-      names: [`Coucou-Windows-${version}-setup.exe`, "Coucou-Windows-setup.exe"],
+      names: [`Lumo-Windows-${version}-setup.exe`, "Lumo-Windows-setup.exe"],
+      legacy: [`Coucou-Windows-${version}-setup.exe`, "Coucou-Windows-setup.exe"],
     },
     {
       dir: "msi",
       suffix: ".msi",
-      names: [`Coucou-Windows-${version}.msi`, "Coucou-Windows.msi"],
+      names: [`Lumo-Windows-${version}.msi`, "Lumo-Windows.msi"],
+      legacy: ["Coucou-Windows.msi"],
     },
   ],
   linux: [
     {
       dir: "appimage",
       suffix: ".AppImage",
-      names: [`Coucou-Linux-${version}-${arch}.AppImage`, `Coucou-Linux-${arch}.AppImage`],
+      names: [`Lumo-Linux-${version}-${arch}.AppImage`, `Lumo-Linux-${arch}.AppImage`],
+      legacy: [`Coucou-Linux-${arch}.AppImage`],
     },
-    { dir: "deb", suffix: ".deb", names: [`Coucou-Linux-${version}-${debArch}.deb`] },
-    { dir: "rpm", suffix: ".rpm", names: [`Coucou-Linux-${version}-${arch}.rpm`] },
+    { dir: "deb", suffix: ".deb", names: [`Lumo-Linux-${version}-${debArch}.deb`], legacy: [] },
+    { dir: "rpm", suffix: ".rpm", names: [`Lumo-Linux-${version}-${arch}.rpm`], legacy: [] },
   ],
 };
 
@@ -63,13 +73,13 @@ function newest(dir, suffix) {
 
 mkdirSync(outDir, { recursive: true });
 const written = [];
-for (const { dir, suffix, names } of packages) {
+for (const { dir, suffix, names, legacy } of packages) {
   const built = newest(join(bundleRoot, dir), suffix);
   if (!built) {
     console.error(`No *${suffix} in ${join(bundleRoot, dir)} — run \`npm run tauri build\` first.`);
     process.exit(1);
   }
-  for (const name of names) {
+  for (const name of [...names, ...legacy]) {
     const dest = join(outDir, name);
     copyFileSync(built, dest);
     written.push(dest);

@@ -1,5 +1,29 @@
 # Changelog
 
+## Windows and Linux 0.3.1 — October 8, 2026
+
+- **The app and its character are now called Lumo**, a small glowing firefly, instead of Coucou and Mochi, which belong to the original project. Running the new installer over Coucou 0.3.0 replaces it (Coucou's own Update now does not find it, since the repository is now called Lumo): one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
+- **Lumo has his own look**: clear wings that buzz while an agent works, two antennae with a light at each tip, and a glowing tail that takes the colour of what is going on (blue while working, orange when it waits for you, red on an error). The app icon, the launch greeting and the file drop show him too
+- **Lumo moves on his own** (Settings → Island → Lumo moves): calm by default, he hovers, breathes and looks around once the mouse is still; lively does more; "Only when something happens" keeps him still. It all stops when the island hides
+- **Lumo stays himself while the chat writes**, without a colour or a badge: the chat already shows its answer coming
+- **No more "too many hits" scene**: poking Lumo several times only annoys him for a moment
+- **The current Claude models**: Claude Opus 5.5, Sonnet 5.5 and Haiku 5.5 in the model picker, for the Anthropic API and for Claude Code. Settings → Chat shows Claude Code's model too and says the API key is only for the Anthropic API: Claude Code uses your Claude plan
+- **Remaining usage in the chat** (Settings → Chat, off by default): next to the model, what is left of your Claude plan with Claude Code, of your rate limits with the Anthropic API or OpenAI, or of your OpenRouter credits
+- **Plain display names**: Settings → Island lists "Display 1 — 2560×1440 · main", numbered from left to right, instead of the system's device names
+- **A short launch greeting**: a little light loops into the island and blooms into Lumo, who smiles and settles in, in about a second and a half instead of almost five
+- **New sounds**, all 29 made from scratch in code (`npm run sounds`): soft bells, plucks and bubbles, quieter for the small things and clearer when something needs you
+- **A new wardrobe** made for Lumo: a leaf, round glasses, a bow tie, headphones and a scarf. On auto he wears the scarf in winter and the leaf in spring; a Mochi outfit you had chosen goes back to auto
+- **Settings open inside the island**, from the gear, the tray, `Ctrl+,` or a chat link, and stay open while you look something up elsewhere. Escape closes them; the separate window is still there if they cannot load
+- **Choose how the island closes** (Settings → Island): a few seconds after the mouse leaves (as before), as soon as it leaves, on a click outside the island, or only when you close it. It can also open when the mouse rests on it
+- **The island floats**: rounded all round and a little off the edge of the screen. Let it go anywhere and it stays there, growing down in the upper half of the screen and up in the lower half; near an edge it docks to it, still with the small gap
+- **The island stays on screen**: the closed island no longer slips away a minute after you leave it. "Hide when unused" in Settings → Island brings that back
+- **The model picker** shows on its own, without the screen panel behind it, and gets enough room even when the island is small
+- **The folder open in File Explorer** joins the chat when you pick it from the screen button: the chat gets its list of files, a file you name in your question is attached as with the paperclip, and Claude Code can read the rest of the folder. Nothing is listed before you click it (Windows)
+- **Always share the folder open in File Explorer** (Settings → Chat, off by default): every message carries that folder's path and list of files, shown as a chip you can remove for one message (Windows)
+- **Paste into the chat**: `Ctrl+V` attaches a screenshot from the clipboard (`Win+Shift+S`) or a file copied in File Explorer, as the paperclip does; text pastes as before
+- **Stop, edit and copy in the chat**: the send button turns into Stop while an answer is written (Escape too), and what was already written stays. Under the mouse, a question can be copied or edited (sending the edit replaces it and what followed), and every answer has a Copy button. You can type the next question while an answer comes
+- **See what the chat is doing**: next to the typing dots, a quiet line says what the answer is busy with. With Claude Code it follows each step (Thinking…, Reading report.pdf, Searching for a pattern, Running a command, Editing main.rs, Searching the web, Looking at the screen, Using a tool) and comes back whenever it returns to its tools between bits of text. The other providers show the file or the screenshots they were given, then Thinking…
+
 ## Windows and Linux 0.3.0 — October 8, 2026
 
 - **Chat with your Claude plan**: a Claude Code choice in the model picker runs your own `claude` CLI, signed in with your subscription, with no API key. It reads the files you drop or attach, can edit files and run commands, and every permission is an Allow/Deny card in the island. Pick its effort level under the models

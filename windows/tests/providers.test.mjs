@@ -22,12 +22,12 @@ test("the ids and key names match the Rust side and the Mac", () => {
 });
 
 test("Claude's model is the existing setting; the others are kept per provider", () => {
-  assert.equal(activeModel(settings()), "claude-opus-5");
+  assert.equal(activeModel(settings()), "claude-opus-5-5");
   assert.equal(activeModel(settings({ chatProvider: "google" })), "gemini-2.0-flash");
   assert.equal(activeModel(settings({ chatProvider: "ollama" })), "");
   let s = withModel(settings({ chatProvider: "openai" }), "openai", "gpt-5-mini");
   assert.equal(activeModel(s), "gpt-5-mini");
-  assert.equal(s.model, "claude-opus-5");
+  assert.equal(s.model, "claude-opus-5-5");
   s = withModel(s, "anthropic", "claude-haiku-4-5");
   assert.equal(s.model, "claude-haiku-4-5");
   assert.equal(s.chatModels.openai, "gpt-5-mini");
@@ -50,6 +50,11 @@ test("the saved model is kept when offered, else a sensible one is picked", () =
   assert.equal(pickModel(providerDef("ollama"), ["llama3.2", "qwen"], ""), "llama3.2");
   assert.equal(pickModel(providerDef("openrouter"), ["a/b", "openrouter/auto"], "gone"), "openrouter/auto");
   assert.equal(pickModel(google, [], "x"), null);
+  // An alias saved by an older version becomes the current model it named.
+  const cc = providerDef("claude-code");
+  const offered = ["default", "claude-opus-5-5", "claude-sonnet-5-5", "claude-haiku-5-5"];
+  assert.equal(pickModel(cc, offered, "haiku"), "claude-haiku-5-5");
+  assert.equal(pickModel(cc, offered, "opus"), "claude-opus-5-5");
 });
 
 test("loopback hosts match net.rs", () => {

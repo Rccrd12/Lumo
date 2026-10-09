@@ -6,12 +6,16 @@
 // API keys never leave the credential store and file bytes never cross the IPC
 // boundary: the island sends the question and gets the answer's text back.
 
-use std::sync::Mutex;
+use std::future::Future;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
+use std::task::Poll;
 
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
+use crate::chat_usage::ChatUsage;
 use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
 use crate::{claude, claude_code, local_chat, openai_compat, secrets};
@@ -33,6 +37,49 @@ pub struct ChatReply {
     /// the history can be continued where it left off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
+    /// The user pressed Stop: `text` is what was written until then (maybe nothing).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub stopped: bool,
+    /// How many plain turns the conversation holds after this one, so the
+    /// island knows where to cut it when a message is edited (`Chat::rewind`).
+    pub turns: usize,
+}
+
+impl ChatReply {
+    pub fn answer(text: String, session: Option<String>) -> Self {
+        ChatReply { text, session, stopped: false, turns: 0 }
+    }
+
+    pub fn stopped(text: String, session: Option<String>) -> Self {
+        ChatReply { text, session, stopped: true, turns: 0 }
+    }
+}
+
+/// The Stop button of the turn being answered. Claude Code checks it while it
+/// reads the CLI's output (claude_code.rs); a request to an API is dropped as
+/// soon as it is pressed (`Chat::unless_stopped`), which closes the connection.
+#[derive(Default)]
+pub struct Stop {
+    stopped: AtomicBool,
+    notify: tokio::sync::Notify,
+}
+
+impl Stop {
+    pub fn stop(&self) {
+        self.stopped.store(true, Ordering::SeqCst);
+        // A permit is kept when nobody waits yet, so `wait` cannot miss it.
+        self.notify.notify_one();
+    }
+
+    pub fn is_stopped(&self) -> bool {
+        self.stopped.load(Ordering::SeqCst)
+    }
+
+    async fn wait(&self) {
+        while !self.is_stopped() {
+            self.notify.notified().await;
+        }
+    }
 }
 
 /// A model a provider offers, for the picker in the chat view.
@@ -53,6 +100,8 @@ pub struct ModelInfo {
 #[derive(Default)]
 pub struct Chat {
     inner: Mutex<Conversation>,
+    /// The Stop of the turn being answered; a fresh one for each turn.
+    stop: Mutex<Arc<Stop>>,
 }
 
 #[derive(Default)]
@@ -66,6 +115,13 @@ struct Conversation {
     plain: Vec<Value>,
     /// The Claude Code session the island's chat continues (claude_code.rs).
     cli_session: Option<String>,
+    /// Folders the user shared from File Explorer in this chat: Claude Code
+    /// keeps reading them on the turns after (explorer.rs).
+    cli_dirs: Vec<String>,
+    /// Files the user added in this chat (name, path in the inbox). Claude Code
+    /// is told about them again when it starts a fresh session on turns carried
+    /// as text, after a message was edited.
+    files: Vec<(String, String)>,
 }
 
 /// What a provider needs to build one turn.
@@ -114,9 +170,88 @@ impl Chat {
         *c = Conversation { epoch, plain, cli_session, ..Default::default() };
     }
 
+    /// An edited message: the conversation goes back to its first `keep` turns
+    /// and continues from there. What came after is forgotten, and so is the
+    /// Claude Code session, which remembers every turn: the next one starts
+    /// afresh with the kept turns carried as text. Shared folders and files
+    /// stay readable.
+    pub fn rewind(&self, keep: usize) {
+        let mut c = self.inner.lock().unwrap();
+        c.epoch += 1;
+        c.plain.truncate(keep);
+        c.native.truncate(keep);
+        if c.native.len() != c.plain.len() {
+            c.owner = None; // rebuilt from the plain turns on the next one
+        }
+        c.cli_session = None;
+    }
+
+    /// How many plain turns the conversation holds.
+    pub fn turns(&self) -> usize {
+        self.inner.lock().unwrap().plain.len()
+    }
+
+    /// Remembers a file the user added to this chat.
+    pub fn note_file(&self, name: &str, path: &str) {
+        let mut c = self.inner.lock().unwrap();
+        if !c.files.iter().any(|(_, p)| p == path) {
+            c.files.push((name.to_string(), path.to_string()));
+            let excess = c.files.len().saturating_sub(8);
+            c.files.drain(..excess);
+        }
+    }
+
+    /// The files added in this chat, oldest first.
+    pub fn files(&self) -> Vec<(String, String)> {
+        self.inner.lock().unwrap().files.clone()
+    }
+
+    /// A new Stop for the turn that starts now.
+    pub fn arm(&self) -> Arc<Stop> {
+        let stop = Arc::new(Stop::default());
+        *self.stop.lock().unwrap() = stop.clone();
+        stop
+    }
+
+    /// The Stop of the current turn.
+    pub fn stopper(&self) -> Arc<Stop> {
+        self.stop.lock().unwrap().clone()
+    }
+
+    /// The Stop button: ends the turn being answered, if there is one.
+    pub fn stop(&self) {
+        self.stopper().stop();
+    }
+
+    /// Runs `work` unless Stop is pressed first: then it is dropped (an HTTP
+    /// request with it, which closes the connection) and the result is None.
+    pub async fn unless_stopped<F: Future>(&self, work: F) -> Option<F::Output> {
+        let stop = self.stopper();
+        let mut work = std::pin::pin!(work);
+        let mut stopped = std::pin::pin!(stop.wait());
+        std::future::poll_fn(|cx| {
+            if let Poll::Ready(out) = work.as_mut().poll(cx) {
+                return Poll::Ready(Some(out));
+            }
+            stopped.as_mut().poll(cx).map(|_| None)
+        })
+        .await
+    }
+
     /// The Claude Code session to resume, if Claude Code answered this conversation.
     pub fn cli_session(&self) -> Option<String> {
         self.inner.lock().unwrap().cli_session.clone()
+    }
+
+    /// The folders Claude Code may read in this chat, with `shared` added.
+    pub fn cli_dirs(&self, shared: Option<String>) -> Vec<String> {
+        let mut c = self.inner.lock().unwrap();
+        if let Some(dir) = shared.filter(|d| !c.cli_dirs.contains(d)) {
+            c.cli_dirs.push(dir);
+            let excess = c.cli_dirs.len().saturating_sub(8);
+            c.cli_dirs.drain(..excess);
+        }
+        c.cli_dirs.clone()
     }
 
     /// Remembers the Claude Code session of `turn`, unless the chat was reset since.
@@ -153,8 +288,8 @@ pub fn system_prompt(web_search: bool) -> String {
 
 fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
     let opening = match first_name {
-        Some(name) => format!("You are Mochi, {name}'s personal AI assistant living at the top of their screen."),
-        None => "You are Mochi, a personal AI assistant living at the top of the user's screen.".to_string(),
+        Some(name) => format!("You are Lumo, {name}'s personal AI assistant living at the top of their screen."),
+        None => "You are Lumo, a personal AI assistant living at the top of the user's screen.".to_string(),
     };
     let abilities = if web_search {
         "You have web search access and can help with absolutely anything — research, coding, finding places, recommendations, tasks, questions."
@@ -223,7 +358,7 @@ fn checked_context(context: ChatContext) -> Result<ChatContext, String> {
 
 /// True when `path` is a regular file directly inside `dir`, both resolved
 /// (no `..`, no symlink pointing out of it).
-fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
+pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
     let (Ok(dir), Ok(file)) = (dir.canonicalize(), path.canonicalize()) else { return false };
     file.parent() == Some(dir.as_path())
         && std::fs::symlink_metadata(&file).map(|m| m.is_file()).unwrap_or(false)
@@ -268,19 +403,60 @@ pub async fn send(
     context: Option<ChatContext>,
     screen: Option<ScreenContext>,
 ) -> Result<ChatReply, String> {
+    let mut usage = None;
+    let reply = dispatch(app, chat, settings, query, context, screen, &mut usage).await;
+    // What the provider said is left, read off this very answer (chat_usage.rs).
+    if settings.chat_show_usage {
+        if let Some(usage) = usage {
+            let _ = app.emit("chat-usage", usage);
+        }
+    }
+    reply
+}
+
+async fn dispatch(
+    app: &AppHandle,
+    chat: &Chat,
+    settings: &Settings,
+    query: String,
+    context: Option<ChatContext>,
+    screen: Option<ScreenContext>,
+    usage: &mut Option<ChatUsage>,
+) -> Result<ChatReply, String> {
     let context = context.map(checked_context).transpose()?;
     let screen = screen.map(checked_screen).transpose()?;
+    chat.arm();
+    let mut reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await?;
+    // Remembered once it went, for a fresh Claude Code session after an edit.
+    if let Some(ChatContext::File { name, path }) = &context {
+        chat.note_file(name, path);
+    }
+    reply.turns = chat.turns();
+    Ok(reply)
+}
+
+async fn send_to(
+    app: &AppHandle,
+    chat: &Chat,
+    settings: &Settings,
+    query: String,
+    context: Option<ChatContext>,
+    screen: Option<ScreenContext>,
+    usage: &mut Option<ChatUsage>,
+) -> Result<ChatReply, String> {
     let provider = settings.chat_provider.as_str();
     let model = model_for(settings, provider);
     let (query, images) = with_screen(provider, screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
-        return claude::send(chat, &model, query, context, &images).await;
+        return claude::send(chat, &model, query, context, &images, usage).await;
     }
     if provider == claude_code::PROVIDER {
-        return claude_code::send(app, chat, &model, &settings.chat_effort, query, context).await;
+        // A folder shared from File Explorer: Claude Code may read the rest of it itself.
+        let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
+        return claude_code::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
-        return openai_compat::send(chat, p, &model, query, context, &images).await;
+        return openai_compat::send(chat, p, &model, query, context, &images, usage).await;
     }
     if let Some(server) = local_chat::server(settings, provider) {
         return local_chat::send(app, chat, &server, &model, query, context).await;
@@ -331,6 +507,92 @@ mod tests {
         assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("hi")), ("assistant".into(), json!("hello"))]);
         chat.reset();
         assert_eq!(chat.cli_session(), None);
+    }
+
+    fn qa(q: &str, a: &str) -> (Value, Value) {
+        (json!({"role":"user","content":q}), json!({"role":"assistant","content":a}))
+    }
+
+    #[test]
+    fn an_edited_message_rewinds_the_conversation_and_forgets_the_cli_session() {
+        let chat = Chat::default();
+        for (q, a) in [("one", "1"), ("two", "2"), ("three", "3")] {
+            let t = chat.begin("anthropic");
+            let (u, r) = qa(q, a);
+            chat.commit(&t, u, r, q, a);
+        }
+        chat.set_cli_session(&chat.begin("anthropic"), "s");
+        chat.cli_dirs(Some("C:\\PDFs".into()));
+        chat.note_file("a.pdf", "/inbox/a.pdf");
+        assert_eq!(chat.turns(), 6);
+
+        // An answer still on its way when the edit lands is dropped.
+        let late = chat.begin("anthropic");
+        chat.rewind(2);
+        let (u, r) = qa("late", "x");
+        chat.commit(&late, u, r, "late", "x");
+        assert_eq!(chat.turns(), 2);
+
+        assert_eq!(chat.cli_session(), None, "Claude Code starts afresh on the kept turns");
+        assert_eq!(chat.cli_dirs(None), ["C:\\PDFs"]);
+        assert_eq!(chat.files(), vec![("a.pdf".to_string(), "/inbox/a.pdf".to_string())]);
+        let t = chat.begin("anthropic");
+        assert!(!t.first);
+        assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("one")), ("assistant".into(), json!("1"))]);
+
+        chat.rewind(0);
+        assert!(chat.begin("claude-code").first);
+        chat.rewind(99); // nothing to cut: no harm
+        chat.reset();
+        assert!(chat.files().is_empty());
+    }
+
+    #[test]
+    fn stop_drops_the_request_and_only_the_current_turn() {
+        fn block_on<T>(f: impl Future<Output = T>) -> T {
+            tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+        }
+        let chat = Chat::default();
+        // Stop pressed with nothing running is forgotten by the next turn.
+        chat.stop();
+        chat.arm();
+        let quick: Option<u8> = block_on(chat.unless_stopped(async { 7 }));
+        assert_eq!(quick, Some(7));
+
+        let stop = chat.arm();
+        let never = std::future::pending::<u8>();
+        let pressed = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(30));
+            stop.stop();
+        });
+        assert_eq!(block_on(chat.unless_stopped(never)), None);
+        pressed.join().unwrap();
+        assert!(chat.stopper().is_stopped());
+        chat.arm();
+        assert!(!chat.stopper().is_stopped());
+    }
+
+    #[test]
+    fn a_reply_says_when_it_was_stopped() {
+        let r = serde_json::to_value(ChatReply::answer("hi".into(), None)).unwrap();
+        assert_eq!(r, json!({"text":"hi","turns":0}));
+        let r = serde_json::to_value(ChatReply::stopped("h".into(), Some("s".into()))).unwrap();
+        assert_eq!(r, json!({"text":"h","session":"s","stopped":true,"turns":0}));
+    }
+
+    #[test]
+    fn a_shared_folder_stays_readable_until_the_chat_ends() {
+        let chat = Chat::default();
+        assert!(chat.cli_dirs(None).is_empty());
+        assert_eq!(chat.cli_dirs(Some("C:\\PDFs".into())), ["C:\\PDFs"]);
+        assert_eq!(chat.cli_dirs(Some("C:\\PDFs".into())), ["C:\\PDFs"], "once");
+        assert_eq!(chat.cli_dirs(None), ["C:\\PDFs"], "the next turn too");
+        chat.reset();
+        assert!(chat.cli_dirs(None).is_empty());
+        for i in 0..20 {
+            chat.cli_dirs(Some(format!("C:\\d{i}")));
+        }
+        assert_eq!(chat.cli_dirs(None).len(), 8);
     }
 
     #[test]
@@ -394,11 +656,11 @@ mod tests {
     #[test]
     fn the_prompt_greets_by_first_name_and_claims_web_search_only_for_claude() {
         let p = system_prompt_for(Some("Louis"), true);
-        assert!(p.starts_with("You are Mochi, Louis's personal AI assistant living at the top of their screen."));
+        assert!(p.starts_with("You are Lumo, Louis's personal AI assistant living at the top of their screen."));
         assert!(p.contains("web search access"));
         assert!(p.contains("light Markdown"));
         let p = system_prompt_for(None, false);
-        assert!(p.starts_with("You are Mochi, a personal AI assistant living at the top of the user's screen."));
+        assert!(p.starts_with("You are Lumo, a personal AI assistant living at the top of the user's screen."));
         assert!(!p.contains("web search"));
         assert!(p.contains("no web access"));
     }
@@ -434,6 +696,7 @@ mod tests {
             windows: vec![WindowInfo { title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
             selection: None,
+            folder: None,
         };
         let (q, images) = with_screen("claude-code", Some(&screen), "what is this?".into()).unwrap();
         assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"));

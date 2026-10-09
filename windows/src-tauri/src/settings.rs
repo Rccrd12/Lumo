@@ -29,12 +29,23 @@ pub struct Settings {
     /// Rust side (island.rs) — what a webview sends back is ignored.
     pub island_dock: String,
     pub island_offset: f64,
+    /// Let go away from every edge, the island floats: how far its window is
+    /// from the top or bottom edge it grows from, in logical pixels (0 = against it).
+    pub island_float: f64,
     /// How wide the open island is, and how tall (0 = each view's own), in
     /// page pixels. Dragged from the island's grips, so owned by Rust too.
     pub island_width: f64,
     pub island_height: f64,
     /// How big the icons are drawn, against the Mac's size.
     pub icon_scale: f64,
+    /// When the open island closes on its own: "timer" (`auto_close_interval`
+    /// seconds after the mouse leaves), "leave" (as soon as it leaves),
+    /// "click" (a click outside it) or "never" (only Esc or a shortcut).
+    pub island_close: String,
+    /// The closed island opens as soon as the mouse rests on it.
+    pub island_hover_open: bool,
+    /// The closed island goes away a minute after the mouse left it.
+    pub island_auto_hide: bool,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -58,6 +69,15 @@ pub struct Settings {
     /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
+    /// A quiet line next to the chat's model picker with what the provider has
+    /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits
+    /// Anthropic and OpenAI answer with, OpenRouter's key credits. Off until
+    /// the user turns it on, so the chat stays as it shipped.
+    pub chat_show_usage: bool,
+    /// Every chat message carries the folder open in File Explorer (its path
+    /// and listing, explorer.rs), as if picked from the screen button. Off
+    /// until the user turns it on in Settings → Chat.
+    pub chat_share_explorer: bool,
     /// Addresses of the model servers once connected; empty means not connected.
     pub ollama_url: String,
     pub lmstudio_url: String,
@@ -70,6 +90,9 @@ pub struct Settings {
     /// season), "none" or an outfit id — the Mac's raw values. The island reads
     /// anything it doesn't know as "auto", so the value is stored as it comes.
     pub mochi_outfit: String,
+    /// How much Lumo moves on his own: "still", "calm" or "lively". Kept as
+    /// it comes; src/core/state.ts reads anything else as "calm".
+    pub lumo_motion: String,
     /// A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB"),
     /// picked in Settings → Active pills. Empty means the catalog's colours.
     /// Kept as it comes, like `mochi_outfit`: src/core/pill-colors.ts reads
@@ -126,9 +149,13 @@ impl Default for Settings {
             island_zoom: crate::island::DEFAULT_ZOOM,
             island_dock: "top".into(),
             island_offset: 0.0,
+            island_float: 0.0,
             island_width: crate::island::DEFAULT_WIDTH,
             island_height: 0.0,
             icon_scale: DEFAULT_ICON_SCALE,
+            island_close: "timer".into(),
+            island_hover_open: false,
+            island_auto_hide: false,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -138,11 +165,14 @@ impl Default for Settings {
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
+            chat_show_usage: false,
+            chat_share_explorer: false,
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
             shortcuts: Default::default(),
             mochi_outfit: "auto".into(),
+            lumo_motion: "calm".into(),
             pill_colors: BTreeMap::new(),
             language: String::new(),
             desktop_mochi: DesktopMochiPref::default(),
@@ -409,9 +439,13 @@ mod tests {
   "islandZoom": 1.3,
   "islandDock": "left",
   "islandOffset": -200.5,
+  "islandFloat": 240.0,
   "islandWidth": 900.0,
   "islandHeight": 420.0,
   "iconScale": 1.5,
+  "islandClose": "click",
+  "islandHoverOpen": true,
+  "islandAutoHide": true,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -421,11 +455,14 @@ mod tests {
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
+  "chatShowUsage": true,
+  "chatShareExplorer": true,
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
   "mochiOutfit": "witchHat",
+  "lumoMotion": "lively",
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "desktopMochi": { "onDesktop": true, "spot": { "x": 1500.5, "y": -300.0, "space": "screen" } }
@@ -524,6 +561,14 @@ mod tests {
         assert_eq!(loaded.mochi_outfit, "auto");
         assert_eq!(loaded.model, "some-model");
         assert!(!loaded.sound_enabled);
+    }
+
+    #[test]
+    fn a_file_from_before_the_explorer_setting_shares_nothing_by_itself() {
+        let loaded = parse(&custom_with("chatShareExplorer", None)).unwrap();
+        assert!(!loaded.chat_share_explorer);
+        assert_eq!(loaded.chat_effort, "high");
+        assert!(parse(CUSTOM.as_bytes()).unwrap().chat_share_explorer);
     }
 
     #[test]
@@ -818,9 +863,13 @@ mod tests {
                 "islandZoom",
                 "islandDock",
                 "islandOffset",
+                "islandFloat",
                 "islandWidth",
                 "islandHeight",
                 "iconScale",
+                "islandClose",
+                "islandHoverOpen",
+                "islandAutoHide",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -830,11 +879,14 @@ mod tests {
                 "chatProvider",
                 "chatModels",
                 "chatEffort",
+                "chatShowUsage",
+                "chatShareExplorer",
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",
                 "shortcuts",
                 "mochiOutfit",
+                "lumoMotion",
                 "pillColors",
                 "language",
                 "desktopMochi",

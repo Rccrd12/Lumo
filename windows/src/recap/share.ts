@@ -30,7 +30,7 @@ const T = {
   get longestSession() { return t("Longest session"); },
   get approved() { return t("Approved"); },
   get denied() { return t("Denied"); },
-  footer: "Coucou · github.com/Louis-CFM/coucou",
+  footer: "Lumo · github.com/Rccrd12/Lumo",
 };
 
 /**
@@ -134,6 +134,7 @@ function badge(x: Ctx, left: number, top: number, w: number, label: string, valu
 /** A still Mochi, drawn by the same engine as the island's. */
 function drawMochi(x: Ctx, cx: number, top: number, size: number) {
   const engine = new BotEngine();
+  engine.ambient = 0; // a still picture
   engine.setState("idle", true);
   engine.update(1 / 60);
   x.save();
@@ -175,7 +176,7 @@ export function renderShareImage(s: WeeklySummary, hideProjects: boolean): HTMLC
   const MOCHI = 220;
   const MOCHI_DRAW = 320;
   const blockH =
-    MOCHI + 20 + 62 + 6 + 36 + 14 + 29 + 80 + // Mochi, Coucou, title, range
+    MOCHI + 20 + 62 + 6 + 36 + 14 + 29 + 80 + // Lumo, its name, title, range
     110 + 6 + 26 + // time + caption
     56 + 94 + // stat row
     (hasLines ? 24 + 34 : 0) +
@@ -191,7 +192,7 @@ export function renderShareImage(s: WeeklySummary, hideProjects: boolean): HTMLC
   x.fillStyle = INK;
   x.textAlign = "center";
   font(x, 900, 52);
-  x.fillText("Coucou", cx, y);
+  x.fillText("Lumo", cx, y);
   y += 62 + 6;
 
   x.fillStyle = DIM;

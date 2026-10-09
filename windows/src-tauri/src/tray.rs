@@ -11,7 +11,7 @@ use crate::island::WINDOW_LABEL;
 /// The menu's items, id and English label, in order. The labels are shown in
 /// the interface language (i18n.rs) and follow it when it changes.
 const ITEMS: [(&str, &str); 7] = [
-    ("open", n_("Open Coucou")),
+    ("open", n_("Open Lumo")),
     ("recenter", n_("Put the island back in the centre")),
     ("recap", n_("Weekly recap")),
     ("wardrobe", n_("Wardrobe…")),
@@ -36,11 +36,10 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     app.manage(Items(items));
 
     let mut builder = TrayIconBuilder::with_id("coucou")
-        .tooltip("Coucou")
+        .tooltip("Lumo")
         .menu(&menu)
         .on_menu_event(|app: &AppHandle, event| match event.id.as_ref() {
             "quit" => app.exit(0),
-            "settings" => crate::show_settings_window(app),
             "recenter" => crate::recenter_island(app),
             id => {
                 let _ = app.emit_to(WINDOW_LABEL, "tray", id.to_string());

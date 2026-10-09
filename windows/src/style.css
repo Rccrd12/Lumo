@@ -70,34 +70,19 @@ body {
 
 /* ── Island ─────────────────────────────────────────────────────────────── */
 
+/* island.ts places it (left / top): a gap off one edge of its window, centred
+   along it, or wherever a floating island was left. */
 #island {
   position: absolute;
-  top: 0;
-  left: 50%;
+  top: 10px;
+  left: 0;
   background: #000;
-  border-radius: 0 0 14px 14px;
+  border-radius: 14px;
   overflow: visible;
   will-change: width, height, transform;
 }
 
-/* Where the island hangs: against one edge of its window, centred along it.
-   island.ts sets the matching transform (translateX / translateY). */
-.dock-bottom #island {
-  top: auto;
-  bottom: 0;
-}
-
-.dock-left #island,
-.dock-right #island {
-  top: 50%;
-  left: 0;
-}
-
-.dock-right #island {
-  left: auto;
-  right: 0;
-}
-
+/* It grows away from its edge, and lifts from there when picked up. */
 .dock-top #island {
   transform-origin: 50% 0;
 }
@@ -1026,6 +1011,41 @@ body {
 
 /* ── Settings view (in-island) ──────────────────────────────────────────── */
 
+/* The Settings page itself, in a frame (views/settings-frame.ts). */
+.settings-frame {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.settings-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color-scheme: dark;
+  opacity: 0;
+  transition: opacity 0.2s ease-out;
+}
+
+.settings-frame iframe.ready {
+  opacity: 1;
+}
+
+.settings-frame-wait {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+.settings-frame-wait[hidden] {
+  display: none;
+}
+
 .settings-rows {
   display: flex;
   flex-direction: column;
@@ -1348,6 +1368,18 @@ input[type="range"]::-webkit-slider-thumb {
   animation-delay: 0.28s;
 }
 
+/* What the answer is doing, next to the dots: Thinking…, Reading report.pdf… */
+.typing-label {
+  align-self: center;
+  min-width: 0;
+  margin-left: 6px;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 @keyframes typing {
   0%, 100% { transform: scale(0.6); }
   50% { transform: scale(1.2); }
@@ -1427,6 +1459,33 @@ input[type="range"]::-webkit-slider-thumb {
   white-space: nowrap;
   font: 500 10.5px var(--font);
   color: #7b8089;
+}
+
+/* What the provider has left: quiet, next to the model button. */
+.chat-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 6px 0 auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: #5c6370;
+  font: 500 10px var(--font);
+  cursor: default;
+}
+
+.chat-usage-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-usage.setup:hover {
+  color: #8b929e;
 }
 
 .picker {
@@ -1662,6 +1721,99 @@ input[type="range"]::-webkit-slider-thumb {
   transform: scale(0.94);
 }
 
+/* While an answer is written the send button is its Stop button (views/chat.ts). */
+.send-btn:disabled {
+  opacity: 0.5;
+}
+
+/* ── Copy and Edit on a message, under the mouse (views/chat.ts) ─────────── */
+
+.chat-row.user.with-actions {
+  padding-left: 0;
+}
+
+.msg-actions {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.12s ease-out;
+}
+
+.chat-row.user .msg-actions {
+  align-self: flex-end;
+  margin-right: 4px;
+}
+
+.chat-row:hover .msg-actions,
+.chat-row:focus-within .msg-actions {
+  opacity: 1;
+}
+
+.msg-action {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--dim-3);
+  cursor: default;
+}
+
+.msg-action:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--dim);
+}
+
+.msg-action.done {
+  color: var(--green);
+}
+
+.reply-wrap {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.reply-foot {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+}
+
+.reply-foot.floating {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  min-height: 0;
+  border-radius: 5px;
+}
+
+.chat-row:hover .reply-foot.floating {
+  background: rgba(24, 25, 28, 0.92);
+}
+
+.msg-stopped {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+/* The question being edited, and what sending it would drop. */
+.chat-row.editing .bubble {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
+}
+
+.chat-row.dropped {
+  opacity: 0.4;
+}
+
 /* ── Screen button: menu, preview, chips (views/chat.ts) ─────────────────── */
 
 .chat-body .screen-panel {
@@ -1670,6 +1822,11 @@ input[type="range"]::-webkit-slider-thumb {
 
 .chat-body.screening .screen-panel {
   display: flex;
+}
+
+/* The model picker shares the .picker look: only it shows while it is open. */
+.chat-body.picking .screen-panel {
+  display: none;
 }
 
 .chat-body.screening .chat-log,

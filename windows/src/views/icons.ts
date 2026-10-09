@@ -66,4 +66,8 @@ export const ICONS = {
   doc: "M6.5 2.6h7l4 4v14.8h-11V2.6zm6.6 1.6v3.3h3.3l-3.3-3.3zM8.6 11h6.8v1.5H8.6V11zm0 3.4h6.8v1.5H8.6v-1.5z",
   // display (stroke) — the chat's screen button
   display: "M3.5 4.5h17v11.5h-17zM12 16v3.5M8 19.5h8",
+  // stop.fill — the chat's send button while an answer is being written
+  stop: "M8 6.5h8A1.5 1.5 0 0 1 17.5 8v8a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 16V8A1.5 1.5 0 0 1 8 6.5z",
+  // pencil (stroke) — edit a message of the chat
+  pencil: "M4.5 19.5l1-4.2L15.8 5a1.8 1.8 0 0 1 2.5 0l.7.7a1.8 1.8 0 0 1 0 2.5L8.7 18.5l-4.2 1zM13.8 7l3.2 3.2",
 } as const;

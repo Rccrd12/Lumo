@@ -2,12 +2,16 @@
 
 mod agent_hooks;
 mod agents;
+mod autostart;
 mod chat;
+mod chat_usage;
 mod claude;
 mod claude_code;
+mod clipboard;
 mod codex_plan;
 mod config_file;
 mod desktop;
+mod explorer;
 mod files;
 mod github;
 mod hooks;
@@ -63,6 +67,8 @@ pub struct BootInfo {
     /// False where the OS has no global cursor (Wayland): the page then reports
     /// the cursor from its own mouse events.
     cursor_poll: bool,
+    /// Where the island is drawn in its window (island::shift).
+    shift: island::ShiftPayload,
 }
 
 #[tauri::command]
@@ -73,12 +79,14 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
     settings.hooks_installed = hooks_status.installed;
     settings.plan_relay_installed = hooks_status.plan_relay_installed;
     let screen = island::screen_info(&app, &settings.screen);
+    let shift = island::current_shift(&app, &settings.screen, island::Placement::of(&settings));
     BootInfo {
         settings,
         screen,
         version: env!("CARGO_PKG_VERSION").to_string(),
         hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
         cursor_poll: platform::CURSOR_POLL,
+        shift,
     }
 }
 
@@ -95,6 +103,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         // Where the island was dragged is island.rs's to say, too.
         settings.island_dock = current.island_dock.clone();
         settings.island_offset = current.island_offset;
+        settings.island_float = current.island_float;
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
         *current = settings;
@@ -140,7 +149,7 @@ fn set_system_languages(app: AppHandle, languages: Vec<String>) {
 fn language_changed(app: &AppHandle) {
     tray::retitle(app);
     if let Some(window) = app.get_webview_window("settings") {
-        let _ = window.set_title(&i18n::t("Settings — Coucou"));
+        let _ = window.set_title(&i18n::t("Settings — Lumo"));
     }
 }
 
@@ -219,6 +228,7 @@ fn island_drag(app: AppHandle) {
         update_island(&app, |s| {
             s.island_dock = p.dock.name().to_string();
             s.island_offset = p.offset;
+            s.island_float = p.float;
             if let Some(screen) = dropped.screen {
                 s.screen = screen;
             }
@@ -270,6 +280,7 @@ pub(crate) fn recenter_island(app: &AppHandle) {
     update_island(app, |s| {
         s.island_dock = "top".into();
         s.island_offset = 0.0;
+        s.island_float = 0.0;
     });
 }
 
@@ -552,6 +563,20 @@ async fn chat_models(shared: State<'_, Shared>, provider: String) -> Result<Vec<
     chat::models(&settings, &provider).await
 }
 
+/// The OpenRouter key's credits, for the line next to the chat's model picker.
+/// Asked only while "Show remaining usage in the chat" is on, OpenRouter is
+/// the chat's provider and has a key; the island asks when the chat opens and
+/// after an answer. Anthropic and OpenAI need no call: their numbers come with
+/// each answer (`chat-usage`).
+#[tauri::command]
+async fn chat_usage(shared: State<'_, Shared>) -> Result<Option<chat_usage::ChatUsage>, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    if !settings.chat_show_usage || settings.chat_provider != "openrouter" {
+        return Ok(None);
+    }
+    chat_usage::openrouter().await
+}
+
 /// Settings → Local models → Connect: does the server answer, and with which models?
 #[tauri::command]
 async fn local_connect(provider: String, url: String) -> Result<local_chat::Connected, String> {
@@ -568,6 +593,20 @@ fn local_set_key(url: String, key: String) -> Result<(), String> {
 #[tauri::command]
 fn chat_reset(chat: State<Chat>) {
     chat.reset();
+}
+
+/// The chat's Stop button: ends the answer being written. `chat_send` then
+/// returns what was written so far, marked stopped.
+#[tauri::command]
+fn chat_stop(chat: State<Chat>) {
+    chat.stop();
+}
+
+/// An edited message: the conversation goes back to its first `keep` turns
+/// (as `chat_send` counted them) before the edited one is sent.
+#[tauri::command]
+fn chat_rewind(chat: State<Chat>, keep: usize) {
+    chat.rewind(keep);
 }
 
 /// One turn of a chat from the history, as the island keeps it.
@@ -632,10 +671,59 @@ fn screen_discard(paths: Vec<String>) {
     screen::discard(&paths);
 }
 
+/// The folder open in File Explorer, its name only, for the menu's label.
+/// Lists nothing; remembers nothing.
+#[tauri::command]
+async fn screen_explorer_peek() -> Result<Option<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(explorer::peek).await.map_err(|e| e.to_string())?
+}
+
+/// "Folder open in File Explorer": that folder and what is in it (names,
+/// sizes, dates), now shared with the chat.
+#[tauri::command]
+async fn screen_explorer() -> Result<Option<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(explorer::share).await.map_err(|e| e.to_string())?
+}
+
+/// A question sent with a shared folder: the file of it that the question
+/// names, copied into the inbox like a picked file, or nothing.
+#[tauri::command]
+async fn explorer_attach(folder: String, query: String) -> Result<Option<DroppedFile>, String> {
+    tauri::async_runtime::spawn_blocking(move || explorer::attach(&folder, &query)).await.map_err(|e| e.to_string())?
+}
+
 /// Copies a dropped file into the inbox and reports its name back.
 #[tauri::command]
 fn ingest_file(path: String) -> Result<DroppedFile, String> {
     files::ingest(&path)
+}
+
+/// Ctrl+V in the chat with an image (or a file the page can read): its bytes,
+/// sent raw, written into the inbox like a dropped file. The name rides in the
+/// `x-coucou-name` header, percent-encoded.
+#[tauri::command]
+async fn paste_file(request: tauri::ipc::Request<'_>) -> Result<DroppedFile, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(i18n::t("Couldn't paste this."));
+    };
+    if bytes.len() > files::MAX_PASTE {
+        return Err(i18n::t("This file is too big to paste. Attach it with the paperclip instead."));
+    }
+    let name = request
+        .headers()
+        .get("x-coucou-name")
+        .and_then(|v| v.to_str().ok())
+        .and_then(explorer::percent_decode_text)
+        .unwrap_or_default();
+    let bytes = bytes.clone();
+    tauri::async_runtime::spawn_blocking(move || files::write_in(&name, &bytes)).await.map_err(|e| e.to_string())?
+}
+
+/// Ctrl+V in the chat found no text and no image: the file copied in File
+/// Explorer (CF_HDROP), copied into the inbox; nothing when there is none.
+#[tauri::command]
+async fn paste_copied_file() -> Result<Option<DroppedFile>, String> {
+    tauri::async_runtime::spawn_blocking(clipboard::paste_copied_file).await.map_err(|e| e.to_string())?
 }
 
 /// The island may only ask whether a key exists — never read it.
@@ -746,7 +834,7 @@ fn create_settings_window(app: &AppHandle) {
     let url = settings_page_url(app);
     match WebviewWindowBuilder::new(app, "settings", url)
         .additional_browser_args(BROWSER_ARGS)
-        .title(i18n::t("Settings — Coucou"))
+        .title(i18n::t("Settings — Lumo"))
         // Room for the section list on the left and the section beside it.
         .inner_size(780.0, 680.0)
         .min_inner_size(600.0, 480.0)
@@ -769,7 +857,7 @@ fn create_settings_window(app: &AppHandle) {
     }
 }
 
-pub fn show_settings_window(app: &AppHandle) {
+fn show_settings_window(app: &AppHandle) {
     let Some(win) = app.get_webview_window("settings") else {
         log::line("settings window missing");
         return;
@@ -849,10 +937,13 @@ pub fn run() {
             log_line,
             chat_send,
             chat_models,
+            chat_usage,
             local_connect,
             local_set_key,
             chat_reset,
             chat_restore,
+            chat_stop,
+            chat_rewind,
             island_drag,
             island_resize,
             island_reset_size,
@@ -862,7 +953,12 @@ pub fn run() {
             screen_windows,
             screen_capture,
             screen_discard,
+            screen_explorer_peek,
+            screen_explorer,
+            explorer_attach,
             ingest_file,
+            paste_file,
+            paste_copied_file,
             secret_present,
             secret_set,
             secret_clear,
@@ -927,13 +1023,14 @@ pub fn run() {
 
             log::line(format!("--- Coucou {} started ---", env!("CARGO_PKG_VERSION")));
             hooks::ensure_hook_exe(&handle);
+            autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             integrations::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
         })
         .run(tauri::generate_context!())
-        .expect("error while running Coucou");
+        .expect("error while running Lumo");
 }
 
 #[cfg(test)]

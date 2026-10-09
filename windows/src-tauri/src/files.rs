@@ -66,7 +66,15 @@ pub fn ingest(source: &str) -> Result<DroppedFile, String> {
     if !take_dropped(source) {
         return Err(crate::i18n::t("Only files dropped on the island can be added."));
     }
-    let src = Path::new(source);
+    copy_in(Path::new(source))
+}
+
+/// Copies `src` into the inbox, as a drop does. Callers check first that the
+/// user chose it: a real drop or the picker (`ingest`), or a file of a folder
+/// they shared that their question names (explorer.rs).
+pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
+    let source = src.to_string_lossy();
+    let source = source.as_ref();
     let meta = std::fs::metadata(src)
         .map_err(|e| crate::i18n::tf("Cannot read {path}: {error}", &[("path", source), ("error", &e.to_string())]))?;
     if meta.is_dir() {
@@ -124,11 +132,65 @@ fn unique_in(dir: &Path, name: &str) -> PathBuf {
 
 /// Where Coucou writes a file of its own for the chat (a screenshot): a fresh
 /// path in the inbox under `name`, next to the dropped files Claude Code may read.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn new_inbox_file(name: &str) -> Result<PathBuf, String> {
     let dir = ready_inbox()?;
     sweep(&dir);
     Ok(unique_in(&dir, name))
+}
+
+// ── Pasted in the chat ────────────────────────────────────────────────────────
+//
+// Ctrl+V in the chat's text field with an image on the clipboard (a Win+Shift+S
+// screenshot) or a file the page can read: the page hands over its bytes and
+// they land in the inbox like a dropped file. Nothing is read from disk here,
+// so the page can only give what it already has.
+
+/// What a paste can hand over in one go: what the Anthropic API takes in one request.
+pub const MAX_PASTE: usize = 32 * 1024 * 1024;
+
+/// A name the page gave, made safe for the inbox: its last part only, no
+/// character Windows refuses in a name, no device name, not too long.
+pub fn safe_file_name(name: &str) -> String {
+    let last = name.rsplit(['/', '\\']).next().unwrap_or("");
+    let cleaned: String = last
+        .chars()
+        .map(|c| if c.is_control() || matches!(c, '<' | '>' | ':' | '"' | '|' | '?' | '*') { '_' } else { c })
+        .collect();
+    // Windows drops trailing dots and spaces; a name of only those is no name.
+    let mut cleaned = cleaned.trim().trim_end_matches(['.', ' ']).to_string();
+    if cleaned.chars().count() > 120 {
+        let ext = Path::new(&cleaned).extension().map(|e| e.to_string_lossy().to_string()).filter(|e| e.len() <= 10);
+        let stem: String = cleaned.chars().take(100).collect();
+        cleaned = match ext {
+            Some(ext) => format!("{}.{ext}", stem.trim_end_matches(['.', ' '])),
+            None => stem,
+        };
+    }
+    let stem = cleaned.split('.').next().unwrap_or("").to_ascii_uppercase();
+    let device = matches!(stem.as_str(), "CON" | "PRN" | "AUX" | "NUL")
+        || ((stem.starts_with("COM") || stem.starts_with("LPT")) && stem.len() == 4 && stem.as_bytes()[3].is_ascii_digit());
+    if cleaned.is_empty() || cleaned.chars().all(|c| c == '.') {
+        "pasted".to_string()
+    } else if device {
+        format!("_{cleaned}")
+    } else {
+        cleaned
+    }
+}
+
+/// Bytes pasted in the chat, written into the inbox under `name` (made safe).
+pub fn write_in(name: &str, bytes: &[u8]) -> Result<DroppedFile, String> {
+    if bytes.len() > MAX_PASTE {
+        return Err(crate::i18n::t("This file is too big to paste. Attach it with the paperclip instead."));
+    }
+    let name = safe_file_name(name);
+    let dest = new_inbox_file(&name)?;
+    std::fs::write(&dest, bytes).map_err(|e| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]))?;
+    Ok(DroppedFile {
+        name: dest.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or(name),
+        path: dest.to_string_lossy().to_string(),
+        size: bytes.len() as u64,
+    })
 }
 
 /// Drops anything copied here more than a week ago. `ingest` stamps every copy
@@ -196,6 +258,45 @@ mod tests {
         let _ = std::fs::remove_file(&first.path);
         let _ = std::fs::remove_file(&second.path);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+}
+
+#[cfg(test)]
+mod paste_tests {
+    use super::*;
+
+    #[test]
+    fn a_pasted_name_is_only_a_name() {
+        assert_eq!(safe_file_name("image.png"), "image.png");
+        assert_eq!(safe_file_name("..\\..\\Windows\\evil.dll"), "evil.dll");
+        assert_eq!(safe_file_name("../../.ssh/id_rsa"), "id_rsa");
+        assert_eq!(safe_file_name("a:b*c?.txt"), "a_b_c_.txt");
+        assert_eq!(safe_file_name("notes. . "), "notes");
+        assert_eq!(safe_file_name(""), "pasted");
+        assert_eq!(safe_file_name(".."), "pasted");
+        assert_eq!(safe_file_name("dir/"), "pasted");
+        assert_eq!(safe_file_name("CON"), "_CON");
+        assert_eq!(safe_file_name("nul.txt"), "_nul.txt");
+        assert_eq!(safe_file_name("com1.png"), "_com1.png");
+        assert_eq!(safe_file_name("COMET.png"), "COMET.png");
+        assert_eq!(safe_file_name("line\nbreak.txt"), "line_break.txt");
+        let long = format!("{}.pdf", "x".repeat(300));
+        let short = safe_file_name(&long);
+        assert_eq!(short, format!("{}.pdf", "x".repeat(100)));
+    }
+
+    #[test]
+    fn pasted_bytes_land_in_the_inbox_and_too_many_are_refused() {
+        let got = write_in("../shot.png", b"\x89PNG").unwrap();
+        assert!(got.name.starts_with("shot") && got.name.ends_with(".png"), "{}", got.name);
+        assert!(Path::new(&got.path).starts_with(inbox_dir()));
+        assert_eq!(std::fs::read(&got.path).unwrap(), b"\x89PNG");
+        assert_eq!(got.size, 4);
+        let again = write_in("shot.png", b"2").unwrap();
+        assert_ne!(again.path, got.path, "never overwritten");
+        let _ = std::fs::remove_file(&got.path);
+        let _ = std::fs::remove_file(&again.path);
+        assert!(write_in("big.bin", &vec![0u8; MAX_PASTE + 1]).is_err());
     }
 }
 

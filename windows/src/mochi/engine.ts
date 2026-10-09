@@ -7,7 +7,10 @@
 import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
-import { PUMPKIN_BODY, drawOutfitBehind, drawOutfitFront, makeHead } from "./outfits";
+import {
+  LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose,
+} from "./lumo";
+import { drawOutfitBehind, drawOutfitFront, makeHead } from "./outfits";
 import type { Outfit } from "./wardrobe";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -63,12 +66,12 @@ interface Particle {
 
 // ── Constants (MochiConst / PISTES.mochi) ─────────────────────────────────────
 
-const EYE_W = 0.25;
-const EYE_H = 0.27;
-const EYE_SP = 0.37;
-const EYE_P = -0.12;
-const BASE_TOP: RGB = [0.929, 0.929, 0.937]; // #EDEDEF
-const BASE_BOTTOM: RGB = [0.769, 0.773, 0.792]; // #C4C5CA
+const EYE_W = LUMO_EYE.w;
+const EYE_H = LUMO_EYE.h;
+const EYE_SP = LUMO_EYE.spread;
+const EYE_P = LUMO_EYE.pitch;
+const BASE_TOP: RGB = LUMO_TOP;
+const BASE_BOTTOM: RGB = LUMO_BOTTOM;
 const INK = "rgb(26,20,18)"; // #1A1412
 const MINI_INK = "rgb(16,19,26)"; // #10131A
 
@@ -224,6 +227,15 @@ export class BotEngine {
 
   lookX = 0;
   lookY = 0;
+  /**
+   * How much Lumo moves on his own (0 = only when something happens): he
+   * hovers, breathes, sways and, once the mouse has been still a while,
+   * looks around. The main character only.
+   */
+  ambient = 1;
+  private lastLook = { x: 0, y: 0, at: 0 };
+  private glance = { x: 0, y: 0, next: 0 };
+  private glanceW = 0;
 
   lastTime = now();
   private t0 = now() - Math.random() * 5;
@@ -232,12 +244,8 @@ export class BotEngine {
   waveStart = 0;
   private greetToken = 0;
   private lastAmbient = 0;
-  private slapTimes: number[] = [];
   private miniLookTarget = { x: 0, y: 0 };
   private miniLookNextTime = 0;
-
-  /** Fired when three slaps land inside 1.7 s (→ dizzy + confused view). */
-  onDizzy: (() => void) | null = null;
 
   // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -319,21 +327,15 @@ export class BotEngine {
   slap() {
     this.interruptGreet();
     if (this.state === "dizzy") return;
+    // A poke only annoys him: no "too many hits" scene however often it comes.
     const t = now();
-    this.slapTimes = this.slapTimes.filter((s) => t - s < 1.7);
-    this.slapTimes.push(t);
     Sound.play("slap");
     this.squash();
     this.physVy -= 1.2;
     this.physVx += Math.random() < 0.5 ? 0.7 : -0.7;
-    if (this.slapTimes.length >= 3) {
-      this.slapTimes = [];
-      this.onDizzy?.();
-    } else {
-      this.eyeOverride = "line";
-      this.eyeOverrideUntil = t + 0.8;
-      setTimeout(() => Sound.play("annoyed"), 60);
-    }
+    this.eyeOverride = "line";
+    this.eyeOverrideUntil = t + 0.8;
+    setTimeout(() => Sound.play("annoyed"), 60);
   }
 
   doRoll(durationMs: number, turns: number) {
@@ -506,6 +508,11 @@ export class BotEngine {
     return !this.isMini && this.outfit !== "none" && this.outfitPresence > 0.05;
   }
 
+  /** He moves on his own: the island keeps drawing him, at a gentler frame rate. */
+  get ambientActive(): boolean {
+    return !this.isMini && this.ambient > 0 && this.state !== "sleeping" && this.morph < 0.05;
+  }
+
   /** True while anything is still moving — lets the island stop its RAF loop. */
   get busy(): boolean {
     return (
@@ -570,6 +577,26 @@ export class BotEngine {
       ty = Math.sin(t * 2.6) * 0.6;
       tp = -0.06;
     }
+    // The mouse has been still a while: he looks around on his own, gently.
+    const amb = this.ambientActive ? this.ambient : 0;
+    if (this.lookX !== this.lastLook.x || this.lookY !== this.lastLook.y) {
+      this.lastLook = { x: this.lookX, y: this.lookY, at: n };
+    }
+    const wander = amb > 0 && !this.cfg.look && !this.cfg.scans && n - this.lastLook.at > 3;
+    this.glanceW += ((wander ? 1 : 0) - this.glanceW) * (1 - Math.pow(0.2, dt));
+    if (wander && n > this.glance.next) {
+      const reach = Math.min(1, 0.45 * amb);
+      this.glance = {
+        x: (Math.random() * 2 - 1) * reach,
+        y: (Math.random() * 1.4 - 0.6) * reach * 0.6,
+        next: n + 2.4 + Math.random() * 3.2 / amb,
+      };
+    }
+    if (this.glanceW > 0.001) {
+      ty = lerp(ty, this.glance.x * 0.62, this.glanceW);
+      tp = lerp(tp, this.glance.y * 0.5, this.glanceW);
+    }
+
     if (this.state === "sleeping") { ty = 0; tp = -0.14; }
     if (this.state === "dizzy") { ty = Math.sin(t * 9) * 0.25; }
 
@@ -588,14 +615,15 @@ export class BotEngine {
 
     this.tgYaw = ty;
     this.tgPitch = tp;
-    this.tgTilt = this.cfg.tilt;
+    this.tgTilt = this.cfg.tilt + Math.sin(t * 0.83) * 0.02 * amb;
 
     if (n > this.waveStart && n < this.waveUntil) {
       const wt = n - this.waveStart;
       this.tgTilt = -0.06 + Math.sin(2 * Math.PI * 1.2 * wt) * 0.07;
     }
 
-    const bounce = this.cfg.bounces ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0;
+    const hover = Math.sin(t * 1.5) * 0.03 * amb;
+    const bounce = (this.cfg.bounces ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0) + hover;
     const kGen = 1 - Math.pow(0.0008, dt);
     if (!this.locks.has("oy")) this.oy += (bounce - this.oy) * kGen;
 
@@ -607,8 +635,9 @@ export class BotEngine {
       this.tgSy = 1 + Math.sin(t * 2.2) * 0.04;
       this.tgSx = 1 - Math.sin(t * 2.2) * 0.02;
     } else {
-      this.tgSy = 1;
-      this.tgSx = 1;
+      // At rest he still breathes, barely.
+      this.tgSy = 1 + Math.sin(t * 1.9) * 0.01 * amb;
+      this.tgSx = 1 - Math.sin(t * 1.9) * 0.006 * amb;
     }
 
     if (this.isMini && n > this.miniNextBehavior) this.doMiniBehaviorLoop();
@@ -716,8 +745,8 @@ export class BotEngine {
    */
   draw(x: CanvasRenderingContext2D, W: number, H: number) {
     const R = W * 0.3;
-    const rx = R * 1.14;
-    const ry = R * 0.88;
+    const rx = R * LUMO_RX;
+    const ry = R * LUMO_RY;
     const cx = W / 2 + this.ox * R;
     const cy = H / 2 + this.particleOverhang / 2 + this.oy * R + R * 0.06;
 
@@ -742,6 +771,10 @@ export class BotEngine {
     const outfitState = { presence: this.outfitPresence, morph: this.morph };
     if (head) drawOutfitBehind(x, this.outfit, head, outfitState);
 
+    // The firefly's wings and lantern, behind him (not on the agents' minis).
+    const lumo = this.isMini ? null : this.lumoPose(R, rx, ry);
+    if (lumo) drawLumoBehind(x, lumo);
+
     const body = this.bodyPath(rx, ry, R);
     this.drawBody(x, body, R, rx, ry);
 
@@ -761,6 +794,7 @@ export class BotEngine {
 
     this.drawEyes(x, body, R, rx, ry);
     if (this.morph > 0.05) this.drawMouth(x, body, R);
+    if (lumo) drawLumoFront(x, lumo);
 
     if (head) drawOutfitFront(x, this.outfit, head, outfitState);
 
@@ -773,9 +807,30 @@ export class BotEngine {
     this.drawParticles(x, R, cx, cy);
   }
 
+  /** Lumo's light follows the state's colour while he works, and his wings buzz. */
+  private lumoPose(R: number, rx: number, ry: number): LumoPose {
+    const k = Math.min(1, this.tint / 0.72);
+    const glow: RGB = [
+      LUMO_GLOW[0] + (this.col[0] - LUMO_GLOW[0]) * k,
+      LUMO_GLOW[1] + (this.col[1] - LUMO_GLOW[1]) * k,
+      LUMO_GLOW[2] + (this.col[2] - LUMO_GLOW[2]) * k,
+    ];
+    const asleep = this.state === "sleeping";
+    return {
+      R, rx, ry,
+      t: now() - this.t0,
+      glow,
+      shine: asleep ? 0.1 : 0.35 + 0.65 * k,
+      flap: asleep ? 0 : this.cfg.tint > 0 ? 1 : 0.25,
+      lagX: this.physDx,
+      lagY: this.physDy,
+      presence: 1 - this.morph,
+    };
+  }
+
   private bodyPath(rx: number, ry: number, R: number): Path2D {
     const n = 72;
-    const expN = 2.0 / 2.7;
+    const expN = 2.0 / LUMO_EXP;
     const tw = R * 1.0;
     const th = R * 0.94;
     const tr = R * 0.42;
@@ -801,39 +856,22 @@ export class BotEngine {
     return p;
   }
 
-  /** How much of the pumpkin's orange shows on the body (it comes and goes with the outfit). */
-  private get pumpkinAlpha(): number {
-    if (this.isMini || this.outfit !== "pumpkin") return 0;
-    return Math.min(1, this.outfitPresence * 2.5) * (1 - this.morph);
-  }
-
   private drawBody(x: CanvasRenderingContext2D, body: Path2D, R: number, rx: number, ry: number) {
-    const pumpkin = this.pumpkinAlpha;
     if (this.bodyColor) {
       // Mini bots: flat solid fill — no gradient, no reflection, no highlight
       x.fillStyle = rgba(this.bodyColor, 1);
       x.fill(body);
-      if (pumpkin <= 0.001) return;
-    } else {
-      const g = x.createLinearGradient(rx * 0.7, -ry * 0.85, -rx * 0.8, ry * 0.9);
-      g.addColorStop(0, rgba(BASE_TOP));
-      g.addColorStop(1, rgba(BASE_BOTTOM));
-      x.fillStyle = g;
-      x.fill(body);
+      return;
     }
+    const g = x.createLinearGradient(rx * 0.7, -ry * 0.85, -rx * 0.8, ry * 0.9);
+    g.addColorStop(0, rgba(BASE_TOP));
+    g.addColorStop(1, rgba(BASE_BOTTOM));
+    x.fillStyle = g;
+    x.fill(body);
     x.save();
-    if (pumpkin > 0.001) {
-      const pg = x.createLinearGradient(rx * 0.7, -ry * 0.85, -rx * 0.8, ry * 0.9);
-      pg.addColorStop(0, PUMPKIN_BODY[0]);
-      pg.addColorStop(1, PUMPKIN_BODY[1]);
-      x.globalAlpha = pumpkin;
-      x.fillStyle = pg;
-      x.fill(body);
-      // A flat-coloured body only gets the shading while it is a pumpkin.
-      x.globalAlpha = this.bodyColor ? pumpkin : 1;
-    }
 
-    const effectiveTint = this.tint * (1 - this.morph);
+    // Lumo's light carries the state's colour; his body only takes a wash of it.
+    const effectiveTint = this.tint * (1 - this.morph) * (this.isMini ? 1 : 0.4);
     if (effectiveTint > 0.01) {
       const tg = x.createLinearGradient(0, ry, 0, -ry);
       tg.addColorStop(0, rgba(this.col, 0.72 * effectiveTint));
@@ -908,6 +946,14 @@ export class BotEngine {
         const hh = Math.max(h * this.open, w * 0.3);
         roundRectPath(x, -w / 2, -hh / 2, w, hh, Math.min(w / 2, hh / 2));
         x.fill();
+        // Lumo's eyes catch the light: a little sparkle while they are open.
+        if (!this.isMini && hh > w * 0.7 && w > 2.4) {
+          x.fillStyle = "rgba(255,255,255,0.92)";
+          x.beginPath();
+          x.arc(w * 0.14, -hh * 0.2, w * 0.2, 0, Math.PI * 2);
+          x.fill();
+          x.fillStyle = ink;
+        }
         break;
       }
       case "dot":
