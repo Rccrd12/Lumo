@@ -331,6 +331,17 @@ export const Bridge = {
   mediaNow: () => call<MediaActivity | null>("media_now"),
   /** Play/pause, next or previous on that player. */
   mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
+  // ── The live activities (src-tauri/src/activities.rs) ───────────────────
+  /** A grip beside the island: the size follows the mouse (`activities-resize`). */
+  activitiesResize: (fx: number, fy: number, height: number) => call<void>("activities_resize", { fx, fy, height }),
+  /** Their own window, shown or hidden. */
+  activitiesShow: (show: boolean) => call<void>("activities_show", { show }),
+  /** Picked up by their top bar: from beside the island (x, y, w, h in page pixels) or from their window. */
+  activitiesDrag: (from: [number, number, number, number] | null) => call<void>("activities_drag", { from }),
+  /** A grip of their own window. */
+  activitiesWindowResize: (fx: number, fy: number) => call<void>("activities_window_resize", { fx, fy }),
+  /** Their own window takes the keyboard, or gives it back. */
+  activitiesFocus: (focused: boolean) => call<void>("activities_focus", { focused }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
 

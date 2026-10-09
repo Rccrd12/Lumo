@@ -105,7 +105,10 @@ the exe it runs from.
 
 Like a Dynamic Island, the closed island says what is going on next to Lumo,
 and grows a little to say it (on the top and bottom edges; upright on a side
-it stays as it is):
+it stays as it is). One thing alone sits in the middle, as wide as it needs;
+several sit side by side, each more compact (what the AI is doing, the next
+event, up to two timers, the music). Their buttons work: resting the mouse on
+them never opens the island, even with Open on hover.
 
 - **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
   "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
@@ -135,9 +138,17 @@ Beside the open island (on the top and bottom edges) a second island holds
 what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
 or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
 previous, play/pause and next), **Calendar** (the next events) and **Email**
-(the newest unread, with Summarize and Draft a reply). Its **–** folds it, with
-a flight, into an icon right of the **+** in the island's top bar; that icon
-brings it back. Settings → Island → **Live Activities** turns it off.
+(the newest unread: a click on one opens it, with Summarize, Draft a reply and
+the eye, which puts it away so the next one moves up). Its **–** (top right)
+folds it, with a flight, into an icon right of the **+** in the island's top
+bar; that icon brings it back. Settings → Island → **Live Activities** turns
+it off.
+
+On Windows it can be moved and resized like the island: drag its top bar and
+it comes off the island into a window of its own, which stays wherever you
+leave it (it shows while the island is open); drop it against the island's
+left or right side and it joins it there. Its edges and bottom corners resize
+it. On Linux it stays on the island's left.
 
 The calendar is read from its **secret iCal address**, pasted in Settings →
 Island → Calendar (Google Calendar: Settings → your calendar → Integrate
@@ -211,8 +222,9 @@ declare still shows up, for as long as it runs.
 The **Email** pill (Settings… → Pills & integrations) reads your inbox over
 IMAP: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an **app
 password**. The connection stays open and the server says when an email
-arrives (IMAP IDLE), so it shows within seconds; a server without IDLE is
-asked every 30 seconds. Its card lists the newest unread emails, and a new one
+arrives (IMAP IDLE); Lumo also looks every 20 seconds in case the server is
+slow to say, fetching only new emails. A server without IDLE is asked every
+30 seconds. Its card lists the newest unread emails, and a new one
 shows on the closed island (see [The closed island](#the-closed-island)).
 Lumo only reads: the inbox is opened read only, emails stay unread, and
 nothing is ever sent, moved or deleted. The address, the server and the app

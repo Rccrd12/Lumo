@@ -64,6 +64,7 @@ export default defineConfig({
         settings: resolve(__dirname, "settings.html"),
         mochi: resolve(__dirname, "mochi.html"),
         pointer: resolve(__dirname, "pointer.html"),
+        activities: resolve(__dirname, "activities.html"),
       },
     },
   },

@@ -158,7 +158,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const activity = State.agentsActivity;
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
-      const folded = State.activitiesRoom && State.settings.activitiesPanel === false;
+      const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
       if (folded && tabActivities.style.display === "none") {
         // It just landed: a little pop.
         tabActivities.classList.remove("pop");

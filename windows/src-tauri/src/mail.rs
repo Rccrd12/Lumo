@@ -36,8 +36,9 @@ pub const PASSWORD_KEY: &str = "mail-app-password";
 const TIMEOUT: Duration = Duration::from_secs(25);
 /// What one check may read from the server, all answers together.
 const MAX_READ: usize = 4 * 1024 * 1024;
-/// The newest unread messages fetched each time.
-const FETCH: usize = 5;
+/// The newest unread messages kept: the island shows three, and the next ones
+/// move up when one is ignored.
+const FETCH: usize = 8;
 /// Of each message's body, enough for a preview and for the AI to answer it.
 const BODY_BYTES: usize = 24 * 1024;
 const BODY_CHARS: usize = 6000;
@@ -61,6 +62,8 @@ pub struct Message {
 /// The highest UID seen per account: what is above it is new. The first
 /// check only takes note, so what was already unread is not announced.
 static LAST_UID: Mutex<Option<(String, u32)>> = Mutex::new(None);
+/// What the island was last sent, so an unchanged inbox sends nothing.
+static LAST_SENT: Mutex<Option<String>> = Mutex::new(None);
 
 // ── Watching the inbox ────────────────────────────────────────────────────────
 
@@ -71,6 +74,7 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 
 /// Look again now (Refresh).
 pub fn wake() {
+    *LAST_SENT.lock().unwrap() = None;
     WAKE.notify_one();
 }
 
@@ -112,8 +116,10 @@ pub async fn run(app: AppHandle) {
 
 const RETRY_FIRST: Duration = Duration::from_secs(30);
 const RETRY_MOST: Duration = Duration::from_secs(600);
-/// How long one IDLE lasts before Lumo looks again (servers drop it at 30 minutes).
-const IDLE_FOR: Duration = Duration::from_secs(9 * 60);
+/// How long one IDLE lasts before Lumo looks again anyway. The server should
+/// say at once when an email arrives, but some (Gmail) can be slow to: looking
+/// every 20 seconds costs one tiny SEARCH, as only new emails are fetched.
+const IDLE_FOR: Duration = Duration::from_secs(20);
 /// Without IDLE, how often the inbox is asked.
 const POLL_EVERY: Duration = Duration::from_secs(30);
 
@@ -124,9 +130,10 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
     let mut imap = timed(host, sign_in(host, port, address, password)).await?;
     let idle = imap.capabilities.iter().any(|c| c == "IDLE");
     let account = format!("{address}@{host}");
+    let mut known = std::collections::HashMap::new();
     loop {
         imap.read = 0;
-        let (unread, messages) = timed(host, look(&mut imap, host)).await?;
+        let (unread, messages) = timed(host, look(&mut imap, host, &mut known)).await?;
         report(app, &account, host, unread, messages);
         let stop = || {
             GENERATION.load(Ordering::Relaxed) != generation
@@ -172,18 +179,25 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
         *last = Some((account.to_string(), newest.max(seen.unwrap_or(0))));
         fresh
     };
-    emit(app, IntegrationUpdate {
-        id: ID,
-        data: json!({ "messages": messages, "unread": unread, "inbox": inbox_link(host) }),
-        error: None,
-        event: None,
-    });
+    // Only what changed reaches the island: a quiet inbox wakes nothing.
+    let data = json!({ "messages": messages, "unread": unread, "inbox": inbox_link(host) });
+    let text = data.to_string();
+    let changed = {
+        let mut sent = LAST_SENT.lock().unwrap();
+        let changed = sent.as_deref() != Some(text.as_str());
+        *sent = Some(text);
+        changed
+    };
+    if changed {
+        emit(app, IntegrationUpdate { id: ID, data, error: None, event: None });
+    }
     if !fresh.is_empty() {
         let _ = app.emit_to(WINDOW_LABEL, "mail-new", &fresh);
     }
 }
 
 fn fail(app: &AppHandle, error: String) {
+    *LAST_SENT.lock().unwrap() = None;
     log::line(format!("[mail] {error}"));
     emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None });
 }
@@ -478,16 +492,18 @@ fn sign_in_error(host: &str, why: &str) -> String {
     tf("{server} refused to sign in: {error}", &[("server", host), ("error", words.join(" ").trim_end_matches(':'))])
 }
 
-/// The unread count and the newest unread emails.
-async fn look(imap: &mut Imap, host: &str) -> Result<(usize, Vec<Message>), String> {
+/// The unread count and the newest unread emails; `known` keeps the ones
+/// already fetched on this connection, so only new ones are asked for.
+async fn look(imap: &mut Imap, host: &str, known: &mut std::collections::HashMap<u32, Message>) -> Result<(usize, Vec<Message>), String> {
     let found = imap.run("UID SEARCH UNSEEN").await?;
     let mut uids = search_uids(&found);
     let unread = uids.len();
     uids.sort_unstable();
     let newest: Vec<u32> = uids.iter().rev().take(FETCH).copied().collect();
-    let mut messages = Vec::new();
-    if !newest.is_empty() {
-        let set = newest.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
+    known.retain(|uid, _| newest.contains(uid));
+    let missing: Vec<u32> = newest.iter().copied().filter(|u| !known.contains_key(u)).collect();
+    if !missing.is_empty() {
+        let set = missing.iter().map(u32::to_string).collect::<Vec<_>>().join(",");
         let fetched = imap
             .run(&format!(
                 "UID FETCH {set} (UID BODY.PEEK[HEADER.FIELDS (FROM SUBJECT DATE MESSAGE-ID CONTENT-TYPE CONTENT-TRANSFER-ENCODING)] BODY.PEEK[TEXT]<0.{BODY_BYTES}>)"
@@ -495,11 +511,14 @@ async fn look(imap: &mut Imap, host: &str) -> Result<(usize, Vec<Message>), Stri
             .await?;
         for unit in &fetched {
             if let Some(m) = parse_fetch(unit, host) {
-                messages.push(m);
+                if let Some(uid) = uid_of(&m.id) {
+                    known.insert(uid, m);
+                }
             }
         }
-        messages.sort_by_key(|m| std::cmp::Reverse(uid_of(&m.id).unwrap_or(0)));
     }
+    let mut messages: Vec<Message> = newest.iter().filter_map(|u| known.get(u).cloned()).collect();
+    messages.sort_by_key(|m| std::cmp::Reverse(uid_of(&m.id).unwrap_or(0)));
     Ok((unread, messages))
 }
 

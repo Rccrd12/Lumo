@@ -44,12 +44,20 @@ export interface MediaActivity {
   playing: boolean;
 }
 
-export type CompactShown =
-  | { kind: "mail"; mail: MailPeek }
+/** One live activity on the closed island. */
+export type CompactItem =
   | { kind: "line"; line: CompactLine; notice: boolean }
   | { kind: "timer"; timer: TimerActivity }
-  | { kind: "media"; media: MediaActivity }
+  | { kind: "media"; media: MediaActivity };
+
+/** A new email takes the closed island; otherwise the live activities share it. */
+export type CompactShown =
+  | { kind: "mail"; mail: MailPeek }
+  | { kind: "items"; items: CompactItem[] }
   | null;
+
+/** At most this many live activities at once on the closed island. */
+export const MAX_COMPACT_ITEMS = 4;
 
 /** Gemini Live's colour on the closed island. */
 export const LIVE_COLOR = "#4285F4";
@@ -254,22 +262,24 @@ export class CompactFeed {
   }
 
   /**
-   * What the closed island shows now: the email, else a note (each in its
-   * turn), else what the AI is doing, else the soonest timer, else the music.
+   * What the closed island shows now: the email, else the live activities
+   * side by side — a note (each in its turn) or what the AI is doing, the
+   * event about to start, the two soonest timers, the music.
    * `show` leaves out the notes and the activity, or the music (Settings → Island).
    */
   shown(activity: CompactLine | null, now: number, show = { notes: true, media: true }): CompactShown {
     this.drop(now);
     if (this.mail) return { kind: "mail", mail: this.mail.mail };
+    const items: CompactItem[] = [];
+    // A note stands in for what the AI is doing while it shows.
     const notice = show.notes ? this.currentNotice(now) : null;
-    if (notice) return { kind: "line", line: { text: notice.text, color: notice.color }, notice: true };
-    if (activity && show.notes) return { kind: "line", line: activity, notice: false };
+    if (notice) items.push({ kind: "line", line: { text: notice.text, color: notice.color }, notice: true });
+    else if (activity && show.notes) items.push({ kind: "line", line: activity, notice: false });
     const soon = show.notes ? eventSoon(this.events, now) : null;
-    if (soon) return { kind: "line", line: { text: `${soon.title} · ${soonWords(soon.start, now)}`, color: CALENDAR_COLOR }, notice: false };
-    const timer = this.timers.find((x) => x.endsAt > now);
-    if (timer) return { kind: "timer", timer };
-    if (show.media && this.media && (this.media.title || this.media.artist)) return { kind: "media", media: this.media };
-    return null;
+    if (soon) items.push({ kind: "line", line: { text: `${soon.title} · ${soonWords(soon.start, now)}`, color: CALENDAR_COLOR }, notice: false });
+    for (const timer of this.timers.filter((x) => x.endsAt > now).slice(0, 2)) items.push({ kind: "timer", timer });
+    if (show.media && this.media && (this.media.title || this.media.artist)) items.push({ kind: "media", media: this.media });
+    return items.length ? { kind: "items", items: items.slice(0, MAX_COMPACT_ITEMS) } : null;
   }
 
   /** Notes take turns: each one's window ends at its `until`. */

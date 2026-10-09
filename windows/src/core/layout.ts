@@ -71,14 +71,15 @@ export const COMPACT_W = 288; // NOTCH_W + 104
  */
 export const COMPACT_BOT_X = 18;
 /**
- * The closed island grows a little to say something (core/compact.ts): a
- * line of text, a timer, the music, or an email with what to do with it. Only
- * on the top and bottom edges; standing upright on a side it stays as it is.
+ * The closed island grows to say something (core/compact.ts): one live
+ * activity takes it wide, centred; more share it side by side, each more
+ * compact; a new email opens it into a small card. Only on the top and bottom
+ * edges; standing upright on a side it stays as it is.
  */
 export const COMPACT_SIZES = {
-  line: { w: 372, h: NOTCH_H },
-  timer: { w: 312, h: NOTCH_H },
-  media: { w: 392, h: NOTCH_H },
+  one: { w: 460, h: NOTCH_H },
+  two: { w: 540, h: NOTCH_H },
+  many: { w: 620, h: NOTCH_H },
   mail: { w: 452, h: 120 },
 } as const;
 export type CompactSizeKind = keyof typeof COMPACT_SIZES;

@@ -50,9 +50,20 @@ pub struct Settings {
     pub compact_activity: bool,
     /// The closed island shows the music playing, with its buttons (media.rs).
     pub compact_media: bool,
-    /// The live activities beside the open island; false while it is folded
-    /// into its icon in the island's top bar. The window makes room for it.
+    /// The live activities (src/island/activities.ts): on or off.
     pub activities_panel: bool,
+    /// Folded into their icon in the open island's top bar.
+    pub activities_folded: bool,
+    /// Beside the island: "left" or "right".
+    pub activities_side: String,
+    /// Their size in page pixels; a height of 0 follows the island.
+    pub activities_width: f64,
+    pub activities_height: f64,
+    /// Moved off the island into a window of their own (activities.rs), at
+    /// this physical desktop position. Windows only.
+    pub activities_detached: bool,
+    pub activities_x: f64,
+    pub activities_y: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -199,6 +210,13 @@ impl Default for Settings {
             compact_activity: true,
             compact_media: true,
             activities_panel: true,
+            activities_folded: false,
+            activities_side: "left".into(),
+            activities_width: crate::activities::DEFAULT_WIDTH,
+            activities_height: 0.0,
+            activities_detached: false,
+            activities_x: 0.0,
+            activities_y: 0.0,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -501,6 +519,13 @@ mod tests {
   "compactActivity": false,
   "compactMedia": false,
   "activitiesPanel": false,
+  "activitiesFolded": true,
+  "activitiesSide": "right",
+  "activitiesWidth": 300.0,
+  "activitiesHeight": 360.0,
+  "activitiesDetached": true,
+  "activitiesX": 120.0,
+  "activitiesY": 80.0,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -954,6 +979,13 @@ mod tests {
                 "compactActivity",
                 "compactMedia",
                 "activitiesPanel",
+                "activitiesFolded",
+                "activitiesSide",
+                "activitiesWidth",
+                "activitiesHeight",
+                "activitiesDetached",
+                "activitiesX",
+                "activitiesY",
                 "autostart",
                 "hooksInstalled",
                 "model",

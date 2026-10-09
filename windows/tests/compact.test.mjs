@@ -8,6 +8,8 @@ import {
 } from "../src/core/compact.ts";
 import { COMPACT_SIZES, islandSize } from "../src/core/layout.ts";
 
+const first = (shown) => shown.items[0];
+const kinds = (shown) => (shown?.kind === "items" ? shown.items.map((i) => i.kind) : []);
 const mail = (id, extra = {}) => ({ id, from: "Ada", address: "ada@example.com", subject: "Lunch", preview: "Hey!", ...extra });
 
 test("nothing going on, nothing said", () => {
@@ -48,14 +50,14 @@ test("notes take turns, and the same note twice is once", () => {
   feed.notice("Haiku answered", "#E07950", 0);
   feed.notice("Haiku answered", "#E07950", 10);
   feed.notice("Vercel · Deployed", "#7C5CFF", 20);
-  assert.equal(feed.shown(null, 100).line.text, "Haiku answered");
-  assert.equal(feed.shown(null, NOTICE_MS + 50).line.text, "Vercel · Deployed");
+  assert.equal(first(feed.shown(null, 100)).line.text, "Haiku answered");
+  assert.equal(first(feed.shown(null, NOTICE_MS + 50)).line.text, "Vercel · Deployed");
   assert.equal(feed.shown(null, NOTICE_MS * 3), null);
   // A note goes before what the AI is doing, which shows once it has gone.
   feed.notice("Done", "#fff", 0);
   const activity = { text: "Haiku · Thinking…", color: "#E07950" };
-  assert.equal(feed.shown(activity, 10).notice, true);
-  assert.deepEqual(feed.shown(activity, NOTICE_MS + 10), { kind: "line", line: activity, notice: false });
+  assert.equal(first(feed.shown(activity, 10)).notice, true);
+  assert.deepEqual(feed.shown(activity, NOTICE_MS + 10), { kind: "items", items: [{ kind: "line", line: activity, notice: false }] });
 });
 
 test("an email shows once, stays while the mouse is on it, and goes", () => {
@@ -76,18 +78,23 @@ test("an email shows once, stays while the mouse is on it, and goes", () => {
 test("the soonest timer counts down, rings once, and the music waits its turn", () => {
   const feed = new CompactFeed();
   feed.media = { title: "Song", artist: "Band", app: "Spotify", playing: true };
-  assert.equal(feed.shown(null, 0).kind, "media");
+  assert.deepEqual(kinds(feed.shown(null, 0)), ["media"]);
   assert.equal(feed.shown(null, 0, { notes: true, media: false }), null);
   const long = feed.startTimer(600_000, "pasta", 0);
   const short = feed.startTimer(60_000, "", 0);
-  assert.equal(feed.shown(null, 0).timer.id, short.id);
+  // Side by side: the two timers, soonest first, then the music.
+  assert.deepEqual(kinds(feed.shown(null, 0)), ["timer", "timer", "media"]);
+  assert.equal(first(feed.shown(null, 0)).timer.id, short.id);
   assert.equal(feed.nextChange(0), 60_000);
   assert.deepEqual(feed.takeRung(59_999), []);
   assert.deepEqual(feed.takeRung(60_000).map((x) => x.id), [short.id]);
   assert.deepEqual(feed.takeRung(60_001), []);
-  assert.equal(feed.shown(null, 60_001).timer.id, long.id);
+  assert.equal(first(feed.shown(null, 60_001)).timer.id, long.id);
   assert.equal(feed.cancelTimer(long.id), true);
-  assert.equal(feed.shown(null, 60_001).kind, "media");
+  assert.deepEqual(kinds(feed.shown(null, 60_001)), ["media"]);
+  // What the AI does comes first, with the rest beside it.
+  const doing = { text: "Haiku · Thinking…", color: "#fff" };
+  assert.deepEqual(kinds(feed.shown(doing, 60_001)), ["line", "media"]);
   // Lengths are kept sensible.
   assert.equal(feed.startTimer(10, "", 0).total, 5_000);
 });
@@ -109,7 +116,8 @@ test("timers read what people say", () => {
 });
 
 test("the closed island grows for what it says, only on the top and bottom", () => {
-  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", "line"), COMPACT_SIZES.line);
+  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", "one"), COMPACT_SIZES.one);
+  assert.ok(COMPACT_SIZES.one.w < COMPACT_SIZES.two.w && COMPACT_SIZES.two.w < COMPACT_SIZES.many.w);
   assert.deepEqual(islandSize("compact", "overview", 0, undefined, "bottom", "mail"), COMPACT_SIZES.mail);
   assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", null), { w: 288, h: 32 });
   assert.deepEqual(islandSize("compact", "overview", 0, undefined, "left", "mail"), { w: 32, h: 288 });

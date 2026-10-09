@@ -6165,6 +6165,28 @@
    "pt-BR": "O endereço ou a senha de app está errado.",
    "ru": "Неверный адрес или пароль приложения.",
    "id": "Alamat atau sandi aplikasi salah."
+  },
+  "Ignore": {
+   "zh-Hans": "忽略",
+   "hi": "अनदेखा करें",
+   "es": "Ignorar",
+   "ar": "تجاهل",
+   "fr": "Ignorer",
+   "bn": "উপেক্ষা করুন",
+   "pt-BR": "Ignorar",
+   "ru": "Скрыть",
+   "id": "Abaikan"
+  },
+  "Open this email": {
+   "zh-Hans": "打开这封邮件",
+   "hi": "यह ईमेल खोलें",
+   "es": "Abrir este correo",
+   "ar": "فتح هذه الرسالة",
+   "fr": "Ouvrir cet e-mail",
+   "bn": "এই ইমেলটি খুলুন",
+   "pt-BR": "Abrir este e-mail",
+   "ru": "Открыть это письмо",
+   "id": "Buka email ini"
   }
  }
 }

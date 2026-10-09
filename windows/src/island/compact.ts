@@ -8,7 +8,7 @@
 
 import {
   COMPACT_TEXT, Feed, LIVE_COLOR, activityLine, compactNotice, speakerName, timerLeft,
-  type AgentActivityInput, type CompactShown, type MailPeek, type MediaActivity,
+  type AgentActivityInput, type CompactItem, type CompactShown, type MailPeek, type MediaActivity,
 } from "../core/compact";
 import { Bridge, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
@@ -97,12 +97,26 @@ export class CompactStrip {
   get size(): CompactSizeKind | null {
     const s = this.shown;
     if (!s) return null;
-    return s.kind === "line" ? "line" : s.kind;
+    if (s.kind === "mail") return "mail";
+    return s.items.length === 1 ? "one" : s.items.length === 2 ? "two" : "many";
   }
 
   /** The current email, for its buttons and the island's own mail list. */
   get mail(): MailPeek | null {
     return this.shown?.kind === "mail" ? this.shown.mail : null;
+  }
+
+  /**
+   * Whether (x, y), in page pixels, is over one of the closed island's own
+   * buttons: resting there must not open the island (Open on hover).
+   */
+  overControls(x: number, y: number): boolean {
+    if (!this.visible) return false;
+    for (const el of this.el.querySelectorAll(".cp-controls, .cp-close, .cp-mail-actions")) {
+      const r = el.getBoundingClientRect();
+      if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4) return true;
+    }
+    return false;
   }
 
   /** Works out what to show; true when the island's size has to change. */
@@ -137,39 +151,43 @@ export class CompactStrip {
 
   private draw(now: number) {
     const s = this.shown;
-    const key = s == null ? "" : s.kind === "line" ? `line|${s.line.text}|${s.line.color}|${s.notice}`
-      : s.kind === "timer" ? `timer|${s.timer.id}|${timerLeft(s.timer.endsAt - now)}`
-      : s.kind === "media" ? `media|${s.media.title}|${s.media.artist}|${s.media.playing}`
-      : `mail|${s.mail.id}|${this.extraMail}`;
+    const key = s == null ? "" : s.kind === "mail" ? `mail|${s.mail.id}|${this.extraMail}`
+      : `items|${s.items.map((i) => itemKey(i, now)).join("|")}`;
     if (key === this.key) return;
     this.key = key;
     clear(this.el);
-    this.el.className = [s ? `on ${s.kind}` : "", this.visible ? "shown" : ""].join(" ").trim();
+    const many = s?.kind === "items" && s.items.length > 1;
+    this.el.className = [s ? `on ${s.kind}` : "", many ? "many" : "", this.visible ? "shown" : ""].filter(Boolean).join(" ");
     if (!s) return;
-    switch (s.kind) {
+    if (s.kind === "mail") {
+      this.el.append(this.mailCard(s.mail));
+      return;
+    }
+    // One alone takes the whole width, centred; more share it, each smaller.
+    for (const item of s.items) this.el.append(h("div", { class: "cp-item" }, ...this.itemContent(item, now, many)));
+  }
+
+  private itemContent(item: CompactItem, now: number, compact: boolean): Node[] {
+    switch (item.kind) {
       case "line":
-        this.el.append(
-          h("i", { class: s.notice ? "cp-dot notice" : "cp-dot", style: `background:${s.line.color}` }),
-          h("span", { class: "cp-text", text: s.line.text }),
-        );
-        break;
-      case "timer":
-        this.el.append(
+        return [
+          h("i", { class: item.notice ? "cp-dot notice" : "cp-dot", style: `background:${item.line.color}` }),
+          h("span", { class: "cp-text", text: item.line.text, title: item.line.text }),
+        ];
+      case "timer": {
+        const cancel = this.button(ICONS.xmark, t(MAIL_TEXT.dismiss), () => {
+          Feed.cancelTimer(item.timer.id);
+          this.host.changed();
+        });
+        return [
           h("span", { class: "cp-icon", style: `color:${TIMER_COLOR}` }, svg(ICONS.timer, 13)),
-          h("span", { class: "cp-text", text: s.timer.label || t(COMPACT_TEXT.timer) }),
-          h("span", { class: "cp-time", text: timerLeft(s.timer.endsAt - now) }),
-          this.button(ICONS.xmark, t(MAIL_TEXT.dismiss), () => {
-            Feed.cancelTimer(s.timer.id);
-            this.host.changed();
-          }, "cp-close"),
-        );
-        break;
+          compact ? null : h("span", { class: "cp-text", text: item.timer.label || t(COMPACT_TEXT.timer) }),
+          h("span", { class: "cp-time", text: timerLeft(item.timer.endsAt - now), title: item.timer.label }),
+          h("span", { class: "cp-controls" }, cancel),
+        ].filter((n): n is HTMLElement => n != null);
+      }
       case "media":
-        this.el.append(this.mediaRow(s.media));
-        break;
-      case "mail":
-        this.el.append(this.mailCard(s.mail));
-        break;
+        return this.mediaRow(item.media, compact);
     }
   }
 
@@ -185,8 +203,8 @@ export class CompactStrip {
     }, svg(icon, 11));
   }
 
-  private mediaRow(m: MediaActivity): HTMLElement {
-    const words = [m.title, m.artist].filter((x) => x.trim()).join(" — ");
+  private mediaRow(m: MediaActivity, compact: boolean): Node[] {
+    const words = compact ? m.title || m.artist : [m.title, m.artist].filter((x) => x.trim()).join(" — ");
     const control = (action: "toggle" | "next" | "previous") => {
       void Bridge.mediaControl(action).then(() => window.setTimeout(() => this.askMedia(), 350));
       if (action === "toggle" && Feed.media) {
@@ -194,13 +212,16 @@ export class CompactStrip {
         this.host.changed();
       }
     };
-    return h("div", { class: "cp-media" },
+    const full = [m.title, m.artist].filter((x) => x.trim()).join(" — ");
+    return [
       h("i", { class: m.playing ? "cp-eq playing" : "cp-eq", style: `color:${MEDIA_COLOR}` }, h("b"), h("b"), h("b")),
-      h("span", { class: "cp-text", text: words, title: m.app ? `${words} · ${m.app}` : words }),
-      this.button(ICONS.backward, t(MEDIA_TEXT.previous), () => control("previous")),
-      this.button(m.playing ? ICONS.pause : ICONS.play, t(m.playing ? MEDIA_TEXT.pause : MEDIA_TEXT.play), () => control("toggle")),
-      this.button(ICONS.forward, t(MEDIA_TEXT.next), () => control("next")),
-    );
+      h("span", { class: "cp-text", text: words, title: m.app ? `${full} · ${m.app}` : full }),
+      h("span", { class: "cp-controls" },
+        compact ? null : this.button(ICONS.backward, t(MEDIA_TEXT.previous), () => control("previous")),
+        this.button(m.playing ? ICONS.pause : ICONS.play, t(m.playing ? MEDIA_TEXT.pause : MEDIA_TEXT.play), () => control("toggle")),
+        this.button(ICONS.forward, t(MEDIA_TEXT.next), () => control("next")),
+      ),
+    ];
   }
 
   private mailCard(m: MailPeek): HTMLElement {
@@ -260,7 +281,7 @@ export class CompactStrip {
   private schedule() {
     const now = Date.now();
     const next = Feed.nextChange(now);
-    const ticking = this.visible && this.shown?.kind === "timer";
+    const ticking = this.visible && this.shown?.kind === "items" && this.shown.items.some((i) => i.kind === "timer");
     const due = ticking ? Math.min(next ?? Infinity, now + 1000 - (now % 1000) + 5) : next;
     if (due == null || !Number.isFinite(due)) {
       if (this.expiry != null) window.clearTimeout(this.expiry);
@@ -329,4 +350,16 @@ export function openMailInChat(m: MailPeek & { body?: string }, question: string
   }
   State.incomingShare = { kind: "selection", selection: { text, app: t(MAIL_TEXT.email), title: m.subject } };
   State.chatAsk = question;
+}
+
+/** What an item looks like now, to redraw only when it changes. */
+function itemKey(item: CompactItem, now: number): string {
+  switch (item.kind) {
+    case "line":
+      return `line:${item.line.text}:${item.line.color}:${item.notice}`;
+    case "timer":
+      return `timer:${item.timer.id}:${timerLeft(item.timer.endsAt - now)}:${item.timer.label}`;
+    case "media":
+      return `media:${item.media.title}:${item.media.artist}:${item.media.playing}`;
+  }
 }

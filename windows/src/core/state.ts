@@ -164,8 +164,19 @@ export interface Settings {
   compactActivity: boolean;
   /** The closed island shows the music playing (media.rs). */
   compactMedia: boolean;
-  /** The live activities show beside the open island; false while folded into their icon. */
+  /** The live activities (island/activities.ts) are on. */
   activitiesPanel: boolean;
+  /** Folded into their icon in the open island's top bar. */
+  activitiesFolded: boolean;
+  /** Beside the island: "left" or "right". */
+  activitiesSide: string;
+  /** Their size; a height of 0 follows the island. */
+  activitiesWidth: number;
+  activitiesHeight: number;
+  /** In a window of their own (Windows), at this physical position. */
+  activitiesDetached: boolean;
+  activitiesX: number;
+  activitiesY: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -265,6 +276,13 @@ export const DEFAULT_SETTINGS: Settings = {
   compactActivity: true,
   compactMedia: true,
   activitiesPanel: true,
+  activitiesFolded: false,
+  activitiesSide: "left",
+  activitiesWidth: 264,
+  activitiesHeight: 0,
+  activitiesDetached: false,
+  activitiesX: 0,
+  activitiesY: 0,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",

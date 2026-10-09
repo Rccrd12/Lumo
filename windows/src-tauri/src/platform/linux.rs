@@ -548,7 +548,7 @@ fn start_pointer_watch() {
             // pull the island back to "inside".
             let _ = win.emit("pointer-inside", now_inside);
             if !now_inside {
-                let _ = win.emit("cursor", crate::island::CursorPayload { x: -10_000.0, y: -10_000.0 });
+                let _ = win.emit("cursor", crate::island::CursorPayload { x: -10_000.0, y: -10_000.0, panel: false });
             }
         }
         gtk::glib::ControlFlow::Continue

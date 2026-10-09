@@ -1,5 +1,6 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
+mod activities;
 mod agent_hooks;
 mod agents;
 mod antigravity_cli;
@@ -105,7 +106,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
-            || current.activities_panel != settings.activities_panel;
+            || activities::room_of(&current) != activities::room_of(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         // Where Mochi sits on the desktop is desktop.rs's to say, not a webview's.
@@ -117,6 +118,13 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.island_float = current.island_float;
         settings.island_width = current.island_width;
         settings.island_height = current.island_height;
+        // So are where the live activities were left and how big.
+        settings.activities_detached = current.activities_detached;
+        settings.activities_side = current.activities_side.clone();
+        settings.activities_x = current.activities_x;
+        settings.activities_y = current.activities_y;
+        settings.activities_width = current.activities_width;
+        settings.activities_height = current.activities_height;
         *current = settings;
         (screen_changed, autostart_changed, shortcuts_changed)
     };
@@ -211,7 +219,7 @@ fn placement(shared: &Shared) -> (String, island::Placement) {
 
 /// Saves what `change` does to the settings, places the island for them and
 /// tells both windows.
-fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
+pub(crate) fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
     let shared = app.state::<Shared>();
     let settings = {
         let mut s = shared.settings.lock().unwrap();
@@ -993,6 +1001,11 @@ pub fn run() {
             live::live_microphone,
             typing::live_type,
             media::media_now,
+            activities::activities_resize,
+            activities::activities_show,
+            activities::activities_drag,
+            activities::activities_window_resize,
+            activities::activities_focus,
             calendar::calendar_fetch,
             media::media_control,
             live::live_point,
