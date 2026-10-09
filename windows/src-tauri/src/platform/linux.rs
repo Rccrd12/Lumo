@@ -325,6 +325,21 @@ pub fn claude_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// Where the Antigravity CLI (`agy`) may be, best first: $PATH, then the
+/// install script's `~/.local/bin`, which a desktop launch often leaves out of $PATH.
+pub fn agy_candidates() -> Vec<PathBuf> {
+    let home = home_dir();
+    let mut out: Vec<PathBuf> = find_on_path("agy").into_iter().collect();
+    out.push(home.join(".local/bin/agy"));
+    out.push(PathBuf::from("/usr/local/bin/agy"));
+    out.retain(|p| {
+        std::fs::metadata(p)
+            .map(|m| m.is_file() && m.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    });
+    out
+}
+
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
 /// Nothing polls the cursor here: the page reports it over the island, and the

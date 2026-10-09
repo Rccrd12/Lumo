@@ -311,6 +311,32 @@ models, and goes to Claude Code as `--effort`. Claude Code's own run never shows
 up as a session in the island: only its permission requests do, as a card over
 the chat.
 
+### Chat with your Google account (Antigravity CLI)
+
+Pick **Antigravity CLI** above the chat box and the island talks to the
+Antigravity CLI (`agy`), signed in with your own Google account: no API key.
+Lumo runs the unmodified `agy` in headless mode (`agy -p`, prompt on stdin as
+stream-json), in the same folder as Claude Code; it never reads, stores or
+forwards any Google credential. Install it with
+`irm https://antigravity.google/cli/install.ps1 | iex` in PowerShell
+(`curl -fsSL https://antigravity.google/cli/install.sh | bash` on Linux) and run
+`agy` once in a terminal to sign in. Lumo looks for it on `PATH`, then in
+`%LOCALAPPDATA%\agy\bin` (`~/.local/bin` on Linux).
+
+Like Claude Code, it reads the files you drop or attach and the folder you
+share, says what it is doing next to the typing dots, stops on **Stop**, and
+continues the same conversation (`--conversation`) until **New chat**. Its
+models come from `agy models` (**Default** leaves agy's own choice), in the
+picker and in **Settings… → Chat → Antigravity CLI**; its **Effort** is low,
+medium or high. Headless agy never prompts: it reads and writes workspace files
+freely, and a shell command needs your approval. With the hooks of
+**Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
+card over the chat (reinstall the hooks if they predate this version, or the
+card only waits 8 seconds); without them, or if nobody clicks, the command does
+not run and the answer says so. Lumo never passes
+`--dangerously-skip-permissions`. Google replaced Gemini CLI with Antigravity
+CLI for personal Google accounts; the Gemini CLI hooks stay for work accounts.
+
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
 kept on this computer only, 40 at most. The paperclip in the text field opens

@@ -1,7 +1,9 @@
 // The chat, whoever answers it: the conversation, the system prompt, and which
 // provider a turn goes to. Each provider's own wire format lives in its module:
-// claude.rs (Anthropic), openai_compat.rs (OpenAI, Google AI, OpenRouter) and
-// local_chat.rs (Ollama, LM Studio, any OpenAI-compatible server).
+// claude.rs (Anthropic), openai_compat.rs (OpenAI, Google AI, OpenRouter),
+// local_chat.rs (Ollama, LM Studio, any OpenAI-compatible server), and the
+// signed-in CLIs: claude_code.rs (Claude Code) and antigravity_cli.rs
+// (Antigravity CLI).
 //
 // API keys never leave the credential store and file bytes never cross the IPC
 // boundary: the island sends the question and gets the answer's text back.
@@ -18,7 +20,7 @@ use tauri::{AppHandle, Emitter};
 use crate::chat_usage::ChatUsage;
 use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
-use crate::{claude, claude_code, local_chat, openai_compat, secrets};
+use crate::{antigravity_cli, claude, claude_code, local_chat, openai_compat, secrets};
 
 pub const ANTHROPIC: &str = "anthropic";
 
@@ -33,8 +35,9 @@ pub enum ChatContext {
 #[serde(rename_all = "camelCase")]
 pub struct ChatReply {
     pub text: String,
-    /// The Claude Code session that answered (claude_code.rs), so a chat from
-    /// the history can be continued where it left off.
+    /// The Claude Code session or Antigravity CLI conversation that answered
+    /// (claude_code.rs, antigravity_cli.rs), so a chat from the history can be
+    /// continued where it left off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
     /// The user pressed Stop: `text` is what was written until then (maybe nothing).
@@ -113,8 +116,11 @@ struct Conversation {
     native: Vec<Value>,
     /// `{"role", "content": text}` turns, the same whoever answered.
     plain: Vec<Value>,
-    /// The Claude Code session the island's chat continues (claude_code.rs).
+    /// The Claude Code session (or Antigravity CLI conversation) the island's
+    /// chat continues (claude_code.rs, antigravity_cli.rs).
     cli_session: Option<String>,
+    /// The provider `cli_session` belongs to: one CLI never resumes the other's.
+    cli_owner: Option<String>,
     /// Folders the user shared from File Explorer in this chat: Claude Code
     /// keeps reading them on the turns after (explorer.rs).
     cli_dirs: Vec<String>,
@@ -158,7 +164,7 @@ impl Chat {
     }
 
     /// Puts a chat from the history back: its turns as plain text, and the
-    /// Claude Code session to continue, if Claude Code answered it.
+    /// session to continue, if a CLI answered it (as `cli_session` gave it).
     pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>) {
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
@@ -167,7 +173,11 @@ impl Chat {
             .filter(|(role, _)| role == "user" || role == "assistant")
             .map(|(role, content)| json!({ "role": role, "content": content }))
             .collect();
-        *c = Conversation { epoch, plain, cli_session, ..Default::default() };
+        let (cli_owner, cli_session) = match cli_session.as_deref().map(untag_session) {
+            Some((owner, id)) => (Some(owner.to_string()), Some(id.to_string())),
+            None => (None, None),
+        };
+        *c = Conversation { epoch, plain, cli_session, cli_owner, ..Default::default() };
     }
 
     /// An edited message: the conversation goes back to its first `keep` turns
@@ -184,6 +194,7 @@ impl Chat {
             c.owner = None; // rebuilt from the plain turns on the next one
         }
         c.cli_session = None;
+        c.cli_owner = None;
     }
 
     /// How many plain turns the conversation holds.
@@ -238,9 +249,22 @@ impl Chat {
         .await
     }
 
-    /// The Claude Code session to resume, if Claude Code answered this conversation.
+    /// The CLI session that answered this conversation last, as the island
+    /// keeps it with the chat (`restore` takes it back): Claude Code's id as it
+    /// is, as chats were saved before; another CLI's tagged with its provider.
     pub fn cli_session(&self) -> Option<String> {
-        self.inner.lock().unwrap().cli_session.clone()
+        let c = self.inner.lock().unwrap();
+        let id = c.cli_session.as_deref()?;
+        Some(match c.cli_owner.as_deref() {
+            Some(owner) if owner != claude_code::PROVIDER => format!("{owner}:{id}"),
+            _ => id.to_string(),
+        })
+    }
+
+    /// The session `provider` resumes: its own only, never another CLI's.
+    pub fn cli_session_for(&self, provider: &str) -> Option<String> {
+        let c = self.inner.lock().unwrap();
+        c.cli_session.clone().filter(|_| c.cli_owner.as_deref() == Some(provider))
     }
 
     /// The folders Claude Code may read in this chat, with `shared` added.
@@ -254,11 +278,12 @@ impl Chat {
         c.cli_dirs.clone()
     }
 
-    /// Remembers the Claude Code session of `turn`, unless the chat was reset since.
+    /// Remembers the CLI session of `turn`, unless the chat was reset since.
     pub fn set_cli_session(&self, turn: &Turn, id: &str) {
         let mut c = self.inner.lock().unwrap();
         if c.epoch == turn.epoch {
             c.cli_session = Some(id.to_string());
+            c.cli_owner = Some(turn.provider.clone());
         }
     }
 
@@ -378,17 +403,32 @@ fn checked_screen(screen: ScreenContext) -> Result<ScreenContext, String> {
 /// Anthropic API and the OpenAI-compatible clouds take it as an image. The
 /// local model servers get text only.
 fn sees_images(provider: &str) -> bool {
-    provider.is_empty() || provider == ANTHROPIC || provider == claude_code::PROVIDER || openai_compat::provider(provider).is_some()
+    provider.is_empty() || provider == ANTHROPIC || is_cli(provider) || openai_compat::provider(provider).is_some()
+}
+
+/// A session as `Chat::cli_session` gave it: its CLI and its id. Untagged, it
+/// is Claude Code's.
+fn untag_session(saved: &str) -> (&str, &str) {
+    match saved.split_once(':') {
+        Some((owner, id)) if owner == antigravity_cli::PROVIDER => (owner, id),
+        _ => (claude_code::PROVIDER, saved),
+    }
+}
+
+/// The providers that run a signed-in CLI on this computer. Given paths, they
+/// read dropped files and screenshots themselves.
+fn is_cli(provider: &str) -> bool {
+    provider == claude_code::PROVIDER || provider == antigravity_cli::PROVIDER
 }
 
 /// The question with the screen context in front of it, and the screenshots
-/// to send as images (none for Claude Code, which is given their paths).
+/// to send as images (none for the CLIs, which are given their paths).
 fn with_screen(provider: &str, screen: Option<&ScreenContext>, query: String) -> Result<(String, Vec<String>), String> {
     let Some(screen) = screen.filter(|s| !s.is_empty()) else { return Ok((query, Vec::new())) };
     if !screen.shots.is_empty() && !sees_images(provider) {
         return Err(crate::i18n::t("Screenshots need the Claude Code or Anthropic provider."));
     }
-    let cli = provider == claude_code::PROVIDER;
+    let cli = is_cli(provider);
     let images = if cli { Vec::new() } else { screen.shots.iter().map(|s| s.path.clone()).collect() };
     Ok((format!("{}{query}", screen::context_text(screen, cli)), images))
 }
@@ -450,9 +490,12 @@ async fn send_to(
     if provider == ANTHROPIC || provider.is_empty() {
         return claude::send(chat, &model, query, context, &images, usage).await;
     }
-    if provider == claude_code::PROVIDER {
-        // A folder shared from File Explorer: Claude Code may read the rest of it itself.
+    if is_cli(provider) {
+        // A folder shared from File Explorer: the CLI may read the rest of it itself.
         let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
+        if provider == antigravity_cli::PROVIDER {
+            return antigravity_cli::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
+        }
         return claude_code::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
     }
     if let Some(p) = openai_compat::provider(provider) {
@@ -475,6 +518,9 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
     }
     if provider == claude_code::PROVIDER {
         return Ok(claude_code::models());
+    }
+    if provider == antigravity_cli::PROVIDER {
+        return antigravity_cli::models().await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         let key = secrets::get(p.key).ok_or_else(no_key)?;
@@ -502,10 +548,47 @@ mod tests {
         let chat = Chat::default();
         chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()));
         assert_eq!(chat.cli_session().as_deref(), Some("s"));
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("s"));
+        assert_eq!(chat.cli_session_for("antigravity-cli"), None, "never another CLI's session");
         let t = chat.begin("openai");
         assert!(!t.first);
         assert_eq!(turn_texts(&t.history), vec![("user".into(), json!("hi")), ("assistant".into(), json!("hello"))]);
         chat.reset();
+        assert_eq!(chat.cli_session(), None);
+    }
+
+    #[test]
+    fn each_cli_resumes_only_its_own_session() {
+        let chat = Chat::default();
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "claude-session");
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("claude-session"));
+        assert_eq!(chat.cli_session_for("antigravity-cli"), None);
+        // Another provider answering in between keeps it.
+        let _ = chat.begin("openai");
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("claude-session"));
+        // Antigravity CLI takes over: its conversation is the one kept now.
+        let t = chat.begin("antigravity-cli");
+        chat.set_cli_session(&t, "agy-conversation");
+        assert_eq!(chat.cli_session_for("antigravity-cli").as_deref(), Some("agy-conversation"));
+        assert_eq!(chat.cli_session_for("claude-code"), None);
+        // The island keeps it tagged, and gets it back to the right CLI.
+        let saved = chat.cli_session().unwrap();
+        assert_eq!(saved, "antigravity-cli:agy-conversation");
+        chat.rewind(0);
+        assert_eq!(chat.cli_session_for("antigravity-cli"), None);
+        assert_eq!(chat.cli_session(), None);
+        chat.restore(vec![], Some(saved));
+        assert_eq!(chat.cli_session_for("antigravity-cli").as_deref(), Some("agy-conversation"));
+        assert_eq!(chat.cli_session_for("claude-code"), None);
+        // A Claude Code session goes untagged, as chats were saved before.
+        let t = chat.begin("claude-code");
+        chat.set_cli_session(&t, "0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b");
+        assert_eq!(chat.cli_session().as_deref(), Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"));
+        chat.restore(vec![], Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b".into()));
+        assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"));
+        assert_eq!(chat.cli_session_for("antigravity-cli"), None);
+        chat.restore(vec![], None);
         assert_eq!(chat.cli_session(), None);
     }
 
@@ -698,11 +781,13 @@ mod tests {
             selection: None,
             folder: None,
         };
-        let (q, images) = with_screen("claude-code", Some(&screen), "what is this?".into()).unwrap();
-        assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"));
-        assert!(q.contains("- Docs — msedge (active)"));
-        assert!(q.ends_with("what is this?"));
-        assert!(images.is_empty(), "Claude Code reads the file itself");
+        for cli in ["claude-code", "antigravity-cli"] {
+            let (q, images) = with_screen(cli, Some(&screen), "what is this?".into()).unwrap();
+            assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"), "{cli}");
+            assert!(q.contains("- Docs — msedge (active)"));
+            assert!(q.ends_with("what is this?"));
+            assert!(images.is_empty(), "{cli} reads the file itself");
+        }
 
         for provider in ["anthropic", "openai", "google", "openrouter"] {
             let (q, images) = with_screen(provider, Some(&screen), "q".into()).unwrap();

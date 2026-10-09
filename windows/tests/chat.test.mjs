@@ -50,12 +50,30 @@ test("the model button shows the active provider's model", () => {
   assert.equal($(".model-name").textContent, "Choose a model");
 });
 
+test("Antigravity CLI needs no key, and offers its own effort levels", async () => {
+  State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatEffort: "high" };
+  view.sync();
+  assert.equal($(".model-name").textContent, "default · high");
+  State.settings = { ...State.settings, chatEffort: "max" };
+  view.sync();
+  assert.equal($(".model-name").textContent, "default", "agy has no max: its own default");
+
+  answers.chat_models = [{ id: "default", label: "Default" }, { id: "gemini-3-pro", label: "gemini-3-pro" }];
+  $(".model-btn").fire("click");
+  await flush();
+  assert.deepEqual(sent("chat_models"), [{ provider: "antigravity-cli" }]);
+  assert.deepEqual(models(), ["Default", "gemini-3-pro"]);
+  const efforts = $(".picker-efforts").find(".picker-chip").map((c) => c.textContent);
+  assert.deepEqual(efforts.slice(1), ["low", "medium", "high"]);
+  assert.equal(efforts.length, 4, "Auto, then agy's three levels");
+});
+
 test("a provider without a key is never asked for its models", async () => {
   answers.secret_present = false;
   $(".model-btn").fire("click");
   await flush();
   assert.ok($(".chat-body").classList.contains("picking"));
-  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "Google", "OpenAI", "OpenRouter"]);
+  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "Antigravity CLI", "Google", "OpenAI", "OpenRouter"]);
   assert.deepEqual(sent("secret_present"), [{ key: "anthropic-api-key" }]);
   assert.deepEqual(sent("chat_models"), []);
   assert.match($(".picker-status").textContent, /No API key/);
@@ -84,7 +102,7 @@ test("switching provider saves it and asks the new provider only", async () => {
   $(".model-btn").fire("click");
   await flush();
   assert.deepEqual(sent("chat_models"), []);
-  view.el.find(".picker-chip")[2].fire("click");
+  view.el.find(".picker-chip")[3].fire("click");
   await flush();
   assert.equal(State.settings.chatProvider, "google");
   assert.deepEqual(sent("chat_models"), [{ provider: "google" }]);
@@ -394,4 +412,5 @@ test("each activity has its words, with a file name, a host or a tool", () => {
   assert.deepEqual(firstActivity("ollama", file, null), { kind: "read", detail: "a.pdf" });
   assert.deepEqual(firstActivity("google", null, { windows: [], shots: [] }), { kind: "thinking", detail: "" });
   assert.deepEqual(firstActivity("claude-code", file, shots), { kind: "thinking", detail: "" }, "Claude Code says for itself");
+  assert.deepEqual(firstActivity("antigravity-cli", file, shots), { kind: "thinking", detail: "" }, "so does Antigravity CLI");
 });
