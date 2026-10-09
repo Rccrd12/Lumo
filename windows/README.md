@@ -298,9 +298,10 @@ Weekly recap** turns it off or clears it.
 
 ## Languages
 
-Lumo speaks the same ten languages as the Mac app: English, 简体中文, हिन्दी,
-Español, العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa
-Indonesia. **Settings… → General → Language** picks one; **System** (the
+Lumo speaks the Mac app's ten languages — English, 简体中文, हिन्दी, Español,
+العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa Indonesia —
+and Italiano, which only Windows and Linux have (the Mac's strings in Italian
+are in `src/i18n/strings-it.json`). **Settings… → General → Language** picks one; **System** (the
 default) follows your system's language when it is one of these, English
 otherwise. The island, the settings window and the tray menu switch at once —
 nothing restarts, and the island keeps its sessions, steps and chat.
@@ -438,6 +439,13 @@ themselves (its folder is opened to them for this chat); the other providers
 get the document in front attached, when the question is about it. Only the
 chat's provider gets this, with that message; nothing is kept. Windows only
 for now: Linux lists no windows yet.
+
+### Math in answers
+
+Formulas in the chat's answers are drawn as math, not shown as TeX: `$…$`
+and `\(…\)` inside the text, `$$…$$` and `\[…\]` on lines of their own,
+with Greek letters, fractions, roots, vectors, ℝ and friends, sums, integrals
+and matrices. "$5 and $10" stays money.
 
 ### Show the chat your screen
 

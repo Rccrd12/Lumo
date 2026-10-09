@@ -12,10 +12,12 @@ use serde_json::{Map, Value};
 use std::collections::HashMap;
 use std::sync::{OnceLock, RwLock};
 
-pub const LANGUAGES: [&str; 10] = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id"];
+pub const LANGUAGES: [&str; 11] = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id", "it"];
 
 static MAC: &str = include_str!("../../src/i18n/strings.json");
 static EXTRA: &str = include_str!("../../src/i18n/extra.json");
+/// Italian for the Mac's strings, which its catalog has not (src/i18n/i18n.ts).
+static ITALIAN: &str = include_str!("../../src/i18n/strings-it.json");
 
 type Table = HashMap<String, Map<String, Value>>;
 
@@ -30,6 +32,18 @@ fn table() -> &'static Table {
             for (key, entry) in strings {
                 if let Value::Object(langs) = entry {
                     out.insert(key.clone(), langs.clone());
+                }
+            }
+            // The Mac's strings in Italian, right after the Mac's table.
+            if source == MAC {
+                if let Ok(Value::Object(root)) = serde_json::from_str::<Value>(ITALIAN) {
+                    if let Some(Value::Object(italian)) = root.get("strings") {
+                        for (key, value) in italian {
+                            if let Some(langs) = out.get_mut(key) {
+                                langs.insert("it".into(), value.clone());
+                            }
+                        }
+                    }
                 }
             }
         }
