@@ -2,7 +2,8 @@
 ;
 ; ── Uninstall ─────────────────────────────────────────────────────────────────
 ;
-; The app stages coucou-hook.exe into %LOCALAPPDATA%\Coucou\bin at launch, so the
+; The app stages lumo-hook.exe (and the same relay as coucou-hook.exe, its name
+; up to 0.3.1, for hooks written then) into %LOCALAPPDATA%\Coucou\bin at launch, so the
 ; installer never recorded it and the default uninstaller leaves it behind. The
 ; inbox and the log live in the same place and are ours too. (These folders kept
 ; their old name when the app became Lumo: Claude Code's hooks point at bin\.)
@@ -140,6 +141,10 @@ Var LegacyDir
     DeleteRegKey SHCTX "${LEGACY_UNINSTKEY}"
     DeleteRegKey SHCTX "Software\${MANUFACTURER}\${LEGACY_PRODUCTNAME}"
   ${EndIf}
+
+  ; The relay an older Lumo bundled under its old name: lumo-hook.exe now.
+  ; (The copy in %LOCALAPPDATA%\Coucou\bin, which hooks run, is the app's.)
+  Delete "$INSTDIR\coucou-hook.exe"
 
   ; An older Lumo's coucou.exe in this folder: gone, and what started it
   ; starts lumo.exe now.

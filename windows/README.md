@@ -68,7 +68,7 @@ Nothing of yours moves. Settings, keys, Claude Code's and the other agents'
 hooks, chats, the weekly recap and the log stay where they were: the folders
 keep the old name (`%APPDATA%\Coucou`, `%LOCALAPPDATA%\Coucou`,
 `%USERPROFILE%\Coucou`; `~/.config/coucou`, `~/.local/share/coucou` and
-`~/Coucou` on Linux), and so do the relay `coucou-hook`, the app identifier
+`~/Coucou` on Linux), and so do the app identifier
 `fr.louisraille.coucou` and its entries in the credential store. At launch,
 with **Open at login** on, Lumo writes its autostart entry again for the exe
 it runs from and removes one left under the name Coucou.
@@ -176,8 +176,11 @@ will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated back
 that will be taken, and nothing is written until you click. Your own hooks are
 never touched, and uninstalling removes only Lumo's entries.
 
-The relay is a tiny executable, `coucou-hook.exe`, copied to
-`%LOCALAPPDATA%\Coucou\bin\` at launch. It is given 300 ms to reach Lumo and
+The relay is a tiny executable, `lumo-hook.exe`, copied to
+`%LOCALAPPDATA%\Coucou\bin\` at launch. Up to 0.3.1 it was `coucou-hook.exe`:
+Lumo still puts the same relay there under that name too, so hooks installed
+before keep working, and reinstalling them (Settings → Agents) moves them to
+`lumo-hook`. It is given 300 ms to reach Lumo and
 exits cleanly if the app is closed, slow or crashed — **a Claude Code session is
 never blocked or slowed down by Lumo.** If nobody answers a permission request
 in time, Lumo stays quiet and Claude Code asks in the terminal as usual.
@@ -194,7 +197,7 @@ reset times. Both are off by default; turn them on in **Settings… → Agents �
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
   line. **Show in notch** first shows you the diff of the `statusLine` change in
   `%USERPROFILE%\.claude\settings.json`, takes a dated backup and writes only
-  after your click, with the same writer as the hooks: the status line becomes `coucou-hook --statusline`, which
+  after your click, with the same writer as the hooks: the status line becomes `lumo-hook --statusline`, which
   passes only the limits on (300 ms at most) and runs the status line you had
   before — kept in `statusline-previous.json` next to the relay — with the same
   input, printing what it prints. On Windows that one runs through Git Bash, as
@@ -481,7 +484,7 @@ windows/
     views/             every island view
     settings/          the settings window
   src-tauri/           Rust backend: window, named pipe, Claude API, pollers
-  hook/                coucou-hook.exe, the Claude Code relay
+  hook/                lumo-hook.exe, the Claude Code relay
   scripts/             icon generator
 ```
 
@@ -514,7 +517,7 @@ Linux.
 | OpenCode | plugin `.config\opencode\plugins\coucou.js` | asked in OpenCode |
 | Amp | plugin `.config\amp\plugins\coucou.ts` | asked in Amp |
 | Hermes Agent | plugin `.hermes\plugins\coucou\` — then `hermes plugins enable coucou` once | asked in Hermes |
-| Any other | run `coucou-hook --agent <name> [<Event>]` from your tool's hooks | asked in the tool |
+| Any other | run `lumo-hook --agent <name> [<Event>]` from your tool's hooks | asked in the tool |
 
 The relay maps every agent's event and field names onto Claude Code's (Gemini
 CLI's `BeforeTool`, Copilot's `preToolUse`, Cursor's `beforeSubmitPrompt`…), and
@@ -529,7 +532,7 @@ a verdict, and Lumo never gives one.
 
 **How each agent runs the relay on Windows.** Hook commands are written for the
 shell that runs them: Git Bash for Claude Code (quoted, forward slashes),
-PowerShell for Gemini CLI and Copilot CLI (`& '…\coucou-hook.exe'`), `cmd /C`
+PowerShell for Gemini CLI and Copilot CLI (`& '…\lumo-hook.exe'`), `cmd /C`
 for Codex. Cursor, Antigravity and Muse Code do not document theirs: the relay
 path is written bare when it has no space or special character — which works in
 cmd, PowerShell and when started directly — and in double quotes otherwise.
@@ -657,7 +660,7 @@ What changes on Linux:
   icon size work.
 - **Lumo's eyes** follow the pointer only while it is over the island: Wayland
   gives no app the cursor position anywhere else.
-- **Claude Code hooks** go through `~/.local/share/coucou/bin/coucou-hook` and a
+- **Claude Code hooks** go through `~/.local/share/coucou/bin/lumo-hook` and a
   Unix socket at `$XDG_RUNTIME_DIR/coucou.sock`. Both ends check that the other
   runs as the same user. Every other agent uses the same relay, single-quoted
   for `sh`, and its config under `~` (see Supported agents). A config that is a
@@ -675,7 +678,7 @@ What changes on Linux:
   `goToAlert`, `jumpToTerminal`, `nextPill`, `prevPill`, `muteToggle` and
   `wardrobeToggle`.
 - **Keys** live in the Secret Service (GNOME Keyring, KWallet).
-- **Plan usage**: the status line relay is `~/.local/share/coucou/bin/coucou-hook
+- **Plan usage**: the status line relay is `~/.local/share/coucou/bin/lumo-hook
   --statusline` and runs your previous status line with `/bin/sh -c`, like Claude
   Code. Codex is found on `$PATH`, in `~/.local/bin`, npm's global prefix, Volta,
   Bun, pnpm, or nvm (newest Node first), since a desktop launch often has a

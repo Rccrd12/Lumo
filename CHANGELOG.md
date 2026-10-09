@@ -12,6 +12,7 @@
 - **Lumo sits closer to the left end** of the compact island
 - **Gemini CLI is gone from Settings**: Google replaced it with Antigravity CLI. Its pill is no longer offered, and Settings → Agents only lists its hooks when they were installed before, so they can be removed
 - **Lumo stays in the island**: he can no longer be dragged out onto the desktop. One left there by an earlier version comes home
+- **The relay is `lumo-hook`** (`lumo-hook.exe` on Windows) instead of `coucou-hook`. Lumo still puts the same relay beside it under the old name, so the hooks Claude Code and the other agents already have keep working; installing them again from Settings → Agents moves them to the new name
 - **The Windows app is `lumo.exe`** instead of `coucou.exe`. Installing over an older Lumo closes and removes `coucou.exe`, and its Start menu and desktop shortcuts and its autostart entry start `lumo.exe`
 
 ## Windows and Linux 0.3.1 — October 8, 2026

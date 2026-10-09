@@ -69,7 +69,7 @@ jobs:
           if ($tag -ne $cargo) { $bad += "Cargo.toml says $cargo" }
           if ($bad) { throw "tag says $tag but $($bad -join '; ')" }
 
-      # `npm run build` (run by tauri as beforeBuildCommand) builds coucou-hook
+      # `npm run build` (run by tauri as beforeBuildCommand) builds the relay (lumo-hook)
       # first, which tauri.conf.json then bundles as a resource. `pack` then
       # copies the installer out of target/ under its shipping name.
       - name: Build and pack the installer
@@ -103,7 +103,7 @@ jobs:
 
       # The unsigned NSIS installer is what Defender false-positives on, so the
       # bare binaries go up as well. hooks.rs already falls back to looking for
-      # coucou-hook.exe next to the app's exe, which is exactly this layout, so
+      # lumo-hook.exe next to the app's exe, which is exactly this layout, so
       # the portable pair runs with working Claude Code hooks and no installer.
       # `tauri build` names the app's exe lumo.exe (mainBinaryName in
       # src-tauri/tauri.windows.conf.json); cargo alone still makes coucou.exe.
@@ -113,7 +113,7 @@ jobs:
           name: Lumo-Windows-portable
           path: |
             windows/target/release/lumo.exe
-            windows/target/release/coucou-hook.exe
+            windows/target/release/lumo-hook.exe
           retention-days: 3
 
       # Coucou-Windows-$v-setup.exe is the same installer under the app's old

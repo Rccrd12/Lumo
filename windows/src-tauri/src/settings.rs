@@ -197,6 +197,11 @@ pub fn hook_exe_path() -> PathBuf {
     local_dir().join("bin").join(crate::platform::HOOK_EXE)
 }
 
+/// The relay under its name up to 0.3.1, where the hooks written then point.
+pub fn legacy_hook_exe_path() -> PathBuf {
+    local_dir().join("bin").join(crate::platform::LEGACY_HOOK_EXE)
+}
+
 fn settings_path() -> PathBuf {
     config_dir().join("settings.json")
 }

@@ -34,7 +34,9 @@ use super::LocalTime;
 use crate::session_window::{self, Proc};
 
 /// File name of the Claude Code relay.
-pub const HOOK_EXE: &str = "coucou-hook.exe";
+pub const HOOK_EXE: &str = "lumo-hook.exe";
+/// Its name up to 0.3.1, still in the hooks written then (hooks.rs).
+pub const LEGACY_HOOK_EXE: &str = "coucou-hook.exe";
 
 /// Environment variable holding the home directory.
 pub const HOME_VAR: &str = "USERPROFILE";

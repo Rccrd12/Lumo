@@ -7,8 +7,8 @@
       "rpm"
     ],
     "resources": {
-      "../target/release/coucou-hook.exe": null,
-      "../target/release/coucou-hook": "coucou-hook"
+      "../target/release/lumo-hook.exe": null,
+      "../target/release/lumo-hook": "lumo-hook"
     },
     "linux": {
       "appimage": {

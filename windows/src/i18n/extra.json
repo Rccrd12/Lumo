@@ -2806,17 +2806,6 @@
    "ru": "всё зелёное",
    "id": "semua hijau"
   },
-  "coucou-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`.": {
-   "zh-Hans": "coucou-hook.exe 尚未就位。请重启 Lumo；如果仍然失败，请用 `cargo build -p coucou-hook` 构建它。",
-   "hi": "coucou-hook.exe अभी अपनी जगह पर नहीं है। Lumo फिर से शुरू करें; अगर फिर भी न हो, तो इसे `cargo build -p coucou-hook` से बनाएँ।",
-   "es": "coucou-hook.exe aún no está en su sitio. Reinicia Lumo; si sigue fallando, compílalo con `cargo build -p coucou-hook`.",
-   "ar": "coucou-hook.exe ليس في مكانه بعد. أعد تشغيل Lumo؛ وإن استمر الفشل فابنِه بالأمر `cargo build -p coucou-hook`.",
-   "fr": "coucou-hook.exe n'est pas encore en place. Redémarre Lumo ; si ça échoue encore, compile-le avec `cargo build -p coucou-hook`.",
-   "bn": "coucou-hook.exe এখনো জায়গামতো নেই। Lumo আবার চালু করুন; তবুও না হলে `cargo build -p coucou-hook` দিয়ে এটি বানান।",
-   "pt-BR": "O coucou-hook.exe ainda não está no lugar. Reinicie o Lumo; se continuar falhando, compile-o com `cargo build -p coucou-hook`.",
-   "ru": "coucou-hook.exe ещё не на месте. Перезапустите Lumo; если не поможет, соберите его командой `cargo build -p coucou-hook`.",
-   "id": "coucou-hook.exe belum ada di tempatnya. Mulai ulang Lumo; jika masih gagal, build dengan `cargo build -p coucou-hook`."
-  },
   "failing": {
    "zh-Hans": "失败",
    "hi": "विफल",
@@ -4977,6 +4966,17 @@
    "pt-BR": "Lê e planeja, sem mudar nada.",
    "ru": "Читает и планирует, ничего не меняя.",
    "id": "Membaca dan merencanakan, tanpa mengubah apa pun."
+  },
+  "lumo-hook.exe is not in place yet. Restart Lumo; if it still fails, build it with `cargo build -p coucou-hook`.": {
+   "zh-Hans": "lumo-hook.exe 尚未就位。请重启 Lumo；如果仍然失败，请用 `cargo build -p coucou-hook` 构建它。",
+   "hi": "lumo-hook.exe अभी अपनी जगह पर नहीं है। Lumo फिर से शुरू करें; अगर फिर भी न हो, तो इसे `cargo build -p coucou-hook` से बनाएँ।",
+   "es": "lumo-hook.exe aún no está en su sitio. Reinicia Lumo; si sigue fallando, compílalo con `cargo build -p coucou-hook`.",
+   "ar": "lumo-hook.exe ليس في مكانه بعد. أعد تشغيل Lumo؛ وإن استمر الفشل فابنِه بالأمر `cargo build -p coucou-hook`.",
+   "fr": "lumo-hook.exe n'est pas encore en place. Redémarre Lumo ; si ça échoue encore, compile-le avec `cargo build -p coucou-hook`.",
+   "bn": "lumo-hook.exe এখনো জায়গামতো নেই। Lumo আবার চালু করুন; তবুও না হলে `cargo build -p coucou-hook` দিয়ে এটি বানান।",
+   "pt-BR": "O lumo-hook.exe ainda não está no lugar. Reinicie o Lumo; se continuar falhando, compile-o com `cargo build -p coucou-hook`.",
+   "ru": "lumo-hook.exe ещё не на месте. Перезапустите Lumo; если не поможет, соберите его командой `cargo build -p coucou-hook`.",
+   "id": "lumo-hook.exe belum ada di tempatnya. Mulai ulang Lumo; jika masih gagal, build dengan `cargo build -p coucou-hook`."
   }
  }
 }

@@ -17,8 +17,10 @@ use serde_json::{json, Map, Value};
 use crate::config_file::{self, FileEdit, Plan};
 use crate::{platform, settings};
 
-/// Marker that identifies a Coucou entry: the relay's file name.
-const MARKER: &str = "coucou-hook";
+/// Marker that identifies a Lumo entry: the relay's file name, now or up to 0.3.1.
+use crate::hooks::is_relay_command;
+#[cfg(test)]
+const MARKER: &str = "lumo-hook";
 
 // ── The relay command line ────────────────────────────────────────────────────
 
@@ -397,7 +399,7 @@ fn list_at(hooks: &Map<String, Value>, event: &str) -> Result<Vec<Value>, String
 fn is_our_command(command: Option<&Value>, agent: &str) -> bool {
     command
         .and_then(Value::as_str)
-        .is_some_and(|c| c.contains(MARKER) && c.contains(&format!("--agent {agent}")))
+        .is_some_and(|c| is_relay_command(c) && c.contains(&format!("--agent {agent}")))
 }
 
 /// Claude-style groups (`{"matcher"?, "hooks": [{"command"}]}`, or a legacy
@@ -558,7 +560,7 @@ fn antigravity_block(relay: &Relay) -> Value {
 /// A `coucou` group Coucou wrote (it runs the relay as `--agent antigravity`).
 fn antigravity_is_ours(group: &Value) -> bool {
     let text = group.to_string();
-    text.contains(MARKER) && text.contains("--agent antigravity")
+    is_relay_command(&text) && text.contains("--agent antigravity")
 }
 
 fn antigravity_install(root: &Value, block: &Value) -> Result<Value, String> {
@@ -942,15 +944,15 @@ mod tests {
     use crate::config_file::tests::scratch;
 
     fn linux() -> Relay {
-        Relay { exe: "/home/me/.local/share/coucou/bin/coucou-hook".into(), windows: false }
+        Relay { exe: "/home/me/.local/share/coucou/bin/lumo-hook".into(), windows: false }
     }
 
     fn windows(exe: &str) -> Relay {
         Relay { exe: exe.into(), windows: true }
     }
 
-    const WIN: &str = r"C:\Users\me\AppData\Local\Coucou\bin\coucou-hook.exe";
-    const WIN_SPACE: &str = r"C:\Users\Jane O'Neil\AppData\Local\Coucou\bin\coucou-hook.exe";
+    const WIN: &str = r"C:\Users\me\AppData\Local\Coucou\bin\lumo-hook.exe";
+    const WIN_SPACE: &str = r"C:\Users\Jane O'Neil\AppData\Local\Coucou\bin\lumo-hook.exe";
 
     /// Installs then uninstalls `agent` in a fresh home holding `existing` in
     /// its first file, and returns (installed file, uninstalled file).
@@ -986,12 +988,12 @@ mod tests {
     fn the_command_is_quoted_for_the_shell_that_runs_it() {
         assert_eq!(
             linux().command(Shell::Cmd, "--agent codex"),
-            "'/home/me/.local/share/coucou/bin/coucou-hook' --agent codex"
+            "'/home/me/.local/share/coucou/bin/lumo-hook' --agent codex"
         );
         let w = windows(WIN);
         assert_eq!(
             w.command(Shell::Sh, "Stop"),
-            "\"C:/Users/me/AppData/Local/Coucou/bin/coucou-hook.exe\" Stop"
+            "\"C:/Users/me/AppData/Local/Coucou/bin/lumo-hook.exe\" Stop"
         );
         assert_eq!(
             w.command(Shell::PowerShell, "--agent gemini Stop"),
@@ -1004,7 +1006,7 @@ mod tests {
         assert_eq!(spaced.command(Shell::Cmd, "x"), format!("\"{WIN_SPACE}\" x"));
         assert_eq!(
             spaced.command(Shell::PowerShell, "x"),
-            r"& 'C:\Users\Jane O''Neil\AppData\Local\Coucou\bin\coucou-hook.exe' x"
+            r"& 'C:\Users\Jane O''Neil\AppData\Local\Coucou\bin\lumo-hook.exe' x"
         );
     }
 
@@ -1189,7 +1191,7 @@ mod tests {
         assert_eq!(entry["powershell"], format!("& '{WIN}' --agent copilot preToolUse"));
         assert_eq!(
             entry["bash"],
-            "\"C:/Users/me/AppData/Local/Coucou/bin/coucou-hook.exe\" --agent copilot preToolUse"
+            "\"C:/Users/me/AppData/Local/Coucou/bin/lumo-hook.exe\" --agent copilot preToolUse"
         );
     }
 
@@ -1228,7 +1230,7 @@ mod tests {
             let main = std::fs::read_to_string(&agent.files(&home)[0]).unwrap();
             // The relay itself, at this machine's path, as a string literal: no
             // shell, no macOS path.
-            assert!(main.contains(r#""/home/me/.local/share/coucou/bin/coucou-hook""#), "{agent:?}");
+            assert!(main.contains(r#""/home/me/.local/share/coucou/bin/lumo-hook""#), "{agent:?}");
             assert!(!main.contains("/bin/sh") && !main.contains("nb-hook"), "{agent:?}");
             assert!(main.contains(&format!("'--agent', '{}'", agent.id())), "{agent:?}");
             // Never a verdict for the agent.

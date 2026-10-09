@@ -170,7 +170,7 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 ## How it works
 
 - A [Tauri 2](https://tauri.app) app (Rust + TypeScript): the island is a transparent, always-on-top window that never steals focus; Lumo is drawn in Canvas 2D, with no images.
-- Claude Code and the other agents' hooks go through a tiny `coucou-hook` relay: a named pipe on Windows, a Unix socket in `$XDG_RUNTIME_DIR` on Linux. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
+- Claude Code and the other agents' hooks go through a tiny `lumo-hook` relay: a named pipe on Windows, a Unix socket in `$XDG_RUNTIME_DIR` on Linux. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
 - On Wayland the island is a gtk-layer-shell overlay anchored to the top edge, and click-through is its input region.
 - Integrations are lightweight pollers, paused when nothing is watching.
 - Details and differences from the original Mac app in [`windows/README.md`](windows/README.md).
