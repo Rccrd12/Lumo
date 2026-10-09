@@ -469,3 +469,33 @@ test("each activity has its words, with a file name, a host or a tool", () => {
   assert.deepEqual(firstActivity("claude-code", file, shots), { kind: "thinking", detail: "" }, "Claude Code says for itself");
   assert.deepEqual(firstActivity("antigravity-cli", file, shots), { kind: "thinking", detail: "" }, "so does Antigravity CLI");
 });
+
+test("Lumo shows the chat's answer: working while it is written, then done or wrong for a moment", async (t) => {
+  const { settle, SETTLE_MS } = await import("../src/views/chat.ts");
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    State.stateOverride = "thinking";
+    assert.equal(State.shownState, "thinking");
+    settle("finished");
+    assert.equal(State.shownState, "finished");
+    t.mock.timers.tick(SETTLE_MS - 1);
+    assert.equal(State.stateOverride, "finished");
+    t.mock.timers.tick(1);
+    assert.equal(State.stateOverride, null);
+    // A newer answer is not cut short by the older one's timer.
+    settle("error");
+    t.mock.timers.tick(SETTLE_MS / 2);
+    settle("error");
+    t.mock.timers.tick(SETTLE_MS / 2);
+    assert.equal(State.stateOverride, "error");
+    t.mock.timers.tick(SETTLE_MS / 2);
+    assert.equal(State.stateOverride, null);
+    // A stopped answer just goes back.
+    State.stateOverride = "thinking";
+    settle(null);
+    assert.equal(State.stateOverride, null);
+  } finally {
+    State.stateOverride = null;
+    t.mock.timers.reset();
+  }
+});

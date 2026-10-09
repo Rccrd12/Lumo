@@ -70,3 +70,6 @@ libc = "0.2"
 # The GTK that Tauri already runs on, to reach its window for layer-shell and
 # the input region. libgtk-layer-shell itself is called directly (platform/linux.rs).
 gtk = "0.18"
+# The island's webview, to let it use the microphone once a Gemini Live
+# conversation starts (live.rs). The version wry runs on: nothing new is compiled.
+webkit2gtk = "2.0"

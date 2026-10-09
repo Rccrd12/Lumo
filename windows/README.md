@@ -87,7 +87,7 @@ it runs from and removes one left under the name Coucou.
 | Click the small island | It opens |
 | Click Lumo | It gets annoyed for a moment |
 | Rest the pointer on Lumo for two seconds | Hearts |
-| Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). The row below picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
+| Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). Next to the outfits, **Lumo's style** picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
@@ -98,6 +98,7 @@ it runs from and removes one left under the name Coucou.
 | Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
+| `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
@@ -401,6 +402,54 @@ you send, never in the background. With it off, the chat sees no folder unless
 you pick it from the menu; Claude Code says so, and points you to the button and
 to this setting.
 
+### Talk with Gemini (Gemini Live)
+
+The microphone button at the end of the chat box, or `Ctrl+Alt+L` from any
+app, starts a spoken call with **Gemini 3.8 Live**, or **Gemini 3.8 Live
+Extended Thinking**, which reasons in the background while it talks (pick it
+and its thinking level in **Settings… → Voice**, with one of Google's 30
+voices). It uses the Google AI key of Settings, from
+[aistudio.google.com](https://aistudio.google.com): Google bills each call
+by the minute.
+
+Talk as you would to someone at your desk; you can speak over Gemini, and
+it stops. What both of you say is written in the island as you go, there is
+a field to type to it, a button that turns the microphone off, and the red
+button ends the call. The call goes on when the island closes: the compact
+island stays on screen and Lumo shows it, blue while Gemini speaks, violet
+while it thinks, indigo while it works on something. It ends on its own
+after 5 minutes with nobody speaking, or when you say goodbye, and is kept
+in the chat's past chats.
+
+Gemini uses the computer by itself, when it decides it needs to:
+
+- **It looks at the screen** (Windows): a screenshot of every display,
+  made smaller and sent to Google; the file is deleted at once, nothing is
+  kept. Turn **Gemini can look at the screen** off in Settings → Voice and
+  it can't.
+- **It sees the open windows** and **the folder open in File Explorer**.
+- **It finds files by name** in your home, Desktop, Documents, Downloads,
+  Pictures, Music and Videos folders (OneDrive's too) and the folder open in
+  File Explorer, **reads** text files, images and folders, and **reads PDFs**
+  and Office documents through Gemini Flash.
+- **It opens** documents, folders and web pages, and **starts apps** by
+  their name, from the Start menu (or the Linux app menu). It never runs a
+  program or a script by its file.
+- **Anything else goes to Claude Code or Antigravity CLI** (Settings →
+  Voice → Helper), which works on the task in its own session and reports
+  back; Gemini tells you what it found or did. What the helper may do
+  without asking follows the chat's permissions (the shield); anything else
+  comes up as an Allow / Deny card in the island, over the call.
+
+The Google AI key stays in the system keychain: Rust asks Google for a
+short-lived token that opens one connection, and the island connects with
+that. Google ends a connection every ten minutes or so; the call moves to a
+new one between sentences, and carries on where it was.
+
+The microphone is only asked for when a call starts. On Windows, the
+microphone must be allowed for desktop apps in **Settings → Privacy &
+security → Microphone**.
+
 ## GitHub
 
 With a token in **Settings… → Pills & integrations → GitHub** — a classic token with
@@ -686,7 +735,8 @@ What changes on Linux:
 - **Lumo's greeting** uses the full name in your account's GECOS field
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
-  its menu says so, and nothing is listed or captured.
+  its menu says so, and nothing is listed or captured. For the same reason
+  Gemini Live can't look at the screen there; everything else in a call works.
 - **Files**: preferences in `~/.config/coucou/`, the log at
   `~/.local/share/coucou/coucou.log`, the weekly recap history beside it in
   `recap.json`. A saved recap image goes to the pictures folder named in

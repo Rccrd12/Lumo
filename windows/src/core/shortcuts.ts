@@ -31,6 +31,7 @@ export const SHORTCUT_TEXT = {
   wardrobeToggle: N_("Open the wardrobe"),
   askScreen: N_("Ask about my screen"),
   askSelection: N_("Ask about the selected text"),
+  talkToGemini: N_("Talk with Gemini Live"),
   island: {
     nextPrev: N_("Next or previous pill"),
     byNumber: N_("Go to pill 1 to 9"),
@@ -60,7 +61,8 @@ export type ShortcutId =
   | "desktopToggle"
   | "wardrobeToggle"
   | "askScreen"
-  | "askSelection";
+  | "askSelection"
+  | "talkToGemini";
 
 export interface ShortcutDef {
   id: ShortcutId;
@@ -87,6 +89,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   def("wardrobeToggle", "Ctrl+Alt+G", true, true),
   def("askScreen", "Ctrl+Alt+P", true, true),
   def("askSelection", "Ctrl+Alt+X", true, true),
+  def("talkToGemini", "Ctrl+Alt+L", true, true),
 ];
 
 export interface Binding {

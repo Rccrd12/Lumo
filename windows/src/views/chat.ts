@@ -57,6 +57,7 @@ import {
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
+import { LIVE_STRINGS } from "../live/strings";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -181,6 +182,26 @@ const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
+
+/** How long Lumo shows that an answer came (his hop) or went wrong (his shake). */
+export const SETTLE_MS = 2000;
+
+/**
+ * The answer is over: Lumo shows how it went for a moment, then goes back to
+ * what he showed before. A newer answer or anything else that took over is
+ * left alone.
+ */
+let settled = 0;
+export function settle(state: "finished" | "error" | null) {
+  State.stateOverride = state;
+  const mine = ++settled;
+  if (state == null) return;
+  setTimeout(() => {
+    if (mine !== settled || State.stateOverride !== state) return;
+    State.stateOverride = null;
+    State.notify();
+  }, SETTLE_MS);
+}
 
 /** The words for what the answer is doing; anything unknown is Thinking…. */
 export function activityLabel(activity: ChatActivity | null): string {
@@ -477,6 +498,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
 export function buildPrompt(
   onHeightChange: () => void,
   openSettings: () => void = () => void Bridge.openSettingsWindow(),
+  talk: () => void = () => {},
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
@@ -491,7 +513,10 @@ export function buildPrompt(
   const screenBtn = h("button", { class: "tool-btn screen-btn", title: tl(SCREEN_STRINGS.button) }, svg(ICONS.display, 13, { stroke: 1.8 }));
   // Claude Code and Antigravity CLI only: what they may do without asking.
   const permBtn = h("button", { class: "tool-btn perm-btn" }, svg(ICONS.shield, 13, { stroke: 1.8 }));
-  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, permBtn, input, send);
+  // Gemini Live: a spoken call instead of a typed chat (views/live.ts); lit while one is on.
+  const micBtn = h("button", { class: "tool-btn mic-btn", title: tl(LIVE_STRINGS.talk), "aria-label": tl(LIVE_STRINGS.talk) }, svg(ICONS.mic, 13, { stroke: 1.8 }));
+  micBtn.addEventListener("click", () => talk());
+  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, permBtn, input, micBtn, send);
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -1287,10 +1312,10 @@ export function buildPrompt(
       if (reply.session) State.chatSession = reply.session;
       remember();
       askOpenRouter(true);
-      State.stateOverride = null;
+      settle(reply.stopped ? null : "finished");
       Sound.play(reply.stopped ? "pop" : "finish");
     } catch (err) {
-      State.stateOverride = null;
+      settle("error");
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       State.view = "note";
       Sound.play("error");
@@ -1433,6 +1458,7 @@ export function buildPrompt(
       historyBtn.disabled = sending;
       attachBtn.disabled = sending;
       screenBtn.disabled = sending;
+      micBtn.classList.toggle("lit", State.liveActive);
       drawModelButton();
       const openRouter = State.mode === "expanded" && State.view === "prompt"
         && State.settings.chatShowUsage && State.settings.chatProvider === "openrouter";

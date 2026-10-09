@@ -169,7 +169,7 @@ pub fn stamp(unix: i64, offset: i64) -> String {
 }
 
 /// The user's time zone now, in seconds east of UTC, to the quarter hour.
-fn utc_offset() -> i64 {
+pub fn utc_offset() -> i64 {
     let now = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_secs() as i64).unwrap_or(0);
     let l = crate::platform::local_time();
     let local = days_from_civil(l.year as i64, l.month, l.day) * 86_400 + (l.hour * 3600 + l.minute * 60 + l.second) as i64;

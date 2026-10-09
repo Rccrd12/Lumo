@@ -83,6 +83,21 @@ pub struct Settings {
     /// and listing, explorer.rs), as if picked from the screen button. Off
     /// until the user turns it on in Settings → Chat.
     pub chat_share_explorer: bool,
+    /// Gemini Live, the voice conversation (live.rs, src/live): the model,
+    /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
+    /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
+    pub live_model: String,
+    /// How much the Extended Thinking model reasons in the background:
+    /// "low", "medium" or "high". The other model takes none.
+    pub live_thinking: String,
+    /// One of Gemini's prebuilt voices ("Kore", "Puck"…); empty: the model's own.
+    pub live_voice: String,
+    /// Who Gemini asks when it cannot do something itself: "claude-code" or
+    /// "antigravity-cli". Anything else reads as "claude-code".
+    pub live_helper: String,
+    /// Gemini may take a screenshot when it needs to see the screen, without
+    /// asking first (the island says when it looks). On until turned off.
+    pub live_screen: bool,
     /// Addresses of the model servers once connected; empty means not connected.
     pub ollama_url: String,
     pub lmstudio_url: String,
@@ -177,6 +192,11 @@ impl Default for Settings {
             chat_permission_mode: "default".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
+            live_model: "gemini-3.8-live".into(),
+            live_thinking: "medium".into(),
+            live_voice: String::new(),
+            live_helper: "claude-code".into(),
+            live_screen: true,
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
@@ -474,6 +494,11 @@ mod tests {
   "chatPermissionMode": "plan",
   "chatShowUsage": true,
   "chatShareExplorer": true,
+  "liveModel": "gemini-3.8-live-extended-thinking",
+  "liveThinking": "high",
+  "liveVoice": "Kore",
+  "liveHelper": "antigravity-cli",
+  "liveScreen": false,
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
@@ -917,6 +942,11 @@ mod tests {
                 "chatPermissionMode",
                 "chatShowUsage",
                 "chatShareExplorer",
+                "liveModel",
+                "liveThinking",
+                "liveVoice",
+                "liveHelper",
+                "liveScreen",
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",
@@ -930,6 +960,17 @@ mod tests {
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_from_before_gemini_live_gets_its_defaults() {
+        let s: Settings = serde_json::from_str(r#"{"chatProvider":"google","language":"fr"}"#).unwrap();
+        assert_eq!(s.chat_provider, "google");
+        assert_eq!(s.live_model, "gemini-3.8-live");
+        assert_eq!(s.live_thinking, "medium");
+        assert_eq!(s.live_voice, "");
+        assert_eq!(s.live_helper, "claude-code");
+        assert!(s.live_screen);
     }
 
     #[test]

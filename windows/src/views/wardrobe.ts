@@ -1,7 +1,8 @@
 // Wardrobe view — port of WardrobeView (IslandViewContent.swift). Opened with a
 // right-click on Mochi or from the tray menu. Resting the pointer on a button
-// tries the outfit on Mochi; a click keeps it. A second row, the same way,
-// picks his look: Filo, Punto, Goccia or Lucciola (Windows and Linux only).
+// tries the outfit on Mochi; a click keeps it. Two parts side by side, each
+// with its title: the outfits, and Lumo's style — his look, picked the same
+// way: Filo, Punto, Goccia or Lucciola (Windows and Linux only).
 
 import { h } from "./dom";
 import { State } from "../core/state";
@@ -12,7 +13,7 @@ import {
   type OutfitSelection,
 } from "../mochi/wardrobe";
 import type { ViewActions, ViewHost } from "./views";
-import { language, tl } from "../i18n/i18n";
+import { language, tl, type Msg } from "../i18n/i18n";
 
 const ICON = 28;
 
@@ -20,6 +21,14 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   const note = h("span", { class: "wardrobe-note" });
   const grid = h("div", { class: "wardrobe-grid" });
   const looks = h("div", { class: "wardrobe-grid" });
+  /** One part of the wardrobe: its title over its buttons. */
+  const part = (title: Msg, buttons: HTMLElement, kind: string) =>
+    h(
+      "div",
+      { class: `wardrobe-part wardrobe-${kind}`, role: "group", "aria-label": title },
+      h("span", { class: "wardrobe-label", text: title }),
+      buttons,
+    );
   const el = h(
     "div",
     { class: "view wardrobe" },
@@ -30,8 +39,13 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
         "div",
         { class: "stack wardrobe-stack" },
         h("div", { class: "wardrobe-head" }, h("span", { class: "wardrobe-title", text: tl("Wardrobe") }), note),
-        grid,
-        looks,
+        h(
+          "div",
+          { class: "wardrobe-parts" },
+          part(tl("Outfits"), grid, "outfits"),
+          h("div", { class: "wardrobe-divider", "aria-hidden": "true" }),
+          part(tl("Lumo's style"), looks, "looks"),
+        ),
       ),
     ),
   );

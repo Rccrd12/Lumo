@@ -125,6 +125,19 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
 /// `folders`: what the user shared from File Explorer in this chat.
 fn args(model: &str, effort: &str, mode: &str, session: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
+    args_with(APPEND_PROMPT, model, effort, mode, session, inbox, folders)
+}
+
+/// `args`, with `append` added to Claude Code's instructions instead of the chat's.
+fn args_with(
+    append: &str,
+    model: &str,
+    effort: &str,
+    mode: &str,
+    session: Option<&str>,
+    inbox: &str,
+    folders: &[String],
+) -> Vec<String> {
     let mut a: Vec<String> = [
         "-p",
         "--output-format",
@@ -136,7 +149,7 @@ fn args(model: &str, effort: &str, mode: &str, session: Option<&str>, inbox: &st
         "--permission-mode",
         permission_mode(mode),
         "--append-system-prompt",
-        APPEND_PROMPT,
+        append,
     ]
     .iter()
     .map(|s| s.to_string())
@@ -746,11 +759,64 @@ pub async fn send(
     Ok(ChatReply::answer(answer, chat.cli_session()))
 }
 
+// ── Helping Gemini Live ───────────────────────────────────────────────────────
+
+/// Added to Claude Code's instructions when Gemini Live hands it a task (live.rs).
+const HELPER_PROMPT: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
+Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
+Do the task. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
+Every action that needs a permission is approved by the user in the island, so ask for it normally. \
+When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran.";
+
+/// Runs one task Gemini Live handed over, in `folder` when it is a folder
+/// (the Coucou folder otherwise), with the chat's permission `mode`: what it
+/// may not do by itself is an Allow / Deny card in the island, as in the chat.
+/// No session is kept: each task starts afresh. Blocking.
+pub(crate) fn help(
+    task: &str,
+    folder: Option<&str>,
+    mode: &str,
+    stop: Arc<Stop>,
+    on_activity: impl FnMut(&Activity),
+) -> Result<String, String> {
+    let exe = platform::claude_candidates()
+        .into_iter()
+        .next()
+        .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
+    let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
+    let dir = folder.map(PathBuf::from).unwrap_or_else(work_dir);
+    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
+    let args = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", mode, None, &inbox, &folders);
+    let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity)?;
+    if state.stopped {
+        return Err(t("The task was stopped."));
+    }
+    match state.result {
+        Some(Ok(text)) if text.trim().is_empty() && state.denied > 0 => {
+            Err(t("Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island."))
+        }
+        Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
+        Some(Ok(text)) => Ok(text),
+        Some(Err(e)) => Err(tf("Claude Code: {error}", &[("error", &e)])),
+        None => unreachable!("run() returns an error without a result"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     const SID: &str = "0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b";
+
+    #[test]
+    fn a_task_from_gemini_gets_the_helper_instructions_and_no_session() {
+        let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "acceptEdits", None, "/home/me/.local/share/coucou/inbox", &["/home/me/docs".into()]);
+        assert!(a.windows(2).any(|w| w == ["--append-system-prompt", HELPER_PROMPT]));
+        assert!(!a.iter().any(|s| s == APPEND_PROMPT || s == "--resume" || s == "--model" || s == "--effort"));
+        assert!(a.windows(2).any(|w| w == ["--permission-mode", "acceptEdits"]));
+        assert!(a.windows(2).any(|w| w == ["--add-dir", "/home/me/docs"]));
+    }
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {

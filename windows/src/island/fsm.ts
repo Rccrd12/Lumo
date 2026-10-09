@@ -53,6 +53,23 @@ export class IslandStateMachine {
   pinned = false;
 
   /**
+   * A Gemini Live call is on: the compact island stays on screen (it does
+   * not go away after a minute) until the call ends.
+   */
+  get held(): boolean {
+    return this.holding;
+  }
+  set held(on: boolean) {
+    if (on === this.holding) return;
+    this.holding = on;
+    if (on) this.clear("petitHide");
+    else if (this.state === "petit" && !this.mouseInside) this.schedulePetitHide();
+  }
+  /** The mouse is on the island, as the last enter/leave said. */
+  private mouseInside = false;
+  private holding = false;
+
+  /**
    * When the open island will fold, on the performance.now() clock, while the
    * mouse-leave countdown runs; null otherwise. The island draws its countdown
    * bar from it.
@@ -74,6 +91,7 @@ export class IslandStateMachine {
   }
 
   mouseEntered() {
+    this.mouseInside = true;
     switch (this.state) {
       case "hidden":
         this.cancelTimers();
@@ -91,6 +109,7 @@ export class IslandStateMachine {
   }
 
   mouseLeft() {
+    this.mouseInside = false;
     switch (this.state) {
       case "hidden":
         break;
@@ -150,7 +169,7 @@ export class IslandStateMachine {
     this.clear("petitHide");
     // A card folded away while it waits for an answer keeps the compact island
     // on screen, so it can be reopened (isHeldOpen on macOS).
-    if (this.pinned || !this.hides) return;
+    if (this.pinned || !this.hides || this.holding) return;
     this.petitHide = window.setTimeout(() => {
       this.petitHide = null;
       if (this.state === "petit" && !this.pinned) this.transition("hidden");

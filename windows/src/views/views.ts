@@ -21,6 +21,8 @@ import { Bridge } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
+import { buildLive, openVoiceSettings } from "./live";
+import { Live } from "../live/session";
 import type { LumoLook, Outfit, OutfitSelection } from "../mochi/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
 
@@ -694,12 +696,16 @@ export function buildViews(
   map.set("finished", buildFinished(actions));
   map.set("note", buildNote());
   map.set("settings", buildSettingsFrame(actions));
-  map.set("prompt", buildPrompt(onChatHeightChange, () => actions.setView("settings")));
+  map.set("prompt", buildPrompt(onChatHeightChange, () => actions.setView("settings"), () => {
+    actions.setView("live");
+    void Live.start();
+  }));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("choose", buildChoose(actions));
   map.set("recap", buildRecap(actions));
   map.set("wardrobe", buildWardrobe(actions));
+  map.set("live", buildLive(() => openVoiceSettings(actions.setView)));
   // Not in the Windows v1: sending a file by email, window attach + web result.
   map.set("mail", buildPlaceholder(tl("Sending by email isn't in this version."), ""));
   map.set("searching", buildPlaceholder(tl("Claude is searching…"), ""));

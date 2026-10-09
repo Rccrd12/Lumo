@@ -298,6 +298,25 @@ export const Bridge = {
   /** Opens the folder of the image saved last. */
   recapRevealSaved: () => call<void>("recap_reveal_saved"),
 
+  // ── Gemini Live (src-tauri/src/live.rs, src/live) ─────────────────────────
+  /** A short-lived token that opens one connection: the Google AI key stays in Rust. */
+  liveToken: () => callOrThrow<LiveToken>("live_token"),
+  /** A file's text, an image, a folder's listing, or what kind of document it is. */
+  liveRead: (path: string) => callOrThrow<LiveReading>("live_read", { path }),
+  /** Files and folders whose names match, in the user's folders or `within`. */
+  liveFind: (query: string, within: string | null) => callOrThrow<LiveFound[]>("live_find", { query, within }),
+  /** A PDF, an Office file or an image read by Gemini, with the answer to `question`. */
+  liveDocument: (path: string, question: string) => callOrThrow<string>("live_document", { path, question }),
+  /** Opens a document, a folder or a web page; never a program. Returns what was opened. */
+  liveOpen: (target: string) => callOrThrow<string>("live_open", { target }),
+  /** Starts an app the Start menu (or the app menu) lists. Returns its name. */
+  liveOpenApp: (name: string) => callOrThrow<string>("live_open_app", { name }),
+  /** Hands a task to the helper of Settings → Voice; its answer. Cards ask for what it may not do alone. */
+  liveHelp: (task: string, folder: string | null) => callOrThrow<string>("live_help", { task, folder }),
+  liveHelpStop: () => call<void>("live_help_stop"),
+  /** The page asks for the microphone now (true), or has its answer (false). */
+  liveMicrophone: (on: boolean) => call<void>("live_microphone", { on }),
+
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
   /** Asks GitHub for the newest Windows release and compares it with this build. */
   updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
@@ -323,6 +342,34 @@ export const Bridge = {
   /** Asleep, the cursor poll stops. */
   desktopSetAsleep: (asleep: boolean) => call<void>("desktop_mochi_set_asleep", { asleep }),
 };
+
+/** What opens one Gemini Live connection (live.rs Token). */
+export interface LiveToken {
+  token: string;
+  url: string;
+}
+
+/** live.rs Reading. */
+export type LiveReading =
+  | { kind: "text"; name: string; text: string; cut: boolean }
+  | { kind: "image"; name: string; mime: string; data: string }
+  | { kind: "folder"; path: string; entries: FolderEntry[]; omitted: number }
+  | { kind: "document"; name: string; size: number };
+
+/** live.rs Found. */
+export interface LiveFound {
+  path: string;
+  dir: boolean;
+  size: number;
+  modified: string;
+}
+
+/** The `live-helper-activity` event: what the helper is doing (claude_code.rs Activity). */
+export interface LiveHelperActivity {
+  helper: string;
+  kind: string;
+  detail: string;
+}
 
 export type ShortcutStatus =
   | "active" | "off" | "inUse" | "duplicate" | "invalid"

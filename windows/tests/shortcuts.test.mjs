@@ -22,7 +22,7 @@ const MAC_IDS = [
 // ── Defaults (testDefaultsExhaustive, testAllDefaultsHaveModifier, testNoDefaultDuplicates) ──
 
 test("every Mac action has a default, in the Mac's order, with its Mac id, then this version's own", () => {
-  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...MAC_IDS, "askScreen", "askSelection"]);
+  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...MAC_IDS, "askScreen", "askSelection", "talkToGemini"]);
   for (const d of SHORTCUTS) assert.ok(SHORTCUT_TEXT[d.id], `${d.id} has no label`);
 });
 
@@ -72,7 +72,7 @@ test("only the island toggle is off by default; the two not ported yet are reser
   }
   assert.deepEqual(activeKeys({}).map(([id]) => id), [
     "openChat", "goToAlert", "jumpToTerminal", "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
-    "askScreen", "askSelection",
+    "askScreen", "askSelection", "talkToGemini",
   ]);
 });
 

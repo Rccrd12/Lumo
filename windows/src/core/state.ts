@@ -215,6 +215,16 @@ export interface Settings {
    * else English), or one of src/i18n's ten codes ("fr", "pt-BR", "zh-Hans"…).
    */
   language: string;
+  /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
+  liveModel: string;
+  /** Extended Thinking's level: "low", "medium" or "high". */
+  liveThinking: string;
+  /** One of Google's voices; "" lets Gemini pick. */
+  liveVoice: string;
+  /** Who takes what Gemini can't do: "claude-code" or "antigravity-cli". */
+  liveHelper: string;
+  /** Gemini may take a screenshot when it decides it needs one, during a call. */
+  liveScreen: boolean;
   /** Mochi on the desktop. Rust owns it: whatever the page sends back is ignored. */
   desktopMochi?: {
     onDesktop: boolean;
@@ -263,6 +273,11 @@ export const DEFAULT_SETTINGS: Settings = {
   lumoCharacter: DEFAULT_LOOK,
   pillColors: {},
   language: "",
+  liveModel: "gemini-3.8-live",
+  liveThinking: "medium",
+  liveVoice: "",
+  liveHelper: "claude-code",
+  liveScreen: true,
 };
 
 type Listener = () => void;
@@ -280,6 +295,10 @@ class AppState {
   focusId: string | null = null;
 
   stateOverride: BotStateName | null = null;
+  /** How Lumo looks during a Gemini Live call (src/live/session.ts); null otherwise. */
+  liveState: BotStateName | null = null;
+  /** A Gemini Live call is on: the island opens on it, and the compact island stays. */
+  liveActive = false;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };
@@ -364,15 +383,14 @@ class AppState {
   }
 
   get effectiveState(): BotStateName {
-    return this.stateOverride ?? this.focusTask?.state ?? "idle";
+    // A card waiting for an answer shows over the call.
+    const live = this.pendingApproval ? null : this.liveState;
+    return this.stateOverride ?? live ?? this.focusTask?.state ?? "idle";
   }
 
-  /**
-   * What Lumo looks like: the effective state, except while the chat writes
-   * its answer — the chat shows that itself, and Lumo stays his calm self.
-   */
+  /** What Lumo looks like: the effective state, the chat's answer included. */
   get shownState(): BotStateName {
-    return this.stateOverride === "thinking" ? "idle" : this.effectiveState;
+    return this.effectiveState;
   }
 
   get otherTasks(): AgentTask[] {
@@ -601,7 +619,7 @@ class AppState {
   /** What the island opens on: a waiting card first, else the chat. */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
-    return "prompt";
+    return this.liveActive ? "live" : "prompt";
   }
 
   /** The Agents tab: the coding sessions and pills, or the empty card. */

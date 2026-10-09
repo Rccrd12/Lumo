@@ -14,6 +14,10 @@ import {
   LOOK_IDLE, LOOK_SHAPE, drawLookBehind, drawLookBlush, drawLookBody, drawLookEyes, lookBodyPath,
   type LookPose, type RoundLook,
 } from "./looks";
+import {
+  BLEND_S, FACE_K, blendMotion, blendTips, ease, finishedSmiles, flashOf, motionKind, settleTime,
+  stateGaze, stateMotion, tipLights, type StateMotion, type TipLights,
+} from "./motion";
 import { drawOutfitBehind, drawOutfitFront, makeHead, roundHead } from "./outfits";
 import { DEFAULT_LOOK, type LumoLook, type Outfit } from "./wardrobe";
 
@@ -46,7 +50,7 @@ interface Tween {
 type PropKey =
   | "yaw" | "pitch" | "roll" | "tilt" | "open" | "sx" | "sy"
   | "oy" | "ox" | "tint" | "morph" | "hands" | "blush" | "es" | "badgeS"
-  | "outfitPresence" | "flash";
+  | "outfitPresence";
 
 interface BotStateCfg {
   color: RGB;
@@ -191,8 +195,10 @@ export class BotEngine {
   look: LumoLook = DEFAULT_LOOK;
   /** A round look's light: the state's colour, warm at rest (eased like `col`). */
   glow: RGB = LOOK_IDLE;
-  /** 1 → 0: a round look's burst of light on an error or when it is done. */
-  flash = 0;
+  /** When the state began, and the one before it (its pose eases into this one's). */
+  private stateAt = now();
+  private prevState: BotStateName = "idle";
+  private prevStateAt = now();
 
   // Outfit (the main Mochi only — minis never wear one). `outfit` is what is
   // drawn; it changes only once the previous one has left.
@@ -266,6 +272,11 @@ export class BotEngine {
   setState(next: BotStateName, force = false) {
     if (this.state === next && !force) return;
     const prev = this.state;
+    const n = now();
+    // A state that begins again (forced) starts over without easing from itself.
+    this.prevState = prev;
+    this.prevStateAt = prev === next ? n : this.stateAt;
+    this.stateAt = n;
     this.state = next;
     this.cfg = BOT_STATES[next];
     this.colT = this.cfg.color;
@@ -275,21 +286,18 @@ export class BotEngine {
 
     switch (next) {
       case "finished":
-        if (this.round) {
-          // A round look hops, lands with a squash and lights up.
-          this.anim("oy", [[-0.24, 210, Ease.out], [0, 190, Ease.easeIn]], () => this.squash());
-          this.lightUp(900);
-        } else {
-          this.doRoll(950, 1);
-        }
+        // A round look hops, lands and lights up (stateMotion); the firefly rolls.
+        if (!this.round) this.doRoll(950, 1);
         setTimeout(() => this.emit("spark", 5), 500);
         break;
       case "error":
-        this.anim("ox", [
-          [0.08, 50, Ease.out], [-0.08, 70, Ease.inOut],
-          [0.05, 70, Ease.inOut], [0, 90, Ease.out],
-        ]);
-        if (this.round) this.lightUp(700);
+        // A round look shakes once, dying out (stateMotion); the firefly jolts.
+        if (!this.round) {
+          this.anim("ox", [
+            [0.08, 50, Ease.out], [-0.08, 70, Ease.inOut],
+            [0.05, 70, Ease.inOut], [0, 90, Ease.out],
+          ]);
+        }
         break;
       case "approval":
         this.anim("oy", [[-0.2, 150, Ease.out], [0, 300, Ease.back]]);
@@ -308,10 +316,42 @@ export class BotEngine {
     }
   }
 
-  /** A round look's burst of light, fading over `ms`. */
-  private lightUp(ms: number) {
-    this.flash = 1;
-    this.anim("flash", [[0, ms, Ease.out]]);
+  /** Seconds since the state began. */
+  get stateTime(): number {
+    return now() - this.stateAt;
+  }
+
+  /** 1 → 0: the burst of light on an error or when it is done. */
+  get flash(): number {
+    return flashOf(this.state, this.stateTime);
+  }
+
+  /** 0 → 1 while the previous state's pose eases into this one's. */
+  private get blendK(): number {
+    return this.prevState === this.state ? 1 : ease(this.stateTime / BLEND_S);
+  }
+
+  /** How much his loops move: the motion setting, nothing while he may not move. */
+  private get loopAmount(): number {
+    return this.ambientActive ? Math.min(1.5, this.ambient) : 0;
+  }
+
+  /** The main character's pose in its state (motion.ts), eased from the previous state's. */
+  statePose(t = now() - this.t0): StateMotion {
+    const amb = this.loopAmount;
+    const b = stateMotion(this.state, this.stateTime, t, amb);
+    const k = this.blendK;
+    if (k >= 1) return b;
+    return blendMotion(stateMotion(this.prevState, now() - this.prevStateAt, t, amb), b, k);
+  }
+
+  /** The firefly's antenna lights in its state, eased from the previous state's. */
+  tipPose(t = now() - this.t0): TipLights {
+    const amb = this.loopAmount;
+    const b = tipLights(this.state, this.stateTime, t, amb);
+    const k = this.blendK;
+    if (k >= 1) return b;
+    return blendTips(tipLights(this.prevState, now() - this.prevStateAt, t, amb), b, k);
   }
 
   /** Drawn as a round look (looks.ts) rather than the firefly. */
@@ -568,9 +608,13 @@ export class BotEngine {
       Math.abs(this.col[1] - this.colT[1]) > 0.003 ||
       Math.abs(this.col[2] - this.colT[2]) > 0.003 ||
       (this.outfit !== "none" && (Math.abs(this.physVx) > 0.01 || Math.abs(this.physVy) > 0.01)) ||
-      // A round look's heartbeat and ripple while something waits for you,
-      // and its light still easing to the state's colour.
-      (this.round && (this.state === "approval" || this.state === "question" ||
+      // The main character: the heartbeat and ripple while something waits for
+      // you, what happens as a state begins (shake, hop, flash, sparkle) and the
+      // ease from one state's pose to the next.
+      (!this.isMini && (motionKind(this.state) === "waiting" ||
+        this.stateTime < Math.max(settleTime(this.state), this.blendK < 1 ? BLEND_S : 0))) ||
+      // A round look's light still easing to the state's colour.
+      (this.round && (
         Math.abs(this.glow[0] - this.glowTarget[0]) > 0.003 ||
         Math.abs(this.glow[1] - this.glowTarget[1]) > 0.003 ||
         Math.abs(this.glow[2] - this.glowTarget[2]) > 0.003))
@@ -644,8 +688,10 @@ export class BotEngine {
     }
 
     if (this.state === "sleeping") { ty = 0; tp = -0.14; }
-    // Waiting for you, a round look opens its eyes wide and looks up.
-    if (this.round && this.state === "approval") { ty *= 0.4; tp = 0.36; }
+    // He looks up at you when he waits, down at the floor on an error, up a
+    // little, pleased, when it is done.
+    const gaze = this.isMini ? null : stateGaze(this.state);
+    if (gaze != null) { ty *= 0.4; tp = -gaze * 0.5; }
     if (this.state === "dizzy") { ty = Math.sin(t * 9) * 0.25; }
 
     // Mini bots never follow the mouse — they wander.
@@ -671,7 +717,7 @@ export class BotEngine {
     }
 
     const hover = Math.sin(t * 1.5) * 0.03 * amb;
-    // A round look's waiting is its heartbeat (roundMotion), not a bounce.
+    // A round look's waiting is its heartbeat (motion.ts), not a bounce.
     const bounce = (this.cfg.bounces && !this.round ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0) + hover;
     const kGen = 1 - Math.pow(0.0008, dt);
     if (!this.locks.has("oy")) this.oy += (bounce - this.oy) * kGen;
@@ -870,15 +916,24 @@ export class BotEngine {
       LUMO_GLOW[2] + (this.col[2] - LUMO_GLOW[2]) * k,
     ];
     const asleep = this.state === "sleeping";
+    const t = now() - this.t0;
+    // The same pose as a round look's (motion.ts): his tail flashes on an error
+    // and when it is done, and beats and sends out a ripple when he waits; his
+    // antenna lights twinkle, perk up, droop or sparkle with the state.
+    const m = this.statePose(t);
     return {
       R, rx, ry,
-      t: now() - this.t0,
+      t,
       glow,
-      shine: asleep ? 0.1 : 0.35 + 0.65 * k,
+      shine: asleep ? 0.1 : Math.min(1, 0.35 + 0.65 * k + 0.6 * this.flash),
       flap: asleep ? 0 : this.cfg.tint > 0 ? 1 : 0.25,
       lagX: this.physDx,
       lagY: this.physDy,
       presence: 1 - this.morph,
+      beat: m.pulse,
+      ripple: m.ripple,
+      rp: m.rp,
+      tips: this.tipPose(t),
     };
   }
 
@@ -951,12 +1006,23 @@ export class BotEngine {
 
   /** The eyes asked for now: an emote's, the state's, or the box's while it eats a file. */
   private eyeShape(): EyeShape {
-    let shape: EyeShape = this.eyeOverride ?? this.cfg.eye;
+    let shape: EyeShape = this.eyeOverride ?? this.stateEye();
     if (this.morph > 0.5) {
       if (this.isChewing) shape = "happy";
       else if (this.slotHTarget > 0.05 || this.slotH > 0.1) shape = "cup";
     }
     return shape;
+  }
+
+  /**
+   * The state's eyes: they change a beat after the light, and once he has
+   * smiled a while at a finish they open again, smiling now and then.
+   */
+  private stateEye(): EyeShape {
+    if (this.isMini) return this.cfg.eye;
+    if (this.blendK < FACE_K) return BOT_STATES[this.prevState].eye;
+    if (this.state === "finished" && !finishedSmiles(this.stateTime, this.loopAmount)) return "pill";
+    return this.cfg.eye;
   }
 
   private drawEyes(x: CanvasRenderingContext2D, body: Path2D, R: number, rx: number, ry: number) {
@@ -1151,68 +1217,6 @@ export class BotEngine {
 
   // ── Round looks (looks.ts) ─────────────────────────────────────────────────
 
-  /**
-   * How a round look moves and shines in its state, on top of the engine's own
-   * tweens: it breathes at rest, pulses and bobs while an agent works, beats
-   * twice and sends out a ripple when it waits for you, flashes on an error and
-   * glows when it is done. The looping parts follow the motion setting.
-   */
-  private roundMotion(t: number) {
-    const amb = this.ambientActive ? Math.min(1.5, this.ambient) : 0;
-    const m = { scale: 1, dy: 0, squash: 0, shine: 0.5, pulse: 0, ripple: 0, rp: 0 };
-    switch (this.state) {
-      case "idle": {
-        const b = Math.sin((Math.PI * 2 * t) / 4.2);
-        m.shine = 0.42 + 0.22 * b * Math.min(1, amb);
-        m.scale = 1 + 0.014 * b * amb;
-        m.dy = -0.02 * b * amb;
-        break;
-      }
-      case "working":
-      case "thinking":
-      case "searching": {
-        const ph = (Math.PI * 2 * t) / (this.state === "thinking" ? 2.2 : 1.5);
-        m.shine = 0.78 + 0.2 * Math.sin(ph) * Math.min(1, amb);
-        m.scale = 1 + 0.015 * Math.sin(ph) * amb;
-        m.dy = -0.07 * Math.sin(ph) * amb;
-        m.squash = -0.5 * Math.sin(ph) * amb;
-        break;
-      }
-      case "approval":
-      case "question": {
-        const u = t % 1.1;
-        const g = (c: number, w: number) => Math.exp(-(((u - c) / w) ** 2));
-        m.pulse = Math.max(g(0.12, 0.07), 0.75 * g(0.36, 0.07));
-        m.shine = 0.55 + 0.45 * m.pulse;
-        m.scale = 1 + 0.07 * m.pulse;
-        m.dy = -0.04 * m.pulse;
-        m.squash = -0.5 * m.pulse;
-        m.ripple = 1;
-        m.rp = ((((u - 0.12) / 1.1) % 1) + 1) % 1;
-        break;
-      }
-      case "error":
-        m.shine = 0.36 + 0.64 * this.flash;
-        m.scale = 1 - 0.03 * (1 - this.flash);
-        m.dy = 0.03 * (1 - this.flash);
-        break;
-      case "finished":
-        m.shine = 0.62 + 0.35 * this.flash;
-        break;
-      case "ratelimit":
-        m.shine = 0.3;
-        m.dy = 0.03;
-        break;
-      case "sleeping":
-        m.shine = 0.12;
-        break;
-      case "dizzy":
-        m.shine = 0.6;
-        break;
-    }
-    return m;
-  }
-
   /** A round look's outline, turning into the box while a file is dropped. */
   private roundBodyPath(look: RoundLook, R: number): Path2D {
     const tw = R * 1.0;
@@ -1223,9 +1227,13 @@ export class BotEngine {
 
   private drawRound(x: CanvasRenderingContext2D, W: number, H: number, look: RoundLook) {
     const R = W * 0.3;
+    // How it moves and shines in its state (motion.ts): it breathes at rest,
+    // pulses and bobs while an agent works, beats twice and sends out a ripple
+    // when it waits for you, shakes and flashes on an error, hops and glows
+    // when it is done.
+    const m = this.statePose();
     const t = now() - this.t0;
-    const m = this.roundMotion(t);
-    const cx = W / 2 + this.ox * R;
+    const cx = W / 2 + (this.ox + m.dx) * R;
     const cy = H / 2 + this.particleOverhang / 2 + (this.oy + m.dy) * R;
 
     x.save();
@@ -1253,6 +1261,8 @@ export class BotEngine {
     const P: LookPose = {
       R, t, c: this.glow, shine: m.shine, pulse: m.pulse,
       ripple: m.ripple * (1 - this.morph), rp: m.rp, small: R < 20, presence: 1 - this.morph,
+      // Goccia's pool of light stays on the floor while the drop moves.
+      floor: { dx: this.ox + m.dx, dy: this.oy + m.dy },
     };
     // Eyes: a round look's slide (−1…1) rather than turn with the head.
     const lx = Math.max(-1.2, Math.min(1.2, this.yaw / 0.62));

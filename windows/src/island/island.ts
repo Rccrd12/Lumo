@@ -163,6 +163,7 @@ export class Island {
       this.onGreetingDone?.();
     };
     State.subscribe(() => {
+      this.fsm.held = State.liveActive;
       this.dirty = true;
       this.ensureRunning();
     });
@@ -174,7 +175,8 @@ export class Island {
     State.endApproval();
     this.fsm.pinned = false;
     // The chat asked: back to the chat, where the answer is still coming.
-    this.setView(fromChat ? "prompt" : State.agentsView());
+    // Gemini's helper asked: back to the call.
+    this.setView(fromChat ? (State.liveActive ? "live" : "prompt") : State.agentsView());
   }
 
   /**
@@ -887,7 +889,7 @@ export class Island {
       State.lastActivity = performance.now();
       this.lastGesture = performance.now();
       // The chat came up on its own: the first click in it brings the keyboard.
-      if (State.mode === "expanded" && State.view === "prompt" && e.button === 0 && !document.hasFocus()) {
+      if (State.mode === "expanded" && (State.view === "prompt" || State.view === "live") && e.button === 0 && !document.hasFocus()) {
         void Bridge.focusWindow(true);
         const target = e.target as Element | null;
         if (target?.closest(".chat-input")) window.setTimeout(() => (target as HTMLElement).focus(), 60);
@@ -1352,7 +1354,7 @@ export class Island {
     // another app is never cut off.
     // Settings have fields too, and are only ever opened on purpose.
     if (this.lastSyncedView !== State.view) {
-      const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings";
+      const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live";
       this.lastSyncedView = State.view;
       this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {

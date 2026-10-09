@@ -20,6 +20,7 @@ mod i18n;
 mod identity;
 mod integrations;
 mod island;
+mod live;
 mod local_chat;
 mod log;
 mod net;
@@ -958,6 +959,15 @@ pub fn run() {
             screen_explorer_peek,
             screen_explorer,
             explorer_attach,
+            live::live_token,
+            live::live_read,
+            live::live_find,
+            live::live_document,
+            live::live_open,
+            live::live_open_app,
+            live::live_help,
+            live::live_help_stop,
+            live::live_microphone,
             ingest_file,
             paste_file,
             paste_copied_file,
@@ -1011,6 +1021,7 @@ pub fn run() {
                 platform::make_non_activating(&win);
                 #[cfg(windows)]
                 webview_drop::install(&handle);
+                live::install(&handle);
                 island::apply_geometry(&handle, &loaded.screen, island::Placement::of(&loaded), false);
                 let _ = win.show();
             }
