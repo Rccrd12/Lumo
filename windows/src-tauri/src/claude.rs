@@ -15,6 +15,7 @@ use reqwest::Url;
 use serde_json::{json, Value};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
+use crate::chat_usage::{self, ChatUsage};
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
 
@@ -142,13 +143,15 @@ fn interpret(response: &Value) -> Result<(Vec<Value>, String), String> {
 }
 
 /// One chat turn. Returns the assistant's text, or a message the island shows
-/// in the note view.
+/// in the note view. `usage` gets the rate limits the answer came back with
+/// (chat_usage.rs), a refused one included.
 pub async fn send(
     chat: &Chat,
     model: &str,
     query: String,
     context: Option<ChatContext>,
     images: &[String],
+    usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
     let key = secrets::get(KEY).ok_or_else(|| t("API key missing. Open settings."))?;
     let endpoint = endpoint()?;
@@ -159,7 +162,7 @@ pub async fn send(
     let user = json!({ "role": "user", "content": content });
     let body = request_body(model, &chat::system_prompt(true), &turn.history, &user);
 
-    let response = call(&endpoint, &key, &body).await?;
+    let response = call(&endpoint, &key, &body, usage).await?;
     let (blocks, text) = interpret(&response)?;
 
     // Store the whole content — tool_use / tool_result blocks included — so the
@@ -169,7 +172,7 @@ pub async fn send(
     Ok(ChatReply { text, session: None })
 }
 
-async fn call(endpoint: &Url, key: &str, body: &Value) -> Result<Value, String> {
+async fn call(endpoint: &Url, key: &str, body: &Value, usage: &mut Option<ChatUsage>) -> Result<Value, String> {
     let response = net::client(endpoint, Duration::from_secs(90))?
         .post(endpoint.clone())
         .header("x-api-key", key)
@@ -181,6 +184,8 @@ async fn call(endpoint: &Url, key: &str, body: &Value) -> Result<Value, String> 
         .await
         .map_err(|e| tf("Network error: {error}", &[("error", &e.to_string())]))?;
 
+    // Every answer, a 429 too, says what is left: no call of its own for it.
+    *usage = chat_usage::from_anthropic(response.headers());
     let status = response.status();
     if !status.is_success() {
         // Surface the API's own message, which is what makes a bad key obvious.

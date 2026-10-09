@@ -485,6 +485,28 @@
    "ru": "Копировать изображения здесь нельзя — используйте «Сохранить изображение».",
    "id": "Menyalin gambar tidak tersedia di sini — gunakan Simpan gambar."
   },
+  "Credits left: {n}": {
+   "zh-Hans": "剩余额度：{n}",
+   "hi": "बाकी क्रेडिट: {n}",
+   "es": "Créditos restantes: {n}",
+   "ar": "الرصيد المتبقي: {n}",
+   "fr": "Crédits restants : {n}",
+   "bn": "বাকি ক্রেডিট: {n}",
+   "pt-BR": "Créditos restantes: {n}",
+   "ru": "Осталось кредитов: {n}",
+   "id": "Sisa kredit: {n}"
+  },
+  "Credits used: {n}": {
+   "zh-Hans": "已用额度：{n}",
+   "hi": "इस्तेमाल हुए क्रेडिट: {n}",
+   "es": "Créditos usados: {n}",
+   "ar": "الرصيد المستخدم: {n}",
+   "fr": "Crédits utilisés : {n}",
+   "bn": "ব্যবহৃত ক্রেডিট: {n}",
+   "pt-BR": "Créditos usados: {n}",
+   "ru": "Использовано кредитов: {n}",
+   "id": "Kredit terpakai: {n}"
+  },
   "Lumo could not list the agents.": {
    "zh-Hans": "Lumo 无法列出代理。",
    "hi": "Lumo एजेंटों की सूची नहीं बना सका।",
@@ -1596,6 +1618,17 @@
    "ru": "Выберите до {max} вкладок рядом с Lumo — занято {used}/{max}. Ключи хранятся в {store}, никогда на диске.",
    "id": "Pilih hingga {max} tab untuk ditampilkan di samping Lumo — {used}/{max} terpakai. Kunci disimpan di {store}, tidak pernah di disk."
   },
+  "Plan usage: install the relay in {path}": {
+   "zh-Hans": "计划用量：请在 {path} 中安装中继",
+   "hi": "प्लान उपयोग: {path} में रिले इंस्टॉल करें",
+   "es": "Uso del plan: instala el relay en {path}",
+   "ar": "استخدام الخطة: ثبّت المُرحِّل في {path}",
+   "fr": "Utilisation du forfait : installez le relais dans {path}",
+   "bn": "প্ল্যান ব্যবহার: {path}-এ রিলে ইনস্টল করুন",
+   "pt-BR": "Uso do plano: instale o relay em {path}",
+   "ru": "Использование плана: установите ретранслятор в {path}",
+   "id": "Penggunaan paket: pasang relay di {path}"
+  },
   "Press keys…": {
    "zh-Hans": "请按键…",
    "hi": "कुंजियाँ दबाएँ…",
@@ -1684,6 +1717,17 @@
    "ru": "Ретранслятор",
    "id": "Relay"
   },
+  "Remaining usage": {
+   "zh-Hans": "剩余用量",
+   "hi": "बचा हुआ उपयोग",
+   "es": "Uso restante",
+   "ar": "الاستخدام المتبقي",
+   "fr": "Utilisation restante",
+   "bn": "বাকি ব্যবহার",
+   "pt-BR": "Uso restante",
+   "ru": "Оставшийся лимит",
+   "id": "Sisa penggunaan"
+  },
   "Remove": {
    "zh-Hans": "移除",
    "hi": "हटाएँ",
@@ -1706,6 +1750,17 @@
    "ru": "Репозитории",
    "id": "Repositori"
   },
+  "Requests left: {n}": {
+   "zh-Hans": "剩余请求：{n}",
+   "hi": "बाकी अनुरोध: {n}",
+   "es": "Solicitudes restantes: {n}",
+   "ar": "الطلبات المتبقية: {n}",
+   "fr": "Requêtes restantes : {n}",
+   "bn": "বাকি অনুরোধ: {n}",
+   "pt-BR": "Solicitações restantes: {n}",
+   "ru": "Осталось запросов: {n}",
+   "id": "Sisa permintaan: {n}"
+  },
   "Reset to defaults": {
    "zh-Hans": "恢复默认",
    "hi": "डिफ़ॉल्ट पर रीसेट करें",
@@ -1727,6 +1782,17 @@
    "pt-BR": "Redefinições",
    "ru": "Сбросы",
    "id": "Reset"
+  },
+  "Resets at {time}": {
+   "zh-Hans": "{time} 重置",
+   "hi": "{time} पर रीसेट",
+   "es": "Se restablece a las {time}",
+   "ar": "يُعاد التعيين في {time}",
+   "fr": "Réinitialisation à {time}",
+   "bn": "{time}-এ রিসেট হবে",
+   "pt-BR": "Reinicia às {time}",
+   "ru": "Сброс в {time}",
+   "id": "Direset pukul {time}"
   },
   "Restart Amp to load the plugin.": {
    "zh-Hans": "重启 Amp 以加载插件。",
@@ -2002,6 +2068,28 @@
    "pt-BR": "Mostre outros agentes de programação na ilha. O Lumo adiciona as próprias entradas à configuração de cada agente: você vê a alteração exata e para onde vai o backup antes de qualquer gravação, e desinstalar remove só o que o Lumo adicionou.",
    "ru": "Показывайте другие агенты для кода в острове. Lumo добавляет свои записи в конфигурацию каждого агента: до любой записи вы видите точное изменение и куда пойдёт резервная копия, а удаление убирает только то, что добавил Lumo.",
    "id": "Tampilkan agen coding lain di pulau. Lumo menambahkan entrinya ke konfigurasi masing-masing agen: Anda melihat perubahan persisnya dan lokasi cadangan sebelum apa pun ditulis, dan mencopot pemasangan hanya menghapus yang ditambahkan Lumo."
+  },
+  "Show remaining usage in the chat": {
+   "zh-Hans": "在聊天中显示剩余用量",
+   "hi": "चैट में बचा हुआ उपयोग दिखाएं",
+   "es": "Mostrar el uso restante en el chat",
+   "ar": "إظهار الاستخدام المتبقي في الدردشة",
+   "fr": "Afficher l'utilisation restante dans le chat",
+   "bn": "চ্যাটে বাকি ব্যবহার দেখান",
+   "pt-BR": "Mostrar o uso restante no chat",
+   "ru": "Показывать оставшийся лимит в чате",
+   "id": "Tampilkan sisa penggunaan di obrolan"
+  },
+  "Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
+   "zh-Hans": "在聊天框上方模型名称旁边用一小行显示当前提供商还剩多少：Claude Code 显示你的 Claude 计划的 5 小时和每周限额（需要 {path} 中的中继），Anthropic 和 OpenAI 显示它们随每次回答返回的速率限制，OpenRouter 显示你的密钥额度（在打开聊天时和每次回答后向 OpenRouter 查询）。Google 和本地模型不显示任何内容。",
+   "hi": "चैट बॉक्स के ऊपर मॉडल के नाम के पास एक छोटी लाइन में दिखाता है कि इस्तेमाल हो रहे प्रोवाइडर में कितना बाकी है: Claude Code के लिए आपके Claude प्लान की 5 घंटे और साप्ताहिक सीमाएं ({path} वाले रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट लिमिट भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और हर जवाब के बाद OpenRouter से पूछे जाते हैं। Google या लोकल मॉडल के लिए कुछ नहीं दिखता।",
+   "es": "Muestra lo que le queda al proveedor en uso, en una pequeña línea junto al nombre del modelo encima del cuadro de chat: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y después de cada respuesta. No se muestra nada para Google ni para los modelos locales.",
+   "ar": "يعرض ما تبقى لدى المزوّد المستخدَم، في سطر صغير بجانب اسم النموذج فوق مربع الدردشة: حدود الـ 5 ساعات والحدود الأسبوعية لخطة Claude الخاصة بك مع Claude Code (مع المُرحِّل من {path})، وحدود المعدّل التي يعيدها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter الخاص بك، الذي يُطلب من OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
+   "fr": "Indique ce qu'il reste au fournisseur utilisé, dans une petite ligne à côté du nom du modèle au-dessus de la zone de chat : les limites sur 5 heures et à la semaine de votre forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de votre clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après chaque réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
+   "bn": "চ্যাট বক্সের উপরে মডেলের নামের পাশে একটি ছোট লাইনে দেখায় ব্যবহৃত প্রোভাইডারের কতটা বাকি আছে: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সাথে Anthropic ও OpenAI যে রেট লিমিট পাঠায়, এবং আপনার OpenRouter কী-এর ক্রেডিট, যা চ্যাট খোলার সময় ও প্রতিটি উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া হয়। Google বা লোকাল মডেলের জন্য কিছু দেখানো হয় না।",
+   "pt-BR": "Mostra o que resta ao provedor em uso, numa linha pequena ao lado do nome do modelo acima da caixa de chat: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e depois de cada resposta. Nada é mostrado para o Google nem para os modelos locais.",
+   "ru": "Показывает, сколько осталось у используемого провайдера, в небольшой строке рядом с названием модели над полем чата: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI возвращают с каждым ответом, и кредиты вашего ключа OpenRouter, которые запрашиваются у OpenRouter при открытии чата и после каждого ответа. Для Google и локальных моделей ничего не показывается.",
+   "id": "Menampilkan sisa milik penyedia yang dipakai, dalam satu baris kecil di samping nama model di atas kotak obrolan: batas 5 jam dan mingguan paket Claude Anda untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter Anda, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah setiap jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal."
   },
   "Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.": {
    "zh-Hans": "在岛的顶栏显示你的 Claude 套餐用量（5 小时和每周限额）。Lumo 会在 ~/.claude/settings.json 中添加一个状态栏中继。如果你已有状态栏，它会照常工作。仅限 Pro 和 Max 套餐。",
@@ -2354,6 +2442,17 @@
    "pt-BR": "Falta ao token o escopo necessário",
    "ru": "У токена нет нужной области доступа",
    "id": "Token tidak memiliki cakupan yang diperlukan"
+  },
+  "Tokens left: {n}": {
+   "zh-Hans": "剩余 token：{n}",
+   "hi": "बाकी टोकन: {n}",
+   "es": "Tokens restantes: {n}",
+   "ar": "الرموز المتبقية: {n}",
+   "fr": "Jetons restants : {n}",
+   "bn": "বাকি টোকেন: {n}",
+   "pt-BR": "Tokens restantes: {n}",
+   "ru": "Осталось токенов: {n}",
+   "id": "Sisa token: {n}"
   },
   "Total stars": {
    "zh-Hans": "星标总数",
@@ -2964,6 +3063,17 @@
    "pt-BR": "{keys} digita “{char}” no seu teclado, então não pode ser um atalho. Escolha outra tecla.",
    "ru": "{keys} вводит «{char}» на вашей клавиатуре, поэтому не может быть сочетанием. Выберите другую клавишу.",
    "id": "{keys} mengetik “{char}” di keyboard Anda, jadi tidak bisa menjadi pintasan. Pilih tombol lain."
+  },
+  "{label}: {pct}% left": {
+   "zh-Hans": "{label}：剩余 {pct}%",
+   "hi": "{label}: {pct}% बाकी",
+   "es": "{label}: queda un {pct}%",
+   "ar": "{label}: يتبقى {pct}%",
+   "fr": "{label} : {pct} % restants",
+   "bn": "{label}: {pct}% বাকি",
+   "pt-BR": "{label}: {pct}% restantes",
+   "ru": "{label}: осталось {pct}%",
+   "id": "{label}: sisa {pct}%"
   },
   "{model} isn't installed. Pick another model above the chat box.": {
    "zh-Hans": "{model} 未安装。请在聊天框上方选择其他模型。",

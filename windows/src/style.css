@@ -1449,6 +1449,33 @@ input[type="range"]::-webkit-slider-thumb {
   color: #7b8089;
 }
 
+/* What the provider has left: quiet, next to the model button. */
+.chat-usage {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 6px 0 auto;
+  padding: 4px 0;
+  border: 0;
+  background: none;
+  color: #5c6370;
+  font: 500 10px var(--font);
+  cursor: default;
+}
+
+.chat-usage-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.chat-usage.setup:hover {
+  color: #8b929e;
+}
+
 .picker {
   display: none;
   flex: 1 1 auto;

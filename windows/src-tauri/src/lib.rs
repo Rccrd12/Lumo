@@ -4,6 +4,7 @@ mod agent_hooks;
 mod agents;
 mod autostart;
 mod chat;
+mod chat_usage;
 mod claude;
 mod claude_code;
 mod codex_plan;
@@ -561,6 +562,20 @@ async fn chat_models(shared: State<'_, Shared>, provider: String) -> Result<Vec<
     chat::models(&settings, &provider).await
 }
 
+/// The OpenRouter key's credits, for the line next to the chat's model picker.
+/// Asked only while "Show remaining usage in the chat" is on, OpenRouter is
+/// the chat's provider and has a key; the island asks when the chat opens and
+/// after an answer. Anthropic and OpenAI need no call: their numbers come with
+/// each answer (`chat-usage`).
+#[tauri::command]
+async fn chat_usage(shared: State<'_, Shared>) -> Result<Option<chat_usage::ChatUsage>, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    if !settings.chat_show_usage || settings.chat_provider != "openrouter" {
+        return Ok(None);
+    }
+    chat_usage::openrouter().await
+}
+
 /// Settings → Local models → Connect: does the server answer, and with which models?
 #[tauri::command]
 async fn local_connect(provider: String, url: String) -> Result<local_chat::Connected, String> {
@@ -879,6 +894,7 @@ pub fn run() {
             log_line,
             chat_send,
             chat_models,
+            chat_usage,
             local_connect,
             local_set_key,
             chat_reset,

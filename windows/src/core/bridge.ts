@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
+import type { ChatUsage } from "./chat-usage";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 
 /**
@@ -234,6 +235,12 @@ export const Bridge = {
    * the provider only when it has a key (or a server address).
    */
   chatModels: (provider: string) => callOrThrow<ModelInfo[]>("chat_models", { provider }),
+  /**
+   * The OpenRouter key's credits, for the chat's usage line. Rust asks
+   * OpenRouter only while the option is on, OpenRouter is the chat's provider
+   * and it has a key; null otherwise or on any failure.
+   */
+  chatUsage: () => call<ChatUsage | null>("chat_usage"),
   /** Settings → Local models → Connect: does the server answer, and with which models? */
   /** The custom server's key, bound to the address it is entered for. */
   localSetKey: (url: string, key: string) => call<void>("local_set_key", { url, key }),

@@ -172,6 +172,8 @@ export interface Settings {
   chatModels: Record<string, string>;
   /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
   chatEffort: string;
+  /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
+  chatShowUsage: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -232,6 +234,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",
+  chatShowUsage: false,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

@@ -12,6 +12,7 @@ use reqwest::Url;
 use serde_json::{json, Value};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
+use crate::chat_usage::{self, ChatUsage};
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
 
@@ -77,7 +78,7 @@ const MAX_INLINE_TEXT: u64 = 200_000;
 /// Images are sent inline as data URLs; past this size they are skipped.
 const MAX_IMAGE: u64 = 5_000_000;
 
-fn url(p: &Provider, tail: &str) -> Result<Url, String> {
+pub(crate) fn url(p: &Provider, tail: &str) -> Result<Url, String> {
     let base = Url::parse(p.base_url).map_err(|e| e.to_string())?;
     Url::parse(&net::join(&base, tail)).map_err(|e| e.to_string())
 }
@@ -173,7 +174,8 @@ fn status_error(p: &Provider, status: u16, detail: &str) -> String {
     }
 }
 
-/// One chat turn with a cloud provider.
+/// One chat turn with a cloud provider. For OpenAI, `usage` gets the rate
+/// limits the answer came back with (chat_usage.rs).
 pub async fn send(
     chat: &Chat,
     p: &'static Provider,
@@ -181,6 +183,7 @@ pub async fn send(
     query: String,
     context: Option<ChatContext>,
     images: &[String],
+    usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
     let key = secrets::get(p.key).ok_or_else(|| tf("{name} API key missing. Add it in Settings.", &[("name", p.name)]))?;
     if model.is_empty() {
@@ -198,6 +201,9 @@ pub async fn send(
         .send()
         .await
         .map_err(|e| tf("Network error: {error}", &[("error", &e.to_string())]))?;
+    if p.id == "openai" {
+        *usage = chat_usage::from_openai(response.headers(), chat_usage::now_ms());
+    }
     let status = response.status();
     if !status.is_success() {
         let body = net::read_capped(response, net::MAX_ERROR_BODY).await.unwrap_or_default();

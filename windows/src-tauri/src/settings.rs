@@ -69,6 +69,11 @@ pub struct Settings {
     /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
+    /// A quiet line next to the chat's model picker with what the provider has
+    /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits
+    /// Anthropic and OpenAI answer with, OpenRouter's key credits. Off until
+    /// the user turns it on, so the chat stays as it shipped.
+    pub chat_show_usage: bool,
     /// Addresses of the model servers once connected; empty means not connected.
     pub ollama_url: String,
     pub lmstudio_url: String,
@@ -156,6 +161,7 @@ impl Default for Settings {
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
+            chat_show_usage: false,
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
@@ -444,6 +450,7 @@ mod tests {
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
+  "chatShowUsage": true,
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
@@ -858,6 +865,7 @@ mod tests {
                 "chatProvider",
                 "chatModels",
                 "chatEffort",
+                "chatShowUsage",
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",
