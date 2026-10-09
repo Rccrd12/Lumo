@@ -1,6 +1,6 @@
 [package]
 name = "coucou"
-description = "Lumo for Windows and Linux — a small glowing firefly at the top of your screen"
+description = "Lumo for Windows and Linux — a small ring of light at the top of your screen"
 authors = ["Louis Raille", "Riccardo Gentili"]
 version.workspace = true
 edition.workspace = true

@@ -125,7 +125,7 @@ jobs:
         run: |
           $v = "${{ steps.pack.outputs.version }}"
           $notes = @"
-          Lumo for Windows $v — a small glowing firefly at the top of your screen (formerly Coucou).
+          Lumo for Windows $v — a small ring of light at the top of your screen (formerly Coucou).
 
           Download ``Lumo-Windows-$v.msi`` (Windows Installer) or ``Lumo-Windows-$v-setup.exe`` and run it. The installer is not
           code-signed yet, so Windows SmartScreen shows a warning: click

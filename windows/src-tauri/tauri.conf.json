@@ -52,7 +52,7 @@
     "copyright": "© 2026 Louis Raillé, Riccardo Gentili",
     "category": "DeveloperTool",
     "shortDescription": "Lumo lives at the top of your screen",
-    "longDescription": "Lumo, a small glowing firefly, lives at the top of your screen: it shows your Claude Code sessions and a few integrations, and lets you approve, answer, chat and drop files without leaving what you are doing.",
+    "longDescription": "Lumo, a small ring of light, lives at the top of your screen: it shows your Claude Code sessions and a few integrations, and lets you approve, answer, chat and drop files without leaving what you are doing.",
     "windows": {
       "wix": {
         "upgradeCode": "664695e2-338f-541b-8d41-6266d176533c"
