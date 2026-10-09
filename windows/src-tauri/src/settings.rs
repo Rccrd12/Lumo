@@ -50,6 +50,9 @@ pub struct Settings {
     pub compact_activity: bool,
     /// The closed island shows the music playing, with its buttons (media.rs).
     pub compact_media: bool,
+    /// The live activities beside the open island; false while it is folded
+    /// into its icon in the island's top bar. The window makes room for it.
+    pub activities_panel: bool,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -195,6 +198,7 @@ impl Default for Settings {
             island_auto_hide: false,
             compact_activity: true,
             compact_media: true,
+            activities_panel: true,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -496,6 +500,7 @@ mod tests {
   "islandAutoHide": true,
   "compactActivity": false,
   "compactMedia": false,
+  "activitiesPanel": false,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -948,6 +953,7 @@ mod tests {
                 "islandAutoHide",
                 "compactActivity",
                 "compactMedia",
+                "activitiesPanel",
                 "autostart",
                 "hooksInstalled",
                 "model",

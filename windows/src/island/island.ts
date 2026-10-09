@@ -25,6 +25,7 @@ import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../vie
 import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
 import { CompactStrip } from "./compact";
+import { ACTIVITIES_GAP, ACTIVITIES_W, ActivitiesPanel, Calendar } from "./activities";
 import { setCompactNewsHandler } from "../core/compact";
 import type { MailMessage } from "../core/bridge";
 import { refreshHookPills } from "./integrations";
@@ -66,6 +67,11 @@ const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"
 /** Seconds between the drop and the moment the progress bar starts filling. */
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
 
+/** The live activities' height when the window has room for it. */
+const ACTIVITIES_TALL = 400;
+/** Views the live activities stay away from: the greeting, Settings, the wardrobe, a drop. */
+const NO_ACTIVITIES: ReadonlySet<IslandViewName> = new Set(["greeting", "settings", "wardrobe", "upload", "uploading", "choose"]);
+
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
 
 export class Island {
@@ -84,6 +90,8 @@ export class Island {
   private countdown!: HTMLElement;
   /** What the closed island says next to Lumo (island/compact.ts). */
   private compact!: CompactStrip;
+  /** The live activities beside the open island (island/activities.ts). */
+  private activities!: ActivitiesPanel;
   private wakeStrip!: HTMLElement;
   /** Grips on the island's free edges and corners: dragging them resizes it. */
   private grips: { el: HTMLElement; grip: Grip }[] = [];
@@ -305,6 +313,7 @@ export class Island {
         this.engine.triggerEmote("happy");
         State.notify();
       },
+      showActivities: () => this.activities.unfold(),
       previewLook: (look) => {
         State.lookPreview = look;
         State.notify();
@@ -366,7 +375,29 @@ export class Island {
     this.greetingCanvas.style.width = `${EXPANDED_W}px`;
     this.greetingCanvas.style.height = "150px";
 
-    this.root.append(this.wakeStrip, this.islandEl);
+    this.activities = new ActivitiesPanel({
+      openChat: () => {
+        this.setView("prompt");
+        this.takeKeyboard();
+      },
+      openSettings: () => void Bridge.openSettingsWindow(),
+      iconPoint: () => {
+        // Right of the "+": where the folded icon sits (or will).
+        const plus = this.header.el.querySelector(".tab-drop");
+        if (!plus) return null;
+        const r = plus.getBoundingClientRect();
+        return { x: r.right + 4 + r.width / 2, y: r.top + r.height / 2 };
+      },
+      setOpen: (open) => {
+        State.settings = { ...State.settings, activitiesPanel: open };
+        void Bridge.saveSettings(State.settings);
+        State.notify();
+      },
+      changed: () => State.notify(),
+    });
+    Calendar.start();
+
+    this.root.append(this.wakeStrip, this.activities.el, this.islandEl);
     this.applyGeometry();
   }
 
@@ -784,10 +815,12 @@ export class Island {
     this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
+    const beside = this.activitiesPlace();
+    this.activities.place(beside.show, beside.x, beside.y, beside.h);
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
 
-    const rect = this.islandRect();
+    const rect = this.hitRect();
     const p = this.pushedRect;
     if (
       Math.abs(p.x - rect.x) > 0.5 || Math.abs(p.y - rect.y) > 0.5 ||
@@ -796,6 +829,30 @@ export class Island {
       this.pushedRect = rect;
       void Bridge.setIslandRect(rect.x, rect.y, rect.w, rect.h);
     }
+  }
+
+  /** Whether the live activities show beside the open island, and where. */
+  private activitiesPlace(): { show: boolean; x: number; y: number; h: number } {
+    const at = this.islandRect();
+    const x = at.x - ACTIVITIES_GAP - ACTIVITIES_W;
+    const show = State.mode === "expanded" && !isUpright(this.dock) && State.settings.activitiesPanel !== false &&
+      !NO_ACTIVITIES.has(State.view) && x >= 0 && at.h >= 120;
+    // As tall as the island, or taller when the window has the room: its
+    // cards need more than a short view gives them.
+    const bottom = this.dock === "bottom";
+    const room = bottom ? at.y + at.h - 10 : window.innerHeight - at.y - 14;
+    const h = Math.max(at.h, Math.min(ACTIVITIES_TALL, room));
+    return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
+  }
+
+  /** What takes the mouse: the island, and the live activities beside it. */
+  private hitRect(): { x: number; y: number; w: number; h: number } {
+    const rect = this.islandRect();
+    if (!this.activities?.isVisible) return rect;
+    const beside = this.activitiesPlace();
+    const y = Math.min(rect.y, beside.y);
+    const bottom = Math.max(rect.y + rect.h, beside.y + beside.h);
+    return { x: beside.x, y, w: rect.x + rect.w - beside.x, h: bottom - y };
   }
 
   /**
@@ -1079,9 +1136,10 @@ export class Island {
       UploadSeq.updateCursor(State.mouseInIsland.x, State.mouseInIsland.y);
     }
 
+    const hit = this.hitRect();
     const inIsland =
-      x >= rect.x - HIT_MARGIN && x <= rect.x + rect.w + HIT_MARGIN &&
-      y >= rect.y - HIT_MARGIN && y <= rect.y + rect.h + HIT_MARGIN;
+      x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
+      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN;
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1414,7 +1472,11 @@ export class Island {
     // What the closed island says next to Lumo. Standing upright on a side
     // there is no room for it. A change of what it shows resizes the island.
     const compactOn = State.mode === "compact" && !isUpright(this.dock);
-    if (this.compact.sync(compactOn) && State.mode === "compact") this.animateGeometry(this.compact.size == null);
+    State.activitiesRoom = !isUpright(this.dock);
+    if (this.compact.sync(compactOn, compactOn || this.activities.isVisible) && State.mode === "compact") {
+      this.animateGeometry(this.compact.size == null);
+    }
+    this.activities.sync();
 
     // The compact island shows Lumo alone: the other pills' mini Lumos are
     // only in the open island.

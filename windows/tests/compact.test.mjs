@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CompactFeed, MAIL_PEEK_MS, NOTICE_MS, activityLine, parseDuration, speakerName, timerLeft,
+  CompactFeed, MAIL_PEEK_MS, NOTICE_MS, activityLine, parseDuration, speakerName, takeTimers, timerLeft,
 } from "../src/core/compact.ts";
 import { COMPACT_SIZES, islandSize } from "../src/core/layout.ts";
 
@@ -115,4 +115,16 @@ test("the closed island grows for what it says, only on the top and bottom", () 
   assert.deepEqual(islandSize("compact", "overview", 0, undefined, "left", "mail"), { w: 32, h: 288 });
   // The open island is not touched by it.
   assert.deepEqual(islandSize("expanded", "overview", 0, undefined, "top", "mail"), islandSize("expanded", "overview"));
+});
+
+test("a chat answer sets timers with a line Lumo hides", () => {
+  assert.deepEqual(takeTimers("Done, 10 minutes for the pasta!\n[[timer 10m: pasta]]"), {
+    text: "Done, 10 minutes for the pasta!",
+    timers: [{ ms: 600_000, label: "pasta" }],
+  });
+  assert.deepEqual(takeTimers("[[timer 1h30m]]\nSet.").timers, [{ ms: 5_400_000, label: "" }]);
+  assert.equal(takeTimers("[[timer soon: x]] ok").timers.length, 0);
+  // Still being written: hidden, not started.
+  assert.deepEqual(takeTimers("Setting it\n[[tim"), { text: "Setting it", timers: [] });
+  assert.equal(takeTimers("No timer [here] at all").text, "No timer [here] at all");
 });

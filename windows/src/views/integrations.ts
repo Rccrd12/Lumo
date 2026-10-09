@@ -155,7 +155,7 @@ function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
       task.id === "integration_claude" ? "VS Code" : task.name,
       t(def?.subtitle ?? N_("Integration")),
     ),
-    h("div", { class: "int-status" }, dot(status.color, 5), h("span", { text: status.label })),
+    h("div", { class: "int-status" }, dot(status.color, 5), h("span", { class: "int-status-label", text: status.label, title: status.label })),
     actions,
   );
 }

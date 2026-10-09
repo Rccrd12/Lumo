@@ -7,6 +7,7 @@
 // pollers; island/compact.ts draws what `shown` picks.
 
 import { N_, t } from "../i18n/i18n";
+import { eventSoon, type CalEvent } from "./calendar";
 
 /** One line of text, in a colour. */
 export interface CompactLine {
@@ -77,6 +78,8 @@ export const COMPACT_TEXT = {
   failed: N_("{helper} ran into a problem"),
   finished: N_("{helper} finished"),
   timerDone: N_("Time's up"),
+  inMinutes: N_("in {n} min"),
+  now: N_("now"),
   timer: N_("Timer"),
 };
 
@@ -180,6 +183,8 @@ export class CompactFeed {
   private seenMail = new Set<string>();
   timers: TimerActivity[] = [];
   media: MediaActivity | null = null;
+  /** The calendar's coming events (island/activities.ts), for "in 5 min". */
+  events: CalEvent[] = [];
   private nextTimer = 1;
 
   /** A note for a few seconds, after the ones already waiting. */
@@ -259,6 +264,8 @@ export class CompactFeed {
     const notice = show.notes ? this.currentNotice(now) : null;
     if (notice) return { kind: "line", line: { text: notice.text, color: notice.color }, notice: true };
     if (activity && show.notes) return { kind: "line", line: activity, notice: false };
+    const soon = show.notes ? eventSoon(this.events, now) : null;
+    if (soon) return { kind: "line", line: { text: `${soon.title} · ${soonWords(soon.start, now)}`, color: CALENDAR_COLOR }, notice: false };
     const timer = this.timers.find((x) => x.endsAt > now);
     if (timer) return { kind: "timer", timer };
     if (show.media && this.media && (this.media.title || this.media.artist)) return { kind: "media", media: this.media };
@@ -278,9 +285,21 @@ export class CompactFeed {
     if (notice) times.push(notice.until);
     const timer = this.timers[0];
     if (timer) times.push(timer.endsAt);
+    // An event about to start: its minutes count down; a later one comes in 15 minutes before.
+    if (eventSoon(this.events, now)) times.push(now + 60_000 - (now % 60_000));
+    const upcoming = this.events.find((e) => !e.allDay && e.start - 15 * 60_000 > now);
+    if (upcoming) times.push(upcoming.start - 15 * 60_000);
     const next = times.filter((x) => x > now);
     return next.length ? Math.min(...next) : null;
   }
+}
+
+const CALENDAR_COLOR = "#4285F4";
+
+/** "in 5 min", or "now" once it has started. */
+function soonWords(start: number, now: number): string {
+  const min = Math.ceil((start - now) / 60_000);
+  return min <= 0 ? t(COMPACT_TEXT.now) : t(COMPACT_TEXT.inMinutes, { n: min });
 }
 
 /** "4:05" or "1:02:05" for what is left of a timer. */
@@ -354,4 +373,20 @@ export function compactTimer(ms: number, label: string): TimerActivity {
   const timer = Feed.startTimer(ms, label, Date.now());
   onNews?.();
   return timer;
+}
+
+/**
+ * The timers a chat answer asked for (`[[timer 10m: pasta]]`, chat.rs
+ * timer_note), and the answer without those lines. A marker still being
+ * written (`[[tim…`) is hidden too, so it never flashes up while streaming.
+ */
+export function takeTimers(text: string): { text: string; timers: { ms: number; label: string }[] } {
+  const timers: { ms: number; label: string }[] = [];
+  let out = text.replace(/[ \t]*\[\[\s*timer\s+([^\]:]+?)\s*(?::\s*([^\]]*?))?\s*\]\][ \t]*\n?/gi, (_all, length: string, label?: string) => {
+    const ms = parseDuration(length);
+    if (ms != null) timers.push({ ms, label: (label ?? "").trim() });
+    return "";
+  });
+  out = out.replace(/\[\[[^\]]*$/, "");
+  return { text: out.replace(/\n{3,}/g, "\n\n").trim(), timers };
 }

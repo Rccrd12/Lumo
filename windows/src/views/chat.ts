@@ -58,7 +58,7 @@ import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } 
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
-import { COMPACT_TEXT, compactNotice, compactTimer, parseDuration, speakerName } from "../core/compact";
+import { COMPACT_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -1245,7 +1245,7 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    renderMarkdown(live, text);
+    renderMarkdown(live, takeTimers(text).text);
     log.scrollTop = log.scrollHeight;
   });
 
@@ -1328,11 +1328,14 @@ export function buildPrompt(
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
+      // A timer the answer asked for starts now; its line is not shown.
+      const answered = takeTimers(reply.text);
+      for (const timer of answered.timers) compactTimer(timer.ms, timer.label);
       if (recorded) {
         State.chatHistory.push({
           id: nextId++,
           role: "assistant",
-          content: reply.text,
+          content: answered.text,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
         });

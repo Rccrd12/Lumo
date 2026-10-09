@@ -304,6 +304,16 @@ impl Chat {
 
 // ── System prompt ─────────────────────────────────────────────────────────────
 
+/// How any model sets a timer on the island: Lumo starts it from that line and
+/// hides it (src/core/compact.ts takeTimers). Plain words only: it also goes
+/// on Claude Code's command line.
+macro_rules! timer_note {
+    () => {
+        "Lumo can show a timer on the island. When the user asks for a timer or to be reminded in some time, write on a line of its own [[timer 10m: what it is for]], with the length as 90s, 10m or 1h30m, and say in a few words that it is set; Lumo starts it and hides that line. Only when they ask for one."
+    };
+}
+pub(crate) use timer_note;
+
 /// Mochi's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the
 /// provider runs it (Claude).
@@ -324,7 +334,8 @@ fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
     format!(
         "{opening} {abilities} \
 Respond in the user's language. Be thorough and complete — use as much detail as the task requires. \
-Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small."
+Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. {}",
+        timer_note!()
     )
 }
 

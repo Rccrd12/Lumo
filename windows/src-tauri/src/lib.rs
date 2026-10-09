@@ -4,6 +4,7 @@ mod agent_hooks;
 mod agents;
 mod antigravity_cli;
 mod autostart;
+mod calendar;
 mod chat;
 mod chat_usage;
 mod claude;
@@ -102,7 +103,9 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     let (screen_changed, autostart_changed, shortcuts_changed) = {
         let mut current = shared.settings.lock().unwrap();
-        let screen_changed = current.screen != settings.screen || current.island_zoom != settings.island_zoom;
+        let screen_changed = current.screen != settings.screen
+            || current.island_zoom != settings.island_zoom
+            || current.activities_panel != settings.activities_panel;
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         // Where Mochi sits on the desktop is desktop.rs's to say, not a webview's.
@@ -749,6 +752,13 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     }
     let before = (key == "github-token").then(|| secrets::get(&key));
     secrets::set(&key, &value)?;
+    if key.starts_with("mail-") {
+        mail::keys_changed();
+    }
+    // The live activities fetch the new calendar at once.
+    if key == calendar::URL_KEY {
+        let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
+    }
     if let Some(before) = before {
         if secrets::get(&key) != before {
             integrations::github_token_changed(&app);
@@ -983,6 +993,7 @@ pub fn run() {
             live::live_microphone,
             typing::live_type,
             media::media_now,
+            calendar::calendar_fetch,
             media::media_control,
             live::live_point,
             pointer::live_point_hide,

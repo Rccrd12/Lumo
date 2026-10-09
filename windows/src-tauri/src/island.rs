@@ -122,6 +122,9 @@ pub struct Placement {
     /// view's own), in page pixels.
     pub width: f64,
     pub height: f64,
+    /// The live activities show beside the open island (on the top and
+    /// bottom edges): the window is wider by their room on each side.
+    pub activities: bool,
 }
 
 impl Placement {
@@ -134,6 +137,7 @@ impl Placement {
             float: if platform::CURSOR_POLL { s.island_float.max(0.0) } else { 0.0 },
             width: s.island_width,
             height: s.island_height,
+            activities: s.activities_panel,
         }
     }
 }
@@ -148,6 +152,9 @@ const MAX_HEIGHT: f64 = 640.0;
 /// Room the window keeps around the island, for the hit margin and Mochi's glow.
 const SIDE_ROOM: f64 = PANEL_W - DEFAULT_WIDTH;
 const BOTTOM_ROOM: f64 = 20.0;
+/// The live activities' width and their gap from the island (src/core/layout.ts
+/// ACTIVITIES_W, ACTIVITIES_GAP), on both sides so the island stays centred.
+const ACTIVITIES_ROOM: f64 = 2.0 * (264.0 + 12.0);
 /// The window grows in steps of this much, so a resize does not resize it at every pixel.
 const PANEL_STEP: f64 = 40.0;
 
@@ -169,8 +176,9 @@ fn finite(v: f64) -> f64 {
 fn panel_size(p: Placement) -> (f64, f64) {
     let up = |v: f64| (v / PANEL_STEP).ceil() * PANEL_STEP;
     let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + EDGE_GAP };
+    let beside = if p.activities && !p.dock.upright() { ACTIVITIES_ROOM } else { 0.0 };
     (
-        PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM)),
+        PANEL_W.max(up(clamp_width(p.width) + SIDE_ROOM + beside)),
         PANEL_H.max(up(clamp_height(p.height) + ends)),
     )
 }
@@ -929,7 +937,7 @@ mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
-    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0 };
+    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: false };
 
     #[test]
     fn home_is_the_top_centre_and_the_zoom_grows_the_window() {
@@ -1048,6 +1056,9 @@ mod placement_tests {
         assert_eq!(frame(FHD, 1.0, Placement { height: 500.0, dock: Dock::Left, ..HOME }, false), (0, 240, 720, 600));
         // Nothing narrower than the panel, and never more than the display.
         assert_eq!(frame(FHD, 1.0, Placement { width: 100.0, ..HOME }, false).2, 720);
+        // The live activities beside it: room on both sides, the island still centred.
+        assert_eq!(frame(FHD, 1.0, Placement { activities: true, ..HOME }, false), (320, 0, 1280, 480));
+        assert_eq!(frame(FHD, 1.0, Placement { activities: true, dock: Dock::Left, ..HOME }, false).2, 720);
         assert_eq!(frame(FHD, 1.6, Placement { width: 1200.0, height: 640.0, ..HOME }, false), (0, 0, 1920, 1080));
         assert_eq!(frame(FHD, 1.0, Placement { width: f64::NAN, height: f64::NAN, offset: f64::NAN, ..HOME }, false), (600, 0, 720, 480));
     }

@@ -106,7 +106,7 @@ export class CompactStrip {
   }
 
   /** Works out what to show; true when the island's size has to change. */
-  sync(visible: boolean): boolean {
+  sync(visible: boolean, mediaWanted = visible): boolean {
     this.visible = visible;
     this.el.classList.toggle("shown", visible);
     const now = Date.now();
@@ -119,7 +119,7 @@ export class CompactStrip {
     this.shown = Feed.shown(show.notes ? this.activity() : null, now, show);
     this.draw(now);
     this.schedule();
-    this.pollMedia(visible && show.media);
+    this.pollMedia(mediaWanted && (show.media || !visible));
     return this.size !== before;
   }
 

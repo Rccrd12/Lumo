@@ -331,6 +331,8 @@ export const Bridge = {
   mediaNow: () => call<MediaActivity | null>("media_now"),
   /** Play/pause, next or previous on that player. */
   mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
+  /** The live activities' calendar file (calendar.rs), or null when no address is set. */
+  calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
 
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
   /** Asks GitHub for the newest Windows release and compares it with this build. */

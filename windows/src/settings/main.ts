@@ -1388,7 +1388,48 @@ function behaviourRows(): HTMLElement[] {
       toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); }),
       h("span", { class: "hint", text: t("with play, pause and skip, when nothing else is showing") }),
     ),
+    h("div", { class: "row" },
+      h("label", { text: t("Live Activities") }),
+      toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); }),
+      h("span", { class: "hint", text: t("beside the open island: timers, the music, the calendar and the newest emails") }),
+    ),
+    calendarRow(),
   ];
+}
+
+/** The live activities' calendar: its iCal address, kept in the credential store (calendar.rs). */
+function calendarRow(): HTMLElement {
+  const key = "calendar-ics-url";
+  const input = h("input", {
+    type: "password",
+    placeholder: "https://calendar.google.com/calendar/ical/…/basic.ics",
+    autocomplete: "off",
+    spellcheck: "false",
+    style: "flex:1 1 auto;min-width:0",
+  }) as HTMLInputElement;
+  const dotEl = statusDot(false);
+  void Bridge.secretPresent(key).then((on) => {
+    if (on) {
+      input.placeholder = CHAT_STRINGS.stored;
+      dotEl.style.background = "#22c55e";
+    }
+  });
+  const saveBtn = h("button", { text: t("Save") });
+  saveBtn.addEventListener("click", async () => {
+    const value = input.value.trim();
+    try {
+      await Bridge.secretSet(key, value);
+      input.value = "";
+      input.placeholder = value ? CHAT_STRINGS.stored : "https://calendar.google.com/calendar/ical/…/basic.ics";
+      dotEl.style.background = value ? "#22c55e" : "#f4505e";
+    } catch {
+      dotEl.style.background = "#f5a524";
+    }
+  });
+  return h("div", { style: "display:flex;flex-direction:column;gap:4px" },
+    h("div", { class: "row" }, h("label", { text: t("Calendar") }), input, saveBtn, dotEl),
+    h("div", { class: "hint", text: t("The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.", { store: KEY_STORE }) }),
+  );
 }
 
 /**

@@ -5934,6 +5934,237 @@
    "pt-BR": "{server} recusou o login: {error}",
    "ru": "{server} отказал во входе: {error}",
    "id": "{server} menolak masuk: {error}"
+  },
+  "in {n} min": {
+   "zh-Hans": "{n} 分钟后",
+   "hi": "{n} मिनट में",
+   "es": "en {n} min",
+   "ar": "بعد {n} د",
+   "fr": "dans {n} min",
+   "bn": "{n} মিনিটে",
+   "pt-BR": "em {n} min",
+   "ru": "через {n} мин",
+   "id": "dalam {n} mnt"
+  },
+  "now": {
+   "zh-Hans": "现在",
+   "hi": "अभी",
+   "es": "ahora",
+   "ar": "الآن",
+   "fr": "maintenant",
+   "bn": "এখন",
+   "pt-BR": "agora",
+   "ru": "сейчас",
+   "id": "sekarang"
+  },
+  "Live Activities": {
+   "zh-Hans": "实时活动",
+   "hi": "लाइव गतिविधियाँ",
+   "es": "Actividades en vivo",
+   "ar": "الأنشطة المباشرة",
+   "fr": "Activités en direct",
+   "bn": "লাইভ কার্যকলাপ",
+   "pt-BR": "Atividades ao vivo",
+   "ru": "Live-активности",
+   "id": "Aktivitas Langsung"
+  },
+  "Minimize": {
+   "zh-Hans": "最小化",
+   "hi": "छोटा करें",
+   "es": "Minimizar",
+   "ar": "تصغير",
+   "fr": "Réduire",
+   "bn": "ছোট করুন",
+   "pt-BR": "Minimizar",
+   "ru": "Свернуть",
+   "id": "Perkecil"
+  },
+  "Start": {
+   "zh-Hans": "开始",
+   "hi": "शुरू करें",
+   "es": "Iniciar",
+   "ar": "ابدأ",
+   "fr": "Lancer",
+   "bn": "শুরু",
+   "pt-BR": "Iniciar",
+   "ru": "Старт",
+   "id": "Mulai"
+  },
+  "15m pasta": {
+   "zh-Hans": "15m 面条",
+   "hi": "15m पास्ता",
+   "es": "15m pasta",
+   "ar": "15m معكرونة",
+   "fr": "15m pâtes",
+   "bn": "15m পাস্তা",
+   "pt-BR": "15m macarrão",
+   "ru": "15m паста",
+   "id": "15m pasta"
+  },
+  "Music": {
+   "zh-Hans": "音乐",
+   "hi": "संगीत",
+   "es": "Música",
+   "ar": "الموسيقى",
+   "fr": "Musique",
+   "bn": "গান",
+   "pt-BR": "Música",
+   "ru": "Музыка",
+   "id": "Musik"
+  },
+  "Nothing playing": {
+   "zh-Hans": "没有在播放",
+   "hi": "कुछ नहीं चल रहा",
+   "es": "No se reproduce nada",
+   "ar": "لا شيء قيد التشغيل",
+   "fr": "Rien en lecture",
+   "bn": "কিছু চলছে না",
+   "pt-BR": "Nada tocando",
+   "ru": "Ничего не играет",
+   "id": "Tidak ada yang diputar"
+  },
+  "Calendar": {
+   "zh-Hans": "日历",
+   "hi": "कैलेंडर",
+   "es": "Calendario",
+   "ar": "التقويم",
+   "fr": "Calendrier",
+   "bn": "ক্যালেন্ডার",
+   "pt-BR": "Calendário",
+   "ru": "Календарь",
+   "id": "Kalender"
+  },
+  "Nothing in the next days": {
+   "zh-Hans": "接下来几天没有安排",
+   "hi": "अगले दिनों में कुछ नहीं",
+   "es": "Nada en los próximos días",
+   "ar": "لا شيء في الأيام القادمة",
+   "fr": "Rien les prochains jours",
+   "bn": "পরের কয়েক দিনে কিছু নেই",
+   "pt-BR": "Nada nos próximos dias",
+   "ru": "Ничего в ближайшие дни",
+   "id": "Tidak ada dalam beberapa hari ke depan"
+  },
+  "Paste your calendar's iCal address in Settings → Island to see what's next.": {
+   "zh-Hans": "在“设置 → 岛”中粘贴日历的 iCal 地址，即可查看接下来的安排。",
+   "hi": "आगे क्या है देखने के लिए सेटिंग्स → आइलैंड में अपने कैलेंडर का iCal पता चिपकाएँ।",
+   "es": "Pega la dirección iCal de tu calendario en Ajustes → Isla para ver lo que viene.",
+   "ar": "الصق عنوان iCal لتقويمك في الإعدادات ← الجزيرة لترى ما هو قادم.",
+   "fr": "Colle l'adresse iCal de ton calendrier dans Réglages → Île pour voir ce qui arrive.",
+   "bn": "সামনে কী আছে দেখতে সেটিংস → আইল্যান্ডে আপনার ক্যালেন্ডারের iCal ঠিকানা পেস্ট করুন।",
+   "pt-BR": "Cole o endereço iCal da sua agenda em Configurações → Ilha para ver o que vem por aí.",
+   "ru": "Вставьте iCal-адрес календаря в Настройки → Остров, чтобы видеть, что впереди.",
+   "id": "Tempel alamat iCal kalendermu di Pengaturan → Pulau untuk melihat yang akan datang."
+  },
+  "Turn on the Email pill in Settings to see new emails here.": {
+   "zh-Hans": "在设置中打开“电子邮件”胶囊，即可在此看到新邮件。",
+   "hi": "यहाँ नए ईमेल देखने के लिए सेटिंग्स में ईमेल पिल चालू करें।",
+   "es": "Activa la píldora Correo en Ajustes para ver aquí los correos nuevos.",
+   "ar": "فعّل حبة البريد الإلكتروني في الإعدادات لترى الرسائل الجديدة هنا.",
+   "fr": "Active la pastille E-mail dans les Réglages pour voir les nouveaux e-mails ici.",
+   "bn": "এখানে নতুন ইমেল দেখতে সেটিংসে ইমেল পিল চালু করুন।",
+   "pt-BR": "Ative a pílula E-mail nas Configurações para ver os e-mails novos aqui.",
+   "ru": "Включите плашку «Почта» в настройках, чтобы видеть здесь новые письма.",
+   "id": "Aktifkan pil Email di Pengaturan untuk melihat email baru di sini."
+  },
+  "Today": {
+   "zh-Hans": "今天",
+   "hi": "आज",
+   "es": "Hoy",
+   "ar": "اليوم",
+   "fr": "Aujourd'hui",
+   "bn": "আজ",
+   "pt-BR": "Hoje",
+   "ru": "Сегодня",
+   "id": "Hari ini"
+  },
+  "Tomorrow": {
+   "zh-Hans": "明天",
+   "hi": "कल",
+   "es": "Mañana",
+   "ar": "غدًا",
+   "fr": "Demain",
+   "bn": "আগামীকাল",
+   "pt-BR": "Amanhã",
+   "ru": "Завтра",
+   "id": "Besok"
+  },
+  "All day": {
+   "zh-Hans": "全天",
+   "hi": "पूरे दिन",
+   "es": "Todo el día",
+   "ar": "طوال اليوم",
+   "fr": "Toute la journée",
+   "bn": "সারাদিন",
+   "pt-BR": "Dia todo",
+   "ru": "Весь день",
+   "id": "Sepanjang hari"
+  },
+  "beside the open island: timers, the music, the calendar and the newest emails": {
+   "zh-Hans": "在展开的岛旁边：计时器、音乐、日历和最新邮件",
+   "hi": "खुले आइलैंड के बगल में: टाइमर, संगीत, कैलेंडर और नए ईमेल",
+   "es": "junto a la isla abierta: temporizadores, la música, el calendario y los correos más recientes",
+   "ar": "بجانب الجزيرة المفتوحة: المؤقتات والموسيقى والتقويم وأحدث الرسائل",
+   "fr": "à côté de l'île ouverte : minuteurs, musique, calendrier et derniers e-mails",
+   "bn": "খোলা আইল্যান্ডের পাশে: টাইমার, গান, ক্যালেন্ডার আর নতুন ইমেল",
+   "pt-BR": "ao lado da ilha aberta: timers, a música, a agenda e os e-mails mais recentes",
+   "ru": "рядом с открытым островом: таймеры, музыка, календарь и новые письма",
+   "id": "di samping pulau yang terbuka: timer, musik, kalender, dan email terbaru"
+  },
+  "The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.": {
+   "zh-Hans": "日历的私密 iCal 地址。Google 日历：设置 → 你的日历 → 集成日历 → iCal 格式的私密地址。它保存在{store}中，Lumo 只会读取。",
+   "hi": "कैलेंडर का गुप्त iCal पता। Google Calendar: सेटिंग्स → आपका कैलेंडर → कैलेंडर इंटीग्रेट करें → iCal फ़ॉर्मेट में गुप्त पता। यह {store} में रहता है, और Lumo इसे सिर्फ़ पढ़ता है।",
+   "es": "La dirección iCal secreta del calendario. Google Calendar: Configuración → tu calendario → Integrar el calendario → Dirección secreta en formato iCal. Se guarda en {store} y Lumo solo la lee.",
+   "ar": "عنوان iCal السري للتقويم. تقويم Google: الإعدادات ← تقويمك ← دمج التقويم ← العنوان السري بتنسيق iCal. يبقى في {store}، ويقرؤه Lumo فقط.",
+   "fr": "L'adresse iCal secrète du calendrier. Google Agenda : Paramètres → ton agenda → Intégrer l'agenda → Adresse secrète au format iCal. Elle reste dans {store}, et Lumo ne fait que la lire.",
+   "bn": "ক্যালেন্ডারের গোপন iCal ঠিকানা। Google Calendar: সেটিংস → আপনার ক্যালেন্ডার → ক্যালেন্ডার ইন্টিগ্রেট করুন → iCal ফরম্যাটে গোপন ঠিকানা। এটি {store}-এ থাকে, আর Lumo শুধু পড়ে।",
+   "pt-BR": "O endereço iCal secreto da agenda. Google Agenda: Configurações → sua agenda → Integrar agenda → Endereço secreto no formato iCal. Ele fica no {store}, e o Lumo só o lê.",
+   "ru": "Секретный iCal-адрес календаря. Google Календарь: Настройки → ваш календарь → Интеграция календаря → Закрытый адрес в формате iCal. Он хранится в {store}, Lumo только читает его.",
+   "id": "Alamat iCal rahasia kalender. Google Kalender: Setelan → kalendermu → Integrasikan kalender → Alamat rahasia dalam format iCal. Disimpan di {store}, dan Lumo hanya membacanya."
+  },
+  "That is not a calendar address.": {
+   "zh-Hans": "这不是日历地址。",
+   "hi": "यह कैलेंडर का पता नहीं है।",
+   "es": "Esa no es una dirección de calendario.",
+   "ar": "هذا ليس عنوان تقويم.",
+   "fr": "Ce n'est pas une adresse de calendrier.",
+   "bn": "এটি কোনো ক্যালেন্ডারের ঠিকানা নয়।",
+   "pt-BR": "Esse não é um endereço de agenda.",
+   "ru": "Это не адрес календаря.",
+   "id": "Itu bukan alamat kalender."
+  },
+  "The calendar address answered {code}.": {
+   "zh-Hans": "日历地址返回了 {code}。",
+   "hi": "कैलेंडर पते ने {code} लौटाया।",
+   "es": "La dirección del calendario respondió {code}.",
+   "ar": "أجاب عنوان التقويم بـ {code}.",
+   "fr": "L'adresse du calendrier a répondu {code}.",
+   "bn": "ক্যালেন্ডারের ঠিকানা {code} ফেরত দিয়েছে।",
+   "pt-BR": "O endereço da agenda respondeu {code}.",
+   "ru": "Адрес календаря ответил {code}.",
+   "id": "Alamat kalender menjawab {code}."
+  },
+  "Gmail wants an app password here, not your account's password. Create one at myaccount.google.com/apppasswords (it needs 2-Step Verification) and paste it in Settings → Email.": {
+   "zh-Hans": "这里 Gmail 需要应用专用密码，而不是你的账号密码。请在 myaccount.google.com/apppasswords 创建一个（需要开启两步验证），然后粘贴到“设置 → 电子邮件”。",
+   "hi": "यहाँ Gmail को ऐप पासवर्ड चाहिए, आपके खाते का पासवर्ड नहीं। myaccount.google.com/apppasswords पर एक बनाएँ (इसके लिए 2-चरणीय सत्यापन चाहिए) और सेटिंग्स → ईमेल में चिपकाएँ।",
+   "es": "Gmail pide aquí una contraseña de aplicación, no la de tu cuenta. Crea una en myaccount.google.com/apppasswords (necesita la verificación en dos pasos) y pégala en Ajustes → Correo.",
+   "ar": "يطلب Gmail هنا كلمة مرور تطبيق، لا كلمة مرور حسابك. أنشئ واحدة في myaccount.google.com/apppasswords (تتطلب التحقق بخطوتين) والصقها في الإعدادات ← البريد الإلكتروني.",
+   "fr": "Gmail veut ici un mot de passe d'application, pas celui de ton compte. Crée-en un sur myaccount.google.com/apppasswords (il faut la validation en deux étapes) et colle-le dans Réglages → E-mail.",
+   "bn": "এখানে Gmail অ্যাপ পাসওয়ার্ড চায়, আপনার অ্যাকাউন্টের পাসওয়ার্ড নয়। myaccount.google.com/apppasswords-এ একটি তৈরি করুন (২-ধাপ যাচাই লাগবে) এবং সেটিংস → ইমেলে পেস্ট করুন।",
+   "pt-BR": "O Gmail quer aqui uma senha de app, não a senha da sua conta. Crie uma em myaccount.google.com/apppasswords (precisa da verificação em duas etapas) e cole em Configurações → E-mail.",
+   "ru": "Gmail нужен пароль приложения, а не пароль аккаунта. Создайте его на myaccount.google.com/apppasswords (нужна двухэтапная аутентификация) и вставьте в Настройки → Почта.",
+   "id": "Gmail meminta sandi aplikasi di sini, bukan sandi akunmu. Buat di myaccount.google.com/apppasswords (perlu Verifikasi 2 Langkah) lalu tempel di Pengaturan → Email."
+  },
+  "The address or the app password is wrong.": {
+   "zh-Hans": "地址或应用专用密码错误。",
+   "hi": "पता या ऐप पासवर्ड गलत है।",
+   "es": "La dirección o la contraseña de aplicación no son correctas.",
+   "ar": "العنوان أو كلمة مرور التطبيق غير صحيحة.",
+   "fr": "L'adresse ou le mot de passe d'application est faux.",
+   "bn": "ঠিকানা বা অ্যাপ পাসওয়ার্ড ভুল।",
+   "pt-BR": "O endereço ou a senha de app está errado.",
+   "ru": "Неверный адрес или пароль приложения.",
+   "id": "Alamat atau sandi aplikasi salah."
   }
  }
 }

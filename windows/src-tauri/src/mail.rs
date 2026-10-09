@@ -1,6 +1,7 @@
 // The Email pill: new messages in the user's inbox, read over IMAP with an app
 // password (Gmail, Outlook, iCloud, any IMAP server), for the closed island's
-// email preview and the pill's card.
+// email preview and the pill's card. The server says when one arrives (IDLE),
+// so it shows within seconds.
 //
 // Read only, by construction: the inbox is opened with EXAMINE (the server
 // refuses any change to it), message bodies are fetched with BODY.PEEK (they
@@ -8,6 +9,7 @@
 // anything. The address, the server and the app password are in the credential
 // store (secrets.rs); the connection is TLS only, to the server the user typed.
 
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -16,6 +18,7 @@ use serde_json::json;
 use tauri::{AppHandle, Emitter};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
+use tokio::sync::Notify;
 use tokio_rustls::rustls::{self, pki_types::ServerName, ClientConfig, RootCertStore};
 use tokio_rustls::{client::TlsStream, TlsConnector};
 
@@ -29,7 +32,7 @@ pub const ADDRESS_KEY: &str = "mail-address";
 pub const SERVER_KEY: &str = "mail-imap-server";
 pub const PASSWORD_KEY: &str = "mail-app-password";
 
-/// A whole check: connect, sign in, look, sign out.
+/// One step with the server: connect and sign in, look, or end an IDLE.
 const TIMEOUT: Duration = Duration::from_secs(25);
 /// What one check may read from the server, all answers together.
 const MAX_READ: usize = 4 * 1024 * 1024;
@@ -59,39 +62,119 @@ pub struct Message {
 /// check only takes note, so what was already unread is not announced.
 static LAST_UID: Mutex<Option<(String, u32)>> = Mutex::new(None);
 
-// ── The poller ────────────────────────────────────────────────────────────────
+// ── Watching the inbox ────────────────────────────────────────────────────────
 
-pub async fn poll(app: AppHandle) {
-    let Some((address, password)) = secrets::get(ADDRESS_KEY).zip(secrets::get(PASSWORD_KEY)) else { return };
-    let server = secrets::get(SERVER_KEY).unwrap_or_default();
-    let (host, port) = server_of(&server, &address);
-    let checked = tokio::time::timeout(TIMEOUT, check(&host, port, &address, &password)).await;
-    let (unread, messages) = match checked {
-        Ok(Ok(found)) => found,
-        Ok(Err(error)) => return fail(&app, error),
-        Err(_) => return fail(&app, tf("{server} did not answer in time.", &[("server", &host)])),
-    };
+/// Woken by the pill's Refresh, a change of settings or of the keys.
+static WAKE: Notify = Notify::const_new();
+/// Bumped when the address, server or password change: the connection is redone.
+static GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// Look again now (Refresh).
+pub fn wake() {
+    WAKE.notify_one();
+}
+
+/// The keys changed: sign in again with the new ones.
+pub fn keys_changed() {
+    GENERATION.fetch_add(1, Ordering::Relaxed);
+    WAKE.notify_one();
+}
+
+/// The server tells Lumo about a new email as it arrives (IMAP IDLE), on one
+/// connection kept open while the pill is on. A server without IDLE is asked
+/// every 30 seconds instead. Nothing happens while the pill is off, Lumo is
+/// paused or the keys are missing.
+pub async fn run(app: AppHandle) {
+    tokio::time::sleep(Duration::from_secs(4)).await;
+    let mut backoff = RETRY_FIRST;
+    loop {
+        if !crate::integrations::enabled(&app, ID) || crate::integrations::PAUSED.load(Ordering::Relaxed) {
+            let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
+            continue;
+        }
+        let Some((address, password)) = secrets::get(ADDRESS_KEY).zip(secrets::get(PASSWORD_KEY)) else {
+            let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
+            continue;
+        };
+        let server = secrets::get(SERVER_KEY).unwrap_or_default();
+        let (host, port) = server_of(&server, &address);
+        match watch(&app, &host, port, &address, &password).await {
+            Ok(()) => backoff = RETRY_FIRST,
+            Err(error) => {
+                fail(&app, error);
+                // Waits before trying again (longer each time), unless woken.
+                let _ = tokio::time::timeout(backoff, WAKE.notified()).await;
+                backoff = (backoff * 2).min(RETRY_MOST);
+            }
+        }
+    }
+}
+
+const RETRY_FIRST: Duration = Duration::from_secs(30);
+const RETRY_MOST: Duration = Duration::from_secs(600);
+/// How long one IDLE lasts before Lumo looks again (servers drop it at 30 minutes).
+const IDLE_FOR: Duration = Duration::from_secs(9 * 60);
+/// Without IDLE, how often the inbox is asked.
+const POLL_EVERY: Duration = Duration::from_secs(30);
+
+/// One connection: sign in, then look each time the server says something
+/// changed. Returns Ok when it should be redone (keys changed, pill off).
+async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: &str) -> Result<(), String> {
+    let generation = GENERATION.load(Ordering::Relaxed);
+    let mut imap = timed(host, sign_in(host, port, address, password)).await?;
+    let idle = imap.capabilities.iter().any(|c| c == "IDLE");
     let account = format!("{address}@{host}");
+    loop {
+        imap.read = 0;
+        let (unread, messages) = timed(host, look(&mut imap, host)).await?;
+        report(app, &account, host, unread, messages);
+        let stop = || {
+            GENERATION.load(Ordering::Relaxed) != generation
+                || !crate::integrations::enabled(app, ID)
+                || crate::integrations::PAUSED.load(Ordering::Relaxed)
+        };
+        if stop() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
+            return Ok(());
+        }
+        if idle {
+            imap.idle(host).await?;
+        } else {
+            let _ = tokio::time::timeout(POLL_EVERY, WAKE.notified()).await;
+        }
+        if stop() {
+            let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
+            return Ok(());
+        }
+    }
+}
+
+/// A step that must not hang: the server has TIMEOUT to answer.
+async fn timed<T>(host: &str, step: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
+    tokio::time::timeout(TIMEOUT, step)
+        .await
+        .unwrap_or_else(|_| Err(tf("{server} did not answer in time.", &[("server", host)])))
+}
+
+/// What the island gets: the newest unread emails, and the ones that are new.
+fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: Vec<Message>) {
     let newest = messages.iter().filter_map(|m| uid_of(&m.id)).max().unwrap_or(0);
     let fresh: Vec<Message> = {
         let mut last = LAST_UID.lock().unwrap();
-        let fresh = match last.as_ref() {
-            Some((seen_account, seen)) if *seen_account == account => {
-                messages.iter().filter(|m| uid_of(&m.id).is_some_and(|u| u > *seen)).cloned().collect()
-            }
-            _ => Vec::new(),
+        let seen = match last.as_ref() {
+            Some((a, seen)) if a == account => Some(*seen),
+            _ => None,
         };
-        let floor = match last.as_ref() {
-            Some((a, seen)) if *a == account => *seen,
-            _ => 0,
+        let fresh = match seen {
+            Some(seen) => messages.iter().filter(|m| uid_of(&m.id).is_some_and(|u| u > seen)).cloned().collect(),
+            None => Vec::new(),
         };
-        *last = Some((account, newest.max(floor)));
+        *last = Some((account.to_string(), newest.max(seen.unwrap_or(0))));
         fresh
     };
-    let link = inbox_link(&host);
-    emit(&app, IntegrationUpdate {
+    emit(app, IntegrationUpdate {
         id: ID,
-        data: json!({ "messages": messages, "unread": unread, "inbox": link }),
+        data: json!({ "messages": messages, "unread": unread, "inbox": inbox_link(host) }),
         error: None,
         event: None,
     });
@@ -181,6 +264,7 @@ struct Imap {
     stream: BufReader<TlsStream<TcpStream>>,
     tag: u32,
     read: usize,
+    capabilities: Vec<String>,
 }
 
 fn tls() -> Result<Arc<ClientConfig>, String> {
@@ -203,7 +287,7 @@ impl Imap {
             .connect(name, tcp)
             .await
             .map_err(|e| tf("No secure connection to {server}: {error}", &[("server", host), ("error", &e.to_string())]))?;
-        let mut imap = Imap { stream: BufReader::new(stream), tag: 0, read: 0 };
+        let mut imap = Imap { stream: BufReader::new(stream), tag: 0, read: 0, capabilities: Vec::new() };
         // The greeting.
         let greeting = imap.read_unit().await?;
         match greeting.first() {
@@ -264,6 +348,88 @@ impl Imap {
     }
 }
 
+impl Imap {
+    async fn send(&mut self, line: &str) -> Result<(), String> {
+        let stream = self.stream.get_mut();
+        stream.write_all(line.as_bytes()).await.map_err(|e| e.to_string())?;
+        stream.flush().await.map_err(|e| e.to_string())
+    }
+
+    /// Waits in IDLE until the server says the mailbox changed, Lumo is
+    /// woken, or IDLE_FOR goes by; then ends the IDLE.
+    async fn idle(&mut self, host: &str) -> Result<(), String> {
+        self.tag += 1;
+        let tag = format!("L{}", self.tag);
+        self.send(&format!("{tag} IDLE\r\n")).await?;
+        timed(host, self.idling(&tag)).await?;
+        let deadline = tokio::time::Instant::now() + IDLE_FOR;
+        loop {
+            // The server speaks, or the time is up, or Lumo is woken.
+            let wait = tokio::time::timeout_at(deadline, WAKE.notified());
+            let changed = match first_of(self.read_unit(), wait).await {
+                First::A(unit) => {
+                    let unit = unit?;
+                    matches!(unit.first(), Some(Part::Text(line)) if line.starts_with("* ") && (line.ends_with("EXISTS") || line.ends_with("EXPUNGE") || line.contains(" FETCH ")))
+                }
+                First::B(_) => true,
+            };
+            self.read = 0;
+            if changed {
+                break;
+            }
+        }
+        self.send("DONE\r\n").await?;
+        timed(host, self.done(&tag)).await
+    }
+
+    /// The server's "+ idling".
+    async fn idling(&mut self, tag: &str) -> Result<(), String> {
+        loop {
+            let unit = self.read_unit().await?;
+            match unit.first() {
+                Some(Part::Text(line)) if line.starts_with('+') => return Ok(()),
+                Some(Part::Text(line)) if line.starts_with(&format!("{tag} ")) => {
+                    return Err(line[tag.len() + 1..].trim().to_string());
+                }
+                _ => {}
+            }
+        }
+    }
+
+    /// The IDLE's own answer, after DONE.
+    async fn done(&mut self, tag: &str) -> Result<(), String> {
+        loop {
+            let unit = self.read_unit().await?;
+            if let Some(Part::Text(line)) = unit.first() {
+                if let Some(rest) = line.strip_prefix(&format!("{tag} ")) {
+                    return if rest.starts_with("OK") { Ok(()) } else { Err(rest.trim().to_string()) };
+                }
+            }
+        }
+    }
+}
+
+enum First<A, B> {
+    A(A),
+    B(B),
+}
+
+/// Whichever of two futures is ready first; the other is dropped.
+async fn first_of<A: std::future::Future, B: std::future::Future>(a: A, b: B) -> First<A::Output, B::Output> {
+    let mut a = std::pin::pin!(a);
+    let mut b = std::pin::pin!(b);
+    std::future::poll_fn(|cx| {
+        if let std::task::Poll::Ready(v) = a.as_mut().poll(cx) {
+            return std::task::Poll::Ready(First::A(v));
+        }
+        if let std::task::Poll::Ready(v) = b.as_mut().poll(cx) {
+            return std::task::Poll::Ready(First::B(v));
+        }
+        std::task::Poll::Pending
+    })
+    .await
+}
+
 /// `{123}` at the end of a line announces 123 bytes that follow it.
 fn literal_size(line: &str) -> Option<usize> {
     let open = line.strip_suffix('}')?.rfind('{')?;
@@ -275,13 +441,45 @@ fn quoted(s: &str) -> String {
     format!("\"{}\"", s.replace('\\', "\\\\").replace('"', "\\\""))
 }
 
-async fn check(host: &str, port: u16, address: &str, password: &str) -> Result<(usize, Vec<Message>), String> {
+/// Connected, signed in, the inbox open read only.
+async fn sign_in(host: &str, port: u16, address: &str, password: &str) -> Result<Imap, String> {
     let mut imap = Imap::connect(host, port).await?;
     // App passwords are shown with spaces ("abcd efgh ijkl mnop"); Google takes them either way.
     imap.run(&format!("LOGIN {} {}", quoted(address.trim()), quoted(password.trim())))
         .await
-        .map_err(|why| tf("{server} refused to sign in: {error}", &[("server", host), ("error", &why)]))?;
+        .map_err(|why| sign_in_error(host, &why))?;
+    let caps = imap.run("CAPABILITY").await?;
+    imap.capabilities = caps
+        .iter()
+        .filter_map(|u| match u.first() {
+            Some(Part::Text(line)) => line.strip_prefix("* CAPABILITY"),
+            _ => None,
+        })
+        .flat_map(|rest| rest.split_whitespace().map(str::to_ascii_uppercase).collect::<Vec<_>>())
+        .collect();
     imap.run("EXAMINE INBOX").await?;
+    Ok(imap)
+}
+
+/// Why the server refused, in words: the usual cases said plainly.
+fn sign_in_error(host: &str, why: &str) -> String {
+    let lower = why.to_ascii_lowercase();
+    if lower.contains("application-specific password") || lower.contains("app password") {
+        return t("Gmail wants an app password here, not your account's password. Create one at myaccount.google.com/apppasswords (it needs 2-Step Verification) and paste it in Settings → Email.");
+    }
+    if lower.contains("authenticationfailed") || lower.contains("invalid credentials") || lower.contains("login failed") {
+        return t("The address or the app password is wrong.");
+    }
+    // "[ALERT] … https://… (Failure)": the words, without the code and the address.
+    let words: Vec<&str> = why
+        .split_whitespace()
+        .filter(|w| !w.starts_with('[') && !w.starts_with("http") && *w != "(Failure)")
+        .collect();
+    tf("{server} refused to sign in: {error}", &[("server", host), ("error", words.join(" ").trim_end_matches(':'))])
+}
+
+/// The unread count and the newest unread emails.
+async fn look(imap: &mut Imap, host: &str) -> Result<(usize, Vec<Message>), String> {
     let found = imap.run("UID SEARCH UNSEEN").await?;
     let mut uids = search_uids(&found);
     let unread = uids.len();
@@ -302,7 +500,6 @@ async fn check(host: &str, port: u16, address: &str, password: &str) -> Result<(
         }
         messages.sort_by_key(|m| std::cmp::Reverse(uid_of(&m.id).unwrap_or(0)));
     }
-    let _ = imap.run("LOGOUT").await;
     Ok((unread, messages))
 }
 
@@ -771,6 +968,17 @@ mod tests {
         assert_eq!(m.preview, "Hey!");
         assert_eq!(m.link.as_deref(), Some("https://mail.google.com/mail/u/0/#search/rfc822msgid%3Aabc%40mail.gmail.com"));
         assert_eq!(uid_of(&m.id), Some(42));
+    }
+
+    #[test]
+    fn a_refused_sign_in_says_what_to_do() {
+        let gmail = "[ALERT] Application-specific password required: https://support.google.com/accounts/answer/185833 (Failure)";
+        assert!(sign_in_error("imap.gmail.com", gmail).contains("myaccount.google.com/apppasswords"));
+        assert_eq!(sign_in_error("x", "[AUTHENTICATIONFAILED] Invalid credentials (Failure)"), "The address or the app password is wrong.");
+        assert_eq!(
+            sign_in_error("imap.example.org", "[UNAVAILABLE] Try later: https://example.org/status (Failure)"),
+            "imap.example.org refused to sign in: Try later"
+        );
     }
 
     #[test]

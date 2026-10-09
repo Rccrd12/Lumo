@@ -24,6 +24,8 @@ pub const KNOWN_KEYS: &[&str] = &[
     "mail-address",
     "mail-imap-server",
     "mail-app-password",
+    // The live activities' calendar (calendar.rs): its iCal address, secret by nature.
+    "calendar-ics-url",
 ];
 
 fn entry(key: &str) -> Option<Entry> {

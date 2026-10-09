@@ -83,6 +83,8 @@ export const ICONS = {
   pause: "M6.5 4.5h3.6v15H6.5zM13.9 4.5h3.6v15h-3.6z",
   forward: "M3 6.2v11.6a.7.7 0 0 0 1.1.6L12 13v4.8a.7.7 0 0 0 1.1.6l8.2-5.8a.7.7 0 0 0 0-1.2l-8.2-5.8a.7.7 0 0 0-1.1.6V11L4.1 5.6a.7.7 0 0 0-1.1.6z",
   backward: "M21 6.2v11.6a.7.7 0 0 1-1.1.6L12 13v4.8a.7.7 0 0 1-1.1.6l-8.2-5.8a.7.7 0 0 1 0-1.2l8.2-5.8a.7.7 0 0 1 1.1.6V11l7.9-5.4a.7.7 0 0 1 1.1.6z",
+  // square.grid.2x2 (the live activities, folded).
+  activities: "M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z",
   // envelope (a new email).
   envelope: "M3.5 6h17v12h-17zM3.8 6.4 12 13l8.2-6.6",
 } as const;

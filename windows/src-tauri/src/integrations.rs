@@ -72,12 +72,12 @@ pub fn start(app: AppHandle) {
     spawn(app.clone(), "integration_github", 7, 300, poll_github);
     spawn_github_loops(app.clone());
     spawn(app.clone(), "integration_calcom", 8, 300, poll_calcom);
-    spawn(app.clone(), crate::mail::ID, 10, 60, crate::mail::poll);
+    tauri::async_runtime::spawn(crate::mail::run(app.clone()));
     spawn(app, "integration_notion", 9, 300, poll_notion);
 }
 
 /// True when the user has this integration switched on in settings.
-fn enabled(app: &AppHandle, id: &str) -> bool {
+pub(crate) fn enabled(app: &AppHandle, id: &str) -> bool {
     app.try_state::<crate::Shared>()
         .map(|shared| {
             let settings = shared.settings.lock().unwrap();
@@ -122,7 +122,7 @@ pub async fn poll_once(app: AppHandle, id: &str) {
         "integration_resend" => poll_resend(app).await,
         "integration_notion" => poll_notion(app).await,
         "integration_calcom" => poll_calcom(app).await,
-        crate::mail::ID => crate::mail::poll(app).await,
+        crate::mail::ID => crate::mail::wake(),
         _ => {}
     }
 }
@@ -552,6 +552,8 @@ pub fn github_token_changed(app: &AppHandle) {
 /// Switching the pill off forgets the pulse, so switching it back on starts
 /// silent instead of alerting on everything that changed in between.
 pub fn settings_saved(app: &AppHandle, active_integrations: &[String]) {
+    // The Email pill turned on or off: its connection opens or closes now.
+    crate::mail::wake();
     if active_integrations.iter().any(|id| id == GITHUB_ID) {
         return;
     }

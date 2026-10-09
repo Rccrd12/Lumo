@@ -164,6 +164,8 @@ export interface Settings {
   compactActivity: boolean;
   /** The closed island shows the music playing (media.rs). */
   compactMedia: boolean;
+  /** The live activities show beside the open island; false while folded into their icon. */
+  activitiesPanel: boolean;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -262,6 +264,7 @@ export const DEFAULT_SETTINGS: Settings = {
   islandAutoHide: false,
   compactActivity: true,
   compactMedia: true,
+  activitiesPanel: true,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -318,6 +321,8 @@ class AppState {
   chatActivity: { label: string | null } | null = null;
   /** A question the chat asks as soon as it is on screen (an email's buttons). */
   chatAsk: string | null = null;
+  /** The live activities can show beside the open island (an edge with room for them). */
+  activitiesRoom = false;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };

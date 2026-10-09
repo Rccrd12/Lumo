@@ -119,12 +119,31 @@ it stays as it is):
   while the mouse is on it. Summarize and Draft a reply open the chat with
   the email attached and ask; nothing is ever sent: you copy the draft and
   send it yourself.
-- **Timers**: ask Gemini Live ("set a 10 minute timer for the pasta") or
-  type `/timer 10m pasta` in the chat. The time left counts down; it rings
-  and says so when it is over.
+- **Timers**: ask any model in the chat or Gemini Live ("set a 10 minute
+  timer for the pasta"), type `/timer 10m pasta`, or start one in the live
+  activities. The time left counts down; it rings and says so when it is
+  over.
+- **The next event**: "Stand-up · in 5 min", from the calendar in the live
+  activities.
 - **The music playing**, with previous, play/pause and next: Spotify, a
   browser, any player that shows in the system's media controls (Windows)
   or speaks MPRIS (Linux). Gemini Live can play, pause and skip too.
+
+### Live activities
+
+Beside the open island (on the top and bottom edges) a second island holds
+what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
+or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
+previous, play/pause and next), **Calendar** (the next events) and **Email**
+(the newest unread, with Summarize and Draft a reply). Its **–** folds it, with
+a flight, into an icon right of the **+** in the island's top bar; that icon
+brings it back. Settings → Island → **Live Activities** turns it off.
+
+The calendar is read from its **secret iCal address**, pasted in Settings →
+Island → Calendar (Google Calendar: Settings → your calendar → Integrate
+calendar → Secret address in iCal format; Outlook and iCloud publish one
+too). It stays in the system keychain, and is fetched every 15 minutes, only
+read.
 
 Settings → Island → **Say what's going on** and **Show the music playing**
 turn them off. While the island is hidden nothing is asked or counted: the
@@ -190,8 +209,10 @@ declare still shows up, for as long as it runs.
 ### Email
 
 The **Email** pill (Settings… → Pills & integrations) reads your inbox over
-IMAP, once a minute: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with
-an **app password**. Its card lists the newest unread emails, and a new one
+IMAP: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an **app
+password**. The connection stays open and the server says when an email
+arrives (IMAP IDLE), so it shows within seconds; a server without IDLE is
+asked every 30 seconds. Its card lists the newest unread emails, and a new one
 shows on the closed island (see [The closed island](#the-closed-island)).
 Lumo only reads: the inbox is opened read only, emails stay unread, and
 nothing is ever sent, moved or deleted. The address, the server and the app
@@ -199,7 +220,9 @@ password are in the system keychain.
 
 For Gmail: turn on 2-Step Verification in your Google account, create an app
 password at <https://myaccount.google.com/apppasswords>, and paste it in
-Settings with your address; the server is found from the address. Claude
+Settings with your address; the server is found from the address. Your
+Google account's own password is refused ("Application-specific password
+required"). Claude
 Code and Antigravity CLI see the email only when you press Summarize or
 Draft a reply: it goes with that question, like a selected text.
 
