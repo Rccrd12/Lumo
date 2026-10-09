@@ -36,6 +36,11 @@ const MOVE_THRESHOLD = 4;
 const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
+/**
+ * After a sharing shortcut opened the island, how long it stays open with the
+ * mouse elsewhere (s); each key typed in it gives it this long again.
+ */
+const SHARE_GRACE = 12;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
 
@@ -541,7 +546,9 @@ export class Island {
    * the island is pinned, a file picker of ours is open, or it is being moved.
    */
   onOutsidePress() {
-    if (parseCloseMode(State.settings.islandClose) !== "click") return;
+    // While a sharing shortcut holds it open, a click elsewhere closes it in
+    // any mode: that is how the user says they are done.
+    if (parseCloseMode(State.settings.islandClose) !== "click" && !this.fsm.inGrace) return;
     if (State.mode !== "expanded" || this.fsm.state !== "home") return;
     if (this.fsm.pinned || State.isPinned || State.pendingApproval || isDialogOpen()) return;
     if (this.moving || this.resizing || this.uploadActive) return;
@@ -577,6 +584,11 @@ export class Island {
 
   /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
    *  It gives it back when it closes, or when the chat is left. */
+  /** A sharing shortcut opened the island: it waits for the question (SHARE_GRACE). */
+  holdOpen() {
+    this.fsm.holdOpen(SHARE_GRACE);
+  }
+
   takeKeyboard() {
     this.lastGesture = performance.now();
     void Bridge.focusWindow(true);
@@ -957,6 +969,12 @@ export class Island {
       this.botPress = null;
       if (this.desktop.carrying) this.desktop.carryEnd(e.clientX, e.clientY);
     });
+
+    // Typing the question keeps a shortcut's grace going (capture phase: the
+    // chat field stops its own keys from bubbling).
+    window.addEventListener("keydown", () => {
+      if (this.fsm.inGrace) this.fsm.holdOpen(SHARE_GRACE);
+    }, true);
 
     // Only keys typed into the island itself land here, never Escape typed in
     // a terminal — so it may fold a waiting card away, as Escape in the notch

@@ -65,6 +65,24 @@ export class IslandStateMachine {
     if (on) this.clear("petitHide");
     else if (this.state === "petit" && !this.mouseInside) this.schedulePetitHide();
   }
+  /**
+   * Until when (performance.now() ms) the open island does not fold because
+   * the mouse is elsewhere: a sharing shortcut opened it while the mouse is on
+   * the text just selected. The mouse coming onto the island ends it.
+   */
+  private graceUntil = 0;
+
+  /** The open island stays open `seconds` with the mouse elsewhere (see graceUntil). */
+  holdOpen(seconds: number) {
+    this.graceUntil = performance.now() + seconds * 1000;
+    if (this.homeCollapse != null) this.scheduleHomeCollapse();
+  }
+
+  /** The grace of holdOpen is still running. */
+  get inGrace(): boolean {
+    return performance.now() < this.graceUntil;
+  }
+
   /** The mouse is on the island, as the last enter/leave said. */
   private mouseInside = false;
   private holding = false;
@@ -92,6 +110,7 @@ export class IslandStateMachine {
 
   mouseEntered() {
     this.mouseInside = true;
+    this.graceUntil = 0;
     switch (this.state) {
       case "hidden":
         this.cancelTimers();
@@ -179,7 +198,7 @@ export class IslandStateMachine {
   private scheduleHomeCollapse() {
     this.clear("homeCollapse");
     if (this.pinned || !this.leaveCloses) return;
-    const ms = this.homeDelay * 1000;
+    const ms = Math.max(this.homeDelay * 1000, this.graceUntil - performance.now());
     this.homeCollapseDueAt = performance.now() + ms;
     this.homeCollapse = window.setTimeout(() => {
       this.homeCollapse = null;

@@ -418,7 +418,7 @@ test("the shortcut opens the call view and starts a call; with no answer from Ru
   const opened = [];
   const shortcutHost = {
     alert: (v) => opened.push(v), setView: () => {}, collapse: () => {}, emote: () => {},
-    setPinned: () => {}, takeKeyboard: () => {}, wardrobeAnywhere: () => {},
+    setPinned: () => {}, takeKeyboard: () => {}, wardrobeAnywhere: () => {}, holdOpen: () => {},
   };
   runGlobalShortcut(shortcutHost, "talkToGemini", () => {});
   assert.deepEqual(opened, ["live"]);

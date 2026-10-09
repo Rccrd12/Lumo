@@ -249,6 +249,7 @@ const host = {
   setPinned: (on) => did.push(`pin:${on}`),
   takeKeyboard: () => did.push("keyboard"),
   wardrobeAnywhere: () => did.push("wardrobe"),
+  holdOpen: () => did.push("hold"),
 };
 const resume = () => did.push("resume");
 // The island listens on `window`, which here is the bare global object.
@@ -284,7 +285,8 @@ test("a global shortcut arrives as an event and opens the chat", () => {
 test("the sharing shortcuts open the chat with what Rust took, or say what went wrong", () => {
   const selection = { text: "hello", app: "chrome", title: "News" };
   emit("ask-context", { kind: "selection", selection });
-  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+  // The mouse is on the selected text: the island waits for the question.
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard", "hold"]);
   assert.deepEqual(State.incomingShare, { kind: "selection", selection });
 
   did = [];
@@ -306,7 +308,7 @@ test("the sharing shortcuts open the chat with what Rust took, or say what went 
   did = [];
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   emit("ask-context", { kind: "screen", shots: [shot] });
-  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard", "hold"]);
   assert.deepEqual(State.incomingShare, { kind: "screen", shots: [shot] });
   State.incomingShare = null;
 });

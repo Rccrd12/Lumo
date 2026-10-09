@@ -349,3 +349,21 @@ test("turning autoHide off stops a hide already counting down", () => {
   seconds(60);
   assert.equal(fsm.state, "petit");
 });
+
+test("a sharing shortcut's grace keeps the island open with the mouse elsewhere, until the mouse comes", (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const fsm = new IslandStateMachine();
+  fsm.homeToPetitDelay = 0.6;
+  fsm.forceHome();
+  fsm.holdOpen(12);
+  assert.equal(fsm.inGrace, true);
+  fsm.mouseLeft();
+  t.mock.timers.tick(5_000);
+  assert.equal(fsm.state, "home", "the mouse is on the selected text: still open");
+  // Once the mouse has been on the island, leaving it closes as usual.
+  fsm.mouseEntered();
+  assert.equal(fsm.inGrace, false);
+  fsm.mouseLeft();
+  t.mock.timers.tick(600);
+  assert.equal(fsm.state, "petit");
+});
