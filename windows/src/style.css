@@ -2975,6 +2975,34 @@ input[type="range"]::-webkit-slider-thumb {
   text-overflow: ellipsis;
 }
 
+/* Two parts side by side, each under its title: the outfits, and Lumo's style. */
+.wardrobe-parts {
+  display: flex;
+  align-items: stretch;
+  gap: 14px;
+  min-width: 0;
+}
+
+.wardrobe-part {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.wardrobe-label {
+  font: 600 10px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.wardrobe-divider {
+  flex: 0 0 1px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
 .wardrobe-grid {
   display: flex;
   flex-wrap: wrap;

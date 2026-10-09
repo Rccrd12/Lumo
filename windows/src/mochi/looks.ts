@@ -8,6 +8,7 @@
 // orange when it waits for you, red on an error, green when it is done.
 
 import type { RGB } from "./lumo";
+import { poolOfLight } from "./motion";
 import type { LumoLook } from "./wardrobe";
 
 export type RoundLook = Exclude<LumoLook, "lucciola">;
@@ -66,6 +67,11 @@ export interface LookPose {
   small: boolean;
   /** 0…1: the halo and the ripple fade with it (the drop sequence's box). */
   presence: number;
+  /**
+   * How far the body is from its place at rest, in units of R (a hop, a
+   * shake): Goccia's pool of light stays on the floor and shrinks as it lifts.
+   */
+  floor?: { dx: number; dy: number };
 }
 
 export const rgba = (c: RGB, a = 1) =>
@@ -161,10 +167,12 @@ export function drawLookBehind(x: CanvasRenderingContext2D, look: RoundLook, P: 
       ripple(x, P, 1.0, 1.7, cy);
       halo(x, 0, cy, R * (P.small ? 1.2 : 1.34) * (1 + 0.06 * P.pulse), P.c, (0.2 + 0.42 * P.shine) * P.presence);
       if (!P.small) {
-        // A little pool of light on the floor under it.
-        x.translate(0, R * (LOOK_SHAPE.goccia.dy + LOOK_SHAPE.goccia.bottom + 0.09));
+        // A little pool of light on the floor under it, left there when it hops.
+        const f = P.floor ?? { dx: 0, dy: 0 };
+        const pool = poolOfLight(f.dy);
+        x.translate(-f.dx * R, R * (LOOK_SHAPE.goccia.dy + LOOK_SHAPE.goccia.bottom + 0.09 - f.dy));
         x.scale(1, 0.16);
-        halo(x, 0, 0, R * 0.95, P.c, (0.32 + 0.3 * P.shine) * P.presence);
+        halo(x, 0, 0, R * 0.95 * pool.r, P.c, (0.32 + 0.3 * P.shine) * P.presence * pool.a);
       }
       break;
   }

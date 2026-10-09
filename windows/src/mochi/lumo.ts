@@ -4,6 +4,8 @@
 // engine.ts (and the launch greeting) draws, in its body space: origin at the
 // body centre, y down, R the body's size unit, rx/ry its half width/height.
 
+import { TIPS_REST, ease, type TipLights } from "./motion";
+
 export type RGB = readonly [number, number, number]; // components 0…1
 
 /**
@@ -45,6 +47,13 @@ export interface LumoPose {
   lagY: number;
   /** 0…1: everything fades out with it (the drop sequence morph). */
   presence: number;
+  /** 0…1: the tail's "your turn" heartbeat (motion.ts). */
+  beat?: number;
+  /** 0…1: the ripple ring's strength, and its phase 0…1. */
+  ripple?: number;
+  rp?: number;
+  /** The antenna lights in the state (motion.ts tipLights); at rest without it. */
+  tips?: TipLights;
 }
 
 /** The light first (a halo behind everything), then the wings. */
@@ -53,6 +62,20 @@ export function drawLumoBehind(x: CanvasRenderingContext2D, p: LumoPose) {
   const { R, rx, ry } = p;
   x.save();
   x.globalAlpha *= p.presence;
+
+  // The ripple when he waits for you: a ring of light leaving his body.
+  const rip = p.ripple ?? 0;
+  if (rip > 0.01) {
+    const k = p.rp ?? 0;
+    const a = 0.55 * Math.pow(1 - k, 1.6) * rip;
+    if (a > 0.003) {
+      x.strokeStyle = rgba(mix(p.glow, [1, 1, 1], 0.2), a);
+      x.lineWidth = Math.max(1, R * 0.07 * (1 - k * 0.5));
+      x.beginPath();
+      x.arc(0, 0, R * (1 + 0.5 * ease(k)), 0, Math.PI * 2);
+      x.stroke();
+    }
+  }
 
   // Wings: on each side a big forewing and a smaller hindwing, clear as glass,
   // fluttering from his upper back.
@@ -94,11 +117,13 @@ export function drawLumoBehind(x: CanvasRenderingContext2D, p: LumoPose) {
 
   // The tail: a round lantern under him, with its halo. It carries his light,
   // and the state's colour while an agent works.
+  // It beats with his heart when he waits for you.
+  const heart = p.beat ?? 0;
   const pulse = 0.85 + 0.15 * Math.sin(p.t * 2.4);
-  const glowA = (0.3 + 0.5 * p.shine) * pulse;
+  const glowA = Math.min(1, (0.3 + 0.5 * p.shine) * pulse * (1 + 0.5 * heart));
   const tx = 0;
   const ty = ry * 0.98;
-  const haloR = R * 0.95;
+  const haloR = R * 0.95 * (1 + 0.12 * heart);
   const halo = x.createRadialGradient(tx, ty, R * 0.12, tx, ty, haloR);
   halo.addColorStop(0, rgba(p.glow, glowA));
   halo.addColorStop(0.55, rgba(p.glow, glowA * 0.35));
@@ -138,11 +163,14 @@ export function drawLumoFront(x: CanvasRenderingContext2D, p: LumoPose) {
   x.save();
   x.globalAlpha *= p.presence;
   const sway = Math.sin(p.t * 3.1) * 0.04 * (0.3 + p.flap);
+  const tips = p.tips ?? TIPS_REST;
   for (const sd of [-1, 1]) {
+    // How bright this tip is now (motion.ts): 1 is as bright as ever.
+    const lit = tips.a[sd < 0 ? 0 : 1];
     const bx = sd * R * 0.3;
     const by = -ry * 0.86;
-    const tipX = sd * R * 0.62 - p.lagX * R * 0.18 + sway * R;
-    const tipY = -R * 1.42 - p.lagY * R * 0.12;
+    const tipX = sd * R * (0.62 + tips.sx) - p.lagX * R * 0.18 + sway * R;
+    const tipY = R * (-1.42 + tips.sy) - p.lagY * R * 0.12;
     x.beginPath();
     x.moveTo(bx, by);
     x.quadraticCurveTo(sd * R * 0.28, -R * 1.25, tipX, tipY);
@@ -152,20 +180,33 @@ export function drawLumoFront(x: CanvasRenderingContext2D, p: LumoPose) {
     x.stroke();
     // A little light at each tip.
     const tipR = Math.max(1, R * 0.11);
-    const tip = x.createRadialGradient(tipX, tipY, 0, tipX, tipY, tipR * 2.6);
-    tip.addColorStop(0, rgba(p.glow, 0.55 + 0.4 * p.shine));
+    const haloR = tipR * (2 + 0.6 * lit);
+    const tip = x.createRadialGradient(tipX, tipY, 0, tipX, tipY, haloR);
+    tip.addColorStop(0, rgba(p.glow, Math.min(1, (0.55 + 0.4 * p.shine) * (0.35 + 0.65 * lit))));
     tip.addColorStop(1, rgba(p.glow, 0));
     x.fillStyle = tip;
     x.beginPath();
-    x.arc(tipX, tipY, tipR * 2.6, 0, Math.PI * 2);
+    x.arc(tipX, tipY, haloR, 0, Math.PI * 2);
     x.fill();
     const bead = x.createRadialGradient(tipX - tipR * 0.3, tipY - tipR * 0.3, 0, tipX, tipY, tipR);
-    bead.addColorStop(0, "rgba(255,255,240,1)");
-    bead.addColorStop(1, rgba(p.glow, 1));
+    bead.addColorStop(0, `rgba(255,255,240,${0.55 + 0.45 * lit})`);
+    bead.addColorStop(1, rgba(mix(p.glow, [0.12, 0.12, 0.1], 0.45 * (1 - lit)), 1));
     x.fillStyle = bead;
     x.beginPath();
     x.arc(tipX, tipY, tipR, 0, Math.PI * 2);
     x.fill();
+    if (tips.sp > 0.05 && R >= 12) {
+      // A tiny four-point sparkle when it is done.
+      const s = tipR * (1.4 + 2.2 * tips.sp);
+      x.fillStyle = `rgba(255,255,250,${0.85 * tips.sp})`;
+      x.beginPath();
+      x.moveTo(tipX, tipY - s);
+      x.quadraticCurveTo(tipX, tipY, tipX + s, tipY);
+      x.quadraticCurveTo(tipX, tipY, tipX, tipY + s);
+      x.quadraticCurveTo(tipX, tipY, tipX - s, tipY);
+      x.quadraticCurveTo(tipX, tipY, tipX, tipY - s);
+      x.fill();
+    }
   }
   x.restore();
 }
