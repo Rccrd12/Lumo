@@ -43,8 +43,10 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             windows/target
-          key: windows-cargo-${{ hashFiles('windows/Cargo.lock') }}
-          restore-keys: windows-cargo-
+          # The build caches absolute paths, so a cache from before the repo's
+          # rename (coucou-agent → Lumo) breaks the build: the key names the repo.
+          key: windows-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
+          restore-keys: windows-cargo-${{ github.repository }}-
 
       - name: Install dependencies
         run: npm ci
