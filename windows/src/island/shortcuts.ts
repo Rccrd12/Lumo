@@ -15,6 +15,7 @@ import { t } from "../i18n/i18n";
 import { cyclePill, islandKeyAction, pillByNumber, type IslandKeyAction } from "../core/shortcuts";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
+import { Live } from "../live/session";
 
 const CLAUDE_DESKTOP_ID = "agent_claude-desktop";
 
@@ -113,6 +114,20 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       State.notify();
       break;
     }
+
+    // Gemini Live: starts a call, or ends the one on screen. A call going on
+    // behind another view comes back first, so one press never ends it unseen.
+    case "talkToGemini":
+      resume();
+      if (!Live.active) {
+        host.alert("live");
+        void Live.start();
+      } else if (State.mode === "expanded" && State.view === "live") {
+        Live.end();
+      } else {
+        host.alert("live");
+      }
+      break;
 
     // wardrobeToggle never comes this way (Rust sends `open-wardrobe`), nor do
     // askScreen / askSelection (`ask-context`, runShared), and

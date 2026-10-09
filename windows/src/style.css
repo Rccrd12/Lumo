@@ -3026,3 +3026,115 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   unicode-bidi: plaintext;
   text-align: start;
 }
+
+/* ── Gemini Live (views/live.ts) ─────────────────────────────────────────── */
+
+/* The chat's microphone button and the call's, lit while a call is on or the microphone is off. */
+.mic-btn.lit {
+  color: #22d3ee;
+}
+
+.live-mute.lit {
+  color: #f5a524;
+}
+
+.live-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 18px;
+  padding: 0 4px;
+}
+
+.live-dot {
+  background: #22d3ee;
+}
+
+.live-title {
+  font: 600 12px var(--font);
+  color: var(--ink-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.live-gap {
+  flex: 1 1 auto;
+}
+
+.live-status {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+}
+
+/* Five bars that move with whoever is talking. */
+.live-meter {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 12px;
+}
+
+.live-meter[hidden] {
+  display: none;
+}
+
+.live-meter i {
+  width: 2.5px;
+  height: 12px;
+  border-radius: 2px;
+  background: #22d3ee;
+  transform: scaleY(0.25);
+  transition: transform 0.08s linear;
+}
+
+.live-intro {
+  font: 400 12.5px var(--font);
+  color: #b0b5be;
+  line-height: 1.45;
+  padding: 2px 4px;
+}
+
+.live-problem {
+  font: 400 12px var(--font);
+  color: #f4505e;
+  padding: 2px 4px;
+  user-select: text;
+}
+
+.live-problem[hidden],
+.live-doing[hidden],
+.live-start[hidden],
+.live-bar[hidden] {
+  display: none;
+}
+
+.live-doing {
+  align-items: center;
+  min-height: 16px;
+}
+
+.live-start {
+  padding: 0 4px;
+}
+
+.live-start .btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.live-start .btn[hidden] {
+  display: none;
+}
+
+.live-end {
+  background: #f4505e;
+  color: #fff;
+}
+
+.live-end:hover:not(:disabled) {
+  background: #ff6672;
+  color: #fff;
+}

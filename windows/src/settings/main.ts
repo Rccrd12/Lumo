@@ -21,6 +21,8 @@ import { colorDot } from "./colors";
 import { renderDiff, statusDot } from "./parts";
 import { updatesSection } from "./updates";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
+import { LIVE_EXTENDED, LIVE_MODEL, THINKING_LEVELS, VOICES, parseLiveModel, parseThinking, parseVoice } from "../live/protocol";
+import { VOICE_SETTINGS } from "../live/strings";
 import {
   LANGUAGES, N_, isRtl, onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t, tn,
 } from "../i18n/i18n";
@@ -700,6 +702,134 @@ function chatSharingSection(): HTMLElement {
       }),
     ),
     windows ? null : h("div", { class: "hint", text: SHARING_TEXT.linux }),
+  );
+}
+
+// ── Voice: Gemini Live ────────────────────────────────────────────────────────
+
+const THINKING_NAMES: Record<string, string> = { low: N_("Low"), medium: N_("Medium"), high: N_("High") };
+
+function select(options: [string, string][], value: string, onChange: (v: string) => void): HTMLSelectElement {
+  const el = h("select", {}) as HTMLSelectElement;
+  for (const [id, label] of options) el.append(h("option", { value: id, text: label }));
+  el.value = value;
+  el.addEventListener("change", () => onChange(el.value));
+  return el;
+}
+
+/**
+ * Gemini Live (src/live): the Google AI key (the same one as the chat's), the
+ * model, its thinking, its voice, whether it may look at the screen, and who
+ * takes what it can't do.
+ */
+function voiceSection(
+  present: Record<string, boolean>,
+  keyChanged: (key: string, on: boolean) => void,
+  shortcuts: ShortcutsReport | null,
+): HTMLElement {
+  const key = providerDef("google").key!;
+  const input = h("input", {
+    type: "password", autocomplete: "off", spellcheck: "false", style: "flex:1 1 auto;min-width:0",
+  }) as HTMLInputElement;
+  const dotEl = statusDot(present[key] ?? false);
+  const saveBtn = h("button", { text: CHAT_STRINGS.save });
+  const removeBtn = h("button", { class: "danger", text: CHAT_STRINGS.remove });
+  const refresh = () => {
+    input.placeholder = present[key] ? CHAT_STRINGS.stored : "AIza…";
+    dotEl.style.background = present[key] ? "#22c55e" : "#f4505e";
+    removeBtn.style.display = present[key] ? "" : "none";
+  };
+  saveBtn.addEventListener("click", async () => {
+    const value = input.value.trim();
+    if (!value) return;
+    try {
+      await Bridge.secretSet(key, value);
+    } catch {
+      dotEl.style.background = "#f5a524";
+      return;
+    }
+    present[key] = true;
+    input.value = "";
+    keyChanged(key, true);
+    // The chat's own Google AI row shows it too, on the next draw.
+    void rerender();
+  });
+  removeBtn.addEventListener("click", async () => {
+    try {
+      await Bridge.secretClear(key);
+    } catch {
+      dotEl.style.background = "#f5a524";
+      return;
+    }
+    present[key] = false;
+    keyChanged(key, false);
+    void rerender();
+  });
+  refresh();
+
+  const model = parseLiveModel(settings.liveModel);
+  const thinkingRow = h("div", { class: "row" },
+    h("label", { text: t(VOICE_SETTINGS.thinking) }),
+    select(THINKING_LEVELS.map((l) => [l, t(THINKING_NAMES[l])]), parseThinking(settings.liveThinking), (v) => {
+      settings.liveThinking = v;
+      void save();
+    }),
+  );
+  const thinkingHint = h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(VOICE_SETTINGS.thinkingHint) });
+  const showThinking = (m: string) => {
+    thinkingRow.hidden = m !== LIVE_EXTENDED;
+    thinkingHint.hidden = m !== LIVE_EXTENDED;
+  };
+  showThinking(model);
+
+  const windows = navigator.userAgent.includes("Windows");
+  const def = SHORTCUTS.find((s) => s.id === "talkToGemini");
+  const binding = shortcuts && def ? effective(def, settings.shortcuts) : null;
+  const keys = displayKeys(binding?.keys ?? def?.defaultKeys ?? "Ctrl+Alt+L");
+
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("i", { class: "dot", style: "background:#22d3ee;margin-right:8px" }), h("span", { text: "Gemini Live" })),
+    h("div", { class: "hint", text: t(VOICE_SETTINGS.hint, { keys }) }),
+    h("div", { class: "row" },
+      h("label", { text: t(VOICE_SETTINGS.key) }),
+      input, saveBtn, removeBtn, dotEl,
+    ),
+    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Key from {site}", { site: "aistudio.google.com" }) }),
+    h("div", { class: "row" },
+      h("label", { text: t(VOICE_SETTINGS.model) }),
+      select([[LIVE_MODEL, "Gemini 3.8 Live"], [LIVE_EXTENDED, "Gemini 3.8 Live Extended Thinking"]], model, (v) => {
+        settings.liveModel = v;
+        showThinking(v);
+        void save();
+      }),
+    ),
+    thinkingRow,
+    thinkingHint,
+    h("div", { class: "row" },
+      h("label", { text: t(VOICE_SETTINGS.voice) }),
+      select([["", t(VOICE_SETTINGS.automatic)], ...VOICES.map((v): [string, string] => [v, v])], parseVoice(settings.liveVoice), (v) => {
+        settings.liveVoice = v;
+        void save();
+      }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t(VOICE_SETTINGS.screen) }),
+      toggle(settings.liveScreen && windows, (on) => {
+        settings.liveScreen = on;
+        void save();
+      }),
+    ),
+    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(windows ? VOICE_SETTINGS.screenHint : VOICE_SETTINGS.screenLinux) }),
+    h("div", { class: "row" },
+      h("label", { text: t(VOICE_SETTINGS.helper) }),
+      select([["claude-code", "Claude Code"], ["antigravity-cli", "Antigravity CLI"]], settings.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code", (v) => {
+        settings.liveHelper = v;
+        void save();
+      }),
+    ),
+    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(VOICE_SETTINGS.helperHint) }),
   );
 }
 
@@ -1475,6 +1605,7 @@ const PAGES = [
   { id: "general", label: N_("General") },
   { id: "island", label: N_("Island") },
   { id: "chat", label: N_("Chat") },
+  { id: "voice", label: VOICE_SETTINGS.page },
   { id: "agents", label: N_("Agents") },
   { id: "pills", label: N_("Pills & integrations") },
   { id: "shortcuts", label: N_("Shortcuts") },
@@ -1622,6 +1753,7 @@ async function render() {
     general: [generalSection()],
     island: [islandSection()],
     chat: [apiSection(hasKey), agyCliSection(), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
+    voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status)],
     pills: [activePillsSection(connected), integrationsSection(present)],
     shortcuts: [shortcutsSection(shortcutReport)],

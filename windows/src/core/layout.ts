@@ -23,7 +23,8 @@ export type IslandViewName =
   | "settings"
   | "greeting"
   | "recap"
-  | "wardrobe";
+  | "wardrobe"
+  | "live";
 
 export type BotStateName =
   | "idle"
@@ -107,6 +108,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // to the shared image.
   recap: { height: 184, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
   wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
+  // A Gemini Live call (views/live.ts): the chat's room, Lumo where he is in it.
+  live: { height: 240, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually

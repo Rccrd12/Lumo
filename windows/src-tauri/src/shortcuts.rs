@@ -18,6 +18,7 @@
 //   Ctrl+Alt+T       open the terminal       Ctrl+Alt+G      wardrobe
 //   Ctrl+Alt+N       open / close the island (off by default, as on the Mac)
 //   Ctrl+Alt+P       ask about my screen     Ctrl+Alt+X      ask about the selected text
+//   Ctrl+Alt+L       talk with Gemini Live (start or end the conversation)
 //
 // The last two are this version's own (the Mac has no such action yet): they
 // open the chat with a screenshot of the display under the cursor, or with
@@ -79,6 +80,8 @@ pub const ACTIONS: &[ActionDef] = &[
     // screenshot yet, the island says so.
     action("askScreen", "Ctrl+Alt+P", true, true),
     action("askSelection", "Ctrl+Alt+X", true, true),
+    // Starts or ends a spoken conversation with Gemini Live (live.rs).
+    action("talkToGemini", "Ctrl+Alt+L", true, true),
 ];
 
 pub fn find(id: &str) -> Option<&'static ActionDef> {
@@ -439,7 +442,7 @@ mod tests {
         "nextPill", "prevPill", "muteToggle", "desktopToggle", "wardrobeToggle",
     ];
     /// This version's own, after the Mac's.
-    const OWN_IDS: [&str; 2] = ["askScreen", "askSelection"];
+    const OWN_IDS: [&str; 3] = ["askScreen", "askSelection", "talkToGemini"];
 
     fn never(_: &Shortcut) -> Option<String> {
         None

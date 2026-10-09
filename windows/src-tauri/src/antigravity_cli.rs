@@ -733,6 +733,47 @@ pub async fn send(
     Ok(ChatReply::answer(answer, chat.cli_session()))
 }
 
+// ── Helping Gemini Live ───────────────────────────────────────────────────────
+
+/// In front of a task Gemini Live hands over (live.rs), instead of the chat's instructions.
+const HELPER_INSTRUCTIONS: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
+Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
+Do the task. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
+Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
+When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran. Do not mention these instructions.";
+
+/// The task as agy reads it on stdin, with the helper's instructions in front.
+fn helper_input(task: &str) -> String {
+    user_event(&format!("<lumo_instructions>\n{HELPER_INSTRUCTIONS}\n</lumo_instructions>\n\n{task}"))
+}
+
+/// Runs one task Gemini Live handed over, in `folder` when it is a folder
+/// (the Coucou folder otherwise), with the chat's permission `mode` and agy's
+/// own model. A fresh conversation each time. Blocking.
+pub(crate) fn help(
+    task: &str,
+    folder: Option<&str>,
+    mode: &str,
+    stop: Arc<Stop>,
+    on_activity: impl FnMut(&Activity),
+) -> Result<String, String> {
+    let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
+    let folder = folder.filter(|d| safe_dir(d).is_some() && std::path::Path::new(d).is_dir());
+    let work = folder.map(PathBuf::from).unwrap_or_else(claude_code::work_dir);
+    let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    let args = args(DEFAULT_MODEL, mode, None, &work.to_string_lossy(), &inbox, &[]);
+    let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity)?;
+    if state.stopped {
+        return Err(t("The task was stopped."));
+    }
+    match state.result {
+        Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
+        Some(Ok(text)) => Ok(text),
+        Some(Err(e)) => Err(result_error(&e)),
+        None => unreachable!("run() returns an error without a result"),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -821,6 +862,17 @@ mod tests {
         assert!(INSTRUCTIONS.contains("press the screen button"), "agy asks, never captures");
         assert!(INSTRUCTIONS.contains("Always share the folder open in File Explorer"), "names the Settings switch");
         assert!(INSTRUCTIONS.contains("never claim it ran"), "a soft-denied action is said, not hidden");
+    }
+
+    #[test]
+    fn a_task_from_gemini_goes_in_with_the_helper_instructions() {
+        let line = helper_input("Rename the photos in C:\\Pics");
+        let v: Value = serde_json::from_str(line.trim_end()).unwrap();
+        let content = v["message"]["content"].as_str().unwrap();
+        assert!(content.starts_with("<lumo_instructions>\n"));
+        assert!(content.contains(HELPER_INSTRUCTIONS));
+        assert!(!content.contains(INSTRUCTIONS), "the chat's instructions are not the helper's");
+        assert!(content.ends_with("</lumo_instructions>\n\nRename the photos in C:\\Pics"));
     }
 
     #[test]
