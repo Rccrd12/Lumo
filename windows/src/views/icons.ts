@@ -66,6 +66,8 @@ export const ICONS = {
   doc: "M6.5 2.6h7l4 4v14.8h-11V2.6zm6.6 1.6v3.3h3.3l-3.3-3.3zM8.6 11h6.8v1.5H8.6V11zm0 3.4h6.8v1.5H8.6v-1.5z",
   // display (stroke) — the chat's screen button
   display: "M3.5 4.5h17v11.5h-17zM12 16v3.5M8 19.5h8",
+  // Permissions: a shield, outlined like the display and the paperclip.
+  shield: "M12 3.2 5 6v5.6c0 4.3 2.9 7.9 7 9.2 4.1-1.3 7-4.9 7-9.2V6l-7-2.8z",
   // stop.fill — the chat's send button while an answer is being written
   stop: "M8 6.5h8A1.5 1.5 0 0 1 17.5 8v8a1.5 1.5 0 0 1-1.5 1.5H8A1.5 1.5 0 0 1 6.5 16V8A1.5 1.5 0 0 1 8 6.5z",
   // pencil (stroke) — edit a message of the chat

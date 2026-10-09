@@ -176,6 +176,8 @@ export interface Settings {
   chatModels: Record<string, string>;
   /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
   chatEffort: string;
+  /** What the chat's CLIs may do without asking (core/providers.ts PERMISSION_MODES). */
+  chatPermissionMode: string;
   /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
   chatShowUsage: boolean;
   /**
@@ -249,6 +251,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",
+  chatPermissionMode: "default",
   chatShowUsage: false,
   chatShareExplorer: false,
   ollamaUrl: "",

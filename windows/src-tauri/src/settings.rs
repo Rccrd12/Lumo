@@ -69,6 +69,11 @@ pub struct Settings {
     /// Claude Code's effort level for the chat ("low" … "max"); empty: Claude
     /// Code's own default. Only the Claude Code provider uses it.
     pub chat_effort: String,
+    /// What the chat's CLIs (Claude Code, Antigravity CLI) may do without a
+    /// card: "default" (ask for everything), "acceptEdits" (file edits go
+    /// through) or "plan" (plan only, change nothing). Picked from the chat's
+    /// field; anything else reads as "default".
+    pub chat_permission_mode: String,
     /// A quiet line next to the chat's model picker with what the provider has
     /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits
     /// Anthropic and OpenAI answer with, OpenRouter's key credits. Off until
@@ -169,6 +174,7 @@ impl Default for Settings {
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
+            chat_permission_mode: "default".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
             ollama_url: String::new(),
@@ -460,6 +466,7 @@ mod tests {
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
+  "chatPermissionMode": "plan",
   "chatShowUsage": true,
   "chatShareExplorer": true,
   "ollamaUrl": "http://127.0.0.1:11434",
@@ -902,6 +909,7 @@ mod tests {
                 "chatProvider",
                 "chatModels",
                 "chatEffort",
+                "chatPermissionMode",
                 "chatShowUsage",
                 "chatShareExplorer",
                 "ollamaUrl",

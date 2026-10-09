@@ -300,10 +300,19 @@ web. Every action that needs a permission comes up in the island as the usual
 those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
 allowed on its own. The conversation continues the same Claude Code session
 until **New chat**. Install Claude Code and run `claude` once in a terminal to
-sign in before using it. Its **Effort** (Auto, low … max) is picked under the
-models, and goes to Claude Code as `--effort`. Claude Code's own run never shows
-up as a session in the island: only its permission requests do, as a card over
-the chat.
+sign in before using it. Its **Effort** is a slider under the models, from
+Faster to Smarter (low, medium, high, extra high, max), with **Auto** beside it
+for the level its model is made for; it goes to Claude Code as `--effort`.
+Claude Code's own run never shows up as a session in the island: only its
+permission requests do, as a card over the chat.
+
+**The shield** next to the screen button (Claude Code and Antigravity CLI only)
+says what the CLI may do without a card, from the next message on: **Ask every
+time** (the default), **Accept edits** (file edits go through, everything else
+still asks) or **Plan only** (it reads and plans, and changes nothing). It
+lights up while it may do more than ask. There is no mode that lets every
+action through: Lumo never passes `bypassPermissions` or
+`--dangerously-skip-permissions`.
 
 ### Chat with your Google account (Antigravity CLI)
 
@@ -321,8 +330,10 @@ Like Claude Code, it reads the files you drop or attach and the folder you
 share, says what it is doing next to the typing dots, stops on **Stop**, and
 continues the same conversation (`--conversation`) until **New chat**. Its
 models come from `agy models` (**Default** leaves agy's own choice), in the
-picker and in **Settings… → Chat → Antigravity CLI**; its **Effort** is low,
-medium or high. Headless agy never prompts: it reads and writes workspace files
+picker and in **Settings… → Chat → Antigravity CLI**. There is no effort to
+pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
+refuses a mismatched `--effort`. The shield's **Accept edits** and **Plan only**
+go to agy as `--mode accept-edits` and `--mode plan`. Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
 card over the chat (reinstall the hooks if they predate this version, or the

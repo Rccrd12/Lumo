@@ -4790,6 +4790,193 @@
    "pt-BR": "Visual do Lumo",
    "ru": "Облик Lumo",
    "id": "Tampilan Lumo"
+  },
+  "Plan usage: not reported yet": {
+   "zh-Hans": "套餐用量：尚未报告",
+   "hi": "प्लान उपयोग: अभी रिपोर्ट नहीं हुआ",
+   "es": "Uso del plan: aún sin datos",
+   "ar": "استخدام الخطة: لم يُبلَّغ بعد",
+   "fr": "Utilisation du forfait : pas encore indiquée",
+   "bn": "প্ল্যানের ব্যবহার: এখনও জানানো হয়নি",
+   "pt-BR": "Uso do plano: ainda não informado",
+   "ru": "Использование тарифа: пока нет данных",
+   "id": "Pemakaian paket: belum dilaporkan"
+  },
+  "Claude Code reports your plan usage in its terminal sessions; its answers in the chat report it only now and then.": {
+   "zh-Hans": "Claude Code 会在终端会话中报告你的套餐用量；聊天中的回答只是偶尔报告。",
+   "hi": "Claude Code आपके प्लान का उपयोग अपने टर्मिनल सत्रों में बताता है; चैट में उसके जवाब इसे कभी-कभी ही बताते हैं।",
+   "es": "Claude Code informa del uso de tu plan en sus sesiones de terminal; sus respuestas en el chat solo lo hacen de vez en cuando.",
+   "ar": "يُبلغ Claude Code عن استخدام خطتك في جلساته في الطرفية؛ أما إجاباته في الدردشة فلا تُبلغ عنه إلا أحيانًا.",
+   "fr": "Claude Code indique l'utilisation de ton forfait dans ses sessions de terminal ; ses réponses dans le chat ne l'indiquent que de temps en temps.",
+   "bn": "Claude Code টার্মিনাল সেশনে আপনার প্ল্যানের ব্যবহার জানায়; চ্যাটে তার উত্তরগুলো কেবল মাঝে মাঝে জানায়।",
+   "pt-BR": "O Claude Code informa o uso do seu plano nas sessões de terminal; as respostas dele no chat só informam de vez em quando.",
+   "ru": "Claude Code сообщает об использовании тарифа в своих сессиях в терминале; его ответы в чате сообщают об этом лишь изредка.",
+   "id": "Claude Code melaporkan pemakaian paket Anda di sesi terminalnya; jawabannya di chat hanya sesekali melaporkannya."
+  },
+  "Faster": {
+   "zh-Hans": "更快",
+   "hi": "तेज़",
+   "es": "Más rápido",
+   "ar": "أسرع",
+   "fr": "Plus rapide",
+   "bn": "দ্রুততর",
+   "pt-BR": "Mais rápido",
+   "ru": "Быстрее",
+   "id": "Lebih cepat"
+  },
+  "Smarter": {
+   "zh-Hans": "更聪明",
+   "hi": "ज़्यादा समझदार",
+   "es": "Más inteligente",
+   "ar": "أذكى",
+   "fr": "Plus intelligent",
+   "bn": "আরও বুদ্ধিমান",
+   "pt-BR": "Mais inteligente",
+   "ru": "Умнее",
+   "id": "Lebih cerdas"
+  },
+  "Recommended": {
+   "zh-Hans": "推荐",
+   "hi": "सुझाया गया",
+   "es": "Recomendado",
+   "ar": "موصى به",
+   "fr": "Recommandé",
+   "bn": "প্রস্তাবিত",
+   "pt-BR": "Recomendado",
+   "ru": "Рекомендуется",
+   "id": "Disarankan"
+  },
+  "Auto: Claude Code picks the effort its model is made for.": {
+   "zh-Hans": "自动：Claude Code 会选择其模型适合的推理强度。",
+   "hi": "ऑटो: Claude Code वह प्रयास स्तर चुनता है जिसके लिए उसका मॉडल बना है।",
+   "es": "Auto: Claude Code elige el esfuerzo para el que está hecho su modelo.",
+   "ar": "تلقائي: يختار Claude Code مستوى الجهد الذي صُمِّم له نموذجه.",
+   "fr": "Auto : Claude Code choisit l'effort pour lequel son modèle est conçu.",
+   "bn": "স্বয়ংক্রিয়: Claude Code তার মডেলের জন্য উপযুক্ত প্রচেষ্টা বেছে নেয়।",
+   "pt-BR": "Auto: o Claude Code escolhe o esforço para o qual o modelo foi feito.",
+   "ru": "Авто: Claude Code выбирает уровень усилий, для которого создана его модель.",
+   "id": "Otomatis: Claude Code memilih tingkat upaya yang sesuai untuk modelnya."
+  },
+  "Low": {
+   "zh-Hans": "低",
+   "hi": "कम",
+   "es": "Bajo",
+   "ar": "منخفض",
+   "fr": "Faible",
+   "bn": "কম",
+   "pt-BR": "Baixo",
+   "ru": "Низкий",
+   "id": "Rendah"
+  },
+  "Medium": {
+   "zh-Hans": "中",
+   "hi": "मध्यम",
+   "es": "Medio",
+   "ar": "متوسط",
+   "fr": "Moyen",
+   "bn": "মাঝারি",
+   "pt-BR": "Médio",
+   "ru": "Средний",
+   "id": "Sedang"
+  },
+  "High": {
+   "zh-Hans": "高",
+   "hi": "उच्च",
+   "es": "Alto",
+   "ar": "مرتفع",
+   "fr": "Élevé",
+   "bn": "বেশি",
+   "pt-BR": "Alto",
+   "ru": "Высокий",
+   "id": "Tinggi"
+  },
+  "Extra high": {
+   "zh-Hans": "很高",
+   "hi": "बहुत उच्च",
+   "es": "Muy alto",
+   "ar": "مرتفع جدًا",
+   "fr": "Très élevé",
+   "bn": "অনেক বেশি",
+   "pt-BR": "Muito alto",
+   "ru": "Очень высокий",
+   "id": "Sangat tinggi"
+  },
+  "Max": {
+   "zh-Hans": "最高",
+   "hi": "अधिकतम",
+   "es": "Máximo",
+   "ar": "أقصى",
+   "fr": "Maximum",
+   "bn": "সর্বোচ্চ",
+   "pt-BR": "Máximo",
+   "ru": "Максимум",
+   "id": "Maksimal"
+  },
+  "Ask every time": {
+   "zh-Hans": "每次都询问",
+   "hi": "हर बार पूछें",
+   "es": "Preguntar siempre",
+   "ar": "السؤال في كل مرة",
+   "fr": "Demander à chaque fois",
+   "bn": "প্রতিবার জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar sempre",
+   "ru": "Спрашивать каждый раз",
+   "id": "Selalu tanya"
+  },
+  "Asks before each action that needs a permission.": {
+   "zh-Hans": "每个需要权限的操作之前都会询问。",
+   "hi": "हर उस कार्रवाई से पहले पूछता है जिसके लिए अनुमति चाहिए।",
+   "es": "Pregunta antes de cada acción que necesita permiso.",
+   "ar": "يسأل قبل كل إجراء يحتاج إلى إذن.",
+   "fr": "Demande avant chaque action qui nécessite une autorisation.",
+   "bn": "অনুমতি লাগে এমন প্রতিটি কাজের আগে জিজ্ঞাসা করে।",
+   "pt-BR": "Pergunta antes de cada ação que precisa de permissão.",
+   "ru": "Спрашивает перед каждым действием, которому нужно разрешение.",
+   "id": "Bertanya sebelum setiap tindakan yang memerlukan izin."
+  },
+  "Accept edits": {
+   "zh-Hans": "接受编辑",
+   "hi": "संपादन स्वीकारें",
+   "es": "Aceptar ediciones",
+   "ar": "قبول التعديلات",
+   "fr": "Accepter les modifications",
+   "bn": "সম্পাদনা গ্রহণ করুন",
+   "pt-BR": "Aceitar edições",
+   "ru": "Принимать правки",
+   "id": "Terima suntingan"
+  },
+  "Edits files without asking; asks for everything else.": {
+   "zh-Hans": "编辑文件时不询问；其他操作仍会询问。",
+   "hi": "फ़ाइलें बिना पूछे संपादित करता है; बाकी सब के लिए पूछता है।",
+   "es": "Edita archivos sin preguntar; pregunta por todo lo demás.",
+   "ar": "يعدّل الملفات دون أن يسأل، ويسأل عن كل ما عدا ذلك.",
+   "fr": "Modifie les fichiers sans demander ; demande pour tout le reste.",
+   "bn": "জিজ্ঞাসা না করেই ফাইল সম্পাদনা করে; বাকি সবকিছুর জন্য জিজ্ঞাসা করে।",
+   "pt-BR": "Edita arquivos sem perguntar; pergunta sobre todo o resto.",
+   "ru": "Правит файлы без вопросов; обо всём остальном спрашивает.",
+   "id": "Menyunting file tanpa bertanya; bertanya untuk hal lainnya."
+  },
+  "Plan only": {
+   "zh-Hans": "仅规划",
+   "hi": "सिर्फ़ योजना",
+   "es": "Solo planificar",
+   "ar": "التخطيط فقط",
+   "fr": "Planifier seulement",
+   "bn": "শুধু পরিকল্পনা",
+   "pt-BR": "Só planejar",
+   "ru": "Только план",
+   "id": "Hanya rencana"
+  },
+  "Reads and plans, and changes nothing.": {
+   "zh-Hans": "只阅读和规划，不做任何更改。",
+   "hi": "पढ़ता है और योजना बनाता है, कुछ भी नहीं बदलता।",
+   "es": "Lee y planifica, y no cambia nada.",
+   "ar": "يقرأ ويخطط، ولا يغيّر شيئًا.",
+   "fr": "Lit et planifie, sans rien modifier.",
+   "bn": "পড়ে ও পরিকল্পনা করে, কিছুই বদলায় না।",
+   "pt-BR": "Lê e planeja, sem mudar nada.",
+   "ru": "Читает и планирует, ничего не меняя.",
+   "id": "Membaca dan merencanakan, tanpa mengubah apa pun."
   }
  }
 }

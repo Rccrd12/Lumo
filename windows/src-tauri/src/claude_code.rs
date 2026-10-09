@@ -109,19 +109,32 @@ pub(crate) fn safe_dir(dir: &str) -> Option<&str> {
         .then_some(dir)
 }
 
+/// What the chat's CLIs may do without a card, as picked in the chat's field
+/// (Settings::chat_permission_mode): "default" asks for everything,
+/// "acceptEdits" lets file edits through, "plan" changes nothing. Anything
+/// else — `auto`, `bypassPermissions`, a typo — is "default": nothing is ever
+/// allowed wholesale.
+pub(crate) fn permission_mode(raw: &str) -> &'static str {
+    match raw.trim() {
+        "acceptEdits" => "acceptEdits",
+        "plan" => "plan",
+        _ => "default",
+    }
+}
+
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
 /// `folders`: what the user shared from File Explorer in this chat.
-fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
+fn args(model: &str, effort: &str, mode: &str, session: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
     let mut a: Vec<String> = [
         "-p",
         "--output-format",
         "stream-json",
         "--verbose",
         "--include-partial-messages",
-        // Never `auto` or a mode the user's settings default to: here every
-        // action that needs a permission is a card in the island.
+        // The mode picked in the chat, never one the user's settings default
+        // to: what it does not let through is a card in the island.
         "--permission-mode",
-        "default",
+        permission_mode(mode),
         "--append-system-prompt",
         APPEND_PROMPT,
     ]
@@ -337,6 +350,23 @@ struct Run {
     blocks: Vec<(u64, String, String, String)>,
     /// Tool calls not answered yet, oldest first: id and what each is doing.
     pending: Vec<(String, Activity)>,
+    /// The Claude plan's limits this turn reported (`rate_limit_event`), in the
+    /// status line's shape: `five_hour` / `seven_day` → `used_percentage`, `resets_at`.
+    rate_limits: serde_json::Map<String, Value>,
+}
+
+/// One `rate_limit_event` of the stream, in the status line's shape — the
+/// plan gauge reads only that. Its `utilization` is a fraction; an event
+/// without one (Claude Code leaves it out while all is well) says nothing.
+fn plan_window(info: &Value) -> Option<(String, Value)> {
+    let get = |camel: &str, snake: &str| info.get(camel).or_else(|| info.get(snake)).cloned().unwrap_or(Value::Null);
+    let kind = get("rateLimitType", "rate_limit_type");
+    let kind = kind.as_str().filter(|k| matches!(*k, "five_hour" | "seven_day"))?;
+    let used = get("utilization", "utilization").as_f64().filter(|u| u.is_finite() && *u >= 0.0)?;
+    let resets = get("resetsAt", "resets_at").as_f64().filter(|r| r.is_finite() && *r > 0.0)?;
+    // Epoch seconds, as the status line has them; milliseconds are brought back.
+    let resets = if resets > 1e12 { resets / 1000.0 } else { resets };
+    Some((kind.to_string(), json!({ "used_percentage": (used * 100.0).min(200.0), "resets_at": resets.round() })))
 }
 
 impl Run {
@@ -431,6 +461,12 @@ impl Run {
                 if answered {
                     let next = self.pending.last().map(|(_, a)| a.clone()).unwrap_or_else(Activity::thinking);
                     self.set_activity(next);
+                }
+                false
+            }
+            Some("rate_limit_event") => {
+                if let Some((kind, window)) = plan_window(&v["rate_limit_info"]) {
+                    self.rate_limits.insert(kind, window);
                 }
                 false
             }
@@ -638,6 +674,7 @@ pub async fn send(
     chat: &Chat,
     model: &str,
     effort: &str,
+    mode: &str,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -655,7 +692,7 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, effort, session.as_deref(), &inbox, &chat.cli_dirs(folder));
+    let args = args(model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder));
 
     let app2 = app.clone();
     let stop = chat.stopper();
@@ -677,6 +714,11 @@ pub async fn send(
     .await
     .map_err(|e| e.to_string())??;
 
+    // The plan's limits, when the turn said: the island's plan gauge (and the
+    // chat's usage line) need not wait for a terminal session's status line.
+    if !state.rate_limits.is_empty() {
+        let _ = app.emit_to(WINDOW_LABEL, "chat-plan-usage", Value::Object(state.rate_limits.clone()));
+    }
     // A stopped turn keeps its session too: Claude Code has the question and
     // what it wrote, as the island does.
     if let Some(id) = &state.session {
@@ -712,14 +754,14 @@ mod tests {
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let a = args("opus", "high", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
+        let a = args("opus", "high", "default", Some(SID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
         assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--model", "opus"]));
         assert!(a.windows(2).any(|w| w == ["--resume", SID]));
         assert!(a.windows(2).any(|w| w == ["--permission-mode", "default"]));
         assert_eq!(a[0], "-p");
 
-        let a = args("opus & del *", "high & calc", Some("x\" & calc"), "/inbox", &["C:\\A & calc".into(), "%TEMP%".into()]);
+        let a = args("opus & del *", "high & calc", "default", Some("x\" & calc"), "/inbox", &["C:\\A & calc".into(), "%TEMP%".into()]);
         assert!(!a.contains(&"--effort".to_string()));
         assert!(!a.iter().any(|s| s.contains('&')), "{a:?}");
         assert!(!a.contains(&"--model".to_string()));
@@ -728,6 +770,34 @@ mod tests {
         assert!(!APPEND_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
         assert!(APPEND_PROMPT.contains("press the screen button"), "Claude asks, never captures");
         assert!(APPEND_PROMPT.contains("Always share the folder open in File Explorer"), "names the Settings switch");
+    }
+
+    #[test]
+    fn the_plan_limits_are_read_off_the_stream_when_it_gives_them() {
+        let mut run = Run::default();
+        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.42,"resetsAt":1791560000}}"#);
+        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"seven_day","utilization":0.1,"resetsAt":1791900000000}}"#);
+        // No utilization (all is well), or a limit the gauge has no place for: nothing.
+        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1}}"#);
+        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"overage","utilization":0.5,"resetsAt":1}}"#);
+        assert_eq!(run.rate_limits.len(), 2);
+        assert_eq!(run.rate_limits["five_hour"], json!({ "used_percentage": 42.0, "resets_at": 1791560000.0 }));
+        assert_eq!(run.rate_limits["seven_day"]["resets_at"], json!(1791900000.0));
+    }
+
+    #[test]
+    fn the_permission_mode_is_the_one_picked_and_never_lets_everything_through() {
+        let mode = |m: &str| {
+            let a = args("default", "", m, None, "/inbox", &[]);
+            let i = a.iter().position(|s| s == "--permission-mode").unwrap();
+            a[i + 1].clone()
+        };
+        assert_eq!(mode("acceptEdits"), "acceptEdits");
+        assert_eq!(mode("plan"), "plan");
+        assert_eq!(mode("default"), "default");
+        for wholesale in ["bypassPermissions", "auto", "dontAsk", "", "plan & calc"] {
+            assert_eq!(mode(wholesale), "default", "{wholesale}");
+        }
     }
 
     #[test]
@@ -918,7 +988,7 @@ sleep 30 & wait"#;
 
     #[test]
     fn a_shared_folder_is_added_only_when_cmd_exe_would_read_it_as_a_path() {
-        let a = args("default", "", None, "/inbox", &["C:\\Users\\me\\My PDFs".into(), "\\\\nas\\docs".into()]);
+        let a = args("default", "", "default", None, "/inbox", &["C:\\Users\\me\\My PDFs".into(), "\\\\nas\\docs".into()]);
         assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\My PDFs"]));
         assert!(a.windows(2).any(|w| w == ["--add-dir", "\\\\nas\\docs"]));
         assert_eq!(safe_dir("C:\\Tom & Jerry"), None);

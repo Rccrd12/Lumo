@@ -6,7 +6,7 @@
 
 import { closeCurve } from "../core/anim";
 import { Sound } from "../core/sound";
-import { COMPACT_W, NOTCH_H } from "../core/layout";
+import { COMPACT_BOT_X, COMPACT_W, NOTCH_H } from "../core/layout";
 import {
   LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type RGB,
 } from "./lumo";
@@ -49,7 +49,6 @@ const C0 = { x: 320, y: 88 };
 const HB = 58;
 /** Lumo's width over his height. */
 export const ASP = LUMO_RX / LUMO_RY;
-const EAR_X = 40;
 const EAR_HB = 17;
 const CARD = { x: 10, y: 36, w: 620, h: 104 };
 const CARD_R = 20;
@@ -140,7 +139,7 @@ function greetPose(t: number): Pose {
 function smallPose(): Pose {
   return {
     hb: (EAR_HB * COMPACT.botDiameter) / 20,
-    x: GREETING_W / 2 - COMPACT.width / 2 + EAR_X,
+    x: GREETING_W / 2 - COMPACT.width / 2 + COMPACT_BOT_X,
     y: COMPACT.botCenterY,
     sx: 1, sy: 1,
     eye: "dot", open: 1,

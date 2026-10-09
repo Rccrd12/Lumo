@@ -1,11 +1,15 @@
 # Changelog
 
-## Windows and Linux — unreleased
+## Windows and Linux 0.3.2 — October 9, 2026
 
 - **The launch greeting is centred and whole again**: it keeps its own size, whatever size you dragged the island to, and is drawn for the island's zoom and the display it is on, so it is no longer cut off on one side. Resting the mouse on it no longer holds it on screen: it settles into the compact island on its own
 - **Moving the island to another display** no longer cuts Lumo and the pills' mini Lumos: every drawing follows the new display's scale, and the window is put back in place and at the right size after Windows rescales it
 - **The compact island shows Lumo alone**, without the other pills' mini Lumos next to him
-- **Chat with Antigravity CLI works again**: newer versions of `agy` refused to start ("Attach the prompt to the flag (-p='your prompt')…"); Lumo no longer passes `-p`, since the prompt already goes in on stdin
+- **Chat with Antigravity CLI works again**: newer versions of `agy` refused to start ("Attach the prompt to the flag (-p='your prompt')…"); Lumo no longer passes `-p`, since the prompt already goes in on stdin. Its answers now show: agy wraps each event's fields in an object of its own, which Lumo did not read, so a turn ended with an empty answer. agy also works in Lumo's folder now instead of a scratch folder of its own, and a question starting with "/" is no longer taken for one of agy's commands
+- **Effort is a slider** in the model picker, from Faster to Smarter (low, medium, high, extra high, max), with **Auto** beside it to let Claude Code pick its model's own level. Antigravity CLI has no effort to pick any more: each of its models carries its effort in its name (`gemini-3.8-flash-low`), and agy refuses a mismatched one
+- **A permissions button in the chat** (the shield next to the screen button, for Claude Code and Antigravity CLI): **Ask every time** (as before), **Accept edits** (file edits go through, everything else still asks) or **Plan only** (it reads and plans, and changes nothing). It applies from the next message, and the shield lights up while it may do more than ask. Nothing lets every action through
+- **The Claude plan usage in the chat** no longer stays on "Waiting for a response from Claude Code": the numbers also come from Claude Code's answers in the chat when they report them, and until there are any the line says so and where they come from
+- **Lumo sits closer to the left end** of the compact island
 - **Gemini CLI is gone from Settings**: Google replaced it with Antigravity CLI. Its pill is no longer offered, and Settings → Agents only lists its hooks when they were installed before, so they can be removed
 - **Lumo stays in the island**: he can no longer be dragged out onto the desktop. One left there by an earlier version comes home
 - **The Windows app is `lumo.exe`** instead of `coucou.exe`. Installing over an older Lumo closes and removes `coucou.exe`, and its Start menu and desktop shortcuts and its autostart entry start `lumo.exe`

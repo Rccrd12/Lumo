@@ -48,6 +48,10 @@ export const USAGE_TEXT = {
   creditsLeft: (n: string) => t("Credits left: {n}", { n }),
   creditsUsed: (n: string) => t("Credits used: {n}", { n }),
   resetsAt: (time: string) => t("Resets at {time}", { time }),
+  get notYet() { return t("Plan usage: not reported yet"); },
+  get notYetTitle() {
+    return t("Claude Code reports your plan usage in its terminal sessions; its answers in the chat report it only now and then.");
+  },
   get setup() {
     const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
     return t("Plan usage: install the relay in {path}", { path });
@@ -100,7 +104,7 @@ function clock(ms: number): string {
 function planLine(settings: Settings, plan: PlanUsage | null, now: number): UsageLine {
   if (!settings.planRelayInstalled) return { text: USAGE_TEXT.setup, title: PLAN_TEXT.claudePillTitle, color: null, setup: true };
   if (!plan || (!plan.fiveHour && !plan.sevenDay)) {
-    return { text: PLAN_TEXT.waiting, title: PLAN_TEXT.claudePillTitle, color: planColor(null) };
+    return { text: USAGE_TEXT.notYet, title: USAGE_TEXT.notYetTitle, color: planColor(null) };
   }
   const part = (label: string, w: PlanWindow, weekly: boolean) =>
     `${USAGE_TEXT.pctLeft(label, Math.round(100 - effectivePct(w, now)))} (${resetLabel(w, weekly, now)})`;
