@@ -45,6 +45,12 @@ test("Claude Code: what is left of the plan, with the resets, in the plan's colo
   assert.equal(l2.color, "#F4505E");
 });
 
+test("Claude Code: a 5-hour window reported without a figure reads as plenty left", () => {
+  const low = { ...plan, fiveHour: { usedPct: 0, resetsAt: NOW + 80 * 60_000, low: true } };
+  const line = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: true }), low, undefined, NOW);
+  assert.ok(line.text.startsWith("5 hours: plenty left (in 1 h 20) · Week: 80% left ("), line.text);
+});
+
 test("Claude Code without the relay points to Settings rather than showing numbers", () => {
   const line = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: false }), plan, undefined, NOW);
   assert.equal(line.text, "Plan usage: install the relay in Settings → Agents → Plan usage");

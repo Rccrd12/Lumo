@@ -12,7 +12,7 @@ import { State, type AskedQuestion } from "../core/state";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
-import { parseClaudePlan, restorePlanUsage } from "../core/plan";
+import { mergeWindow, parseClaudePlan, restorePlanUsage, type PlanUsage } from "../core/plan";
 import { setClaudePlanUsage, storedClaudePlanUsage } from "../views/usage";
 import { N_, t } from "../i18n/i18n";
 
@@ -248,11 +248,12 @@ export function registerHookHandlers(island: Island) {
     const usage = parseClaudePlan(rateLimits);
     if (!usage) return;
     const prev = State.planUsage;
-    setClaudePlanUsage({
-      ...usage,
-      fiveHour: usage.fiveHour ?? prev?.fiveHour,
-      sevenDay: usage.sevenDay ?? prev?.sevenDay,
-    });
+    const merged: PlanUsage = { updatedAt: usage.updatedAt };
+    const fiveHour = mergeWindow(usage.fiveHour, prev?.fiveHour);
+    const sevenDay = mergeWindow(usage.sevenDay, prev?.sevenDay);
+    if (fiveHour) merged.fiveHour = fiveHour;
+    if (sevenDay) merged.sevenDay = sevenDay;
+    setClaudePlanUsage(merged);
   });
 }
 

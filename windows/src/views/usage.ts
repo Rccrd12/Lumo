@@ -154,9 +154,10 @@ function gaugeRow(label: string, w: PlanWindow | undefined, weekly: boolean, now
   const fill = h("i", { class: "plan-fill" });
   fill.style.width = `${pct}%`;
   fill.style.background = planColor(pct);
+  const low = w.low && w.resetsAt > now;
   row.append(
     h("span", { class: "plan-bar" }, fill),
-    h("span", { class: "plan-pct", text: `${Math.round(pct)}%` }),
+    h("span", { class: "plan-pct", text: low ? PLAN_TEXT.plentyLeft : `${Math.round(pct)}%` }),
     h("span", { class: "plan-reset-icon" }, svg(ICONS.arrowClockwise, 8, { stroke: 2.6 })),
     h("span", { class: "plan-reset", text: resetLabel(w, weekly, now) }),
   );

@@ -14,6 +14,11 @@ export interface PlanWindow {
   usedPct: number;
   /** Epoch milliseconds. */
   resetsAt: number;
+  /**
+   * Far from its limit, without a figure: Claude Code's chat answers give the
+   * window's reset time but leave its usage out while it is low. `usedPct` is 0.
+   */
+  low?: boolean;
 }
 
 export interface PlanUsage {
@@ -47,6 +52,7 @@ export const PLAN_TEXT = {
   minAgo: (n: number) => t("{n} min ago", { n }),
   hAgo: (n: number) => t("{n} h ago", { n }),
   get fiveHours() { return t("5 hours"); },
+  get plentyLeft() { return t("plenty left"); },
   get week() { return t("Week"); },
   get resets() { return t("Resets"); },
   get resetting() { return t("Resetting…"); },
@@ -67,6 +73,9 @@ function parseClaudeWindow(raw: unknown, now: number): PlanWindow | undefined {
   const w = asObj(raw);
   const pct = w?.used_percentage;
   const epoch = w?.resets_at;
+  if (w?.low === true && isNum(epoch) && epoch > 0 && epoch * 1000 <= now + 400 * DAY_MS) {
+    return { usedPct: 0, resetsAt: epoch * 1000, low: true };
+  }
   if (!isNum(pct) || !isNum(epoch)) return undefined;
   // Anything outside 0–200 is not a percentage; 100–200 is a plan over its limit, shown full.
   if (pct < 0 || pct > 200) return undefined;
@@ -130,10 +139,20 @@ export function parseCodexPlan(result: unknown, now = Date.now()): CodexPlanUsag
 /** What to show for a window: 0 once its reset time has passed. */
 export const effectivePct = (w: PlanWindow, now = Date.now()): number => (w.resetsAt <= now ? 0 : w.usedPct);
 
-/** The higher of the two effective percentages; null when there are no windows. */
+/** The higher of the two effective percentages; null when there are no windows. A low window counts as 0. */
 export function dominantPct(u: PlanUsage | null | undefined, now = Date.now()): number | null {
   const pcts = [u?.fiveHour, u?.sevenDay].filter((w): w is PlanWindow => !!w).map((w) => effectivePct(w, now));
   return pcts.length ? Math.max(...pcts) : null;
+}
+
+/**
+ * The window to keep when a chat answer brings `next` and `prev` was there:
+ * a low window (no figure) never replaces a real figure for the same period.
+ */
+export function mergeWindow(next: PlanWindow | undefined, prev: PlanWindow | undefined, now = Date.now()): PlanWindow | undefined {
+  if (!next) return prev?.low && prev.resetsAt <= now ? undefined : prev;
+  if (next.low && prev && !prev.low && Math.abs(prev.resetsAt - next.resetsAt) < 5 * 60_000) return prev;
+  return next;
 }
 
 /** Green below 50 %, orange up to 80 %, red above, grey without data. */
@@ -208,9 +227,8 @@ export function restorePlanUsage(raw: string | null): PlanUsage | null {
     if (!v || !isNum(v.updatedAt)) return null;
     const win = (w: unknown): PlanWindow | undefined => {
       const o = asObj(w);
-      return o && isNum(o.usedPct) && isNum(o.resetsAt) && o.usedPct >= 0 && o.usedPct <= 100
-        ? { usedPct: o.usedPct, resetsAt: o.resetsAt }
-        : undefined;
+      if (!o || !isNum(o.usedPct) || !isNum(o.resetsAt) || o.usedPct < 0 || o.usedPct > 100) return undefined;
+      return o.low === true ? { usedPct: 0, resetsAt: o.resetsAt, low: true } : { usedPct: o.usedPct, resetsAt: o.resetsAt };
     };
     const usage: PlanUsage = { updatedAt: v.updatedAt };
     const fh = win(v.fiveHour);

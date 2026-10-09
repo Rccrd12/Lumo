@@ -369,17 +369,23 @@ struct Run {
 }
 
 /// One `rate_limit_event` of the stream, in the status line's shape — the
-/// plan gauge reads only that. Its `utilization` is a fraction; an event
-/// without one (Claude Code leaves it out while all is well) says nothing.
+/// plan gauge reads only that. Its `utilization` is a fraction. Claude Code
+/// leaves it out while the window is far from its limit: the window is then
+/// `low` (no figure, but its reset time), which the gauge shows as such.
 fn plan_window(info: &Value) -> Option<(String, Value)> {
     let get = |camel: &str, snake: &str| info.get(camel).or_else(|| info.get(snake)).cloned().unwrap_or(Value::Null);
     let kind = get("rateLimitType", "rate_limit_type");
     let kind = kind.as_str().filter(|k| matches!(*k, "five_hour" | "seven_day"))?;
-    let used = get("utilization", "utilization").as_f64().filter(|u| u.is_finite() && *u >= 0.0)?;
     let resets = get("resetsAt", "resets_at").as_f64().filter(|r| r.is_finite() && *r > 0.0)?;
     // Epoch seconds, as the status line has them; milliseconds are brought back.
     let resets = if resets > 1e12 { resets / 1000.0 } else { resets };
-    Some((kind.to_string(), json!({ "used_percentage": (used * 100.0).min(200.0), "resets_at": resets.round() })))
+    match get("utilization", "utilization").as_f64().filter(|u| u.is_finite() && *u >= 0.0) {
+        Some(used) => Some((kind.to_string(), json!({ "used_percentage": (used * 100.0).min(200.0), "resets_at": resets.round() }))),
+        None if get("status", "status").as_str() == Some("allowed") => {
+            Some((kind.to_string(), json!({ "low": true, "resets_at": resets.round() })))
+        }
+        None => None,
+    }
 }
 
 impl Run {
@@ -854,12 +860,14 @@ mod tests {
         let mut run = Run::default();
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed_warning","rateLimitType":"five_hour","utilization":0.42,"resetsAt":1791560000}}"#);
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"seven_day","utilization":0.1,"resetsAt":1791900000000}}"#);
-        // No utilization (all is well), or a limit the gauge has no place for: nothing.
-        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1}}"#);
+        // A limit the gauge has no place for: nothing.
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"overage","utilization":0.5,"resetsAt":1}}"#);
         assert_eq!(run.rate_limits.len(), 2);
         assert_eq!(run.rate_limits["five_hour"], json!({ "used_percentage": 42.0, "resets_at": 1791560000.0 }));
         assert_eq!(run.rate_limits["seven_day"]["resets_at"], json!(1791900000.0));
+        // No utilization while all is well: low, with its reset time.
+        run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1791570000}}"#);
+        assert_eq!(run.rate_limits["five_hour"], json!({ "low": true, "resets_at": 1791570000.0 }));
     }
 
     #[test]

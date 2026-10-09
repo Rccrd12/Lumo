@@ -5494,6 +5494,28 @@
    "pt-BR": "Esforço do assistente",
    "ru": "Усилие помощника",
    "id": "Upaya asisten"
+  },
+  "plenty left": {
+   "zh-Hans": "余量充足",
+   "hi": "काफ़ी बाकी",
+   "es": "queda de sobra",
+   "ar": "متبقٍّ الكثير",
+   "fr": "largement de marge",
+   "bn": "যথেষ্ট বাকি",
+   "pt-BR": "sobra bastante",
+   "ru": "ещё много",
+   "id": "masih banyak"
+  },
+  "{label}: plenty left": {
+   "zh-Hans": "{label}：余量充足",
+   "hi": "{label}: काफ़ी बाकी",
+   "es": "{label}: queda de sobra",
+   "ar": "{label}: متبقٍّ الكثير",
+   "fr": "{label} : largement de marge",
+   "bn": "{label}: যথেষ্ট বাকি",
+   "pt-BR": "{label}: sobra bastante",
+   "ru": "{label}: ещё много",
+   "id": "{label}: masih banyak"
   }
  }
 }
