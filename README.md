@@ -32,6 +32,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 🧑‍💻 **Open terminal** — brings the window a session runs in to the front.
 - 💬 **Chat with Claude, Google AI (Gemini), OpenAI, OpenRouter, or a local model (Ollama, LM Studio, any OpenAI-compatible server)** — click the model name above the chat box to switch provider and model. Cloud providers use your own API key.
 - 🧠 **Chat with your Claude plan** — pick **Claude Code** above the chat box and the island talks to the Claude Code CLI you already use, no API key; every action it wants to take comes up as an Allow / Deny card.
+- 🎙️ **Talk with Gemini Live** — the microphone in the chat box or `Ctrl+Alt+L`: a spoken call with Gemini 3.8 Live (or Extended Thinking) that looks at your screen when it needs to, reads your files and PDFs, opens files and apps, and asks Claude Code or Antigravity CLI for anything else. Uses your Google AI key.
 - 🖼️ **Show the chat your screen** — your open windows or a screenshot, only when you ask; `Ctrl+Alt+P` asks about the screen, `Ctrl+Alt+X` about the selected text, from any app.
 - 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, and your Codex limits. Off by default; Settings → Agents → Plan usage.
 - 📋 **Declare the tools you use** — Settings → Pills & integrations: pick your main tool (VS Code, Cursor, Codex or Antigravity), then up to 4 more agents, chat providers and services.
@@ -63,6 +64,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.4.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.4.0) | Oct 9, 2026 | Talk with Gemini Live, which sees your screen, reads your files and asks Claude Code for help; Lumo animates every state; the wardrobe in two parts |
 | [0.3.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.2) | Oct 9, 2026 | Antigravity CLI answers in the chat, an effort slider, a permissions button in the chat, a centred launch greeting, the app is lumo.exe |
 | [0.3.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.1) | Oct 8, 2026 | Now called Lumo, settings inside the island, a floating island that docks near the edges, choose how it opens and closes, it no longer disappears on its own |
 | [0.3.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.0) | Oct 8, 2026 | Chat with your Claude plan through Claude Code, your screen on request, an island that docks on any edge and resizes, Settings in sections with updates |
@@ -158,6 +160,7 @@ The full list of supported agents, what each one installs and how it answers is 
 | Drag a file onto the island | turns into a box and swallows it |
 | `Ctrl+Alt+Space` | opens the chat, from any app |
 | `Ctrl+Alt+P` / `Ctrl+Alt+X` | asks about your screen / the selected text |
+| `Ctrl+Alt+L` | talks with Gemini Live |
 | `Ctrl+Alt+A` | jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | brings the session's window forward |
 | `Ctrl+Alt+→` / `Ctrl+Alt+←` | next / previous pill |
