@@ -380,3 +380,11 @@ test("the shortcut opens the call view and starts a call; with no answer from Ru
   // The microphone was never asked for: there was nothing to talk to.
   assert.equal(sent("live_microphone").filter((a) => a.on).length, 0);
 });
+
+test("a close reason loses the link Google's 123 bytes cut in half", () => {
+  const cut = "You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: h";
+  assert.equal(P.closeDetail(cut), "You exceeded your current quota, please check your plan and billing details.");
+  assert.equal(P.closeDetail("  Invalid argument.  "), "Invalid argument.");
+  assert.equal(P.closeDetail(""), "");
+  assert.equal(P.liveModelName(P.LIVE_EXTENDED), "Gemini 3.8 Live Extended Thinking");
+});

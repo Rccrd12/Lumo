@@ -5450,6 +5450,17 @@
    "pt-BR": "Não foi possível abrir {name}.",
    "ru": "Не удалось открыть {name}.",
    "id": "Tidak bisa membuka {name}."
+  },
+  "Google refused the call: it says this key's quota for {model} is used up. Its limits are in Google AI Studio, under Rate limit.": {
+   "zh-Hans": "Google 拒绝了通话：它说这个密钥的 {model} 配额已用完。限额可在 Google AI Studio 的 Rate limit 中查看。",
+   "hi": "Google ने कॉल अस्वीकार कर दी: उसके अनुसार इस कुंजी का {model} कोटा खत्म हो गया है। इसकी सीमाएँ Google AI Studio में Rate limit के अंतर्गत हैं।",
+   "es": "Google rechazó la llamada: dice que la cuota de esta clave para {model} se agotó. Sus límites están en Google AI Studio, en Rate limit.",
+   "ar": "رفضت Google المكالمة: تقول إن حصة هذا المفتاح من {model} قد نفدت. حدوده موجودة في Google AI Studio ضمن Rate limit.",
+   "fr": "Google a refusé l'appel : il indique que le quota de cette clé pour {model} est épuisé. Ses limites sont dans Google AI Studio, sous Rate limit.",
+   "bn": "Google কলটি প্রত্যাখ্যান করেছে: এটি বলছে এই কী-এর {model} কোটা শেষ। এর সীমা Google AI Studio-তে Rate limit-এর নিচে আছে।",
+   "pt-BR": "O Google recusou a chamada: diz que a cota desta chave para {model} acabou. Os limites estão no Google AI Studio, em Rate limit.",
+   "ru": "Google отклонил звонок: по его словам, квота этого ключа для {model} исчерпана. Лимиты есть в Google AI Studio, в разделе Rate limit.",
+   "id": "Google menolak panggilan: katanya kuota kunci ini untuk {model} sudah habis. Batasnya ada di Google AI Studio, di bagian Rate limit."
   }
  }
 }

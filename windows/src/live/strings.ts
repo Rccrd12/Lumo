@@ -27,6 +27,7 @@ export const LIVE_STRINGS = {
   // The connection
   lost: N_("The connection to Gemini Live was lost."),
   closedBecause: N_("Gemini Live ended the call: {detail}"),
+  quota: N_("Google refused the call: it says this key's quota for {model} is used up. Its limits are in Google AI Studio, under Rate limit."),
   // What the model is doing
   lookingWindows: N_("Looking at the open windows"),
   lookingExplorer: N_("Looking at the folder open in File Explorer"),

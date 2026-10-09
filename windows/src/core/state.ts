@@ -388,12 +388,9 @@ class AppState {
     return this.stateOverride ?? live ?? this.focusTask?.state ?? "idle";
   }
 
-  /**
-   * What Lumo looks like: the effective state, except while the chat writes
-   * its answer — the chat shows that itself, and Lumo stays his calm self.
-   */
+  /** What Lumo looks like: the effective state, the chat's answer included. */
   get shownState(): BotStateName {
-    return this.stateOverride === "thinking" ? "idle" : this.effectiveState;
+    return this.effectiveState;
   }
 
   get otherTasks(): AgentTask[] {

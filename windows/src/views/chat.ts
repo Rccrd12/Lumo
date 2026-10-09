@@ -183,6 +183,26 @@ const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
 
+/** How long Lumo shows that an answer came (his hop) or went wrong (his shake). */
+export const SETTLE_MS = 2000;
+
+/**
+ * The answer is over: Lumo shows how it went for a moment, then goes back to
+ * what he showed before. A newer answer or anything else that took over is
+ * left alone.
+ */
+let settled = 0;
+export function settle(state: "finished" | "error" | null) {
+  State.stateOverride = state;
+  const mine = ++settled;
+  if (state == null) return;
+  setTimeout(() => {
+    if (mine !== settled || State.stateOverride !== state) return;
+    State.stateOverride = null;
+    State.notify();
+  }, SETTLE_MS);
+}
+
 /** The words for what the answer is doing; anything unknown is Thinking…. */
 export function activityLabel(activity: ChatActivity | null): string {
   const detail = (activity?.detail ?? "").trim();
@@ -1292,10 +1312,10 @@ export function buildPrompt(
       if (reply.session) State.chatSession = reply.session;
       remember();
       askOpenRouter(true);
-      State.stateOverride = null;
+      settle(reply.stopped ? null : "finished");
       Sound.play(reply.stopped ? "pop" : "finish");
     } catch (err) {
-      State.stateOverride = null;
+      settle("error");
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       State.view = "note";
       Sound.play("error");

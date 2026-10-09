@@ -23,7 +23,7 @@ import { activityLabel } from "../views/chat";
 import { MicError, Microphone, Speaker } from "./audio";
 import {
   FRAME_GAP_MS, RECONNECT_AHEAD_MS, SILENCE_ENDS_MS, TOOL, audioEndMessage, audioMessage, base64ToBytes,
-  bytesToBase64, closeDetail, fitSize, frameMessage, isExtended, parseLiveModel, parseServerMessage,
+  bytesToBase64, closeDetail, fitSize, liveModelName, frameMessage, isExtended, parseLiveModel, parseServerMessage,
   parseThinking, parseVoice, setupMessage, textMessage, toolResponseMessage, type FunctionCall, type LiveConfig,
   type ServerEvent, type ToolAnswer,
 } from "./protocol";
@@ -346,7 +346,8 @@ class LiveSession {
       return;
     }
     const key = /API key|API_KEY|permission|unauthenticated/i.test(detail);
-    this.fail(detail ? t(S.closedBecause, { detail }) : t(S.lost), key);
+    if (/quota|RESOURCE_EXHAUSTED/i.test(detail)) this.fail(t(S.quota, { model: liveModelName(this.model) }), true);
+    else this.fail(detail ? t(S.closedBecause, { detail }) : t(S.lost), key);
   }
 
   /** A new connection carrying on the same conversation. */

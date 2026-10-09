@@ -20,6 +20,11 @@ export function isExtended(model: string): boolean {
   return model === LIVE_EXTENDED;
 }
 
+/** The model's name, as Google writes it. */
+export function liveModelName(model: string): string {
+  return isExtended(model) ? "Gemini 3.8 Live Extended Thinking" : "Gemini 3.8 Live";
+}
+
 /** How hard Extended Thinking thinks (MINIMAL is not offered by Google). */
 export const THINKING_LEVELS = ["low", "medium", "high"] as const;
 export type ThinkingLevel = (typeof THINKING_LEVELS)[number];
@@ -370,7 +375,9 @@ export function parseServerMessage(raw: unknown): ServerEvent[] {
  * close frame's reason; "" when the close says nothing useful.
  */
 export function closeDetail(reason: string): string {
-  const r = reason.trim();
+  // A close reason is cut at 123 bytes, often in the middle of Google's
+  // "For more information…" link: that part goes.
+  const r = reason.replace(/\s*For more information[\s\S]*$/i, "").trim();
   if (!r) return "";
   return r.length > 160 ? `${r.slice(0, 159)}…` : r;
 }

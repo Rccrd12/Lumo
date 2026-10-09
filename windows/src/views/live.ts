@@ -9,16 +9,13 @@ import { ICONS } from "./icons";
 import { State } from "../core/state";
 import { HOST_OS } from "../core/pills";
 import { Live, helperName } from "../live/session";
-import { isExtended, parseLiveModel } from "../live/protocol";
+import { liveModelName, parseLiveModel } from "../live/protocol";
 import { LIVE_STRINGS as S } from "../live/strings";
 import type { LiveLine } from "../live/transcript";
 import { t, tl } from "../i18n/i18n";
 import type { ViewHost } from "./views";
 
-/** The model's name, as Google writes it. */
-export function liveModelName(model: string): string {
-  return isExtended(model) ? "Gemini 3.8 Live Extended Thinking" : "Gemini 3.8 Live";
-}
+export { liveModelName };
 
 function lineRow(line: LiveLine): { el: HTMLElement; text: HTMLElement } {
   if (line.role === "user") {
