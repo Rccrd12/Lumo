@@ -25,7 +25,15 @@
 ; starting at login. Once Lumo is in place, these hooks retire the Coucou
 ; install: its program files, its Add/Remove Programs entry, its shortcuts (a
 ; desktop one is replaced by a Lumo one) and its autostart value (moved over to
-; Lumo when it was there). The main binary is coucou.exe in both.
+; Lumo when it was there). Coucou's main binary is coucou.exe.
+;
+; ── coucou.exe → lumo.exe ────────────────────────────────────────────────────
+;
+; Up to 0.3.1 Lumo's own main binary was coucou.exe too (the crate's name); it
+; is lumo.exe now (mainBinaryName, tauri.windows.conf.json). Installed over an
+; older Lumo, the installer closes a coucou.exe still running from the install
+; folder, deletes it, and points the Lumo shortcuts and autostart value that
+; still started it at lumo.exe.
 ;
 ; Nothing of the user's is touched. Settings (%APPDATA%\Coucou), the relay, the
 ; inbox, the log and the recap (%LOCALAPPDATA%\Coucou\…), the WebView's data
@@ -40,6 +48,8 @@
 ; Installer, as Tauri's template did for a .msi of the same name before.
 
 !define LEGACY_PRODUCTNAME "Coucou"
+; The main binary of Coucou, and of Lumo up to 0.3.1.
+!define LEGACY_MAINBINARYNAME "coucou"
 !define LEGACY_UNINSTKEY "Software\Microsoft\Windows\CurrentVersion\Uninstall\Coucou"
 !define RUN_KEY "Software\Microsoft\Windows\CurrentVersion\Run"
 !define STARTUP_APPROVED_KEY "Software\Microsoft\Windows\CurrentVersion\Explorer\StartupApproved\Run"
@@ -69,8 +79,12 @@ Var LegacyDir
   !insertmacro LumoFindLegacyInstall
   ${If} $LegacyDir != ""
   ${AndIf} $LegacyDir != $INSTDIR
-  ${AndIf} ${FileExists} "$LegacyDir\${MAINBINARYNAME}.exe"
-    !insertmacro CheckIfAppIsRunning "$LegacyDir\${MAINBINARYNAME}.exe" "${LEGACY_PRODUCTNAME}"
+  ${AndIf} ${FileExists} "$LegacyDir\${LEGACY_MAINBINARYNAME}.exe"
+    !insertmacro CheckIfAppIsRunning "$LegacyDir\${LEGACY_MAINBINARYNAME}.exe" "${LEGACY_PRODUCTNAME}"
+  ${EndIf}
+  ; An older Lumo, still running as coucou.exe from this folder.
+  ${If} ${FileExists} "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe"
+    !insertmacro CheckIfAppIsRunning "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe" "${PRODUCTNAME}"
   ${EndIf}
 !macroend
 
@@ -85,7 +99,7 @@ Var LegacyDir
     ReadRegStr $R7 HKCU "${RUN_KEY}" "${LEGACY_PRODUCTNAME}"
     ${If} $R7 != ""
       ${StrCase} $R7 $R7 "L"
-      ${StrCase} $R6 "$LegacyDir\${MAINBINARYNAME}.exe" "L"
+      ${StrCase} $R6 "$LegacyDir\${LEGACY_MAINBINARYNAME}.exe" "L"
       ${StrLoc} $R5 $R7 $R6 ">"
       ${If} $R5 != ""
         DeleteRegValue HKCU "${RUN_KEY}" "${LEGACY_PRODUCTNAME}"
@@ -95,13 +109,13 @@ Var LegacyDir
     ${EndIf}
 
     ; Its shortcuts, only when they start that install's coucou.exe.
-    !insertmacro IsShortcutTarget "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk" "$LegacyDir\${MAINBINARYNAME}.exe"
+    !insertmacro IsShortcutTarget "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk" "$LegacyDir\${LEGACY_MAINBINARYNAME}.exe"
     Pop $0
     ${If} $0 = 1
       !insertmacro UnpinShortcut "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk"
       Delete "$SMPROGRAMS\${LEGACY_PRODUCTNAME}.lnk"
     ${EndIf}
-    !insertmacro IsShortcutTarget "$DESKTOP\${LEGACY_PRODUCTNAME}.lnk" "$LegacyDir\${MAINBINARYNAME}.exe"
+    !insertmacro IsShortcutTarget "$DESKTOP\${LEGACY_PRODUCTNAME}.lnk" "$LegacyDir\${LEGACY_MAINBINARYNAME}.exe"
     Pop $0
     ${If} $0 = 1
       !insertmacro UnpinShortcut "$DESKTOP\${LEGACY_PRODUCTNAME}.lnk"
@@ -116,7 +130,7 @@ Var LegacyDir
     ; Its program files, unless Lumo was just installed over them. The folder
     ; itself goes only if nothing else is in it (the data usually is).
     ${If} $LegacyDir != $INSTDIR
-      Delete "$LegacyDir\${MAINBINARYNAME}.exe"
+      Delete "$LegacyDir\${LEGACY_MAINBINARYNAME}.exe"
       Delete "$LegacyDir\coucou-hook.exe"
       Delete "$LegacyDir\uninstall.exe"
       RMDir "$LegacyDir"
@@ -125,6 +139,36 @@ Var LegacyDir
     ; Its Add/Remove Programs entry and the key that remembered its folder.
     DeleteRegKey SHCTX "${LEGACY_UNINSTKEY}"
     DeleteRegKey SHCTX "Software\${MANUFACTURER}\${LEGACY_PRODUCTNAME}"
+  ${EndIf}
+
+  ; An older Lumo's coucou.exe in this folder: gone, and what started it
+  ; starts lumo.exe now.
+  ${If} ${FileExists} "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe"
+    DetailPrint "Removing ${LEGACY_MAINBINARYNAME}.exe, now ${MAINBINARYNAME}.exe"
+    Delete "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe"
+  ${EndIf}
+  ReadRegStr $R7 HKCU "${RUN_KEY}" "${PRODUCTNAME}"
+  ${If} $R7 != ""
+    ${StrCase} $R7 $R7 "L"
+    ${StrCase} $R6 "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe" "L"
+    ${StrLoc} $R5 $R7 $R6 ">"
+    ${If} $R5 != ""
+      WriteRegStr HKCU "${RUN_KEY}" "${PRODUCTNAME}" "$INSTDIR\${MAINBINARYNAME}.exe "
+    ${EndIf}
+  ${EndIf}
+  !insertmacro IsShortcutTarget "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe"
+  Pop $0
+  ${If} $0 = 1
+    Delete "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+    CreateShortcut "$SMPROGRAMS\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "$SMPROGRAMS\${PRODUCTNAME}.lnk"
+  ${EndIf}
+  !insertmacro IsShortcutTarget "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${LEGACY_MAINBINARYNAME}.exe"
+  Pop $0
+  ${If} $0 = 1
+    Delete "$DESKTOP\${PRODUCTNAME}.lnk"
+    CreateShortcut "$DESKTOP\${PRODUCTNAME}.lnk" "$INSTDIR\${MAINBINARYNAME}.exe"
+    !insertmacro SetLnkAppUserModelId "$DESKTOP\${PRODUCTNAME}.lnk"
   ${EndIf}
 
   ; A Coucou .msi: Windows Installer's own uninstall, as the template runs for

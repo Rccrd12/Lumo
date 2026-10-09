@@ -26,7 +26,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 ## Features
 
-- 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Gemini CLI, Antigravity, Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
+- 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Antigravity (IDE and CLI), Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
 - See what Claude is editing, live: each file modification shows the file name and +N −M counts in the ticker, click it to read the full diff.
 - ✅ **Approve and answer from the island** — permission requests show up with **Allow / Deny** for Claude Code (from any terminal), Codex, Copilot CLI and Muse Code; `AskUserQuestion` prompts show the choices right in the island. Nothing is ever allowed without your click.
 - 🧑‍💻 **Open terminal** — brings the window a session runs in to the front.
@@ -36,7 +36,6 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, and your Codex limits. Off by default; Settings → Agents → Plan usage.
 - 📋 **Declare the tools you use** — Settings → Pills & integrations: pick your main tool (VS Code, Cursor, Codex or Antigravity), then up to 4 more agents, chat providers and services.
 - 📎 **Drop a file on the island** — Lumo turns into a box and swallows it, then answers questions about it.
-- 🖥️ **Lumo on the desktop** — drag Lumo out of the island to set him loose on your desktop: he follows your cursor, wears his outfit, flies home for alerts and comes back where you left him.
 - 🧲 **An island that docks anywhere** — drag it to the top, bottom, left or right edge, resize it, zoom it.
 - 🔌 **Integrations** — Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Lumo.
 - 👗 **Dress Lumo up** — right-click him for the wardrobe, and pick his look there: a ring of light, a dot, a soft drop or a firefly. He also dresses up for the seasons on his own.
@@ -156,7 +155,6 @@ The full list of supported agents, what each one installs and how it answers is 
 | Click Lumo | squish + annoyed for a moment |
 | Right-click Lumo | the wardrobe |
 | Drag a file onto the island | turns into a box and swallows it |
-| Drag Lumo out of the island | he moves onto your desktop |
 | `Ctrl+Alt+Space` | opens the chat, from any app |
 | `Ctrl+Alt+P` / `Ctrl+Alt+X` | asks about your screen / the selected text |
 | `Ctrl+Alt+A` | jumps to the waiting permission or question |

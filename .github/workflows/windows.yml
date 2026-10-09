@@ -103,14 +103,16 @@ jobs:
 
       # The unsigned NSIS installer is what Defender false-positives on, so the
       # bare binaries go up as well. hooks.rs already falls back to looking for
-      # coucou-hook.exe next to coucou.exe, which is exactly this layout, so the
-      # portable pair runs with working Claude Code hooks and no installer.
+      # coucou-hook.exe next to the app's exe, which is exactly this layout, so
+      # the portable pair runs with working Claude Code hooks and no installer.
+      # `tauri build` names the app's exe lumo.exe (mainBinaryName in
+      # src-tauri/tauri.windows.conf.json); cargo alone still makes coucou.exe.
       - uses: actions/upload-artifact@v4
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
           name: Lumo-Windows-portable
           path: |
-            windows/target/release/coucou.exe
+            windows/target/release/lumo.exe
             windows/target/release/coucou-hook.exe
           retention-days: 3
 

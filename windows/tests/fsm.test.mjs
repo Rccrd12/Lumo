@@ -34,13 +34,13 @@ test("the greeting collapses to the compact island 0.6 s after it ends", () => {
   assert.equal(fsm.state, "petit");
 });
 
-test("a hovered greeting stays for 10 s, whatever the animation does", () => {
+test("a hovered greeting is not held: it ends on its own, as when nobody hovers it", () => {
   fsm.launch();
   fsm.mouseEntered();
+  seconds(5);
+  assert.equal(fsm.state, "coucou", "only the animation's end moves it on");
   fsm.greetComplete();
-  seconds(9.9);
-  assert.equal(fsm.state, "coucou");
-  seconds(0.1);
+  seconds(0.6);
   assert.equal(fsm.state, "petit");
 });
 

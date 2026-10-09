@@ -149,7 +149,7 @@ test("up to four pills next to the main one, never the main one itself", () => {
     mainPill: "integration_claude",
     activeIntegrations: ["integration_n8n", "integration_github", "integration_stripe"],
   };
-  const four = toggleDeclared(d, "agent_gemini", "linux");
+  const four = toggleDeclared(d, "agent_copilot", "linux");
   assert.equal(four.length, MAX_DECLARED);
   assert.equal(toggleDeclared({ ...d, activeIntegrations: four }, "ai_anthropic", "linux"), null);
   assert.equal(toggleDeclared(d, "integration_claude", "linux"), null);
@@ -196,12 +196,12 @@ const ids = () => State.tasks.map((t) => t.id);
 
 test("the main pill always loads, the declared ones join it, and focus starts on it", () => {
   State.settings.mainPill = "agent_cursor";
-  State.settings.activeIntegrations = ["integration_github", "agent_gemini"];
+  State.settings.activeIntegrations = ["integration_github", "agent_copilot"];
   State.loadIntegrationTasks();
-  assert.deepEqual(ids(), ["agent_cursor", "agent_gemini", "integration_github"]);
+  assert.deepEqual(ids(), ["agent_cursor", "agent_copilot", "integration_github"]);
   assert.equal(State.focusId, "agent_cursor");
-  assert.equal(State.tasks[1].name, "Gemini CLI");
-  assert.equal(State.tasks[1].color, "#8AB4F8");
+  assert.equal(State.tasks[1].name, "Copilot CLI");
+  assert.equal(State.tasks[1].color, "#818CF8");
 });
 
 test("an old settings file gets VS Code as its main pill and keeps its integrations", () => {
@@ -233,14 +233,14 @@ test("a pill in the middle of a session stays until the session ends", () => {
 });
 
 test("the end of a session puts a kept pill back as it was, and removes any other", () => {
-  State.settings.activeIntegrations = ["agent_gemini"];
+  State.settings.activeIntegrations = ["agent_copilot"];
   State.loadIntegrationTasks();
-  const gemini = State.tasks.find((t) => t.id === "agent_gemini");
-  Object.assign(gemini, { name: "proj", state: "finished", steps: ["a"], pillBadge: "finished" });
-  State.removeTask("agent_gemini");
+  const copilot = State.tasks.find((t) => t.id === "agent_copilot");
+  Object.assign(copilot, { name: "proj", state: "finished", steps: ["a"], pillBadge: "finished" });
+  State.removeTask("agent_copilot");
   assert.deepEqual(
-    [gemini.name, gemini.state, gemini.steps, gemini.pillBadge],
-    ["Gemini CLI", "idle", [], null],
+    [copilot.name, copilot.state, copilot.steps, copilot.pillBadge],
+    ["Copilot CLI", "idle", [], null],
   );
   State.upsertExternalAgent("agent_mine", "mine", "#22C55E");
   State.setFocus("agent_mine");
@@ -262,16 +262,23 @@ test("a Claude Code session gets its pill even when it is not loaded", () => {
 test("toggling declares up to four pills and never the main one", () => {
   State.settings.activeIntegrations = [];
   State.loadIntegrationTasks();
-  for (const id of ["integration_n8n", "agent_gemini", "ai_anthropic", "integration_stripe", "integration_github"]) {
+  for (const id of ["integration_n8n", "agent_copilot", "ai_anthropic", "integration_stripe", "integration_github"]) {
     State.toggleIntegration(id);
   }
   assert.deepEqual(State.settings.activeIntegrations, [
-    "integration_n8n", "agent_gemini", "ai_anthropic", "integration_stripe",
+    "integration_n8n", "agent_copilot", "ai_anthropic", "integration_stripe",
   ]);
   State.toggleIntegration("integration_claude");
   assert.ok(ids().includes("integration_claude"));
-  State.setFocus("agent_gemini");
-  State.toggleIntegration("agent_gemini");
-  assert.ok(!ids().includes("agent_gemini"));
+  State.setFocus("agent_copilot");
+  State.toggleIntegration("agent_copilot");
+  assert.ok(!ids().includes("agent_copilot"));
   assert.equal(State.focusId, "integration_claude");
+});
+
+test("Gemini CLI is retired: never offered, its ID kept", () => {
+  assert.equal(pillDefinition("agent_gemini").support, "no");
+  for (const os of ["windows", "linux"]) {
+    assert.ok(!availablePills(os).some((p) => p.id === "agent_gemini"), os);
+  }
 });

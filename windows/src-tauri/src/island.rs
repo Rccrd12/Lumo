@@ -862,6 +862,10 @@ pub fn drag(app: &AppHandle, pref: &str, start: Placement, rect: IslandRect) -> 
         std::thread::sleep(Duration::from_millis(8));
     }
     let _ = win.set_position(PhysicalPosition::new(tx, ty));
+    // Dropped on a display of another scale, the window was resized on the
+    // way: back to the size worked out for that display.
+    let _ = win.set_size(PhysicalSize::new(tw, th));
+    let _ = win.set_position(PhysicalPosition::new(tx, ty));
     Some(Dropped { placement: p, screen })
 }
 
@@ -910,8 +914,11 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let _ = win.set_position(PhysicalPosition::new(x, y));
     let (lx, ly) = logical_origin(&m);
     platform::pin_to_monitor(&win, lx, ly);
-    // Moving across displays can rescale the window: re-assert the physical size.
+    // Moving across displays of different scales makes Windows resize the
+    // window to its suggested rectangle, which can also move it: re-assert the
+    // physical size, then the place.
     let _ = win.set_size(PhysicalSize::new(pw, ph));
+    let _ = win.set_position(PhysicalPosition::new(x, y));
     // The page keeps its 720 × 320 layout; the webview draws it bigger.
     let _ = win.set_zoom(zoom);
     let _ = win.set_always_on_top(true);

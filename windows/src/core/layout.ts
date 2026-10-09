@@ -207,6 +207,10 @@ export function islandSize(
     case "compact":
       return upright ? { w: NOTCH_H, h: COMPACT_W } : { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
+      // The launch greeting is drawn in a fixed 640 × 150 space
+      // (mochi/greeting.ts): a size dragged for the other views would leave it
+      // off-centre in a box too big for it.
+      if (view === "greeting") return { w: EXPANDED_W, h: VIEW_LAYOUTS.greeting.height };
       const h = view === "prompt"
         ? chatHeight(shape, chatCount)
         : Math.max(VIEW_LAYOUTS[view].height, pickedHeight(shape));

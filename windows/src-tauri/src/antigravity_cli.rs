@@ -1,8 +1,8 @@
 // Chat through Antigravity CLI: the `agy` command the user installed and signed
 // in to with their own Google account. No API key: Coucou runs the unmodified
-// binary in headless mode (`agy -p`), and it answers with its own sign-in
-// (cached in the system keyring), exactly as in a terminal. Coucou never reads,
-// stores or forwards any Google credential.
+// binary in headless mode (`agy --input-format stream-json`), and it answers
+// with its own sign-in (cached in the system keyring), exactly as in a
+// terminal. Coucou never reads, stores or forwards any Google credential.
 //
 // The same shape as claude_code.rs, whose helpers it borrows:
 //
@@ -109,9 +109,12 @@ fn safe_model(model: &str) -> Option<&str> {
 
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
 /// `folders`: what the user shared from File Explorer in this chat.
+///
+/// No `-p`: agy's `-p` takes the prompt as its value, so `-p --input-format`
+/// is refused ("Attach the prompt to the flag"). Reading stream-json from
+/// stdin is headless on its own.
 fn args(model: &str, effort: &str, conversation: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
     let mut a: Vec<String> = [
-        "-p",
         "--input-format",
         "stream-json",
         "--output-format",
@@ -433,7 +436,7 @@ fn result_error(error: &str) -> String {
     }
 }
 
-/// Runs `agy -p` once in `dir`, blocking. `on_text` gets the visible text as
+/// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
 /// it grows, `on_activity` what agy is doing each time it changes. Stop ends
 /// the CLI and its children; the run so far is returned, `stopped`.
 fn run(
@@ -716,7 +719,8 @@ mod tests {
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
         let a = args("gemini-3-pro", "high", Some(CID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
-        assert_eq!(&a[..7], ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--print-timeout", "15m"]);
+        assert_eq!(&a[..6], ["--input-format", "stream-json", "--output-format", "stream-json", "--print-timeout", "15m"]);
+        assert!(!a.iter().any(|s| s == "-p" || s == "--print"), "-p would swallow the next flag as the prompt: {a:?}");
         assert!(a.windows(2).any(|w| w == ["--model", "gemini-3-pro"]));
         assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--conversation", CID]));
@@ -912,7 +916,7 @@ mod tests {
 
     #[test]
     fn a_turn_reads_its_prompt_from_stdin_and_ends_once_answered() {
-        // A stand-in for `agy -p`: reads one event, answers it, then waits
+        // A stand-in for headless agy: reads one event, answers it, then waits
         // for stdin to close as agy does.
         #[cfg(unix)]
         {

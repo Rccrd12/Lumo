@@ -26,7 +26,8 @@ export const PILL_CATEGORIES: { id: PillCategory; title: string }[] = [
  * - `yes`: works on Windows and Linux;
  * - `windows`: Windows only (the app behind it has no Linux build);
  * - `soon`: can be declared, shows "Coming soon" (macOS has it, this build not yet);
- * - `no`: macOS only, never offered here.
+ * - `no`: never offered here (macOS only, or retired: Gemini CLI, replaced by
+ *   Antigravity CLI). The ID stays reserved.
  */
 export type PillSupport = "yes" | "windows" | "soon" | "no";
 
@@ -81,8 +82,10 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
   { id: "agent_codex", name: "Codex", color: "#2DD4BF", category: "workspace",
     subtitle: N_("Integration"), source: "agent", support: "yes", connect: hooks },
   // ── Agents ─────────────────────────────────────────────────────────────────
+  // Retired: Google replaced Gemini CLI with Antigravity CLI, which goes on
+  // the Antigravity pill. Kept so the ID is never reused.
   { id: "agent_gemini", name: "Gemini CLI", color: "#8AB4F8", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
+    subtitle: N_("Agent"), source: "agent", support: "no", connect: hooks },
   { id: "agent_copilot", name: "Copilot CLI", color: "#818CF8", category: "agent",
     subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   { id: "agent_muse", name: "Muse Code", color: "#38BDF8", category: "agent",

@@ -63,8 +63,6 @@ const COMPACT = {
   height: NOTCH_H,
   botDiameter: Math.min(20, Math.max(0, NOTCH_H - 6)),
   botCenterY: NOTCH_H / 2,
-  miniGridScale: Math.min(1, Math.max(0, NOTCH_H - 4) / 28),
-  miniGridCenterX: COMPACT_W - 40,
 };
 
 // ── Easing ────────────────────────────────────────────────────────────────────
@@ -90,7 +88,7 @@ type EyeType = "dot" | "happy";
 export interface Pose {
   hb: number; x: number; y: number; sx: number; sy: number;
   eye: EyeType; open: number;
-  badge: number; tint: number; halo: number; minis: number; fx: number;
+  badge: number; tint: number; halo: number; fx: number;
   /** The flying light: where it is and how bright (0 once he has bloomed). */
   sparkX: number; sparkY: number; spark: number;
   card: number;
@@ -131,7 +129,6 @@ function greetPose(t: number): Pose {
     badge: E.back(seg(t, T.badge, T.badge + 0.22)),
     tint: 0.6 * E.inOut(seg(t, T.tint0, T.tint1)),
     halo: E.out(seg(t, T.fly1 - 0.05, T.bloom1)),
-    minis: 0,
     fx: 1,
     sparkX: s.x,
     sparkY: s.y,
@@ -148,7 +145,7 @@ function smallPose(): Pose {
     sx: 1, sy: 1,
     eye: "dot", open: 1,
     badge: 1, tint: 0.6, halo: 0.6,
-    minis: 1, fx: 1,
+    fx: 1,
     sparkX: 0, sparkY: 0, spark: 0,
     card: 0,
   };
@@ -177,7 +174,6 @@ export function greetingPose(t: number, tc = Number.POSITIVE_INFINITY): Pose {
   const bk = seg(t, tc + 0.14, tc + 0.26);
   p.eye = "dot";
   p.open = bk > 0 && bk < 1 ? 1 - Math.sin(Math.PI * bk) * 0.94 : 1;
-  p.minis = E.back(seg(t, tc + 0.24, tc + 0.42));
   p.fx = 1 - seg(t, tc, tc + 0.2);
   return p;
 }
@@ -459,25 +455,6 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
   x.restore();
 }
 
-const MINI_COLORS = ["#E86A6A", "#3E86E0", "#EFAE5A", "#8C73F2"];
-
-function drawMinis(x: CanvasRenderingContext2D, alpha: number) {
-  if (alpha <= 0.01) return;
-  const cx = GREETING_W / 2 - COMPACT.width / 2 + COMPACT.miniGridCenterX;
-  const cy = COMPACT.botCenterY;
-  const sp = 6 * COMPACT.miniGridScale;
-  const offsets: [number, number][] = [[-sp, -sp], [sp, -sp], [-sp, sp], [sp, sp]];
-  offsets.forEach(([dx, dy], i) => {
-    x.save();
-    x.translate(cx + dx, cy + dy);
-    const scale = alpha * COMPACT.miniGridScale;
-    x.scale(scale, scale);
-    x.fillStyle = MINI_COLORS[i];
-    x.fill(lumoPath(4.6, 4.4));
-    x.restore();
-  });
-}
-
 // ── Controller ────────────────────────────────────────────────────────────────
 
 /**
@@ -502,11 +479,6 @@ export class Greeting {
     // The sound plays from the start; it fades when the greeting view goes away (see leave()).
     Sound.play(GREETING_SOUND);
     this.timers.push(window.setTimeout(() => this.fire(), (T.end + 0.05) * 1000));
-  }
-
-  /** Mouse entered the island during the greeting — hold it open. */
-  hover() {
-    if (this.tc >= T.autoLeave) this.tc = Number.POSITIVE_INFINITY;
   }
 
   /** Mouse left — collapse from now. */
@@ -565,7 +537,6 @@ export class Greeting {
       x.restore();
     }
 
-    drawMinis(x, p.minis);
     drawSpark(x, t, p, this.look);
     if (isRoundLook(this.look)) drawRound(x, p, t, this.look);
     else drawLumo(x, p, t);

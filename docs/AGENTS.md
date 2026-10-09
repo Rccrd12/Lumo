@@ -142,7 +142,7 @@ island's `tool_name` / `session_id`.
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
 rules decide. One exception, on Windows and Linux: the island's own chat with **Antigravity
-CLI** runs `agy -p` headless with `COUCOU_ISLAND_RUN=1`, where nothing can prompt. For that
+CLI** runs `agy` headless (stream-json on stdin) with `COUCOU_ISLAND_RUN=1`, where nothing can prompt. For that
 run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
 `terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
 chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a click, or `ask`

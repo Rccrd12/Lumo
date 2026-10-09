@@ -75,7 +75,7 @@ it runs from and removes one left under the name Coucou.
 
 ## Using it
 
-<img src="screenshots/compact.png" width="292" alt="The compact island, with the integration pills as mini Lumos">
+<img src="screenshots/compact.png" width="292" alt="The compact island">
 <img src="screenshots/overview.png" width="640" alt="The overview: the focused integration on the left, the other pills on the right">
 <img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny and Allow">
 <img src="screenshots/chat.png" width="640" alt="Chatting with Claude from the island">
@@ -88,8 +88,6 @@ it runs from and removes one left under the name Coucou.
 | Click Lumo | It gets annoyed for a moment |
 | Rest the pointer on Lumo for two seconds | Hearts |
 | Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). The row below picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
-| Drag Lumo out of the island | He moves onto your desktop and hangs out there, in his outfit, watching your cursor. Drop him back on the island to bring him home |
-| On the desktop: click / right-click / double-click Lumo | Poke him / the wardrobe / he flies home. Drag him to move him |
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
@@ -147,12 +145,8 @@ island shrinks to its compact size and stays on screen, nothing is answered, and
 opening it again shows the card. **Open terminal** brings the window the session
 runs in to the front.
 
-When Lumo lives on the desktop, he flies back to the island with a permission
-request or a question and returns to his spot once you have answered; he does a
-little jump when a task finishes, and dozes off when nothing has happened for
-two minutes and your cursor is elsewhere — asleep, he costs nothing: no cursor
-polling, a few frames a second. He remembers his spot between launches; if it
-was on a display that is no longer connected, he stays in the island.
+Lumo always stays in the island: he can't be dragged out onto the desktop
+(earlier versions let him; one left there comes home).
 
 **Live diff.** Every file Claude edits (Edit, MultiEdit, Write) shows up in the
 session ticker with its **+N −M** lines; click it for the diff. Same limits as the
@@ -166,7 +160,7 @@ answer on one line, still, until the next prompt.
 **Settings… → Pills & integrations** lists the tools you use, from the same catalog as
 the Mac app. Pick your **main tool** — VS Code, Cursor, Codex or Antigravity —
 which is always there and doesn't take a slot, then declare up to four more:
-agents (Gemini CLI, Copilot CLI, Muse Code, OpenCode, Amp, Hermes, Claude
+agents (Copilot CLI, Muse Code, OpenCode, Amp, Hermes, Claude
 Desktop), the chat providers (Anthropic, Google AI, OpenAI, Ollama, LM Studio),
 and the services under **Integrations**. A pill fed by hooks says whether its
 hooks are installed, never asks for a key; a local model server's pill says
@@ -315,7 +309,7 @@ the chat.
 
 Pick **Antigravity CLI** above the chat box and the island talks to the
 Antigravity CLI (`agy`), signed in with your own Google account: no API key.
-Lumo runs the unmodified `agy` in headless mode (`agy -p`, prompt on stdin as
+Lumo runs the unmodified `agy` in headless mode (prompt on stdin as
 stream-json), in the same folder as Claude Code; it never reads, stores or
 forwards any Google credential. Install it with
 `irm https://antigravity.google/cli/install.ps1 | iex` in PowerShell
@@ -335,7 +329,9 @@ card over the chat (reinstall the hooks if they predate this version, or the
 card only waits 8 seconds); without them, or if nobody clicks, the command does
 not run and the answer says so. Lumo never passes
 `--dangerously-skip-permissions`. Google replaced Gemini CLI with Antigravity
-CLI for personal Google accounts; the Gemini CLI hooks stay for work accounts.
+CLI, so Settings no longer offers Gemini CLI: its pill is gone, and
+**Settings… → Agents** only lists its hooks when they were installed before,
+so they can be removed.
 
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
@@ -445,7 +441,9 @@ Coucou-Windows-setup.exe          and under the old rolling name, for old links
 
 (and the .msi as `Lumo-Windows-X.Y.Z.msi`, `Lumo-Windows.msi` and `Coucou-Windows.msi`).
 
-Installing is optional — `target/release/coucou.exe` runs on its own. There is no
+Installing is optional — `target/release/lumo.exe` runs on its own (`tauri build`
+names it after Lumo through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`;
+the crate, and the binary on Linux, keep the name `coucou`). There is no
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
@@ -467,7 +465,7 @@ npm run icons          # regenerates src-tauri/icons from scripts/gen-icons.mjs
 windows/
   src/                 island front end (TypeScript, no framework)
     mochi/             Lumo and the launch greeting, in Canvas 2D
-    desktop/           Lumo's own little window, when he lives on the desktop
+    desktop/           Lumo's own little window on the desktop (switched off)
     island/            state machine, hooks, integrations
     views/             every island view
     settings/          the settings window
@@ -498,8 +496,8 @@ Linux.
 | Codex | `.codex\hooks.json` — then trust the hooks once with `/hooks` in Codex | Allow / Deny in the island |
 | GitHub Copilot CLI | `.copilot\hooks\coucou.json` | Allow / Deny in the island |
 | Muse Code | `.config\muse\settings.json` | Allow / Deny in the island |
-| Gemini CLI | `.gemini\settings.json` | asked in Gemini CLI |
-| Antigravity | `.gemini\config\hooks.json` (a `coucou` hook group) | asked in Antigravity |
+| Gemini CLI (retired) | `.gemini\settings.json` — listed in Settings only when installed before, to remove it | asked in Gemini CLI |
+| Antigravity and Antigravity CLI | `.gemini\config\hooks.json` (a `coucou` hook group) | asked in Antigravity |
 | Cursor Agent | `.cursor\hooks.json` — Claude Code in Cursor's terminal also goes on the Cursor pill, through the Claude Code hooks | asked in Cursor |
 | Claude Desktop (Windows) | nothing to install: Claude Code sessions from the Claude app are tagged by the relay | asked in the Claude app |
 | OpenCode | plugin `.config\opencode\plugins\coucou.js` | asked in OpenCode |
@@ -579,9 +577,8 @@ own window.
 - Keyboard shortcuts use `Ctrl+Alt` where the Mac uses `⌃⌥`, with different
   keys (see [Keyboard shortcuts](#keyboard-shortcuts)), and `Ctrl` where the
   Mac uses `⌘` inside the island. "Bring the terminal forward" is "Open
-  terminal" here. Not in this version: sending Lumo to the desktop from the
-  keyboard (drag him out instead) and attaching the front window (their ids are
-  kept for later), moving through a card's
+  terminal" here. Not in this version: sending Lumo to the desktop (he stays
+  in the island) and attaching the front window (their ids are kept for later), moving through a card's
   list (`⌘↑` `⌘↓` `⌘O`) and the diff (`⌘E`). The island only reads its own
   shortcuts while it has the keyboard: in the chat, or after a global shortcut
   opened it. **Go to alert** brings up any agent's waiting card on its own pill;
@@ -609,11 +606,8 @@ own window.
   without a restart (the Mac's **Restart Coucou** isn't needed). Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep
   their sides.
-- Lumo on the desktop doesn't dance: there is no music integration to dance
-  to. Dropping him on a window doesn't attach it to the chat, and the Mac's
-  ⌃⌥D shortcut isn't there — drag him out, double-click him home. While he
-  sleeps, the transparent square around him (120 px) takes the first mouse
-  move, which wakes him and gives the rest back to the desktop.
+- Lumo doesn't go out onto the desktop: he stays in the island, and the Mac's
+  ⌃⌥D shortcut isn't there.
 
 ## Linux
 
@@ -651,14 +645,7 @@ What changes on Linux:
   Lumo: the island stays at the top centre at its usual size there. Zoom and
   icon size work.
 - **Lumo's eyes** follow the pointer only while it is over the island: Wayland
-  gives no app the cursor position anywhere else. On the desktop, likewise,
-  they follow it only while it is over him, and "the cursor is far away" (so
-  he may fall asleep) means it hasn't been over him for a few seconds.
-- **Lumo on the desktop** is a layer-shell surface on the island's display
-  (KDE Plasma, COSMIC, Hyprland, Sway…), placed with margins and dragged within
-  that display; on X11 it is an ordinary always-on-top window that goes
-  anywhere. **GNOME on Wayland** has no layer-shell and lets no app place its
-  own window, so there Lumo can't leave the island: dragging him does nothing.
+  gives no app the cursor position anywhere else.
 - **Claude Code hooks** go through `~/.local/share/coucou/bin/coucou-hook` and a
   Unix socket at `$XDG_RUNTIME_DIR/coucou.sock`. Both ends check that the other
   runs as the same user. Every other agent uses the same relay, single-quoted
