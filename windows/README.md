@@ -426,6 +426,19 @@ another image is saved in the inbox (up to 32 MB), and a file copied in File
 Explorer is copied there like a dropped one (the first, when you copied
 several). Text pastes as usual.
 
+### The chat knows what's open
+
+With **Settings → Chat → Tell the AI what's open** (on by default), every
+message carries the titles of the open windows and the documents they show:
+Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
+"Budget - Excel") and finds them on disk, from Windows' recent files or a
+quick search of your folders. So "explain page 45 of the PDF I have open"
+just works: Claude Code and Antigravity CLI get the path and read the file
+themselves (its folder is opened to them for this chat); the other providers
+get the document in front attached, when the question is about it. Only the
+chat's provider gets this, with that message; nothing is kept. Windows only
+for now: Linux lists no windows yet.
+
 ### Show the chat your screen
 
 The screen button next to the paperclip lets the assistant see what you have

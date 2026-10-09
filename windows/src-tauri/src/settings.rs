@@ -102,6 +102,9 @@ pub struct Settings {
     /// and listing, explorer.rs), as if picked from the screen button. Off
     /// until the user turns it on in Settings → Chat.
     pub chat_share_explorer: bool,
+    /// Every chat message carries the open windows and the documents they
+    /// show, found on disk (desk.rs). On until the user turns it off.
+    pub chat_share_open: bool,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
     /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
@@ -229,6 +232,7 @@ impl Default for Settings {
             chat_permission_mode: "default".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
+            chat_share_open: true,
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -538,6 +542,7 @@ mod tests {
   "chatPermissionMode": "plan",
   "chatShowUsage": true,
   "chatShareExplorer": true,
+  "chatShareOpen": false,
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -998,6 +1003,7 @@ mod tests {
                 "chatPermissionMode",
                 "chatShowUsage",
                 "chatShareExplorer",
+                "chatShareOpen",
                 "liveModel",
                 "liveThinking",
                 "liveVoice",

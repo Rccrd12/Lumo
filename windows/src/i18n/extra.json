@@ -6176,6 +6176,28 @@
    "pt-BR": "Abrir este e-mail",
    "ru": "Открыть это письмо",
    "id": "Buka email ini"
+  },
+  "Tell the AI what's open": {
+   "zh-Hans": "告诉 AI 打开了什么",
+   "hi": "AI को बताएँ क्या खुला है",
+   "es": "Decir a la IA qué está abierto",
+   "ar": "أخبر الذكاء الاصطناعي بما هو مفتوح",
+   "fr": "Dire à l'IA ce qui est ouvert",
+   "bn": "AI-কে জানান কী খোলা আছে",
+   "pt-BR": "Dizer à IA o que está aberto",
+   "ru": "Сообщать ИИ, что открыто",
+   "id": "Beri tahu AI apa yang terbuka"
+  },
+  "With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message.": {
+   "zh-Hans": "每条消息都会附上：打开的窗口标题及其显示的文档（PDF、Word 或 Excel 文件…），会在磁盘上找到它们，以便 AI 读取你问到的那个。只有聊天的提供方会收到，且仅随该消息发送。",
+   "hi": "हर संदेश के साथ: खुली विंडो के शीर्षक और उनमें दिखने वाले दस्तावेज़ (PDF, Word या Excel फ़ाइल…), डिस्क पर ढूँढे गए, ताकि AI वह पढ़ सके जिसके बारे में आप पूछें। सिर्फ़ चैट का प्रदाता उन्हें पाता है, उसी संदेश के साथ।",
+   "es": "Con cada mensaje: los títulos de las ventanas abiertas y los documentos que muestran (un PDF, un archivo de Word o Excel…), encontrados en el disco, para que la IA lea el que preguntes. Solo los recibe el proveedor del chat, con ese mensaje.",
+   "ar": "مع كل رسالة: عناوين النوافذ المفتوحة والمستندات التي تعرضها (PDF أو ملف Word أو Excel…)، يُعثر عليها على القرص، ليقرأ الذكاء الاصطناعي ما تسأل عنه. لا يتلقاها إلا مزود الدردشة، مع تلك الرسالة.",
+   "fr": "Avec chaque message : les titres des fenêtres ouvertes et les documents qu'elles affichent (un PDF, un fichier Word ou Excel…), retrouvés sur le disque, pour que l'IA lise celui dont tu parles. Seul le fournisseur du chat les reçoit, avec ce message.",
+   "bn": "প্রতিটি বার্তার সঙ্গে: খোলা উইন্ডোর শিরোনাম আর সেগুলিতে দেখানো নথি (PDF, Word বা Excel ফাইল…), ডিস্কে খুঁজে নেওয়া, যাতে AI আপনি যেটির কথা জিজ্ঞেস করেন সেটি পড়তে পারে। শুধু চ্যাটের প্রদানকারী সেগুলি পায়, সেই বার্তার সঙ্গে।",
+   "pt-BR": "Com cada mensagem: os títulos das janelas abertas e os documentos que elas mostram (um PDF, um arquivo do Word ou do Excel…), encontrados no disco, para a IA ler o que você perguntar. Só o provedor do chat recebe, com aquela mensagem.",
+   "ru": "С каждым сообщением: заголовки открытых окон и документы в них (PDF, файл Word или Excel…), найденные на диске, чтобы ИИ мог прочитать тот, о котором вы спрашиваете. Получает их только провайдер чата, вместе с этим сообщением.",
+   "id": "Bersama setiap pesan: judul jendela yang terbuka dan dokumen yang ditampilkannya (PDF, file Word atau Excel…), ditemukan di disk, agar AI bisa membaca yang kamu tanyakan. Hanya penyedia chat yang menerimanya, bersama pesan itu."
   }
  }
 }

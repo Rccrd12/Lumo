@@ -202,6 +202,8 @@ export interface Settings {
    * from the screen button. Off until the user turns it on in Settings → Chat.
    */
   chatShareExplorer: boolean;
+  /** Every message carries the open windows and their documents (desk.rs). */
+  chatShareOpen: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -295,6 +297,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatPermissionMode: "default",
   chatShowUsage: false,
   chatShareExplorer: false,
+  chatShareOpen: true,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

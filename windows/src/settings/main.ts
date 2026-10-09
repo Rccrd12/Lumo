@@ -696,6 +696,14 @@ function chatSharingSection(): HTMLElement {
     h("h2", {}, h("span", { text: SHARING_TEXT.title })),
     h("div", { class: "hint", text: SHARING_TEXT.hint }),
     h("div", { class: "row" },
+      h("label", { text: t("Tell the AI what's open") }),
+      toggle(settings.chatShareOpen !== false, (on) => {
+        settings.chatShareOpen = on;
+        void save();
+      }),
+    ),
+    h("div", { class: "hint", text: t("With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message.") }),
+    h("div", { class: "row" },
       h("label", { text: SHARING_TEXT.explorer }),
       toggle(settings.chatShareExplorer, (on) => {
         settings.chatShareExplorer = on;

@@ -334,7 +334,8 @@ fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
     format!(
         "{opening} {abilities} \
 Respond in the user's language. Be thorough and complete — use as much detail as the task requires. \
-Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. {}",
+Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
+Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}",
         timer_note!()
     )
 }
@@ -474,8 +475,29 @@ async fn dispatch(
     screen: Option<ScreenContext>,
     usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
-    let context = context.map(checked_context).transpose()?;
-    let screen = screen.map(checked_screen).transpose()?;
+    let mut context = context.map(checked_context).transpose()?;
+    let mut screen = screen.map(checked_screen).transpose()?;
+    // Settings → Chat → "Tell the AI what's open": the windows and their
+    // documents go with every question (desk.rs).
+    if settings.chat_share_open {
+        let (windows, documents) = tauri::async_runtime::spawn_blocking(crate::desk::now).await.unwrap_or_default();
+        let s = screen.get_or_insert_with(ScreenContext::default);
+        if s.windows.is_empty() {
+            s.windows = windows;
+        }
+        // The providers that cannot read files: the document in front goes
+        // along, when the question is about it and nothing else does.
+        if !is_cli(&settings.chat_provider) && context.is_none() {
+            let front = documents.iter().find(|d| d.active).or(documents.first());
+            if let Some(doc) = front.filter(|d| crate::desk::asks_about(&query, d)) {
+                match crate::files::copy_in(std::path::Path::new(&doc.path)) {
+                    Ok(f) => context = Some(ChatContext::File { name: f.name, path: f.path }),
+                    Err(e) => crate::log::line(format!("[desk] {e}")),
+                }
+            }
+        }
+        s.documents = documents;
+    }
     chat.arm();
     let mut reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await?;
     // Remembered once it went, for a fresh Claude Code session after an edit.
@@ -504,6 +526,12 @@ async fn send_to(
     if is_cli(provider) {
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
         let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
+        // So may it the folders of the documents open (found by Rust, desk.rs).
+        for doc in screen.as_ref().map(|s| s.documents.as_slice()).unwrap_or_default() {
+            if let Some(dir) = std::path::Path::new(&doc.path).parent() {
+                chat.cli_dirs(Some(dir.to_string_lossy().to_string()));
+            }
+        }
         if provider == antigravity_cli::PROVIDER {
             return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
         }
@@ -792,6 +820,7 @@ mod tests {
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
             selection: None,
             folder: None,
+            documents: Vec::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {
             let (q, images) = with_screen(cli, Some(&screen), "what is this?".into()).unwrap();

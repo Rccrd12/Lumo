@@ -95,6 +95,10 @@ pub struct ScreenContext {
     /// The folder open in File Explorer, with what is in it (explorer.rs).
     #[serde(default)]
     pub folder: Option<crate::explorer::ExplorerFolder>,
+    /// The documents the windows show (desk.rs). Only Rust fills it: what a
+    /// page sends here is never read.
+    #[serde(skip_deserializing)]
+    pub documents: Vec<crate::desk::OpenDocument>,
 }
 
 impl ScreenContext {
@@ -103,6 +107,7 @@ impl ScreenContext {
             && self.shots.is_empty()
             && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
             && self.folder.is_none()
+            && self.documents.is_empty()
     }
 }
 
@@ -237,6 +242,10 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
     }
     if let Some(folder) = &screen.folder {
         out.push_str(&crate::explorer::context_text(folder, with_paths));
+        out.push('\n');
+    }
+    if !screen.documents.is_empty() {
+        out.push_str(&crate::desk::documents_text(&screen.documents, with_paths));
         out.push('\n');
     }
     out
@@ -749,6 +758,7 @@ mod tests {
             ],
             selection: None,
             folder: None,
+            documents: Vec::new(),
         };
         let cli = context_text(&screen, true);
         assert!(cli.contains("Read them from these paths:\n- Screen 1: C:\\inbox\\screenshot-1.png\n- Screen 2: C:\\inbox\\screenshot-2.png\n"));
