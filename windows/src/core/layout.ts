@@ -71,9 +71,9 @@ export const COMPACT_W = 288; // NOTCH_W + 104
  */
 export const COMPACT_BOT_X = 18;
 /**
- * The closed island grows to say something (core/compact.ts): one live
- * activity takes it wide, centred; more share it side by side, each more
- * compact; a new email opens it into a small card. Only on the top and bottom
+ * The closed island grows to say something (core/compact.ts), as wide as what
+ * it says and no wider, up to these: one live activity, two, more side by
+ * side; a new email opens it into a small card. Only on the top and bottom
  * edges; standing upright on a side it stays as it is.
  */
 export const COMPACT_SIZES = {
@@ -219,7 +219,7 @@ export function islandSize(
   chatCount = 0,
   shape: IslandShape = DEFAULT_SHAPE,
   dock: Dock = "top",
-  peek: CompactSizeKind | null = null,
+  peek: { w: number; h: number } | null = null,
 ): { w: number; h: number } {
   const upright = isUpright(dock);
   switch (mode) {
@@ -229,7 +229,7 @@ export function islandSize(
       return upright ? { w: 0, h: NOTCH_W } : { w: NOTCH_W, h: 0 };
     case "compact":
       if (upright) return { w: NOTCH_H, h: COMPACT_W };
-      return peek ? { ...COMPACT_SIZES[peek] } : { w: COMPACT_W, h: NOTCH_H };
+      return peek ? { w: Math.max(COMPACT_W, peek.w), h: Math.max(NOTCH_H, peek.h) } : { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
       // The launch greeting is drawn in a fixed 640 × 150 space
       // (mochi/greeting.ts): a size dragged for the other views would leave it

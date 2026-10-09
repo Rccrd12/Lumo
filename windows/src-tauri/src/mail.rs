@@ -583,7 +583,7 @@ fn parse_fetch(unit: &[Part], host: &str) -> Option<Message> {
 
 /// "Name: value" pairs, folded lines unfolded.
 fn parse_headers(raw: &[u8]) -> Vec<(String, String)> {
-    let text = String::from_utf8_lossy(raw);
+    let text = header_text(raw);
     let mut out: Vec<(String, String)> = Vec::new();
     for line in text.split('\n') {
         let line = line.trim_end_matches('\r');
@@ -668,12 +668,31 @@ fn decode_word(s: &str) -> Option<(String, usize)> {
 fn in_charset(bytes: &[u8], charset: &str) -> String {
     let cs = charset.trim().trim_matches('"').to_ascii_lowercase();
     let cs = cs.split('*').next().unwrap_or(&cs);
-    if matches!(cs, "iso-8859-1" | "iso8859-1" | "latin1" | "latin-1" | "windows-1252" | "cp1252" | "iso-8859-15")
-        && std::str::from_utf8(bytes).is_err()
-    {
-        return bytes.iter().map(|&b| b as char).collect();
+    // Labelled Latin but really UTF-8 happens too: valid UTF-8 is taken as such.
+    if let Ok(text) = std::str::from_utf8(bytes) {
+        return text.to_string();
     }
-    String::from_utf8_lossy(bytes).into_owned()
+    match cs {
+        "iso-8859-15" | "iso8859-15" | "latin9" => bytes.iter().map(|&b| if b == 0xA4 { '€' } else { cp1252(b) }).collect(),
+        // Latin-1, Windows-1252, and anything unknown that is not UTF-8:
+        // Windows-1252 is what such mail almost always is ("McDonald’s").
+        _ => bytes.iter().map(|&b| cp1252(b)).collect(),
+    }
+}
+
+/// One Windows-1252 byte as a character: Latin-1, with the curly quotes,
+/// dashes, the euro and the rest in 0x80–0x9F.
+fn cp1252(b: u8) -> char {
+    const HIGH: [char; 32] = [
+        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8D}', 'Ž', '\u{8F}',
+        '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9D}', 'ž', 'Ÿ',
+    ];
+    if (0x80..0xA0).contains(&b) { HIGH[(b - 0x80) as usize] } else { b as char }
+}
+
+/// Header bytes as text: UTF-8 when they are, else Windows-1252.
+fn header_text(raw: &[u8]) -> String {
+    in_charset(raw, "")
 }
 
 /// Base64, spaces and line breaks ignored; a cut-off end is dropped.
@@ -867,15 +886,55 @@ pub fn strip_html(html: &str) -> String {
         out.push_str(&html[i..next]);
         i = next;
     }
-    out.replace("&nbsp;", " ")
-        .replace("&#160;", " ")
-        .replace("&lt;", "<")
-        .replace("&gt;", ">")
-        .replace("&quot;", "\"")
-        .replace("&#39;", "'")
-        .replace("&apos;", "'")
-        .replace("&zwnj;", "")
-        .replace("&amp;", "&")
+    entities(&out)
+}
+
+/// `&rsquo;`, `&#8217;`, `&#x2019;` and the other common entities, read.
+pub fn entities(text: &str) -> String {
+    const NAMED: &[(&str, &str)] = &[
+        ("nbsp", " "), ("lt", "<"), ("gt", ">"), ("quot", "\""), ("apos", "'"), ("amp", "&"),
+        ("zwnj", ""), ("zwj", ""), ("shy", ""), ("lsquo", "‘"), ("rsquo", "’"), ("ldquo", "“"),
+        ("rdquo", "”"), ("laquo", "«"), ("raquo", "»"), ("hellip", "…"), ("ndash", "–"), ("mdash", "—"),
+        ("euro", "€"), ("pound", "£"), ("copy", "©"), ("reg", "®"), ("trade", "™"), ("deg", "°"),
+        ("middot", "·"), ("bull", "•"), ("agrave", "à"), ("aacute", "á"), ("egrave", "è"),
+        ("eacute", "é"), ("igrave", "ì"), ("iacute", "í"), ("ograve", "ò"), ("oacute", "ó"),
+        ("ugrave", "ù"), ("uacute", "ú"), ("Agrave", "À"), ("Egrave", "È"), ("Eacute", "É"),
+        ("ccedil", "ç"), ("ntilde", "ñ"), ("auml", "ä"), ("ouml", "ö"), ("uuml", "ü"), ("szlig", "ß"),
+    ];
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    while let Some(i) = rest.find('&') {
+        out.push_str(&rest[..i]);
+        let tail = &rest[i..];
+        let end = tail[1..].find(|c: char| c == ';' || c.is_whitespace() || c == '&').map(|e| e + 1);
+        let decoded = end.filter(|&e| tail.as_bytes().get(e) == Some(&b';') && e <= 12).and_then(|e| {
+            let name = &tail[1..e];
+            let code = if let Some(hex) = name.strip_prefix("#x").or_else(|| name.strip_prefix("#X")) {
+                u32::from_str_radix(hex, 16).ok()
+            } else if let Some(dec) = name.strip_prefix('#') {
+                dec.parse::<u32>().ok()
+            } else {
+                None
+            };
+            let text = match code {
+                Some(c) => char::from_u32(c).map(|ch| if ch == '\u{a0}' { " ".to_string() } else { ch.to_string() }),
+                None => NAMED.iter().find(|(n, _)| *n == name).map(|(_, v)| v.to_string()),
+            };
+            text.map(|t| (t, e + 1))
+        });
+        match decoded {
+            Some((t, used)) => {
+                out.push_str(&t);
+                rest = &tail[used..];
+            }
+            None => {
+                out.push('&');
+                rest = &tail[1..];
+            }
+        }
+    }
+    out.push_str(rest);
+    out
 }
 
 /// Lines trimmed, runs of blank lines down to one, quoted replies cut off.
@@ -938,6 +997,23 @@ mod tests {
         assert_eq!(decode_words("=?ISO-8859-1?Q?Caf=E9_ouvert?= today"), "Café ouvert today");
         assert_eq!(decode_words("=?UTF-8?Q?a?= =?UTF-8?Q?b?="), "ab");
         assert_eq!(decode_words("Plain subject"), "Plain subject");
+    }
+
+    #[test]
+    fn html_entities_are_read() {
+        assert_eq!(entities("McDonald&rsquo;s &amp; co &#8217; &#x2019; &egrave; &unknown; 5 & 6"), "McDonald’s & co ’ ’ è &unknown; 5 & 6");
+        assert_eq!(strip_html("<p>Caff&egrave;&nbsp;<b>pronto</b></p>").trim(), "Caffè pronto");
+    }
+
+    #[test]
+    fn windows_1252_reads_as_it_should() {
+        // "McDonald’s" with the curly apostrophe of Windows-1252, encoded or raw.
+        assert_eq!(decode_words("=?windows-1252?Q?McDonald=92s_Italia?="), "McDonald’s Italia");
+        assert_eq!(decode_words("=?ISO-8859-1?Q?McDonald=92s?="), "McDonald’s");
+        assert_eq!(parse_headers(b"From: McDonald\x92s <a@b.c>\r\n")[0].1, "McDonald’s <a@b.c>");
+        assert_eq!(in_charset(b"Prezzo 5\x80", "unknown-8bit"), "Prezzo 5€");
+        assert_eq!(in_charset("Caffè".as_bytes(), "iso-8859-1"), "Caffè");
+        assert_eq!(in_charset(b"\xA4 10", "iso-8859-15"), "€ 10");
     }
 
     #[test]

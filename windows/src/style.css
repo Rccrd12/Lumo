@@ -367,6 +367,12 @@ body {
   transition: opacity 0.22s ease-in-out;
 }
 
+/* Laid out as wide as what it says, for an instant, to measure it. */
+#compact.measure {
+  right: auto;
+  width: max-content;
+}
+
 #compact.shown.on {
   opacity: 1;
   pointer-events: auto;
@@ -391,7 +397,7 @@ body {
 }
 
 #compact.many .cp-item {
-  flex: 1 1 0;
+  flex: 0 1 auto;
 }
 
 #compact.many .cp-item + .cp-item {

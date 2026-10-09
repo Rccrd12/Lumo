@@ -116,13 +116,15 @@ test("timers read what people say", () => {
 });
 
 test("the closed island grows for what it says, only on the top and bottom", () => {
-  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", "one"), COMPACT_SIZES.one);
+  // As wide as what it says, never under the plain closed island.
+  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", { w: 340, h: 32 }), { w: 340, h: 32 });
+  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", { w: 120, h: 32 }), { w: 288, h: 32 });
   assert.ok(COMPACT_SIZES.one.w < COMPACT_SIZES.two.w && COMPACT_SIZES.two.w < COMPACT_SIZES.many.w);
-  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "bottom", "mail"), COMPACT_SIZES.mail);
+  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "bottom", COMPACT_SIZES.mail), COMPACT_SIZES.mail);
   assert.deepEqual(islandSize("compact", "overview", 0, undefined, "top", null), { w: 288, h: 32 });
-  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "left", "mail"), { w: 32, h: 288 });
+  assert.deepEqual(islandSize("compact", "overview", 0, undefined, "left", COMPACT_SIZES.mail), { w: 32, h: 288 });
   // The open island is not touched by it.
-  assert.deepEqual(islandSize("expanded", "overview", 0, undefined, "top", "mail"), islandSize("expanded", "overview"));
+  assert.deepEqual(islandSize("expanded", "overview", 0, undefined, "top", COMPACT_SIZES.mail), islandSize("expanded", "overview"));
 });
 
 test("a chat answer sets timers with a line Lumo hides", () => {

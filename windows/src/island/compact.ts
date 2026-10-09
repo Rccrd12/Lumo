@@ -14,7 +14,7 @@ import { Bridge, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
-import type { CompactSizeKind } from "../core/layout";
+import { COMPACT_SIZES } from "../core/layout";
 import { Live } from "../live/session";
 import { clear, h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
@@ -78,6 +78,9 @@ export class CompactStrip {
   private mediaAsking = false;
   /** More emails came with the one shown. */
   private extraMail = 0;
+  /** The island's size for what is drawn (measure), and the one it was given. */
+  private measured: { w: number; h: number } | null = null;
+  private fit: { w: number; h: number } | null = null;
   /** The closed island is on screen: only then does a timer tick every second. */
   private visible = false;
 
@@ -94,11 +97,23 @@ export class CompactStrip {
   }
 
   /** The size the closed island takes for what it shows, or null for the plain one. */
-  get size(): CompactSizeKind | null {
+  get size(): { w: number; h: number } | null {
+    return this.fit;
+  }
+
+  /**
+   * As wide as what it says, with Lumo's room on both sides so it stays in
+   * the middle, and no wider than its kind allows.
+   */
+  private measure(): { w: number; h: number } | null {
     const s = this.shown;
     if (!s) return null;
-    if (s.kind === "mail") return "mail";
-    return s.items.length === 1 ? "one" : s.items.length === 2 ? "two" : "many";
+    if (s.kind === "mail") return { ...COMPACT_SIZES.mail };
+    const most = COMPACT_SIZES[s.items.length === 1 ? "one" : s.items.length === 2 ? "two" : "many"];
+    this.el.classList.add("measure");
+    const natural = this.el.scrollWidth;
+    this.el.classList.remove("measure");
+    return { w: Math.round(Math.min(most.w, natural + 2 * SIDE_ROOM + 4)), h: most.h };
   }
 
   /** The current email, for its buttons and the island's own mail list. */
@@ -128,13 +143,14 @@ export class CompactStrip {
       Sound.play("finish");
       compactNotice(timer.label ? `${t(COMPACT_TEXT.timerDone)} · ${timer.label}` : t(COMPACT_TEXT.timerDone), TIMER_COLOR, 8000);
     }
-    const before = this.size;
+    const before = this.fit;
     const show = { notes: State.settings.compactActivity !== false, media: State.settings.compactMedia !== false };
     this.shown = Feed.shown(show.notes ? this.activity() : null, now, show);
     this.draw(now);
+    this.fit = this.measured;
     this.schedule();
     this.pollMedia(mediaWanted && (show.media || !visible));
-    return this.size !== before;
+    return !sameSize(this.fit, before);
   }
 
   private activity() {
@@ -156,15 +172,17 @@ export class CompactStrip {
     if (key === this.key) return;
     this.key = key;
     clear(this.el);
+    this.measured = null;
     const many = s?.kind === "items" && s.items.length > 1;
     this.el.className = [s ? `on ${s.kind}` : "", many ? "many" : "", this.visible ? "shown" : ""].filter(Boolean).join(" ");
     if (!s) return;
     if (s.kind === "mail") {
       this.el.append(this.mailCard(s.mail));
-      return;
+    } else {
+      // One alone in the middle; more side by side, each smaller.
+      for (const item of s.items) this.el.append(h("div", { class: "cp-item" }, ...this.itemContent(item, now, many)));
     }
-    // One alone takes the whole width, centred; more share it, each smaller.
-    for (const item of s.items) this.el.append(h("div", { class: "cp-item" }, ...this.itemContent(item, now, many)));
+    this.measured = this.measure();
   }
 
   private itemContent(item: CompactItem, now: number, compact: boolean): Node[] {
@@ -362,4 +380,13 @@ function itemKey(item: CompactItem, now: number): string {
     case "media":
       return `media:${item.media.title}:${item.media.artist}:${item.media.playing}`;
   }
+}
+
+/** Lumo's room on each side of what the closed island says (#compact left and right). */
+const SIDE_ROOM = 36;
+
+/** Sizes within a pixel are the same: a timer's digits do not resize the island. */
+function sameSize(a: { w: number; h: number } | null, b: { w: number; h: number } | null): boolean {
+  if (!a || !b) return a === b;
+  return Math.abs(a.w - b.w) < 2 && Math.abs(a.h - b.h) < 2;
 }
