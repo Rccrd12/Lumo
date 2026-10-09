@@ -563,7 +563,7 @@ mod tests {
 
         // Install.
         let plan = preview(true).expect("a BOM must not stop the preview");
-        assert!(plan.diff.contains("coucou-hook"), "the diff must show what changes");
+        assert!(plan.diff.contains("lumo-hook"), "the diff must show what changes");
         let backup = write(true, &plan.fingerprint).expect("install should succeed");
 
         // The backup holds the original bytes, BOM and all.
