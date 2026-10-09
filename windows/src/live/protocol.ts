@@ -91,7 +91,7 @@ export function systemInstruction(cfg: LiveConfig): string {
   const screen = cfg.screen
     ? [
         "- look_at_screen shows you the user's screen as it is right now. Use it by yourself, without asking, whenever seeing would help: when the user says \"this\", \"here\" or \"what I'm looking at\", mentions something on the screen (an error, a page, a document, a design), or asks for help with what they are doing. Look again when the screen may have changed. Never ask the user to share their screen or describe it.",
-        "- point_at shows the user where to click: you describe the element (what it is, its text or icon, and roughly where it is), Lumo finds it on the screen as it is now, and an animated pointer appears on it with a few words next to it. When the user asks where to click, what to press or what to do on the screen, look at the screen, then point_at the element and say in a few words what to do there. If it says the element wasn't found, describe it another way.",
+        "- point_at shows the user where to click: you describe the element (what it is, its text or icon, and roughly where it is) and give the text written on it exactly as it reads, Lumo finds it on the screen as it is now, and an animated pointer appears on it with a few words next to it. When the user asks where to click, what to press or what to do on the screen, look at the screen, then point_at the element and say in a few words what to do there. If it says the element wasn't found, describe it another way.",
       ]
     : ["- You can't see the screen: the user turned that off in Lumo's settings. If seeing it would help, say so once."];
   return [
@@ -181,6 +181,7 @@ export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper">): Fu
       description: "Shows the user where to click: finds the element you describe on the screen as it is now, and puts an animated pointer on it, with a short label next to it, for a few seconds. The user still clicks themselves.",
       parameters: obj({
         target: str("The one element to click, precisely: what it is, its text or icon, and where it is, e.g. \"the round send button with an arrow, at the right end of the message box at the bottom of the Claude window\"."),
+        name: str("The text written on or under the element, exactly as it reads on the screen (\"Open WebUI\", \"Invia\"); empty for an icon without text."),
         label: str("Two to four words shown next to the pointer, in the user's language, e.g. \"Click here\" or \"Send\"."),
       }, ["target"]),
     });

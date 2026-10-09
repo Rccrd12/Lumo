@@ -141,8 +141,8 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       const target = str(a.target);
       if (!target) throw new Error("Say which element to point at.");
       host.doing(t(S.pointing));
-      await Bridge.livePoint(target, str(a.label).slice(0, 60));
-      return { shown: "A pointer now shows that element on the user's screen for a few seconds. Say what to do there." };
+      const what = await Bridge.livePoint(target, str(a.name), str(a.label).slice(0, 60));
+      return { shown: `A pointer now shows it on the user's screen for a few seconds: ${what}. Say what to do there.` };
     }
     case TOOL.type: {
       const text = typeof a.text === "string" ? a.text : "";

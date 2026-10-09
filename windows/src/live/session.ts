@@ -500,6 +500,10 @@ class LiveSession {
       doing: (label) => this.setDoing(label),
       end: () => this.finishAfterGoodbye(),
     });
+    // In the log, to trace what the model asked and what came of it.
+    // What is typed for the user stays out of it.
+    const args = call.name === TOOL.type ? "" : ` ${JSON.stringify(call.args).slice(0, 300)}`;
+    void Bridge.log(`[live] ${call.name}${args} → ${answer.error != null ? `error: ${answer.error}` : "ok"}`);
     const run = this.running.get(call.id);
     this.running.delete(call.id);
     if (!this.active || !run || run.cancelled) {

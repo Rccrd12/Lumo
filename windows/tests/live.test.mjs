@@ -329,10 +329,10 @@ test("the helper is offered for the user's connected accounts, and asked before 
 
 test("point_at hands the description to Rust, which finds it on the screen as it is now", async () => {
   const { host: h, log } = host();
-  const a = await withRust((cmd) => (cmd === "live_point" ? 0 : null), () =>
-    runTool({ id: "p1", name: "point_at", args: { target: "the send button at the right of the message box", label: "Clicca qui" } }, h));
-  assert.deepEqual(sent("live_point").at(-1), { target: "the send button at the right of the message box", label: "Clicca qui" });
-  assert.match(a.result.shown, /pointer/);
+  const a = await withRust((cmd) => (cmd === "live_point" ? "button \"Send\" (claude)" : null), () =>
+    runTool({ id: "p1", name: "point_at", args: { target: "the send button at the right of the message box", name: "Send", label: "Clicca qui" } }, h));
+  assert.deepEqual(sent("live_point").at(-1), { target: "the send button at the right of the message box", name: "Send", label: "Clicca qui" });
+  assert.match(a.result.shown, /pointer.*button "Send"/);
   assert.ok(log.doing.includes("Showing where to click"));
   const none = await runTool({ id: "p2", name: "point_at", args: { label: "x" } }, h);
   assert.match(none.error, /which element/);

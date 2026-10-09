@@ -315,10 +315,27 @@ pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Optio
     shots
 }
 
-/// Display `index` (menu order) in physical desktop pixels: left, top, width,
-/// height. None when there is no such display (or, on Linux, no capture).
-pub fn display_rect(index: usize) -> Option<(i32, i32, u32, u32)> {
-    imp::display_rect(index)
+/// Every display, in menu order, in physical desktop pixels: left, top,
+/// width, height. Empty where there is no capture (Linux).
+pub fn display_rects() -> Vec<(i32, i32, u32, u32)> {
+    imp::display_rects()
+}
+
+/// A part of the desktop (physical pixels: left, top, width, height) as a PNG,
+/// at most MAX_EDGE on its long side, with the island and the pointer kept out
+/// of it. Nothing is kept: the file it goes through is deleted. Blocking.
+pub fn region_png<R: tauri::Runtime>(app: &tauri::AppHandle<R>, rect: (i32, i32, u32, u32)) -> Result<Vec<u8>, String> {
+    use tauri::Manager;
+    let windows: Vec<_> = [crate::island::WINDOW_LABEL, crate::pointer::LABEL]
+        .iter()
+        .filter_map(|l| app.get_webview_window(l))
+        .filter(|w| cfg!(windows) && w.set_content_protected(true).is_ok())
+        .collect();
+    let png = imp::region_png(rect, !windows.is_empty());
+    for w in &windows {
+        let _ = w.set_content_protected(false);
+    }
+    png
 }
 
 /// The display the cursor is on, in menu order: what "Ask about my screen" captures.
@@ -374,8 +391,12 @@ mod imp {
         None
     }
 
-    pub fn display_rect(_index: usize) -> Option<(i32, i32, u32, u32)> {
-        None
+    pub fn display_rects() -> Vec<(i32, i32, u32, u32)> {
+        Vec::new()
+    }
+
+    pub fn region_png(_rect: (i32, i32, u32, u32), _settle: bool) -> Result<Vec<u8>, String> {
+        unavailable()
     }
 
     pub fn windows() -> Result<Vec<WindowInfo>, String> {
@@ -450,9 +471,36 @@ mod imp {
             .collect())
     }
 
-    pub fn display_rect(index: usize) -> Option<(i32, i32, u32, u32)> {
-        let (r, _) = *monitors().get(index)?;
-        Some((r.left, r.top, (r.right - r.left).max(0) as u32, (r.bottom - r.top).max(0) as u32))
+    pub fn display_rects() -> Vec<(i32, i32, u32, u32)> {
+        monitors()
+            .into_iter()
+            .map(|(r, _)| (r.left, r.top, (r.right - r.left).max(0) as u32, (r.bottom - r.top).max(0) as u32))
+            .collect()
+    }
+
+    pub fn region_png(rect: (i32, i32, u32, u32), settle: bool) -> Result<Vec<u8>, String> {
+        let (left, top, w, h) = rect;
+        if w == 0 || h == 0 {
+            return Err(t("That screen isn't connected anymore."));
+        }
+        let r = RECT { left, top, right: left + w as i32, bottom: top + h as i32 };
+        let (fw, fh) = fit(w, h, MAX_EDGE);
+        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        if settle {
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        let result = (|| {
+            let pixels = grab(r, fw, fh)?;
+            let path = crate::files::new_inbox_file("region.png")?;
+            let written = write_png(&path, fw, fh, &pixels).map_err(|e| e.message());
+            let bytes = written.and_then(|()| std::fs::read(&path).map_err(|e| e.to_string()));
+            let _ = std::fs::remove_file(&path);
+            bytes
+        })();
+        if com.is_ok() {
+            unsafe { CoUninitialize() };
+        }
+        result
     }
 
     pub fn display_under_cursor() -> Option<usize> {

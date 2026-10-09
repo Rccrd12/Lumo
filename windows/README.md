@@ -423,9 +423,12 @@ Gemini uses the computer by itself, when it decides it needs to:
   their name, from the Start menu (or the Linux app menu). It never runs a
   program or a script by its file.
 - **It shows you where to click** (Windows): ask "what do I do here?" and
-  Gemini describes the element; Lumo takes a fresh screenshot, Gemini Flash
-  finds that element on it (the screenshot is deleted at once), and an
-  animated pointer glides to it with a few words beside it ("Click here"),
+  Gemini names the element; Lumo asks Windows where it is (UI Automation,
+  as screen readers do: the desktop's icons, the taskbar and the window you
+  are in), so the pointer lands on it exactly on any display. Only what
+  Windows doesn't list is looked for by Gemini Flash on a fresh screenshot,
+  then on a close-up of that spot (deleted at once). An animated pointer
+  glides to it with a few words beside it ("Click here"),
   rings around it for a few seconds and fades. It is only a picture: it never moves your mouse or clicks, clicks
   go through it, and screenshots leave it out.
 - **It types in the text box you clicked in**, in any app, when you ask it

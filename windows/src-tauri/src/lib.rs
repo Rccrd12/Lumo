@@ -38,6 +38,7 @@ mod settings;
 mod shortcuts;
 mod tray;
 mod typing;
+mod uia;
 mod updater;
 #[cfg(windows)]
 mod webview_drop;
