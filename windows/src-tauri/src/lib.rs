@@ -6,6 +6,7 @@ mod autostart;
 mod chat;
 mod claude;
 mod claude_code;
+mod clipboard;
 mod codex_plan;
 mod config_file;
 mod desktop;
@@ -668,6 +669,34 @@ fn ingest_file(path: String) -> Result<DroppedFile, String> {
     files::ingest(&path)
 }
 
+/// Ctrl+V in the chat with an image (or a file the page can read): its bytes,
+/// sent raw, written into the inbox like a dropped file. The name rides in the
+/// `x-coucou-name` header, percent-encoded.
+#[tauri::command]
+async fn paste_file(request: tauri::ipc::Request<'_>) -> Result<DroppedFile, String> {
+    let tauri::ipc::InvokeBody::Raw(bytes) = request.body() else {
+        return Err(i18n::t("Couldn't paste this."));
+    };
+    if bytes.len() > files::MAX_PASTE {
+        return Err(i18n::t("This file is too big to paste. Attach it with the paperclip instead."));
+    }
+    let name = request
+        .headers()
+        .get("x-coucou-name")
+        .and_then(|v| v.to_str().ok())
+        .and_then(explorer::percent_decode_text)
+        .unwrap_or_default();
+    let bytes = bytes.clone();
+    tauri::async_runtime::spawn_blocking(move || files::write_in(&name, &bytes)).await.map_err(|e| e.to_string())?
+}
+
+/// Ctrl+V in the chat found no text and no image: the file copied in File
+/// Explorer (CF_HDROP), copied into the inbox; nothing when there is none.
+#[tauri::command]
+async fn paste_copied_file() -> Result<Option<DroppedFile>, String> {
+    tauri::async_runtime::spawn_blocking(clipboard::paste_copied_file).await.map_err(|e| e.to_string())?
+}
+
 /// The island may only ask whether a key exists — never read it.
 #[tauri::command]
 fn secret_present(key: String) -> bool {
@@ -896,6 +925,8 @@ pub fn run() {
             screen_explorer,
             explorer_attach,
             ingest_file,
+            paste_file,
+            paste_copied_file,
             secret_present,
             secret_set,
             secret_clear,

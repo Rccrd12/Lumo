@@ -75,6 +75,11 @@ pub fn path_from_file_url(url: &str) -> Option<String> {
     looks_like_folder(&path).then_some(path)
 }
 
+/// `%`-escaped UTF-8 text back as it was (a name the page sent in a header).
+pub fn percent_decode_text(s: &str) -> Option<String> {
+    String::from_utf8(percent_decode(s)?).ok()
+}
+
 fn percent_decode(s: &str) -> Option<Vec<u8>> {
     let mut out = Vec::with_capacity(s.len());
     let mut bytes = s.bytes();
@@ -526,6 +531,8 @@ mod tests {
         assert!(!looks_like_folder(""));
         assert!(looks_like_folder("C:\\Users\\me"));
         assert!(looks_like_folder("\\\\nas\\photos"));
+        assert_eq!(percent_decode_text("Screenshot%202026-10-08%20%C3%A9.png").as_deref(), Some("Screenshot 2026-10-08 é.png"));
+        assert_eq!(percent_decode_text("bad%ff"), None);
     }
 
     #[test]

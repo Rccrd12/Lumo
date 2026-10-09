@@ -242,6 +242,16 @@ export const Bridge = {
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
+  /**
+   * Ctrl+V in the chat: what the page got from the clipboard (an image, a
+   * file), sent raw and written into the inbox like a drop.
+   */
+  pasteFile: (name: string, bytes: Uint8Array) => {
+    if (!IS_TAURI) return Promise.reject(new Error("not running inside Lumo"));
+    return tauriInvoke<DroppedFile>("paste_file", bytes, { headers: { "x-coucou-name": encodeURIComponent(name) } });
+  },
+  /** Ctrl+V in the chat with no text and no image: the file copied in File Explorer, copied into the inbox. */
+  pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
   secretSet: (key: string, value: string) => callOrThrow<void>("secret_set", { key, value }),

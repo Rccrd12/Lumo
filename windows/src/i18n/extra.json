@@ -56,6 +56,17 @@
    "ru": "ИИ для чата",
    "id": "AI untuk obrolan"
   },
+  "Always share the folder open in File Explorer": {
+   "zh-Hans": "始终共享文件资源管理器中打开的文件夹",
+   "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर हमेशा साझा करें",
+   "es": "Compartir siempre la carpeta abierta en el Explorador de archivos",
+   "ar": "مشاركة المجلد المفتوح في مستكشف الملفات دائمًا",
+   "fr": "Toujours partager le dossier ouvert dans l'Explorateur de fichiers",
+   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার সবসময় শেয়ার করুন",
+   "pt-BR": "Sempre compartilhar a pasta aberta no Explorador de Arquivos",
+   "ru": "Всегда передавать папку, открытую в Проводнике",
+   "id": "Selalu bagikan folder yang terbuka di File Explorer"
+  },
   "API error {code}": {
    "zh-Hans": "API 错误 {code}",
    "hi": "API त्रुटि {code}",
@@ -484,6 +495,17 @@
    "pt-BR": "Não é possível copiar imagens aqui — use Salvar imagem.",
    "ru": "Копировать изображения здесь нельзя — используйте «Сохранить изображение».",
    "id": "Menyalin gambar tidak tersedia di sini — gunakan Simpan gambar."
+  },
+  "Couldn't paste this.": {
+   "zh-Hans": "无法粘贴此内容。",
+   "hi": "इसे चिपकाया नहीं जा सका।",
+   "es": "No se pudo pegar.",
+   "ar": "تعذّر لصق هذا.",
+   "fr": "Impossible de coller ceci.",
+   "bn": "এটি পেস্ট করা যায়নি।",
+   "pt-BR": "Não foi possível colar.",
+   "ru": "Не удалось вставить.",
+   "id": "Tidak dapat menempel ini."
   },
   "Lumo could not list the agents.": {
    "zh-Hans": "Lumo 无法列出代理。",
@@ -2245,6 +2267,17 @@
    "ru": "Этот агент использует плагин, а не записи хуков.",
    "id": "Agen ini memakai plugin, bukan entri hook."
   },
+  "This file is too big to paste. Attach it with the paperclip instead.": {
+   "zh-Hans": "此文件太大，无法粘贴。请改用回形针附加。",
+   "hi": "यह फ़ाइल चिपकाने के लिए बहुत बड़ी है। इसके बजाय पेपरक्लिप से संलग्न करें।",
+   "es": "Este archivo es demasiado grande para pegarlo. Adjúntalo con el clip.",
+   "ar": "هذا الملف أكبر من أن يُلصق. أرفقه بمشبك الورق بدلًا من ذلك.",
+   "fr": "Ce fichier est trop gros pour être collé. Joignez-le plutôt avec le trombone.",
+   "bn": "এই ফাইলটি পেস্ট করার জন্য খুব বড়। বরং পেপারক্লিপ দিয়ে সংযুক্ত করুন।",
+   "pt-BR": "Este arquivo é grande demais para colar. Anexe-o com o clipe.",
+   "ru": "Файл слишком большой для вставки. Прикрепите его скрепкой.",
+   "id": "File ini terlalu besar untuk ditempel. Lampirkan dengan tombol klip."
+  },
   "This is exactly what changes for {name}. Nothing else is touched.": {
    "zh-Hans": "这正是 {name} 将发生的改动。其他内容不会被触碰。",
    "hi": "{name} के लिए ठीक यही बदलेगा। और कुछ नहीं छुआ जाता।",
@@ -2530,6 +2563,17 @@
    "pt-BR": "Quarta-feira",
    "ru": "Среда",
    "id": "Rabu"
+  },
+  "When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message.": {
+   "zh-Hans": "开启后，你发送的每条消息都会附带文件资源管理器中打开的文件夹的路径及其内容列表（名称、大小、日期），就像你通过屏幕按钮选择了它一样。发送前它的标签会显示在聊天上方；点击 × 可让这条消息不附带它。",
+   "hi": "चालू होने पर, आपका भेजा हर संदेश फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर का पथ और उसमें मौजूद चीज़ों की सूची (नाम, आकार, तारीख़ें) साथ ले जाता है, मानो आपने उसे स्क्रीन बटन से चुना हो। भेजने से पहले उसका लेबल चैट के ऊपर दिखता है; उसका × उसे उस संदेश से हटा देता है।",
+   "es": "Si está activado, cada mensaje que envías lleva la ruta de la carpeta abierta en el Explorador de archivos y la lista de lo que contiene (nombres, tamaños, fechas), como si la eligieras con el botón de pantalla. Su etiqueta aparece sobre el chat antes de enviar; su × la quita de ese mensaje.",
+   "ar": "عند التفعيل، تحمل كل رسالة ترسلها مسار المجلد المفتوح في مستكشف الملفات وقائمة بما فيه (الأسماء والأحجام والتواريخ)، كأنك اخترته من زر الشاشة. تظهر بطاقته فوق المحادثة قبل الإرسال، وزر × يستبعده من تلك الرسالة.",
+   "fr": "Quand c'est activé, chaque message envoyé emporte le chemin du dossier ouvert dans l'Explorateur de fichiers et la liste de ce qu'il contient (noms, tailles, dates), comme si vous l'aviez choisi avec le bouton d'écran. Son étiquette s'affiche au-dessus du chat avant l'envoi ; son × le retire de ce message.",
+   "bn": "চালু থাকলে, আপনার পাঠানো প্রতিটি বার্তার সঙ্গে ফাইল এক্সপ্লোরারে খোলা ফোল্ডারের পাথ আর তার ভেতরের জিনিসের তালিকা (নাম, আকার, তারিখ) যায়, যেন আপনি স্ক্রিন বোতাম থেকে সেটি বেছে নিয়েছেন। পাঠানোর আগে চ্যাটের ওপরে এর লেবেল দেখা যায়; এর × সেটিকে ওই বার্তা থেকে বাদ দেয়।",
+   "pt-BR": "Quando ativado, cada mensagem que você envia leva o caminho da pasta aberta no Explorador de Arquivos e a lista do que há nela (nomes, tamanhos, datas), como se você a escolhesse pelo botão de tela. A etiqueta dela aparece acima do chat antes do envio; o × a tira dessa mensagem.",
+   "ru": "Если включено, каждое ваше сообщение несёт путь к папке, открытой в Проводнике, и список её содержимого (имена, размеры, даты), как если бы вы выбрали её кнопкой экрана. Её метка видна над чатом перед отправкой; × убирает её из этого сообщения.",
+   "id": "Jika aktif, setiap pesan yang Anda kirim membawa jalur folder yang terbuka di File Explorer beserta daftar isinya (nama, ukuran, tanggal), seolah Anda memilihnya dari tombol layar. Labelnya tampil di atas obrolan sebelum dikirim; tombol × mengecualikannya dari pesan itu."
   },
   "Where you code": {
    "zh-Hans": "编程环境",

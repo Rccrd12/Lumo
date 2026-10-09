@@ -156,6 +156,11 @@ export interface Settings {
   chatModels: Record<string, string>;
   /** Claude Code's effort for the chat ("low" … "max"); "" = Claude Code's default. */
   chatEffort: string;
+  /**
+   * Every chat message carries the folder open in File Explorer, as if picked
+   * from the screen button. Off until the user turns it on in Settings → Chat.
+   */
+  chatShareExplorer: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -214,6 +219,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",
+  chatShareExplorer: false,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
