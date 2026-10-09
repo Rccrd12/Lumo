@@ -293,3 +293,105 @@ test("Escape or the chip's × leaves an edit, and nothing is edited mid-answer",
   await ask("more");
   assert.equal(rows()[0].find(".msg-action").length, 1, "Copy only while an answer is written");
 });
+
+// ── What the answer is doing ──────────────────────────────────────────────────
+
+const { activityLabel, firstActivity } = await import("../src/views/chat.ts");
+const label = () => $(".typing-label")?.textContent ?? null;
+
+test("while Claude Code works, the dots say what it does, and come back after some text", async () => {
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  State.droppedFile = { name: "report.pdf", path: "/inbox/report.pdf" };
+  const pending = heldAnswers();
+  await ask("what does it say?");
+  assert.ok($(".typing"), "the dots stay");
+  assert.equal(label(), "Thinking…", "Claude Code says for itself what it reads");
+
+  emit("chat-activity", { kind: "read", detail: "report.pdf" });
+  assert.equal(label(), "Reading report.pdf");
+  view.sync(); // an update mid-answer keeps the line
+  assert.equal(label(), "Reading report.pdf");
+
+  emit("chat-delta", "Let me check one thing.");
+  assert.equal($(".typing"), null, "the text shows instead");
+  assert.equal(label(), null);
+
+  emit("chat-activity", { kind: "command", detail: "" });
+  assert.equal(label(), "Running a command", "back to its tools: the dots come back");
+  assert.ok(rows().at(-1).querySelector(".typing"), "under what was written");
+  assert.equal(view.el.find(".reply").length, 1);
+  emit("chat-activity", { kind: "edit", detail: "main.rs" });
+  assert.equal(view.el.find(".typing").length, 1, "one line, updated in place");
+  assert.equal(label(), "Editing main.rs");
+
+  emit("chat-delta", "Done: main.rs is fixed.");
+  assert.equal(label(), null);
+  assert.equal(view.el.find(".reply")[0].textContent, "Done: main.rs is fixed.");
+
+  pending[0]({ text: "Done: main.rs is fixed.", turns: 2 });
+  await flush();
+  view.sync();
+  assert.equal(label(), null);
+  emit("chat-activity", { kind: "read", detail: "late.txt" });
+  assert.equal(label(), null, "nothing after the answer");
+});
+
+test("the other providers show the file first, then Thinking…", async (t) => {
+  t.mock.timers.enable({ apis: ["setTimeout"] });
+  const tick = () => new Promise((resolve) => setImmediate(resolve));
+  State.settings = { ...State.settings, chatProvider: "openai" };
+  State.droppedFile = { name: "report.pdf", path: "/inbox/report.pdf" };
+  const pending = heldAnswers();
+  $(".chat-input").value = "summary?";
+  type("Enter");
+  await tick();
+  await tick();
+  view.sync();
+  assert.equal(label(), "Reading report.pdf");
+  t.mock.timers.tick(1200);
+  assert.equal(label(), "Thinking…");
+
+  pending[0]({ text: "It is a report.", turns: 2 });
+  await tick();
+  view.sync();
+  assert.equal(label(), null);
+
+  // The next question has no file: Thinking… from the start.
+  heldAnswers();
+  $(".chat-input").value = "more?";
+  type("Enter");
+  await tick();
+  await tick();
+  view.sync();
+  assert.equal(label(), "Thinking…");
+});
+
+test("each activity has its words, with a file name, a host or a tool", () => {
+  const cases = [
+    [{ kind: "thinking", detail: "" }, "Thinking…"],
+    [{ kind: "read", detail: "report.pdf" }, "Reading report.pdf"],
+    [{ kind: "read", detail: "example.com" }, "Reading example.com"],
+    [{ kind: "read", detail: "" }, "Reading a file"],
+    [{ kind: "search", detail: "**/*.pdf" }, "Searching for **/*.pdf"],
+    [{ kind: "search", detail: "" }, "Searching the folder"],
+    [{ kind: "command", detail: "" }, "Running a command"],
+    [{ kind: "edit", detail: "main.rs" }, "Editing main.rs"],
+    [{ kind: "edit", detail: "" }, "Editing a file"],
+    [{ kind: "web", detail: "" }, "Searching the web"],
+    [{ kind: "subtask", detail: "" }, "Working on a sub-task"],
+    [{ kind: "plan", detail: "" }, "Planning"],
+    [{ kind: "screen", detail: "" }, "Looking at the screen"],
+    [{ kind: "tool", detail: "create issue (github)" }, "Using create issue (github)"],
+    [{ kind: "tool", detail: "" }, "Thinking…"],
+    [{ kind: "something new", detail: "x" }, "Thinking…"],
+    [null, "Thinking…"],
+  ];
+  for (const [activity, words] of cases) assert.equal(activityLabel(activity), words, JSON.stringify(activity));
+
+  const file = { kind: "file", name: "a.pdf", path: "/inbox/a.pdf" };
+  const shots = { windows: [], shots: [{ name: "Screen 1", path: "/inbox/s.png" }] };
+  assert.deepEqual(firstActivity("anthropic", file, shots), { kind: "screen", detail: "" }, "the screen first");
+  assert.deepEqual(firstActivity("ollama", file, null), { kind: "read", detail: "a.pdf" });
+  assert.deepEqual(firstActivity("google", null, { windows: [], shots: [] }), { kind: "thinking", detail: "" });
+  assert.deepEqual(firstActivity("claude-code", file, shots), { kind: "thinking", detail: "" }, "Claude Code says for itself");
+});

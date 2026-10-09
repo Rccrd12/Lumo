@@ -4493,6 +4493,149 @@
    "pt-BR": "Movimento do Lumo",
    "ru": "Движения Lumo",
    "id": "Gerakan Lumo"
+  },
+  "Thinking…": {
+   "zh-Hans": "思考中…",
+   "hi": "सोच रहा है…",
+   "es": "Pensando…",
+   "ar": "يفكّر…",
+   "fr": "Réfléchit…",
+   "bn": "ভাবছে…",
+   "pt-BR": "Pensando…",
+   "ru": "Думает…",
+   "id": "Berpikir…"
+  },
+  "Reading {name}": {
+   "zh-Hans": "正在读取 {name}",
+   "hi": "{name} पढ़ रहा है",
+   "es": "Leyendo {name}",
+   "ar": "يقرأ {name}",
+   "fr": "Lit {name}",
+   "bn": "{name} পড়ছে",
+   "pt-BR": "Lendo {name}",
+   "ru": "Читает {name}",
+   "id": "Membaca {name}"
+  },
+  "Reading a file": {
+   "zh-Hans": "正在读取文件",
+   "hi": "फ़ाइल पढ़ रहा है",
+   "es": "Leyendo un archivo",
+   "ar": "يقرأ ملفًا",
+   "fr": "Lit un fichier",
+   "bn": "একটি ফাইল পড়ছে",
+   "pt-BR": "Lendo um arquivo",
+   "ru": "Читает файл",
+   "id": "Membaca file"
+  },
+  "Searching for {pattern}": {
+   "zh-Hans": "正在搜索 {pattern}",
+   "hi": "{pattern} खोज रहा है",
+   "es": "Buscando {pattern}",
+   "ar": "يبحث عن {pattern}",
+   "fr": "Cherche {pattern}",
+   "bn": "{pattern} খুঁজছে",
+   "pt-BR": "Procurando {pattern}",
+   "ru": "Ищет {pattern}",
+   "id": "Mencari {pattern}"
+  },
+  "Searching the folder": {
+   "zh-Hans": "正在搜索文件夹",
+   "hi": "फ़ोल्डर में खोज रहा है",
+   "es": "Buscando en la carpeta",
+   "ar": "يبحث في المجلد",
+   "fr": "Cherche dans le dossier",
+   "bn": "ফোল্ডারে খুঁজছে",
+   "pt-BR": "Procurando na pasta",
+   "ru": "Ищет в папке",
+   "id": "Mencari di folder"
+  },
+  "Running a command": {
+   "zh-Hans": "正在运行命令",
+   "hi": "कमांड चला रहा है",
+   "es": "Ejecutando un comando",
+   "ar": "ينفّذ أمرًا",
+   "fr": "Lance une commande",
+   "bn": "একটি কমান্ড চালাচ্ছে",
+   "pt-BR": "Executando um comando",
+   "ru": "Выполняет команду",
+   "id": "Menjalankan perintah"
+  },
+  "Editing {name}": {
+   "zh-Hans": "正在编辑 {name}",
+   "hi": "{name} संपादित कर रहा है",
+   "es": "Editando {name}",
+   "ar": "يحرّر {name}",
+   "fr": "Modifie {name}",
+   "bn": "{name} সম্পাদনা করছে",
+   "pt-BR": "Editando {name}",
+   "ru": "Редактирует {name}",
+   "id": "Mengedit {name}"
+  },
+  "Editing a file": {
+   "zh-Hans": "正在编辑文件",
+   "hi": "फ़ाइल संपादित कर रहा है",
+   "es": "Editando un archivo",
+   "ar": "يحرّر ملفًا",
+   "fr": "Modifie un fichier",
+   "bn": "একটি ফাইল সম্পাদনা করছে",
+   "pt-BR": "Editando um arquivo",
+   "ru": "Редактирует файл",
+   "id": "Mengedit file"
+  },
+  "Searching the web": {
+   "zh-Hans": "正在搜索网页",
+   "hi": "वेब पर खोज रहा है",
+   "es": "Buscando en la web",
+   "ar": "يبحث في الويب",
+   "fr": "Cherche sur le web",
+   "bn": "ওয়েবে খুঁজছে",
+   "pt-BR": "Pesquisando na web",
+   "ru": "Ищет в интернете",
+   "id": "Mencari di web"
+  },
+  "Working on a sub-task": {
+   "zh-Hans": "正在处理子任务",
+   "hi": "एक उप-कार्य पर काम कर रहा है",
+   "es": "Trabajando en una subtarea",
+   "ar": "يعمل على مهمة فرعية",
+   "fr": "Travaille sur une sous-tâche",
+   "bn": "একটি উপ-কাজ করছে",
+   "pt-BR": "Trabalhando em uma subtarefa",
+   "ru": "Работает над подзадачей",
+   "id": "Mengerjakan subtugas"
+  },
+  "Planning": {
+   "zh-Hans": "正在规划",
+   "hi": "योजना बना रहा है",
+   "es": "Planificando",
+   "ar": "يخطّط",
+   "fr": "Planifie",
+   "bn": "পরিকল্পনা করছে",
+   "pt-BR": "Planejando",
+   "ru": "Планирует",
+   "id": "Merencanakan"
+  },
+  "Looking at the screen": {
+   "zh-Hans": "正在查看屏幕",
+   "hi": "स्क्रीन देख रहा है",
+   "es": "Mirando la pantalla",
+   "ar": "ينظر إلى الشاشة",
+   "fr": "Regarde l'écran",
+   "bn": "স্ক্রিন দেখছে",
+   "pt-BR": "Olhando a tela",
+   "ru": "Смотрит на экран",
+   "id": "Melihat layar"
+  },
+  "Using {tool}": {
+   "zh-Hans": "正在使用 {tool}",
+   "hi": "{tool} का उपयोग कर रहा है",
+   "es": "Usando {tool}",
+   "ar": "يستخدم {tool}",
+   "fr": "Utilise {tool}",
+   "bn": "{tool} ব্যবহার করছে",
+   "pt-BR": "Usando {tool}",
+   "ru": "Использует {tool}",
+   "id": "Menggunakan {tool}"
   }
  }
 }

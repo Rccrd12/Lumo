@@ -22,6 +22,7 @@
 - **Always share the folder open in File Explorer** (Settings → Chat, off by default): every message carries that folder's path and list of files, shown as a chip you can remove for one message (Windows)
 - **Paste into the chat**: `Ctrl+V` attaches a screenshot from the clipboard (`Win+Shift+S`) or a file copied in File Explorer, as the paperclip does; text pastes as before
 - **Stop, edit and copy in the chat**: the send button turns into Stop while an answer is written (Escape too), and what was already written stays. Under the mouse, a question can be copied or edited (sending the edit replaces it and what followed), and every answer has a Copy button. You can type the next question while an answer comes
+- **See what the chat is doing**: next to the typing dots, a quiet line says what the answer is busy with. With Claude Code it follows each step (Thinking…, Reading report.pdf, Searching for a pattern, Running a command, Editing main.rs, Searching the web, Looking at the screen, Using a tool) and comes back whenever it returns to its tools between bits of text. The other providers show the file or the screenshots they were given, then Thinking…
 
 ## Windows and Linux 0.3.0 — October 8, 2026
 

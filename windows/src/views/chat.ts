@@ -6,6 +6,12 @@
 // model name above the text field opens the picker: provider chips, then the
 // models of the chosen provider, asked for only once it is picked.
 //
+// Until the text shows, a quiet line next to the typing dots says what the
+// answer is doing: Claude Code's tool calls as it makes them (`chat-activity`
+// events, claude_code.rs), and comes back when it returns to its tools after
+// some text; for the other providers, the screenshots or the file that ride
+// along for a moment, then Thinking….
+//
 // While an answer is written the send button is a Stop button (Escape in the
 // field too): what was written stays, marked stopped. The field stays open
 // meanwhile; Enter sends once the answer is done. Each message has Copy under
@@ -32,7 +38,8 @@ import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { copyButton, renderMarkdown } from "./markdown";
 import {
-  Bridge, onEvent, type ChatContext, type ExplorerFolder, type ModelInfo, type ScreenDisplay, type ScreenShot,
+  Bridge, onEvent, type ChatActivity, type ChatContext, type ExplorerFolder, type ModelInfo, type ScreenContext,
+  type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
   EFFORTS, activeModel, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
@@ -131,11 +138,75 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, foot));
 }
 
-function typingDots(): HTMLElement {
+/** What the line next to the typing dots says (claude_code.rs Activity). */
+const ACTIVITY_STRINGS = {
+  thinking: N_("Thinking…"),
+  reading: N_("Reading {name}"),
+  readingFile: N_("Reading a file"),
+  searchingFor: N_("Searching for {pattern}"),
+  searchingFolder: N_("Searching the folder"),
+  command: N_("Running a command"),
+  editing: N_("Editing {name}"),
+  editingFile: N_("Editing a file"),
+  web: N_("Searching the web"),
+  subtask: N_("Working on a sub-task"),
+  plan: N_("Planning"),
+  screen: N_("Looking at the screen"),
+  tool: N_("Using {tool}"),
+};
+
+const THINKING: ChatActivity = { kind: "thinking", detail: "" };
+
+/** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
+const FIRST_ACTIVITY_MS = 1200;
+
+/** The words for what the answer is doing; anything unknown is Thinking…. */
+export function activityLabel(activity: ChatActivity | null): string {
+  const detail = (activity?.detail ?? "").trim();
+  switch (activity?.kind) {
+    case "read":
+      return detail ? t(ACTIVITY_STRINGS.reading, { name: detail }) : t(ACTIVITY_STRINGS.readingFile);
+    case "search":
+      return detail ? t(ACTIVITY_STRINGS.searchingFor, { pattern: detail }) : t(ACTIVITY_STRINGS.searchingFolder);
+    case "command":
+      return t(ACTIVITY_STRINGS.command);
+    case "edit":
+      return detail ? t(ACTIVITY_STRINGS.editing, { name: detail }) : t(ACTIVITY_STRINGS.editingFile);
+    case "web":
+      return t(ACTIVITY_STRINGS.web);
+    case "subtask":
+      return t(ACTIVITY_STRINGS.subtask);
+    case "plan":
+      return t(ACTIVITY_STRINGS.plan);
+    case "screen":
+      return t(ACTIVITY_STRINGS.screen);
+    case "tool":
+      return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
+    default:
+      return t(ACTIVITY_STRINGS.thinking);
+  }
+}
+
+/**
+ * What the answer is shown doing first. Claude Code says for itself as it
+ * goes (`chat-activity`); the other providers stream no tools, so the
+ * screenshots or the file that ride along show first, then Thinking….
+ */
+export function firstActivity(provider: string, context: ChatContext | null, screen: ScreenContext | null): ChatActivity {
+  if (provider !== "claude-code") {
+    if (screen?.shots.length) return { kind: "screen", detail: "" };
+    if (context?.kind === "file") return { kind: "read", detail: context.name };
+  }
+  return THINKING;
+}
+
+/** The dots while an answer is written, and what it is doing next to them. */
+function typingDots(label: string): HTMLElement {
   return h(
     "div",
     { class: "chat-row" },
     h("div", { class: "typing" }, h("i"), h("i"), h("i")),
+    h("span", { class: "typing-label", text: label }),
   );
 }
 
@@ -415,6 +486,10 @@ export function buildPrompt(
   let screenTicket = 0;
   // A local model answers token by token: where its text so far is shown.
   let live: HTMLElement | null = null;
+  /** What the answer is doing, shown next to the dots until its text does. */
+  let activity: ChatActivity = THINKING;
+  /** Turns the first activity of a provider that streams no tools into Thinking…. */
+  let activityTimer: ReturnType<typeof setTimeout> | undefined;
   /** Stop was pressed: the answer is being ended. */
   let stopping = false;
   /** The question being edited (its id): sending replaces it and drops what follows. */
@@ -978,13 +1053,33 @@ export function buildPrompt(
 
   void onEvent<string>("chat-delta", (text) => {
     if (!sending || !text) return; // nothing visible yet: the dots stay
+    // The text shows: the dots and what the answer was doing go.
+    log.querySelector(".typing")?.parentElement?.remove();
     if (!live) {
       live = h("div", { class: "reply" });
-      log.querySelector(".typing")?.parentElement?.remove();
       log.append(h("div", { class: "chat-row" }, live));
     }
     renderMarkdown(live, text);
     log.scrollTop = log.scrollHeight;
+  });
+
+  /**
+   * The line next to the dots says what the answer is doing now. `again`:
+   * Claude Code went back to its tools after some text, so the dots come
+   * back under it.
+   */
+  function showActivity(next: ChatActivity, again = false) {
+    activity = next;
+    const label = log.querySelector(".typing-label");
+    if (label) label.textContent = activityLabel(activity);
+    else if (again && live) log.append(typingDots(activityLabel(activity)));
+    log.scrollTop = log.scrollHeight;
+  }
+
+  void onEvent<ChatActivity>("chat-activity", (next) => {
+    if (!sending || !next) return;
+    clearTimeout(activityTimer);
+    showActivity(next, true);
   });
 
   async function submit() {
@@ -1013,16 +1108,19 @@ export function buildPrompt(
     }
     if (shared.folder) await attachNamed(shared.folder, query);
 
+    // The file goes with the first question asked after it was added, once.
+    const file = State.droppedFile;
+    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
+    const screenContext = screenPayload(shared);
+
+    activity = firstActivity(State.settings.chatProvider, context, screenContext);
+    if (activity !== THINKING) activityTimer = setTimeout(() => showActivity(THINKING), FIRST_ACTIVITY_MS);
+
     const question: ChatMessage = { id: nextId++, role: "user", content: query };
     State.chatHistory.push(question);
     State.stateOverride = "thinking";
     State.notify();
     onHeightChange();
-
-    // The file goes with the first question asked after it was added, once.
-    const file = State.droppedFile;
-    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
-    const screenContext = screenPayload(shared);
 
     try {
       const reply = await Bridge.chatSend(query, context, screenContext);
@@ -1060,6 +1158,8 @@ export function buildPrompt(
       sending = false;
       stopping = false;
       live = null;
+      clearTimeout(activityTimer);
+      activity = THINKING;
       renderedCount = -1; // the finished answer replaces the streamed one
       drawModelButton();
       State.notify();
@@ -1178,7 +1278,7 @@ export function buildPrompt(
         State.chatHistory.forEach((m, i) => {
           log.append(bubble(m, { onEdit: sending ? undefined : startEdit, editing: i === at, dropped: at >= 0 && i > at }));
         });
-        if (thinking) log.append(typingDots());
+        if (thinking) log.append(typingDots(activityLabel(activity)));
         log.scrollTop = log.scrollHeight;
       }
 

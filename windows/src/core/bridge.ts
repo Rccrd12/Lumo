@@ -366,6 +366,17 @@ export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
 
+/**
+ * The `chat-activity` event: what an answer is doing while no text shows
+ * (claude_code.rs Activity). `kind`: thinking, read, search, command, edit,
+ * web, subtask, plan, screen or tool; `detail`: a file name, a host, a search
+ * pattern or a tool's name, maybe empty.
+ */
+export interface ChatActivity {
+  kind: string;
+  detail: string;
+}
+
 /** One answered chat turn (chat.rs ChatReply). */
 export interface ChatReply {
   text: string;
