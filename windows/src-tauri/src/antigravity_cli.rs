@@ -19,10 +19,14 @@
 //
 // Permissions: headless agy never prompts. Workspace files are read and
 // written freely; a tool that needs approval (a shell command, by default) is
-// soft-denied — the run carries on without it. With Lumo's Antigravity hooks
-// installed, a shell command of this run is an Allow / Deny card in the island
-// instead (lumo-hook, `LUMO_ISLAND_RUN`); no click, and it stays denied.
-// `--dangerously-skip-permissions` is never passed.
+// soft-denied — the run carries on without it. Headless agy also ignores a
+// hook's "allow" (google-antigravity/antigravity-cli#548): only a "deny" is
+// honoured. So with Lumo's Antigravity hooks installed, agy's own
+// confirmation is switched off (`--dangerously-skip-permissions`) and Lumo's
+// hook takes its place: every shell command, MCP or browser tool of this run
+// is an Allow / Deny card in the island (lumo-hook, `LUMO_ISLAND_RUN`), and
+// without a click it is denied. Without the hooks the flag is never passed,
+// and Plan only keeps agy's own confirmation too.
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -116,6 +120,19 @@ fn safe_model(model: &str) -> Option<&str> {
 /// models` lists carries its effort in its name (`gemini-3.8-flash-low`), and
 /// a mismatched `--effort` stops agy at startup.
 fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: &str, folders: &[String]) -> Vec<String> {
+    args_with_cards(model, mode, conversation, work, inbox, folders, crate::agents::antigravity_cards_ready())
+}
+
+/// `cards`: Lumo's hooks gate this run's tools (see the top of this file).
+fn args_with_cards(
+    model: &str,
+    mode: &str,
+    conversation: Option<&str>,
+    work: &str,
+    inbox: &str,
+    folders: &[String],
+    cards: bool,
+) -> Vec<String> {
     let mut a: Vec<String> = [
         "--input-format",
         "stream-json",
@@ -149,6 +166,10 @@ fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: 
     // what it may not do alone is soft-denied, or a card with Lumo's hooks.
     if crate::claude_code::permission_mode(mode) == "plan" {
         a.extend(["--mode".to_string(), "plan".to_string()]);
+    } else if cards {
+        // Lumo's cards take the place of agy's own confirmation, which in
+        // headless mode can only say no.
+        a.push("--dangerously-skip-permissions".into());
     }
     if let Some(id) = conversation.and_then(safe_session) {
         a.push("--conversation".into());
@@ -461,7 +482,12 @@ fn stderr_tail(stderr: &str) -> String {
 /// stderr when it wrote anything (a refused permission is said there), else
 /// that a permission was refused when one was.
 fn empty_answer(denied: usize, stderr_tail: &str) -> String {
-    if !stderr_tail.is_empty() {
+    // agy's own advice (an allow rule, or skipping permissions) is not for the
+    // island: Lumo's hooks are the way to approve a command from it.
+    let refused = stderr_tail.contains("permission") && (stderr_tail.contains("denied") || stderr_tail.contains("auto-denied"));
+    if refused && !crate::agents::antigravity_cards_ready() {
+        t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
+    } else if !stderr_tail.is_empty() {
         tf("Antigravity CLI gave no answer: {error}", &[("error", stderr_tail)])
     } else if denied > 0 {
         t("Antigravity CLI needed a permission that wasn't given. Install Lumo's Antigravity hooks to approve commands from the island.")
@@ -807,6 +833,23 @@ mod tests {
     use super::*;
 
     const CID: &str = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
+
+    /// Without Lumo's hooks, whatever this computer has installed.
+    fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: &str, folders: &[String]) -> Vec<String> {
+        args_with_cards(model, mode, conversation, work, inbox, folders, false)
+    }
+
+    #[test]
+    fn with_lumos_cards_agys_own_confirmation_gives_way_except_in_plan_only() {
+        let skips = |mode: &str, cards: bool| {
+            args_with_cards("default", mode, None, "/w", "/inbox", &[], cards).contains(&"--dangerously-skip-permissions".to_string())
+        };
+        assert!(skips("auto", true));
+        assert!(skips("default", true));
+        assert!(!skips("plan", true), "Plan only keeps agy's own confirmation");
+        assert!(!skips("auto", false), "never without the cards");
+        assert!(!skips("default", false));
+    }
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {

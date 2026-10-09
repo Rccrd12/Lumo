@@ -57,21 +57,22 @@ pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option
 }
 
 /// The Antigravity tools the island's own chat (antigravity_cli.rs) shows a
-/// card for: shell commands, the ones headless agy needs an approval for and
-/// would otherwise quietly deny. Reading and writing workspace files needs none.
+/// card for: shell commands, MCP tools and the browser — what agy would ask
+/// about, and what runs on nobody's say once agy's own confirmation is off.
+/// Reading and writing workspace files needs none.
 pub fn island_card_tool(tool: &str) -> bool {
     let tool = tool.to_ascii_lowercase();
-    ["command", "shell", "terminal"].iter().any(|w| tool.contains(w))
+    ["command", "shell", "terminal", "mcp", "browser"].iter().any(|w| tool.contains(w))
 }
 
-/// Antigravity's PreToolUse reply to such a card: `allow` or `deny` only after
-/// a click. Anything else is `ask`, which headless agy turns into its own
-/// soft denial — the command does not run.
+/// Antigravity's PreToolUse reply to such a card: `allow` only after a click
+/// on Allow. Anything else — Deny, no click in time, an answer not understood
+/// — is a deny: with agy's own confirmation off, nothing else stops it.
 pub fn antigravity_island(decision: Option<&str>) -> String {
     match decision.map(str::trim) {
         Some("allow" | "always") => r#"{"decision":"allow"}"#.to_string(),
         Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
-        _ => r#"{"decision":"ask"}"#.to_string(),
+        _ => r#"{"decision":"deny","reason":"Nobody approved it in Lumo"}"#.to_string(),
     }
 }
 
@@ -245,13 +246,14 @@ mod tests {
         assert_eq!(antigravity_island(Some("deny")), r#"{"decision":"deny","reason":"Denied from Lumo"}"#);
         for not_a_decision in [None, Some(""), Some("ask"), Some("maybe"), Some(r#"{"permissionDecision":"allow"}"#)] {
             let out = antigravity_island(not_a_decision);
-            assert_eq!(out, r#"{"decision":"ask"}"#, "{not_a_decision:?}");
-            assert!(!allows(&out));
+            assert_eq!(out, r#"{"decision":"deny","reason":"Nobody approved it in Lumo"}"#, "{not_a_decision:?}");
         }
         assert!(island_card_tool("run_command"));
         assert!(island_card_tool("send_command_input"));
         assert!(island_card_tool("Shell"));
         assert!(!island_card_tool("view_file"));
+        assert!(island_card_tool("mcp_github_create_issue"));
+        assert!(island_card_tool("browser_click"));
         assert!(!island_card_tool("write_to_file"));
         assert!(!island_card_tool(""));
     }

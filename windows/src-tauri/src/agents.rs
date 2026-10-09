@@ -369,6 +369,12 @@ pub fn config_files(home: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
+/// Lumo's Antigravity hooks are in place and the relay is there: a shell
+/// command of the island's own agy runs can be an Allow / Deny card.
+pub fn antigravity_cards_ready() -> bool {
+    settings::hook_exe_path().exists() && Agent::Antigravity.installed(&platform::home_dir())
+}
+
 pub fn list() -> Vec<AgentStatus> {
     let home = platform::home_dir();
     let hook_ready = settings::hook_exe_path().exists();
