@@ -259,14 +259,18 @@ test("a round look at rest asks for no frames when Lumo only moves when somethin
   assert.equal(e.ambientActive, true);
 });
 
-test("a round look keeps its heartbeat going while something waits for you", () => {
-  const e = new BotEngine();
-  e.ambient = 0;
-  e.setState("question", true);
-  step(e, 3);
-  assert.equal(e.busy, true);
-  e.look = "lucciola";
-  assert.ok(quietSoon(e), "the firefly's question has no loop");
+test("every look keeps its heartbeat going while something waits for you", () => {
+  for (const look of LUMO_LOOKS) {
+    const e = new BotEngine();
+    e.look = look;
+    e.ambient = 0;
+    e.setState("question", true);
+    step(e, 3);
+    assert.equal(e.busy, true, look);
+    e.setState("idle");
+    step(e, 1);
+    assert.ok(quietSoon(e), `${look} settles at rest`);
+  }
 });
 
 test("an error and a finish light a round look up, then settle", () => {
@@ -278,8 +282,22 @@ test("an error and a finish light a round look up, then settle", () => {
   assert.ok(e.flash < 0.01);
   assert.ok(quietSoon(e));
   e.setState("finished");
-  step(e, 0.05);
-  assert.ok(e.flash > 0.5);
-  assert.ok(e.oy < 0, "a hop");
+  step(e, 0.3);
+  assert.ok(e.flash > 0.35);
+  assert.ok(e.statePose().dy < -0.1, "a hop");
   assert.equal(e.roll, 0, "no roll");
+  step(e, 2);
+  assert.ok(quietSoon(e), "then still");
+});
+
+test("the firefly still jolts on an error and rolls when it is done", () => {
+  const e = new BotEngine();
+  e.look = "lucciola";
+  e.ambient = 0;
+  e.setState("error", true);
+  step(e, 0.06);
+  assert.ok(Math.abs(e.ox) > 0.01, "a jolt");
+  e.setState("finished");
+  step(e, 0.3);
+  assert.ok(e.roll > 0, "a roll");
 });

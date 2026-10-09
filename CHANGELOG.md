@@ -1,5 +1,10 @@
 # Changelog
 
+## Windows and Linux 0.4.0 — unreleased
+
+- **Every look moves with what is going on**: Filo, Punto, Goccia and Lucciola breathe at rest; blue, they pulse and bob while an agent works; orange, their light beats twice and sends out a ripple when something waits for you, and they look up at you; red, they shake once, flash and look down with × eyes on an error; green, they hop, land with a squash and smile ^^ when it is done, then smile again now and then. Each state eases into the next instead of jumping. Goccia's pool of light stays on the floor and shrinks as it hops. Lucciola's antenna lights twinkle in turn at rest, twinkle quickly while an agent works, perk up with the heartbeat when it waits, droop and dim on an error and sparkle when it is done, and its tail beats and sends out a ripple while it waits. It all stops when the island hides
+- **The wardrobe is in two parts**, side by side, each with its title: **Outfits** (auto, none, the leaf, the round glasses, the bow tie, the headphones and the scarf) and **Lumo's style** (Filo, Punto, Goccia or Lucciola, the same choice as Settings → Island → Lumo's look). Rest the pointer on a button to try it on, click to keep it, as before
+
 ## Windows and Linux 0.3.2 — October 9, 2026
 
 - **The launch greeting is centred and whole again**: it keeps its own size, whatever size you dragged the island to, and is drawn for the island's zoom and the display it is on, so it is no longer cut off on one side. Resting the mouse on it no longer holds it on screen: it settles into the compact island on its own

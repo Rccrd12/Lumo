@@ -4769,6 +4769,28 @@
    "ru": "Lucciola · светлячок",
    "id": "Lucciola · kunang-kunang"
   },
+  "Lumo's style": {
+   "zh-Hans": "Lumo 的风格",
+   "hi": "Lumo की शैली",
+   "es": "El estilo de Lumo",
+   "ar": "أسلوب Lumo",
+   "fr": "Le style de Lumo",
+   "bn": "Lumo-র স্টাইল",
+   "pt-BR": "O estilo do Lumo",
+   "ru": "Стиль Lumo",
+   "id": "Gaya Lumo"
+  },
+  "Outfits": {
+   "zh-Hans": "服饰",
+   "hi": "पोशाकें",
+   "es": "Atuendos",
+   "ar": "الأزياء",
+   "fr": "Tenues",
+   "bn": "পোশাক",
+   "pt-BR": "Roupas",
+   "ru": "Наряды",
+   "id": "Pakaian"
+  },
   "Lumo's look": {
    "zh-Hans": "Lumo 的外观",
    "hi": "Lumo का रूप",
