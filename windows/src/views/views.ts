@@ -21,7 +21,7 @@ import { Bridge } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
-import type { Outfit, OutfitSelection } from "../mochi/wardrobe";
+import type { LumoLook, Outfit, OutfitSelection } from "../mochi/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
 
 export interface ViewActions {
@@ -49,6 +49,10 @@ export interface ViewActions {
   chooseOutfit(selection: OutfitSelection): void;
   /** Wardrobe hover: shows an outfit on Mochi without keeping it; null ends it. */
   previewOutfit(outfit: Outfit | null): void;
+  /** Wardrobe click on a look: keeps it. */
+  chooseLook(look: LumoLook): void;
+  /** Wardrobe hover on a look: shows it without keeping it; null ends it. */
+  previewLook(look: LumoLook | null): void;
 }
 
 export interface ViewHost {

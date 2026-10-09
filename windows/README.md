@@ -87,7 +87,7 @@ it runs from and removes one left under the name Coucou.
 | Click the small island | It opens |
 | Click Lumo | It gets annoyed. Three times in a row and it goes dizzy |
 | Rest the pointer on Lumo for two seconds | Hearts |
-| Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (witch hat in October, Santa hat in December…) |
+| Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). The row below picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
 | Drag Lumo out of the island | He moves onto your desktop and hangs out there, in his outfit, watching your cursor. Drop him back on the island to bring him home |
 | On the desktop: click / right-click / double-click Lumo | Poke him / the wardrobe / he flies home. Drag him to move him |
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |

@@ -93,6 +93,10 @@ pub struct Settings {
     /// How much Lumo moves on his own: "still", "calm" or "lively". Kept as
     /// it comes; src/core/state.ts reads anything else as "calm".
     pub lumo_motion: String,
+    /// Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a
+    /// ring of light), "punto", "goccia" or "lucciola" (the firefly). Kept as
+    /// it comes; src/mochi/wardrobe.ts reads anything else as "filo".
+    pub lumo_character: String,
     /// A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB"),
     /// picked in Settings → Active pills. Empty means the catalog's colours.
     /// Kept as it comes, like `mochi_outfit`: src/core/pill-colors.ts reads
@@ -173,6 +177,7 @@ impl Default for Settings {
             shortcuts: Default::default(),
             mochi_outfit: "auto".into(),
             lumo_motion: "calm".into(),
+            lumo_character: "filo".into(),
             pill_colors: BTreeMap::new(),
             language: String::new(),
             desktop_mochi: DesktopMochiPref::default(),
@@ -463,6 +468,7 @@ mod tests {
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
   "mochiOutfit": "witchHat",
   "lumoMotion": "lively",
+  "lumoCharacter": "goccia",
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "desktopMochi": { "onDesktop": true, "spot": { "x": 1500.5, "y": -300.0, "space": "screen" } }
@@ -611,6 +617,23 @@ mod tests {
         let loaded = parse(&custom_with("pillColors", Some(json!(["#2DD4BF"])))).unwrap();
         assert!(loaded.pill_colors.is_empty());
         assert_eq!(loaded.model, "some-model");
+    }
+
+    #[test]
+    fn a_file_from_before_the_looks_shows_lumo_as_filo() {
+        let loaded = parse(&custom_with("lumoCharacter", None)).unwrap();
+        assert_eq!(loaded.lumo_character, "filo");
+        assert_eq!(loaded.lumo_motion, "lively");
+        assert_eq!(Settings::default().lumo_character, "filo");
+    }
+
+    #[test]
+    fn a_look_this_build_does_not_know_is_kept_as_written() {
+        // A newer build may add looks: the island shows Filo for it, but
+        // going back to that build must find the choice still there.
+        let loaded = parse(&custom_with("lumoCharacter", Some(json!("perla")))).unwrap();
+        assert_eq!(loaded.lumo_character, "perla");
+        assert_eq!(loaded.mochi_outfit, "witchHat");
     }
 
     #[test]
@@ -887,6 +910,7 @@ mod tests {
                 "shortcuts",
                 "mochiOutfit",
                 "lumoMotion",
+                "lumoCharacter",
                 "pillColors",
                 "language",
                 "desktopMochi",

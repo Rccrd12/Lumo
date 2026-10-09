@@ -11,6 +11,8 @@ import { N_, isRtl, t } from "../i18n/i18n";
 import {
   LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose, type RGB,
 } from "../mochi/lumo";
+import { drawLookDropping, isRoundLook } from "../mochi/looks";
+import { parseLook } from "../mochi/wardrobe";
 import {
   USC, eIn, eInOut, eOut, lerp, progressAt,
   type UploadEyeShape, type UploadFrame,
@@ -365,6 +367,11 @@ export class UploadCanvas {
   // ── Lumo ──────────────────────────────────────────────────────────────────
 
   private drawMochi(ctx: CanvasRenderingContext2D, f: UploadFrame) {
+    const look = State.lookPreview ?? parseLook(State.settings.lumoCharacter);
+    if (isRoundLook(look)) {
+      drawLookDropping(ctx, look, f);
+      return;
+    }
     const R = f.d / 2 / 1.04;
     const mc = Math.max(0, Math.min(f.morph, 1));
 

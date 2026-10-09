@@ -12,6 +12,8 @@ import { Ease } from "../core/anim";
 import type { Outfit, OutfitSelection } from "./wardrobe";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoFront } from "./lumo";
+import { LOOK_SHAPE, drawLookStill, isRoundLook, lookEyeCentres, type RoundLook } from "./looks";
+import type { LumoLook } from "./wardrobe";
 
 const EXP = LUMO_EXP;
 const VIEW_TILT = -0.3;
@@ -37,10 +39,43 @@ export interface Head {
   pitch: number;
   physDx: number;
   physDy: number;
+  /**
+   * A round look (looks.ts): where its eyes are, in head space, for the
+   * glasses; and how far the head's centre sits below the body's origin.
+   */
+  eyes?: EyeFrame[];
+  cy?: number;
 }
 
 export function makeHead(R: number, yaw = 0, pitch = 0, physDx = 0, physDy = 0): Head {
   return { R, rx: R * LUMO_RX, ry: R * LUMO_RY, yaw, pitch, physDx, physDy };
+}
+
+/**
+ * The head of a round look (Filo, Punto, Goccia): its outline's size, its eyes
+ * where looks.ts draws them, and only a little of the turn, since a round
+ * look's eyes slide rather than turn with the head.
+ */
+export function roundHead(
+  look: RoundLook, R: number, yaw = 0, pitch = 0, physDx = 0, physDy = 0,
+  eyes: { lx: number; ly: number; es: number } = { lx: 0, ly: 0, es: 1 },
+): Head {
+  const s = LOOK_SHAPE[look];
+  const cy = s.dy * R;
+  const frames: EyeFrame[] = lookEyeCentres(look, R, { lx: eyes.lx, ly: eyes.ly, morph: 0 }).map((c, i) => ({
+    sd: i === 0 ? -1 : 1,
+    x: c.x,
+    y: c.y - cy,
+    fx: 1,
+    fy: 1,
+    visible: true,
+    w: R * EYE_W * eyes.es,
+    h: R * EYE_H * eyes.es,
+  }));
+  return {
+    R, rx: R * s.rx, ry: R * (s.top + s.bottom) / 2,
+    yaw: yaw * 0.16, pitch: pitch * 0.3, physDx, physDy, eyes: frames, cy,
+  };
 }
 
 // ── 3D helpers ────────────────────────────────────────────────────────────────
@@ -167,6 +202,7 @@ export interface EyeFrame {
 
 /** Where the engine draws the eyes — the glasses sit on these. */
 export function eyeFrames(H: Head): EyeFrame[] {
+  if (H.eyes) return H.eyes;
   return [-1, 1].map((sd) => {
     const eyeYaw = sd * EYE_SP + H.yaw;
     const eyePitch = EYE_P + H.pitch;
@@ -237,7 +273,8 @@ function leaf(ctx: Ctx, H: Head, simple: boolean) {
 
 function roundGlasses(ctx: Ctx, H: Head, body: Path2D, simple: boolean) {
   const eyes = eyeFrames(H);
-  const d = H.R * 0.62;
+  // On a round look the eyes sit closer: the lenses shrink to keep a bridge.
+  const d = H.eyes ? Math.min(H.R * 0.62, Math.abs(eyes[1].x - eyes[0].x) * 0.86) : H.R * 0.62;
   const frame = "#2D5D66";
   ctx.save();
   ctx.clip(body);
@@ -525,15 +562,16 @@ export function drawOutfitBehind(ctx: Ctx, outfit: Outfit, H: Head, st: OutfitSt
   const simple = H.R < SIMPLIFY_BELOW_R;
   const body = bodyOutline(H.rx, H.ry);
 
+  ctx.save();
+  if (H.cy) ctx.translate(0, H.cy);
   if (ON_FACE.has(outfit)) {
     if (faceTurnedAway(H)) withLayer(ctx, alpha, (l) => drawFace(l, outfit, H, body, simple));
-    return;
-  }
-  if (outfit === "headphones") {
+  } else if (outfit === "headphones") {
     withLayer(ctx, alpha, (l) => {
       for (const sd of [-1, 1]) if (cupAt(H, sd).z < 0) headphoneCup(l, H, sd, simple);
     });
   }
+  ctx.restore();
 }
 
 /** The parts in front of Lumo, drawn after the body, the eyes and the antennae. */
@@ -548,6 +586,7 @@ export function drawOutfitFront(ctx: Ctx, outfit: Outfit, H: Head, st: OutfitSta
   const posP = Ease.back(p);
 
   ctx.save();
+  if (H.cy) ctx.translate(0, H.cy);
   if (outfit === "leaf" || outfit === "headphones") {
     // Put on from above, settling with a little overshoot.
     const k = 0.85 + 0.15 * posP;
@@ -579,6 +618,22 @@ const INK = "rgb(26,20,18)";
 
 function rgbaOf(c: readonly [number, number, number], a = 1): string {
   return `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
+}
+
+/** Where a round look's icon sits: R and the centre's drop below the middle. */
+const ICON_ROUND = { R: 8.4, dy: 1.6 };
+
+/** A little round look (Filo, Punto, Goccia) wearing `outfit`. */
+function iconRound(ctx: Ctx, size: number, look: RoundLook, outfit: Outfit) {
+  const { R, dy } = ICON_ROUND;
+  const H = roundHead(look, R);
+  const st: OutfitState = { presence: 1, morph: 0 };
+  ctx.save();
+  ctx.translate(size / 2, size / 2 + dy);
+  drawOutfitBehind(ctx, outfit, H, st);
+  drawLookStill(ctx, look, R);
+  drawOutfitFront(ctx, outfit, H, st);
+  ctx.restore();
 }
 
 /** A little Lumo wearing `outfit`, centred in a `size`×`size` icon. */
@@ -621,7 +676,10 @@ function iconLumo(ctx: Ctx, size: number, outfit: Outfit) {
  * One wardrobe button's picture — drawOutfitIcon on macOS. "auto" shows the
  * season's outfit with an AUTO tag, "none" a crossed-out circle.
  */
-export function drawWardrobeIcon(ctx: Ctx, size: number, selection: OutfitSelection, seasonal: Outfit, autoLabel: string) {
+export function drawWardrobeIcon(
+  ctx: Ctx, size: number, selection: OutfitSelection, seasonal: Outfit, autoLabel: string,
+  look: LumoLook = "lucciola",
+) {
   ctx.clearRect(0, 0, size, size);
   if (selection === "none") {
     const r = 6.5;
@@ -638,10 +696,14 @@ export function drawWardrobeIcon(ctx: Ctx, size: number, selection: OutfitSelect
     ctx.restore();
     return;
   }
-  iconLumo(ctx, size, selection === "auto" ? seasonal : selection);
+  const outfit = selection === "auto" ? seasonal : selection;
+  if (isRoundLook(look)) iconRound(ctx, size, look, outfit);
+  else iconLumo(ctx, size, outfit);
   if (selection !== "auto") return;
   const R = 9;
-  const by = size / 2 + R * 0.45 + R * LUMO_RY * 0.72;
+  const by = isRoundLook(look)
+    ? size / 2 + ICON_ROUND.dy + ICON_ROUND.R * 0.8
+    : size / 2 + R * 0.45 + R * LUMO_RY * 0.72;
   const bw = 14;
   const bh = 6.5;
   ctx.save();
@@ -661,4 +723,17 @@ export function drawWardrobeIcon(ctx: Ctx, size: number, selection: OutfitSelect
   ctx.textBaseline = "middle";
   ctx.fillText(autoLabel, 0, 0.2);
   ctx.restore();
+}
+
+/** One look button's picture in the wardrobe: the look itself, at rest. */
+export function drawLookIcon(ctx: Ctx, size: number, look: LumoLook) {
+  ctx.clearRect(0, 0, size, size);
+  if (isRoundLook(look)) {
+    ctx.save();
+    ctx.translate(size / 2, size / 2);
+    drawLookStill(ctx, look, ICON_ROUND.R);
+    ctx.restore();
+  } else {
+    iconLumo(ctx, size, "none");
+  }
 }

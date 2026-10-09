@@ -1,6 +1,7 @@
 // The launch greeting: a little light zips into the island and blooms into
 // Lumo, who flutters, smiles, blinks, lights up blue and settles in the compact
-// island. About 1.3 s, plus the 340 ms collapse.
+// island. About 1.3 s, plus the 340 ms collapse. He blooms in his look: a round
+// one (looks.ts) or the firefly.
 // Everything is laid out in a 640×150 reference space.
 
 import { closeCurve } from "../core/anim";
@@ -9,6 +10,11 @@ import { COMPACT_W, NOTCH_H } from "../core/layout";
 import {
   LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type RGB,
 } from "./lumo";
+import {
+  LOOK_IDLE, LOOK_SHAPE, drawLookBehind, drawLookBody, drawLookEyes, isRoundLook, lookBodyPath,
+  type LookPose, type RoundLook,
+} from "./looks";
+import { DEFAULT_LOOK, type LumoLook } from "./wardrobe";
 
 // ── Timing (seconds) ──────────────────────────────────────────────────────────
 
@@ -177,14 +183,25 @@ export function greetingPose(t: number, tc = Number.POSITIVE_INFINITY): Pose {
 }
 
 /**
- * Bounding box of Lumo's body and glowing tail in the 640×150 space — what
- * must stay inside the island so nothing of him is cut off.
+ * Bounding box of Lumo's body (and the firefly's glowing tail) in the 640×150
+ * space — what must stay inside the island so nothing of him is cut off.
  */
-export function lumoBounds(p: Pose): { left: number; right: number; top: number; bottom: number } | null {
+export function lumoBounds(p: Pose, look: LumoLook = DEFAULT_LOOK): { left: number; right: number; top: number; bottom: number } | null {
   const hh = p.hb / 2;
   const hw = hh * ASP;
   if (hh <= 0.4) return null;
   const R = hh / LUMO_RY;
+  if (isRoundLook(look)) {
+    // The outline, and the half of Filo's ring that lies outside it.
+    const s = LOOK_SHAPE[look];
+    const rim = R * 0.06;
+    return {
+      left: p.x - (R * s.rx + rim) * p.sx,
+      right: p.x + (R * s.rx + rim) * p.sx,
+      top: p.y + (R * (s.dy - s.top) - rim) * p.sy,
+      bottom: p.y + (R * (s.dy + s.bottom) + rim) * p.sy,
+    };
+  }
   const bottom = Math.max(hh, hh * 0.98 + R * 0.44);
   return {
     left: p.x - hw * p.sx,
@@ -248,17 +265,21 @@ const css = (c: RGB, a = 1) =>
 /** The blue he takes on at the end of the greeting, as on the island. */
 const GREET_BLUE: RGB = [127 / 255, 180 / 255, 234 / 255];
 
-function glowColor(p: Pose): RGB {
+/** The light he is made of: the firefly's yellow-green, or a round look's warm glow. */
+const restLight = (look: LumoLook): RGB => (isRoundLook(look) ? LOOK_IDLE : LUMO_GLOW);
+
+function glowColor(p: Pose, look: LumoLook): RGB {
   const k = Math.min(1, p.tint / 0.5);
+  const from = restLight(look);
   return [
-    LUMO_GLOW[0] + (GREET_BLUE[0] - LUMO_GLOW[0]) * k,
-    LUMO_GLOW[1] + (GREET_BLUE[1] - LUMO_GLOW[1]) * k,
-    LUMO_GLOW[2] + (GREET_BLUE[2] - LUMO_GLOW[2]) * k,
+    from[0] + (GREET_BLUE[0] - from[0]) * k,
+    from[1] + (GREET_BLUE[1] - from[1]) * k,
+    from[2] + (GREET_BLUE[2] - from[2]) * k,
   ];
 }
 
 /** The light flying in, with a short fading trail. */
-function drawSpark(x: CanvasRenderingContext2D, t: number, p: Pose) {
+function drawSpark(x: CanvasRenderingContext2D, t: number, p: Pose, look: LumoLook) {
   if (p.spark <= 0.01) return;
   for (let i = 6; i >= 0; i--) {
     const tt = t - i * 0.018;
@@ -267,8 +288,8 @@ function drawSpark(x: CanvasRenderingContext2D, t: number, p: Pose) {
     const k = 1 - i / 7;
     const r = 2 + 4 * k;
     const g = x.createRadialGradient(s.x, s.y, 0, s.x, s.y, r * 3);
-    g.addColorStop(0, css(LUMO_GLOW, 0.8 * k * p.spark));
-    g.addColorStop(1, css(LUMO_GLOW, 0));
+    g.addColorStop(0, css(restLight(look), 0.8 * k * p.spark));
+    g.addColorStop(1, css(restLight(look), 0));
     x.fillStyle = g;
     x.beginPath();
     x.arc(s.x, s.y, r * 3, 0, Math.PI * 2);
@@ -281,27 +302,22 @@ function drawSpark(x: CanvasRenderingContext2D, t: number, p: Pose) {
 }
 
 /** Little motes of light thrown out as he blooms. */
-function drawMotes(x: CanvasRenderingContext2D, t: number, p: Pose) {
+function drawMotes(x: CanvasRenderingContext2D, t: number, p: Pose, look: LumoLook) {
   for (const m of MOTES) {
     const k = seg(t, m.t0, m.t0 + 0.6);
     if (k <= 0 || k >= 1) continue;
     const d = HB * m.d * E.out(k);
     const mx = C0.x + Math.cos(m.a) * d * 1.4;
     const my = C0.y + Math.sin(m.a) * d * 0.7;
-    x.fillStyle = css(LUMO_GLOW, m.al * (1 - k) * p.fx);
+    x.fillStyle = css(restLight(look), m.al * (1 - k) * p.fx);
     x.beginPath();
     x.arc(mx, my, m.s * (1 - k * 0.5), 0, Math.PI * 2);
     x.fill();
   }
 }
 
-function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
-  const hh = p.hb / 2;
-  const hw = hh * ASP;
-  if (hh <= 0.4) return;
-  const glow = glowColor(p);
-
-  // Halo: his own light, two passes for a soft aura.
+/** His own light, two passes for a soft aura. */
+function drawHalo(x: CanvasRenderingContext2D, p: Pose, hw: number, glow: RGB) {
   if (p.halo > 0) {
     for (const [R, alpha] of [[hw * 2.4, 0.16], [hw * 3.8, 0.06]] as const) {
       const g = x.createRadialGradient(p.x, p.y, 0, p.x, p.y, R);
@@ -313,6 +329,62 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
       x.fill();
     }
   }
+}
+
+/** The activity badge, popping at his top left. */
+function drawBadge(x: CanvasRenderingContext2D, p: Pose, hw: number, hh: number) {
+  if (p.badge <= 0.01) return;
+  const br = hh * 0.3;
+  x.save();
+  x.translate(-hw * 0.78, -hh * 0.72);
+  x.scale(p.badge, p.badge);
+  x.fillStyle = "#000";
+  x.beginPath();
+  x.arc(0, 0, br + hh * 0.07, 0, Math.PI * 2);
+  x.fill();
+  x.fillStyle = "#3BA0F5";
+  x.beginPath();
+  x.arc(0, 0, br, 0, Math.PI * 2);
+  x.fill();
+  x.fillStyle = "#0B1B3A";
+  for (const i of [-1, 0, 1]) {
+    x.beginPath();
+    x.arc(i * br * 0.5, 0, br * 0.17, 0, Math.PI * 2);
+    x.fill();
+  }
+  x.restore();
+}
+
+/** A round look blooming: its light, its outline and its eyes (looks.ts). */
+function drawRound(x: CanvasRenderingContext2D, p: Pose, t: number, look: RoundLook) {
+  const hh = p.hb / 2;
+  if (hh <= 0.4) return;
+  const R = hh / LUMO_RY;
+  const hw = R * LOOK_SHAPE[look].rx;
+  const c = glowColor(p, look);
+  drawHalo(x, p, hw, c);
+
+  x.save();
+  x.translate(p.x, p.y);
+  x.scale(p.sx, p.sy);
+  const P: LookPose = {
+    R, t, c, shine: 0.4 + 0.5 * p.halo, pulse: 0, ripple: 0, rp: 0, small: R < 20, presence: 1,
+  };
+  drawLookBehind(x, look, P);
+  drawLookBody(x, look, P, lookBodyPath(look, R));
+  drawLookEyes(x, look, P, {
+    shape: p.eye === "happy" ? "happy" : "pill", lx: 0, ly: 0, open: p.open, es: 1, roll: 0, morph: 0,
+  });
+  drawBadge(x, p, hw, R * LOOK_SHAPE[look].top);
+  x.restore();
+}
+
+function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
+  const hh = p.hb / 2;
+  const hw = hh * ASP;
+  if (hh <= 0.4) return;
+  const glow = glowColor(p, "lucciola");
+  drawHalo(x, p, hw, glow);
 
   x.save();
   x.translate(p.x, p.y);
@@ -382,29 +454,7 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
   }
   x.restore();
   drawLumoFront(x, lumo);
-
-  // Activity badge
-  if (p.badge > 0.01) {
-    const br = hh * 0.3;
-    x.save();
-    x.translate(-hw * 0.78, -hh * 0.72);
-    x.scale(p.badge, p.badge);
-    x.fillStyle = "#000";
-    x.beginPath();
-    x.arc(0, 0, br + hh * 0.07, 0, Math.PI * 2);
-    x.fill();
-    x.fillStyle = "#3BA0F5";
-    x.beginPath();
-    x.arc(0, 0, br, 0, Math.PI * 2);
-    x.fill();
-    x.fillStyle = "#0B1B3A";
-    for (const i of [-1, 0, 1]) {
-      x.beginPath();
-      x.arc(i * br * 0.5, 0, br * 0.17, 0, Math.PI * 2);
-      x.fill();
-    }
-    x.restore();
-  }
+  drawBadge(x, p, hw, hh);
 
   x.restore();
 }
@@ -441,6 +491,8 @@ export class Greeting {
   private timers: number[] = [];
 
   onComplete: (() => void) | null = null;
+  /** The look he blooms in; the island sets it. */
+  look: LumoLook = DEFAULT_LOOK;
 
   start() {
     this.startMs = performance.now();
@@ -509,12 +561,13 @@ export class Greeting {
       x.save();
       rr(x, CARD.x, CARD.y, CARD.w, CARD.h, CARD_R);
       x.clip();
-      drawMotes(x, t, p);
+      drawMotes(x, t, p, this.look);
       x.restore();
     }
 
     drawMinis(x, p.minis);
-    drawSpark(x, t, p);
-    drawLumo(x, p, t);
+    drawSpark(x, t, p, this.look);
+    if (isRoundLook(this.look)) drawRound(x, p, t, this.look);
+    else drawLumo(x, p, t);
   }
 }

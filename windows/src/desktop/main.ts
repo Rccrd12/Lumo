@@ -11,6 +11,7 @@ import { Bridge, emitToWindow, onEvent, type DesktopMode } from "../core/bridge"
 import type { BotEmoteName } from "../core/layout";
 import { Sound } from "../core/sound";
 import { BotEngine } from "../mochi/engine";
+import { DEFAULT_LOOK, parseLook } from "../mochi/wardrobe";
 import {
   DESKTOP_EVENTS, DOUBLE_CLICK_MS, DRAG_THRESHOLD, PANEL_SIZE, agentActive, gaze, isOverBody,
   layerDragTopLeft, lookOrigin, pointerDistance, shouldSleep, windowDragTopLeft,
@@ -36,7 +37,7 @@ class DesktopMochi {
   private mode: DesktopMode = "off";
 
   private snap: DesktopSnapshot = {
-    state: "idle", outfit: "none", soundEnabled: true, soundVolume: 0.12, paused: false,
+    state: "idle", outfit: "none", look: DEFAULT_LOOK, soundEnabled: true, soundVolume: 0.12, paused: false,
   };
 
   private visible = false;
@@ -195,6 +196,7 @@ class DesktopMochi {
     if (!ctx) return;
     const engine = this.engine;
     engine.setOutfit(this.snap.outfit, true);
+    engine.look = parseLook(this.snap.look);
     if (!this.asleep) {
       // Windows: the global cursor. Linux: only while the pointer is over him.
       const fresh = this.mode === "poll" || now - this.lastPointer < 1500;

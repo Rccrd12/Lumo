@@ -8,13 +8,15 @@
 // not needed: a point on the desktop is used as the OS reports it.
 
 import type { BotEmoteName, BotStateName } from "../core/layout";
-import type { Outfit } from "./wardrobe";
+import type { LumoLook, Outfit } from "./wardrobe";
 
 /** What the island tells the desktop window, whenever it changes. */
 export interface DesktopSnapshot {
   state: BotStateName;
   /** He is always the main Mochi, so always dressed (try-ons included). */
   outfit: Outfit;
+  /** His look, as in the island (try-ons included). */
+  look: LumoLook;
   soundEnabled: boolean;
   soundVolume: number;
   /** Tray → Pause: he dozes off and stays asleep. */

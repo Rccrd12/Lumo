@@ -1,7 +1,7 @@
-// Draws Lumo, the little firefly, into the PNG/ICO set Tauri needs. No
+// Draws Lumo, a ring of light (Filo), into the PNG/ICO set Tauri needs. No
 // dependencies: the icons are rasterised here (painted back to front, sample by
 // sample) and encoded with node:zlib, so the app icon stays "drawn in code"
-// like the character itself. Same shapes as src/mochi/lumo.ts and the engine.
+// like the character itself. Same shapes as src/mochi/looks.ts.
 //
 //   node scripts/gen-icons.mjs
 
@@ -13,29 +13,18 @@ import { fileURLToPath } from "node:url";
 const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "icons");
 
 // ── Lumo ──────────────────────────────────────────────────────────────────────
+// Filo, his look by default: a ring of light with two lit eyes, as drawn by
+// src/mochi/looks.ts, on a dark disc so it reads on light taskbars too.
 
-const BODY_TOP = [255, 246, 216]; // #FFF6D8
-const BODY_BOTTOM = [243, 217, 138]; // #F3D98A
-const GLOW = [217, 255, 107]; // #D9FF6B
-const GLOW_DEEP = [150, 190, 50];
-const INK = [26, 20, 18]; // #1A1412
-const RIM = [26, 20, 18];
-const WING = [214, 232, 250];
+const LIGHT = [255, 224, 158]; // #FFE09E, LOOK_IDLE
+const RING = [255, 241, 214]; // the light, whitened as the ring draws it
+const EYES = [255, 244, 224];
+const DISC = [20, 18, 17];
+const RIM = [26, 20, 18]; // #1A1412, a hairline outside the ring
 
 const SS = 4; // supersampling factor
 
-const clamp01 = (v) => Math.min(1, Math.max(0, v));
 const mixc = (a, b, t) => [0, 1, 2].map((i) => a[i] + (b[i] - a[i]) * t);
-
-// His shape and eyes: LUMO_RX, LUMO_RY, LUMO_EXP and LUMO_EYE in src/mochi/lumo.ts.
-const SHAPE = { rx: 1.0, ry: 0.96, exp: 2.2 };
-const EYE = { w: 0.3, h: 0.33, spread: 0.42, pitch: -0.1 };
-
-/** Superellipse test in body-local coordinates. */
-function insideBody(x, y, rx, ry) {
-  const n = SHAPE.exp;
-  return Math.pow(Math.abs(x / rx), n) + Math.pow(Math.abs(y / ry), n) <= 1;
-}
 
 function insidePill(x, y, w, h) {
   const hw = w / 2;
@@ -46,119 +35,63 @@ function insidePill(x, y, w, h) {
   return (x - cx) ** 2 + (y - cy) ** 2 <= r * r;
 }
 
-/** Points along a quadratic curve, for the antennae. */
-function quad(p0, c, p1, n = 24) {
-  const pts = [];
-  for (let i = 0; i <= n; i++) {
-    const t = i / n;
-    const u = 1 - t;
-    pts.push([u * u * p0[0] + 2 * u * t * c[0] + t * t * p1[0], u * u * p0[1] + 2 * u * t * c[1] + t * t * p1[1]]);
-  }
-  return pts;
+/** Distance from a point to a pill's outline (0 inside). */
+function pillDistance(x, y, w, h) {
+  const hw = w / 2;
+  const hh = h / 2;
+  const r = Math.min(hw, hh);
+  const cx = Math.max(-hw + r, Math.min(hw - r, x));
+  const cy = Math.max(-hh + r, Math.min(hh - r, y));
+  return Math.max(0, Math.hypot(x - cx, y - cy) - r);
 }
 
-function distToPolyline(x, y, pts) {
-  let best = Infinity;
-  for (let i = 1; i < pts.length; i++) {
-    const [ax, ay] = pts[i - 1];
-    const [bx, by] = pts[i];
-    const dx = bx - ax;
-    const dy = by - ay;
-    const t = clamp01(((x - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy || 1));
-    best = Math.min(best, Math.hypot(x - ax - t * dx, y - ay - t * dy));
-  }
-  return best;
-}
-
-/** The layers, back to front: each returns [r, g, b, a] at a body-local point, or null. */
+/** The layers, back to front: each returns [r, g, b, a] at a centred point, or null. */
 function lumoLayers(size) {
-  const R = size * 0.29;
-  const rx = R * SHAPE.rx;
-  const ry = R * SHAPE.ry;
-  const rim = Math.max(0.6, R * 0.05); // dark outline so the tray icon reads on light themes
-  const withWings = size >= 48;
+  // Small icons fill more of their square and get thicker lines.
+  const small = size <= 32;
+  const R = size * (small ? 0.4 : 0.36);
+  const lw = Math.max(1.6, R * (small ? 0.17 : 0.11));
+  const rim = Math.max(0.6, R * 0.035);
+  const glow = small ? R * 0.18 : R * 0.34;
   const layers = [];
 
-  // Wings: a forewing and a hindwing on each side.
-  if (withWings) {
-    for (const sd of [-1, 1]) {
-      for (const [len, wid, ang, ox, oy] of [[0.66, 0.31, -0.66, 0.28, -0.44], [0.48, 0.24, -0.16, 0.4, -0.2]]) {
-        const tx = sd * rx * ox;
-        const ty = ry * oy;
-        const ca = Math.cos(-sd * ang);
-        const sa = Math.sin(-sd * ang);
-        layers.push((x, y) => {
-          const qx = (x - tx) * ca - (y - ty) * sa;
-          const qy = (x - tx) * sa + (y - ty) * ca;
-          const e = ((qx - sd * R * len) / (R * len)) ** 2 + (qy / (R * wid)) ** 2;
-          if (e > 1) return null;
-          const edge = 1 - Math.sqrt(e) < rim / (R * wid) ? 1 : 0;
-          return edge ? [255, 255, 255, 0.95] : [...WING, 0.78];
-        });
-      }
-    }
-  }
-
-  // The tail's halo and lantern, under him.
-  const ty = ry * 0.98;
+  // The light around the ring.
   layers.push((x, y) => {
-    const d = Math.hypot(x, y - ty) / (R * 0.95);
-    if (d >= 1) return null;
-    return [...GLOW, 0.55 * (1 - d) ** 1.6];
+    const d = Math.hypot(x, y) - (R + lw / 2);
+    if (d <= 0 || d >= glow) return null;
+    return [...LIGHT, 0.55 * (1 - d / glow) ** 2];
+  });
+  // A hairline of ink outside the ring, so it holds on a white taskbar.
+  layers.push((x, y) => {
+    const d = Math.hypot(x, y) - (R + lw / 2);
+    return d > -0.2 && d <= rim ? [...RIM, 0.55] : null;
+  });
+  // The dark disc inside, with the ring's faint light towards the rim.
+  layers.push((x, y) => {
+    const d = Math.hypot(x, y) / R;
+    if (d > 1) return null;
+    return [...mixc(DISC, LIGHT, 0.06 + 0.22 * d ** 3), 1];
+  });
+  // The ring.
+  layers.push((x, y) => (Math.abs(Math.hypot(x, y) - R) <= lw / 2 ? [...RING, 1] : null));
+
+  // The eyes: two lit pills with a soft glow (looks.ts LOOK_EYES.filo).
+  const ew = Math.max(1.7, R * 0.2);
+  const eh = Math.max(3.4, R * 0.42);
+  const ex = Math.max(2.1, R * 0.3);
+  const ey = -R * 0.02;
+  const eg = small ? 0 : ew * 0.9;
+  layers.push((x, y) => {
+    let best = Infinity;
+    for (const sd of [-1, 1]) best = Math.min(best, pillDistance(x - sd * ex, y - ey, ew, eh));
+    if (best === 0 || eg === 0 || best >= eg) return null;
+    return [...LIGHT, 0.5 * (1 - best / eg) ** 2];
   });
   layers.push((x, y) => {
-    const e = (x / (R * 0.6)) ** 2 + ((y - ty) / (R * 0.44)) ** 2;
-    if (e > 1) return null;
-    const d = clamp01(Math.hypot(x, y - ty - R * 0.1) / (R * 0.52));
-    const c = d < 0.5 ? mixc([255, 255, 235], GLOW, d / 0.5) : mixc(GLOW, GLOW_DEEP, (d - 0.5) / 0.5);
-    return [...c, 1];
-  });
-
-  // The body, with its outline.
-  layers.push((x, y) => (insideBody(x, y, rx + rim, ry + rim) && !insideBody(x, y, rx, ry) ? [...RIM, 1] : null));
-  layers.push((x, y) => {
-    if (!insideBody(x, y, rx, ry)) return null;
-    // Gradient top-right → bottom-left, like the Canvas gradient, plus the soft highlight.
-    const t = clamp01((x * -0.6 + y * 0.8) / (2 * ry) + 0.5);
-    let c = mixc(BODY_TOP, BODY_BOTTOM, t);
-    const h = Math.hypot(x - rx * 0.34, y + ry * 0.46) / (R * 0.42);
-    if (h < 1) c = mixc(c, [255, 255, 255], 0.5 * (1 - h));
-    return [...c, 1];
-  });
-
-  // Eyes — same geometry as BotEngine, with their sparkle.
-  const cp = Math.cos(EYE.pitch);
-  const ex = Math.sin(EYE.spread) * cp * rx;
-  const ey = -Math.sin(EYE.pitch) * ry;
-  const ew = R * EYE.w * Math.max(0.18, Math.cos(EYE.spread));
-  const eh = R * EYE.h * Math.max(0.18, cp);
-  const sparkle = size >= 32;
-  layers.push((x, y) => {
-    for (const sd of [-1, 1]) {
-      const lx = x - sd * ex;
-      const ly = y - ey;
-      if (!insidePill(lx, ly, ew, eh)) continue;
-      if (sparkle && Math.hypot(lx - ew * 0.14, ly + eh * 0.2) < ew * 0.22) return [255, 255, 255, 1];
-      return [...INK, 1];
-    }
+    for (const sd of [-1, 1]) if (insidePill(x - sd * ex, y - ey, ew, eh)) return [...EYES, 1];
     return null;
   });
-
-  // Antennae, each with a little light at the tip.
-  const lw = Math.max(0.9, R * 0.07);
-  const tipR = Math.max(1, R * 0.13);
-  for (const sd of [-1, 1]) {
-    const tip = [sd * R * 0.62, -R * 1.42];
-    const pts = quad([sd * R * 0.3, -ry * 0.86], [sd * R * 0.28, -R * 1.25], tip);
-    layers.push((x, y) => (distToPolyline(x, y, pts) <= lw / 2 ? [...INK, 1] : null));
-    layers.push((x, y) => {
-      const d = Math.hypot(x - tip[0], y - tip[1]);
-      if (d <= tipR) return [...mixc([255, 255, 240], GLOW, d / tipR), 1];
-      if (d <= tipR * 2.4) return [...GLOW, 0.5 * (1 - (d - tipR) / (tipR * 1.4))];
-      return null;
-    });
-  }
-  return { layers, cy: size / 2 + R * 0.1 };
+  return { layers, cy: size / 2 };
 }
 
 function renderLumo(size) {

@@ -17,7 +17,7 @@ import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
 import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
-import { SeasonCache, parseOutfit } from "../mochi/wardrobe";
+import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../mochi/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
@@ -276,6 +276,18 @@ export class Island {
       },
       previewOutfit: (outfit) => {
         State.wardrobePreview = outfit;
+        State.notify();
+      },
+      chooseLook: (look) => {
+        if (parseLook(State.settings.lumoCharacter) === look) return;
+        State.settings.lumoCharacter = look;
+        void Bridge.saveSettings(State.settings);
+        Sound.play("pop");
+        this.engine.triggerEmote("happy");
+        State.notify();
+      },
+      previewLook: (look) => {
+        State.lookPreview = look;
         State.notify();
       },
     };
@@ -1122,6 +1134,7 @@ export class Island {
       if (gctx) {
         const dpr = Math.min(2, window.devicePixelRatio || 1);
         gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        this.greeting.look = this.look();
         this.greeting.draw(gctx);
       }
     } else {
@@ -1247,11 +1260,17 @@ export class Island {
     const showOutfit = mainFocused || State.mode !== "expanded" || inWardrobe;
     const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.mochiOutfit));
     this.engine.setOutfit(showOutfit ? outfit : "none", !inWardrobe);
+    this.engine.look = this.look();
 
     this.engine.update(dt);
     ctx.setTransform(dpr, 0, 0, dpr, BOT_SIDE * dpr, 0);
     ctx.clearRect(-BOT_SIDE, 0, wCss, hCss);
     this.engine.draw(ctx, w, hCss);
+  }
+
+  /** Lumo's look: the one tried on in the wardrobe, else the chosen one. */
+  private look(): LumoLook {
+    return State.lookPreview ?? parseLook(State.settings.lumoCharacter);
   }
 
   /** BotCanvasView.lookX / lookY — tanh of the distance to the bot. */
@@ -1299,6 +1318,7 @@ export class Island {
     this.greetingShown = greetingActive;
     // A wardrobe try-on never outlives the wardrobe.
     if (State.wardrobePreview && !(expanded && State.view === "wardrobe")) State.wardrobePreview = null;
+    if (State.lookPreview && !(expanded && State.view === "wardrobe")) State.lookPreview = null;
 
     this.header.sync();
     for (const [name, view] of this.views) {

@@ -22,7 +22,7 @@ Approve permissions, watch your agents work, drop a file, chat with Claude — a
 
 Lumo is a fork of [Louis-CFM/coucou](https://github.com/Louis-CFM/coucou) (Coucou, by Louis Raillé) that keeps only the Windows and Linux app (a [Tauri 2](https://tauri.app) app in [`windows/`](windows/)). The app, its character and the repository are called Lumo here. The full documentation of the app is in [`windows/README.md`](windows/README.md).
 
-Meet **Lumo**: a small glowing firefly that peeks out of the top edge of your screen, lights up to say hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
+Meet **Lumo**: a small ring of light that peeks out of the top edge of your screen, lights up to say hello, follows your cursor with its eyes, gets annoyed when you poke it (and dizzy if you insist), and tells you the moment Claude Code needs you.
 
 ## Features
 
@@ -39,7 +39,7 @@ Meet **Lumo**: a small glowing firefly that peeks out of the top edge of your sc
 - 🖥️ **Lumo on the desktop** — drag Lumo out of the island to set him loose on your desktop: he follows your cursor, wears his outfit, flies home for alerts and comes back where you left him.
 - 🧲 **An island that docks anywhere** — drag it to the top, bottom, left or right edge, resize it, zoom it.
 - 🔌 **Integrations** — Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Lumo.
-- 👗 **Dress Lumo up** — right-click him for the wardrobe. He also dresses up for the seasons on his own.
+- 👗 **Dress Lumo up** — right-click him for the wardrobe, and pick his look there: a ring of light, a dot, a soft drop or a firefly. He also dresses up for the seasons on his own.
 - ⌨️ **Keyboard shortcuts** — open the chat, jump to an alert or a terminal, switch pills, mute or open the wardrobe from anywhere; all customizable in Settings → Shortcuts.
 - 🎭 **A real character** — idle breathing, blinks, eyes on a sphere that follow your mouse, emotes, handcrafted sounds, a greeting on launch.
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the top edge of the screen.
