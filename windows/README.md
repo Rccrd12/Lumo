@@ -101,6 +101,35 @@ the exe it runs from.
 | In the open island: `Ctrl+Enter`, `Ctrl+K` | Send, start a new chat |
 | In the open island: `Ctrl+,`, `Ctrl+P` | Settings, keep the island open |
 
+### The closed island
+
+Like a Dynamic Island, the closed island says what is going on next to Lumo,
+and grows a little to say it (on the top and bottom edges; upright on a side
+it stays as it is):
+
+- **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
+  "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
+  OK". Nothing at all while nothing is going on.
+- **What just happened**, for a few seconds: "Haiku answered" when the chat
+  answers while it isn't on screen, "Haiku answered" or "Claude Code
+  answered" when Gemini Live's helper is done, a session on another pill
+  that finished, a deploy or a workflow.
+- **A new email** (the **Email** pill): the sender, the subject and the
+  first lines, with **Summarize**, **Draft a reply** and **Open**. It stays
+  while the mouse is on it. Summarize and Draft a reply open the chat with
+  the email attached and ask; nothing is ever sent: you copy the draft and
+  send it yourself.
+- **Timers**: ask Gemini Live ("set a 10 minute timer for the pasta") or
+  type `/timer 10m pasta` in the chat. The time left counts down; it rings
+  and says so when it is over.
+- **The music playing**, with previous, play/pause and next: Spotify, a
+  browser, any player that shows in the system's media controls (Windows)
+  or speaks MPRIS (Linux). Gemini Live can play, pause and skip too.
+
+Settings → Island → **Say what's going on** and **Show the music playing**
+turn them off. While the island is hidden nothing is asked or counted: the
+music is only asked about while the closed island is on screen.
+
 ### Keyboard shortcuts
 
 Every global shortcut can be changed or turned off in **Settings… → Shortcuts**:
@@ -157,6 +186,22 @@ and the services under **Integrations**. A pill fed by hooks says whether its
 hooks are installed, never asks for a key; a local model server's pill says
 whether the chat is connected to it. A session on a pill you didn't
 declare still shows up, for as long as it runs.
+
+### Email
+
+The **Email** pill (Settings… → Pills & integrations) reads your inbox over
+IMAP, once a minute: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with
+an **app password**. Its card lists the newest unread emails, and a new one
+shows on the closed island (see [The closed island](#the-closed-island)).
+Lumo only reads: the inbox is opened read only, emails stay unread, and
+nothing is ever sent, moved or deleted. The address, the server and the app
+password are in the system keychain.
+
+For Gmail: turn on 2-Step Verification in your Google account, create an app
+password at <https://myaccount.google.com/apppasswords>, and paste it in
+Settings with your address; the server is found from the address. Claude
+Code and Antigravity CLI see the email only when you press Summarize or
+Draft a reply: it goes with that question, like a selected text.
 
 ## Claude Code
 
@@ -596,6 +641,9 @@ own window.
 
 - No notch, so the island lives at the top centre of the screen and retracts into
   the top edge instead of hiding in a notch.
+- The closed island says what is going on (the AI at work, notes, a new
+  email, timers, the music playing), and the **Email** pill reads an inbox
+  over IMAP: neither is in the Mac app.
 - Permission approval works from **any** terminal; the Mac build only listens to
   VS Code sessions.
 - "Open terminal" finds the session's window by walking up from the relay's

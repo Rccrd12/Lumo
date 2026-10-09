@@ -77,7 +77,7 @@ test("every tool runs without blocking the voice; the screen tool exists only wh
   assert.ok(on.every((d) => d.behavior === "NON_BLOCKING"));
   assert.deepEqual(on.map((d) => d.name), [
     "look_at_screen", "list_windows", "explorer_folder", "find_files", "read_file", "read_document",
-    "open", "open_app", "type_text", "ask_helper", "stop_helper", "end_conversation",
+    "open", "open_app", "type_text", "ask_helper", "stop_helper", "set_timer", "control_music", "end_conversation",
   ]);
   const off = P.toolDeclarations({ ...CFG, screen: false }).map((d) => d.name);
   assert.ok(!off.includes("look_at_screen"));

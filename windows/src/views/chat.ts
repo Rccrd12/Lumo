@@ -58,6 +58,7 @@ import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } 
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
+import { COMPACT_TEXT, compactNotice, compactTimer, parseDuration, speakerName } from "../core/compact";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -201,6 +202,19 @@ export function settle(state: "finished" | "error" | null) {
     State.stateOverride = null;
     State.notify();
   }, SETTLE_MS);
+}
+
+/** Who answers in the chat, short ("Haiku", "Claude Code", "gpt-4o"), in its colour. */
+export function chatSpeaker(): { who: string; color: string } {
+  const p = providerDef(State.settings.chatProvider);
+  return { who: speakerName(p.id, t(p.name), activeModel(State.settings)), color: p.accent };
+}
+
+/** Says on the closed island how the answer went, unless the chat is on screen. */
+function noticeAway(text: string) {
+  if (State.mode === "expanded" && State.view === "prompt") return;
+  const { who, color } = chatSpeaker();
+  compactNotice(t(text, { helper: who }), color);
 }
 
 /** The words for what the answer is doing; anything unknown is Thinking…. */
@@ -1220,6 +1234,11 @@ export function buildPrompt(
 
   void onEvent<string>("chat-delta", (text) => {
     if (!sending || !text) return; // nothing visible yet: the dots stay
+    // The closed island says it is writing now.
+    if (State.chatActivity?.label != null) {
+      State.chatActivity = { label: null };
+      State.notify();
+    }
     // The text shows: the dots and what the answer was doing go.
     log.querySelector(".typing")?.parentElement?.remove();
     if (!live) {
@@ -1237,6 +1256,10 @@ export function buildPrompt(
    */
   function showActivity(next: ChatActivity, again = false) {
     activity = next;
+    if (sending) {
+      State.chatActivity = { label: activityLabel(activity) };
+      State.notify();
+    }
     const label = log.querySelector(".typing-label");
     if (label) label.textContent = activityLabel(activity);
     else if (again && live) log.append(typingDots(activityLabel(activity)));
@@ -1252,6 +1275,15 @@ export function buildPrompt(
   async function submit() {
     const query = input.value.trim();
     if (!query || sending) return;
+    // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
+    const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
+    const timerMs = timer ? parseDuration(timer[1]) : null;
+    if (timer && timerMs != null) {
+      input.value = "";
+      compactTimer(timerMs, timer[2]);
+      Sound.play("blip");
+      return;
+    }
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1286,6 +1318,7 @@ export function buildPrompt(
     const question: ChatMessage = { id: nextId++, role: "user", content: query };
     State.chatHistory.push(question);
     State.stateOverride = "thinking";
+    State.chatActivity = { label: activityLabel(activity) };
     State.notify();
     onHeightChange();
 
@@ -1316,14 +1349,17 @@ export function buildPrompt(
       askOpenRouter(true);
       settle(reply.stopped ? null : "finished");
       Sound.play(reply.stopped ? "pop" : "finish");
+      if (!reply.stopped) noticeAway(COMPACT_TEXT.answered);
     } catch (err) {
       settle("error");
+      noticeAway(COMPACT_TEXT.failed);
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       State.view = "note";
       Sound.play("error");
     } finally {
       sending = false;
       stopping = false;
+      State.chatActivity = null;
       live = null;
       clearTimeout(activityTimer);
       activity = THINKING;
@@ -1397,6 +1433,13 @@ export function buildPrompt(
     el,
     sync() {
       takeShare();
+      // An email's button asked something: it goes at once (after this draw).
+      const ask = State.chatAsk;
+      if (ask && !sending) {
+        State.chatAsk = null;
+        input.value = ask;
+        window.setTimeout(() => void submit(), 0);
+      }
       if (State.settings.chatShareExplorer !== sharesExplorer) {
         sharesExplorer = State.settings.chatShareExplorer;
         if (sharesExplorer) void peekExplorer(true);

@@ -13,6 +13,8 @@ import { refreshHookPills } from "../island/integrations";
 import { readActivity, readPulse, readStats } from "../core/github";
 import { githubDetail, githubPulseCard } from "./github";
 import { N_, language, t } from "../i18n/i18n";
+import { askAboutMail } from "../island/compact";
+import type { MailPeek } from "../core/compact";
 
 /** Same shape as the Swift `timeAgo` computed properties. */
 export function timeAgo(value: unknown): string {
@@ -241,6 +243,63 @@ function resendCard(): HTMLElement {
   return h("div", { class: "int-card" }, header("#22C55E", "Resend", t("Emails"), extra), rows);
 }
 
+// ── Email ─────────────────────────────────────────────────────────────────────
+
+const MAIL_CARD_TEXT = {
+  name: N_("Email"),
+  unread: N_("Unread"),
+  none: N_("No unread email"),
+  summarize: N_("Summarize"),
+  reply: N_("Draft a reply"),
+};
+
+/** The newest unread emails (mail.rs); a click has the chat summarize one or draft a reply. */
+function mailCard(openChat: () => void): HTMLElement {
+  const messages = arr("integration_mail", "messages");
+  const unread = Number(get("integration_mail").unread ?? messages.length);
+  const inbox = get("integration_mail").inbox;
+  const extra = h("span", { class: "int-total" }, h("i", { class: "pulse" }), h("span", { text: String(unread) }));
+  const rows = h("div", { class: "int-rows" });
+  if (!messages.length) rows.append(h("div", { class: "int-row first" }, h("span", { class: "int-name", text: t(MAIL_CARD_TEXT.none) })));
+  let newest: (MailPeek & { body: string }) | null = null;
+  messages.slice(0, 3).forEach((m, i) => {
+    const mail = {
+      id: String(m.id ?? ""), from: String(m.from ?? ""), address: String(m.address ?? ""),
+      subject: String(m.subject ?? ""), preview: String(m.preview ?? ""), body: String(m.body ?? ""),
+    };
+    const cells: Node[] = [
+      h("span", { class: "int-name", text: mail.from || mail.address }),
+      h("span", { class: "int-ago", text: m.date ? timeAgo(m.date) : "" }),
+    ];
+    if (i === 0) {
+      cells.push(h("span", { class: "int-sub", text: mail.subject }));
+      newest = mail;
+    }
+    const row = listRow("#EA4335", i === 0, ...cells);
+    row.title = mail.subject;
+    rows.append(row);
+  });
+  // The newest one's two buttons, under the list.
+  const first = newest as (MailPeek & { body: string }) | null;
+  if (first) {
+    const ask = (what: "summary" | "reply") => (e: Event) => {
+      e.stopPropagation();
+      askAboutMail(first, what);
+      openChat();
+    };
+    rows.append(h("div", { class: "int-mail-actions" },
+      h("button", { class: "int-mail-action", onclick: ask("summary") }, t(MAIL_CARD_TEXT.summarize)),
+      h("button", { class: "int-mail-action", onclick: ask("reply") }, t(MAIL_CARD_TEXT.reply)),
+    ));
+  }
+  const head = header("#EA4335", t(MAIL_CARD_TEXT.name), t(MAIL_CARD_TEXT.unread), extra);
+  if (typeof inbox === "string" && inbox) {
+    head.style.cursor = "pointer";
+    head.addEventListener("click", () => void Bridge.openUrl(inbox));
+  }
+  return h("div", { class: "int-card" }, head, rows);
+}
+
 // ── GitHub ────────────────────────────────────────────────────────────────────
 
 function statRow(icon: string, color: string, label: string, value: string): HTMLElement {
@@ -421,6 +480,8 @@ export interface IntegrationCardHooks {
   openDetail(): void;
   closeDetail(): void;
   openSettings(): void;
+  /** The chat, where an email's question was just put (island/compact.ts askAboutMail). */
+  openChat(): void;
 }
 
 /** True when this integration has data worth showing instead of the idle card. */
@@ -439,6 +500,7 @@ export function hasIntegrationData(id: string): boolean {
     case "integration_notion":
       return arr(id, "pages").length > 0;
     case "integration_calcom":
+    case "integration_mail":
       return info.loaded;
     default:
       return false;
@@ -479,6 +541,8 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
       return notionCard();
     case "integration_calcom":
       return calcomCard();
+    case "integration_mail":
+      return mailCard(hooks.openChat);
     default:
       return idleCard(task, hooks.openSettings);
   }

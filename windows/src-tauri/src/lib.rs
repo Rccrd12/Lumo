@@ -23,6 +23,8 @@ mod island;
 mod live;
 mod local_chat;
 mod log;
+mod mail;
+mod media;
 mod migrate;
 mod net;
 mod openai_compat;
@@ -978,6 +980,8 @@ pub fn run() {
             live::live_help_stop,
             live::live_microphone,
             typing::live_type,
+            media::media_now,
+            media::media_control,
             ingest_file,
             paste_file,
             paste_copied_file,

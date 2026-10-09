@@ -116,6 +116,7 @@ export function systemInstruction(cfg: LiveConfig): string {
       ? "- Google Search finds facts, news and anything recent."
       : "- You have no web search of your own: for facts, news and anything recent, use ask_helper.",
     `- ask_helper hands a task to ${cfg.helper}, an agent on this computer that can run commands, edit and create files, write code, use the web, and use the apps and accounts the user connected to it, such as their calendar, email, documents or task lists. Use it for anything your other tools can't do: adding an event to the calendar, checking the agenda, drafting an email, anything on the user's accounts. Never tell the user you can't do something before ${cfg.helper} has tried. Give it the whole task with exact dates, times and names, as it hears nothing of the conversation. It can take a while: tell the user you've asked ${cfg.helper}, keep talking if they want, and tell them what it found or did when its answer comes back. What it may not do alone, the user approves on a card in Lumo.`,
+    "- set_timer starts a timer that counts down on Lumo's island and rings at the end. control_music plays, pauses or skips the music playing on the computer.",
     "- end_conversation ends the call. Say goodbye first, then call it, when the user says goodbye or asks you to stop.",
     "",
     "# Rules",
@@ -154,6 +155,8 @@ export const TOOL = {
   type: "type_text",
   helper: "ask_helper",
   stopHelper: "stop_helper",
+  timer: "set_timer",
+  music: "control_music",
   end: "end_conversation",
 } as const;
 
@@ -217,6 +220,19 @@ export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper">): Fu
       }, ["task"]),
     },
     { name: TOOL.stopHelper, description: `Stops the task ${cfg.helper} is working on, when the user no longer wants it.` },
+    {
+      name: TOOL.timer,
+      description: "Starts a timer that counts down on Lumo's island and rings when it is over, e.g. for the pasta or a break.",
+      parameters: obj({
+        duration: str("How long: \"10m\", \"1h30m\", \"90s\" or \"0:45\"."),
+        label: str("Optional: a few words for what it is for, in the user's language."),
+      }, ["duration"]),
+    },
+    {
+      name: TOOL.music,
+      description: "Plays or pauses the music (or video) playing on the computer, or skips to the next or previous track.",
+      parameters: obj({ action: str("\"play_pause\", \"next\" or \"previous\".") }, ["action"]),
+    },
     { name: TOOL.end, description: "Ends the call. Say goodbye first." },
   );
   for (const d of list) d.behavior = "NON_BLOCKING";

@@ -70,6 +70,18 @@ export const COMPACT_W = 288; // NOTCH_W + 104
  * notch's ear).
  */
 export const COMPACT_BOT_X = 18;
+/**
+ * The closed island grows a little to say something (core/compact.ts): a
+ * line of text, a timer, the music, or an email with what to do with it. Only
+ * on the top and bottom edges; standing upright on a side it stays as it is.
+ */
+export const COMPACT_SIZES = {
+  line: { w: 372, h: NOTCH_H },
+  timer: { w: 312, h: NOTCH_H },
+  media: { w: 392, h: NOTCH_H },
+  mail: { w: 452, h: 120 },
+} as const;
+export type CompactSizeKind = keyof typeof COMPACT_SIZES;
 export const EXPANDED_W = 640;
 
 export const ROUNDED_CORNER = 14; // hidden / compact
@@ -206,6 +218,7 @@ export function islandSize(
   chatCount = 0,
   shape: IslandShape = DEFAULT_SHAPE,
   dock: Dock = "top",
+  peek: CompactSizeKind | null = null,
 ): { w: number; h: number } {
   const upright = isUpright(dock);
   switch (mode) {
@@ -214,7 +227,8 @@ export function islandSize(
       // the screen instead of sitting there as a bar.
       return upright ? { w: 0, h: NOTCH_W } : { w: NOTCH_W, h: 0 };
     case "compact":
-      return upright ? { w: NOTCH_H, h: COMPACT_W } : { w: COMPACT_W, h: NOTCH_H };
+      if (upright) return { w: NOTCH_H, h: COMPACT_W };
+      return peek ? { ...COMPACT_SIZES[peek] } : { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
       // The launch greeting is drawn in a fixed 640 × 150 space
       // (mochi/greeting.ts): a size dragged for the other views would leave it

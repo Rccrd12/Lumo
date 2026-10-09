@@ -1,5 +1,6 @@
 // Integration pollers — the Rust side of StripePoller / GithubPoller /
-// VercelPoller / N8nPoller / ResendPoller / NotionPoller / CalcomPoller.
+// VercelPoller / N8nPoller / ResendPoller / NotionPoller / CalcomPoller, and
+// the Email pill's inbox (mail.rs).
 //
 // Same endpoints, same first-run delays and intervals as the Swift pollers. Each
 // one emits an `integration` event; the island owns the badge, the sound and the
@@ -43,7 +44,7 @@ pub struct IntegrationEvent {
     pub detail: Option<String>,
 }
 
-fn emit(app: &AppHandle, update: IntegrationUpdate) {
+pub(crate) fn emit(app: &AppHandle, update: IntegrationUpdate) {
     let _ = app.emit_to(WINDOW_LABEL, "integration", update);
 }
 
@@ -71,6 +72,7 @@ pub fn start(app: AppHandle) {
     spawn(app.clone(), "integration_github", 7, 300, poll_github);
     spawn_github_loops(app.clone());
     spawn(app.clone(), "integration_calcom", 8, 300, poll_calcom);
+    spawn(app.clone(), crate::mail::ID, 10, 60, crate::mail::poll);
     spawn(app, "integration_notion", 9, 300, poll_notion);
 }
 
@@ -120,6 +122,7 @@ pub async fn poll_once(app: AppHandle, id: &str) {
         "integration_resend" => poll_resend(app).await,
         "integration_notion" => poll_notion(app).await,
         "integration_calcom" => poll_calcom(app).await,
+        crate::mail::ID => crate::mail::poll(app).await,
         _ => {}
     }
 }

@@ -39,6 +39,8 @@ test("the catalog holds the Mac's pills, in the Mac's order, with the Mac's valu
     ["integration_calcom", "Cal.com", "#C9956A", "service", "Integration"],
     ["integration_stripe", "Stripe", "#0570DE", "service", "Integration"],
     ["integration_music", "Apple Music", "#FA2D48", "service", "Integration"],
+    // Windows and Linux only, after the Mac's.
+    ["integration_mail", "Email", "#EA4335", "service", "Integration"],
   ];
   assert.deepEqual(
     PILL_CATALOG.map((p) => [p.id, p.name, p.color, p.category, p.subtitle]),

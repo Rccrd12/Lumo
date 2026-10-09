@@ -1091,6 +1091,14 @@ const INTEGRATIONS: IntegrationDef[] = [
     fields: [{ key: "notion-api-key", label: N_("Integration token"), placeholder: "ntn_…", secret: true }] },
   { id: "integration_calcom", name: "Cal.com", color: "#C9956A",
     fields: [{ key: "calcom-api-key", label: N_("API key"), placeholder: "cal_…", secret: true }] },
+  // The inbox over IMAP (mail.rs): read only, never sends.
+  { id: "integration_mail", name: N_("Email"), color: "#EA4335",
+    fields: [
+      { key: "mail-address", label: N_("Address"), placeholder: "you@gmail.com", secret: false },
+      { key: "mail-app-password", label: N_("App password"), placeholder: "abcd efgh ijkl mnop", secret: true },
+      { key: "mail-imap-server", label: N_("IMAP server"), placeholder: N_("found from the address"), secret: false },
+    ],
+    hint: N_("New emails show on the closed island, with Summarize and Draft a reply. Lumo only reads the inbox: it never sends, deletes or marks anything as read. Gmail: turn on 2-Step Verification, then create an app password at myaccount.google.com/apppasswords. The server is needed only for providers other than Gmail, Outlook, iCloud and Yahoo.") },
 ];
 
 const MAX_ACTIVE = MAX_DECLARED;
@@ -1132,7 +1140,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
     for (const field of def.fields) {
       const input = h("input", {
         type: field.secret ? "password" : "text",
-        placeholder: present[field.key] ? CHAT_STRINGS.stored : field.placeholder,
+        placeholder: present[field.key] ? CHAT_STRINGS.stored : t(field.placeholder),
         autocomplete: "off",
         spellcheck: "false",
         style: "flex:1 1 auto;min-width:0",
@@ -1145,7 +1153,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
           await Bridge.secretSet(field.key, value);
           present[field.key] = value.length > 0;
           input.value = "";
-          input.placeholder = value ? CHAT_STRINGS.stored : field.placeholder;
+          input.placeholder = value ? CHAT_STRINGS.stored : t(field.placeholder);
           dotEl.style.background = value ? "#22c55e" : "#f4505e";
         } catch {
           dotEl.style.background = "#f5a524";
@@ -1166,7 +1174,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
         h("div", { style: "display:flex;align-items:center;gap:8px;min-width:132px;padding-top:4px" },
           sw,
           colorDot(def, "", () => settings.pillColors, pickColor),
-          h("span", { style: "font-size:12.5px", text: def.name }),
+          h("span", { style: "font-size:12.5px", text: t(def.name) }),
         ),
         rows,
       ),
@@ -1369,6 +1377,16 @@ function behaviourRows(): HTMLElement[] {
       h("label", { text: t("Hide when unused") }),
       toggle(settings.islandAutoHide, (v) => { settings.islandAutoHide = v; void save(); }),
       h("span", { class: "hint", text: t("the closed island slips into the edge of the screen a minute after you leave it") }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Say what's going on") }),
+      toggle(settings.compactActivity, (v) => { settings.compactActivity = v; void save(); }),
+      h("span", { class: "hint", text: t("the closed island says what the AI is doing, and when an answer or an email arrives") }),
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Show the music playing") }),
+      toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); }),
+      h("span", { class: "hint", text: t("with play, pause and skip, when nothing else is showing") }),
     ),
   ];
 }
@@ -1790,6 +1808,7 @@ async function render() {
   const keys = [
     "stripe-api-key", "github-token", "vercel-token",
     "n8n-url", "n8n-api-key", "resend-api-key", "notion-api-key", "calcom-api-key",
+    "mail-address", "mail-app-password", "mail-imap-server",
   ];
   const present: Record<string, boolean> = {};
   for (const k of keys) present[k] = (await Bridge.secretPresent(k)) ?? false;

@@ -248,6 +248,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       State.notify();
     },
     openSettings: () => actions.openSettingsWindow(),
+    openChat: () => actions.setView("prompt"),
   };
 
   /** The countdowns move every 30 s while a card is open, and only then. */

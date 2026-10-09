@@ -28,6 +28,7 @@ import {
   type ServerEvent, type ToolAnswer,
 } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
+import { LIVE_COLOR, compactNotice, speakerName } from "../core/compact";
 import { runTool } from "./tools";
 import { Transcript } from "./transcript";
 
@@ -39,6 +40,13 @@ let searchRefused = false;
 /** Who takes what Gemini can't do (Settings → Voice). */
 export function helperName(id: string): string {
   return id === "antigravity-cli" ? "Antigravity CLI" : "Claude Code";
+}
+
+/** The helper, short, by its model when one is picked ("Haiku"), for the closed island. */
+export function liveHelperSpeaker(): string {
+  const s = State.settings;
+  const provider = s.liveHelper === "antigravity-cli" ? "antigravity-cli" : "claude-code";
+  return speakerName(provider, helperName(s.liveHelper), s.liveHelperModel || "default");
 }
 
 /** What Lumo looks like during a call. */
@@ -273,6 +281,10 @@ class LiveSession {
     this.setDoing(null);
     this.busy = false;
     this.setPhase("off");
+    // Why it ended, on the closed island, when the call is not on screen.
+    if (problem && !(State.mode === "expanded" && State.view === "live")) {
+      compactNotice(`Gemini Live · ${problem}`, LIVE_COLOR, 7000);
+    }
   }
 
   private fail(problem: string, key = false) {
@@ -511,6 +523,10 @@ class LiveSession {
     }
     if (call.name === TOOL.helper) {
       this.setDoing(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: this.cfg?.helper ?? "" }), true);
+      // On the closed island too, by its model's name: "Haiku answered".
+      if (!(State.mode === "expanded" && State.view === "live")) {
+        compactNotice(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: liveHelperSpeaker() }), LIVE_COLOR);
+      }
     }
     this.answer(answer, run.generation);
     this.update();

@@ -6,6 +6,7 @@ import { invoke } from "@tauri-apps/api/core";
 import { emitTo, listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
+import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 
@@ -319,6 +320,12 @@ export const Bridge = {
   /** The page asks for the microphone now (true), or has its answer (false). */
   liveMicrophone: (on: boolean) => call<void>("live_microphone", { on }),
 
+  // ── The closed island's music line (src-tauri/src/media.rs) ──────────────
+  /** What the system's media controls say is playing; null when nothing is. */
+  mediaNow: () => call<MediaActivity | null>("media_now"),
+  /** Play/pause, next or previous on that player. */
+  mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
+
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
   /** Asks GitHub for the newest Windows release and compares it with this build. */
   updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
@@ -512,6 +519,12 @@ export interface ScreenContext {
  * The `ask-context` event: what "Ask about my screen" or "Ask about the
  * selected text" took on the key press, or why it couldn't (shortcuts.rs).
  */
+/** A new email from the Email pill's poller (mail.rs Message). */
+export interface MailMessage extends MailPeek {
+  body: string;
+  date: string;
+}
+
 export type SharedContext =
   | { kind: "screen"; shots: ScreenShot[] }
   | { kind: "selection"; selection: SelectedText }

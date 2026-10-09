@@ -2,7 +2,7 @@
 
 import "./core/legacy";
 import "./style.css";
-import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift } from "./core/bridge";
+import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift, type MailMessage } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
@@ -48,6 +48,7 @@ async function main() {
   await onEvent<boolean>("pointer-inside", (inside) => island.setPointerInside(inside));
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
   await onEvent<null>("outside-press", () => island.onOutsidePress());
+  await onEvent<MailMessage[]>("mail-new", (messages) => island.newMail(messages));
 
   /** Pause has to reach Rust too, or the pollers keep calling out. */
   const setPaused = (on: boolean) => {

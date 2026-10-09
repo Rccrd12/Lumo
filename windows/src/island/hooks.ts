@@ -5,6 +5,7 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
+import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
 import { Sound } from "../core/sound";
@@ -430,7 +431,12 @@ function handleHook(island: Island, payload: HookPayload) {
       Sound.play("finish");
       // A card waiting for an answer is never covered by another alert.
       if (focused && !State.pendingApproval) surface("finished", true);
-      else State.setPillBadge(agentId, "finished");
+      else {
+        State.setPillBadge(agentId, "finished");
+        // Said on the closed island too, as it is not the one in front.
+        const done = State.tasks.find((x) => x.id === agentId);
+        if (done && State.mode !== "expanded") compactNotice(t(COMPACT_TEXT.finished, { helper: done.name }), done.color);
+      }
       cancelStopTimer(agentId);
       stopTimers.set(
         agentId,

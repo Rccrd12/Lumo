@@ -20,6 +20,10 @@ pub const KNOWN_KEYS: &[&str] = &[
     "resend-api-key",
     "notion-api-key",
     "calcom-api-key",
+    // The Email pill (mail.rs): the inbox's address, its IMAP server and an app password.
+    "mail-address",
+    "mail-imap-server",
+    "mail-app-password",
 ];
 
 fn entry(key: &str) -> Option<Entry> {

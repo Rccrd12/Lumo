@@ -2200,6 +2200,7 @@ name = "lumo"
 version = "0.4.0"
 dependencies = [
  "auto-launch",
+ "dbus",
  "gtk",
  "keyring",
  "libc",
@@ -2213,7 +2214,9 @@ dependencies = [
  "tauri-plugin-global-shortcut",
  "tauri-plugin-single-instance",
  "tokio",
+ "tokio-rustls",
  "webkit2gtk",
+ "webpki-roots",
  "webview2-com",
  "windows 0.61.3",
  "windows-core 0.62.2",

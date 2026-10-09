@@ -160,6 +160,10 @@ export interface Settings {
   islandHoverOpen: boolean;
   /** The closed island goes away a minute after the mouse left it. */
   islandAutoHide: boolean;
+  /** The closed island says what the AI is doing and what just happened (core/compact.ts). */
+  compactActivity: boolean;
+  /** The closed island shows the music playing (media.rs). */
+  compactMedia: boolean;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -256,6 +260,8 @@ export const DEFAULT_SETTINGS: Settings = {
   islandClose: "timer",
   islandHoverOpen: false,
   islandAutoHide: false,
+  compactActivity: true,
+  compactMedia: true,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -305,6 +311,13 @@ class AppState {
   liveState: BotStateName | null = null;
   /** A Gemini Live call is on: the island opens on it, and the compact island stays. */
   liveActive = false;
+  /**
+   * The chat is answering: what it is doing, in words ("Reading main.ts"), or
+   * null once the answer is being written. For the closed island (core/compact.ts).
+   */
+  chatActivity: { label: string | null } | null = null;
+  /** A question the chat asks as soon as it is on screen (an email's buttons). */
+  chatAsk: string | null = null;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };

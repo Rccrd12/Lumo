@@ -46,6 +46,10 @@ pub struct Settings {
     pub island_hover_open: bool,
     /// The closed island goes away a minute after the mouse left it.
     pub island_auto_hide: bool,
+    /// The closed island says what the AI is doing and what just happened.
+    pub compact_activity: bool,
+    /// The closed island shows the music playing, with its buttons (media.rs).
+    pub compact_media: bool,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -189,6 +193,8 @@ impl Default for Settings {
             island_close: "timer".into(),
             island_hover_open: false,
             island_auto_hide: false,
+            compact_activity: true,
+            compact_media: true,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -488,6 +494,8 @@ mod tests {
   "islandClose": "click",
   "islandHoverOpen": true,
   "islandAutoHide": true,
+  "compactActivity": false,
+  "compactMedia": false,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -938,6 +946,8 @@ mod tests {
                 "islandClose",
                 "islandHoverOpen",
                 "islandAutoHide",
+                "compactActivity",
+                "compactMedia",
                 "autostart",
                 "hooksInstalled",
                 "model",

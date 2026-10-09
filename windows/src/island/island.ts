@@ -24,6 +24,9 @@ import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
+import { CompactStrip } from "./compact";
+import { setCompactNewsHandler } from "../core/compact";
+import type { MailMessage } from "../core/bridge";
 import { refreshHookPills } from "./integrations";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
@@ -79,6 +82,8 @@ export class Island {
   private botGlow!: HTMLElement;
   private greetingCanvas!: HTMLCanvasElement;
   private countdown!: HTMLElement;
+  /** What the closed island says next to Lumo (island/compact.ts). */
+  private compact!: CompactStrip;
   private wakeStrip!: HTMLElement;
   /** Grips on the island's free edges and corners: dragging them resizes it. */
   private grips: { el: HTMLElement; grip: Grip }[] = [];
@@ -167,6 +172,11 @@ export class Island {
       this.fsm.greetComplete();
       this.onGreetingDone?.();
     };
+    // News for the closed island (a note, an email): out it comes.
+    setCompactNewsHandler(() => {
+      if (State.mode === "hidden" && !State.paused) this.reveal();
+      State.notify();
+    });
     State.subscribe(() => {
       this.fsm.held = State.liveActive;
       this.dirty = true;
@@ -306,6 +316,14 @@ export class Island {
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
     this.countdown = h("div", { id: "countdown" });
+    this.compact = new CompactStrip({
+      reveal: () => this.reveal(),
+      openChat: () => {
+        this.alert("prompt");
+        this.takeKeyboard();
+      },
+      changed: () => State.notify(),
+    });
 
     this.header = buildHeader(actions);
     this.views = buildViews(actions, () => this.animateGeometry(false));
@@ -331,6 +349,7 @@ export class Island {
       this.greetingCanvas,
       this.uploadCanvas.el,
       this.contentEl,
+      this.compact.el,
     );
     this.grips = GRIPS.map((grip) => ({ el: h("div", { class: `edge edge-${grip}` }), grip }));
     this.islandEl = h(
@@ -527,6 +546,8 @@ export class Island {
   private scheduleHoverOpen() {
     this.cancelHoverOpen();
     if (!State.settings.islandHoverOpen || this.fsm.state !== "petit" || State.paused) return;
+    // An email is showing: the mouse goes to its buttons, not to open the island.
+    if (this.compact.mail) return;
     this.hoverOpenTimer = window.setTimeout(() => {
       this.hoverOpenTimer = null;
       // Still there, and not picking the island up to move it.
@@ -560,6 +581,11 @@ export class Island {
     this.fsm.pinned = false;
     // The countdown the pin held back starts now, if the mouse is elsewhere.
     if (!this.wasInIsland) this.fsm.mouseLeft();
+  }
+
+  /** New emails from the Email pill (mail.rs): the closed island shows the newest. */
+  newMail(messages: MailMessage[]) {
+    this.compact.newMail(messages);
   }
 
   // ── Keyboard shortcuts (island/shortcuts.ts) ────────────────────────────────
@@ -721,7 +747,7 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock);
+    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size);
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -932,7 +958,8 @@ export class Island {
         return;
       }
       if (State.mode !== "expanded") {
-        this.fsm.click();
+        // The closed island's own buttons (an email's, the music's) keep their click.
+        if (!isControl(e.target)) this.fsm.click();
         return;
       }
       if (this.isBotHit(e.clientX, e.clientY)) {
@@ -1383,6 +1410,11 @@ export class Island {
         void Bridge.focusWindow(false);
       }
     }
+
+    // What the closed island says next to Lumo. Standing upright on a side
+    // there is no room for it. A change of what it shows resizes the island.
+    const compactOn = State.mode === "compact" && !isUpright(this.dock);
+    if (this.compact.sync(compactOn) && State.mode === "compact") this.animateGeometry(this.compact.size == null);
 
     // The compact island shows Lumo alone: the other pills' mini Lumos are
     // only in the open island.
