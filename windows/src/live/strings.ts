@@ -35,6 +35,7 @@ export const LIVE_STRINGS = {
   reading: N_("Reading {name}"),
   searchingFor: N_("Searching for {pattern}"),
   opening: N_("Opening {name}"),
+  pointing: N_("Showing where to click"),
   typing: N_("Typing the text"),
   asked: N_("Asked {helper}"),
   helperDone: N_("{helper} answered"),

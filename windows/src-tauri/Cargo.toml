@@ -65,6 +65,8 @@ windows = { version = "0.61", features = [
   # "Folder open in File Explorer" in the chat (explorer.rs): IShellWindows
   # and the folder of each window, which take and return VARIANTs.
   "Win32_System_Variant",
+  # Gemini Live's point_at: what can be clicked on screen, and exactly where (uia.rs).
+  "Win32_UI_Accessibility",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
