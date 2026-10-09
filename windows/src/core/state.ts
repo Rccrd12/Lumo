@@ -66,6 +66,10 @@ export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
+  /** An answer cut short by the Stop button. */
+  stopped?: boolean;
+  /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
+  turn?: number;
 }
 
 export type PromptContext =
@@ -252,8 +256,11 @@ class AppState {
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;
-  /** The file added to the chat; `sent` once it went with a question. */
-  droppedFile: { name: string; path: string; sent?: boolean } | null = null;
+  /**
+   * The file added to the chat; `sent` once it went with a question, and
+   * `sentWith` that question's id, so editing it sends the file again (views/chat.ts).
+   */
+  droppedFile: { name: string; path: string; sent?: boolean; sentWith?: number } | null = null;
   noteMessage: string | null = null;
   /** What a sharing shortcut just took, for the chat to pick up (island/shortcuts.ts). */
   incomingShare: SharedContext | null = null;

@@ -159,14 +159,17 @@ pub async fn send(
     let user = json!({ "role": "user", "content": content });
     let body = request_body(model, &chat::system_prompt(true), &turn.history, &user);
 
-    let response = call(&endpoint, &key, &body).await?;
-    let (blocks, text) = interpret(&response)?;
+    // Not streamed: Stop drops the request, and nothing was written yet.
+    let Some(response) = chat.unless_stopped(call(&endpoint, &key, &body)).await else {
+        return Ok(ChatReply::stopped(String::new(), None));
+    };
+    let (blocks, text) = interpret(&response?)?;
 
     // Store the whole content — tool_use / tool_result blocks included — so the
     // next turn has the right context.
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": blocks }), &plain, &text);
-    Ok(ChatReply { text, session: None })
+    Ok(ChatReply::answer(text, None))
 }
 
 async fn call(endpoint: &Url, key: &str, body: &Value) -> Result<Value, String> {

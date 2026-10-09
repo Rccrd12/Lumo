@@ -21,13 +21,13 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::mpsc;
+use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
-use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
+use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -38,6 +38,8 @@ pub const PROVIDER: &str = "claude-code";
 const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// The island is told about new text at most this often.
 const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
+/// How often a running turn looks at the Stop button.
+const STOP_POLL: Duration = Duration::from_millis(100);
 /// Ceilings for what we read back: one event line, and the whole run.
 const MAX_LINE: usize = 4 * 1024 * 1024;
 const MAX_TOTAL: usize = 64 * 1024 * 1024;
@@ -138,9 +140,11 @@ fn args(model: &str, effort: &str, session: Option<&str>, inbox: &str, folders: 
 }
 
 /// What goes in on stdin: the question, with the file or the window when the
-/// island sends one (a file only once, with the question after it was added), and — when an earlier provider answered the turns before
-/// — that conversation as plain text.
-fn prompt(context: Option<&ChatContext>, carried: &[Value], query: &str) -> String {
+/// island sends one (a file only once, with the question after it was added),
+/// and — when this session has not seen the turns before (another provider
+/// answered them, or a message was edited) — that conversation as plain text,
+/// with the files added in it (`files`: name, path).
+fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[(String, String)], query: &str) -> String {
     let mut out = String::new();
     if !carried.is_empty() {
         let mut transcript = String::new();
@@ -150,8 +154,20 @@ fn prompt(context: Option<&ChatContext>, carried: &[Value], query: &str) -> Stri
             transcript.push_str(&format!("{role}: {text}\n\n"));
         }
         let cut: String = transcript.chars().rev().take(MAX_CARRIED_CHARS).collect::<Vec<_>>().into_iter().rev().collect();
-        out.push_str("Earlier in this conversation (another assistant answered):\n\n");
+        out.push_str("Earlier in this conversation:\n\n");
         out.push_str(&cut);
+        let current = match context {
+            Some(ChatContext::File { path, .. }) => Some(path.as_str()),
+            _ => None,
+        };
+        let earlier: Vec<_> = files.iter().filter(|(_, p)| Some(p.as_str()) != current).collect();
+        if !earlier.is_empty() {
+            out.push_str("Files the user added earlier in this conversation:\n");
+            for (name, path) in earlier {
+                out.push_str(&format!("- {name}: {path}\n"));
+            }
+            out.push('\n');
+        }
         out.push_str("---\n\n");
     }
     match context {
@@ -179,6 +195,8 @@ struct Run {
     /// The `result` line: final text, or the error Claude Code reported.
     result: Option<Result<String, String>>,
     denied: usize,
+    /// The user pressed Stop and the CLI was ended.
+    stopped: bool,
 }
 
 impl Run {
@@ -228,9 +246,9 @@ impl Run {
     }
 }
 
-/// Runs `claude -p` once, blocking. `on_text` gets the visible text as it grows.
-fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&str)) -> Result<Run, String> {
-    let dir = work_dir();
+/// Runs `claude -p` once in `dir`, blocking. `on_text` gets the visible text as
+/// it grows. Stop ends the CLI and its children; the run so far is returned, `stopped`.
+fn run(exe: PathBuf, args: Vec<String>, input: String, dir: PathBuf, stop: Arc<Stop>, mut on_text: impl FnMut(&str)) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
     let mut cmd = Command::new(&exe);
@@ -248,6 +266,12 @@ fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&
     // Tells coucou-hook this run is the island's chat, not a session to show.
     cmd.env("COUCOU_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
+    // Its own process group, so Stop ends the tools and hooks it started too.
+    #[cfg(target_os = "linux")]
+    {
+        use std::os::unix::process::CommandExt;
+        cmd.process_group(0);
+    }
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))?;
@@ -295,12 +319,18 @@ fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&
     let mut state = Run::default();
     let mut timed_out = false;
     loop {
+        if stop.is_stopped() && state.result.is_none() {
+            kill_tree(&mut child);
+            state.stopped = true;
+            return Ok(state);
+        }
         let left = TURN_TIMEOUT.saturating_sub(started.elapsed());
         if left.is_zero() {
             timed_out = true;
             break;
         }
-        match rx.recv_timeout(left.min(Duration::from_secs(1))) {
+        // Short waits, so Stop is felt at once (only while a turn runs).
+        match rx.recv_timeout(left.min(STOP_POLL)) {
             Ok(line) => {
                 if state.feed(&line) && last_emit.elapsed() >= DELTA_INTERVAL {
                     last_emit = Instant::now();
@@ -330,6 +360,7 @@ fn run(exe: PathBuf, args: Vec<String>, input: String, mut on_text: impl FnMut(&
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
+/// On Linux the whole process group goes (run() starts the CLI in its own).
 fn kill_tree(child: &mut std::process::Child) {
     #[cfg(windows)]
     {
@@ -337,6 +368,13 @@ fn kill_tree(child: &mut std::process::Child) {
         kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
         platform::no_console(&mut kill);
         let _ = kill.status();
+    }
+    #[cfg(target_os = "linux")]
+    if let Ok(pid) = i32::try_from(child.id()) {
+        // SAFETY: a plain signal to the group the child leads; no memory is shared.
+        unsafe {
+            libc::kill(-pid, libc::SIGKILL);
+        }
     }
     let _ = child.kill();
     let _ = child.wait();
@@ -359,23 +397,35 @@ pub async fn send(
 
     let turn = chat.begin(PROVIDER);
     let session = chat.cli_session();
-    // Turns another provider answered are carried over once, as text.
+    // Turns this session has not seen (another provider answered them, or a
+    // message was edited) are carried over once, as text.
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
-    let input = prompt(context.as_ref(), &carried, &query);
+    let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let args = args(model, effort, session.as_deref(), &inbox, &chat.cli_dirs(folder));
 
     let app2 = app.clone();
+    let stop = chat.stopper();
     let state = tauri::async_runtime::spawn_blocking(move || {
-        run(exe, args, input, |text| {
+        run(exe, args, input, work_dir(), stop, |text| {
             let _ = app2.emit_to(WINDOW_LABEL, "chat-delta", text.to_string());
         })
     })
     .await
     .map_err(|e| e.to_string())??;
 
+    // A stopped turn keeps its session too: Claude Code has the question and
+    // what it wrote, as the island does.
     if let Some(id) = &state.session {
         chat.set_cli_session(&turn, id);
+    }
+    let plain = chat::plain_question(true, context.as_ref(), &query);
+    if state.stopped {
+        let shown = state.visible.trim().to_string();
+        if !shown.is_empty() {
+            chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        }
+        return Ok(ChatReply::stopped(shown, chat.cli_session()));
     }
     let answer = match state.result {
         Some(Ok(text)) => text,
@@ -387,9 +437,8 @@ pub async fn send(
     } else {
         answer
     };
-    let plain = chat::plain_question(true, context.as_ref(), &query);
     chat.commit(&turn, json!({ "role": "user", "content": plain }), json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { text: answer, session: chat.cli_session() })
+    Ok(ChatReply::answer(answer, chat.cli_session()))
 }
 
 #[cfg(test)]
@@ -448,14 +497,50 @@ mod tests {
     #[test]
     fn the_file_rides_along_and_other_providers_turns_are_carried_once() {
         let file = ChatContext::File { name: "a.pdf".into(), path: "C:\\inbox\\a.pdf".into() };
-        let p = prompt(Some(&file), &[], "summary?");
+        let files = vec![("a.pdf".to_string(), "C:\\inbox\\a.pdf".to_string())];
+        let p = prompt(Some(&file), &[], &files, "summary?");
         assert!(p.contains("Path: C:\\inbox\\a.pdf"));
         assert!(p.ends_with("summary?"));
-        assert_eq!(prompt(None, &[], "more"), "more");
+        assert!(!p.contains("earlier"), "a session that saw the turns is not told again");
+        assert_eq!(prompt(None, &[], &files, "more"), "more");
 
-        let carried = vec![json!({"role":"user","content":"hi"}), json!({"role":"assistant","content":"hello"})];
-        let p = prompt(None, &carried, "go on");
-        assert!(p.contains("user: hi") && p.contains("assistant: hello") && p.ends_with("go on"));
+        let carried = vec![json!({"role":"user","content":"File: a.pdf\n\nhi"}), json!({"role":"assistant","content":"hello"})];
+        let p = prompt(None, &carried, &[], "go on");
+        assert!(p.contains("user: File: a.pdf\n\nhi") && p.contains("assistant: hello") && p.ends_with("go on"));
+        assert!(!p.contains("Files the user added"));
+
+        // A fresh session after an edit: the files of the kept turns, with their paths.
+        let p = prompt(None, &carried, &files, "go on");
+        assert!(p.contains("Files the user added earlier in this conversation:\n- a.pdf: C:\\inbox\\a.pdf\n"), "{p}");
+        // Unless it goes with this question anyway.
+        let p = prompt(Some(&file), &carried, &files, "go on");
+        assert_eq!(p.matches("C:\\inbox\\a.pdf").count(), 1, "{p}");
+    }
+
+    #[test]
+    fn stop_ends_the_cli_and_keeps_what_it_wrote() {
+        // A stand-in for `claude -p`: says something, then hangs until killed.
+        #[cfg(unix)]
+        {
+            let script = r#"echo '{"type":"system","subtype":"init","session_id":"0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"}'
+echo '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Half an answer"}}}'
+sleep 30 & wait"#;
+            let stop = Arc::new(Stop::default());
+            let stopper = stop.clone();
+            let seen = std::sync::Mutex::new(String::new());
+            let started = Instant::now();
+            let state = run(PathBuf::from("/bin/sh"), vec!["-c".into(), script.into()], String::new(), std::env::temp_dir(), stop, |text| {
+                *seen.lock().unwrap() = text.to_string();
+                stopper.stop();
+            })
+            .unwrap();
+            assert!(state.stopped);
+            assert_eq!(state.visible, "Half an answer");
+            assert_eq!(state.session.as_deref(), Some(SID));
+            assert!(state.result.is_none());
+            assert_eq!(*seen.lock().unwrap(), "Half an answer");
+            assert!(started.elapsed() < Duration::from_secs(10), "not left waiting on the CLI");
+        }
     }
 
     #[test]

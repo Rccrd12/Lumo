@@ -579,6 +579,20 @@ fn chat_reset(chat: State<Chat>) {
     chat.reset();
 }
 
+/// The chat's Stop button: ends the answer being written. `chat_send` then
+/// returns what was written so far, marked stopped.
+#[tauri::command]
+fn chat_stop(chat: State<Chat>) {
+    chat.stop();
+}
+
+/// An edited message: the conversation goes back to its first `keep` turns
+/// (as `chat_send` counted them) before the edited one is sent.
+#[tauri::command]
+fn chat_rewind(chat: State<Chat>, keep: usize) {
+    chat.rewind(keep);
+}
+
 /// One turn of a chat from the history, as the island keeps it.
 #[derive(serde::Deserialize)]
 struct SavedTurn {
@@ -883,6 +897,8 @@ pub fn run() {
             local_set_key,
             chat_reset,
             chat_restore,
+            chat_stop,
+            chat_rewind,
             island_drag,
             island_resize,
             island_reset_size,

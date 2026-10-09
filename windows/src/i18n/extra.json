@@ -485,6 +485,28 @@
    "ru": "Копировать изображения здесь нельзя — используйте «Сохранить изображение».",
    "id": "Menyalin gambar tidak tersedia di sini — gunakan Simpan gambar."
   },
+  "Edit": {
+   "zh-Hans": "编辑",
+   "hi": "संपादित करें",
+   "es": "Editar",
+   "ar": "تعديل",
+   "fr": "Modifier",
+   "bn": "সম্পাদনা",
+   "pt-BR": "Editar",
+   "ru": "Изменить",
+   "id": "Edit"
+  },
+  "Editing a message": {
+   "zh-Hans": "正在编辑消息",
+   "hi": "संदेश संपादित हो रहा है",
+   "es": "Editando un mensaje",
+   "ar": "تعديل رسالة",
+   "fr": "Modification d'un message",
+   "bn": "একটি বার্তা সম্পাদনা হচ্ছে",
+   "pt-BR": "Editando uma mensagem",
+   "ru": "Редактирование сообщения",
+   "id": "Mengedit pesan"
+  },
   "Lumo could not list the agents.": {
    "zh-Hans": "Lumo 无法列出代理。",
    "hi": "Lumo एजेंटों की सूची नहीं बना सका।",
@@ -1904,6 +1926,17 @@
    "ru": "Отправки по почте в этой версии нет.",
    "id": "Mengirim lewat email belum ada di versi ini."
   },
+  "Sending replaces this message and everything after it.": {
+   "zh-Hans": "发送后将替换这条消息及其后的所有内容。",
+   "hi": "भेजने पर यह संदेश और इसके बाद का सब कुछ बदल जाएगा।",
+   "es": "Al enviar, se reemplazan este mensaje y todo lo que le sigue.",
+   "ar": "عند الإرسال تُستبدل هذه الرسالة وكل ما بعدها.",
+   "fr": "L'envoi remplace ce message et tout ce qui le suit.",
+   "bn": "পাঠালে এই বার্তা এবং এর পরের সবকিছু প্রতিস্থাপিত হবে।",
+   "pt-BR": "Ao enviar, esta mensagem e tudo o que vem depois dela são substituídos.",
+   "ru": "При отправке это сообщение и всё, что после него, будут заменены.",
+   "id": "Mengirim akan mengganti pesan ini dan semua yang ada setelahnya."
+  },
   "Services": {
    "zh-Hans": "服务",
    "hi": "सेवाएँ",
@@ -2079,6 +2112,28 @@
    "pt-BR": "Começar um novo chat",
    "ru": "Начать новый чат",
    "id": "Mulai obrolan baru"
+  },
+  "Stop": {
+   "zh-Hans": "停止",
+   "hi": "रोकें",
+   "es": "Detener",
+   "ar": "إيقاف",
+   "fr": "Arrêter",
+   "bn": "থামান",
+   "pt-BR": "Parar",
+   "ru": "Остановить",
+   "id": "Hentikan"
+  },
+  "Stopped": {
+   "zh-Hans": "已停止",
+   "hi": "रोका गया",
+   "es": "Detenido",
+   "ar": "تم الإيقاف",
+   "fr": "Arrêté",
+   "bn": "থামানো হয়েছে",
+   "pt-BR": "Interrompido",
+   "ru": "Остановлено",
+   "id": "Dihentikan"
   },
   "Sunday": {
    "zh-Hans": "星期日",
