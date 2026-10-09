@@ -194,28 +194,34 @@ pub async fn send(
     let body = request_body(p, model, &chat::system_prompt(false), &turn.history, &user);
 
     let endpoint = url(p, "chat/completions")?;
-    let response = net::client(&endpoint, Duration::from_secs(90))?
-        .post(endpoint)
-        .bearer_auth(&key)
-        .json(&body)
-        .send()
-        .await
-        .map_err(|e| tf("Network error: {error}", &[("error", &e.to_string())]))?;
-    if p.id == "openai" {
-        *usage = chat_usage::from_openai(response.headers(), chat_usage::now_ms());
-    }
-    let status = response.status();
-    if !status.is_success() {
-        let body = net::read_capped(response, net::MAX_ERROR_BODY).await.unwrap_or_default();
-        return Err(status_error(p, status.as_u16(), &net::error_detail(&body)));
-    }
-    let bytes = net::read_capped(response, net::MAX_BODY).await?;
-    let json: Value = serde_json::from_slice(&bytes).map_err(|e| tf("Bad API response: {error}", &[("error", &e.to_string())]))?;
+    let request = async {
+        let response = net::client(&endpoint, Duration::from_secs(90))?
+            .post(endpoint.clone())
+            .bearer_auth(&key)
+            .json(&body)
+            .send()
+            .await
+            .map_err(|e| tf("Network error: {error}", &[("error", &e.to_string())]))?;
+        if p.id == "openai" {
+            *usage = chat_usage::from_openai(response.headers(), chat_usage::now_ms());
+        }
+        let status = response.status();
+        if !status.is_success() {
+            let body = net::read_capped(response, net::MAX_ERROR_BODY).await.unwrap_or_default();
+            return Err(status_error(p, status.as_u16(), &net::error_detail(&body)));
+        }
+        net::read_capped(response, net::MAX_BODY).await
+    };
+    // Not streamed: Stop drops the request, and nothing was written yet.
+    let Some(bytes) = chat.unless_stopped(request).await else {
+        return Ok(ChatReply::stopped(String::new(), None));
+    };
+    let json: Value = serde_json::from_slice(&bytes?).map_err(|e| tf("Bad API response: {error}", &[("error", &e.to_string())]))?;
     let text = reply_text(p, &json)?;
 
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
-    Ok(ChatReply { text, session: None })
+    Ok(ChatReply::answer(text, None))
 }
 
 /// The provider's chat models. Only ever asked with the user's key, once they

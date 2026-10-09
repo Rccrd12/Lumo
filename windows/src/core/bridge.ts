@@ -189,8 +189,12 @@ export const Bridge = {
    * is what the user added from the screen button, sent with this turn only.
    */
   chatSend: (query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
-    callOrThrow<{ text: string; session?: string }>("chat_send", screen ? { query, context, screen } : { query, context }),
+    callOrThrow<ChatReply>("chat_send", screen ? { query, context, screen } : { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** The Stop button: `chatSend` then returns what was written so far, `stopped`. */
+  chatStop: () => call<void>("chat_stop"),
+  /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
+  chatRewind: (keep: number) => call<void>("chat_rewind", { keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
   islandDrag: () => call<void>("island_drag"),
   /** Puts the island back at the top centre of its display. */
@@ -361,6 +365,17 @@ export interface IntegrationUpdate {
 export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
+
+/** One answered chat turn (chat.rs ChatReply). */
+export interface ChatReply {
+  text: string;
+  /** The Claude Code session that answered. */
+  session?: string;
+  /** The user pressed Stop: `text` is what was written until then, maybe nothing. */
+  stopped?: boolean;
+  /** How many turns Rust's conversation holds after this one (`chatRewind`). */
+  turns?: number;
+}
 
 /** A display the screen button can capture; `index` is its place in the menu. */
 export interface ScreenDisplay {

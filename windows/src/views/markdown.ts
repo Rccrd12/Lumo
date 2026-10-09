@@ -211,9 +211,12 @@ async function writeClipboard(text: string) {
   }
 }
 
-/** Puts the code on the clipboard; the check mark shows for a moment. */
-function copyButton(text: string): HTMLElement {
-  const btn = h("button", { class: "md-copy", title: t(STRINGS.copy), "aria-label": t(STRINGS.copy) }, svg(ICONS.copy, 11));
+/**
+ * Puts the code on the clipboard; the check mark shows for a moment. The chat
+ * uses it too, with its own class, to copy a whole message (views/chat.ts).
+ */
+export function copyButton(text: string, cls = "md-copy"): HTMLElement {
+  const btn = h("button", { class: cls, title: t(STRINGS.copy), "aria-label": t(STRINGS.copy) }, svg(ICONS.copy, 11));
   btn.addEventListener("click", async (e) => {
     e.stopPropagation();
     await writeClipboard(text);

@@ -270,16 +270,28 @@ pub async fn send(
     let user = json!({ "role": "user", "content": user_text(turn.first, context.as_ref(), &query) });
     let body = request_body(model, &chat::system_prompt(false), &turn.history, &user);
 
-    let answer = stream(&base, server.key.as_deref(), model, &body, |visible| {
-        let _ = app.emit_to(WINDOW_LABEL, "chat-delta", visible);
-    })
-    .await?;
+    // What the island shows so far: kept if Stop is pressed mid-answer.
+    let mut shown = String::new();
+    let streamed = chat
+        .unless_stopped(stream(&base, server.key.as_deref(), model, &body, |visible| {
+            shown.clone_from(&visible);
+            let _ = app.emit_to(WINDOW_LABEL, "chat-delta", visible);
+        }))
+        .await;
+    let plain = chat::plain_question(turn.first, context.as_ref(), &query);
+    let Some(answer) = streamed else {
+        // The connection is closed. What was written stays in the conversation.
+        if !shown.is_empty() {
+            chat.commit(&turn, user, json!({ "role": "assistant", "content": shown }), &plain, &shown);
+        }
+        return Ok(ChatReply::stopped(shown, None));
+    };
+    let answer = answer?;
     if answer.is_empty() {
         return Err(t("No response text."));
     }
-    let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": answer }), &plain, &answer);
-    Ok(ChatReply { text: answer, session: None })
+    Ok(ChatReply::answer(answer, None))
 }
 
 // ── Streaming ─────────────────────────────────────────────────────────────────

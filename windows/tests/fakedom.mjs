@@ -105,6 +105,7 @@ class FakeElement {
   scrollIntoView() {}
   focus() {}
   select() {}
+  setSelectionRange() {}
   /** Every descendant element, depth first. */
   *walk() {
     for (const c of this.children) {

@@ -31,6 +31,7 @@ beforeEach(() => {
   State.stateOverride = null;
   State.view = "prompt";
   State.droppedFile = null;
+  State.chatSession = null;
   view = buildPrompt(() => {});
   view.sync();
 });
@@ -121,4 +122,174 @@ test("a local answer streams into one reply, then the finished text replaces it"
   assert.equal(view.el.find(".reply")[0].textContent, "Hello there!");
   assert.deepEqual(State.chatHistory.map((m) => m.role), ["user", "assistant"]);
   assert.ok(!$(".model-btn").disabled);
+});
+
+// ── Stop, copy, edit ──────────────────────────────────────────────────────────
+
+/** A key typed in the chat field. */
+function type(key) {
+  const event = { key, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+  for (const fn of $(".chat-input").listeners.get("keydown")) fn(event);
+  return event;
+}
+
+/** chat_send answers when the test says so: each call's resolver, in order. */
+function heldAnswers() {
+  const pending = [];
+  answers.chat_send = () => new Promise((resolve) => pending.push(resolve));
+  return pending;
+}
+
+async function ask(text) {
+  $(".chat-input").value = text;
+  type("Enter");
+  await flush();
+  await flush();
+  view.sync();
+}
+
+const rows = () => view.el.find(".chat-row");
+const editOf = (i) => rows()[i].find(".msg-action")[1];
+
+test("while an answer is written, the field stays open and send is a Stop button", async () => {
+  const pending = heldAnswers();
+  await ask("tell me a story");
+  const input = $(".chat-input");
+  assert.ok(!input.disabled, "the next question can be typed meanwhile");
+  assert.ok($(".send-btn").classList.contains("stop"));
+  assert.equal($(".send-btn").title, "Stop");
+
+  // Enter waits for the answer: nothing is sent, the text stays.
+  input.value = "and another";
+  type("Enter");
+  await flush();
+  assert.equal(sent("chat_send").length, 1);
+  assert.equal(input.value, "and another");
+
+  emit("chat-delta", "Once upon");
+  $(".send-btn").fire("click");
+  assert.equal(sent("chat_stop").length, 1);
+  assert.ok($(".send-btn").disabled, "pressed once");
+  $(".send-btn").fire("click");
+  assert.equal(sent("chat_stop").length, 1);
+
+  pending[0]({ text: "Once upon", stopped: true, turns: 2 });
+  await flush();
+  view.sync();
+  assert.deepEqual(
+    State.chatHistory.map((m) => [m.role, m.content, m.stopped ?? false, m.turn]),
+    [["user", "tell me a story", false, 0], ["assistant", "Once upon", true, 1]],
+  );
+  assert.equal(view.el.find(".reply").length, 1, "what was written stays");
+  assert.equal($(".msg-stopped").textContent, "Stopped");
+  assert.ok(!$(".send-btn").classList.contains("stop"));
+  assert.ok(!$(".send-btn").disabled);
+  assert.equal($(".send-btn").title, "Send");
+  assert.equal(input.value, "and another", "the typed question is still there, ready to go");
+});
+
+test("Escape stops an answer; stopped before any text, the question stays unanswered", async () => {
+  const pending = heldAnswers();
+  State.droppedFile = { name: "a.pdf", path: "/inbox/a.pdf" };
+  await ask("summary?");
+  assert.ok(type("Escape").defaultPrevented);
+  assert.equal(sent("chat_stop").length, 1);
+  pending[0]({ text: "", stopped: true, turns: 0 });
+  await flush();
+  view.sync();
+  assert.deepEqual(State.chatHistory.map((m) => m.role), ["user"]);
+  assert.equal(State.chatHistory[0].turn, undefined, "Rust kept nothing of it");
+  assert.ok(!State.droppedFile.sent, "the file goes with the next question");
+  assert.equal(view.el.find(".reply").length, 0);
+  // With nothing being written, Escape stops nothing.
+  type("Escape");
+  assert.equal(sent("chat_stop").length, 1);
+});
+
+test("Copy takes a question or an answer as written, Markdown included", async () => {
+  const copied = [];
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    value: { writeText: async (text) => copied.push(text) },
+    configurable: true,
+  });
+  try {
+    answers.chat_send = { text: "Use **bold** and `code`.", turns: 2 };
+    await ask("how?");
+    const questionActions = rows()[0].find(".msg-action");
+    assert.equal(questionActions.length, 2, "Copy and Edit on a question");
+    questionActions[0].fire("click");
+    const answerActions = rows()[1].find(".msg-action");
+    assert.equal(answerActions.length, 1, "Copy only on an answer");
+    answerActions[0].fire("click");
+    await flush();
+    assert.deepEqual(copied, ["how?", "Use **bold** and `code`."]);
+  } finally {
+    delete globalThis.navigator.clipboard;
+  }
+});
+
+test("Edit puts a question back; sending it replaces it and drops what followed", async () => {
+  let n = 0;
+  answers.chat_send = () => {
+    n += 1;
+    return { text: `answer ${n}`, session: "s", turns: 2 * n };
+  };
+  for (const q of ["one", "two", "three"]) await ask(q);
+  assert.equal(State.chatHistory.length, 6);
+  assert.equal(State.chatSession, "s");
+
+  editOf(2).fire("click");
+  view.sync();
+  assert.equal($(".chat-input").value, "two");
+  assert.match($(".chip-row").textContent, /Editing a message/);
+  assert.ok(rows()[2].classList.contains("editing"));
+  assert.equal(view.el.find(".dropped").length, 3, "what sending would drop shows faded");
+
+  n = 1; // Rust keeps the first turn: the new answer is its second
+  answers.chat_send = (args) => {
+    assert.equal(State.chatSession, null, "the old Claude Code session is left behind");
+    n += 1;
+    return { text: `answer ${n}`, turns: 2 * n, query: args.query };
+  };
+  await ask("two, but better");
+  assert.deepEqual(sent("chat_rewind"), [{ keep: 2 }]);
+  assert.equal(sent("chat_send").at(-1).query, "two, but better");
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1", "two, but better", "answer 2"]);
+  assert.equal(view.el.find(".dropped").length, 0);
+  assert.doesNotMatch($(".chip-row").textContent, /Editing/);
+
+  // The first question: nothing is kept, and the file it carried goes again.
+  State.droppedFile = { name: "a.pdf", path: "/inbox/a.pdf", sent: true, sentWith: State.chatHistory[0].id };
+  editOf(0).fire("click");
+  view.sync();
+  n = 0;
+  await ask("one");
+  assert.deepEqual(sent("chat_rewind").at(-1), { keep: 0 });
+  assert.equal(sent("chat_send").at(-1).query, "one");
+  assert.equal(sent("chat_send").at(-1).context?.name, "a.pdf");
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1"]);
+});
+
+test("Escape or the chip's × leaves an edit, and nothing is edited mid-answer", async () => {
+  answers.chat_send = { text: "hi", turns: 2 };
+  await ask("hello");
+  assert.ok(!$(".chat-body").classList.contains("has-context"));
+  editOf(0).fire("click");
+  view.sync();
+  assert.equal($(".chat-input").value, "hello");
+  type("Escape");
+  view.sync();
+  assert.equal($(".chat-input").value, "");
+  assert.equal(view.el.find(".editing").length, 0);
+  assert.ok(!$(".chat-body").classList.contains("has-context"), "nothing attached once the edit is left");
+
+  editOf(0).fire("click");
+  view.sync();
+  $(".chip-row").querySelector(".chip-remove").fire("click");
+  view.sync();
+  assert.equal(view.el.find(".editing").length, 0);
+
+  heldAnswers();
+  await ask("more");
+  assert.equal(rows()[0].find(".msg-action").length, 1, "Copy only while an answer is written");
 });
