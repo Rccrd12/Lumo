@@ -4735,6 +4735,61 @@
    "pt-BR": "Nas contas pessoais do Google, o Gemini CLI foi substituído pelo Antigravity CLI: instale os hooks do Antigravity. Contas de trabalho podem continuar com o Gemini CLI.",
    "ru": "Для личных аккаунтов Google Gemini CLI заменён на Antigravity CLI: установите вместо этого хуки Antigravity. Рабочие аккаунты могут оставить Gemini CLI.",
    "id": "Untuk akun Google pribadi, Gemini CLI digantikan oleh Antigravity CLI: pasang hook Antigravity sebagai gantinya. Akun kerja tetap bisa memakai Gemini CLI."
+  },
+  "Filo · a ring of light": {
+   "zh-Hans": "Filo · 一圈光环",
+   "hi": "Filo · रोशनी का घेरा",
+   "es": "Filo · un anillo de luz",
+   "ar": "Filo · حلقة من الضوء",
+   "fr": "Filo · un anneau de lumière",
+   "bn": "Filo · আলোর বলয়",
+   "pt-BR": "Filo · um anel de luz",
+   "ru": "Filo · кольцо света",
+   "id": "Filo · cincin cahaya"
+  },
+  "Punto · a dot of light": {
+   "zh-Hans": "Punto · 一点光",
+   "hi": "Punto · रोशनी का बिंदु",
+   "es": "Punto · un punto de luz",
+   "ar": "Punto · نقطة من الضوء",
+   "fr": "Punto · un point de lumière",
+   "bn": "Punto · আলোর বিন্দু",
+   "pt-BR": "Punto · um ponto de luz",
+   "ru": "Punto · точка света",
+   "id": "Punto · titik cahaya"
+  },
+  "Goccia · a soft drop": {
+   "zh-Hans": "Goccia · 一颗柔软的水滴",
+   "hi": "Goccia · एक नरम बूँद",
+   "es": "Goccia · una gota suave",
+   "ar": "Goccia · قطرة ناعمة",
+   "fr": "Goccia · une goutte toute douce",
+   "bn": "Goccia · একটি নরম ফোঁটা",
+   "pt-BR": "Goccia · uma gota macia",
+   "ru": "Goccia · мягкая капля",
+   "id": "Goccia · tetesan lembut"
+  },
+  "Lucciola · the firefly": {
+   "zh-Hans": "Lucciola · 萤火虫",
+   "hi": "Lucciola · जुगनू",
+   "es": "Lucciola · la luciérnaga",
+   "ar": "Lucciola · اليراعة",
+   "fr": "Lucciola · la luciole",
+   "bn": "Lucciola · জোনাকি",
+   "pt-BR": "Lucciola · o vaga-lume",
+   "ru": "Lucciola · светлячок",
+   "id": "Lucciola · kunang-kunang"
+  },
+  "Lumo's look": {
+   "zh-Hans": "Lumo 的外观",
+   "hi": "Lumo का रूप",
+   "es": "El aspecto de Lumo",
+   "ar": "مظهر Lumo",
+   "fr": "Apparence de Lumo",
+   "bn": "Lumo-র চেহারা",
+   "pt-BR": "Visual do Lumo",
+   "ru": "Облик Lumo",
+   "id": "Tampilan Lumo"
   }
  }
 }

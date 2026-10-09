@@ -12,7 +12,7 @@ import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
-import { DEFAULT_OUTFIT, type Outfit } from "../mochi/wardrobe";
+import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../mochi/wardrobe";
 import { pillColor } from "./pill-colors";
 
 export type AgentSource = "claudeCode" | "n8n" | "agent";
@@ -197,6 +197,12 @@ export interface Settings {
   /** How much Lumo moves on his own; read it through parseMotion. */
   lumoMotion: string;
   /**
+   * Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a ring
+   * of light), "punto", "goccia" or "lucciola" (the firefly). Read it through
+   * parseLook (mochi/wardrobe.ts).
+   */
+  lumoCharacter: string;
+  /**
    * A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
    * Same key and values as the Mac's "pillColors".
@@ -251,6 +257,7 @@ export const DEFAULT_SETTINGS: Settings = {
   shortcuts: {},
   mochiOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
+  lumoCharacter: DEFAULT_LOOK,
   pillColors: {},
   language: "",
 };
@@ -327,6 +334,8 @@ class AppState {
 
   /** Outfit shown on Mochi while the pointer rests on a wardrobe button. */
   wardrobePreview: Outfit | null = null;
+  /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
+  lookPreview: LumoLook | null = null;
 
   lastActivity = performance.now();
 

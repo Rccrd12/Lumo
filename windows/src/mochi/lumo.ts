@@ -1,4 +1,5 @@
-// Lumo, the little firefly: what makes him one — the glowing tail under him,
+// Lumo as a little firefly (Lucciola, one of his looks in the wardrobe; his
+// round looks are looks.ts): what makes him one — the glowing tail under him,
 // the two wings behind, the antennae on top. Drawn around the body that
 // engine.ts (and the launch greeting) draws, in its body space: origin at the
 // body centre, y down, R the body's size unit, rx/ry its half width/height.
@@ -8,8 +9,8 @@ export type RGB = readonly [number, number, number]; // components 0…1
 /**
  * His body: a round little ball, a touch taller than wide. Half width and half
  * height in units of R, and the superellipse exponent of its outline (2 would
- * be a true ellipse). The engine, the outfits, the greeting, the drop sequence
- * and scripts/gen-icons.mjs all draw this same shape.
+ * be a true ellipse). The engine, the outfits, the greeting and the drop
+ * sequence all draw this same shape.
  */
 export const LUMO_RX = 1.0;
 export const LUMO_RY = 0.96;

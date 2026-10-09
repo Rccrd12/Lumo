@@ -10,6 +10,7 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, parseCloseMode, parseMotion, type Settings } from "../core/state";
+import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../mochi/wardrobe";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, isComingSoon, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -1071,6 +1072,15 @@ function islandSection(): HTMLElement {
     void save();
   });
 
+  // His look, as in the wardrobe.
+  const look = h("select", {}) as HTMLSelectElement;
+  for (const value of LUMO_LOOKS) look.append(h("option", { value, text: t(LOOK_KEYS[value]) }));
+  look.value = parseLook(settings.lumoCharacter);
+  look.addEventListener("change", () => {
+    settings.lumoCharacter = look.value;
+    void save();
+  });
+
   return h(
     "section",
     {},
@@ -1079,6 +1089,10 @@ function islandSection(): HTMLElement {
     h("div", { class: "row" },
       h("label", { text: t("Lumo moves") }),
       motion,
+    ),
+    h("div", { class: "row" },
+      h("label", { text: t("Lumo's look") }),
+      look,
     ),
     h("div", { class: "row" },
       h("label", { text: t("Island lives on") }),
