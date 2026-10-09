@@ -275,7 +275,7 @@ fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
     env(ISLAND_RUN_VAR).as_deref() == Some("1")
 }
 
-/// Set by the app on the `claude -p` and `agy -p` runs of its chat; hooks inherit it.
+/// Set by the app on the `claude -p` and headless `agy` runs of its chat; hooks inherit it.
 const ISLAND_RUN_VAR: &str = "COUCOU_ISLAND_RUN";
 
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {

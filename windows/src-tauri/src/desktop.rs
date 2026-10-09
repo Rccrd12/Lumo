@@ -1,4 +1,5 @@
 // Mochi on the desktop: his own small window, wherever the user dropped him.
+// Switched off: Lumo stays in the island (DESKTOP_LUMO below).
 // Window side of DesktopMochi.swift, plus the geometry half of
 // DesktopMochiLogic.swift (`logic` below, with its tests).
 //
@@ -274,11 +275,17 @@ fn body_disc() -> MouseShape {
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
 
+/// Lumo stays in the island: he can no longer be dragged out onto the desktop.
+/// Off, no window is made and nothing polls, and desktop_mochi_info reports
+/// "off", so the island never offers the drag and one left on the desktop by
+/// an older version is simply home.
+const DESKTOP_LUMO: bool = false;
+
 /// Same reasoning as the settings window: created hidden at launch, before the
 /// island's webview, then only shown and hidden. Nothing is created where the
 /// feature is off.
 pub fn setup(app: &AppHandle) {
-    let mut mode = platform::desktop_mode();
+    let mut mode = if DESKTOP_LUMO { platform::desktop_mode() } else { DesktopMode::Off };
     if mode != DesktopMode::Off {
         match create_window(app, mode) {
             Some(win) if platform::prepare_desktop_window(&win, mode) => {}

@@ -5,8 +5,11 @@ version.workspace = true
 edition.workspace = true
 license.workspace = true
 
+# The package keeps its name (`cargo build -p coucou-hook`); the relay itself
+# is lumo-hook since 0.3.2. The app also stages it as coucou-hook, for hooks
+# written before (hooks.rs).
 [[bin]]
-name = "coucou-hook"
+name = "lumo-hook"
 path = "src/main.rs"
 
 [dependencies]

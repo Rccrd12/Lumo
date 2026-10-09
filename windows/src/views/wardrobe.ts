@@ -40,6 +40,8 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   let drawnSeason: Outfit | null = null;
   let drawnLanguage = language();
   let drawnLook: LumoLook | null = null;
+  /** The screen's scale the icons were drawn for: another display needs them again. */
+  let drawnDpr = 0;
   const items = new Map<OutfitSelection, { button: HTMLButtonElement; canvas: HTMLCanvasElement }>();
 
   const updateNote = () => {
@@ -70,6 +72,7 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   }
 
   const lookItems = new Map<LumoLook, HTMLButtonElement>();
+  const lookCanvases = new Map<LumoLook, HTMLCanvasElement>();
   for (const look of LUMO_LOOKS) {
     const canvas = h("canvas");
     const button = h(
@@ -89,31 +92,37 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
       updateNote();
     });
     button.addEventListener("click", () => actions.chooseLook(look));
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    canvas.width = Math.round(ICON * dpr);
-    canvas.height = Math.round(ICON * dpr);
-    const ctx = canvas.getContext("2d");
-    if (ctx) {
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawLookIcon(ctx, ICON, look);
-    }
+    lookCanvases.set(look, canvas);
     lookItems.set(look, button);
     looks.append(button);
   }
 
   /**
    * Icons are drawn again only when they change: "auto" with the season and its
-   * badge's language, all of them with the look they are worn on.
+   * badge's language, all of them with the look they are worn on, and with the
+   * scale of the display the island moved to.
    */
   const drawIcons = () => {
     const season = seasonalOutfit(new Date());
     const look = parseLook(State.settings.lumoCharacter);
-    if (season === drawnSeason && drawnLanguage === language() && look === drawnLook) return;
-    const first = drawnSeason == null || look !== drawnLook;
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const rescaled = dpr !== drawnDpr;
+    if (season === drawnSeason && drawnLanguage === language() && look === drawnLook && !rescaled) return;
+    const first = drawnSeason == null || look !== drawnLook || rescaled;
     drawnSeason = season;
     drawnLanguage = language();
     drawnLook = look;
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    drawnDpr = dpr;
+    if (rescaled) {
+      for (const [l, canvas] of lookCanvases) {
+        canvas.width = Math.round(ICON * dpr);
+        canvas.height = Math.round(ICON * dpr);
+        const ctx = canvas.getContext("2d");
+        if (!ctx) continue;
+        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+        drawLookIcon(ctx, ICON, l);
+      }
+    }
     for (const [sel, { canvas }] of items) {
       if (!first && sel !== "auto") continue;
       canvas.width = Math.round(ICON * dpr);

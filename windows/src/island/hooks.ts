@@ -242,6 +242,18 @@ export function registerHookHandlers(island: Island) {
   // The last plan numbers seen survive a restart, as on the Mac.
   State.planUsage ??= restorePlanUsage(storedClaudePlanUsage());
   void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
+  // The same numbers from a chat answer of Claude Code (claude_code.rs), which
+  // may report one window only: the other one is kept.
+  void onEvent<unknown>("chat-plan-usage", (rateLimits) => {
+    const usage = parseClaudePlan(rateLimits);
+    if (!usage) return;
+    const prev = State.planUsage;
+    setClaudePlanUsage({
+      ...usage,
+      fiveHour: usage.fiveHour ?? prev?.fiveHour,
+      sevenDay: usage.sevenDay ?? prev?.sevenDay,
+    });
+  });
 }
 
 function handleHook(island: Island, payload: HookPayload) {

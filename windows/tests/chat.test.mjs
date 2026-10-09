@@ -50,22 +50,77 @@ test("the model button shows the active provider's model", () => {
   assert.equal($(".model-name").textContent, "Choose a model");
 });
 
-test("Antigravity CLI needs no key, and offers its own effort levels", async () => {
+test("Antigravity CLI needs no key, and has no effort to pick: its model's name carries it", async () => {
   State.settings = { ...State.settings, chatProvider: "antigravity-cli", chatEffort: "high" };
   view.sync();
-  assert.equal($(".model-name").textContent, "default · high");
-  State.settings = { ...State.settings, chatEffort: "max" };
-  view.sync();
-  assert.equal($(".model-name").textContent, "default", "agy has no max: its own default");
+  assert.equal($(".model-name").textContent, "default", "a saved effort never reaches agy");
 
-  answers.chat_models = [{ id: "default", label: "Default" }, { id: "gemini-3-pro", label: "gemini-3-pro" }];
+  answers.chat_models = [{ id: "default", label: "Default" }, { id: "gemini-3.8-flash-low", label: "gemini-3.8-flash-low" }];
   $(".model-btn").fire("click");
   await flush();
   assert.deepEqual(sent("chat_models"), [{ provider: "antigravity-cli" }]);
-  assert.deepEqual(models(), ["Default", "gemini-3-pro"]);
-  const efforts = $(".picker-efforts").find(".picker-chip").map((c) => c.textContent);
-  assert.deepEqual(efforts.slice(1), ["low", "medium", "high"]);
-  assert.equal(efforts.length, 4, "Auto, then agy's three levels");
+  assert.deepEqual(models(), ["Default", "gemini-3.8-flash-low"]);
+  assert.equal($(".picker-efforts").hidden, true);
+  assert.equal($(".effort-slider"), null);
+});
+
+test("Claude Code's effort is a slider from faster to smarter, with Auto beside it", async () => {
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  view.sync();
+  $(".model-btn").fire("click");
+  await flush();
+  assert.equal($(".picker-efforts").hidden, false);
+  assert.equal($(".effort-value").textContent, "Auto");
+  assert.ok($(".effort-auto").classList.contains("on"));
+  assert.ok($(".effort-track").classList.contains("auto"), "no knob while Auto");
+  assert.equal($(".effort-slider").getAttribute("max"), "4", "low, medium, high, extra high, max");
+  assert.equal($(".effort-ticks").children.length, 5);
+  assert.deepEqual($(".effort-ends").children.map((c) => c.textContent), ["Faster", "Smarter"]);
+
+  const slider = $(".effort-slider");
+  slider.value = "4";
+  slider.fire("change");
+  assert.equal(State.settings.chatEffort, "max");
+  assert.equal(sent("save_settings").at(-1).settings.chatEffort, "max");
+  assert.equal($(".effort-value").textContent, "Max");
+  assert.ok(!$(".effort-track").classList.contains("auto"));
+  assert.equal($(".effort-slider").value, "4");
+
+  $(".effort-auto").fire("click");
+  assert.equal(State.settings.chatEffort, "");
+  $(".model-btn").fire("click");
+  State.settings = { ...State.settings, chatEffort: "xhigh" };
+  view.sync();
+  assert.equal($(".model-name").textContent, "default · Extra high");
+});
+
+test("the shield picks what Claude Code and Antigravity CLI may do without asking", () => {
+  // The API providers run no tools: no shield.
+  assert.equal($(".perm-btn").hidden, true);
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  view.sync();
+  const shield = $(".perm-btn");
+  assert.equal(shield.hidden, false);
+  assert.match(shield.title, /Ask every time/);
+  assert.ok(!shield.classList.contains("lit"));
+
+  shield.fire("click");
+  assert.ok($(".chat-body").classList.contains("authorizing"));
+  const rows = () => view.el.find(".perm-row");
+  assert.deepEqual(rows().map((r) => r.querySelector(".picker-model-name").textContent), ["Ask every time", "Accept edits", "Plan only"]);
+  assert.ok(rows()[0].classList.contains("on"));
+
+  rows()[1].fire("click");
+  assert.equal(State.settings.chatPermissionMode, "acceptEdits");
+  assert.equal(sent("save_settings").at(-1).settings.chatPermissionMode, "acceptEdits");
+  assert.ok(!$(".chat-body").classList.contains("authorizing"), "picking closes the list");
+  view.sync();
+  assert.ok($(".perm-btn").classList.contains("lit"), "lit while it may do more than ask");
+
+  // Opening another list closes this one.
+  $(".perm-btn").fire("click");
+  $(".model-btn").fire("click");
+  assert.ok(!$(".chat-body").classList.contains("authorizing"));
 });
 
 test("a provider without a key is never asked for its models", async () => {

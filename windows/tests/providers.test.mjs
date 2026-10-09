@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, isLoopbackHost, pickModel, providerDef, urlExposure,
+  PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, isLoopbackHost, pickModel, providerDef, urlExposure,
   visibleProviders, withModel,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
@@ -63,7 +63,7 @@ test("the saved model is kept when offered, else a sensible one is picked", () =
   assert.equal(activeModel(settings({ chatProvider: "antigravity-cli" })), "default");
 });
 
-test("Antigravity CLI is a keyless CLI with its own effort levels", () => {
+test("Antigravity CLI is a keyless CLI whose models carry their effort", () => {
   const agy = providerDef("antigravity-cli");
   assert.equal(agy.name, "Antigravity CLI");
   assert.equal(agy.key, null);
@@ -71,14 +71,19 @@ test("Antigravity CLI is a keyless CLI with its own effort levels", () => {
   assert.equal(agy.accent, "#E879F9", "the Antigravity pill's colour");
   for (const id of ["claude-code", "antigravity-cli"]) assert.ok(isCliProvider(id), id);
   for (const id of ["anthropic", "google", "openai", "openrouter", "ollama", "custom"]) assert.ok(!isCliProvider(id), id);
-  assert.deepEqual(effortsFor("antigravity-cli"), ["", "low", "medium", "high"]);
+  assert.deepEqual(effortsFor("antigravity-cli"), [], "agy's model names carry the effort");
   assert.deepEqual(effortsFor("claude-code"), ["", "low", "medium", "high", "xhigh", "max"]);
   assert.deepEqual(effortsFor("openai"), []);
-  assert.equal(effortFor("antigravity-cli", "high"), "high");
-  assert.equal(effortFor("antigravity-cli", "max"), "", "agy has no max: its own default");
+  assert.equal(effortFor("antigravity-cli", "high"), "");
   assert.equal(effortFor("claude-code", "max"), "max");
   assert.equal(effortFor("openai", "high"), "");
   assert.equal(effortFor("claude-code", undefined), "");
+});
+
+test("the permission modes never include one that lets everything through", () => {
+  assert.deepEqual([...PERMISSION_MODES], ["default", "acceptEdits", "plan"]);
+  for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m), m);
+  for (const m of ["bypassPermissions", "auto", "dontAsk", "", undefined, 3]) assert.equal(parsePermissionMode(m), "default", String(m));
 });
 
 test("loopback hosts match net.rs", () => {

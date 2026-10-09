@@ -494,9 +494,10 @@ async fn send_to(
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
         let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
         if provider == antigravity_cli::PROVIDER {
-            return antigravity_cli::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
+            return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
         }
-        return claude_code::send(app, chat, &model, &settings.chat_effort, query, context, folder).await;
+        return claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder)
+            .await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         return openai_compat::send(chat, p, &model, query, context, &images, usage).await;

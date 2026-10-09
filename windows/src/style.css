@@ -344,19 +344,6 @@ body {
   width: 0;
 }
 
-/* Compact 2×2 mini grid, to the right of the notch. */
-#mini-grid {
-  position: absolute;
-  width: 29px;
-  height: 29px;
-  display: grid;
-  grid-template-columns: 13px 13px;
-  grid-auto-rows: 13px;
-  gap: 3px;
-  pointer-events: none;
-  transition: opacity 0.25s ease-in-out;
-}
-
 /* A mini Mochi: the slot is the body, the canvas is larger and overflows it so
    hands, badges and particles are not cut off. */
 .mini {
@@ -1527,12 +1514,156 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* Claude Code's effort: a slider from faster to smarter, Auto beside it. */
 .picker-efforts {
-  align-items: center;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 2px 2px 0;
 }
 
 .picker-efforts[hidden] {
   display: none;
+}
+
+.effort-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.effort-value {
+  font: 600 11.5px var(--font);
+  color: var(--ink-2);
+}
+
+.effort-auto {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-left: auto;
+  padding: 3px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 400 11px var(--font);
+  color: #c8cdd4;
+  cursor: default;
+}
+
+.effort-auto.on {
+  font-weight: 600;
+  color: var(--ink-2);
+  border-color: rgba(255, 255, 255, 0.3);
+  background: rgba(255, 255, 255, 0.12);
+  border-color: color-mix(in srgb, var(--accent) 50%, transparent);
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+.effort-auto-note {
+  font-size: 10px;
+  font-weight: 400;
+  color: #8b929e;
+}
+
+.effort-ends {
+  display: flex;
+  justify-content: space-between;
+  font-size: 10.5px;
+  color: #8b929e;
+}
+
+.effort-track {
+  position: relative;
+  height: 22px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* One dot per level, under the knob's stops. */
+.effort-ticks {
+  position: absolute;
+  inset: 0 11px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+}
+
+.effort-ticks i {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.28);
+}
+
+.effort-track .effort-slider {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  background: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  cursor: default;
+}
+
+.effort-track .effort-slider::-webkit-slider-runnable-track {
+  height: 22px;
+  background: transparent;
+}
+
+.effort-track .effort-slider::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: #e9ebef;
+  background: color-mix(in srgb, var(--accent) 35%, #e9ebef);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+}
+
+/* On Auto no level is picked: no knob, only the dots to click. */
+.effort-track.auto .effort-slider::-webkit-slider-thumb {
+  opacity: 0;
+}
+
+/* Claude Code or Antigravity CLI: what they may do without asking. */
+.tool-btn[hidden] {
+  display: none;
+}
+
+.perm-btn.lit {
+  color: #f5a524;
+}
+
+.chat-body .permissions,
+.chat-body.picking .permissions {
+  display: none;
+}
+
+.chat-body.authorizing .permissions {
+  display: flex;
+}
+
+.chat-body.authorizing .chat-log,
+.chat-body.authorizing .chip-row {
+  display: none;
+}
+
+.perm-text {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.perm-note {
+  font-size: 10.5px;
+  color: #5c6370;
 }
 
 .picker-label {

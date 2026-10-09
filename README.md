@@ -26,7 +26,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 ## Features
 
-- 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Gemini CLI, Antigravity, Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
+- 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Antigravity (IDE and CLI), Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `coucou_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
 - See what Claude is editing, live: each file modification shows the file name and +N −M counts in the ticker, click it to read the full diff.
 - ✅ **Approve and answer from the island** — permission requests show up with **Allow / Deny** for Claude Code (from any terminal), Codex, Copilot CLI and Muse Code; `AskUserQuestion` prompts show the choices right in the island. Nothing is ever allowed without your click.
 - 🧑‍💻 **Open terminal** — brings the window a session runs in to the front.
@@ -36,7 +36,6 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, and your Codex limits. Off by default; Settings → Agents → Plan usage.
 - 📋 **Declare the tools you use** — Settings → Pills & integrations: pick your main tool (VS Code, Cursor, Codex or Antigravity), then up to 4 more agents, chat providers and services.
 - 📎 **Drop a file on the island** — Lumo turns into a box and swallows it, then answers questions about it.
-- 🖥️ **Lumo on the desktop** — drag Lumo out of the island to set him loose on your desktop: he follows your cursor, wears his outfit, flies home for alerts and comes back where you left him.
 - 🧲 **An island that docks anywhere** — drag it to the top, bottom, left or right edge, resize it, zoom it.
 - 🔌 **Integrations** — Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Lumo.
 - 👗 **Dress Lumo up** — right-click him for the wardrobe, and pick his look there: a ring of light, a dot, a soft drop or a firefly. He also dresses up for the seasons on his own.
@@ -64,6 +63,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.3.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.2) | Oct 9, 2026 | Antigravity CLI answers in the chat, an effort slider, a permissions button in the chat, a centred launch greeting, the app is lumo.exe |
 | [0.3.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.1) | Oct 8, 2026 | Now called Lumo, settings inside the island, a floating island that docks near the edges, choose how it opens and closes, it no longer disappears on its own |
 | [0.3.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.0) | Oct 8, 2026 | Chat with your Claude plan through Claude Code, your screen on request, an island that docks on any edge and resizes, Settings in sections with updates |
 
@@ -156,7 +156,6 @@ The full list of supported agents, what each one installs and how it answers is 
 | Click Lumo | squish + annoyed for a moment |
 | Right-click Lumo | the wardrobe |
 | Drag a file onto the island | turns into a box and swallows it |
-| Drag Lumo out of the island | he moves onto your desktop |
 | `Ctrl+Alt+Space` | opens the chat, from any app |
 | `Ctrl+Alt+P` / `Ctrl+Alt+X` | asks about your screen / the selected text |
 | `Ctrl+Alt+A` | jumps to the waiting permission or question |
@@ -171,7 +170,7 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 ## How it works
 
 - A [Tauri 2](https://tauri.app) app (Rust + TypeScript): the island is a transparent, always-on-top window that never steals focus; Lumo is drawn in Canvas 2D, with no images.
-- Claude Code and the other agents' hooks go through a tiny `coucou-hook` relay: a named pipe on Windows, a Unix socket in `$XDG_RUNTIME_DIR` on Linux. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
+- Claude Code and the other agents' hooks go through a tiny `lumo-hook` relay: a named pipe on Windows, a Unix socket in `$XDG_RUNTIME_DIR` on Linux. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
 - On Wayland the island is a gtk-layer-shell overlay anchored to the top edge, and click-through is its input region.
 - Integrations are lightweight pollers, paused when nothing is watching.
 - Details and differences from the original Mac app in [`windows/README.md`](windows/README.md).

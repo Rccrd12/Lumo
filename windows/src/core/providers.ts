@@ -41,8 +41,6 @@ export const PROVIDERS: readonly ProviderDef[] = [
 /** Claude Code's effort levels (claude --effort), "" for its own default. */
 export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
 
-/** Antigravity CLI's (agy --effort), "" for its own default. */
-export const AGY_EFFORTS = ["", "low", "medium", "high"] as const;
 
 /**
  * The providers that run a signed-in CLI on this computer (claude_code.rs,
@@ -53,10 +51,25 @@ export function isCliProvider(id: string): boolean {
   return id === "claude-code" || id === "antigravity-cli";
 }
 
-/** The effort levels the picker offers for `id`; none for a provider without any. */
+/**
+ * What the chat's CLIs may do without asking (Settings.chatPermissionMode,
+ * claude_code::permission_mode): ask for everything, let file edits through,
+ * or only plan. Nothing that lets every action through.
+ */
+export const PERMISSION_MODES = ["default", "acceptEdits", "plan"] as const;
+export type PermissionMode = (typeof PERMISSION_MODES)[number];
+
+export function parsePermissionMode(v: unknown): PermissionMode {
+  return PERMISSION_MODES.includes(v as PermissionMode) ? (v as PermissionMode) : "default";
+}
+
+/**
+ * The effort levels the picker offers for `id`; none for a provider without
+ * any. Antigravity CLI has none to pick: each of its models carries its effort
+ * in its name (`gemini-3.8-flash-low`), so the model is the choice.
+ */
 export function effortsFor(id: string): readonly string[] {
   if (id === "claude-code") return EFFORTS;
-  if (id === "antigravity-cli") return AGY_EFFORTS;
   return [];
 }
 

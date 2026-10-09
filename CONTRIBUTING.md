@@ -5,7 +5,7 @@ Thanks for wanting to help Lumo grow up! 🫶
 ## Getting started
 
 The app lives in `windows/` (Tauri: Rust in `src-tauri/`, TypeScript in `src/`,
-the `coucou-hook` relay in `hook/`). You need [Rust](https://rustup.rs) and
+the `lumo-hook` relay in `hook/`, package `coucou-hook`). You need [Rust](https://rustup.rs) and
 [Node 22.18+](https://nodejs.org); on Linux, also the system libraries listed in
 [windows/README.md](windows/README.md#linux).
 

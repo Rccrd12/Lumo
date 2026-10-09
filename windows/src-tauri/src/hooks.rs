@@ -38,8 +38,11 @@ pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("SubagentStop", 10),
 ];
 
-/// Marker that identifies a Coucou entry inside settings.json.
-const MARKER: &str = "coucou-hook";
+/// A command Lumo wrote: it runs the relay, under its name (lumo-hook) or
+/// the one it had up to 0.3.1 (coucou-hook), which installs from then still use.
+pub(crate) fn is_relay_command(command: &str) -> bool {
+    command.contains("lumo-hook") || command.contains("coucou-hook")
+}
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -91,17 +94,18 @@ fn entry_is_ours(entry: &Value) -> bool {
             hooks.iter().any(|h| {
                 h.get("command")
                     .and_then(Value::as_str)
-                    .map(|c| c.contains(MARKER))
+                    .map(is_relay_command)
                     .unwrap_or(false)
             })
         })
         .unwrap_or(false)
 }
 
-/// The status line in settings.json is Coucou's relay (old installs wrote
-/// `coucou-hook StatusLine`, new ones `coucou-hook --statusline`; both match).
+/// The status line in settings.json is Lumo's relay (old installs wrote
+/// `coucou-hook StatusLine`, later ones `coucou-hook --statusline`, now
+/// `lumo-hook --statusline`; all match).
 fn status_line_is_ours(v: &Value) -> bool {
-    v.get("command").and_then(Value::as_str).is_some_and(|c| c.contains(MARKER))
+    v.get("command").and_then(Value::as_str).is_some_and(is_relay_command)
 }
 
 /// Settings with Coucou's hooks added; everything else is left untouched. A
@@ -338,8 +342,10 @@ fn save_status_line_previous(status_line: &Value) -> std::io::Result<()> {
     config_file::write_like(&path, &path, config_file::pretty(status_line).as_bytes())
 }
 
-/// Copies the relay (coucou-hook.exe / coucou-hook) into the local data dir's
-/// bin/ on launch. In a bundled install it comes from the app resources; in
+/// Copies the relay (lumo-hook.exe / lumo-hook) into the local data dir's
+/// bin/ on launch, and the same file as coucou-hook(.exe) beside it: the hooks
+/// written up to 0.3.1 (Claude Code's, the other agents') run it by that name,
+/// and must keep working until they are installed again. In a bundled install it comes from the app resources; in
 /// `tauri dev` it sits next to the app binary in the workspace target directory.
 ///
 /// Every candidate is tried rather than just the first, because getting this
@@ -382,6 +388,7 @@ pub fn ensure_hook_exe(app: &AppHandle) {
         return;
     };
     install_relay(&src, &dest);
+    install_relay(&src, &settings::legacy_hook_exe_path());
 }
 
 #[cfg(windows)]
@@ -425,6 +432,16 @@ fn install_relay(src: &Path, dest: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_relay_is_known_by_its_name_now_and_up_to_0_3_1() {
+        assert!(is_relay_command(r#""C:/Users/me/AppData/Local/Coucou/bin/lumo-hook.exe" SessionStart"#));
+        assert!(is_relay_command(r#""C:/Users/me/AppData/Local/Coucou/bin/coucou-hook.exe" SessionStart"#));
+        assert!(is_relay_command("'/home/me/.local/share/coucou/bin/lumo-hook' --statusline"));
+        assert!(!is_relay_command("node ~/.claude/other-hook.js"));
+        assert_eq!(platform::HOOK_EXE.trim_end_matches(".exe"), "lumo-hook");
+        assert_eq!(platform::LEGACY_HOOK_EXE.trim_end_matches(".exe"), "coucou-hook");
+    }
 
     #[test]
     fn the_hooks_leave_the_status_line_alone() {
@@ -546,7 +563,7 @@ mod tests {
 
         // Install.
         let plan = preview(true).expect("a BOM must not stop the preview");
-        assert!(plan.diff.contains("coucou-hook"), "the diff must show what changes");
+        assert!(plan.diff.contains("lumo-hook"), "the diff must show what changes");
         let backup = write(true, &plan.fingerprint).expect("install should succeed");
 
         // The backup holds the original bytes, BOM and all.

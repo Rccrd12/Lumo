@@ -32,7 +32,7 @@ Same pattern with the Windows relay:
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "type": "command", "command": "C:\\path\\to\\coucou-hook.exe --agent my-tool" }
+      { "type": "command", "command": "C:\\path\\to\\lumo-hook.exe --agent my-tool" }
     ]
   }
 }
@@ -40,13 +40,13 @@ Same pattern with the Windows relay:
 
 ## Hook command (Linux)
 
-Same pattern with the Linux relay. Lumo copies the relay to `~/.local/share/coucou/bin/coucou-hook` at startup.
+Same pattern with the Linux relay. Lumo copies the relay to `~/.local/share/coucou/bin/lumo-hook` at startup.
 
 ```json
 {
   "hooks": {
     "UserPromptSubmit": [
-      { "type": "command", "command": "/path/to/coucou-hook --agent my-tool" }
+      { "type": "command", "command": "/path/to/lumo-hook --agent my-tool" }
     ]
   }
 }
@@ -142,7 +142,7 @@ island's `tool_name` / `session_id`.
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
 rules decide. One exception, on Windows and Linux: the island's own chat with **Antigravity
-CLI** runs `agy -p` headless with `COUCOU_ISLAND_RUN=1`, where nothing can prompt. For that
+CLI** runs `agy` headless (stream-json on stdin) with `COUCOU_ISLAND_RUN=1`, where nothing can prompt. For that
 run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
 `terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
 chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a click, or `ask`
@@ -236,8 +236,8 @@ Every event is fire-and-forget: if the app is closed or unreachable, nothing is 
 ### Any other tool
 
 Follow the generic pattern: call `nb-hook --agent <your-name> <EventName>` (macOS),
-`coucou-hook.exe --agent <your-name> <EventName>` (Windows)
-or `~/.local/share/coucou/bin/coucou-hook --agent <your-name> <EventName>` (Linux)
+`lumo-hook.exe --agent <your-name> <EventName>` (Windows)
+or `~/.local/share/coucou/bin/lumo-hook --agent <your-name> <EventName>` (Linux)
 and let the relay forward the event.
 
 ## Quick test (Linux)
@@ -246,7 +246,7 @@ With Lumo running:
 
 ```sh
 echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","coucou_agent":"demo"}' \
-  | ~/.local/share/coucou/bin/coucou-hook --agent demo
+  | ~/.local/share/coucou/bin/lumo-hook --agent demo
 ```
 
 A "demo" pill should appear in the island.

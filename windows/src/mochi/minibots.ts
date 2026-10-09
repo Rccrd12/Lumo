@@ -75,6 +75,13 @@ export function syncMiniBotStates(tasks: AgentTask[]) {
 export function tickMiniBots(dt: number) {
   const dpr = Math.min(2, window.devicePixelRatio || 1);
   for (const mb of live.values()) {
+    // Moved to a display with another scale: a canvas sized for the old one
+    // would show only part of him once drawn at the new scale.
+    const px = Math.round(mb.cssSize * dpr);
+    if (mb.canvas.width !== px || mb.canvas.height !== px) {
+      mb.canvas.width = px;
+      mb.canvas.height = px;
+    }
     const ctx = mb.canvas.getContext("2d");
     if (!ctx) continue;
     mb.engine.update(dt);

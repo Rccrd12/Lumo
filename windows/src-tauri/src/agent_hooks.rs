@@ -33,7 +33,7 @@ pub fn claude_hooks_present(settings: &Value) -> bool {
             hooks.iter().any(|hook| {
                 hook.get("command")
                     .and_then(Value::as_str)
-                    .is_some_and(|c| c.contains("NotchBuddy") || c.contains("coucou"))
+                    .is_some_and(|c| c.contains("NotchBuddy") || c.contains("coucou") || c.contains("lumo-hook"))
             })
         })
     })

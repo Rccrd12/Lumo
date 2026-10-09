@@ -482,16 +482,16 @@ test("a question is what the island reopens on while it waits", () => {
 });
 
 test("a finished or failed session behind a waiting card only badges its pill", () => {
-  State.settings.activeIntegrations = ["agent_gemini"];
+  State.settings.activeIntegrations = ["agent_opencode"];
   State.loadIntegrationTasks();
-  hook({ hook_event_name: "SessionStart", coucou_agent: "gemini" });
+  hook({ hook_event_name: "SessionStart", coucou_agent: "opencode" });
   ask("r1");
   asked = [];
-  State.focusId = "agent_gemini";
-  hook({ hook_event_name: "Stop", coucou_agent: "gemini" });
-  hook({ hook_event_name: "StopFailure", coucou_agent: "gemini" });
+  State.focusId = "agent_opencode";
+  hook({ hook_event_name: "Stop", coucou_agent: "opencode" });
+  hook({ hook_event_name: "StopFailure", coucou_agent: "opencode" });
   assert.deepEqual(asked, []);
-  assert.equal(task("agent_gemini").pillBadge, "error");
+  assert.equal(task("agent_opencode").pillBadge, "error");
 });
 
 test("a request from Claude Code in Cursor's terminal goes on the Cursor pill", () => {

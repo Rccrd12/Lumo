@@ -63,6 +63,12 @@ export const PANEL_H = 320;
 export const NOTCH_W = 184;
 export const NOTCH_H = 32;
 export const COMPACT_W = 288; // NOTCH_W + 104
+/**
+ * Lumo's centre from the compact island's left end: close to it, about as
+ * far as he is from its top and bottom (the Mac's 40 left room for the
+ * notch's ear).
+ */
+export const COMPACT_BOT_X = 18;
 export const EXPANDED_W = 640;
 
 export const ROUNDED_CORNER = 14; // hidden / compact
@@ -207,6 +213,10 @@ export function islandSize(
     case "compact":
       return upright ? { w: NOTCH_H, h: COMPACT_W } : { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
+      // The launch greeting is drawn in a fixed 640 × 150 space
+      // (mochi/greeting.ts): a size dragged for the other views would leave it
+      // off-centre in a box too big for it.
+      if (view === "greeting") return { w: EXPANDED_W, h: VIEW_LAYOUTS.greeting.height };
       const h = view === "prompt"
         ? chatHeight(shape, chatCount)
         : Math.max(VIEW_LAYOUTS[view].height, pickedHeight(shape));
@@ -233,7 +243,7 @@ export function botPosition(
     case "hidden":
       return { cx: 46, cy: 16, diameter: 6, opacity: 0 };
     case "compact":
-      return { cx: 40, cy: 16, diameter: 20, opacity: 1 };
+      return { cx: COMPACT_BOT_X, cy: 16, diameter: 20, opacity: 1 };
     case "expanded": {
       const layout = VIEW_LAYOUTS[view];
       if (view === "uploading") {

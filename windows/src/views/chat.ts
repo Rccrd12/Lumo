@@ -42,7 +42,8 @@ import {
   type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
-  activeModel, effortFor, effortsFor, isCliProvider, pickModel, providerDef, visibleProviders, withModel, type ProviderDef,
+  PERMISSION_MODES, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, pickModel, providerDef,
+  visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
@@ -74,6 +75,11 @@ const STRINGS = {
   cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
+  faster: N_("Faster"),
+  smarter: N_("Smarter"),
+  recommended: N_("Recommended"),
+  autoHint: N_("Auto: Claude Code picks the effort its model is made for."),
+  permissions: N_("Permissions"),
   welcome: N_("What can I do for you?"),
   askFile: N_("Ask about a file"),
   lookScreen: N_("Look at my screen"),
@@ -86,9 +92,25 @@ const STRINGS = {
   editingHint: N_("Sending replaces this message and everything after it."),
 };
 
-/** What an effort chip says: Claude Code's own names, "Auto" for its default. */
+/** The effort levels by name, "Auto" for the CLI's own default. */
+const EFFORT_NAMES: Record<string, string> = {
+  low: N_("Low"),
+  medium: N_("Medium"),
+  high: N_("High"),
+  xhigh: N_("Extra high"),
+  max: N_("Max"),
+};
+
+/** Each permission mode: its name and what it lets through. */
+const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = {
+  default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
+  acceptEdits: { name: N_("Accept edits"), note: N_("Edits files without asking; asks for everything else.") },
+  plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
+};
+
+/** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
-  return effort ? effort : t(STRINGS.effortAuto);
+  return effort ? t(EFFORT_NAMES[effort] ?? effort) : t(STRINGS.effortAuto);
 }
 
 let nextId = 1;
@@ -257,33 +279,73 @@ interface Picker {
 function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
-  // The CLIs only: how hard they think (claude --effort, agy --effort).
-  const efforts = h("div", { class: "picker-chips picker-efforts" });
+  // Claude Code only: how hard it thinks (claude --effort), on a slider from
+  // faster to smarter, with Auto (its model's own level) beside it.
+  const efforts = h("div", { class: "picker-efforts" });
   const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list, efforts);
 
   function drawEfforts() {
     clear(efforts);
     const p = providerDef(State.settings.chatProvider);
-    const levels = effortsFor(p.id);
+    const levels = effortsFor(p.id).filter((e) => e !== "");
     efforts.hidden = levels.length === 0;
     if (efforts.hidden) return;
-    efforts.append(h("span", { class: "picker-label", text: t(STRINGS.effort) }));
-    for (const e of levels) {
-      const on = e === effortFor(p.id, State.settings.chatEffort);
-      const chip = h(
-        "button",
-        { class: on ? "picker-chip on" : "picker-chip", style: `--accent:${p.accent}` },
-        h("span", { text: effortLabel(e) }),
-      );
-      chip.addEventListener("click", () => {
-        State.settings = { ...State.settings, chatEffort: e };
-        saveSettings();
-        Sound.play("blip");
-        drawEfforts();
-        onChange();
-      });
-      efforts.append(chip);
-    }
+    const current = effortFor(p.id, State.settings.chatEffort);
+    const pick = (e: string) => {
+      if (e === effortFor(p.id, State.settings.chatEffort)) return;
+      State.settings = { ...State.settings, chatEffort: e };
+      saveSettings();
+      Sound.play("blip");
+      drawEfforts();
+      onChange();
+    };
+
+    const auto = h(
+      "button",
+      { class: current ? "effort-auto" : "effort-auto on", title: t(STRINGS.autoHint), style: `--accent:${p.accent}` },
+      h("span", { text: t(STRINGS.effortAuto) }),
+      h("span", { class: "effort-auto-note", text: t(STRINGS.recommended) }),
+    );
+    auto.addEventListener("click", () => pick(""));
+
+    const slider = h("input", {
+      class: "effort-slider",
+      type: "range",
+      min: "0",
+      max: String(levels.length - 1),
+      step: "1",
+      "aria-label": t(STRINGS.effort),
+    }) as HTMLInputElement;
+    // On Auto the knob stays out of the way: no level is picked.
+    slider.value = String(Math.max(0, levels.indexOf(current)));
+    const ticks = h("div", { class: "effort-ticks" }, ...levels.map(() => h("i")));
+    const track = h(
+      "div",
+      { class: current ? "effort-track" : "effort-track auto", style: `--accent:${p.accent}` },
+      ticks,
+      slider,
+    );
+    const choose = () => pick(levels[Number(slider.value)] ?? "");
+    // A click on the track picks a level, even the one under an Auto knob.
+    slider.addEventListener("change", choose);
+    slider.addEventListener("pointerup", choose);
+
+    efforts.append(
+      h(
+        "div",
+        { class: "effort-head" },
+        h("span", { class: "picker-label", text: t(STRINGS.effort) }),
+        h("span", { class: "effort-value", text: effortLabel(current) }),
+        auto,
+      ),
+      h(
+        "div",
+        { class: "effort-ends" },
+        h("span", { text: t(STRINGS.faster) }),
+        h("span", { text: t(STRINGS.smarter) }),
+      ),
+      track,
+    );
   }
 
   /** Models already asked for, by provider; a model server is asked again each time. */
@@ -427,7 +489,9 @@ export function buildPrompt(
   const send = h("button", { class: "send-btn", title: tl(STRINGS.send) }, svg(ICONS.arrowUp, 11));
   const attachBtn = h("button", { class: "tool-btn", title: tl(STRINGS.attach) }, svg(ICONS.paperclip, 13, { stroke: 1.8 }));
   const screenBtn = h("button", { class: "tool-btn screen-btn", title: tl(SCREEN_STRINGS.button) }, svg(ICONS.display, 13, { stroke: 1.8 }));
-  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, input, send);
+  // Claude Code and Antigravity CLI only: what they may do without asking.
+  const permBtn = h("button", { class: "tool-btn perm-btn" }, svg(ICONS.shield, 13, { stroke: 1.8 }));
+  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, permBtn, input, send);
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -453,6 +517,7 @@ export function buildPrompt(
     if (picker.isOpen) {
       closeHistory();
       closeScreen();
+      closePermissions();
     }
     panelChanged();
     drawModelButton();
@@ -461,7 +526,7 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || body.classList.contains("browsing") || body.classList.contains("screening");
+    const open = picker.isOpen || ["browsing", "screening", "authorizing"].some((c) => body.classList.contains(c));
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
@@ -472,7 +537,9 @@ export function buildPrompt(
   const screenTitle = h("div", { class: "picker-title" });
   const screenList = h("div", { class: "picker-list" });
   const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
-  body.append(chipRow, log, picker.el, historyEl, screenEl, modelRow, bar);
+  const permList = h("div", { class: "picker-list" });
+  const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
+  body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, modelRow, bar);
 
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
@@ -563,10 +630,11 @@ export function buildPrompt(
     modelDot.style.background = p.accent;
     const model = activeModel(State.settings) || t(STRINGS.noModel);
     const effort = effortFor(p.id, State.settings.chatEffort);
-    modelName.textContent = effort ? `${model} · ${effort}` : model;
+    modelName.textContent = effort ? `${model} · ${effortLabel(effort)}` : model;
     modelBtn.classList.toggle("open", picker.isOpen);
     modelBtn.disabled = sending;
     drawSend();
+    drawPermButton();
   }
 
   /** While an answer is written, the send button is its Stop button. */
@@ -636,6 +704,75 @@ export function buildPrompt(
     renderedCount = -1;
     await Bridge.chatRewind(keep);
   }
+
+  // ── Permissions ───────────────────────────────────────────────────────────
+  //
+  // What Claude Code or Antigravity CLI may do without a card, from the next
+  // message on: each turn starts the CLI again with that mode.
+
+  function drawPermissions() {
+    clear(permList);
+    const p = providerDef(State.settings.chatProvider);
+    const current = parsePermissionMode(State.settings.chatPermissionMode);
+    for (const mode of PERMISSION_MODES) {
+      const on = mode === current;
+      const row = h(
+        "button",
+        { class: on ? "picker-model perm-row on" : "picker-model perm-row", style: `--accent:${p.accent}` },
+        h(
+          "span",
+          { class: "perm-text" },
+          h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
+          h("span", { class: "perm-note", text: t(PERMISSION_TEXT[mode].note) }),
+        ),
+        on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
+      );
+      row.addEventListener("click", () => {
+        if (mode !== current) {
+          State.settings = { ...State.settings, chatPermissionMode: mode };
+          saveSettings();
+          Sound.play("blip");
+        }
+        closePermissions();
+        State.notify();
+      });
+      permList.append(row);
+    }
+  }
+
+  function closePermissions() {
+    if (!body.classList.contains("authorizing")) return;
+    body.classList.remove("authorizing");
+    permBtn.classList.remove("open");
+    panelChanged();
+  }
+
+  /** The shield: shown for the CLIs only, lit when they may do more than ask. */
+  function drawPermButton() {
+    const cli = isCliProvider(State.settings.chatProvider);
+    permBtn.hidden = !cli;
+    if (!cli) closePermissions();
+    const mode = parsePermissionMode(State.settings.chatPermissionMode);
+    permBtn.classList.toggle("lit", mode !== "default");
+    permBtn.title = `${t(STRINGS.permissions)} · ${t(PERMISSION_TEXT[mode].name)}`;
+    permBtn.setAttribute("aria-label", permBtn.title);
+    permBtn.disabled = sending;
+  }
+
+  permBtn.addEventListener("click", () => {
+    if (sending) return;
+    if (body.classList.contains("authorizing")) {
+      closePermissions();
+      return;
+    }
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeScreen();
+    drawPermissions();
+    body.classList.add("authorizing");
+    permBtn.classList.add("open");
+    panelChanged();
+  });
 
   // ── New chat, past chats, attach ──────────────────────────────────────────
 
@@ -740,6 +877,7 @@ export function buildPrompt(
   function openScreen() {
     if (picker.isOpen) picker.close();
     closeHistory();
+    closePermissions();
     body.classList.add("screening");
     screenBtn.classList.add("open");
     panelChanged();
@@ -1040,6 +1178,7 @@ export function buildPrompt(
     }
     if (picker.isOpen) picker.close();
     closeScreen();
+    closePermissions();
     drawHistory();
     body.classList.add("browsing");
     historyBtn.classList.add("open");
@@ -1288,6 +1427,7 @@ export function buildPrompt(
       if (State.view !== "prompt") {
         closeHistory();
         closeScreen();
+        closePermissions();
       }
       newBtn.disabled = sending;
       historyBtn.disabled = sending;

@@ -44,10 +44,11 @@ export class IslandStateMachine {
     this.hides = on;
     if (!on) this.clear("petitHide");
   }
-  /** coucou → petit once the greeting animation ends (no hover). */
+  /**
+   * coucou → petit once the greeting animation ends. The mouse resting on the
+   * island does not hold it open: the greeting always finishes on its own.
+   */
   greetAutoCollapseDelay = 0.6;
-  /** coucou → petit while the mouse hovers the greeting. */
-  greetHoverCollapseDelay = 10;
   /** An alert waiting for an answer stays open, even when the mouse leaves. */
   pinned = false;
 
@@ -85,7 +86,6 @@ export class IslandStateMachine {
         this.clear("homeCollapse");
         break;
       case "coucou":
-        this.scheduleGreetCollapse(this.greetHoverCollapseDelay);
         break;
     }
   }
@@ -113,7 +113,7 @@ export class IslandStateMachine {
     this.transition("home");
   }
 
-  /** Greeting animation finished (T.end). Doesn't override a running hover timer. */
+  /** Greeting animation finished (T.end). */
   greetComplete() {
     if (this.state !== "coucou") return;
     if (this.greetCollapse == null) this.scheduleGreetCollapse(this.greetAutoCollapseDelay);

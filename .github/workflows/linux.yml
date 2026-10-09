@@ -95,7 +95,7 @@ jobs:
           [ "$tag" = "$cargo" ] || bad="$bad Cargo.toml says $cargo;"
           if [ -n "$bad" ]; then echo "tag says $tag but$bad"; exit 1; fi
 
-      # The app bundles target/release/coucou-hook as a resource, and its build
+      # The app bundles target/release/lumo-hook (package coucou-hook) as a resource, and its build
       # script refuses to run until that file exists.
       - name: Test
         run: |

@@ -1,8 +1,8 @@
 // Chat through Antigravity CLI: the `agy` command the user installed and signed
 // in to with their own Google account. No API key: Coucou runs the unmodified
-// binary in headless mode (`agy -p`), and it answers with its own sign-in
-// (cached in the system keyring), exactly as in a terminal. Coucou never reads,
-// stores or forwards any Google credential.
+// binary in headless mode (`agy --input-format stream-json`), and it answers
+// with its own sign-in (cached in the system keyring), exactly as in a
+// terminal. Coucou never reads, stores or forwards any Google credential.
 //
 // The same shape as claude_code.rs, whose helpers it borrows:
 //
@@ -76,8 +76,6 @@ When an action is denied or does not run, tell the user plainly what you could n
 /// "default": no `--model`, whatever the user picked in agy itself.
 const DEFAULT_MODEL: &str = "default";
 
-/// The effort levels `agy --effort` takes; anything else leaves agy's default.
-const EFFORTS: &[&str] = &["low", "medium", "high"];
 
 fn not_installed() -> String {
     tf(
@@ -88,10 +86,6 @@ fn not_installed() -> String {
 
 fn not_signed_in() -> String {
     t("Antigravity CLI isn't signed in. Run `agy` once in a terminal to sign in with your Google account, then try again.")
-}
-
-fn safe_effort(effort: &str) -> Option<&'static str> {
-    EFFORTS.iter().copied().find(|e| *e == effort.trim())
 }
 
 /// A model slug or name we are willing to put on the command line. agy's
@@ -109,21 +103,35 @@ fn safe_model(model: &str) -> Option<&str> {
 
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
 /// `folders`: what the user shared from File Explorer in this chat.
-fn args(model: &str, effort: &str, conversation: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
+///
+/// `work`: the folder it runs in; `mode`: what it may do without a card
+/// (claude_code::permission_mode).
+///
+/// No `-p`: agy's `-p` takes the prompt as its value, so `-p --input-format`
+/// is refused ("Attach the prompt to the flag"). Reading stream-json from
+/// stdin is headless on its own. No `--effort` either: every model `agy
+/// models` lists carries its effort in its name (`gemini-3.8-flash-low`), and
+/// a mismatched `--effort` stops agy at startup.
+fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: &str, folders: &[String]) -> Vec<String> {
     let mut a: Vec<String> = [
-        "-p",
         "--input-format",
         "stream-json",
         "--output-format",
         "stream-json",
+        // A question starting with "/" (`/usage`) would otherwise be a command
+        // of agy's own, which ends the run.
+        "--disable-slash-commands",
         "--print-timeout",
         PRINT_TIMEOUT,
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
-    // The inbox (dropped files, screenshots) and the shared folders join the
-    // workspace, which agy reads without asking.
+    // Without its own folder on the list, agy's tools work in a scratch folder
+    // of agy's instead. The inbox (dropped files, screenshots) and the shared
+    // folders join the workspace, which agy reads without asking.
+    a.push("--add-dir".into());
+    a.push(work.to_string());
     a.push("--add-dir".into());
     a.push(inbox.to_string());
     for dir in folders.iter().filter_map(|d| safe_dir(d)) {
@@ -134,9 +142,10 @@ fn args(model: &str, effort: &str, conversation: Option<&str>, inbox: &str, fold
         a.push("--model".into());
         a.push(m.to_string());
     }
-    if let Some(e) = safe_effort(effort) {
-        a.push("--effort".into());
-        a.push(e.to_string());
+    match crate::claude_code::permission_mode(mode) {
+        "acceptEdits" => a.extend(["--mode".to_string(), "accept-edits".to_string()]),
+        "plan" => a.extend(["--mode".to_string(), "plan".to_string()]),
+        _ => {}
     }
     if let Some(id) = conversation.and_then(safe_session) {
         a.push("--conversation".into());
@@ -292,9 +301,21 @@ struct Run {
 impl Run {
     /// Takes one line; true when the visible text changed.
     fn feed(&mut self, line: &[u8]) -> bool {
-        let Ok(v) = serde_json::from_slice::<Value>(line) else { return false };
-        let id = v.get("conversation_id").and_then(Value::as_str).and_then(safe_session);
-        match v.get("event").and_then(Value::as_str) {
+        let Ok(frame) = serde_json::from_slice::<Value>(line) else { return false };
+        let event = frame.get("event").and_then(Value::as_str);
+        // agy puts each event's fields in an object named after it
+        // (`{"event": "result", "result": {…}}`); older builds put them next
+        // to `event`.
+        let v = match event.and_then(|e| frame.get(e)) {
+            Some(inner) if inner.is_object() => inner,
+            _ => &frame,
+        };
+        let id = v
+            .get("conversation_id")
+            .or_else(|| frame.get("conversation_id"))
+            .and_then(Value::as_str)
+            .and_then(safe_session);
+        match event {
             Some("result") => {
                 // The result's conversation is the one to resume, whatever came before.
                 if let Some(id) = id {
@@ -314,7 +335,7 @@ impl Run {
                 if self.conversation.is_none() {
                     self.conversation = id.map(str::to_string);
                 }
-                event == "step_update" && self.step(&v)
+                event == "step_update" && self.step(v)
             }
             None => false,
         }
@@ -323,7 +344,8 @@ impl Run {
     /// One `step_update`; true when the visible text changed.
     fn step(&mut self, v: &Value) -> bool {
         let index = v["step_index"].as_u64().unwrap_or(u64::MAX);
-        let done = v["state"].as_str() == Some("DONE");
+        // A step ends DONE, or ERROR (a tool refused or failed).
+        let done = matches!(v["state"].as_str(), Some("DONE" | "ERROR"));
         // A subagent at work: its own steps are its business.
         if v.get("subagent_info").is_some_and(|s| !s.is_null()) {
             if done {
@@ -433,7 +455,7 @@ fn result_error(error: &str) -> String {
     }
 }
 
-/// Runs `agy -p` once in `dir`, blocking. `on_text` gets the visible text as
+/// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
 /// it grows, `on_activity` what agy is doing each time it changes. Stop ends
 /// the CLI and its children; the run so far is returned, `stopped`.
 fn run(
@@ -643,7 +665,7 @@ pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
-    effort: &str,
+    mode: &str,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -660,7 +682,8 @@ pub async fn send(
     let text = if conversation.is_none() { with_instructions(&text) } else { text };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, effort, conversation.as_deref(), &inbox, &chat.cli_dirs(folder));
+    let work = claude_code::work_dir();
+    let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
 
     let app2 = app.clone();
     let stop = chat.stopper();
@@ -669,7 +692,7 @@ pub async fn send(
             exe,
             args,
             input,
-            claude_code::work_dir(),
+            work,
             stop,
             |text| {
                 let _ = app2.emit_to(WINDOW_LABEL, "chat-delta", text.to_string());
@@ -694,6 +717,9 @@ pub async fn send(
         return Ok(ChatReply::stopped(shown, chat.cli_session()));
     }
     let answer = match state.result {
+        // The result repeats the answer; should it come back empty, what was
+        // streamed is the answer.
+        Some(Ok(text)) if text.trim().is_empty() => state.visible.trim().to_string(),
         Some(Ok(text)) => text,
         Some(Err(e)) => return Err(result_error(&e)),
         None => unreachable!("run() returns an error without a result"),
@@ -715,29 +741,72 @@ mod tests {
 
     #[test]
     fn the_prompt_never_goes_on_the_command_line_and_odd_values_are_dropped() {
-        let a = args("gemini-3-pro", "high", Some(CID), "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox", &[]);
-        assert_eq!(&a[..7], ["-p", "--input-format", "stream-json", "--output-format", "stream-json", "--print-timeout", "15m"]);
+        let inbox = "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox";
+        let a = args("gemini-3-pro", "default", Some(CID), "C:\\Users\\me\\Coucou", inbox, &[]);
+        assert_eq!(
+            &a[..7],
+            ["--input-format", "stream-json", "--output-format", "stream-json", "--disable-slash-commands", "--print-timeout", "15m"]
+        );
+        assert!(!a.iter().any(|s| s == "-p" || s == "--print"), "-p would swallow the next flag as the prompt: {a:?}");
+        assert!(!a.contains(&"--effort".to_string()), "the model's name carries its effort: {a:?}");
         assert!(a.windows(2).any(|w| w == ["--model", "gemini-3-pro"]));
-        assert!(a.windows(2).any(|w| w == ["--effort", "high"]));
         assert!(a.windows(2).any(|w| w == ["--conversation", CID]));
-        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\AppData\\Local\\Coucou\\inbox"]));
+        assert!(a.windows(2).any(|w| w == ["--add-dir", "C:\\Users\\me\\Coucou"]), "its own folder, not agy's scratch one");
+        assert!(a.windows(2).any(|w| w == ["--add-dir", inbox]));
+        assert!(!a.contains(&"--mode".to_string()), "default: agy's own request-review");
         assert!(!a.iter().any(|s| s.contains("dangerously")), "never skips permissions: {a:?}");
 
-        let a = args("Gemini 3.1 Pro (High)", "", None, "/inbox", &["/home/me/My PDFs".into()]);
+        let a = args("Gemini 3.1 Pro (High)", "", None, "/w", "/inbox", &["/home/me/My PDFs".into()]);
         assert!(a.windows(2).any(|w| w == ["--model", "Gemini 3.1 Pro (High)"]));
         assert!(a.windows(2).any(|w| w == ["--add-dir", "/home/me/My PDFs"]));
         assert!(!a.contains(&"--conversation".to_string()));
-        assert!(!a.contains(&"--effort".to_string()));
 
-        let a = args("--dangerously-skip-permissions", "max", Some("x\" & calc"), "/inbox", &["C:\\A & calc".into()]);
+        let a = args("--dangerously-skip-permissions", "bypassPermissions", Some("x\" & calc"), "/w", "/inbox", &["C:\\A & calc".into()]);
         assert!(!a.iter().any(|s| s.contains("dangerously") || s.contains('&')), "{a:?}");
         assert!(!a.contains(&"--model".to_string()), "a flag is no model");
-        assert!(!a.contains(&"--effort".to_string()), "agy takes low, medium or high");
+        assert!(!a.contains(&"--mode".to_string()), "nothing is let through wholesale");
         assert!(!a.contains(&"--conversation".to_string()));
-        assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 1, "only the inbox: {a:?}");
-        assert!(!args("default", "", None, "/inbox", &[]).contains(&"--model".to_string()), "Default: agy's own choice");
+        assert_eq!(a.iter().filter(|s| *s == "--add-dir").count(), 2, "its folder and the inbox: {a:?}");
+        assert!(!args("default", "", None, "/w", "/inbox", &[]).contains(&"--model".to_string()), "Default: agy's own choice");
         assert_eq!(safe_model("gemini & calc"), None);
         assert_eq!(safe_model("100%"), None);
+    }
+
+    #[test]
+    fn the_permission_mode_picked_in_the_chat_reaches_agy() {
+        let mode = |m: &str| {
+            let a = args("default", m, None, "/w", "/inbox", &[]);
+            a.iter().position(|s| s == "--mode").map(|i| a[i + 1].clone())
+        };
+        assert_eq!(mode("acceptEdits").as_deref(), Some("accept-edits"));
+        assert_eq!(mode("plan").as_deref(), Some("plan"));
+        assert_eq!(mode("default"), None);
+    }
+
+    #[test]
+    fn the_answer_is_read_from_agys_nested_events() {
+        // agy 1.2's real shape: each event's fields in an object named after it.
+        let mut run = Run::default();
+        let lines = [
+            format!(r#"{{"event":"init","conversation_id":"{CID}","init":{{"model":"gemini-3.8-flash-low","permission_mode":"default"}}}}"#),
+            r#"{"event":"step_update","step_update":{"step_index":0,"state":"DONE","step_type":"user_input"}}"#.to_string(),
+            r#"{"event":"step_update","step_update":{"step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Ciao! "}}"#.to_string(),
+            r#"{"event":"step_update","step_update":{"step_index":1,"state":"DONE","step_type":"agent_response","text_delta":"Come posso aiutarti?\n"}}"#.to_string(),
+            format!(r#"{{"event":"result","result":{{"status":"SUCCESS","response":"Ciao! Come posso aiutarti?","conversation_id":"{CID}","num_turns":1}}}}"#),
+        ];
+        for l in &lines {
+            run.feed(l.as_bytes());
+        }
+        assert_eq!(run.visible, "Ciao! Come posso aiutarti?\n");
+        assert_eq!(run.result, Some(Ok("Ciao! Come posso aiutarti?".to_string())));
+        assert_eq!(run.conversation.as_deref(), Some(CID));
+
+        // A tool refused: its step ends in ERROR, and that counts as a denial.
+        let mut run = Run::default();
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":2,"state":"ACTIVE","step_type":"tool","tool_info":{"name":"run_command","parameters":{"CommandLine":"ls"}}}}"#);
+        run.feed(br#"{"event":"step_update","step_update":{"step_index":2,"state":"ERROR","step_type":"tool","tool_info":{"name":"run_command","error":{"type":"denied","message":"permission check failed"}}}}"#);
+        assert_eq!(run.denied, 1);
+        assert!(run.pending.is_empty(), "an ERROR ends the step");
     }
 
     #[test]
@@ -912,7 +981,7 @@ mod tests {
 
     #[test]
     fn a_turn_reads_its_prompt_from_stdin_and_ends_once_answered() {
-        // A stand-in for `agy -p`: reads one event, answers it, then waits
+        // A stand-in for headless agy: reads one event, answers it, then waits
         // for stdin to close as agy does.
         #[cfg(unix)]
         {

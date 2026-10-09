@@ -52,7 +52,8 @@ test("Claude Code without the relay points to Settings rather than showing numbe
   assert.equal(line.color, null);
   // Relay in, no numbers yet: it says it is waiting.
   const waiting = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: true }), null, undefined, NOW);
-  assert.equal(waiting.text, "Waiting for a response from Claude Code");
+  assert.equal(waiting.text, "Plan usage: not reported yet");
+  assert.match(waiting.title, /terminal sessions/, "says where the numbers come from");
 });
 
 test("Anthropic and OpenAI: the rate limits of the last answer", () => {

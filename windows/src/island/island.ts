@@ -16,7 +16,7 @@ import { NEUTRAL_PILL } from "../core/pill-colors";
 import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../mochi/engine";
 import { Greeting } from "../mochi/greeting";
-import { createMiniBot, pruneMiniBots, syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
+import { syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../mochi/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
@@ -73,7 +73,6 @@ export class Island {
   private botCanvas!: HTMLCanvasElement;
   private botGlow!: HTMLElement;
   private greetingCanvas!: HTMLCanvasElement;
-  private miniGrid!: HTMLElement;
   private countdown!: HTMLElement;
   private wakeStrip!: HTMLElement;
   /** Grips on the island's free edges and corners: dragging them resizes it. */
@@ -119,6 +118,9 @@ export class Island {
   private lastFrame = 0;
   private dirty = true;
   private canvasPx = 0;
+  /** The display scale the bot and greeting canvases were sized for. */
+  private canvasDpr = 0;
+  private greetingDpr = 0;
 
   // Rust starts the window at full size so the launch greeting has room.
   private collapsed = false;
@@ -296,7 +298,6 @@ export class Island {
     this.botGlow = h("div", { id: "bot-glow" });
     this.botCanvas = h("canvas", { id: "bot-canvas" });
     this.greetingCanvas = h("canvas", { id: "greeting-canvas" });
-    this.miniGrid = h("div", { id: "mini-grid" });
     this.countdown = h("div", { id: "countdown" });
 
     this.header = buildHeader(actions);
@@ -331,14 +332,11 @@ export class Island {
       this.clipEl,
       this.botGlow,
       this.botCanvas,
-      this.miniGrid,
       this.countdown,
       ...this.grips.map((g) => g.el),
     );
 
-    const dpr = Math.min(2, window.devicePixelRatio || 1);
-    this.greetingCanvas.width = Math.round(EXPANDED_W * dpr);
-    this.greetingCanvas.height = Math.round(150 * dpr);
+    // Its pixels are sized as it is drawn (frame), for the display it is on.
     this.greetingCanvas.style.width = `${EXPANDED_W}px`;
     this.greetingCanvas.style.height = "150px";
 
@@ -735,7 +733,6 @@ export class Island {
     const w = this.width.value;
     const hh = this.height.value;
     const r = this.radius.value;
-    const dock = this.dock;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
     // Rounded all round, a little off the edge of the screen.
@@ -746,14 +743,7 @@ export class Island {
     const lift = this.lift.value;
     this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
-    // the state-driven DOM sync. Upright, the mini grid sits below Mochi.
-    if (isUpright(dock) && State.mode !== "expanded") {
-      this.miniGrid.style.left = `${w / 2 - 14.5}px`;
-      this.miniGrid.style.top = `${hh - 40 - 14.5}px`;
-    } else {
-      this.miniGrid.style.left = `${w - 40 - 14.5}px`;
-      this.miniGrid.style.top = `${hh / 2 - 14.5}px`;
-    }
+    // the state-driven DOM sync.
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
 
@@ -820,6 +810,25 @@ export class Island {
     }
   }
 
+  /**
+   * Moved to a display with another scale (or zoomed), the page may keep its
+   * size and get no resize: a frame still has to run, so the canvases are
+   * sized again for the new scale (drawBot, the greeting, the mini Lumos).
+   */
+  private watchScale() {
+    if (typeof window.matchMedia !== "function") return;
+    const query = window.matchMedia(`(resolution: ${window.devicePixelRatio || 1}dppx)`);
+    query.addEventListener(
+      "change",
+      () => {
+        this.dirty = true;
+        this.ensureRunning();
+        this.watchScale();
+      },
+      { once: true },
+    );
+  }
+
   // ── Input ───────────────────────────────────────────────────────────────────
 
   private wireInput() {
@@ -871,6 +880,7 @@ export class Island {
     });
     // The window grows and shrinks around the island: its rect moves with it.
     window.addEventListener("resize", () => this.ensureRunning());
+    this.watchScale();
 
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
@@ -1029,7 +1039,6 @@ export class Island {
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
       if (inIsland && !this.wasInIsland) {
-        if (this.fsm.state === "coucou") this.greeting.hover();
         this.fsm.mouseEntered();
         this.scheduleHoverOpen();
       }
@@ -1130,9 +1139,17 @@ export class Island {
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
     if (greetingActive) {
+      // Sized for the scale it is drawn at, which changes with the island's
+      // zoom and the display it is on: a canvas sized once, before the zoom
+      // was applied, drew the greeting too big and cut off on the right.
+      const dpr = Math.min(2, window.devicePixelRatio || 1);
+      if (this.greetingDpr !== dpr) {
+        this.greetingDpr = dpr;
+        this.greetingCanvas.width = Math.round(EXPANDED_W * dpr);
+        this.greetingCanvas.height = Math.round(150 * dpr);
+      }
       const gctx = this.greetingCanvas.getContext("2d");
       if (gctx) {
-        const dpr = Math.min(2, window.devicePixelRatio || 1);
         gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.greeting.look = this.look();
         this.greeting.draw(gctx);
@@ -1221,8 +1238,9 @@ export class Island {
     const hCss = w + BOT_OVERHANG;
     const wCss = w + BOT_SIDE * 2;
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (this.canvasPx !== w) {
+    if (this.canvasPx !== w || this.canvasDpr !== dpr) {
       this.canvasPx = w;
+      this.canvasDpr = dpr;
       this.botCanvas.width = Math.round(wCss * dpr);
       this.botCanvas.height = Math.round(hCss * dpr);
       this.botCanvas.style.width = `${wCss}px`;
@@ -1346,22 +1364,8 @@ export class Island {
       }
     }
 
-    // Compact mini grid
-    const showGrid = State.mode === "compact";
-    this.miniGrid.style.opacity = showGrid ? "1" : "0";
-    if (showGrid) {
-      const others = State.otherTasks.slice(0, 4);
-      const key = others.map((t) => t.id).join("|");
-      if (this.miniGrid.dataset.key !== key) {
-        this.miniGrid.dataset.key = key;
-        this.miniGrid.replaceChildren();
-        for (const t of others) {
-          this.miniGrid.append(createMiniBot(t, 13));
-        }
-        pruneMiniBots();
-      }
-    }
-
+    // The compact island shows Lumo alone: the other pills' mini Lumos are
+    // only in the open island.
     syncMiniBotStates(State.tasks);
     this.engine.setState(State.shownState);
   }
