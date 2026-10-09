@@ -9,6 +9,11 @@
 // "Folder open in File Explorer" shares that folder's listing (explorer.rs);
 // the menu only asks its name. A file the question names is then attached
 // from it, as with the paperclip (views/chat.ts).
+//
+// "Always share the folder open in File Explorer" (Settings → Chat, off by
+// default) does the same for every message: the folder's name shows as a chip
+// while the user types, its listing is taken when the message goes, and the
+// chip's × leaves it out of that one message.
 
 import type { ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText } from "./bridge";
 import type { ProviderDef } from "./providers";
@@ -105,10 +110,36 @@ export interface PendingScreen {
   selection?: SelectedText | null;
   /** The folder open in File Explorer, with what is in it. */
   folder?: ExplorerFolder | null;
+  /**
+   * "Always share the folder open in File Explorer": the folder found there
+   * (its name only), shown as a chip until the message goes with its listing.
+   */
+  autoFolder?: ExplorerFolder | null;
+  /** That chip was taken off: this message goes without the folder. */
+  autoOff?: boolean;
 }
 
 export function emptyScreen(): PendingScreen {
-  return { windows: null, shots: [], selection: null, folder: null };
+  return { windows: null, shots: [], selection: null, folder: null, autoFolder: null, autoOff: false };
+}
+
+/** After a message (or a new chat): nothing waits, the folder that rides along by itself stays. */
+export function nextScreen(p: PendingScreen): PendingScreen {
+  return { ...emptyScreen(), autoFolder: p.autoFolder ?? null };
+}
+
+/** The folder chip's ×: the shared folder goes, and so does the automatic one, for this message. */
+export function withoutFolder(p: PendingScreen): PendingScreen {
+  return { ...p, folder: null, autoOff: true };
+}
+
+/**
+ * True when this message should take the folder open in File Explorer by
+ * itself: the setting is on, the menu did not already share one, and its chip
+ * was not taken off.
+ */
+export function sharesFolderByItself(p: PendingScreen, settingOn: boolean): boolean {
+  return settingOn && !p.folder && !p.autoOff;
 }
 
 export function hasScreen(p: PendingScreen): boolean {
@@ -165,7 +196,8 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
     const names = p.shots.map((s) => s.name).join(", ");
     out.push({ kind: "shots", label: names, title: names, thumbs: p.shots.map((s) => s.preview) });
   }
-  if (p.folder) out.push({ kind: "folder", label: p.folder.name, title: p.folder.path });
+  const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
+  if (folder) out.push({ kind: "folder", label: folder.name, title: folder.path });
   return out;
 }
 

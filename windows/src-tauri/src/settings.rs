@@ -74,6 +74,10 @@ pub struct Settings {
     /// Anthropic and OpenAI answer with, OpenRouter's key credits. Off until
     /// the user turns it on, so the chat stays as it shipped.
     pub chat_show_usage: bool,
+    /// Every chat message carries the folder open in File Explorer (its path
+    /// and listing, explorer.rs), as if picked from the screen button. Off
+    /// until the user turns it on in Settings → Chat.
+    pub chat_share_explorer: bool,
     /// Addresses of the model servers once connected; empty means not connected.
     pub ollama_url: String,
     pub lmstudio_url: String,
@@ -162,6 +166,7 @@ impl Default for Settings {
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
             chat_show_usage: false,
+            chat_share_explorer: false,
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
@@ -451,6 +456,7 @@ mod tests {
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
   "chatShowUsage": true,
+  "chatShareExplorer": true,
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
@@ -555,6 +561,14 @@ mod tests {
         assert_eq!(loaded.mochi_outfit, "auto");
         assert_eq!(loaded.model, "some-model");
         assert!(!loaded.sound_enabled);
+    }
+
+    #[test]
+    fn a_file_from_before_the_explorer_setting_shares_nothing_by_itself() {
+        let loaded = parse(&custom_with("chatShareExplorer", None)).unwrap();
+        assert!(!loaded.chat_share_explorer);
+        assert_eq!(loaded.chat_effort, "high");
+        assert!(parse(CUSTOM.as_bytes()).unwrap().chat_share_explorer);
     }
 
     #[test]
@@ -866,6 +880,7 @@ mod tests {
                 "chatModels",
                 "chatEffort",
                 "chatShowUsage",
+                "chatShareExplorer",
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",

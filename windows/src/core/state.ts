@@ -174,6 +174,11 @@ export interface Settings {
   chatEffort: string;
   /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
   chatShowUsage: boolean;
+  /**
+   * Every chat message carries the folder open in File Explorer, as if picked
+   * from the screen button. Off until the user turns it on in Settings → Chat.
+   */
+  chatShareExplorer: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -235,6 +240,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatModels: {},
   chatEffort: "",
   chatShowUsage: false,
+  chatShareExplorer: false,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

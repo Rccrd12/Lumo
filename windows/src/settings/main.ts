@@ -633,6 +633,33 @@ function chatUsageSection(): HTMLElement {
   );
 }
 
+// ── What goes with every message ─────────────────────────────────────────────
+
+const SHARING_TEXT = {
+  get title() { return t("Share with the chat"); },
+  get hint() { return t("When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message."); },
+  get explorer() { return t("Always share the folder open in File Explorer"); },
+  get linux() { return t("Not available on Linux yet."); },
+};
+
+function chatSharingSection(): HTMLElement {
+  const windows = navigator.userAgent.includes("Windows");
+  return h(
+    "section",
+    {},
+    h("h2", {}, h("span", { text: SHARING_TEXT.title })),
+    h("div", { class: "hint", text: SHARING_TEXT.hint }),
+    h("div", { class: "row" },
+      h("label", { text: SHARING_TEXT.explorer }),
+      toggle(settings.chatShareExplorer, (on) => {
+        settings.chatShareExplorer = on;
+        void save();
+      }),
+    ),
+    windows ? null : h("div", { class: "hint", text: SHARING_TEXT.linux }),
+  );
+}
+
 // ── Local models section ──────────────────────────────────────────────────────
 
 type LocalId = "ollama" | "lmstudio" | "custom";
@@ -1544,6 +1571,8 @@ async function render() {
     shortcuts: [shortcutsSection(shortcutReport)],
     updates: [updatesSection(version)],
   };
+  // The chat page ends on what goes with every message.
+  pages.chat.push(chatSharingSection());
 
   const nav = h("nav", { class: "nav", "aria-label": t("Settings") });
   const content = h("main", { class: "content" });

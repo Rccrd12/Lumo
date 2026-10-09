@@ -14,6 +14,13 @@
 //
 // With Settings → Chat → "Show remaining usage in the chat" on, a quiet line
 // next to the model button says what the provider has left (core/chat-usage.ts).
+//
+// With "Always share the folder open in File Explorer" on (Settings → Chat),
+// that folder goes with every message by itself; its chip's × leaves it out
+// of one.
+//
+// Ctrl+V in the text field attaches an image or a file copied in File
+// Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
@@ -29,9 +36,11 @@ import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
 import { OPENROUTER_STALE_MS, usageLine, type ChatUsage, type SeenUsage } from "../core/chat-usage";
 import {
-  SCREEN_STRINGS, emptyScreen, entryLabel, hasScreen, keepShots, menuEntries, screenChips, screenLabel,
-  screenPayload, seesImages, shotPaths, type ChipKind, type ExplorerPeek, type MenuEntry,
+  SCREEN_STRINGS, emptyScreen, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
+  screenPayload, seesImages, sharesFolderByItself, shotPaths, withoutFolder, type ChipKind, type ExplorerPeek,
+  type MenuEntry,
 } from "../core/screen";
+import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -65,6 +74,9 @@ function effortLabel(effort: string): string {
 }
 
 let nextId = 1;
+
+/** The folder open in File Explorer is asked again at most this often while the field takes focus. */
+const PEEK_EVERY_MS = 1500;
 
 function bubble(message: ChatMessage): HTMLElement {
   if (message.role === "user") {
@@ -469,9 +481,51 @@ export function buildPrompt(
       dropShots(shotPaths(screen));
       screen = { ...screen, shots: [] };
     }
-    if (!kind || kind === "windows") screen = { ...screen, windows: null };
-    if (!kind || kind === "selection") screen = { ...screen, selection: null };
-    if (!kind || kind === "folder") screen = { ...screen, folder: null };
+    if (!kind) screen = nextScreen(screen);
+    if (kind === "windows") screen = { ...screen, windows: null };
+    if (kind === "selection") screen = { ...screen, selection: null };
+    if (kind === "folder") screen = withoutFolder(screen);
+  }
+
+  // ── The folder that goes with every message (Settings → Chat) ─────────────
+  //
+  // Only while the setting is on, and only when the text field takes focus or
+  // a message went: the folder's name, for the chip. Its listing is taken when
+  // the message goes. Linux (nothing found) or an error: no chip, nothing sent.
+
+  let peeking = false;
+  let peekedAt = -Infinity;
+  /** The setting as the view last saw it, to notice it being turned on or off. */
+  let sharesExplorer = false;
+
+  async function peekExplorer(force: boolean) {
+    if (!State.settings.chatShareExplorer) return;
+    const now = performance.now();
+    if (peeking || (!force && now - peekedAt < PEEK_EVERY_MS)) return;
+    peeking = true;
+    peekedAt = now;
+    let folder: ExplorerFolder | null = null;
+    try {
+      folder = await Bridge.screenExplorerPeek();
+    } catch {
+      folder = null;
+    } finally {
+      peeking = false;
+    }
+    if (!State.settings.chatShareExplorer) return;
+    const before = screen.autoFolder?.path ?? "";
+    screen = { ...screen, autoFolder: folder };
+    if ((folder?.path ?? "") !== before) State.notify();
+  }
+
+  /** The folder open in File Explorer with its listing, as the menu's entry shares it; null if none. */
+  async function explorerNow(): Promise<ExplorerFolder | null> {
+    try {
+      return await Bridge.screenExplorer();
+    } catch (err) {
+      void Bridge.log(`[explorer] ${String(err)}`);
+      return null;
+    }
   }
 
   /** What a sharing shortcut just took (island/shortcuts.ts runShared). */
@@ -826,7 +880,12 @@ export function buildPrompt(
     Sound.play("send");
 
     // What the screen button added goes once, then the chip goes.
-    const shared = screen;
+    const waiting = screen;
+    let shared = waiting;
+    if (sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
+      const folder = await explorerNow();
+      if (folder) shared = { ...waiting, folder };
+    }
     if (shared.folder) await attachNamed(shared.folder, query);
 
     State.chatHistory.push({ id: nextId++, role: "user", content: query });
@@ -843,7 +902,8 @@ export function buildPrompt(
       const reply = await Bridge.chatSend(query, context, screenContext);
       State.chatHistory.push({ id: nextId++, role: "assistant", content: reply.text });
       if (file) file.sent = true;
-      if (screen === shared) screen = emptyScreen();
+      if (screen === waiting) screen = nextScreen(screen);
+      void peekExplorer(true);
       if (reply.session) State.chatSession = reply.session;
       remember();
       askOpenRouter(true);
@@ -865,6 +925,37 @@ export function buildPrompt(
     }
   }
 
+  // ── Ctrl+V ────────────────────────────────────────────────────────────────
+
+  /** No text was pasted: the file copied in File Explorer, else the image the page got. */
+  async function pasteAttach(files: File[]) {
+    try {
+      const copied = await Bridge.pasteCopiedFile();
+      if (copied) {
+        await useFile(copied);
+        return;
+      }
+      const file = files[0];
+      if (!file) return;
+      if (file.size > MAX_PASTE_BYTES) throw new Error(t(PASTE_STRINGS.tooBig));
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      await useFile(await Bridge.pasteFile(pastedName(file, new Date()), bytes));
+    } catch (err) {
+      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      State.view = "note";
+      Sound.play("error");
+      State.notify();
+    }
+  }
+
+  input.addEventListener("paste", (e) => {
+    const data = (e as ClipboardEvent).clipboardData;
+    if (sending || pasteAction(data) === "text") return;
+    e.preventDefault();
+    void pasteAttach(pastedFiles(data));
+  });
+  input.addEventListener("focus", () => void peekExplorer(false));
+
   send.addEventListener("click", () => void submit());
   input.addEventListener("keydown", (e) => {
     const key = (e as KeyboardEvent).key;
@@ -885,9 +976,14 @@ export function buildPrompt(
     el,
     sync() {
       takeShare();
+      if (State.settings.chatShareExplorer !== sharesExplorer) {
+        sharesExplorer = State.settings.chatShareExplorer;
+        if (sharesExplorer) void peekExplorer(true);
+        else screen = { ...screen, autoFolder: null, autoOff: false };
+      }
       const file = State.droppedFile;
       const wantChip = file?.name ?? "";
-      const extra = hasScreen(screen) ? screenChips(screen) : [];
+      const extra = screenChips(screen);
       const chipKey = [wantChip, ...extra.map((c) => `${c.label}\t${c.title}`), ...shotPaths(screen)].join("\n");
       if (chipRow.dataset.label !== chipKey) {
         chipRow.dataset.label = chipKey;

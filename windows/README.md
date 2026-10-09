@@ -315,7 +315,11 @@ Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
 kept on this computer only, 40 at most. The paperclip in the text field opens
 the file picker: with Claude Code the file joins the conversation, with the
-other providers it starts a new chat, as a drop does.
+other providers it starts a new chat, as a drop does. `Ctrl+V` in the text
+field does the same with what you copied: a screenshot (`Win+Shift+S`) or
+another image is saved in the inbox (up to 32 MB), and a file copied in File
+Explorer is copied there like a dropped one (the first, when you copied
+several). Text pastes as usual.
 
 ### Show the chat your screen
 
@@ -351,6 +355,15 @@ Claude Code is also given the folder itself, for the rest of that chat, so it
 can open its other files, each with its usual permission card. Folders whose
 path has characters such as `&` or `%` are left out of that, and Claude Code
 asks before reading there. Not available on Linux yet.
+
+**Settings… → Chat → Always share the folder open in File Explorer** (off by
+default) does this for every message: while you type, the folder's name shows
+as a chip, and when you send, its path and listing go with the message, as if
+you had picked the entry each time. The chip's × leaves it out of that one
+message. Lumo asks File Explorer only when the text field takes focus and when
+you send, never in the background. With it off, the chat sees no folder unless
+you pick it from the menu; Claude Code says so, and points you to the button and
+to this setting.
 
 ## GitHub
 
