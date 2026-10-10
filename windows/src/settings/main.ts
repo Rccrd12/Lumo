@@ -21,6 +21,8 @@ import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
 import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { updatesSection } from "./updates";
+import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
+import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
 import { LIVE_EXTENDED, LIVE_MODEL, THINKING_LEVELS, VOICES, parseLiveModel, parseThinking, parseVoice } from "../live/protocol";
 import { VOICE_SETTINGS } from "../live/strings";
@@ -1186,7 +1188,25 @@ function generalSection(): HTMLElement {
       toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }),
     ),
     ...recapRows(),
+    ...contextMenuRows(),
   );
+}
+
+/**
+ * Settings → General → Right-click menu: what it offers besides Refresh and
+ * the text actions, one switch each, in the menu's order.
+ */
+function contextMenuRows(): HTMLElement[] {
+  const items = MENU_ITEMS.map((item) =>
+    setting(t(item.label), null, toggle(pickedItems(settings.contextMenu).some((i) => i.id === item.id), (v) => {
+      settings.contextMenu = withItem(settings.contextMenu, item.id, v);
+      void save();
+    })));
+  return [
+    group(t("Right-click menu")),
+    h("div", { class: "hint", text: t("A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.") }),
+    h("div", { class: "setting-list" }, ...items),
+  ];
 }
 
 // ── Island section ────────────────────────────────────────────────────────────
@@ -1350,6 +1370,8 @@ function behaviourRows(): HTMLElement[] {
     group(t("Live Activities")),
     setting(t("Live Activities"), t("beside the open island: timers, the music, the calendar and the newest emails"),
       toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); })),
+    setting(t("Follow the island's height"), t("as tall as the open island, growing and shrinking with it when you resize it; off, they keep the height you give them"),
+      toggle(settings.activitiesFollowIsland !== false, (v) => { settings.activitiesFollowIsland = v; void save(); })),
     calendarRow(),
   ];
 }
@@ -1742,6 +1764,12 @@ function tellIsland(message: string) {
 }
 
 async function main() {
+  // Never the webview's menu: Cut, Copy, Paste and Select all in a field.
+  installTextMenu();
+  // The island's "Customize this menu…" picked a page while this window was open.
+  window.addEventListener("storage", (e) => {
+    if (e.key === PAGE_KEY && isPage(e.newValue)) showPage(e.newValue);
+  });
   if (embedded) {
     document.body.classList.add("embedded");
     // settings.html paints its window colour inline, before any style loads.

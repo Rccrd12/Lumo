@@ -11,10 +11,12 @@
 const READ_TOOLS = new Set([
   "read", "glob", "grep", "ls", "notebookread", "websearch", "todowrite", "todoread",
   "read_file", "list_directory", "list_dir", "search_files", "view", "find_files",
+  // Antigravity's
+  "view_file", "view_file_outline", "view_code_item", "grep_search", "find_by_name",
 ]);
 
 /** Tools that run a shell command, whose command is read below. */
-const SHELL_TOOLS = new Set(["bash", "shell", "powershell", "run_shell_command", "exec", "local_shell", "terminal"]);
+const SHELL_TOOLS = new Set(["bash", "shell", "powershell", "run_shell_command", "run_command", "exec", "local_shell", "terminal"]);
 
 /** Commands that only look, whatever their arguments (those that can change something are checked below). */
 const LOOKING = new Set([
@@ -63,7 +65,7 @@ export function isSimpleRequest(tool: string, input: Record<string, unknown>): b
   const name = tool.toLowerCase();
   if (READ_TOOLS.has(name)) return true;
   if (SHELL_TOOLS.has(name)) {
-    const command = input.command ?? input.cmd ?? input.script;
+    const command = input.command ?? input.cmd ?? input.script ?? input.CommandLine;
     const text = Array.isArray(command) ? command.join(" ") : command;
     return typeof text === "string" && isLookingCommand(text);
   }

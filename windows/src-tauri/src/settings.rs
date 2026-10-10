@@ -8,6 +8,9 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+/// The right-click menu's items out of the box (src/core/context-menu.ts).
+pub const DEFAULT_CONTEXT_MENU: &[&str] = &["newChat", "pin", "sound", "activities", "center", "settings"];
+
 /// A field the file lacks takes its value from `Default`, so a settings.json
 /// written by an older build still loads, whatever has been added since.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -86,6 +89,12 @@ pub struct Settings {
     /// Simple permission requests (reads, commands that only look) are
     /// answered on the closed island, without opening it (src/core/approvals.ts).
     pub quick_approvals: bool,
+    /// The live activities beside the island are as tall as it, and follow it
+    /// when it is resized (Settings → Island).
+    pub activities_follow_island: bool,
+    /// What the right-click menu offers besides Refresh and the text actions,
+    /// in its order (src/core/context-menu.ts MENU_ITEMS).
+    pub context_menu: Vec<String>,
     /// Who the chat talks to: "anthropic", a cloud provider of
     /// openai_compat.rs ("openai", "google", "openrouter"), or a model server
     /// of local_chat.rs ("ollama", "lmstudio", "custom"). Picked in the chat view.
@@ -238,6 +247,8 @@ impl Default for Settings {
             show_codex_plan_in_notch: false,
             plan_usage_online: false,
             quick_approvals: true,
+            activities_follow_island: true,
+            context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
@@ -551,6 +562,8 @@ mod tests {
   "showCodexPlanInNotch": true,
   "planUsageOnline": true,
   "quickApprovals": false,
+  "activitiesFollowIsland": false,
+  "contextMenu": ["settings"],
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
@@ -1015,6 +1028,8 @@ mod tests {
                 "showCodexPlanInNotch",
                 "planUsageOnline",
                 "quickApprovals",
+                "activitiesFollowIsland",
+                "contextMenu",
                 "chatProvider",
                 "chatModels",
                 "chatEffort",

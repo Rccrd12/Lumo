@@ -26,9 +26,16 @@ import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
 import { CompactStrip } from "./compact";
 import { ACTIVITIES_GAP, IslandActivities } from "./activities";
-import { setCompactNewsHandler } from "../core/compact";
 import type { MailMessage } from "../core/bridge";
-import { refreshHookPills } from "./integrations";
+import { refreshConfigured, refreshHookPills } from "./integrations";
+import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
+import { MENU_TEXT, pickedItems } from "../core/context-menu";
+import { compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
+import { refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
+import { reloadRecap } from "../views/integrations";
+import { isHookPill, pillDefinition } from "../core/pills";
+import { t } from "../i18n/i18n";
+import { Calendar } from "./activities";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
 
@@ -89,6 +96,8 @@ export class Island {
   private countdown!: HTMLElement;
   /** What the closed island says next to Lumo (island/compact.ts). */
   private compact!: CompactStrip;
+  /** Lumo's own right-click menu (views/context-menu.ts). */
+  private menu!: ContextMenu;
   /** The live activities beside the open island (island/activities.ts). */
   private activities!: IslandActivities;
   /** The island's height when the live activities first showed: theirs since. */
@@ -420,6 +429,7 @@ export class Island {
         this.takeKeyboard();
       },
       openSettings: () => void Bridge.openSettingsWindow(),
+      refreshAll: () => void this.refreshAll(),
       iconPoint: () => {
         // Left of the "+": where the folded icon sits (or will).
         const icon = this.header.el.querySelector(".tab-activities") as HTMLElement | null;
@@ -484,6 +494,7 @@ export class Island {
   private setMode(mode: IslandMode) {
     const prev = State.mode;
     if (mode === prev) return;
+    this.menu?.close();
     State.mode = mode;
     if (mode === "expanded") Sound.play("open");
     if (prev === "expanded") {
@@ -565,6 +576,123 @@ export class Island {
 
   reveal() {
     this.fsm.reveal();
+  }
+
+  // ── The right-click menu ────────────────────────────────────────────────────
+
+  /** Opens Lumo's menu at (x, y): the text actions, Refresh, the items picked in Settings. */
+  openMenu(x: number, y: number, target: EventTarget | null) {
+    const entries: MenuEntry[] = [...textEntries(target), { kind: "sep" }];
+    entries.push({ kind: "item", label: t(MENU_TEXT.refresh), title: t(MENU_TEXT.refreshHint), shortcut: "Ctrl+R", run: () => void this.refreshAll() });
+    entries.push({ kind: "sep" });
+    for (const item of pickedItems(State.settings.contextMenu)) {
+      entries.push({ kind: "item", label: t(item.label), checked: item.toggle ? this.menuChecked(item.id) : undefined, run: () => this.menuAction(item.id) });
+    }
+    entries.push({ kind: "sep" }, { kind: "item", label: t(MENU_TEXT.customize), run: () => this.openSettingsAt("general") });
+    this.menu.open(x, y, entries);
+  }
+
+  private menuChecked(id: string): boolean {
+    switch (id) {
+      case "pin": return State.isPinned;
+      case "sound": return State.settings.soundEnabled !== false;
+      case "activities": return State.settings.activitiesPanel !== false && State.settings.activitiesFolded !== true;
+      default: return false;
+    }
+  }
+
+  private menuAction(id: string) {
+    switch (id) {
+      case "newChat":
+        if (State.chatActivity == null) {
+          State.startChat();
+          State.droppedFile = null;
+          State.promptContext = null;
+          void Bridge.chatReset();
+        }
+        this.setView("prompt");
+        this.takeKeyboard();
+        break;
+      case "chat":
+        this.setView("prompt");
+        this.takeKeyboard();
+        break;
+      case "timer":
+        compactTimer(5 * 60_000, "");
+        Sound.play("blip");
+        break;
+      case "pin":
+        this.setPinned(!State.isPinned);
+        break;
+      case "sound":
+        State.settings = { ...State.settings, soundEnabled: State.settings.soundEnabled === false };
+        Sound.setEnabled(State.settings.soundEnabled);
+        void Bridge.saveSettings(State.settings);
+        break;
+      case "activities":
+        if (State.settings.activitiesPanel === false) {
+          State.settings = { ...State.settings, activitiesPanel: true, activitiesFolded: false };
+          void Bridge.saveSettings(State.settings);
+        } else if (State.settings.activitiesFolded === true) {
+          this.activities.unfold();
+        } else {
+          this.activities.act({ kind: "fold" });
+        }
+        break;
+      case "center":
+        void Bridge.islandRecenter();
+        break;
+      case "wardrobe":
+        this.toggleWardrobe();
+        break;
+      case "settings":
+        void Bridge.openSettingsWindow();
+        break;
+      case "quit":
+        void Bridge.quit();
+        break;
+    }
+    State.notify();
+  }
+
+  /** The Settings window, on one of its pages. */
+  private openSettingsAt(page: string) {
+    try {
+      window.localStorage.setItem("lumo.settings.page", page);
+    } catch {
+      // No storage: it opens on the page it was on.
+    }
+    void Bridge.openSettingsWindow();
+  }
+
+  private refreshing = false;
+
+  /**
+   * Refresh: everything that can be shown asked again at once — the agents'
+   * hooks and sessions, each service's server (email included), the
+   * calendar, the plan usage (when Lumo asks Anthropic, and Codex's when its
+   * pill shows) and the weekly recap. Never while paused.
+   */
+  async refreshAll() {
+    if (this.refreshing || State.paused) return;
+    this.refreshing = true;
+    Sound.play("blip");
+    const services = State.settings.activeIntegrations.filter((id) => {
+      const def = pillDefinition(id);
+      return def && !isHookPill(id) && def.category !== "ai" && (State.integrations[id]?.configured ?? false);
+    });
+    refreshClaudePlanOnline(true);
+    if (State.settings.showCodexPlanInNotch) refreshCodexPlanUsage(true);
+    await Promise.allSettled([
+      refreshConfigured(),
+      refreshHookPills(),
+      reloadRecap(),
+      Calendar.refresh(),
+      ...services.map((id) => Bridge.refreshIntegration(id)),
+    ]);
+    this.refreshing = false;
+    compactNotice(t(MENU_TEXT.refreshed), "#22c55e");
+    State.notify();
   }
 
   /** Right-click on Mochi: wardrobe open ↔ back to the usual view. */
@@ -885,25 +1013,25 @@ export class Island {
     // when the window has the room: its cards need more than a short view gives.
     const bottom = this.dock === "bottom";
     const room = bottom ? at.y + at.h - 10 : window.innerHeight - at.y - 14;
-    // Unless a height was picked with its grip, the island's height when the
-    // panel first showed: level with it then, and not following its later sizes.
+    // Following the island (Settings → Island, on by default): as tall as it,
+    // growing and shrinking with it. Otherwise the height picked with its
+    // grip, else the island's height when the panel first showed.
     const picked = this.activities.pickedHeight;
     if (show && this.activitiesStartH == null) this.activitiesStartH = this.targetSize().h;
     const start = this.activitiesStartH ?? at.h;
-    const h = Math.min(room, picked > 0 ? picked : start);
+    const h = Math.min(room, this.activities.followsIsland ? at.h : picked > 0 ? picked : start);
     return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
   }
 
-  /** What takes the mouse: the island, and the live activities beside it. */
+  /** What takes the mouse: the island, the live activities beside it, and the right-click menu. */
   private hitRect(): { x: number; y: number; w: number; h: number } {
-    const rect = this.islandRect();
-    if (!this.activities?.isVisible) return rect;
-    const beside = this.activitiesPlace();
-    const y = Math.min(rect.y, beside.y);
-    const bottom = Math.max(rect.y + rect.h, beside.y + beside.h);
-    const left = Math.min(rect.x, beside.x);
-    const right = Math.max(rect.x + rect.w, beside.x + this.activities.width);
-    return { x: left, y, w: right - left, h: bottom - y };
+    let rect = this.islandRect();
+    if (this.activities?.isVisible) {
+      const beside = this.activitiesPlace();
+      rect = union(rect, { x: beside.x, y: beside.y, w: this.activities.width, h: beside.h });
+    }
+    const menu = this.menu?.rect();
+    return menu ? union(rect, menu) : rect;
   }
 
   /**
@@ -1077,10 +1205,17 @@ export class Island {
       }
     });
 
-    // No browser menu over Mochi: his right-click is the wardrobe. Everywhere
-    // else (the chat field) the webview keeps its own menu.
-    this.islandEl.addEventListener("contextmenu", (e) => {
-      if (this.isBotHit(e.clientX, e.clientY)) e.preventDefault();
+    // Never the webview's menu: Lumo's own (Refresh, the text actions, the
+    // items picked in Settings). Over Mochi the right click is the wardrobe.
+    this.menu = new ContextMenu();
+    this.menu.onChange = () => {
+      this.dirty = true;
+      this.ensureRunning();
+    };
+    document.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (State.mode === "hidden" || this.isBotHit(e.clientX, e.clientY)) return;
+      this.openMenu(e.clientX, e.clientY, e.target);
     });
 
     // Dragging Mochi out of the island puts him on the desktop.
@@ -1122,6 +1257,12 @@ export class Island {
         e.preventDefault();
         State.settings = { ...State.settings, islandZoom: zoom };
         void Bridge.saveSettings(State.settings);
+        return;
+      }
+      // Ctrl+R and F5 ask everything again, rather than reloading the page.
+      if ((e.ctrlKey && !e.altKey && e.key.toLowerCase() === "r") || e.key === "F5") {
+        e.preventDefault();
+        void this.refreshAll();
         return;
       }
       if (e.key === "Escape" && State.mode === "expanded") {
@@ -1672,4 +1813,11 @@ export class Island {
   private get chatCount(): number {
     return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
   }
+}
+
+/** The smallest rectangle holding both. */
+function union(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 }

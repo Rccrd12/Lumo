@@ -267,6 +267,8 @@ export const Bridge = {
   },
   /** Ctrl+V in the chat with no text and no image: the file copied in File Explorer, copied into the inbox. */
   pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
+  /** The text on the clipboard (the right-click menu's Paste), read by Lumo. */
+  clipboardText: () => call<string | null>("clipboard_text"),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
   /** The chat providers that are set up: a key stored, or the CLI installed with Lumo's hooks (lib.rs). */

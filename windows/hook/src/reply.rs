@@ -65,6 +65,33 @@ pub fn island_card_tool(tool: &str) -> bool {
     ["command", "shell", "terminal", "mcp", "browser"].iter().any(|w| tool.contains(w))
 }
 
+/// The tools of the island's Claude Code chat (asking every time) that get a
+/// card from its PreToolUse hook: what runs a command, changes a file or goes
+/// to the network or an MCP server. Reading is left to Claude Code.
+pub fn claude_card_tool(tool: &str) -> bool {
+    matches!(tool, "Bash" | "PowerShell" | "Edit" | "MultiEdit" | "Write" | "NotebookEdit" | "WebFetch")
+        || tool.starts_with("mcp__")
+}
+
+/// Claude Code's PreToolUse reply to such a card: allowed only after a click
+/// on Allow. Anything else is a deny, with a reason Claude reads: `-p` has
+/// nobody else to ask.
+pub fn claude_island(decision: Option<&str>) -> String {
+    let (verdict, reason) = match decision.map(str::trim) {
+        Some("allow" | "always") => ("allow", "Allowed in Lumo"),
+        Some("deny") => ("deny", "Denied in Lumo"),
+        _ => ("deny", "Nobody approved it in Lumo"),
+    };
+    serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": verdict,
+            "permissionDecisionReason": reason,
+        }
+    })
+    .to_string()
+}
+
 /// Antigravity's PreToolUse reply to such a card: `allow` only after a click
 /// on Allow. Anything else — Deny, no click in time, an answer not understood
 /// — is a deny: with agy's own confirmation off, nothing else stops it.
@@ -256,6 +283,20 @@ mod tests {
         assert!(island_card_tool("browser_click"));
         assert!(!island_card_tool("write_to_file"));
         assert!(!island_card_tool(""));
+    }
+
+    #[test]
+    fn the_claude_chats_card_answers_its_pre_tool_use() {
+        let allow: Value = serde_json::from_str(&claude_island(Some("allow"))).unwrap();
+        assert_eq!(allow["hookSpecificOutput"]["hookEventName"], "PreToolUse");
+        assert_eq!(allow["hookSpecificOutput"]["permissionDecision"], "allow");
+        for not_allowed in [Some("deny"), None, Some(""), Some("maybe")] {
+            let v: Value = serde_json::from_str(&claude_island(not_allowed)).unwrap();
+            assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "deny", "{not_allowed:?}");
+        }
+        assert!(claude_card_tool("Bash") && claude_card_tool("PowerShell") && claude_card_tool("Write"));
+        assert!(claude_card_tool("mcp__github__create_issue"));
+        assert!(!claude_card_tool("Read") && !claude_card_tool("Grep") && !claude_card_tool("AskUserQuestion"));
     }
 
     #[test]

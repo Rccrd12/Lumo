@@ -72,6 +72,7 @@ export type ActivitiesAction =
   | { kind: "media"; action: "toggle" | "next" | "previous" }
   | { kind: "mail"; id: string; what: "summary" | "reply" | "ignore" | "open" }
   | { kind: "settings" }
+  | { kind: "refresh" }
   | { kind: "fold" };
 
 /** "14:00", "Tomorrow 9:30", "Mon 12 Oct", or the day for a whole-day event. */
@@ -116,13 +117,15 @@ export class ActivitiesView {
   private tick: number | null = null;
   private folding = false;
   private grips: HTMLElement[] = [];
+  private followsIsland: () => boolean;
 
   private hooks: ViewHooks;
   private side: () => "left" | "right" | "free";
 
-  constructor(hooks: ViewHooks, side: () => "left" | "right" | "free") {
+  constructor(hooks: ViewHooks, side: () => "left" | "right" | "free", followsIsland: () => boolean = () => false) {
     this.hooks = hooks;
     this.side = side;
+    this.followsIsland = followsIsland;
     this.timerInput = h("input", {
       class: "act-input", type: "text", spellcheck: "false", autocomplete: "off",
       placeholder: tl(ACTIVITIES_TEXT.timerHint),
@@ -158,6 +161,7 @@ export class ActivitiesView {
       for (const [cls, fx, fy] of [["e-left", -1, 0], ["e-right", 1, 0], ["e-bottom", 0, 1], ["c-bl", -1, 1], ["c-br", 1, 1]] as const) {
         const grip = h("div", { class: `act-grip ${cls}` });
         grip.dataset.fx = String(fx);
+        grip.dataset.fy = String(fy);
         grip.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
           e.preventDefault();
@@ -206,11 +210,14 @@ export class ActivitiesView {
   /** Draws what changed; cheap when nothing did. */
   render(data: ActivitiesData, now = Date.now()) {
     this.data = data;
-    // Only the grips on its free sides: beside the island, not the one facing it.
+    // Only the grips on its free sides: beside the island, not the one facing
+    // it; and none for the height while it follows the island's.
     const side = this.side();
+    const follows = this.followsIsland();
     for (const g of this.grips) {
       const fx = Number(g.dataset.fx);
-      g.style.display = (side === "left" && fx > 0) || (side === "right" && fx < 0) ? "none" : "";
+      const fy = Number(g.dataset.fy);
+      g.style.display = (side === "left" && fx > 0) || (side === "right" && fx < 0) || (follows && fy !== 0) ? "none" : "";
     }
     this.drawTimers(data.timers, now);
     this.drawMusic(data.media);

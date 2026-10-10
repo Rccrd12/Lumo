@@ -195,6 +195,10 @@ export interface Settings {
   planUsageOnline: boolean;
   /** Simple permission requests are answered on the closed island (core/approvals.ts). */
   quickApprovals: boolean;
+  /** The live activities beside the island are as tall as it, and follow its resizes. */
+  activitiesFollowIsland: boolean;
+  /** The right-click menu's own items, in order (core/context-menu.ts). */
+  contextMenu: string[];
   /** Who the chat talks to (see core/providers.ts); picked in the chat view. */
   chatProvider: ProviderId;
   /** The model picked for each provider other than Anthropic, by provider id. */
@@ -302,6 +306,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showCodexPlanInNotch: false,
   planUsageOnline: false,
   quickApprovals: true,
+  activitiesFollowIsland: true,
+  contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",

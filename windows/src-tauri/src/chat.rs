@@ -314,6 +314,16 @@ macro_rules! timer_note {
 }
 pub(crate) use timer_note;
 
+/// How to write math, for every provider that answers in the chat: the island
+/// draws standard LaTeX, and a macro from the user's own files (`\dd`) would
+/// show as its name.
+macro_rules! math_note {
+    () => {
+        " Write math as $…$ or $$…$$ with standard LaTeX commands only: never macros defined in the user's own files, even when quoting them."
+    };
+}
+pub(crate) use math_note;
+
 /// Mochi's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the
 /// provider runs it (Claude).
@@ -335,8 +345,9 @@ fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
         "{opening} {abilities} \
 Respond in the user's language. Be thorough and complete — use as much detail as the task requires. \
 Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
-Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}",
-        timer_note!()
+Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}{}",
+        timer_note!(),
+        math_note!()
     )
 }
 

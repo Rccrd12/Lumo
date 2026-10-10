@@ -272,14 +272,10 @@ function typingDots(label: string): HTMLElement {
   );
 }
 
-/** The coloured chip showing what the question is about (a dropped file). */
-function contextChip(label: string): HTMLElement {
-  const chip = h("div", { class: "chip" }, h("i", { class: "chip-dot" }), h("span", { text: label }));
-  requestAnimationFrame(() => chip.classList.add("settled"));
-  return chip;
-}
-
-/** A chip for what the screen button added, with a way to take it back before it is sent. */
+/**
+ * A chip for what goes with the question (a dropped or pasted file, what the
+ * screen button added), with a way to take it back before it is sent.
+ */
 function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[]): HTMLElement {
   const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
   remove.addEventListener("click", (e) => {
@@ -1733,7 +1729,16 @@ export function buildPrompt(
         // Something is already attached: the ways to start make room for it.
         body.classList.toggle("has-context", chipKey !== "");
         clear(chipRow);
-        if (wantChip) chipRow.append(contextChip(wantChip));
+        // A dropped or pasted file: its × takes it out before it is sent.
+        if (wantChip) {
+          chipRow.append(screenChip(wantChip, file?.path ?? wantChip, () => {
+            if (sending) return;
+            State.droppedFile = null;
+            if (State.promptContext?.kind === "file") State.promptContext = null;
+            Sound.play("pop");
+            State.notify();
+          }));
+        }
         for (const c of extra) {
           chipRow.append(
             screenChip(

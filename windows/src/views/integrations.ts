@@ -120,6 +120,11 @@ let recap: RecapHistory | null = null;
 let recapAt = 0;
 let recapLoading: Promise<void> | null = null;
 
+/** The weekly recap's sessions read again (the right-click menu's Refresh). */
+export function reloadRecap(): Promise<void> {
+  return loadRecap(true);
+}
+
 function loadRecap(force = false): Promise<void> {
   if (recapLoading) return recapLoading;
   if (!force && Date.now() - recapAt < 60_000) return Promise.resolve();

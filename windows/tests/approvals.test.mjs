@@ -20,6 +20,11 @@ test("shell commands that only look are simple", () => {
   ]) assert.ok(isLookingCommand(c), c);
   assert.ok(isSimpleRequest("Bash", { command: "git status" }));
   assert.ok(isSimpleRequest("shell", { command: ["git", "diff"] }));
+  // Antigravity's command tool, with its own field or the relay's copy of it.
+  assert.ok(isSimpleRequest("run_command", { CommandLine: "ls" }));
+  assert.ok(isSimpleRequest("run_command", { command: "git status", CommandLine: "git status" }));
+  assert.equal(isSimpleRequest("run_command", { CommandLine: "npm test" }), false);
+  assert.ok(isSimpleRequest("view_file", { AbsolutePath: "/a" }));
 });
 
 test("commands that change something, or that cannot be read for sure, are not", () => {

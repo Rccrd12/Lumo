@@ -765,6 +765,12 @@ async fn paste_copied_file() -> Result<Option<DroppedFile>, String> {
     tauri::async_runtime::spawn_blocking(clipboard::paste_copied_file).await.map_err(|e| e.to_string())?
 }
 
+/// The text on the clipboard, for the right-click menu's Paste.
+#[tauri::command]
+async fn clipboard_text() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(clipboard::text).await.ok().flatten()
+}
+
 /// The island may only ask whether a key exists — never read it.
 /// The chat providers that are set up, for the model picker: a key in the
 /// credential store, or the CLI on this computer with Lumo's hooks in place
@@ -1064,6 +1070,7 @@ pub fn run() {
             ingest_file,
             paste_file,
             paste_copied_file,
+            clipboard_text,
             secret_present,
             chat_providers,
             secret_set,

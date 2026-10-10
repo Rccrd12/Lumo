@@ -1,0 +1,78 @@
+/* Lumo's right-click menu (context-menu.ts): the island's dark card, a list
+   of plain rows, the keys on the right. The same in every window. */
+
+.ctx-menu {
+  position: fixed;
+  z-index: 10000;
+  display: none;
+  flex-direction: column;
+  min-width: 220px;
+  max-width: 300px;
+  padding: 5px;
+  border-radius: 12px;
+  background: #16171b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  font: 400 12.5px var(--font, system-ui, "Segoe UI", sans-serif);
+  color: var(--ink, #f5f6f8);
+  user-select: none;
+  animation: ctx-in 0.12s ease-out;
+}
+
+.ctx-menu.open {
+  display: flex;
+}
+
+@keyframes ctx-in {
+  from {
+    opacity: 0;
+    transform: translateY(-3px) scale(0.98);
+  }
+}
+
+.ctx-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: start;
+  cursor: default;
+}
+
+.ctx-item.active,
+.ctx-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.ctx-check {
+  flex: 0 0 14px;
+  display: grid;
+  place-items: center;
+  color: var(--ink, #f5f6f8);
+}
+
+.ctx-label {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ctx-key {
+  flex: none;
+  color: var(--dim, #9398a1);
+  font-size: 11px;
+}
+
+.ctx-sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: rgba(255, 255, 255, 0.08);
+}

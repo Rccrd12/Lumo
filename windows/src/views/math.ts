@@ -1,8 +1,9 @@
 // TeX math in the chat's answers ($…$, $$…$$, \(…\), \[…\]), drawn as DOM
 // with no library: the notation answers use — Greek letters, operators and
 // arrows, sub- and superscripts, \frac, \sqrt, \vec and other accents,
-// \mathbb and friends, \text, \left…\right, and matrices, cases and aligned
-// rows. What it does not know shows as its name, never as raw markup.
+// \mathbb and friends, \text, \left…\right, matrices, cases and aligned
+// rows, and the physics package's \dd, \dv, \pdv, \abs, \norm and bra-kets.
+// What it does not know shows as its name, never as raw markup.
 //
 // Built with textContent only, like the rest of the Markdown (markdown.ts).
 
@@ -205,6 +206,34 @@ class Parser {
       }
       case "displaystyle": case "textstyle": case "limits": case "nolimits": case "notag": case "nonumber":
         return null;
+      // The physics package's notation, which answers copy from LaTeX sources:
+      // \dd x, \dv{f}{x}, \pdv{f}{x}, \abs{x}, \norm{v}, \vb{F}, bra-kets…
+      case "dd": case "differential": {
+        const order = this.optional();
+        const d: Node = order ? { t: "sup", base: { t: "sym", v: "d", upright: true }, sup: order, sub: null } : { t: "sym", v: "d", upright: true };
+        return this.s[this.i] === "{" ? { t: "group", c: [d, arg()] } : d;
+      }
+      case "dv": case "derivative": return this.derivative("d");
+      case "pdv": case "partialderivative": return this.derivative("∂");
+      case "abs": case "absolutevalue": return this.fenced("|", arg(), "|");
+      case "norm": return this.fenced("‖", arg(), "‖");
+      case "ev": case "expval": case "expectationvalue": return this.fenced("⟨", arg(), "⟩");
+      case "bra": return this.fenced("⟨", arg(), "|");
+      case "ket": return this.fenced("|", arg(), "⟩");
+      case "braket": {
+        const a = arg();
+        const b = this.s[this.i] === "{" ? arg() : a;
+        return this.fenced("⟨", { t: "group", c: [a, { t: "sym", v: "|", upright: true }, b] }, "⟩");
+      }
+      case "vb": case "vectorbold": return { t: "style", style: "bold", body: arg() };
+      case "vu": case "vectorunit": return { t: "style", style: "bold", body: { t: "accent", mark: ACCENTS.hat, body: arg() } };
+      case "grad": case "gradient": return { t: "sym", v: "∇", upright: true };
+      case "curl": return { t: "sym", v: "∇×", upright: true };
+      case "divergence": return { t: "sym", v: "∇·", upright: true };
+      case "order": return { t: "group", c: [{ t: "sym", v: "O", upright: false }, this.fenced("(", arg(), ")")] };
+      case "qty": case "quantity":
+        // \qty(x), \qty[x]: the brackets that follow are drawn as they are.
+        return this.s[this.i] === "{" ? this.fenced("{", arg(), "}") : null;
       case "not": {
         const next = this.atom();
         if (next && next.t === "sym") return { t: "sym", v: `${next.v}̸`, upright: true };
@@ -216,6 +245,37 @@ class Parser {
     if (name in SYMBOLS) return { t: "sym", v: SYMBOLS[name], upright: true };
     // Unknown: its name, upright, rather than the markup.
     return { t: "sym", v: name, upright: true };
+  }
+
+  /** `[…]` right here, if there is one: \dd[3]{x}, \dv[2]{f}{x}. */
+  private optional(): Node | null {
+    if (this.s[this.i] !== "[") return null;
+    const end = this.s.indexOf("]", this.i);
+    if (end < 0) return null;
+    const inside = new Parser(this.s.slice(this.i + 1, end)).parse();
+    this.i = end + 1;
+    return { t: "group", c: inside };
+  }
+
+  /** `open` body `close`, upright. */
+  private fenced(open: string, body: Node, close: string): Node {
+    return { t: "group", c: [{ t: "sym", v: open, upright: true }, body, { t: "sym", v: close, upright: true }] };
+  }
+
+  /** \dv{f}{x} as df/dx, \dv{x} as d/dx, \dv[2]{f}{x} as d²f/dx²; `d` is "d" or "∂". */
+  private derivative(d: string): Node {
+    const order = this.optional();
+    const mark = (): Node => (order ? { t: "sup", base: { t: "sym", v: d, upright: true }, sup: order, sub: null } : { t: "sym", v: d, upright: true });
+    const first = this.atom() ?? { t: "group" as const, c: [] };
+    while (this.s[this.i] === " ") this.i++;
+    if (this.s[this.i] !== "{") {
+      // Only the variable: the operator d/dx.
+      const by: Node = order ? { t: "sup", base: first, sup: order, sub: null } : first;
+      return { t: "frac", num: mark(), den: { t: "group", c: [{ t: "sym", v: d, upright: true }, by] } };
+    }
+    const by = this.atom() ?? { t: "group" as const, c: [] };
+    const den: Node = { t: "group", c: [{ t: "sym", v: d, upright: true }, order ? { t: "sup", base: by, sup: order, sub: null } : by] };
+    return { t: "frac", num: { t: "group", c: [mark(), first] }, den };
   }
 
   /** \text{…}: what is inside, as words. */

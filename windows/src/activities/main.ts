@@ -6,7 +6,9 @@
 import "./activities.css";
 import { Bridge, emitToWindow, onEvent } from "../core/bridge";
 import { ActivitiesView, type ActivitiesData } from "../views/activities-view";
-import { applyDocumentLanguage, isLanguage, setLanguage } from "../i18n/i18n";
+import { applyDocumentLanguage, isLanguage, setLanguage, t } from "../i18n/i18n";
+import { ContextMenu, textEntries } from "../views/context-menu";
+import { MENU_TEXT } from "../core/context-menu";
 
 const root = document.getElementById("app")!;
 let view: ActivitiesView | null = null;
@@ -50,3 +52,22 @@ void onEvent<{ fly: boolean; painted: boolean }>("activities-appear", ({ fly, pa
 window.addEventListener("focusout", () => void Bridge.activitiesFocus(false));
 
 void emitToWindow("island", "activities-hello");
+
+// Lumo's own right-click menu, never the webview's: the text actions (the
+// timer's field), Refresh (the island asks everything again) and Settings.
+const menu = new ContextMenu();
+document.addEventListener("contextmenu", (e) => {
+  e.preventDefault();
+  menu.open(e.clientX, e.clientY, [
+    ...textEntries(e.target),
+    { kind: "sep" },
+    { kind: "item", label: t(MENU_TEXT.refresh), title: t(MENU_TEXT.refreshHint), shortcut: "Ctrl+R", run: () => void emitToWindow("island", "activities-action", { kind: "refresh" }) },
+    { kind: "item", label: t("Settings"), run: () => void emitToWindow("island", "activities-action", { kind: "settings" }) },
+  ]);
+});
+window.addEventListener("keydown", (e) => {
+  if ((e.ctrlKey && !e.altKey && e.key.toLowerCase() === "r") || e.key === "F5") {
+    e.preventDefault();
+    void emitToWindow("island", "activities-action", { kind: "refresh" });
+  }
+});

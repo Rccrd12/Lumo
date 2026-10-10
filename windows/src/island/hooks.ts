@@ -522,8 +522,9 @@ function handleHook(island: Island, payload: HookPayload) {
       // A request that only reads or looks, while the island is closed, is
       // answered right there: Deny and Allow next to Lumo (Settings → Island).
       // Still a click, never automatic; anything else opens the full card.
-      const quick = !questions && !fromChat && State.settings.quickApprovals !== false
+      const quick = !questions && State.settings.quickApprovals !== false
         && State.mode !== "expanded" && isSimpleRequest(tool, input);
+      void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is
       // already open: its pill comes to the front, and the one you were on
       // comes back once you answer (Mac #117, #120).
@@ -551,11 +552,12 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       // Lumo answers within 108 s or not at all; after that the terminal has
       // taken over and the card would be lying. For the chat's Antigravity CLI
-      // run, the relay says how long it waits: the card goes just before.
+      // and Claude Code runs, the relay says how long it waits: the card goes
+      // just before.
       pendingTimeout = window.setTimeout(() => {
         pendingTimeout = null;
         dropPendingCard(island);
-      }, chatAgy ? agyCardMs(payload.lumo_card_secs) : 110_000);
+      }, chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 110_000);
       break;
     }
 

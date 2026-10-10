@@ -40,3 +40,17 @@ test("the notation reads as math", () => {
   assert.equal(mathText("\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}"), "(1234)");
   assert.equal(mathText("C^2"), "C2");
 });
+
+test("the physics package's notation reads as math, not as its name", () => {
+  assert.equal(mathText("\\dd W = v \\dd q"), "dW=vdq");
+  assert.equal(mathText("\\dv{W}{t}"), "dWdt");
+  assert.equal(mathText("\\dv{x}"), "ddx");
+  assert.equal(mathText("\\dv[2]{x}{t}"), "d2xdt2");
+  assert.equal(mathText("\\pdv{f}{x}"), "∂f∂x");
+  assert.equal(mathText("\\abs{z}+\\norm{v}"), "|z|+‖v‖");
+  assert.equal(mathText("\\braket{a}{b}"), "⟨a|b⟩");
+  assert.equal(mathText("\\ket{\\psi}"), "|ψ⟩");
+  assert.equal(mathText("\\grad \\phi"), "∇ϕ");
+  assert.equal(mathText("\\qty(a+b)"), "(a+b)");
+  assert.equal(mathText("\\int f(x) \\dd{x}"), "∫f(x)dx");
+});

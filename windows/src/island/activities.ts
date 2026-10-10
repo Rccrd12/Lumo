@@ -121,6 +121,8 @@ export interface IslandActivitiesHost {
   /** The chat, where an email's question was just put. */
   openChat(): void;
   openSettings(): void;
+  /** Everything asked again (the right-click menu's Refresh in their own window). */
+  refreshAll(): void;
   /** Where the folded icon sits (or will), in page pixels. */
   iconPoint(): { x: number; y: number } | null;
   /** The panel can be moved and resized (the cursor poll). */
@@ -154,7 +156,7 @@ export class IslandActivities {
       focus: () => void Bridge.focusWindow(true),
       iconPoint: () => host.iconPoint(),
       movable: host.movable,
-    }, () => (State.settings.activitiesSide === "right" ? "right" : "left"));
+    }, () => (State.settings.activitiesSide === "right" ? "right" : "left"), () => this.followsIsland);
     this.view.el.id = "activities";
     void onEvent<ActivitiesAction>("activities-action", (a) => this.act(a));
     void onEvent<null>("activities-hello", () => {
@@ -185,6 +187,11 @@ export class IslandActivities {
   get width(): number {
     const w = State.settings.activitiesWidth;
     return Number.isFinite(w) && w > 0 ? Math.min(480, Math.max(220, w)) : ACTIVITIES_W;
+  }
+
+  /** As tall as the island beside it, following its resizes (not in their own window). */
+  get followsIsland(): boolean {
+    return State.settings.activitiesFollowIsland !== false && !this.detached;
   }
 
   get pickedHeight(): number {
@@ -239,6 +246,9 @@ export class IslandActivities {
       }
       case "settings":
         this.host.openSettings();
+        break;
+      case "refresh":
+        this.host.refreshAll();
         break;
       case "fold":
         State.settings = { ...State.settings, activitiesFolded: true };
