@@ -4,7 +4,7 @@
 
 import { Bridge, type AgentHookStatus } from "../core/bridge";
 import { clear, h } from "../views/dom";
-import { renderDiff, statusDot } from "./parts";
+import { renderDiff, sectionHead, setting, statusDot } from "./parts";
 import { t } from "../i18n/i18n";
 
 /** In the current language (src/i18n); the settings window redraws on a change. */
@@ -20,9 +20,11 @@ const TEXT = {
   get reinstall() { return t("Reinstall…"); },
   get uninstall() { return t("Uninstall…"); },
   get relayMissing() { return t("The relay isn't installed yet. Restart Lumo."); },
-  get geminiReplaced() {
-    return t("For personal Google accounts, Gemini CLI was replaced by Antigravity CLI: install the Antigravity hooks instead. Work accounts can keep Gemini CLI.");
+  get geminiRetired() {
+    return t("Google replaced Gemini CLI with Antigravity CLI, which reads the Antigravity hooks above. Lumo no longer installs these: they were added before, and can be removed.");
   },
+  get antigravityBoth() { return t("For the Antigravity app and for Antigravity CLI (agy): both read these hooks."); },
+  get retired() { return t("Retired"); },
   previewInstall: (name: string) => t("This is exactly what changes for {name}. Nothing else is touched.", { name }),
   get previewRemove() { return t("This removes Lumo's entries only. Everything else stays."); },
   backup: (to: string) => (to ? t("Backup → {path}", { path: to }) : t("No existing file — nothing to back up.")),
@@ -44,25 +46,26 @@ function errorText(err: unknown): string {
 }
 
 export function agentsSection(list: AgentHookStatus[] | null): HTMLElement {
-  const blocks = h("div", { style: "display:flex;flex-direction:column;gap:14px" });
+  const blocks = h("div", { class: "setting-list" });
   if (!list || list.length === 0) {
     blocks.append(h("div", { class: "hint", text: TEXT.none }));
   }
-  for (const status of list ?? []) blocks.append(agentBlock(status));
+  // Gemini CLI, retired, comes last: it is only there to be removed.
+  const ordered = [...(list ?? [])].sort((a, b) => Number(a.id === "gemini") - Number(b.id === "gemini"));
+  for (const status of ordered) blocks.append(agentBlock(status));
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: TEXT.title })),
-    h("div", { class: "hint", text: TEXT.intro }),
+    ...sectionHead(TEXT.title, TEXT.intro),
     blocks,
   );
 }
 
 function agentBlock(initial: AgentHookStatus): HTMLElement {
   let status = initial;
-  const head = h("div", { class: "row" });
-  const body = h("div", { style: "display:flex;flex-direction:column;gap:10px" });
-  const block = h("div", { style: "display:flex;flex-direction:column;gap:8px" }, head, body);
+  const head = h("div", {});
+  const body = h("div", { class: "setting-block" });
+  const block = h("div", { class: "setting-block" }, head, body);
 
   async function refresh() {
     const fresh = (await Bridge.agentHooksList())?.find((a) => a.id === status.id);
@@ -83,24 +86,24 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
       install.disabled = true;
       install.title = TEXT.relayMissing;
     }
-    head.append(
-      h("div", { style: "display:flex;align-items:center;gap:8px;min-width:132px" },
-        statusDot(status.installed),
-        h("span", { style: "font-size:12.5px", text: status.name }),
-      ),
-      h("span", { class: "hint", text: status.approvals ? TEXT.approvals : TEXT.displayOnly }),
-      h("span", { class: "spacer" }),
-      install,
-    );
+    // Gemini CLI is retired: its hooks can only be taken out.
+    const retired = status.id === "gemini";
+    const buttons: HTMLElement[] = [];
+    if (!retired) buttons.push(install);
     if (status.installed) {
-      head.append(h("button", {
-        class: "danger",
+      buttons.push(h("button", {
+        class: retired ? "primary" : "danger",
         text: TEXT.uninstall,
         onclick: () => void showPreview(false),
       }));
     }
-    body.append(h("span", { class: "path", text: status.path }));
-    if (status.id === "gemini") body.append(h("div", { class: "hint", text: TEXT.geminiReplaced }));
+    const what = retired ? TEXT.geminiRetired
+      : [status.approvals ? TEXT.approvals : TEXT.displayOnly, status.id === "antigravity" ? TEXT.antigravityBoth : ""].filter(Boolean).join(" · ");
+    head.append(setting(
+      h("span", { class: "with-dot" }, statusDot(status.installed), status.name, retired ? h("span", { class: "tag warn", text: TEXT.retired }) : null),
+      h("span", {}, what, h("br"), h("span", { class: "path", text: status.path })),
+      ...buttons,
+    ));
   }
 
   async function showPreview(install: boolean) {

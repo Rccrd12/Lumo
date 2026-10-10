@@ -38,8 +38,10 @@ function focusPill(host: ShortcutHost, id: string | null, open: boolean) {
   if (!id) return;
   State.setFocus(id);
   Sound.play("blip");
-  if (open) host.alert("overview");
-  else host.setView("overview");
+  if (open) {
+    host.alert("overview");
+    host.holdOpen();
+  } else host.setView("overview");
 }
 
 /** A global shortcut was pressed. `resume` lifts Pause, as the tray's Open does. */
@@ -53,6 +55,9 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         // A waiting card is what the island opens on (State.defaultView).
         host.alert(State.defaultView());
         host.takeKeyboard();
+        // Opened from the keyboard, the mouse is elsewhere: it stays open a
+        // while, even set to close as soon as the mouse leaves.
+        host.holdOpen();
       }
       break;
 
@@ -60,6 +65,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       resume();
       host.alert("prompt");
       host.takeKeyboard();
+      host.holdOpen();
       break;
 
     case "goToAlert": {
@@ -72,11 +78,13 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         State.setFocus(pending.pillId);
         host.alert(pending.questions ? "question" : "approval");
         host.takeKeyboard();
+        host.holdOpen();
       } else if (asking) {
         resume();
         State.setFocus(asking.id);
         host.alert("question");
         host.takeKeyboard();
+        host.holdOpen();
       } else {
         // Nothing is waiting: Mochi says so.
         host.emote("annoyed");

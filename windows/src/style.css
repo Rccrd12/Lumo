@@ -2328,7 +2328,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 .chat-bar {
   display: flex;
-  align-items: center;
+  /* A question of several lines grows upwards; the buttons stay on its last line. */
+  align-items: flex-end;
   gap: 8px;
   padding: 6px 10px;
   background: rgba(255, 255, 255, 0.07);
@@ -2344,6 +2345,26 @@ input[type="range"]::-webkit-slider-thumb {
   font: 400 13px var(--font);
   outline: none;
   cursor: text;
+}
+
+/* Gemini Live's bar keeps its one-line field in the middle. */
+.chat-bar.live-bar {
+  align-items: center;
+}
+
+/* The chat's field: one line, then up to five as Shift+Enter adds them. */
+textarea.chat-input {
+  display: block;
+  height: 28px;
+  max-height: 100px;
+  padding: 5px 0;
+  line-height: 18px;
+  resize: none;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 .chat-input::placeholder {

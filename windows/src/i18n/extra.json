@@ -2329,18 +2329,6 @@
    "id": "Tampilkan sisa penggunaan di obrolan",
    "it": "Mostra l'utilizzo rimanente nella chat"
   },
-  "Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
-   "zh-Hans": "在聊天框上方模型名称旁边用一小行显示当前提供商还剩多少：Claude Code 显示你的 Claude 计划的 5 小时和每周限额（需要 {path} 中的中继），Anthropic 和 OpenAI 显示它们随每次回答返回的速率限制，OpenRouter 显示你的密钥额度（在打开聊天时和每次回答后向 OpenRouter 查询）。Google 和本地模型不显示任何内容。",
-   "hi": "चैट बॉक्स के ऊपर मॉडल के नाम के पास एक छोटी लाइन में दिखाता है कि इस्तेमाल हो रहे प्रोवाइडर में कितना बाकी है: Claude Code के लिए आपके Claude प्लान की 5 घंटे और साप्ताहिक सीमाएं ({path} वाले रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट लिमिट भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और हर जवाब के बाद OpenRouter से पूछे जाते हैं। Google या लोकल मॉडल के लिए कुछ नहीं दिखता।",
-   "es": "Muestra lo que le queda al proveedor en uso, en una pequeña línea junto al nombre del modelo encima del cuadro de chat: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y después de cada respuesta. No se muestra nada para Google ni para los modelos locales.",
-   "ar": "يعرض ما تبقى لدى المزوّد المستخدَم، في سطر صغير بجانب اسم النموذج فوق مربع الدردشة: حدود الـ 5 ساعات والحدود الأسبوعية لخطة Claude الخاصة بك مع Claude Code (مع المُرحِّل من {path})، وحدود المعدّل التي يعيدها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter الخاص بك، الذي يُطلب من OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
-   "fr": "Indique ce qu'il reste au fournisseur utilisé, dans une petite ligne à côté du nom du modèle au-dessus de la zone de chat : les limites sur 5 heures et à la semaine de votre forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de votre clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après chaque réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
-   "bn": "চ্যাট বক্সের উপরে মডেলের নামের পাশে একটি ছোট লাইনে দেখায় ব্যবহৃত প্রোভাইডারের কতটা বাকি আছে: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সাথে Anthropic ও OpenAI যে রেট লিমিট পাঠায়, এবং আপনার OpenRouter কী-এর ক্রেডিট, যা চ্যাট খোলার সময় ও প্রতিটি উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া হয়। Google বা লোকাল মডেলের জন্য কিছু দেখানো হয় না।",
-   "pt-BR": "Mostra o que resta ao provedor em uso, numa linha pequena ao lado do nome do modelo acima da caixa de chat: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e depois de cada resposta. Nada é mostrado para o Google nem para os modelos locais.",
-   "ru": "Показывает, сколько осталось у используемого провайдера, в небольшой строке рядом с названием модели над полем чата: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI возвращают с каждым ответом, и кредиты вашего ключа OpenRouter, которые запрашиваются у OpenRouter при открытии чата и после каждого ответа. Для Google и локальных моделей ничего не показывается.",
-   "id": "Menampilkan sisa milik penyedia yang dipakai, dalam satu baris kecil di samping nama model di atas kotak obrolan: batas 5 jam dan mingguan paket Claude Anda untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter Anda, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah setiap jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal.",
-   "it": "Mostra quanto resta al provider in uso, in una piccola riga accanto al nome del modello sopra il riquadro della chat: i limiti di 5 ore e settimanali del tuo piano Claude per Claude Code (con il relay di {path}), i limiti di frequenza che Anthropic e OpenAI restituiscono con ogni risposta, e i crediti della tua chiave OpenRouter, chiesti a OpenRouter all'apertura della chat e dopo ogni risposta. Non viene mostrato nulla per Google né per i modelli locali."
-  },
   "Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.": {
    "zh-Hans": "在岛的顶栏显示你的 Claude 套餐用量（5 小时和每周限额）。Lumo 会在 ~/.claude/settings.json 中添加一个状态栏中继。如果你已有状态栏，它会照常工作。仅限 Pro 和 Max 套餐。",
    "hi": "आइलैंड के हेडर में आपके Claude प्लान का उपयोग (5 घंटे और साप्ताहिक सीमा) दिखाता है। Lumo ~/.claude/settings.json में एक स्टेटस लाइन रिले जोड़ता है। अगर आपके पास पहले से स्टेटस लाइन है, तो वह पहले की तरह चलती रहेगी। केवल Pro और Max प्लान।",
@@ -5143,18 +5131,6 @@
    "id": "Memakai akun Google Anda. Tidak perlu kunci.",
    "it": "Usa il tuo account Google. Nessuna chiave necessaria."
   },
-  "For personal Google accounts, Gemini CLI was replaced by Antigravity CLI: install the Antigravity hooks instead. Work accounts can keep Gemini CLI.": {
-   "zh-Hans": "对于个人 Google 账号，Gemini CLI 已被 Antigravity CLI 取代：请改为安装 Antigravity hooks。工作账号可以继续使用 Gemini CLI。",
-   "hi": "निजी Google खातों के लिए Gemini CLI की जगह Antigravity CLI आ गया है: इसके बजाय Antigravity hooks इंस्टॉल करें। ऑफ़िस खाते Gemini CLI रख सकते हैं।",
-   "es": "En las cuentas personales de Google, Antigravity CLI sustituyó a Gemini CLI: instala los hooks de Antigravity. Las cuentas de trabajo pueden seguir con Gemini CLI.",
-   "ar": "في حسابات Google الشخصية، حلّ Antigravity CLI محلّ Gemini CLI: ثبّت hooks Antigravity بدلًا منها. يمكن لحسابات العمل الاستمرار في استخدام Gemini CLI.",
-   "fr": "Pour les comptes Google personnels, Gemini CLI a été remplacé par Antigravity CLI : installe plutôt les hooks Antigravity. Les comptes professionnels peuvent garder Gemini CLI.",
-   "bn": "ব্যক্তিগত Google অ্যাকাউন্টে Gemini CLI-এর জায়গায় Antigravity CLI এসেছে: এর বদলে Antigravity hooks ইনস্টল করুন। কাজের অ্যাকাউন্টে Gemini CLI রাখা যায়।",
-   "pt-BR": "Nas contas pessoais do Google, o Gemini CLI foi substituído pelo Antigravity CLI: instale os hooks do Antigravity. Contas de trabalho podem continuar com o Gemini CLI.",
-   "ru": "Для личных аккаунтов Google Gemini CLI заменён на Antigravity CLI: установите вместо этого хуки Antigravity. Рабочие аккаунты могут оставить Gemini CLI.",
-   "id": "Untuk akun Google pribadi, Gemini CLI digantikan oleh Antigravity CLI: pasang hook Antigravity sebagai gantinya. Akun kerja tetap bisa memakai Gemini CLI.",
-   "it": "Per gli account Google personali, Gemini CLI è stato sostituito da Antigravity CLI: installa invece gli hook Antigravity. Gli account di lavoro possono continuare a usare Gemini CLI."
-  },
   "Filo · a ring of light": {
    "zh-Hans": "Filo · 一圈光环",
    "hi": "Filo · रोशनी का घेरा",
@@ -6882,6 +6858,114 @@
    "ru": "Codex не ответил",
    "id": "Codex tidak menjawab",
    "it": "Codex non ha risposto"
+  },
+  "Opening and closing": {
+   "zh-Hans": "打开与关闭",
+   "hi": "खोलना और बंद करना",
+   "es": "Apertura y cierre",
+   "ar": "الفتح والإغلاق",
+   "fr": "Ouverture et fermeture",
+   "bn": "খোলা ও বন্ধ",
+   "pt-BR": "Abertura e fechamento",
+   "ru": "Открытие и закрытие",
+   "id": "Membuka dan menutup",
+   "it": "Apertura e chiusura"
+  },
+  "The closed island": {
+   "zh-Hans": "关闭的岛",
+   "hi": "बंद द्वीप",
+   "es": "La isla cerrada",
+   "ar": "الجزيرة المغلقة",
+   "fr": "L'île fermée",
+   "bn": "বন্ধ দ্বীপ",
+   "pt-BR": "A ilha fechada",
+   "ru": "Закрытый остров",
+   "id": "Pulau tertutup",
+   "it": "L'isola chiusa"
+  },
+  "Position and size": {
+   "zh-Hans": "位置与大小",
+   "hi": "स्थिति और आकार",
+   "es": "Posición y tamaño",
+   "ar": "الموضع والحجم",
+   "fr": "Position et taille",
+   "bn": "অবস্থান ও আকার",
+   "pt-BR": "Posição e tamanho",
+   "ru": "Положение и размер",
+   "id": "Posisi dan ukuran",
+   "it": "Posizione e dimensione"
+  },
+  "Put back": {
+   "zh-Hans": "放回",
+   "hi": "वापस रखें",
+   "es": "Recolocar",
+   "ar": "إعادة",
+   "fr": "Replacer",
+   "bn": "ফিরিয়ে রাখুন",
+   "pt-BR": "Recolocar",
+   "ru": "Вернуть",
+   "id": "Kembalikan",
+   "it": "Rimetti"
+  },
+  "Retired": {
+   "zh-Hans": "已停用",
+   "hi": "बंद",
+   "es": "Retirado",
+   "ar": "متوقف",
+   "fr": "Retiré",
+   "bn": "বন্ধ",
+   "pt-BR": "Descontinuado",
+   "ru": "Снят с поддержки",
+   "id": "Dihentikan",
+   "it": "Dismesso"
+  },
+  "For the Antigravity app and for Antigravity CLI (agy): both read these hooks.": {
+   "zh-Hans": "适用于 Antigravity 应用和 Antigravity CLI (agy)：两者都读取这些钩子。",
+   "hi": "Antigravity ऐप और Antigravity CLI (agy) दोनों के लिए: दोनों ये हुक पढ़ते हैं।",
+   "es": "Para la app Antigravity y para Antigravity CLI (agy): ambos leen estos hooks.",
+   "ar": "لتطبيق Antigravity ولـ Antigravity CLI (agy): كلاهما يقرأ هذه الخطافات.",
+   "fr": "Pour l'app Antigravity et pour Antigravity CLI (agy) : les deux lisent ces hooks.",
+   "bn": "Antigravity অ্যাপ ও Antigravity CLI (agy)-এর জন্য: দুটোই এই হুক পড়ে।",
+   "pt-BR": "Para o app Antigravity e para o Antigravity CLI (agy): os dois leem estes hooks.",
+   "ru": "Для приложения Antigravity и для Antigravity CLI (agy): оба читают эти хуки.",
+   "id": "Untuk aplikasi Antigravity dan Antigravity CLI (agy): keduanya membaca hook ini.",
+   "it": "Per l'app Antigravity e per Antigravity CLI (agy): entrambi leggono questi hook."
+  },
+  "Google replaced Gemini CLI with Antigravity CLI, which reads the Antigravity hooks above. Lumo no longer installs these: they were added before, and can be removed.": {
+   "zh-Hans": "Google 已用 Antigravity CLI 取代 Gemini CLI，它读取上面的 Antigravity 钩子。Lumo 不再安装这些钩子：它们是之前添加的，可以移除。",
+   "hi": "Google ने Gemini CLI की जगह Antigravity CLI ला दिया है, जो ऊपर के Antigravity हुक पढ़ता है। Lumo अब इन्हें इंस्टॉल नहीं करता: ये पहले जोड़े गए थे और हटाए जा सकते हैं।",
+   "es": "Google sustituyó Gemini CLI por Antigravity CLI, que lee los hooks de Antigravity de arriba. Lumo ya no instala estos: se añadieron antes y se pueden quitar.",
+   "ar": "استبدلت Google أداة Gemini CLI بـ Antigravity CLI، التي تقرأ خطافات Antigravity أعلاه. لم يعد Lumo يثبّت هذه: أُضيفت من قبل ويمكن إزالتها.",
+   "fr": "Google a remplacé Gemini CLI par Antigravity CLI, qui lit les hooks Antigravity ci-dessus. Lumo n'installe plus ceux-ci : ils ont été ajoutés avant, et peuvent être retirés.",
+   "bn": "Google Gemini CLI-এর জায়গায় Antigravity CLI এনেছে, যা উপরের Antigravity হুক পড়ে। Lumo আর এগুলি ইনস্টল করে না: এগুলি আগে যোগ করা হয়েছিল, সরানো যায়।",
+   "pt-BR": "O Google substituiu o Gemini CLI pelo Antigravity CLI, que lê os hooks do Antigravity acima. O Lumo não instala mais estes: foram adicionados antes e podem ser removidos.",
+   "ru": "Google заменил Gemini CLI на Antigravity CLI, который читает хуки Antigravity выше. Lumo больше не устанавливает эти: они были добавлены раньше, их можно удалить.",
+   "id": "Google mengganti Gemini CLI dengan Antigravity CLI, yang membaca hook Antigravity di atas. Lumo tidak lagi memasang ini: hook ini ditambahkan sebelumnya, dan bisa dihapus.",
+   "it": "Google ha sostituito Gemini CLI con Antigravity CLI, che legge gli hook di Antigravity qui sopra. Lumo non installa più questi: sono stati aggiunti prima, e si possono rimuovere."
+  },
+  "A ring next to the past chats fills with what the provider in use has used, and a click on it shows each limit and when it resets: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
+   "zh-Hans": "过往聊天旁的圆环会随当前提供方的用量填满，点击它可查看每项限额及其重置时间：Claude Code 的 Claude 套餐 5 小时和每周限额（需要 {path} 中的中继）、Anthropic 和 OpenAI 随每次回答返回的速率限制，以及 OpenRouter 密钥的额度（在聊天打开时和每次回答后向 OpenRouter 询问）。Google 和本地模型不显示任何内容。",
+   "hi": "पिछली चैट के पास एक रिंग उपयोग में प्रदाता के उपयोग से भरती है, और उस पर क्लिक करने से हर सीमा और उसके रीसेट का समय दिखता है: Claude Code के लिए आपके Claude प्लान की 5-घंटे और साप्ताहिक सीमाएँ ({path} के रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट सीमाएँ भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और जवाब के बाद OpenRouter से पूछे जाते हैं। Google या स्थानीय मॉडल के लिए कुछ नहीं दिखता।",
+   "es": "Un anillo junto a los chats anteriores se llena con lo que ha usado el proveedor en uso, y un clic en él muestra cada límite y cuándo se reinicia: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y tras una respuesta. No se muestra nada para Google ni para los modelos locales.",
+   "ar": "تمتلئ حلقة بجانب الدردشات السابقة بما استخدمه المزود الحالي، وتعرض نقرة عليها كل حد ومتى يُعاد ضبطه: حدود خطة Claude لمدة 5 ساعات والأسبوعية لـ Claude Code (مع المرحّل من {path})، وحدود المعدل التي ترسلها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter، الذي يُسأل عنه OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
+   "fr": "Un anneau à côté des anciens chats se remplit de ce que le fournisseur utilisé a consommé, et un clic dessus montre chaque limite et quand elle se réinitialise : les limites de 5 heures et hebdomadaire de ton forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de ta clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après une réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
+   "bn": "পুরোনো চ্যাটের পাশে একটি রিং ব্যবহৃত প্রদানকারীর ব্যবহারে ভরে ওঠে, আর তাতে ক্লিক করলে প্রতিটি সীমা ও কখন রিসেট হবে দেখা যায়: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সঙ্গে Anthropic ও OpenAI যে রেট সীমা পাঠায়, আর আপনার OpenRouter কী-এর ক্রেডিট, চ্যাট খুললে ও উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া। Google বা স্থানীয় মডেলের জন্য কিছু দেখানো হয় না।",
+   "pt-BR": "Um anel ao lado das conversas anteriores se enche com o que o provedor em uso já usou, e um clique nele mostra cada limite e quando ele é reiniciado: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e após uma resposta. Nada é mostrado para o Google nem para os modelos locais.",
+   "ru": "Кольцо рядом с прошлыми чатами заполняется тем, что израсходовал текущий провайдер, а щелчок по нему показывает каждый лимит и когда он сбросится: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI присылают с каждым ответом, и кредиты вашего ключа OpenRouter, запрашиваемые у OpenRouter при открытии чата и после ответа. Для Google и локальных моделей ничего не показывается.",
+   "id": "Sebuah cincin di samping obrolan sebelumnya terisi sesuai pemakaian penyedia yang digunakan, dan mengekliknya menampilkan setiap batas dan kapan diatur ulang: batas 5 jam dan mingguan paket Claude kamu untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter kamu, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal.",
+   "it": "Un anello accanto alle chat passate si riempie con quanto ha usato il provider in uso, e un clic su di esso mostra ogni limite e quando si azzera: i limiti di 5 ore e settimanale del tuo piano Claude per Claude Code (con il relay da {path}), i limiti di frequenza che Anthropic e OpenAI rimandano con ogni risposta, e i crediti della tua chiave OpenRouter, chiesti a OpenRouter quando la chat si apre e dopo una risposta. Non viene mostrato nulla per Google o per i modelli locali."
+  },
+  "New line in the message": {
+   "zh-Hans": "在消息中换行",
+   "hi": "संदेश में नई पंक्ति",
+   "es": "Nueva línea en el mensaje",
+   "ar": "سطر جديد في الرسالة",
+   "fr": "Nouvelle ligne dans le message",
+   "bn": "বার্তায় নতুন লাইন",
+   "pt-BR": "Nova linha na mensagem",
+   "ru": "Новая строка в сообщении",
+   "id": "Baris baru dalam pesan",
+   "it": "Vai a capo nel messaggio"
   }
  }
 }

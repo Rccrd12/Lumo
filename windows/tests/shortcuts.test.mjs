@@ -279,7 +279,7 @@ test("the wardrobe shortcut's own event opens the wardrobe", () => {
 
 test("a global shortcut arrives as an event and opens the chat", () => {
   emit("shortcut", "openChat");
-  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard", "hold"]);
 });
 
 test("the sharing shortcuts open the chat with what Rust took, or say what went wrong", () => {
@@ -344,7 +344,7 @@ test("island keys are read before the chat field sees them, and only while open"
 
 test("the island toggle opens on the chat with the keyboard, and closes an open island", () => {
   runGlobalShortcut(host, "toggleIsland", resume);
-  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard", "hold"]);
   did = [];
   State.mode = "expanded";
   runGlobalShortcut(host, "toggleIsland", resume);
@@ -359,13 +359,13 @@ test("go to alert: the permission first, then a question, else Mochi is annoyed"
   State.upsertExternalAgent("agent_gemini", "Gemini", "#fff");
   State.updateTask("agent_gemini", "question");
   runGlobalShortcut(host, "goToAlert", resume);
-  assert.deepEqual(did, ["resume", "alert:question", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:question", "keyboard", "hold"]);
   assert.equal(State.focusId, "agent_gemini");
 
   did = [];
   State.pendingApproval = { requestId: "r1", sessionId: "s", pillId: "integration_claude", tool: "Bash", command: "ls" };
   runGlobalShortcut(host, "goToAlert", resume);
-  assert.deepEqual(did, ["resume", "alert:approval", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:approval", "keyboard", "hold"]);
   assert.equal(State.focusId, "integration_claude");
   // Nothing is ever decided from a shortcut.
   assert.deepEqual(sent("approval_decision"), []);
@@ -375,7 +375,7 @@ test("go to alert brings up the unified card: any agent's pill, a question as a 
   State.upsertExternalAgent("agent_codex", "Codex", "#fff");
   State.pendingApproval = { requestId: "r1", sessionId: "s", pillId: "agent_codex", tool: "Bash", command: "ls" };
   runGlobalShortcut(host, "goToAlert", resume);
-  assert.deepEqual(did, ["resume", "alert:approval", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:approval", "keyboard", "hold"]);
   assert.equal(State.focusId, "agent_codex");
 
   did = [];
@@ -384,7 +384,7 @@ test("go to alert brings up the unified card: any agent's pill, a question as a 
     questions: [{ question: "Which?", options: [], multiSelect: false }],
   };
   runGlobalShortcut(host, "goToAlert", resume);
-  assert.deepEqual(did, ["resume", "alert:question", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:question", "keyboard", "hold"]);
   assert.equal(State.focusId, "integration_claude");
   assert.deepEqual(sent("approval_decision"), []);
   assert.deepEqual(sent("approval_answer"), []);
@@ -393,7 +393,7 @@ test("go to alert brings up the unified card: any agent's pill, a question as a 
 test("the island toggle opens on a waiting card, and folds it rather than dropping it", () => {
   State.pendingApproval = { requestId: "r1", sessionId: "s", pillId: "integration_claude", tool: "Bash", command: "ls" };
   runGlobalShortcut(host, "toggleIsland", resume);
-  assert.deepEqual(did, ["resume", "alert:approval", "keyboard"]);
+  assert.deepEqual(did, ["resume", "alert:approval", "keyboard", "hold"]);
   did = [];
   State.mode = "expanded";
   // The island's collapse() folds a waiting card (Island.foldApproval).
@@ -424,7 +424,7 @@ test("next and previous pill wrap around and open the overview", () => {
   assert.equal(State.focusId, ids[ids.length - 1]);
   runGlobalShortcut(host, "nextPill", resume);
   assert.equal(State.focusId, ids[0]);
-  assert.deepEqual(did, ["resume", "alert:overview", "resume", "alert:overview"]);
+  assert.deepEqual(did, ["resume", "alert:overview", "hold", "resume", "alert:overview", "hold"]);
 });
 
 test("mute flips the sound, saves it, and Mochi reacts", () => {

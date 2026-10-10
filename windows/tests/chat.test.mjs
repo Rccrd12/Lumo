@@ -223,9 +223,9 @@ test("a local answer streams into one reply, then the finished text replaces it"
 
 // ── Stop, copy, edit ──────────────────────────────────────────────────────────
 
-/** A key typed in the chat field. */
-function type(key) {
-  const event = { key, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+/** A key typed in the chat field (`extra`: shiftKey…). */
+function type(key, extra = {}) {
+  const event = { key, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...extra };
   for (const fn of $(".chat-input").listeners.get("keydown")) fn(event);
   return event;
 }
@@ -244,6 +244,26 @@ async function ask(text) {
   await flush();
   view.sync();
 }
+
+test("Shift+Enter starts a new line instead of sending; Enter sends it all", async () => {
+  answers.chat_send = { text: "ok", turns: 2 };
+  const input = $(".chat-input");
+  assert.equal(input.tagName, "TEXTAREA");
+  input.value = "first line";
+  const shifted = type("Enter", { shiftKey: true });
+  assert.equal(shifted.defaultPrevented, false, "the field adds the new line itself");
+  await flush();
+  assert.deepEqual(sent("chat_send"), []);
+  input.value = "first line\nsecond line";
+  type("Enter");
+  await flush();
+  assert.equal(sent("chat_send").length, 1);
+  assert.equal(sent("chat_send")[0].query, "first line\nsecond line");
+  // While an IME composes, Enter is the IME's.
+  input.value = "かな";
+  const composing = type("Enter", { isComposing: true });
+  assert.equal(composing.defaultPrevented, false);
+});
 
 const rows = () => view.el.find(".chat-row");
 const editOf = (i) => rows()[i].find(".msg-action")[1];

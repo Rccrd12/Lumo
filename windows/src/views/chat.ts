@@ -595,12 +595,24 @@ export function buildPrompt(
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
-  const input = h("input", {
-    type: "text",
+  // A text area of one line that grows with what is typed (up to a few lines,
+  // then it scrolls): Enter sends, Shift+Enter starts a new line.
+  const input = h("textarea", {
     class: "chat-input",
+    rows: "1",
     placeholder: t(STRINGS.placeholderFirst),
     spellcheck: "false",
-  }) as HTMLInputElement;
+  }) as HTMLTextAreaElement;
+  /** As tall as its lines, up to the CSS max-height. */
+  function fitInput() {
+    input.style.height = "auto";
+    if (input.scrollHeight > 0) input.style.height = `${input.scrollHeight}px`;
+  }
+  function setInput(text: string) {
+    input.value = text;
+    fitInput();
+  }
+  input.addEventListener("input", fitInput);
   const send = h("button", { class: "send-btn", title: tl(STRINGS.send) }, svg(ICONS.arrowUp, 11));
   const attachBtn = h("button", { class: "tool-btn", title: tl(STRINGS.attach) }, svg(ICONS.paperclip, 13, { stroke: 1.8 }));
   const screenBtn = h("button", { class: "tool-btn screen-btn", title: tl(SCREEN_STRINGS.button) }, svg(ICONS.display, 13, { stroke: 1.8 }));
@@ -856,7 +868,7 @@ export function buildPrompt(
     closeHistory();
     closeScreen();
     editing = message.id;
-    input.value = message.content;
+    setInput(message.content);
     Sound.play("blip");
     renderedCount = -1;
     State.notify();
@@ -867,7 +879,7 @@ export function buildPrompt(
   function cancelEdit() {
     if (editing == null) return;
     editing = null;
-    input.value = "";
+    setInput("");
     Sound.play("pop");
     renderedCount = -1;
     State.notify();
@@ -1250,7 +1262,7 @@ export function buildPrompt(
 
   function newChat() {
     if (sending) return;
-    if (editing != null) input.value = "";
+    if (editing != null) setInput("");
     editing = null;
     State.startChat();
     State.droppedFile = null;
@@ -1281,7 +1293,7 @@ export function buildPrompt(
         start(STRINGS.askFile, () => void attach()),
         start(STRINGS.lookScreen, () => openScreen()),
         start(STRINGS.writeMessage, () => {
-          input.value = t(STRINGS.writeMessageStart);
+          setInput(t(STRINGS.writeMessageStart));
           void Bridge.focusWindow(true);
           window.setTimeout(() => {
             input.focus();
@@ -1430,7 +1442,7 @@ export function buildPrompt(
     const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
     if (timer && timerMs != null) {
-      input.value = "";
+      setInput("");
       compactTimer(timerMs, timer[2]);
       Sound.play("blip");
       return;
@@ -1438,7 +1450,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
-    input.value = "";
+    setInput("");
     sending = true;
     stopping = false;
     drawModelButton();
@@ -1563,8 +1575,10 @@ export function buildPrompt(
   // The field stays open while an answer is written: the next question can be
   // typed, and goes with Enter once the answer is done (or stopped).
   input.addEventListener("keydown", (e) => {
-    const key = (e as KeyboardEvent).key;
-    if (key === "Enter") {
+    const ke = e as KeyboardEvent;
+    const key = ke.key;
+    // Shift+Enter is a new line; Enter while an IME composes is the IME's.
+    if (key === "Enter" && !ke.shiftKey && !ke.isComposing) {
       e.preventDefault();
       void submit();
     } else if (key === "Escape" && picker.isOpen) {
@@ -1591,7 +1605,7 @@ export function buildPrompt(
       const ask = State.chatAsk;
       if (ask && !sending) {
         State.chatAsk = null;
-        input.value = ask;
+        setInput(ask);
         window.setTimeout(() => void submit(), 0);
       }
       if (State.settings.chatShareExplorer !== sharesExplorer) {

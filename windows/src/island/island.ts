@@ -41,10 +41,11 @@ const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
 /**
- * After a sharing shortcut opened the island, how long it stays open with the
- * mouse elsewhere (s); each key typed in it gives it this long again.
+ * After a shortcut opened the island (open the island, open the chat, a
+ * sharing one…), how long it stays open with the mouse elsewhere (s); each
+ * key typed in it gives it this long again.
  */
-const SHARE_GRACE = 12;
+const SHARE_GRACE = 10;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
 
@@ -644,7 +645,7 @@ export class Island {
 
   /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
    *  It gives it back when it closes, or when the chat is left. */
-  /** A sharing shortcut opened the island: it waits for the question (SHARE_GRACE). */
+  /** A shortcut opened the island: it waits for the user, the mouse being elsewhere (SHARE_GRACE). */
   holdOpen() {
     this.fsm.holdOpen(SHARE_GRACE);
   }
