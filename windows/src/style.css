@@ -1853,30 +1853,97 @@ input[type="range"]::-webkit-slider-thumb {
   color: #7b8089;
 }
 
-/* What the provider has left: quiet, next to the model button. */
-.chat-usage {
-  display: inline-flex;
-  align-items: center;
+/* What the provider has used: a ring next to the past chats, filling clockwise
+   from the top in the plan's colours; a click opens its menu. */
+.chat-usage .usage-ring {
+  transform: rotate(-90deg);
+}
+
+.usage-ring-track {
+  fill: none;
+  stroke: rgba(255, 255, 255, 0.14);
+  stroke-width: 2.2;
+}
+
+.usage-ring-arc {
+  fill: none;
+  stroke: #8b929e;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.5s cubic-bezier(0.3, 0.8, 0.3, 1), stroke 0.3s;
+}
+
+.usage-ring.unknown .usage-ring-track {
+  stroke-dasharray: 2.2 2.6;
+}
+
+.chat-usage.setup .usage-ring-track {
+  stroke: rgba(255, 255, 255, 0.24);
+}
+
+/* Its menu: each limit, how much is used, its bar, when it resets. */
+.chat-body .picker.usage-panel,
+.chat-body.picking .picker.usage-panel {
+  display: none;
+}
+
+.chat-body.metering .picker.usage-panel {
+  display: flex;
+}
+
+.chat-body.metering .chat-log,
+.chat-body.metering .chip-row {
+  display: none;
+}
+
+.picker-list.usage-list {
+  gap: 14px;
+  padding: 2px 2px 0;
+}
+
+.usage-row {
+  display: flex;
+  flex-direction: column;
   gap: 5px;
-  flex: 0 1 auto;
-  min-width: 0;
-  margin: 0 6px 0 auto;
-  padding: 4px 0;
-  border: 0;
-  background: none;
-  color: #5c6370;
-  font: 500 10px var(--font);
-  cursor: default;
 }
 
-.chat-usage-text {
+.usage-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.usage-label {
   min-width: 0;
+  font: 500 12.5px var(--font);
+  color: var(--ink-2);
+}
+
+.usage-value {
+  flex: none;
+  font: 600 12.5px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+.usage-bar {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
 }
 
-.chat-usage.setup:hover {
+.usage-fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  transition: width 0.5s cubic-bezier(0.3, 0.8, 0.3, 1);
+}
+
+.usage-reset {
+  font: 400 11px var(--font);
   color: #8b929e;
 }
 
@@ -1919,8 +1986,8 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
-/* Claude Code's effort: a slider from faster to smarter, Auto beside it.
-   Kept to two short rows, so the model list keeps its room in a small window. */
+/* Claude Code's effort: Auto beside its name, then a short slider with the
+   level it is on. Two short rows, so the model list keeps its room. */
 .picker-efforts {
   flex: 0 0 auto;
   display: flex;
@@ -1940,7 +2007,12 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .effort-value {
-  font: 600 11.5px var(--font);
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 12px var(--font);
   color: var(--ink-2);
 }
 
@@ -1979,17 +2051,11 @@ input[type="range"]::-webkit-slider-thumb {
   gap: 8px;
 }
 
-.effort-end {
-  flex: 0 0 auto;
-  font-size: 10.5px;
-  color: #8b929e;
-}
-
 .effort-track {
   position: relative;
-  flex: 1 1 auto;
-  min-width: 0;
-  height: 16px;
+  flex: 0 1 200px;
+  min-width: 120px;
+  height: 22px;
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.06);
 }
@@ -1997,7 +2063,7 @@ input[type="range"]::-webkit-slider-thumb {
 /* One dot per level, under the knob's stops. */
 .effort-ticks {
   position: absolute;
-  inset: 0 8px;
+  inset: 0 11px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2024,15 +2090,15 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .effort-track .effort-slider::-webkit-slider-runnable-track {
-  height: 16px;
+  height: 22px;
   background: transparent;
 }
 
 .effort-track .effort-slider::-webkit-slider-thumb {
   -webkit-appearance: none;
   appearance: none;
-  width: 16px;
-  height: 16px;
+  width: 22px;
+  height: 22px;
   border-radius: 50%;
   background: #e9ebef;
   background: color-mix(in srgb, var(--accent) 35%, #e9ebef);
@@ -2124,6 +2190,42 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
+}
+
+/* The model picker's providers: one short row (it scrolls sideways when they
+   do not fit), so the model list below keeps the room. */
+.picker.models {
+  gap: 6px;
+  padding: 8px 10px 10px;
+}
+
+.picker.models .picker-chips {
+  flex: none;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.picker.models .picker-chips::-webkit-scrollbar {
+  display: none;
+}
+
+.picker.models .picker-chip {
+  flex: none;
+  gap: 4px;
+  padding: 2px 8px;
+  font-size: 11px;
+}
+
+.picker.models .picker-dot {
+  width: 6px;
+  height: 6px;
+}
+
+.picker.models.empty .picker-rule,
+.picker.models.empty .picker-chips {
+  display: none;
 }
 
 .picker-chip {
@@ -2678,6 +2780,178 @@ input[type="range"]::-webkit-slider-thumb {
   overflow-wrap: anywhere;
 }
 
+/* A tool's or service's own card (views/integrations.ts idleCard): bigger
+   text, what it did lately filling the room below, and its buttons at the
+   bottom. On a short island the facts that do not fit are left out whole. */
+.int-card.tool-card {
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 14px 12px 108px;
+  gap: 6px;
+}
+
+.tool-card .int-head b {
+  font-size: 14px;
+}
+
+.tool-card .int-head > span {
+  font-size: 12px;
+}
+
+.tool-card .int-status {
+  gap: 6px;
+  padding-top: 0;
+  font-size: 12.5px;
+  color: #b4b9c1;
+}
+
+.tool-facts {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-flow: column wrap;
+  align-content: flex-start;
+  gap: 5px;
+  overflow: hidden;
+  padding-top: 4px;
+}
+
+.tool-fact {
+  width: 100%;
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font: 400 12px var(--font);
+}
+
+.tool-fact-label {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--dim-2);
+}
+
+.tool-fact.alone .tool-fact-label {
+  flex: 1 1 auto;
+}
+
+.tool-fact-value {
+  flex: 0 0 auto;
+  max-width: 62%;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.tool-foot {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* One row, even on a short island: the first button gives way (with an
+   ellipsis, its full name on hover) before Refresh does. */
+.tool-actions {
+  display: flex;
+  gap: 6px;
+  min-width: 0;
+}
+
+.tool-actions .tool-action {
+  flex: none;
+}
+
+.tool-actions .tool-action:first-child:not(:last-child) {
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.tool-action {
+  --tool: #f5f6f8;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  max-width: 100%;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #d4d7dc;
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, transform 0.08s;
+}
+
+.tool-action span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-action.primary {
+  color: var(--ink);
+  border-color: rgba(255, 255, 255, 0.16);
+  background: rgba(255, 255, 255, 0.1);
+  border-color: color-mix(in srgb, var(--tool) 35%, transparent);
+  background: color-mix(in srgb, var(--tool) 14%, transparent);
+}
+
+.tool-action:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.16);
+  border-color: rgba(255, 255, 255, 0.24);
+  color: var(--ink);
+}
+
+.tool-action:active:not(:disabled) {
+  transform: scale(0.96);
+  background: rgba(255, 255, 255, 0.22);
+}
+
+.tool-action:focus-visible {
+  outline: 2px solid rgba(96, 165, 250, 0.7);
+  outline-offset: 1px;
+}
+
+.tool-action.busy {
+  cursor: default;
+  color: #9aa0a9;
+}
+
+/* Refresh at work: a small ring turning. */
+.tool-spin {
+  width: 10px;
+  height: 10px;
+  border: 2px solid rgba(255, 255, 255, 0.18);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: tool-spin 0.7s linear infinite;
+}
+
+@keyframes tool-spin {
+  to { transform: rotate(360deg); }
+}
+
+.tool-note {
+  font: 400 11px var(--font);
+  color: #22c55e;
+}
+
+.tool-note.bad {
+  color: var(--red-text, #ff8a8a);
+  overflow-wrap: anywhere;
+}
+
 .int-actions {
   display: flex;
   align-items: center;
@@ -3020,7 +3294,7 @@ input[type="range"]::-webkit-slider-thumb {
 .plan-card {
   position: relative;
   z-index: 1;
-  padding-top: 10px;
+  padding-top: 12px;
 }
 
 .plan-head {
@@ -3036,7 +3310,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .plan-title {
-  font: 600 12px var(--font);
+  font: 600 14px var(--font);
   color: var(--ink);
 }
 
@@ -3045,34 +3319,55 @@ input[type="range"]::-webkit-slider-thumb {
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
-  font: 400 11px var(--font);
+  font: 400 12px var(--font);
   color: var(--dim-2);
 }
 
 .plan-rows {
   display: flex;
   flex-direction: column;
-  gap: 5px;
-  padding: 8px 12px 0 108px;
+  gap: 12px;
+  padding: 12px 16px 0 108px;
 }
 
 .plan-row {
   display: flex;
   align-items: center;
   gap: 5px;
-  font: 400 11px var(--font);
+  font: 400 12px var(--font);
   white-space: nowrap;
 }
 
+/* One limit: its name and how much is used, a bar, and when it resets. */
+.plan-gauge {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.plan-gauge-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
 .plan-label {
-  flex: 0 0 40px;
+  flex: 0 0 auto;
+  font: 400 12.5px var(--font);
+  color: #b4b9c1;
+}
+
+.plan-row .plan-label {
+  flex: 0 0 56px;
+  font-size: 12px;
   color: var(--dim-3);
 }
 
 .plan-bar {
-  flex: 0 0 50px;
-  height: 4px;
-  border-radius: 2px;
+  display: block;
+  height: 6px;
+  border-radius: 3px;
   background: rgba(255, 255, 255, 0.08);
   overflow: hidden;
 }
@@ -3080,25 +3375,28 @@ input[type="range"]::-webkit-slider-thumb {
 .plan-fill {
   display: block;
   height: 100%;
-  border-radius: 2px;
+  border-radius: 3px;
 }
 
 .plan-pct {
-  flex: 0 0 30px;
-  text-align: right;
-  font-weight: 600;
+  font: 600 13px var(--font);
   font-variant-numeric: tabular-nums;
-  color: #c5c8cd;
-}
-
-.plan-reset-icon {
-  display: inline-flex;
-  color: var(--dim-3);
+  color: #e3e5e8;
 }
 
 .plan-reset {
-  font-size: 10px;
-  color: var(--dim-3);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 400 11.5px var(--font);
+  color: var(--dim-2);
+}
+
+.plan-foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px 0 108px;
 }
 
 .plan-none {

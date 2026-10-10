@@ -34,11 +34,16 @@ void onEvent<ActivitiesData>("activities-state", (data) => {
 });
 
 // Shown again: out of its corner after the icon was clicked, else at once.
-void onEvent<boolean>("activities-appear", (fly) => {
+// Taken off the island (`painted`), the island's page waits to hear it has
+// been drawn here before it lets go of its own.
+void onEvent<{ fly: boolean; painted: boolean }>("activities-appear", ({ fly, painted }) => {
   const v = ensureView();
   if (last) v.render(last);
   if (fly) v.flyIn();
   else v.reveal();
+  if (painted) {
+    requestAnimationFrame(() => requestAnimationFrame(() => void emitToWindow("island", "activities-painted")));
+  }
 });
 
 // The keyboard goes back to the app in front once the timer's field is left.

@@ -746,6 +746,38 @@ async fn paste_copied_file() -> Result<Option<DroppedFile>, String> {
 }
 
 /// The island may only ask whether a key exists — never read it.
+/// The chat providers that are set up, for the model picker: a key in the
+/// credential store, or the CLI on this computer with Lumo's hooks in place
+/// (Claude Code, Antigravity CLI). The model servers are the page's to judge
+/// (their address in the settings). Async: the credential store and the disk
+/// may take a moment, and the main thread is not kept waiting.
+#[tauri::command]
+async fn chat_providers() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut ready = Vec::new();
+        for (id, key) in [
+            ("anthropic", "anthropic-api-key"),
+            ("google", "google-api-key"),
+            ("openai", "openai-api-key"),
+            ("openrouter", "openrouter-api-key"),
+        ] {
+            if secrets::present(key) {
+                ready.push(id.to_string());
+            }
+        }
+        if !platform::claude_candidates().is_empty() && hooks::status().installed {
+            ready.push("claude-code".to_string());
+        }
+        let antigravity_hooks = agents::list().iter().any(|a| a.id == "antigravity" && a.installed);
+        if !platform::agy_candidates().is_empty() && antigravity_hooks {
+            ready.push("antigravity-cli".to_string());
+        }
+        ready
+    })
+    .await
+    .unwrap_or_default()
+}
+
 #[tauri::command]
 fn secret_present(key: String) -> bool {
     secrets::present(&key)
@@ -1002,6 +1034,7 @@ pub fn run() {
             media::media_now,
             activities::activities_resize,
             activities::activities_show,
+            activities::activities_prepare,
             activities::activities_drag,
             activities::activities_window_resize,
             activities::activities_focus,
@@ -1011,6 +1044,7 @@ pub fn run() {
             paste_file,
             paste_copied_file,
             secret_present,
+            chat_providers,
             secret_set,
             secret_clear,
             refresh_integration,

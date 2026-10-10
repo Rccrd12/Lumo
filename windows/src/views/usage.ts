@@ -16,9 +16,10 @@ import {
   type CodexPlanUsage, type PlanUsage, type PlanWindow,
 } from "../core/plan";
 import { State } from "../core/state";
+import { USAGE_TEXT } from "../core/chat-usage";
 import { clear, dot, h, svg } from "./dom";
 import { ICONS } from "./icons";
-import { language, tl } from "../i18n/i18n";
+import { language, t, tl } from "../i18n/i18n";
 
 /** The Claude pill is in the header: overview, turned on, relay in. */
 export function claudePillVisible(): boolean {
@@ -83,25 +84,36 @@ export function storedClaudePlanUsage(): string | null {
 // ── Codex numbers ─────────────────────────────────────────────────────────────
 
 let codexInFlight = false;
+/** The Codex card's Refresh: whether it is at work, and whether its last answer brought nothing. */
+let codexRefresh: { busy: boolean; failed: boolean } = { busy: false, failed: false };
 
 /**
- * Asks Codex again when the numbers are missing or older than a minute. Only
- * from the pill (shown or clicked), never on a timer, and never while paused:
- * `codex app-server` talks to Codex's own service.
+ * Asks Codex again when the numbers are missing or older than a minute (or
+ * at once: the card's Refresh). Only from the pill (shown or clicked) and its
+ * card, never on a timer, and never while paused: `codex app-server` talks to
+ * Codex's own service.
  */
-export function refreshCodexPlanUsage(): void {
-  if (codexInFlight || State.paused || !codexIsStale(State.codexPlanUsage)) return;
+export function refreshCodexPlanUsage(force = false): void {
+  if (codexInFlight || State.paused || (!force && !codexIsStale(State.codexPlanUsage))) return;
   codexInFlight = true;
+  const started = Date.now();
+  if (force) {
+    codexRefresh = { busy: true, failed: false };
+    State.notify();
+  }
   void Bridge.codexPlanUsage()
     .then((result) => {
       const usage = parseCodexPlan(result);
-      if (usage) {
-        State.codexPlanUsage = usage;
-        State.notify();
-      }
+      if (usage) State.codexPlanUsage = usage;
+      if (force) codexRefresh = { busy: true, failed: !usage };
     })
     .finally(() => {
-      codexInFlight = false;
+      // The turning stays long enough to be seen.
+      window.setTimeout(() => {
+        codexInFlight = false;
+        if (force) codexRefresh = { ...codexRefresh, busy: false };
+        State.notify();
+      }, Math.max(0, 500 - (Date.now() - started)));
     });
 }
 
@@ -144,24 +156,30 @@ export function buildPlanPill(codex: boolean): PlanPill {
 
 // ── Card ──────────────────────────────────────────────────────────────────────
 
+/**
+ * One limit, on three lines so nothing is cut: its name and how much is used,
+ * a bar across the card, and when it resets, in words ("Resets in 3 h 31").
+ */
 function gaugeRow(label: string, w: PlanWindow | undefined, weekly: boolean, now: number): HTMLElement {
-  const row = h("div", { class: "plan-row" }, h("span", { class: "plan-label", text: label }));
+  const top = h("div", { class: "plan-gauge-head" }, h("span", { class: "plan-label", text: label }));
+  const block = h("div", { class: "plan-gauge" }, top);
   if (!w) {
-    row.append(h("span", { class: "plan-none", text: PLAN_TEXT.none }));
-    return row;
+    top.append(h("span", { class: "plan-none", text: PLAN_TEXT.none }));
+    return block;
   }
   const pct = effectivePct(w, now);
   const fill = h("i", { class: "plan-fill" });
   fill.style.width = `${pct}%`;
   fill.style.background = planColor(pct);
   const low = w.low && w.resetsAt > now;
-  row.append(
+  top.append(h("span", { class: "plan-pct", text: low ? PLAN_TEXT.plentyLeft : `${Math.round(pct)}%` }));
+  block.append(
     h("span", { class: "plan-bar" }, fill),
-    h("span", { class: "plan-pct", text: low ? PLAN_TEXT.plentyLeft : `${Math.round(pct)}%` }),
-    h("span", { class: "plan-reset-icon" }, svg(ICONS.arrowClockwise, 8, { stroke: 2.6 })),
-    h("span", { class: "plan-reset", text: resetLabel(w, weekly, now) }),
+    h("span", { class: "plan-reset" },
+      svg(ICONS.clock, 10, { stroke: 2 }),
+      h("span", { text: w.resetsAt > now ? USAGE_TEXT.resets(resetLabel(w, weekly, now)) : PLAN_TEXT.resetting })),
   );
-  return row;
+  return block;
 }
 
 function head(color: string, title: string, subtitle: string): HTMLElement {
@@ -181,7 +199,7 @@ export class PlanCard {
   sync(now = Date.now()) {
     const codex = State.planDetailIsCodex;
     const u = codex ? State.codexPlanUsage : State.planUsage;
-    const key = `${language()}|${codex}|${JSON.stringify(u)}|${Math.floor(now / 30_000)}`;
+    const key = `${language()}|${codex}|${JSON.stringify(u)}|${JSON.stringify(codexRefresh)}|${Math.floor(now / 30_000)}`;
     if (key === this.key) return;
     this.key = key;
     clear(this.el);
@@ -210,6 +228,17 @@ export class PlanCard {
         h("span", { class: "plan-credits", text: codexResetsLabel(u) }),
       ),
     );
-    this.el.append(head(codexColor(now), PLAN_TEXT.codexTitle, codexSubtitle(u, now)), rows);
+    // Codex can be asked again at once (codex app-server): Refresh, which turns while it does.
+    const busy = codexRefresh.busy;
+    const refresh = h("button", {
+      class: busy ? "tool-action busy" : "tool-action",
+      onclick: () => refreshCodexPlanUsage(true),
+    },
+    busy ? h("i", { class: "tool-spin" }) : svg(ICONS.arrowClockwise, 10, { stroke: 2.4 }),
+    h("span", { text: busy ? tl("Refreshing…") : tl("Refresh") }));
+    refresh.toggleAttribute("disabled", busy);
+    const foot = h("div", { class: "plan-foot" }, refresh);
+    if (!busy && codexRefresh.failed) foot.append(h("span", { class: "tool-note bad", text: t("Codex did not answer") }));
+    this.el.append(head(codexColor(now), PLAN_TEXT.codexTitle, codexSubtitle(u, now)), rows, foot);
   }
 }

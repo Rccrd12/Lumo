@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+- **The live activities no longer blink when they come off the island or join it again** (Windows): their own window shows where they are drawn before the island lets go of them, and when dropped against the island it slides into place, is drawn there, and only then goes. The island's window keeps their room meanwhile, so it is never resized in between
+- **The chat's remaining usage is a ring** next to the past chats, instead of a line that was cut off on a narrow island: it fills with the most used of the limits (the 5 hours or the week, whichever is closer to its end) and turns from green to orange to red. A click opens a menu with each limit, how much of it is used, its bar and when it resets; a click outside closes it
+- **The Code section's cards use their room**: bigger text, and for each tool what it did lately — the last session and its project, this week's sessions, time and lines changed (from the weekly recap), and for VS Code the Claude plan's usage. The Claude plan card shows each limit on three lines (how much is used, a bar, "Resets in 3 h 31") so nothing is cut off; the ↻ that looked like a button was only the reset time's mark, and is now a clock beside the words
+- **Refresh shows that it works**: the buttons light up under the mouse and press in, Refresh turns while it looks again, then says "Updated just now" or what went wrong. On a hook pill it reads the hooks and the sessions again; on a service it waits for the server's answer. The Codex plan card has a Refresh of its own, which asks Codex again
+- **Email senders and subjects read right in more cases**: an apostrophe split across two encoded words, UTF-8 that was read as Windows-1252 on the way ("McDonaldâ€™s"), the "ÿ" some mailers leave for an apostrophe ("McDonaldÿs"), `&#146;`-style numbers, UTF-16, and a stray Latin-1 byte inside UTF-8 text all come out as they were written
+- **The email buttons in the live activities stay on one line**, in Italian too: the eye sits by the sender, and Summarize and Draft a reply have the row to themselves
+- **The model picker shows only the providers that are set up**: a key in the credential store, Claude Code or Antigravity CLI installed with Lumo's hooks, a model server with its address. With none, it points to Settings. The providers take one short row, so the model list has more room, and the effort slider is shorter and taller, with only the level it is on beside it
 - **The live activities' last card stays inside the panel's rounded corners** when the list scrolls to the bottom
 - The README shows the live activities, the closed island and a new email, lists 0.5.0's features and the Email and Calendar setup, and links the Linux AppImage directly
 

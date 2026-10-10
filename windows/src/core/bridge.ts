@@ -266,6 +266,8 @@ export const Bridge = {
   pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
+  /** The chat providers that are set up: a key stored, or the CLI installed with Lumo's hooks (lib.rs). */
+  chatProviders: () => call<string[]>("chat_providers"),
   secretSet: (key: string, value: string) => callOrThrow<void>("secret_set", { key, value }),
   secretClear: (key: string) => callOrThrow<void>("secret_clear", { key }),
 
@@ -330,6 +332,8 @@ export const Bridge = {
   activitiesResize: (fx: number, fy: number, height: number) => call<void>("activities_resize", { fx, fy, height }),
   /** Their own window, shown or hidden. */
   activitiesShow: (show: boolean) => call<void>("activities_show", { show }),
+  /** Makes their own window ahead, hidden, so it is ready when they are taken off the island. */
+  activitiesPrepare: () => call<void>("activities_prepare"),
   /** Picked up by their top bar: from beside the island (x, y, w, h in page pixels) or from their window. */
   activitiesDrag: (from: [number, number, number, number] | null) => call<void>("activities_drag", { from }),
   /** A grip of their own window. */

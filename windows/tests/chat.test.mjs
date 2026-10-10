@@ -64,7 +64,7 @@ test("Antigravity CLI needs no key, and has no effort to pick: its model's name 
   assert.equal($(".effort-slider"), null);
 });
 
-test("Claude Code's effort is a slider from faster to smarter, with Auto beside it", async () => {
+test("Claude Code's effort is a short slider with its level beside it, and Auto", async () => {
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   view.sync();
   $(".model-btn").fire("click");
@@ -75,9 +75,9 @@ test("Claude Code's effort is a slider from faster to smarter, with Auto beside 
   assert.ok($(".effort-track").classList.contains("auto"), "no knob while Auto");
   assert.equal($(".effort-slider").getAttribute("max"), "4", "low, medium, high, extra high, max");
   assert.equal($(".effort-ticks").children.length, 5);
-  // The ends sit beside the slider, on its row: the block stays two rows high.
-  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-end", "effort-track", "effort-end"]);
-  assert.deepEqual([0, 2].map((i) => $(".effort-row").children[i].textContent), ["Faster", "Smarter"]);
+  // The level it is on sits right of the slider, alone: no Faster or Smarter.
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-track", "effort-value"]);
+  assert.doesNotMatch($(".picker-efforts").textContent, /Faster|Smarter/);
   assert.equal($(".picker-efforts").children.length, 2);
 
   const slider = $(".effort-slider");
@@ -135,6 +135,27 @@ test("a provider without a key is never asked for its models", async () => {
   assert.deepEqual(sent("secret_present"), [{ key: "anthropic-api-key" }]);
   assert.deepEqual(sent("chat_models"), []);
   assert.match($(".picker-status").textContent, /No API key/);
+});
+
+test("only the providers set up show: no Anthropic without its key", async () => {
+  answers.chat_providers = ["claude-code", "antigravity-cli"];
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  answers.chat_models = [{ id: "default", label: "Default" }];
+  view.sync();
+  $(".model-btn").fire("click");
+  await flush();
+  assert.deepEqual(chips(), ["Claude Code", "Antigravity CLI"]);
+  // Nothing set up: a pointer to Settings instead of chips and models.
+  $(".model-btn").fire("click");
+  answers.chat_providers = [];
+  $(".model-btn").fire("click");
+  await flush();
+  assert.match($(".picker-status").textContent, /No provider is set up yet/);
+  assert.ok($(".picker.models").classList.contains("empty"));
+  $(".picker-link").fire("click");
+  answers.chat_providers = null;
+  $(".model-btn").fire("click");
+  await flush();
 });
 
 test("with a key, the models are listed and picking one saves it", async () => {

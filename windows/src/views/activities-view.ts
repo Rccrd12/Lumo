@@ -423,15 +423,18 @@ export class ActivitiesView {
           if (m.link) this.act({ kind: "mail", id: m.id, what: "open" });
         },
       },
-        h("b", { class: "act-text", text: m.from || m.address }),
-        h("span", { class: "act-sub", text: m.subject }),
-        h("div", { class: "act-mail-actions" },
-          h("button", { class: "act-chip", onclick: ask("summary") }, t(ACTIVITIES_TEXT.summarize)),
-          h("button", { class: "act-chip", onclick: ask("reply") }, t(ACTIVITIES_TEXT.reply)),
+        // The eye sits by the sender, so the two buttons below have the row to themselves.
+        h("div", { class: "act-mail-head" },
+          h("b", { class: "act-text", text: m.from || m.address, title: m.address }),
           h("button", {
             class: "act-chip quiet eye", title: t(ACTIVITIES_TEXT.ignore), "aria-label": t(ACTIVITIES_TEXT.ignore),
             onclick: ask("ignore"),
           }, svg(ICONS.eye, 12, { stroke: 1.8 })),
+        ),
+        h("span", { class: "act-sub", text: m.subject }),
+        h("div", { class: "act-mail-actions" },
+          h("button", { class: "act-chip", title: t(ACTIVITIES_TEXT.summarize), onclick: ask("summary") }, t(ACTIVITIES_TEXT.summarize)),
+          h("button", { class: "act-chip", title: t(ACTIVITIES_TEXT.reply), onclick: ask("reply") }, t(ACTIVITIES_TEXT.reply)),
         ),
       );
       this.mailBox.append(box);

@@ -5263,30 +5263,6 @@
    "id": "Claude Code melaporkan pemakaian paket Anda di sesi terminalnya; jawabannya di chat hanya sesekali melaporkannya.",
    "it": "Claude Code indica l'utilizzo del tuo piano nelle sessioni del terminale; le sue risposte nella chat lo indicano solo ogni tanto."
   },
-  "Faster": {
-   "zh-Hans": "更快",
-   "hi": "तेज़",
-   "es": "Más rápido",
-   "ar": "أسرع",
-   "fr": "Plus rapide",
-   "bn": "দ্রুততর",
-   "pt-BR": "Mais rápido",
-   "ru": "Быстрее",
-   "id": "Lebih cepat",
-   "it": "Più veloce"
-  },
-  "Smarter": {
-   "zh-Hans": "更聪明",
-   "hi": "ज़्यादा समझदार",
-   "es": "Más inteligente",
-   "ar": "أذكى",
-   "fr": "Plus intelligent",
-   "bn": "আরও বুদ্ধিমান",
-   "pt-BR": "Mais inteligente",
-   "ru": "Умнее",
-   "id": "Lebih cerdas",
-   "it": "Più intelligente"
-  },
   "Recommended": {
    "zh-Hans": "推荐",
    "hi": "सुझाया गया",
@@ -6762,6 +6738,150 @@
    "ru": "С каждым сообщением: заголовки открытых окон и документы в них (PDF, файл Word или Excel…), найденные на диске, чтобы ИИ мог прочитать тот, о котором вы спрашиваете. Получает их только провайдер чата, вместе с этим сообщением.",
    "id": "Bersama setiap pesan: judul jendela yang terbuka dan dokumen yang ditampilkannya (PDF, file Word atau Excel…), ditemukan di disk, agar AI bisa membaca yang kamu tanyakan. Hanya penyedia chat yang menerimanya, bersama pesan itu.",
    "it": "Con ogni messaggio: i titoli delle finestre aperte e i documenti che mostrano (un PDF, un file Word o Excel…), ritrovati sul disco, così l'IA può leggere quello di cui chiedi. Li riceve solo il provider della chat, insieme a quel messaggio."
+  },
+  "{pct}% used": {
+   "zh-Hans": "已用 {pct}%",
+   "hi": "{pct}% उपयोग हुआ",
+   "es": "{pct}% usado",
+   "ar": "مستخدم {pct}%",
+   "fr": "{pct} % utilisés",
+   "bn": "{pct}% ব্যবহৃত",
+   "pt-BR": "{pct}% usado",
+   "ru": "Использовано {pct}%",
+   "id": "{pct}% terpakai",
+   "it": "{pct}% usato"
+  },
+  "Resets {when}": {
+   "zh-Hans": "{when}重置",
+   "hi": "{when} रीसेट",
+   "es": "Se reinicia {when}",
+   "ar": "يُعاد الضبط {when}",
+   "fr": "Réinitialisation {when}",
+   "bn": "{when} রিসেট",
+   "pt-BR": "Reinicia {when}",
+   "ru": "Сброс {when}",
+   "id": "Diatur ulang {when}",
+   "it": "Si azzera {when}"
+  },
+  "Usage": {
+   "zh-Hans": "用量",
+   "hi": "उपयोग",
+   "es": "Uso",
+   "ar": "الاستخدام",
+   "fr": "Utilisation",
+   "bn": "ব্যবহার",
+   "pt-BR": "Uso",
+   "ru": "Использование",
+   "id": "Pemakaian",
+   "it": "Utilizzo"
+  },
+  "No provider is set up yet: add a key, or install Claude Code's or Antigravity's hooks, in Settings.": {
+   "zh-Hans": "尚未设置任何提供方：请在设置中添加密钥，或安装 Claude Code 或 Antigravity 的钩子。",
+   "hi": "अभी कोई प्रदाता सेट नहीं है: सेटिंग्स में एक कुंजी जोड़ें, या Claude Code या Antigravity के हुक इंस्टॉल करें।",
+   "es": "Aún no hay ningún proveedor configurado: añade una clave o instala los hooks de Claude Code o de Antigravity en Ajustes.",
+   "ar": "لم يُعدّ أي مزود بعد: أضف مفتاحًا، أو ثبّت خطافات Claude Code أو Antigravity، في الإعدادات.",
+   "fr": "Aucun fournisseur n'est encore configuré : ajoute une clé, ou installe les hooks de Claude Code ou d'Antigravity, dans les Réglages.",
+   "bn": "এখনও কোনো প্রদানকারী সেট করা হয়নি: সেটিংসে একটি কী যোগ করুন, বা Claude Code বা Antigravity-এর হুক ইনস্টল করুন।",
+   "pt-BR": "Nenhum provedor configurado ainda: adicione uma chave ou instale os hooks do Claude Code ou do Antigravity nas Configurações.",
+   "ru": "Ни один провайдер ещё не настроен: добавьте ключ или установите хуки Claude Code или Antigravity в настройках.",
+   "id": "Belum ada penyedia yang disiapkan: tambahkan kunci, atau pasang hook Claude Code atau Antigravity, di Pengaturan.",
+   "it": "Nessun provider è ancora configurato: aggiungi una chiave, o installa gli hook di Claude Code o di Antigravity, nelle Impostazioni."
+  },
+  "Last session": {
+   "zh-Hans": "上次会话",
+   "hi": "पिछला सत्र",
+   "es": "Última sesión",
+   "ar": "آخر جلسة",
+   "fr": "Dernière session",
+   "bn": "শেষ সেশন",
+   "pt-BR": "Última sessão",
+   "ru": "Последний сеанс",
+   "id": "Sesi terakhir",
+   "it": "Ultima sessione"
+  },
+  "Sessions this week": {
+   "zh-Hans": "本周会话",
+   "hi": "इस सप्ताह के सत्र",
+   "es": "Sesiones esta semana",
+   "ar": "جلسات هذا الأسبوع",
+   "fr": "Sessions cette semaine",
+   "bn": "এই সপ্তাহের সেশন",
+   "pt-BR": "Sessões nesta semana",
+   "ru": "Сеансов за неделю",
+   "id": "Sesi minggu ini",
+   "it": "Sessioni questa settimana"
+  },
+  "Time this week": {
+   "zh-Hans": "本周时长",
+   "hi": "इस सप्ताह का समय",
+   "es": "Tiempo esta semana",
+   "ar": "الوقت هذا الأسبوع",
+   "fr": "Temps cette semaine",
+   "bn": "এই সপ্তাহের সময়",
+   "pt-BR": "Tempo nesta semana",
+   "ru": "Время за неделю",
+   "id": "Waktu minggu ini",
+   "it": "Tempo questa settimana"
+  },
+  "Lines changed": {
+   "zh-Hans": "更改的行",
+   "hi": "बदली गई पंक्तियाँ",
+   "es": "Líneas cambiadas",
+   "ar": "الأسطر المعدّلة",
+   "fr": "Lignes modifiées",
+   "bn": "পরিবর্তিত লাইন",
+   "pt-BR": "Linhas alteradas",
+   "ru": "Изменено строк",
+   "id": "Baris diubah",
+   "it": "Righe modificate"
+  },
+  "No session this week yet": {
+   "zh-Hans": "本周还没有会话",
+   "hi": "इस सप्ताह अभी कोई सत्र नहीं",
+   "es": "Aún no hay sesiones esta semana",
+   "ar": "لا جلسات هذا الأسبوع بعد",
+   "fr": "Pas encore de session cette semaine",
+   "bn": "এই সপ্তাহে এখনও কোনো সেশন নেই",
+   "pt-BR": "Nenhuma sessão nesta semana ainda",
+   "ru": "На этой неделе сеансов ещё не было",
+   "id": "Belum ada sesi minggu ini",
+   "it": "Ancora nessuna sessione questa settimana"
+  },
+  "Refreshing…": {
+   "zh-Hans": "正在刷新…",
+   "hi": "रीफ़्रेश हो रहा है…",
+   "es": "Actualizando…",
+   "ar": "جارٍ التحديث…",
+   "fr": "Actualisation…",
+   "bn": "রিফ্রেশ হচ্ছে…",
+   "pt-BR": "Atualizando…",
+   "ru": "Обновление…",
+   "id": "Menyegarkan…",
+   "it": "Aggiorno…"
+  },
+  "Updated {when}": {
+   "zh-Hans": "{when}已更新",
+   "hi": "{when} अपडेट हुआ",
+   "es": "Actualizado {when}",
+   "ar": "تم التحديث {when}",
+   "fr": "Mis à jour {when}",
+   "bn": "{when} আপডেট হয়েছে",
+   "pt-BR": "Atualizado {when}",
+   "ru": "Обновлено {when}",
+   "id": "Diperbarui {when}",
+   "it": "Aggiornato {when}"
+  },
+  "Codex did not answer": {
+   "zh-Hans": "Codex 没有回应",
+   "hi": "Codex ने जवाब नहीं दिया",
+   "es": "Codex no respondió",
+   "ar": "لم يُجب Codex",
+   "fr": "Codex n'a pas répondu",
+   "bn": "Codex উত্তর দেয়নি",
+   "pt-BR": "O Codex não respondeu",
+   "ru": "Codex не ответил",
+   "id": "Codex tidak menjawab",
+   "it": "Codex non ha risposto"
   }
  }
 }

@@ -24,8 +24,10 @@
 // or the folder open in File Explorer: its listing goes with the question, and
 // a file of it the question names is attached as if picked with the paperclip.
 //
-// With Settings → Chat → "Show remaining usage in the chat" on, a quiet line
-// next to the model button says what the provider has left (core/chat-usage.ts).
+// With Settings → Chat → "Show remaining usage in the chat" on, a small ring
+// next to the model button fills with what the provider has used — the most
+// used of its limits, in the plan's colours — and opens a menu with each limit,
+// its bar and when it resets (core/chat-usage.ts).
 //
 // With "Always share the folder open in File Explorer" on (Settings → Chat),
 // that folder goes with every message by itself; its chip's × leaves it out
@@ -43,12 +45,13 @@ import {
 } from "../core/bridge";
 import {
   PERMISSION_MODES, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, pickModel, providerDef,
-  visibleProviders, withModel, type PermissionMode, type ProviderDef,
+  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
-import { OPENROUTER_STALE_MS, usageLine, type ChatUsage, type SeenUsage } from "../core/chat-usage";
+import { planColor } from "../core/plan";
+import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
   screenPayload, seesImages, sharesFolderByItself, shotPaths, withoutFolder, type ChipKind, type ExplorerPeek,
@@ -68,6 +71,7 @@ const STRINGS = {
   noModel: N_("Choose a model"),
   loading: N_("Loading models…"),
   noKey: N_("No API key — add it in Settings."),
+  noProvider: N_("No provider is set up yet: add a key, or install Claude Code's or Antigravity's hooks, in Settings."),
   openSettings: N_("Open Settings"),
   newChat: N_("New chat"),
   pastChats: N_("Past chats"),
@@ -77,8 +81,6 @@ const STRINGS = {
   cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
-  faster: N_("Faster"),
-  smarter: N_("Smarter"),
   recommended: N_("Recommended"),
   autoHint: N_("Auto: Claude Code picks the effort its model is made for."),
   permissions: N_("Permissions"),
@@ -310,14 +312,24 @@ interface Picker {
   readonly isOpen: boolean;
 }
 
+/**
+ * The providers set up on this computer (lib.rs chat_providers), asked each
+ * time the picker opens; null until the first answer, or with no Rust to ask.
+ */
+let readyProviders: ReadonlySet<string> | null = null;
+
 /** Provider chips, then the chosen provider's models — ModelPickerView. */
 function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
-  // Claude Code only: how hard it thinks (claude --effort), on a slider from
-  // faster to smarter, with Auto (its model's own level) beside it.
+  // Claude Code only: how hard it thinks (claude --effort), on a short slider
+  // with the level it is on beside it, and Auto (its model's own level) above.
   const efforts = h("div", { class: "picker-efforts" });
-  const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list, efforts);
+  const el = h("div", { class: "picker models" }, chips, h("div", { class: "picker-rule" }), list, efforts);
+  // Asked once ahead, so the first opening already shows the right chips.
+  void Bridge.chatProviders().then((ids) => {
+    if (Array.isArray(ids)) readyProviders = new Set(ids);
+  });
 
   function drawEfforts() {
     clear(efforts);
@@ -365,22 +377,20 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     slider.addEventListener("change", choose);
     slider.addEventListener("pointerup", choose);
 
-    // Two short rows, so a small window leaves the models their room: the
-    // ends sit beside the slider rather than over it.
+    // Two short rows, so a small window leaves the models their room: Effort
+    // and Auto, then the slider with the level it is on.
     efforts.append(
       h(
         "div",
         { class: "effort-head" },
         h("span", { class: "picker-label", text: t(STRINGS.effort) }),
-        h("span", { class: "effort-value", text: effortLabel(current) }),
         auto,
       ),
       h(
         "div",
         { class: "effort-row" },
-        h("span", { class: "effort-end", text: t(STRINGS.faster) }),
         track,
-        h("span", { class: "effort-end", text: t(STRINGS.smarter) }),
+        h("span", { class: "effort-value", text: effortLabel(current) }),
       ),
     );
   }
@@ -392,7 +402,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
 
   function drawChips() {
     clear(chips);
-    for (const p of visibleProviders(State.settings)) {
+    for (const p of visibleProviders(State.settings, readyProviders)) {
       const on = p.id === State.settings.chatProvider;
       const chip = h(
         "button",
@@ -482,13 +492,38 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     }
   }
 
+  /** Nothing set up at all: a pointer to Settings in place of chips and models. */
+  function drawNothingReady(): boolean {
+    const none = readyProviders != null && !anyProviderReady(State.settings, readyProviders);
+    el.classList.toggle("empty", none);
+    if (none) {
+      clear(chips);
+      status(t(STRINGS.noProvider), true);
+      efforts.hidden = true;
+    }
+    return none;
+  }
+
   function open() {
     isOpen = true;
     el.classList.add("on");
     drawChips();
     drawEfforts();
     onChange();
-    void loadModels();
+    if (!drawNothingReady()) void loadModels();
+    // Which are set up may have changed in Settings since: asked again each time.
+    void Bridge.chatProviders().then((ids) => {
+      const key = (set: ReadonlySet<string> | null) => (set ? [...set].sort().join() : null);
+      const before = key(readyProviders);
+      // No answer (no Rust to ask): every provider shows, as before.
+      readyProviders = Array.isArray(ids) ? new Set(ids) : null;
+      if (!isOpen || before === key(readyProviders)) return;
+      drawChips();
+      if (!drawNothingReady()) {
+        drawEfforts();
+        void loadModels();
+      }
+    });
   }
 
   function close() {
@@ -504,6 +539,48 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     close,
     get isOpen() {
       return isOpen;
+    },
+  };
+}
+
+// ── Usage ring ────────────────────────────────────────────────────────────────
+
+/**
+ * A ring that fills clockwise from the top as a limit is used, in its colour,
+ * like a spinner standing still. It moves to a new value in a short ease.
+ */
+function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: string | null): void } {
+  const NS = "http://www.w3.org/2000/svg";
+  const R = 5.25;
+  const LEN = 2 * Math.PI * R;
+  const el = document.createElementNS(NS, "svg");
+  el.setAttribute("viewBox", "0 0 14 14");
+  el.setAttribute("width", "14");
+  el.setAttribute("height", "14");
+  el.setAttribute("aria-hidden", "true");
+  el.classList.add("usage-ring");
+  const circle = (cls: string) => {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", "7");
+    c.setAttribute("cy", "7");
+    c.setAttribute("r", String(R));
+    c.classList.add(cls);
+    return c;
+  };
+  const track = circle("usage-ring-track");
+  const arc = circle("usage-ring-arc");
+  arc.setAttribute("stroke-dasharray", `${LEN} ${LEN}`);
+  arc.setAttribute("stroke-dashoffset", String(LEN));
+  el.append(track, arc);
+  return {
+    el,
+    set(pct, color) {
+      const used = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+      // A sliver even at 0 %, so a known plan never looks like an empty ring.
+      const shown = pct == null ? 0 : Math.max(used, 4);
+      arc.setAttribute("stroke-dashoffset", String(LEN * (1 - shown / 100)));
+      arc.style.stroke = color ?? "";
+      el.classList.toggle("unknown", pct == null);
     },
   };
 }
@@ -545,12 +622,12 @@ export function buildPrompt(
   );
   const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
   const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
-  // What the provider has left, when the option is on and it is known.
-  const usageDot = h("i", { class: "model-dot" });
-  const usageText = h("span", { class: "chat-usage-text" });
-  const usageEl = h("button", { class: "chat-usage" }, usageDot, usageText);
+  // What the provider has used, when the option is on and it is known: a ring
+  // that fills, and its menu.
+  const usageRing = usageRingSvg();
+  const usageEl = h("button", { class: "tool-btn chat-usage" }, usageRing.el);
   usageEl.style.display = "none";
-  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn), usageEl, modelBtn);
+  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn, usageEl), modelBtn);
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -559,6 +636,7 @@ export function buildPrompt(
       closeHistory();
       closeScreen();
       closePermissions();
+      closeUsage();
     }
     panelChanged();
     drawModelButton();
@@ -567,7 +645,7 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || ["browsing", "screening", "authorizing"].some((c) => body.classList.contains(c));
+    const open = picker.isOpen || ["browsing", "screening", "authorizing", "metering"].some((c) => body.classList.contains(c));
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
@@ -580,7 +658,10 @@ export function buildPrompt(
   const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
   const permList = h("div", { class: "picker-list" });
   const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
-  body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, modelRow, bar);
+  const usageTitle = h("div", { class: "picker-title" });
+  const usageList = h("div", { class: "picker-list usage-list" });
+  const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
+  body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, usagePanel, modelRow, bar);
 
   // A click anywhere else — in the island or, through Rust's outside-press,
   // anywhere on the screen — closes the list that is open: the models, the
@@ -591,6 +672,7 @@ export function buildPrompt(
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
     if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
+    if (body.classList.contains("metering") && !inside(usagePanel, usageEl)) closeUsage();
   }
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
@@ -629,23 +711,76 @@ export function buildPrompt(
   let openRouterShown = false;
   let openRouterAsking = false;
 
+  let usageLineShown: UsageLine | null = null;
+
   function drawUsage(now = Date.now()) {
     const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now);
-    // The countdowns move once a minute: the line is redrawn when they do.
-    const key = line ? `${line.text}\t${line.title}\t${line.color}\t${Math.floor(now / 60_000)}` : "";
+    // The countdowns move once a minute: the ring and its menu are redrawn when they do.
+    const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
     usageKey = key;
+    usageLineShown = line;
     usageEl.style.display = line ? "" : "none";
+    if (!line) closeUsage();
     usageSetup = Boolean(line?.setup);
     usageEl.classList.toggle("setup", usageSetup);
-    usageText.textContent = line?.text ?? "";
-    usageEl.title = line?.title ?? "";
-    usageDot.style.display = line?.color ? "" : "none";
-    usageDot.style.background = line?.color ?? "";
+    usageEl.title = line ? [line.text, line.title].filter(Boolean).join("\n") : "";
+    usageEl.setAttribute("aria-label", line?.text ?? "");
+    usageRing.set(line?.pct ?? null, line?.color ?? null);
+    if (body.classList.contains("metering")) drawUsageMenu();
+  }
+
+  /** The menu: each limit with how much is used, its bar and when it resets. */
+  function drawUsageMenu() {
+    const line = usageLineShown;
+    usageTitle.textContent = line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
+    clear(usageList);
+    if (!line) return;
+    if (line.rows.length === 0) {
+      usageList.append(h("div", { class: "picker-status", text: line.text }));
+      return;
+    }
+    for (const row of line.rows) {
+      const fill = h("i", { class: "usage-fill" });
+      fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
+      fill.style.background = row.pct == null ? "" : planColor(row.pct);
+      usageList.append(h("div", { class: "usage-row" },
+        h("div", { class: "usage-row-head" },
+          h("span", { class: "usage-label", text: row.label }),
+          h("span", { class: "usage-value", text: row.value })),
+        h("span", { class: "usage-bar" }, fill),
+        row.reset ? h("span", { class: "usage-reset", text: row.reset }) : null,
+      ));
+    }
+  }
+
+  function openUsage() {
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeScreen();
+    closePermissions();
+    drawUsageMenu();
+    body.classList.add("metering");
+    usageEl.classList.add("open");
+    panelChanged();
+  }
+
+  function closeUsage() {
+    if (!body.classList.contains("metering")) return;
+    body.classList.remove("metering");
+    usageEl.classList.remove("open");
+    panelChanged();
   }
 
   usageEl.addEventListener("click", () => {
-    if (usageSetup && !sending) openSettings();
+    if (sending) return;
+    // Without the relay there is nothing to show yet: the ring leads to Settings.
+    if (usageSetup) {
+      openSettings();
+      return;
+    }
+    if (body.classList.contains("metering")) closeUsage();
+    else openUsage();
   });
 
   function keepUsage(u: ChatUsage | null | undefined) {
@@ -822,6 +957,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
+    closeUsage();
     drawPermissions();
     body.classList.add("authorizing");
     permBtn.classList.add("open");
@@ -932,6 +1068,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closePermissions();
+    closeUsage();
     body.classList.add("screening");
     screenBtn.classList.add("open");
     panelChanged();
@@ -1233,6 +1370,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeScreen();
     closePermissions();
+    closeUsage();
     drawHistory();
     body.classList.add("browsing");
     historyBtn.classList.add("open");

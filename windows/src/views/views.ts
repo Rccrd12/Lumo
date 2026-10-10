@@ -10,7 +10,7 @@ import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
 import { buildChoose, buildUpload, buildUploading } from "./upload";
-import { renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
+import { idleCardKey, renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
 import { pillDefinition, sessionSubtitle } from "../core/pills";
 import {
   PlanCard, buildPlanPill, claudePillVisible, codexPillVisible, planCardOpen, refreshCodexPlanUsage,
@@ -363,7 +363,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         const key = [
           language(), task.id, task.color, detailOpen, task.state, task.steps.join("|"),
           info?.loaded, info?.error, info?.configured,
-          JSON.stringify(info?.data ?? {}),
+          JSON.stringify(info?.data ?? {}), idleCardKey(task.id),
         ].join("~");
         if (key !== cardKey) {
           cardKey = key;
