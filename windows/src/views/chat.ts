@@ -19,10 +19,12 @@
 // what followed, here and in Rust (chat.rs rewind).
 //
 // The screen button next to the paperclip adds what is on the user's screen,
-// only when they ask: "Open windows" (titles and app names) or a screenshot of
-// one display or all of them, shown first with Send / Cancel (core/screen.ts),
-// or the folder open in File Explorer: its listing goes with the question, and
-// a file of it the question names is attached as if picked with the paperclip.
+// only when they ask: "Open windows" or "Browser tabs" (Edge, Chrome), which
+// list them to pick one or all, each going with what it shows (share.rs); a
+// screenshot of one display or all of them, shown first with Send / Cancel
+// (core/screen.ts); or the folder open in File Explorer: its listing goes with
+// the question, and a file of it the question names is attached as if picked
+// with the paperclip.
 //
 // With Settings → Chat → "Show remaining usage in the chat" on, a small ring
 // next to the model button fills with what the provider has used — the most
@@ -40,8 +42,8 @@ import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { copyButton, renderMarkdown } from "./markdown";
 import {
-  Bridge, onEvent, type ChatActivity, type ChatContext, type ExplorerFolder, type ModelInfo, type ScreenContext,
-  type ScreenDisplay, type ScreenShot,
+  Bridge, onEvent, type BrowserTab, type ChatActivity, type ChatContext, type ExplorerFolder, type ModelInfo,
+  type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
   PERMISSION_MODES, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, pickModel, providerDef,
@@ -55,8 +57,8 @@ import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
-  screenPayload, seesImages, sharesFolderByItself, shotPaths, withoutFolder, type ChipKind, type ExplorerPeek,
-  type MenuEntry,
+  screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows,
+  withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import type { ViewHost } from "./views";
@@ -1077,7 +1079,8 @@ export function buildPrompt(
       screen = { ...screen, shots: [] };
     }
     if (!kind) screen = nextScreen(screen);
-    if (kind === "windows") screen = { ...screen, windows: null };
+    if (kind === "windows") screen = { ...screen, windows: [] };
+    if (kind === "tabs") screen = { ...screen, tabs: [] };
     if (kind === "selection") screen = { ...screen, selection: null };
     if (kind === "folder") screen = withoutFolder(screen);
   }
@@ -1163,63 +1166,172 @@ export function buildPrompt(
       (folder) => ({ folder, problem: "" }),
       (err) => ({ folder: null, problem: String(err).replace(/^Error:\s*/, "") }),
     );
+    // The browsers' tabs, titles and addresses only: the entry shows when there are some.
+    const tabs: Promise<BrowserTab[]> = Bridge.screenTabs().catch(() => []);
     try {
       displays = await Bridge.screenDisplays();
     } catch (err) {
       problem = String(err).replace(/^Error:\s*/, "");
     }
     const explorer = await peek;
+    const tabList = await tabs;
     if (ticket !== screenTicket) return;
     clear(screenList);
     const images = seesImages(providerDef(State.settings.chatProvider));
-    let why = "";
-    for (const entry of menuEntries(displays, explorer)) {
+    for (const entry of menuEntries(displays, explorer, tabList)) {
       const shot = entry.kind === "display" || entry.kind === "all";
-      const off = (shot && !images) || (entry.kind === "explorer" && !entry.folder);
+      const off = shot && !images;
       const detail =
         entry.kind === "display" ? `${entry.width} × ${entry.height}`
-        : entry.kind === "explorer" && entry.folder ? entry.folder.name
+        : entry.kind === "explorer" ? entry.folder.name
+        : entry.kind === "tabs" ? String(entry.count)
         : "";
+      const opens = entry.kind === "windows" || entry.kind === "tabs";
       const row = h(
         "button",
         { class: "picker-model screen-entry", disabled: off },
         h("span", { class: "picker-model-name", text: entryLabel(entry) }),
         detail ? h("span", { class: "history-date", text: detail }) : null,
+        // A second list opens from it.
+        opens ? svg(ICONS.chevronRight, 9, { stroke: 2 }) : null,
       );
-      if (entry.kind === "explorer" && entry.folder) row.title = entry.folder.path;
-      if (entry.kind === "explorer" && entry.reason !== problem) why = entry.reason;
+      if (entry.kind === "explorer") row.title = entry.folder.path;
       if (!off) row.addEventListener("click", () => void pickEntry(entry));
       screenList.append(row);
     }
     if (problem) screenStatus(problem);
     else if (displays.length > 0 && !images) screenStatus(t(SCREEN_STRINGS.needsImages));
-    if (why) screenStatus(why);
     screenStatus(t(SCREEN_STRINGS.nothingYet));
+  }
+
+  /** The second list: "All …", then each window or tab, under a way back. */
+  function drawPicks(title: string, picks: PickEntry[], onPick: (pick: PickEntry) => void) {
+    screenTitle.textContent = title;
+    clear(screenList);
+    const back = h("button", { class: "picker-model screen-entry screen-back" },
+      svg(ICONS.chevronLeft, 9, { stroke: 2 }),
+      h("span", { class: "picker-model-name", text: t(SCREEN_STRINGS.back) }));
+    back.addEventListener("click", () => void drawScreenMenu());
+    screenList.append(back);
+    for (const pick of picks) {
+      const row = h(
+        "button",
+        { class: `picker-model screen-entry screen-pick${pick.id == null ? " screen-pick-all" : ""}` },
+        h("span", { class: "picker-model-name", text: pick.label }),
+        pick.detail ? h("span", { class: "history-date", text: pick.detail }) : null,
+      );
+      if (pick.title) row.title = pick.title;
+      row.addEventListener("click", () => onPick(pick));
+      screenList.append(row);
+    }
+  }
+
+  /** Something was added from the menu: the panel goes, the chip shows. */
+  function added() {
+    closeScreen();
+    Sound.play("attach");
+    State.notify();
+    input.focus();
+  }
+
+  async function openWindows() {
+    const ticket = ++screenTicket;
+    clear(screenList);
+    let list: OpenWindow[];
+    try {
+      list = await Bridge.screenWindows();
+    } catch (err) {
+      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
+      return;
+    }
+    if (ticket !== screenTicket) return;
+    const picks = windowPicks(list);
+    drawPicks(t(SCREEN_STRINGS.windows), picks, (pick) => void shareWindows(pick, list));
+    if (picks.length === 0) screenStatus(t(SCREEN_STRINGS.noWindows));
+  }
+
+  /** One window (with a picture of it, for who sees images) or all of them, with what they show. */
+  async function shareWindows(pick: PickEntry, list: OpenWindow[]) {
+    if (sending) return;
+    const ticket = ++screenTicket;
+    clear(screenList);
+    screenStatus(t(SCREEN_STRINGS.reading));
+    const id = typeof pick.id === "number" ? pick.id : null;
+    try {
+      const shared = await Bridge.screenWindowShare(id == null ? [] : [id]);
+      if (ticket !== screenTicket) return;
+      screen = { ...screen, windows: withWindows(screen.windows, shared) };
+      const one = list.find((w) => w.id === id);
+      if (id != null && one && !one.minimized && seesImages(providerDef(State.settings.chatProvider))) {
+        try {
+          const shot = await Bridge.screenWindowShot(id);
+          if (ticket !== screenTicket) {
+            dropShots([shot.path]);
+          } else {
+            screen = { ...screen, shots: [...screen.shots, { name: short(one.title), path: shot.path, preview: shot.preview }] };
+          }
+        } catch (err) {
+          void Bridge.log(`[share] window picture: ${String(err)}`);
+        }
+      }
+      if (ticket === screenTicket) added();
+    } catch (err) {
+      if (ticket === screenTicket) {
+        clear(screenList);
+        screenStatus(String(err).replace(/^Error:\s*/, ""));
+      }
+    }
+  }
+
+  async function openTabs() {
+    const ticket = ++screenTicket;
+    clear(screenList);
+    let list: BrowserTab[];
+    try {
+      list = await Bridge.screenTabs();
+    } catch (err) {
+      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
+      return;
+    }
+    if (ticket !== screenTicket) return;
+    drawPicks(t(SCREEN_STRINGS.tabs), tabPicks(list), (pick) => void shareTabs(pick));
+  }
+
+  /** One tab or all of them, each with its page's text. */
+  async function shareTabs(pick: PickEntry) {
+    if (sending) return;
+    const ticket = ++screenTicket;
+    clear(screenList);
+    screenStatus(t(SCREEN_STRINGS.reading));
+    try {
+      const shared = await Bridge.screenTabShare(typeof pick.id === "string" ? [pick.id] : []);
+      if (ticket !== screenTicket) return;
+      screen = { ...screen, tabs: withTabs(screen.tabs, shared) };
+      added();
+    } catch (err) {
+      if (ticket === screenTicket) {
+        clear(screenList);
+        screenStatus(String(err).replace(/^Error:\s*/, ""));
+      }
+    }
   }
 
   async function pickEntry(entry: MenuEntry) {
     if (sending) return;
+    if (entry.kind === "windows") return openWindows();
+    if (entry.kind === "tabs") return openTabs();
     const ticket = ++screenTicket;
     clear(screenList);
-    if (entry.kind === "windows" || entry.kind === "explorer") {
+    if (entry.kind === "explorer") {
       try {
-        if (entry.kind === "windows") {
-          const list = await Bridge.screenWindows();
-          if (ticket !== screenTicket) return;
-          screen = { ...screen, windows: list };
-        } else {
-          const folder = await Bridge.screenExplorer();
-          if (ticket !== screenTicket) return;
-          if (!folder) {
-            screenStatus(t(SCREEN_STRINGS.noExplorer));
-            return;
-          }
-          screen = { ...screen, folder };
+        const folder = await Bridge.screenExplorer();
+        if (ticket !== screenTicket) return;
+        if (!folder) {
+          screenStatus(t(SCREEN_STRINGS.noExplorer));
+          return;
         }
-        closeScreen();
-        Sound.play("attach");
-        State.notify();
-        input.focus();
+        screen = { ...screen, folder };
+        added();
       } catch (err) {
         if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
       }

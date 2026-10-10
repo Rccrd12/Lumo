@@ -383,7 +383,8 @@ section > h2 + div > .setting:first-child {
 /* Groups the settings of a long section (Island: opening, the closed island…). */
 .setting-group {
   font: 600 11px var(--font);
-  color: var(--dim-2);
+  /* Readable on the card (and on the island, embedded): --dim-2 was nearly lost. */
+  color: var(--dim);
   text-transform: uppercase;
   letter-spacing: 0.05em;
   margin-top: 10px;

@@ -40,6 +40,7 @@ mod secrets;
 mod selection;
 mod session_window;
 mod settings;
+mod share;
 mod shortcuts;
 mod tray;
 mod typing;
@@ -687,10 +688,37 @@ async fn screen_displays() -> Result<Vec<screen::Display>, String> {
     tauri::async_runtime::spawn_blocking(screen::displays).await.map_err(|e| e.to_string())?
 }
 
-/// "Open windows": titles and app names of the visible windows.
+/// "Open windows": titles and app names of the visible windows, for the menu
+/// to list (and for `screen_window_share` to pick from).
 #[tauri::command]
 async fn screen_windows() -> Result<Vec<screen::WindowInfo>, String> {
-    tauri::async_runtime::spawn_blocking(screen::windows).await.map_err(|e| e.to_string())?
+    tauri::async_runtime::spawn_blocking(share::windows).await.map_err(|e| e.to_string())?
+}
+
+/// The windows picked in the menu (all of them when `ids` is empty), each
+/// with what it shows: its text and the document it has open.
+#[tauri::command]
+async fn screen_window_share(ids: Vec<i64>) -> Result<Vec<share::SharedWindow>, String> {
+    tauri::async_runtime::spawn_blocking(move || share::read_windows(&ids)).await.map_err(|e| e.to_string())?
+}
+
+/// A screenshot of one picked window, for the providers that see images.
+#[tauri::command]
+async fn screen_window_shot(id: i64) -> Result<screen::Shot, String> {
+    tauri::async_runtime::spawn_blocking(move || share::window_shot(id)).await.map_err(|e| e.to_string())?
+}
+
+/// "Browser tabs": the tabs open in Edge and Chrome, titles and addresses.
+#[tauri::command]
+async fn screen_tabs() -> Result<Vec<share::BrowserTab>, String> {
+    tauri::async_runtime::spawn_blocking(share::tabs).await.map_err(|e| e.to_string())?
+}
+
+/// The tabs picked in the menu (all of them when `ids` is empty), each with
+/// its page's text.
+#[tauri::command]
+async fn screen_tab_share(ids: Vec<String>) -> Result<Vec<share::BrowserTab>, String> {
+    share::read_tabs(ids).await
 }
 
 /// A screenshot of one display (`display`, from 0) or all of them, into the
@@ -1043,6 +1071,10 @@ pub fn run() {
             pick_file,
             screen_displays,
             screen_windows,
+            screen_window_share,
+            screen_window_shot,
+            screen_tabs,
+            screen_tab_share,
             screen_capture,
             screen_discard,
             screen_explorer_peek,

@@ -454,15 +454,34 @@ and matrices. "$5 and $10" stays money.
 ### Show the chat your screen
 
 The screen button next to the paperclip lets the assistant see what you have
-open, only when you ask. Its menu offers **Open windows** (the titles and app
-names of your visible windows, the one you were in marked as active), one
-**Screen 1**, **Screen 2**… entry per display, and **All screens** when there
-are several. Nothing is listed or captured until you click an entry, and never
-in the background. A screenshot (one PNG per display, scaled down to 1568 px on
-its long edge) shows first with **Send** and **Cancel**: Cancel deletes it, Send
-adds it to the chat, with the question already typed if there is one. The window
-list shows as a chip you can remove before sending. Either goes with your next
-question only. Screenshots are saved only in the inbox
+open, only when you ask. Its menu offers **Open windows**, **Browser tabs**
+(when Edge or Chrome has tabs open), one **Screen 1**, **Screen 2**… entry per
+display, and **All screens** when there are several. Nothing is captured until
+you click an entry, and never in the background. A screenshot (one PNG per
+display, scaled down to 1568 px on its long edge) shows first with **Send** and
+**Cancel**: Cancel deletes it, Send adds it to the chat, with the question
+already typed if there is one.
+
+**Open windows** and **Browser tabs** open a second list (**Back** returns to the
+first): **All windows** / **All tabs**, then each one, so you pick exactly what
+goes. Each goes with what it shows, not only its name:
+
+- a **window** with its text, read through UI Automation, the interface screen
+  readers use (the page in a browser, the document in Word or Notepad, the
+  lines of a list…), and the path of the document it has open when Lumo finds
+  it on disk (Claude Code and Antigravity CLI read it from there). A single
+  window also goes with a picture of it, even when other windows cover it, for
+  the providers that see images (not when it is minimized);
+- a **tab** with its page's text: the tab on screen in its window is read from
+  the browser; a tab in the background is downloaded from its address, without
+  your cookies, so a page behind a login shows what anyone would see. The tabs
+  are read from Edge's and Chrome's own list of open tabs (their session file,
+  never written). Only http and https pages are downloaded, and only once you
+  pick them.
+
+The text is cut to fit (about 36,000 characters for all the windows or all the
+tabs of one message). What you picked shows as a chip you can remove before
+sending, and goes with your next question only. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
@@ -474,8 +493,8 @@ says it isn't available yet.
 
 **Folder open in File Explorer**, at the bottom of the same menu, shows the name
 of the folder in the File Explorer window you used last (the tab in front, on
-Windows 11); it is greyed out when that window shows no folder on disk (This PC,
-Quick access, a library). Opening the menu only reads that name. Clicking the
+Windows 11); it is not offered when no File Explorer window shows a folder on
+disk (This PC, Quick access, a library). Opening the menu only reads that name. Clicking the
 entry lists the folder — names, sizes and dates of its files and subfolders, up
 to 300, never their contents — and adds it as a chip you can remove. With your
 next question, a file of that folder you name, with or without its extension
@@ -840,7 +859,9 @@ What changes on Linux:
 - **Lumo's greeting** uses the full name in your account's GECOS field
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
-  its menu says so, and nothing is listed or captured. For the same reason
+  its menu says so, and nothing is listed or captured. Browser tabs are listed
+  (Edge, Chrome, Chromium) and their pages downloaded, as on Windows, without
+  reading the tab on screen from the browser. For the same reason
   Gemini Live can't look at the screen there; everything else
   in a call works. Typing in the text box you clicked in needs `xdotool` on
   X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland

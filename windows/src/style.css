@@ -1175,18 +1175,26 @@ body {
   margin-left: 7px;
 }
 
+/* The name sits in the middle of the pill, and never under Lumo: between
+   him and an empty slot as wide as he is, which gives way first when the
+   island is narrow (then the name moves right, then it is cut with "…"). */
 .pill .lbl {
-  position: absolute;
-  left: 0;
-  right: 0;
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0 auto;
   text-align: center;
   font: 600 10px var(--font);
   color: var(--dim-3);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  padding: 0 6px;
+  padding: 0 4px;
   pointer-events: none;
+}
+
+.pill .pill-end {
+  flex: 0 1000 31px;
+  min-width: 4px;
 }
 
 .pill:hover {
@@ -2625,6 +2633,21 @@ textarea.chat-input {
 
 .screen-entry:disabled:hover {
   background: transparent;
+}
+
+/* "Open windows" and "Browser tabs" open a second list: a chevron says so,
+   and that list starts with the way back. */
+.screen-entry > svg {
+  flex: 0 0 auto;
+  color: #5c6370;
+}
+
+.screen-back {
+  color: #8b929e;
+}
+
+.screen-pick-all .picker-model-name {
+  font-weight: 600;
 }
 
 .screen-shots {

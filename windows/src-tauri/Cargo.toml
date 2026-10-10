@@ -50,6 +50,8 @@ windows = { version = "0.61", features = [
   "Win32_Graphics_Imaging",
   "Win32_Security",
   "Win32_Security_Authorization",
+  # The chat's screen button, a window by itself: PrintWindow (share.rs, screen.rs).
+  "Win32_Storage_Xps",
   # "Tell the AI what's open" (desk.rs): where the Recent folder's shortcuts point.
   "Win32_Storage_FileSystem",
   # "Open terminal": the relay's process tree leads to the session's window.
@@ -67,6 +69,8 @@ windows = { version = "0.61", features = [
   # "Folder open in File Explorer" in the chat (explorer.rs): IShellWindows
   # and the folder of each window, which take and return VARIANTs.
   "Win32_System_Variant",
+  # What a shared window shows (share.rs): UI Automation, as screen readers read it.
+  "Win32_UI_Accessibility",
   "Win32_UI_Input_KeyboardAndMouse",
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",

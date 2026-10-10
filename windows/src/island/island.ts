@@ -428,7 +428,7 @@ export class Island {
         this.setView("prompt");
         this.takeKeyboard();
       },
-      openSettings: () => void Bridge.openSettingsWindow(),
+      openSettings: () => this.openSettingsAt(null),
       refreshAll: () => void this.refreshAll(),
       iconPoint: () => {
         // Left of the "+": where the folded icon sits (or will).
@@ -613,10 +613,6 @@ export class Island {
         this.setView("prompt");
         this.takeKeyboard();
         break;
-      case "chat":
-        this.setView("prompt");
-        this.takeKeyboard();
-        break;
       case "timer":
         compactTimer(5 * 60_000, "");
         Sound.play("blip");
@@ -646,7 +642,7 @@ export class Island {
         this.toggleWardrobe();
         break;
       case "settings":
-        void Bridge.openSettingsWindow();
+        this.openSettingsAt(null);
         break;
       case "quit":
         void Bridge.quit();
@@ -655,14 +651,21 @@ export class Island {
     State.notify();
   }
 
-  /** The Settings window, on one of its pages. */
-  private openSettingsAt(page: string) {
-    try {
-      window.localStorage.setItem("lumo.settings.page", page);
-    } catch {
-      // No storage: it opens on the page it was on.
+  /**
+   * Settings inside the island, as the gear in its top right opens them, on
+   * one of its pages (null: the one it was left on). The page in the frame
+   * hears the change of page (a storage event, settings/main.ts).
+   */
+  private openSettingsAt(page: string | null) {
+    if (page) {
+      try {
+        window.localStorage.setItem("lumo.settings.page", page);
+      } catch {
+        // No storage: it opens on the page it was on.
+      }
     }
-    void Bridge.openSettingsWindow();
+    Sound.play("blip");
+    this.setView("settings");
   }
 
   private refreshing = false;

@@ -7466,6 +7466,126 @@
    "ru": "той же высоты, что и открытый остров, растут и уменьшаются вместе с ним при изменении размера; если выключено, сохраняют заданную вами высоту",
    "id": "setinggi pulau yang terbuka, ikut membesar dan mengecil saat Anda mengubah ukurannya; jika mati, tetap pada tinggi yang Anda atur",
    "it": "alte quanto l'isola aperta, crescono e si riducono con lei quando la ridimensioni; se spento, mantengono l'altezza che dai loro"
+  },
+  "All windows": {
+   "zh-Hans": "所有窗口",
+   "hi": "सभी विंडो",
+   "es": "Todas las ventanas",
+   "ar": "كل النوافذ",
+   "fr": "Toutes les fenêtres",
+   "bn": "সব উইন্ডো",
+   "pt-BR": "Todas as janelas",
+   "ru": "Все окна",
+   "id": "Semua jendela",
+   "it": "Tutte le finestre"
+  },
+  "Browser tabs": {
+   "zh-Hans": "浏览器标签页",
+   "hi": "ब्राउज़र टैब",
+   "es": "Pestañas del navegador",
+   "ar": "علامات تبويب المتصفح",
+   "fr": "Onglets du navigateur",
+   "bn": "ব্রাউজারের ট্যাব",
+   "pt-BR": "Abas do navegador",
+   "ru": "Вкладки браузера",
+   "id": "Tab browser",
+   "it": "Schede del browser"
+  },
+  "Browser tabs ({count})": {
+   "zh-Hans": "浏览器标签页（{count}）",
+   "hi": "ब्राउज़र टैब ({count})",
+   "es": "Pestañas del navegador ({count})",
+   "ar": "علامات تبويب المتصفح ({count})",
+   "fr": "Onglets du navigateur ({count})",
+   "bn": "ব্রাউজারের ট্যাব ({count})",
+   "pt-BR": "Abas do navegador ({count})",
+   "ru": "Вкладки браузера ({count})",
+   "id": "Tab browser ({count})",
+   "it": "Schede del browser ({count})"
+  },
+  "All tabs": {
+   "zh-Hans": "所有标签页",
+   "hi": "सभी टैब",
+   "es": "Todas las pestañas",
+   "ar": "كل علامات التبويب",
+   "fr": "Tous les onglets",
+   "bn": "সব ট্যাব",
+   "pt-BR": "Todas as abas",
+   "ru": "Все вкладки",
+   "id": "Semua tab",
+   "it": "Tutte le schede"
+  },
+  "Reading what it shows…": {
+   "zh-Hans": "正在读取显示的内容…",
+   "hi": "जो दिख रहा है उसे पढ़ा जा रहा है…",
+   "es": "Leyendo lo que muestra…",
+   "ar": "جارٍ قراءة ما يعرضه…",
+   "fr": "Lecture de ce qui est affiché…",
+   "bn": "যা দেখাচ্ছে তা পড়া হচ্ছে…",
+   "pt-BR": "Lendo o que está exibido…",
+   "ru": "Читаю, что там показано…",
+   "id": "Membaca isinya…",
+   "it": "Leggo cosa mostra…"
+  },
+  "No window is open.": {
+   "zh-Hans": "没有打开的窗口。",
+   "hi": "कोई विंडो खुली नहीं है।",
+   "es": "No hay ninguna ventana abierta.",
+   "ar": "لا توجد نافذة مفتوحة.",
+   "fr": "Aucune fenêtre n'est ouverte.",
+   "bn": "কোনো উইন্ডো খোলা নেই।",
+   "pt-BR": "Nenhuma janela está aberta.",
+   "ru": "Нет открытых окон.",
+   "id": "Tidak ada jendela yang terbuka.",
+   "it": "Nessuna finestra è aperta."
+  },
+  "minimized": {
+   "zh-Hans": "已最小化",
+   "hi": "छोटी की गई",
+   "es": "minimizada",
+   "ar": "مصغّرة",
+   "fr": "réduite",
+   "bn": "মিনিমাইজ করা",
+   "pt-BR": "minimizada",
+   "ru": "свёрнуто",
+   "id": "diminimalkan",
+   "it": "ridotta a icona"
+  },
+  "That window isn't open anymore.": {
+   "zh-Hans": "该窗口已不再打开。",
+   "hi": "वह विंडो अब खुली नहीं है।",
+   "es": "Esa ventana ya no está abierta.",
+   "ar": "لم تعد تلك النافذة مفتوحة.",
+   "fr": "Cette fenêtre n'est plus ouverte.",
+   "bn": "সেই উইন্ডোটি আর খোলা নেই।",
+   "pt-BR": "Essa janela não está mais aberta.",
+   "ru": "Это окно уже закрыто.",
+   "id": "Jendela itu sudah tidak terbuka.",
+   "it": "Quella finestra non è più aperta."
+  },
+  "That window is minimized.": {
+   "zh-Hans": "该窗口已最小化。",
+   "hi": "वह विंडो छोटी की गई है।",
+   "es": "Esa ventana está minimizada.",
+   "ar": "تلك النافذة مصغّرة.",
+   "fr": "Cette fenêtre est réduite.",
+   "bn": "সেই উইন্ডোটি মিনিমাইজ করা আছে।",
+   "pt-BR": "Essa janela está minimizada.",
+   "ru": "Это окно свёрнуто.",
+   "id": "Jendela itu sedang diminimalkan.",
+   "it": "Quella finestra è ridotta a icona."
+  },
+  "That tab isn't open anymore.": {
+   "zh-Hans": "该标签页已不再打开。",
+   "hi": "वह टैब अब खुला नहीं है।",
+   "es": "Esa pestaña ya no está abierta.",
+   "ar": "لم تعد علامة التبويب تلك مفتوحة.",
+   "fr": "Cet onglet n'est plus ouvert.",
+   "bn": "সেই ট্যাবটি আর খোলা নেই।",
+   "pt-BR": "Essa aba não está mais aberta.",
+   "ru": "Эта вкладка уже закрыта.",
+   "id": "Tab itu sudah tidak terbuka.",
+   "it": "Quella scheda non è più aperta."
   }
  }
 }

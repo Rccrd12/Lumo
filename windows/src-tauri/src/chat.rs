@@ -414,10 +414,16 @@ pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
 
 /// Screenshots ride along only from the inbox, where screen.rs writes them —
 /// the same rule as a dropped file.
-fn checked_screen(screen: ScreenContext) -> Result<ScreenContext, String> {
+fn checked_screen(mut screen: ScreenContext) -> Result<ScreenContext, String> {
     let inbox = crate::files::inbox_dir();
     if screen.shots.iter().any(|s| !is_inside(&inbox, std::path::Path::new(&s.path))) {
         return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
+    }
+    // A shared window's document is named only when Rust found it (share.rs).
+    for w in &mut screen.shared_windows {
+        if !crate::share::was_found(&w.document) {
+            w.document.clear();
+        }
     }
     Ok(screen)
 }
@@ -537,9 +543,12 @@ async fn send_to(
     if is_cli(provider) {
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
         let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
-        // So may it the folders of the documents open (found by Rust, desk.rs).
-        for doc in screen.as_ref().map(|s| s.documents.as_slice()).unwrap_or_default() {
-            if let Some(dir) = std::path::Path::new(&doc.path).parent() {
+        // So may it the folders of the documents open (found by Rust, desk.rs),
+        // and of those the shared windows show (share.rs).
+        let shown = screen.as_ref().map(|s| s.shared_windows.as_slice()).unwrap_or_default().iter().map(|w| w.document.as_str());
+        let open = screen.as_ref().map(|s| s.documents.as_slice()).unwrap_or_default().iter().map(|d| d.path.as_str());
+        for path in open.chain(shown).filter(|p| !p.is_empty()) {
+            if let Some(dir) = std::path::Path::new(path).parent() {
                 chat.cli_dirs(Some(dir.to_string_lossy().to_string()));
             }
         }
@@ -827,10 +836,12 @@ mod tests {
     fn the_screen_goes_in_front_of_the_question_as_paths_images_or_a_refusal() {
         use crate::screen::{ShotRef, WindowInfo};
         let screen = ScreenContext {
-            windows: vec![WindowInfo { title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
+            windows: vec![WindowInfo { id: 0, title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
             selection: None,
             folder: None,
+            shared_windows: Vec::new(),
+            tabs: Vec::new(),
             documents: Vec::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {

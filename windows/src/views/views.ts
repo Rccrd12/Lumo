@@ -409,6 +409,7 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     { class: "pill", onclick: () => actions.setFocus(task.id) },
     canvas,
     h("span", { class: "lbl", text: label }),
+    h("span", { class: "pill-end" }),
   );
   pill.style.borderColor = `${task.color}24`;
   pill.addEventListener("mouseenter", () => {

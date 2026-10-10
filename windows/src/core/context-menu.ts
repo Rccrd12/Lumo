@@ -18,7 +18,6 @@ export interface MenuItemDef {
 /** Every item that can be picked, in the order the menu shows them. */
 export const MENU_ITEMS: readonly MenuItemDef[] = [
   { id: "newChat", label: N_("New chat") },
-  { id: "chat", label: N_("Open the chat") },
   { id: "timer", label: N_("Timer: 5 minutes") },
   { id: "pin", label: N_("Keep the island open"), toggle: true },
   { id: "sound", label: N_("Sounds"), toggle: true },
