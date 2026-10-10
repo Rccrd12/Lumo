@@ -1,6 +1,6 @@
-// Small pieces every settings section draws with: a setting (its row and
-// the hint under it), a section's head, a group heading, the status dot and
-// the diff.
+// Small pieces every settings section draws with: a setting (its name and
+// what it does on the left, its control on the right), a section's head, a
+// group heading, the status dot and the diff.
 
 import { h } from "../views/dom";
 
@@ -20,20 +20,22 @@ export function renderDiff(text: string): HTMLElement {
 type Child = Node | string | null | undefined | false;
 
 /**
- * One setting, drawn like every other row of these pages: its name and its
- * switch, list or buttons on one line, and what it does under it.
+ * One setting: its name, and under it in smaller grey what it does, on the
+ * left; its switch, list or buttons on the right. Settings in a section are
+ * divided by a thin line, so it is always clear which explanation belongs to
+ * which setting.
  */
 export function setting(label: string | Node, hint: string | Node | null, ...controls: Child[]): HTMLElement {
   return h("div", { class: "setting" },
-    h("div", { class: "row" },
-      typeof label === "string" ? h("label", { text: label }) : h("label", {}, label),
-      ...controls.filter((c): c is Node | string => !!c),
+    h("div", { class: "setting-text" },
+      typeof label === "string" ? h("span", { class: "setting-label", text: label }) : h("span", { class: "setting-label" }, label),
+      hint == null ? null : typeof hint === "string" ? h("span", { class: "setting-hint", text: hint }) : h("span", { class: "setting-hint" }, hint),
     ),
-    hint == null ? null : typeof hint === "string" ? h("div", { class: "hint", text: hint }) : h("div", { class: "hint" }, hint),
+    h("div", { class: "setting-control" }, ...controls.filter((c): c is Node | string => !!c)),
   );
 }
 
-/** A setting whose field takes the rest of its row (a key, an address). */
+/** A setting whose control needs the width (a key, an address): name and hint above, the field below. */
 export function wideSetting(label: string | Node, hint: string | Node | null, ...controls: Child[]): HTMLElement {
   const el = setting(label, hint, ...controls);
   el.classList.add("wide");

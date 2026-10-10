@@ -109,8 +109,8 @@ body.settings-window {
   display: none;
 }
 
-/* A window narrower than the list and a section side by side: the list goes on top. */
-@media (max-width: 560px) {
+/* A window too narrow for the list and a section side by side: the list goes on top. */
+@media (max-width: 400px) {
   #settings-root {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -163,7 +163,18 @@ body.embedded h1 {
   font-size: 15px;
 }
 
+/* A narrow island keeps the list on the left, a little narrower. */
 @media (max-width: 560px) {
+  body.embedded #settings-root {
+    grid-template-columns: 128px minmax(0, 1fr);
+  }
+
+  body.embedded .nav-item {
+    padding: 7px 8px;
+  }
+}
+
+@media (max-width: 400px) {
   body.embedded #settings-root {
     grid-template-columns: minmax(0, 1fr);
   }
@@ -191,15 +202,207 @@ section {
 }
 
 section > h2 {
-  font: 600 13px var(--font);
+  font: 600 14.5px var(--font);
+  letter-spacing: -0.005em;
   display: flex;
   align-items: center;
   gap: 8px;
 }
 
 .hint {
+  font: 400 12px/1.45 var(--font);
+  color: var(--dim);
+}
+
+/* ── Settings: one per line, divided by a hairline ─────────────────────────
+   Its name (and under it, smaller and grey, what it does) on the left, its
+   control on the right, so it is always clear what belongs to what. */
+
+.section-intro {
+  font: 400 12.5px/1.5 var(--font);
+  color: var(--dim);
+  margin-top: -4px;
+}
+
+.setting {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 20px;
+  row-gap: 8px;
+  padding-top: 12px;
+  border-top: 1px solid var(--hairline);
+}
+
+/* The first setting under the head, or under a group heading, has no line above. */
+section > h2 + .setting,
+.section-intro + .setting,
+.setting-group + .setting,
+.setting-list > :first-child > .setting:first-child,
+.setting-list > .setting:first-child,
+section > h2 + div > .setting:first-child {
+  border-top: 0;
+  padding-top: 2px;
+}
+
+.setting[hidden] {
+  display: none;
+}
+
+.setting-text {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.setting-label {
+  font: 500 13px/1.35 var(--font);
+  color: var(--ink);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.setting-hint {
+  font: 400 12px/1.45 var(--font);
+  color: var(--dim);
+  max-width: 460px;
+}
+
+/* Written to follow the name on one line: they start with a capital here. */
+.setting-hint::first-letter {
+  text-transform: uppercase;
+}
+
+.setting-control {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.setting-control select {
+  min-width: 150px;
+  max-width: 220px;
+}
+
+.setting-list {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.setting-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.setting-extra {
+  display: flex;
+  gap: 8px;
+}
+
+.setting-extra input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.row.end {
+  justify-content: flex-end;
+}
+
+/* An integration: its name, switch and what it needs, then its keys. */
+.integration {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.field-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.field-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 8px;
+}
+
+.field-row > label {
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+.with-dot {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
+
+/* A tip that belongs to a whole group of settings, under it. */
+.section-note {
+  font: 400 12px/1.5 var(--font);
+  color: var(--dim);
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+}
+
+/* A key, an address: the field takes the whole width under the name. */
+.setting.wide {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.setting.wide .setting-control {
+  justify-content: flex-start;
+  flex-wrap: nowrap;
+}
+
+.setting.wide .setting-control input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.with-unit {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.unit {
   font: 400 12px var(--font);
   color: var(--dim);
+}
+
+/* Groups the settings of a long section (Island: opening, the closed island…). */
+.setting-group {
+  font: 600 11px var(--font);
+  color: var(--dim-2);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 10px;
+}
+
+section > h2 + .setting-group,
+section > .section-intro + .setting-group {
+  margin-top: 0;
+}
+
+/* Under the name, on a very narrow window: the control goes below the text. */
+@media (max-width: 400px) {
+  .setting {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .setting-control {
+    justify-content: flex-start;
+  }
 }
 
 .row {
@@ -216,8 +419,9 @@ section > h2 {
 
 .row > label {
   min-width: 132px;
-  color: var(--dim);
-  font-size: 12.5px;
+  color: var(--ink);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .spacer {
@@ -481,6 +685,11 @@ select option {
 
 /* Shortcuts section */
 
+.shortcut-list > .row + .row {
+  padding-top: 8px;
+  border-top: 1px solid var(--hairline);
+}
+
 .subhead {
   font: 600 11px var(--font);
   color: var(--dim-2);
@@ -606,106 +815,6 @@ select option {
    diffs, paths, keys and addresses stay left to right. */
 html[dir="rtl"] :is(.diff, .path, .keycap, input[type="password"], input[type="text"]) {
   direction: ltr;
-}
-
-/* ── Settings added since 0.5.0, drawn the way the others are ──────────────
-   A setting is its row (the name, then its switch, list or buttons) and the
-   hint under it, as everywhere else on these pages (parts.ts setting). */
-
-.setting {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.setting[hidden] {
-  display: none;
-}
-
-.setting > .row > label {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-/* A key, an address: its field takes the rest of the row. */
-.setting.wide > .row > input {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-
-.section-intro,
-.section-note {
-  font: 400 12px var(--font);
-  color: var(--dim);
-}
-
-/* Groups the settings of a long section (Island: opening, the closed island…). */
-.setting-group {
-  font: 600 11px var(--font);
-  color: var(--dim-2);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-top: 6px;
-}
-
-section > h2 + .setting-group,
-section > .section-intro + .setting-group {
-  margin-top: 0;
-}
-
-.setting-list,
-.setting-block,
-.integration,
-.field-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-.setting-block,
-.field-rows {
-  gap: 6px;
-}
-
-.setting-extra {
-  display: flex;
-  gap: 8px;
-}
-
-.setting-extra input {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
-.field-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.field-row > label {
-  min-width: 132px;
-  color: var(--dim);
-  font-size: 12.5px;
-}
-
-.field-row > input {
-  flex: 1 1 200px;
-  min-width: 0;
-}
-
-.with-dot,
-.with-unit {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-}
-
-.unit {
-  font: 400 12px var(--font);
-  color: var(--dim);
 }
 
 /* Settings → General → Sound: the volume beside its bar. */

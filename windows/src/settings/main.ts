@@ -1791,7 +1791,13 @@ async function main() {
     applyDirection();
     void rerender();
   });
-  await render();
+  // Whatever goes wrong drawing a section, the island stops waiting for the
+  // page (and the error is in lumo.log), rather than saying "Opening Settings…" for ever.
+  try {
+    await render();
+  } catch (err) {
+    void Bridge.log(`settings: ${String(err)}`);
+  }
   if (embedded) tellIsland(FRAME_READY);
 
   void onEvent<ShortcutsReport>("shortcuts-status", (fresh) => shortcutsListener?.report(fresh));
