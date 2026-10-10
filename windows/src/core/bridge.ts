@@ -172,6 +172,8 @@ export const Bridge = {
    * is missing, not signed in or slow (15 s).
    */
   codexPlanUsage: () => call<unknown>("codex_plan_usage"),
+  /** The Claude plan's usage from Anthropic, as the status line's `rate_limits` (plan_usage.rs). Throws why it could not. */
+  planUsageFetch: () => callOrThrow<unknown>("plan_usage_fetch"),
 
   approvalDecision: (requestId: string, decision: "allow" | "deny") =>
     call<void>("approval_decision", { requestId, decision }),
@@ -197,7 +199,8 @@ export const Bridge = {
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
   chatRewind: (keep: number) => call<void>("chat_rewind", { keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
-  islandDrag: () => call<void>("island_drag"),
+  /** `island`: the island as drawn (x, y, width, height, page pixels), without what sits beside it. */
+  islandDrag: (island?: [number, number, number, number]) => call<void>("island_drag", { island: island ?? null }),
   /** Puts the island back at the top centre of its display. */
   islandRecenter: () => call<void>("island_recenter"),
   /** Drag on a grip of the island (see layout.gripFactors); Rust follows the mouse until it is let go. */

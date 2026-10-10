@@ -11,7 +11,7 @@
 
 import { Bridge } from "../core/bridge";
 import {
-  PLAN_TEXT, claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct,
+  mergeWindow, parseClaudePlan, PLAN_TEXT, claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct,
   effectivePct, parseCodexPlan, pillLabel, planColor, resetLabel,
   type CodexPlanUsage, type PlanUsage, type PlanWindow,
 } from "../core/plan";
@@ -70,6 +70,79 @@ export function setClaudePlanUsage(usage: PlanUsage): void {
   // The relay calls in with every Claude Code update: a hidden island is only
   // woken when the numbers actually moved.
   if (!same || State.mode === "expanded") State.notify();
+}
+
+/**
+ * New plan numbers: from the status line relay, a chat answer, or Anthropic.
+ * Any of them may report one window only (Claude Code leaves the 5-hour one
+ * out while it is far from its limit): the window left out is kept from
+ * before, never dropped.
+ */
+export function keepPlanUsage(rateLimits: unknown) {
+  const usage = parseClaudePlan(rateLimits);
+  if (!usage) return;
+  const prev = State.planUsage;
+  const merged: PlanUsage = { updatedAt: usage.updatedAt };
+  const fiveHour = mergeWindow(usage.fiveHour, prev?.fiveHour);
+  const sevenDay = mergeWindow(usage.sevenDay, prev?.sevenDay);
+  if (fiveHour) merged.fiveHour = fiveHour;
+  if (sevenDay) merged.sevenDay = sevenDay;
+  setClaudePlanUsage(merged);
+}
+
+// ── From Anthropic (Settings → Agents → Plan usage → Ask Anthropic) ─────────
+
+/** How often the numbers are asked again while the island is open. */
+const ONLINE_EVERY_MS = 3 * 60_000;
+let onlineAt = 0;
+let onlineInFlight = false;
+/** The Claude card's Refresh: at work, or why the last ask failed. */
+let claudeRefresh: { busy: boolean; error: string | null } = { busy: false, error: null };
+
+/**
+ * Asks Anthropic, with Claude Code's sign-in, for the plan's usage: only when
+ * turned on, never while paused, at most every 3 minutes unless `force` (the
+ * card's Refresh).
+ */
+export function refreshClaudePlanOnline(force = false): void {
+  if (!State.settings.planUsageOnline || State.paused || onlineInFlight) return;
+  if (!force && Date.now() - onlineAt < ONLINE_EVERY_MS) return;
+  onlineInFlight = true;
+  onlineAt = Date.now();
+  const started = Date.now();
+  if (force) {
+    claudeRefresh = { busy: true, error: null };
+    State.notify();
+  }
+  let error: string | null = null;
+  void Bridge.planUsageFetch()
+    .then((limits) => keepPlanUsage(limits))
+    .catch((err) => {
+      error = String(err).replace(/^Error:\s*/, "");
+    })
+    .finally(() => {
+      window.setTimeout(() => {
+        onlineInFlight = false;
+        claudeRefresh = { busy: false, error };
+        State.notify();
+      }, force ? Math.max(0, 500 - (Date.now() - started)) : 0);
+    });
+}
+
+let pollTimer: number | null = null;
+
+/** While the island is open, the numbers are asked again every 3 minutes; never while it is shut. */
+export function startPlanUsagePolling(): void {
+  State.subscribe(() => {
+    const want = State.mode === "expanded" && State.settings.planUsageOnline && !State.paused;
+    if (want && pollTimer == null) {
+      refreshClaudePlanOnline();
+      pollTimer = window.setInterval(() => refreshClaudePlanOnline(), ONLINE_EVERY_MS);
+    } else if (!want && pollTimer != null) {
+      window.clearInterval(pollTimer);
+      pollTimer = null;
+    }
+  });
 }
 
 /** The last numbers seen, if any were kept. */
@@ -208,7 +281,7 @@ export class PlanCard {
   sync(now = Date.now()) {
     const codex = State.planDetailIsCodex;
     const u = codex ? State.codexPlanUsage : State.planUsage;
-    const key = `${language()}|${codex}|${JSON.stringify(u)}|${JSON.stringify(codexRefresh)}|${Math.floor(now / 30_000)}`;
+    const key = `${language()}|${codex}|${JSON.stringify(u)}|${JSON.stringify(codexRefresh)}|${JSON.stringify(claudeRefresh)}|${State.settings.planUsageOnline}|${Math.floor(now / 30_000)}`;
     if (key === this.key) return;
     this.key = key;
     clear(this.el);
@@ -224,6 +297,20 @@ export class PlanCard {
         gaugeRow(PLAN_TEXT.week, u?.sevenDay, true, now),
       ),
     );
+    // Asked of Anthropic when turned on in Settings: Refresh asks at once.
+    if (State.settings.planUsageOnline) {
+      const busy = claudeRefresh.busy;
+      const refresh = h("button", {
+        class: busy ? "tool-action busy" : "tool-action",
+        onclick: () => refreshClaudePlanOnline(true),
+      },
+      busy ? h("i", { class: "tool-spin" }) : svg(ICONS.arrowClockwise, 10, { stroke: 2.4 }),
+      h("span", { text: busy ? tl("Refreshing…") : tl("Refresh") }));
+      refresh.toggleAttribute("disabled", busy);
+      const foot = h("div", { class: "plan-foot" }, refresh);
+      if (!busy && claudeRefresh.error) foot.append(h("span", { class: "tool-note bad", text: claudeRefresh.error, title: claudeRefresh.error }));
+      this.el.append(foot);
+    }
   }
 
   private drawCodex(u: CodexPlanUsage | null, now: number) {

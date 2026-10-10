@@ -53,6 +53,8 @@ export interface ApprovalInfo {
   questions?: AskedQuestion[];
   /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
   fromChat?: boolean;
+  /** Simple (a read, a command that only looks): answered on the closed island (core/approvals.ts). */
+  quick?: boolean;
 }
 
 /** One question of an AskUserQuestion call. */
@@ -144,7 +146,7 @@ export interface Settings {
   screen: string;
   /** How big the island is drawn (1 = the Mac's size). */
   islandZoom: number;
-  /** How far the island sits from its edge of the screen: "none", "medium" or "wide". */
+  /** How far the island sits from its edge of the screen: "none", "light", "medium" or "wide". */
   islandEdgeGap: string;
   /** The edge the island hangs from, and how far from its middle (owned by Rust). */
   islandDock: string;
@@ -189,6 +191,10 @@ export interface Settings {
   planRelayInstalled: boolean;
   /** Show the Codex plan pill in the island's header. */
   showCodexPlanInNotch: boolean;
+  /** Ask Anthropic for the Claude plan's usage with Claude Code's sign-in (plan_usage.rs). */
+  planUsageOnline: boolean;
+  /** Simple permission requests are answered on the closed island (core/approvals.ts). */
+  quickApprovals: boolean;
   /** Who the chat talks to (see core/providers.ts); picked in the chat view. */
   chatProvider: ProviderId;
   /** The model picked for each provider other than Anthropic, by provider id. */
@@ -268,7 +274,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
   islandZoom: 1.15,
-  islandEdgeGap: "medium",
+  islandEdgeGap: "light",
   islandDock: "top",
   islandOffset: 0,
   islandFloat: 0,
@@ -294,6 +300,8 @@ export const DEFAULT_SETTINGS: Settings = {
   showPlanInNotch: false,
   planRelayInstalled: false,
   showCodexPlanInNotch: false,
+  planUsageOnline: false,
+  quickApprovals: true,
   chatProvider: "anthropic",
   chatModels: {},
   chatEffort: "",

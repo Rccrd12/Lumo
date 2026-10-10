@@ -49,8 +49,9 @@ import {
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
-import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
+import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
 import { planColor } from "../core/plan";
+import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
@@ -76,6 +77,8 @@ const STRINGS = {
   newChat: N_("New chat"),
   pastChats: N_("Past chats"),
   noPastChats: N_("No past chats yet."),
+  searchChats: N_("Search the past chats"),
+  noMatch: N_("No chat says that."),
   deleteChat: N_("Delete this chat"),
   attach: N_("Attach a file"),
   cancel: N_("Cancel"),
@@ -347,8 +350,9 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     );
     const value = h("span", { class: "effort-value" });
     // A track that fills up to the knob, with a mark for each level. Dragged,
-    // the knob follows the pointer and the fill with it; let go, it settles on
-    // the nearest level. On Auto there is no knob: a click picks a level.
+    // the knob goes to the nearest level as soon as the pointer is past half
+    // the way to it, with an ease; let go, that level is picked. On Auto there
+    // is no knob: a click picks a level.
     const fill = h("i", { class: "effort-fill" });
     const knob = h("i", { class: "effort-knob" });
     const ticks = h("div", { class: "effort-ticks" }, ...levels.map(() => h("i")));
@@ -403,10 +407,15 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
       track.setPointerCapture?.(pe.pointerId);
       track.classList.add("dragging");
       track.classList.remove("auto");
+      // Past half the way to the next level, the knob is on it already: it
+      // moves from level to level as it is dragged, each step eased.
+      let shown = -1;
       const follow = (x: number) => {
-        const frac = Math.max(0, Math.min(1, fracAt(x)));
-        place(frac);
-        value.textContent = effortLabel(levels[Math.round(frac * last)]);
+        const index = Math.round(Math.max(0, Math.min(1, fracAt(x))) * last);
+        if (index === shown) return;
+        shown = index;
+        place(index / last);
+        value.textContent = effortLabel(levels[index]);
       };
       follow(pe.clientX);
       const move = (m: Event) => follow((m as PointerEvent).clientX);
@@ -709,7 +718,17 @@ export function buildPrompt(
     onHeightChange();
   }
   const historyList = h("div", { class: "picker-list" });
-  const historyEl = h("div", { class: "picker history" }, h("div", { class: "picker-title", text: t(STRINGS.pastChats) }), historyList);
+  // A search over every past chat, questions and answers alike.
+  const historySearch = h("input", {
+    type: "search",
+    class: "history-search",
+    placeholder: tl(STRINGS.searchChats),
+    spellcheck: "false",
+    "aria-label": tl(STRINGS.searchChats),
+  }) as HTMLInputElement;
+  const historyEl = h("div", { class: "picker history" },
+    h("div", { class: "history-head" }, h("div", { class: "picker-title", text: tl(STRINGS.pastChats) }), historySearch),
+    historyList);
   // The screen button's menu, then the preview of a screenshot.
   const screenTitle = h("div", { class: "picker-title" });
   const screenList = h("div", { class: "picker-list" });
@@ -798,7 +817,7 @@ export function buildPrompt(
       usageList.append(h("div", { class: "picker-status", text: line.text }));
       return;
     }
-    for (const row of line.rows) {
+    for (const [i, row] of line.rows.entries()) {
       const fill = h("i", { class: "usage-fill" });
       fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
       fill.style.background = row.pct == null ? "" : planColor(row.pct);
@@ -808,11 +827,15 @@ export function buildPrompt(
           h("span", { class: "usage-value", text: row.value })),
         h("span", { class: "usage-bar" }, fill),
         row.reset ? h("span", { class: "usage-reset", text: row.reset }) : null,
+        // How to get the 5 hours up to date: under them, where it is seen.
+        i === 0 && line.note ? h("span", { class: "usage-note", text: line.note }) : null,
       ));
     }
   }
 
   function openUsage() {
+    // Asked of Anthropic when turned on (at most every 3 minutes).
+    if (State.settings.chatProvider === "claude-code") refreshClaudePlanOnline();
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1266,7 +1289,15 @@ export function buildPrompt(
       historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noPastChats) }));
       return;
     }
-    for (const c of chats) {
+    const query = historySearch.value.trim();
+    const rows: { chat: SavedChat; snippet?: HTMLElement }[] = query
+      ? searchChats(chats, query).map((hit) => ({ chat: hit.chat, snippet: snippetOf(hit) }))
+      : chats.map((chat) => ({ chat }));
+    if (query && rows.length === 0) {
+      historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noMatch) }));
+      return;
+    }
+    for (const { chat: c, snippet } of rows) {
       const remove = h("button", { class: "history-delete", title: tl(STRINGS.deleteChat) }, svg(ICONS.trash, 12, { stroke: 1.6 }));
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1274,10 +1305,11 @@ export function buildPrompt(
         Sound.play("pop");
         drawHistory();
       });
+      const name = h("span", { class: "picker-model-name", text: c.title || "…" });
       const row = h(
         "div",
         { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
-        h("span", { class: "picker-model-name", text: c.title || "…" }),
+        snippet ? h("span", { class: "history-text" }, name, snippet) : name,
         h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
         remove,
       );
@@ -1285,6 +1317,34 @@ export function buildPrompt(
       historyList.append(row);
     }
   }
+
+  /** The passage that matched, with the match lit (text nodes only, never markup). */
+  function snippetOf(hit: ChatHit): HTMLElement {
+    const [a, b] = hit.match;
+    return h("span", { class: "history-snippet" },
+      hit.snippet.slice(0, a),
+      h("mark", { text: hit.snippet.slice(a, b) }),
+      hit.snippet.slice(b));
+  }
+
+  historySearch.addEventListener("input", () => drawHistory());
+  historySearch.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    e.stopPropagation(); // Escape here clears the search, not the island
+    if (key === "Escape") {
+      e.preventDefault();
+      if (historySearch.value) {
+        historySearch.value = "";
+        drawHistory();
+      } else closeHistory();
+    } else if (key === "Enter") {
+      e.preventDefault();
+      // Enter opens the first chat found.
+      const query = historySearch.value.trim();
+      const first = query ? searchChats(loadChats(), query)[0]?.chat : loadChats()[0];
+      if (first) openChat(first);
+    }
+  });
 
   function openChat(c: SavedChat) {
     if (sending) return;
@@ -1429,10 +1489,12 @@ export function buildPrompt(
     closeScreen();
     closePermissions();
     closeUsage();
+    historySearch.value = "";
     drawHistory();
     body.classList.add("browsing");
     historyBtn.classList.add("open");
     panelChanged();
+    historySearch.focus();
   });
 
   modelBtn.addEventListener("click", () => {

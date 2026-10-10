@@ -67,10 +67,11 @@ test("nonsense falls back to the usual", () => {
   assert.equal(parseDock("right"), "right");
 });
 
-test("the distance from the edge: none, medium (the usual) or wide", async () => {
+test("the distance from the edge: none, light (the usual), medium (past the hover margin) or wide", async () => {
   const { edgeGap, EDGE_GAP } = await import("../src/core/layout.ts");
   assert.equal(edgeGap("none"), 0);
-  assert.equal(edgeGap("medium"), EDGE_GAP);
+  assert.equal(edgeGap("light"), EDGE_GAP);
   assert.equal(edgeGap(undefined), EDGE_GAP);
-  assert.equal(edgeGap("wide"), 24);
+  assert.ok(edgeGap("medium") > 14 && edgeGap("medium") < edgeGap("wide"));
+  assert.equal(edgeGap("wide"), 28);
 });

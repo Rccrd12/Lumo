@@ -44,3 +44,21 @@ test("the title is the first question on one line, shortened", () => {
   assert.equal(chatTitle([{ role: "user", content: "x".repeat(100) }]).length, 60);
   assert.equal(chatTitle([]), "");
 });
+
+test("past chats are searched in questions and answers, accents and case aside", async () => {
+  const { searchChats } = await import("../src/core/chats.ts");
+  const chat = (id, title, ...turns) => ({ id, title, updatedAt: 0, provider: "claude-code", session: null,
+    turns: turns.map((content, i) => ({ role: i % 2 ? "assistant" : "user", content })) });
+  const chats = [
+    chat("a", "Perché il PDF non si apre?", "Perché il PDF non si apre?", "Prova ad aprirlo con un altro lettore, poi dimmi."),
+    chat("b", "Ricetta della pasta", "Ricetta della pasta", "Acqua, sale e 10 minuti di cottura."),
+  ];
+  assert.deepEqual(searchChats(chats, ""), []);
+  assert.deepEqual(searchChats(chats, "perche").map((x) => x.chat.id), ["a"]);
+  const hit = searchChats(chats, "LETTORE")[0];
+  assert.equal(hit.chat.id, "a");
+  assert.equal(hit.snippet.slice(hit.match[0], hit.match[1]), "lettore");
+  // Every word must be there, in any message of the chat.
+  assert.deepEqual(searchChats(chats, "pasta cottura").map((x) => x.chat.id), ["b"]);
+  assert.deepEqual(searchChats(chats, "pasta pdf"), []);
+});

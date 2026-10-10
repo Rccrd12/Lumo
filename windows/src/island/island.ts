@@ -108,6 +108,10 @@ export class Island {
   private lastGesture = 0;
   /** Lifted while carried: a little bigger, springing back when put down. */
   private lift = new Tracked(1);
+  /** Between the island and its edge of the screen, eased when Settings changes it. */
+  private gap = new Tracked(edgeGap(undefined));
+  /** The gap Settings asked for last; null before the first settings arrived. */
+  private gapTarget: number | null = null;
   /** Puts a moved island down should Rust never say where it went. */
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
@@ -215,6 +219,37 @@ export class Island {
     State.isPinned = true;
     this.fsm.pinned = true;
     this.fsm.forcePetit();
+  }
+
+  /**
+   * A simple request (core/approvals.ts) is answered on the closed island: it
+   * comes out of its edge and stays, with Deny and Allow next to Lumo. False
+   * when the closed island cannot show it (open, greeting, upright on a side,
+   * paused): the full card comes up instead.
+   */
+  quickApproval(): boolean {
+    const state = this.fsm.state;
+    if ((state !== "hidden" && state !== "petit") || isUpright(this.dock) || State.paused) return false;
+    this.fsm.pinned = true;
+    if (state === "hidden") this.fsm.reveal();
+    State.notify();
+    return true;
+  }
+
+  /** Deny or Allow clicked on the closed island: answered, and it stays closed. */
+  private decideClosed(d: "allow" | "deny") {
+    const req = State.pendingApproval;
+    void Bridge.log(`decide ${d} req=${req?.requestId ?? "none"} (closed island)`);
+    if (!req) return;
+    Sound.play(d === "deny" ? "blip" : "approve");
+    void Bridge.approvalDecision(req.requestId, d);
+    State.endApproval();
+    if (State.mode === "expanded") {
+      this.closeApproval();
+      return;
+    }
+    this.dropPin();
+    State.notify();
   }
 
   // ── DOM ─────────────────────────────────────────────────────────────────────
@@ -335,6 +370,7 @@ export class Island {
         this.takeKeyboard();
       },
       changed: () => State.notify(),
+      decide: (d) => this.decideClosed(d),
     });
 
     this.header = buildHeader(actions);
@@ -580,8 +616,8 @@ export class Island {
   private scheduleHoverOpen() {
     this.cancelHoverOpen();
     if (!State.settings.islandHoverOpen || this.fsm.state !== "petit" || State.paused) return;
-    // An email is showing: the mouse goes to its buttons, not to open the island.
-    if (this.compact.mail) return;
+    // An email or a request is showing: the mouse goes to its buttons, not to open the island.
+    if (this.compact.mail || this.compact.approval) return;
     this.hoverOpenTimer = window.setTimeout(() => {
       this.hoverOpenTimer = null;
       // Still there, not on one of its own buttons, and not picking the island up to move it.
@@ -881,7 +917,7 @@ export class Island {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const { x: sx, y: sy } = this.shift;
-    const gap = edgeGap(State.settings.islandEdgeGap);
+    const gap = this.gap.value;
     let x: number;
     let y: number;
     switch (this.dock) {
@@ -1257,6 +1293,7 @@ export class Island {
     this.height.step(dt, nowMs);
     this.radius.step(dt, nowMs);
     this.lift.step(dt, nowMs);
+    this.gap.step(dt, nowMs);
     this.applyGeometry();
 
     if (this.dirty) {
@@ -1314,7 +1351,7 @@ export class Island {
     // sweep — so a hidden island went on burning frames in exactly the states it
     // spends most of its life in. Geometry still has to finish retracting.
     const settling =
-      this.width.animating || this.height.animating || this.radius.animating;
+      this.width.animating || this.height.animating || this.radius.animating || this.gap.animating;
     const busy = State.mode === "hidden"
       ? settling
       : settling ||
@@ -1513,6 +1550,11 @@ export class Island {
 
   /** Applies settings coming from Rust at boot. */
   applySettings() {
+    // A new distance from the edge eases in; the first one is simply taken.
+    const gap = edgeGap(State.settings.islandEdgeGap);
+    if (this.gapTarget == null) this.gap.jump(gap);
+    else if (gap !== this.gapTarget) this.gap.springTo(gap, 0.55, 1);
+    this.gapTarget = gap;
     this.engine.ambient = motionAmount(State.settings.lumoMotion);
     this.ensureRunning();
     Sound.setEnabled(State.settings.soundEnabled);
@@ -1551,7 +1593,8 @@ export class Island {
     this.engine.triggerEmote("surprised");
     Sound.play("blip");
     this.ensureRunning();
-    void Bridge.islandDrag();
+    const at = this.islandRect();
+    void Bridge.islandDrag([at.x, at.y, at.w, at.h]);
   }
 
   /**

@@ -21,11 +21,15 @@ pub const PANEL_H: f64 = 480.0;
 /// Between the island and the edge of the screen it is docked to, in page pixels.
 pub const EDGE_GAP: f64 = 10.0;
 
-/// The gap Settings → Island → Distance from the edge asks for, in page pixels.
+/// The gap Settings → Island → Distance from the edge asks for, in page
+/// pixels (src/core/layout.ts edgeGap): "light" is the usual one; "medium" is
+/// just past the 14 px hover margin, so the cursor crosses the edge above the
+/// island without opening it.
 pub fn edge_gap_of(name: &str) -> f64 {
     match name {
         "none" => 0.0,
-        "wide" => 24.0,
+        "medium" => 18.0,
+        "wide" => 28.0,
         _ => EDGE_GAP,
     }
 }
@@ -778,10 +782,11 @@ impl Axis {
     }
 }
 
-/// How the island bounces into place: a spring of this period (s) and damping
-/// ratio — under 1, so it overshoots a little and settles.
-const BOUNCE_RESPONSE: f64 = 0.42;
-const BOUNCE_DAMPING: f64 = 0.55;
+/// How the island settles into place: a spring of this period (s) and damping
+/// ratio — just under 1, so it eases in with the faintest overshoot instead of
+/// a bounce, and lands where it was let go when it floats.
+const BOUNCE_RESPONSE: f64 = 0.36;
+const BOUNCE_DAMPING: f64 = 0.75;
 /// How quickly the dragged island catches up with the mouse (s).
 const FOLLOW: f64 = 0.045;
 
@@ -971,12 +976,13 @@ mod placement_tests {
     #[test]
     fn the_distance_from_the_edge_is_none_medium_or_wide() {
         assert_eq!(edge_gap_of("none"), 0.0);
-        assert_eq!(edge_gap_of("medium"), EDGE_GAP);
+        assert_eq!(edge_gap_of("light"), EDGE_GAP);
         assert_eq!(edge_gap_of("anything else"), EDGE_GAP);
-        assert_eq!(edge_gap_of("wide"), 24.0);
+        assert!(edge_gap_of("medium") > HIT_MARGIN, "the cursor passes above it");
+        assert_eq!(edge_gap_of("wide"), 28.0);
         // A wider gap leaves the island its room: the window is never shorter.
         let tall = Placement { height: 600.0, ..HOME };
-        assert!(panel_size(Placement { gap: 24.0, ..tall }).1 >= panel_size(tall).1);
+        assert!(panel_size(Placement { gap: 28.0, ..tall }).1 >= panel_size(tall).1);
     }
 
     #[test]

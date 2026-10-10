@@ -25,7 +25,7 @@ pub struct Settings {
     /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
     pub island_zoom: f64,
     /// How far the island sits from the edge of the screen it is docked to:
-    /// "none", "medium" (the usual 10 px) or "wide" (island.rs edge_gap_of).
+    /// "none", "light" (the usual 10 px), "medium" or "wide" (island.rs edge_gap_of).
     pub island_edge_gap: String,
     /// The display edge the island hangs from ("top", "bottom", "left",
     /// "right") and how far from its middle, in logical pixels. Owned by the
@@ -80,6 +80,12 @@ pub struct Settings {
     /// Show the Codex plan pill (5 h / weekly limits from `codex app-server`).
     /// Off by default; nothing is installed for it.
     pub show_codex_plan_in_notch: bool,
+    /// Ask Anthropic for the Claude plan's usage with Claude Code's sign-in
+    /// (plan_usage.rs). Off unless turned on.
+    pub plan_usage_online: bool,
+    /// Simple permission requests (reads, commands that only look) are
+    /// answered on the closed island, without opening it (src/core/approvals.ts).
+    pub quick_approvals: bool,
     /// Who the chat talks to: "anthropic", a cloud provider of
     /// openai_compat.rs ("openai", "google", "openrouter"), or a model server
     /// of local_chat.rs ("ollama", "lmstudio", "custom"). Picked in the chat view.
@@ -204,7 +210,7 @@ impl Default for Settings {
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
             island_zoom: crate::island::DEFAULT_ZOOM,
-            island_edge_gap: "medium".into(),
+            island_edge_gap: "light".into(),
             island_dock: "top".into(),
             island_offset: 0.0,
             island_float: 0.0,
@@ -230,6 +236,8 @@ impl Default for Settings {
             show_plan_in_notch: false,
             plan_relay_installed: false,
             show_codex_plan_in_notch: false,
+            plan_usage_online: false,
+            quick_approvals: true,
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
@@ -541,6 +549,8 @@ mod tests {
   "showPlanInNotch": true,
   "planRelayInstalled": true,
   "showCodexPlanInNotch": true,
+  "planUsageOnline": true,
+  "quickApprovals": false,
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
@@ -1003,6 +1013,8 @@ mod tests {
                 "showPlanInNotch",
                 "planRelayInstalled",
                 "showCodexPlanInNotch",
+                "planUsageOnline",
+                "quickApprovals",
                 "chatProvider",
                 "chatModels",
                 "chatEffort",

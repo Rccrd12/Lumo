@@ -12,11 +12,12 @@ import { isComingSoon, pillDefinition } from "../core/pills";
 import { refreshHookPills } from "../island/integrations";
 import { readActivity, readPulse, readStats } from "../core/github";
 import { githubDetail, githubPulseCard } from "./github";
-import { N_, language, t } from "../i18n/i18n";
+import { N_, language, t, tn } from "../i18n/i18n";
 import { askAboutMail } from "../island/compact";
 import type { MailPeek } from "../core/compact";
 import { PLAN_TEXT, dominantPct, planColor } from "../core/plan";
 import { formatDuration, mergedSeconds, mondayOf, type RecapHistory } from "../recap/summary";
+import { folderOf, groupSessions, type CodeSession } from "../core/sessions";
 
 /** Same shape as the Swift `timeAgo` computed properties. */
 export function timeAgo(value: unknown): string {
@@ -99,6 +100,10 @@ const TOOL_TEXT = {
   model: N_("Model"),
   refresh: N_("Refresh"),
   refreshing: N_("Refreshing…"),
+  allSessions: N_("All sessions"),
+  sessions: N_("Sessions"),
+  noSessions: N_("No session in the last 30 days. Sessions are kept by the weekly recap (Settings → General)."),
+  openProject: N_("Open the project"),
 };
 
 /** A Refresh in progress or done, by pill: the card shows it until the next one. */
@@ -230,7 +235,7 @@ function toolButton(label: string, onclick: () => void, primary = false, color?:
   return b;
 }
 
-function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
+function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () => void): HTMLElement {
   const info = State.integrations[task.id];
   const configured = info?.configured ?? false;
   const def = pillDefinition(task.id);
@@ -268,7 +273,8 @@ function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
   }
 
   const facts = h("div", { class: "tool-facts" });
-  for (const f of toolFacts(task, configured, hookPill)) {
+  const factList = toolFacts(task, configured, hookPill);
+  for (const f of factList) {
     const value = h("span", { class: "tool-fact-value", text: f.value, title: f.value });
     if (f.color) value.style.color = f.color;
     facts.append(h("div", { class: f.value ? "tool-fact" : "tool-fact alone" }, h("span", { class: "tool-fact-label", text: f.label }), value));
@@ -279,13 +285,74 @@ function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
     ? h("div", { class: done.error ? "tool-note bad" : "tool-note", text: done.error ?? t("Updated {when}", { when: when(done.at) }), title: done.error ?? "" })
     : null;
 
+  // The sessions themselves, one click away (sessionsDetail).
+  const sessionsLink = hookPill && configured && openSessions && recap && groupSessions(recap.turns, task.id, 1).length
+    ? h("button", { class: "tool-more", onclick: openSessions }, h("span", { text: t(TOOL_TEXT.allSessions) }), svg(ICONS.chevronRight, 9, { stroke: 2.4 }))
+    : null;
+
   return h(
     "div",
     { class: "int-card tool-card" },
     header(color, task.id === "integration_claude" ? "VS Code" : task.name, t(def?.subtitle ?? N_("Integration"))),
     h("div", { class: "int-status" }, dot(status.color, 6), h("span", { class: "int-status-label", text: status.label, title: status.label })),
     facts,
+    sessionsLink,
     h("div", { class: "tool-foot" }, actions, note),
+  );
+}
+
+/** "Today 14:20", "Wed 9:30", "12 Sep 9:30". */
+function sessionWhen(sec: number, now = Date.now()): string {
+  const d = new Date(sec * 1000);
+  const time = d.toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit" });
+  const days = Math.round((new Date(new Date(now).toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
+  if (days <= 0) return `${t("Today")} ${time}`;
+  if (days < 7) return `${d.toLocaleDateString(language(), { weekday: "short" })} ${time}`;
+  return `${d.toLocaleDateString(language(), { day: "numeric", month: "short" })} ${time}`;
+}
+
+/**
+ * A tool's recent sessions (from the weekly recap): the project, when, how
+ * long, the files and lines changed and the commands run. A click opens the
+ * project again (its folder in VS Code), when Lumo has seen where it is.
+ */
+function sessionsDetail(task: AgentTask, onBack: () => void): HTMLElement {
+  loadRecap();
+  const sessions: CodeSession[] = recap ? groupSessions(recap.turns, task.id) : [];
+  const list = h("div", { class: "session-list" });
+  if (!sessions.length) list.append(h("div", { class: "int-empty", text: t(TOOL_TEXT.noSessions) }));
+  for (const s of sessions) {
+    const folder = s.project ? folderOf(s.project) : null;
+    const meta = [
+      formatDuration(s.minutes),
+      s.filesChanged ? tn("{count} file", "{count} files", s.filesChanged) : "",
+      s.linesAdded || s.linesRemoved ? `+${s.linesAdded} −${s.linesRemoved}` : "",
+      s.commandsRun ? tn("{count} command", "{count} commands", s.commandsRun) : "",
+    ].filter(Boolean).join(" · ");
+    const row = h(folder ? "button" : "div", {
+      class: folder ? "session-row link" : "session-row",
+      title: folder ? `${t(TOOL_TEXT.openProject)} · ${folder}` : s.project,
+    },
+    h("span", { class: "session-top" },
+      h("b", { class: "session-project", text: s.project || "—" }),
+      h("span", { class: "session-when", text: sessionWhen(s.start) })),
+    h("span", { class: "session-meta", text: meta }),
+    folder ? h("i", { class: "session-open" }, svg(ICONS.arrowUpRight, 8)) : null);
+    if (folder) row.addEventListener("click", () => void Bridge.openSession(null, folder));
+    list.append(row);
+  }
+  return h(
+    "div",
+    { class: "int-card detail sessions" },
+    h(
+      "div",
+      { class: "int-detail-head" },
+      h("button", { class: "int-back", onclick: onBack }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 })),
+      dot(task.color, 6),
+      h("b", { text: task.id === "integration_claude" ? "VS Code" : task.name }),
+      h("span", { class: "int-badge", text: t(TOOL_TEXT.sessions) }),
+    ),
+    list,
   );
 }
 
@@ -645,6 +712,10 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
   }
   if (task.id === "integration_vercel" && hasIntegrationData(task.id)) {
     return hooks.detailOpen ? vercelDetail(hooks.closeDetail) : vercelCard(hooks.openDetail);
+  }
+  // A tool fed by hooks: its card, or the list of its sessions.
+  if (pillDefinition(task.id)?.connect.kind === "hooks") {
+    return hooks.detailOpen ? sessionsDetail(task, hooks.closeDetail) : idleCard(task, hooks.openSettings, hooks.openDetail);
   }
   if (!hasIntegrationData(task.id)) return idleCard(task, hooks.openSettings);
 

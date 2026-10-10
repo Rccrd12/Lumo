@@ -8,7 +8,7 @@
 
 import {
   COMPACT_TEXT, Feed, LIVE_COLOR, activityLine, compactNotice, speakerName, timerLeft,
-  type AgentActivityInput, type CompactItem, type CompactShown, type MailPeek, type MediaActivity,
+  type AgentActivityInput, type ApprovalPeek, type CompactItem, type CompactShown, type MailPeek, type MediaActivity,
 } from "../core/compact";
 import { Bridge, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
@@ -41,6 +41,16 @@ const MAIL_TEXT = {
   noSubject: N_("(no subject)"),
 };
 
+const APPROVAL_TEXT = {
+  needs: N_("needs permission"),
+  allow: N_("Allow"),
+  deny: N_("Deny"),
+  open: N_("Click to see the whole request"),
+};
+
+/** Clicks this soon after a request shows are ignored: one meant for something else must not land on Allow. */
+const CLICK_GUARD_MS = 600;
+
 const MAIL_COLOR = "#EA4335";
 const TIMER_COLOR = "#F5A524";
 const MEDIA_COLOR = "#1DB954";
@@ -54,6 +64,16 @@ export interface CompactHost {
   openChat(): void;
   /** Redraw: the size may change with what is shown. */
   changed(): void;
+  /** Deny or Allow, clicked on a simple request. */
+  decide(d: "allow" | "deny"): void;
+}
+
+/** The request waiting, when it is simple enough for the closed island. */
+function approvalInput(): ApprovalPeek | null {
+  const req = State.pendingApproval;
+  if (!req?.quick || req.questions) return null;
+  const task = State.tasks.find((x) => x.id === req.pillId);
+  return { requestId: req.requestId, who: task?.name ?? req.tool, color: task?.color ?? "#F5A524", command: req.command || req.tool };
 }
 
 /** What the agents are doing: the card waiting first, then the busiest session. */
@@ -83,6 +103,8 @@ export class CompactStrip {
   private fit: { w: number; h: number } | null = null;
   /** The closed island is on screen: only then does a timer tick every second. */
   private visible = false;
+  /** When the request on show came up, against clicks meant for something else. */
+  private approvalAt = 0;
 
   private host: CompactHost;
 
@@ -112,11 +134,17 @@ export class CompactStrip {
     const s = this.shown;
     if (!s) return null;
     if (s.kind === "mail") return { ...COMPACT_SIZES.mail };
+    if (s.kind === "approval") return { ...COMPACT_SIZES.approval };
     const most = COMPACT_SIZES[s.items.length === 1 ? "one" : s.items.length === 2 ? "two" : "many"];
     this.el.classList.add("measure");
     const natural = this.el.scrollWidth;
     this.el.classList.remove("measure");
     return { w: Math.round(Math.min(most.w, natural + 2 * SIDE_ROOM + 4)), h: most.h };
+  }
+
+  /** The simple request on show, if any. */
+  get approval(): ApprovalPeek | null {
+    return this.shown?.kind === "approval" ? this.shown.approval : null;
   }
 
   /** The current email, for its buttons and the island's own mail list. */
@@ -130,7 +158,7 @@ export class CompactStrip {
    */
   overControls(x: number, y: number): boolean {
     if (!this.visible) return false;
-    for (const el of this.el.querySelectorAll(".cp-controls, .cp-close, .cp-mail-actions")) {
+    for (const el of this.el.querySelectorAll(".cp-controls, .cp-close, .cp-mail-actions, .cp-approval-actions")) {
       const r = el.getBoundingClientRect();
       if (x >= r.left - 4 && x <= r.right + 4 && y >= r.top - 4 && y <= r.bottom + 4) return true;
     }
@@ -148,7 +176,8 @@ export class CompactStrip {
     }
     const before = this.fit;
     const show = { notes: State.settings.compactActivity !== false, media: State.settings.compactMedia !== false };
-    this.shown = Feed.shown(show.notes ? this.activity() : null, now, show);
+    const approval = approvalInput();
+    this.shown = approval ? { kind: "approval", approval } : Feed.shown(show.notes ? this.activity() : null, now, show);
     this.draw(now);
     this.fit = this.measured;
     this.schedule();
@@ -171,6 +200,7 @@ export class CompactStrip {
   private draw(now: number) {
     const s = this.shown;
     const key = s == null ? "" : s.kind === "mail" ? `mail|${s.mail.id}|${this.extraMail}`
+      : s.kind === "approval" ? `approval|${s.approval.requestId}|${s.approval.command}`
       : `items|${s.items.map((i) => itemKey(i, now)).join("|")}`;
     if (key === this.key) return;
     this.key = key;
@@ -181,6 +211,8 @@ export class CompactStrip {
     if (!s) return;
     if (s.kind === "mail") {
       this.el.append(this.mailCard(s.mail));
+    } else if (s.kind === "approval") {
+      this.el.append(this.approvalCard(s.approval));
     } else {
       // One alone in the middle; more side by side, each smaller.
       for (const item of s.items) this.el.append(h("div", { class: "cp-item" }, ...this.itemContent(item, now, many)));
@@ -276,6 +308,31 @@ export class CompactStrip {
       h("div", { class: "cp-mail-subject", text: m.subject || t(MAIL_TEXT.noSubject) }),
       h("div", { class: "cp-mail-preview", text: m.preview }),
       actions,
+    );
+  }
+
+  /**
+   * A simple request: who asks and what, with Deny and Allow. Only a click on
+   * one of them answers; a click anywhere else opens the full card.
+   */
+  private approvalCard(a: ApprovalPeek): HTMLElement {
+    this.approvalAt = performance.now();
+    const decide = (d: "allow" | "deny") => (e: Event) => {
+      e.stopPropagation();
+      if (performance.now() - this.approvalAt < CLICK_GUARD_MS) return;
+      this.host.decide(d);
+    };
+    return h("div", { class: "cp-mail cp-approval", title: t(APPROVAL_TEXT.open) },
+      h("div", { class: "cp-mail-head" },
+        h("i", { class: "cp-dot", style: `background:${a.color}` }),
+        h("b", { class: "cp-approval-who", text: a.who }),
+        h("span", { class: "cp-approval-needs", text: t(APPROVAL_TEXT.needs) }),
+      ),
+      h("div", { class: "cp-approval-code", text: a.command, title: a.command }),
+      h("div", { class: "cp-mail-actions cp-approval-actions" },
+        h("button", { class: "cp-action", onclick: decide("deny") }, t(APPROVAL_TEXT.deny)),
+        h("button", { class: "cp-action allow", onclick: decide("allow") }, t(APPROVAL_TEXT.allow)),
+      ),
     );
   }
 

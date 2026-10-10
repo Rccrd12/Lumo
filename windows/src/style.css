@@ -488,7 +488,8 @@ body {
 #compact .cp-eq b:nth-child(2) { height: 10px; }
 #compact .cp-eq b:nth-child(3) { height: 4px; }
 
-#compact.mail {
+#compact.mail,
+#compact.approval {
   height: auto;
   bottom: 0;
   right: 10px;
@@ -567,6 +568,55 @@ body {
 
 #compact .cp-action:hover {
   background: rgba(255, 255, 255, 0.18);
+}
+
+#compact .cp-action.allow {
+  background: var(--ink);
+  color: #0b0c0e;
+}
+
+#compact .cp-action.allow:hover {
+  background: #fff;
+}
+
+/* A simple request on the closed island (island/compact.ts approvalCard). */
+#compact .cp-approval {
+  cursor: pointer;
+}
+
+#compact .cp-approval-who {
+  flex: none;
+  max-width: 50%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-weight: 600;
+}
+
+#compact .cp-approval-needs {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dim);
+}
+
+#compact .cp-approval-code {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  white-space: pre-wrap;
+  word-break: break-all;
+  padding: 3px 7px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--ink-2);
+  font: 10.5px/1.35 var(--mono);
+}
+
+#compact .cp-approval-actions {
+  justify-content: flex-end;
+  padding-top: 5px;
 }
 
 #compact .cp-action.quiet {
@@ -1942,6 +1992,11 @@ input[type="range"]::-webkit-slider-thumb {
   transition: width 0.5s cubic-bezier(0.3, 0.8, 0.3, 1);
 }
 
+.usage-note {
+  font: 400 11px/1.4 var(--font);
+  color: #6f7682;
+}
+
 .usage-reset {
   font: 400 11px var(--font);
   color: #8b929e;
@@ -2070,7 +2125,7 @@ input[type="range"]::-webkit-slider-thumb {
   width: calc(var(--edge) + var(--at) * (100% - 2 * var(--edge)));
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.24);
-  transition: width 0.32s cubic-bezier(0.3, 1.25, 0.4, 1);
+  transition: width 0.34s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
 .effort-knob {
@@ -2082,17 +2137,17 @@ input[type="range"]::-webkit-slider-thumb {
   border-radius: 6px;
   background: #f5f6f8;
   box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
-  transition: left 0.32s cubic-bezier(0.3, 1.25, 0.4, 1), transform 0.15s ease;
+  transition: left 0.34s cubic-bezier(0.22, 1, 0.36, 1), transform 0.18s ease;
 }
 
-/* Dragged: the knob and the fill trail the pointer by a frame or two, and the
-   knob grows a little under the finger. */
+/* Dragged: the knob grows a little under the finger, and still eases from
+   level to level, a little quicker. */
 .effort-track.dragging .effort-fill {
-  transition: width 0.07s linear;
+  transition: width 0.2s cubic-bezier(0.25, 0.9, 0.3, 1);
 }
 
 .effort-track.dragging .effort-knob {
-  transition: left 0.07s linear, transform 0.15s ease;
+  transition: left 0.2s cubic-bezier(0.25, 0.9, 0.3, 1), transform 0.18s ease;
   transform: scale(1.12);
 }
 
@@ -2171,6 +2226,57 @@ input[type="range"]::-webkit-slider-thumb {
 
 .history-row {
   gap: 8px;
+}
+
+/* The past chats' search, beside their title. */
+.history-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.history-search {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--ink);
+  font: 400 12px var(--font);
+  outline: none;
+}
+
+.history-search:focus {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.history-search::placeholder {
+  color: var(--dim-3);
+}
+
+.history-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.history-snippet {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 11px var(--font);
+  color: #8b929e;
+}
+
+.history-snippet mark {
+  background: rgba(245, 165, 36, 0.25);
+  color: var(--ink);
+  border-radius: 3px;
+  padding: 0 1px;
 }
 
 .history-date {
@@ -2882,6 +2988,109 @@ textarea.chat-input {
   font-weight: 600;
   color: var(--ink-2);
   font-variant-numeric: tabular-nums;
+}
+
+/* "All sessions ›" under the facts. */
+.tool-more {
+  flex: none;
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 0;
+  border: 0;
+  background: none;
+  color: #8b929e;
+  font: 500 11.5px var(--font);
+  cursor: pointer;
+}
+
+.tool-more:hover {
+  color: var(--ink);
+}
+
+/* A tool's sessions (views/integrations.ts sessionsDetail). */
+.int-card.detail.sessions {
+  height: 100%;
+  box-sizing: border-box;
+  padding-bottom: 10px;
+}
+
+.session-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 8px;
+  padding-right: 4px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.session-row {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 26px 7px 9px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: inherit;
+  text-align: left;
+  font: inherit;
+}
+
+.session-row.link {
+  cursor: pointer;
+  transition: background 0.12s;
+}
+
+.session-row.link:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+.session-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  min-width: 0;
+}
+
+.session-project {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 600 12.5px var(--font);
+  color: var(--ink-2);
+}
+
+.session-when {
+  flex: none;
+  font: 400 11px var(--font);
+  color: #8b929e;
+  font-variant-numeric: tabular-nums;
+}
+
+.session-meta {
+  font: 400 11px var(--font);
+  color: #8b929e;
+}
+
+.session-open {
+  position: absolute;
+  top: 9px;
+  right: 8px;
+  display: flex;
+  color: #6b7079;
+}
+
+.session-row.link:hover .session-open {
+  color: var(--ink);
 }
 
 .tool-foot {
@@ -3839,11 +4048,7 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 }
 
 /* Extended Thinking: the bulb lights up. */
-.live-head .live-think {
-  width: 22px;
-  height: 22px;
-  flex: 0 0 22px;
-  margin-left: 2px;
+.live-bar .live-think {
   transition: color 0.2s, background 0.2s, box-shadow 0.2s;
 }
 

@@ -56,6 +56,10 @@ export const USAGE_TEXT = {
   usedPct: (pct: number) => t("{pct}% used", { pct }),
   resets: (when: string) => t("Resets {when}", { when }),
   get title() { return t("Usage"); },
+  get askAnthropic() {
+    const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
+    return t("For the 5 hours always up to date, also from VS Code: {path} → Ask Anthropic.", { path });
+  },
   get setup() {
     const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
     return t("Plan usage: install the relay in {path}", { path });
@@ -84,6 +88,8 @@ export interface UsageLine {
   pct: number | null;
   rows: UsageRow[];
   setup?: boolean;
+  /** A line under the rows: how to have the 5 hours always up to date. */
+  note?: string;
 }
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -149,12 +155,15 @@ function planLine(settings: Settings, plan: PlanUsage | null, now: number): Usag
   }
   if (plan.sevenDay) add(PLAN_TEXT.week, plan.sevenDay, true);
   const pct = dominantPct(plan, now);
+  // Without a figure for the 5 hours, Anthropic can be asked (Settings).
+  const noFigure = !plan.fiveHour || (plan.fiveHour.low ?? false);
   return {
     text: parts.join(" · "),
     title: `${PLAN_TEXT.claudeTitle} · ${ageLabel(plan.updatedAt, now)}`,
     color: planColor(pct),
     pct,
     rows,
+    ...(noFigure && !settings.planUsageOnline ? { note: USAGE_TEXT.askAnthropic } : {}),
   };
 }
 

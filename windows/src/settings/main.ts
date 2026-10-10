@@ -294,6 +294,12 @@ function planSection(status: HookStatus): HTMLElement {
               onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
             }),
       ),
+      setting(t("Ask Anthropic"),
+        t("Claude Code's status line only runs in a terminal, and its answers give the 5 hours only near the limit. Turned on, Lumo asks Anthropic for your plan's usage with Claude Code's sign-in, every 3 minutes while the island is open, as Claude Code's /usage does. The sign-in is only read, never kept or sent anywhere else."),
+        toggle(settings.planUsageOnline, (on) => {
+          settings.planUsageOnline = on;
+          void save();
+        })),
       // Codex: nothing to install, Lumo asks the Codex CLI when the pill shows.
       group("Codex"),
       setting(PLAN_SETTINGS_TEXT.showCodex, PLAN_SETTINGS_TEXT.codex,
@@ -1229,13 +1235,13 @@ function islandSection(): HTMLElement {
   // How far the island sits from the edge it hangs from.
   const gap = select([
     ["none", t("None")],
-    ["medium", t("Medium (default)")],
+    ["light", t("Light (default)")],
+    ["medium", t("Medium")],
     ["wide", t("Wide")],
-  ], ["none", "wide"].includes(settings.islandEdgeGap) ? settings.islandEdgeGap : "medium", (v) => {
+  ], ["none", "medium", "wide"].includes(settings.islandEdgeGap) ? settings.islandEdgeGap : "light", (v) => {
     settings.islandEdgeGap = v;
     void save();
   });
-
   // The island's icons, against the Mac's size.
   const icons = h("select", {}) as HTMLSelectElement;
   for (const pct of [100, 125, 150]) {
@@ -1281,7 +1287,7 @@ function islandSection(): HTMLElement {
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
-    setting(t("Distance from the edge"), t("between the island and the edge of the screen it is docked to"), gap),
+    setting(t("Distance from the edge"), t("between the island and the edge of the screen it is docked to. With Medium the mouse can cross the top of the screen above the island without opening it"), gap),
     setting(t("Icon size"), null, icons),
     setting(t("Put the island back in the centre"), null,
       h("button", { text: t("Put back"), onclick: () => void Bridge.islandRecenter() })),
@@ -1338,6 +1344,9 @@ function behaviourRows(): HTMLElement[] {
       toggle(settings.compactActivity, (v) => { settings.compactActivity = v; void save(); })),
     setting(t("Show the music playing"), t("with play, pause and skip, when nothing else is showing"),
       toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); })),
+    setting(t("Allow simple requests from the closed island"),
+      t("an agent asking to read files or run a command that only looks (ls, git status…) shows Deny and Allow on the closed island; edits and other commands still open the full card"),
+      toggle(settings.quickApprovals !== false, (v) => { settings.quickApprovals = v; void save(); })),
     group(t("Live Activities")),
     setting(t("Live Activities"), t("beside the open island: timers, the music, the calendar and the newest emails"),
       toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); })),

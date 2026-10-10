@@ -6967,18 +6967,6 @@
    "id": "Pemikiran Lanjutan: berpikir lebih lama sebelum menjawab",
    "it": "Ragionamento esteso: pensa più a lungo prima di rispondere"
   },
-  "Medium (default)": {
-   "zh-Hans": "中（默认）",
-   "hi": "मध्यम (डिफ़ॉल्ट)",
-   "es": "Media (predeterminada)",
-   "ar": "متوسطة (افتراضي)",
-   "fr": "Moyenne (par défaut)",
-   "bn": "মাঝারি (ডিফল্ট)",
-   "pt-BR": "Média (padrão)",
-   "ru": "Средний (по умолчанию)",
-   "id": "Sedang (bawaan)",
-   "it": "Media (predefinita)"
-  },
   "Wide": {
    "zh-Hans": "宽",
    "hi": "चौड़ा",
@@ -7003,17 +6991,313 @@
    "id": "Jarak dari tepi",
    "it": "Distanza dal bordo"
   },
-  "between the island and the edge of the screen it is docked to": {
-   "zh-Hans": "岛与其停靠的屏幕边缘之间",
-   "hi": "द्वीप और स्क्रीन के उस किनारे के बीच जहाँ यह टिका है",
-   "es": "entre la isla y el borde de la pantalla en el que está anclada",
-   "ar": "بين الجزيرة وحافة الشاشة المثبتة عليها",
-   "fr": "entre l'île et le bord de l'écran où elle est ancrée",
-   "bn": "দ্বীপ আর স্ক্রিনের যে কিনারায় সেটি আটকানো তার মাঝে",
-   "pt-BR": "entre a ilha e a borda da tela em que ela está encaixada",
-   "ru": "между островом и краем экрана, к которому он прикреплён",
-   "id": "antara pulau dan tepi layar tempat ia menempel",
-   "it": "tra l'isola e il bordo dello schermo a cui è agganciata"
+  "For the 5 hours always up to date, also from VS Code: {path} → Ask Anthropic.": {
+   "zh-Hans": "要让 5 小时用量始终最新（VS Code 中也一样）：{path} → 询问 Anthropic。",
+   "hi": "5 घंटे को हमेशा अपडेट रखने के लिए, VS Code से भी: {path} → Anthropic से पूछें।",
+   "es": "Para tener las 5 horas siempre al día, también desde VS Code: {path} → Preguntar a Anthropic.",
+   "ar": "لتبقى الساعات الخمس محدّثة دائمًا، حتى من VS Code: {path} ← اسأل Anthropic.",
+   "fr": "Pour des 5 heures toujours à jour, aussi depuis VS Code : {path} → Demander à Anthropic.",
+   "bn": "VS Code থেকেও ৫ ঘণ্টা সবসময় হালনাগাদ রাখতে: {path} → Anthropic-কে জিজ্ঞাসা করুন।",
+   "pt-BR": "Para as 5 horas sempre atualizadas, também no VS Code: {path} → Perguntar à Anthropic.",
+   "ru": "Чтобы 5 часов всегда были актуальны, и в VS Code: {path} → Спрашивать Anthropic.",
+   "id": "Agar 5 jam selalu terkini, juga dari VS Code: {path} → Tanya Anthropic.",
+   "it": "Per le 5 ore sempre aggiornate, anche da VS Code: {path} → Chiedi ad Anthropic."
+  },
+  "Click to see the whole request": {
+   "zh-Hans": "点击查看完整请求",
+   "hi": "पूरा अनुरोध देखने के लिए क्लिक करें",
+   "es": "Haz clic para ver la solicitud completa",
+   "ar": "انقر لرؤية الطلب كاملًا",
+   "fr": "Clique pour voir toute la demande",
+   "bn": "পুরো অনুরোধ দেখতে ক্লিক করুন",
+   "pt-BR": "Clique para ver o pedido completo",
+   "ru": "Нажмите, чтобы увидеть весь запрос",
+   "id": "Klik untuk melihat seluruh permintaan",
+   "it": "Clicca per vedere tutta la richiesta"
+  },
+  "Ask Anthropic": {
+   "zh-Hans": "询问 Anthropic",
+   "hi": "Anthropic से पूछें",
+   "es": "Preguntar a Anthropic",
+   "ar": "اسأل Anthropic",
+   "fr": "Demander à Anthropic",
+   "bn": "Anthropic-কে জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar à Anthropic",
+   "ru": "Спрашивать Anthropic",
+   "id": "Tanya Anthropic",
+   "it": "Chiedi ad Anthropic"
+  },
+  "Claude Code's status line only runs in a terminal, and its answers give the 5 hours only near the limit. Turned on, Lumo asks Anthropic for your plan's usage with Claude Code's sign-in, every 3 minutes while the island is open, as Claude Code's /usage does. The sign-in is only read, never kept or sent anywhere else.": {
+   "zh-Hans": "Claude Code 的状态栏只在终端中运行，而它的回答只在接近上限时才给出 5 小时用量。开启后，Lumo 会用 Claude Code 的登录信息向 Anthropic 查询你的套餐用量，在岛打开时每 3 分钟一次，与 Claude Code 的 /usage 相同。登录信息只会被读取，从不保存或发送到其他地方。",
+   "hi": "Claude Code की स्टेटस लाइन केवल टर्मिनल में चलती है, और उसके जवाब 5 घंटे का आंकड़ा केवल सीमा के पास देते हैं। चालू करने पर, Lumo Claude Code के साइन-इन से Anthropic से आपके प्लान का उपयोग पूछता है, आइलैंड खुला रहने पर हर 3 मिनट में, जैसा Claude Code का /usage करता है। साइन-इन केवल पढ़ा जाता है, कभी रखा या कहीं और भेजा नहीं जाता।",
+   "es": "La línea de estado de Claude Code solo funciona en una terminal, y sus respuestas dan las 5 horas solo cerca del límite. Activado, Lumo pregunta a Anthropic el uso de tu plan con la sesión de Claude Code, cada 3 minutos mientras la isla está abierta, como hace /usage de Claude Code. La sesión solo se lee, nunca se guarda ni se envía a ningún otro sitio.",
+   "ar": "سطر حالة Claude Code لا يعمل إلا في الطرفية، وإجاباته لا تعطي الساعات الخمس إلا قرب الحد. عند التفعيل، يسأل Lumo شركة Anthropic عن استخدام خطتك بتسجيل دخول Claude Code، كل 3 دقائق ما دامت الجزيرة مفتوحة، كما يفعل الأمر ‎/usage في Claude Code. يُقرأ تسجيل الدخول فقط، ولا يُحفظ ولا يُرسل إلى أي مكان آخر.",
+   "fr": "La ligne d'état de Claude Code ne tourne que dans un terminal, et ses réponses ne donnent les 5 heures que près de la limite. Activé, Lumo demande à Anthropic l'utilisation de ton forfait avec la connexion de Claude Code, toutes les 3 minutes tant que l'île est ouverte, comme le fait /usage de Claude Code. La connexion est seulement lue, jamais conservée ni envoyée ailleurs.",
+   "bn": "Claude Code-এর স্ট্যাটাস লাইন শুধু টার্মিনালে চলে, আর এর উত্তর ৫ ঘণ্টার হিসাব দেয় শুধু সীমার কাছাকাছি। চালু করলে, Lumo Claude Code-এর সাইন-ইন দিয়ে Anthropic-কে আপনার প্ল্যানের ব্যবহার জিজ্ঞাসা করে, আইল্যান্ড খোলা থাকলে প্রতি ৩ মিনিটে, যেমন Claude Code-এর /usage করে। সাইন-ইন শুধু পড়া হয়, কখনো রাখা বা অন্য কোথাও পাঠানো হয় না।",
+   "pt-BR": "A linha de status do Claude Code só roda em um terminal, e as respostas dele só dão as 5 horas perto do limite. Ativado, o Lumo pergunta à Anthropic o uso do seu plano com o login do Claude Code, a cada 3 minutos enquanto a ilha está aberta, como faz o /usage do Claude Code. O login é só lido, nunca guardado nem enviado a outro lugar.",
+   "ru": "Строка состояния Claude Code работает только в терминале, а его ответы показывают 5 часов только у самого лимита. Если включить, Lumo спрашивает у Anthropic расход вашего плана со входом Claude Code, каждые 3 минуты, пока остров открыт, как это делает /usage в Claude Code. Вход только читается, нигде не хранится и никуда больше не отправляется.",
+   "id": "Baris status Claude Code hanya berjalan di terminal, dan jawabannya hanya memberi angka 5 jam saat mendekati batas. Jika diaktifkan, Lumo menanyakan pemakaian paket Anda ke Anthropic dengan login Claude Code, setiap 3 menit selama pulau terbuka, seperti /usage di Claude Code. Login hanya dibaca, tidak pernah disimpan atau dikirim ke tempat lain.",
+   "it": "La riga di stato di Claude Code gira solo in un terminale, e le sue risposte danno le 5 ore solo vicino al limite. Se attivo, Lumo chiede ad Anthropic l'utilizzo del tuo piano con l'accesso di Claude Code, ogni 3 minuti mentre l'isola è aperta, come fa /usage di Claude Code. L'accesso viene solo letto, mai conservato né inviato altrove."
+  },
+  "Light (default)": {
+   "zh-Hans": "轻微（默认）",
+   "hi": "हल्की (डिफ़ॉल्ट)",
+   "es": "Ligera (predeterminada)",
+   "ar": "خفيفة (افتراضي)",
+   "fr": "Légère (par défaut)",
+   "bn": "হালকা (ডিফল্ট)",
+   "pt-BR": "Leve (padrão)",
+   "ru": "Небольшое (по умолчанию)",
+   "id": "Ringan (bawaan)",
+   "it": "Leggera (predefinita)"
+  },
+  "between the island and the edge of the screen it is docked to. With Medium the mouse can cross the top of the screen above the island without opening it": {
+   "zh-Hans": "岛与其停靠的屏幕边缘之间的距离。选“中等”时，鼠标可以从岛上方的屏幕顶部经过而不会打开它",
+   "hi": "आइलैंड और स्क्रीन के उस किनारे के बीच जहाँ वह टिका है। मध्यम के साथ माउस आइलैंड के ऊपर स्क्रीन के शीर्ष से उसे खोले बिना गुज़र सकता है",
+   "es": "entre la isla y el borde de la pantalla al que está acoplada. Con Media el ratón puede cruzar la parte superior de la pantalla sobre la isla sin abrirla",
+   "ar": "بين الجزيرة وحافة الشاشة المثبتة عليها. مع «متوسطة» يمكن للفأرة عبور أعلى الشاشة فوق الجزيرة دون فتحها",
+   "fr": "entre l'île et le bord de l'écran où elle est ancrée. Avec Moyenne, la souris peut passer en haut de l'écran au-dessus de l'île sans l'ouvrir",
+   "bn": "আইল্যান্ড আর স্ক্রিনের যে প্রান্তে সেটি আটকানো তার মাঝে। মাঝারি হলে মাউস আইল্যান্ডের উপরে স্ক্রিনের শীর্ষ দিয়ে সেটি না খুলেই যেতে পারে",
+   "pt-BR": "entre a ilha e a borda da tela onde ela está encaixada. Com Média o mouse pode passar pelo topo da tela acima da ilha sem abri-la",
+   "ru": "между островом и краем экрана, к которому он пристыкован. При «Среднем» мышь может пройти по верху экрана над островом, не открывая его",
+   "id": "antara pulau dan tepi layar tempatnya menempel. Dengan Sedang, mouse dapat melintasi bagian atas layar di atas pulau tanpa membukanya",
+   "it": "tra l'isola e il bordo dello schermo a cui è agganciata. Con Media il mouse può passare in cima allo schermo sopra l'isola senza aprirla"
+  },
+  "Allow simple requests from the closed island": {
+   "zh-Hans": "在收起的岛上允许简单请求",
+   "hi": "बंद आइलैंड से सरल अनुरोधों की अनुमति दें",
+   "es": "Permitir solicitudes simples desde la isla cerrada",
+   "ar": "السماح بالطلبات البسيطة من الجزيرة المغلقة",
+   "fr": "Autoriser les demandes simples depuis l'île fermée",
+   "bn": "বন্ধ আইল্যান্ড থেকে সহজ অনুরোধ অনুমতি দিন",
+   "pt-BR": "Permitir pedidos simples pela ilha fechada",
+   "ru": "Разрешать простые запросы с закрытого острова",
+   "id": "Izinkan permintaan sederhana dari pulau tertutup",
+   "it": "Consenti le richieste semplici dall'isola chiusa"
+  },
+  "an agent asking to read files or run a command that only looks (ls, git status…) shows Deny and Allow on the closed island; edits and other commands still open the full card": {
+   "zh-Hans": "当智能体请求读取文件或运行只查看的命令（ls、git status…）时，收起的岛上会显示“拒绝”和“允许”；编辑和其他命令仍会打开完整卡片",
+   "hi": "जब कोई एजेंट फ़ाइलें पढ़ने या केवल देखने वाला कमांड (ls, git status…) चलाने की अनुमति माँगता है, तो बंद आइलैंड पर अस्वीकार और अनुमति दिखते हैं; संपादन और अन्य कमांड अब भी पूरा कार्ड खोलते हैं",
+   "es": "si un agente pide leer archivos o ejecutar un comando que solo mira (ls, git status…), la isla cerrada muestra Denegar y Permitir; las ediciones y otros comandos siguen abriendo la tarjeta completa",
+   "ar": "عندما يطلب وكيل قراءة ملفات أو تشغيل أمر يكتفي بالاطلاع (ls، git status…) تعرض الجزيرة المغلقة «رفض» و«سماح»؛ أما التعديلات والأوامر الأخرى فتفتح البطاقة الكاملة كما من قبل",
+   "fr": "un agent qui demande à lire des fichiers ou à lancer une commande qui ne fait que regarder (ls, git status…) affiche Refuser et Autoriser sur l'île fermée ; les modifications et les autres commandes ouvrent toujours la carte complète",
+   "bn": "কোনো এজেন্ট ফাইল পড়তে বা শুধু দেখার কমান্ড (ls, git status…) চালাতে চাইলে বন্ধ আইল্যান্ডে প্রত্যাখ্যান ও অনুমতি দেখায়; সম্পাদনা ও অন্য কমান্ড এখনও পুরো কার্ড খোলে",
+   "pt-BR": "um agente pedindo para ler arquivos ou rodar um comando que só olha (ls, git status…) mostra Negar e Permitir na ilha fechada; edições e outros comandos ainda abrem o cartão completo",
+   "ru": "если агент просит прочитать файлы или выполнить команду, которая только смотрит (ls, git status…), на закрытом острове появляются «Запретить» и «Разрешить»; правки и другие команды по-прежнему открывают полную карточку",
+   "id": "agen yang meminta membaca file atau menjalankan perintah yang hanya melihat (ls, git status…) menampilkan Tolak dan Izinkan di pulau tertutup; suntingan dan perintah lain tetap membuka kartu lengkap",
+   "it": "quando un agente chiede di leggere file o di eseguire un comando che guarda soltanto (ls, git status…), l'isola chiusa mostra Nega e Consenti; le modifiche e gli altri comandi aprono sempre la card completa"
+  },
+  "Search the past chats": {
+   "zh-Hans": "搜索以前的聊天",
+   "hi": "पिछली चैट खोजें",
+   "es": "Buscar en los chats anteriores",
+   "ar": "ابحث في الدردشات السابقة",
+   "fr": "Rechercher dans les anciens chats",
+   "bn": "আগের চ্যাট খুঁজুন",
+   "pt-BR": "Pesquisar nos chats anteriores",
+   "ru": "Поиск по прошлым чатам",
+   "id": "Cari di obrolan sebelumnya",
+   "it": "Cerca nelle chat passate"
+  },
+  "No chat says that.": {
+   "zh-Hans": "没有聊天包含这些内容。",
+   "hi": "किसी चैट में यह नहीं है।",
+   "es": "Ningún chat dice eso.",
+   "ar": "لا توجد دردشة تقول ذلك.",
+   "fr": "Aucun chat ne dit ça.",
+   "bn": "কোনো চ্যাটে এটা নেই।",
+   "pt-BR": "Nenhum chat diz isso.",
+   "ru": "Ни в одном чате этого нет.",
+   "id": "Tidak ada obrolan yang menyebut itu.",
+   "it": "Nessuna chat dice questo."
+  },
+  "All sessions": {
+   "zh-Hans": "所有会话",
+   "hi": "सभी सत्र",
+   "es": "Todas las sesiones",
+   "ar": "كل الجلسات",
+   "fr": "Toutes les sessions",
+   "bn": "সব সেশন",
+   "pt-BR": "Todas as sessões",
+   "ru": "Все сеансы",
+   "id": "Semua sesi",
+   "it": "Tutte le sessioni"
+  },
+  "Sessions": {
+   "zh-Hans": "会话",
+   "hi": "सत्र",
+   "es": "Sesiones",
+   "ar": "الجلسات",
+   "fr": "Sessions",
+   "bn": "সেশন",
+   "pt-BR": "Sessões",
+   "ru": "Сеансы",
+   "id": "Sesi",
+   "it": "Sessioni"
+  },
+  "No session in the last 30 days. Sessions are kept by the weekly recap (Settings → General).": {
+   "zh-Hans": "过去 30 天没有会话。会话由每周回顾保存（设置 → 通用）。",
+   "hi": "पिछले 30 दिनों में कोई सत्र नहीं। सत्र साप्ताहिक सारांश द्वारा रखे जाते हैं (सेटिंग्स → सामान्य)।",
+   "es": "Ninguna sesión en los últimos 30 días. Las sesiones las guarda el resumen semanal (Ajustes → General).",
+   "ar": "لا جلسات في آخر 30 يومًا. يحتفظ الملخص الأسبوعي بالجلسات (الإعدادات ← عام).",
+   "fr": "Aucune session ces 30 derniers jours. Les sessions sont gardées par le récap de la semaine (Réglages → Général).",
+   "bn": "গত ৩০ দিনে কোনো সেশন নেই। সাপ্তাহিক সারসংক্ষেপ সেশনগুলো রাখে (সেটিংস → সাধারণ)।",
+   "pt-BR": "Nenhuma sessão nos últimos 30 dias. As sessões são guardadas pelo resumo semanal (Configurações → Geral).",
+   "ru": "За последние 30 дней сеансов не было. Сеансы хранит недельная сводка (Настройки → Общие).",
+   "id": "Tidak ada sesi dalam 30 hari terakhir. Sesi disimpan oleh rekap mingguan (Pengaturan → Umum).",
+   "it": "Nessuna sessione negli ultimi 30 giorni. Le sessioni le conserva il riepilogo settimanale (Impostazioni → Generali)."
+  },
+  "Open the project": {
+   "zh-Hans": "打开项目",
+   "hi": "प्रोजेक्ट खोलें",
+   "es": "Abrir el proyecto",
+   "ar": "افتح المشروع",
+   "fr": "Ouvrir le projet",
+   "bn": "প্রকল্প খুলুন",
+   "pt-BR": "Abrir o projeto",
+   "ru": "Открыть проект",
+   "id": "Buka proyek",
+   "it": "Apri il progetto"
+  },
+  "Claude Code is not signed in with a Claude plan.": {
+   "zh-Hans": "Claude Code 未使用 Claude 套餐登录。",
+   "hi": "Claude Code किसी Claude प्लान से साइन इन नहीं है।",
+   "es": "Claude Code no ha iniciado sesión con un plan de Claude.",
+   "ar": "لم يسجّل Claude Code الدخول بخطة Claude.",
+   "fr": "Claude Code n'est pas connecté avec un forfait Claude.",
+   "bn": "Claude Code কোনো Claude প্ল্যান দিয়ে সাইন ইন করা নেই।",
+   "pt-BR": "O Claude Code não está conectado com um plano Claude.",
+   "ru": "Claude Code не выполнил вход с планом Claude.",
+   "id": "Claude Code tidak masuk dengan paket Claude.",
+   "it": "Claude Code non ha fatto l'accesso con un piano Claude."
+  },
+  "Claude Code's sign-in has expired: open Claude Code once to renew it.": {
+   "zh-Hans": "Claude Code 的登录已过期：打开一次 Claude Code 以续期。",
+   "hi": "Claude Code का साइन-इन समाप्त हो गया है: इसे नवीनीकृत करने के लिए Claude Code एक बार खोलें।",
+   "es": "La sesión de Claude Code ha caducado: abre Claude Code una vez para renovarla.",
+   "ar": "انتهت صلاحية تسجيل دخول Claude Code: افتح Claude Code مرة لتجديده.",
+   "fr": "La connexion de Claude Code a expiré : ouvre Claude Code une fois pour la renouveler.",
+   "bn": "Claude Code-এর সাইন-ইনের মেয়াদ শেষ: নবায়ন করতে একবার Claude Code খুলুন।",
+   "pt-BR": "O login do Claude Code expirou: abra o Claude Code uma vez para renová-lo.",
+   "ru": "Срок входа Claude Code истёк: откройте Claude Code один раз, чтобы обновить его.",
+   "id": "Login Claude Code kedaluwarsa: buka Claude Code sekali untuk memperbaruinya.",
+   "it": "L'accesso di Claude Code è scaduto: apri Claude Code una volta per rinnovarlo."
+  },
+  "Anthropic did not answer ({status}).": {
+   "zh-Hans": "Anthropic 没有回应（{status}）。",
+   "hi": "Anthropic ने जवाब नहीं दिया ({status})।",
+   "es": "Anthropic no respondió ({status}).",
+   "ar": "لم تُجب Anthropic ({status}).",
+   "fr": "Anthropic n'a pas répondu ({status}).",
+   "bn": "Anthropic উত্তর দেয়নি ({status})।",
+   "pt-BR": "A Anthropic não respondeu ({status}).",
+   "ru": "Anthropic не ответил ({status}).",
+   "id": "Anthropic tidak menjawab ({status}).",
+   "it": "Anthropic non ha risposto ({status})."
+  },
+  "Anthropic's answer could not be read.": {
+   "zh-Hans": "无法读取 Anthropic 的回应。",
+   "hi": "Anthropic का जवाब पढ़ा नहीं जा सका।",
+   "es": "No se pudo leer la respuesta de Anthropic.",
+   "ar": "تعذّرت قراءة إجابة Anthropic.",
+   "fr": "La réponse d'Anthropic n'a pas pu être lue.",
+   "bn": "Anthropic-এর উত্তর পড়া যায়নি।",
+   "pt-BR": "Não foi possível ler a resposta da Anthropic.",
+   "ru": "Не удалось прочитать ответ Anthropic.",
+   "id": "Jawaban Anthropic tidak dapat dibaca.",
+   "it": "Non è stato possibile leggere la risposta di Anthropic."
+  },
+  "{count} files": {
+   "zh-Hans": {
+    "other": "{count} 个文件"
+   },
+   "hi": {
+    "one": "{count} फ़ाइल",
+    "other": "{count} फ़ाइलें"
+   },
+   "es": {
+    "one": "{count} archivo",
+    "other": "{count} archivos"
+   },
+   "ar": {
+    "zero": "{count} ملف",
+    "one": "ملف واحد",
+    "two": "ملفان",
+    "few": "{count} ملفات",
+    "many": "{count} ملفًا",
+    "other": "{count} ملف"
+   },
+   "fr": {
+    "one": "{count} fichier",
+    "other": "{count} fichiers"
+   },
+   "bn": {
+    "one": "{count}টি ফাইল",
+    "other": "{count}টি ফাইল"
+   },
+   "pt-BR": {
+    "one": "{count} arquivo",
+    "other": "{count} arquivos"
+   },
+   "ru": {
+    "one": "{count} файл",
+    "few": "{count} файла",
+    "many": "{count} файлов",
+    "other": "{count} файла"
+   },
+   "id": {
+    "other": "{count} file"
+   },
+   "it": {
+    "one": "{count} file",
+    "other": "{count} file"
+   }
+  },
+  "{count} commands": {
+   "zh-Hans": {
+    "other": "{count} 条命令"
+   },
+   "hi": {
+    "one": "{count} कमांड",
+    "other": "{count} कमांड"
+   },
+   "es": {
+    "one": "{count} comando",
+    "other": "{count} comandos"
+   },
+   "ar": {
+    "zero": "{count} أمر",
+    "one": "أمر واحد",
+    "two": "أمران",
+    "few": "{count} أوامر",
+    "many": "{count} أمرًا",
+    "other": "{count} أمر"
+   },
+   "fr": {
+    "one": "{count} commande",
+    "other": "{count} commandes"
+   },
+   "bn": {
+    "one": "{count}টি কমান্ড",
+    "other": "{count}টি কমান্ড"
+   },
+   "pt-BR": {
+    "one": "{count} comando",
+    "other": "{count} comandos"
+   },
+   "ru": {
+    "one": "{count} команда",
+    "few": "{count} команды",
+    "many": "{count} команд",
+    "other": "{count} команды"
+   },
+   "id": {
+    "other": "{count} perintah"
+   },
+   "it": {
+    "one": "{count} comando",
+    "other": "{count} comandi"
+   }
   }
  }
 }

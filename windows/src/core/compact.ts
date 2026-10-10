@@ -50,8 +50,22 @@ export type CompactItem =
   | { kind: "timer"; timer: TimerActivity }
   | { kind: "media"; media: MediaActivity };
 
-/** A new email takes the closed island; otherwise the live activities share it. */
+/** A simple request waiting for Deny or Allow (core/approvals.ts). */
+export interface ApprovalPeek {
+  requestId: string;
+  /** Who asks, in its colour. */
+  who: string;
+  color: string;
+  /** What it wants to run or read. */
+  command: string;
+}
+
+/**
+ * A simple request takes the closed island, then a new email; otherwise the
+ * live activities share it.
+ */
 export type CompactShown =
+  | { kind: "approval"; approval: ApprovalPeek }
   | { kind: "mail"; mail: MailPeek }
   | { kind: "items"; items: CompactItem[] }
   | null;
