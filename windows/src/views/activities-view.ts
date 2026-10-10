@@ -9,7 +9,7 @@ import { parseDuration, timerLeft, type MailPeek, type MediaActivity, type Timer
 import { Sound } from "../core/sound";
 import { clear, h, svg } from "./dom";
 import { ICONS } from "./icons";
-import { N_, language, t } from "../i18n/i18n";
+import { N_, language, t, tl } from "../i18n/i18n";
 
 export const ACTIVITIES_TEXT = {
   title: N_("Live Activities"),
@@ -72,6 +72,7 @@ export type ActivitiesAction =
   | { kind: "media"; action: "toggle" | "next" | "previous" }
   | { kind: "mail"; id: string; what: "summary" | "reply" | "ignore" | "open" }
   | { kind: "settings" }
+  | { kind: "refresh" }
   | { kind: "fold" };
 
 /** "14:00", "Tomorrow 9:30", "Mon 12 Oct", or the day for a whole-day event. */
@@ -116,16 +117,18 @@ export class ActivitiesView {
   private tick: number | null = null;
   private folding = false;
   private grips: HTMLElement[] = [];
+  private followsIsland: () => boolean;
 
   private hooks: ViewHooks;
   private side: () => "left" | "right" | "free";
 
-  constructor(hooks: ViewHooks, side: () => "left" | "right" | "free") {
+  constructor(hooks: ViewHooks, side: () => "left" | "right" | "free", followsIsland: () => boolean = () => false) {
     this.hooks = hooks;
     this.side = side;
+    this.followsIsland = followsIsland;
     this.timerInput = h("input", {
       class: "act-input", type: "text", spellcheck: "false", autocomplete: "off",
-      placeholder: t(ACTIVITIES_TEXT.timerHint),
+      placeholder: tl(ACTIVITIES_TEXT.timerHint),
     }) as HTMLInputElement;
     this.timerInput.addEventListener("mousedown", () => this.hooks.focus());
     this.timerInput.addEventListener("keydown", (e) => {
@@ -138,7 +141,7 @@ export class ActivitiesView {
       ...QUICK_TIMERS.map((m) => h("button", { class: "act-chip", onclick: () => this.act({ kind: "timer", ms: m * 60_000, label: "" }) }, `${m}m`)),
     );
     const form = h("div", { class: "act-form" }, this.timerInput,
-      h("button", { class: "act-chip go", onclick: () => this.startTyped() }, t(ACTIVITIES_TEXT.start)));
+      h("button", { class: "act-chip go", onclick: () => this.startTyped() }, tl(ACTIVITIES_TEXT.start)));
     const body = h("div", { class: "act-body" },
       this.section(ICONS.timer, ACTIVITIES_TEXT.timer, "#F5A524", undefined, this.timerList, quick, form),
       this.section(ICONS.play, ACTIVITIES_TEXT.music, "#1DB954", undefined, this.musicBox),
@@ -146,16 +149,19 @@ export class ActivitiesView {
       this.section(ICONS.envelope, ACTIVITIES_TEXT.email, "#EA4335", 1.8, this.mailBox),
     );
     const fold = h("button", {
-      class: "act-fold", title: t(ACTIVITIES_TEXT.fold), "aria-label": t(ACTIVITIES_TEXT.fold),
+      class: "act-fold", title: tl(ACTIVITIES_TEXT.fold), "aria-label": tl(ACTIVITIES_TEXT.fold),
       onclick: () => this.fold(),
     }, h("i"));
-    const head = h("div", { class: "act-head" }, h("span", { class: "act-title", text: t(ACTIVITIES_TEXT.title) }), fold);
+    // Their name, the same in every language (the island page builds this
+    // before it knows the language: tl() relabels the rest when it does).
+    const head = h("div", { class: "act-head" }, h("span", { class: "act-title", text: ACTIVITIES_TEXT.title }), fold);
     this.el = h("div", { class: "activities" }, head, body);
     this.wireDrag(head);
     if (hooks.movable) {
       for (const [cls, fx, fy] of [["e-left", -1, 0], ["e-right", 1, 0], ["e-bottom", 0, 1], ["c-bl", -1, 1], ["c-br", 1, 1]] as const) {
         const grip = h("div", { class: `act-grip ${cls}` });
         grip.dataset.fx = String(fx);
+        grip.dataset.fy = String(fy);
         grip.addEventListener("mousedown", (e) => {
           if (e.button !== 0) return;
           e.preventDefault();
@@ -172,7 +178,7 @@ export class ActivitiesView {
     return h("section", { class: "act-card" },
       h("div", { class: "act-card-head" },
         h("span", { class: "act-icon", style: `color:${color}` }, svg(icon, 12, stroke ? { stroke } : {})),
-        h("span", { text: t(title) })),
+        h("span", { text: tl(title) })),
       ...content,
     );
   }
@@ -204,11 +210,14 @@ export class ActivitiesView {
   /** Draws what changed; cheap when nothing did. */
   render(data: ActivitiesData, now = Date.now()) {
     this.data = data;
-    // Only the grips on its free sides: beside the island, not the one facing it.
+    // Only the grips on its free sides: beside the island, not the one facing
+    // it; and none for the height while it follows the island's.
     const side = this.side();
+    const follows = this.followsIsland();
     for (const g of this.grips) {
       const fx = Number(g.dataset.fx);
-      g.style.display = (side === "left" && fx > 0) || (side === "right" && fx < 0) ? "none" : "";
+      const fy = Number(g.dataset.fy);
+      g.style.display = (side === "left" && fx > 0) || (side === "right" && fx < 0) || (follows && fy !== 0) ? "none" : "";
     }
     this.drawTimers(data.timers, now);
     this.drawMusic(data.media);
@@ -423,15 +432,18 @@ export class ActivitiesView {
           if (m.link) this.act({ kind: "mail", id: m.id, what: "open" });
         },
       },
-        h("b", { class: "act-text", text: m.from || m.address }),
-        h("span", { class: "act-sub", text: m.subject }),
-        h("div", { class: "act-mail-actions" },
-          h("button", { class: "act-chip", onclick: ask("summary") }, t(ACTIVITIES_TEXT.summarize)),
-          h("button", { class: "act-chip", onclick: ask("reply") }, t(ACTIVITIES_TEXT.reply)),
+        // The eye sits by the sender, so the two buttons below have the row to themselves.
+        h("div", { class: "act-mail-head" },
+          h("b", { class: "act-text", text: m.from || m.address, title: m.address }),
           h("button", {
             class: "act-chip quiet eye", title: t(ACTIVITIES_TEXT.ignore), "aria-label": t(ACTIVITIES_TEXT.ignore),
             onclick: ask("ignore"),
           }, svg(ICONS.eye, 12, { stroke: 1.8 })),
+        ),
+        h("span", { class: "act-sub", text: m.subject }),
+        h("div", { class: "act-mail-actions" },
+          h("button", { class: "act-chip", title: t(ACTIVITIES_TEXT.summarize), onclick: ask("summary") }, t(ACTIVITIES_TEXT.summarize)),
+          h("button", { class: "act-chip", title: t(ACTIVITIES_TEXT.reply), onclick: ask("reply") }, t(ACTIVITIES_TEXT.reply)),
         ),
       );
       this.mailBox.append(box);

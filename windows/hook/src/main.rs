@@ -81,15 +81,21 @@ struct Args {
     agent: String,
     event: String,
     wait: Option<u64>,
+    /// `--chat-card`: the PreToolUse hook the island's Claude Code chat adds
+    /// for itself (claude_code.rs card_settings), whose answer is the card's.
+    chat_card: bool,
 }
 
 fn args() -> Args {
     let mut agent = String::new();
     let mut event = String::new();
     let mut wait = None;
+    let mut chat_card = false;
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
-        if arg == "--agent" {
+        if arg == "--chat-card" {
+            chat_card = true;
+        } else if arg == "--agent" {
             agent = it.next().unwrap_or_default();
         } else if arg == "--wait" {
             wait = it.next().and_then(|s| s.parse().ok());
@@ -97,7 +103,7 @@ fn args() -> Args {
             event = arg;
         }
     }
-    Args { agent, event, wait }
+    Args { agent, event, wait, chat_card }
 }
 
 /// How long a card of the island's Antigravity CLI chat may wait for a click.
@@ -162,7 +168,9 @@ fn main() {
     });
 
     let decision = rx.recv_timeout(budget).ok().flatten();
-    if event.island_card {
+    if event.island_card && args.agent.is_empty() {
+        print(Some(reply::claude_island(decision.as_deref())));
+    } else if event.island_card {
         print(Some(reply::antigravity_island(decision.as_deref())));
     } else {
         print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
@@ -214,10 +222,15 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     // The island's own Antigravity CLI chat runs agy headless, which quietly
     // denies a shell command nobody approved. Its PreToolUse for one goes to
     // the island as a permission request instead: the chat's Allow / Deny card.
+    // The same for the island's Claude Code chat asking every time: `claude -p`
+    // denies what needs a permission unless a hook decides, and whether its
+    // PermissionRequest hook is asked depends on the version; the PreToolUse
+    // hook it adds for itself (`--chat-card`) always is.
+    let tool = map.get("tool_name").and_then(Value::as_str).unwrap_or("");
     let island_card = is_island_run(env)
-        && args.agent == "antigravity"
         && name == "PreToolUse"
-        && map.get("tool_name").and_then(Value::as_str).is_some_and(reply::island_card_tool);
+        && ((args.agent == "antigravity" && reply::island_card_tool(tool))
+            || (args.agent.is_empty() && args.chat_card && reply::claude_card_tool(tool)));
     let name = if island_card { "PermissionRequest".to_string() } else { name };
     if island_card {
         // The island takes the card down just before the relay stops waiting.
@@ -422,7 +435,7 @@ mod tests {
     use super::*;
 
     fn run(raw: &str, agent: &str, event: &str) -> (Value, Event) {
-        let args = Args { agent: agent.into(), event: event.into(), wait: None };
+        let args = Args { agent: agent.into(), event: event.into(), wait: None, chat_card: false };
         let ev = prepare(raw.as_bytes(), &args, &|_| None, "/home/me/here").expect("forwarded");
         let v = serde_json::from_str(ev.line.trim_end()).unwrap();
         (v, ev)
@@ -434,7 +447,7 @@ mod tests {
 
     #[test]
     fn the_islands_own_runs_are_marked() {
-        let args = Args { agent: String::new(), event: String::new(), wait: None };
+        let args = Args { agent: String::new(), event: String::new(), wait: None, chat_card: false };
         let raw = br#"{"hook_event_name":"PermissionRequest","tool_name":"Write"}"#;
         let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap();
         assert!(ev.line.contains(r#""lumo_island":true"#));
@@ -445,9 +458,34 @@ mod tests {
     }
 
     #[test]
+    fn an_acting_tool_of_the_islands_claude_code_chat_is_a_permission_request() {
+        let island = env_of(&[("LUMO_ISLAND_RUN", "1")]);
+        let card = Args { agent: String::new(), event: "PreToolUse".into(), wait: Some(110), chat_card: true };
+        let command = br#"{"hook_event_name":"PreToolUse","session_id":"s","tool_name":"PowerShell","tool_input":{"command":"Start-Process whatsapp:"}}"#;
+        let ev = prepare(command, &card, &island, "/p").unwrap();
+        assert!(ev.island_card);
+        assert_eq!(ev.name, "PermissionRequest");
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["lumo_island"], true);
+        assert_eq!(v["lumo_card_secs"], 110);
+        assert!(v.get("lumo_agent").is_none(), "Claude Code's own card");
+
+        // Reading is Claude Code's to allow, as ever.
+        let read = br#"{"hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/a"}}"#;
+        assert!(!prepare(read, &card, &island, "/p").unwrap().island_card);
+        // Only the hook the chat adds for itself: the user's own PreToolUse
+        // hook in the same run stays a plain event (and is not forwarded).
+        let own = Args { chat_card: false, ..card };
+        assert!(!prepare(command, &own, &island, "/p").unwrap().island_card);
+        // And never outside the island's chat.
+        let card = Args { agent: String::new(), event: "PreToolUse".into(), wait: Some(110), chat_card: true };
+        assert!(!prepare(command, &card, &|_| None, "/p").unwrap().island_card);
+    }
+
+    #[test]
     fn a_shell_command_of_the_islands_antigravity_chat_is_a_permission_request() {
         let island = env_of(&[("LUMO_ISLAND_RUN", "1")]);
-        let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100) };
+        let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100), chat_card: false };
         let command = br#"{"hook_event_name":"PreToolUse","conversationId":"c1","toolCall":{"name":"run_command","args":{"CommandLine":"npm test"}}}"#;
         let ev = prepare(command, &agy, &island, "/p").unwrap();
         assert!(ev.island_card);
@@ -475,7 +513,7 @@ mod tests {
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
         // And no other agent's PreToolUse turns into a request.
-        let gemini = Args { agent: "gemini".into(), event: "PreToolUse".into(), wait: None };
+        let gemini = Args { agent: "gemini".into(), event: "PreToolUse".into(), wait: None, chat_card: false };
         let ev = prepare(command, &gemini, &island, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
@@ -562,7 +600,7 @@ mod tests {
 
     #[test]
     fn what_cannot_be_read_is_not_forwarded() {
-        let args = Args { agent: "copilot".into(), event: "preToolUse".into(), wait: None };
+        let args = Args { agent: "copilot".into(), event: "preToolUse".into(), wait: None, chat_card: false };
         for raw in ["", "not json", "[1,2]"] {
             assert!(prepare(raw.as_bytes(), &args, &|_| None, "/").is_none());
         }

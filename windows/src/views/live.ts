@@ -9,7 +9,7 @@ import { ICONS } from "./icons";
 import { State } from "../core/state";
 import { HOST_OS } from "../core/pills";
 import { Live, helperName } from "../live/session";
-import { liveModelName, parseLiveModel } from "../live/protocol";
+import { LIVE_EXTENDED, LIVE_MODEL, isExtended, liveModelName, parseLiveModel } from "../live/protocol";
 import { LIVE_STRINGS as S } from "../live/strings";
 import type { LiveLine } from "../live/transcript";
 import { t, tl } from "../i18n/i18n";
@@ -31,6 +31,13 @@ export function buildLive(openSettings: () => void): ViewHost {
   const status = h("span", { class: "live-status" });
   const bars = [0, 1, 2, 3, 4].map(() => h("i"));
   const meter = h("span", { class: "live-meter" }, ...bars);
+  // The bulb, left of Send: lit, Gemini 3.8 Live Extended Thinking; off, Gemini 3.8 Live.
+  const bulb = h("button", { class: "tool-btn live-think", title: tl(S.extendedThinking), "aria-label": tl(S.extendedThinking) },
+    svg(ICONS.lightbulb, 13, { stroke: 1.8 }));
+  bulb.addEventListener("click", () => {
+    const model = Live.active ? Live.model : parseLiveModel(State.settings.liveModel);
+    Live.setModel(isExtended(model) ? LIVE_MODEL : LIVE_EXTENDED);
+  });
   const head = h("div", { class: "live-head" }, h("i", { class: "model-dot live-dot" }), title, h("span", { class: "live-gap" }), meter, status);
 
   const log = h("div", { class: "chat-log live-log" });
@@ -47,7 +54,9 @@ export function buildLive(openSettings: () => void): ViewHost {
   const input = h("input", { type: "text", class: "chat-input", placeholder: tl(S.typeHere), spellcheck: "false" }) as HTMLInputElement;
   const send = h("button", { class: "send-btn", title: tl(S.send), "aria-label": tl(S.send) }, svg(ICONS.arrowUp, 11));
   const endBtn = h("button", { class: "tool-btn live-end", title: tl(S.end), "aria-label": tl(S.end) }, svg(ICONS.phoneDown, 14));
-  const bar = h("div", { class: "chat-bar live-bar" }, muteBtn, input, send, endBtn);
+  // Left of Send, as in the chat's own bar.
+  const bar = h("div", { class: "chat-bar live-bar" }, muteBtn, input, bulb, send, endBtn);
+
 
   const body = h("div", { class: "chat-body live-body" }, head, log, doing, startRow, bar);
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card live-card" }, body));
@@ -133,6 +142,10 @@ export function buildLive(openSettings: () => void): ViewHost {
       const model = Live.active ? Live.model : parseLiveModel(State.settings.liveModel);
       const name = liveModelName(model);
       if (title.textContent !== name) title.textContent = name;
+      const thinking = isExtended(model);
+      bulb.classList.toggle("lit", thinking);
+      bulb.setAttribute("aria-pressed", String(thinking));
+      bulb.disabled = Live.phase === "connecting" || Live.phase === "reconnecting";
       const helper = helperName(State.settings.liveHelper);
       const screen = State.settings.liveScreen && HOST_OS === "windows";
       intro.textContent = t(screen ? S.intro : S.introNoScreen, { helper });

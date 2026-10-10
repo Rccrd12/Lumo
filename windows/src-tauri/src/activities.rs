@@ -11,6 +11,13 @@
 //
 // Moving and resizing follow the global cursor, which only the cursor poll
 // gives (Windows): elsewhere the activities stay beside the island.
+//
+// Coming off the island and joining it again never leaves a frame without
+// them: their window shows where they are drawn before the page lets go of
+// them, and when they join, it slides to their place beside the island and
+// only hides once the page has drawn them there (island/activities.ts). The
+// island's window keeps their room either way, so it is never resized in
+// between, which on Windows makes a webview flash.
 
 use std::time::Duration;
 
@@ -43,13 +50,35 @@ pub fn clamp_height(h: f64) -> f64 {
     if h.is_finite() && h > 0.0 { h.clamp(MIN_H, MAX_H) } else { 0.0 }
 }
 
-/// The room the island's window keeps for them: none when they are off or in
-/// their own window. Folded they keep it, so folding never resizes the window.
+/// The room the island's window keeps for them: none when they are off.
+/// Folded or in their own window they keep it, so neither folding nor taking
+/// them off the island resizes the window (and makes it flash).
 pub fn room_of(s: &Settings) -> (f64, f64) {
-    if !s.activities_panel || s.activities_detached {
+    if !s.activities_panel {
         return (0.0, 0.0);
     }
     (clamp_width(s.activities_width), clamp_height(s.activities_height))
+}
+
+/// Settings that leave the island's window as it is (where the activities
+/// are, not how much room they take): saved and sent to the pages, without
+/// placing the window again. Anything else goes through `update_island`.
+fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
+    let shared = app.state::<crate::Shared>();
+    let (before, after) = {
+        let mut s = shared.settings.lock().unwrap();
+        let before = (island::Placement::of(&s), s.screen.clone());
+        change(&mut s);
+        (before, (island::Placement::of(&s), s.screen.clone(), s.clone()))
+    };
+    if before.0 != after.0 || before.1 != after.1 {
+        crate::update_island(app, |_| {});
+        return;
+    }
+    if let Err(err) = crate::settings::save(&after.2) {
+        crate::log::line(format!("could not save settings: {err}"));
+    }
+    let _ = app.emit("settings-changed", after.2);
 }
 
 #[derive(Serialize, Clone)]
@@ -159,6 +188,7 @@ fn create(app: &AppHandle) -> Option<WebviewWindow> {
         .map_err(|e| crate::log::line(format!("activities window failed: {e}")))
         .ok()?;
     platform::make_non_activating(&win);
+    let _ = win.set_zoom(island::zoom());
     Some(win)
 }
 
@@ -174,11 +204,22 @@ fn monitor_at(app: &AppHandle, p: (f64, f64)) -> Option<(f64, f64, f64, f64, f64
     Some((pos.x as f64, pos.y as f64, size.width as f64, size.height as f64, m.scale_factor()))
 }
 
-/// Their own window's size in physical pixels, for the display at `p`.
+/// Their own window's size in physical pixels, for the display at `p`: drawn
+/// at the island's zoom, so they are the same size off the island as on it.
 fn physical_size(app: &AppHandle, s: &Settings, p: (f64, f64)) -> (u32, u32) {
-    let scale = monitor_at(app, p).map(|m| m.4).unwrap_or(1.0);
+    let scale = monitor_at(app, p).map(|m| m.4).unwrap_or(1.0) * island::zoom();
     let h = if s.activities_height > 0.0 { clamp_height(s.activities_height) } else { DEFAULT_H };
     ((clamp_width(s.activities_width) * scale).round() as u32, (h * scale).round() as u32)
+}
+
+/// Their window made ahead, hidden, while they show beside the island: taken
+/// off it, they then have a page that is ready to draw them at once. Async:
+/// a window made in a synchronous command can deadlock on Windows.
+#[tauri::command]
+pub async fn activities_prepare(app: AppHandle) {
+    if platform::CURSOR_POLL && window(&app).is_none() {
+        let _ = create(&app);
+    }
 }
 
 /// Shown while the island is open (and they are off it); hidden otherwise.
@@ -199,6 +240,11 @@ pub fn activities_show(app: AppHandle, show: bool) {
         return;
     }
     let Some(win) = create(&app) else { return };
+    // Already out (just taken off the island, and maybe still moving): it stays where it is.
+    if win.is_visible().unwrap_or(false) {
+        remember(&win);
+        return;
+    }
     let mut at = (settings.activities_x, settings.activities_y);
     // A spot on a display that is gone: next to the island instead.
     if monitor_at(&app, at).is_none_or(|m| at.0 < m.0 || at.1 < m.1 || at.0 > m.0 + m.2 || at.1 > m.1 + m.3) {
@@ -209,6 +255,7 @@ pub fn activities_show(app: AppHandle, show: bool) {
         }
     }
     let (w, h) = physical_size(&app, &settings, at);
+    let _ = win.set_zoom(island::zoom());
     let _ = win.set_size(PhysicalSize::new(w, h));
     let _ = win.set_position(PhysicalPosition::new(at.0.round() as i32, at.1.round() as i32));
     let _ = win.show();
@@ -265,13 +312,15 @@ pub fn activities_drag(app: AppHandle, from: Option<(f64, f64, f64, f64)>) {
             let Ok(o) = island_win.outer_position() else { return };
             let k = island_k(&island_win);
             let (px, py) = (o.x as f64 + x * k, o.y as f64 + y * k);
-            let scale = monitor_at(&app, (px, py)).map(|m| m.4).unwrap_or(1.0);
-            let _ = win.set_size(PhysicalSize::new((w * scale).round() as u32, (h * scale).round() as u32));
+            // Exactly the size they have on the island: its scale and its zoom.
+            let _ = win.set_zoom(island::zoom());
+            let _ = win.set_size(PhysicalSize::new((w * k).round() as u32, (h * k).round() as u32));
             let _ = win.set_position(PhysicalPosition::new(px.round() as i32, py.round() as i32));
             let _ = win.show();
             let _ = win.set_always_on_top(true);
             remember(&win);
-            crate::update_island(&app, |s| {
+            // The page lets go of them once their window has drawn them (activities-painted).
+            update_settings(&app, |s| {
                 s.activities_detached = true;
                 s.activities_height = h.clamp(MIN_H, MAX_H);
                 s.activities_x = px;
@@ -301,9 +350,13 @@ pub fn activities_drag(app: AppHandle, from: Option<(f64, f64, f64, f64)>) {
         let side = island_on_screen(&app).and_then(|island| snap_side(rect, island, scale));
         match side {
             Some(side) => {
-                let _ = win.hide();
-                *SHOWN_AT.lock().unwrap() = None;
-                crate::update_island(&app, |s| {
+                // Into their place beside the island first; the page draws them
+                // there and only then hides this window (activities_show false).
+                if let Some(target) = joined_rect(&app, side) {
+                    slide(&win, (at.0, at.1, size.0, size.1), target);
+                }
+                remember(&win);
+                update_settings(&app, |s| {
                     s.activities_detached = false;
                     s.activities_side = side.into();
                 });
@@ -311,13 +364,45 @@ pub fn activities_drag(app: AppHandle, from: Option<(f64, f64, f64, f64)>) {
             }
             None => {
                 remember(&win);
-                crate::update_island(&app, |s| {
+                update_settings(&app, |s| {
                     s.activities_x = at.0;
                     s.activities_y = at.1;
                 });
             }
         }
     });
+}
+
+/// Where they are drawn beside the island once joined on `side`, in physical
+/// pixels (x, y, width, height): level with its top (its bottom, docked at the
+/// bottom), their gap away (island/island.ts activitiesPlace).
+fn joined_rect(app: &AppHandle, side: &str) -> Option<(f64, f64, f64, f64)> {
+    let island_win = island::window(app)?;
+    let k = island_k(&island_win);
+    let (left, top, right, bottom) = island_on_screen(app)?;
+    let shared = app.state::<crate::Shared>();
+    let (w, h, bottom_dock) = {
+        let s = shared.settings.lock().unwrap();
+        let h = if s.activities_height > 0.0 { clamp_height(s.activities_height) } else { DEFAULT_H };
+        (clamp_width(s.activities_width), h, island::Placement::of(&s).dock == island::Dock::Bottom)
+    };
+    let (w, h) = (w * k, h * k);
+    let x = if side == "right" { right + GAP * k } else { left - GAP * k - w };
+    let y = if bottom_dock { bottom - h } else { top };
+    Some((x.round(), y.round(), w.round(), h.round()))
+}
+
+/// Moves (and sizes) the window from `from` to `to` in a tenth of a second, easing out.
+fn slide(win: &WebviewWindow, from: (f64, f64, f64, f64), to: (f64, f64, f64, f64)) {
+    const STEPS: u32 = 8;
+    for i in 1..=STEPS {
+        let t = i as f64 / STEPS as f64;
+        let e = 1.0 - (1.0 - t).powi(3);
+        let lerp = |a: f64, b: f64| (a + (b - a) * e).round();
+        let _ = win.set_size(PhysicalSize::new(lerp(from.2, to.2) as u32, lerp(from.3, to.3) as u32));
+        let _ = win.set_position(PhysicalPosition::new(lerp(from.0, to.0) as i32, lerp(from.1, to.1) as i32));
+        std::thread::sleep(Duration::from_millis(12));
+    }
 }
 
 /// A grip of their own window: it follows the mouse (`fx` −1 left edge, 1
@@ -331,7 +416,8 @@ pub fn activities_window_resize(app: AppHandle, fx: f64, fy: f64) {
         let Some(win) = window(&app) else { return };
         let Some((sx, sy)) = cursor_physical() else { return };
         let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { return };
-        let scale = win.scale_factor().unwrap_or(1.0);
+        // Page pixels to physical ones: the display's scale and the island's zoom.
+        let scale = win.scale_factor().unwrap_or(1.0) * island::zoom();
         let start = (pos.x as f64, pos.y as f64, size.width as f64, size.height as f64);
         let mut last = start;
         while left_button_down() {
@@ -352,7 +438,7 @@ pub fn activities_window_resize(app: AppHandle, fx: f64, fy: f64) {
         }
         remember(&win);
         if last != start {
-            crate::update_island(&app, |s| {
+            update_settings(&app, |s| {
                 s.activities_x = last.0;
                 s.activities_y = last.1;
                 s.activities_width = clamp_width(last.2 / scale);

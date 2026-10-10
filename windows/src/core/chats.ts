@@ -80,3 +80,51 @@ export function deleteChat(id: string): SavedChat[] {
 export function newChatId(): string {
   return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
 }
+
+// ── Search ────────────────────────────────────────────────────────────────────
+
+/** Folded for matching: lower case, accents off ("Perché" finds "perche"). */
+function fold(text: string): string {
+  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+}
+
+/** A found chat, with the line around the first match and where the match is in it. */
+export interface ChatHit {
+  chat: SavedChat;
+  /** "…the words around the match…", on one line. */
+  snippet: string;
+  /** The match inside `snippet`: [start, end). */
+  match: [number, number];
+}
+
+const SNIPPET_BEFORE = 28;
+const SNIPPET_AFTER = 60;
+
+/**
+ * The chats where every word of `query` is found, in the questions or the
+ * answers, newest first; each with the passage of the first word found. An
+ * empty query finds nothing.
+ */
+export function searchChats(chats: SavedChat[], query: string): ChatHit[] {
+  const words = fold(query).split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const hits: ChatHit[] = [];
+  for (const chat of chats) {
+    const texts = [chat.title, ...chat.turns.map((t) => t.content)].map((t) => t.replace(/\s+/g, " ").trim());
+    const all = fold(texts.join("\n"));
+    if (!words.every((w) => all.includes(w))) continue;
+    // The passage: the first text holding the first word.
+    const text = texts.find((t) => fold(t).includes(words[0])) ?? texts[0];
+    // An accented letter folds to its one base letter: a position in the
+    // folded text is the same position in the composed one.
+    const composed = text.normalize("NFC");
+    const index = Math.max(0, fold(composed).indexOf(words[0]));
+    const start = Math.max(0, index - SNIPPET_BEFORE);
+    const end = Math.min(composed.length, index + words[0].length + SNIPPET_AFTER);
+    const head = start > 0 ? "…" : "";
+    const snippet = `${head}${composed.slice(start, end)}${end < composed.length ? "…" : ""}`;
+    const from = head.length + (index - start);
+    hits.push({ chat, snippet, match: [from, Math.min(snippet.length, from + words[0].length)] });
+  }
+  return hits;
+}

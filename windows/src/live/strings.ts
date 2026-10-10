@@ -17,6 +17,7 @@ export const LIVE_STRINGS = {
   unmute: N_("Turn the microphone on"),
   end: N_("End call"),
   typeHere: N_("Or type to Gemini…"),
+  extendedThinking: N_("Extended Thinking: thinks longer before it answers"),
   send: N_("Send"),
   endedSilence: N_("The call ended after 5 minutes of silence."),
   openSettings: N_("Open Settings"),

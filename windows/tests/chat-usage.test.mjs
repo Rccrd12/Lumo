@@ -155,7 +155,7 @@ test("on: Anthropic's numbers show next to the model button once an answer bring
   emit("chat-usage", { provider: "anthropic", tokens: { remaining: 27_500, limit: 30_000 } });
   view.sync();
   assert.equal(line().style.display, "");
-  assert.equal(line().textContent, "Tokens left: 27.5K / 30K");
+  assert.equal(line().getAttribute("aria-label"), "Tokens left: 27.5K / 30K");
   // Another provider's numbers are not shown for this one.
   State.settings = { ...State.settings, chatProvider: "google" };
   view.sync();
@@ -166,13 +166,13 @@ test("on: Anthropic's numbers show next to the model button once an answer bring
 test("Claude Code without the relay: the hint opens Settings", () => {
   State.settings = { ...State.settings, chatShowUsage: true, chatProvider: "claude-code" };
   view.sync();
-  assert.match(line().textContent, /install the relay/);
+  assert.match(line().getAttribute("aria-label"), /install the relay/);
   line().fire("click");
   assert.equal(settingsOpened, 1);
   State.settings = { ...State.settings, planRelayInstalled: true };
   State.planUsage = plan;
   view.sync();
-  assert.match(line().textContent, /^5 hours: \d+% left/);
+  assert.match(line().getAttribute("aria-label"), /^5 hours: \d+% left/);
   line().fire("click");
   assert.equal(settingsOpened, 1, "numbers are not a link");
 });
@@ -187,7 +187,7 @@ test("OpenRouter is asked when the chat opens on it and after an answer, not on 
   await flush();
   view.sync();
   assert.equal(sent("chat_usage").length, 1);
-  assert.equal(line().textContent, "Credits left: $8.50 / $10.00");
+  assert.equal(line().getAttribute("aria-label"), "Credits left: $8.50 / $10.00");
   view.sync();
   view.sync();
   assert.equal(sent("chat_usage").length, 1, "once per opening");
@@ -219,4 +219,38 @@ test("OpenRouter is asked when the chat opens on it and after an answer, not on 
   await flush();
   await flush();
   assert.equal(sent("chat_usage").length, 3);
+});
+
+test("the ring fills with the most used limit, and its menu shows each one", () => {
+  State.settings = { ...State.settings, chatShowUsage: true, chatProvider: "claude-code", planRelayInstalled: true };
+  // 50 % of the 5 hours, 20 % of the week: the ring shows the 5 hours.
+  State.planUsage = { ...plan, fiveHour: { usedPct: 50, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 20, resetsAt: Date.now() + 86_400_000 } };
+  view.sync();
+  const arc = view.el.querySelector(".usage-ring-arc");
+  const len = 2 * Math.PI * 5.25;
+  assert.ok(Math.abs(Number(arc.getAttribute("stroke-dashoffset")) - len * 0.5) < 0.01);
+  assert.equal(arc.style.stroke, "#F59E0B");
+  line().fire("click");
+  assert.ok(view.el.querySelector(".chat-body").classList.contains("metering"));
+  const rows = view.el.find(".usage-row").map((r) => r.textContent);
+  assert.equal(rows.length, 2);
+  assert.match(rows[0], /^5 hours50% usedResets in 1 h (19|20)$/);
+  assert.match(rows[1], /^Week20% usedResets /);
+  // And the other way round: the week shows when it is the more used.
+  State.planUsage = { ...plan, fiveHour: { usedPct: 10, resetsAt: Date.now() + 80 * 60_000 }, sevenDay: { usedPct: 85, resetsAt: Date.now() + 86_400_000 } };
+  view.sync();
+  assert.ok(Math.abs(Number(arc.getAttribute("stroke-dashoffset")) - len * 0.15) < 0.01);
+  assert.equal(arc.style.stroke, "#F4505E");
+  line().fire("click");
+  assert.ok(!view.el.querySelector(".chat-body").classList.contains("metering"));
+});
+
+test("the week alone: the 5 hours read as plenty left, since Claude Code reports them only near the limit", () => {
+  const weekOnly = { sevenDay: { usedPct: 75, resetsAt: NOW + 86_400_000 }, updatedAt: NOW };
+  const line = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: true }), weekOnly, undefined, NOW);
+  assert.equal(line.rows.length, 2);
+  assert.equal(line.rows[0].label, "5 hours");
+  assert.equal(line.rows[0].value, "plenty left");
+  assert.match(line.rows[0].reset, /near the limit/);
+  assert.equal(line.pct, 75, "the ring shows the week");
 });

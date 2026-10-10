@@ -172,6 +172,8 @@ export const Bridge = {
    * is missing, not signed in or slow (15 s).
    */
   codexPlanUsage: () => call<unknown>("codex_plan_usage"),
+  /** The Claude plan's usage from Anthropic, as the status line's `rate_limits` (plan_usage.rs). Throws why it could not. */
+  planUsageFetch: () => callOrThrow<unknown>("plan_usage_fetch"),
 
   approvalDecision: (requestId: string, decision: "allow" | "deny") =>
     call<void>("approval_decision", { requestId, decision }),
@@ -197,7 +199,8 @@ export const Bridge = {
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
   chatRewind: (keep: number) => call<void>("chat_rewind", { keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
-  islandDrag: () => call<void>("island_drag"),
+  /** `island`: the island as drawn (x, y, width, height, page pixels), without what sits beside it. */
+  islandDrag: (island?: [number, number, number, number]) => call<void>("island_drag", { island: island ?? null }),
   /** Puts the island back at the top centre of its display. */
   islandRecenter: () => call<void>("island_recenter"),
   /** Drag on a grip of the island (see layout.gripFactors); Rust follows the mouse until it is let go. */
@@ -264,8 +267,12 @@ export const Bridge = {
   },
   /** Ctrl+V in the chat with no text and no image: the file copied in File Explorer, copied into the inbox. */
   pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
+  /** The text on the clipboard (the right-click menu's Paste), read by Lumo. */
+  clipboardText: () => call<string | null>("clipboard_text"),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
+  /** The chat providers that are set up: a key stored, or the CLI installed with Lumo's hooks (lib.rs). */
+  chatProviders: () => call<string[]>("chat_providers"),
   secretSet: (key: string, value: string) => callOrThrow<void>("secret_set", { key, value }),
   secretClear: (key: string) => callOrThrow<void>("secret_clear", { key }),
 
@@ -330,6 +337,8 @@ export const Bridge = {
   activitiesResize: (fx: number, fy: number, height: number) => call<void>("activities_resize", { fx, fy, height }),
   /** Their own window, shown or hidden. */
   activitiesShow: (show: boolean) => call<void>("activities_show", { show }),
+  /** Makes their own window ahead, hidden, so it is ready when they are taken off the island. */
+  activitiesPrepare: () => call<void>("activities_prepare"),
   /** Picked up by their top bar: from beside the island (x, y, w, h in page pixels) or from their window. */
   activitiesDrag: (from: [number, number, number, number] | null) => call<void>("activities_drag", { from }),
   /** A grip of their own window. */

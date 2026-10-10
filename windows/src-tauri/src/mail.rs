@@ -564,7 +564,8 @@ fn parse_fetch(unit: &[Part], host: &str) -> Option<Message> {
     let headers = parse_headers(header);
     let field = |name: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str()).unwrap_or("");
     let (from, address) = parse_from(&decode_words(field("From")));
-    let subject = decode_words(field("Subject"));
+    let from = clean_header(&from);
+    let subject = clean_header(&decode_words(field("Subject")));
     let content = extract_text(field("Content-Type"), field("Content-Transfer-Encoding"), body);
     let clean = tidy(&content);
     Some(Message {
@@ -618,40 +619,58 @@ fn parse_from(raw: &str) -> (String, String) {
     (raw.to_string(), raw.to_string())
 }
 
-/// RFC 2047 words (`=?UTF-8?B?…?=`) in a header, decoded; the space between two of them goes.
+/// RFC 2047 words (`=?UTF-8?B?…?=`) in a header, decoded; the space between
+/// two of them goes. Adjacent words in the same charset are joined before they
+/// are read: senders split a character's bytes across two words ("McDonald=E2"
+/// "=80=99s"), which read one by one would come out as "McDonaldâ€™s".
 pub fn decode_words(raw: &str) -> String {
+    fn flush(out: &mut String, pending: &mut Option<(String, Vec<u8>)>) {
+        if let Some((charset, bytes)) = pending.take() {
+            out.push_str(&in_charset(&bytes, &charset));
+        }
+    }
     let mut out = String::new();
+    let mut pending: Option<(String, Vec<u8>)> = None;
     let mut rest = raw;
-    let mut last_was_word = false;
     while let Some(start) = rest.find("=?") {
         let (plain, tail) = rest.split_at(start);
-        let decoded = decode_word(tail);
-        match decoded {
-            Some((text, used)) => {
-                if !(last_was_word && plain.trim().is_empty()) {
-                    out.push_str(plain);
+        match decode_word(tail) {
+            Some((charset, bytes, used)) => {
+                let next_to_last = pending.is_some() && plain.trim().is_empty();
+                match pending.as_mut() {
+                    Some((cs, held)) if next_to_last && cs.eq_ignore_ascii_case(&charset) => held.extend(bytes),
+                    _ => {
+                        flush(&mut out, &mut pending);
+                        if !next_to_last {
+                            out.push_str(plain);
+                        }
+                        pending = Some((charset, bytes));
+                    }
                 }
-                out.push_str(&text);
                 rest = &tail[used..];
-                last_was_word = true;
             }
             None => {
+                flush(&mut out, &mut pending);
                 out.push_str(plain);
                 out.push_str("=?");
                 rest = &tail[2..];
-                last_was_word = false;
             }
         }
     }
+    flush(&mut out, &mut pending);
     out.push_str(rest);
     out
 }
 
-/// One encoded word at the start of `s`: its text and how many bytes it took.
-fn decode_word(s: &str) -> Option<(String, usize)> {
+/// One encoded word at the start of `s`: its charset, its bytes and how many
+/// bytes of `s` it took.
+fn decode_word(s: &str) -> Option<(String, Vec<u8>, usize)> {
     let inner = s.strip_prefix("=?")?;
     let (charset, inner) = inner.split_once('?')?;
     let (encoding, inner) = inner.split_once('?')?;
+    if charset.is_empty() || charset.contains(char::is_whitespace) {
+        return None;
+    }
     let end = inner.find("?=")?;
     let payload = &inner[..end];
     let bytes = match encoding.to_ascii_uppercase().as_str() {
@@ -660,34 +679,131 @@ fn decode_word(s: &str) -> Option<(String, usize)> {
         _ => return None,
     };
     let used = 2 + charset.len() + 1 + encoding.len() + 1 + end + 2;
-    Some((in_charset(&bytes, charset), used))
+    Some((charset.to_string(), bytes, used))
 }
 
-/// Bytes in the given charset, as text: UTF-8, Latin-1 and Windows-1252 (as
-/// Latin-1); anything else is read as UTF-8.
+/// Bytes in the given charset, as text. UTF-16 is read as such; anything else
+/// as UTF-8 where the bytes are UTF-8 and as Windows-1252 (Latin-1 with the
+/// curly quotes) where they are not, byte by byte, so one stray byte does not
+/// spoil the rest. Text that was UTF-8 read as Windows-1252 on its way here
+/// ("â€™") is put back.
 fn in_charset(bytes: &[u8], charset: &str) -> String {
     let cs = charset.trim().trim_matches('"').to_ascii_lowercase();
     let cs = cs.split('*').next().unwrap_or(&cs);
-    // Labelled Latin but really UTF-8 happens too: valid UTF-8 is taken as such.
-    if let Ok(text) = std::str::from_utf8(bytes) {
+    let text = match cs {
+        "utf-16" | "utf16" | "ucs-2" => utf16(bytes, false),
+        "utf-16be" | "unicodefffe" => utf16(bytes, false),
+        "utf-16le" | "unicode" => utf16(bytes, true),
+        "iso-8859-15" | "iso8859-15" | "latin9" if std::str::from_utf8(bytes).is_err() => {
+            bytes.iter().map(|&b| if b == 0xA4 { '€' } else { cp1252(b) }).collect()
+        }
+        _ => utf8_or_1252(bytes),
+    };
+    repair(&text)
+}
+
+/// Valid UTF-8 runs as UTF-8, every other byte as Windows-1252.
+fn utf8_or_1252(bytes: &[u8]) -> String {
+    let mut out = String::with_capacity(bytes.len());
+    let mut rest = bytes;
+    loop {
+        match std::str::from_utf8(rest) {
+            Ok(text) => {
+                out.push_str(text);
+                return out;
+            }
+            Err(e) => {
+                let good = e.valid_up_to();
+                out.push_str(std::str::from_utf8(&rest[..good]).unwrap_or_default());
+                out.push(cp1252(rest[good]));
+                rest = &rest[good + 1..];
+            }
+        }
+    }
+}
+
+/// UTF-16, its byte order from the BOM, else `little_endian`.
+fn utf16(bytes: &[u8], little_endian: bool) -> String {
+    let (le, body) = match bytes {
+        [0xFF, 0xFE, rest @ ..] => (true, rest),
+        [0xFE, 0xFF, rest @ ..] => (false, rest),
+        _ => (little_endian, bytes),
+    };
+    let units: Vec<u16> = body
+        .chunks_exact(2)
+        .map(|c| if le { u16::from_le_bytes([c[0], c[1]]) } else { u16::from_be_bytes([c[0], c[1]]) })
+        .collect();
+    String::from_utf16_lossy(&units)
+}
+
+/// UTF-8 that was read as Windows-1252 somewhere before ("McDonaldâ€™s",
+/// "CaffÃ¨"), read again as UTF-8, word by word. A word that is not such a
+/// mix-up stays as is: put back into Windows-1252 bytes it is not valid UTF-8
+/// ("Caffè"), or it holds what Windows-1252 has not (an emoji).
+fn repair(text: &str) -> String {
+    if text.is_ascii() {
         return text.to_string();
     }
-    match cs {
-        "iso-8859-15" | "iso8859-15" | "latin9" => bytes.iter().map(|&b| if b == 0xA4 { '€' } else { cp1252(b) }).collect(),
-        // Latin-1, Windows-1252, and anything unknown that is not UTF-8:
-        // Windows-1252 is what such mail almost always is ("McDonald’s").
-        _ => bytes.iter().map(|&b| cp1252(b)).collect(),
+    let mut out = String::with_capacity(text.len());
+    let mut word = String::new();
+    let fix = |word: &str, out: &mut String| {
+        let bytes: Option<Vec<u8>> = if word.is_ascii() { None } else { word.chars().map(to_cp1252).collect() };
+        match bytes.map(String::from_utf8) {
+            Some(Ok(fixed)) if !fixed.is_ascii() => out.push_str(&fixed),
+            _ => out.push_str(word),
+        }
+    };
+    for c in text.chars() {
+        if c.is_whitespace() {
+            fix(&word, &mut out);
+            word.clear();
+            out.push(c);
+        } else {
+            word.push(c);
+        }
     }
+    fix(&word, &mut out);
+    out
 }
 
 /// One Windows-1252 byte as a character: Latin-1, with the curly quotes,
 /// dashes, the euro and the rest in 0x80–0x9F.
 fn cp1252(b: u8) -> char {
-    const HIGH: [char; 32] = [
-        '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8D}', 'Ž', '\u{8F}',
-        '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9D}', 'ž', 'Ÿ',
-    ];
-    if (0x80..0xA0).contains(&b) { HIGH[(b - 0x80) as usize] } else { b as char }
+    if (0x80..0xA0).contains(&b) { CP1252_HIGH[(b - 0x80) as usize] } else { b as char }
+}
+
+/// The byte a character is in Windows-1252, if it is there.
+fn to_cp1252(c: char) -> Option<u8> {
+    let code = c as u32;
+    if code < 0x80 || (0xA0..=0xFF).contains(&code) {
+        return Some(code as u8);
+    }
+    CP1252_HIGH.iter().position(|&h| h == c && !('\u{80}'..'\u{A0}').contains(&h)).map(|i| 0x80 + i as u8)
+}
+
+const CP1252_HIGH: [char; 32] = [
+    '€', '\u{81}', '‚', 'ƒ', '„', '…', '†', '‡', 'ˆ', '‰', 'Š', '‹', 'Œ', '\u{8D}', 'Ž', '\u{8F}',
+    '\u{90}', '‘', '’', '“', '”', '•', '–', '—', '˜', '™', 'š', '›', 'œ', '\u{9D}', 'ž', 'Ÿ',
+];
+
+/// A sender's name or a subject, ready to show: entities read (`&amp;`,
+/// `&rsquo;`), control characters of Windows-1252 that came as numbers
+/// (`&#146;`) read as the characters they stand for, and the apostrophe some
+/// mailers turn into "ÿ" between two letters ("McDonaldÿs") put back.
+fn clean_header(text: &str) -> String {
+    let text = repair(&entities(text));
+    let chars: Vec<char> = text.chars().collect();
+    let mut out = String::with_capacity(text.len());
+    for (i, &c) in chars.iter().enumerate() {
+        let letter = |j: Option<usize>| j.and_then(|j| chars.get(j)).is_some_and(|c| c.is_ascii_alphabetic());
+        match c {
+            '\u{80}'..='\u{9F}' => out.push(cp1252(c as u8)),
+            'ÿ' if letter(i.checked_sub(1)) && letter(Some(i + 1)) => out.push('’'),
+            c if c.is_control() => out.push(' '),
+            c => out.push(c),
+        }
+    }
+    out.split_whitespace().collect::<Vec<_>>().join(" ")
 }
 
 /// Header bytes as text: UTF-8 when they are, else Windows-1252.
@@ -917,6 +1033,8 @@ pub fn entities(text: &str) -> String {
                 None
             };
             let text = match code {
+                // 128–159 are Windows-1252's, as browsers read them (`&#146;` is ’).
+                Some(c @ 0x80..=0x9F) => Some(cp1252(c as u8).to_string()),
                 Some(c) => char::from_u32(c).map(|ch| if ch == '\u{a0}' { " ".to_string() } else { ch.to_string() }),
                 None => NAMED.iter().find(|(n, _)| *n == name).map(|(_, v)| v.to_string()),
             };
@@ -1014,6 +1132,44 @@ mod tests {
         assert_eq!(in_charset(b"Prezzo 5\x80", "unknown-8bit"), "Prezzo 5€");
         assert_eq!(in_charset("Caffè".as_bytes(), "iso-8859-1"), "Caffè");
         assert_eq!(in_charset(b"\xA4 10", "iso-8859-15"), "€ 10");
+    }
+
+    #[test]
+    fn real_senders_and_subjects_read_right() {
+        let from = |raw: &str| clean_header(&parse_from(&decode_words(raw)).0);
+        let subject = |raw: &str| clean_header(&decode_words(raw));
+        // The curly apostrophe, in every way it comes.
+        assert_eq!(from("=?UTF-8?Q?McDonald=E2=80=99s_Italia?= <news@mcdonalds.it>"), "McDonald’s Italia");
+        assert_eq!(from("=?utf-8?B?TWNEb25hbGTigJlzIEl0YWxpYQ==?= <news@mcdonalds.it>"), "McDonald’s Italia");
+        assert_eq!(from("\"=?UTF-8?Q?McDonald=E2=80=99s?= Italia\" <news@mcdonalds.it>"), "McDonald’s Italia");
+        assert_eq!(from("=?windows-1252?Q?McDonald=92s_Italia?= <a@b.it>"), "McDonald’s Italia");
+        // Its bytes split across two words, in Q or in B.
+        assert_eq!(from("=?UTF-8?Q?McDonald=E2=80?= =?UTF-8?Q?=99s_Italia?= <a@b.it>"), "McDonald’s Italia");
+        assert_eq!(from("=?UTF-8?B?TWNEb25hbGTi?=\r\n =?UTF-8?B?gJlzIEl0YWxpYQ==?= <a@b.it>"), "McDonald’s Italia");
+        // UTF-8 read as Windows-1252 before it got here, and the "ÿ" some mailers leave.
+        assert_eq!(from("McDonaldâ€™s Italia <a@b.it>"), "McDonald’s Italia");
+        assert_eq!(from("McDonaldÿs Italia <a@b.it>"), "McDonald’s Italia");
+        assert_eq!(subject("L&#146;offerta &amp; il regalo"), "L’offerta & il regalo");
+        assert_eq!(subject("Aÿ, L'Haÿ-les-Roses"), "Aÿ, L'Haÿ-les-Roses");
+        // Quotes, Italian accents and emoji.
+        assert_eq!(subject("=?UTF-8?Q?=E2=80=9CSaldi=E2=80=9D_fino_al_50%_=E2=80=94_cos=C3=AC_=C3=A8_pi=C3=B9_facile?="), "“Saldi” fino al 50% — così è più facile");
+        assert_eq!(subject("=?ISO-8859-1?Q?Perch=E9_s=EC=2C_citt=E0?="), "Perché sì, città");
+        assert_eq!(subject("=?UTF-8?B?8J+OgSBVbiBwaWNjb2xvIHJlZ2FsbyBwZXIgdGUg8J+Ogg==?="), "🎁 Un piccolo regalo per te 🎂");
+        assert_eq!(subject("=?utf-8?q?Huntr/x_o_Saja_Boys=3F?="), "Huntr/x o Saja Boys?");
+        assert_eq!(subject("Re: =?UTF-8?Q?Caff=C3=A8?= domani"), "Re: Caffè domani");
+        // UTF-16, rare but seen.
+        assert_eq!(subject("=?UTF-16?B?/v8AQwBpAGEAbwAgIBk=?="), "Ciao ’");
+        // A stray Latin-1 byte does not spoil the UTF-8 around it.
+        assert_eq!(in_charset(b"Caff\xE8 \xE2\x80\x99", "utf-8"), "Caffè ’");
+    }
+
+    #[test]
+    fn bodies_in_any_charset_read_right() {
+        let qp = b"Content-Type: text/plain; charset=utf-8\r\n\r\nL=E2=80=99offerta =C3=A8 qui =F0=9F=8E=89";
+        let (_, body) = split_head(qp);
+        assert_eq!(extract_text("text/plain; charset=utf-8", "quoted-printable", body), "L’offerta è qui 🎉");
+        assert_eq!(extract_text("text/plain; charset=\"windows-1252\"", "quoted-printable", b"Citt=E0 =96 l=92ora"), "Città – l’ora");
+        assert_eq!(extract_text("text/html; charset=iso-8859-1", "", b"<p>Perch&eacute; l&#8217;ho &#146;detto&#148;</p>").trim(), "Perché l’ho ’detto”");
     }
 
     #[test]

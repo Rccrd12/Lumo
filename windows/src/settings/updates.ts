@@ -5,6 +5,7 @@
 
 import { Bridge, onEvent, type UpdateInfo } from "../core/bridge";
 import { clear, h } from "../views/dom";
+import { sectionHead, setting } from "./parts";
 import { t } from "../i18n/i18n";
 
 const TEXT = {
@@ -92,10 +93,8 @@ export function updatesSection(version: string): HTMLElement {
     checkBtn.disabled = busy;
     const info = lastInfo();
     body.append(
-      h("div", { class: "row" },
-        h("label", { text: TEXT.version }),
-        h("span", { class: "version-number", text: info?.current || version || "—" }),
-        h("span", { class: "spacer" }),
+      setting(h("span", {}, TEXT.version, " ", h("span", { class: "version-number", text: info?.current || version || "—" })),
+        `${TEXT.onClick} ${TEXT.noTelemetry}`,
         checkBtn,
       ),
     );
@@ -152,10 +151,6 @@ export function updatesSection(version: string): HTMLElement {
         break;
     }
 
-    body.append(
-      h("div", { class: "hint", text: TEXT.onClick }),
-      h("div", { class: "hint", text: TEXT.noTelemetry }),
-    );
   }
 
   function notes(info: UpdateInfo) {
@@ -168,5 +163,5 @@ export function updatesSection(version: string): HTMLElement {
 
   redraw = draw;
   draw();
-  return h("section", {}, h("h2", {}, h("span", { text: TEXT.title })), body);
+  return h("section", {}, ...sectionHead(TEXT.title), body);
 }

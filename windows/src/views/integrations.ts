@@ -12,9 +12,12 @@ import { isComingSoon, pillDefinition } from "../core/pills";
 import { refreshHookPills } from "../island/integrations";
 import { readActivity, readPulse, readStats } from "../core/github";
 import { githubDetail, githubPulseCard } from "./github";
-import { N_, language, t } from "../i18n/i18n";
+import { N_, language, t, tn } from "../i18n/i18n";
 import { askAboutMail } from "../island/compact";
 import type { MailPeek } from "../core/compact";
+import { PLAN_TEXT, dominantPct, planColor } from "../core/plan";
+import { formatDuration, mergedSeconds, mondayOf, type RecapHistory } from "../recap/summary";
+import { folderOf, groupSessions, type CodeSession } from "../core/sessions";
 
 /** Same shape as the Swift `timeAgo` computed properties. */
 export function timeAgo(value: unknown): string {
@@ -84,79 +87,277 @@ export function idleStatus(
   return configured ? ok(t("Connected · loading…")) : missing(t("Key not configured"));
 }
 
-function idleCard(task: AgentTask, openSettings: () => void): HTMLElement {
+// ── The tool's card: what it is, how it is doing, what it did lately ──────────
+
+const TOOL_TEXT = {
+  lastSession: N_("Last session"),
+  sessionsWeek: N_("Sessions this week"),
+  timeWeek: N_("Time this week"),
+  linesChanged: N_("Lines changed"),
+  noSession: N_("No session this week yet"),
+  planUsage: N_("Plan usage"),
+  notInstalled: N_("Not installed"),
+  model: N_("Model"),
+  refresh: N_("Refresh"),
+  refreshing: N_("Refreshing…"),
+  allSessions: N_("All sessions"),
+  sessions: N_("Sessions"),
+  noSessions: N_("No session in the last 30 days. Sessions are kept by the weekly recap (Settings → General)."),
+  openProject: N_("Open the project"),
+};
+
+/** A Refresh in progress or done, by pill: the card shows it until the next one. */
+interface Refreshed {
+  busy: boolean;
+  at: number;
+  error: string | null;
+}
+
+const refreshes = new Map<string, Refreshed>();
+
+/** The sessions the weekly recap keeps (recap.rs), read again at most once a minute. */
+let recap: RecapHistory | null = null;
+let recapAt = 0;
+let recapLoading: Promise<void> | null = null;
+
+/** The weekly recap's sessions read again (the right-click menu's Refresh). */
+export function reloadRecap(): Promise<void> {
+  return loadRecap(true);
+}
+
+function loadRecap(force = false): Promise<void> {
+  if (recapLoading) return recapLoading;
+  if (!force && Date.now() - recapAt < 60_000) return Promise.resolve();
+  recapLoading = Bridge.recapHistory(Date.now() / 1000 - 30 * 86_400)
+    .then((h) => {
+      recap = h && Array.isArray(h.turns) ? h : null;
+    })
+    .finally(() => {
+      recapAt = Date.now();
+      recapLoading = null;
+      State.notify();
+    });
+  return recapLoading;
+}
+
+/** What the card depends on besides the pill's own data, for the overview to know when to redraw it. */
+export function idleCardKey(id: string, now = Date.now()): string {
+  const r = refreshes.get(id);
+  const refreshed = r ? `${r.busy}|${r.at}|${r.error}|${Math.floor((now - r.at) / 60_000)}` : "";
+  const plan = id === "integration_claude" ? `${State.settings.planRelayInstalled}|${dominantPct(State.planUsage, now)}`
+    : id === "agent_codex" ? String(dominantPct(State.codexPlanUsage, now)) : "";
+  return `${refreshed}~${recapAt}~${plan}`;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => window.setTimeout(resolve, ms));
+
+/**
+ * Refresh: a hook pill reads its hooks (and its sessions) again; a service
+ * asks its server, and the card waits for the answer (or 15 s). The button
+ * turns while it works, then says when it was done, or what went wrong.
+ */
+async function refresh(id: string, hookPill: boolean) {
+  if (refreshes.get(id)?.busy) return;
+  const started = Date.now();
+  refreshes.set(id, { busy: true, at: started, error: null });
+  State.notify();
+  let error: string | null = null;
+  try {
+    if (hookPill) {
+      await Promise.all([refreshHookPills(), loadRecap(true)]);
+      if (!(State.integrations[id]?.configured ?? false)) error = t("Hooks not installed");
+    } else {
+      const before = State.integrations[id];
+      await Bridge.refreshIntegration(id);
+      for (let waited = 0; State.integrations[id] === before && waited < 15_000; waited += 200) await sleep(200);
+      error = State.integrations[id]?.error ?? null;
+    }
+  } catch (err) {
+    error = String(err).replace(/^Error:\s*/, "");
+  }
+  // The turning stays long enough to be seen, even when the answer is instant.
+  await sleep(Math.max(0, 500 - (Date.now() - started)));
+  refreshes.set(id, { busy: false, at: Date.now(), error });
+  State.notify();
+}
+
+/** "just now", "5 min ago", "3 h ago", else the day. */
+function when(ms: number, now = Date.now()): string {
+  const mins = Math.floor((now - ms) / 60_000);
+  if (mins < 1) return PLAN_TEXT.justNow;
+  if (mins < 60) return PLAN_TEXT.minAgo(mins);
+  if (mins < 24 * 60) return PLAN_TEXT.hAgo(Math.floor(mins / 60));
+  return new Date(ms).toLocaleDateString(language(), { weekday: "short", day: "numeric", month: "short" });
+}
+
+/** The pill's sessions from the recap: the last one, and this week's. */
+function sessionFacts(id: string, now = Date.now()): [string, string][] {
+  if (!recap || recap.prefs?.enabled === false) return [];
+  const turns = recap.turns.filter((x) => x.agent === id);
+  const facts: [string, string][] = [];
+  const last = turns.reduce<(typeof turns)[number] | null>((a, b) => (!a || b.end > a.end ? b : a), null);
+  const since = mondayOf(new Date(now)).getTime() / 1000;
+  const week = turns.filter((x) => x.start >= since);
+  if (last) facts.push([t(TOOL_TEXT.lastSession), [last.project, when(last.end * 1000, now)].filter(Boolean).join(" · ")]);
+  if (!week.length) {
+    if (last) facts.push([t(TOOL_TEXT.sessionsWeek), "0"]);
+    else facts.push([t(TOOL_TEXT.noSession), ""]);
+    return facts;
+  }
+  facts.push([t(TOOL_TEXT.sessionsWeek), String(week.length)]);
+  facts.push([t(TOOL_TEXT.timeWeek), formatDuration(Math.max(1, Math.round(mergedSeconds(week) / 60)))]);
+  const added = week.reduce((n, x) => n + x.linesAdded, 0);
+  const removed = week.reduce((n, x) => n + x.linesRemoved, 0);
+  if (added || removed) facts.push([t(TOOL_TEXT.linesChanged), `+${added} −${removed}`]);
+  return facts;
+}
+
+/** Facts worth a line on this pill's card. */
+function toolFacts(task: AgentTask, configured: boolean, hookPill: boolean): { label: string; value: string; color?: string }[] {
+  const out: { label: string; value: string; color?: string }[] = [];
+  if (task.id === "integration_claude") {
+    const pct = dominantPct(State.planUsage);
+    out.push(State.settings.planRelayInstalled
+      ? { label: t(TOOL_TEXT.planUsage), value: pct == null ? PLAN_TEXT.none : `${Math.round(pct)}%`, color: pct == null ? undefined : planColor(pct) }
+      : { label: t(TOOL_TEXT.planUsage), value: t(TOOL_TEXT.notInstalled) });
+  }
+  if (task.id === "agent_codex") {
+    const pct = dominantPct(State.codexPlanUsage);
+    if (pct != null) out.push({ label: t(TOOL_TEXT.planUsage), value: `${Math.round(pct)}%`, color: planColor(pct) });
+  }
+  if (task.id === "ai_anthropic" && configured) out.push({ label: t(TOOL_TEXT.model), value: State.settings.model });
+  if (hookPill && configured) {
+    loadRecap();
+    for (const [label, value] of sessionFacts(task.id)) out.push({ label, value });
+  }
+  return out;
+}
+
+/** A button of the card: lit under the mouse, pressed in on a click. */
+function toolButton(label: string, onclick: () => void, primary = false, color?: string): HTMLElement {
+  const b = h("button", { class: primary ? "tool-action primary" : "tool-action", title: label, onclick }, h("span", { text: label }));
+  if (color) b.style.setProperty("--tool", color);
+  return b;
+}
+
+function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () => void): HTMLElement {
   const info = State.integrations[task.id];
   const configured = info?.configured ?? false;
   const def = pillDefinition(task.id);
   const status = idleStatus(task.id, info, State.settings.model);
+  const color = task.color;
 
-  const actions = h("div", { class: "int-actions" });
+  const actions = h("div", { class: "tool-actions" });
   if (task.id === "integration_claude") {
-    actions.append(
-      h("button", {
-        class: "link-btn",
-        style: `color:${task.color}b3`,
-        text: t("Open Visual Studio Code"),
-        onclick: () => void Bridge.openInVSCode(task.sessionCwd ?? null),
-      }),
-    );
+    actions.append(toolButton(t("Open {name}", { name: "VS Code" }), () => void Bridge.openInVSCode(task.sessionCwd ?? null), true, color));
   } else if (task.id === "agent_claude-desktop") {
-    actions.append(
-      h("button", {
-        class: "link-btn",
-        style: `color:${task.color}d9`,
-        text: t("Open Claude"),
-        onclick: () => void Bridge.openClaudeDesktop(),
-      }),
-    );
+    actions.append(toolButton(t("Open Claude"), () => void Bridge.openClaudeDesktop(), true, color));
   } else if (task.id === "integration_n8n") {
-    actions.append(
-      h("button", {
-        class: "link-btn",
-        style: `color:${task.color}d9`,
-        text: t("Open {name}", { name: "n8n" }),
-        onclick: () => void Bridge.openN8n(),
-      }),
-    );
+    actions.append(toolButton(t("Open {name}", { name: "n8n" }), () => void Bridge.openN8n(), true, color));
   } else if (OPEN_URLS[task.id]) {
-    actions.append(
-      h("button", {
-        class: "link-btn",
-        style: `color:${task.color}d9`,
-        text: t("Open {name}", { name: task.name }),
-        onclick: () => void Bridge.openUrl(OPEN_URLS[task.id]),
-      }),
-    );
+    actions.append(toolButton(t("Open {name}", { name: task.name }), () => void Bridge.openUrl(OPEN_URLS[task.id]), true, color));
   }
   const hookPill = def?.connect.kind === "hooks";
+  const done = refreshes.get(task.id);
   if (isComingSoon(task.id) || def?.connect.kind === "none") {
     // Nothing to set up, and nothing to refresh.
   } else if (configured && (hookPill || def?.category !== "ai")) {
-    actions.append(
-      h("button", {
-        class: "link-btn",
-        style: `color:${task.color}d9`,
-        text: t("Refresh"),
-        // A hook pill has nothing to poll: look at its hooks again instead.
-        onclick: () => void (hookPill ? refreshHookPills() : Bridge.refreshIntegration(task.id)),
-      }),
-    );
+    // A hook pill has nothing to poll: Refresh looks at its hooks (and sessions) again.
+    const busy = done?.busy ?? false;
+    const button = h("button", {
+      class: busy ? "tool-action busy" : "tool-action",
+      "aria-busy": busy ? "true" : "false",
+      onclick: () => void refresh(task.id, hookPill),
+    },
+    busy ? h("i", { class: "tool-spin" }) : svg(ICONS.arrowClockwise, 10, { stroke: 2.4 }),
+    h("span", { text: t(busy ? TOOL_TEXT.refreshing : TOOL_TEXT.refresh) }));
+    button.toggleAttribute("disabled", busy);
+    actions.append(button);
   } else if (!configured) {
-    actions.append(
-      h("button", { class: "link-btn", style: "color:#8e939c", text: t("Settings…"), onclick: openSettings }),
-    );
+    actions.append(toolButton(t("Settings…"), openSettings));
   }
+
+  const facts = h("div", { class: "tool-facts" });
+  const factList = toolFacts(task, configured, hookPill);
+  for (const f of factList) {
+    const value = h("span", { class: "tool-fact-value", text: f.value, title: f.value });
+    if (f.color) value.style.color = f.color;
+    facts.append(h("div", { class: f.value ? "tool-fact" : "tool-fact alone" }, h("span", { class: "tool-fact-label", text: f.label }), value));
+  }
+
+  // When it was last refreshed, or what went wrong.
+  const note = done && !done.busy
+    ? h("div", { class: done.error ? "tool-note bad" : "tool-note", text: done.error ?? t("Updated {when}", { when: when(done.at) }), title: done.error ?? "" })
+    : null;
+
+  // The sessions themselves, one click away (sessionsDetail).
+  const sessionsLink = hookPill && configured && openSessions && recap && groupSessions(recap.turns, task.id, 1).length
+    ? h("button", { class: "tool-more", onclick: openSessions }, h("span", { text: t(TOOL_TEXT.allSessions) }), svg(ICONS.chevronRight, 9, { stroke: 2.4 }))
+    : null;
 
   return h(
     "div",
-    { class: "int-card" },
-    header(
-      task.color,
-      task.id === "integration_claude" ? "VS Code" : task.name,
-      t(def?.subtitle ?? N_("Integration")),
+    { class: "int-card tool-card" },
+    header(color, task.id === "integration_claude" ? "VS Code" : task.name, t(def?.subtitle ?? N_("Integration"))),
+    h("div", { class: "int-status" }, dot(status.color, 6), h("span", { class: "int-status-label", text: status.label, title: status.label })),
+    facts,
+    sessionsLink,
+    h("div", { class: "tool-foot" }, actions, note),
+  );
+}
+
+/** "Today 14:20", "Wed 9:30", "12 Sep 9:30". */
+function sessionWhen(sec: number, now = Date.now()): string {
+  const d = new Date(sec * 1000);
+  const time = d.toLocaleTimeString(language(), { hour: "2-digit", minute: "2-digit" });
+  const days = Math.round((new Date(new Date(now).toDateString()).getTime() - new Date(d.toDateString()).getTime()) / 86_400_000);
+  if (days <= 0) return `${t("Today")} ${time}`;
+  if (days < 7) return `${d.toLocaleDateString(language(), { weekday: "short" })} ${time}`;
+  return `${d.toLocaleDateString(language(), { day: "numeric", month: "short" })} ${time}`;
+}
+
+/**
+ * A tool's recent sessions (from the weekly recap): the project, when, how
+ * long, the files and lines changed and the commands run. A click opens the
+ * project again (its folder in VS Code), when Lumo has seen where it is.
+ */
+function sessionsDetail(task: AgentTask, onBack: () => void): HTMLElement {
+  loadRecap();
+  const sessions: CodeSession[] = recap ? groupSessions(recap.turns, task.id) : [];
+  const list = h("div", { class: "session-list" });
+  if (!sessions.length) list.append(h("div", { class: "int-empty", text: t(TOOL_TEXT.noSessions) }));
+  for (const s of sessions) {
+    const folder = s.project ? folderOf(s.project) : null;
+    const meta = [
+      formatDuration(s.minutes),
+      s.filesChanged ? tn("{count} file", "{count} files", s.filesChanged) : "",
+      s.linesAdded || s.linesRemoved ? `+${s.linesAdded} −${s.linesRemoved}` : "",
+      s.commandsRun ? tn("{count} command", "{count} commands", s.commandsRun) : "",
+    ].filter(Boolean).join(" · ");
+    const row = h(folder ? "button" : "div", {
+      class: folder ? "session-row link" : "session-row",
+      title: folder ? `${t(TOOL_TEXT.openProject)} · ${folder}` : s.project,
+    },
+    h("span", { class: "session-top" },
+      h("b", { class: "session-project", text: s.project || "—" }),
+      h("span", { class: "session-when", text: sessionWhen(s.start) })),
+    h("span", { class: "session-meta", text: meta }),
+    folder ? h("i", { class: "session-open" }, svg(ICONS.arrowUpRight, 8)) : null);
+    if (folder) row.addEventListener("click", () => void Bridge.openSession(null, folder));
+    list.append(row);
+  }
+  return h(
+    "div",
+    { class: "int-card detail sessions" },
+    h(
+      "div",
+      { class: "int-detail-head" },
+      h("button", { class: "int-back", onclick: onBack }, svg(ICONS.chevronLeft, 10, { stroke: 2.4 })),
+      dot(task.color, 6),
+      h("b", { text: task.id === "integration_claude" ? "VS Code" : task.name }),
+      h("span", { class: "int-badge", text: t(TOOL_TEXT.sessions) }),
     ),
-    h("div", { class: "int-status" }, dot(status.color, 5), h("span", { class: "int-status-label", text: status.label, title: status.label })),
-    actions,
+    list,
   );
 }
 
@@ -516,6 +717,10 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
   }
   if (task.id === "integration_vercel" && hasIntegrationData(task.id)) {
     return hooks.detailOpen ? vercelDetail(hooks.closeDetail) : vercelCard(hooks.openDetail);
+  }
+  // A tool fed by hooks: its card, or the list of its sessions.
+  if (pillDefinition(task.id)?.connect.kind === "hooks") {
+    return hooks.detailOpen ? sessionsDetail(task, hooks.closeDetail) : idleCard(task, hooks.openSettings, hooks.openDetail);
   }
   if (!hasIntegrationData(task.id)) return idleCard(task, hooks.openSettings);
 

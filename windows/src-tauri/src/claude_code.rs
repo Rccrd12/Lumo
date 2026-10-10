@@ -57,7 +57,8 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
-    crate::chat::timer_note!()
+    crate::chat::timer_note!(),
+    crate::chat::math_note!()
 );
 
 /// The models offered for Claude Code: the current ones by id, so the picker
@@ -124,6 +125,45 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
         "plan" => "plan",
         _ => "default",
     }
+}
+
+/// The tools that get a card when the chat asks every time (lumo-hook
+/// reply::claude_card_tool says the same): commands, edits, the network, MCP.
+const CARD_MATCHER: &str = "Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch|mcp__.*";
+
+/// The settings a run asking every time adds for itself (`--settings`): a
+/// PreToolUse hook that puts the action on the island as an Allow / Deny card
+/// and answers with the click. `claude -p` denies what needs a permission
+/// unless a hook decides, and whether its PermissionRequest hook is asked
+/// depends on the version; this one always is. Only this run has it: the
+/// user's settings.json is not touched.
+fn card_settings(relay: &str) -> Value {
+    json!({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": CARD_MATCHER,
+                "hooks": [{ "type": "command", "command": relay, "timeout": 120 }],
+            }],
+        },
+    })
+}
+
+/// `args`, plus the card hook when the mode asks every time and the file
+/// could be written where Claude Code can be pointed at it.
+fn with_cards(mut args: Vec<String>, mode: &str) -> Vec<String> {
+    if permission_mode(mode) != "default" {
+        return args;
+    }
+    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-card --wait 110 PreToolUse");
+    let path = crate::platform::local_dir().join("chat-cards.json");
+    let text = card_settings(&relay).to_string();
+    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
+    let path = path.to_string_lossy().to_string();
+    if written && safe_dir(&path).is_some() {
+        args.push("--settings".into());
+        args.push(path);
+    }
+    args
 }
 
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
@@ -715,7 +755,7 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = args(model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder));
+    let args = with_cards(args(model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
 
     let app2 = app.clone();
     let stop = chat.stopper();
@@ -800,7 +840,7 @@ pub(crate) fn help(
     let dir = folder.map(PathBuf::from).unwrap_or_else(work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
-    let args = args_with(HELPER_PROMPT, model, effort, mode, None, &inbox, &folders);
+    let args = with_cards(args_with(HELPER_PROMPT, model, effort, mode, None, &inbox, &folders), mode);
     let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -872,6 +912,19 @@ mod tests {
         // No utilization while all is well: low, with its reset time.
         run.feed(br#"{"type":"rate_limit_event","rate_limit_info":{"status":"allowed","rateLimitType":"five_hour","resetsAt":1791570000}}"#);
         assert_eq!(run.rate_limits["five_hour"], json!({ "low": true, "resets_at": 1791570000.0 }));
+    }
+
+    #[test]
+    fn asking_every_time_adds_a_card_hook_for_this_run_only() {
+        let v = card_settings("'/x/lumo-hook' --chat-card --wait 110 PreToolUse");
+        let entry = &v["hooks"]["PreToolUse"][0];
+        assert_eq!(entry["matcher"], CARD_MATCHER);
+        assert_eq!(entry["hooks"][0]["timeout"], 120, "longer than the relay waits");
+        assert!(entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
+        // Auto and Plan only add nothing: Claude Code decides, or changes nothing.
+        for mode in ["auto", "plan"] {
+            assert!(!with_cards(vec![], mode).iter().any(|a| a == "--settings"), "{mode}");
+        }
     }
 
     #[test]

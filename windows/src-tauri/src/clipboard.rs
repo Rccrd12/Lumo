@@ -7,6 +7,10 @@
 // and the first file of the list is copied into the inbox like a dropped one.
 //
 // Linux: not read yet; the page's own paste still works for images.
+//
+// The text on the clipboard is read here too, for the right-click menu's
+// Paste (src/views/context-menu.ts): the page may not read it by itself.
+// Linux asks wl-paste, xclip or xsel, whichever there is.
 
 use std::path::PathBuf;
 
@@ -28,12 +32,52 @@ pub fn paste_copied_file() -> Result<Option<DroppedFile>, String> {
     }
 }
 
+/// Longest text Paste puts in a field.
+const MAX_TEXT: usize = 1 << 20;
+
+/// The text on the clipboard, if there is some.
+pub fn text() -> Option<String> {
+    imp::text().map(|t| t.chars().take(MAX_TEXT).collect::<String>()).filter(|t| !t.is_empty())
+}
+
 #[cfg(not(windows))]
 mod imp {
     use super::*;
 
+    use std::process::{Command, Stdio};
+    use std::time::Duration;
+
     pub fn copied_paths() -> Vec<PathBuf> {
         Vec::new()
+    }
+
+    /// The first of wl-paste (Wayland), xclip and xsel that answers within a second.
+    pub fn text() -> Option<String> {
+        let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
+        let tools: &[(&str, &[&str])] = if wayland {
+            &[("wl-paste", &["--no-newline", "--type", "text"]), ("xclip", &["-selection", "clipboard", "-o"]), ("xsel", &["-b", "-o"])]
+        } else {
+            &[("xclip", &["-selection", "clipboard", "-o"]), ("xsel", &["-b", "-o"])]
+        };
+        tools.iter().find_map(|(tool, args)| run(tool, args))
+    }
+
+    fn run(tool: &str, args: &[&str]) -> Option<String> {
+        let child = Command::new(tool).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
+        let (tx, rx) = std::sync::mpsc::channel();
+        let id = child.id();
+        std::thread::spawn(move || {
+            let _ = tx.send(child.wait_with_output());
+        });
+        match rx.recv_timeout(Duration::from_secs(1)) {
+            Ok(Ok(out)) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(MAX_TEXT * 4)]).into_owned()),
+            Ok(_) => None,
+            Err(_) => {
+                // A clipboard owner that does not answer: the tool goes.
+                let _ = Command::new("kill").arg(id.to_string()).status();
+                None
+            }
+        }
     }
 }
 
@@ -44,25 +88,59 @@ mod imp {
     use std::os::windows::ffi::OsStringExt;
     use std::time::{Duration, Instant};
 
+    use ::windows::Win32::Foundation::HGLOBAL;
     use ::windows::Win32::System::DataExchange::{CloseClipboard, GetClipboardData, IsClipboardFormatAvailable, OpenClipboard};
-    use ::windows::Win32::System::Ole::CF_HDROP;
+    use ::windows::Win32::System::Memory::{GlobalLock, GlobalSize, GlobalUnlock};
+    use ::windows::Win32::System::Ole::{CF_HDROP, CF_UNICODETEXT};
     use ::windows::Win32::UI::Shell::{DragQueryFileW, HDROP};
 
     /// More than this is a whole folder's worth: only the first is used anyway.
     const MAX_PATHS: u32 = 64;
 
-    /// The paths of CF_HDROP, front to back; empty when there is none or
-    /// another app holds the clipboard past a short wait.
-    pub fn copied_paths() -> Vec<PathBuf> {
+    /// Opens the clipboard, waiting a little while another app holds it.
+    fn open() -> bool {
         let deadline = Instant::now() + Duration::from_millis(300);
         loop {
             if unsafe { OpenClipboard(None) }.is_ok() {
-                break;
+                return true;
             }
             if Instant::now() >= deadline {
-                return Vec::new();
+                return false;
             }
             std::thread::sleep(Duration::from_millis(10));
+        }
+    }
+
+    /// CF_UNICODETEXT, up to its terminating zero (or the end of its block).
+    pub fn text() -> Option<String> {
+        if !open() {
+            return None;
+        }
+        let mut out = None;
+        unsafe {
+            if IsClipboardFormatAvailable(CF_UNICODETEXT.0 as u32).is_ok() {
+                if let Ok(handle) = GetClipboardData(CF_UNICODETEXT.0 as u32) {
+                    let block = HGLOBAL(handle.0);
+                    let units = (GlobalSize(block) / 2).min(MAX_TEXT * 2);
+                    let data = GlobalLock(block) as *const u16;
+                    if !data.is_null() {
+                        let all = std::slice::from_raw_parts(data, units);
+                        let end = all.iter().position(|&u| u == 0).unwrap_or(all.len());
+                        out = Some(String::from_utf16_lossy(&all[..end]));
+                        let _ = GlobalUnlock(block);
+                    }
+                }
+            }
+            let _ = CloseClipboard();
+        }
+        out
+    }
+
+    /// The paths of CF_HDROP, front to back; empty when there is none or
+    /// another app holds the clipboard past a short wait.
+    pub fn copied_paths() -> Vec<PathBuf> {
+        if !open() {
+            return Vec::new();
         }
         let mut out = Vec::new();
         unsafe {

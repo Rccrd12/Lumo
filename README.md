@@ -6,7 +6,7 @@
 
 **A tiny friend that lives at the top of your screen on Windows and Linux and keeps an eye on your AI coding agent sessions.**
 
-Approve permissions, watch your agents work, drop a file, chat with Claude — all without leaving what you're doing.
+Approve permissions, watch your agents work, drop a file, chat with Claude, keep an eye on your timers, music, calendar and email — all without leaving what you're doing.
 
 [![Version](https://img.shields.io/github/v/release/Rccrd12/Lumo?filter=windows-v*&label=version&color=0A84FF)](https://github.com/Rccrd12/Lumo/releases)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&logoColor=white)
@@ -33,19 +33,33 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 💬 **Chat with Claude, Google AI (Gemini), OpenAI, OpenRouter, or a local model (Ollama, LM Studio, any OpenAI-compatible server)** — click the model name above the chat box to switch provider and model. Cloud providers use your own API key.
 - 🧠 **Chat with your Claude plan** — pick **Claude Code** above the chat box and the island talks to the Claude Code CLI you already use, no API key; every action it wants to take comes up as an Allow / Deny card.
 - 🎙️ **Talk with Gemini Live** — the microphone in the chat box or `Ctrl+Alt+L`: a spoken call with Gemini 3.8 Live (or Extended Thinking) that looks at your screen when it needs to, reads your files and PDFs, opens files and apps, and asks Claude Code or Antigravity CLI for anything else. Uses your Google AI key.
+- ⏱️ **Live activities** — the closed island says what's going on: what the AI is doing, your timers, the song playing, the next meeting, a new email; several side by side, centred, with their controls right there. Open the island and a second panel beside it holds **Timer**, **Music**, **Calendar** and **Email**; fold it with **–**, drag it off the island to keep it anywhere (Windows), resize it. Any model in the chat or Gemini Live can set a timer.
+- ✉️ **Email** — the Email pill reads your inbox over IMAP (Gmail, Outlook, iCloud, any server, with an app password), read only: a new email peeks out of the closed island within seconds, with **Summarize** and **Draft a reply**. Nothing is ever sent, moved or marked as read.
+- 🖥️ **The chat knows what's open on your PC** — the windows and documents you have open (a PDF, a Word file, a spreadsheet…) go with your question, so "what's this PDF about?" just works. Settings → Chat turns it off.
+- ➗ **Math in answers** — formulas in LaTeX (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`) are drawn as math: fractions, roots, matrices, sums, vectors.
 - 🖼️ **Show the chat your screen** — your open windows or a screenshot, only when you ask; `Ctrl+Alt+P` asks about the screen, `Ctrl+Alt+X` about the selected text, from any app.
 - 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, and your Codex limits. Off by default; Settings → Agents → Plan usage.
 - 📋 **Declare the tools you use** — Settings → Pills & integrations: pick your main tool (VS Code, Cursor, Codex or Antigravity), then up to 4 more agents, chat providers and services.
 - 📎 **Drop a file on the island** — Lumo turns into a box and swallows it, then answers questions about it.
 - 🧲 **An island that docks anywhere** — drag it to the top, bottom, left or right edge, resize it, zoom it.
-- 🔌 **Integrations** — Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Lumo.
+- 🔌 **Integrations** — Email (IMAP), Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com. Each one gets its own little colored Lumo.
 - 👗 **Dress Lumo up** — right-click him for the wardrobe, and pick his look there: a ring of light, a dot, a soft drop or a firefly. He also dresses up for the seasons on his own.
 - ⌨️ **Keyboard shortcuts** — open the chat, jump to an alert or a terminal, switch pills, mute or open the wardrobe from anywhere; all customizable in Settings → Shortcuts.
 - 🎭 **A real character** — idle breathing, blinks, eyes on a sphere that follow your mouse, emotes, handcrafted sounds, a greeting on launch.
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the top edge of the screen.
 - 📅 **Weekly recap** — every Monday Lumo sums up the past week: time coding, sessions, files, lines changed, commands, permissions, top agent and project. Share it as a 1080 × 1920 image with Lumo — project names optional. All local.
-- 🌍 **10 languages** — English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português, Русский, Bahasa Indonesia. Pick one in Settings → General → Language.
+- 🌍 **11 languages** — English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português, Русский, Bahasa Indonesia, Italiano. Pick one in Settings → General → Language.
 - 🔒 **Private by design** — no telemetry, no account. Keys live in Windows Credential Manager or the Linux Secret Service (GNOME Keyring, KWallet). The app only talks to the services you plug in.
+
+<p align="center">
+<img src="windows/screenshots/activities.png" width="640" alt="The open island with the live activities beside it: a timer, the music playing, the next events and the newest emails">
+</p>
+
+<p align="center">
+<img src="windows/screenshots/compact-activities.png" width="480" alt="The closed island: the next meeting, a timer and the music playing, side by side">
+<br>
+<img src="windows/screenshots/mail.png" width="468" alt="A new email peeking out of the closed island, with Summarize and Draft a reply">
+</p>
 
 <table>
 <tr>
@@ -60,10 +74,11 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 ## Versions
 
-Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` tags; the newest Windows installer is always at [`windows-latest`](https://github.com/Rccrd12/Lumo/releases/tag/windows-latest). See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
+Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` tags; the newest builds are always at [`windows-latest`](https://github.com/Rccrd12/Lumo/releases/tag/windows-latest) and [`linux-latest`](https://github.com/Rccrd12/Lumo/releases/tag/linux-latest). See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.5.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.1) | Oct 10, 2026 | Allow and Deny from the closed island and for the chat's Claude Code, the Claude plan's 5 hours from Anthropic, a right-click menu with Refresh, past sessions and a search in the past chats, the usage ring in the chat, Live Activities that follow the island |
 | [0.5.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.0) | Oct 9, 2026 | Live activities (timers, music, calendar, email) on the closed island and beside the open one, the Email pill, the chat knows what's open on your PC, math in answers, Italiano, Lumo's own names everywhere |
 | [0.4.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.4.0) | Oct 9, 2026 | Talk with Gemini Live, which sees your screen, reads your files and asks Claude Code for help; Lumo animates every state; the wardrobe in two parts |
 | [0.3.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.3.2) | Oct 9, 2026 | Antigravity CLI answers in the chat, an effort slider, a permissions button in the chat, a centred launch greeting, the app is lumo.exe |
@@ -92,7 +107,7 @@ rest of the differences.
 
 ### Linux
 
-Linux builds are published from `linux-v*` tags in [Releases](https://github.com/Rccrd12/Lumo/releases), x86_64 only; until one is there, [build it from source](#build-from-source).
+Download **[Lumo-Linux-x86_64.AppImage](https://github.com/Rccrd12/Lumo/releases/download/linux-latest/Lumo-Linux-x86_64.AppImage)** (x86_64, always the newest version). The `.deb` and `.rpm` packages and `SHA256SUMS` are in each [`linux-v*` release](https://github.com/Rccrd12/Lumo/releases/tag/linux-v0.5.0). You can also [build it from source](#build-from-source).
 
 - **AppImage** (any distribution): `chmod +x Lumo-Linux-*.AppImage`, then run it.
 - **Debian / Ubuntu**: `sudo apt install ./Lumo-Linux-*.deb`
@@ -142,6 +157,8 @@ Click the Lumo icon in the system tray → **Settings…**
 | **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager / Secret Service |
 | **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager / Secret Service |
 | **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |
+| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: address, IMAP server and an app password · Windows Credential Manager / Secret Service |
+| **Calendar** | the next events in the live activities and on the closed island | Settings → Island → Calendar: your calendar's secret iCal address · Windows Credential Manager / Secret Service |
 | Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Settings → Pills & integrations · Windows Credential Manager / Secret Service, all optional |
 
 If Lumo isn't running, the hook exits immediately: **Claude Code is never blocked.**
@@ -182,7 +199,8 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 - No telemetry, no account, no background update checks.
 - Keys live in Windows Credential Manager or the Linux Secret Service, never on disk and never in the interface.
 - The only network requests Lumo makes are to the services you configure yourself.
-- Screenshots and the window list are taken only when you ask, and shown to you before anything is sent.
+- Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → Chat.
+- Email and the calendar are only read: emails stay unread, and nothing is ever sent, moved or deleted.
 - The log and the weekly recap history stay on your machine.
 
 ## Contributing

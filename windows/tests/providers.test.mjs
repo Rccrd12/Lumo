@@ -5,7 +5,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, isLoopbackHost, pickModel, providerDef, urlExposure,
-  visibleProviders, withModel,
+  visibleProviders, withModel, anyProviderReady,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 
@@ -41,6 +41,19 @@ test("model servers show in the picker once connected, or while in use", () => {
   assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter"]);
   assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "ollama"]);
   assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "custom"]);
+});
+
+test("once Rust says which are set up, only those show (and the active one)", () => {
+  const ready = new Set(["claude-code", "antigravity-cli"]);
+  const ids = (s) => visibleProviders(s, ready).map((p) => p.id);
+  // Claude Code and Antigravity set up, no key: no Anthropic, Google, OpenAI or OpenRouter.
+  assert.deepEqual(ids(settings({ chatProvider: "claude-code" })), ["claude-code", "antigravity-cli"]);
+  assert.deepEqual(ids(settings({ chatProvider: "claude-code", lmstudioUrl: "http://127.0.0.1:1234" })), ["claude-code", "antigravity-cli", "lmstudio"]);
+  // The chat still going to a provider without its key: it shows, so the picker says where the chat goes.
+  assert.deepEqual(ids(settings({ chatProvider: "anthropic" })), ["anthropic", "claude-code", "antigravity-cli"]);
+  assert.equal(anyProviderReady(settings(), ready), true);
+  assert.equal(anyProviderReady(settings(), new Set()), false);
+  assert.equal(anyProviderReady(settings({ ollamaUrl: "http://127.0.0.1:11434" }), new Set()), true);
 });
 
 test("the saved model is kept when offered, else a sensible one is picked", () => {

@@ -17,7 +17,13 @@ const island = {
   setView: (view) => asked.push(`setView:${view}`),
   reveal: () => asked.push("reveal"),
   dropPin: () => asked.push("dropPin"),
+  quickApproval: () => {
+    asked.push("quick");
+    return quickFits;
+  },
 };
+/** Whether the closed island can show a simple request (Island.quickApproval). */
+let quickFits = true;
 registerHookHandlers(island);
 
 const hook = (payload) => emit("hook", payload);
@@ -37,6 +43,7 @@ beforeEach(() => {
   State.pendingApproval = null;
   State.settings = { ...DEFAULT_SETTINGS };
   State.loadIntegrationTasks();
+  quickFits = true;
 });
 
 // hooks.ts keeps timer handles between events: the 110 s approval timeout, and
@@ -432,6 +439,35 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("Task", { prompt: "do it" }), "Task · do it");
   assert.equal(target("Odd", { command: "   ", count: 3 }), "Odd");
   assert.equal(target(undefined, undefined), "Tool");
+});
+
+test("a simple request stays on the closed island, with its buttons (never answered by itself)", () => {
+  ask("r1", { tool_name: "Bash", tool_input: { command: "git status && ls -la" } });
+  assert.equal(State.pendingApproval.quick, true);
+  assert.deepEqual(asked, ["quick"]);
+  assert.equal(State.isPinned, true);
+  assert.equal(task().state, "approval");
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
+  assert.deepEqual(sent("approval_decision"), []);
+});
+
+test("anything else, or an island that cannot show it, gets the full card", () => {
+  const card = (extra, before = () => {}) => {
+    State.pendingApproval = null;
+    asked = [];
+    before();
+    ask("r1", extra);
+    return { quick: State.pendingApproval.quick ?? false, asked };
+  };
+  const ls = { tool_name: "Bash", tool_input: { command: "ls" } };
+  assert.deepEqual(card({ tool_name: "Bash", tool_input: { command: "rm -rf build" } }), { quick: false, asked: ["alert:approval"] });
+  assert.deepEqual(card({ tool_name: "Bash", tool_input: { command: "ls > files.txt" } }), { quick: false, asked: ["alert:approval"] });
+  assert.deepEqual(card({}), { quick: false, asked: ["alert:approval"] });
+  assert.deepEqual(card(ls, () => { State.mode = "expanded"; }), { quick: false, asked: ["alert:approval"] });
+  State.mode = "hidden";
+  assert.deepEqual(card(ls, () => { State.settings.quickApprovals = false; }), { quick: false, asked: ["alert:approval"] });
+  State.settings.quickApprovals = true;
+  assert.deepEqual(card(ls, () => { quickFits = false; }), { quick: false, asked: ["quick", "alert:approval"] });
 });
 
 test("a request behind another pill comes to the front, and that pill comes back after (Mac #120)", () => {

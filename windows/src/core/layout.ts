@@ -81,6 +81,7 @@ export const COMPACT_SIZES = {
   two: { w: 540, h: NOTCH_H },
   many: { w: 620, h: NOTCH_H },
   mail: { w: 452, h: 120 },
+  approval: { w: 452, h: 92 },
 } as const;
 export type CompactSizeKind = keyof typeof COMPACT_SIZES;
 export const EXPANDED_W = 640;
@@ -88,7 +89,21 @@ export const EXPANDED_W = 640;
 export const ROUNDED_CORNER = 14; // hidden / compact
 /** Between the island and the edge of the screen it is docked to (island.rs EDGE_GAP). */
 export const EDGE_GAP = 10;
-export const EXPANDED_CORNER = 22;
+
+/**
+ * Settings → Island → Distance from the edge (island.rs edge_gap_of): "none";
+ * "light", the usual one (EDGE_GAP); "medium", just enough for the cursor to
+ * cross the top of the screen above the island without opening it (past the
+ * island's 14 px hover margin); "wide".
+ */
+export function edgeGap(name: string | undefined): number {
+  switch (name) {
+    case "none": return 0;
+    case "medium": return 18;
+    case "wide": return 28;
+    default: return EDGE_GAP;
+  }
+}export const EXPANDED_CORNER = 22;
 
 /** Invisible hover strip that wakes the island when hidden. */
 export const WAKE_STRIP_W = 240;

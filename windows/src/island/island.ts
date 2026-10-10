@@ -4,7 +4,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_PANEL_OPEN, EDGE_GAP, EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -26,9 +26,16 @@ import { h } from "../views/dom";
 import { IslandStateMachine } from "./fsm";
 import { CompactStrip } from "./compact";
 import { ACTIVITIES_GAP, IslandActivities } from "./activities";
-import { setCompactNewsHandler } from "../core/compact";
 import type { MailMessage } from "../core/bridge";
-import { refreshHookPills } from "./integrations";
+import { refreshConfigured, refreshHookPills } from "./integrations";
+import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
+import { MENU_TEXT, pickedItems } from "../core/context-menu";
+import { compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
+import { refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
+import { reloadRecap } from "../views/integrations";
+import { isHookPill, pillDefinition } from "../core/pills";
+import { t } from "../i18n/i18n";
+import { Calendar } from "./activities";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
 
@@ -41,10 +48,11 @@ const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
 /**
- * After a sharing shortcut opened the island, how long it stays open with the
- * mouse elsewhere (s); each key typed in it gives it this long again.
+ * After a shortcut opened the island (open the island, open the chat, a
+ * sharing one…), how long it stays open with the mouse elsewhere (s); each
+ * key typed in it gives it this long again.
  */
-const SHARE_GRACE = 12;
+const SHARE_GRACE = 10;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
 
@@ -88,6 +96,8 @@ export class Island {
   private countdown!: HTMLElement;
   /** What the closed island says next to Lumo (island/compact.ts). */
   private compact!: CompactStrip;
+  /** Lumo's own right-click menu (views/context-menu.ts). */
+  private menu!: ContextMenu;
   /** The live activities beside the open island (island/activities.ts). */
   private activities!: IslandActivities;
   /** The island's height when the live activities first showed: theirs since. */
@@ -107,6 +117,10 @@ export class Island {
   private lastGesture = 0;
   /** Lifted while carried: a little bigger, springing back when put down. */
   private lift = new Tracked(1);
+  /** Between the island and its edge of the screen, eased when Settings changes it. */
+  private gap = new Tracked(edgeGap(undefined));
+  /** The gap Settings asked for last; null before the first settings arrived. */
+  private gapTarget: number | null = null;
   /** Puts a moved island down should Rust never say where it went. */
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
@@ -214,6 +228,37 @@ export class Island {
     State.isPinned = true;
     this.fsm.pinned = true;
     this.fsm.forcePetit();
+  }
+
+  /**
+   * A simple request (core/approvals.ts) is answered on the closed island: it
+   * comes out of its edge and stays, with Deny and Allow next to Lumo. False
+   * when the closed island cannot show it (open, greeting, upright on a side,
+   * paused): the full card comes up instead.
+   */
+  quickApproval(): boolean {
+    const state = this.fsm.state;
+    if ((state !== "hidden" && state !== "petit") || isUpright(this.dock) || State.paused) return false;
+    this.fsm.pinned = true;
+    if (state === "hidden") this.fsm.reveal();
+    State.notify();
+    return true;
+  }
+
+  /** Deny or Allow clicked on the closed island: answered, and it stays closed. */
+  private decideClosed(d: "allow" | "deny") {
+    const req = State.pendingApproval;
+    void Bridge.log(`decide ${d} req=${req?.requestId ?? "none"} (closed island)`);
+    if (!req) return;
+    Sound.play(d === "deny" ? "blip" : "approve");
+    void Bridge.approvalDecision(req.requestId, d);
+    State.endApproval();
+    if (State.mode === "expanded") {
+      this.closeApproval();
+      return;
+    }
+    this.dropPin();
+    State.notify();
   }
 
   // ── DOM ─────────────────────────────────────────────────────────────────────
@@ -334,6 +379,7 @@ export class Island {
         this.takeKeyboard();
       },
       changed: () => State.notify(),
+      decide: (d) => this.decideClosed(d),
     });
 
     this.header = buildHeader(actions);
@@ -383,6 +429,7 @@ export class Island {
         this.takeKeyboard();
       },
       openSettings: () => void Bridge.openSettingsWindow(),
+      refreshAll: () => void this.refreshAll(),
       iconPoint: () => {
         // Left of the "+": where the folded icon sits (or will).
         const icon = this.header.el.querySelector(".tab-activities") as HTMLElement | null;
@@ -447,6 +494,7 @@ export class Island {
   private setMode(mode: IslandMode) {
     const prev = State.mode;
     if (mode === prev) return;
+    this.menu?.close();
     State.mode = mode;
     if (mode === "expanded") Sound.play("open");
     if (prev === "expanded") {
@@ -530,6 +578,123 @@ export class Island {
     this.fsm.reveal();
   }
 
+  // ── The right-click menu ────────────────────────────────────────────────────
+
+  /** Opens Lumo's menu at (x, y): the text actions, Refresh, the items picked in Settings. */
+  openMenu(x: number, y: number, target: EventTarget | null) {
+    const entries: MenuEntry[] = [...textEntries(target), { kind: "sep" }];
+    entries.push({ kind: "item", label: t(MENU_TEXT.refresh), title: t(MENU_TEXT.refreshHint), shortcut: "Ctrl+R", run: () => void this.refreshAll() });
+    entries.push({ kind: "sep" });
+    for (const item of pickedItems(State.settings.contextMenu)) {
+      entries.push({ kind: "item", label: t(item.label), checked: item.toggle ? this.menuChecked(item.id) : undefined, run: () => this.menuAction(item.id) });
+    }
+    entries.push({ kind: "sep" }, { kind: "item", label: t(MENU_TEXT.customize), run: () => this.openSettingsAt("general") });
+    this.menu.open(x, y, entries);
+  }
+
+  private menuChecked(id: string): boolean {
+    switch (id) {
+      case "pin": return State.isPinned;
+      case "sound": return State.settings.soundEnabled !== false;
+      case "activities": return State.settings.activitiesPanel !== false && State.settings.activitiesFolded !== true;
+      default: return false;
+    }
+  }
+
+  private menuAction(id: string) {
+    switch (id) {
+      case "newChat":
+        if (State.chatActivity == null) {
+          State.startChat();
+          State.droppedFile = null;
+          State.promptContext = null;
+          void Bridge.chatReset();
+        }
+        this.setView("prompt");
+        this.takeKeyboard();
+        break;
+      case "chat":
+        this.setView("prompt");
+        this.takeKeyboard();
+        break;
+      case "timer":
+        compactTimer(5 * 60_000, "");
+        Sound.play("blip");
+        break;
+      case "pin":
+        this.setPinned(!State.isPinned);
+        break;
+      case "sound":
+        State.settings = { ...State.settings, soundEnabled: State.settings.soundEnabled === false };
+        Sound.setEnabled(State.settings.soundEnabled);
+        void Bridge.saveSettings(State.settings);
+        break;
+      case "activities":
+        if (State.settings.activitiesPanel === false) {
+          State.settings = { ...State.settings, activitiesPanel: true, activitiesFolded: false };
+          void Bridge.saveSettings(State.settings);
+        } else if (State.settings.activitiesFolded === true) {
+          this.activities.unfold();
+        } else {
+          this.activities.act({ kind: "fold" });
+        }
+        break;
+      case "center":
+        void Bridge.islandRecenter();
+        break;
+      case "wardrobe":
+        this.toggleWardrobe();
+        break;
+      case "settings":
+        void Bridge.openSettingsWindow();
+        break;
+      case "quit":
+        void Bridge.quit();
+        break;
+    }
+    State.notify();
+  }
+
+  /** The Settings window, on one of its pages. */
+  private openSettingsAt(page: string) {
+    try {
+      window.localStorage.setItem("lumo.settings.page", page);
+    } catch {
+      // No storage: it opens on the page it was on.
+    }
+    void Bridge.openSettingsWindow();
+  }
+
+  private refreshing = false;
+
+  /**
+   * Refresh: everything that can be shown asked again at once — the agents'
+   * hooks and sessions, each service's server (email included), the
+   * calendar, the plan usage (when Lumo asks Anthropic, and Codex's when its
+   * pill shows) and the weekly recap. Never while paused.
+   */
+  async refreshAll() {
+    if (this.refreshing || State.paused) return;
+    this.refreshing = true;
+    Sound.play("blip");
+    const services = State.settings.activeIntegrations.filter((id) => {
+      const def = pillDefinition(id);
+      return def && !isHookPill(id) && def.category !== "ai" && (State.integrations[id]?.configured ?? false);
+    });
+    refreshClaudePlanOnline(true);
+    if (State.settings.showCodexPlanInNotch) refreshCodexPlanUsage(true);
+    await Promise.allSettled([
+      refreshConfigured(),
+      refreshHookPills(),
+      reloadRecap(),
+      Calendar.refresh(),
+      ...services.map((id) => Bridge.refreshIntegration(id)),
+    ]);
+    this.refreshing = false;
+    compactNotice(t(MENU_TEXT.refreshed), "#22c55e");
+    State.notify();
+  }
+
   /** Right-click on Mochi: wardrobe open ↔ back to the usual view. */
   toggleWardrobe() {
     if (State.paused || State.mode === "hidden") return;
@@ -579,8 +744,8 @@ export class Island {
   private scheduleHoverOpen() {
     this.cancelHoverOpen();
     if (!State.settings.islandHoverOpen || this.fsm.state !== "petit" || State.paused) return;
-    // An email is showing: the mouse goes to its buttons, not to open the island.
-    if (this.compact.mail) return;
+    // An email or a request is showing: the mouse goes to its buttons, not to open the island.
+    if (this.compact.mail || this.compact.approval) return;
     this.hoverOpenTimer = window.setTimeout(() => {
       this.hoverOpenTimer = null;
       // Still there, not on one of its own buttons, and not picking the island up to move it.
@@ -644,7 +809,7 @@ export class Island {
 
   /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
    *  It gives it back when it closes, or when the chat is left. */
-  /** A sharing shortcut opened the island: it waits for the question (SHARE_GRACE). */
+  /** A shortcut opened the island: it waits for the user, the mouse being elsewhere (SHARE_GRACE). */
   holdOpen() {
     this.fsm.holdOpen(SHARE_GRACE);
   }
@@ -848,25 +1013,25 @@ export class Island {
     // when the window has the room: its cards need more than a short view gives.
     const bottom = this.dock === "bottom";
     const room = bottom ? at.y + at.h - 10 : window.innerHeight - at.y - 14;
-    // Unless a height was picked with its grip, the island's height when the
-    // panel first showed: level with it then, and not following its later sizes.
+    // Following the island (Settings → Island, on by default): as tall as it,
+    // growing and shrinking with it. Otherwise the height picked with its
+    // grip, else the island's height when the panel first showed.
     const picked = this.activities.pickedHeight;
     if (show && this.activitiesStartH == null) this.activitiesStartH = this.targetSize().h;
     const start = this.activitiesStartH ?? at.h;
-    const h = Math.min(room, picked > 0 ? picked : start);
+    const h = Math.min(room, this.activities.followsIsland ? at.h : picked > 0 ? picked : start);
     return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
   }
 
-  /** What takes the mouse: the island, and the live activities beside it. */
+  /** What takes the mouse: the island, the live activities beside it, and the right-click menu. */
   private hitRect(): { x: number; y: number; w: number; h: number } {
-    const rect = this.islandRect();
-    if (!this.activities?.isVisible) return rect;
-    const beside = this.activitiesPlace();
-    const y = Math.min(rect.y, beside.y);
-    const bottom = Math.max(rect.y + rect.h, beside.y + beside.h);
-    const left = Math.min(rect.x, beside.x);
-    const right = Math.max(rect.x + rect.w, beside.x + this.activities.width);
-    return { x: left, y, w: right - left, h: bottom - y };
+    let rect = this.islandRect();
+    if (this.activities?.isVisible) {
+      const beside = this.activitiesPlace();
+      rect = union(rect, { x: beside.x, y: beside.y, w: this.activities.width, h: beside.h });
+    }
+    const menu = this.menu?.rect();
+    return menu ? union(rect, menu) : rect;
   }
 
   /**
@@ -880,13 +1045,14 @@ export class Island {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const { x: sx, y: sy } = this.shift;
+    const gap = this.gap.value;
     let x: number;
     let y: number;
     switch (this.dock) {
-      case "bottom": x = (vw - w) / 2 + sx; y = vh - EDGE_GAP - hh + sy; break;
-      case "left": x = EDGE_GAP; y = (vh - hh) / 2 + sy; break;
-      case "right": x = vw - EDGE_GAP - w; y = (vh - hh) / 2 + sy; break;
-      default: x = (vw - w) / 2 + sx; y = EDGE_GAP + sy;
+      case "bottom": x = (vw - w) / 2 + sx; y = vh - gap - hh + sy; break;
+      case "left": x = gap; y = (vh - hh) / 2 + sy; break;
+      case "right": x = vw - gap - w; y = (vh - hh) / 2 + sy; break;
+      default: x = (vw - w) / 2 + sx; y = gap + sy;
     }
     x = Math.min(Math.max(x, 0), Math.max(vw - w, 0));
     y = Math.min(Math.max(y, 0), Math.max(vh - hh, 0));
@@ -1039,10 +1205,17 @@ export class Island {
       }
     });
 
-    // No browser menu over Mochi: his right-click is the wardrobe. Everywhere
-    // else (the chat field) the webview keeps its own menu.
-    this.islandEl.addEventListener("contextmenu", (e) => {
-      if (this.isBotHit(e.clientX, e.clientY)) e.preventDefault();
+    // Never the webview's menu: Lumo's own (Refresh, the text actions, the
+    // items picked in Settings). Over Mochi the right click is the wardrobe.
+    this.menu = new ContextMenu();
+    this.menu.onChange = () => {
+      this.dirty = true;
+      this.ensureRunning();
+    };
+    document.addEventListener("contextmenu", (e) => {
+      e.preventDefault();
+      if (State.mode === "hidden" || this.isBotHit(e.clientX, e.clientY)) return;
+      this.openMenu(e.clientX, e.clientY, e.target);
     });
 
     // Dragging Mochi out of the island puts him on the desktop.
@@ -1084,6 +1257,12 @@ export class Island {
         e.preventDefault();
         State.settings = { ...State.settings, islandZoom: zoom };
         void Bridge.saveSettings(State.settings);
+        return;
+      }
+      // Ctrl+R and F5 ask everything again, rather than reloading the page.
+      if ((e.ctrlKey && !e.altKey && e.key.toLowerCase() === "r") || e.key === "F5") {
+        e.preventDefault();
+        void this.refreshAll();
         return;
       }
       if (e.key === "Escape" && State.mode === "expanded") {
@@ -1255,6 +1434,7 @@ export class Island {
     this.height.step(dt, nowMs);
     this.radius.step(dt, nowMs);
     this.lift.step(dt, nowMs);
+    this.gap.step(dt, nowMs);
     this.applyGeometry();
 
     if (this.dirty) {
@@ -1312,7 +1492,7 @@ export class Island {
     // sweep — so a hidden island went on burning frames in exactly the states it
     // spends most of its life in. Geometry still has to finish retracting.
     const settling =
-      this.width.animating || this.height.animating || this.radius.animating;
+      this.width.animating || this.height.animating || this.radius.animating || this.gap.animating;
     const busy = State.mode === "hidden"
       ? settling
       : settling ||
@@ -1511,6 +1691,11 @@ export class Island {
 
   /** Applies settings coming from Rust at boot. */
   applySettings() {
+    // A new distance from the edge eases in; the first one is simply taken.
+    const gap = edgeGap(State.settings.islandEdgeGap);
+    if (this.gapTarget == null) this.gap.jump(gap);
+    else if (gap !== this.gapTarget) this.gap.springTo(gap, 0.55, 1);
+    this.gapTarget = gap;
     this.engine.ambient = motionAmount(State.settings.lumoMotion);
     this.ensureRunning();
     Sound.setEnabled(State.settings.soundEnabled);
@@ -1549,7 +1734,8 @@ export class Island {
     this.engine.triggerEmote("surprised");
     Sound.play("blip");
     this.ensureRunning();
-    void Bridge.islandDrag();
+    const at = this.islandRect();
+    void Bridge.islandDrag([at.x, at.y, at.w, at.h]);
   }
 
   /**
@@ -1627,4 +1813,11 @@ export class Island {
   private get chatCount(): number {
     return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
   }
+}
+
+/** The smallest rectangle holding both. */
+function union(a: { x: number; y: number; w: number; h: number }, b: { x: number; y: number; w: number; h: number }) {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 }

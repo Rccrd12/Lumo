@@ -24,8 +24,10 @@
 // or the folder open in File Explorer: its listing goes with the question, and
 // a file of it the question names is attached as if picked with the paperclip.
 //
-// With Settings → Chat → "Show remaining usage in the chat" on, a quiet line
-// next to the model button says what the provider has left (core/chat-usage.ts).
+// With Settings → Chat → "Show remaining usage in the chat" on, a small ring
+// next to the model button fills with what the provider has used — the most
+// used of its limits, in the plan's colours — and opens a menu with each limit,
+// its bar and when it resets (core/chat-usage.ts).
 //
 // With "Always share the folder open in File Explorer" on (Settings → Chat),
 // that folder goes with every message by itself; its chip's × leaves it out
@@ -43,12 +45,14 @@ import {
 } from "../core/bridge";
 import {
   PERMISSION_MODES, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, pickModel, providerDef,
-  visibleProviders, withModel, type PermissionMode, type ProviderDef,
+  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
-import { chatTitle, deleteChat, loadChats, saveChat, type SavedChat } from "../core/chats";
-import { OPENROUTER_STALE_MS, usageLine, type ChatUsage, type SeenUsage } from "../core/chat-usage";
+import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
+import { planColor } from "../core/plan";
+import { refreshClaudePlanOnline } from "./usage";
+import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   SCREEN_STRINGS, emptyScreen, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
   screenPayload, seesImages, sharesFolderByItself, shotPaths, withoutFolder, type ChipKind, type ExplorerPeek,
@@ -68,17 +72,18 @@ const STRINGS = {
   noModel: N_("Choose a model"),
   loading: N_("Loading models…"),
   noKey: N_("No API key — add it in Settings."),
+  noProvider: N_("No provider is set up yet: add a key, or install Claude Code's or Antigravity's hooks, in Settings."),
   openSettings: N_("Open Settings"),
   newChat: N_("New chat"),
   pastChats: N_("Past chats"),
   noPastChats: N_("No past chats yet."),
+  searchChats: N_("Search the past chats"),
+  noMatch: N_("No chat says that."),
   deleteChat: N_("Delete this chat"),
   attach: N_("Attach a file"),
   cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
-  faster: N_("Faster"),
-  smarter: N_("Smarter"),
   recommended: N_("Recommended"),
   autoHint: N_("Auto: Claude Code picks the effort its model is made for."),
   permissions: N_("Permissions"),
@@ -267,14 +272,10 @@ function typingDots(label: string): HTMLElement {
   );
 }
 
-/** The coloured chip showing what the question is about (a dropped file). */
-function contextChip(label: string): HTMLElement {
-  const chip = h("div", { class: "chip" }, h("i", { class: "chip-dot" }), h("span", { text: label }));
-  requestAnimationFrame(() => chip.classList.add("settled"));
-  return chip;
-}
-
-/** A chip for what the screen button added, with a way to take it back before it is sent. */
+/**
+ * A chip for what goes with the question (a dropped or pasted file, what the
+ * screen button added), with a way to take it back before it is sent.
+ */
 function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[]): HTMLElement {
   const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
   remove.addEventListener("click", (e) => {
@@ -310,14 +311,24 @@ interface Picker {
   readonly isOpen: boolean;
 }
 
+/**
+ * The providers set up on this computer (lib.rs chat_providers), asked each
+ * time the picker opens; null until the first answer, or with no Rust to ask.
+ */
+let readyProviders: ReadonlySet<string> | null = null;
+
 /** Provider chips, then the chosen provider's models — ModelPickerView. */
 function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   const chips = h("div", { class: "picker-chips" });
   const list = h("div", { class: "picker-list" });
-  // Claude Code only: how hard it thinks (claude --effort), on a slider from
-  // faster to smarter, with Auto (its model's own level) beside it.
+  // Claude Code only: how hard it thinks (claude --effort), on a short slider
+  // with the level it is on beside it, and Auto (its model's own level) above.
   const efforts = h("div", { class: "picker-efforts" });
-  const el = h("div", { class: "picker" }, chips, h("div", { class: "picker-rule" }), list, efforts);
+  const el = h("div", { class: "picker models" }, chips, h("div", { class: "picker-rule" }), list, efforts);
+  // Asked once ahead, so the first opening already shows the right chips.
+  void Bridge.chatProviders().then((ids) => {
+    if (Array.isArray(ids)) readyProviders = new Set(ids);
+  });
 
   function drawEfforts() {
     clear(efforts);
@@ -325,64 +336,114 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     const levels = effortsFor(p.id).filter((e) => e !== "");
     efforts.hidden = levels.length === 0;
     if (efforts.hidden) return;
-    const current = effortFor(p.id, State.settings.chatEffort);
+    const last = levels.length - 1;
+
+    const auto = h(
+      "button",
+      { class: "effort-auto", title: t(STRINGS.autoHint), style: `--accent:${p.accent}` },
+      h("span", { text: t(STRINGS.effortAuto) }),
+      h("span", { class: "effort-auto-note", text: t(STRINGS.recommended) }),
+    );
+    const value = h("span", { class: "effort-value" });
+    // A track that fills up to the knob, with a mark for each level. Dragged,
+    // the knob goes to the nearest level as soon as the pointer is past half
+    // the way to it, with an ease; let go, that level is picked. On Auto there
+    // is no knob: a click picks a level.
+    const fill = h("i", { class: "effort-fill" });
+    const knob = h("i", { class: "effort-knob" });
+    const ticks = h("div", { class: "effort-ticks" }, ...levels.map(() => h("i")));
+    const track = h("div", {
+      class: "effort-track effort-slider",
+      role: "slider",
+      tabindex: "0",
+      "aria-label": t(STRINGS.effort),
+      "aria-valuemin": "0",
+      "aria-valuemax": String(last),
+      style: `--accent:${p.accent}`,
+    }, ticks, fill, knob);
+
+    /** Where the knob is, 0–1 along the track. */
+    const place = (frac: number) => {
+      const f = Math.max(0, Math.min(1, frac));
+      track.style.setProperty("--at", String(f));
+    };
+    /** Draws the saved level (or Auto) without saving anything. */
+    const show = () => {
+      const current = effortFor(p.id, State.settings.chatEffort);
+      const index = levels.indexOf(current);
+      auto.classList.toggle("on", !current);
+      track.classList.toggle("auto", !current);
+      track.setAttribute("aria-valuenow", String(Math.max(0, index)));
+      track.setAttribute("aria-valuetext", effortLabel(current));
+      value.textContent = effortLabel(current);
+      place(index < 0 ? 0 : index / last);
+    };
     const pick = (e: string) => {
+      show();
       if (e === effortFor(p.id, State.settings.chatEffort)) return;
       State.settings = { ...State.settings, chatEffort: e };
       saveSettings();
       Sound.play("blip");
-      drawEfforts();
+      show();
       onChange();
     };
-
-    const auto = h(
-      "button",
-      { class: current ? "effort-auto" : "effort-auto on", title: t(STRINGS.autoHint), style: `--accent:${p.accent}` },
-      h("span", { text: t(STRINGS.effortAuto) }),
-      h("span", { class: "effort-auto-note", text: t(STRINGS.recommended) }),
-    );
     auto.addEventListener("click", () => pick(""));
 
-    const slider = h("input", {
-      class: "effort-slider",
-      type: "range",
-      min: "0",
-      max: String(levels.length - 1),
-      step: "1",
-      "aria-label": t(STRINGS.effort),
-    }) as HTMLInputElement;
-    // On Auto the knob stays out of the way: no level is picked.
-    slider.value = String(Math.max(0, levels.indexOf(current)));
-    const ticks = h("div", { class: "effort-ticks" }, ...levels.map(() => h("i")));
-    const track = h(
-      "div",
-      { class: current ? "effort-track" : "effort-track auto", style: `--accent:${p.accent}` },
-      ticks,
-      slider,
-    );
-    const choose = () => pick(levels[Number(slider.value)] ?? "");
-    // A click on the track picks a level, even the one under an Auto knob.
-    slider.addEventListener("change", choose);
-    slider.addEventListener("pointerup", choose);
+    const fracAt = (clientX: number) => {
+      const r = track.getBoundingClientRect();
+      // The knob's centre stays inside the track by half its width.
+      const inset = 11;
+      return r.width > 2 * inset ? (clientX - r.left - inset) / (r.width - 2 * inset) : 0;
+    };
+    track.addEventListener("pointerdown", (e) => {
+      const pe = e as PointerEvent;
+      if (pe.button !== 0) return;
+      pe.preventDefault();
+      track.focus();
+      track.setPointerCapture?.(pe.pointerId);
+      track.classList.add("dragging");
+      track.classList.remove("auto");
+      // Past half the way to the next level, the knob is on it already: it
+      // moves from level to level as it is dragged, each step eased.
+      let shown = -1;
+      const follow = (x: number) => {
+        const index = Math.round(Math.max(0, Math.min(1, fracAt(x))) * last);
+        if (index === shown) return;
+        shown = index;
+        place(index / last);
+        value.textContent = effortLabel(levels[index]);
+      };
+      follow(pe.clientX);
+      const move = (m: Event) => follow((m as PointerEvent).clientX);
+      const up = (u: Event) => {
+        track.removeEventListener("pointermove", move);
+        track.removeEventListener("pointerup", up);
+        track.removeEventListener("pointercancel", up);
+        track.classList.remove("dragging");
+        // Settles on the nearest level, with the ease of the knob's transition.
+        const index = Math.round(Math.max(0, Math.min(1, fracAt((u as PointerEvent).clientX))) * last);
+        pick(levels[index]);
+      };
+      track.addEventListener("pointermove", move);
+      track.addEventListener("pointerup", up);
+      track.addEventListener("pointercancel", up);
+    });
+    track.addEventListener("keydown", (e) => {
+      const key = (e as KeyboardEvent).key;
+      const current = levels.indexOf(effortFor(p.id, State.settings.chatEffort));
+      const to = key === "ArrowRight" || key === "ArrowUp" ? Math.min(last, current + 1)
+        : key === "ArrowLeft" || key === "ArrowDown" ? Math.max(0, current < 0 ? 0 : current - 1)
+        : key === "Home" ? 0 : key === "End" ? last : null;
+      if (to == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pick(levels[to]);
+    });
 
-    // Two short rows, so a small window leaves the models their room: the
-    // ends sit beside the slider rather than over it.
-    efforts.append(
-      h(
-        "div",
-        { class: "effort-head" },
-        h("span", { class: "picker-label", text: t(STRINGS.effort) }),
-        h("span", { class: "effort-value", text: effortLabel(current) }),
-        auto,
-      ),
-      h(
-        "div",
-        { class: "effort-row" },
-        h("span", { class: "effort-end", text: t(STRINGS.faster) }),
-        track,
-        h("span", { class: "effort-end", text: t(STRINGS.smarter) }),
-      ),
-    );
+    // One short row, so the model list keeps its room: the slider, the level
+    // it is on, and Auto at the end.
+    efforts.append(h("div", { class: "effort-row" }, track, value, auto));
+    show();
   }
 
   /** Models already asked for, by provider; a model server is asked again each time. */
@@ -392,7 +453,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
 
   function drawChips() {
     clear(chips);
-    for (const p of visibleProviders(State.settings)) {
+    for (const p of visibleProviders(State.settings, readyProviders)) {
       const on = p.id === State.settings.chatProvider;
       const chip = h(
         "button",
@@ -482,13 +543,38 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     }
   }
 
+  /** Nothing set up at all: a pointer to Settings in place of chips and models. */
+  function drawNothingReady(): boolean {
+    const none = readyProviders != null && !anyProviderReady(State.settings, readyProviders);
+    el.classList.toggle("empty", none);
+    if (none) {
+      clear(chips);
+      status(t(STRINGS.noProvider), true);
+      efforts.hidden = true;
+    }
+    return none;
+  }
+
   function open() {
     isOpen = true;
     el.classList.add("on");
     drawChips();
     drawEfforts();
     onChange();
-    void loadModels();
+    if (!drawNothingReady()) void loadModels();
+    // Which are set up may have changed in Settings since: asked again each time.
+    void Bridge.chatProviders().then((ids) => {
+      const key = (set: ReadonlySet<string> | null) => (set ? [...set].sort().join() : null);
+      const before = key(readyProviders);
+      // No answer (no Rust to ask): every provider shows, as before.
+      readyProviders = Array.isArray(ids) ? new Set(ids) : null;
+      if (!isOpen || before === key(readyProviders)) return;
+      drawChips();
+      if (!drawNothingReady()) {
+        drawEfforts();
+        void loadModels();
+      }
+    });
   }
 
   function close() {
@@ -508,6 +594,48 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   };
 }
 
+// ── Usage ring ────────────────────────────────────────────────────────────────
+
+/**
+ * A ring that fills clockwise from the top as a limit is used, in its colour,
+ * like a spinner standing still. It moves to a new value in a short ease.
+ */
+function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: string | null): void } {
+  const NS = "http://www.w3.org/2000/svg";
+  const R = 5.25;
+  const LEN = 2 * Math.PI * R;
+  const el = document.createElementNS(NS, "svg");
+  el.setAttribute("viewBox", "0 0 14 14");
+  el.setAttribute("width", "14");
+  el.setAttribute("height", "14");
+  el.setAttribute("aria-hidden", "true");
+  el.classList.add("usage-ring");
+  const circle = (cls: string) => {
+    const c = document.createElementNS(NS, "circle");
+    c.setAttribute("cx", "7");
+    c.setAttribute("cy", "7");
+    c.setAttribute("r", String(R));
+    c.classList.add(cls);
+    return c;
+  };
+  const track = circle("usage-ring-track");
+  const arc = circle("usage-ring-arc");
+  arc.setAttribute("stroke-dasharray", `${LEN} ${LEN}`);
+  arc.setAttribute("stroke-dashoffset", String(LEN));
+  el.append(track, arc);
+  return {
+    el,
+    set(pct, color) {
+      const used = pct == null ? 0 : Math.max(0, Math.min(100, pct));
+      // A sliver even at 0 %, so a known plan never looks like an empty ring.
+      const shown = pct == null ? 0 : Math.max(used, 4);
+      arc.setAttribute("stroke-dashoffset", String(LEN * (1 - shown / 100)));
+      arc.style.stroke = color ?? "";
+      el.classList.toggle("unknown", pct == null);
+    },
+  };
+}
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 /** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
@@ -518,12 +646,24 @@ export function buildPrompt(
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
-  const input = h("input", {
-    type: "text",
+  // A text area of one line that grows with what is typed (up to a few lines,
+  // then it scrolls): Enter sends, Shift+Enter starts a new line.
+  const input = h("textarea", {
     class: "chat-input",
+    rows: "1",
     placeholder: t(STRINGS.placeholderFirst),
     spellcheck: "false",
-  }) as HTMLInputElement;
+  }) as HTMLTextAreaElement;
+  /** As tall as its lines, up to the CSS max-height. */
+  function fitInput() {
+    input.style.height = "auto";
+    if (input.scrollHeight > 0) input.style.height = `${input.scrollHeight}px`;
+  }
+  function setInput(text: string) {
+    input.value = text;
+    fitInput();
+  }
+  input.addEventListener("input", fitInput);
   const send = h("button", { class: "send-btn", title: tl(STRINGS.send) }, svg(ICONS.arrowUp, 11));
   const attachBtn = h("button", { class: "tool-btn", title: tl(STRINGS.attach) }, svg(ICONS.paperclip, 13, { stroke: 1.8 }));
   const screenBtn = h("button", { class: "tool-btn screen-btn", title: tl(SCREEN_STRINGS.button) }, svg(ICONS.display, 13, { stroke: 1.8 }));
@@ -545,12 +685,12 @@ export function buildPrompt(
   );
   const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
   const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
-  // What the provider has left, when the option is on and it is known.
-  const usageDot = h("i", { class: "model-dot" });
-  const usageText = h("span", { class: "chat-usage-text" });
-  const usageEl = h("button", { class: "chat-usage" }, usageDot, usageText);
+  // What the provider has used, when the option is on and it is known: a ring
+  // that fills, and its menu.
+  const usageRing = usageRingSvg();
+  const usageEl = h("button", { class: "tool-btn chat-usage" }, usageRing.el);
   usageEl.style.display = "none";
-  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn), usageEl, modelBtn);
+  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn, usageEl), modelBtn);
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -559,6 +699,7 @@ export function buildPrompt(
       closeHistory();
       closeScreen();
       closePermissions();
+      closeUsage();
     }
     panelChanged();
     drawModelButton();
@@ -567,20 +708,33 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || ["browsing", "screening", "authorizing"].some((c) => body.classList.contains(c));
+    const open = picker.isOpen || ["browsing", "screening", "authorizing", "metering"].some((c) => body.classList.contains(c));
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
   }
   const historyList = h("div", { class: "picker-list" });
-  const historyEl = h("div", { class: "picker history" }, h("div", { class: "picker-title", text: t(STRINGS.pastChats) }), historyList);
+  // A search over every past chat, questions and answers alike.
+  const historySearch = h("input", {
+    type: "search",
+    class: "history-search",
+    placeholder: tl(STRINGS.searchChats),
+    spellcheck: "false",
+    "aria-label": tl(STRINGS.searchChats),
+  }) as HTMLInputElement;
+  const historyEl = h("div", { class: "picker history" },
+    h("div", { class: "history-head" }, h("div", { class: "picker-title", text: tl(STRINGS.pastChats) }), historySearch),
+    historyList);
   // The screen button's menu, then the preview of a screenshot.
   const screenTitle = h("div", { class: "picker-title" });
   const screenList = h("div", { class: "picker-list" });
   const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
   const permList = h("div", { class: "picker-list" });
   const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
-  body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, modelRow, bar);
+  const usageTitle = h("div", { class: "picker-title" });
+  const usageList = h("div", { class: "picker-list usage-list" });
+  const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
+  body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, usagePanel, modelRow, bar);
 
   // A click anywhere else — in the island or, through Rust's outside-press,
   // anywhere on the screen — closes the list that is open: the models, the
@@ -591,6 +745,7 @@ export function buildPrompt(
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
     if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
+    if (body.classList.contains("metering") && !inside(usagePanel, usageEl)) closeUsage();
   }
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
@@ -629,23 +784,80 @@ export function buildPrompt(
   let openRouterShown = false;
   let openRouterAsking = false;
 
+  let usageLineShown: UsageLine | null = null;
+
   function drawUsage(now = Date.now()) {
     const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now);
-    // The countdowns move once a minute: the line is redrawn when they do.
-    const key = line ? `${line.text}\t${line.title}\t${line.color}\t${Math.floor(now / 60_000)}` : "";
+    // The countdowns move once a minute: the ring and its menu are redrawn when they do.
+    const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
     usageKey = key;
+    usageLineShown = line;
     usageEl.style.display = line ? "" : "none";
+    if (!line) closeUsage();
     usageSetup = Boolean(line?.setup);
     usageEl.classList.toggle("setup", usageSetup);
-    usageText.textContent = line?.text ?? "";
-    usageEl.title = line?.title ?? "";
-    usageDot.style.display = line?.color ? "" : "none";
-    usageDot.style.background = line?.color ?? "";
+    usageEl.title = line ? [line.text, line.title].filter(Boolean).join("\n") : "";
+    usageEl.setAttribute("aria-label", line?.text ?? "");
+    usageRing.set(line?.pct ?? null, line?.color ?? null);
+    if (body.classList.contains("metering")) drawUsageMenu();
+  }
+
+  /** The menu: each limit with how much is used, its bar and when it resets. */
+  function drawUsageMenu() {
+    const line = usageLineShown;
+    usageTitle.textContent = line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
+    clear(usageList);
+    if (!line) return;
+    if (line.rows.length === 0) {
+      usageList.append(h("div", { class: "picker-status", text: line.text }));
+      return;
+    }
+    for (const [i, row] of line.rows.entries()) {
+      const fill = h("i", { class: "usage-fill" });
+      fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
+      fill.style.background = row.pct == null ? "" : planColor(row.pct);
+      usageList.append(h("div", { class: "usage-row" },
+        h("div", { class: "usage-row-head" },
+          h("span", { class: "usage-label", text: row.label }),
+          h("span", { class: "usage-value", text: row.value })),
+        h("span", { class: "usage-bar" }, fill),
+        row.reset ? h("span", { class: "usage-reset", text: row.reset }) : null,
+        // How to get the 5 hours up to date: under them, where it is seen.
+        i === 0 && line.note ? h("span", { class: "usage-note", text: line.note }) : null,
+      ));
+    }
+  }
+
+  function openUsage() {
+    // Asked of Anthropic when turned on (at most every 3 minutes).
+    if (State.settings.chatProvider === "claude-code") refreshClaudePlanOnline();
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeScreen();
+    closePermissions();
+    drawUsageMenu();
+    body.classList.add("metering");
+    usageEl.classList.add("open");
+    panelChanged();
+  }
+
+  function closeUsage() {
+    if (!body.classList.contains("metering")) return;
+    body.classList.remove("metering");
+    usageEl.classList.remove("open");
+    panelChanged();
   }
 
   usageEl.addEventListener("click", () => {
-    if (usageSetup && !sending) openSettings();
+    if (sending) return;
+    // Without the relay there is nothing to show yet: the ring leads to Settings.
+    if (usageSetup) {
+      openSettings();
+      return;
+    }
+    if (body.classList.contains("metering")) closeUsage();
+    else openUsage();
   });
 
   function keepUsage(u: ChatUsage | null | undefined) {
@@ -721,7 +933,7 @@ export function buildPrompt(
     closeHistory();
     closeScreen();
     editing = message.id;
-    input.value = message.content;
+    setInput(message.content);
     Sound.play("blip");
     renderedCount = -1;
     State.notify();
@@ -732,7 +944,7 @@ export function buildPrompt(
   function cancelEdit() {
     if (editing == null) return;
     editing = null;
-    input.value = "";
+    setInput("");
     Sound.play("pop");
     renderedCount = -1;
     State.notify();
@@ -822,6 +1034,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
+    closeUsage();
     drawPermissions();
     body.classList.add("authorizing");
     permBtn.classList.add("open");
@@ -932,6 +1145,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closePermissions();
+    closeUsage();
     body.classList.add("screening");
     screenBtn.classList.add("open");
     panelChanged();
@@ -1071,7 +1285,15 @@ export function buildPrompt(
       historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noPastChats) }));
       return;
     }
-    for (const c of chats) {
+    const query = historySearch.value.trim();
+    const rows: { chat: SavedChat; snippet?: HTMLElement }[] = query
+      ? searchChats(chats, query).map((hit) => ({ chat: hit.chat, snippet: snippetOf(hit) }))
+      : chats.map((chat) => ({ chat }));
+    if (query && rows.length === 0) {
+      historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noMatch) }));
+      return;
+    }
+    for (const { chat: c, snippet } of rows) {
       const remove = h("button", { class: "history-delete", title: tl(STRINGS.deleteChat) }, svg(ICONS.trash, 12, { stroke: 1.6 }));
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
@@ -1079,10 +1301,11 @@ export function buildPrompt(
         Sound.play("pop");
         drawHistory();
       });
+      const name = h("span", { class: "picker-model-name", text: c.title || "…" });
       const row = h(
         "div",
         { class: c.id === State.chatId ? "picker-model history-row on" : "picker-model history-row", title: c.title },
-        h("span", { class: "picker-model-name", text: c.title || "…" }),
+        snippet ? h("span", { class: "history-text" }, name, snippet) : name,
         h("span", { class: "history-date", text: new Date(c.updatedAt).toLocaleDateString() }),
         remove,
       );
@@ -1090,6 +1313,34 @@ export function buildPrompt(
       historyList.append(row);
     }
   }
+
+  /** The passage that matched, with the match lit (text nodes only, never markup). */
+  function snippetOf(hit: ChatHit): HTMLElement {
+    const [a, b] = hit.match;
+    return h("span", { class: "history-snippet" },
+      hit.snippet.slice(0, a),
+      h("mark", { text: hit.snippet.slice(a, b) }),
+      hit.snippet.slice(b));
+  }
+
+  historySearch.addEventListener("input", () => drawHistory());
+  historySearch.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    e.stopPropagation(); // Escape here clears the search, not the island
+    if (key === "Escape") {
+      e.preventDefault();
+      if (historySearch.value) {
+        historySearch.value = "";
+        drawHistory();
+      } else closeHistory();
+    } else if (key === "Enter") {
+      e.preventDefault();
+      // Enter opens the first chat found.
+      const query = historySearch.value.trim();
+      const first = query ? searchChats(loadChats(), query)[0]?.chat : loadChats()[0];
+      if (first) openChat(first);
+    }
+  });
 
   function openChat(c: SavedChat) {
     if (sending) return;
@@ -1113,7 +1364,7 @@ export function buildPrompt(
 
   function newChat() {
     if (sending) return;
-    if (editing != null) input.value = "";
+    if (editing != null) setInput("");
     editing = null;
     State.startChat();
     State.droppedFile = null;
@@ -1144,7 +1395,7 @@ export function buildPrompt(
         start(STRINGS.askFile, () => void attach()),
         start(STRINGS.lookScreen, () => openScreen()),
         start(STRINGS.writeMessage, () => {
-          input.value = t(STRINGS.writeMessageStart);
+          setInput(t(STRINGS.writeMessageStart));
           void Bridge.focusWindow(true);
           window.setTimeout(() => {
             input.focus();
@@ -1233,10 +1484,13 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeScreen();
     closePermissions();
+    closeUsage();
+    historySearch.value = "";
     drawHistory();
     body.classList.add("browsing");
     historyBtn.classList.add("open");
     panelChanged();
+    historySearch.focus();
   });
 
   modelBtn.addEventListener("click", () => {
@@ -1292,7 +1546,7 @@ export function buildPrompt(
     const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
     if (timer && timerMs != null) {
-      input.value = "";
+      setInput("");
       compactTimer(timerMs, timer[2]);
       Sound.play("blip");
       return;
@@ -1300,7 +1554,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
-    input.value = "";
+    setInput("");
     sending = true;
     stopping = false;
     drawModelButton();
@@ -1425,8 +1679,10 @@ export function buildPrompt(
   // The field stays open while an answer is written: the next question can be
   // typed, and goes with Enter once the answer is done (or stopped).
   input.addEventListener("keydown", (e) => {
-    const key = (e as KeyboardEvent).key;
-    if (key === "Enter") {
+    const ke = e as KeyboardEvent;
+    const key = ke.key;
+    // Shift+Enter is a new line; Enter while an IME composes is the IME's.
+    if (key === "Enter" && !ke.shiftKey && !ke.isComposing) {
       e.preventDefault();
       void submit();
     } else if (key === "Escape" && picker.isOpen) {
@@ -1453,7 +1709,7 @@ export function buildPrompt(
       const ask = State.chatAsk;
       if (ask && !sending) {
         State.chatAsk = null;
-        input.value = ask;
+        setInput(ask);
         window.setTimeout(() => void submit(), 0);
       }
       if (State.settings.chatShareExplorer !== sharesExplorer) {
@@ -1473,7 +1729,16 @@ export function buildPrompt(
         // Something is already attached: the ways to start make room for it.
         body.classList.toggle("has-context", chipKey !== "");
         clear(chipRow);
-        if (wantChip) chipRow.append(contextChip(wantChip));
+        // A dropped or pasted file: its × takes it out before it is sent.
+        if (wantChip) {
+          chipRow.append(screenChip(wantChip, file?.path ?? wantChip, () => {
+            if (sending) return;
+            State.droppedFile = null;
+            if (State.promptContext?.kind === "file") State.promptContext = null;
+            Sound.play("pop");
+            State.notify();
+          }));
+        }
         for (const c of extra) {
           chipRow.append(
             screenChip(

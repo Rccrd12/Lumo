@@ -103,14 +103,22 @@ export function withModel(settings: Settings, provider: ProviderId, model: strin
 }
 
 /**
- * The chips of the picker: every cloud provider (one without a key says so
- * when picked), and a model server once it is connected — or while it is the
- * active one, so the picker never hides where the chat goes.
+ * The chips of the picker. With `ready` (chat.rs chat_providers: the providers
+ * with a key in the credential store, and the CLIs installed with Lumo's hooks
+ * in place) only those, and a model server once its address is set; the active
+ * provider stays too, so the picker never hides where the chat goes. Without
+ * it (not known yet, or no Rust to ask) every cloud provider shows, as before.
  */
-export function visibleProviders(settings: Settings): ProviderDef[] {
-  return PROVIDERS.filter(
-    (p) => !p.urlField || settings[p.urlField] !== "" || settings.chatProvider === p.id,
-  );
+export function visibleProviders(settings: Settings, ready: ReadonlySet<string> | null = null): ProviderDef[] {
+  return PROVIDERS.filter((p) => {
+    if (p.urlField) return settings[p.urlField] !== "" || settings.chatProvider === p.id;
+    return ready == null || ready.has(p.id) || settings.chatProvider === p.id;
+  });
+}
+
+/** Whether any provider at all is set up, by the same rules (the active one aside). */
+export function anyProviderReady(settings: Settings, ready: ReadonlySet<string>): boolean {
+  return PROVIDERS.some((p) => (p.urlField ? settings[p.urlField] !== "" : ready.has(p.id)));
 }
 
 /** The model to keep once the list arrives: the saved one if offered, else a sensible one. */

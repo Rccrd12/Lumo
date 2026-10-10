@@ -1,6 +1,6 @@
-// What the chat's provider has left, for the quiet line next to the model
-// picker (Settings → Chat → "Show remaining usage in the chat"). No DOM, so it
-// can be tested on its own; views/chat.ts draws it.
+// What the chat's provider has left, for the ring next to the model picker
+// (Settings → Chat → "Show remaining usage in the chat") and the menu it
+// opens. No DOM, so it can be tested on its own; views/chat.ts draws it.
 //
 // - Claude Code: the Claude plan's 5-hour and weekly limits, from the status
 //   line relay (core/plan.ts), with the same labels and colours as the plan card.
@@ -53,19 +53,43 @@ export const USAGE_TEXT = {
   get notYetTitle() {
     return t("Claude Code reports your plan usage in its terminal sessions; its answers in the chat report it only now and then.");
   },
+  usedPct: (pct: number) => t("{pct}% used", { pct }),
+  resets: (when: string) => t("Resets {when}", { when }),
+  get title() { return t("Usage"); },
+  get askAnthropic() {
+    const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
+    return t("For the 5 hours always up to date, also from VS Code: {path} → Ask Anthropic.", { path });
+  },
   get setup() {
     const path = [t("Settings"), t("Agents"), t("Plan usage")].join(" → ");
     return t("Plan usage: install the relay in {path}", { path });
   },
 };
 
-/** What the line shows. `setup`: a pointer to Settings rather than numbers. */
+/** One limit in the menu: what it is, how much of it is used, when it resets. */
+export interface UsageRow {
+  label: string;
+  /** "42% used", "plenty left", "27.5K / 30K". */
+  value: string;
+  /** Used, 0–100, for the bar; null when not known. */
+  pct: number | null;
+  /** "Resets in 3 h 31", or null. */
+  reset: string | null;
+}
+
+/** What the ring and its menu show. `setup`: a pointer to Settings rather than numbers. */
 export interface UsageLine {
+  /** Everything on one line: the ring's label, and the menu's when it has no rows. */
   text: string;
   title: string;
-  /** The dot's colour; null for no dot. */
+  /** The ring's colour; null for none. */
   color: string | null;
+  /** How full the ring is: the most used of the limits, 0–100; null when not known. */
+  pct: number | null;
+  rows: UsageRow[];
   setup?: boolean;
+  /** A line under the rows: how to have the 5 hours always up to date. */
+  note?: string;
 }
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -103,38 +127,67 @@ function clock(ms: number): string {
 }
 
 function planLine(settings: Settings, plan: PlanUsage | null, now: number): UsageLine {
-  if (!settings.planRelayInstalled) return { text: USAGE_TEXT.setup, title: PLAN_TEXT.claudePillTitle, color: null, setup: true };
-  if (!plan || (!plan.fiveHour && !plan.sevenDay)) {
-    return { text: USAGE_TEXT.notYet, title: USAGE_TEXT.notYetTitle, color: planColor(null) };
+  if (!settings.planRelayInstalled) {
+    return { text: USAGE_TEXT.setup, title: PLAN_TEXT.claudePillTitle, color: null, pct: null, rows: [], setup: true };
   }
-  const part = (label: string, w: PlanWindow, weekly: boolean) => {
-    const left = w.low && w.resetsAt > now ? USAGE_TEXT.plenty(label) : USAGE_TEXT.pctLeft(label, Math.round(100 - effectivePct(w, now)));
-    return `${left} (${resetLabel(w, weekly, now)})`;
-  };
+  if (!plan || (!plan.fiveHour && !plan.sevenDay)) {
+    return { text: USAGE_TEXT.notYet, title: USAGE_TEXT.notYetTitle, color: planColor(null), pct: null, rows: [] };
+  }
   const parts: string[] = [];
-  if (plan.fiveHour) parts.push(part(PLAN_TEXT.fiveHours, plan.fiveHour, false));
-  if (plan.sevenDay) parts.push(part(PLAN_TEXT.week, plan.sevenDay, true));
+  const rows: UsageRow[] = [];
+  const add = (label: string, w: PlanWindow, weekly: boolean) => {
+    const plenty = w.low && w.resetsAt > now;
+    const used = effectivePct(w, now);
+    const left = plenty ? USAGE_TEXT.plenty(label) : USAGE_TEXT.pctLeft(label, Math.round(100 - used));
+    parts.push(`${left} (${resetLabel(w, weekly, now)})`);
+    rows.push({
+      label,
+      value: plenty ? PLAN_TEXT.plentyLeft : USAGE_TEXT.usedPct(Math.round(used)),
+      pct: used,
+      reset: w.resetsAt > now ? USAGE_TEXT.resets(resetLabel(w, weekly, now)) : PLAN_TEXT.resetting,
+    });
+  };
+  if (plan.fiveHour) add(PLAN_TEXT.fiveHours, plan.fiveHour, false);
+  else {
+    // Claude Code leaves the 5-hour window out while it is far from its limit.
+    parts.push(USAGE_TEXT.plenty(PLAN_TEXT.fiveHours));
+    rows.push({ label: PLAN_TEXT.fiveHours, value: PLAN_TEXT.plentyLeft, pct: 0, reset: PLAN_TEXT.onlyNearLimit });
+  }
+  if (plan.sevenDay) add(PLAN_TEXT.week, plan.sevenDay, true);
+  const pct = dominantPct(plan, now);
+  // Without a figure for the 5 hours, Anthropic can be asked (Settings).
+  const noFigure = !plan.fiveHour || (plan.fiveHour.low ?? false);
   return {
     text: parts.join(" · "),
     title: `${PLAN_TEXT.claudeTitle} · ${ageLabel(plan.updatedAt, now)}`,
-    color: planColor(dominantPct(plan, now)),
+    color: planColor(pct),
+    pct,
+    rows,
+    ...(noFigure && !settings.planUsageOnline ? { note: USAGE_TEXT.askAnthropic } : {}),
   };
 }
 
 function rateLine(seen: SeenUsage, now: number): UsageLine | null {
   const parts: string[] = [];
   const resets: string[] = [];
+  const rows: UsageRow[] = [];
   for (const [q, label] of [[seen.tokens, USAGE_TEXT.tokens], [seen.requests, USAGE_TEXT.requests]] as const) {
     if (!q || !isNum(q.remaining)) continue;
     parts.push(label(quotaText(q)));
-    if (isNum(q.resetsAt) && q.resetsAt > now) resets.push(`${label(quotaText(q))} — ${USAGE_TEXT.resetsAt(clock(q.resetsAt))}`);
+    const reset = isNum(q.resetsAt) && q.resetsAt > now ? USAGE_TEXT.resetsAt(clock(q.resetsAt)) : null;
+    if (reset) resets.push(`${label(quotaText(q))} — ${reset}`);
+    const pct = usedPct(q);
+    rows.push({ label: label(quotaText(q)), value: pct == null ? "" : USAGE_TEXT.usedPct(Math.round(pct)), pct, reset });
   }
   if (parts.length === 0) return null;
   const pcts = [usedPct(seen.tokens), usedPct(seen.requests)].filter(isNum);
+  const pct = pcts.length ? Math.max(...pcts) : null;
   return {
     text: parts.join(" · "),
     title: [...resets, ageLabel(seen.at, now)].join("\n"),
-    color: pcts.length ? planColor(Math.max(...pcts)) : null,
+    color: pct == null ? null : planColor(pct),
+    pct,
+    rows,
   };
 }
 
@@ -145,9 +198,13 @@ function creditsLine(seen: SeenUsage, now: number): UsageLine | null {
   if (isNum(c.limit)) {
     const left = isNum(c.remaining) ? c.remaining : Math.max(0, c.limit - (c.used ?? 0));
     const pct = c.limit > 0 ? Math.min(100, Math.max(0, 100 - (left / c.limit) * 100)) : 100;
-    return { text: USAGE_TEXT.creditsLeft(`${dollars(left)} / ${dollars(c.limit)}`), title, color: planColor(pct) };
+    const text = USAGE_TEXT.creditsLeft(`${dollars(left)} / ${dollars(c.limit)}`);
+    return { text, title, color: planColor(pct), pct, rows: [{ label: text, value: USAGE_TEXT.usedPct(Math.round(pct)), pct, reset: null }] };
   }
-  if (isNum(c.used)) return { text: USAGE_TEXT.creditsUsed(dollars(c.used)), title, color: null };
+  if (isNum(c.used)) {
+    const text = USAGE_TEXT.creditsUsed(dollars(c.used));
+    return { text, title, color: null, pct: null, rows: [{ label: text, value: "", pct: null, reset: null }] };
+  }
   return null;
 }
 

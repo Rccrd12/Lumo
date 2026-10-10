@@ -64,7 +64,7 @@ test("Antigravity CLI needs no key, and has no effort to pick: its model's name 
   assert.equal($(".effort-slider"), null);
 });
 
-test("Claude Code's effort is a slider from faster to smarter, with Auto beside it", async () => {
+test("Claude Code's effort is one row: a filled slider, its level, and Auto at the end", async () => {
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   view.sync();
   $(".model-btn").fire("click");
@@ -73,21 +73,24 @@ test("Claude Code's effort is a slider from faster to smarter, with Auto beside 
   assert.equal($(".effort-value").textContent, "Auto");
   assert.ok($(".effort-auto").classList.contains("on"));
   assert.ok($(".effort-track").classList.contains("auto"), "no knob while Auto");
-  assert.equal($(".effort-slider").getAttribute("max"), "4", "low, medium, high, extra high, max");
+  assert.equal($(".effort-slider").getAttribute("aria-valuemax"), "4", "low, medium, high, extra high, max");
   assert.equal($(".effort-ticks").children.length, 5);
-  // The ends sit beside the slider, on its row: the block stays two rows high.
-  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-end", "effort-track", "effort-end"]);
-  assert.deepEqual([0, 2].map((i) => $(".effort-row").children[i].textContent), ["Faster", "Smarter"]);
-  assert.equal($(".picker-efforts").children.length, 2);
+  // One row: no "Effort" label above, no Faster or Smarter; Auto at the end.
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-track", "effort-value", "effort-auto"]);
+  assert.doesNotMatch($(".picker-efforts").textContent, /Faster|Smarter|Effort/);
+  assert.equal($(".picker-efforts").children.length, 1);
 
+  // From the keyboard: End is the highest level, the knob goes to the end.
   const slider = $(".effort-slider");
-  slider.value = "4";
-  slider.fire("change");
+  slider.fire("keydown", { key: "End" });
   assert.equal(State.settings.chatEffort, "max");
   assert.equal(sent("save_settings").at(-1).settings.chatEffort, "max");
   assert.equal($(".effort-value").textContent, "Max");
   assert.ok(!$(".effort-track").classList.contains("auto"));
-  assert.equal($(".effort-slider").value, "4");
+  assert.equal(slider.style["--at"], "1");
+  slider.fire("keydown", { key: "ArrowLeft" });
+  assert.equal(State.settings.chatEffort, "xhigh");
+  assert.equal(slider.style["--at"], "0.75");
 
   $(".effort-auto").fire("click");
   assert.equal(State.settings.chatEffort, "");
@@ -135,6 +138,27 @@ test("a provider without a key is never asked for its models", async () => {
   assert.deepEqual(sent("secret_present"), [{ key: "anthropic-api-key" }]);
   assert.deepEqual(sent("chat_models"), []);
   assert.match($(".picker-status").textContent, /No API key/);
+});
+
+test("only the providers set up show: no Anthropic without its key", async () => {
+  answers.chat_providers = ["claude-code", "antigravity-cli"];
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  answers.chat_models = [{ id: "default", label: "Default" }];
+  view.sync();
+  $(".model-btn").fire("click");
+  await flush();
+  assert.deepEqual(chips(), ["Claude Code", "Antigravity CLI"]);
+  // Nothing set up: a pointer to Settings instead of chips and models.
+  $(".model-btn").fire("click");
+  answers.chat_providers = [];
+  $(".model-btn").fire("click");
+  await flush();
+  assert.match($(".picker-status").textContent, /No provider is set up yet/);
+  assert.ok($(".picker.models").classList.contains("empty"));
+  $(".picker-link").fire("click");
+  answers.chat_providers = null;
+  $(".model-btn").fire("click");
+  await flush();
 });
 
 test("with a key, the models are listed and picking one saves it", async () => {
@@ -202,9 +226,9 @@ test("a local answer streams into one reply, then the finished text replaces it"
 
 // ── Stop, copy, edit ──────────────────────────────────────────────────────────
 
-/** A key typed in the chat field. */
-function type(key) {
-  const event = { key, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {} };
+/** A key typed in the chat field (`extra`: shiftKey…). */
+function type(key, extra = {}) {
+  const event = { key, defaultPrevented: false, preventDefault() { this.defaultPrevented = true; }, stopPropagation() {}, ...extra };
   for (const fn of $(".chat-input").listeners.get("keydown")) fn(event);
   return event;
 }
@@ -223,6 +247,26 @@ async function ask(text) {
   await flush();
   view.sync();
 }
+
+test("Shift+Enter starts a new line instead of sending; Enter sends it all", async () => {
+  answers.chat_send = { text: "ok", turns: 2 };
+  const input = $(".chat-input");
+  assert.equal(input.tagName, "TEXTAREA");
+  input.value = "first line";
+  const shifted = type("Enter", { shiftKey: true });
+  assert.equal(shifted.defaultPrevented, false, "the field adds the new line itself");
+  await flush();
+  assert.deepEqual(sent("chat_send"), []);
+  input.value = "first line\nsecond line";
+  type("Enter");
+  await flush();
+  assert.equal(sent("chat_send").length, 1);
+  assert.equal(sent("chat_send")[0].query, "first line\nsecond line");
+  // While an IME composes, Enter is the IME's.
+  input.value = "かな";
+  const composing = type("Enter", { isComposing: true });
+  assert.equal(composing.defaultPrevented, false);
+});
 
 const rows = () => view.el.find(".chat-row");
 const editOf = (i) => rows()[i].find(".msg-action")[1];

@@ -32,6 +32,7 @@ mod migrate;
 mod net;
 mod openai_compat;
 mod pipe;
+mod plan_usage;
 mod platform;
 mod recap;
 mod screen;
@@ -105,6 +106,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
+            || current.island_edge_gap != settings.island_edge_gap
             || activities::room_of(&current) != activities::room_of(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
@@ -236,11 +238,19 @@ pub(crate) fn update_island(app: &AppHandle, change: impl FnOnce(&mut Settings))
 /// A drag from the island's top (or Alt + drag): it follows the mouse until
 /// the button is let go, then goes to the nearest edge.
 #[tauri::command]
-fn island_drag(app: AppHandle) {
+fn island_drag(app: AppHandle, island: Option<(f64, f64, f64, f64)>) {
     std::thread::spawn(move || {
         let shared = app.state::<Shared>();
         let (pref, start) = placement(&shared);
-        let rect = *shared.gate.rect.lock().unwrap();
+        // The island itself, as the page drew it: the rect that takes the
+        // mouse also holds the live activities beside the open island, and
+        // its centre is not the island's.
+        let rect = match island {
+            Some((x, y, w, h)) if w > 0.0 && h > 0.0 && [x, y, w, h].iter().all(|v| v.is_finite()) => {
+                island::IslandRect { x, y, w, h }
+            }
+            _ => *shared.gate.rect.lock().unwrap(),
+        };
         let Some(dropped) = island::drag(&app, &pref, start, rect) else { return };
         let p = dropped.placement;
         update_island(&app, |s| {
@@ -515,6 +525,16 @@ async fn codex_plan_usage() -> Option<serde_json::Value> {
     tauri::async_runtime::spawn_blocking(codex_plan::read).await.ok().flatten()
 }
 
+/// The Claude plan's usage asked of Anthropic with Claude Code's sign-in
+/// (plan_usage.rs). Only when turned on in Settings; never on its own.
+#[tauri::command]
+async fn plan_usage_fetch(shared: State<'_, Shared>) -> Result<serde_json::Value, String> {
+    if !shared.settings.lock().unwrap().plan_usage_online {
+        return Err("off".into());
+    }
+    plan_usage::fetch().await
+}
+
 #[tauri::command]
 fn approval_decision(app: AppHandle, request_id: String, decision: String) {
     recap::record_decision(&app, &request_id, &decision);
@@ -745,7 +765,45 @@ async fn paste_copied_file() -> Result<Option<DroppedFile>, String> {
     tauri::async_runtime::spawn_blocking(clipboard::paste_copied_file).await.map_err(|e| e.to_string())?
 }
 
+/// The text on the clipboard, for the right-click menu's Paste.
+#[tauri::command]
+async fn clipboard_text() -> Option<String> {
+    tauri::async_runtime::spawn_blocking(clipboard::text).await.ok().flatten()
+}
+
 /// The island may only ask whether a key exists — never read it.
+/// The chat providers that are set up, for the model picker: a key in the
+/// credential store, or the CLI on this computer with Lumo's hooks in place
+/// (Claude Code, Antigravity CLI). The model servers are the page's to judge
+/// (their address in the settings). Async: the credential store and the disk
+/// may take a moment, and the main thread is not kept waiting.
+#[tauri::command]
+async fn chat_providers() -> Vec<String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut ready = Vec::new();
+        for (id, key) in [
+            ("anthropic", "anthropic-api-key"),
+            ("google", "google-api-key"),
+            ("openai", "openai-api-key"),
+            ("openrouter", "openrouter-api-key"),
+        ] {
+            if secrets::present(key) {
+                ready.push(id.to_string());
+            }
+        }
+        if !platform::claude_candidates().is_empty() && hooks::status().installed {
+            ready.push("claude-code".to_string());
+        }
+        let antigravity_hooks = agents::list().iter().any(|a| a.id == "antigravity" && a.installed);
+        if !platform::agy_candidates().is_empty() && antigravity_hooks {
+            ready.push("antigravity-cli".to_string());
+        }
+        ready
+    })
+    .await
+    .unwrap_or_default()
+}
+
 #[tauri::command]
 fn secret_present(key: String) -> bool {
     secrets::present(&key)
@@ -963,6 +1021,7 @@ pub fn run() {
             status_line_preview,
             status_line_apply,
             codex_plan_usage,
+            plan_usage_fetch,
             approval_decision,
             approval_answer,
             approval_ack,
@@ -1002,6 +1061,7 @@ pub fn run() {
             media::media_now,
             activities::activities_resize,
             activities::activities_show,
+            activities::activities_prepare,
             activities::activities_drag,
             activities::activities_window_resize,
             activities::activities_focus,
@@ -1010,7 +1070,9 @@ pub fn run() {
             ingest_file,
             paste_file,
             paste_copied_file,
+            clipboard_text,
             secret_present,
+            chat_providers,
             secret_set,
             secret_clear,
             refresh_integration,

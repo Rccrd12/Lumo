@@ -80,6 +80,8 @@
   flex-direction: column;
   gap: 8px;
   padding: 6px 10px 12px;
+  /* The panel's own corners: a card scrolled to the bottom stays inside them. */
+  border-radius: 0 0 22px 22px;
   scrollbar-width: thin;
   scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
 }
@@ -331,9 +333,36 @@
   background: rgba(255, 255, 255, 0.07);
 }
 
+/* The sender, and the eye that puts the email away. */
+.activities .act-mail-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  margin-right: -2px;
+}
+
 .activities .act-chip.eye {
-  margin-left: auto;
-  padding: 0 7px;
+  flex: none;
+  height: 20px;
+  padding: 0 6px;
+}
+
+/* Summarize and Draft a reply on one line in every language: each as wide as
+   its words, cut with an ellipsis only on the narrowest panel. */
+.activities .act-mail-actions .act-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  display: block;
+  line-height: 22px;
+  text-align: center;
+}
+
+.activities .act-mail-actions .act-chip:last-child {
+  flex-grow: 1;
 }
 
 /* Grips on its free edges and corners: dragging them resizes it. */

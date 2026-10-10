@@ -8,6 +8,9 @@ use std::io::ErrorKind;
 use std::path::{Path, PathBuf};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 
+/// The right-click menu's items out of the box (src/core/context-menu.ts).
+pub const DEFAULT_CONTEXT_MENU: &[&str] = &["newChat", "pin", "sound", "activities", "center", "settings"];
+
 /// A field the file lacks takes its value from `Default`, so a settings.json
 /// written by an older build still loads, whatever has been added since.
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -24,6 +27,9 @@ pub struct Settings {
     pub screen: String,
     /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
     pub island_zoom: f64,
+    /// How far the island sits from the edge of the screen it is docked to:
+    /// "none", "light" (the usual 10 px), "medium" or "wide" (island.rs edge_gap_of).
+    pub island_edge_gap: String,
     /// The display edge the island hangs from ("top", "bottom", "left",
     /// "right") and how far from its middle, in logical pixels. Owned by the
     /// Rust side (island.rs) — what a webview sends back is ignored.
@@ -77,6 +83,18 @@ pub struct Settings {
     /// Show the Codex plan pill (5 h / weekly limits from `codex app-server`).
     /// Off by default; nothing is installed for it.
     pub show_codex_plan_in_notch: bool,
+    /// Ask Anthropic for the Claude plan's usage with Claude Code's sign-in
+    /// (plan_usage.rs). Off unless turned on.
+    pub plan_usage_online: bool,
+    /// Simple permission requests (reads, commands that only look) are
+    /// answered on the closed island, without opening it (src/core/approvals.ts).
+    pub quick_approvals: bool,
+    /// The live activities beside the island are as tall as it, and follow it
+    /// when it is resized (Settings → Island).
+    pub activities_follow_island: bool,
+    /// What the right-click menu offers besides Refresh and the text actions,
+    /// in its order (src/core/context-menu.ts MENU_ITEMS).
+    pub context_menu: Vec<String>,
     /// Who the chat talks to: "anthropic", a cloud provider of
     /// openai_compat.rs ("openai", "google", "openrouter"), or a model server
     /// of local_chat.rs ("ollama", "lmstudio", "custom"). Picked in the chat view.
@@ -201,6 +219,7 @@ impl Default for Settings {
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
             island_zoom: crate::island::DEFAULT_ZOOM,
+            island_edge_gap: "light".into(),
             island_dock: "top".into(),
             island_offset: 0.0,
             island_float: 0.0,
@@ -226,6 +245,10 @@ impl Default for Settings {
             show_plan_in_notch: false,
             plan_relay_installed: false,
             show_codex_plan_in_notch: false,
+            plan_usage_online: false,
+            quick_approvals: true,
+            activities_follow_island: true,
+            context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
@@ -511,6 +534,7 @@ mod tests {
   "mainPill": "agent_cursor",
   "screen": "cursor",
   "islandZoom": 1.3,
+  "islandEdgeGap": "wide",
   "islandDock": "left",
   "islandOffset": -200.5,
   "islandFloat": 240.0,
@@ -536,6 +560,10 @@ mod tests {
   "showPlanInNotch": true,
   "planRelayInstalled": true,
   "showCodexPlanInNotch": true,
+  "planUsageOnline": true,
+  "quickApprovals": false,
+  "activitiesFollowIsland": false,
+  "contextMenu": ["settings"],
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
@@ -972,6 +1000,7 @@ mod tests {
                 "mainPill",
                 "screen",
                 "islandZoom",
+                "islandEdgeGap",
                 "islandDock",
                 "islandOffset",
                 "islandFloat",
@@ -997,6 +1026,10 @@ mod tests {
                 "showPlanInNotch",
                 "planRelayInstalled",
                 "showCodexPlanInNotch",
+                "planUsageOnline",
+                "quickApprovals",
+                "activitiesFollowIsland",
+                "contextMenu",
                 "chatProvider",
                 "chatModels",
                 "chatEffort",

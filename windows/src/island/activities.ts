@@ -4,8 +4,9 @@
 // page; dragged by its top bar it comes off into a window of its own
 // (activities.html, activities.rs), put wherever it is left, and joins the
 // island again when dropped against its side. Its grips resize it. Its "–"
-// folds it into an icon right of the "+" in the island's top bar, which brings
-// it back.
+// folds it into an icon left of the "+" in the island's top bar, which brings
+// it back. Coming off and joining again, one is drawn before the other goes
+// (activities.rs), so they never blink.
 //
 // `ActivitiesView` only draws, from an `ActivitiesData`, and says what was
 // clicked (`ActivitiesAction`); `IslandActivities` holds the data, in the
@@ -30,6 +31,8 @@ import { language } from "../i18n/i18n";
 export { ACTIVITIES_GAP, ACTIVITIES_TALL, ACTIVITIES_W } from "../views/activities-view";
 
 const CALENDAR_EVERY_MS = 15 * 60_000;
+/** The longest their own window may take to say it has drawn them. */
+const HAND_OFF_MS = 400;
 const CALENDAR_STALE_MS = 5 * 60_000;
 const DAY = 86_400_000;
 
@@ -76,6 +79,11 @@ export const Calendar = {
   },
 };
 
+/** After the next frame has been put on screen. */
+function afterPaint(fn: () => void) {
+  requestAnimationFrame(() => requestAnimationFrame(() => fn()));
+}
+
 // ── Ignored emails ───────────────────────────────────────────────────────────
 
 const IGNORED_KEY = "lumo.mailIgnored";
@@ -113,6 +121,8 @@ export interface IslandActivitiesHost {
   /** The chat, where an email's question was just put. */
   openChat(): void;
   openSettings(): void;
+  /** Everything asked again (the right-click menu's Refresh in their own window). */
+  refreshAll(): void;
   /** Where the folded icon sits (or will), in page pixels. */
   iconPoint(): { x: number; y: number } | null;
   /** The panel can be moved and resized (the cursor poll). */
@@ -127,6 +137,10 @@ export class IslandActivities {
   private windowShown = false;
   private sentKey = "";
   private unfolding = false;
+  /** Off to their own window: drawn here until that window says it has drawn them. */
+  private handingOff: number | null = null;
+  /** Their own window was asked for ahead (activities_prepare). */
+  private prepared = false;
 
   private host: IslandActivitiesHost;
 
@@ -142,7 +156,7 @@ export class IslandActivities {
       focus: () => void Bridge.focusWindow(true),
       iconPoint: () => host.iconPoint(),
       movable: host.movable,
-    }, () => (State.settings.activitiesSide === "right" ? "right" : "left"));
+    }, () => (State.settings.activitiesSide === "right" ? "right" : "left"), () => this.followsIsland);
     this.view.el.id = "activities";
     void onEvent<ActivitiesAction>("activities-action", (a) => this.act(a));
     void onEvent<null>("activities-hello", () => {
@@ -154,10 +168,10 @@ export class IslandActivities {
       State.settings = { ...State.settings, activitiesWidth: size.width, activitiesHeight: size.height };
       host.changed();
     });
-    void onEvent<string>("activities-joined", () => {
-      Sound.play("pop");
-      this.unfolding = true;
-    });
+    // Joined the island again: drawn here at once, where their window slid to.
+    void onEvent<string>("activities-joined", () => Sound.play("pop"));
+    // Their own window has drawn them: this page lets go of them.
+    void onEvent<null>("activities-painted", () => this.handedOff());
     Calendar.start();
   }
 
@@ -173,6 +187,11 @@ export class IslandActivities {
   get width(): number {
     const w = State.settings.activitiesWidth;
     return Number.isFinite(w) && w > 0 ? Math.min(480, Math.max(220, w)) : ACTIVITIES_W;
+  }
+
+  /** As tall as the island beside it, following its resizes (not in their own window). */
+  get followsIsland(): boolean {
+    return State.settings.activitiesFollowIsland !== false && !this.detached;
   }
 
   get pickedHeight(): number {
@@ -228,6 +247,9 @@ export class IslandActivities {
       case "settings":
         this.host.openSettings();
         break;
+      case "refresh":
+        this.host.refreshAll();
+        break;
       case "fold":
         State.settings = { ...State.settings, activitiesFolded: true };
         void Bridge.saveSettings(State.settings);
@@ -258,30 +280,76 @@ export class IslandActivities {
       el.style.width = `${this.width}px`;
       el.style.height = `${height}px`;
     }
+    const inWindow = show && this.detached;
+    // From beside the island to their own window, or back, while the island
+    // stays open: one is shown before the other goes, with no fade, so there
+    // is never a frame without them.
+    const swap = show && this.windowShown !== inWindow && besideIsland !== this.visible;
     if (besideIsland !== this.visible) {
       this.visible = besideIsland;
-      el.classList.toggle("shown", besideIsland);
       if (besideIsland) {
+        this.cancelHandOff();
+        this.setShown(true, swap);
         Calendar.refreshIfStale();
-        if (this.unfolding) this.view.flyIn();
+        if (this.host.movable && !this.prepared) {
+          this.prepared = true;
+          void Bridge.activitiesPrepare();
+        }
+        if (swap) this.view.reveal();
+        else if (this.unfolding) this.view.flyIn();
         else this.view.reveal();
         this.host.changed();
+      } else if (swap) {
+        // Still drawn here until their window has drawn them.
+        this.view.stop();
+        this.handingOff = window.setTimeout(() => this.handedOff(), HAND_OFF_MS);
       } else {
+        this.cancelHandOff();
+        this.setShown(false, false);
         this.view.stop();
       }
     }
-    const inWindow = show && this.detached;
     if (inWindow !== this.windowShown) {
       this.windowShown = inWindow;
-      void Bridge.activitiesShow(inWindow);
       if (inWindow) {
+        void Bridge.activitiesShow(true);
         Calendar.refreshIfStale();
         this.sentKey = "";
         this.sendToWindow();
-        void emitToWindow("activities", "activities-appear", this.unfolding);
+        void emitToWindow("activities", "activities-appear", { fly: this.unfolding, painted: swap });
+      } else if (swap) {
+        // Back beside the island: their window goes once this page has drawn them.
+        afterPaint(() => {
+          if (!this.windowShown) void Bridge.activitiesShow(false);
+        });
+      } else {
+        void Bridge.activitiesShow(false);
       }
     }
     if (show) this.unfolding = false;
+  }
+
+  /** Shown or hidden beside the island; `instant` without the fade. */
+  private setShown(on: boolean, instant: boolean) {
+    const el = this.view.el;
+    if (instant) el.classList.add("instant");
+    el.classList.toggle("shown", on);
+    if (instant) {
+      void el.offsetWidth;
+      el.classList.remove("instant");
+    }
+  }
+
+  /** Their own window has drawn them (or took too long to say): gone from here, at once. */
+  private handedOff() {
+    if (this.handingOff == null) return;
+    this.cancelHandOff();
+    if (!this.visible) this.setShown(false, true);
+  }
+
+  private cancelHandOff() {
+    if (this.handingOff != null) window.clearTimeout(this.handingOff);
+    this.handingOff = null;
   }
 
   /** Redraws beside the island, or sends their window what changed. */

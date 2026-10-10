@@ -2329,18 +2329,6 @@
    "id": "Tampilkan sisa penggunaan di obrolan",
    "it": "Mostra l'utilizzo rimanente nella chat"
   },
-  "Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
-   "zh-Hans": "在聊天框上方模型名称旁边用一小行显示当前提供商还剩多少：Claude Code 显示你的 Claude 计划的 5 小时和每周限额（需要 {path} 中的中继），Anthropic 和 OpenAI 显示它们随每次回答返回的速率限制，OpenRouter 显示你的密钥额度（在打开聊天时和每次回答后向 OpenRouter 查询）。Google 和本地模型不显示任何内容。",
-   "hi": "चैट बॉक्स के ऊपर मॉडल के नाम के पास एक छोटी लाइन में दिखाता है कि इस्तेमाल हो रहे प्रोवाइडर में कितना बाकी है: Claude Code के लिए आपके Claude प्लान की 5 घंटे और साप्ताहिक सीमाएं ({path} वाले रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट लिमिट भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और हर जवाब के बाद OpenRouter से पूछे जाते हैं। Google या लोकल मॉडल के लिए कुछ नहीं दिखता।",
-   "es": "Muestra lo que le queda al proveedor en uso, en una pequeña línea junto al nombre del modelo encima del cuadro de chat: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y después de cada respuesta. No se muestra nada para Google ni para los modelos locales.",
-   "ar": "يعرض ما تبقى لدى المزوّد المستخدَم، في سطر صغير بجانب اسم النموذج فوق مربع الدردشة: حدود الـ 5 ساعات والحدود الأسبوعية لخطة Claude الخاصة بك مع Claude Code (مع المُرحِّل من {path})، وحدود المعدّل التي يعيدها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter الخاص بك، الذي يُطلب من OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
-   "fr": "Indique ce qu'il reste au fournisseur utilisé, dans une petite ligne à côté du nom du modèle au-dessus de la zone de chat : les limites sur 5 heures et à la semaine de votre forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de votre clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après chaque réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
-   "bn": "চ্যাট বক্সের উপরে মডেলের নামের পাশে একটি ছোট লাইনে দেখায় ব্যবহৃত প্রোভাইডারের কতটা বাকি আছে: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সাথে Anthropic ও OpenAI যে রেট লিমিট পাঠায়, এবং আপনার OpenRouter কী-এর ক্রেডিট, যা চ্যাট খোলার সময় ও প্রতিটি উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া হয়। Google বা লোকাল মডেলের জন্য কিছু দেখানো হয় না।",
-   "pt-BR": "Mostra o que resta ao provedor em uso, numa linha pequena ao lado do nome do modelo acima da caixa de chat: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e depois de cada resposta. Nada é mostrado para o Google nem para os modelos locais.",
-   "ru": "Показывает, сколько осталось у используемого провайдера, в небольшой строке рядом с названием модели над полем чата: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI возвращают с каждым ответом, и кредиты вашего ключа OpenRouter, которые запрашиваются у OpenRouter при открытии чата и после каждого ответа. Для Google и локальных моделей ничего не показывается.",
-   "id": "Menampilkan sisa milik penyedia yang dipakai, dalam satu baris kecil di samping nama model di atas kotak obrolan: batas 5 jam dan mingguan paket Claude Anda untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter Anda, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah setiap jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal.",
-   "it": "Mostra quanto resta al provider in uso, in una piccola riga accanto al nome del modello sopra il riquadro della chat: i limiti di 5 ore e settimanali del tuo piano Claude per Claude Code (con il relay di {path}), i limiti di frequenza che Anthropic e OpenAI restituiscono con ogni risposta, e i crediti della tua chiave OpenRouter, chiesti a OpenRouter all'apertura della chat e dopo ogni risposta. Non viene mostrato nulla per Google né per i modelli locali."
-  },
   "Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.": {
    "zh-Hans": "在岛的顶栏显示你的 Claude 套餐用量（5 小时和每周限额）。Lumo 会在 ~/.claude/settings.json 中添加一个状态栏中继。如果你已有状态栏，它会照常工作。仅限 Pro 和 Max 套餐。",
    "hi": "आइलैंड के हेडर में आपके Claude प्लान का उपयोग (5 घंटे और साप्ताहिक सीमा) दिखाता है। Lumo ~/.claude/settings.json में एक स्टेटस लाइन रिले जोड़ता है। अगर आपके पास पहले से स्टेटस लाइन है, तो वह पहले की तरह चलती रहेगी। केवल Pro और Max प्लान।",
@@ -5143,18 +5131,6 @@
    "id": "Memakai akun Google Anda. Tidak perlu kunci.",
    "it": "Usa il tuo account Google. Nessuna chiave necessaria."
   },
-  "For personal Google accounts, Gemini CLI was replaced by Antigravity CLI: install the Antigravity hooks instead. Work accounts can keep Gemini CLI.": {
-   "zh-Hans": "对于个人 Google 账号，Gemini CLI 已被 Antigravity CLI 取代：请改为安装 Antigravity hooks。工作账号可以继续使用 Gemini CLI。",
-   "hi": "निजी Google खातों के लिए Gemini CLI की जगह Antigravity CLI आ गया है: इसके बजाय Antigravity hooks इंस्टॉल करें। ऑफ़िस खाते Gemini CLI रख सकते हैं।",
-   "es": "En las cuentas personales de Google, Antigravity CLI sustituyó a Gemini CLI: instala los hooks de Antigravity. Las cuentas de trabajo pueden seguir con Gemini CLI.",
-   "ar": "في حسابات Google الشخصية، حلّ Antigravity CLI محلّ Gemini CLI: ثبّت hooks Antigravity بدلًا منها. يمكن لحسابات العمل الاستمرار في استخدام Gemini CLI.",
-   "fr": "Pour les comptes Google personnels, Gemini CLI a été remplacé par Antigravity CLI : installe plutôt les hooks Antigravity. Les comptes professionnels peuvent garder Gemini CLI.",
-   "bn": "ব্যক্তিগত Google অ্যাকাউন্টে Gemini CLI-এর জায়গায় Antigravity CLI এসেছে: এর বদলে Antigravity hooks ইনস্টল করুন। কাজের অ্যাকাউন্টে Gemini CLI রাখা যায়।",
-   "pt-BR": "Nas contas pessoais do Google, o Gemini CLI foi substituído pelo Antigravity CLI: instale os hooks do Antigravity. Contas de trabalho podem continuar com o Gemini CLI.",
-   "ru": "Для личных аккаунтов Google Gemini CLI заменён на Antigravity CLI: установите вместо этого хуки Antigravity. Рабочие аккаунты могут оставить Gemini CLI.",
-   "id": "Untuk akun Google pribadi, Gemini CLI digantikan oleh Antigravity CLI: pasang hook Antigravity sebagai gantinya. Akun kerja tetap bisa memakai Gemini CLI.",
-   "it": "Per gli account Google personali, Gemini CLI è stato sostituito da Antigravity CLI: installa invece gli hook Antigravity. Gli account di lavoro possono continuare a usare Gemini CLI."
-  },
   "Filo · a ring of light": {
    "zh-Hans": "Filo · 一圈光环",
    "hi": "Filo · रोशनी का घेरा",
@@ -5262,30 +5238,6 @@
    "ru": "Claude Code сообщает об использовании тарифа в своих сессиях в терминале; его ответы в чате сообщают об этом лишь изредка.",
    "id": "Claude Code melaporkan pemakaian paket Anda di sesi terminalnya; jawabannya di chat hanya sesekali melaporkannya.",
    "it": "Claude Code indica l'utilizzo del tuo piano nelle sessioni del terminale; le sue risposte nella chat lo indicano solo ogni tanto."
-  },
-  "Faster": {
-   "zh-Hans": "更快",
-   "hi": "तेज़",
-   "es": "Más rápido",
-   "ar": "أسرع",
-   "fr": "Plus rapide",
-   "bn": "দ্রুততর",
-   "pt-BR": "Mais rápido",
-   "ru": "Быстрее",
-   "id": "Lebih cepat",
-   "it": "Più veloce"
-  },
-  "Smarter": {
-   "zh-Hans": "更聪明",
-   "hi": "ज़्यादा समझदार",
-   "es": "Más inteligente",
-   "ar": "أذكى",
-   "fr": "Plus intelligent",
-   "bn": "আরও বুদ্ধিমান",
-   "pt-BR": "Mais inteligente",
-   "ru": "Умнее",
-   "id": "Lebih cerdas",
-   "it": "Più intelligente"
   },
   "Recommended": {
    "zh-Hans": "推荐",
@@ -6497,7 +6449,7 @@
    "pt-BR": "Atividades ao vivo",
    "ru": "Live-активности",
    "id": "Aktivitas Langsung",
-   "it": "Attività in tempo reale"
+   "it": "Live Activities"
   },
   "Minimize": {
    "zh-Hans": "最小化",
@@ -6762,6 +6714,758 @@
    "ru": "С каждым сообщением: заголовки открытых окон и документы в них (PDF, файл Word или Excel…), найденные на диске, чтобы ИИ мог прочитать тот, о котором вы спрашиваете. Получает их только провайдер чата, вместе с этим сообщением.",
    "id": "Bersama setiap pesan: judul jendela yang terbuka dan dokumen yang ditampilkannya (PDF, file Word atau Excel…), ditemukan di disk, agar AI bisa membaca yang kamu tanyakan. Hanya penyedia chat yang menerimanya, bersama pesan itu.",
    "it": "Con ogni messaggio: i titoli delle finestre aperte e i documenti che mostrano (un PDF, un file Word o Excel…), ritrovati sul disco, così l'IA può leggere quello di cui chiedi. Li riceve solo il provider della chat, insieme a quel messaggio."
+  },
+  "{pct}% used": {
+   "zh-Hans": "已用 {pct}%",
+   "hi": "{pct}% उपयोग हुआ",
+   "es": "{pct}% usado",
+   "ar": "مستخدم {pct}%",
+   "fr": "{pct} % utilisés",
+   "bn": "{pct}% ব্যবহৃত",
+   "pt-BR": "{pct}% usado",
+   "ru": "Использовано {pct}%",
+   "id": "{pct}% terpakai",
+   "it": "{pct}% usato"
+  },
+  "Resets {when}": {
+   "zh-Hans": "{when}重置",
+   "hi": "{when} रीसेट",
+   "es": "Se reinicia {when}",
+   "ar": "يُعاد الضبط {when}",
+   "fr": "Réinitialisation {when}",
+   "bn": "{when} রিসেট",
+   "pt-BR": "Reinicia {when}",
+   "ru": "Сброс {when}",
+   "id": "Diatur ulang {when}",
+   "it": "Si azzera {when}"
+  },
+  "Usage": {
+   "zh-Hans": "用量",
+   "hi": "उपयोग",
+   "es": "Uso",
+   "ar": "الاستخدام",
+   "fr": "Utilisation",
+   "bn": "ব্যবহার",
+   "pt-BR": "Uso",
+   "ru": "Использование",
+   "id": "Pemakaian",
+   "it": "Utilizzo"
+  },
+  "No provider is set up yet: add a key, or install Claude Code's or Antigravity's hooks, in Settings.": {
+   "zh-Hans": "尚未设置任何提供方：请在设置中添加密钥，或安装 Claude Code 或 Antigravity 的钩子。",
+   "hi": "अभी कोई प्रदाता सेट नहीं है: सेटिंग्स में एक कुंजी जोड़ें, या Claude Code या Antigravity के हुक इंस्टॉल करें।",
+   "es": "Aún no hay ningún proveedor configurado: añade una clave o instala los hooks de Claude Code o de Antigravity en Ajustes.",
+   "ar": "لم يُعدّ أي مزود بعد: أضف مفتاحًا، أو ثبّت خطافات Claude Code أو Antigravity، في الإعدادات.",
+   "fr": "Aucun fournisseur n'est encore configuré : ajoute une clé, ou installe les hooks de Claude Code ou d'Antigravity, dans les Réglages.",
+   "bn": "এখনও কোনো প্রদানকারী সেট করা হয়নি: সেটিংসে একটি কী যোগ করুন, বা Claude Code বা Antigravity-এর হুক ইনস্টল করুন।",
+   "pt-BR": "Nenhum provedor configurado ainda: adicione uma chave ou instale os hooks do Claude Code ou do Antigravity nas Configurações.",
+   "ru": "Ни один провайдер ещё не настроен: добавьте ключ или установите хуки Claude Code или Antigravity в настройках.",
+   "id": "Belum ada penyedia yang disiapkan: tambahkan kunci, atau pasang hook Claude Code atau Antigravity, di Pengaturan.",
+   "it": "Nessun provider è ancora configurato: aggiungi una chiave, o installa gli hook di Claude Code o di Antigravity, nelle Impostazioni."
+  },
+  "Last session": {
+   "zh-Hans": "上次会话",
+   "hi": "पिछला सत्र",
+   "es": "Última sesión",
+   "ar": "آخر جلسة",
+   "fr": "Dernière session",
+   "bn": "শেষ সেশন",
+   "pt-BR": "Última sessão",
+   "ru": "Последний сеанс",
+   "id": "Sesi terakhir",
+   "it": "Ultima sessione"
+  },
+  "Sessions this week": {
+   "zh-Hans": "本周会话",
+   "hi": "इस सप्ताह के सत्र",
+   "es": "Sesiones esta semana",
+   "ar": "جلسات هذا الأسبوع",
+   "fr": "Sessions cette semaine",
+   "bn": "এই সপ্তাহের সেশন",
+   "pt-BR": "Sessões nesta semana",
+   "ru": "Сеансов за неделю",
+   "id": "Sesi minggu ini",
+   "it": "Sessioni questa settimana"
+  },
+  "Time this week": {
+   "zh-Hans": "本周时长",
+   "hi": "इस सप्ताह का समय",
+   "es": "Tiempo esta semana",
+   "ar": "الوقت هذا الأسبوع",
+   "fr": "Temps cette semaine",
+   "bn": "এই সপ্তাহের সময়",
+   "pt-BR": "Tempo nesta semana",
+   "ru": "Время за неделю",
+   "id": "Waktu minggu ini",
+   "it": "Tempo questa settimana"
+  },
+  "Lines changed": {
+   "zh-Hans": "更改的行",
+   "hi": "बदली गई पंक्तियाँ",
+   "es": "Líneas cambiadas",
+   "ar": "الأسطر المعدّلة",
+   "fr": "Lignes modifiées",
+   "bn": "পরিবর্তিত লাইন",
+   "pt-BR": "Linhas alteradas",
+   "ru": "Изменено строк",
+   "id": "Baris diubah",
+   "it": "Righe modificate"
+  },
+  "No session this week yet": {
+   "zh-Hans": "本周还没有会话",
+   "hi": "इस सप्ताह अभी कोई सत्र नहीं",
+   "es": "Aún no hay sesiones esta semana",
+   "ar": "لا جلسات هذا الأسبوع بعد",
+   "fr": "Pas encore de session cette semaine",
+   "bn": "এই সপ্তাহে এখনও কোনো সেশন নেই",
+   "pt-BR": "Nenhuma sessão nesta semana ainda",
+   "ru": "На этой неделе сеансов ещё не было",
+   "id": "Belum ada sesi minggu ini",
+   "it": "Ancora nessuna sessione questa settimana"
+  },
+  "Refreshing…": {
+   "zh-Hans": "正在刷新…",
+   "hi": "रीफ़्रेश हो रहा है…",
+   "es": "Actualizando…",
+   "ar": "جارٍ التحديث…",
+   "fr": "Actualisation…",
+   "bn": "রিফ্রেশ হচ্ছে…",
+   "pt-BR": "Atualizando…",
+   "ru": "Обновление…",
+   "id": "Menyegarkan…",
+   "it": "Aggiorno…"
+  },
+  "Updated {when}": {
+   "zh-Hans": "{when}已更新",
+   "hi": "{when} अपडेट हुआ",
+   "es": "Actualizado {when}",
+   "ar": "تم التحديث {when}",
+   "fr": "Mis à jour {when}",
+   "bn": "{when} আপডেট হয়েছে",
+   "pt-BR": "Atualizado {when}",
+   "ru": "Обновлено {when}",
+   "id": "Diperbarui {when}",
+   "it": "Aggiornato {when}"
+  },
+  "Codex did not answer": {
+   "zh-Hans": "Codex 没有回应",
+   "hi": "Codex ने जवाब नहीं दिया",
+   "es": "Codex no respondió",
+   "ar": "لم يُجب Codex",
+   "fr": "Codex n'a pas répondu",
+   "bn": "Codex উত্তর দেয়নি",
+   "pt-BR": "O Codex não respondeu",
+   "ru": "Codex не ответил",
+   "id": "Codex tidak menjawab",
+   "it": "Codex non ha risposto"
+  },
+  "Opening and closing": {
+   "zh-Hans": "打开与关闭",
+   "hi": "खोलना और बंद करना",
+   "es": "Apertura y cierre",
+   "ar": "الفتح والإغلاق",
+   "fr": "Ouverture et fermeture",
+   "bn": "খোলা ও বন্ধ",
+   "pt-BR": "Abertura e fechamento",
+   "ru": "Открытие и закрытие",
+   "id": "Membuka dan menutup",
+   "it": "Apertura e chiusura"
+  },
+  "The closed island": {
+   "zh-Hans": "关闭的岛",
+   "hi": "बंद द्वीप",
+   "es": "La isla cerrada",
+   "ar": "الجزيرة المغلقة",
+   "fr": "L'île fermée",
+   "bn": "বন্ধ দ্বীপ",
+   "pt-BR": "A ilha fechada",
+   "ru": "Закрытый остров",
+   "id": "Pulau tertutup",
+   "it": "L'isola chiusa"
+  },
+  "Position and size": {
+   "zh-Hans": "位置与大小",
+   "hi": "स्थिति और आकार",
+   "es": "Posición y tamaño",
+   "ar": "الموضع والحجم",
+   "fr": "Position et taille",
+   "bn": "অবস্থান ও আকার",
+   "pt-BR": "Posição e tamanho",
+   "ru": "Положение и размер",
+   "id": "Posisi dan ukuran",
+   "it": "Posizione e dimensione"
+  },
+  "Put back": {
+   "zh-Hans": "放回",
+   "hi": "वापस रखें",
+   "es": "Recolocar",
+   "ar": "إعادة",
+   "fr": "Replacer",
+   "bn": "ফিরিয়ে রাখুন",
+   "pt-BR": "Recolocar",
+   "ru": "Вернуть",
+   "id": "Kembalikan",
+   "it": "Rimetti"
+  },
+  "For the Antigravity app and for Antigravity CLI (agy): both read these hooks.": {
+   "zh-Hans": "适用于 Antigravity 应用和 Antigravity CLI (agy)：两者都读取这些钩子。",
+   "hi": "Antigravity ऐप और Antigravity CLI (agy) दोनों के लिए: दोनों ये हुक पढ़ते हैं।",
+   "es": "Para la app Antigravity y para Antigravity CLI (agy): ambos leen estos hooks.",
+   "ar": "لتطبيق Antigravity ولـ Antigravity CLI (agy): كلاهما يقرأ هذه الخطافات.",
+   "fr": "Pour l'app Antigravity et pour Antigravity CLI (agy) : les deux lisent ces hooks.",
+   "bn": "Antigravity অ্যাপ ও Antigravity CLI (agy)-এর জন্য: দুটোই এই হুক পড়ে।",
+   "pt-BR": "Para o app Antigravity e para o Antigravity CLI (agy): os dois leem estes hooks.",
+   "ru": "Для приложения Antigravity и для Antigravity CLI (agy): оба читают эти хуки.",
+   "id": "Untuk aplikasi Antigravity dan Antigravity CLI (agy): keduanya membaca hook ini.",
+   "it": "Per l'app Antigravity e per Antigravity CLI (agy): entrambi leggono questi hook."
+  },
+  "A ring next to the past chats fills with what the provider in use has used, and a click on it shows each limit and when it resets: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
+   "zh-Hans": "过往聊天旁的圆环会随当前提供方的用量填满，点击它可查看每项限额及其重置时间：Claude Code 的 Claude 套餐 5 小时和每周限额（需要 {path} 中的中继）、Anthropic 和 OpenAI 随每次回答返回的速率限制，以及 OpenRouter 密钥的额度（在聊天打开时和每次回答后向 OpenRouter 询问）。Google 和本地模型不显示任何内容。",
+   "hi": "पिछली चैट के पास एक रिंग उपयोग में प्रदाता के उपयोग से भरती है, और उस पर क्लिक करने से हर सीमा और उसके रीसेट का समय दिखता है: Claude Code के लिए आपके Claude प्लान की 5-घंटे और साप्ताहिक सीमाएँ ({path} के रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट सीमाएँ भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और जवाब के बाद OpenRouter से पूछे जाते हैं। Google या स्थानीय मॉडल के लिए कुछ नहीं दिखता।",
+   "es": "Un anillo junto a los chats anteriores se llena con lo que ha usado el proveedor en uso, y un clic en él muestra cada límite y cuándo se reinicia: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y tras una respuesta. No se muestra nada para Google ni para los modelos locales.",
+   "ar": "تمتلئ حلقة بجانب الدردشات السابقة بما استخدمه المزود الحالي، وتعرض نقرة عليها كل حد ومتى يُعاد ضبطه: حدود خطة Claude لمدة 5 ساعات والأسبوعية لـ Claude Code (مع المرحّل من {path})، وحدود المعدل التي ترسلها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter، الذي يُسأل عنه OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
+   "fr": "Un anneau à côté des anciens chats se remplit de ce que le fournisseur utilisé a consommé, et un clic dessus montre chaque limite et quand elle se réinitialise : les limites de 5 heures et hebdomadaire de ton forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de ta clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après une réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
+   "bn": "পুরোনো চ্যাটের পাশে একটি রিং ব্যবহৃত প্রদানকারীর ব্যবহারে ভরে ওঠে, আর তাতে ক্লিক করলে প্রতিটি সীমা ও কখন রিসেট হবে দেখা যায়: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সঙ্গে Anthropic ও OpenAI যে রেট সীমা পাঠায়, আর আপনার OpenRouter কী-এর ক্রেডিট, চ্যাট খুললে ও উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া। Google বা স্থানীয় মডেলের জন্য কিছু দেখানো হয় না।",
+   "pt-BR": "Um anel ao lado das conversas anteriores se enche com o que o provedor em uso já usou, e um clique nele mostra cada limite e quando ele é reiniciado: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e após uma resposta. Nada é mostrado para o Google nem para os modelos locais.",
+   "ru": "Кольцо рядом с прошлыми чатами заполняется тем, что израсходовал текущий провайдер, а щелчок по нему показывает каждый лимит и когда он сбросится: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI присылают с каждым ответом, и кредиты вашего ключа OpenRouter, запрашиваемые у OpenRouter при открытии чата и после ответа. Для Google и локальных моделей ничего не показывается.",
+   "id": "Sebuah cincin di samping obrolan sebelumnya terisi sesuai pemakaian penyedia yang digunakan, dan mengekliknya menampilkan setiap batas dan kapan diatur ulang: batas 5 jam dan mingguan paket Claude kamu untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter kamu, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal.",
+   "it": "Un anello accanto alle chat passate si riempie con quanto ha usato il provider in uso, e un clic su di esso mostra ogni limite e quando si azzera: i limiti di 5 ore e settimanale del tuo piano Claude per Claude Code (con il relay da {path}), i limiti di frequenza che Anthropic e OpenAI rimandano con ogni risposta, e i crediti della tua chiave OpenRouter, chiesti a OpenRouter quando la chat si apre e dopo una risposta. Non viene mostrato nulla per Google o per i modelli locali."
+  },
+  "New line in the message": {
+   "zh-Hans": "在消息中换行",
+   "hi": "संदेश में नई पंक्ति",
+   "es": "Nueva línea en el mensaje",
+   "ar": "سطر جديد في الرسالة",
+   "fr": "Nouvelle ligne dans le message",
+   "bn": "বার্তায় নতুন লাইন",
+   "pt-BR": "Nova linha na mensagem",
+   "ru": "Новая строка в сообщении",
+   "id": "Baris baru dalam pesan",
+   "it": "Vai a capo nel messaggio"
+  },
+  "Claude Code reports it only near the limit": {
+   "zh-Hans": "Claude Code 仅在接近限额时报告",
+   "hi": "Claude Code इसे सीमा के पास ही बताता है",
+   "es": "Claude Code solo lo indica cerca del límite",
+   "ar": "لا يبلغ عنه Claude Code إلا قرب الحد",
+   "fr": "Claude Code ne l'indique que près de la limite",
+   "bn": "Claude Code এটি কেবল সীমার কাছে জানায়",
+   "pt-BR": "O Claude Code só informa perto do limite",
+   "ru": "Claude Code сообщает его только около лимита",
+   "id": "Claude Code hanya melaporkannya saat mendekati batas",
+   "it": "Claude Code lo indica solo vicino al limite"
+  },
+  "Extended Thinking: thinks longer before it answers": {
+   "zh-Hans": "扩展思考：回答前思考更久",
+   "hi": "विस्तारित सोच: जवाब देने से पहले ज़्यादा सोचता है",
+   "es": "Pensamiento ampliado: piensa más antes de responder",
+   "ar": "التفكير الموسّع: يفكر أطول قبل أن يجيب",
+   "fr": "Réflexion étendue : réfléchit plus longtemps avant de répondre",
+   "bn": "বর্ধিত চিন্তা: উত্তর দেওয়ার আগে বেশি ভাবে",
+   "pt-BR": "Raciocínio estendido: pensa mais antes de responder",
+   "ru": "Расширенное мышление: дольше думает перед ответом",
+   "id": "Pemikiran Lanjutan: berpikir lebih lama sebelum menjawab",
+   "it": "Ragionamento esteso: pensa più a lungo prima di rispondere"
+  },
+  "Wide": {
+   "zh-Hans": "宽",
+   "hi": "चौड़ा",
+   "es": "Amplia",
+   "ar": "واسعة",
+   "fr": "Grande",
+   "bn": "চওড়া",
+   "pt-BR": "Ampla",
+   "ru": "Большой",
+   "id": "Lebar",
+   "it": "Ampia"
+  },
+  "Distance from the edge": {
+   "zh-Hans": "与边缘的距离",
+   "hi": "किनारे से दूरी",
+   "es": "Distancia al borde",
+   "ar": "المسافة عن الحافة",
+   "fr": "Distance au bord",
+   "bn": "কিনারা থেকে দূরত্ব",
+   "pt-BR": "Distância da borda",
+   "ru": "Отступ от края",
+   "id": "Jarak dari tepi",
+   "it": "Distanza dal bordo"
+  },
+  "For the 5 hours always up to date, also from VS Code: {path} → Ask Anthropic.": {
+   "zh-Hans": "要让 5 小时用量始终最新（VS Code 中也一样）：{path} → 询问 Anthropic。",
+   "hi": "5 घंटे को हमेशा अपडेट रखने के लिए, VS Code से भी: {path} → Anthropic से पूछें।",
+   "es": "Para tener las 5 horas siempre al día, también desde VS Code: {path} → Preguntar a Anthropic.",
+   "ar": "لتبقى الساعات الخمس محدّثة دائمًا، حتى من VS Code: {path} ← اسأل Anthropic.",
+   "fr": "Pour des 5 heures toujours à jour, aussi depuis VS Code : {path} → Demander à Anthropic.",
+   "bn": "VS Code থেকেও ৫ ঘণ্টা সবসময় হালনাগাদ রাখতে: {path} → Anthropic-কে জিজ্ঞাসা করুন।",
+   "pt-BR": "Para as 5 horas sempre atualizadas, também no VS Code: {path} → Perguntar à Anthropic.",
+   "ru": "Чтобы 5 часов всегда были актуальны, и в VS Code: {path} → Спрашивать Anthropic.",
+   "id": "Agar 5 jam selalu terkini, juga dari VS Code: {path} → Tanya Anthropic.",
+   "it": "Per le 5 ore sempre aggiornate, anche da VS Code: {path} → Chiedi ad Anthropic."
+  },
+  "Click to see the whole request": {
+   "zh-Hans": "点击查看完整请求",
+   "hi": "पूरा अनुरोध देखने के लिए क्लिक करें",
+   "es": "Haz clic para ver la solicitud completa",
+   "ar": "انقر لرؤية الطلب كاملًا",
+   "fr": "Clique pour voir toute la demande",
+   "bn": "পুরো অনুরোধ দেখতে ক্লিক করুন",
+   "pt-BR": "Clique para ver o pedido completo",
+   "ru": "Нажмите, чтобы увидеть весь запрос",
+   "id": "Klik untuk melihat seluruh permintaan",
+   "it": "Clicca per vedere tutta la richiesta"
+  },
+  "Ask Anthropic": {
+   "zh-Hans": "询问 Anthropic",
+   "hi": "Anthropic से पूछें",
+   "es": "Preguntar a Anthropic",
+   "ar": "اسأل Anthropic",
+   "fr": "Demander à Anthropic",
+   "bn": "Anthropic-কে জিজ্ঞাসা করুন",
+   "pt-BR": "Perguntar à Anthropic",
+   "ru": "Спрашивать Anthropic",
+   "id": "Tanya Anthropic",
+   "it": "Chiedi ad Anthropic"
+  },
+  "Claude Code's status line only runs in a terminal, and its answers give the 5 hours only near the limit. Turned on, Lumo asks Anthropic for your plan's usage with Claude Code's sign-in, every 3 minutes while the island is open, as Claude Code's /usage does. The sign-in is only read, never kept or sent anywhere else.": {
+   "zh-Hans": "Claude Code 的状态栏只在终端中运行，而它的回答只在接近上限时才给出 5 小时用量。开启后，Lumo 会用 Claude Code 的登录信息向 Anthropic 查询你的套餐用量，在岛打开时每 3 分钟一次，与 Claude Code 的 /usage 相同。登录信息只会被读取，从不保存或发送到其他地方。",
+   "hi": "Claude Code की स्टेटस लाइन केवल टर्मिनल में चलती है, और उसके जवाब 5 घंटे का आंकड़ा केवल सीमा के पास देते हैं। चालू करने पर, Lumo Claude Code के साइन-इन से Anthropic से आपके प्लान का उपयोग पूछता है, आइलैंड खुला रहने पर हर 3 मिनट में, जैसा Claude Code का /usage करता है। साइन-इन केवल पढ़ा जाता है, कभी रखा या कहीं और भेजा नहीं जाता।",
+   "es": "La línea de estado de Claude Code solo funciona en una terminal, y sus respuestas dan las 5 horas solo cerca del límite. Activado, Lumo pregunta a Anthropic el uso de tu plan con la sesión de Claude Code, cada 3 minutos mientras la isla está abierta, como hace /usage de Claude Code. La sesión solo se lee, nunca se guarda ni se envía a ningún otro sitio.",
+   "ar": "سطر حالة Claude Code لا يعمل إلا في الطرفية، وإجاباته لا تعطي الساعات الخمس إلا قرب الحد. عند التفعيل، يسأل Lumo شركة Anthropic عن استخدام خطتك بتسجيل دخول Claude Code، كل 3 دقائق ما دامت الجزيرة مفتوحة، كما يفعل الأمر ‎/usage في Claude Code. يُقرأ تسجيل الدخول فقط، ولا يُحفظ ولا يُرسل إلى أي مكان آخر.",
+   "fr": "La ligne d'état de Claude Code ne tourne que dans un terminal, et ses réponses ne donnent les 5 heures que près de la limite. Activé, Lumo demande à Anthropic l'utilisation de ton forfait avec la connexion de Claude Code, toutes les 3 minutes tant que l'île est ouverte, comme le fait /usage de Claude Code. La connexion est seulement lue, jamais conservée ni envoyée ailleurs.",
+   "bn": "Claude Code-এর স্ট্যাটাস লাইন শুধু টার্মিনালে চলে, আর এর উত্তর ৫ ঘণ্টার হিসাব দেয় শুধু সীমার কাছাকাছি। চালু করলে, Lumo Claude Code-এর সাইন-ইন দিয়ে Anthropic-কে আপনার প্ল্যানের ব্যবহার জিজ্ঞাসা করে, আইল্যান্ড খোলা থাকলে প্রতি ৩ মিনিটে, যেমন Claude Code-এর /usage করে। সাইন-ইন শুধু পড়া হয়, কখনো রাখা বা অন্য কোথাও পাঠানো হয় না।",
+   "pt-BR": "A linha de status do Claude Code só roda em um terminal, e as respostas dele só dão as 5 horas perto do limite. Ativado, o Lumo pergunta à Anthropic o uso do seu plano com o login do Claude Code, a cada 3 minutos enquanto a ilha está aberta, como faz o /usage do Claude Code. O login é só lido, nunca guardado nem enviado a outro lugar.",
+   "ru": "Строка состояния Claude Code работает только в терминале, а его ответы показывают 5 часов только у самого лимита. Если включить, Lumo спрашивает у Anthropic расход вашего плана со входом Claude Code, каждые 3 минуты, пока остров открыт, как это делает /usage в Claude Code. Вход только читается, нигде не хранится и никуда больше не отправляется.",
+   "id": "Baris status Claude Code hanya berjalan di terminal, dan jawabannya hanya memberi angka 5 jam saat mendekati batas. Jika diaktifkan, Lumo menanyakan pemakaian paket Anda ke Anthropic dengan login Claude Code, setiap 3 menit selama pulau terbuka, seperti /usage di Claude Code. Login hanya dibaca, tidak pernah disimpan atau dikirim ke tempat lain.",
+   "it": "La riga di stato di Claude Code gira solo in un terminale, e le sue risposte danno le 5 ore solo vicino al limite. Se attivo, Lumo chiede ad Anthropic l'utilizzo del tuo piano con l'accesso di Claude Code, ogni 3 minuti mentre l'isola è aperta, come fa /usage di Claude Code. L'accesso viene solo letto, mai conservato né inviato altrove."
+  },
+  "Light (default)": {
+   "zh-Hans": "轻微（默认）",
+   "hi": "हल्की (डिफ़ॉल्ट)",
+   "es": "Ligera (predeterminada)",
+   "ar": "خفيفة (افتراضي)",
+   "fr": "Légère (par défaut)",
+   "bn": "হালকা (ডিফল্ট)",
+   "pt-BR": "Leve (padrão)",
+   "ru": "Небольшое (по умолчанию)",
+   "id": "Ringan (bawaan)",
+   "it": "Leggera (predefinita)"
+  },
+  "between the island and the edge of the screen it is docked to. With Medium the mouse can cross the top of the screen above the island without opening it": {
+   "zh-Hans": "岛与其停靠的屏幕边缘之间的距离。选“中等”时，鼠标可以从岛上方的屏幕顶部经过而不会打开它",
+   "hi": "आइलैंड और स्क्रीन के उस किनारे के बीच जहाँ वह टिका है। मध्यम के साथ माउस आइलैंड के ऊपर स्क्रीन के शीर्ष से उसे खोले बिना गुज़र सकता है",
+   "es": "entre la isla y el borde de la pantalla al que está acoplada. Con Media el ratón puede cruzar la parte superior de la pantalla sobre la isla sin abrirla",
+   "ar": "بين الجزيرة وحافة الشاشة المثبتة عليها. مع «متوسطة» يمكن للفأرة عبور أعلى الشاشة فوق الجزيرة دون فتحها",
+   "fr": "entre l'île et le bord de l'écran où elle est ancrée. Avec Moyenne, la souris peut passer en haut de l'écran au-dessus de l'île sans l'ouvrir",
+   "bn": "আইল্যান্ড আর স্ক্রিনের যে প্রান্তে সেটি আটকানো তার মাঝে। মাঝারি হলে মাউস আইল্যান্ডের উপরে স্ক্রিনের শীর্ষ দিয়ে সেটি না খুলেই যেতে পারে",
+   "pt-BR": "entre a ilha e a borda da tela onde ela está encaixada. Com Média o mouse pode passar pelo topo da tela acima da ilha sem abri-la",
+   "ru": "между островом и краем экрана, к которому он пристыкован. При «Среднем» мышь может пройти по верху экрана над островом, не открывая его",
+   "id": "antara pulau dan tepi layar tempatnya menempel. Dengan Sedang, mouse dapat melintasi bagian atas layar di atas pulau tanpa membukanya",
+   "it": "tra l'isola e il bordo dello schermo a cui è agganciata. Con Media il mouse può passare in cima allo schermo sopra l'isola senza aprirla"
+  },
+  "Allow simple requests from the closed island": {
+   "zh-Hans": "在收起的岛上允许简单请求",
+   "hi": "बंद आइलैंड से सरल अनुरोधों की अनुमति दें",
+   "es": "Permitir solicitudes simples desde la isla cerrada",
+   "ar": "السماح بالطلبات البسيطة من الجزيرة المغلقة",
+   "fr": "Autoriser les demandes simples depuis l'île fermée",
+   "bn": "বন্ধ আইল্যান্ড থেকে সহজ অনুরোধ অনুমতি দিন",
+   "pt-BR": "Permitir pedidos simples pela ilha fechada",
+   "ru": "Разрешать простые запросы с закрытого острова",
+   "id": "Izinkan permintaan sederhana dari pulau tertutup",
+   "it": "Consenti le richieste semplici dall'isola chiusa"
+  },
+  "an agent asking to read files or run a command that only looks (ls, git status…) shows Deny and Allow on the closed island; edits and other commands still open the full card": {
+   "zh-Hans": "当智能体请求读取文件或运行只查看的命令（ls、git status…）时，收起的岛上会显示“拒绝”和“允许”；编辑和其他命令仍会打开完整卡片",
+   "hi": "जब कोई एजेंट फ़ाइलें पढ़ने या केवल देखने वाला कमांड (ls, git status…) चलाने की अनुमति माँगता है, तो बंद आइलैंड पर अस्वीकार और अनुमति दिखते हैं; संपादन और अन्य कमांड अब भी पूरा कार्ड खोलते हैं",
+   "es": "si un agente pide leer archivos o ejecutar un comando que solo mira (ls, git status…), la isla cerrada muestra Denegar y Permitir; las ediciones y otros comandos siguen abriendo la tarjeta completa",
+   "ar": "عندما يطلب وكيل قراءة ملفات أو تشغيل أمر يكتفي بالاطلاع (ls، git status…) تعرض الجزيرة المغلقة «رفض» و«سماح»؛ أما التعديلات والأوامر الأخرى فتفتح البطاقة الكاملة كما من قبل",
+   "fr": "un agent qui demande à lire des fichiers ou à lancer une commande qui ne fait que regarder (ls, git status…) affiche Refuser et Autoriser sur l'île fermée ; les modifications et les autres commandes ouvrent toujours la carte complète",
+   "bn": "কোনো এজেন্ট ফাইল পড়তে বা শুধু দেখার কমান্ড (ls, git status…) চালাতে চাইলে বন্ধ আইল্যান্ডে প্রত্যাখ্যান ও অনুমতি দেখায়; সম্পাদনা ও অন্য কমান্ড এখনও পুরো কার্ড খোলে",
+   "pt-BR": "um agente pedindo para ler arquivos ou rodar um comando que só olha (ls, git status…) mostra Negar e Permitir na ilha fechada; edições e outros comandos ainda abrem o cartão completo",
+   "ru": "если агент просит прочитать файлы или выполнить команду, которая только смотрит (ls, git status…), на закрытом острове появляются «Запретить» и «Разрешить»; правки и другие команды по-прежнему открывают полную карточку",
+   "id": "agen yang meminta membaca file atau menjalankan perintah yang hanya melihat (ls, git status…) menampilkan Tolak dan Izinkan di pulau tertutup; suntingan dan perintah lain tetap membuka kartu lengkap",
+   "it": "quando un agente chiede di leggere file o di eseguire un comando che guarda soltanto (ls, git status…), l'isola chiusa mostra Nega e Consenti; le modifiche e gli altri comandi aprono sempre la card completa"
+  },
+  "Search the past chats": {
+   "zh-Hans": "搜索以前的聊天",
+   "hi": "पिछली चैट खोजें",
+   "es": "Buscar en los chats anteriores",
+   "ar": "ابحث في الدردشات السابقة",
+   "fr": "Rechercher dans les anciens chats",
+   "bn": "আগের চ্যাট খুঁজুন",
+   "pt-BR": "Pesquisar nos chats anteriores",
+   "ru": "Поиск по прошлым чатам",
+   "id": "Cari di obrolan sebelumnya",
+   "it": "Cerca nelle chat passate"
+  },
+  "No chat says that.": {
+   "zh-Hans": "没有聊天包含这些内容。",
+   "hi": "किसी चैट में यह नहीं है।",
+   "es": "Ningún chat dice eso.",
+   "ar": "لا توجد دردشة تقول ذلك.",
+   "fr": "Aucun chat ne dit ça.",
+   "bn": "কোনো চ্যাটে এটা নেই।",
+   "pt-BR": "Nenhum chat diz isso.",
+   "ru": "Ни в одном чате этого нет.",
+   "id": "Tidak ada obrolan yang menyebut itu.",
+   "it": "Nessuna chat dice questo."
+  },
+  "All sessions": {
+   "zh-Hans": "所有会话",
+   "hi": "सभी सत्र",
+   "es": "Todas las sesiones",
+   "ar": "كل الجلسات",
+   "fr": "Toutes les sessions",
+   "bn": "সব সেশন",
+   "pt-BR": "Todas as sessões",
+   "ru": "Все сеансы",
+   "id": "Semua sesi",
+   "it": "Tutte le sessioni"
+  },
+  "Sessions": {
+   "zh-Hans": "会话",
+   "hi": "सत्र",
+   "es": "Sesiones",
+   "ar": "الجلسات",
+   "fr": "Sessions",
+   "bn": "সেশন",
+   "pt-BR": "Sessões",
+   "ru": "Сеансы",
+   "id": "Sesi",
+   "it": "Sessioni"
+  },
+  "No session in the last 30 days. Sessions are kept by the weekly recap (Settings → General).": {
+   "zh-Hans": "过去 30 天没有会话。会话由每周回顾保存（设置 → 通用）。",
+   "hi": "पिछले 30 दिनों में कोई सत्र नहीं। सत्र साप्ताहिक सारांश द्वारा रखे जाते हैं (सेटिंग्स → सामान्य)।",
+   "es": "Ninguna sesión en los últimos 30 días. Las sesiones las guarda el resumen semanal (Ajustes → General).",
+   "ar": "لا جلسات في آخر 30 يومًا. يحتفظ الملخص الأسبوعي بالجلسات (الإعدادات ← عام).",
+   "fr": "Aucune session ces 30 derniers jours. Les sessions sont gardées par le récap de la semaine (Réglages → Général).",
+   "bn": "গত ৩০ দিনে কোনো সেশন নেই। সাপ্তাহিক সারসংক্ষেপ সেশনগুলো রাখে (সেটিংস → সাধারণ)।",
+   "pt-BR": "Nenhuma sessão nos últimos 30 dias. As sessões são guardadas pelo resumo semanal (Configurações → Geral).",
+   "ru": "За последние 30 дней сеансов не было. Сеансы хранит недельная сводка (Настройки → Общие).",
+   "id": "Tidak ada sesi dalam 30 hari terakhir. Sesi disimpan oleh rekap mingguan (Pengaturan → Umum).",
+   "it": "Nessuna sessione negli ultimi 30 giorni. Le sessioni le conserva il riepilogo settimanale (Impostazioni → Generali)."
+  },
+  "Open the project": {
+   "zh-Hans": "打开项目",
+   "hi": "प्रोजेक्ट खोलें",
+   "es": "Abrir el proyecto",
+   "ar": "افتح المشروع",
+   "fr": "Ouvrir le projet",
+   "bn": "প্রকল্প খুলুন",
+   "pt-BR": "Abrir o projeto",
+   "ru": "Открыть проект",
+   "id": "Buka proyek",
+   "it": "Apri il progetto"
+  },
+  "Claude Code is not signed in with a Claude plan.": {
+   "zh-Hans": "Claude Code 未使用 Claude 套餐登录。",
+   "hi": "Claude Code किसी Claude प्लान से साइन इन नहीं है।",
+   "es": "Claude Code no ha iniciado sesión con un plan de Claude.",
+   "ar": "لم يسجّل Claude Code الدخول بخطة Claude.",
+   "fr": "Claude Code n'est pas connecté avec un forfait Claude.",
+   "bn": "Claude Code কোনো Claude প্ল্যান দিয়ে সাইন ইন করা নেই।",
+   "pt-BR": "O Claude Code não está conectado com um plano Claude.",
+   "ru": "Claude Code не выполнил вход с планом Claude.",
+   "id": "Claude Code tidak masuk dengan paket Claude.",
+   "it": "Claude Code non ha fatto l'accesso con un piano Claude."
+  },
+  "Claude Code's sign-in has expired: open Claude Code once to renew it.": {
+   "zh-Hans": "Claude Code 的登录已过期：打开一次 Claude Code 以续期。",
+   "hi": "Claude Code का साइन-इन समाप्त हो गया है: इसे नवीनीकृत करने के लिए Claude Code एक बार खोलें।",
+   "es": "La sesión de Claude Code ha caducado: abre Claude Code una vez para renovarla.",
+   "ar": "انتهت صلاحية تسجيل دخول Claude Code: افتح Claude Code مرة لتجديده.",
+   "fr": "La connexion de Claude Code a expiré : ouvre Claude Code une fois pour la renouveler.",
+   "bn": "Claude Code-এর সাইন-ইনের মেয়াদ শেষ: নবায়ন করতে একবার Claude Code খুলুন।",
+   "pt-BR": "O login do Claude Code expirou: abra o Claude Code uma vez para renová-lo.",
+   "ru": "Срок входа Claude Code истёк: откройте Claude Code один раз, чтобы обновить его.",
+   "id": "Login Claude Code kedaluwarsa: buka Claude Code sekali untuk memperbaruinya.",
+   "it": "L'accesso di Claude Code è scaduto: apri Claude Code una volta per rinnovarlo."
+  },
+  "Anthropic did not answer ({status}).": {
+   "zh-Hans": "Anthropic 没有回应（{status}）。",
+   "hi": "Anthropic ने जवाब नहीं दिया ({status})।",
+   "es": "Anthropic no respondió ({status}).",
+   "ar": "لم تُجب Anthropic ({status}).",
+   "fr": "Anthropic n'a pas répondu ({status}).",
+   "bn": "Anthropic উত্তর দেয়নি ({status})।",
+   "pt-BR": "A Anthropic não respondeu ({status}).",
+   "ru": "Anthropic не ответил ({status}).",
+   "id": "Anthropic tidak menjawab ({status}).",
+   "it": "Anthropic non ha risposto ({status})."
+  },
+  "Anthropic's answer could not be read.": {
+   "zh-Hans": "无法读取 Anthropic 的回应。",
+   "hi": "Anthropic का जवाब पढ़ा नहीं जा सका।",
+   "es": "No se pudo leer la respuesta de Anthropic.",
+   "ar": "تعذّرت قراءة إجابة Anthropic.",
+   "fr": "La réponse d'Anthropic n'a pas pu être lue.",
+   "bn": "Anthropic-এর উত্তর পড়া যায়নি।",
+   "pt-BR": "Não foi possível ler a resposta da Anthropic.",
+   "ru": "Не удалось прочитать ответ Anthropic.",
+   "id": "Jawaban Anthropic tidak dapat dibaca.",
+   "it": "Non è stato possibile leggere la risposta di Anthropic."
+  },
+  "{count} files": {
+   "zh-Hans": {
+    "other": "{count} 个文件"
+   },
+   "hi": {
+    "one": "{count} फ़ाइल",
+    "other": "{count} फ़ाइलें"
+   },
+   "es": {
+    "one": "{count} archivo",
+    "other": "{count} archivos"
+   },
+   "ar": {
+    "zero": "{count} ملف",
+    "one": "ملف واحد",
+    "two": "ملفان",
+    "few": "{count} ملفات",
+    "many": "{count} ملفًا",
+    "other": "{count} ملف"
+   },
+   "fr": {
+    "one": "{count} fichier",
+    "other": "{count} fichiers"
+   },
+   "bn": {
+    "one": "{count}টি ফাইল",
+    "other": "{count}টি ফাইল"
+   },
+   "pt-BR": {
+    "one": "{count} arquivo",
+    "other": "{count} arquivos"
+   },
+   "ru": {
+    "one": "{count} файл",
+    "few": "{count} файла",
+    "many": "{count} файлов",
+    "other": "{count} файла"
+   },
+   "id": {
+    "other": "{count} file"
+   },
+   "it": {
+    "one": "{count} file",
+    "other": "{count} file"
+   }
+  },
+  "{count} commands": {
+   "zh-Hans": {
+    "other": "{count} 条命令"
+   },
+   "hi": {
+    "one": "{count} कमांड",
+    "other": "{count} कमांड"
+   },
+   "es": {
+    "one": "{count} comando",
+    "other": "{count} comandos"
+   },
+   "ar": {
+    "zero": "{count} أمر",
+    "one": "أمر واحد",
+    "two": "أمران",
+    "few": "{count} أوامر",
+    "many": "{count} أمرًا",
+    "other": "{count} أمر"
+   },
+   "fr": {
+    "one": "{count} commande",
+    "other": "{count} commandes"
+   },
+   "bn": {
+    "one": "{count}টি কমান্ড",
+    "other": "{count}টি কমান্ড"
+   },
+   "pt-BR": {
+    "one": "{count} comando",
+    "other": "{count} comandos"
+   },
+   "ru": {
+    "one": "{count} команда",
+    "few": "{count} команды",
+    "many": "{count} команд",
+    "other": "{count} команды"
+   },
+   "id": {
+    "other": "{count} perintah"
+   },
+   "it": {
+    "one": "{count} comando",
+    "other": "{count} comandi"
+   }
+  },
+  "Timer: 5 minutes": {
+   "zh-Hans": "计时器：5 分钟",
+   "hi": "टाइमर: 5 मिनट",
+   "es": "Temporizador: 5 minutos",
+   "ar": "مؤقّت: 5 دقائق",
+   "fr": "Minuteur : 5 minutes",
+   "bn": "টাইমার: ৫ মিনিট",
+   "pt-BR": "Timer: 5 minutos",
+   "ru": "Таймер: 5 минут",
+   "id": "Timer: 5 menit",
+   "it": "Timer: 5 minuti"
+  },
+  "Sounds": {
+   "zh-Hans": "声音",
+   "hi": "ध्वनियाँ",
+   "es": "Sonidos",
+   "ar": "الأصوات",
+   "fr": "Sons",
+   "bn": "শব্দ",
+   "pt-BR": "Sons",
+   "ru": "Звуки",
+   "id": "Suara",
+   "it": "Suoni"
+  },
+  "Put the island back in the middle": {
+   "zh-Hans": "将岛放回中间",
+   "hi": "आइलैंड को वापस बीच में रखें",
+   "es": "Volver a poner la isla en el centro",
+   "ar": "أعد الجزيرة إلى المنتصف",
+   "fr": "Remettre l'île au milieu",
+   "bn": "আইল্যান্ড আবার মাঝখানে রাখুন",
+   "pt-BR": "Colocar a ilha de volta no meio",
+   "ru": "Вернуть остров в центр",
+   "id": "Kembalikan pulau ke tengah",
+   "it": "Rimetti l'isola al centro"
+  },
+  "Quit Lumo": {
+   "zh-Hans": "退出 Lumo",
+   "hi": "Lumo बंद करें",
+   "es": "Salir de Lumo",
+   "ar": "إنهاء Lumo",
+   "fr": "Quitter Lumo",
+   "bn": "Lumo বন্ধ করুন",
+   "pt-BR": "Sair do Lumo",
+   "ru": "Выйти из Lumo",
+   "id": "Keluar dari Lumo",
+   "it": "Esci da Lumo"
+  },
+  "Calendar, emails, integrations, plan usage and agents, all asked again": {
+   "zh-Hans": "重新获取日历、邮件、集成、套餐用量和智能体",
+   "hi": "कैलेंडर, ईमेल, इंटीग्रेशन, प्लान उपयोग और एजेंट, सब फिर से पूछे जाते हैं",
+   "es": "Calendario, correos, integraciones, uso del plan y agentes, todo consultado de nuevo",
+   "ar": "التقويم والبريد والتكاملات واستخدام الخطة والوكلاء، كلها تُطلب من جديد",
+   "fr": "Calendrier, e-mails, intégrations, utilisation du forfait et agents, tout redemandé",
+   "bn": "ক্যালেন্ডার, ইমেল, ইন্টিগ্রেশন, প্ল্যানের ব্যবহার আর এজেন্ট, সব আবার জিজ্ঞাসা করা হয়",
+   "pt-BR": "Calendário, e-mails, integrações, uso do plano e agentes, tudo consultado de novo",
+   "ru": "Календарь, почта, интеграции, расход плана и агенты — всё запрашивается заново",
+   "id": "Kalender, email, integrasi, pemakaian paket, dan agen, semuanya ditanyakan lagi",
+   "it": "Calendario, email, integrazioni, utilizzo del piano e agenti, tutto richiesto di nuovo"
+  },
+  "Everything is up to date": {
+   "zh-Hans": "一切都已更新",
+   "hi": "सब कुछ अपडेट है",
+   "es": "Todo está al día",
+   "ar": "كل شيء محدَّث",
+   "fr": "Tout est à jour",
+   "bn": "সব কিছু হালনাগাদ",
+   "pt-BR": "Tudo está atualizado",
+   "ru": "Всё обновлено",
+   "id": "Semua sudah terbaru",
+   "it": "Tutto aggiornato"
+  },
+  "Cut": {
+   "zh-Hans": "剪切",
+   "hi": "काटें",
+   "es": "Cortar",
+   "ar": "قص",
+   "fr": "Couper",
+   "bn": "কাটুন",
+   "pt-BR": "Recortar",
+   "ru": "Вырезать",
+   "id": "Potong",
+   "it": "Taglia"
+  },
+  "Paste": {
+   "zh-Hans": "粘贴",
+   "hi": "चिपकाएँ",
+   "es": "Pegar",
+   "ar": "لصق",
+   "fr": "Coller",
+   "bn": "পেস্ট করুন",
+   "pt-BR": "Colar",
+   "ru": "Вставить",
+   "id": "Tempel",
+   "it": "Incolla"
+  },
+  "Select all": {
+   "zh-Hans": "全选",
+   "hi": "सभी चुनें",
+   "es": "Seleccionar todo",
+   "ar": "تحديد الكل",
+   "fr": "Tout sélectionner",
+   "bn": "সব নির্বাচন করুন",
+   "pt-BR": "Selecionar tudo",
+   "ru": "Выделить всё",
+   "id": "Pilih semua",
+   "it": "Seleziona tutto"
+  },
+  "Customize this menu…": {
+   "zh-Hans": "自定义此菜单…",
+   "hi": "इस मेनू को अनुकूलित करें…",
+   "es": "Personalizar este menú…",
+   "ar": "تخصيص هذه القائمة…",
+   "fr": "Personnaliser ce menu…",
+   "bn": "এই মেনু কাস্টমাইজ করুন…",
+   "pt-BR": "Personalizar este menu…",
+   "ru": "Настроить это меню…",
+   "id": "Sesuaikan menu ini…",
+   "it": "Personalizza questo menu…"
+  },
+  "Right-click menu": {
+   "zh-Hans": "右键菜单",
+   "hi": "राइट-क्लिक मेनू",
+   "es": "Menú del clic derecho",
+   "ar": "قائمة النقر بزر الفأرة الأيمن",
+   "fr": "Menu du clic droit",
+   "bn": "রাইট-ক্লিক মেনু",
+   "pt-BR": "Menu do clique direito",
+   "ru": "Меню правой кнопки",
+   "id": "Menu klik kanan",
+   "it": "Menu del tasto destro"
+  },
+  "A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.": {
+   "zh-Hans": "在岛或其 Live Activities 上点击右键会打开 Lumo 的菜单：刷新（Ctrl+R）会重新获取日历、邮件、集成、套餐用量和智能体；在文本框中还有剪切、复制和粘贴。选择它还提供哪些功能。",
+   "hi": "आइलैंड या उसकी Live Activities पर राइट क्लिक करने से Lumo का मेनू खुलता है: रीफ़्रेश (Ctrl+R) कैलेंडर, ईमेल, इंटीग्रेशन, प्लान उपयोग और एजेंट से फिर पूछता है, और टेक्स्ट फ़ील्ड में काटें, कॉपी और चिपकाएँ होते हैं। चुनें कि यह और क्या दिखाए।",
+   "es": "Un clic derecho en la isla o en sus Live Activities abre el menú de Lumo: Actualizar (Ctrl+R) vuelve a consultar el calendario, los correos, las integraciones, el uso del plan y los agentes, y en un campo de texto están Cortar, Copiar y Pegar. Elige qué más ofrece.",
+   "ar": "النقر بالزر الأيمن على الجزيرة أو على Live Activities يفتح قائمة Lumo: التحديث (Ctrl+R) يطلب من جديد التقويم والبريد والتكاملات واستخدام الخطة والوكلاء، وفي حقل النص تجد القص والنسخ واللصق. اختر ما تعرضه أيضًا.",
+   "fr": "Un clic droit sur l'île ou ses Live Activities ouvre le menu de Lumo : Actualiser (Ctrl+R) redemande le calendrier, les e-mails, les intégrations, l'utilisation du forfait et les agents, et Couper, Copier et Coller sont là dans un champ de texte. Choisis ce qu'il propose d'autre.",
+   "bn": "আইল্যান্ড বা এর Live Activities-এ রাইট ক্লিক করলে Lumo-র মেনু খোলে: রিফ্রেশ (Ctrl+R) ক্যালেন্ডার, ইমেল, ইন্টিগ্রেশন, প্ল্যানের ব্যবহার আর এজেন্টদের আবার জিজ্ঞাসা করে, আর টেক্সট ফিল্ডে কাটুন, কপি ও পেস্ট থাকে। এটি আর কী দেখাবে বেছে নিন।",
+   "pt-BR": "Um clique direito na ilha ou nas Live Activities abre o menu do Lumo: Atualizar (Ctrl+R) consulta de novo o calendário, os e-mails, as integrações, o uso do plano e os agentes, e Recortar, Copiar e Colar ficam disponíveis num campo de texto. Escolha o que mais ele oferece.",
+   "ru": "Правый клик по острову или его Live Activities открывает меню Lumo: «Обновить» (Ctrl+R) заново запрашивает календарь, почту, интеграции, расход плана и агентов, а в текстовом поле есть «Вырезать», «Копировать» и «Вставить». Выберите, что ещё в нём будет.",
+   "id": "Klik kanan pada pulau atau Live Activities-nya membuka menu Lumo: Segarkan (Ctrl+R) menanyakan lagi kalender, email, integrasi, pemakaian paket, dan agen, dan Potong, Salin, dan Tempel ada di kolom teks. Pilih apa lagi yang ditawarkannya.",
+   "it": "Un clic destro sull'isola o sulle sue Live Activities apre il menu di Lumo: Aggiorna (Ctrl+R) richiede di nuovo calendario, email, integrazioni, utilizzo del piano e agenti, e in un campo di testo ci sono Taglia, Copia e Incolla. Scegli cos'altro offre."
+  },
+  "Follow the island's height": {
+   "zh-Hans": "跟随岛的高度",
+   "hi": "आइलैंड की ऊँचाई के साथ चलें",
+   "es": "Seguir la altura de la isla",
+   "ar": "اتّباع ارتفاع الجزيرة",
+   "fr": "Suivre la hauteur de l'île",
+   "bn": "আইল্যান্ডের উচ্চতা অনুসরণ করুন",
+   "pt-BR": "Acompanhar a altura da ilha",
+   "ru": "Следовать высоте острова",
+   "id": "Ikuti tinggi pulau",
+   "it": "Segui l'altezza dell'isola"
+  },
+  "as tall as the open island, growing and shrinking with it when you resize it; off, they keep the height you give them": {
+   "zh-Hans": "与打开的岛一样高，调整岛的大小时随之变高或变矮；关闭时保持你设定的高度",
+   "hi": "खुले आइलैंड जितनी ऊँची, उसका आकार बदलने पर उसके साथ बढ़ती और घटती हैं; बंद होने पर वही ऊँचाई रखती हैं जो आप दें",
+   "es": "tan altas como la isla abierta, crecen y se encogen con ella al redimensionarla; desactivado, mantienen la altura que les des",
+   "ar": "بارتفاع الجزيرة المفتوحة، تكبر وتصغر معها عند تغيير حجمها؛ عند الإيقاف تحتفظ بالارتفاع الذي تحدده",
+   "fr": "aussi hautes que l'île ouverte, elles grandissent et rétrécissent avec elle quand tu la redimensionnes ; désactivé, elles gardent la hauteur que tu leur donnes",
+   "bn": "খোলা আইল্যান্ডের সমান উঁচু, আকার বদলালে সঙ্গে বাড়ে-কমে; বন্ধ থাকলে আপনার দেওয়া উচ্চতা রাখে",
+   "pt-BR": "tão altas quanto a ilha aberta, crescem e encolhem com ela ao redimensioná-la; desativado, mantêm a altura que você der",
+   "ru": "той же высоты, что и открытый остров, растут и уменьшаются вместе с ним при изменении размера; если выключено, сохраняют заданную вами высоту",
+   "id": "setinggi pulau yang terbuka, ikut membesar dan mengecil saat Anda mengubah ukurannya; jika mati, tetap pada tinggi yang Anda atur",
+   "it": "alte quanto l'isola aperta, crescono e si riducono con lei quando la ridimensioni; se spento, mantengono l'altezza che dai loro"
   }
  }
 }

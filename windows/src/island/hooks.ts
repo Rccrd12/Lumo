@@ -13,8 +13,10 @@ import { State, type AskedQuestion } from "../core/state";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
-import { mergeWindow, parseClaudePlan, restorePlanUsage, type PlanUsage } from "../core/plan";
-import { setClaudePlanUsage, storedClaudePlanUsage } from "../views/usage";
+import { restorePlanUsage } from "../core/plan";
+import { isSimpleRequest } from "../core/approvals";
+import { rememberFolder } from "../core/sessions";
+import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
 import { N_, t } from "../i18n/i18n";
 
 const CLAUDE_ID = "integration_claude";
@@ -245,25 +247,17 @@ export function registerHookHandlers(island: Island) {
   void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
   // The same numbers from a chat answer of Claude Code (claude_code.rs), which
   // may report one window only: the other one is kept.
-  void onEvent<unknown>("chat-plan-usage", (rateLimits) => {
-    const usage = parseClaudePlan(rateLimits);
-    if (!usage) return;
-    const prev = State.planUsage;
-    const merged: PlanUsage = { updatedAt: usage.updatedAt };
-    const fiveHour = mergeWindow(usage.fiveHour, prev?.fiveHour);
-    const sevenDay = mergeWindow(usage.sevenDay, prev?.sevenDay);
-    if (fiveHour) merged.fiveHour = fiveHour;
-    if (sevenDay) merged.sevenDay = sevenDay;
-    setClaudePlanUsage(merged);
-  });
+  void onEvent<unknown>("chat-plan-usage", (rateLimits) => keepPlanUsage(rateLimits));
+  // Or, turned on in Settings, from Anthropic while the island is open.
+  startPlanUsagePolling();
 }
+
 
 function handleHook(island: Island, payload: HookPayload) {
   // Account-wide numbers from the status line relay, not part of any session:
   // keep the latest, nothing else (no reveal, no sound), paused or not.
   if (payload.hook_event_name === "StatusLine") {
-    const usage = parseClaudePlan(payload.rate_limits);
-    if (usage) setClaudePlanUsage(usage);
+    keepPlanUsage(payload.rate_limits);
     return;
   }
 
@@ -305,6 +299,8 @@ function handleHook(island: Island, payload: HookPayload) {
 
   /** Ensure the agent pill exists (no-op for Claude Code). */
   const ensurePill = () => {
+    // Where the project is, for the Code section's session history.
+    rememberFolder(cwd);
     if (isExternalAgent) {
       State.upsertExternalAgent(agentId, agentName(validAgent!), agentColor(validAgent!));
       const t = State.tasks.find((x) => x.id === agentId);
@@ -523,6 +519,12 @@ function handleHook(island: Island, payload: HookPayload) {
       // Code asks questions this way.
       const questions = isExternalAgent ? null : askedQuestions(tool, input);
       const view = questions ? "question" : "approval";
+      // A request that only reads or looks, while the island is closed, is
+      // answered right there: Deny and Allow next to Lumo (Settings → Island).
+      // Still a click, never automatic; anything else opens the full card.
+      const quick = !questions && State.settings.quickApprovals !== false
+        && State.mode !== "expanded" && isSimpleRequest(tool, input);
+      void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is
       // already open: its pill comes to the front, and the one you were on
       // comes back once you answer (Mac #117, #120).
@@ -534,6 +536,7 @@ function handleHook(island: Island, payload: HookPayload) {
         command: approvalTarget(tool, input),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
+        ...(quick ? { quick } : {}),
       });
       // The relay's short ack window closes in 800 ms; everything below this
       // line is synchronous, so the card really is up by the time it lands.
@@ -541,15 +544,20 @@ function handleHook(island: Island, payload: HookPayload) {
       if (!fromChat) State.updateTask(agentId, view);
       Sound.play(view);
       // Any agent's card (Claude Code, Codex, Copilot CLI, Muse Code) comes up
-      // the same way: beginApproval brought its pill to the front.
-      island.alert(view);
+      // the same way: beginApproval brought its pill to the front. A simple
+      // one stays on the closed island, if it can show it.
+      if (!quick || !island.quickApproval()) {
+        if (State.pendingApproval?.quick) State.pendingApproval.quick = false;
+        island.alert(view);
+      }
       // Lumo answers within 108 s or not at all; after that the terminal has
       // taken over and the card would be lying. For the chat's Antigravity CLI
-      // run, the relay says how long it waits: the card goes just before.
+      // and Claude Code runs, the relay says how long it waits: the card goes
+      // just before.
       pendingTimeout = window.setTimeout(() => {
         pendingTimeout = null;
         dropPendingCard(island);
-      }, chatAgy ? agyCardMs(payload.lumo_card_secs) : 110_000);
+      }, chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 110_000);
       break;
     }
 

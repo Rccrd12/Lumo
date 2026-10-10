@@ -19,8 +19,10 @@ import {
 import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
-import { renderDiff, statusDot } from "./parts";
+import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { updatesSection } from "./updates";
+import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
+import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
 import { LIVE_EXTENDED, LIVE_MODEL, THINKING_LEVELS, VOICES, parseLiveModel, parseThinking, parseVoice } from "../live/protocol";
 import { VOICE_SETTINGS } from "../live/strings";
@@ -163,7 +165,7 @@ function claudeSection(status: HookStatus): HTMLElement {
   const section = h(
     "section",
     {},
-    h("h2", {}, statusDot(status.installed), h("span", { text: "Claude Code" })),
+    ...sectionHead("Claude Code", null, statusDot(status.installed)),
     body,
   );
 
@@ -182,21 +184,14 @@ function claudeSection(status: HookStatus): HTMLElement {
 
   function draw() {
     body.append(
-      h("div", {
-        class: "hint",
+      h("p", {
+        class: "section-intro",
         text: status.installed
           ? t("Lumo is hooked into your Claude Code sessions. Tool calls, questions and permission requests show up in the island, and you can answer them there.")
           : t("Install the hooks to see your Claude Code sessions in the island and approve permissions without leaving what you are doing."),
       }),
-      h("div", { class: "row" },
-        h("label", { text: "settings.json" }),
-        h("span", { class: "path", text: status.settingsPath }),
-      ),
-      h("div", { class: "row" },
-        h("label", { text: t("Relay") }),
-        h("span", { class: "path", text: status.hookPath }),
-        statusDot(status.hookReady),
-      ),
+      setting("settings.json", h("span", { class: "path", text: status.settingsPath })),
+      setting(h("span", { class: "with-dot" }, t("Relay"), statusDot(status.hookReady)), h("span", { class: "path", text: status.hookPath })),
     );
 
     if (!status.hookReady) {
@@ -206,7 +201,7 @@ function claudeSection(status: HookStatus): HTMLElement {
       }));
     }
 
-    const actions = h("div", { class: "row" });
+    const actions = h("div", { class: "row end" });
     const install = h("button", {
       class: "primary",
       text: status.installed ? t("Reinstall hooks…") : t("Install hooks…"),
@@ -244,13 +239,14 @@ function claudeSection(status: HookStatus): HTMLElement {
 const PLAN_SETTINGS_TEXT = {
   get claude() { return t("Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only."); },
   get showClaude() { return t("Show in notch"); },
+  get claudeTitle() { return t("Claude plan"); },
   get codex() { return t("Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Lumo asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT."); },
   get showCodex() { return t("Show Codex plan in the notch"); },
 };
 
 function planSection(status: HookStatus): HTMLElement {
-  const body = h("div", { style: "display:flex;flex-direction:column;gap:12px" });
-  const section = h("section", {}, h("h2", {}, h("span", { text: t("Plan usage") })), body);
+  const body = h("div", { class: "setting-list" });
+  const section = h("section", {}, ...sectionHead(t("Plan usage")), body);
 
   const redraw = () => {
     clear(body);
@@ -284,15 +280,10 @@ function planSection(status: HookStatus): HTMLElement {
       }
     });
     body.append(
-      h("div", {
-        class: "hint",
-        text: PLAN_SETTINGS_TEXT.claude,
-      }),
-      h("div", { class: "row" }, h("label", { text: PLAN_SETTINGS_TEXT.showClaude }), sw),
-      h("div", { class: "row" },
-        h("label", { text: t("Relay") }),
-        statusDot(status.planRelayInstalled),
-        h("span", { class: "hint", text: status.planRelayInstalled ? t("installed") : t("not installed") }),
+      group(PLAN_SETTINGS_TEXT.claudeTitle),
+      setting(PLAN_SETTINGS_TEXT.showClaude, PLAN_SETTINGS_TEXT.claude, sw),
+      setting(h("span", { class: "with-dot" }, t("Relay"), statusDot(status.planRelayInstalled)),
+        status.planRelayInstalled ? t("installed") : t("not installed"),
         status.planRelayInstalled
           ? h("button", {
               class: "danger",
@@ -305,10 +296,15 @@ function planSection(status: HookStatus): HTMLElement {
               onclick: () => void reviewChange(body, STATUS_LINE_CHANGE, true, redraw, () => void rebuild()),
             }),
       ),
+      setting(t("Ask Anthropic"),
+        t("Claude Code's status line only runs in a terminal, and its answers give the 5 hours only near the limit. Turned on, Lumo asks Anthropic for your plan's usage with Claude Code's sign-in, every 3 minutes while the island is open, as Claude Code's /usage does. The sign-in is only read, never kept or sent anywhere else."),
+        toggle(settings.planUsageOnline, (on) => {
+          settings.planUsageOnline = on;
+          void save();
+        })),
       // Codex: nothing to install, Lumo asks the Codex CLI when the pill shows.
-      h("div", { class: "hint", text: PLAN_SETTINGS_TEXT.codex }),
-      h("div", { class: "row" },
-        h("label", { text: PLAN_SETTINGS_TEXT.showCodex }),
+      group("Codex"),
+      setting(PLAN_SETTINGS_TEXT.showCodex, PLAN_SETTINGS_TEXT.codex,
         toggle(settings.showCodexPlanInNotch, (on) => {
           settings.showCodexPlanInNotch = on;
           void save();
@@ -341,7 +337,7 @@ const NO_KEY = N_("No key yet. Only the Anthropic API needs one: Claude Code use
 
 function apiSection(hasKey: boolean): HTMLElement {
   const dot = statusDot(hasKey);
-  const state = h("span", { class: "hint", text: hasKey ? t("Key saved in the {store}.", { store: KEY_STORE }) : t(NO_KEY) });
+  const state = h("span", { text: hasKey ? t("Key saved in the {store}.", { store: KEY_STORE }) : t(NO_KEY) });
 
   const field = h("input", {
     type: "password",
@@ -419,12 +415,10 @@ function apiSection(hasKey: boolean): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, dot, h("span", { text: "Claude" })),
-    h("div", { class: "row" }, h("label", { text: "Claude Code" }), ccModel),
-    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Uses your Claude plan. No key needed.") }),
-    state,
-    h("div", { class: "row" }, h("label", { text: t("API key") }), field, saveBtn, clearBtn),
-    h("div", { class: "row" }, h("label", { text: t("Model") }), model),
+    ...sectionHead("Claude", null, dot),
+    setting("Claude Code", t("Uses your Claude plan. No key needed."), ccModel),
+    wideSetting(t("API key"), state, field, saveBtn, clearBtn),
+    setting(t("Model"), null, model),
     feedback,
   );
 }
@@ -465,9 +459,8 @@ function agyCliSection(): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, h("i", { class: "dot", style: `background:${p.accent};margin-right:8px` }), h("span", { text: p.name })),
-    h("div", { class: "row" }, h("label", { text: t("Model") }), model),
-    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Uses your Google account. No key needed.") }),
+    ...sectionHead(p.name, null, accentDot(p.accent)),
+    setting(t("Model"), t("Uses your Google account. No key needed."), model),
   );
 }
 
@@ -545,10 +538,8 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: t("Active pills") })),
-    h("div", { class: "hint", text: t("Choose the tools you use. Lumo only shows what you declare here.") }),
-    slots,
-    h("div", { class: "row" }, h("label", { text: t("Main tool") }), main),
+    ...sectionHead(t("Active pills"), t("Choose the tools you use. Lumo only shows what you declare here.")),
+    setting(t("Main tool"), slots, main),
     groups,
   );
 }
@@ -595,7 +586,7 @@ function chatProvidersSection(
   present: Record<string, boolean>,
   keyChanged: (key: string, on: boolean) => void,
 ): HTMLElement {
-  const list = h("div", { style: "display:flex;flex-direction:column;gap:8px" });
+  const list = h("div", {});
   for (const def of CLOUD) {
     const p = providerDef(def.id);
     const key = p.key!;
@@ -641,22 +632,16 @@ function chatProvidersSection(
     });
     refresh();
     list.append(
-      h("div", { class: "row" },
-        h("label", {},
-          h("i", { class: "dot", style: `background:${p.accent};margin-right:8px` }),
-          h("span", { text: def.name }),
-        ),
-        input, saveBtn, removeBtn, dotEl,
-      ),
-      h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Key from {site}", { site: def.where }) }),
+      wideSetting(h("span", { class: "with-dot" }, accentDot(p.accent), def.name, dotEl),
+        t("Key from {site}", { site: def.where }),
+        input, saveBtn, removeBtn),
     );
   }
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: CHAT_STRINGS.providersTitle })),
-    h("div", { class: "hint", text: CHAT_STRINGS.providersHint }),
-    list,
+    ...sectionHead(CHAT_STRINGS.providersTitle, CHAT_STRINGS.providersHint),
+    ...list.children,
   );
 }
 
@@ -667,10 +652,9 @@ function chatUsageSection(): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: t("Remaining usage") })),
-    h("div", { class: "hint", text: t("Shows what the provider in use has left, in a small line next to the model name above the chat box: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.", { path: `${t("Agents")} → ${t("Plan usage")}` }) }),
-    h("div", { class: "row" },
-      h("label", { text: t("Show remaining usage in the chat") }),
+    ...sectionHead(t("Remaining usage")),
+    setting(t("Show remaining usage in the chat"),
+      t("A ring next to the past chats fills with what the provider in use has used, and a click on it shows each limit and when it resets: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.", { path: `${t("Agents")} → ${t("Plan usage")}` }),
       toggle(settings.chatShowUsage, (on) => {
         settings.chatShowUsage = on;
         void save();
@@ -693,24 +677,20 @@ function chatSharingSection(): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: SHARING_TEXT.title })),
-    h("div", { class: "hint", text: SHARING_TEXT.hint }),
-    h("div", { class: "row" },
-      h("label", { text: t("Tell the AI what's open") }),
+    ...sectionHead(SHARING_TEXT.title),
+    setting(t("Tell the AI what's open"),
+      t("With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message."),
       toggle(settings.chatShareOpen !== false, (on) => {
         settings.chatShareOpen = on;
         void save();
       }),
     ),
-    h("div", { class: "hint", text: t("With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message.") }),
-    h("div", { class: "row" },
-      h("label", { text: SHARING_TEXT.explorer }),
+    setting(SHARING_TEXT.explorer, windows ? SHARING_TEXT.hint : SHARING_TEXT.linux,
       toggle(settings.chatShareExplorer, (on) => {
         settings.chatShareExplorer = on;
         void save();
       }),
     ),
-    windows ? null : h("div", { class: "hint", text: SHARING_TEXT.linux }),
   );
 }
 
@@ -781,17 +761,14 @@ function voiceSection(
   refresh();
 
   const model = parseLiveModel(settings.liveModel);
-  const thinkingRow = h("div", { class: "row" },
-    h("label", { text: t(VOICE_SETTINGS.thinking) }),
+  const thinkingRow = setting(t(VOICE_SETTINGS.thinking), t(VOICE_SETTINGS.thinkingHint),
     select(THINKING_LEVELS.map((l) => [l, t(THINKING_NAMES[l])]), parseThinking(settings.liveThinking), (v) => {
       settings.liveThinking = v;
       void save();
     }),
   );
-  const thinkingHint = h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(VOICE_SETTINGS.thinkingHint) });
   const showThinking = (m: string) => {
     thinkingRow.hidden = m !== LIVE_EXTENDED;
-    thinkingHint.hidden = m !== LIVE_EXTENDED;
   };
   showThinking(model);
 
@@ -806,15 +783,11 @@ function voiceSection(
   return h(
     "section",
     {},
-    h("h2", {}, h("i", { class: "dot", style: "background:#22d3ee;margin-right:8px" }), h("span", { text: "Gemini Live" })),
-    h("div", { class: "hint", text: t(VOICE_SETTINGS.hint, { keys }) }),
-    h("div", { class: "row" },
-      h("label", { text: t(VOICE_SETTINGS.key) }),
-      input, saveBtn, removeBtn, dotEl,
-    ),
-    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t("Key from {site}", { site: "aistudio.google.com" }) }),
-    h("div", { class: "row" },
-      h("label", { text: t(VOICE_SETTINGS.model) }),
+    ...sectionHead("Gemini Live", t(VOICE_SETTINGS.hint, { keys }), accentDot("#22d3ee")),
+    wideSetting(h("span", { class: "with-dot" }, t(VOICE_SETTINGS.key), dotEl),
+      t("Key from {site}", { site: "aistudio.google.com" }),
+      input, saveBtn, removeBtn),
+    setting(t(VOICE_SETTINGS.model), null,
       select([[LIVE_MODEL, "Gemini 3.8 Live"], [LIVE_EXTENDED, "Gemini 3.8 Live Extended Thinking"]], model, (v) => {
         settings.liveModel = v;
         showThinking(v);
@@ -822,24 +795,19 @@ function voiceSection(
       }),
     ),
     thinkingRow,
-    thinkingHint,
-    h("div", { class: "row" },
-      h("label", { text: t(VOICE_SETTINGS.voice) }),
+    setting(t(VOICE_SETTINGS.voice), null,
       select([["", t(VOICE_SETTINGS.automatic)], ...VOICES.map((v): [string, string] => [v, v])], parseVoice(settings.liveVoice), (v) => {
         settings.liveVoice = v;
         void save();
       }),
     ),
-    h("div", { class: "row" },
-      h("label", { text: t(VOICE_SETTINGS.screen) }),
+    setting(t(VOICE_SETTINGS.screen), t(windows ? VOICE_SETTINGS.screenHint : VOICE_SETTINGS.screenLinux),
       toggle(settings.liveScreen && windows, (on) => {
         settings.liveScreen = on;
         void save();
       }),
     ),
-    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(windows ? VOICE_SETTINGS.screenHint : VOICE_SETTINGS.screenLinux) }),
-    h("div", { class: "row" },
-      h("label", { text: t(VOICE_SETTINGS.helper) }),
+    setting(t(VOICE_SETTINGS.helper), t(VOICE_SETTINGS.helperHint),
       select([["claude-code", "Claude Code"], ["antigravity-cli", "Antigravity CLI"]], helperId(), (v) => {
         settings.liveHelper = v;
         // Each helper has its own models: the new one starts on its own choice.
@@ -848,7 +816,6 @@ function voiceSection(
         drawHelper();
       }),
     ),
-    h("div", { class: "hint", style: "margin:-4px 0 0 144px", text: t(VOICE_SETTINGS.helperHint) }),
     helperModelRow,
     helperProblem,
     helperEffortRow,
@@ -865,9 +832,9 @@ const helperId = () => (settings.liveHelper === "antigravity-cli" ? "antigravity
 function helperChoices(): { modelRow: HTMLElement; problem: HTMLElement; effortRow: HTMLElement; draw: () => void } {
   const models = h("select", {}) as HTMLSelectElement;
   const efforts = h("select", {}) as HTMLSelectElement;
-  const modelRow = h("div", { class: "row" }, h("label", { text: t(VOICE_SETTINGS.helperModel) }), models);
-  const effortRow = h("div", { class: "row" }, h("label", { text: t(VOICE_SETTINGS.helperEffort) }), efforts);
-  const problem = h("div", { class: "hint", style: "margin:-4px 0 0 144px" });
+  const modelRow = setting(t(VOICE_SETTINGS.helperModel), null, models);
+  const effortRow = setting(t(VOICE_SETTINGS.helperEffort), null, efforts);
+  const problem = h("div", { class: "notice warn" });
   models.addEventListener("change", () => {
     settings.liveHelperModel = models.value;
     void save();
@@ -945,12 +912,11 @@ function exposureNotice(url: string, withKey: boolean): HTMLElement | null {
 }
 
 function localSection(customKey: boolean): HTMLElement {
-  const body = h("div", { style: "display:flex;flex-direction:column;gap:14px" });
+  const body = h("div", { class: "setting-list" });
   const section = h(
     "section",
     {},
-    h("h2", {}, h("span", { text: CHAT_STRINGS.localTitle })),
-    h("div", { class: "hint", text: CHAT_STRINGS.localHint }),
+    ...sectionHead(CHAT_STRINGS.localTitle, CHAT_STRINGS.localHint),
     body,
   );
   const redraw = () => {
@@ -965,11 +931,8 @@ function localSection(customKey: boolean): HTMLElement {
     const connected = settings[field] !== "";
     const status = h("div", {});
     const exposure = h("div", {});
-    const label = h("label", {},
-      h("i", { class: "dot", style: `background:${p.accent};margin-right:8px` }),
-      h("span", { text: t(def.name) }),
-    );
-    const block = h("div", { style: "display:flex;flex-direction:column;gap:6px" });
+    const label = () => h("span", { class: "with-dot" }, accentDot(p.accent), t(def.name));
+    const block = h("div", { class: "setting-block" });
 
     if (connected) {
       const inUse = settings.chatProvider === id;
@@ -991,7 +954,7 @@ function localSection(customKey: boolean): HTMLElement {
         redraw();
       });
       block.append(
-        h("div", { class: "row" }, label, h("span", { class: "path", text: settings[field] }), statusDot(true), use, disconnect),
+        setting(h("span", { class: "with-dot" }, label(), statusDot(true)), h("span", { class: "path", text: settings[field] }), use, disconnect),
         status,
       );
       exposure.append(exposureNotice(settings[field], id === "custom" && customKey) ?? "");
@@ -1056,8 +1019,8 @@ function localSection(customKey: boolean): HTMLElement {
       connect.disabled = false;
     });
 
-    block.append(h("div", { class: "row" }, label, input, connect));
-    if (id === "custom") block.append(h("div", { class: "row" }, h("label", { text: "" }), key));
+    block.append(wideSetting(label(), null, input, connect));
+    if (id === "custom") block.append(h("div", { class: "setting-extra" }, key));
     block.append(status, exposure);
     showExposure();
     return block;
@@ -1120,8 +1083,8 @@ function declaredChanged() {
 }
 
 function integrationsSection(present: Record<string, boolean>): HTMLElement {
-  const note = h("div", { class: "hint" });
-  const list = h("div", { style: "display:flex;flex-direction:column;gap:14px" });
+  const note = h("p", { class: "section-intro" });
+  const list = h("div", { class: "setting-list" });
 
   function updateNote() {
     const used = settings.activeIntegrations.length;
@@ -1144,7 +1107,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
       declaredChanged();
     });
 
-    const rows = h("div", { style: "display:flex;flex-direction:column;gap:6px;flex:1 1 auto;min-width:0" });
+    const rows = h("div", { class: "field-rows" });
     for (const field of def.fields) {
       const input = h("input", {
         type: field.secret ? "password" : "text",
@@ -1168,21 +1131,20 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
         }
       });
       rows.append(
-        h("div", { class: "row" },
-          h("label", { style: "min-width:104px", text: t(field.label) }),
+        h("div", { class: "field-row" },
+          h("label", { text: t(field.label) }),
           input, saveBtn, dotEl,
         ),
       );
     }
 
-    if (def.hint) rows.append(h("div", { class: "hint", text: t(def.hint) }));
-
     list.append(
-      h("div", { style: "display:flex;gap:12px;align-items:flex-start" },
-        h("div", { style: "display:flex;align-items:center;gap:8px;min-width:132px;padding-top:4px" },
+      h("div", { class: "integration" },
+        setting(
+          // Service names stay as they are ("Resend" is a name, not "send again"); only "Email" is a word.
+          h("span", { class: "with-dot" }, colorDot(def, "", () => settings.pillColors, pickColor), def.id === "integration_mail" ? t(def.name) : def.name),
+          def.hint ? t(def.hint) : null,
           sw,
-          colorDot(def, "", () => settings.pillColors, pickColor),
-          h("span", { style: "font-size:12.5px", text: t(def.name) }),
         ),
         rows,
       ),
@@ -1190,7 +1152,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
   }
 
   updateNote();
-  return h("section", {}, h("h2", {}, h("span", { text: t("Integrations") })), note, list);
+  return h("section", {}, ...sectionHead(t("Integrations")), note, list);
 }
 
 // ── General section ───────────────────────────────────────────────────────────
@@ -1200,27 +1162,51 @@ function generalSection(): HTMLElement {
     type: "range", min: "0", max: "0.2", step: "0.005",
     value: String(settings.soundVolume),
   }) as HTMLInputElement;
+  // The volume as a percentage of its range, beside the bar.
+  const percent = h("span", { class: "volume-pct" });
+  const showPercent = () => {
+    percent.textContent = `${Math.round((Number(volume.value) / 0.2) * 100)}%`;
+  };
+  showPercent();
   volume.addEventListener("input", () => {
     settings.soundVolume = Number(volume.value);
+    showPercent();
     void save();
   });
 
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: t("General") })),
-    h("div", { class: "row" },
-      h("label", { text: t("Sound") }),
-      toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
+    ...sectionHead(t("General")),
+    setting(t("Sound"), null,
       volume,
+      percent,
+      toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
     ),
     languageRow(),
-    h("div", { class: "row" },
-      h("label", { text: t("Launch at startup") }),
+    setting(t("Launch at startup"), null,
       toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }),
     ),
     ...recapRows(),
+    ...contextMenuRows(),
   );
+}
+
+/**
+ * Settings → General → Right-click menu: what it offers besides Refresh and
+ * the text actions, one switch each, in the menu's order.
+ */
+function contextMenuRows(): HTMLElement[] {
+  const items = MENU_ITEMS.map((item) =>
+    setting(t(item.label), null, toggle(pickedItems(settings.contextMenu).some((i) => i.id === item.id), (v) => {
+      settings.contextMenu = withItem(settings.contextMenu, item.id, v);
+      void save();
+    })));
+  return [
+    group(t("Right-click menu")),
+    h("div", { class: "hint", text: t("A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.") }),
+    h("div", { class: "setting-list" }, ...items),
+  ];
 }
 
 // ── Island section ────────────────────────────────────────────────────────────
@@ -1266,6 +1252,16 @@ function islandSection(): HTMLElement {
     void save();
   });
 
+  // How far the island sits from the edge it hangs from.
+  const gap = select([
+    ["none", t("None")],
+    ["light", t("Light (default)")],
+    ["medium", t("Medium")],
+    ["wide", t("Wide")],
+  ], ["none", "medium", "wide"].includes(settings.islandEdgeGap) ? settings.islandEdgeGap : "light", (v) => {
+    settings.islandEdgeGap = v;
+    void save();
+  });
   // The island's icons, against the Mac's size.
   const icons = h("select", {}) as HTMLSelectElement;
   for (const pct of [100, 125, 150]) {
@@ -1303,35 +1299,22 @@ function islandSection(): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: t("Island") })),
+    ...sectionHead(t("Island")),
     ...behaviourRows(),
-    h("div", { class: "row" },
-      h("label", { text: t("Lumo moves") }),
-      motion,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Lumo's look") }),
-      look,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Island lives on") }),
-      screen,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Island size") }),
-      size,
-      h("button", { text: t("Put the island back in the centre"), onclick: () => void Bridge.islandRecenter() }),
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Icon size") }),
-      icons,
-    ),
-    h("div", { class: "row" },
-      h("span", { class: "hint", text: t("Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle.") }),
-    ),
-    h("div", { class: "row" },
-      h("span", { class: "hint", text: t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.") }),
-    ),
+    group("Lumo"),
+    setting(t("Lumo moves"), null, motion),
+    setting(t("Lumo's look"), null, look),
+    group(t("Position and size")),
+    setting(t("Island lives on"), null, screen),
+    setting(t("Island size"), null, size),
+    setting(t("Distance from the edge"), t("between the island and the edge of the screen it is docked to. With Medium the mouse can cross the top of the screen above the island without opening it"), gap),
+    setting(t("Icon size"), null, icons),
+    setting(t("Put the island back in the centre"), null,
+      h("button", { text: t("Put back"), onclick: () => void Bridge.islandRecenter() })),
+    h("p", { class: "section-note" },
+      t("Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle."),
+      h("br"),
+      t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.")),
   );
 }
 
@@ -1356,7 +1339,7 @@ function behaviourRows(): HTMLElement[] {
     seconds.value = String(settings.autoCloseInterval);
     void save();
   });
-  const secondsHint = h("span", { class: "hint", text: t("seconds after you leave the island") });
+  const secondsHint = h("span", { class: "unit", text: t("seconds after you leave the island") });
   const showSeconds = () => {
     const on = close.value === "timer";
     seconds.style.display = on ? "" : "none";
@@ -1370,37 +1353,25 @@ function behaviourRows(): HTMLElement[] {
   });
 
   return [
-    h("div", { class: "row" },
-      h("label", { text: t("Close the open island") }),
-      close,
-      seconds,
-      secondsHint,
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Open on hover") }),
-      toggle(settings.islandHoverOpen, (v) => { settings.islandHoverOpen = v; void save(); }),
-      h("span", { class: "hint", text: t("opens the closed island when the mouse rests on it") }),
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Hide when unused") }),
-      toggle(settings.islandAutoHide, (v) => { settings.islandAutoHide = v; void save(); }),
-      h("span", { class: "hint", text: t("the closed island slips into the edge of the screen a minute after you leave it") }),
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Say what's going on") }),
-      toggle(settings.compactActivity, (v) => { settings.compactActivity = v; void save(); }),
-      h("span", { class: "hint", text: t("the closed island says what the AI is doing, and when an answer or an email arrives") }),
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Show the music playing") }),
-      toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); }),
-      h("span", { class: "hint", text: t("with play, pause and skip, when nothing else is showing") }),
-    ),
-    h("div", { class: "row" },
-      h("label", { text: t("Live Activities") }),
-      toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); }),
-      h("span", { class: "hint", text: t("beside the open island: timers, the music, the calendar and the newest emails") }),
-    ),
+    group(t("Opening and closing")),
+    setting(t("Close the open island"), null, close, h("span", { class: "with-unit" }, seconds, secondsHint)),
+    setting(t("Open on hover"), t("opens the closed island when the mouse rests on it"),
+      toggle(settings.islandHoverOpen, (v) => { settings.islandHoverOpen = v; void save(); })),
+    setting(t("Hide when unused"), t("the closed island slips into the edge of the screen a minute after you leave it"),
+      toggle(settings.islandAutoHide, (v) => { settings.islandAutoHide = v; void save(); })),
+    group(t("The closed island")),
+    setting(t("Say what's going on"), t("the closed island says what the AI is doing, and when an answer or an email arrives"),
+      toggle(settings.compactActivity, (v) => { settings.compactActivity = v; void save(); })),
+    setting(t("Show the music playing"), t("with play, pause and skip, when nothing else is showing"),
+      toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); })),
+    setting(t("Allow simple requests from the closed island"),
+      t("an agent asking to read files or run a command that only looks (ls, git status…) shows Deny and Allow on the closed island; edits and other commands still open the full card"),
+      toggle(settings.quickApprovals !== false, (v) => { settings.quickApprovals = v; void save(); })),
+    group(t("Live Activities")),
+    setting(t("Live Activities"), t("beside the open island: timers, the music, the calendar and the newest emails"),
+      toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); })),
+    setting(t("Follow the island's height"), t("as tall as the open island, growing and shrinking with it when you resize it; off, they keep the height you give them"),
+      toggle(settings.activitiesFollowIsland !== false, (v) => { settings.activitiesFollowIsland = v; void save(); })),
     calendarRow(),
   ];
 }
@@ -1434,10 +1405,9 @@ function calendarRow(): HTMLElement {
       dotEl.style.background = "#f5a524";
     }
   });
-  return h("div", { style: "display:flex;flex-direction:column;gap:4px" },
-    h("div", { class: "row" }, h("label", { text: t("Calendar") }), input, saveBtn, dotEl),
-    h("div", { class: "hint", text: t("The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.", { store: KEY_STORE }) }),
-  );
+  return wideSetting(h("span", { class: "with-dot" }, t("Calendar"), dotEl),
+    t("The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.", { store: KEY_STORE }),
+    input, saveBtn);
 }
 
 /**
@@ -1455,7 +1425,7 @@ function languageRow(): HTMLElement {
     void save();
     applyLanguage();
   });
-  return h("div", { class: "row" }, h("label", { text: t("Language") }), select);
+  return setting(t("Language"), null, select);
 }
 
 // ── Shortcuts section ─────────────────────────────────────────────────────────
@@ -1635,14 +1605,13 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
   return h(
     "section",
     {},
-    h("h2", {}, h("span", { text: SHORTCUTS_UI.title })),
-    h("div", { class: "hint", text: SHORTCUTS_UI.hint }),
-    h("div", { class: "subhead", text: SHORTCUTS_UI.global }),
+    ...sectionHead(SHORTCUTS_UI.title, SHORTCUTS_UI.hint),
+    group(SHORTCUTS_UI.global),
     list,
     blockedNote,
     feedback,
-    h("div", { class: "row" }, reset),
-    h("div", { class: "subhead", text: SHORTCUTS_UI.island }),
+    h("div", { class: "row end" }, reset),
+    group(SHORTCUTS_UI.island),
     islandList,
   );
 }
@@ -1675,20 +1644,7 @@ function recapRows(): HTMLElement[] {
     },
   }) as HTMLButtonElement;
   return [
-    h("div", { class: "row" },
-      h("label", { text: T.label }),
-      sw,
-      h("span", { class: "hint", text: T.keep }),
-    ),
-    h("div", { class: "row" },
-      h("label", {}),
-      clearBtn,
-      feedback,
-    ),
-    h("div", { class: "row" },
-      h("label", {}),
-      h("span", { class: "hint", style: "flex:1 1 0;min-width:0", text: T.about }),
-    ),
+    setting(T.label, h("span", {}, T.keep, h("br"), T.about), feedback, clearBtn, sw),
   ];
 }
 
@@ -1808,6 +1764,12 @@ function tellIsland(message: string) {
 }
 
 async function main() {
+  // Never the webview's menu: Cut, Copy, Paste and Select all in a field.
+  installTextMenu();
+  // The island's "Customize this menu…" picked a page while this window was open.
+  window.addEventListener("storage", (e) => {
+    if (e.key === PAGE_KEY && isPage(e.newValue)) showPage(e.newValue);
+  });
   if (embedded) {
     document.body.classList.add("embedded");
     // settings.html paints its window colour inline, before any style loads.
@@ -1829,7 +1791,13 @@ async function main() {
     applyDirection();
     void rerender();
   });
-  await render();
+  // Whatever goes wrong drawing a section, the island stops waiting for the
+  // page (and the error is in lumo.log), rather than saying "Opening Settings…" for ever.
+  try {
+    await render();
+  } catch (err) {
+    void Bridge.log(`settings: ${String(err)}`);
+  }
   if (embedded) tellIsland(FRAME_READY);
 
   void onEvent<ShortcutsReport>("shortcuts-status", (fresh) => shortcutsListener?.report(fresh));
