@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## Windows and Linux 0.5.1 — October 10, 2026
 
 - **The Claude plan's 5 hours no longer vanish**: Claude Code's status line leaves the 5-hour window out while it is far from its limit, and each of its updates used to drop the figure a chat answer had brought. The window it leaves out is now kept, and when none was ever reported the 5 hours read "plenty left — Claude Code reports it only near the limit", in the chat's usage menu and on the plan card
 - **The effort slider is one short row**: a track that fills up to a white knob, a mark per level, the level it is on beside it and Auto at the end (no "Effort" label above). Dragged, the knob snaps to a level as soon as the pointer is past half way to it, and glides there; the arrow keys, Home and End move it too
