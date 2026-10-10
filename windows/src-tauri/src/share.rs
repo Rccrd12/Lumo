@@ -640,7 +640,8 @@ fn read_on_screen(tab: &BrowserTab, max: usize) -> String {
         return String::new();
     }
     let exe = BROWSERS.iter().find(|b| b.name == tab.browser).map(|b| b.exe).unwrap_or_default();
-    let title = tab.title.trim();
+    // A long title was cut for the list ("…"): its start still names the window.
+    let title = tab.title.trim().trim_end_matches('…').trim_end();
     if title.is_empty() {
         return String::new();
     }
