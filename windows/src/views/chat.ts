@@ -337,62 +337,108 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     const levels = effortsFor(p.id).filter((e) => e !== "");
     efforts.hidden = levels.length === 0;
     if (efforts.hidden) return;
-    const current = effortFor(p.id, State.settings.chatEffort);
+    const last = levels.length - 1;
+
+    const auto = h(
+      "button",
+      { class: "effort-auto", title: t(STRINGS.autoHint), style: `--accent:${p.accent}` },
+      h("span", { text: t(STRINGS.effortAuto) }),
+      h("span", { class: "effort-auto-note", text: t(STRINGS.recommended) }),
+    );
+    const value = h("span", { class: "effort-value" });
+    // A track that fills up to the knob, with a mark for each level. Dragged,
+    // the knob follows the pointer and the fill with it; let go, it settles on
+    // the nearest level. On Auto there is no knob: a click picks a level.
+    const fill = h("i", { class: "effort-fill" });
+    const knob = h("i", { class: "effort-knob" });
+    const ticks = h("div", { class: "effort-ticks" }, ...levels.map(() => h("i")));
+    const track = h("div", {
+      class: "effort-track effort-slider",
+      role: "slider",
+      tabindex: "0",
+      "aria-label": t(STRINGS.effort),
+      "aria-valuemin": "0",
+      "aria-valuemax": String(last),
+      style: `--accent:${p.accent}`,
+    }, ticks, fill, knob);
+
+    /** Where the knob is, 0–1 along the track. */
+    const place = (frac: number) => {
+      const f = Math.max(0, Math.min(1, frac));
+      track.style.setProperty("--at", String(f));
+    };
+    /** Draws the saved level (or Auto) without saving anything. */
+    const show = () => {
+      const current = effortFor(p.id, State.settings.chatEffort);
+      const index = levels.indexOf(current);
+      auto.classList.toggle("on", !current);
+      track.classList.toggle("auto", !current);
+      track.setAttribute("aria-valuenow", String(Math.max(0, index)));
+      track.setAttribute("aria-valuetext", effortLabel(current));
+      value.textContent = effortLabel(current);
+      place(index < 0 ? 0 : index / last);
+    };
     const pick = (e: string) => {
+      show();
       if (e === effortFor(p.id, State.settings.chatEffort)) return;
       State.settings = { ...State.settings, chatEffort: e };
       saveSettings();
       Sound.play("blip");
-      drawEfforts();
+      show();
       onChange();
     };
-
-    const auto = h(
-      "button",
-      { class: current ? "effort-auto" : "effort-auto on", title: t(STRINGS.autoHint), style: `--accent:${p.accent}` },
-      h("span", { text: t(STRINGS.effortAuto) }),
-      h("span", { class: "effort-auto-note", text: t(STRINGS.recommended) }),
-    );
     auto.addEventListener("click", () => pick(""));
 
-    const slider = h("input", {
-      class: "effort-slider",
-      type: "range",
-      min: "0",
-      max: String(levels.length - 1),
-      step: "1",
-      "aria-label": t(STRINGS.effort),
-    }) as HTMLInputElement;
-    // On Auto the knob stays out of the way: no level is picked.
-    slider.value = String(Math.max(0, levels.indexOf(current)));
-    const ticks = h("div", { class: "effort-ticks" }, ...levels.map(() => h("i")));
-    const track = h(
-      "div",
-      { class: current ? "effort-track" : "effort-track auto", style: `--accent:${p.accent}` },
-      ticks,
-      slider,
-    );
-    const choose = () => pick(levels[Number(slider.value)] ?? "");
-    // A click on the track picks a level, even the one under an Auto knob.
-    slider.addEventListener("change", choose);
-    slider.addEventListener("pointerup", choose);
+    const fracAt = (clientX: number) => {
+      const r = track.getBoundingClientRect();
+      // The knob's centre stays inside the track by half its width.
+      const inset = 11;
+      return r.width > 2 * inset ? (clientX - r.left - inset) / (r.width - 2 * inset) : 0;
+    };
+    track.addEventListener("pointerdown", (e) => {
+      const pe = e as PointerEvent;
+      if (pe.button !== 0) return;
+      pe.preventDefault();
+      track.focus();
+      track.setPointerCapture?.(pe.pointerId);
+      track.classList.add("dragging");
+      track.classList.remove("auto");
+      const follow = (x: number) => {
+        const frac = Math.max(0, Math.min(1, fracAt(x)));
+        place(frac);
+        value.textContent = effortLabel(levels[Math.round(frac * last)]);
+      };
+      follow(pe.clientX);
+      const move = (m: Event) => follow((m as PointerEvent).clientX);
+      const up = (u: Event) => {
+        track.removeEventListener("pointermove", move);
+        track.removeEventListener("pointerup", up);
+        track.removeEventListener("pointercancel", up);
+        track.classList.remove("dragging");
+        // Settles on the nearest level, with the ease of the knob's transition.
+        const index = Math.round(Math.max(0, Math.min(1, fracAt((u as PointerEvent).clientX))) * last);
+        pick(levels[index]);
+      };
+      track.addEventListener("pointermove", move);
+      track.addEventListener("pointerup", up);
+      track.addEventListener("pointercancel", up);
+    });
+    track.addEventListener("keydown", (e) => {
+      const key = (e as KeyboardEvent).key;
+      const current = levels.indexOf(effortFor(p.id, State.settings.chatEffort));
+      const to = key === "ArrowRight" || key === "ArrowUp" ? Math.min(last, current + 1)
+        : key === "ArrowLeft" || key === "ArrowDown" ? Math.max(0, current < 0 ? 0 : current - 1)
+        : key === "Home" ? 0 : key === "End" ? last : null;
+      if (to == null) return;
+      e.preventDefault();
+      e.stopPropagation();
+      pick(levels[to]);
+    });
 
-    // Two short rows, so a small window leaves the models their room: Effort
-    // and Auto, then the slider with the level it is on.
-    efforts.append(
-      h(
-        "div",
-        { class: "effort-head" },
-        h("span", { class: "picker-label", text: t(STRINGS.effort) }),
-        auto,
-      ),
-      h(
-        "div",
-        { class: "effort-row" },
-        track,
-        h("span", { class: "effort-value", text: effortLabel(current) }),
-      ),
-    );
+    // One short row, so the model list keeps its room: the slider, the level
+    // it is on, and Auto at the end.
+    efforts.append(h("div", { class: "effort-row" }, track, value, auto));
+    show();
   }
 
   /** Models already asked for, by provider; a model server is asked again each time. */

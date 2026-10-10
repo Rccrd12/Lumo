@@ -160,9 +160,18 @@ export function buildPlanPill(codex: boolean): PlanPill {
  * One limit, on three lines so nothing is cut: its name and how much is used,
  * a bar across the card, and when it resets, in words ("Resets in 3 h 31").
  */
-function gaugeRow(label: string, w: PlanWindow | undefined, weekly: boolean, now: number): HTMLElement {
+function gaugeRow(label: string, w: PlanWindow | undefined, weekly: boolean, now: number, quietWhenMissing = false): HTMLElement {
   const top = h("div", { class: "plan-gauge-head" }, h("span", { class: "plan-label", text: label }));
   const block = h("div", { class: "plan-gauge" }, top);
+  if (!w && quietWhenMissing) {
+    // Claude Code leaves the 5-hour window out while it is far from its limit.
+    top.append(h("span", { class: "plan-pct", text: PLAN_TEXT.plentyLeft }));
+    block.append(
+      h("span", { class: "plan-bar" }, h("i", { class: "plan-fill" })),
+      h("span", { class: "plan-reset" }, svg(ICONS.clock, 10, { stroke: 2 }), h("span", { text: PLAN_TEXT.onlyNearLimit })),
+    );
+    return block;
+  }
   if (!w) {
     top.append(h("span", { class: "plan-none", text: PLAN_TEXT.none }));
     return block;
@@ -211,7 +220,7 @@ export class PlanCard {
     this.el.append(
       head(claudeColor(now), PLAN_TEXT.claudeTitle, claudeSubtitle(u, now)),
       h("div", { class: "plan-rows" },
-        gaugeRow(PLAN_TEXT.fiveHours, u?.fiveHour, false, now),
+        gaugeRow(PLAN_TEXT.fiveHours, u?.fiveHour, false, now, u?.sevenDay != null),
         gaugeRow(PLAN_TEXT.week, u?.sevenDay, true, now),
       ),
     );

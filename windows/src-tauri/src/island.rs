@@ -20,6 +20,23 @@ pub const PANEL_W: f64 = 720.0;
 pub const PANEL_H: f64 = 480.0;
 /// Between the island and the edge of the screen it is docked to, in page pixels.
 pub const EDGE_GAP: f64 = 10.0;
+
+/// The gap Settings → Island → Distance from the edge asks for, in page pixels.
+pub fn edge_gap_of(name: &str) -> f64 {
+    match name {
+        "none" => 0.0,
+        "wide" => 24.0,
+        _ => EDGE_GAP,
+    }
+}
+
+/// The gap of the island placed last (apply_geometry), for what reads it
+/// between two placements: the anchor, a drop near an edge.
+static GAP_BITS: AtomicU64 = AtomicU64::new(0x4024_0000_0000_0000); // 10.0
+
+pub fn edge_gap() -> f64 {
+    f64::from_bits(GAP_BITS.load(Ordering::Relaxed))
+}
 /// Logical size of the invisible strip that wakes the island when it is hidden.
 pub const STRIP_W: f64 = 240.0;
 pub const STRIP_H: f64 = 6.0;
@@ -101,10 +118,10 @@ pub fn anchor(pos: (f64, f64), size: (f64, f64), k: f64, rect: IslandRect) -> (f
     }
     let pill_long = NOTCH_PILL.0 * k;
     match dock() {
-        Dock::Top => (pos.0 + size.0 / 2.0, pos.1 + EDGE_GAP * k),
-        Dock::Bottom => (pos.0 + size.0 / 2.0, pos.1 + size.1 - (EDGE_GAP + NOTCH_PILL.1) * k),
-        Dock::Left => (pos.0 + (EDGE_GAP + NOTCH_PILL.1 / 2.0) * k, pos.1 + (size.1 - pill_long) / 2.0),
-        Dock::Right => (pos.0 + size.0 - (EDGE_GAP + NOTCH_PILL.1 / 2.0) * k, pos.1 + (size.1 - pill_long) / 2.0),
+        Dock::Top => (pos.0 + size.0 / 2.0, pos.1 + edge_gap() * k),
+        Dock::Bottom => (pos.0 + size.0 / 2.0, pos.1 + size.1 - (edge_gap() + NOTCH_PILL.1) * k),
+        Dock::Left => (pos.0 + (edge_gap() + NOTCH_PILL.1 / 2.0) * k, pos.1 + (size.1 - pill_long) / 2.0),
+        Dock::Right => (pos.0 + size.0 - (edge_gap() + NOTCH_PILL.1 / 2.0) * k, pos.1 + (size.1 - pill_long) / 2.0),
     }
 }
 
@@ -126,6 +143,8 @@ pub struct Placement {
     /// edges), as (width, height) page pixels, or (0, 0) when they are not:
     /// the window is wider by their room on each side, and tall enough.
     pub activities: (f64, f64),
+    /// Between the island and its edge of the screen, in page pixels (edge_gap_of).
+    pub gap: f64,
 }
 
 impl Placement {
@@ -139,6 +158,7 @@ impl Placement {
             width: s.island_width,
             height: s.island_height,
             activities: crate::activities::room_of(s),
+            gap: edge_gap_of(&s.island_edge_gap),
         }
     }
 }
@@ -174,7 +194,7 @@ fn finite(v: f64) -> f64 {
 /// room at both ends.
 fn panel_size(p: Placement) -> (f64, f64) {
     let up = |v: f64| (v / PANEL_STEP).ceil() * PANEL_STEP;
-    let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + EDGE_GAP };
+    let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + p.gap };
     // The live activities on one side: the same room on the other keeps the
     // island centred (activities.rs GAP).
     let (aw, ah) = if p.dock.upright() { (0.0, 0.0) } else { p.activities };
@@ -262,10 +282,10 @@ fn landing(area: (i32, i32, u32, u32), scale: f64, zoom: f64, island: (f64, f64,
         Dock::Right => ax + aw - island.2,
     };
     // The island keeps a gap from its edge, so "close" counts from there.
-    if gap / scale < SNAP_EDGE + EDGE_GAP * zoom {
+    if gap / scale < SNAP_EDGE + edge_gap() * zoom {
         return (dock, 0.0);
     }
-    let gap_px = EDGE_GAP * zoom * scale;
+    let gap_px = edge_gap() * zoom * scale;
     if (t + b) / 2.0 < ay + ah / 2.0 {
         (Dock::Top, ((t - ay - gap_px) / scale).round().max(0.0))
     } else {
@@ -324,10 +344,10 @@ fn effective_offset(area: (i32, i32, u32, u32), scale: f64, p: Placement) -> f64
 /// `dock`, for an island `w` × `h` drawn in it, moved by `shift` (page pixels).
 fn centre_in_panel(dock: Dock, panel: (f64, f64), w: f64, h: f64, shift: (f64, f64)) -> (f64, f64) {
     let (cx, cy) = match dock {
-        Dock::Top => (panel.0 / 2.0, EDGE_GAP + h / 2.0),
-        Dock::Bottom => (panel.0 / 2.0, panel.1 - EDGE_GAP - h / 2.0),
-        Dock::Left => (EDGE_GAP + w / 2.0, panel.1 / 2.0),
-        Dock::Right => (panel.0 - EDGE_GAP - w / 2.0, panel.1 / 2.0),
+        Dock::Top => (panel.0 / 2.0, edge_gap() + h / 2.0),
+        Dock::Bottom => (panel.0 / 2.0, panel.1 - edge_gap() - h / 2.0),
+        Dock::Left => (edge_gap() + w / 2.0, panel.1 / 2.0),
+        Dock::Right => (panel.0 - edge_gap() - w / 2.0, panel.1 / 2.0),
     };
     (cx + shift.0, cy + shift.1)
 }
@@ -669,7 +689,7 @@ fn resized(p: Placement, f: (f64, f64), height: f64, d: (f64, f64), room: (f64, 
         next.width = (clamp_width(p.width) + f.0 * d.0).clamp(MIN_WIDTH, max).round();
     }
     if f.1 != 0.0 {
-        let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + EDGE_GAP };
+        let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + p.gap };
         let max = (room.1 - ends).clamp(MIN_HEIGHT, MAX_HEIGHT);
         next.height = (height + f.1 * d.1).clamp(MIN_HEIGHT, max).round();
     }
@@ -903,6 +923,7 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let scale = m.scale_factor();
     let zoom = clamp_zoom(placement.zoom);
     ZOOM_BITS.store(zoom.to_bits(), Ordering::Relaxed);
+    GAP_BITS.store(placement.gap.to_bits(), Ordering::Relaxed);
     let dock_bits = match placement.dock {
         Dock::Top => 0,
         Dock::Bottom => 1,
@@ -933,6 +954,10 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let _ = win.set_position(PhysicalPosition::new(x, y));
     // The page keeps its 720 × 320 layout; the webview draws it bigger.
     let _ = win.set_zoom(zoom);
+    // The live activities in their own window are drawn at the same zoom.
+    if let Some(panel) = crate::activities::window(app) {
+        let _ = panel.set_zoom(zoom);
+    }
     let _ = win.set_always_on_top(true);
 }
 
@@ -941,7 +966,18 @@ mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
-    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: (0.0, 0.0) };
+    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: (0.0, 0.0), gap: EDGE_GAP };
+
+    #[test]
+    fn the_distance_from_the_edge_is_none_medium_or_wide() {
+        assert_eq!(edge_gap_of("none"), 0.0);
+        assert_eq!(edge_gap_of("medium"), EDGE_GAP);
+        assert_eq!(edge_gap_of("anything else"), EDGE_GAP);
+        assert_eq!(edge_gap_of("wide"), 24.0);
+        // A wider gap leaves the island its room: the window is never shorter.
+        let tall = Placement { height: 600.0, ..HOME };
+        assert!(panel_size(Placement { gap: 24.0, ..tall }).1 >= panel_size(tall).1);
+    }
 
     #[test]
     fn home_is_the_top_centre_and_the_zoom_grows_the_window() {

@@ -2,8 +2,15 @@
 
 ## Unreleased
 
+- **The Claude plan's 5 hours no longer vanish**: Claude Code's status line leaves the 5-hour window out while it is far from its limit, and each of its updates used to drop the figure a chat answer had brought. The window it leaves out is now kept, and when none was ever reported the 5 hours read "plenty left — Claude Code reports it only near the limit", in the chat's usage menu and on the plan card
+- **The effort slider is one short row**: a track that fills up to a white knob, a mark per level, the level it is on beside it and Auto at the end (no "Effort" label above). Dragged, the knob follows the pointer and settles on the nearest level with a small spring; the arrow keys, Home and End move it too
+- **The live activities keep their size off the island**: their own window is drawn at the island's zoom, so they no longer shrink when taken off it. Their title is "Live Activities" in every view (in Italian too)
+- **Settings → Island → Distance from the edge**: none, medium (as before) or wide
+- **Settings → General → Sound shows the volume as a percentage**
+- **A bulb in Gemini Live**: lit, Gemini 3.8 Live Extended Thinking; off, Gemini 3.8 Live. It shows and sets the model, saved for the next calls; during a call it moves to the other model on a new connection (Gemini starts afresh, the transcript stays)
+- Settings → Agents no longer lists Gemini CLI
 - **Settings read clearly**: every setting is one line with its name, and under it in smaller grey what it does, on the left and its switch, list or buttons on the right, divided from the next by a thin line; long sections (Island) are grouped under small headings, and the tips about dragging and resizing the island sit together in a note at the end. Keys and addresses take the whole width under their name
-- **Settings → Agents says what is what**: Antigravity's hooks are for the Antigravity app and for Antigravity CLI alike; Gemini CLI, replaced by Antigravity CLI, shows only when its hooks are still there, marked Retired, with only Uninstall
+- **Settings → Agents says what is what**: Antigravity's hooks are for the Antigravity app and for Antigravity CLI alike
 - **The island opened from a shortcut stays open for 10 seconds** with the mouse elsewhere, even set to close as soon as the mouse leaves: Open or close the island, Open the chat, Go to the waiting permission, Next or previous pill, as Ask about my screen and Ask about the selected text already did (now 10 seconds for those too, and each key typed gives it 10 more)
 - **Shift+Enter starts a new line in the chat**; Enter sends. The field grows with the lines, up to five, then scrolls
 - Integrations: Resend is shown as "Resend" in every language (it was translated as "send again")

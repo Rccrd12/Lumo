@@ -66,3 +66,11 @@ test("nonsense falls back to the usual", () => {
   assert.equal(parseDock("sideways"), "top");
   assert.equal(parseDock("right"), "right");
 });
+
+test("the distance from the edge: none, medium (the usual) or wide", async () => {
+  const { edgeGap, EDGE_GAP } = await import("../src/core/layout.ts");
+  assert.equal(edgeGap("none"), 0);
+  assert.equal(edgeGap("medium"), EDGE_GAP);
+  assert.equal(edgeGap(undefined), EDGE_GAP);
+  assert.equal(edgeGap("wide"), 24);
+});

@@ -144,6 +144,8 @@ export interface Settings {
   screen: string;
   /** How big the island is drawn (1 = the Mac's size). */
   islandZoom: number;
+  /** How far the island sits from its edge of the screen: "none", "medium" or "wide". */
+  islandEdgeGap: string;
   /** The edge the island hangs from, and how far from its middle (owned by Rust). */
   islandDock: string;
   islandOffset: number;
@@ -266,6 +268,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mainPill: DEFAULT_MAIN_PILL,
   screen: "primary",
   islandZoom: 1.15,
+  islandEdgeGap: "medium",
   islandDock: "top",
   islandOffset: 0,
   islandFloat: 0,

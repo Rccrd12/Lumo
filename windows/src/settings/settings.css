@@ -805,3 +805,12 @@ select option {
 html[dir="rtl"] :is(.diff, .path, .keycap, input[type="password"], input[type="text"]) {
   direction: ltr;
 }
+
+/* Settings → General → Sound: the volume beside its bar. */
+.volume-pct {
+  min-width: 38px;
+  text-align: end;
+  font: 500 12px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: var(--dim);
+}

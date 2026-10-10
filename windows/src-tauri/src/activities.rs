@@ -188,6 +188,7 @@ fn create(app: &AppHandle) -> Option<WebviewWindow> {
         .map_err(|e| crate::log::line(format!("activities window failed: {e}")))
         .ok()?;
     platform::make_non_activating(&win);
+    let _ = win.set_zoom(island::zoom());
     Some(win)
 }
 
@@ -203,9 +204,10 @@ fn monitor_at(app: &AppHandle, p: (f64, f64)) -> Option<(f64, f64, f64, f64, f64
     Some((pos.x as f64, pos.y as f64, size.width as f64, size.height as f64, m.scale_factor()))
 }
 
-/// Their own window's size in physical pixels, for the display at `p`.
+/// Their own window's size in physical pixels, for the display at `p`: drawn
+/// at the island's zoom, so they are the same size off the island as on it.
 fn physical_size(app: &AppHandle, s: &Settings, p: (f64, f64)) -> (u32, u32) {
-    let scale = monitor_at(app, p).map(|m| m.4).unwrap_or(1.0);
+    let scale = monitor_at(app, p).map(|m| m.4).unwrap_or(1.0) * island::zoom();
     let h = if s.activities_height > 0.0 { clamp_height(s.activities_height) } else { DEFAULT_H };
     ((clamp_width(s.activities_width) * scale).round() as u32, (h * scale).round() as u32)
 }
@@ -253,6 +255,7 @@ pub fn activities_show(app: AppHandle, show: bool) {
         }
     }
     let (w, h) = physical_size(&app, &settings, at);
+    let _ = win.set_zoom(island::zoom());
     let _ = win.set_size(PhysicalSize::new(w, h));
     let _ = win.set_position(PhysicalPosition::new(at.0.round() as i32, at.1.round() as i32));
     let _ = win.show();
@@ -309,8 +312,9 @@ pub fn activities_drag(app: AppHandle, from: Option<(f64, f64, f64, f64)>) {
             let Ok(o) = island_win.outer_position() else { return };
             let k = island_k(&island_win);
             let (px, py) = (o.x as f64 + x * k, o.y as f64 + y * k);
-            let scale = monitor_at(&app, (px, py)).map(|m| m.4).unwrap_or(1.0);
-            let _ = win.set_size(PhysicalSize::new((w * scale).round() as u32, (h * scale).round() as u32));
+            // Exactly the size they have on the island: its scale and its zoom.
+            let _ = win.set_zoom(island::zoom());
+            let _ = win.set_size(PhysicalSize::new((w * k).round() as u32, (h * k).round() as u32));
             let _ = win.set_position(PhysicalPosition::new(px.round() as i32, py.round() as i32));
             let _ = win.show();
             let _ = win.set_always_on_top(true);
@@ -412,7 +416,8 @@ pub fn activities_window_resize(app: AppHandle, fx: f64, fy: f64) {
         let Some(win) = window(&app) else { return };
         let Some((sx, sy)) = cursor_physical() else { return };
         let (Ok(pos), Ok(size)) = (win.outer_position(), win.outer_size()) else { return };
-        let scale = win.scale_factor().unwrap_or(1.0);
+        // Page pixels to physical ones: the display's scale and the island's zoom.
+        let scale = win.scale_factor().unwrap_or(1.0) * island::zoom();
         let start = (pos.x as f64, pos.y as f64, size.width as f64, size.height as f64);
         let mut last = start;
         while left_button_down() {

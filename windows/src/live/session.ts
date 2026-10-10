@@ -293,6 +293,28 @@ class LiveSession {
     State.notify();
   }
 
+  /**
+   * Extended Thinking on or off (the call view's bulb): the model is saved for
+   * the next calls, and a call on now moves to it on a new connection. Google
+   * cannot carry a conversation from one model to the other: Gemini starts
+   * afresh, and what was said stays in the transcript.
+   */
+  setModel(model: string) {
+    State.settings = { ...State.settings, liveModel: model };
+    void Bridge.saveSettings(State.settings);
+    if (!this.active || !this.cfg || this.cfg.model === model) {
+      State.notify();
+      return;
+    }
+    this.cfg = { ...this.cfg, model };
+    this.model = model;
+    this.handle = null;
+    this.busy = false;
+    this.reconnects = 0;
+    void this.reconnect("reconnecting");
+    State.notify();
+  }
+
   toggleMute() {
     if (!this.active) return;
     this.muted = !this.muted;

@@ -64,7 +64,7 @@ test("Antigravity CLI needs no key, and has no effort to pick: its model's name 
   assert.equal($(".effort-slider"), null);
 });
 
-test("Claude Code's effort is a short slider with its level beside it, and Auto", async () => {
+test("Claude Code's effort is one row: a filled slider, its level, and Auto at the end", async () => {
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   view.sync();
   $(".model-btn").fire("click");
@@ -73,21 +73,24 @@ test("Claude Code's effort is a short slider with its level beside it, and Auto"
   assert.equal($(".effort-value").textContent, "Auto");
   assert.ok($(".effort-auto").classList.contains("on"));
   assert.ok($(".effort-track").classList.contains("auto"), "no knob while Auto");
-  assert.equal($(".effort-slider").getAttribute("max"), "4", "low, medium, high, extra high, max");
+  assert.equal($(".effort-slider").getAttribute("aria-valuemax"), "4", "low, medium, high, extra high, max");
   assert.equal($(".effort-ticks").children.length, 5);
-  // The level it is on sits right of the slider, alone: no Faster or Smarter.
-  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-track", "effort-value"]);
-  assert.doesNotMatch($(".picker-efforts").textContent, /Faster|Smarter/);
-  assert.equal($(".picker-efforts").children.length, 2);
+  // One row: no "Effort" label above, no Faster or Smarter; Auto at the end.
+  assert.deepEqual($(".effort-row").children.map((c) => c.className.split(" ")[0]), ["effort-track", "effort-value", "effort-auto"]);
+  assert.doesNotMatch($(".picker-efforts").textContent, /Faster|Smarter|Effort/);
+  assert.equal($(".picker-efforts").children.length, 1);
 
+  // From the keyboard: End is the highest level, the knob goes to the end.
   const slider = $(".effort-slider");
-  slider.value = "4";
-  slider.fire("change");
+  slider.fire("keydown", { key: "End" });
   assert.equal(State.settings.chatEffort, "max");
   assert.equal(sent("save_settings").at(-1).settings.chatEffort, "max");
   assert.equal($(".effort-value").textContent, "Max");
   assert.ok(!$(".effort-track").classList.contains("auto"));
-  assert.equal($(".effort-slider").value, "4");
+  assert.equal(slider.style["--at"], "1");
+  slider.fire("keydown", { key: "ArrowLeft" });
+  assert.equal(State.settings.chatEffort, "xhigh");
+  assert.equal(slider.style["--at"], "0.75");
 
   $(".effort-auto").fire("click");
   assert.equal(State.settings.chatEffort, "");

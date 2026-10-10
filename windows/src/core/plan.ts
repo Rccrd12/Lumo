@@ -53,6 +53,7 @@ export const PLAN_TEXT = {
   hAgo: (n: number) => t("{n} h ago", { n }),
   get fiveHours() { return t("5 hours"); },
   get plentyLeft() { return t("plenty left"); },
+  get onlyNearLimit() { return t("Claude Code reports it only near the limit"); },
   get week() { return t("Week"); },
   get resets() { return t("Resets"); },
   get resetting() { return t("Resetting…"); },

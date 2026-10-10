@@ -4,7 +4,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_PANEL_OPEN, EDGE_GAP, EXPANDED_CORNER, EXPANDED_W, NOTCH_W,
+  CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -881,13 +881,14 @@ export class Island {
     const vw = window.innerWidth;
     const vh = window.innerHeight;
     const { x: sx, y: sy } = this.shift;
+    const gap = edgeGap(State.settings.islandEdgeGap);
     let x: number;
     let y: number;
     switch (this.dock) {
-      case "bottom": x = (vw - w) / 2 + sx; y = vh - EDGE_GAP - hh + sy; break;
-      case "left": x = EDGE_GAP; y = (vh - hh) / 2 + sy; break;
-      case "right": x = vw - EDGE_GAP - w; y = (vh - hh) / 2 + sy; break;
-      default: x = (vw - w) / 2 + sx; y = EDGE_GAP + sy;
+      case "bottom": x = (vw - w) / 2 + sx; y = vh - gap - hh + sy; break;
+      case "left": x = gap; y = (vh - hh) / 2 + sy; break;
+      case "right": x = vw - gap - w; y = (vh - hh) / 2 + sy; break;
+      default: x = (vw - w) / 2 + sx; y = gap + sy;
     }
     x = Math.min(Math.max(x, 0), Math.max(vw - w, 0));
     y = Math.min(Math.max(y, 0), Math.max(vh - hh, 0));

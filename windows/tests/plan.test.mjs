@@ -271,3 +271,17 @@ test("a status line call updates the numbers and nothing else, even when paused"
   emit("hook", { hook_event_name: "StatusLine", session_id: "s1" });
   assert.equal(State.planUsage.fiveHour.usedPct, 42);
 });
+
+test("a status line with the week alone keeps the 5 hours a chat answer brought", () => {
+  State.paused = false;
+  State.planUsage = null;
+  const soon = Date.now() / 1000 + 3600;
+  emit("chat-plan-usage", { five_hour: { used_percentage: 30, resets_at: soon } });
+  emit("hook", {
+    hook_event_name: "StatusLine",
+    session_id: "s1",
+    rate_limits: { seven_day: { used_percentage: 75, resets_at: soon + 86_400 } },
+  });
+  assert.equal(State.planUsage.fiveHour.usedPct, 30, "not dropped");
+  assert.equal(State.planUsage.sevenDay.usedPct, 75);
+});

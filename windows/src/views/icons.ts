@@ -73,6 +73,8 @@ export const ICONS = {
   // pencil (stroke) — edit a message of the chat
   pencil: "M4.5 19.5l1-4.2L15.8 5a1.8 1.8 0 0 1 2.5 0l.7.7a1.8 1.8 0 0 1 0 2.5L8.7 18.5l-4.2 1zM13.8 7l3.2 3.2",
   // mic (stroke) — talk with Gemini Live
+  /** Extended Thinking in Gemini Live (views/live.ts). */
+  lightbulb: "M9.5 18h5M10.5 21h3M12 3a6 6 0 0 0-3.5 10.9c.7.5 1 1.2 1 2V16h5v-.1c0-.8.3-1.5 1-2A6 6 0 0 0 12 3z",
   mic: "M12 3.5a2.8 2.8 0 0 0-2.8 2.8v5.4a2.8 2.8 0 0 0 5.6 0V6.3A2.8 2.8 0 0 0 12 3.5zM6.5 11.2a5.5 5.5 0 0 0 11 0M12 16.7v3.8",
   // mic.slash (stroke) — the call's microphone, turned off
   micOff: "M14.8 9.6V6.3a2.8 2.8 0 0 0-5.5-.7M9.2 9.2v2.5a2.8 2.8 0 0 0 4.6 2.1M17.5 11.2a5.5 5.5 0 0 1-.7 2.7M6.5 11.2a5.5 5.5 0 0 0 8.9 4.3M12 16.7v3.8M4.5 4.5l15 15",

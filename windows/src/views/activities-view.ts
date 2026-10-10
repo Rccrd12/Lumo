@@ -9,7 +9,7 @@ import { parseDuration, timerLeft, type MailPeek, type MediaActivity, type Timer
 import { Sound } from "../core/sound";
 import { clear, h, svg } from "./dom";
 import { ICONS } from "./icons";
-import { N_, language, t } from "../i18n/i18n";
+import { N_, language, t, tl } from "../i18n/i18n";
 
 export const ACTIVITIES_TEXT = {
   title: N_("Live Activities"),
@@ -125,7 +125,7 @@ export class ActivitiesView {
     this.side = side;
     this.timerInput = h("input", {
       class: "act-input", type: "text", spellcheck: "false", autocomplete: "off",
-      placeholder: t(ACTIVITIES_TEXT.timerHint),
+      placeholder: tl(ACTIVITIES_TEXT.timerHint),
     }) as HTMLInputElement;
     this.timerInput.addEventListener("mousedown", () => this.hooks.focus());
     this.timerInput.addEventListener("keydown", (e) => {
@@ -138,7 +138,7 @@ export class ActivitiesView {
       ...QUICK_TIMERS.map((m) => h("button", { class: "act-chip", onclick: () => this.act({ kind: "timer", ms: m * 60_000, label: "" }) }, `${m}m`)),
     );
     const form = h("div", { class: "act-form" }, this.timerInput,
-      h("button", { class: "act-chip go", onclick: () => this.startTyped() }, t(ACTIVITIES_TEXT.start)));
+      h("button", { class: "act-chip go", onclick: () => this.startTyped() }, tl(ACTIVITIES_TEXT.start)));
     const body = h("div", { class: "act-body" },
       this.section(ICONS.timer, ACTIVITIES_TEXT.timer, "#F5A524", undefined, this.timerList, quick, form),
       this.section(ICONS.play, ACTIVITIES_TEXT.music, "#1DB954", undefined, this.musicBox),
@@ -146,10 +146,12 @@ export class ActivitiesView {
       this.section(ICONS.envelope, ACTIVITIES_TEXT.email, "#EA4335", 1.8, this.mailBox),
     );
     const fold = h("button", {
-      class: "act-fold", title: t(ACTIVITIES_TEXT.fold), "aria-label": t(ACTIVITIES_TEXT.fold),
+      class: "act-fold", title: tl(ACTIVITIES_TEXT.fold), "aria-label": tl(ACTIVITIES_TEXT.fold),
       onclick: () => this.fold(),
     }, h("i"));
-    const head = h("div", { class: "act-head" }, h("span", { class: "act-title", text: t(ACTIVITIES_TEXT.title) }), fold);
+    // Their name, the same in every language (the island page builds this
+    // before it knows the language: tl() relabels the rest when it does).
+    const head = h("div", { class: "act-head" }, h("span", { class: "act-title", text: ACTIVITIES_TEXT.title }), fold);
     this.el = h("div", { class: "activities" }, head, body);
     this.wireDrag(head);
     if (hooks.movable) {
@@ -172,7 +174,7 @@ export class ActivitiesView {
     return h("section", { class: "act-card" },
       h("div", { class: "act-card-head" },
         h("span", { class: "act-icon", style: `color:${color}` }, svg(icon, 12, stroke ? { stroke } : {})),
-        h("span", { text: t(title) })),
+        h("span", { text: tl(title) })),
       ...content,
     );
   }

@@ -2000,17 +2000,15 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
-.effort-head {
+.effort-row {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 .effort-value {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  flex: 0 0 auto;
+  min-width: 64px;
   white-space: nowrap;
   font: 600 12px var(--font);
   color: var(--ink-2);
@@ -2021,12 +2019,13 @@ input[type="range"]::-webkit-slider-thumb {
   align-items: center;
   gap: 5px;
   margin-left: auto;
-  padding: 1px 8px;
+  padding: 2px 9px;
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   background: rgba(255, 255, 255, 0.06);
   font: 400 11px var(--font);
   color: #c8cdd4;
+  white-space: nowrap;
   cursor: default;
 }
 
@@ -2045,25 +2044,61 @@ input[type="range"]::-webkit-slider-thumb {
   color: #8b929e;
 }
 
-.effort-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
+/* The effort slider: a track filled up to the knob, a mark per level. The
+   knob eases to its level; dragged, it follows the pointer closely. */
 .effort-track {
+  --at: 0;
+  --edge: 11px;
   position: relative;
-  flex: 0 1 200px;
+  flex: 0 1 220px;
   min-width: 120px;
-  height: 22px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
+  height: 24px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.07);
+  cursor: pointer;
+  outline: none;
+  touch-action: none;
 }
 
-/* One dot per level, under the knob's stops. */
+.effort-track:focus-visible {
+  box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.25);
+}
+
+.effort-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: calc(var(--edge) + var(--at) * (100% - 2 * var(--edge)));
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.24);
+  transition: width 0.32s cubic-bezier(0.3, 1.25, 0.4, 1);
+}
+
+.effort-knob {
+  position: absolute;
+  top: -2px;
+  bottom: -2px;
+  left: calc(var(--edge) + var(--at) * (100% - 2 * var(--edge)) - 7px);
+  width: 14px;
+  border-radius: 6px;
+  background: #f5f6f8;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.45);
+  transition: left 0.32s cubic-bezier(0.3, 1.25, 0.4, 1), transform 0.15s ease;
+}
+
+/* Dragged: the knob and the fill trail the pointer by a frame or two, and the
+   knob grows a little under the finger. */
+.effort-track.dragging .effort-fill {
+  transition: width 0.07s linear;
+}
+
+.effort-track.dragging .effort-knob {
+  transition: left 0.07s linear, transform 0.15s ease;
+  transform: scale(1.12);
+}
+
 .effort-ticks {
   position: absolute;
-  inset: 0 11px;
+  inset: 0 var(--edge);
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -2071,43 +2106,19 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .effort-ticks i {
-  width: 4px;
-  height: 4px;
-  border-radius: 50%;
+  width: 2px;
+  height: 8px;
+  border-radius: 1px;
   background: rgba(255, 255, 255, 0.28);
 }
 
-.effort-track .effort-slider {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  margin: 0;
-  background: transparent;
-  -webkit-appearance: none;
-  appearance: none;
-  cursor: default;
-}
-
-.effort-track .effort-slider::-webkit-slider-runnable-track {
-  height: 22px;
-  background: transparent;
-}
-
-.effort-track .effort-slider::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  appearance: none;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
-  background: #e9ebef;
-  background: color-mix(in srgb, var(--accent) 35%, #e9ebef);
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
-}
-
-/* On Auto no level is picked: no knob, only the dots to click. */
-.effort-track.auto .effort-slider::-webkit-slider-thumb {
+/* On Auto no level is picked: no knob and no fill, only the marks to click. */
+.effort-track.auto .effort-knob {
   opacity: 0;
+}
+
+.effort-track.auto .effort-fill {
+  width: 0;
 }
 
 /* Claude Code or Antigravity CLI: what they may do without asking. */
@@ -3825,6 +3836,21 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 
 .live-mute.lit {
   color: #f5a524;
+}
+
+/* Extended Thinking: the bulb lights up. */
+.live-head .live-think {
+  width: 22px;
+  height: 22px;
+  flex: 0 0 22px;
+  margin-left: 2px;
+  transition: color 0.2s, background 0.2s, box-shadow 0.2s;
+}
+
+.live-think.lit {
+  color: #fcd34d;
+  background: rgba(252, 211, 77, 0.14);
+  box-shadow: 0 0 10px rgba(252, 211, 77, 0.25);
 }
 
 .live-head {

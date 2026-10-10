@@ -105,6 +105,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
+            || current.island_edge_gap != settings.island_edge_gap
             || activities::room_of(&current) != activities::room_of(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;

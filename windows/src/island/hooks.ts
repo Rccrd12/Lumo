@@ -245,25 +245,32 @@ export function registerHookHandlers(island: Island) {
   void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
   // The same numbers from a chat answer of Claude Code (claude_code.rs), which
   // may report one window only: the other one is kept.
-  void onEvent<unknown>("chat-plan-usage", (rateLimits) => {
-    const usage = parseClaudePlan(rateLimits);
-    if (!usage) return;
-    const prev = State.planUsage;
-    const merged: PlanUsage = { updatedAt: usage.updatedAt };
-    const fiveHour = mergeWindow(usage.fiveHour, prev?.fiveHour);
-    const sevenDay = mergeWindow(usage.sevenDay, prev?.sevenDay);
-    if (fiveHour) merged.fiveHour = fiveHour;
-    if (sevenDay) merged.sevenDay = sevenDay;
-    setClaudePlanUsage(merged);
-  });
+  void onEvent<unknown>("chat-plan-usage", (rateLimits) => keepPlanUsage(rateLimits));
+}
+
+/**
+ * New plan numbers, from the status line relay or a chat answer. Either may
+ * report one window only (Claude Code leaves the 5-hour one out while it is
+ * far from its limit): the window it left out is kept from before, never
+ * dropped.
+ */
+export function keepPlanUsage(rateLimits: unknown) {
+  const usage = parseClaudePlan(rateLimits);
+  if (!usage) return;
+  const prev = State.planUsage;
+  const merged: PlanUsage = { updatedAt: usage.updatedAt };
+  const fiveHour = mergeWindow(usage.fiveHour, prev?.fiveHour);
+  const sevenDay = mergeWindow(usage.sevenDay, prev?.sevenDay);
+  if (fiveHour) merged.fiveHour = fiveHour;
+  if (sevenDay) merged.sevenDay = sevenDay;
+  setClaudePlanUsage(merged);
 }
 
 function handleHook(island: Island, payload: HookPayload) {
   // Account-wide numbers from the status line relay, not part of any session:
   // keep the latest, nothing else (no reveal, no sound), paused or not.
   if (payload.hook_event_name === "StatusLine") {
-    const usage = parseClaudePlan(payload.rate_limits);
-    if (usage) setClaudePlanUsage(usage);
+    keepPlanUsage(payload.rate_limits);
     return;
   }
 

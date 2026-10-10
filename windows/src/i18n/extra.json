@@ -6449,7 +6449,7 @@
    "pt-BR": "Atividades ao vivo",
    "ru": "Live-активности",
    "id": "Aktivitas Langsung",
-   "it": "Attività in tempo reale"
+   "it": "Live Activities"
   },
   "Minimize": {
    "zh-Hans": "最小化",
@@ -6907,18 +6907,6 @@
    "id": "Kembalikan",
    "it": "Rimetti"
   },
-  "Retired": {
-   "zh-Hans": "已停用",
-   "hi": "बंद",
-   "es": "Retirado",
-   "ar": "متوقف",
-   "fr": "Retiré",
-   "bn": "বন্ধ",
-   "pt-BR": "Descontinuado",
-   "ru": "Снят с поддержки",
-   "id": "Dihentikan",
-   "it": "Dismesso"
-  },
   "For the Antigravity app and for Antigravity CLI (agy): both read these hooks.": {
    "zh-Hans": "适用于 Antigravity 应用和 Antigravity CLI (agy)：两者都读取这些钩子。",
    "hi": "Antigravity ऐप और Antigravity CLI (agy) दोनों के लिए: दोनों ये हुक पढ़ते हैं।",
@@ -6930,18 +6918,6 @@
    "ru": "Для приложения Antigravity и для Antigravity CLI (agy): оба читают эти хуки.",
    "id": "Untuk aplikasi Antigravity dan Antigravity CLI (agy): keduanya membaca hook ini.",
    "it": "Per l'app Antigravity e per Antigravity CLI (agy): entrambi leggono questi hook."
-  },
-  "Google replaced Gemini CLI with Antigravity CLI, which reads the Antigravity hooks above. Lumo no longer installs these: they were added before, and can be removed.": {
-   "zh-Hans": "Google 已用 Antigravity CLI 取代 Gemini CLI，它读取上面的 Antigravity 钩子。Lumo 不再安装这些钩子：它们是之前添加的，可以移除。",
-   "hi": "Google ने Gemini CLI की जगह Antigravity CLI ला दिया है, जो ऊपर के Antigravity हुक पढ़ता है। Lumo अब इन्हें इंस्टॉल नहीं करता: ये पहले जोड़े गए थे और हटाए जा सकते हैं।",
-   "es": "Google sustituyó Gemini CLI por Antigravity CLI, que lee los hooks de Antigravity de arriba. Lumo ya no instala estos: se añadieron antes y se pueden quitar.",
-   "ar": "استبدلت Google أداة Gemini CLI بـ Antigravity CLI، التي تقرأ خطافات Antigravity أعلاه. لم يعد Lumo يثبّت هذه: أُضيفت من قبل ويمكن إزالتها.",
-   "fr": "Google a remplacé Gemini CLI par Antigravity CLI, qui lit les hooks Antigravity ci-dessus. Lumo n'installe plus ceux-ci : ils ont été ajoutés avant, et peuvent être retirés.",
-   "bn": "Google Gemini CLI-এর জায়গায় Antigravity CLI এনেছে, যা উপরের Antigravity হুক পড়ে। Lumo আর এগুলি ইনস্টল করে না: এগুলি আগে যোগ করা হয়েছিল, সরানো যায়।",
-   "pt-BR": "O Google substituiu o Gemini CLI pelo Antigravity CLI, que lê os hooks do Antigravity acima. O Lumo não instala mais estes: foram adicionados antes e podem ser removidos.",
-   "ru": "Google заменил Gemini CLI на Antigravity CLI, который читает хуки Antigravity выше. Lumo больше не устанавливает эти: они были добавлены раньше, их можно удалить.",
-   "id": "Google mengganti Gemini CLI dengan Antigravity CLI, yang membaca hook Antigravity di atas. Lumo tidak lagi memasang ini: hook ini ditambahkan sebelumnya, dan bisa dihapus.",
-   "it": "Google ha sostituito Gemini CLI con Antigravity CLI, che legge gli hook di Antigravity qui sopra. Lumo non installa più questi: sono stati aggiunti prima, e si possono rimuovere."
   },
   "A ring next to the past chats fills with what the provider in use has used, and a click on it shows each limit and when it resets: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
    "zh-Hans": "过往聊天旁的圆环会随当前提供方的用量填满，点击它可查看每项限额及其重置时间：Claude Code 的 Claude 套餐 5 小时和每周限额（需要 {path} 中的中继）、Anthropic 和 OpenAI 随每次回答返回的速率限制，以及 OpenRouter 密钥的额度（在聊天打开时和每次回答后向 OpenRouter 询问）。Google 和本地模型不显示任何内容。",
@@ -6966,6 +6942,78 @@
    "ru": "Новая строка в сообщении",
    "id": "Baris baru dalam pesan",
    "it": "Vai a capo nel messaggio"
+  },
+  "Claude Code reports it only near the limit": {
+   "zh-Hans": "Claude Code 仅在接近限额时报告",
+   "hi": "Claude Code इसे सीमा के पास ही बताता है",
+   "es": "Claude Code solo lo indica cerca del límite",
+   "ar": "لا يبلغ عنه Claude Code إلا قرب الحد",
+   "fr": "Claude Code ne l'indique que près de la limite",
+   "bn": "Claude Code এটি কেবল সীমার কাছে জানায়",
+   "pt-BR": "O Claude Code só informa perto do limite",
+   "ru": "Claude Code сообщает его только около лимита",
+   "id": "Claude Code hanya melaporkannya saat mendekati batas",
+   "it": "Claude Code lo indica solo vicino al limite"
+  },
+  "Extended Thinking: thinks longer before it answers": {
+   "zh-Hans": "扩展思考：回答前思考更久",
+   "hi": "विस्तारित सोच: जवाब देने से पहले ज़्यादा सोचता है",
+   "es": "Pensamiento ampliado: piensa más antes de responder",
+   "ar": "التفكير الموسّع: يفكر أطول قبل أن يجيب",
+   "fr": "Réflexion étendue : réfléchit plus longtemps avant de répondre",
+   "bn": "বর্ধিত চিন্তা: উত্তর দেওয়ার আগে বেশি ভাবে",
+   "pt-BR": "Raciocínio estendido: pensa mais antes de responder",
+   "ru": "Расширенное мышление: дольше думает перед ответом",
+   "id": "Pemikiran Lanjutan: berpikir lebih lama sebelum menjawab",
+   "it": "Ragionamento esteso: pensa più a lungo prima di rispondere"
+  },
+  "Medium (default)": {
+   "zh-Hans": "中（默认）",
+   "hi": "मध्यम (डिफ़ॉल्ट)",
+   "es": "Media (predeterminada)",
+   "ar": "متوسطة (افتراضي)",
+   "fr": "Moyenne (par défaut)",
+   "bn": "মাঝারি (ডিফল্ট)",
+   "pt-BR": "Média (padrão)",
+   "ru": "Средний (по умолчанию)",
+   "id": "Sedang (bawaan)",
+   "it": "Media (predefinita)"
+  },
+  "Wide": {
+   "zh-Hans": "宽",
+   "hi": "चौड़ा",
+   "es": "Amplia",
+   "ar": "واسعة",
+   "fr": "Grande",
+   "bn": "চওড়া",
+   "pt-BR": "Ampla",
+   "ru": "Большой",
+   "id": "Lebar",
+   "it": "Ampia"
+  },
+  "Distance from the edge": {
+   "zh-Hans": "与边缘的距离",
+   "hi": "किनारे से दूरी",
+   "es": "Distancia al borde",
+   "ar": "المسافة عن الحافة",
+   "fr": "Distance au bord",
+   "bn": "কিনারা থেকে দূরত্ব",
+   "pt-BR": "Distância da borda",
+   "ru": "Отступ от края",
+   "id": "Jarak dari tepi",
+   "it": "Distanza dal bordo"
+  },
+  "between the island and the edge of the screen it is docked to": {
+   "zh-Hans": "岛与其停靠的屏幕边缘之间",
+   "hi": "द्वीप और स्क्रीन के उस किनारे के बीच जहाँ यह टिका है",
+   "es": "entre la isla y el borde de la pantalla en el que está anclada",
+   "ar": "بين الجزيرة وحافة الشاشة المثبتة عليها",
+   "fr": "entre l'île et le bord de l'écran où elle est ancrée",
+   "bn": "দ্বীপ আর স্ক্রিনের যে কিনারায় সেটি আটকানো তার মাঝে",
+   "pt-BR": "entre a ilha e a borda da tela em que ela está encaixada",
+   "ru": "между островом и краем экрана, к которому он прикреплён",
+   "id": "antara pulau dan tepi layar tempat ia menempel",
+   "it": "tra l'isola e il bordo dello schermo a cui è agganciata"
   }
  }
 }

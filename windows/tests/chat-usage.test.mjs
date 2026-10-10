@@ -244,3 +244,13 @@ test("the ring fills with the most used limit, and its menu shows each one", () 
   line().fire("click");
   assert.ok(!view.el.querySelector(".chat-body").classList.contains("metering"));
 });
+
+test("the week alone: the 5 hours read as plenty left, since Claude Code reports them only near the limit", () => {
+  const weekOnly = { sevenDay: { usedPct: 75, resetsAt: NOW + 86_400_000 }, updatedAt: NOW };
+  const line = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: true }), weekOnly, undefined, NOW);
+  assert.equal(line.rows.length, 2);
+  assert.equal(line.rows[0].label, "5 hours");
+  assert.equal(line.rows[0].value, "plenty left");
+  assert.match(line.rows[0].reset, /near the limit/);
+  assert.equal(line.pct, 75, "the ring shows the week");
+});

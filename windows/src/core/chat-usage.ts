@@ -142,6 +142,11 @@ function planLine(settings: Settings, plan: PlanUsage | null, now: number): Usag
     });
   };
   if (plan.fiveHour) add(PLAN_TEXT.fiveHours, plan.fiveHour, false);
+  else {
+    // Claude Code leaves the 5-hour window out while it is far from its limit.
+    parts.push(USAGE_TEXT.plenty(PLAN_TEXT.fiveHours));
+    rows.push({ label: PLAN_TEXT.fiveHours, value: PLAN_TEXT.plentyLeft, pct: 0, reset: PLAN_TEXT.onlyNearLimit });
+  }
   if (plan.sevenDay) add(PLAN_TEXT.week, plan.sevenDay, true);
   const pct = dominantPct(plan, now);
   return {

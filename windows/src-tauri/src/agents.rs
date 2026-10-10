@@ -380,9 +380,8 @@ pub fn list() -> Vec<AgentStatus> {
     let hook_ready = settings::hook_exe_path().exists();
     Agent::ALL
         .iter()
-        // Gemini CLI was replaced by Antigravity CLI: only offered to remove
-        // hooks installed before.
-        .filter(|&&a| a != Agent::Gemini || a.installed(&home))
+        // Gemini CLI was replaced by Antigravity CLI: no longer offered at all.
+        .filter(|&&a| a != Agent::Gemini)
         .map(|&a| AgentStatus {
             id: a.id(),
             name: a.name(),

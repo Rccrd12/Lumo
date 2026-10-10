@@ -24,6 +24,9 @@ pub struct Settings {
     pub screen: String,
     /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
     pub island_zoom: f64,
+    /// How far the island sits from the edge of the screen it is docked to:
+    /// "none", "medium" (the usual 10 px) or "wide" (island.rs edge_gap_of).
+    pub island_edge_gap: String,
     /// The display edge the island hangs from ("top", "bottom", "left",
     /// "right") and how far from its middle, in logical pixels. Owned by the
     /// Rust side (island.rs) — what a webview sends back is ignored.
@@ -201,6 +204,7 @@ impl Default for Settings {
             main_pill: "integration_claude".into(),
             screen: "primary".into(),
             island_zoom: crate::island::DEFAULT_ZOOM,
+            island_edge_gap: "medium".into(),
             island_dock: "top".into(),
             island_offset: 0.0,
             island_float: 0.0,
@@ -511,6 +515,7 @@ mod tests {
   "mainPill": "agent_cursor",
   "screen": "cursor",
   "islandZoom": 1.3,
+  "islandEdgeGap": "wide",
   "islandDock": "left",
   "islandOffset": -200.5,
   "islandFloat": 240.0,
@@ -972,6 +977,7 @@ mod tests {
                 "mainPill",
                 "screen",
                 "islandZoom",
+                "islandEdgeGap",
                 "islandDock",
                 "islandOffset",
                 "islandFloat",

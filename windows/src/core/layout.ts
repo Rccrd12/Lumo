@@ -88,6 +88,11 @@ export const EXPANDED_W = 640;
 export const ROUNDED_CORNER = 14; // hidden / compact
 /** Between the island and the edge of the screen it is docked to (island.rs EDGE_GAP). */
 export const EDGE_GAP = 10;
+
+/** Settings → Island → Distance from the edge: "none", "medium" (EDGE_GAP) or "wide" (island.rs edge_gap_of). */
+export function edgeGap(name: string | undefined): number {
+  return name === "none" ? 0 : name === "wide" ? 24 : EDGE_GAP;
+}
 export const EXPANDED_CORNER = 22;
 
 /** Invisible hover strip that wakes the island when hidden. */

@@ -1154,8 +1154,15 @@ function generalSection(): HTMLElement {
     type: "range", min: "0", max: "0.2", step: "0.005",
     value: String(settings.soundVolume),
   }) as HTMLInputElement;
+  // The volume as a percentage of its range, beside the bar.
+  const percent = h("span", { class: "volume-pct" });
+  const showPercent = () => {
+    percent.textContent = `${Math.round((Number(volume.value) / 0.2) * 100)}%`;
+  };
+  showPercent();
   volume.addEventListener("input", () => {
     settings.soundVolume = Number(volume.value);
+    showPercent();
     void save();
   });
 
@@ -1165,6 +1172,7 @@ function generalSection(): HTMLElement {
     ...sectionHead(t("General")),
     setting(t("Sound"), null,
       volume,
+      percent,
       toggle(settings.soundEnabled, (v) => { settings.soundEnabled = v; void save(); }),
     ),
     languageRow(),
@@ -1218,6 +1226,16 @@ function islandSection(): HTMLElement {
     void save();
   });
 
+  // How far the island sits from the edge it hangs from.
+  const gap = select([
+    ["none", t("None")],
+    ["medium", t("Medium (default)")],
+    ["wide", t("Wide")],
+  ], ["none", "wide"].includes(settings.islandEdgeGap) ? settings.islandEdgeGap : "medium", (v) => {
+    settings.islandEdgeGap = v;
+    void save();
+  });
+
   // The island's icons, against the Mac's size.
   const icons = h("select", {}) as HTMLSelectElement;
   for (const pct of [100, 125, 150]) {
@@ -1263,6 +1281,7 @@ function islandSection(): HTMLElement {
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
+    setting(t("Distance from the edge"), t("between the island and the edge of the screen it is docked to"), gap),
     setting(t("Icon size"), null, icons),
     setting(t("Put the island back in the centre"), null,
       h("button", { text: t("Put back"), onclick: () => void Bridge.islandRecenter() })),

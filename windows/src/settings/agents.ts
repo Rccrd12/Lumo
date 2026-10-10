@@ -20,11 +20,7 @@ const TEXT = {
   get reinstall() { return t("Reinstall…"); },
   get uninstall() { return t("Uninstall…"); },
   get relayMissing() { return t("The relay isn't installed yet. Restart Lumo."); },
-  get geminiRetired() {
-    return t("Google replaced Gemini CLI with Antigravity CLI, which reads the Antigravity hooks above. Lumo no longer installs these: they were added before, and can be removed.");
-  },
   get antigravityBoth() { return t("For the Antigravity app and for Antigravity CLI (agy): both read these hooks."); },
-  get retired() { return t("Retired"); },
   previewInstall: (name: string) => t("This is exactly what changes for {name}. Nothing else is touched.", { name }),
   get previewRemove() { return t("This removes Lumo's entries only. Everything else stays."); },
   backup: (to: string) => (to ? t("Backup → {path}", { path: to }) : t("No existing file — nothing to back up.")),
@@ -50,9 +46,7 @@ export function agentsSection(list: AgentHookStatus[] | null): HTMLElement {
   if (!list || list.length === 0) {
     blocks.append(h("div", { class: "hint", text: TEXT.none }));
   }
-  // Gemini CLI, retired, comes last: it is only there to be removed.
-  const ordered = [...(list ?? [])].sort((a, b) => Number(a.id === "gemini") - Number(b.id === "gemini"));
-  for (const status of ordered) blocks.append(agentBlock(status));
+  for (const status of list ?? []) blocks.append(agentBlock(status));
   return h(
     "section",
     {},
@@ -86,21 +80,17 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
       install.disabled = true;
       install.title = TEXT.relayMissing;
     }
-    // Gemini CLI is retired: its hooks can only be taken out.
-    const retired = status.id === "gemini";
-    const buttons: HTMLElement[] = [];
-    if (!retired) buttons.push(install);
+    const buttons: HTMLElement[] = [install];
     if (status.installed) {
       buttons.push(h("button", {
-        class: retired ? "primary" : "danger",
+        class: "danger",
         text: TEXT.uninstall,
         onclick: () => void showPreview(false),
       }));
     }
-    const what = retired ? TEXT.geminiRetired
-      : [status.approvals ? TEXT.approvals : TEXT.displayOnly, status.id === "antigravity" ? TEXT.antigravityBoth : ""].filter(Boolean).join(" · ");
+    const what = [status.approvals ? TEXT.approvals : TEXT.displayOnly, status.id === "antigravity" ? TEXT.antigravityBoth : ""].filter(Boolean).join(" · ");
     head.append(setting(
-      h("span", { class: "with-dot" }, statusDot(status.installed), status.name, retired ? h("span", { class: "tag warn", text: TEXT.retired }) : null),
+      h("span", { class: "with-dot" }, statusDot(status.installed), status.name),
       h("span", {}, what, h("br"), h("span", { class: "path", text: status.path })),
       ...buttons,
     ));
