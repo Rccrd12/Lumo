@@ -61,6 +61,7 @@ import {
   withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
+import { COMPUTER_TEXT } from "../core/computer";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
@@ -183,6 +184,7 @@ const ACTIVITY_STRINGS = {
   subtask: N_("Working on a sub-task"),
   plan: N_("Planning"),
   screen: N_("Looking at the screen"),
+  computer: COMPUTER_TEXT.using,
   tool: N_("Using {tool}"),
 };
 
@@ -244,6 +246,8 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.plan);
     case "screen":
       return t(ACTIVITY_STRINGS.screen);
+    case "computer":
+      return t(ACTIVITY_STRINGS.computer);
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
     default:

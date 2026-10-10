@@ -356,16 +356,34 @@ pub fn displays() -> Result<Vec<Display>, String> {
 /// `capture` with the island kept out of the picture (Windows 10 2004 and
 /// later: content protection, which Lumo never uses otherwise). Blocking.
 pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Option<usize>) -> Result<Vec<Shot>, String> {
+    unseen(app, |hidden| capture(index, hidden))
+}
+
+/// Runs `f` with Lumo's windows (the island, its live activities) kept out of
+/// screenshots; `f` hears whether they were, to give the compositor a moment.
+pub fn unseen<R: tauri::Runtime, T>(app: &tauri::AppHandle<R>, f: impl FnOnce(bool) -> T) -> T {
     use tauri::Manager;
-    let island = app.get_webview_window(crate::island::WINDOW_LABEL);
-    let hidden = cfg!(windows) && island.as_ref().is_some_and(|w| w.set_content_protected(true).is_ok());
-    let shots = capture(index, hidden);
-    if hidden {
-        if let Some(w) = &island {
-            let _ = w.set_content_protected(false);
-        }
+    let windows: Vec<_> = [crate::island::WINDOW_LABEL, crate::activities::LABEL]
+        .iter()
+        .filter_map(|label| app.get_webview_window(label))
+        .filter(|w| cfg!(windows) && w.set_content_protected(true).is_ok())
+        .collect();
+    let out = f(!windows.is_empty());
+    for w in &windows {
+        let _ = w.set_content_protected(false);
     }
-    shots
+    out
+}
+
+/// Every display's rectangle in physical pixels (left, top, right, bottom), in menu order.
+pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
+    imp::monitor_rects()
+}
+
+/// The part `rect` of the desktop (physical pixels) as a `w` × `h` PNG, in
+/// memory. `settle`: Lumo's windows were just kept out of the picture. Blocking.
+pub fn grab_png(rect: (i32, i32, i32, i32), w: u32, h: u32, settle: bool) -> Result<Vec<u8>, String> {
+    imp::grab_png(rect, w, h, settle)
 }
 
 /// The display the cursor is on, in menu order: what "Ask about my screen" captures.
@@ -424,6 +442,14 @@ mod imp {
     pub fn capture_window(_id: i64) -> Result<(PathBuf, u32, u32), String> {
         unavailable()
     }
+
+    pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
+        Vec::new()
+    }
+
+    pub fn grab_png(_rect: (i32, i32, i32, i32), _w: u32, _h: u32, _settle: bool) -> Result<Vec<u8>, String> {
+        unavailable()
+    }
 }
 
 #[cfg(windows)]
@@ -475,6 +501,38 @@ mod imp {
         }
         let keys: Vec<(i32, i32, bool)> = found.iter().map(|(r, p)| (r.left, r.top, *p)).collect();
         display_order(&keys).into_iter().map(|i| found[i]).collect()
+    }
+
+    pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
+        monitors().into_iter().map(|(r, _)| (r.left, r.top, r.right, r.bottom)).collect()
+    }
+
+    pub fn grab_png(rect: (i32, i32, i32, i32), w: u32, h: u32, settle: bool) -> Result<Vec<u8>, String> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let r = RECT { left: rect.0, top: rect.1, right: rect.2, bottom: rect.3 };
+        if w == 0 || h == 0 || r.right <= r.left || r.bottom <= r.top {
+            return Err(t("That screen isn't connected anymore."));
+        }
+        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        if settle {
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        let result = (|| {
+            let pixels = grab(r, w, h)?;
+            // WIC writes to a file: a private one, read back and deleted at once.
+            let dir = crate::settings::local_dir();
+            crate::platform::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("computer-{}-{}.png", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            let written = write_png(&path, w, h, &pixels).map_err(|e| e.message());
+            let bytes = written.and_then(|_| std::fs::read(&path).map_err(|e| e.to_string()));
+            let _ = std::fs::remove_file(&path);
+            bytes
+        })();
+        if com.is_ok() {
+            unsafe { CoUninitialize() };
+        }
+        result.map_err(|e| crate::i18n::tf("Couldn't take the screenshot: {error}", &[("error", &e)]))
     }
 
     pub fn displays() -> Result<Vec<Display>, String> {

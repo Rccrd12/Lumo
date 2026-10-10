@@ -21,7 +21,8 @@
 //! read from the JSON; `--agent` is absent for Claude Code), or
 //! `lumo-hook --statusline` as Claude Code's status line command (plan usage,
 //! see statusline.rs): it passes the plan limits on and runs the status line the
-//! user had before, so that keeps working.
+//! user had before, so that keeps working, or `lumo-hook --mcp` as the MCP
+//! server of the island chat's computer use (mcp.rs).
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
@@ -29,6 +30,7 @@ use std::time::Duration;
 
 use serde_json::{Map, Value};
 
+mod mcp;
 mod normalize;
 mod reply;
 
@@ -127,6 +129,10 @@ struct Event {
 fn main() {
     if std::env::args().skip(1).any(|a| a == "--statusline") {
         statusline::run();
+    }
+    // Lumo's computer use for the island's Claude Code chat (mcp.rs).
+    if std::env::args().skip(1).any(|a| a == "--mcp") {
+        mcp::run();
     }
     let args = args();
     let mut raw = Vec::new();

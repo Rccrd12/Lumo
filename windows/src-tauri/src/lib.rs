@@ -12,6 +12,7 @@ mod claude;
 mod claude_code;
 mod clipboard;
 mod codex_plan;
+mod computer;
 mod config_file;
 mod desk;
 mod desktop;

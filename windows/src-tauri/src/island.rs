@@ -1194,6 +1194,8 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
         loop {
             gate.wait_until_active();
             let mut last = (f64::MIN, f64::MIN);
+            // Claude clicking for the chat (computer.rs): the island lets the mouse through.
+            let mut was_acting = false;
             let mut ticks: u32 = 0;
             while gate.is_active() {
                 std::thread::sleep(Duration::from_millis(period));
@@ -1243,7 +1245,8 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // file drag: make sure the drop target is ours before it arrives.
                 let down = left_button_down();
                 let on_panel = crate::activities::cursor_over((cx, cy));
-                if down && !was_down {
+                let acting = crate::computer::acting();
+                if down && !was_down && !acting {
                     if !on_island && !on_panel {
                         let _ = win.emit("outside-press", ());
                     }
@@ -1252,10 +1255,11 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 }
                 was_down = down;
 
-                if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 {
+                if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 && acting == was_acting {
                     continue;
                 }
                 last = (x, y);
+                was_acting = acting;
 
                 // A file being dragged has to be able to find us. WS_EX_TRANSPARENT
                 // — what click-through is on Windows — hides the window from
@@ -1270,7 +1274,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     && y >= 0.0
                     && y <= size.1;
 
-                let accept = on_island || dragging;
+                let accept = (on_island || dragging) && !acting;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {
                     gate.ignoring.store(!accept, Ordering::Relaxed);
                     let _ = win.set_ignore_cursor_events(!accept);
@@ -1316,6 +1320,25 @@ pub fn refresh_click_through(app: &AppHandle, gate: &PollGate) {
     let z = zoom();
     let region = region.map(|(x, y, w, h)| (x * z, y * z, w * z, h * z));
     platform::set_input_region(&win, region);
+}
+
+/// Computer use (computer.rs): while Claude clicks or drags, the island and
+/// its live activities let the mouse through to what is under them. Let go,
+/// the cursor poll decides again (or, while the island is shut, the wake strip
+/// takes the mouse as before).
+pub fn let_mouse_through(app: &AppHandle, through: bool) {
+    let gate = app.try_state::<crate::Shared>().map(|s| s.gate.clone());
+    if through {
+        if let Some(gate) = &gate {
+            gate.ignoring.store(true, Ordering::Relaxed);
+        }
+        set_ignore_cursor(app, true);
+    } else if let Some(gate) = gate.filter(|g| g.collapsed.load(Ordering::Relaxed) || !platform::CURSOR_POLL) {
+        refresh_click_through(app, &gate);
+    }
+    if let Some(panel) = crate::activities::window(app) {
+        let _ = panel.set_ignore_cursor_events(through);
+    }
 }
 
 pub fn set_ignore_cursor(app: &AppHandle, ignore: bool) {

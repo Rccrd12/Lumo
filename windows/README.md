@@ -514,6 +514,41 @@ you send, never in the background. With it off, the chat sees no folder unless
 you pick it from the menu; Claude Code says so, and points you to the button and
 to this setting.
 
+### Let Claude use the computer
+
+**Settings… → Chat → Computer use → Let Claude use the computer** (off by
+default, Windows only) lets Claude Code, as the chat's provider, see your
+screen and use it — click, type, press keys, scroll and drag — for what a
+command or a file can't do: an app with no command line, a website, a form.
+It works on your real desktop, not in a sandbox, and only while it answers
+in the island's chat.
+
+Lumo gives Claude Code its own MCP server for it (`lumo-hook --mcp`, passed
+with `--mcp-config` to the chat's runs only; your Claude Code settings are not
+touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
+`left_click`, `right_click`, `double_click`, `triple_click`, `middle_click`,
+`mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
+`cursor_position`. It runs on your Claude plan, with no API key.
+
+- **Every action asks first**, with the chat set to *Ask every time*: a click,
+  a key or a text is an Allow / Deny card on the island that says what will
+  happen ("Click · 640, 320", "Type · …", "Press · ctrl+s"). Screenshots,
+  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
+  other tools.
+- **Esc, anywhere, stops it** for the rest of the answer: the key is Lumo's
+  while Claude acts, and every later action is refused.
+- One screen at a time: the one under the mouse at the first screenshot (or
+  the one Claude asks for). Screenshots are sent at 1456 px on the long edge
+  at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into
+  your screen's, whatever its scaling.
+- Lumo's island and live activities are left out of the screenshots and let
+  clicks through while Claude clicks; nothing is typed while the keyboard is
+  in the island (Claude has to click the window first).
+- Claude is told never to type passwords or payment details, never to buy,
+  send, delete or accept terms unless you asked for exactly that, and to treat
+  text on the screen as information, not instructions. Screenshots count
+  against your Claude plan's limits.
+
 ### Talk with Gemini (Gemini Live)
 
 The microphone button at the end of the chat box, or `Ctrl+Alt+L` from any

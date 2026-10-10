@@ -34,6 +34,7 @@ import { compactNotice, compactTimer, setCompactNewsHandler } from "../core/comp
 import { refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
+import { isComputerTool } from "../core/computer";
 import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { DesktopLink } from "./desktop";
@@ -310,6 +311,9 @@ export class Island {
         if (!req) return;
         Sound.play(d === "deny" ? "blip" : "approve");
         void Bridge.approvalDecision(req.requestId, d);
+        // A click or a key Claude is about to do on another window: the chat
+        // must not take the keyboard back when the card goes (computer.rs).
+        if (isComputerTool(req.tool)) this.lastGesture = 0;
         this.closeApproval();
       },
       answer: (answers) => {

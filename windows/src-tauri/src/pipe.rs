@@ -196,6 +196,26 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         None => &buf[..],
     };
     let Ok(mut payload) = serde_json::from_slice::<Value>(line) else { return };
+    // A tool call of the chat's computer use (lumo-hook --mcp): one answer line.
+    if let Some(request) = payload.get("lumo_computer") {
+        let answer = crate::computer::serve(&app, request).await;
+        let _ = pipe.write_all(format!("{answer}\n").as_bytes()).await;
+        let _ = pipe.flush().await;
+        // A screenshot is bigger than the pipe's buffer, and disconnecting
+        // drops what the relay has not read yet: it closes its end once it has
+        // the whole line.
+        let _ = tokio::time::timeout(Duration::from_secs(10), async {
+            let mut rest = [0u8; 64];
+            while let Ok(n) = pipe.read(&mut rest).await {
+                if n == 0 {
+                    break;
+                }
+            }
+        })
+        .await;
+        pipe.finish();
+        return;
+    }
     crate::migrate::payload(&mut payload);
     if !payload.is_object() {
         return;
