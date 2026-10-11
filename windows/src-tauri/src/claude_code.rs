@@ -47,15 +47,6 @@ const MAX_TOTAL: usize = 64 * 1024 * 1024;
 /// Earlier turns from another provider, carried over as text, are cut to this.
 const MAX_CARRIED_CHARS: usize = 24_000;
 
-/// How Claude Code waits for GitHub without holding the turn open: Lumo keeps
-/// the watch (listen.rs) and hides that line (src/core/listen.ts). Plain words
-/// only: it goes on the command line.
-macro_rules! listen_note {
-    () => {
-        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: write on a line of its own [[listen owner/repo#123 event: what to do then]], with event one of checks (finished, passed or failed), green (checks passed), approved, ready (checks passed and it can be merged), merged or closed, and leave out the colon and what follows when they only want to be told. Say in a few words that Lumo is listening, and end your answer. Lumo watches GitHub, hides that line and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To stop listening, write [[unlisten owner/repo#123]] on a line of its own."
-    };
-}
-
 /// Added to Claude Code's own instructions. Plain words only: it is an argument.
 const APPEND_PROMPT: &str = concat!(
     "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
@@ -65,7 +56,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
-    listen_note!(),
+    crate::chat::listen_note!(),
     crate::chat::math_note!()
 );
 
@@ -79,7 +70,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
-    listen_note!(),
+    crate::chat::listen_note!(),
     crate::chat::math_note!()
 );
 
@@ -454,6 +445,8 @@ struct Run {
     session: Option<String>,
     /// The text of the assistant message being written, for the island.
     visible: String,
+    /// Every text of the turn, each message on its own lines (chat::keep_lumo_lines).
+    said: String,
     /// The `result` line: final text, or the error Claude Code reported.
     result: Option<Result<String, String>>,
     denied: usize,
@@ -511,6 +504,7 @@ impl Run {
                 match event["type"].as_str() {
                     Some("message_start") => {
                         self.blocks.clear();
+                        self.said.push('\n');
                         let changed = !self.visible.is_empty();
                         self.visible.clear();
                         changed
@@ -549,6 +543,7 @@ impl Run {
                     Some("content_block_delta") if event["delta"]["type"] == "text_delta" => {
                         let text = event["delta"]["text"].as_str().unwrap_or("");
                         self.visible.push_str(text);
+                        self.said.push_str(text);
                         if !text.is_empty() {
                             // The text shows instead: a later tool call is news again.
                             self.activity = None;
@@ -847,6 +842,7 @@ pub async fn send(
         Some(Err(e)) => return Err(tf("Claude Code: {error}", &[("error", &e)])),
         None => unreachable!("run() returns an error without a result"),
     };
+    let answer = chat::keep_lumo_lines(answer, &state.said);
     let answer = if answer.trim().is_empty() && state.denied > 0 {
         t("Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island.")
     } else {
@@ -1037,6 +1033,30 @@ mod tests {
         for wholesale in ["bypassPermissions", "dontAsk", "", "plan & calc"] {
             assert_eq!(mode(wholesale), "default", "{wholesale}");
         }
+    }
+
+    #[test]
+    fn a_listen_line_written_before_a_tool_call_reaches_the_island() {
+        // Claude writes the line, checks the CI with a command, then answers:
+        // the result is only the last message, the line must not be lost.
+        let mut run = Run::default();
+        let lines = [
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start"}}"#,
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Ok.\n[[listen Rccrd12/Lumo#22 checks]]\n"}}}"#,
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start"}}"#,
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"The checks are still running."}}}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"The checks are still running."}"#,
+        ];
+        for l in &lines {
+            run.feed(l.as_bytes());
+        }
+        let answer = match run.result.clone() {
+            Some(Ok(text)) => chat::keep_lumo_lines(text, &run.said),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(answer, "The checks are still running.\n[[listen Rccrd12/Lumo#22 checks]]\n");
+        // Written in the last message already: not twice.
+        assert_eq!(chat::keep_lumo_lines("Ok.\n[[listen o/r#1 merged]]".into(), "Ok.\n[[listen o/r#1 merged]]"), "Ok.\n[[listen o/r#1 merged]]");
     }
 
     #[test]
