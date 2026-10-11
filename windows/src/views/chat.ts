@@ -38,7 +38,7 @@
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
 
-import { h, svg, clear, gentleWheel } from "./dom";
+import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { copyButton, renderMarkdown } from "./markdown";
 import {
@@ -668,7 +668,6 @@ export function buildPrompt(
   // The log follows a written answer down while it is read at its end;
   // scrolled up, it stays put until it is scrolled back down.
   let following = true;
-  gentleWheel(log);
   log.addEventListener("scroll", () => {
     following = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_SLACK_PX;
   }, { passive: true });
