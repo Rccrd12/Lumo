@@ -702,6 +702,7 @@ const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
   get hint() { return t("Only with Claude Code in the chat, and only while it answers. Asking every time, each click, key or text is an Allow / Deny card on the island first; screenshots don't ask. Press Esc anywhere to stop it. Lumo's island is left out of its screenshots. Screenshots count against your Claude plan's limits."); },
   get claudeOnly() { return t("Pick Claude Code as the chat's provider to use it."); },
+  get mouse() { return t("While it works, the screen it uses glows and the mouse turns orange: the mouse is Claude's until it answers, except when a card asks you something. Esc gives it back at once."); },
 };
 
 /** Settings → Chat → Computer use: off until the user turns it on (Windows only). */
@@ -716,7 +717,8 @@ function computerSection(): HTMLElement {
     "section",
     {},
     ...sectionHead(COMPUTER_SETTINGS.title, COMPUTER_SETTINGS.intro),
-    setting(COMPUTER_SETTINGS.label, windows ? COMPUTER_SETTINGS.hint : SHARING_TEXT.linux,
+    setting(COMPUTER_SETTINGS.label,
+      windows ? h("span", {}, COMPUTER_SETTINGS.hint, " ", COMPUTER_SETTINGS.mouse) : SHARING_TEXT.linux,
       windows
         ? toggle(settings.chatComputerUse === true, (on) => {
           settings.chatComputerUse = on;

@@ -537,6 +537,18 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   other tools.
 - **Esc, anywhere, stops it** for the rest of the answer: the key is Lumo's
   while Claude acts, and every later action is refused.
+- **You can see it work**: the screen it uses glows softly around its edges
+  (on whichever display it is), the mouse turns into an orange arrow and
+  glides from point to point instead of jumping, and each action shows where
+  it happens — rings for clicks, a trail for drags, chevrons for scrolling, a
+  bubble with the text being typed or the keys pressed. None of it is in
+  Claude's screenshots.
+- **The mouse is Claude's while it answers**: your hand's moves and clicks
+  are held back (a low-level mouse hook drops them; only Lumo's own input goes
+  through), except while a card on the island waits for your click. Esc
+  gives it back at once, and so does the end of the answer. Should Lumo close
+  meanwhile, the hook goes with it, and the usual arrow comes back at the next
+  start (or at once on quitting).
 - One screen at a time: the one under the mouse at the first screenshot (or
   the one Claude asks for). Screenshots are sent at 1456 px on the long edge
   at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into

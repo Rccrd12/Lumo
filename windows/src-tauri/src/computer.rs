@@ -17,17 +17,24 @@
 // * Lumo's own windows are left out of screenshots and let the mouse through
 //   while Claude clicks, and nothing is typed while the keyboard is in Lumo.
 //
+// While Claude uses the computer, the screen it works on glows (an overlay
+// window, computer.html, click-through and left out of screenshots), its
+// mouse is an orange arrow drawn here, gliding from point to point, and the
+// user's own mouse is held still (a low-level hook drops what the hand does;
+// what Claude sends goes through). When a card waits on the island, the hand
+// gets the mouse back to answer it.
+//
 // One screen at a time: the one under the mouse at the first screenshot of a
 // turn, or the one Claude asks for. Screenshots are scaled down to what every
 // model reads in full (1456 px on the long edge, about 1.15 megapixels), and
 // Claude's coordinates, in those pixels, are scaled back up before acting.
 
-use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Manager, Runtime};
+use tauri::{AppHandle, Emitter, Manager, Runtime, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::i18n::t;
 
@@ -57,6 +64,13 @@ static STOP_KEY: AtomicBool = AtomicBool::new(false);
 static VIEW: Mutex<Option<View>> = Mutex::new(None);
 /// One action at a time.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
+/// Claude is using the computer in this turn: the glow, the orange mouse, the hand held still.
+static ENGAGED: AtomicBool = AtomicBool::new(false);
+/// Cards waiting on the island meanwhile: the hand has the mouse to answer them.
+static CARDS: AtomicUsize = AtomicUsize::new(0);
+
+/// The overlay's window (computer.html).
+pub const OVERLAY: &str = "computer";
 
 /// A chat turn that may use the computer starts.
 pub fn begin_turn() {
@@ -65,11 +79,143 @@ pub fn begin_turn() {
     TURN.store(true, Ordering::SeqCst);
 }
 
-/// The turn is over: nothing more is done, and Esc is the user's again.
+/// The turn is over: nothing more is done, and Esc and the mouse are the user's again.
 pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     TURN.store(false, Ordering::SeqCst);
     ACTING.store(false, Ordering::SeqCst);
     release_stop_key(app);
+    disengage(app);
+}
+
+/// Claude starts using the computer in this turn: the screen glows, the
+/// mouse turns orange and the hand lets go of it.
+fn engage(app: &AppHandle) {
+    if ENGAGED.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    CARDS.store(0, Ordering::SeqCst);
+    let rect = VIEW
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .map(|v| v.rect)
+        .or_else(|| {
+            let rects = crate::screen::monitor_rects();
+            crate::screen::display_under_cursor().and_then(|i| rects.get(i).copied()).or_else(|| rects.first().copied())
+        });
+    if let Some(rect) = rect {
+        overlay_show(app, rect);
+    }
+    imp::take_mouse(true);
+}
+
+/// The glow goes, the mouse is the user's again (also after Esc).
+fn disengage<R: Runtime>(app: &AppHandle<R>) {
+    if !ENGAGED.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    imp::take_mouse(false);
+    fx(app, json!({ "kind": "hide" }));
+    let app = app.clone();
+    std::thread::spawn(move || {
+        // The glow fades before the window goes.
+        std::thread::sleep(Duration::from_millis(500));
+        if !ENGAGED.load(Ordering::SeqCst) {
+            if let Some(win) = app.get_webview_window(OVERLAY) {
+                let _ = win.hide();
+            }
+        }
+    });
+}
+
+/// A card came up on the island during the turn (pipe.rs): the hand gets the
+/// mouse back to answer it, and the glow dims.
+pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
+    if !TURN.load(Ordering::SeqCst) {
+        return;
+    }
+    if CARDS.fetch_add(1, Ordering::SeqCst) == 0 && ENGAGED.load(Ordering::SeqCst) {
+        imp::take_mouse(false);
+        fx(app, json!({ "kind": "pause" }));
+    }
+}
+
+/// The card was answered: Claude has the mouse again.
+pub fn card_down<R: Runtime>(app: &AppHandle<R>) {
+    if !TURN.load(Ordering::SeqCst) {
+        return;
+    }
+    let left = CARDS.fetch_sub(1, Ordering::SeqCst).saturating_sub(1);
+    if left == 0 && ENGAGED.load(Ordering::SeqCst) && !STOPPED.load(Ordering::SeqCst) {
+        imp::take_mouse(true);
+        fx(app, json!({ "kind": "resume" }));
+    }
+}
+
+/// Lumo was closed while Claude had the mouse: its arrow is the system's own
+/// again (the hook went with the process).
+pub fn recover() {
+    imp::recover();
+}
+
+// ── The overlay ─────────────────────────────────────────────────────────────
+
+/// Tells the overlay what to draw (src/computer/fx.ts says what each one is).
+fn fx<R: Runtime>(app: &AppHandle<R>, payload: Value) {
+    let _ = app.emit_to(OVERLAY, "computer-fx", payload);
+}
+
+fn overlay_url<R: Runtime>(app: &AppHandle<R>) -> WebviewUrl {
+    #[cfg(dev)]
+    if let Some(mut base) = app.config().build.dev_url.clone() {
+        base.set_path("/computer.html");
+        return WebviewUrl::External(base);
+    }
+    let _ = app;
+    WebviewUrl::App("computer.html".into())
+}
+
+/// The overlay's window, made once: transparent, on top, never taking the
+/// mouse or the keyboard, left out of screenshots.
+fn overlay(app: &AppHandle) -> Option<WebviewWindow> {
+    if let Some(win) = app.get_webview_window(OVERLAY) {
+        return Some(win);
+    }
+    let win = WebviewWindowBuilder::new(app, OVERLAY, overlay_url(app))
+        .additional_browser_args(crate::BROWSER_ARGS)
+        .title("Lumo")
+        .decorations(false)
+        .transparent(true)
+        .shadow(false)
+        .always_on_top(true)
+        .skip_taskbar(true)
+        .focused(false)
+        .resizable(false)
+        .maximizable(false)
+        .minimizable(false)
+        .closable(false)
+        .disable_drag_drop_handler()
+        .visible(false)
+        .build()
+        .map_err(|e| crate::log::line(format!("computer overlay failed: {e}")))
+        .ok()?;
+    let _ = win.set_ignore_cursor_events(true);
+    let _ = win.set_content_protected(true);
+    crate::platform::make_non_activating(&win);
+    Some(win)
+}
+
+/// The overlay over the screen at `rect` (physical pixels), shown.
+fn overlay_show(app: &AppHandle, rect: (i32, i32, i32, i32)) {
+    let Some(win) = overlay(app) else { return };
+    overlay_place(&win, rect);
+    let _ = win.show();
+    let _ = win.set_ignore_cursor_events(true);
+    fx(app, json!({ "kind": "show" }));
+}
+
+fn overlay_place<R: Runtime>(win: &WebviewWindow<R>, rect: (i32, i32, i32, i32)) {
+    let _ = win.set_position(tauri::PhysicalPosition::new(rect.0, rect.1));
+    let _ = win.set_size(tauri::PhysicalSize::new((rect.2 - rect.0).max(1) as u32, (rect.3 - rect.1).max(1) as u32));
 }
 
 /// True while Claude is clicking or dragging: the island lets the mouse through.
@@ -90,8 +236,15 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>) {
     }
     crate::log::line("computer use: stopped with Esc");
     release_stop_key(app);
-    use tauri::Emitter;
+    // The mouse is the user's at once; the glow turns red, then goes.
+    imp::take_mouse(false);
+    fx(app, json!({ "kind": "stopped" }));
     let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-stopped", ());
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(Duration::from_millis(700));
+        disengage(&app);
+    });
 }
 
 fn stop_shortcut() -> tauri_plugin_global_shortcut::Shortcut {
@@ -203,6 +356,101 @@ impl View {
         }
         Ok((left, top, right, bottom))
     }
+}
+
+/// Ease in and out (cubic), as the overlay's glow follows it (src/computer/fx.ts).
+#[cfg_attr(not(windows), allow(dead_code))] // Linux moves no mouse yet
+pub fn ease(t: f64) -> f64 {
+    let x = t.clamp(0.0, 1.0);
+    if x < 0.5 {
+        4.0 * x * x * x
+    } else {
+        1.0 - (-2.0 * x + 2.0).powi(3) / 2.0
+    }
+}
+
+/// How long the mouse takes to glide from `a` to `b` (ms): longer for longer
+/// ways, never a crawl. Nothing when it is already there.
+pub fn glide_ms(a: (i32, i32), b: (i32, i32)) -> u64 {
+    let d = (((b.0 - a.0) as f64).powi(2) + ((b.1 - a.1) as f64).powi(2)).sqrt();
+    if d < 2.0 {
+        return 0;
+    }
+    (240.0 + 16.0 * d.sqrt()).clamp(220.0, 850.0) as u64
+}
+
+/// The orange arrow Claude's mouse wears, `size` × `size` straight RGBA, and
+/// its tip (the hot spot). Drawn here: an arrow in Lumo's orange with a white
+/// edge and a soft shadow.
+#[cfg_attr(not(windows), allow(dead_code))] // Linux moves no mouse yet
+pub fn arrow_pixels(size: u32) -> (Vec<u8>, (u32, u32)) {
+    // The classic arrow, on a 32-pixel grid.
+    const SHAPE: [(f64, f64); 7] = [(1.5, 1.5), (1.5, 23.5), (6.8, 18.6), (10.2, 26.4), (14.4, 24.6), (11.0, 17.2), (17.6, 17.2)];
+    let k = size as f64 / 32.0;
+    let pts: Vec<(f64, f64)> = SHAPE.iter().map(|(x, y)| (x * k, y * k)).collect();
+    let edge = 1.15 * k.max(0.85);
+    let inside = |x: f64, y: f64, dx: f64, dy: f64| -> bool {
+        let mut c = false;
+        let n = pts.len();
+        for i in 0..n {
+            let (xi, yi) = (pts[i].0 + dx, pts[i].1 + dy);
+            let (xj, yj) = (pts[(i + n - 1) % n].0 + dx, pts[(i + n - 1) % n].1 + dy);
+            if (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi {
+                c = !c;
+            }
+        }
+        c
+    };
+    let dist = |x: f64, y: f64| -> f64 {
+        let n = pts.len();
+        (0..n)
+            .map(|i| {
+                let (a, b) = (pts[i], pts[(i + 1) % n]);
+                let (vx, vy) = (b.0 - a.0, b.1 - a.1);
+                let t = (((x - a.0) * vx + (y - a.1) * vy) / (vx * vx + vy * vy)).clamp(0.0, 1.0);
+                ((x - a.0 - t * vx).powi(2) + (y - a.1 - t * vy).powi(2)).sqrt()
+            })
+            .fold(f64::MAX, f64::min)
+    };
+    const ORANGE: (f64, f64, f64) = (255.0, 138.0, 31.0);
+    const SS: usize = 4;
+    let mut out = vec![0u8; (size * size * 4) as usize];
+    for py in 0..size {
+        for px in 0..size {
+            let (mut r, mut g, mut b, mut a) = (0.0, 0.0, 0.0, 0.0);
+            for sy in 0..SS {
+                for sx in 0..SS {
+                    let x = px as f64 + (sx as f64 + 0.5) / SS as f64;
+                    let y = py as f64 + (sy as f64 + 0.5) / SS as f64;
+                    let (cr, cg, cb, ca) = if inside(x, y, 0.0, 0.0) {
+                        if dist(x, y) <= edge {
+                            (255.0, 255.0, 255.0, 1.0)
+                        } else {
+                            (ORANGE.0, ORANGE.1, ORANGE.2, 1.0)
+                        }
+                    } else if inside(x, y, 0.9 * k, 1.4 * k) {
+                        (0.0, 0.0, 0.0, 0.24)
+                    } else {
+                        (0.0, 0.0, 0.0, 0.0)
+                    };
+                    r += cr * ca;
+                    g += cg * ca;
+                    b += cb * ca;
+                    a += ca;
+                }
+            }
+            let n = (SS * SS) as f64;
+            let i = ((py * size + px) * 4) as usize;
+            if a > 0.0 {
+                out[i] = (r / a).round() as u8;
+                out[i + 1] = (g / a).round() as u8;
+                out[i + 2] = (b / a).round() as u8;
+            }
+            out[i + 3] = (a / n * 255.0).round() as u8;
+        }
+    }
+    let hot = ((1.5 * k).round() as u32, (1.5 * k).round() as u32);
+    (out, hot)
 }
 
 /// A key as the keyboard has it: a Windows virtual-key code, or a character
@@ -335,7 +583,7 @@ pub enum Action {
     Drag { from: (i64, i64), to: (i64, i64) },
     Scroll { at: Option<(i64, i64)>, dx: i32, dy: i32, hold: Vec<Key> },
     Type { text: String },
-    Keys { keys: Vec<Key>, repeat: u32 },
+    Keys { keys: Vec<Key>, repeat: u32, label: String },
     Wait { secs: f64 },
     Cursor,
 }
@@ -417,9 +665,10 @@ pub fn parse(tool: &str, input: &Value) -> Result<Action, String> {
             Ok(Action::Type { text: text.to_string() })
         }
         "key" => {
-            let keys = parse_keys(input.get("text").and_then(Value::as_str).unwrap_or(""))?;
+            let label = input.get("text").and_then(Value::as_str).unwrap_or("").trim().to_string();
+            let keys = parse_keys(&label)?;
             let repeat = input.get("repeat").and_then(Value::as_u64).unwrap_or(1).clamp(1, 100) as u32;
-            Ok(Action::Keys { keys, repeat })
+            Ok(Action::Keys { keys, repeat, label })
         }
         "wait" => {
             let secs = input.get("duration").and_then(Value::as_f64).filter(|s| s.is_finite()).unwrap_or(1.0);
@@ -458,6 +707,8 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         Ok(a) => a,
         Err(e) => return refuse(e),
     };
+    // The glow, the orange mouse and the hand held still, from Claude's first call on.
+    engage(app);
     if !action.looks() {
         hold_stop_key(app);
     }
@@ -512,6 +763,26 @@ fn stopped() -> bool {
     STOPPED.load(Ordering::SeqCst)
 }
 
+/// A point of the screen, from the overlay's top left corner (physical pixels).
+fn rel(view: &View, p: (i32, i32)) -> [i32; 2] {
+    [p.0 - view.rect.0, p.1 - view.rect.1]
+}
+
+/// Where Claude's mouse is now (or `fallback`), from the overlay's corner.
+fn mouse_rel(view: &View, fallback: (i32, i32)) -> [i32; 2] {
+    rel(view, imp::cursor().unwrap_or(fallback))
+}
+
+/// The mouse glides to `to`, and the overlay's glow with it.
+fn glide_to(app: &AppHandle, view: &View, to: (i32, i32)) -> Result<(), String> {
+    let from = imp::cursor().unwrap_or(to);
+    let ms = glide_ms(from, to);
+    if ms > 0 {
+        fx(app, json!({ "kind": "move", "from": rel(view, from), "to": rel(view, to), "ms": ms }));
+    }
+    imp::glide(from, to, ms, &stopped)
+}
+
 fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
     match action {
         Action::Screenshot { display } => {
@@ -526,7 +797,14 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             };
             let view = View::new(index, rect);
             let png = crate::screen::unseen(app, |hidden| crate::screen::grab_png(rect, view.w, view.h, hidden))?;
-            *VIEW.lock().unwrap_or_else(|e| e.into_inner()) = Some(view);
+            let moved = VIEW.lock().unwrap_or_else(|e| e.into_inner()).replace(view).is_none_or(|v| v.rect != rect);
+            // Another screen: the glow goes with Claude.
+            if moved {
+                if let Some(win) = app.get_webview_window(OVERLAY) {
+                    overlay_place(&win, rect);
+                }
+            }
+            fx(app, json!({ "kind": "look" }));
             Ok(json!({
                 "image": base64(&png),
                 "text": format!(
@@ -540,6 +818,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             let rect = view.region(region)?;
             let (w, h) = zoom_size((rect.2 - rect.0) as u32, (rect.3 - rect.1) as u32);
             let png = crate::screen::unseen(app, |hidden| crate::screen::grab_png(rect, w, h, hidden))?;
+            fx(app, json!({ "kind": "look" }));
             Ok(json!({
                 "image": base64(&png),
                 "text": format!("The region [{}, {}, {}, {}], enlarged. Coordinates stay those of the full screenshot.", region[0], region[1], region[2], region[3]),
@@ -548,33 +827,66 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
         Action::Click { at, button, count, hold } => {
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
-            hands_off(app, || imp::click(target, button, count, &hold))?;
+            hands_off(app, || {
+                if let Some(t) = target {
+                    glide_to(app, &view, t)?;
+                }
+                if stopped() {
+                    return Err("Stopped before the click.".to_string());
+                }
+                let here = imp::cursor().or(target).unwrap_or((view.rect.0, view.rect.1));
+                let name = match button {
+                    Button::Left => "left",
+                    Button::Right => "right",
+                    Button::Middle => "middle",
+                };
+                fx(app, json!({ "kind": "click", "at": rel(&view, here), "button": name, "count": count }));
+                imp::click(button, count, &hold)
+            })?;
             Ok(json!({ "text": "Done. Take a screenshot to see what changed." }))
         }
         Action::Move { at } => {
-            let (x, y) = view()?.to_screen(at.0, at.1)?;
-            hands_off(app, || imp::move_to(x, y))?;
+            let view = view()?;
+            let to = view.to_screen(at.0, at.1)?;
+            hands_off(app, || glide_to(app, &view, to))?;
             Ok(json!({ "text": "Done." }))
         }
         Action::Drag { from, to } => {
             let view = view()?;
             let (a, b) = (view.to_screen(from.0, from.1)?, view.to_screen(to.0, to.1)?);
-            hands_off(app, || imp::drag(a, b))?;
+            hands_off(app, || {
+                glide_to(app, &view, a)?;
+                let ms = glide_ms(a, b).max(300) + 150;
+                fx(app, json!({ "kind": "drag", "from": rel(&view, a), "to": rel(&view, b), "ms": ms }));
+                imp::drag(a, b, ms)
+            })?;
             Ok(json!({ "text": "Done. Take a screenshot to see what changed." }))
         }
         Action::Scroll { at, dx, dy, hold } => {
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
-            hands_off(app, || imp::scroll(target, dx, dy, &hold, &stopped))?;
+            hands_off(app, || {
+                if let Some(t) = target {
+                    glide_to(app, &view, t)?;
+                }
+                fx(app, json!({ "kind": "scroll", "at": mouse_rel(&view, (view.rect.0, view.rect.1)), "dx": dx, "dy": dy }));
+                imp::scroll(dx, dy, &hold, &stopped)
+            })?;
             Ok(json!({ "text": "Done." }))
         }
         Action::Type { text } => {
             keyboard_back(app);
+            if let Ok(view) = view() {
+                fx(app, json!({ "kind": "type", "at": mouse_rel(&view, (view.rect.0, view.rect.1)), "text": text }));
+            }
             let typed = imp::type_text(&text, &stopped)?;
             Ok(json!({ "text": format!("Typed {typed} characters.") }))
         }
-        Action::Keys { keys, repeat } => {
+        Action::Keys { keys, repeat, label } => {
             keyboard_back(app);
+            if let Ok(view) = view() {
+                fx(app, json!({ "kind": "key", "at": mouse_rel(&view, (view.rect.0, view.rect.1)), "keys": label }));
+            }
             // Esc is ours while Claude acts: let go of it while Claude presses it.
             let escape = keys.contains(&Key::Vk(VK_ESCAPE));
             if escape {
@@ -588,6 +900,10 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             Ok(json!({ "text": "Done." }))
         }
         Action::Wait { secs } => {
+            if let Ok(view) = view() {
+                let ms = (secs * 1000.0) as u64;
+                fx(app, json!({ "kind": "wait", "at": mouse_rel(&view, (view.rect.0, view.rect.1)), "ms": ms }));
+            }
             let until = std::time::Instant::now() + Duration::from_secs_f64(secs);
             while std::time::Instant::now() < until && !stopped() {
                 std::thread::sleep(Duration::from_millis(100));
@@ -615,18 +931,20 @@ mod imp {
     pub fn cursor() -> Option<(i32, i32)> {
         None
     }
-    pub fn move_to(_x: i32, _y: i32) -> Result<(), String> {
+    pub fn glide(_from: (i32, i32), _to: (i32, i32), _ms: u64, _stop: &dyn Fn() -> bool) -> Result<(), String> {
         unavailable()
     }
-    pub fn click(_at: Option<(i32, i32)>, _b: Button, _count: u32, _hold: &[Key]) -> Result<(), String> {
+    pub fn click(_b: Button, _count: u32, _hold: &[Key]) -> Result<(), String> {
         unavailable()
     }
-    pub fn drag(_a: (i32, i32), _b: (i32, i32)) -> Result<(), String> {
+    pub fn drag(_a: (i32, i32), _b: (i32, i32), _ms: u64) -> Result<(), String> {
         unavailable()
     }
-    pub fn scroll(_at: Option<(i32, i32)>, _dx: i32, _dy: i32, _hold: &[Key], _stop: &dyn Fn() -> bool) -> Result<(), String> {
+    pub fn scroll(_dx: i32, _dy: i32, _hold: &[Key], _stop: &dyn Fn() -> bool) -> Result<(), String> {
         unavailable()
     }
+    pub fn take_mouse(_on: bool) {}
+    pub fn recover() {}
     pub fn type_text(_text: &str, _stop: &dyn Fn() -> bool) -> Result<usize, String> {
         unavailable()
     }
@@ -789,8 +1107,25 @@ mod imp {
         Some((p.x, p.y))
     }
 
-    pub fn move_to(x: i32, y: i32) -> Result<(), String> {
-        unsafe { SetCursorPos(x, y) }.map_err(|_| "Windows refused to move the mouse.".to_string())?;
+    /// The mouse glides from `from` to `to` in `ms`, on the overlay's curve.
+    pub fn glide(from: (i32, i32), to: (i32, i32), ms: u64, stop: &dyn Fn() -> bool) -> Result<(), String> {
+        let start = std::time::Instant::now();
+        let total = ms as f64;
+        while ms > 0 {
+            let t = start.elapsed().as_secs_f64() * 1000.0 / total;
+            if t >= 1.0 || stop() {
+                break;
+            }
+            let e = ease(t);
+            let x = from.0 + ((to.0 - from.0) as f64 * e).round() as i32;
+            let y = from.1 + ((to.1 - from.1) as f64 * e).round() as i32;
+            let _ = unsafe { SetCursorPos(x, y) };
+            std::thread::sleep(Duration::from_millis(6));
+        }
+        if stop() {
+            return Err("Stopped.".into());
+        }
+        unsafe { SetCursorPos(to.0, to.1) }.map_err(|_| "Windows refused to move the mouse.".to_string())?;
         std::thread::sleep(Duration::from_millis(30));
         Ok(())
     }
@@ -803,10 +1138,7 @@ mod imp {
         }
     }
 
-    pub fn click(at: Option<(i32, i32)>, button: Button, count: u32, hold: &[Key]) -> Result<(), String> {
-        if let Some((x, y)) = at {
-            move_to(x, y)?;
-        }
+    pub fn click(button: Button, count: u32, hold: &[Key]) -> Result<(), String> {
         let (down, up) = flags(button);
         holding(hold, || {
             for i in 0..count {
@@ -823,30 +1155,21 @@ mod imp {
         Ok(())
     }
 
-    pub fn drag(a: (i32, i32), b: (i32, i32)) -> Result<(), String> {
-        move_to(a.0, a.1)?;
+    /// Presses at `a`, glides to `b` in `ms` (the app sees a drag, not a jump), lets go.
+    pub fn drag(a: (i32, i32), b: (i32, i32), ms: u64) -> Result<(), String> {
         if !send(&[mouse(MOUSEEVENTF_LEFTDOWN, 0)]) {
             return Err("Windows refused the click.".into());
         }
-        std::thread::sleep(Duration::from_millis(60));
-        // In steps, so the app sees a drag and not a jump.
-        const STEPS: i32 = 16;
-        for i in 1..=STEPS {
-            let x = a.0 + (b.0 - a.0) * i / STEPS;
-            let y = a.1 + (b.1 - a.1) * i / STEPS;
-            let _ = unsafe { SetCursorPos(x, y) };
-            std::thread::sleep(Duration::from_millis(12));
-        }
+        std::thread::sleep(Duration::from_millis(80));
+        // Never stopped half way: the button has to come up.
+        let moved = glide(a, b, ms.saturating_sub(140), &|| false);
         std::thread::sleep(Duration::from_millis(60));
         send(&[mouse(MOUSEEVENTF_LEFTUP, 0)]);
         note_target();
-        Ok(())
+        moved
     }
 
-    pub fn scroll(at: Option<(i32, i32)>, dx: i32, dy: i32, hold: &[Key], stop: &dyn Fn() -> bool) -> Result<(), String> {
-        if let Some((x, y)) = at {
-            move_to(x, y)?;
-        }
+    pub fn scroll(dx: i32, dy: i32, hold: &[Key], stop: &dyn Fn() -> bool) -> Result<(), String> {
         holding(hold, || {
             let (flag, steps, sign) = if dy != 0 { (MOUSEEVENTF_WHEEL, dy.abs(), dy.signum()) } else { (MOUSEEVENTF_HWHEEL, dx.abs(), dx.signum()) };
             for _ in 0..steps {
@@ -858,6 +1181,167 @@ mod imp {
             }
             Ok(())
         })
+    }
+
+    // ── Claude's mouse: the orange arrow, and the hand held still ────────────
+
+    use ::windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
+    use ::windows::Win32::Graphics::Gdi::{
+        CreateBitmap, CreateDIBSection, DeleteObject, BITMAPINFO, BITMAPINFOHEADER, BI_RGB, DIB_RGB_COLORS,
+    };
+    use ::windows::Win32::System::LibraryLoader::GetModuleHandleW;
+    use ::windows::Win32::System::Threading::GetCurrentThreadId;
+    use ::windows::Win32::UI::WindowsAndMessaging::{
+        CallNextHookEx, CopyIcon, CreateIconIndirect, DestroyIcon, GetMessageW, GetSystemMetrics, PostThreadMessageW,
+        SetSystemCursor, SetWindowsHookExW, SystemParametersInfoW, UnhookWindowsHookEx, HCURSOR, HICON, ICONINFO,
+        LLMHF_INJECTED, MSG, MSLLHOOKSTRUCT, SM_CXCURSOR, SPI_SETCURSORS, SYSTEM_CURSOR_ID,
+        SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS, WH_MOUSE_LL, WM_QUIT,
+    };
+    use std::sync::atomic::AtomicU32;
+
+    /// The system's cursors Claude's arrow stands in for: the arrow, the text
+    /// beam, the hand, the busy ones, the resize ones… so it stays orange
+    /// whatever it is over.
+    const CURSORS: &[u32] = &[32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651];
+
+    /// The hand's mouse is held still (the hook drops what it does).
+    static HELD: AtomicBool = AtomicBool::new(false);
+    /// The thread that runs the hook, while there is one.
+    static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
+    /// The arrow is orange now.
+    static ORANGE: AtomicBool = AtomicBool::new(false);
+
+    /// Marks that the system's cursors were swapped, for `recover` after a crash.
+    fn marker() -> std::path::PathBuf {
+        crate::settings::local_dir().join("computer-cursor")
+    }
+
+    /// Claude takes the mouse (the orange arrow, the hand held still), or gives it back.
+    pub fn take_mouse(on: bool) {
+        // From the turn, the cards and Esc at once: one change at a time.
+        static ONE: Mutex<()> = Mutex::new(());
+        let _one = ONE.lock().unwrap_or_else(|e| e.into_inner());
+        HELD.store(on, Ordering::SeqCst);
+        if on {
+            start_hook();
+        } else {
+            stop_hook();
+        }
+        orange(on);
+    }
+
+    pub fn recover() {
+        stop_hook();
+        if marker().exists() {
+            restore_cursors();
+        }
+    }
+
+    fn restore_cursors() {
+        unsafe {
+            let _ = SystemParametersInfoW(SPI_SETCURSORS, 0, None, SYSTEM_PARAMETERS_INFO_UPDATE_FLAGS(0));
+        }
+        let _ = std::fs::remove_file(marker());
+    }
+
+    fn orange(on: bool) {
+        if ORANGE.swap(on, Ordering::SeqCst) == on {
+            return;
+        }
+        if !on {
+            restore_cursors();
+            return;
+        }
+        let Some(arrow) = make_arrow() else {
+            ORANGE.store(false, Ordering::SeqCst);
+            return;
+        };
+        let _ = std::fs::write(marker(), b"1");
+        for id in CURSORS {
+            // SetSystemCursor keeps (and later destroys) the handle it is given: a copy each.
+            if let Ok(copy) = unsafe { CopyIcon(arrow) } {
+                let _ = unsafe { SetSystemCursor(HCURSOR(copy.0), SYSTEM_CURSOR_ID(*id)) };
+            }
+        }
+        let _ = unsafe { DestroyIcon(arrow) };
+    }
+
+    /// The orange arrow (super::arrow_pixels) as a cursor of the system's size.
+    fn make_arrow() -> Option<HICON> {
+        let size = unsafe { GetSystemMetrics(SM_CXCURSOR) }.clamp(32, 256) as u32;
+        let (rgba, hot) = super::arrow_pixels(size);
+        unsafe {
+            let info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: size as i32,
+                    biHeight: -(size as i32),
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
+            let color = CreateDIBSection(None, &info, DIB_RGB_COLORS, &mut bits, None, 0).ok()?;
+            if bits.is_null() {
+                let _ = DeleteObject(color.into());
+                return None;
+            }
+            // BGRA, straight alpha, as a 32-bit cursor takes it.
+            let dst = std::slice::from_raw_parts_mut(bits as *mut u8, rgba.len());
+            for (d, s) in dst.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
+                d.copy_from_slice(&[s[2], s[1], s[0], s[3]]);
+            }
+            let mask = CreateBitmap(size as i32, size as i32, 1, 1, None);
+            let icon = CreateIconIndirect(&ICONINFO { fIcon: false.into(), xHotspot: hot.0, yHotspot: hot.1, hbmMask: mask, hbmColor: color });
+            let _ = DeleteObject(color.into());
+            let _ = DeleteObject(mask.into());
+            icon.ok()
+        }
+    }
+
+    /// Drops the hand's mouse moves, clicks and wheel while `HELD`; what
+    /// Lumo sends (injected) goes through.
+    unsafe extern "system" fn hook(code: i32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+        if code >= 0 && HELD.load(Ordering::Relaxed) {
+            let info = unsafe { &*(lparam.0 as *const MSLLHOOKSTRUCT) };
+            if info.flags & LLMHF_INJECTED == 0 {
+                return LRESULT(1);
+            }
+        }
+        unsafe { CallNextHookEx(None, code, wparam, lparam) }
+    }
+
+    fn start_hook() {
+        if HOOK_THREAD.load(Ordering::SeqCst) != 0 {
+            return;
+        }
+        let (tx, rx) = std::sync::mpsc::channel::<u32>();
+        std::thread::spawn(move || unsafe {
+            let module = GetModuleHandleW(None).ok().map(|m| m.into());
+            let Ok(hhook) = SetWindowsHookExW(WH_MOUSE_LL, Some(hook), module, 0) else {
+                crate::log::line("computer use: the mouse hook could not be set");
+                let _ = tx.send(0);
+                return;
+            };
+            let _ = tx.send(GetCurrentThreadId());
+            // A low-level hook runs on its thread's messages, until WM_QUIT.
+            let mut msg = MSG::default();
+            while GetMessageW(&mut msg, None, 0, 0).as_bool() {}
+            let _ = UnhookWindowsHookEx(hhook);
+        });
+        if let Ok(id) = rx.recv_timeout(Duration::from_secs(2)) {
+            HOOK_THREAD.store(id, Ordering::SeqCst);
+        }
+    }
+
+    fn stop_hook() {
+        let id = HOOK_THREAD.swap(0, Ordering::SeqCst);
+        if id != 0 {
+            let _ = unsafe { PostThreadMessageW(id, WM_QUIT, WPARAM(0), LPARAM(0)) };
+        }
     }
 
     pub fn press(keys: &[Key], repeat: u32, stop: &dyn Fn() -> bool) -> Result<(), String> {
@@ -1004,7 +1488,10 @@ mod tests {
             Action::Scroll { at: None, dx: 0, dy: -5, hold: vec![] }
         );
         assert!(parse("scroll", &json!({ "scroll_direction": "sideways" })).is_err());
-        assert_eq!(parse("key", &json!({ "text": "Tab", "repeat": 500 })).unwrap(), Action::Keys { keys: vec![Key::Vk(VK_TAB)], repeat: 100 });
+        assert_eq!(
+            parse("key", &json!({ "text": "Tab", "repeat": 500 })).unwrap(),
+            Action::Keys { keys: vec![Key::Vk(VK_TAB)], repeat: 100, label: "Tab".into() }
+        );
         assert!(parse("type", &json!({ "text": "" })).is_err());
         assert!(parse("type", &json!({ "text": "x".repeat(MAX_TEXT + 1) })).is_err());
         assert_eq!(parse("wait", &json!({ "duration": 999 })).unwrap(), Action::Wait { secs: MAX_WAIT_SECS });
@@ -1012,6 +1499,43 @@ mod tests {
         assert!(parse("zoom", &json!({ "region": [0, 0, 10] })).is_err());
         assert!(Action::Screenshot { display: None }.looks() && Action::Cursor.looks());
         assert!(!Action::Type { text: "x".into() }.looks());
+    }
+
+    #[test]
+    fn the_mouse_glides_on_an_eased_curve_longer_for_longer_ways() {
+        assert_eq!(ease(0.0), 0.0);
+        assert_eq!(ease(1.0), 1.0);
+        assert!((ease(0.5) - 0.5).abs() < 1e-9);
+        assert!(ease(0.1) < 0.1 && ease(0.9) > 0.9, "slow out, slow in");
+        assert_eq!(ease(-1.0), 0.0);
+        assert_eq!(ease(2.0), 1.0);
+        assert_eq!(glide_ms((10, 10), (11, 10)), 0, "already there");
+        let short = glide_ms((0, 0), (100, 0));
+        let long = glide_ms((0, 0), (2000, 1000));
+        assert!(short >= 220 && short < long && long <= 850, "{short} {long}");
+    }
+
+    #[test]
+    fn claudes_arrow_is_orange_with_a_white_edge_and_its_tip_is_the_hot_spot() {
+        for size in [32u32, 48, 64] {
+            let (px, hot) = arrow_pixels(size);
+            assert_eq!(px.len(), (size * size * 4) as usize);
+            let at = |x: u32, y: u32| {
+                let i = ((y * size + x) * 4) as usize;
+                (px[i], px[i + 1], px[i + 2], px[i + 3])
+            };
+            let k = size as f64 / 32.0;
+            // Inside the body: Lumo's orange, opaque.
+            let (r, g, b, a) = at((5.0 * k) as u32, (14.0 * k) as u32);
+            assert_eq!((r, g, b, a), (255, 138, 31, 255), "size {size}");
+            // Far corner: nothing.
+            assert_eq!(at(size - 1, 0).3, 0);
+            // The tip is the hot spot, near the top left.
+            assert!(hot.0 <= 3 * size / 32 && hot.1 <= 3 * size / 32, "{hot:?}");
+            // Some white edge and some soft shadow.
+            assert!(px.chunks_exact(4).any(|p| p == [255, 255, 255, 255]));
+            assert!(px.chunks_exact(4).any(|p| p[0] == 0 && p[3] > 0 && p[3] < 128));
+        }
     }
 
     #[test]

@@ -7886,6 +7886,18 @@
    "ru": "Прокрутить вправо",
    "id": "Gulir ke kanan",
    "it": "Scorri a destra"
+  },
+  "While it works, the screen it uses glows and the mouse turns orange: the mouse is Claude's until it answers, except when a card asks you something. Esc gives it back at once.": {
+   "zh-Hans": "工作时，它使用的屏幕会发光，鼠标变成橙色：在它回答完之前鼠标归 Claude 使用，只有卡片向你提问时除外。按 Esc 可立即收回。",
+   "hi": "काम करते समय, जिस स्क्रीन का वह उपयोग करता है वह चमकती है और माउस नारंगी हो जाता है: जवाब पूरा होने तक माउस Claude का है, सिवाय तब जब कोई कार्ड आपसे कुछ पूछे। Esc उसे तुरंत लौटा देता है।",
+   "es": "Mientras trabaja, la pantalla que usa brilla y el ratón se vuelve naranja: el ratón es de Claude hasta que responde, salvo cuando una tarjeta te pregunta algo. Esc te lo devuelve al instante.",
+   "ar": "أثناء عمله، تتوهج الشاشة التي يستخدمها ويصبح الماوس برتقاليًا: يبقى الماوس لـ Claude حتى ينتهي من الإجابة، إلا عندما تسألك بطاقة عن شيء. يعيده Esc إليك فورًا.",
+   "fr": "Pendant qu'il travaille, l'écran qu'il utilise brille et la souris devient orange : elle est à Claude jusqu'à la fin de sa réponse, sauf quand une carte vous demande quelque chose. Échap vous la rend aussitôt.",
+   "bn": "কাজ করার সময় সে যে স্ক্রিন ব্যবহার করে তা জ্বলে ওঠে এবং মাউস কমলা হয়ে যায়: উত্তর শেষ না হওয়া পর্যন্ত মাউস Claude-এর, শুধু কোনো কার্ড আপনাকে কিছু জিজ্ঞেস করলে নয়। Esc সঙ্গে সঙ্গে তা ফিরিয়ে দেয়।",
+   "pt-BR": "Enquanto trabalha, a tela que ele usa brilha e o mouse fica laranja: o mouse é do Claude até ele responder, exceto quando um cartão pergunta algo a você. Esc devolve o mouse na hora.",
+   "ru": "Пока он работает, используемый экран светится, а курсор становится оранжевым: мышь принадлежит Claude до конца ответа, кроме моментов, когда карточка о чём-то вас спрашивает. Esc сразу возвращает её вам.",
+   "id": "Saat bekerja, layar yang dipakainya bercahaya dan mouse berubah oranye: mouse milik Claude sampai ia selesai menjawab, kecuali saat kartu menanyakan sesuatu kepada Anda. Esc langsung mengembalikannya.",
+   "it": "Mentre lavora, lo schermo che usa si illumina e il mouse diventa arancione: il mouse è di Claude finché non ha risposto, tranne quando una scheda ti chiede qualcosa. Esc te lo restituisce subito."
   }
  }
 }

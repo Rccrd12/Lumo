@@ -1170,14 +1170,22 @@ pub fn run() {
 
             log::line(format!("--- Lumo {} started ---", env!("CARGO_PKG_VERSION")));
             hooks::ensure_hook_exe(&handle);
+            // Closed while Claude used the computer: the system's own arrow again.
+            computer::recover();
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             integrations::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
         })
-        .run(tauri::generate_context!())
-        .expect("error while running Lumo");
+        .build(tauri::generate_context!())
+        .expect("error while running Lumo")
+        .run(|_, event| {
+            // Quit while Claude used the computer: the system's own arrow again.
+            if let tauri::RunEvent::Exit = event {
+                computer::recover();
+            }
+        });
 }
 
 #[cfg(test)]

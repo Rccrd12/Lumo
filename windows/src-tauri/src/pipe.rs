@@ -252,7 +252,10 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     log::line(format!("hook PermissionRequest id={id}"));
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
 
+    // While Claude uses the computer, the hand gets its mouse back to answer.
+    crate::computer::card_up(&app);
     let decision = wait_for_decision(&id, &mut rx).await;
+    crate::computer::card_down(&app);
     app.state::<Pending>().0.lock().unwrap().remove(&id);
 
     // No decision: say nothing at all. lumo-hook then writes nothing to stdout
