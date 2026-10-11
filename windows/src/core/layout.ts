@@ -14,7 +14,6 @@ export type IslandViewName =
   | "confused"
   | "upload"
   | "uploading"
-  | "choose"
   | "mail"
   | "prompt"
   | "searching"
@@ -86,7 +85,7 @@ export const COMPACT_SIZES = {
 export type CompactSizeKind = keyof typeof COMPACT_SIZES;
 export const EXPANDED_W = 640;
 /** The uploading view's track: 36 pt in from either side of the island (views/upload.ts). */
-export const UPLOAD_TRACK_W = EXPANDED_W - 2 * 36;
+export const UPLOAD_TRACK_INSET = 36;
 
 export const ROUNDED_CORNER = 14; // hidden / compact
 /** Between the island and the edge of the screen it is docked to (island.rs EDGE_GAP). */
@@ -123,7 +122,6 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // botY 103 = bar top (42 + 58) + 3, so the dot really rides the bar. The Swift
   // layout says 118 while its own comment says 103; the comment matches the spec.
   uploading: { height: 176, botX: 46, botY: 103, botDiameter: 20, agentMode: "none" },
-  choose: { height: 176, botX: 60, botY: 101, botDiameter: 52, agentMode: "column" },
   mail: { height: 240, botX: 56, botY: null, botDiameter: 46, agentMode: "column" },
   prompt: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   searching: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
@@ -274,6 +272,7 @@ export function botPosition(
   view: IslandViewName,
   islandH: number,
   uploadProgress = 0,
+  islandW = EXPANDED_W,
 ): BotPlacement {
   switch (mode) {
     case "hidden":
@@ -284,8 +283,9 @@ export function botPosition(
       const layout = VIEW_LAYOUTS[view];
       if (view === "uploading") {
         return {
-          // Along the track, as wide as the card leaves it (views/upload.ts).
-          cx: 36 + uploadProgress * UPLOAD_TRACK_W,
+          // Along the track, as wide as the card leaves it (views/upload.ts):
+          // a smaller island has a shorter track.
+          cx: UPLOAD_TRACK_INSET + uploadProgress * Math.max(0, islandW - 2 * UPLOAD_TRACK_INSET),
           cy: layout.botY ?? 103,
           diameter: layout.botDiameter,
           opacity: 1,

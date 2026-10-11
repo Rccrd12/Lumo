@@ -20,7 +20,7 @@ import { syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../mochi/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { buildPicture } from "../views/picture";
-import { USC, UploadSeq } from "../upload/sequence";
+import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h, svg } from "../views/dom";
@@ -32,7 +32,7 @@ import type { MailMessage } from "../core/bridge";
 import { refreshConfigured, refreshHookPills } from "./integrations";
 import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
 import { MENU_TEXT, pickedItems } from "../core/context-menu";
-import { compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
+import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
 import { refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
@@ -76,14 +76,19 @@ const BOT_SIDE = 24;
 /** Same margin as the Rust hit test (src-tauri/src/island.rs). */
 const HIT_MARGIN = 14;
 
-/** The three views the drop sequence owns; leaving them stops the engine. */
-const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading", "choose"]);
+/** The two views the drop sequence owns; leaving them stops the engine. */
+const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"]);
 
 /** Seconds between the drop and the moment the progress bar starts filling. */
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
+/** Seconds after the bar is full until the file is in the chat: the ✓, and Mochi grown back. */
+const UPLOAD_SETTLE = 0.75;
+/** How long the chat says the file was uploaded. */
+const UPLOADED_NOTE_MS = 2600;
+const UPLOAD_COLOR = "#34D399";
 
 /** Views the live activities stay away from: the greeting, Settings, the wardrobe, a drop. */
-const NO_ACTIVITIES: ReadonlySet<IslandViewName> = new Set(["greeting", "settings", "wardrobe", "upload", "uploading", "choose"]);
+const NO_ACTIVITIES: ReadonlySet<IslandViewName> = new Set(["greeting", "settings", "wardrobe", "upload", "uploading"]);
 
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
 
@@ -194,7 +199,13 @@ export class Island {
   /** Where a press on Mochi started: moving past DRAG_THRESHOLD drags him out. */
   private botPress: { x: number; y: number } | null = null;
 
-  /** Drop sequence bookkeeping: last tick played, and whether the ✓ has fired. */
+  /**
+   * Drop bookkeeping: when the file was dropped (performance.now(), null once
+   * it is in the chat), the last tick played, and whether the ✓ has fired. The
+   * upload runs on its own clock, so closing the island does not stop it: the
+   * closed island carries the bar on.
+   */
+  private uploadAt: number | null = null;
   private uploadTens = 0;
   private uploadDone = false;
 
@@ -281,7 +292,6 @@ export class Island {
   private build() {
     const actions: ViewActions = {
       setView: (v) => this.setView(v),
-      cancelDrop: () => this.discardDrop(),
       collapse: () => this.collapse(),
       hide: () => this.hideInEdge(),
       foldApproval: () => this.foldApproval(),
@@ -409,15 +419,7 @@ export class Island {
 
     // The drop sequence draws the card, the bar and its own Mochi. It sits under
     // the header, which stays visible on top of it exactly as on macOS.
-    this.uploadCanvas = new UploadCanvas({
-      ask: () => {
-        State.promptContext = State.droppedFile
-          ? { kind: "file", name: State.droppedFile.name, path: State.droppedFile.path }
-          : null;
-        this.setView("prompt");
-      },
-      cancel: () => this.discardDrop(),
-    });
+    this.uploadCanvas = new UploadCanvas();
 
     this.clipEl = h(
       "div",
@@ -937,8 +939,10 @@ export class Island {
     }
 
     UploadSeq.performDrop(State.uploadDuration);
+    this.uploadAt = performance.now();
     this.uploadTens = 0;
     this.uploadDone = false;
+    Feed.upload = { name };
 
     this.engine.gulp();
     Sound.play("approve");
@@ -960,6 +964,8 @@ export class Island {
       .catch((err) => {
         if (State.droppedFile?.path !== path) return;
         UploadSeq.deactivate();
+        this.uploadAt = null;
+        Feed.upload = null;
         State.noteMessage = String(err).replace(/^Error:\s*/, "");
         this.engine.animateMorph(0);
         this.setView("note");
@@ -968,27 +974,19 @@ export class Island {
       });
   }
 
-  /** "Cancel" on the dropped file: forget it, so the chat does not pick it up. */
-  private discardDrop() {
-    // The files that were waiting before this one still wait.
-    const [next, ...rest] = State.moreFiles;
-    State.droppedFile = next ? { ...next } : null;
-    State.moreFiles = rest;
-    State.promptContext = next ? { kind: "file", name: next.name, path: next.path } : null;
-    this.setView(State.defaultView());
-  }
-
   /**
-   * Sounds and view changes hung off the canvas timeline: a `tick` every 10 %,
-   * the ✓ chime when the bar completes, then `choose` once Mochi has grown back.
+   * Sounds and view changes hung off the upload's clock: a `tick` every 10 %,
+   * the ✓ chime when the bar completes, then the file goes into the chat once
+   * Mochi has grown back. Runs open or closed: the closed island shows the bar.
    */
-  private stepSequence() {
-    const since = UploadSeq.sinceDrop();
-    if (since == null) return;
+  private stepUpload(nowMs: number) {
+    if (this.uploadAt == null) return;
+    const since = (nowMs - this.uploadAt) / 1000;
     const dur = State.uploadDuration;
-    const p = Math.max(0, Math.min(1, (since - PRE_PROGRESS) / dur));
+    const p = progressAt(USC.T_DROP + since, USC.T_PROG_START, USC.T_PROG_START + dur);
+    State.uploadProgress = p;
 
-    const tens = Math.floor(p * 10);
+    const tens = Math.floor(Math.max(0, Math.min(1, (since - PRE_PROGRESS) / dur)) * 10);
     if (tens > this.uploadTens && tens < 10) {
       this.uploadTens = tens;
       Sound.play("tick");
@@ -999,10 +997,35 @@ export class Island {
       Sound.play("approve");
       this.engine.triggerEmote("happy");
     }
-    // The extra second is the grow-back, after which the choose card is up.
-    if (since >= PRE_PROGRESS + dur + 1 && State.view === "uploading") {
-      this.setView("choose");
+
+    // Open on the bar without the canvas (opened again half-way): the plain view follows.
+    if (State.mode === "expanded" && State.view === "uploading" && !this.uploadActive) {
+      this.views.get("uploading")?.sync();
     }
+    this.compact.progress(p);
+
+    if (since >= PRE_PROGRESS + dur + UPLOAD_SETTLE) this.uploadFinished();
+  }
+
+  /** The bar is full: the file waits in the chat, which says so for a moment. */
+  private uploadFinished() {
+    this.uploadAt = null;
+    Feed.upload = null;
+    State.uploadProgress = 1;
+    const name = State.droppedFile?.name ?? t("file");
+    if (State.mode === "expanded") {
+      State.uploadedNote = { name, until: Date.now() + UPLOADED_NOTE_MS };
+      window.setTimeout(() => State.notify(), UPLOADED_NOTE_MS + 20);
+      if (UPLOAD_VIEWS.has(State.view)) {
+        this.setView("prompt");
+        this.focusChat();
+      }
+    } else {
+      // Closed meanwhile: the closed island says it, and the chat has the file when opened.
+      if (UPLOAD_VIEWS.has(State.view)) State.view = "prompt";
+      compactNotice(`${t(UPLOADED_TEXT)} · ${name}`, UPLOAD_COLOR);
+    }
+    State.notify();
   }
 
   // ── Geometry ────────────────────────────────────────────────────────────────
@@ -1050,8 +1073,8 @@ export class Island {
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     // The drop sequence covers the island, whatever size it was given.
     const stage = this.uploadCanvas.place(w, hh);
-    UploadSeq.reachX = stage.ox;
-    UploadSeq.reachY = stage.oy;
+    UploadSeq.reachX = stage.reachX;
+    UploadSeq.reachY = stage.reachY;
 
     const rect = this.hitRect();
     const p = this.pushedRect;
@@ -1554,7 +1577,7 @@ export class Island {
     tickMiniBots(dt);
     // A ticker scroll that loses its frames freezes mid-way, rows overlapping.
     const viewAnimating = this.views.get(State.view)?.tick?.(nowMs) === true;
-    if (UploadSeq.isActive) this.stepSequence();
+    this.stepUpload(nowMs);
     this.updateCountdown(nowMs);
 
     // Nothing is drawn while the island is hidden, so nothing may keep the loop
@@ -1569,7 +1592,7 @@ export class Island {
       ? settling
       : settling ||
         !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
-        greetingActive || this.engine.busy || UploadSeq.isActive || viewAnimating;
+        greetingActive || this.engine.busy || UploadSeq.isActive || this.uploadAt != null || viewAnimating;
 
     // Saving energy (Settings → General → Energy), the closed island draws
     // 15 frames a second; it still opens and closes at the display's rate.
@@ -1588,7 +1611,7 @@ export class Island {
   };
 
   private updateBotTargets() {
-    const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress);
+    const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value);
     // Upright on a side, the closed island has Mochi at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;
