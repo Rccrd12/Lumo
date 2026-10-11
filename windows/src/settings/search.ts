@@ -21,7 +21,7 @@ const MISS = "search-miss";
 
 /** Lower case, without accents or extra spaces: "Lingua", "lingua " and "língua" read alike. */
 export function normalize(text: string): string {
-  return text.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
+  return text.normalize("NFD").replace(/[\u0300-\u036f]/g, "").toLowerCase().replace(/\s+/g, " ").trim();
 }
 
 /**
