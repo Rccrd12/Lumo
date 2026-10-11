@@ -8,12 +8,21 @@
 // Notepad, the lines of a list…). The document a window shows, when it is
 // found on disk (desk.rs), goes as its path for the CLIs to read.
 //
-// Tabs: Edge and Chrome keep their open tabs (address and title) in their
-// session file, read here and never written. The tab on screen in a browser
-// window is read from that window like any other; a tab in the background is
-// downloaded from its address — without the user's cookies, so a page that
-// needs a login shows what anyone would see. Nothing is fetched until the
-// user picks the tab, and only http and https addresses.
+// Tabs, on Windows: listed from the browser windows themselves, through UI
+// Automation — each window's tab strip names its tabs and which one is on
+// screen, and the page on screen gives its address. (Edge and Chrome lock
+// their session file while they run, so it can't be read there.) The tab on
+// screen is read from its window like any other window. A tab in the
+// background shows nothing to read, so when the user picks it Lumo brings it
+// forward in its window for a moment — with the user's login, exactly what
+// they would see — then puts back the tab that was there.
+//
+// Tabs, on Linux: Edge, Chrome and Chromium keep their open tabs (address and
+// title) in their session file, read here and never written. With no UI
+// Automation there, a tab's page is downloaded from its address — without the
+// user's cookies, so a page that needs a login shows what anyone would see.
+// Nothing is fetched until the user picks the tab, and only http and https
+// addresses.
 //
 // The page only ever names what Rust listed: a window or a tab that was not
 // in the last list is never read, so a script in the page cannot point Lumo
@@ -37,6 +46,9 @@ const MAX_ONE: usize = 16_000;
 const MIN_ONE: usize = 1_500;
 /// Tabs read at most for one message: the others go with their address only.
 const MAX_TABS_READ: usize = 12;
+/// Tabs brought forward at most for one message (Windows), so "All tabs"
+/// doesn't leaf through every tab the user has open.
+const MAX_TABS_BROUGHT_FORWARD: usize = 6;
 /// A page downloaded for a tab, at most.
 const MAX_PAGE_BYTES: usize = 3 * 1024 * 1024;
 const PAGE_TIMEOUT: Duration = Duration::from_secs(10);
@@ -62,11 +74,14 @@ pub struct SharedWindow {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserTab {
-    /// "<browser>|<profile>|<tab>": what the page names it by.
+    /// What the page names it by: "<browser>|<profile>|<tab>" (Linux),
+    /// "<browser>|<window>|<place in its tab strip>" (Windows).
     pub id: String,
     /// "Edge" or "Chrome".
     pub browser: String,
     pub title: String,
+    /// Its address; empty when not known yet (Windows: a tab in the background
+    /// gives it once it is read).
     pub url: String,
     /// The tab on screen in its window.
     #[serde(default)]
@@ -79,6 +94,28 @@ pub struct BrowserTab {
     /// (downloaded from its address), "" (none).
     #[serde(default)]
     pub source: String,
+    /// Where it was listed (Windows), to find it again when it is picked.
+    /// Never sent to the page, never taken from it.
+    #[serde(skip)]
+    pub place: Option<TabPlace>,
+}
+
+/// Where a listed tab is (Windows): its browser window, its place in that
+/// window's tab strip, the name the strip gives it and UI Automation's id for
+/// it, which stays the same for as long as the tab is open.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct TabPlace {
+    pub window: i64,
+    pub index: usize,
+    pub name: String,
+    pub runtime_id: Vec<i32>,
+}
+
+/// A tab as a browser window's tab strip shows it now.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct StripEntry {
+    pub name: String,
+    pub runtime_id: Vec<i32>,
 }
 
 // ── What the page may name ──────────────────────────────────────────────────
@@ -173,13 +210,14 @@ pub fn tabs_text(list: &[BrowserTab]) -> String {
     let mut out = String::from("Browser tabs the user shared just now, with their pages' text:\n");
     for tab in list {
         let active = if tab.active { " active=\"true\"" } else { "" };
+        let url = if tab.url.is_empty() { String::new() } else { format!(" url=\"{}\"", attr(&tab.url)) };
         out.push_str(&format!(
-            "<tab browser=\"{}\" title=\"{}\" url=\"{}\"{active}>\n",
+            "<tab browser=\"{}\" title=\"{}\"{url}{active}>\n",
             attr(&tab.browser),
             attr(&tab.title),
-            attr(&tab.url)
         ));
         match (tab.text.trim().is_empty(), tab.source.as_str()) {
+            (true, _) if tab.url.is_empty() => out.push_str("(Only its title: its page could not be read.)\n"),
             (true, _) => out.push_str("(Only its title and address: its page could not be read.)\n"),
             (false, src) => {
                 if src == "web" {
@@ -231,6 +269,48 @@ pub fn page_text(body: &[u8], content_type: &str) -> String {
         return text.to_string();
     }
     String::new()
+}
+
+/// Which of the pages a browser window shows (`titles`: the tab on screen,
+/// a side panel…) is the one of the tab named `tab_name`: the one titled the
+/// same, else one whose title starts the name (the strip adds what it knows
+/// of the tab after its title: "- Pinned", "- Memory usage…"). Not `strict`:
+/// else the first one.
+pub fn page_for(titles: &[String], tab_name: &str, strict: bool) -> Option<usize> {
+    let name = tab_name.trim();
+    if let Some(i) = titles.iter().position(|t| !t.trim().is_empty() && t.trim() == name) {
+        return Some(i);
+    }
+    // The longest title that starts the name: "GitHub" must not win over "GitHub - Issues".
+    let starts = titles
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| !t.trim().is_empty() && name.starts_with(t.trim()))
+        .max_by_key(|(_, t)| t.trim().len())
+        .map(|(i, _)| i);
+    if starts.is_some() {
+        return starts;
+    }
+    if strict || titles.is_empty() {
+        None
+    } else {
+        Some(0)
+    }
+}
+
+/// The tab `place` names among what a tab strip shows now: the one with the
+/// same UI Automation id; else, the same name at the same place, then
+/// anywhere. None when it was closed.
+pub fn find_tab(strip: &[StripEntry], place: &TabPlace) -> Option<usize> {
+    if !place.runtime_id.is_empty() {
+        if let Some(i) = strip.iter().position(|e| e.runtime_id == place.runtime_id) {
+            return Some(i);
+        }
+    }
+    if strip.get(place.index).is_some_and(|e| e.name == place.name) {
+        return Some(place.index);
+    }
+    strip.iter().position(|e| e.name == place.name)
 }
 
 // ── Edge's and Chrome's session files ───────────────────────────────────────
@@ -330,6 +410,9 @@ fn is_blank_page(url: &str) -> bool {
         || u.starts_with("edge://newtab")
         || u.starts_with("chrome-search://")
         || u.starts_with("chrome://new-tab-page")
+        // What the new tab page loads, as the page on screen gives it (Windows).
+        || u.starts_with("https://ntp.msn.com/edge/ntp")
+        || u.starts_with("https://www.google.com/_/chrome/newtab")
 }
 
 fn tab_entry<'a>(tabs: &'a mut HashMap<i32, TabState>, seen: &mut usize, id: i32) -> &'a mut TabState {
@@ -553,41 +636,90 @@ fn is_running(browser: &Browser, root: &Path, apps: &HashSet<String>) -> bool {
     }
 }
 
+/// The tabs a browser's session files list (Linux; on Windows, only if a
+/// browser's window gave none — its file is locked while it runs).
+fn session_tabs(browser: &Browser, apps: &HashSet<String>) -> Vec<BrowserTab> {
+    let mut out = Vec::new();
+    let Some(root) = profiles_root(browser) else { return out };
+    if !is_running(browser, &root, apps) {
+        return out;
+    }
+    let wanted = open_profiles(&root);
+    let Ok(entries) = std::fs::read_dir(&root) else { return out };
+    let mut profiles: Vec<String> = entries
+        .flatten()
+        .filter(|e| e.path().join("Sessions").is_dir() || e.path().join("Current Session").is_file())
+        .map(|e| e.file_name().to_string_lossy().to_string())
+        .filter(|name| wanted.as_ref().is_none_or(|w| w.contains(name)))
+        .collect();
+    profiles.sort();
+    for profile in profiles {
+        let Some(file) = session_file(&root.join(&profile)) else { continue };
+        let Ok(bytes) = std::fs::read(&file) else { continue };
+        for tab in parse_session(&bytes) {
+            out.push(BrowserTab {
+                id: format!("{}|{profile}|{}", browser.name, tab.tab),
+                browser: browser.name.to_string(),
+                title: clip_title(&tab.title),
+                url: tab.url,
+                active: tab.selected,
+                ..Default::default()
+            });
+        }
+    }
+    out
+}
+
+/// The tabs of the browsers' windows, from each window's tab strip (Windows:
+/// UI Automation; nothing on Linux). The tab on screen has its page's title
+/// and address; the others, the name the strip gives them.
+fn strip_tabs(windows: &[WindowInfo]) -> Vec<BrowserTab> {
+    let browsers: Vec<(&WindowInfo, &Browser)> = windows
+        .iter()
+        .filter_map(|w| BROWSERS.iter().find(|b| w.app.eq_ignore_ascii_case(b.exe)).map(|b| (w, b)))
+        .collect();
+    if browsers.is_empty() {
+        return Vec::new();
+    }
+    let Some(reader) = imp::Reader::new() else { return Vec::new() };
+    let mut out = Vec::new();
+    for (window, browser) in browsers {
+        let found = reader.browser_window(window.id);
+        let titles: Vec<String> = found.pages.iter().map(|p| p.title.clone()).collect();
+        for (index, tab) in found.tabs.iter().enumerate() {
+            let page = if tab.selected { page_for(&titles, &tab.entry.name, false).map(|i| &found.pages[i]) } else { None };
+            let url = page.map(|p| p.url.clone()).unwrap_or_default();
+            if !url.is_empty() && is_blank_page(&url) {
+                continue;
+            }
+            let title = page.map(|p| p.title.as_str()).filter(|t| !t.is_empty()).unwrap_or(&tab.entry.name);
+            out.push(BrowserTab {
+                id: format!("{}|{}|{index}", browser.name, window.id),
+                browser: browser.name.to_string(),
+                title: clip_title(title),
+                url,
+                active: tab.selected,
+                place: Some(TabPlace {
+                    window: window.id,
+                    index,
+                    name: tab.entry.name.clone(),
+                    runtime_id: tab.entry.runtime_id.clone(),
+                }),
+                ..Default::default()
+            });
+        }
+    }
+    out
+}
+
 /// Every tab open in Edge and Chrome, browser by browser. Blocking.
 pub fn tabs() -> Result<Vec<BrowserTab>, String> {
-    let apps: HashSet<String> = if cfg!(windows) {
-        crate::screen::windows().unwrap_or_default().into_iter().map(|w| w.app.to_ascii_lowercase()).collect()
-    } else {
-        HashSet::new()
-    };
-    let mut out = Vec::new();
+    let windows = if cfg!(windows) { crate::screen::windows().unwrap_or_default() } else { Vec::new() };
+    let mut out = strip_tabs(&windows);
+    let apps: HashSet<String> = windows.iter().map(|w| w.app.to_ascii_lowercase()).collect();
     for browser in BROWSERS {
-        let Some(root) = profiles_root(browser) else { continue };
-        if !is_running(browser, &root, &apps) {
-            continue;
-        }
-        let wanted = open_profiles(&root);
-        let Ok(entries) = std::fs::read_dir(&root) else { continue };
-        let mut profiles: Vec<String> = entries
-            .flatten()
-            .filter(|e| e.path().join("Sessions").is_dir() || e.path().join("Current Session").is_file())
-            .map(|e| e.file_name().to_string_lossy().to_string())
-            .filter(|name| wanted.as_ref().is_none_or(|w| w.contains(name)))
-            .collect();
-        profiles.sort();
-        for profile in profiles {
-            let Some(file) = session_file(&root.join(&profile)) else { continue };
-            let Ok(bytes) = std::fs::read(&file) else { continue };
-            for tab in parse_session(&bytes) {
-                out.push(BrowserTab {
-                    id: format!("{}|{profile}|{}", browser.name, tab.tab),
-                    browser: browser.name.to_string(),
-                    title: clip_title(&tab.title),
-                    url: tab.url,
-                    active: tab.selected,
-                    ..Default::default()
-                });
-            }
+        if !out.iter().any(|t| t.browser == browser.name) {
+            out.extend(session_tabs(browser, &apps));
         }
     }
     *LISTED_TABS.lock().unwrap_or_else(|e| e.into_inner()) = out.clone();
@@ -634,7 +766,8 @@ pub fn read_windows(ids: &[i64]) -> Result<Vec<SharedWindow>, String> {
     Ok(out)
 }
 
-/// The text of a tab on screen, read from its browser's window (Windows).
+/// The text of a tab on screen that a session file listed (Windows, when its
+/// browser's window gave no tab strip), read from the window titled after it.
 fn read_on_screen(tab: &BrowserTab, max: usize) -> String {
     if !cfg!(windows) || !tab.active {
         return String::new();
@@ -652,6 +785,124 @@ fn read_on_screen(tab: &BrowserTab, max: usize) -> String {
         return String::new();
     };
     imp::Reader::new().map(|r| r.window_text(window.id, max)).unwrap_or_default()
+}
+
+/// A page read in its browser: its title, its address, what it shows.
+struct ReadPage {
+    title: String,
+    url: String,
+    text: String,
+}
+
+/// The page the tab named `name` shows in browser window `window`, read.
+/// `strict`: only a page titled like the tab.
+fn read_page(reader: &imp::Reader, window: i64, name: &str, strict: bool, max: usize) -> Option<ReadPage> {
+    let found = reader.browser_window(window);
+    let titles: Vec<String> = found.pages.iter().map(|p| p.title.clone()).collect();
+    let page = &found.pages[page_for(&titles, name, strict)?];
+    Some(ReadPage { title: page.title.clone(), url: page.url.clone(), text: reader.page_text(page, max) })
+}
+
+/// How long a tab brought forward has to show its page.
+const PAGE_WAIT: Duration = Duration::from_millis(4000);
+/// Past this, a page not titled like its tab (one with no title) is taken too.
+const PAGE_WAIT_STRICT: Duration = Duration::from_millis(1800);
+const PAGE_POLL: Duration = Duration::from_millis(150);
+
+/// What tab `tab` shows once brought forward: waited for until its page is
+/// on screen with something to read.
+fn wait_for_page(reader: &imp::Reader, window: i64, tab: &imp::StripTab, max: usize) -> Option<ReadPage> {
+    let start = std::time::Instant::now();
+    let mut best: Option<ReadPage> = None;
+    while start.elapsed() < PAGE_WAIT {
+        std::thread::sleep(PAGE_POLL);
+        if !reader.is_selected(tab) {
+            continue;
+        }
+        let strict = start.elapsed() < PAGE_WAIT_STRICT;
+        if let Some(page) = read_page(reader, window, &tab.entry.name, strict, max) {
+            if !page.text.trim().is_empty() {
+                return Some(page);
+            }
+            best = Some(page);
+        }
+    }
+    best
+}
+
+/// What the browsers show of the picked tabs (Windows): each tab on screen
+/// read from its window, and up to MAX_TABS_BROUGHT_FORWARD tabs in the
+/// background brought forward for a moment and read the same way, before the
+/// tab that was on screen is put back. Blocking.
+fn read_from_browsers(picked: &mut [BrowserTab], each: usize) {
+    let mut windows: Vec<i64> = Vec::new();
+    for place in picked.iter().filter_map(|t| t.place.as_ref()) {
+        if !windows.contains(&place.window) {
+            windows.push(place.window);
+        }
+    }
+    if windows.is_empty() {
+        return;
+    }
+    let Some(reader) = imp::Reader::new() else { return };
+    let mut reads = 0;
+    let mut brought = 0;
+    for window in windows {
+        let found = reader.browser_window(window);
+        let strip: Vec<StripEntry> = found.tabs.iter().map(|t| t.entry.clone()).collect();
+        let on_screen = found.tabs.iter().position(|t| t.selected);
+        // Its picked tabs, the one on screen first: read before anything moves.
+        let mut mine: Vec<(usize, usize)> = picked
+            .iter()
+            .enumerate()
+            .filter_map(|(i, t)| t.place.as_ref().filter(|p| p.window == window).and_then(|p| find_tab(&strip, p)).map(|at| (i, at)))
+            .collect();
+        mine.sort_by_key(|&(_, at)| Some(at) != on_screen);
+        let mut moved = false;
+        for (i, at) in mine {
+            if reads >= MAX_TABS_READ {
+                break;
+            }
+            let tab = &found.tabs[at];
+            let page = if Some(at) == on_screen {
+                match read_page(&reader, window, &tab.entry.name, false, each + 1) {
+                    Some(page) if !page.text.trim().is_empty() => Some(page),
+                    first => {
+                        // Chromium turns its pages' accessibility on when first asked: once more, shortly after.
+                        std::thread::sleep(Duration::from_millis(450));
+                        read_page(&reader, window, &tab.entry.name, false, each + 1).or(first)
+                    }
+                }
+            } else if brought < MAX_TABS_BROUGHT_FORWARD && reader.select(tab) {
+                brought += 1;
+                moved = true;
+                wait_for_page(&reader, window, tab, each + 1)
+            } else {
+                None
+            };
+            let Some(page) = page else { continue };
+            reads += 1;
+            // A new tab page has nothing of the user's to read.
+            let blank = !page.url.is_empty() && is_blank_page(&page.url);
+            let (text, cut) = if blank { (String::new(), false) } else { tidy_text(&page.text, each) };
+            let shared = &mut picked[i];
+            if !page.url.is_empty() {
+                shared.url = page.url;
+            }
+            if !page.title.is_empty() {
+                shared.title = clip_title(&page.title);
+            }
+            shared.source = if text.is_empty() { String::new() } else { "page".to_string() };
+            shared.text = text;
+            shared.cut = cut;
+        }
+        // The user's tab back on screen.
+        if moved {
+            if let Some(at) = on_screen {
+                reader.select(&found.tabs[at]);
+            }
+        }
+    }
 }
 
 /// A tab's page, downloaded from its address (http and https only).
@@ -688,7 +939,7 @@ async fn download(url: &str, max: usize) -> String {
 /// `ids` is empty), each with its page's text.
 pub async fn read_tabs(ids: Vec<String>) -> Result<Vec<BrowserTab>, String> {
     let listed = LISTED_TABS.lock().unwrap_or_else(|e| e.into_inner()).clone();
-    let mut picked: Vec<BrowserTab> = if ids.is_empty() {
+    let picked: Vec<BrowserTab> = if ids.is_empty() {
         listed
     } else {
         ids.iter().filter_map(|id| listed.iter().find(|t| &t.id == id).cloned()).collect()
@@ -697,20 +948,37 @@ pub async fn read_tabs(ids: Vec<String>) -> Result<Vec<BrowserTab>, String> {
         return Err(t("That tab isn't open anymore."));
     }
     let each = share_of_budget(picked.len().min(MAX_TABS_READ));
-    // The tabs on screen first: they are read from the browser itself.
-    let mut order: Vec<usize> = (0..picked.len()).collect();
+    // Windows: read in the browsers themselves.
+    let mut picked = tauri::async_runtime::spawn_blocking(move || {
+        let mut picked = picked;
+        read_from_browsers(&mut picked, each);
+        picked
+    })
+    .await
+    .map_err(|e| e.to_string())?;
+    // The others, the tabs on screen first: from their window when a session
+    // file listed them, else downloaded from their address.
+    let mut reads = picked.iter().filter(|t| !t.text.is_empty()).count();
+    let mut order: Vec<usize> = (0..picked.len()).filter(|&i| picked[i].text.is_empty()).collect();
     order.sort_by_key(|&i| !picked[i].active);
-    for (n, i) in order.into_iter().enumerate() {
-        if n >= MAX_TABS_READ {
+    for i in order {
+        if reads >= MAX_TABS_READ {
             break;
         }
         let tab = picked[i].clone();
-        let on_screen = tauri::async_runtime::spawn_blocking(move || read_on_screen(&tab, each + 1)).await.unwrap_or_default();
-        let (raw, source) = if on_screen.trim().is_empty() {
+        let on_screen = if tab.place.is_none() {
+            tauri::async_runtime::spawn_blocking(move || read_on_screen(&tab, each + 1)).await.unwrap_or_default()
+        } else {
+            String::new()
+        };
+        let (raw, source) = if !on_screen.trim().is_empty() {
+            (on_screen, "page")
+        } else if !picked[i].url.is_empty() {
             (download(&picked[i].url, each + 1).await, "web")
         } else {
-            (on_screen, "page")
+            continue;
         };
+        reads += 1;
         let (text, cut) = tidy_text(&raw, each);
         let tab = &mut picked[i];
         tab.source = if text.is_empty() { String::new() } else { source.to_string() };
@@ -736,8 +1004,30 @@ pub fn window_shot(id: i64) -> Result<crate::screen::Shot, String> {
 
 #[cfg(not(windows))]
 mod imp {
-    /// No UI Automation on Linux: windows give their titles only.
+    use super::StripEntry;
+
+    /// No UI Automation on Linux: windows give their titles only, and the
+    /// browsers' tabs come from their session files.
     pub struct Reader;
+
+    /// A tab in a browser window's tab strip.
+    pub struct StripTab {
+        pub entry: StripEntry,
+        pub selected: bool,
+    }
+
+    /// A page a browser window shows.
+    pub struct ShownPage {
+        pub title: String,
+        pub url: String,
+    }
+
+    /// A browser window's tabs, and the pages it shows.
+    #[derive(Default)]
+    pub struct BrowserWindow {
+        pub tabs: Vec<StripTab>,
+        pub pages: Vec<ShownPage>,
+    }
 
     impl Reader {
         pub fn new() -> Option<Reader> {
@@ -745,6 +1035,22 @@ mod imp {
         }
 
         pub fn window_text(&self, _id: i64, _max: usize) -> String {
+            String::new()
+        }
+
+        pub fn browser_window(&self, _id: i64) -> BrowserWindow {
+            BrowserWindow::default()
+        }
+
+        pub fn is_selected(&self, _tab: &StripTab) -> bool {
+            false
+        }
+
+        pub fn select(&self, _tab: &StripTab) -> bool {
+            false
+        }
+
+        pub fn page_text(&self, _page: &ShownPage, _max: usize) -> String {
             String::new()
         }
     }
@@ -755,17 +1061,71 @@ mod imp {
     use ::windows::core::Interface;
     use ::windows::Win32::Foundation::HWND;
     use ::windows::Win32::System::Com::{CoCreateInstance, CoInitializeEx, CoUninitialize, CLSCTX_INPROC_SERVER, COINIT_MULTITHREADED};
+    use ::windows::Win32::System::Ole::{SafeArrayAccessData, SafeArrayDestroy, SafeArrayGetLBound, SafeArrayGetUBound, SafeArrayUnaccessData};
     use ::windows::Win32::System::Variant::VARIANT;
     use ::windows::Win32::UI::Accessibility::{
-        CUIAutomation, CUIAutomation8, IUIAutomation, IUIAutomation2, IUIAutomationCondition, IUIAutomationElement,
-        IUIAutomationTextPattern, TreeScope_Descendants, TreeScope_Subtree, UIA_CONTROLTYPE_ID, UIA_ControlTypePropertyId,
+        CUIAutomation, CUIAutomation8, IUIAutomation, IUIAutomation2, IUIAutomationCacheRequest, IUIAutomationCondition,
+        IUIAutomationElement, IUIAutomationSelectionItemPattern, IUIAutomationTextPattern, IUIAutomationTreeWalker,
+        IUIAutomationValuePattern, TreeScope_Descendants, TreeScope_Subtree, UIA_CONTROLTYPE_ID, UIA_ControlTypePropertyId,
         UIA_DataItemControlTypeId, UIA_DocumentControlTypeId, UIA_EditControlTypeId, UIA_HeaderItemControlTypeId,
         UIA_HyperlinkControlTypeId, UIA_IsTextPatternAvailablePropertyId, UIA_ListItemControlTypeId, UIA_NamePropertyId,
-        UIA_TextControlTypeId, UIA_TextPatternId, UIA_TreeItemControlTypeId, UIA_ValueValuePropertyId,
+        UIA_SelectionItemIsSelectedPropertyId, UIA_SelectionItemPatternId, UIA_TabItemControlTypeId, UIA_TextControlTypeId,
+        UIA_TextPatternId, UIA_TreeItemControlTypeId, UIA_ValuePatternId, UIA_ValueValuePropertyId,
     };
+
+    use super::StripEntry;
 
     /// Elements read at most when a window has no document to read whole.
     const MAX_ELEMENTS: i32 = 3000;
+    /// A browser window's own interface (its tab strip, toolbars…), walked at
+    /// most this far: the pages it shows are never walked into.
+    const MAX_BROWSER_ELEMENTS: usize = 4000;
+    const MAX_BROWSER_DEPTH: usize = 40;
+
+    /// A tab in a browser window's tab strip.
+    pub struct StripTab {
+        pub entry: StripEntry,
+        /// The tab on screen in its window, when the strip was walked.
+        pub selected: bool,
+        element: IUIAutomationElement,
+    }
+
+    /// A page a browser window shows: its tab on screen, or a side panel.
+    pub struct ShownPage {
+        pub title: String,
+        pub url: String,
+        element: IUIAutomationElement,
+    }
+
+    /// A browser window's tabs, in the strip's order, and the pages it shows.
+    #[derive(Default)]
+    pub struct BrowserWindow {
+        pub tabs: Vec<StripTab>,
+        pub pages: Vec<ShownPage>,
+    }
+
+    /// UI Automation's id of an element: the same for as long as it exists.
+    fn runtime_id(element: &IUIAutomationElement) -> Vec<i32> {
+        unsafe {
+            let Ok(array) = element.GetRuntimeId() else { return Vec::new() };
+            if array.is_null() {
+                return Vec::new();
+            }
+            let mut out = Vec::new();
+            if let (Ok(low), Ok(high)) = (SafeArrayGetLBound(array, 1), SafeArrayGetUBound(array, 1)) {
+                let mut data: *mut core::ffi::c_void = std::ptr::null_mut();
+                if high >= low && SafeArrayAccessData(array, &mut data).is_ok() {
+                    if !data.is_null() {
+                        let count = (high - low + 1) as usize;
+                        out = std::slice::from_raw_parts(data as *const i32, count).to_vec();
+                    }
+                    let _ = SafeArrayUnaccessData(array);
+                }
+            }
+            let _ = SafeArrayDestroy(array);
+            out
+        }
+    }
 
     /// UI Automation on this thread, for as long as it is needed.
     pub struct Reader {
@@ -917,6 +1277,106 @@ mod imp {
                 }
             }
             out
+        }
+
+        // ── Browser windows ─────────────────────────────────────────────────
+
+        /// The tabs of browser window `id`'s tab strip, and the pages it shows
+        /// (the tab on screen, a side panel), with their titles and addresses.
+        /// Only the browser's own interface is walked: never into a page.
+        pub fn browser_window(&self, id: i64) -> BrowserWindow {
+            let mut out = BrowserWindow::default();
+            let Some(automation) = &self.automation else { return out };
+            let hwnd = HWND(id as isize as *mut _);
+            let Ok(root) = (unsafe { automation.ElementFromHandle(hwnd) }) else { return out };
+            let (Ok(walker), Ok(cache)) = (unsafe { automation.ControlViewWalker() }, unsafe { automation.CreateCacheRequest() }) else {
+                return out;
+            };
+            unsafe {
+                let _ = cache.AddProperty(UIA_NamePropertyId);
+                let _ = cache.AddProperty(UIA_ControlTypePropertyId);
+                let _ = cache.AddProperty(UIA_SelectionItemIsSelectedPropertyId);
+            }
+            let mut seen = 0usize;
+            self.walk_browser(&walker, &cache, &root, 0, &mut seen, &mut out);
+            out
+        }
+
+        fn walk_browser(
+            &self,
+            walker: &IUIAutomationTreeWalker,
+            cache: &IUIAutomationCacheRequest,
+            parent: &IUIAutomationElement,
+            depth: usize,
+            seen: &mut usize,
+            out: &mut BrowserWindow,
+        ) {
+            if depth > MAX_BROWSER_DEPTH {
+                return;
+            }
+            let mut child = unsafe { walker.GetFirstChildElementBuildCache(parent, cache) }.ok();
+            while let Some(element) = child {
+                *seen += 1;
+                if *seen > MAX_BROWSER_ELEMENTS {
+                    return;
+                }
+                let kind = unsafe { element.CachedControlType() }.unwrap_or_default();
+                if kind == UIA_TabItemControlTypeId {
+                    let name = unsafe { element.CachedName() }.map(|b| b.to_string()).unwrap_or_default();
+                    let selected = unsafe { element.GetCachedPropertyValue(UIA_SelectionItemIsSelectedPropertyId) }
+                        .ok()
+                        .and_then(|v| bool::try_from(&v).ok())
+                        .unwrap_or(false);
+                    if !name.trim().is_empty() {
+                        let entry = StripEntry { name: name.trim().to_string(), runtime_id: runtime_id(&element) };
+                        out.tabs.push(StripTab { entry, selected, element: element.clone() });
+                    }
+                } else if kind == UIA_DocumentControlTypeId {
+                    // A page: its title, and its address (what a document's Value
+                    // gives in Chromium). Never walked into.
+                    let title = unsafe { element.CachedName() }.map(|b| b.to_string()).unwrap_or_default();
+                    let url = unsafe { element.GetCurrentPatternAs::<IUIAutomationValuePattern>(UIA_ValuePatternId) }
+                        .and_then(|p| unsafe { p.CurrentValue() })
+                        .map(|b| b.to_string())
+                        .unwrap_or_default();
+                    out.pages.push(ShownPage { title: title.trim().to_string(), url: url.trim().to_string(), element: element.clone() });
+                } else {
+                    self.walk_browser(walker, cache, &element, depth + 1, seen, out);
+                }
+                child = unsafe { walker.GetNextSiblingElementBuildCache(&element, cache) }.ok();
+            }
+        }
+
+        /// The tab is the one on screen in its window now.
+        pub fn is_selected(&self, tab: &StripTab) -> bool {
+            unsafe { tab.element.GetCurrentPropertyValue(UIA_SelectionItemIsSelectedPropertyId) }
+                .ok()
+                .and_then(|v| bool::try_from(&v).ok())
+                .unwrap_or(false)
+        }
+
+        /// Brings the tab forward in its window, as a click on it would.
+        pub fn select(&self, tab: &StripTab) -> bool {
+            unsafe { tab.element.GetCurrentPatternAs::<IUIAutomationSelectionItemPattern>(UIA_SelectionItemPatternId) }
+                .and_then(|p| unsafe { p.Select() })
+                .is_ok()
+        }
+
+        /// What a page shows, as text: its whole text, else the names of what it lists.
+        pub fn page_text(&self, page: &ShownPage, max: usize) -> String {
+            let Some(automation) = &self.automation else { return String::new() };
+            let text = unsafe {
+                page.element
+                    .GetCurrentPatternAs::<IUIAutomationTextPattern>(UIA_TextPatternId)
+                    .and_then(|p| p.DocumentRange())
+                    .and_then(|r| r.GetText(max.min(i32::MAX as usize) as i32))
+                    .map(|b| b.to_string())
+                    .unwrap_or_default()
+            };
+            if !text.trim().is_empty() {
+                return text;
+            }
+            self.listed_text(automation, &page.element, max)
         }
     }
 }
@@ -1107,6 +1567,62 @@ mod tests {
         assert!(tabs_text(&[tab("Hello", "web")]).contains("without the user's login"));
         assert!(tabs_text(&[tab("", "")]).contains("(Only its title and address"));
         assert_eq!(tabs_text(&[]), "");
+        // A tab in the background that could not be read (Windows): no address yet.
+        let unread = BrowserTab { url: String::new(), ..tab("", "") };
+        assert!(is_blank_page("https://ntp.msn.com/edge/ntp?locale=it&title=Nuova%20scheda"));
+        assert!(!is_blank_page("https://www.msn.com/it-it/news"));
+        let text = tabs_text(&[unread]);
+        assert!(text.contains("<tab browser=\"Edge\" title=\"Say 'hi'\" active=\"true\">\n(Only its title: its page could not be read.)"));
+        assert!(!text.contains("url="));
+    }
+
+    #[test]
+    fn the_page_of_a_tab_is_the_one_titled_like_it() {
+        let titles = |list: &[&str]| list.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        let shown = titles(&["Reading list", "GitHub", "GitHub - Issues"]);
+        assert_eq!(page_for(&shown, "GitHub - Issues", true), Some(2), "the same title");
+        assert_eq!(page_for(&shown, "GitHub - Issues - Memory usage - 120 MB", true), Some(2), "the longest title that starts the name");
+        assert_eq!(page_for(&shown, "GitHub - Pinned", true), Some(1));
+        assert_eq!(page_for(&shown, "Luce – Wikipedia", true), None, "strict: not shown");
+        assert_eq!(page_for(&shown, "Luce – Wikipedia", false), Some(0), "else the first page");
+        // A page with no title never matches by its (empty) title.
+        assert_eq!(page_for(&titles(&["", "B"]), "A", true), None);
+        assert_eq!(page_for(&titles(&["", "B"]), "A", false), Some(0));
+        assert_eq!(page_for(&[], "A", false), None);
+    }
+
+    #[test]
+    fn a_picked_tab_is_found_again_by_its_id_then_its_name() {
+        let entry = |name: &str, id: i32| StripEntry { name: name.into(), runtime_id: vec![42, id] };
+        let place = |index: usize, name: &str, id: i32| TabPlace { window: 7, index, name: name.into(), runtime_id: vec![42, id] };
+        let strip = [entry("A", 1), entry("B - Memory usage - 130 MB", 2), entry("C", 3)];
+        // Its name changed since it was listed (the memory it uses): its id still finds it.
+        assert_eq!(find_tab(&strip, &place(1, "B - Memory usage - 120 MB", 2)), Some(1));
+        // Moved to another place: found by its id.
+        assert_eq!(find_tab(&strip, &place(0, "C", 3)), Some(2));
+        // No id (or a new one): the same name at the same place, then anywhere.
+        assert_eq!(find_tab(&strip, &TabPlace { index: 2, name: "C".into(), ..Default::default() }), Some(2));
+        assert_eq!(find_tab(&strip, &place(0, "C", 99)), Some(2));
+        // Closed since.
+        assert_eq!(find_tab(&strip, &place(1, "D", 4)), None);
+        let twins = [entry("Inbox", 5), entry("Inbox", 6)];
+        assert_eq!(find_tab(&twins, &TabPlace { index: 1, name: "Inbox".into(), ..Default::default() }), Some(1), "twins: by place");
+    }
+
+    #[test]
+    fn where_a_tab_was_listed_never_travels_through_the_page() {
+        let tab = BrowserTab {
+            id: "Edge|101|0".into(),
+            browser: "Edge".into(),
+            title: "A".into(),
+            place: Some(TabPlace { window: 101, index: 0, name: "A".into(), runtime_id: vec![1, 2] }),
+            ..Default::default()
+        };
+        let json = serde_json::to_string(&tab).unwrap();
+        assert!(!json.contains("place") && !json.contains("runtime"), "{json}");
+        let forged: BrowserTab =
+            serde_json::from_str(r#"{"id":"x","browser":"Edge","title":"t","url":"","place":{"window":1}}"#).unwrap();
+        assert_eq!(forged.place, None, "a page can't name a window to read");
     }
 
     #[test]

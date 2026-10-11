@@ -127,6 +127,11 @@ let nextId = 1;
 
 /** The folder open in File Explorer is asked again at most this often while the field takes focus. */
 const PEEK_EVERY_MS = 1500;
+/**
+ * The screen menu waits at most this long for the browsers' tabs (read from
+ * their windows on Windows); a slow browser adds its entry when it answers.
+ */
+const TABS_WAIT_MS = 1200;
 
 /** How a message is drawn: `onEdit` puts a question back in the text field. */
 interface BubbleOptions {
@@ -1170,7 +1175,7 @@ export function buildPrompt(
       (folder) => ({ folder, problem: "" }),
       (err) => ({ folder: null, problem: String(err).replace(/^Error:\s*/, "") }),
     );
-    // The browsers' tabs, titles and addresses only: the entry shows when there are some.
+    // The browsers' tabs, titles only: the entry shows when there are some.
     const tabs: Promise<BrowserTab[]> = Bridge.screenTabs().catch(() => []);
     try {
       displays = await Bridge.screenDisplays();
@@ -1178,8 +1183,21 @@ export function buildPrompt(
       problem = String(err).replace(/^Error:\s*/, "");
     }
     const explorer = await peek;
-    const tabList = await tabs;
+    let timer = 0;
+    const late = new Promise<null>((resolve) => { timer = window.setTimeout(() => resolve(null), TABS_WAIT_MS); });
+    const tabList = await Promise.race([tabs, late]);
+    window.clearTimeout(timer);
     if (ticket !== screenTicket) return;
+    drawScreenEntries(displays, explorer, tabList ?? [], problem);
+    // Drawn without them: they join the menu once they come, if it is still there.
+    if (tabList === null) {
+      void tabs.then((list) => {
+        if (ticket === screenTicket && list.length > 0) drawScreenEntries(displays, explorer, list, problem);
+      });
+    }
+  }
+
+  function drawScreenEntries(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], problem: string) {
     clear(screenList);
     const images = seesImages(providerDef(State.settings.chatProvider));
     for (const entry of menuEntries(displays, explorer, tabList)) {

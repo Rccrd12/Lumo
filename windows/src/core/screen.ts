@@ -123,11 +123,16 @@ export function tabPicks(list: BrowserTab[]): PickEntry[] {
     return {
       id: tab.id,
       label: tab.title || tab.url,
-      // The browser too, when both have tabs open.
-      detail: browsers.size > 1 ? `${host} · ${tab.browser}` : host,
-      title: `${tab.title}\n${tab.url}`,
+      // The browser too, when both have tabs open (alone, when the address isn't known yet).
+      detail: browsers.size > 1 ? [host, tab.browser].filter(Boolean).join(" · ") : host,
+      title: tabTooltip(tab, "\n"),
     };
   })];
+}
+
+/** A tab's title and, when known, its address. */
+function tabTooltip(tab: BrowserTab, between: string): string {
+  return tab.url ? `${tab.title}${between}${tab.url}` : tab.title;
 }
 
 /** "github.com" for an address; the address itself when it has no host. */
@@ -288,7 +293,7 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
     out.push({
       kind: "tabs",
       label: p.tabs.length === 1 ? short(p.tabs[0].title || hostOf(p.tabs[0].url)) : t(SCREEN_STRINGS.tabsCount, { count: p.tabs.length }),
-      title: p.tabs.map((tab) => `${tab.title} — ${tab.url}`).join("\n"),
+      title: p.tabs.map((tab) => tabTooltip(tab, " — ")).join("\n"),
     });
   }
   if (p.shots.length > 0) {

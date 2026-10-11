@@ -109,6 +109,17 @@ test("the second list: all of them first, then each window or tab", () => {
   assert.equal(hostOf("not an address"), "not an address");
 });
 
+test("a tab in the background on Windows has no address yet: its title alone, the browser when both have tabs", () => {
+  const unread = { ...TABS[1], id: "Edge|101|1", url: "" };
+  const [, one] = tabPicks([unread]);
+  assert.deepEqual([one.label, one.detail, one.title], ["Luce – Wikipedia", "", "Luce – Wikipedia"]);
+  const both = tabPicks([unread, { ...TABS[0], id: "Chrome|202|0", browser: "Chrome" }]);
+  assert.equal(both[1].detail, "Edge", "no stray separator");
+  assert.equal(both[2].detail, "github.com · Chrome");
+  const chips = screenChips({ ...emptyScreen(), tabs: [unread, TABS[0]] });
+  assert.equal(chips[0].title, "Luce – Wikipedia\nRccrd12/Lumo — https://github.com/Rccrd12/Lumo");
+});
+
 test("picking again adds to what is waiting, the same window or tab replaced", () => {
   assert.deepEqual(withWindows([SHARED[0]], [{ ...SHARED[0], text: "new" }, SHARED[1]]).map((w) => w.text), ["new", "3 unread"]);
   assert.deepEqual(withTabs([read(TABS[0], "a", "page")], [read(TABS[1], "b", "web")]).map((t) => t.id), [TABS[0].id, TABS[1].id]);
@@ -403,6 +414,43 @@ test("browser tabs: one tab or all of them go with their pages' text", async () 
     ["Edge|Default|1", "README", "page"],
     ["Edge|Default|2", "La luce", "web"],
   ]);
+});
+
+test("browsers slow to list their tabs never hold the menu: the entry joins it when they answer", async () => {
+  let answer;
+  answers.screen_tabs = () => new Promise((resolve) => { answer = resolve; });
+  const realTimeout = globalThis.setTimeout;
+  // The wait for the tabs runs out at once.
+  globalThis.setTimeout = (fn, ms, ...rest) => realTimeout(fn, ms > 1000 ? 0 : ms, ...rest);
+  try {
+    $(".screen-btn").fire("click");
+    await new Promise((resolve) => realTimeout(resolve, 5));
+  } finally {
+    globalThis.setTimeout = realTimeout;
+  }
+  assert.ok(!entries().map(label).includes("Browser tabs"), "drawn without them");
+  assert.equal(entries().map(label)[0], "Open windows");
+  answer(TABS);
+  await flush();
+  assert.deepEqual(entries().map(label).slice(0, 2), ["Open windows", "Browser tabs"]);
+});
+
+test("tabs that answer after the menu moved on don't redraw it", async () => {
+  let answer;
+  answers.screen_tabs = () => new Promise((resolve) => { answer = resolve; });
+  const realTimeout = globalThis.setTimeout;
+  globalThis.setTimeout = (fn, ms, ...rest) => realTimeout(fn, ms > 1000 ? 0 : ms, ...rest);
+  try {
+    $(".screen-btn").fire("click");
+    await new Promise((resolve) => realTimeout(resolve, 5));
+  } finally {
+    globalThis.setTimeout = realTimeout;
+  }
+  entries()[0].fire("click"); // Open windows
+  await flush();
+  answer(TABS);
+  await flush();
+  assert.equal(entries().map(label)[0], "Back", "still the window list");
 });
 
 test("no browser open: no tabs entry", async () => {

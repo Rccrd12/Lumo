@@ -472,12 +472,13 @@ goes. Each goes with what it shows, not only its name:
   it on disk (Claude Code and Antigravity CLI read it from there). A single
   window also goes with a picture of it, even when other windows cover it, for
   the providers that see images (not when it is minimized);
-- a **tab** with its page's text: the tab on screen in its window is read from
-  the browser; a tab in the background is downloaded from its address, without
-  your cookies, so a page behind a login shows what anyone would see. The tabs
-  are read from Edge's and Chrome's own list of open tabs (their session file,
-  never written). Only http and https pages are downloaded, and only once you
-  pick them.
+- a **tab** with its page's text and address, read in the browser like a
+  window, with your login, exactly what you would see. The tabs are listed from
+  Edge's and Chrome's windows themselves (each window's tab strip, through UI
+  Automation). A tab in the background has nothing on screen to read, so when
+  you pick it Lumo brings it forward in its window for a moment, reads it and
+  puts back the tab you were on (six tabs at most for one message; the others
+  go with their title).
 
 The text is cut to fit (about 36,000 characters for all the windows or all the
 tabs of one message). What you picked shows as a chip you can remove before
@@ -914,8 +915,10 @@ What changes on Linux:
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
   its menu says so, and nothing is listed or captured. Browser tabs are listed
-  (Edge, Chrome, Chromium) and their pages downloaded, as on Windows, without
-  reading the tab on screen from the browser. For the same reason
+  from Edge's, Chrome's and Chromium's own list of open tabs (their session
+  file, never written) and their pages downloaded from their address, without
+  your cookies, so a page behind a login shows what anyone would see (only
+  http and https, and only once you pick them). For the same reason
   Gemini Live can't look at the screen there; everything else
   in a call works. Typing in the text box you clicked in needs `xdotool` on
   X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland

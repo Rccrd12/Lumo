@@ -228,7 +228,7 @@ export const Bridge = {
   screenWindowShare: (ids: number[]) => callOrThrow<SharedWindow[]>("screen_window_share", { ids }),
   /** A screenshot of one listed window, saved in the inbox, with a preview. */
   screenWindowShot: (id: number) => callOrThrow<ScreenShot>("screen_window_shot", { id }),
-  /** The tabs open in Edge and Chrome: titles and addresses only. */
+  /** The tabs open in Edge and Chrome: titles (and addresses, where known) only. */
   screenTabs: () => callOrThrow<BrowserTab[]>("screen_tabs"),
   /** The listed tabs picked by id (all of them for `[]`), with their pages' text. */
   screenTabShare: (ids: string[]) => callOrThrow<BrowserTab[]>("screen_tab_share", { ids }),
@@ -523,6 +523,7 @@ export interface BrowserTab {
   id: string;
   browser: string;
   title: string;
+  /** "" while not known: on Windows, a tab in the background gives its address once read. */
   url: string;
   /** The tab on screen in its window. */
   active: boolean;
