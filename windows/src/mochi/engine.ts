@@ -253,6 +253,12 @@ export class BotEngine {
    * looks around. The main character only.
    */
   ambient = 1;
+  /**
+   * Energy saving (island/island.ts, core/energy.ts): no loop at all — no
+   * breath, no hover, no z's, no blinks, no bounce or scan. He eases into
+   * his pose and stays there, and the island stops drawing him.
+   */
+  still = false;
   private lastLook = { x: 0, y: 0, at: 0 };
   private glance = { x: 0, y: 0, next: 0 };
   private glanceW = 0;
@@ -587,7 +593,7 @@ export class BotEngine {
 
   /** He moves on his own: the island keeps drawing him, at a gentler frame rate. */
   get ambientActive(): boolean {
-    return !this.isMini && this.ambient > 0 && this.state !== "sleeping" && this.morph < 0.05;
+    return !this.isMini && !this.still && this.ambient > 0 && this.state !== "sleeping" && this.morph < 0.05;
   }
 
   /** True while anything is still moving — lets the island stop its RAF loop. */
@@ -595,7 +601,7 @@ export class BotEngine {
     return (
       this.tweens.size > 0 ||
       this.particles.length > 0 ||
-      this.cfg.bounces || this.cfg.scans || this.cfg.breathes || this.cfg.zz || this.cfg.sweat ||
+      (!this.still && (this.cfg.bounces || this.cfg.scans || this.cfg.breathes || this.cfg.zz || this.cfg.sweat)) ||
       this.isMini ||
       Math.abs(this.tgYaw - this.yaw) > 0.002 ||
       Math.abs(this.tgPitch - this.pitch) > 0.002 ||
@@ -611,7 +617,7 @@ export class BotEngine {
       // The main character: the heartbeat and ripple while something waits for
       // you, what happens as a state begins (shake, hop, flash, sparkle) and the
       // ease from one state's pose to the next.
-      (!this.isMini && (motionKind(this.state) === "waiting" ||
+      (!this.isMini && ((!this.still && motionKind(this.state) === "waiting") ||
         this.stateTime < Math.max(settleTime(this.state), this.blendK < 1 ? BLEND_S : 0))) ||
       // A round look's light still easing to the state's colour.
       (this.round && (
@@ -660,7 +666,7 @@ export class BotEngine {
       ty = ty * 0.35 + this.cfg.look[0] * 0.55;
       tp = tp * 0.3 + this.cfg.look[1] * 0.5;
     }
-    if (this.cfg.scans) {
+    if (this.cfg.scans && !this.still) {
       ty = Math.sin(t * 2.6) * 0.6;
       tp = -0.06;
     }
@@ -718,11 +724,14 @@ export class BotEngine {
 
     const hover = Math.sin(t * 1.5) * 0.03 * amb;
     // A round look's waiting is its heartbeat (motion.ts), not a bounce.
-    const bounce = (this.cfg.bounces && !this.round ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0) + hover;
+    const bounce = (this.cfg.bounces && !this.round && !this.still ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0) + hover;
     const kGen = 1 - Math.pow(0.0008, dt);
     if (!this.locks.has("oy")) this.oy += (bounce - this.oy) * kGen;
 
-    if (this.cfg.breathes) {
+    if (this.still && !this.isMini) {
+      this.tgSy = 1;
+      this.tgSx = 1;
+    } else if (this.cfg.breathes) {
       const amp = this.isMini ? 0.07 : 0.035;
       this.tgSy = 1 + Math.sin(t * 1.8) * amp;
       this.tgSx = 1 - Math.sin(t * 1.8) * amp * 0.57;
@@ -749,7 +758,7 @@ export class BotEngine {
     if (this.round) this.glow = mix3(this.glow, this.glowTarget, 1 - Math.pow(0.002, dt));
 
     if (n > this.nextBlink) {
-      if (this.state !== "sleeping" && this.state !== "dizzy") {
+      if (this.state !== "sleeping" && this.state !== "dizzy" && !this.still) {
         this.blink();
         if (Math.random() < 0.22) setTimeout(() => this.blink(), 230);
       }
@@ -763,8 +772,8 @@ export class BotEngine {
 
     if (n - this.lastAmbient > 1.3) {
       this.lastAmbient = n;
-      if (this.cfg.zz) this.emit("z", 1);
-      if (!this.isMini && this.cfg.sweat && Math.random() < 0.5) this.emit("sweat", 1);
+      if (this.cfg.zz && !this.still) this.emit("z", 1);
+      if (!this.isMini && this.cfg.sweat && !this.still && Math.random() < 0.5) this.emit("sweat", 1);
     }
 
     for (const p of this.particles) p.age += dt;

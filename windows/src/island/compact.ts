@@ -12,6 +12,7 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
+import { byEffort } from "../core/energy";
 import { Bridge, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -56,8 +57,8 @@ const CLICK_GUARD_MS = 600;
 const MAIL_COLOR = "#EA4335";
 const TIMER_COLOR = "#F5A524";
 const MEDIA_COLOR = "#1DB954";
-/** How often the music is asked about while the closed island shows. */
-const MEDIA_EVERY_MS = 4000;
+/** How often the music is asked about while the closed island shows: Settings → General → Energy sets it. */
+const mediaEvery = () => byEffort(State.effort, 2000, 4000, 8000);
 
 export interface CompactHost {
   /** The island comes out of its edge, as for any news (fsm.reveal). */
@@ -112,6 +113,7 @@ export class CompactStrip {
   private ticker: number | null = null;
   private mediaTimer: number | null = null;
   private mediaAsking = false;
+  private mediaEvery = 0;
   /** More emails came with the one shown. */
   private extraMail = 0;
   /** The island's size for what is drawn (measure), and the one it was given. */
@@ -401,9 +403,12 @@ export class CompactStrip {
       if (!visible && Feed.media && State.paused) Feed.media = null;
       return;
     }
-    if (this.mediaTimer != null) return;
-    this.askMedia();
-    this.mediaTimer = window.setInterval(() => this.askMedia(), MEDIA_EVERY_MS);
+    const every = mediaEvery();
+    if (this.mediaTimer != null && every === this.mediaEvery) return;
+    if (this.mediaTimer != null) window.clearInterval(this.mediaTimer);
+    else this.askMedia();
+    this.mediaEvery = every;
+    this.mediaTimer = window.setInterval(() => this.askMedia(), every);
   }
 
   private askMedia() {

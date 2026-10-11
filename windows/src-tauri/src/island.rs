@@ -1179,6 +1179,11 @@ fn current_screen_key(app: &AppHandle) -> Option<(i32, i32, u32, u32, u64)> {
     Some((p.x, p.y, size.width, size.height, m.scale_factor().to_bits()))
 }
 
+/// Saving energy, the cursor this far from the island (page pixels) is read
+/// every FAR_PERIOD_MS instead of at 60 Hz.
+const FAR_FROM_ISLAND: f64 = 160.0;
+const FAR_PERIOD_MS: u64 = 100;
+
 /// Emits `cursor` (window-logical coordinates) at ~60 Hz while the island is
 /// visible. Parked on a condvar the rest of the time.
 pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
@@ -1197,8 +1202,12 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
             // Claude clicking for the chat (computer.rs): the island lets the mouse through.
             let mut was_acting = false;
             let mut ticks: u32 = 0;
+            // Saving energy (energy.rs), a cursor far from the island is read
+            // at 10 Hz: it only has to be seen coming back.
+            let mut far = false;
             while gate.is_active() {
-                std::thread::sleep(Duration::from_millis(period));
+                let saving = far && crate::energy::current() == crate::energy::Effort::Saver;
+                std::thread::sleep(Duration::from_millis(if saving { period.max(FAR_PERIOD_MS) } else { period }));
 
                 // Monitors get plugged in, unplugged, rearranged and rescaled, and
                 // an island pinned to coordinates that no longer exist is an island
@@ -1237,6 +1246,11 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     && x <= r.x + r.w + HIT_MARGIN
                     && y >= r.y - HIT_MARGIN
                     && y <= r.y + r.h + HIT_MARGIN;
+                far = r.w > 0.0
+                    && (x < r.x - FAR_FROM_ISLAND
+                        || x > r.x + r.w + FAR_FROM_ISLAND
+                        || y < r.y - FAR_FROM_ISLAND
+                        || y > r.y + r.h + FAR_FROM_ISLAND);
 
                 // A press anywhere else on the screen: the open island may close
                 // on it (Settings → Island → "On a click outside the island").

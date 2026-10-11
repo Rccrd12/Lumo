@@ -142,6 +142,22 @@ them never opens the island, even with Open on hover.
   browser, any player that shows in the system's media controls (Windows)
   or speaks MPRIS (Linux). Gemini Live can play, pause and skip too.
 
+### Energy saving
+
+**Settings → General → Energy saving** says how hard Lumo works:
+
+| Choice | What it does |
+|---|---|
+| **None — near real time** | Everything is asked more often: the inbox looks again every 8 s besides IMAP IDLE, GitHub's pulse every minute (20 s while a CI runs), the calendar every 2 minutes, the other services three times as often, the music every 2 s |
+| **Light** | As Lumo always was |
+| **On — save energy** | The closed island draws 15 frames a second instead of 30; with the mouse far from it Lumo dozes — eyes shut, grey, no motion at all — and with the mouse at rest for a second he stops moving; the cursor far from the island is read 10 times a second instead of 60; everything is asked half as often (the inbox every minute, GitHub every 10 minutes, the calendar every 30). A permission or a question waiting keeps him awake. Opening and closing the island stay smooth |
+| **Automatic** (the default) | On while the computer runs on its battery; plugged in, what **On mains power** says (Light, or None) |
+
+Whether the computer runs on its battery is asked of the system every 20
+seconds (Windows: the power status; Linux: a battery discharging in
+`/sys/class/power_supply`). A desktop has no battery, so Automatic there is
+always the mains-power choice.
+
 ### Live activities
 
 <img src="screenshots/activities.png" width="640" alt="The open island with the live activities beside it">

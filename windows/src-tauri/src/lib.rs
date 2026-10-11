@@ -16,6 +16,7 @@ mod computer;
 mod config_file;
 mod desk;
 mod desktop;
+mod energy;
 mod explorer;
 mod files;
 mod github;
@@ -81,6 +82,8 @@ pub struct BootInfo {
     cursor_poll: bool,
     /// Where the island is drawn in its window (island::shift).
     shift: island::ShiftPayload,
+    /// The computer runs on its battery (energy.rs), for Settings → General → Energy.
+    on_battery: bool,
 }
 
 #[tauri::command]
@@ -99,6 +102,7 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
         hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
         cursor_poll: platform::CURSOR_POLL,
         shift,
+        on_battery: energy::on_battery(),
     }
 }
 
@@ -147,6 +151,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         island::apply_geometry(&app, &settings.screen, island::Placement::of(&settings), collapsed);
     }
     integrations::settings_saved(&app, &settings.active_integrations);
+    energy::refresh(&app);
     if shortcuts_changed {
         shortcuts::apply(&app, &settings.shortcuts);
     }
@@ -1185,6 +1190,7 @@ pub fn run() {
             computer::forget_antigravity(&claude_code::work_dir());
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
+            energy::start(handle.clone());
             integrations::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
