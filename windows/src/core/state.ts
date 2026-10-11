@@ -14,6 +14,7 @@ import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../mochi/wardrobe";
 import { pillColor } from "./pill-colors";
+import { effectiveEffort, type Effort } from "./energy";
 
 export type AgentSource = "claudeCode" | "n8n" | "agent";
 export type PillBadge = "approval" | "finished" | "error";
@@ -207,6 +208,10 @@ export interface Settings {
   activitiesFollowIsland: boolean;
   /** The Email pill leaves out the promotional emails (mail.rs). */
   mailHidePromotions: boolean;
+  /** Settings → General → Energy (core/energy.ts): "none", "light", "auto" or "saver". */
+  energyMode: string;
+  /** With "auto" on mains power: "none" or "light". */
+  energyOnPower: string;
   /** The right-click menu's own items, in order (core/context-menu.ts). */
   contextMenu: string[];
   /** Who the chat talks to (see core/providers.ts); picked in the chat view. */
@@ -320,6 +325,8 @@ export const DEFAULT_SETTINGS: Settings = {
   quickApprovals: true,
   activitiesFollowIsland: true,
   mailHidePromotions: false,
+  energyMode: "auto",
+  energyOnPower: "light",
   contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],
   chatProvider: "anthropic",
   chatModels: {},
@@ -383,6 +390,13 @@ class AppState {
 
   isPinned = false;
   paused = false;
+  /** The computer runs on its battery (energy.rs), for Settings → General → Energy. */
+  onBattery = false;
+
+  /** How hard Lumo works now (core/energy.ts). */
+  get effort(): Effort {
+    return effectiveEffort(this.settings.energyMode, this.settings.energyOnPower, this.onBattery);
+  }
 
   uploadProgress = 0;
   uploadDuration = 2.4;

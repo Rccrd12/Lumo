@@ -1,8 +1,12 @@
-// Notification-area icon: Open, Recenter the island, Weekly recap, Wardrobe,
-// Settings, Pause, Quit.
+// Notification-area icon. A left click hides the island into its edge or
+// brings it back (Windows; on Linux the menu is all a tray icon offers); the
+// right click opens the menu: Open, Recenter the island, Weekly recap,
+// Wardrobe, Settings, Pause (Resume while paused), Quit.
+
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
-use tauri::tray::TrayIconBuilder;
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{AppHandle, Emitter, Manager, Wry};
 
 use crate::i18n::{n_, t};
@@ -20,8 +24,23 @@ const ITEMS: [(&str, &str); 7] = [
     ("quit", n_("Quit")),
 ];
 
+/// Pause's label while Lumo is paused.
+const RESUME: &str = n_("Resume");
+
+/// Lumo is paused (the island tells, set_paused): Pause reads Resume.
+static PAUSED: AtomicBool = AtomicBool::new(false);
+
 /// Kept so a language change relabels the menu without rebuilding the tray.
 struct Items(Vec<(&'static str, MenuItem<Wry>)>);
+
+/// What an item says now, in the current language.
+fn label_of(label: &'static str) -> String {
+    if label == ITEMS[5].1 && PAUSED.load(Ordering::Relaxed) {
+        t(RESUME)
+    } else {
+        t(label)
+    }
+}
 
 pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let mut items = Vec::new();
@@ -38,6 +57,13 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
     let mut builder = TrayIconBuilder::with_id("lumo")
         .tooltip("Lumo")
         .menu(&menu)
+        // The left click is the island's own: hide it or bring it back.
+        .show_menu_on_left_click(false)
+        .on_tray_icon_event(|tray, event| {
+            if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
+                let _ = tray.app_handle().emit_to(WINDOW_LABEL, "tray", "toggle".to_string());
+            }
+        })
         .on_menu_event(|app: &AppHandle, event| match event.id.as_ref() {
             "quit" => app.exit(0),
             "recenter" => crate::recenter_island(app),
@@ -58,6 +84,12 @@ pub fn build(app: &AppHandle) -> tauri::Result<()> {
 pub fn retitle(app: &AppHandle) {
     let Some(items) = app.try_state::<Items>() else { return };
     for (label, item) in &items.0 {
-        let _ = item.set_text(t(label));
+        let _ = item.set_text(label_of(label));
     }
+}
+
+/// Lumo was paused or resumed: Pause reads Resume while paused.
+pub fn set_paused(app: &AppHandle, paused: bool) {
+    PAUSED.store(paused, Ordering::Relaxed);
+    retitle(app);
 }

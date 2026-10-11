@@ -17,6 +17,7 @@ use ::windows::Win32::System::Diagnostics::ToolHelp::{
 };
 use ::windows::Win32::System::Ole::RevokeDragDrop;
 use ::windows::Win32::System::Pipes::GetNamedPipeClientProcessId;
+use ::windows::Win32::System::Power::{GetSystemPowerStatus, SYSTEM_POWER_STATUS};
 use ::windows::Win32::System::SystemInformation::GetLocalTime;
 use ::windows::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
 use ::windows::Win32::UI::Input::KeyboardAndMouse::{
@@ -295,6 +296,12 @@ fn local_full_name() -> Option<String> {
 
 /// The 60 Hz poll reads the cursor and flips click-through from it.
 pub const CURSOR_POLL: bool = true;
+
+/// The computer runs on its battery (energy.rs). Unknown reads as mains power.
+pub fn on_battery() -> bool {
+    let mut status = SYSTEM_POWER_STATUS::default();
+    unsafe { GetSystemPowerStatus(&mut status) }.is_ok() && status.ACLineStatus == 0
+}
 
 /// Cursor position in physical screen pixels.
 pub fn cursor_physical() -> Option<(f64, f64)> {

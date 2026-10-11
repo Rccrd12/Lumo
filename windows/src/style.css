@@ -63,7 +63,8 @@ body {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 240px;
+  /* As long as the closed island (layout.ts WAKE_STRIP_W, island.rs STRIP_W). */
+  width: 288px;
   height: 6px;
   background: transparent;
 }
@@ -110,7 +111,7 @@ body {
   left: 0;
   transform: translateY(-50%);
   width: 6px;
-  height: 240px;
+  height: 288px;
 }
 
 .dock-right #wake-strip {
@@ -266,6 +267,27 @@ body {
   inset: 0;
   overflow: hidden;
   border-radius: inherit;
+}
+
+/* Saving energy (Settings → General → Energy): a green leaf at the closed
+   island's right end, where Lumo's room is mirrored. */
+#energy-leaf {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #22c55e;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-out;
+}
+
+#energy-leaf.on {
+  opacity: 0.9;
 }
 
 #bot-canvas,

@@ -75,7 +75,7 @@ the exe it runs from.
 
 | What you do | What happens |
 |---|---|
-| Move the mouse to the very top-centre of the screen | Lumo peeks out |
+| Move the mouse to the very top-centre of the screen (to the piece of edge where the island was, as long as the closed island, if you moved it) | Lumo peeks out |
 | Click the small island | It opens |
 | Click Lumo | It gets annoyed for a moment |
 | Rest the pointer on Lumo for two seconds | Hearts |
@@ -83,11 +83,12 @@ the exe it runs from.
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
-| Power button at the top right of the open island | Quits Lumo (open it again from the Start menu) |
+| – at the top right of the open island, next to the power button | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
+| Power button at the top right of the open island | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
-| Tray icon | Open, Weekly recap, Wardrobe…, Settings…, Pause, Quit |
+| Tray icon | A left click hides the island into its edge, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
@@ -141,6 +142,24 @@ them never opens the island, even with Open on hover.
 - **The music playing**, with previous, play/pause and next: Spotify, a
   browser, any player that shows in the system's media controls (Windows)
   or speaks MPRIS (Linux). Gemini Live can play, pause and skip too.
+
+### Energy saving
+
+**Settings → General → Energy saving** says how hard Lumo works:
+
+| Choice | What it does |
+|---|---|
+| **None — near real time** | Everything is asked more often: the inbox looks again every 8 s besides IMAP IDLE, GitHub's pulse every minute (20 s while a CI runs), the calendar every 2 minutes, the other services three times as often, the music every 2 s |
+| **Light** | As Lumo always was |
+| **On — save energy** | The closed island draws 15 frames a second instead of 30; with the mouse far from it Lumo dozes — eyes shut, grey, no motion at all — and with the mouse at rest for a second he stops moving; the cursor far from the island is read 10 times a second instead of 60; everything is asked half as often (the inbox every minute, GitHub every 10 minutes, the calendar every 30). A permission or a question waiting keeps him awake. Opening and closing the island stay smooth |
+| **Automatic** (the default) | On while the computer runs on its battery; plugged in, what **On mains power** says (Light, or None) |
+
+While it saves energy, a green leaf shows at the closed island's right end.
+
+Whether the computer runs on its battery is asked of the system every 20
+seconds (Windows: the power status; Linux: a battery discharging in
+`/sys/class/power_supply`). A desktop has no battery, so Automatic there is
+always the mains-power choice.
 
 ### Live activities
 

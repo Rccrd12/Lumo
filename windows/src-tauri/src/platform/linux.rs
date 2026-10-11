@@ -235,6 +235,16 @@ pub fn user_full_name() -> Option<String> {
 // ── Processes ─────────────────────────────────────────────────────────────────
 
 /// Nothing to hide: a spawned process only gets a terminal if it asks for one.
+/// The computer runs on its battery (energy.rs): a battery is discharging.
+/// A desktop, without one, never is.
+pub fn on_battery() -> bool {
+    let Ok(entries) = std::fs::read_dir("/sys/class/power_supply") else { return false };
+    entries.flatten().any(|entry| {
+        let read = |name: &str| std::fs::read_to_string(entry.path().join(name)).unwrap_or_default();
+        read("type").trim() == "Battery" && read("status").trim() == "Discharging"
+    })
+}
+
 pub fn no_console(cmd: &mut Command) -> &mut Command {
     cmd
 }

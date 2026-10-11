@@ -22,7 +22,8 @@ import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
-import { h } from "../views/dom";
+import { h, svg } from "../views/dom";
+import { ICONS } from "../views/icons";
 import { IslandStateMachine } from "./fsm";
 import { CompactStrip } from "./compact";
 import { ACTIVITIES_GAP, IslandActivities } from "./activities";
@@ -39,6 +40,10 @@ import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
+import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
+
+/** Saving energy, the wait before each frame of the closed island: about SAVER_FPS a second. */
+const SPARING_FRAME_MS = 1000 / SAVER_FPS - 8;
 
 /** A view change this soon after a click or shortcut counts as asked for (ms). */
 const GESTURE_WINDOW = 1500;
@@ -97,6 +102,12 @@ export class Island {
   private countdown!: HTMLElement;
   /** What the closed island says next to Lumo (island/compact.ts). */
   private compact!: CompactStrip;
+  /** The leaf at the closed island's right end while it saves energy (Settings → General → Energy). */
+  private leafEl = h("div", { id: "energy-leaf" }, svg(ICONS.leaf, 13, { stroke: 1.9 }));
+  /** When the cursor last moved (performance.now()), for Energy's "at rest". */
+  private mouseMovedAt = 0;
+  /** Lumo dozes on the closed island, the mouse away, saving energy. */
+  private dozing = false;
   /** Lumo's own right-click menu (views/context-menu.ts). */
   private menu!: ContextMenu;
   /** The live activities beside the open island (island/activities.ts). */
@@ -269,6 +280,7 @@ export class Island {
       setView: (v) => this.setView(v),
       cancelDrop: () => this.discardDrop(),
       collapse: () => this.collapse(),
+      hide: () => this.hideInEdge(),
       foldApproval: () => this.foldApproval(),
       setFocus: (id) => {
         State.setFocus(id);
@@ -411,6 +423,7 @@ export class Island {
       this.uploadCanvas.el,
       this.contentEl,
       this.compact.el,
+      this.leafEl,
     );
     this.grips = GRIPS.map((grip) => ({ el: h("div", { class: `edge edge-${grip}` }), grip }));
     this.islandEl = h(
@@ -569,6 +582,23 @@ export class Island {
     // back left it thinking the island was still open, and a click on the compact
     // island then did nothing — the island could never be reopened.
     this.fsm.forcePetit();
+  }
+
+  /**
+   * The header's –: the island slips into the edge of the screen it hangs
+   * from, as Hide when unused does, and the mouse on that piece of the edge
+   * brings it back (the wake strip, island.rs). A request waiting for an
+   * answer is folded instead, so it is never out of sight.
+   */
+  hideInEdge() {
+    if (State.pendingApproval) {
+      this.foldApproval();
+      return;
+    }
+    State.isPinned = false;
+    this.fsm.pinned = false;
+    Sound.play("pop");
+    this.fsm.forceHidden();
   }
 
   /** Alert from the hook server: open on this view. Pinned alerts never auto-close. */
@@ -1326,6 +1356,7 @@ export class Island {
       x = -10_000;
       y = -10_000;
     }
+    if (x !== State.mouse.x || y !== State.mouse.y) this.mouseMovedAt = performance.now();
     State.mouse = { x, y };
     const rect = this.islandRect();
     State.mouseInIsland = { x: x - rect.x, y: y - rect.y };
@@ -1378,7 +1409,11 @@ export class Island {
       }
     }
 
-    this.ensureRunning();
+    // Dozing while saving energy, a mouse moving far away draws nothing: only
+    // its coming back near wakes him.
+    const stillAway = this.dozing && State.effort === "saver" && State.mode === "compact" &&
+      distanceTo(x, y, hit) > DOZE_DISTANCE;
+    if (!stillAway) this.ensureRunning();
   }
 
   /** The greeting and the drop sequence draw a Mochi of their own: not that one. */
@@ -1474,6 +1509,7 @@ export class Island {
     } else {
       // Kept running even while the drop canvas is up, so the island's own Mochi
       // is already in the right place the moment the canvas fades out.
+      this.applyEnergy(nowMs);
       this.drawBot(dt);
     }
 
@@ -1506,13 +1542,16 @@ export class Island {
         !this.botCx.settled || !this.botCy.settled || !this.botSize.settled ||
         greetingActive || this.engine.busy || UploadSeq.isActive || viewAnimating;
 
-    if (busy) {
+    // Saving energy (Settings → General → Energy), the closed island draws
+    // 15 frames a second; it still opens and closes at the display's rate.
+    const sparing = State.mode === "compact" && State.effort === "saver" && !settling;
+    if (busy && !sparing) {
       requestAnimationFrame(this.frame);
-    } else if (State.mode !== "hidden" && this.engine.ambientActive) {
+    } else if (busy || (State.mode !== "hidden" && this.engine.ambientActive)) {
       // Only Lumo's own motion is left: about 30 frames a second is plenty, and
       // it stops with everything else once the island hides.
-      window.setTimeout(() => requestAnimationFrame(this.frame), 22);
-      Sound.idle();
+      window.setTimeout(() => requestAnimationFrame(this.frame), sparing ? SPARING_FRAME_MS : 22);
+      if (!busy) Sound.idle();
     } else {
       this.running = false;
       Sound.idle();
@@ -1573,7 +1612,8 @@ export class Island {
     // While a plan card is open Lumo wears the plan's colour, like its pill. A
     // white pill leaves him in his own butter yellow.
     const wear = planCardOpen() ? openPlanColor() : focus?.isIntegration ? focus.color : null;
-    this.engine.bodyColor = wear && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
+    // Dozing, he is his sleeping grey whatever pill is in front.
+    this.engine.bodyColor = wear && !this.dozing && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
     this.engine.particleOverhang = BOT_OVERHANG;
     this.engine.lookX = this.lookX();
     this.engine.lookY = this.lookY();
@@ -1684,6 +1724,10 @@ export class Island {
     // What the closed island says next to Lumo. Standing upright on a side
     // there is no room for it. A change of what it shows resizes the island.
     const compactOn = State.mode === "compact" && !isUpright(this.dock);
+    // Saving energy, a leaf at the right end, opposite Lumo; an email or a
+    // request filling the closed island has the corner to itself.
+    this.leafEl.classList.toggle("on",
+      compactOn && State.effort === "saver" && this.compact.mail == null && this.compact.approval == null);
     State.activitiesRoom = !isUpright(this.dock);
     if (this.compact.sync(compactOn, compactOn || this.activities.isVisible) && State.mode === "compact") {
       this.animateGeometry(this.compact.size == null);
@@ -1693,7 +1737,23 @@ export class Island {
     // The compact island shows Lumo alone: the other pills' mini Lumos are
     // only in the open island.
     syncMiniBotStates(State.tasks);
-    this.engine.setState(State.shownState);
+    this.applyEnergy(performance.now());
+  }
+
+  /**
+   * Settings → General → Energy, while saving energy on the closed island:
+   * with the mouse away Lumo dozes (eyes shut, grey, still), and with the
+   * mouse at rest a moment he stops moving. Never while something waits for
+   * the user (a permission, a question): that one keeps calling.
+   */
+  private applyEnergy(nowMs: number) {
+    const shown = State.shownState;
+    const saving = State.effort === "saver" && State.mode === "compact";
+    const waiting = shown === "approval" || shown === "question";
+    const away = saving && !waiting && distanceTo(State.mouse.x, State.mouse.y, this.hitRect()) > DOZE_DISTANCE;
+    this.dozing = away;
+    this.engine.setState(away ? "sleeping" : shown);
+    this.engine.still = saving && !waiting && (away || nowMs - this.mouseMovedAt > STILL_AFTER_MS);
   }
 
   /** Applies settings coming from Rust at boot. */

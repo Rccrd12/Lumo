@@ -32,6 +32,7 @@ async function main() {
   const boot = await Bridge.boot();
   if (boot) {
     State.settings = { ...State.settings, ...boot.settings };
+    State.onBattery = boot.onBattery === true;
   }
   // A language change redraws the island in place: the texts given as tl(…)
   // relabel themselves (views/dom.ts) and the views redraw the rest on this
@@ -53,6 +54,11 @@ async function main() {
   // Esc stopped the chat's computer use (computer.rs).
   await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
   await onEvent<MailMessage[]>("mail-new", (messages) => island.newMail(messages));
+  // Unplugged or plugged in: Settings → General → Energy on "Automatic" follows.
+  await onEvent<boolean>("energy-power", (onBattery) => {
+    State.onBattery = onBattery === true;
+    State.notify();
+  });
 
   /** Pause has to reach Rust too, or the pollers keep calling out. */
   const setPaused = (on: boolean) => {
@@ -80,6 +86,15 @@ async function main() {
       case "wardrobe":
         setPaused(false);
         island.alert("wardrobe");
+        break;
+      // A left click on the tray icon: the island into its edge, or back.
+      case "toggle":
+        if (State.paused || State.mode === "hidden") {
+          setPaused(false);
+          island.reveal();
+        } else {
+          island.hideInEdge();
+        }
         break;
       case "pause":
         setPaused(!State.paused);

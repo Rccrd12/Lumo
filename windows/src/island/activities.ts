@@ -27,10 +27,12 @@ import {
   ACTIVITIES_W, ActivitiesView, type ActivitiesAction, type ActivitiesData, type MailRow,
 } from "../views/activities-view";
 import { language } from "../i18n/i18n";
+import { byEffort } from "../core/energy";
 
 export { ACTIVITIES_GAP, ACTIVITIES_TALL, ACTIVITIES_W } from "../views/activities-view";
 
-const CALENDAR_EVERY_MS = 15 * 60_000;
+/** How often the calendar is asked: Settings → General → Energy sets it. */
+const calendarEvery = () => byEffort(State.effort, 2 * 60_000, 15 * 60_000, 30 * 60_000);
 /** The longest their own window may take to say it has drawn them. */
 const HAND_OFF_MS = 400;
 const CALENDAR_STALE_MS = 5 * 60_000;
@@ -46,12 +48,29 @@ export const Calendar = {
   fetchedAt: 0,
   busy: false,
   timer: null as number | null,
+  effort: "" as string,
 
-  /** Starts the 15-minute refresh, and refreshes when Settings changes the address. */
+  /**
+   * Starts the refresh (every 15 minutes, or as Settings → General → Energy
+   * says), and refreshes when Settings changes the address.
+   */
   start() {
     void this.refresh();
-    if (this.timer == null) this.timer = window.setInterval(() => void this.refresh(), CALENDAR_EVERY_MS);
+    this.schedule();
     void onEvent<null>("calendar-changed", () => void this.refresh());
+    // A new effort takes effect at once, not after the wait it replaced.
+    State.subscribe(() => {
+      if (State.effort !== this.effort) this.schedule();
+    });
+  },
+
+  schedule() {
+    if (this.timer != null) window.clearTimeout(this.timer);
+    this.effort = State.effort;
+    this.timer = window.setTimeout(() => {
+      void this.refresh();
+      this.schedule();
+    }, calendarEvery());
   },
 
   async refresh() {

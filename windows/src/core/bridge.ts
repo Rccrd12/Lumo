@@ -80,6 +80,8 @@ export interface BootInfo {
   cursorPoll: boolean;
   /** Where the island is drawn in its window, off its usual place (island.rs shift). */
   shift: IslandShift;
+  /** The computer runs on its battery (energy.rs). */
+  onBattery?: boolean;
 }
 
 /** System dialogs of ours open right now (the file picker): a click in them is not "elsewhere". */

@@ -96,6 +96,11 @@ pub struct Settings {
     /// Promotions category, elsewhere the emails with an unsubscribe link.
     /// Off until the user turns it on.
     pub mail_hide_promotions: bool,
+    /// Settings → General → Energy (energy.rs): "none" (near real time),
+    /// "light" (as Lumo always was), "auto" (saving on battery) or "saver".
+    pub energy_mode: String,
+    /// With "auto" on mains power: "none" or "light".
+    pub energy_on_power: String,
     /// What the right-click menu offers besides Refresh and the text actions,
     /// in its order (src/core/context-menu.ts MENU_ITEMS).
     pub context_menu: Vec<String>,
@@ -256,6 +261,8 @@ impl Default for Settings {
             quick_approvals: true,
             activities_follow_island: true,
             mail_hide_promotions: false,
+            energy_mode: "auto".into(),
+            energy_on_power: "light".into(),
             context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
@@ -573,6 +580,8 @@ mod tests {
   "quickApprovals": false,
   "activitiesFollowIsland": false,
   "mailHidePromotions": true,
+  "energyMode": "saver",
+  "energyOnPower": "none",
   "contextMenu": ["settings"],
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
@@ -1041,6 +1050,8 @@ mod tests {
                 "quickApprovals",
                 "activitiesFollowIsland",
                 "mailHidePromotions",
+                "energyMode",
+                "energyOnPower",
                 "contextMenu",
                 "chatProvider",
                 "chatModels",

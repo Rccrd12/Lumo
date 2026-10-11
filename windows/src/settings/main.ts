@@ -21,6 +21,7 @@ import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
 import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { SEARCH_STRINGS, applySearch } from "./search";
+import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { updatesSection } from "./updates";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
@@ -38,6 +39,10 @@ const KEY_STORE = navigator.userAgent.includes("Windows")
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let version = "";
+/** The computer runs on its battery (energy.rs), for General → Energy. */
+let onBattery = false;
+/** Redraws General → Energy's line about the power source. */
+let energyRedraw: (() => void) | null = null;
 
 const root = document.getElementById("settings-root")!;
 
@@ -1235,9 +1240,61 @@ function generalSection(): HTMLElement {
     setting(t("Launch at startup"), null,
       toggle(settings.autostart, (v) => { settings.autostart = v; void save(); }),
     ),
+    ...energyRows(),
     ...recapRows(),
     ...contextMenuRows(),
   );
+}
+
+/** What General → Energy says of the power source, with Automatic. */
+const ENERGY_NOW = {
+  battery: N_("On battery now: saving energy."),
+  realtime: N_("Plugged in now: near real time."),
+  usual: N_("Plugged in now: as usual."),
+};
+
+/**
+ * Settings → General → Energy (core/energy.ts, energy.rs): how hard Lumo
+ * works, and with "Automatic" what it does on mains power.
+ */
+function energyRows(): HTMLElement[] {
+  const mode = h("select", {}) as HTMLSelectElement;
+  for (const m of ENERGY_MODES) mode.append(h("option", { value: m.id, text: t(m.label) }));
+  mode.value = parseEnergyMode(settings.energyMode);
+  const onPower = h("select", {}) as HTMLSelectElement;
+  for (const m of ENERGY_ON_POWER) onPower.append(h("option", { value: m.id, text: t(m.label) }));
+  onPower.value = parseOnPower(settings.energyOnPower);
+  const now = h("span", { class: "hint" });
+  const powerRow = setting(t("On mains power"), t("with Automatic, what Lumo does while the computer is plugged in; on battery it saves energy"), onPower);
+  const redraw = () => {
+    const auto = mode.value === "auto";
+    powerRow.hidden = !auto;
+    const effort = effectiveEffort(mode.value, onPower.value, onBattery);
+    now.textContent = !auto ? ""
+      : t(onBattery ? ENERGY_NOW.battery : effort === "realtime" ? ENERGY_NOW.realtime : ENERGY_NOW.usual);
+  };
+  mode.addEventListener("change", () => {
+    settings.energyMode = mode.value;
+    redraw();
+    void save();
+  });
+  onPower.addEventListener("change", () => {
+    settings.energyOnPower = onPower.value;
+    redraw();
+    void save();
+  });
+  energyRedraw = redraw;
+  redraw();
+  return [
+    setting(
+      t("Energy saving"),
+      h("span", {},
+        t("How often Lumo checks the inbox, the calendar and the services, and how much he moves on the closed island. Automatic saves energy on battery."),
+        h("br"), now),
+      mode,
+    ),
+    powerRow,
+  ];
 }
 
 /**
@@ -1832,7 +1889,12 @@ async function main() {
   if (boot) {
     settings = { ...settings, ...boot.settings };
     version = boot.version;
+    onBattery = boot.onBattery === true;
   }
+  void onEvent<boolean>("energy-power", (now) => {
+    onBattery = now === true;
+    energyRedraw?.();
+  });
   setLanguage(resolveLanguage(settings.language, systemLanguages()));
   applyDirection();
   onLanguageChange(() => {

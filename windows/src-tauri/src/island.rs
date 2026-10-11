@@ -41,8 +41,9 @@ static GAP_BITS: AtomicU64 = AtomicU64::new(0x4024_0000_0000_0000); // 10.0
 pub fn edge_gap() -> f64 {
     f64::from_bits(GAP_BITS.load(Ordering::Relaxed))
 }
-/// Logical size of the invisible strip that wakes the island when it is hidden.
-pub const STRIP_W: f64 = 240.0;
+/// Logical size of the invisible strip that wakes the island when it is hidden:
+/// as long as the closed island (src/core/layout.ts COMPACT_W, WAKE_STRIP_W).
+pub const STRIP_W: f64 = 288.0;
 pub const STRIP_H: f64 = 6.0;
 
 pub const WINDOW_LABEL: &str = "island";
@@ -233,12 +234,17 @@ fn frame(area: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) 
     if collapsed {
         let long = (STRIP_W * z * scale).round().max(1.0);
         let thin = (STRIP_H * z * scale).round().max(1.0);
+        // The strip is the piece of the edge right where the island was, as
+        // long as the closed island: moved along its edge or floating, the
+        // island hides into the edge above (or below, beside) itself.
+        let (dx, dy) = shift(area, scale, p);
+        let k = scale * z;
+        let along = |centre: f64, start: f64, size: f64| (centre - long / 2.0).round().clamp(start, (start + size - long).max(start));
         let (sx, sy, sw, sh) = match p.dock {
-            // A floating island hides into its edge like a docked one.
-            Dock::Top => (x + ((pw - long) / 2.0).round(), ay, long, thin),
-            Dock::Bottom => (x + ((pw - long) / 2.0).round(), ay + ah - thin, long, thin),
-            Dock::Left => (x, y + ((ph - long) / 2.0).round(), thin, long),
-            Dock::Right => (ax + aw - thin, y + ((ph - long) / 2.0).round(), thin, long),
+            Dock::Top => (along(x + pw / 2.0 + dx * k, ax, aw), ay, long, thin),
+            Dock::Bottom => (along(x + pw / 2.0 + dx * k, ax, aw), ay + ah - thin, long, thin),
+            Dock::Left => (x, along(y + ph / 2.0 + dy * k, ay, ah), thin, long),
+            Dock::Right => (ax + aw - thin, along(y + ph / 2.0 + dy * k, ay, ah), thin, long),
         };
         return (sx as i32, sy as i32, sw as u32, sh as u32);
     }
@@ -434,6 +440,16 @@ impl PollGate {
     pub(crate) fn is_active(&self) -> bool {
         *self.active.lock().unwrap()
     }
+
+    /// Runs `f` only while the poll is on, holding the lock `set_active` takes:
+    /// a tick that read the cursor before the island hid can no longer make
+    /// the window click-through after the wake strip was told to take the mouse.
+    fn while_active(&self, f: impl FnOnce()) {
+        let guard = self.active.lock().unwrap();
+        if *guard {
+            f();
+        }
+    }
 }
 
 pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
@@ -596,6 +612,17 @@ fn target_monitor(app: &AppHandle, pref: &str) -> Option<Monitor> {
 
 #[cfg(test)]
 mod display_tests {
+    #[test]
+    fn a_hidden_island_never_has_its_wake_strip_made_click_through() {
+        let gate = PollGate::new();
+        let mut ran = false;
+        gate.while_active(|| ran = true);
+        assert!(!ran, "the poll is parked: the strip keeps taking the mouse");
+        gate.set_active(true);
+        gate.while_active(|| ran = true);
+        assert!(ran);
+    }
+
     use super::*;
 
     fn d(name: &str, x: i32, y: i32, w: i32, h: i32) -> DisplayId {
@@ -991,7 +1018,7 @@ mod placement_tests {
         assert_eq!(frame(FHD, 1.0, Placement { zoom: 1.5, ..HOME }, false), (420, 0, 1080, 720));
         assert_eq!(frame(FHD, 2.0, HOME, false), (240, 0, 1440, 960));
         // The wake strip sits at the top of where the panel is.
-        assert_eq!(frame(FHD, 1.0, HOME, true), (840, 0, 240, 6));
+        assert_eq!(frame(FHD, 1.0, HOME, true), (816, 0, 288, 6));
         // Silly zooms are brought back into range.
         assert_eq!(frame(FHD, 1.0, Placement { zoom: f64::NAN, ..HOME }, false).2, (720.0 * DEFAULT_ZOOM).round() as u32);
         assert_eq!(frame(FHD, 1.0, Placement { zoom: 9.0, ..HOME }, false).2, (720.0 * MAX_ZOOM) as u32);
@@ -1003,12 +1030,12 @@ mod placement_tests {
         let work = (0, 0, 1920, 1040);
         let at = |dock, offset| Placement { dock, offset, ..HOME };
         assert_eq!(frame(work, 1.0, at(Dock::Bottom, 0.0), false), (600, 560, 720, 480));
-        assert_eq!(frame(work, 1.0, at(Dock::Bottom, 0.0), true), (840, 1034, 240, 6));
+        assert_eq!(frame(work, 1.0, at(Dock::Bottom, 0.0), true), (816, 1034, 288, 6));
         // On a side the panel is centred up and down, and the strip stands upright.
         assert_eq!(frame(work, 1.0, at(Dock::Left, 0.0), false), (0, 280, 720, 480));
-        assert_eq!(frame(work, 1.0, at(Dock::Left, 0.0), true), (0, 400, 6, 240));
+        assert_eq!(frame(work, 1.0, at(Dock::Left, 0.0), true), (0, 376, 6, 288));
         assert_eq!(frame(work, 1.0, at(Dock::Right, -100.0), false), (1200, 180, 720, 480));
-        assert_eq!(frame(work, 1.0, at(Dock::Right, -100.0), true), (1914, 300, 6, 240));
+        assert_eq!(frame(work, 1.0, at(Dock::Right, -100.0), true), (1914, 276, 6, 288));
         // Moved along its edge, it stays whole on the display.
         assert_eq!(frame(work, 1.0, at(Dock::Top, -300.0), false), (300, 0, 720, 480));
         assert_eq!(frame(work, 1.0, at(Dock::Top, 5000.0), false), (1200, 0, 720, 480));
@@ -1076,7 +1103,11 @@ mod placement_tests {
         assert_eq!(frame(FHD, 1.0, up, false), (600, 300, 720, 480));
         assert_eq!(shift(FHD, 1.0, up), (0.0, 0.0));
         // Hidden, it slips into its edge like a docked island.
-        assert_eq!(frame(FHD, 1.0, float(0.0, 200.0), true), (840, 0, 240, 6));
+        assert_eq!(frame(FHD, 1.0, float(0.0, 200.0), true), (816, 0, 288, 6));
+        // Moved to a side of its edge, the strip is the piece of edge above it.
+        assert_eq!(frame(FHD, 1.0, Placement { offset: 500.0, ..HOME }, true), (1316, 0, 288, 6));
+        // Up against a corner, it stays on the display.
+        assert_eq!(frame(FHD, 1.0, float(-900.0, 200.0), true), (0, 0, 288, 6));
         // Docked on a side, there is nothing to float.
         assert_eq!(frame(FHD, 1.0, Placement { dock: Dock::Left, float: 300.0, ..HOME }, false), (0, 300, 720, 480));
     }
@@ -1179,6 +1210,11 @@ fn current_screen_key(app: &AppHandle) -> Option<(i32, i32, u32, u32, u64)> {
     Some((p.x, p.y, size.width, size.height, m.scale_factor().to_bits()))
 }
 
+/// Saving energy, the cursor this far from the island (page pixels) is read
+/// every FAR_PERIOD_MS instead of at 60 Hz.
+const FAR_FROM_ISLAND: f64 = 160.0;
+const FAR_PERIOD_MS: u64 = 100;
+
 /// Emits `cursor` (window-logical coordinates) at ~60 Hz while the island is
 /// visible. Parked on a condvar the rest of the time.
 pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
@@ -1197,8 +1233,17 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
             // Claude clicking for the chat (computer.rs): the island lets the mouse through.
             let mut was_acting = false;
             let mut ticks: u32 = 0;
+            // Saving energy (energy.rs), a cursor far from the island is read
+            // at 10 Hz: it only has to be seen coming back.
+            let mut far = false;
             while gate.is_active() {
-                std::thread::sleep(Duration::from_millis(period));
+                let saving = far && crate::energy::current() == crate::energy::Effort::Saver;
+                std::thread::sleep(Duration::from_millis(if saving { period.max(FAR_PERIOD_MS) } else { period }));
+                // The island hid during the sleep: the window is the wake strip
+                // now, which must keep taking the mouse.
+                if !gate.is_active() {
+                    break;
+                }
 
                 // Monitors get plugged in, unplugged, rearranged and rescaled, and
                 // an island pinned to coordinates that no longer exist is an island
@@ -1237,6 +1282,11 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     && x <= r.x + r.w + HIT_MARGIN
                     && y >= r.y - HIT_MARGIN
                     && y <= r.y + r.h + HIT_MARGIN;
+                far = r.w > 0.0
+                    && (x < r.x - FAR_FROM_ISLAND
+                        || x > r.x + r.w + FAR_FROM_ISLAND
+                        || y < r.y - FAR_FROM_ISLAND
+                        || y > r.y + r.h + FAR_FROM_ISLAND);
 
                 // A press anywhere else on the screen: the open island may close
                 // on it (Settings → Island → "On a click outside the island").
@@ -1276,8 +1326,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
 
                 let accept = (on_island || dragging) && !acting;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {
-                    gate.ignoring.store(!accept, Ordering::Relaxed);
-                    let _ = win.set_ignore_cursor_events(!accept);
+                    gate.while_active(|| {
+                        gate.ignoring.store(!accept, Ordering::Relaxed);
+                        let _ = win.set_ignore_cursor_events(!accept);
+                    });
                 }
 
                 let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel });

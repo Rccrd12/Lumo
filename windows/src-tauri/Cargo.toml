@@ -66,6 +66,8 @@ windows = { version = "0.61", features = [
   # Computer use holds the hand's mouse still with a low-level hook (computer.rs).
   "Win32_System_LibraryLoader",
   "Win32_System_Pipes",
+  # Settings → General → Energy, "Automatic": on battery or on mains (energy.rs).
+  "Win32_System_Power",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   # "Folder open in File Explorer" in the chat (explorer.rs): IShellWindows

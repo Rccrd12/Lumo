@@ -15,6 +15,7 @@ import {
   effectivePct, parseCodexPlan, pillLabel, planColor, resetLabel,
   type CodexPlanUsage, type PlanUsage, type PlanWindow,
 } from "../core/plan";
+import { byEffort } from "../core/energy";
 import { State } from "../core/state";
 import { USAGE_TEXT } from "../core/chat-usage";
 import { clear, dot, h, svg } from "./dom";
@@ -92,8 +93,8 @@ export function keepPlanUsage(rateLimits: unknown) {
 
 // ── From Anthropic (Settings → Agents → Plan usage → Ask Anthropic) ─────────
 
-/** How often the numbers are asked again while the island is open. */
-const ONLINE_EVERY_MS = 3 * 60_000;
+/** How often the numbers are asked again while the island is open: Settings → General → Energy sets it. */
+const onlineEvery = () => byEffort(State.effort, 60_000, 3 * 60_000, 6 * 60_000);
 let onlineAt = 0;
 let onlineInFlight = false;
 /** The Claude card's Refresh: at work, or why the last ask failed. */
@@ -106,7 +107,7 @@ let claudeRefresh: { busy: boolean; error: string | null } = { busy: false, erro
  */
 export function refreshClaudePlanOnline(force = false): void {
   if (!State.settings.planUsageOnline || State.paused || onlineInFlight) return;
-  if (!force && Date.now() - onlineAt < ONLINE_EVERY_MS) return;
+  if (!force && Date.now() - onlineAt < onlineEvery()) return;
   onlineInFlight = true;
   onlineAt = Date.now();
   const started = Date.now();
@@ -130,14 +131,18 @@ export function refreshClaudePlanOnline(force = false): void {
 }
 
 let pollTimer: number | null = null;
+let pollEvery = 0;
 
-/** While the island is open, the numbers are asked again every 3 minutes; never while it is shut. */
+/** While the island is open, the numbers are asked again every 3 minutes (as Energy says); never while it is shut. */
 export function startPlanUsagePolling(): void {
   State.subscribe(() => {
     const want = State.mode === "expanded" && State.settings.planUsageOnline && !State.paused;
-    if (want && pollTimer == null) {
-      refreshClaudePlanOnline();
-      pollTimer = window.setInterval(() => refreshClaudePlanOnline(), ONLINE_EVERY_MS);
+    const every = onlineEvery();
+    if (want && (pollTimer == null || every !== pollEvery)) {
+      if (pollTimer == null) refreshClaudePlanOnline();
+      else window.clearInterval(pollTimer);
+      pollEvery = every;
+      pollTimer = window.setInterval(() => refreshClaudePlanOnline(), every);
     } else if (!want && pollTimer != null) {
       window.clearInterval(pollTimer);
       pollTimer = null;

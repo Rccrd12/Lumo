@@ -119,9 +119,15 @@ const RETRY_MOST: Duration = Duration::from_secs(600);
 /// How long one IDLE lasts before Lumo looks again anyway. The server should
 /// say at once when an email arrives, but some (Gmail) can be slow to: looking
 /// every 20 seconds costs one tiny SEARCH, as only new emails are fetched.
-const IDLE_FOR: Duration = Duration::from_secs(20);
+/// Settings → General → Energy makes it 8 seconds with nothing spared, a
+/// minute while saving energy.
+fn idle_for() -> Duration {
+    Duration::from_secs(crate::energy::pick(8, 20, 60))
+}
 /// Without IDLE, how often the inbox is asked.
-const POLL_EVERY: Duration = Duration::from_secs(30);
+fn poll_every() -> Duration {
+    Duration::from_secs(crate::energy::pick(10, 30, 90))
+}
 
 /// One connection: sign in, then look each time the server says something
 /// changed. Returns Ok when it should be redone (keys changed, pill off).
@@ -154,7 +160,7 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
         if idle {
             imap.idle(host).await?;
         } else {
-            let _ = tokio::time::timeout(POLL_EVERY, WAKE.notified()).await;
+            let _ = tokio::time::timeout(poll_every(), WAKE.notified()).await;
         }
         if stop() {
             let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
@@ -377,13 +383,13 @@ impl Imap {
     }
 
     /// Waits in IDLE until the server says the mailbox changed, Lumo is
-    /// woken, or IDLE_FOR goes by; then ends the IDLE.
+    /// woken, or idle_for() goes by; then ends the IDLE.
     async fn idle(&mut self, host: &str) -> Result<(), String> {
         self.tag += 1;
         let tag = format!("L{}", self.tag);
         self.send(&format!("{tag} IDLE\r\n")).await?;
         timed(host, self.idling(&tag)).await?;
-        let deadline = tokio::time::Instant::now() + IDLE_FOR;
+        let deadline = tokio::time::Instant::now() + idle_for();
         loop {
             // The server speaks, or the time is up, or Lumo is woken.
             let wait = tokio::time::timeout_at(deadline, WAKE.notified());

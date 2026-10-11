@@ -16,6 +16,7 @@ mod computer;
 mod config_file;
 mod desk;
 mod desktop;
+mod energy;
 mod explorer;
 mod files;
 mod github;
@@ -81,6 +82,8 @@ pub struct BootInfo {
     cursor_poll: bool,
     /// Where the island is drawn in its window (island::shift).
     shift: island::ShiftPayload,
+    /// The computer runs on its battery (energy.rs), for Settings → General → Energy.
+    on_battery: bool,
 }
 
 #[tauri::command]
@@ -99,6 +102,7 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
         hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
         cursor_poll: platform::CURSOR_POLL,
         shift,
+        on_battery: energy::on_battery(),
     }
 }
 
@@ -147,6 +151,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         island::apply_geometry(&app, &settings.screen, island::Placement::of(&settings), collapsed);
     }
     integrations::settings_saved(&app, &settings.active_integrations);
+    energy::refresh(&app);
     if shortcuts_changed {
         shortcuts::apply(&app, &settings.shortcuts);
     }
@@ -181,10 +186,18 @@ fn language_changed(app: &AppHandle) {
 fn set_collapsed(app: AppHandle, shared: State<Shared>, collapsed: bool) {
     let (pref, placement) = placement(&shared);
     shared.gate.collapsed.store(collapsed, Ordering::Relaxed);
+    // The cursor poll stops before the wake strip is told to take the mouse,
+    // or its last tick could make the strip click-through and the hidden
+    // island would never come back (island.rs while_active).
+    if collapsed {
+        shared.gate.set_active(false);
+    }
     island::apply_geometry(&app, &pref, placement, collapsed);
     // The wake strip must always take the mouse, and a resize invalidates the flag.
     island::refresh_click_through(&app, &shared.gate);
-    shared.gate.set_active(!collapsed);
+    if !collapsed {
+        shared.gate.set_active(true);
+    }
     platform::set_pointer_watch(!collapsed);
 }
 
@@ -417,8 +430,9 @@ fn quit_app(app: AppHandle) {
 /// Tray → Pause. Paused means paused: the pollers stop talking to the network,
 /// not just the island stopping showing things.
 #[tauri::command]
-fn set_paused(paused: bool) {
+fn set_paused(app: AppHandle, paused: bool) {
     integrations::set_paused(paused);
+    tray::set_paused(&app, paused);
 }
 
 // ── Claude Code hooks ─────────────────────────────────────────────────────────
@@ -1185,6 +1199,7 @@ pub fn run() {
             computer::forget_antigravity(&claude_code::work_dir());
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
+            energy::start(handle.clone());
             integrations::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())

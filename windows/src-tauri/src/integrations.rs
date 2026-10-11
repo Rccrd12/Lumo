@@ -86,6 +86,13 @@ pub(crate) fn enabled(app: &AppHandle, id: &str) -> bool {
         .unwrap_or(false)
 }
 
+/// How long a poller waits between two polls, for Settings → General →
+/// Energy: a third of it (10 s at least) with nothing spared, twice it while
+/// saving energy.
+pub fn cadence(every_secs: u64) -> Duration {
+    Duration::from_secs(crate::energy::pick((every_secs / 3).max(10), every_secs, every_secs * 2))
+}
+
 fn spawn<F, Fut>(app: AppHandle, id: &'static str, delay_secs: u64, every_secs: u64, poll: F)
 where
     F: Fn(AppHandle) -> Fut + Send + 'static,
@@ -93,17 +100,15 @@ where
 {
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(Duration::from_secs(delay_secs)).await;
-        let mut ticker = tokio::time::interval(Duration::from_secs(every_secs));
         loop {
-            ticker.tick().await;
-            // The ticker keeps its cadence; we just decline to do the work. An
+            // The loop keeps its cadence; we just decline to do the work. An
             // integration the user switched off, or a paused app, must make no
             // network calls at all — CLAUDE.md allows talking only to services
             // the user configured, and a disabled one is not configured.
-            if PAUSED.load(Ordering::Relaxed) || !enabled(&app, id) {
-                continue;
+            if !PAUSED.load(Ordering::Relaxed) && enabled(&app, id) {
+                poll(app.clone()).await;
             }
-            poll(app.clone()).await;
+            tokio::time::sleep(cadence(every_secs)).await;
         }
     });
 }
@@ -408,7 +413,10 @@ fn spawn_github_loops(app: AppHandle) {
             // Sleeps for `wait`, or less when the island asks for fresh data.
             let _ = tokio::time::timeout(wait, GITHUB.pulse_wake.notified()).await;
             let pending = run_github_pulse(&pulse_app).await;
-            wait = Duration::from_secs(if pending { 60 } else { 300 });
+            // A CI running is asked about sooner; Settings → General → Energy
+            // sets how much sooner.
+            let (realtime, light, saver) = if pending { (20, 60, 120) } else { (60, 300, 600) };
+            wait = Duration::from_secs(crate::energy::pick(realtime, light, saver));
         }
     });
     tauri::async_runtime::spawn(async move {
@@ -416,7 +424,7 @@ fn spawn_github_loops(app: AppHandle) {
         loop {
             let _ = tokio::time::timeout(wait, GITHUB.activity_wake.notified()).await;
             run_github_activity(&app).await;
-            wait = Duration::from_secs(1800);
+            wait = Duration::from_secs(crate::energy::pick(1800, 1800, 3600));
         }
     });
 }
@@ -497,6 +505,12 @@ async fn run_github_activity(app: &AppHandle) {
         cache.activity = Some(activity);
     }
     emit_github(app);
+}
+
+/// Settings → General → Energy changed: the pulse is asked now, and its next
+/// wait follows the new effort.
+pub fn wake_github_loops() {
+    wake_github_pulse();
 }
 
 fn wake_github_pulse() {
