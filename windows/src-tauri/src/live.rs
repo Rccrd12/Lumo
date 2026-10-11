@@ -16,7 +16,7 @@
 //
 // Nothing here starts a program or a script by its type: a file is opened by
 // its type only when it is a document (`is_runnable`), and an app only from
-// the shortcuts the Start menu (or the Linux app menu) lists.
+// the shortcuts the Start menu lists.
 //
 // The microphone: the island's webview may use it once a conversation starts
 // (`arm_microphone`), and only then is its request allowed without the
@@ -234,20 +234,10 @@ pub fn is_runnable(path: &Path) -> bool {
     const RUNNABLE: &[&str] = &[
         "exe", "com", "bat", "cmd", "ps1", "psm1", "psd1", "vbs", "vbe", "js", "jse", "wsf", "wsh", "msi", "msp",
         "msix", "appx", "scr", "hta", "cpl", "jar", "lnk", "url", "reg", "pif", "application", "gadget", "inf",
-        "sh", "bash", "zsh", "fish", "run", "bin", "appimage", "desktop", "py", "pyw", "pl", "rb", "deb", "rpm",
+        "sh", "bash", "zsh", "fish", "run", "bin", "py", "pyw", "pl", "rb",
         "scpt", "app", "command",
     ];
-    if RUNNABLE.contains(&extension(path).as_str()) {
-        return true;
-    }
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        if path.is_file() && std::fs::metadata(path).is_ok_and(|m| m.permissions().mode() & 0o111 != 0) {
-            return true;
-        }
-    }
-    false
+    RUNNABLE.contains(&extension(path).as_str())
 }
 
 /// What reading a path gives the model.
@@ -572,7 +562,7 @@ pub fn open(target: &str) -> Result<String, String> {
 #[derive(Debug, Clone, PartialEq)]
 pub struct App {
     pub name: String,
-    /// A Start menu shortcut (Windows) or a `.desktop` file (Linux).
+    /// A Start menu shortcut.
     pub launcher: PathBuf,
 }
 
@@ -863,7 +853,6 @@ pub fn live_microphone(on: bool) {
     arm_microphone(on);
 }
 
-#[cfg(windows)]
 mod imp {
     use super::*;
 
@@ -967,109 +956,6 @@ mod imp {
     }
 }
 
-#[cfg(target_os = "linux")]
-mod imp {
-    use super::*;
-
-    use std::process::Command;
-
-    pub fn open_document(path: &Path) -> Result<(), String> {
-        Command::new("xdg-open")
-            .arg(path)
-            .spawn()
-            .map(|_| ())
-            .map_err(|_| tf("Couldn't open {name}.", &[("name", &file_name_of(path))]))
-    }
-
-    /// `Name=` of a `.desktop` file's main section, unless it hides itself.
-    pub fn desktop_name(text: &str) -> Option<String> {
-        let mut main = false;
-        let mut name = None;
-        for line in text.lines() {
-            let line = line.trim();
-            if line.starts_with('[') {
-                main = line == "[Desktop Entry]";
-                continue;
-            }
-            if !main {
-                continue;
-            }
-            if line == "NoDisplay=true" || line == "Hidden=true" || line == "Type=Link" || line == "Type=Directory" {
-                return None;
-            }
-            if let Some(v) = line.strip_prefix("Name=") {
-                name.get_or_insert_with(|| v.trim().to_string());
-            }
-        }
-        name.filter(|n| !n.is_empty())
-    }
-
-    /// The apps of the app menu: `.desktop` files where the menus find them.
-    pub fn apps() -> Vec<App> {
-        let home = platform::home_dir();
-        let data_home = std::env::var_os("XDG_DATA_HOME").map(PathBuf::from).unwrap_or_else(|| home.join(".local/share"));
-        let mut dirs = vec![data_home.join("applications"), data_home.join("flatpak/exports/share/applications")];
-        let data_dirs = std::env::var("XDG_DATA_DIRS").unwrap_or_else(|_| "/usr/local/share:/usr/share".into());
-        dirs.extend(data_dirs.split(':').filter(|d| !d.is_empty()).map(|d| PathBuf::from(d).join("applications")));
-        dirs.push(PathBuf::from("/var/lib/flatpak/exports/share/applications"));
-        dirs.push(PathBuf::from("/var/lib/snapd/desktop/applications"));
-        let mut out: Vec<App> = Vec::new();
-        for dir in dirs {
-            let Ok(read) = std::fs::read_dir(&dir) else { continue };
-            for entry in read.flatten() {
-                let path = entry.path();
-                if extension(&path) != "desktop" || out.iter().any(|a| a.launcher.file_name() == path.file_name()) {
-                    continue;
-                }
-                let Ok(text) = std::fs::read_to_string(&path) else { continue };
-                if let Some(name) = desktop_name(&text) {
-                    out.push(App { name, launcher: path });
-                }
-            }
-        }
-        out
-    }
-
-    /// `gtk-launch` starts a `.desktop` entry by its id, as the menu does;
-    /// `gio launch` takes its path where gtk-launch is missing.
-    pub fn launch(launcher: &Path) -> Result<(), String> {
-        let id = launcher.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-        if Command::new("gtk-launch").arg(&id).spawn().is_ok() {
-            return Ok(());
-        }
-        Command::new("gio")
-            .arg("launch")
-            .arg(launcher)
-            .spawn()
-            .map(|_| ())
-            .map_err(|_| tf("Couldn't open {name}.", &[("name", &id)]))
-    }
-
-    pub fn install(app: &AppHandle) {
-        use gtk::glib::prelude::Cast;
-        use webkit2gtk::{PermissionRequestExt, SettingsExt, UserMediaPermissionRequest, UserMediaPermissionRequestExt, WebViewExt};
-        let Some(win) = crate::island::window(app) else { return };
-        let result = win.with_webview(|webview| {
-            let view = webview.inner();
-            // WebKitGTK only offers getUserMedia with media streams turned on.
-            if let Some(settings) = WebViewExt::settings(&view) {
-                settings.set_enable_media_stream(true);
-            }
-            view.connect_permission_request(|_, request| {
-                let Some(media) = request.downcast_ref::<UserMediaPermissionRequest>() else { return false };
-                if media.is_for_audio_device() && !media.is_for_video_device() && microphone_armed() {
-                    request.allow();
-                    return true;
-                }
-                false
-            });
-        });
-        if let Err(err) = result {
-            crate::log::line(format!("microphone: {err}"));
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1108,15 +994,12 @@ mod tests {
         assert!(full_path("relative/file.txt").is_none());
         assert!(full_path("bad\npath").is_none());
         assert_eq!(full_path("~/Documents/a.pdf"), Some(platform::home_dir().join("Documents/a.pdf")));
-        #[cfg(unix)]
-        assert_eq!(full_path("\"/tmp/x y.txt\""), Some(PathBuf::from("/tmp/x y.txt")));
-        #[cfg(windows)]
         assert_eq!(full_path("C:\\Users\\me\\a.pdf"), Some(PathBuf::from("C:\\Users\\me\\a.pdf")));
     }
 
     #[test]
     fn programs_and_scripts_are_never_opened_by_their_type() {
-        for name in ["setup.exe", "run.BAT", "x.ps1", "link.lnk", "page.url", "a.vbs", "app.AppImage", "x.desktop", "s.sh"] {
+        for name in ["setup.exe", "run.BAT", "x.ps1", "link.lnk", "page.url", "a.vbs", "s.sh"] {
             assert!(is_runnable(Path::new(name)), "{name}");
         }
         for name in ["report.pdf", "photo.JPG", "notes.txt", "sheet.xlsx", "deck.pptx", "song.mp3"] {
@@ -1240,13 +1123,5 @@ mod tests {
         assert_eq!(helper_name("antigravity-cli"), "Antigravity CLI");
         assert_eq!(helper_name("claude-code"), "Claude Code");
         assert_eq!(helper_name("anything"), "Claude Code");
-    }
-
-    #[cfg(target_os = "linux")]
-    #[test]
-    fn desktop_entries_give_their_name_unless_hidden() {
-        assert_eq!(imp::desktop_name("[Desktop Entry]\nType=Application\nName=Firefox\nName[it]=Firefox\nExec=firefox %u").as_deref(), Some("Firefox"));
-        assert_eq!(imp::desktop_name("[Desktop Entry]\nName=Helper\nNoDisplay=true"), None);
-        assert_eq!(imp::desktop_name("[Desktop Action new]\nName=New Window\n[Desktop Entry]\nName=App"), Some("App".into()));
     }
 }

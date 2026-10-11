@@ -3,7 +3,7 @@
 // in the Mac's order: they are contract values (settings, hook routing), so an
 // ID here never changes once shipped.
 //
-// What is added for Windows and Linux is `support` — not every Mac pill has
+// What is added for Windows is `support` — not every Mac pill has
 // something behind it here — and `connect`, which says what makes the pill
 // "connected": its hooks being installed, a key in the OS credential store, or
 // nothing at all.
@@ -23,13 +23,12 @@ export const PILL_CATEGORIES: { id: PillCategory; title: string }[] = [
 
 /**
  * Whether the pill does anything on this build:
- * - `yes`: works on Windows and Linux;
- * - `windows`: Windows only (the app behind it has no Linux build);
+ * - `yes`: works on Windows;
  * - `soon`: can be declared, shows "Coming soon" (macOS has it, this build not yet);
  * - `no`: never offered here (macOS only, or retired: Gemini CLI, replaced by
  *   Antigravity CLI). The ID stays reserved.
  */
-export type PillSupport = "yes" | "windows" | "soon" | "no";
+export type PillSupport = "yes" | "soon" | "no";
 
 /** What makes the pill connected. */
 export type PillConnect =
@@ -53,8 +52,6 @@ export interface PillDefinition {
   support: PillSupport;
   connect: PillConnect;
 }
-
-export type HostOs = "windows" | "linux";
 
 const hooks: PillConnect = { kind: "hooks" };
 const key = (k: string): PillConnect => ({ kind: "key", key: k });
@@ -98,10 +95,9 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
   { id: "agent_hermes", name: "Hermes", color: "#C084FC", category: "agent",
     subtitle: N_("Agent"), source: "agent", support: "yes", connect: hooks },
   // Claude Code sessions run from the Claude desktop app: the relay tags them
-  // from CLAUDE_CODE_ENTRYPOINT, so there is nothing to install. The app has no
-  // Linux build.
+  // from CLAUDE_CODE_ENTRYPOINT, so there is nothing to install.
   { id: "agent_claude-desktop", name: "Claude Desktop", color: "#D97757", category: "agent",
-    subtitle: N_("Agent"), source: "agent", support: "windows", connect: none },
+    subtitle: N_("Agent"), source: "agent", support: "yes", connect: none },
   // ── AI for the chat ────────────────────────────────────────────────────────
   { id: "ai_anthropic", name: "Anthropic", color: ACCENT.anthropic, category: "ai",
     subtitle: N_("Chat"), source: "n8n", support: "yes", connect: key("anthropic-api-key") },
@@ -132,7 +128,7 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("stripe-api-key") },
   { id: "integration_music", name: "Apple Music", color: "#FA2D48", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "no", connect: none },
-  // Windows and Linux only, after the Mac's: new emails over IMAP, for the
+  // Windows only, after the Mac's: new emails over IMAP, for the
   // closed island's preview (mail.rs).
   { id: "integration_mail", name: "Email", color: "#EA4335", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("mail-app-password") },
@@ -144,21 +140,13 @@ export const DEFAULT_MAIN_PILL = "integration_claude";
 /** How many declared pills may sit next to the main one. */
 export const MAX_DECLARED = 4;
 
-/** The OS this page runs on. Only the Windows webview says "Windows". */
-export const HOST_OS: HostOs =
-  typeof navigator !== "undefined" && /Windows/.test(navigator.userAgent ?? "") ? "windows" : "linux";
-
 export function pillDefinition(id: string): PillDefinition | undefined {
   return PILL_CATALOG.find((p) => p.id === id);
 }
 
-function offeredOn(def: PillDefinition, os: HostOs): boolean {
-  return def.support === "yes" || def.support === "soon" || (def.support === "windows" && os === "windows");
-}
-
 /** The pills this build offers, in catalog order. */
-export function availablePills(os: HostOs = HOST_OS): PillDefinition[] {
-  return PILL_CATALOG.filter((p) => offeredOn(p, os));
+export function availablePills(): PillDefinition[] {
+  return PILL_CATALOG.filter((p) => p.support === "yes" || p.support === "soon");
 }
 
 export function isComingSoon(id: string): boolean {
@@ -171,8 +159,8 @@ export function isHookPill(id: string): boolean {
 }
 
 /** Workspace tools that can be the main pill. */
-export function mainPillChoices(os: HostOs = HOST_OS): PillDefinition[] {
-  return availablePills(os).filter((p) => p.category === "workspace" && p.support !== "soon");
+export function mainPillChoices(): PillDefinition[] {
+  return availablePills().filter((p) => p.category === "workspace" && p.support !== "soon");
 }
 
 /** PillDefinition.sessionSubtitle — next to the name in a live session's card. */
@@ -198,10 +186,10 @@ export interface Declared {
  * without the main pill, which never takes a slot. Same rules as
  * AppState.loadIntegrationTasks on macOS.
  */
-export function sanitizeDeclared(d: Declared, os: HostOs = HOST_OS): Declared {
-  const mains = new Set(mainPillChoices(os).map((p) => p.id));
+export function sanitizeDeclared(d: Declared): Declared {
+  const mains = new Set(mainPillChoices().map((p) => p.id));
   const mainPill = mains.has(d.mainPill) ? d.mainPill : DEFAULT_MAIN_PILL;
-  const offered = new Set(availablePills(os).map((p) => p.id));
+  const offered = new Set(availablePills().map((p) => p.id));
   const activeIntegrations: string[] = [];
   for (const id of d.activeIntegrations ?? []) {
     if (id !== mainPill && offered.has(id) && !activeIntegrations.includes(id)) {
@@ -216,9 +204,9 @@ export function sanitizeDeclared(d: Declared, os: HostOs = HOST_OS): Declared {
  * changes nothing: the main pill is never toggled, an unknown pill never
  * declared, and a fifth pill never added.
  */
-export function toggleDeclared(d: Declared, id: string, os: HostOs = HOST_OS): string[] | null {
+export function toggleDeclared(d: Declared, id: string): string[] | null {
   if (id === d.mainPill) return null;
-  if (!availablePills(os).some((p) => p.id === id)) return null;
+  if (!availablePills().some((p) => p.id === id)) return null;
   if (d.activeIntegrations.includes(id)) return d.activeIntegrations.filter((x) => x !== id);
   if (d.activeIntegrations.length >= MAX_DECLARED) return null;
   return [...d.activeIntegrations, id];
@@ -228,8 +216,8 @@ export function toggleDeclared(d: Declared, id: string, os: HostOs = HOST_OS): s
  * Picks a new main pill. The old main pill is not declared on its own, and the
  * new one leaves the declared list so it does not take a slot twice.
  */
-export function chooseMainPill(d: Declared, id: string, os: HostOs = HOST_OS): Declared | null {
-  if (!mainPillChoices(os).some((p) => p.id === id)) return null;
+export function chooseMainPill(d: Declared, id: string): Declared | null {
+  if (!mainPillChoices().some((p) => p.id === id)) return null;
   return { mainPill: id, activeIntegrations: d.activeIntegrations.filter((x) => x !== id) };
 }
 

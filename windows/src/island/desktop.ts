@@ -33,8 +33,6 @@ export class DesktopLink {
 
   private seasons = new SeasonCache();
   private pushed = "";
-  private pendingCarry: { x: number; y: number } | null = null;
-  private carryFrame = false;
   private host: DesktopHost;
 
   constructor(host: DesktopHost) {
@@ -57,7 +55,7 @@ export class DesktopLink {
     });
   }
 
-  /** False where windows can't be placed (GNOME on Wayland): he stays in the island. */
+  /** False when the feature is off: he stays in the island. */
   get supported(): boolean {
     return this.mode !== "off";
   }
@@ -95,38 +93,17 @@ export class DesktopLink {
     return this.supported && !State.paused && !State.mochiOnDesktop && this.controller.phase === "home";
   }
 
-  /** (x, y): the pointer, island-window coordinates. */
-  pickUp(x: number, y: number) {
+  /** The cursor poll carries him from here, and sees the button go up. */
+  pickUp() {
     this.carrying = true;
     State.mochiOnDesktop = true;
     State.notify();
-    void Bridge.desktopPickUp(x, y).then((ok) => {
+    void Bridge.desktopPickUp().then((ok) => {
       if (ok) return;
       this.carrying = false;
       State.mochiOnDesktop = false;
       State.notify();
     });
-  }
-
-  /** The pointer moved during the drag. Windows carries him from Rust. */
-  carry(x: number, y: number) {
-    if (!this.carrying || this.mode === "poll") return;
-    this.pendingCarry = { x, y };
-    if (this.carryFrame) return;
-    this.carryFrame = true;
-    requestAnimationFrame(() => {
-      this.carryFrame = false;
-      const p = this.pendingCarry;
-      this.pendingCarry = null;
-      if (p && this.carrying) void Bridge.desktopCarry(p.x, p.y);
-    });
-  }
-
-  /** The button went up. On Windows the cursor poll has seen it already. */
-  carryEnd(x: number, y: number) {
-    if (!this.carrying || this.mode === "poll") return;
-    this.pendingCarry = null;
-    void Bridge.desktopCarryEnd(x, y);
   }
 
   private onDropped(from: "island" | "desktop", home: boolean) {

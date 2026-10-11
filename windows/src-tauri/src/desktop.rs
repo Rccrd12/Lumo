@@ -7,15 +7,10 @@
 // the island for an alert, home. This file owns the window — where it is, which
 // part of it takes the mouse, the flights, the drag, and the saved spot.
 //
-// How the window is placed depends on the system (platform::DesktopMode):
-//   * Windows: anywhere, in physical desktop pixels. A cursor poll — running
-//     only while he is awake on the desktop — makes the window click-through
-//     except over his body, feeds his eyes, and carries him during a drag.
-//   * Linux X11: the same coordinates; the input region is his body, and the
-//     page drives the drag.
-//   * Linux layer-shell: a layer surface on the island's display, placed with
-//     margins in logical pixels.
-//   * GNOME on Wayland: off, nothing is created.
+// The window is placed anywhere, in physical desktop pixels. A cursor poll —
+// running only while he is awake on the desktop — makes the window
+// click-through except over his body, feeds his eyes, and carries him during a
+// drag.
 
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
@@ -25,7 +20,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, State, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 use crate::island::{self, PollGate};
-use crate::platform::{self, DesktopMode, MouseShape};
+use crate::platform::{self, DesktopMode};
 use crate::settings::{self, DesktopSpot};
 
 pub const LABEL: &str = "mochi";
@@ -45,7 +40,7 @@ const TICK_MS: u64 = 16;
 /// the user is typing in each time he flies out; a window created visible
 /// (shown without activation) and only ever moved never is. Same as the
 /// island, which is never re-shown either.
-const PARK: bool = cfg!(windows);
+const PARK: bool = true;
 const PARKED: (f64, f64) = (-32000.0, -32000.0);
 
 // ── Pure geometry ─────────────────────────────────────────────────────────────
@@ -206,7 +201,7 @@ pub enum Source {
 
 #[derive(Clone, Copy)]
 struct Carry {
-    /// Cursor minus the window's top-left at pick-up, physical (Poll mode).
+    /// Cursor minus the window's top-left at pick-up, physical.
     grab: (f64, f64),
     from: Source,
 }
@@ -219,13 +214,9 @@ struct Inner {
     landed: bool,
     asleep: bool,
     carry: Option<Carry>,
-    /// Layer mode: the surface covers the display while it is dragged.
-    overlay: bool,
-    /// Top-left corner, in the mode's space.
+    /// Top-left corner, physical desktop pixels.
     pos: (f64, f64),
-    /// Layer mode: logical size of the display he lives on.
-    display: Option<(f64, f64)>,
-    /// Poll mode: the click-through state last applied.
+    /// The click-through state last applied.
     ignoring: Option<bool>,
 }
 
@@ -259,7 +250,7 @@ struct Cursor {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DesktopInfo {
-    /// "poll" | "window" | "layer" | "off".
+    /// "poll" | "off".
     mode: &'static str,
     /// He was on the desktop when the app last quit.
     on_desktop: bool,
@@ -267,10 +258,6 @@ pub struct DesktopInfo {
 
 pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window(LABEL)
-}
-
-fn body_disc() -> MouseShape {
-    MouseShape::Disc { cx: SIZE / 2.0, cy: SIZE / 2.0, r: SIZE * logic::BODY_RADIUS_FRACTION }
 }
 
 // ── Setup ─────────────────────────────────────────────────────────────────────
@@ -287,12 +274,8 @@ const DESKTOP_LUMO: bool = false;
 pub fn setup(app: &AppHandle) {
     let mut mode = if DESKTOP_LUMO { platform::desktop_mode() } else { DesktopMode::Off };
     if mode != DesktopMode::Off {
-        match create_window(app, mode) {
-            Some(win) if platform::prepare_desktop_window(&win, mode) => {}
-            Some(win) => {
-                let _ = win.destroy();
-                mode = DesktopMode::Off;
-            }
+        match create_window(app) {
+            Some(win) => platform::prepare_desktop_window(&win),
             None => mode = DesktopMode::Off,
         }
     }
@@ -316,14 +299,13 @@ fn page_url(app: &AppHandle) -> WebviewUrl {
     WebviewUrl::App("mochi.html".into())
 }
 
-fn create_window(app: &AppHandle, _mode: DesktopMode) -> Option<WebviewWindow> {
+fn create_window(app: &AppHandle) -> Option<WebviewWindow> {
     let mut builder = WebviewWindowBuilder::new(app, LABEL, page_url(app))
         .additional_browser_args(crate::BROWSER_ARGS)
         .title("Lumo")
         .inner_size(SIZE, SIZE)
-        // GTK won't size a non-resizable window below its natural size (see
-        // island::apply_geometry). Windows would grow resize borders instead.
-        .resizable(cfg!(target_os = "linux"))
+        // A resizable window would grow resize borders.
+        .resizable(false)
         .decorations(false)
         .transparent(true)
         .shadow(false)
@@ -352,13 +334,8 @@ fn create_window(app: &AppHandle, _mode: DesktopMode) -> Option<WebviewWindow> {
 
 // ── Coordinates ───────────────────────────────────────────────────────────────
 
-/// Connected displays in the mode's space.
-fn displays(app: &AppHandle, d: &Desktop) -> Vec<Display> {
-    if d.mode == DesktopMode::Layer {
-        let (w, h) = d.inner.lock().unwrap().display.unwrap_or((1920.0, 1080.0));
-        let frame = Rect { x: 0.0, y: 0.0, w, h };
-        return vec![Display { frame, work: frame, scale: 1.0 }];
-    }
+/// Connected displays, physical desktop pixels.
+fn displays(app: &AppHandle) -> Vec<Display> {
     let Ok(monitors) = app.available_monitors() else { return Vec::new() };
     monitors
         .iter()
@@ -378,12 +355,8 @@ fn displays(app: &AppHandle, d: &Desktop) -> Vec<Display> {
         .collect()
 }
 
-/// The island's top-centre point and the scale there, in the mode's space.
-fn island_anchor(app: &AppHandle, d: &Desktop) -> Option<(f64, f64, f64)> {
-    if d.mode == DesktopMode::Layer {
-        let (w, _) = d.inner.lock().unwrap().display?;
-        return Some((w / 2.0, 0.0, 1.0));
-    }
+/// The island's top-centre point and the scale there, physical desktop pixels.
+fn island_anchor(app: &AppHandle) -> Option<(f64, f64, f64)> {
     let win = island::window(app)?;
     let pos = win.outer_position().ok()?;
     let size = win.outer_size().ok()?;
@@ -398,51 +371,9 @@ fn island_anchor(app: &AppHandle, d: &Desktop) -> Option<(f64, f64, f64)> {
     Some((x, y, scale))
 }
 
-/// The window side in the mode's space.
-fn side(app: &AppHandle, d: &Desktop) -> f64 {
-    if d.mode == DesktopMode::Layer {
-        return SIZE;
-    }
+/// The window side, physical pixels.
+fn side(app: &AppHandle) -> f64 {
     SIZE * window(app).and_then(|w| w.scale_factor().ok()).unwrap_or(1.0)
-}
-
-/// Asks the GTK main thread for the island's display (layer mode), and waits.
-/// Never called from the main thread itself: every caller is a command that
-/// runs on Tauri's async pool.
-fn refresh_layer_display(app: &AppHandle, d: &Desktop) {
-    if d.mode != DesktopMode::Layer {
-        return;
-    }
-    let (Some(island), Some(mochi)) = (island::window(app), window(app)) else { return };
-    let (tx, rx) = std::sync::mpsc::channel();
-    let _ = app.run_on_main_thread(move || {
-        let _ = tx.send(platform::layer_display(&island, &mochi));
-    });
-    if let Ok(Some(size)) = rx.recv_timeout(Duration::from_secs(1)) {
-        d.inner.lock().unwrap().display = Some(size);
-    }
-}
-
-/// Island-window client coordinates (logical) → the mode's space.
-fn from_island_client(app: &AppHandle, d: &Desktop, x: f64, y: f64) -> Option<(f64, f64)> {
-    let island = island::window(app)?;
-    match d.mode {
-        DesktopMode::Layer => {
-            // The island is anchored to the top edge and centred.
-            let (dw, _) = d.inner.lock().unwrap().display?;
-            let scale = island.scale_factor().unwrap_or(1.0);
-            let iw = island.inner_size().ok()?.width as f64 / scale;
-            // Page pixels are drawn zoomed.
-            let z = island::zoom();
-            Some(((dw - iw) / 2.0 + x * z, y * z))
-        }
-        DesktopMode::Window => {
-            let pos = island.outer_position().ok()?;
-            let k = island.scale_factor().unwrap_or(1.0) * island::zoom();
-            Some((pos.x as f64 + x * k, pos.y as f64 + y * k))
-        }
-        _ => None,
-    }
 }
 
 // ── Window operations ─────────────────────────────────────────────────────────
@@ -450,14 +381,8 @@ fn from_island_client(app: &AppHandle, d: &Desktop, x: f64, y: f64) -> Option<(f
 fn place(app: &AppHandle, d: &Desktop, pos: (f64, f64)) {
     d.inner.lock().unwrap().pos = pos;
     let Some(win) = window(app) else { return };
-    match d.mode {
-        DesktopMode::Poll | DesktopMode::Window => {
-            let _ = win.set_position(PhysicalPosition::new(pos.0.round() as i32, pos.1.round() as i32));
-        }
-        DesktopMode::Layer => {
-            let _ = app.run_on_main_thread(move || platform::set_layer_margins(&win, pos.0, pos.1));
-        }
-        DesktopMode::Off => {}
+    if d.mode == DesktopMode::Poll {
+        let _ = win.set_position(PhysicalPosition::new(pos.0.round() as i32, pos.1.round() as i32));
     }
 }
 
@@ -494,7 +419,7 @@ fn hide(app: &AppHandle, d: &Desktop) {
 
 /// Re-derives the poll gate and what takes the mouse from the current state.
 fn refresh(app: &AppHandle, d: &Desktop) {
-    let (active, ignore, shape) = {
+    let (active, ignore) = {
         let mut i = d.inner.lock().unwrap();
         let active = i.shown && (i.carry.is_some() || (i.landed && !i.asleep));
         // Poll mode: Some(flag) is decided here; None leaves it to the poll.
@@ -513,30 +438,15 @@ fn refresh(app: &AppHandle, d: &Desktop) {
         if ignore.is_none() {
             i.ignoring = None;
         }
-        let shape = if !i.shown || (!i.landed && i.carry.is_none()) {
-            MouseShape::Empty
-        } else if i.overlay {
-            MouseShape::Whole
-        } else if matches!(i.carry, Some(Carry { from: Source::Island, .. })) {
-            MouseShape::Empty
-        } else {
-            body_disc()
-        };
-        (active, ignore, shape)
+        (active, ignore)
     };
     let Some(win) = window(app) else { return };
-    match d.mode {
-        DesktopMode::Poll => {
-            if let Some(flag) = ignore {
-                d.inner.lock().unwrap().ignoring = Some(flag);
-                let _ = win.set_ignore_cursor_events(flag);
-            }
-            d.gate.set_active(active);
+    if d.mode == DesktopMode::Poll {
+        if let Some(flag) = ignore {
+            d.inner.lock().unwrap().ignoring = Some(flag);
+            let _ = win.set_ignore_cursor_events(flag);
         }
-        DesktopMode::Window | DesktopMode::Layer => {
-            let _ = app.run_on_main_thread(move || platform::set_desktop_shape(&win, shape));
-        }
-        DesktopMode::Off => {}
+        d.gate.set_active(active);
     }
 }
 
@@ -588,7 +498,7 @@ fn remember_spot(app: &AppHandle, d: &Desktop, pos: (f64, f64), on_desktop: bool
 /// Where he lands when he flies out, or `None` when his spot is on a display
 /// that is no longer connected.
 fn target_spot(app: &AppHandle, d: &Desktop) -> Option<(f64, f64)> {
-    let all = displays(app, d);
+    let all = displays(app);
     let saved = app.try_state::<crate::Shared>().and_then(|s| s.settings.lock().unwrap().desktop_mochi.spot.clone());
     match saved {
         Some(spot) if spot.space == d.mode.space() => {
@@ -597,7 +507,7 @@ fn target_spot(app: &AppHandle, d: &Desktop) -> Option<(f64, f64)> {
         // Never placed, or placed under another kind of session: a fresh start
         // in the corner of the island's display.
         _ => {
-            let (cx, top, _) = island_anchor(app, d)?;
+            let (cx, top, _) = island_anchor(app)?;
             let home = logic::display_near((cx, top + 1.0), &all)?;
             Some(logic::default_spot(&home, SIZE, MARGIN))
         }
@@ -607,9 +517,9 @@ fn target_spot(app: &AppHandle, d: &Desktop) -> Option<(f64, f64)> {
 /// The drop, wherever it came from: home if it is over the island's panel,
 /// otherwise his new spot.
 async fn finish_drop(app: &AppHandle, d: &Desktop, pos: (f64, f64), from: Source) {
-    let s = side(app, d);
+    let s = side(app);
     let center = (pos.0 + s / 2.0, pos.1 + s / 2.0);
-    let home = island_anchor(app, d)
+    let home = island_anchor(app)
         .map(|(cx, top, scale)| logic::home_zone(cx, top, scale).contains(center))
         .unwrap_or(false);
     {
@@ -626,7 +536,7 @@ async fn finish_drop(app: &AppHandle, d: &Desktop, pos: (f64, f64), from: Source
             refresh(app, d);
         }
     } else {
-        let spot = logic::settle(pos, &displays(app, d), SIZE, MARGIN);
+        let spot = logic::settle(pos, &displays(app), SIZE, MARGIN);
         refresh(app, d);
         if spot != pos {
             fly(app, d, spot, SNAP_MS, logic::ease_out_back).await;
@@ -701,57 +611,24 @@ pub fn desktop_mochi_info(app: AppHandle, desktop: State<Arc<Desktop>>) -> Deskt
     DesktopInfo { mode: desktop.mode.as_str(), on_desktop: on_desktop && desktop.mode != DesktopMode::Off }
 }
 
-/// Dragging Mochi out of the island: the window appears under the pointer
-/// (`x`, `y`: island-window client coordinates) and follows it — the cursor
-/// poll carries it on Windows, `desktop_mochi_carry` elsewhere.
+/// Dragging Mochi out of the island: the window appears under the pointer and
+/// follows it, carried by the cursor poll.
 #[tauri::command]
-pub async fn desktop_mochi_pick_up(app: AppHandle, x: f64, y: f64) -> bool {
+pub async fn desktop_mochi_pick_up(app: AppHandle) -> bool {
     let d = app.state::<Arc<Desktop>>().inner().clone();
     if d.mode == DesktopMode::Off || window(&app).is_none() || d.inner.lock().unwrap().shown {
         return false;
     }
-    refresh_layer_display(&app, &d);
-    let s = side(&app, &d);
-    let center = match d.mode {
-        DesktopMode::Poll => platform::cursor_physical(),
-        _ => from_island_client(&app, &d, x, y),
-    };
-    let Some(center) = center else { return false };
+    let s = side(&app);
+    let Some(center) = platform::cursor_physical() else { return false };
     d.flight.fetch_add(1, Ordering::SeqCst);
     d.inner.lock().unwrap().carry = Some(Carry { grab: (s / 2.0, s / 2.0), from: Source::Island });
     show(&app, &d, (center.0 - s / 2.0, center.1 - s / 2.0));
     true
 }
 
-/// Linux: the pointer moved while Mochi is being dragged out of the island.
-#[tauri::command]
-pub async fn desktop_mochi_carry(app: AppHandle, x: f64, y: f64) {
-    let d = app.state::<Arc<Desktop>>().inner().clone();
-    if d.mode == DesktopMode::Poll || d.inner.lock().unwrap().carry.is_none() {
-        return;
-    }
-    let s = side(&app, &d);
-    if let Some(c) = from_island_client(&app, &d, x, y) {
-        place(&app, &d, (c.0 - s / 2.0, c.1 - s / 2.0));
-    }
-}
-
-/// Linux: the button went up while Mochi was being dragged out of the island.
-#[tauri::command]
-pub async fn desktop_mochi_carry_end(app: AppHandle, x: f64, y: f64) {
-    let d = app.state::<Arc<Desktop>>().inner().clone();
-    if d.mode == DesktopMode::Poll || d.inner.lock().unwrap().carry.is_none() {
-        return;
-    }
-    let s = side(&app, &d);
-    let pos = from_island_client(&app, &d, x, y)
-        .map(|c| (c.0 - s / 2.0, c.1 - s / 2.0))
-        .unwrap_or_else(|| d.inner.lock().unwrap().pos);
-    finish_drop(&app, &d, pos, Source::Island).await;
-}
-
-/// The page saw a drag start on Mochi. Returns his top-left corner in the
-/// mode's space, which the page needs to draw him in the overlay (layer mode).
+/// The page saw a drag start on Mochi: the cursor poll carries him from here.
+/// Returns his top-left corner, or `None` when he can't be dragged now.
 #[tauri::command]
 pub async fn desktop_mochi_drag_begin(app: AppHandle) -> Option<(f64, f64)> {
     let d = app.state::<Arc<Desktop>>().inner().clone();
@@ -764,59 +641,15 @@ pub async fn desktop_mochi_drag_begin(app: AppHandle) -> Option<(f64, f64)> {
     };
     // A drag takes over from a snap still settling him.
     d.flight.fetch_add(1, Ordering::SeqCst);
-    match d.mode {
-        DesktopMode::Poll => {
-            let win = window(&app)?;
-            let (cx, cy) = platform::cursor_physical()?;
-            let origin = win.outer_position().ok()?;
-            let grab = (cx - origin.x as f64, cy - origin.y as f64);
-            d.inner.lock().unwrap().carry = Some(Carry { grab, from: Source::Desktop });
-            refresh(&app, &d);
-        }
-        DesktopMode::Layer => {
-            d.inner.lock().unwrap().overlay = true;
-            let win = window(&app)?;
-            let _ = app.run_on_main_thread(move || {
-                platform::set_layer_overlay(&win, true);
-                platform::set_desktop_shape(&win, MouseShape::Whole);
-            });
-        }
-        _ => {}
+    if d.mode == DesktopMode::Poll {
+        let win = window(&app)?;
+        let (cx, cy) = platform::cursor_physical()?;
+        let origin = win.outer_position().ok()?;
+        let grab = (cx - origin.x as f64, cy - origin.y as f64);
+        d.inner.lock().unwrap().carry = Some(Carry { grab, from: Source::Desktop });
+        refresh(&app, &d);
     }
     Some(pos)
-}
-
-/// X11: the page moves the window during its drag (top-left, physical pixels).
-#[tauri::command]
-pub async fn desktop_mochi_drag_move(app: AppHandle, x: f64, y: f64) {
-    let d = app.state::<Arc<Desktop>>().inner().clone();
-    if d.mode == DesktopMode::Window && d.inner.lock().unwrap().landed {
-        place(&app, &d, (x, y));
-    }
-}
-
-/// Linux: the page's drag ended with the top-left corner at (`x`, `y`), in the
-/// mode's space. On Windows the poll sees the release itself.
-#[tauri::command]
-pub async fn desktop_mochi_drag_end(app: AppHandle, x: f64, y: f64) {
-    let d = app.state::<Arc<Desktop>>().inner().clone();
-    if d.mode == DesktopMode::Poll || !d.inner.lock().unwrap().landed {
-        return;
-    }
-    if d.mode == DesktopMode::Layer {
-        d.inner.lock().unwrap().overlay = false;
-        if let Some(win) = window(&app) {
-            let _ = app.run_on_main_thread(move || {
-                platform::set_layer_overlay(&win, false);
-                platform::set_layer_margins(&win, x, y);
-            });
-        }
-        if let Some(win) = window(&app) {
-            let _ = win.set_size(tauri::LogicalSize::new(SIZE, SIZE));
-        }
-    }
-    place(&app, &d, (x, y));
-    finish_drop(&app, &d, (x, y), Source::Desktop).await;
 }
 
 /// Launch or the end of an alert: from the island to his spot. False when the
@@ -828,13 +661,12 @@ pub async fn desktop_mochi_fly_out(app: AppHandle) -> bool {
     if d.mode == DesktopMode::Off || window(&app).is_none() {
         return false;
     }
-    refresh_layer_display(&app, &d);
     let Some(target) = target_spot(&app, &d) else {
         crate::log::line("desktop Mochi: his spot is on a display that is gone — he stays home");
         remember(&app, |p| p.on_desktop = false);
         return false;
     };
-    let Some((cx, top, scale)) = island_anchor(&app, &d) else { return false };
+    let Some((cx, top, scale)) = island_anchor(&app) else { return false };
     let start = logic::island_spot(cx, top, SIZE, scale);
     {
         let mut i = d.inner.lock().unwrap();
@@ -873,7 +705,7 @@ pub async fn desktop_mochi_fly_home(app: AppHandle, forget: bool) -> bool {
     }
     refresh(&app, &d);
     let _ = app.emit_to(LABEL, "desktop-flight", "home");
-    let done = match island_anchor(&app, &d) {
+    let done = match island_anchor(&app) {
         Some((cx, top, scale)) => {
             let to = logic::island_spot(cx, top, SIZE, scale);
             fly(&app, &d, to, FLIGHT_MS, logic::ease_in_out).await

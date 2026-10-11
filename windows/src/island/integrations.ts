@@ -58,7 +58,7 @@ function refreshGitHubWhenShown() {
  */
 export async function refreshConfigured() {
   const hooks = (await Bridge.agentHooksStatus()) ?? null;
-  for (const def of availablePills(State.os)) {
+  for (const def of availablePills()) {
     let configured: boolean;
     switch (def.connect.kind) {
       case "key":

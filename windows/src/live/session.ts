@@ -15,7 +15,6 @@
 
 import { Bridge, onEvent, type LiveHelperActivity } from "../core/bridge";
 import { chatTitle, newChatId, saveChat } from "../core/chats";
-import { HOST_OS } from "../core/pills";
 import { State } from "../core/state";
 import type { BotStateName } from "../core/layout";
 import { LANGUAGES, language, t } from "../i18n/i18n";
@@ -172,12 +171,11 @@ class LiveSession {
       thinking: parseThinking(s.liveThinking),
       voice: parseVoice(s.liveVoice),
       helper: helperName(s.liveHelper),
-      screen: s.liveScreen && HOST_OS === "windows",
+      screen: s.liveScreen,
       // Screen work goes to Claude Code, when it is set up and computer use is on.
-      computer: s.chatComputerUse === true && HOST_OS === "windows" && (await Bridge.liveComputerReady()) === true,
+      computer: s.chatComputerUse === true && (await Bridge.liveComputerReady()) === true,
       search: !searchRefused,
       languageName: languageName(),
-      os: HOST_OS === "windows" ? "Windows" : "Linux",
       now: localNow(),
     };
     const call = ++this.call;

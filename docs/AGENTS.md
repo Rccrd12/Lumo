@@ -1,6 +1,6 @@
 # Lumo — third-party agent integration
 
-Any tool that can write to a Unix domain socket (macOS, Linux) or a named pipe (Windows) can send events to Lumo and have its own pill next to Claude Code.
+Any tool that can write to a Unix domain socket (macOS) or a named pipe (Windows) can send events to Lumo and have its own pill next to Claude Code.
 
 ## The `lumo_agent` field
 
@@ -38,20 +38,6 @@ Same pattern with the Windows relay:
 }
 ```
 
-## Hook command (Linux)
-
-Same pattern with the Linux relay. Lumo copies the relay to `~/.local/share/lumo/bin/lumo-hook` at startup.
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "type": "command", "command": "/path/to/lumo-hook --agent my-tool" }
-    ]
-  }
-}
-```
-
 ## Payload format
 
 The relay adds `lumo_agent` to the JSON it forwards. You can also add it yourself if you talk to the socket directly:
@@ -68,7 +54,6 @@ The relay adds `lumo_agent` to the JSON it forwards. You can also add it yoursel
 Send newline-terminated JSON to the socket:
 - **macOS (GitHub build):** `~/Library/Application Support/NotchBuddy/nb.sock`
 - **Windows:** `\\.\pipe\lumo-<user-SID>`
-- **Linux:** `$XDG_RUNTIME_DIR/lumo.sock` (usually `/run/user/<uid>/lumo.sock`). Only your own user account can connect.
 
 ## Supported events
 
@@ -140,7 +125,7 @@ island's `tool_name` / `session_id`.
 | `Stop` | `Stop` |
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
-rules decide. One exception, on Windows and Linux: the island's own chat with **Antigravity
+rules decide. One exception, on Windows: the island's own chat with **Antigravity
 CLI** runs `agy` headless (stream-json on stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that
 run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
 `terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
@@ -234,18 +219,17 @@ Every event is fire-and-forget: if the app is closed or unreachable, nothing is 
 
 ### Any other tool
 
-Follow the generic pattern: call `nb-hook --agent <your-name> <EventName>` (macOS),
-`lumo-hook.exe --agent <your-name> <EventName>` (Windows)
-or `~/.local/share/lumo/bin/lumo-hook --agent <your-name> <EventName>` (Linux)
+Follow the generic pattern: call `nb-hook --agent <your-name> <EventName>` (macOS)
+or `lumo-hook.exe --agent <your-name> <EventName>` (Windows)
 and let the relay forward the event.
 
-## Quick test (Linux)
+## Quick test (Windows)
 
-With Lumo running:
+With Lumo running, in PowerShell:
 
-```sh
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","lumo_agent":"demo"}' \
-  | ~/.local/share/lumo/bin/lumo-hook --agent demo
+```powershell
+'{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","lumo_agent":"demo"}' |
+  & "$env:LOCALAPPDATA\com.rccrd12.lumo\bin\lumo-hook.exe" --agent demo
 ```
 
 A "demo" pill should appear in the island.

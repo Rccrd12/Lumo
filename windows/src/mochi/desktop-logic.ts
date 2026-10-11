@@ -123,44 +123,11 @@ export function alertActive(s: {
 }
 
 /**
- * Linux has no global cursor (Wayland), so his window only hears the pointer
- * while it is over his body. That counts as "near" for this long afterwards.
+ * Distance from the pointer (the cursor poll's, window coordinates) to his
+ * centre, for shouldSleep. No cursor yet: far.
  */
-export const POINTER_MEMORY_MS = 4000;
-
-/**
- * Distance from the pointer to his centre, for shouldSleep. With a cursor
- * poll (Windows) it is measured; without one, the pointer is near while it was
- * over him a moment ago, and far otherwise.
- */
-export function pointerDistance(
-  cursorPoll: boolean,
-  cursor: Point | null,
-  sincePointerMs: number,
-  panelSize = PANEL_SIZE,
-): number {
-  if (cursorPoll) {
-    return cursor ? Math.hypot(cursor.x - panelSize / 2, cursor.y - panelSize / 2) : Infinity;
-  }
-  return sincePointerMs < POINTER_MEMORY_MS ? 0 : Infinity;
-}
-
-/**
- * Layer-shell drag: the surface is stretched over the display, so the pointer
- * reads in display coordinates — once the compositor has applied it. Until
- * then the pointer is still relative to the small surface at `origin`.
- */
-export function layerDragTopLeft(origin: Point, client: Point, grab: Point, overlayApplied: boolean): Point {
-  const base = overlayApplied ? { x: 0, y: 0 } : origin;
-  return { x: base.x + client.x - grab.x, y: base.y + client.y - grab.y };
-}
-
-/** X11 drag: screen coordinates are global there; the window moves in physical pixels. */
-export function windowDragTopLeft(origin: Point, screen: Point, screenAtPress: Point, dpr: number): Point {
-  return {
-    x: origin.x + (screen.x - screenAtPress.x) * dpr,
-    y: origin.y + (screen.y - screenAtPress.y) * dpr,
-  };
+export function pointerDistance(cursor: Point | null, panelSize = PANEL_SIZE): number {
+  return cursor ? Math.hypot(cursor.x - panelSize / 2, cursor.y - panelSize / 2) : Infinity;
 }
 
 // ── Life cycle (DesktopMochiController) ──────────────────────────────────────

@@ -68,7 +68,6 @@ test("picking a colour stores it; the default, nothing or junk clears it", () =>
 beforeEach(() => {
   State.tasks = [];
   State.focusId = null;
-  State.os = "windows";
   State.settings = { ...DEFAULT_SETTINGS };
 });
 

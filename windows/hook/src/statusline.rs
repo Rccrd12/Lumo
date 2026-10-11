@@ -5,8 +5,8 @@
 //! whatever that command prints becomes the status line. Lumo only wants the
 //! plan limits (`rate_limits`) out of it: they go on to the app in the
 //! background and nothing else of the input does. If the user had a status line
-//! of their own, it is run the way Claude Code runs it — `/bin/sh -c` on Linux,
-//! Git Bash's `bash -c` on Windows — with the same input, and what it prints is
+//! of their own, it is run the way Claude Code runs it — through Git Bash's
+//! `bash -c` — with the same input, and what it prints is
 //! passed on untouched, so it keeps working.
 //!
 //! Never blocking Claude Code: the app gets [`APP_BUDGET`] at most, the user's
@@ -92,19 +92,10 @@ fn previous_command() -> Option<String> {
     saved.get("command")?.as_str().filter(|c| !c.trim().is_empty()).map(str::to_string)
 }
 
-/// The shell Claude Code runs a status line command with.
-#[cfg(unix)]
-fn shell(command: &str) -> Option<Command> {
-    let mut c = Command::new("/bin/sh");
-    c.args(["-c", command]);
-    Some(c)
-}
-
 /// On Windows Claude Code runs status line commands through Git Bash, so a
 /// command written for it (`~/bin/line.sh`, `$HOME`, pipes into `jq`…) only
 /// works there. No Git Bash found: nothing is run rather than guessing with
 /// `cmd`, which would mangle such a command.
-#[cfg(windows)]
 fn shell(command: &str) -> Option<Command> {
     use std::os::windows::process::CommandExt;
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
@@ -118,8 +109,7 @@ fn shell(command: &str) -> Option<Command> {
 /// Claude Code's own override (`CLAUDE_CODE_GIT_BASH_PATH`), the Git for Windows
 /// that `git.exe` on PATH belongs to, the usual install folders, then any
 /// `bash.exe` on PATH — except Windows' own WSL launcher (System32, WindowsApps),
-/// which would run the command in Linux instead.
-#[cfg_attr(not(windows), allow(dead_code))]
+/// which would run the command in WSL instead.
 fn git_bash_candidates(
     var: impl Fn(&str) -> Option<std::ffi::OsString>,
     exists: impl Fn(&Path) -> bool,
@@ -249,39 +239,6 @@ mod tests {
         // API-key users get no rate_limits.
         assert!(payload(serde_json::json!({ "session_id": "s1" }).as_object().unwrap()).is_none());
         assert!(payload(serde_json::json!({ "rate_limits": "x" }).as_object().unwrap()).is_none());
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn the_users_own_status_line_gets_the_same_input_and_its_output_comes_back() {
-        let out = run_previous("cat; echo ' tail'", b"{\"a\":1}", Duration::from_secs(5)).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "{\"a\":1} tail\n");
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_status_line_that_hangs_is_killed_and_prints_nothing() {
-        let started = Instant::now();
-        assert!(run_previous("sleep 5", b"{}", Duration::from_millis(200)).is_none());
-        assert!(started.elapsed() < Duration::from_secs(2));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_flood_of_output_is_cut_and_never_stalls_the_command() {
-        let started = Instant::now();
-        let out = run_previous("head -c 1000000 /dev/zero", b"", Duration::from_secs(5)).unwrap();
-        assert_eq!(out.len(), MAX_OUTPUT);
-        assert!(started.elapsed() < Duration::from_secs(3));
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn a_background_child_holding_the_pipe_does_not_hold_us() {
-        let started = Instant::now();
-        let out = run_previous("echo hi; (sleep 5 &) ", b"", Duration::from_secs(5)).unwrap();
-        assert_eq!(String::from_utf8(out).unwrap(), "hi\n");
-        assert!(started.elapsed() < Duration::from_secs(2));
     }
 
     fn env(pairs: &[(&str, OsString)]) -> impl Fn(&str) -> Option<OsString> {

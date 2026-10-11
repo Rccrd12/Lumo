@@ -119,7 +119,7 @@ export class Island {
   /** Grips on the island's free edges and corners: dragging them resizes it. */
   private grips: { el: HTMLElement; grip: Grip }[] = [];
   private resizing = false;
-  /** Moving and resizing follow the global cursor, which Wayland does not give. */
+  /** Moving and resizing follow the global cursor, which the browser preview does not give. */
   private canResize = true;
   private lastShape = "";
   /** A press on the island's top that becomes a move once the mouse travels. */
@@ -1285,10 +1285,7 @@ export class Island {
 
     // Dragging Mochi out of the island puts him on the desktop.
     window.addEventListener("mousemove", (e) => {
-      if (this.desktop.carrying) {
-        this.desktop.carry(e.clientX, e.clientY);
-        return;
-      }
+      if (this.desktop.carrying) return;
       const press = this.botPress;
       if (!press) return;
       if (!(e.buttons & 1)) {
@@ -1299,11 +1296,10 @@ export class Island {
       this.botPress = null;
       if (!this.canDragOut()) return;
       this.cancelBotHover();
-      this.desktop.pickUp(e.clientX, e.clientY);
+      this.desktop.pickUp();
     });
-    window.addEventListener("mouseup", (e) => {
+    window.addEventListener("mouseup", () => {
       this.botPress = null;
-      if (this.desktop.carrying) this.desktop.carryEnd(e.clientX, e.clientY);
     });
 
     // Typing the question keeps a shortcut's grace going (capture phase: the
@@ -1345,10 +1341,10 @@ export class Island {
   }
 
   /**
-   * Takes the cursor from the page's own mouse events instead of Rust's poll.
-   * Used where the OS has no global cursor position (Wayland): the events only
-   * fire while the pointer is over the island, so leaving the window is
-   * reported as a cursor far away, which is what the poll would have said.
+   * Takes the cursor from the page's own mouse events instead of Rust's poll,
+   * in the browser preview: the events only fire while the pointer is over the
+   * island, so leaving the window is reported as a cursor far away, which is
+   * what the poll would have said.
    */
   followPageCursor() {
     this.canResize = false;
@@ -1366,24 +1362,8 @@ export class Island {
     });
   }
 
-  /**
-   * Pointer on/off the island as the compositor sees it (Linux only). Null
-   * until the first report, so a platform that never sends it is not gated.
-   */
-  private pointerInside: boolean | null = null;
-
-  setPointerInside(inside: boolean) {
-    this.pointerInside = inside;
-  }
-
   /** Cursor in window-logical coordinates. */
   onCursor(x: number, y: number, overPanel = false) {
-    // WebKitGTK can deliver a mousemove after the pointer has left the layer
-    // surface; trusting it re-enters the island and the auto-close never runs.
-    if (this.pointerInside === false) {
-      x = -10_000;
-      y = -10_000;
-    }
     if (x !== State.mouse.x || y !== State.mouse.y) this.mouseMovedAt = performance.now();
     State.mouse = { x, y };
     const rect = this.islandRect();

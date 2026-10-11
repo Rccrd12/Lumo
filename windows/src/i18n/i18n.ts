@@ -5,7 +5,7 @@
 // the English text:
 // - strings.json, generated from the Mac's Localizable.xcstrings by
 //   scripts/gen-strings.mjs (never edited by hand);
-// - extra.json, the strings only Windows and Linux have, written by hand;
+// - extra.json, the strings only Windows has, written by hand;
 // - strings-it.json, Italian for the Mac's strings, which its catalog has not
 //   (Italian for extra.json's is in extra.json, as for every language).
 // A string missing from both, or from one language, shows in English.

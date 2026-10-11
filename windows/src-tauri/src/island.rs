@@ -156,10 +156,9 @@ impl Placement {
     pub fn of(s: &crate::settings::Settings) -> Self {
         Self {
             zoom: s.island_zoom,
-            // Moving it needs the cursor poll; without it (Linux) it stays on top.
-            dock: if platform::CURSOR_POLL { Dock::parse(&s.island_dock) } else { Dock::Top },
+            dock: Dock::parse(&s.island_dock),
             offset: s.island_offset,
-            float: if platform::CURSOR_POLL { s.island_float.max(0.0) } else { 0.0 },
+            float: s.island_float.max(0.0),
             width: s.island_width,
             height: s.island_height,
             activities: crate::activities::room_of(s),
@@ -686,13 +685,9 @@ fn display_of(m: &Monitor) -> (i32, i32, u32, u32) {
     (p.x, p.y, s.width, s.height)
 }
 
-/// The part of a display the island may use: on Windows, the work area, so it
-/// never hides under the taskbar. On Linux the whole display, as before (the
-/// island goes over the top panel).
+/// The part of a display the island may use: the work area, so it never hides
+/// under the taskbar.
 fn area_of(m: &Monitor) -> (i32, i32, u32, u32) {
-    if cfg!(target_os = "linux") {
-        return display_of(m);
-    }
     let r = m.work_area();
     if r.size.width == 0 || r.size.height == 0 {
         return display_of(m);
@@ -968,17 +963,8 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let (sx, sy) = shift(area, scale, placement);
     let _ = app.emit_to(WINDOW_LABEL, "island-shift", ShiftPayload { x: sx, y: sy });
 
-    // GTK never sizes a non-resizable window below its natural size (200 px
-    // here), so on Linux the 6 px wake strip would stay a 200 px block. tao
-    // re-applies the config's `resizable: false` after the first configure, so
-    // this is asked every time, just before the resize. Undecorated, the window
-    // still offers the user nothing to resize it by. (Found by @YossiYad, #44.)
-    #[cfg(target_os = "linux")]
-    let _ = win.set_resizable(true);
     let _ = win.set_size(PhysicalSize::new(pw, ph));
     let _ = win.set_position(PhysicalPosition::new(x, y));
-    let (lx, ly) = logical_origin(&m);
-    platform::pin_to_monitor(&win, lx, ly);
     // Moving across displays of different scales makes Windows resize the
     // window to its suggested rectangle, which can also move it: re-assert the
     // physical size, then the place.
@@ -1223,10 +1209,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
         // Remembered across wakes so a display change while hidden is noticed the
         // moment the island comes back.
         let mut last_screen: Option<(i32, i32, u32, u32, u64)> = None;
-        // Without a cursor to read (Linux) the loop only watches the display
-        // layout, and twice a second is plenty for that: waking at 60 Hz just to
-        // find no cursor costs CPU for nothing.
-        let (period, screen_every) = if platform::CURSOR_POLL { (16, 30) } else { (500, 1) };
+        let (period, screen_every) = (16, 30);
         loop {
             gate.wait_until_active();
             let mut last = (f64::MIN, f64::MIN);
@@ -1338,40 +1321,11 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
     });
 }
 
-/// Re-applies click-through after the window or the island changed shape.
-///
-/// With the cursor poll (Windows) the window takes the mouse again and the next
-/// tick decides from the cursor. Without it (Linux) the input region is set to
-/// the island itself, or to the whole wake strip while collapsed.
+/// Re-applies click-through after the window or the island changed shape: the
+/// window takes the mouse again and the cursor poll's next tick decides.
 pub fn refresh_click_through(app: &AppHandle, gate: &PollGate) {
-    if platform::CURSOR_POLL {
-        set_ignore_cursor(app, false);
-        gate.forget_ignore_state();
-        return;
-    }
-    let Some(win) = window(app) else { return };
-    let region = if gate.collapsed.load(Ordering::Relaxed) {
-        // The wake strip itself, never "the whole window": if the window ever
-        // fails to shrink to the strip, the rest of it must not swallow clicks
-        // meant for whatever sits under the top of the screen.
-        Some((0.0, 0.0, STRIP_W, STRIP_H))
-    } else {
-        let r = *gate.rect.lock().unwrap();
-        if r.w <= 0.0 {
-            // Nothing drawn yet: nothing takes the mouse.
-            Some((0.0, 0.0, 0.0, 0.0))
-        } else {
-            let x0 = (r.x - HIT_MARGIN).max(0.0);
-            let y0 = (r.y - HIT_MARGIN).max(0.0);
-            let x1 = r.x + r.w + HIT_MARGIN;
-            let y1 = r.y + r.h + HIT_MARGIN;
-            Some((x0, y0, x1 - x0, y1 - y0))
-        }
-    };
-    // The region is in window pixels; the island is drawn zoomed.
-    let z = zoom();
-    let region = region.map(|(x, y, w, h)| (x * z, y * z, w * z, h * z));
-    platform::set_input_region(&win, region);
+    set_ignore_cursor(app, false);
+    gate.forget_ignore_state();
 }
 
 /// Computer use (computer.rs): while Claude clicks or drags, the island and
@@ -1385,7 +1339,7 @@ pub fn let_mouse_through(app: &AppHandle, through: bool) {
             gate.ignoring.store(true, Ordering::Relaxed);
         }
         set_ignore_cursor(app, true);
-    } else if let Some(gate) = gate.filter(|g| g.collapsed.load(Ordering::Relaxed) || !platform::CURSOR_POLL) {
+    } else if let Some(gate) = gate.filter(|g| g.collapsed.load(Ordering::Relaxed)) {
         refresh_click_through(app, &gate);
     }
     if let Some(panel) = crate::activities::window(app) {

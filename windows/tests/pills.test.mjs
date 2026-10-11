@@ -39,7 +39,7 @@ test("the catalog holds the Mac's pills, in the Mac's order, with the Mac's valu
     ["integration_calcom", "Cal.com", "#C9956A", "service", "Integration"],
     ["integration_stripe", "Stripe", "#0570DE", "service", "Integration"],
     ["integration_music", "Apple Music", "#FA2D48", "service", "Integration"],
-    // Windows and Linux only, after the Mac's.
+    // Windows only, after the Mac's.
     ["integration_mail", "Email", "#EA4335", "service", "Integration"],
   ];
   assert.deepEqual(
@@ -74,22 +74,17 @@ test("IDs are unique", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("this build leaves out what only macOS has, and Claude Desktop on Linux", () => {
-  const windows = availablePills("windows").map((p) => p.id);
-  const linux = availablePills("linux").map((p) => p.id);
+test("this build leaves out what only macOS has", () => {
+  const offered = availablePills().map((p) => p.id);
   for (const id of ["integration_music"]) {
-    assert.ok(!windows.includes(id), id);
-    assert.ok(!linux.includes(id), id);
+    assert.ok(!offered.includes(id), id);
   }
   // Their plugins are written from Settings → Agents, and the chat talks to
-  // every provider (port/chat-providers), on both systems.
+  // every provider (port/chat-providers).
   for (const id of ["agent_opencode", "agent_amp", "agent_hermes", "ai_google", "ai_openai", "ai_ollama", "ai_lmstudio"]) {
-    assert.ok(windows.includes(id), id);
-    assert.ok(linux.includes(id), id);
+    assert.ok(offered.includes(id), id);
   }
-  assert.ok(windows.includes("agent_claude-desktop"));
-  assert.ok(!linux.includes("agent_claude-desktop"));
-  assert.deepEqual(linux, windows.filter((id) => id !== "agent_claude-desktop"));
+  assert.ok(offered.includes("agent_claude-desktop"));
 });
 
 test("no chat provider that works here says Coming soon", () => {
@@ -103,7 +98,7 @@ test("no chat provider that works here says Coming soon", () => {
 });
 
 test("the main pill is a workspace tool that works here", () => {
-  assert.deepEqual(mainPillChoices("linux").map((p) => p.id), [
+  assert.deepEqual(mainPillChoices().map((p) => p.id), [
     "integration_claude", "agent_cursor", "agent_antigravity", "agent_codex",
   ]);
   assert.equal(DEFAULT_MAIN_PILL, "integration_claude");
@@ -130,19 +125,19 @@ test("a live session names its tool next to the project", () => {
 
 test("a declaration from an older or edited settings file is made usable", () => {
   assert.deepEqual(
-    sanitizeDeclared({ mainPill: "integration_stripe", activeIntegrations: ["integration_claude", "x"] }, "linux"),
+    sanitizeDeclared({ mainPill: "integration_stripe", activeIntegrations: ["integration_claude", "x"] }),
     { mainPill: "integration_claude", activeIntegrations: [] },
   );
   assert.deepEqual(
-    sanitizeDeclared({ mainPill: "agent_cursor", activeIntegrations: ["agent_cursor", "integration_n8n", "integration_n8n", "integration_music"] }, "linux"),
+    sanitizeDeclared({ mainPill: "agent_cursor", activeIntegrations: ["agent_cursor", "integration_n8n", "integration_n8n", "integration_music"] }),
     { mainPill: "agent_cursor", activeIntegrations: ["integration_n8n"] },
   );
   // No mainPill at all: a settings.json from before this version.
   assert.deepEqual(
-    sanitizeDeclared({ activeIntegrations: ["integration_github"] }, "windows"),
+    sanitizeDeclared({ activeIntegrations: ["integration_github"] }),
     { mainPill: "integration_claude", activeIntegrations: ["integration_github"] },
   );
-  assert.equal(sanitizeDeclared({ mainPill: "agent_claude-desktop", activeIntegrations: [] }, "windows").mainPill,
+  assert.equal(sanitizeDeclared({ mainPill: "agent_claude-desktop", activeIntegrations: [] }).mainPill,
     "integration_claude");
 });
 
@@ -151,26 +146,25 @@ test("up to four pills next to the main one, never the main one itself", () => {
     mainPill: "integration_claude",
     activeIntegrations: ["integration_n8n", "integration_github", "integration_stripe"],
   };
-  const four = toggleDeclared(d, "agent_copilot", "linux");
+  const four = toggleDeclared(d, "agent_copilot");
   assert.equal(four.length, MAX_DECLARED);
-  assert.equal(toggleDeclared({ ...d, activeIntegrations: four }, "ai_anthropic", "linux"), null);
-  assert.equal(toggleDeclared(d, "integration_claude", "linux"), null);
-  assert.equal(toggleDeclared(d, "integration_music", "linux"), null);
-  assert.equal(toggleDeclared(d, "agent_claude-desktop", "linux"), null);
-  assert.ok(toggleDeclared(d, "agent_claude-desktop", "windows").includes("agent_claude-desktop"));
-  assert.deepEqual(toggleDeclared(d, "integration_github", "linux"), ["integration_n8n", "integration_stripe"]);
+  assert.equal(toggleDeclared({ ...d, activeIntegrations: four }, "ai_anthropic"), null);
+  assert.equal(toggleDeclared(d, "integration_claude"), null);
+  assert.equal(toggleDeclared(d, "integration_music"), null);
+  assert.ok(toggleDeclared(d, "agent_claude-desktop").includes("agent_claude-desktop"));
+  assert.deepEqual(toggleDeclared(d, "integration_github"), ["integration_n8n", "integration_stripe"]);
   // Every chat provider can be declared now that the chat talks to it.
-  assert.ok(toggleDeclared(d, "ai_google", "linux").includes("ai_google"));
-  assert.ok(toggleDeclared(d, "ai_ollama", "linux").includes("ai_ollama"));
+  assert.ok(toggleDeclared(d, "ai_google").includes("ai_google"));
+  assert.ok(toggleDeclared(d, "ai_ollama").includes("ai_ollama"));
 });
 
 test("picking a main pill takes it out of the declared ones, and only workspace tools qualify", () => {
   const d = { mainPill: "integration_claude", activeIntegrations: ["agent_cursor", "integration_n8n"] };
-  assert.deepEqual(chooseMainPill(d, "agent_cursor", "linux"), {
+  assert.deepEqual(chooseMainPill(d, "agent_cursor"), {
     mainPill: "agent_cursor", activeIntegrations: ["integration_n8n"],
   });
-  assert.equal(chooseMainPill(d, "integration_n8n", "linux"), null);
-  assert.equal(chooseMainPill(d, "agent_gemini", "linux"), null);
+  assert.equal(chooseMainPill(d, "integration_n8n"), null);
+  assert.equal(chooseMainPill(d, "agent_gemini"), null);
 });
 
 test("pills are ordered main first, then other agents, then the catalog's order", () => {
@@ -190,7 +184,6 @@ test("pills are ordered main first, then other agents, then the catalog's order"
 beforeEach(() => {
   State.tasks = [];
   State.focusId = null;
-  State.os = "windows";
   State.settings = { ...DEFAULT_SETTINGS };
 });
 
@@ -280,7 +273,5 @@ test("toggling declares up to four pills and never the main one", () => {
 
 test("Gemini CLI is retired: never offered, its ID kept", () => {
   assert.equal(pillDefinition("agent_gemini").support, "no");
-  for (const os of ["windows", "linux"]) {
-    assert.ok(!availablePills(os).some((p) => p.id === "agent_gemini"), os);
-  }
+  assert.ok(!availablePills().some((p) => p.id === "agent_gemini"));
 });

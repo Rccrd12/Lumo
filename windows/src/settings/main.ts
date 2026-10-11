@@ -32,10 +32,8 @@ import {
   LANGUAGES, N_, isRtl, onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t, tn,
 } from "../i18n/i18n";
 
-/** Where secrets.rs keeps the keys on this OS. */
-const KEY_STORE = navigator.userAgent.includes("Windows")
-  ? "Windows Credential Manager"
-  : "Secret Service (GNOME Keyring, KWallet)";
+/** Where secrets.rs keeps the keys. */
+const KEY_STORE = "Windows Credential Manager";
 
 let settings: Settings = { ...DEFAULT_SETTINGS };
 let version = "";
@@ -675,11 +673,9 @@ const SHARING_TEXT = {
   get title() { return t("Share with the chat"); },
   get hint() { return t("When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message."); },
   get explorer() { return t("Always share the folder open in File Explorer"); },
-  get linux() { return t("Not available on Linux yet."); },
 };
 
 function chatSharingSection(): HTMLElement {
-  const windows = navigator.userAgent.includes("Windows");
   return h(
     "section",
     {},
@@ -691,7 +687,7 @@ function chatSharingSection(): HTMLElement {
         void save();
       }),
     ),
-    setting(SHARING_TEXT.explorer, windows ? SHARING_TEXT.hint : SHARING_TEXT.linux,
+    setting(SHARING_TEXT.explorer, SHARING_TEXT.hint,
       toggle(settings.chatShareExplorer, (on) => {
         settings.chatShareExplorer = on;
         void save();
@@ -711,9 +707,8 @@ const COMPUTER_SETTINGS = {
   get mouse() { return t("While it works, the screen it uses glows and the mouse turns orange: the mouse is Claude's until it answers, except when a card asks you something. Esc gives it back at once."); },
 };
 
-/** Settings → Chat → Computer use: off until the user turns it on (Windows only). */
+/** Settings → Chat → Computer use: off until the user turns it on. */
 function computerSection(): HTMLElement {
-  const windows = navigator.userAgent.includes("Windows");
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
     note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
@@ -724,14 +719,12 @@ function computerSection(): HTMLElement {
     {},
     ...sectionHead(COMPUTER_SETTINGS.title, COMPUTER_SETTINGS.intro),
     setting(COMPUTER_SETTINGS.label,
-      windows ? h("span", {}, COMPUTER_SETTINGS.hint, " ", COMPUTER_SETTINGS.mouse) : SHARING_TEXT.linux,
-      windows
-        ? toggle(settings.chatComputerUse === true, (on) => {
-          settings.chatComputerUse = on;
-          showNote();
-          void save();
-        })
-        : null,
+      h("span", {}, COMPUTER_SETTINGS.hint, " ", COMPUTER_SETTINGS.mouse),
+      toggle(settings.chatComputerUse === true, (on) => {
+        settings.chatComputerUse = on;
+        showNote();
+        void save();
+      }),
     ),
     note,
   );
@@ -818,7 +811,6 @@ function voiceSection(
   const { modelRow: helperModelRow, problem: helperProblem, effortRow: helperEffortRow, draw: drawHelper } = helperChoices();
   drawHelper();
 
-  const windows = navigator.userAgent.includes("Windows");
   const def = SHORTCUTS.find((s) => s.id === "talkToGemini");
   const binding = shortcuts && def ? effective(def, settings.shortcuts) : null;
   const keys = displayKeys(binding?.keys ?? def?.defaultKeys ?? "Ctrl+Alt+L");
@@ -844,8 +836,8 @@ function voiceSection(
         void save();
       }),
     ),
-    setting(t(VOICE_SETTINGS.screen), t(windows ? VOICE_SETTINGS.screenHint : VOICE_SETTINGS.screenLinux),
-      toggle(settings.liveScreen && windows, (on) => {
+    setting(t(VOICE_SETTINGS.screen), t(VOICE_SETTINGS.screenHint),
+      toggle(settings.liveScreen, (on) => {
         settings.liveScreen = on;
         void save();
       }),
@@ -1552,17 +1544,12 @@ const SHORTCUTS_UI = {
     t("{keys} types “{char}” on your keyboard, so it can't be a shortcut. Pick another key.", { keys, char: ch }),
   get needsModifier() { return t("Hold Ctrl, Alt or the Windows key with it."); },
   get unsupportedKey() { return t("That key can't be used in a shortcut."); },
-  get wayland() {
-    return t("Your Wayland desktop doesn't let apps listen for keys outside their own windows. Add the shortcuts in your system's keyboard settings instead, with these commands:");
-  },
-  get noDisplay() { return t("No display server was found, so global shortcuts are off."); },
 };
 
 function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
   let report = initial;
   const list = h("div", { class: "shortcut-list" });
   const feedback = h("div", {});
-  const blockedNote = h("div", {});
 
   let stopRecording: (() => void) | null = null;
 
@@ -1660,17 +1647,6 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
         keycap,
       ));
     }
-
-    clear(blockedNote);
-    if (report?.blocked === "wayland") {
-      const commands = h("div", { class: "diff" });
-      for (const d of SHORTCUTS) {
-        if (d.ported) commands.append(h("div", { class: "ctx", text: `${report.command} ${d.id}` }));
-      }
-      blockedNote.append(h("div", { class: "notice warn", text: SHORTCUTS_UI.wayland }), commands);
-    } else if (report?.blocked) {
-      blockedNote.append(h("div", { class: "notice warn", text: SHORTCUTS_UI.noDisplay }));
-    }
   }
 
   const islandList = h("div", { class: "shortcut-list" });
@@ -1713,7 +1689,6 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
     ...sectionHead(SHORTCUTS_UI.title, SHORTCUTS_UI.hint),
     group(SHORTCUTS_UI.global),
     list,
-    blockedNote,
     feedback,
     h("div", { class: "row end" }, reset),
     group(SHORTCUTS_UI.island),
