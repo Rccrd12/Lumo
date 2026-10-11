@@ -8258,6 +8258,18 @@
    "ru": "Как часто Lumo проверяет почту, календарь и сервисы и сколько двигается на закрытом острове. «Автоматически» экономит энергию от батареи.",
    "id": "Seberapa sering Lumo memeriksa kotak masuk, kalender, dan layanan, dan seberapa banyak ia bergerak di pulau yang tertutup. Otomatis menghemat energi saat memakai baterai.",
    "it": "Ogni quanto Lumo controlla posta, calendario e servizi, e quanto si muove sull'isola chiusa. Automatico risparmia energia quando il computer va a batteria."
+  },
+  "Hide in the edge of the screen": {
+   "zh-Hans": "隐藏到屏幕边缘",
+   "hi": "स्क्रीन के किनारे में छिपाएँ",
+   "es": "Ocultar en el borde de la pantalla",
+   "ar": "إخفاء في حافة الشاشة",
+   "fr": "Masquer dans le bord de l'écran",
+   "bn": "স্ক্রিনের প্রান্তে লুকান",
+   "pt-BR": "Ocultar na borda da tela",
+   "ru": "Спрятать в край экрана",
+   "id": "Sembunyikan di tepi layar",
+   "it": "Nascondi nel bordo dello schermo"
   }
  }
 }

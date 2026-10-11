@@ -2,6 +2,8 @@
 // Drawn on a 24×24 grid so they read at the same optical size.
 
 export const ICONS = {
+  // minus (stroke): hides the island into its edge
+  minus: "M6.5 12h11",
   // leaf (stroke): the energy-saving leaf, its vein running out as the stem
   leaf: "M20 4c-9 0-15 4-15 10 0 3 2 5 5 5 6 0 10-6 10-15zM4 20l9-9",
   // house.fill

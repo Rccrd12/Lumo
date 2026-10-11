@@ -106,7 +106,7 @@ export function edgeGap(name: string | undefined): number {
 }export const EXPANDED_CORNER = 22;
 
 /** Invisible hover strip that wakes the island when hidden. */
-export const WAKE_STRIP_W = 240;
+export const WAKE_STRIP_W = COMPACT_W;
 export const WAKE_STRIP_H = 6;
 
 export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {

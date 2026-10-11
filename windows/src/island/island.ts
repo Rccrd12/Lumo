@@ -280,6 +280,7 @@ export class Island {
       setView: (v) => this.setView(v),
       cancelDrop: () => this.discardDrop(),
       collapse: () => this.collapse(),
+      hide: () => this.hideInEdge(),
       foldApproval: () => this.foldApproval(),
       setFocus: (id) => {
         State.setFocus(id);
@@ -581,6 +582,23 @@ export class Island {
     // back left it thinking the island was still open, and a click on the compact
     // island then did nothing — the island could never be reopened.
     this.fsm.forcePetit();
+  }
+
+  /**
+   * The header's –: the island slips into the edge of the screen it hangs
+   * from, as Hide when unused does, and the mouse on that piece of the edge
+   * brings it back (the wake strip, island.rs). A request waiting for an
+   * answer is folded instead, so it is never out of sight.
+   */
+  hideInEdge() {
+    if (State.pendingApproval) {
+      this.foldApproval();
+      return;
+    }
+    State.isPinned = false;
+    this.fsm.pinned = false;
+    Sound.play("pop");
+    this.fsm.forceHidden();
   }
 
   /** Alert from the hook server: open on this view. Pinned alerts never auto-close. */

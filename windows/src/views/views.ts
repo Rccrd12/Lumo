@@ -31,6 +31,8 @@ export interface ViewActions {
   /** "Cancel" on a dropped file: forgets it and goes back home. */
   cancelDrop(): void;
   collapse(): void;
+  /** The header's –: the island slips into its edge until the mouse comes there. */
+  hide(): void;
   /** Folds a waiting card to the compact island without answering it. */
   foldApproval(): void;
   setFocus(id: string): void;
@@ -127,6 +129,10 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
   const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
   const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
+  // Slips the island into the edge of the screen it hangs from, like Hide
+  // when unused; the mouse on that piece of the edge brings it back.
+  const hideBtn = h("button", { class: "hide-btn", title: tl("Hide in the edge of the screen"), onclick: () => actions.hide() },
+    svg(ICONS.minus, 13, { stroke: 2 }));
   // Closes Lumo altogether; it opens again from the Start menu.
   const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
     svg(ICONS.power, 13, { stroke: 2 }));
@@ -145,7 +151,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
     "div",
     { id: "header" },
     h("div", { class: "tabs" }, tabChat, tabAgents, tabActivities, tabDrop),
-    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, quitBtn),
+    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
 

@@ -63,7 +63,8 @@ body {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  width: 240px;
+  /* As long as the closed island (layout.ts WAKE_STRIP_W, island.rs STRIP_W). */
+  width: 288px;
   height: 6px;
   background: transparent;
 }
@@ -110,7 +111,7 @@ body {
   left: 0;
   transform: translateY(-50%);
   width: 6px;
-  height: 240px;
+  height: 288px;
 }
 
 .dock-right #wake-strip {
