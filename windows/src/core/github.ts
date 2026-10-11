@@ -290,6 +290,40 @@ export interface GitHubAlert {
   sound: "error" | "question" | "finish";
 }
 
+// ── The closed island ─────────────────────────────────────────────────────────
+
+/** "owner/repo#12" → "repo#12"; a plain "owner/repo" → "repo". */
+export function shortPR(id: string): string {
+  const at = id.lastIndexOf("#");
+  return at < 0 ? shortRepo(id) : `${shortRepo(id.slice(0, at))}${id.slice(at)}`;
+}
+
+/**
+ * What GitHub is doing, for the closed island: the CI running on a PR of
+ * mine or on a default branch (after a push, a merge…), the first one named.
+ * Null when nothing runs.
+ */
+export function gitHubRunning(pulse: GitHubPulse | null): string | null {
+  if (!pulse) return null;
+  const running = [
+    ...pulse.myPRs.filter((p) => p.ci === "pending").map((p) => shortPR(p.id)),
+    ...pulse.mainCI.filter((r) => r.ci === "pending").map((r) => shortRepo(r.repo)),
+  ];
+  if (running.length === 0) return null;
+  const line = t("CI running on {target}", { target: running[0] });
+  return running.length > 1 ? `${line} · ${t("+{count} more", { count: running.length - 1 })}` : line;
+}
+
+/** What one alert says on the closed island, after "GitHub · ". */
+export function gitHubNote(e: GitHubEvent): string {
+  switch (e.kind) {
+    case "ciFailed": return t("CI failed on {target}", { target: shortPR(e.prId) });
+    case "ciPassed": return t("CI passed on {target}", { target: shortPR(e.prId) });
+    case "mainFailed": return t("CI failed on {target}", { target: shortRepo(e.repo) });
+    case "reviewRequested": return t("Review requested on {target}", { target: shortPR(e.prId) });
+  }
+}
+
 /** handleGitHubEvents: the loudest event wins — red CI > review request > green CI. */
 export function gitHubAlert(events: GitHubEvent[]): GitHubAlert | null {
   let level = 0;

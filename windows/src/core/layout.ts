@@ -127,9 +127,10 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   searching: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   result: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   note: { height: 160, botX: 60, botY: null, botDiameter: 50, agentMode: "column" },
-  // The whole Settings page in a frame (views/settings-frame.ts): room for it,
-  // and Mochi steps aside to leave it the full width.
-  settings: { height: 440, botX: 54, botY: 64, botDiameter: 0, agentMode: "none" },
+  // The whole Settings page in a frame (views/settings-frame.ts): room for it
+  // (the list of sections and the search above it, whole), and Mochi steps
+  // aside to leave it the full width. Within island.rs PANEL_H with the widest gap.
+  settings: { height: 450, botX: 54, botY: 64, botDiameter: 0, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
   // Mac: 160. The extra 24 hold the two lines with top agent, project, busiest
   // day, longest session, permissions and questions, which the Mac card leaves

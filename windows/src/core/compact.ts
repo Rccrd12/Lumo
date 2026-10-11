@@ -72,6 +72,8 @@ export type CompactShown =
 
 /** At most this many live activities at once on the closed island. */
 export const MAX_COMPACT_ITEMS = 4;
+/** Of them, at most this many say what is going on (the chat, the call, each agent at work). */
+export const MAX_ACTIVITY_LINES = 2;
 
 /** Gemini Live's colour on the closed island. */
 export const LIVE_COLOR = "#4285F4";
@@ -148,6 +150,28 @@ export function activityLine(
     if (what) return { text: `${agent.name} · ${what}`, color: agent.color };
   }
   return null;
+}
+
+/**
+ * Every line for what is going on: the chat or the call first, then each
+ * agent at work (the ones waiting on the user first), then what the services
+ * are doing (`others`: GitHub's CI running…), at most MAX_ACTIVITY_LINES.
+ */
+export function activityLines(
+  chat: ChatActivityInput | null,
+  live: LiveActivityInput | null,
+  agents: AgentActivityInput[],
+  others: CompactLine[] = [],
+): CompactLine[] {
+  const out: CompactLine[] = [];
+  const first = activityLine(chat, live, null);
+  if (first) out.push(first);
+  for (const agent of agents) {
+    const line = activityLine(null, null, agent);
+    if (line) out.push(line);
+  }
+  out.push(...others);
+  return out.slice(0, MAX_ACTIVITY_LINES);
 }
 
 function liveWords(phase: LiveActivityInput["phase"]): string {
@@ -281,14 +305,15 @@ export class CompactFeed {
    * event about to start, the two soonest timers, the music.
    * `show` leaves out the notes and the activity, or the music (Settings → Island).
    */
-  shown(activity: CompactLine | null, now: number, show = { notes: true, media: true }): CompactShown {
+  shown(activity: CompactLine | CompactLine[] | null, now: number, show = { notes: true, media: true }): CompactShown {
     this.drop(now);
     if (this.mail) return { kind: "mail", mail: this.mail.mail };
     const items: CompactItem[] = [];
-    // A note stands in for what the AI is doing while it shows.
+    const doing = show.notes ? (Array.isArray(activity) ? activity : activity ? [activity] : []) : [];
+    // A note stands in for the first line of what is going on while it shows.
     const notice = show.notes ? this.currentNotice(now) : null;
     if (notice) items.push({ kind: "line", line: { text: notice.text, color: notice.color }, notice: true });
-    else if (activity && show.notes) items.push({ kind: "line", line: activity, notice: false });
+    for (const line of doing.slice(notice ? 1 : 0)) items.push({ kind: "line", line, notice: false });
     const soon = show.notes ? eventSoon(this.events, now) : null;
     if (soon) items.push({ kind: "line", line: { text: `${soon.title} · ${soonWords(soon.start, now)}`, color: CALENDAR_COLOR }, notice: false });
     for (const timer of this.timers.filter((x) => x.endsAt > now).slice(0, 2)) items.push({ kind: "timer", timer });

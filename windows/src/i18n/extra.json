@@ -3883,6 +3883,18 @@
    "id": "Lampirkan file",
    "it": "Allega un file"
   },
+  "Attach": {
+   "zh-Hans": "附加",
+   "hi": "संलग्न करें",
+   "es": "Adjuntar",
+   "ar": "إرفاق",
+   "fr": "Joindre",
+   "bn": "সংযুক্ত করুন",
+   "pt-BR": "Anexar",
+   "ru": "Прикрепить",
+   "id": "Lampirkan",
+   "it": "Allega"
+  },
   "Effort": {
    "zh-Hans": "推理强度",
    "hi": "प्रयास",
@@ -8054,6 +8066,78 @@
    "ru": "Нет настроек, совпадающих с «{query}».",
    "id": "Tidak ada pengaturan yang cocok dengan “{query}”.",
    "it": "Nessuna impostazione corrisponde a «{query}»."
+  },
+  "CI running on {target}": {
+   "zh-Hans": "{target} 的 CI 运行中",
+   "hi": "{target} पर CI चल रहा है",
+   "es": "CI en curso en {target}",
+   "ar": "CI قيد التشغيل على {target}",
+   "fr": "CI en cours sur {target}",
+   "bn": "{target}-এ CI চলছে",
+   "pt-BR": "CI em execução em {target}",
+   "ru": "CI выполняется: {target}",
+   "id": "CI berjalan di {target}",
+   "it": "CI in corso su {target}"
+  },
+  "CI failed on {target}": {
+   "zh-Hans": "{target} 的 CI 失败",
+   "hi": "{target} पर CI विफल",
+   "es": "CI fallida en {target}",
+   "ar": "فشل CI على {target}",
+   "fr": "CI en échec sur {target}",
+   "bn": "{target}-এ CI ব্যর্থ",
+   "pt-BR": "CI falhou em {target}",
+   "ru": "CI не прошёл: {target}",
+   "id": "CI gagal di {target}",
+   "it": "CI fallita su {target}"
+  },
+  "CI passed on {target}": {
+   "zh-Hans": "{target} 的 CI 已通过",
+   "hi": "{target} पर CI सफल",
+   "es": "CI superada en {target}",
+   "ar": "نجح CI على {target}",
+   "fr": "CI réussie sur {target}",
+   "bn": "{target}-এ CI সফল",
+   "pt-BR": "CI aprovada em {target}",
+   "ru": "CI пройден: {target}",
+   "id": "CI lolos di {target}",
+   "it": "CI superata su {target}"
+  },
+  "Review requested on {target}": {
+   "zh-Hans": "{target} 请求你审查",
+   "hi": "{target} पर समीक्षा का अनुरोध",
+   "es": "Revisión solicitada en {target}",
+   "ar": "طُلبت مراجعة على {target}",
+   "fr": "Revue demandée sur {target}",
+   "bn": "{target}-এ রিভিউর অনুরোধ",
+   "pt-BR": "Revisão solicitada em {target}",
+   "ru": "Запрошено ревью: {target}",
+   "id": "Tinjauan diminta di {target}",
+   "it": "Revisione richiesta su {target}"
+  },
+  "Hide promotional emails": {
+   "zh-Hans": "隐藏推广邮件",
+   "hi": "प्रचार ईमेल छिपाएँ",
+   "es": "Ocultar los correos promocionales",
+   "ar": "إخفاء الرسائل الترويجية",
+   "fr": "Masquer les e-mails promotionnels",
+   "bn": "প্রচারমূলক ইমেল লুকান",
+   "pt-BR": "Ocultar e-mails promocionais",
+   "ru": "Скрывать рекламные письма",
+   "id": "Sembunyikan email promosi",
+   "it": "Nascondi le email promozionali"
+  },
+  "On Gmail, the ones in its Promotions tab; with other providers, the ones with an unsubscribe link (newsletters, offers).": {
+   "zh-Hans": "在 Gmail 中为“推广”标签页里的邮件；其他服务商则为带有退订链接的邮件（新闻通讯、优惠）。",
+   "hi": "Gmail में, उसके प्रमोशन टैब वाले; अन्य प्रदाताओं में, सदस्यता रद्द करने के लिंक वाले (न्यूज़लेटर, ऑफ़र)।",
+   "es": "En Gmail, los de su pestaña Promociones; con otros proveedores, los que tienen un enlace para darse de baja (boletines, ofertas).",
+   "ar": "في Gmail، الرسائل الموجودة في تبويب العروض الترويجية؛ ومع مزوّدين آخرين، الرسائل التي تحتوي على رابط إلغاء الاشتراك (النشرات والعروض).",
+   "fr": "Sur Gmail, ceux de son onglet Promotions ; chez les autres fournisseurs, ceux qui ont un lien de désabonnement (newsletters, offres).",
+   "bn": "Gmail-এ, এর প্রচার ট্যাবের ইমেলগুলি; অন্য প্রদানকারীদের ক্ষেত্রে, আনসাবস্ক্রাইব লিঙ্কসহ ইমেলগুলি (নিউজলেটার, অফার)।",
+   "pt-BR": "No Gmail, os da guia Promoções; com outros provedores, os que têm um link para cancelar a inscrição (newsletters, ofertas).",
+   "ru": "В Gmail — письма со вкладки «Промоакции»; у других почтовых сервисов — письма со ссылкой для отписки (рассылки, предложения).",
+   "id": "Di Gmail, yang ada di tab Promosi; di penyedia lain, yang memiliki tautan berhenti berlangganan (buletin, penawaran).",
+   "it": "Su Gmail, quelle nella scheda Promozioni; con gli altri provider, quelle con un link per annullare l'iscrizione (newsletter, offerte)."
   }
  }
 }

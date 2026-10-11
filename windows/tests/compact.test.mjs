@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  CompactFeed, MAIL_PEEK_MS, NOTICE_MS, activityLine, parseDuration, speakerName, takeTimers, timerLeft,
+  CompactFeed, MAIL_PEEK_MS, NOTICE_MS, activityLine, activityLines, parseDuration, speakerName, takeTimers, timerLeft,
 } from "../src/core/compact.ts";
 import { COMPACT_SIZES, islandSize } from "../src/core/layout.ts";
 
@@ -137,4 +137,28 @@ test("a chat answer sets timers with a line Lumo hides", () => {
   // Still being written: hidden, not started.
   assert.deepEqual(takeTimers("Setting it\n[[tim"), { text: "Setting it", timers: [] });
   assert.equal(takeTimers("No timer [here] at all").text, "No timer [here] at all");
+});
+
+test("every agent at work has its line, the chat first, then the services, two at most", () => {
+  const agent = (name, state, step = null) => ({ name, state, step, color: "#fff" });
+  const chat = { who: "Haiku", label: "Reading main.ts", color: "#E07950" };
+  const ci = { text: "GitHub · CI running on b#1", color: "#F4505E" };
+  const texts = (lines) => lines.map((l) => l.text);
+  assert.deepEqual(activityLines(null, null, [], []), []);
+  assert.deepEqual(texts(activityLines(null, null, [agent("VS Code", "working", "Editing app.ts"), agent("Codex", "idle")], [ci])),
+    ["VS Code · Editing app.ts", "GitHub · CI running on b#1"]);
+  assert.deepEqual(texts(activityLines(chat, null, [agent("VS Code", "approval"), agent("Codex", "thinking")], [ci])),
+    ["Haiku · Reading main.ts", "VS Code · Waiting for your OK"]);
+  assert.deepEqual(texts(activityLines(null, null, [], [ci])), ["GitHub · CI running on b#1"]);
+});
+
+test("a note stands in for the first line only; the others stay", () => {
+  const feed = new CompactFeed();
+  const a = { text: "VS Code · Working…", color: "#fff" };
+  const b = { text: "Codex · Thinking…", color: "#2DD4BF" };
+  assert.deepEqual(feed.shown([a, b], 0).items.map((i) => i.line.text), [a.text, b.text]);
+  feed.notice("Cursor finished", "#ccc", 0);
+  const items = feed.shown([a, b], 10).items;
+  assert.deepEqual(items.map((i) => [i.line.text, i.notice]), [["Cursor finished", true], [b.text, false]]);
+  assert.equal(feed.shown([a, b], 0, { notes: false, media: true }), null, "no activity when notes are off");
 });

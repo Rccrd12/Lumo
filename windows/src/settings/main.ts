@@ -1185,12 +1185,22 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
           sw,
         ),
         rows,
+        def.id === "integration_mail" ? promotionsRow() : null,
       ),
     );
   }
 
   updateNote();
   return h("section", {}, ...sectionHead(t("Integrations")), note, list);
+}
+
+/** Settings → Pills → Email: the promotional emails left out of the island (mail.rs). */
+function promotionsRow(): HTMLElement {
+  return setting(
+    t("Hide promotional emails"),
+    t("On Gmail, the ones in its Promotions tab; with other providers, the ones with an unsubscribe link (newsletters, offers)."),
+    toggle(settings.mailHidePromotions, (v) => { settings.mailHidePromotions = v; void save(); }),
+  );
 }
 
 // ── General section ───────────────────────────────────────────────────────────
@@ -1240,9 +1250,9 @@ function contextMenuRows(): HTMLElement[] {
       settings.contextMenu = withItem(settings.contextMenu, item.id, v);
       void save();
     })));
+  // Named like the other settings of General (Weekly recap…), its switches under it.
   return [
-    group(t("Right-click menu")),
-    h("div", { class: "hint", text: t("A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.") }),
+    setting(t("Right-click menu"), t("A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.")),
     h("div", { class: "setting-list" }, ...items),
   ];
 }

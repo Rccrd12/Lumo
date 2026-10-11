@@ -14,7 +14,7 @@ use tauri::{AppHandle, Emitter, Manager, Monitor, PhysicalPosition, PhysicalSize
 
 use crate::platform::{self, cursor_physical, left_button_down};
 
-/// Logical size of the full window — the largest island view (Settings, 440
+/// Logical size of the full window — the largest island view (Settings, 450
 /// high) with the gap and the room around it.
 pub const PANEL_W: f64 = 720.0;
 pub const PANEL_H: f64 = 480.0;

@@ -7,13 +7,15 @@
 // music only while the closed island is on screen.
 
 import {
-  COMPACT_TEXT, Feed, LIVE_COLOR, activityLine, compactNotice, speakerName, timerLeft,
-  type AgentActivityInput, type ApprovalPeek, type CompactItem, type CompactShown, type MailPeek, type MediaActivity,
+  COMPACT_TEXT, Feed, LIVE_COLOR, activityLines, compactNotice, speakerName, timerLeft,
+  type AgentActivityInput, type ApprovalPeek, type CompactItem, type CompactLine, type CompactShown, type MailPeek,
+  type MediaActivity,
 } from "../core/compact";
+import { gitHubRunning, readPulse } from "../core/github";
 import { Bridge, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State } from "../core/state";
+import { State, isSessionTask, type AgentTask } from "../core/state";
 import { COMPACT_SIZES } from "../core/layout";
 import { Live } from "../live/session";
 import { clear, h, svg } from "../views/dom";
@@ -76,16 +78,30 @@ function approvalInput(): ApprovalPeek | null {
   return { requestId: req.requestId, who: task?.name ?? req.tool, color: task?.color ?? "#F5A524", command: req.command || req.tool };
 }
 
-/** What the agents are doing: the card waiting first, then the busiest session. */
-function agentInput(): AgentActivityInput | null {
-  const sessions = State.tasks.filter((x) => !x.isIntegration);
-  const waiting = sessions.find((x) => x.state === "approval" || x.state === "question");
-  const focus = State.focusTask && !State.focusTask.isIntegration ? State.focusTask : null;
+/**
+ * What each agent is doing: the ones waiting on the user first, then the one
+ * in front, then the others at work. The pills fed by hook events count, the
+ * workspace ones (VS Code, Cursor, Codex, Antigravity) as much as the agents.
+ */
+function agentInputs(): AgentActivityInput[] {
+  const sessions = State.tasks.filter(isSessionTask);
+  const waiting = (s: string) => s === "approval" || s === "question";
   const busy = (s: string) => s === "working" || s === "thinking" || s === "searching";
-  const task = waiting ?? (focus && busy(focus.state) ? focus : sessions.find((x) => busy(x.state)));
-  if (!task) return null;
-  const step = task.steps.length ? task.steps[task.steps.length - 1] : null;
-  return { name: task.name, state: task.state, step, color: task.color };
+  const focusId = State.focusTask?.id;
+  const rank = (x: AgentTask) => (waiting(x.state) ? 0 : x.id === focusId ? 1 : 2);
+  return sessions
+    .filter((x) => waiting(x.state) || busy(x.state))
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => rank(a.x) - rank(b.x) || a.i - b.i)
+    .map(({ x }) => ({ name: x.name, state: x.state, step: x.steps.length ? x.steps[x.steps.length - 1] : null, color: x.color }));
+}
+
+/** What the services are doing: GitHub's CI running on a PR or a default branch. */
+function serviceLines(): CompactLine[] {
+  const gitHub = State.tasks.find((x) => x.id === "integration_github");
+  const info = State.integrations["integration_github"];
+  const running = gitHub && info ? gitHubRunning(readPulse(info.data)) : null;
+  return running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
 }
 
 export class CompactStrip {
@@ -194,7 +210,7 @@ export class CompactStrip {
     const liveInput = Live.active
       ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, color: LIVE_COLOR }
       : null;
-    return activityLine(chatInput, liveInput, agentInput());
+    return activityLines(chatInput, liveInput, agentInputs(), serviceLines());
   }
 
   private draw(now: number) {
