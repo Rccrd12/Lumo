@@ -12,6 +12,7 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
+import { LISTEN_COLOR, listeningLine } from "../core/listen";
 import { byEffort } from "../core/energy";
 import { Bridge, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
@@ -98,12 +99,18 @@ function agentInputs(): AgentActivityInput[] {
     .map(({ x }) => ({ name: x.name, state: x.state, step: x.steps.length ? x.steps[x.steps.length - 1] : null, color: x.color }));
 }
 
-/** What the services are doing: GitHub's CI running on a PR or a default branch. */
+/**
+ * What the services are doing: GitHub's CI running on a PR or a default
+ * branch, and the pull requests the chat listens to (core/listen.ts).
+ */
 function serviceLines(): CompactLine[] {
   const gitHub = State.tasks.find((x) => x.id === "integration_github");
   const info = State.integrations["integration_github"];
   const running = gitHub && info ? gitHubRunning(readPulse(info.data)) : null;
-  return running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
+  const lines: CompactLine[] = running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
+  const listening = listeningLine(State.listening);
+  if (listening) lines.push({ text: `GitHub · ${listening}`, color: gitHub?.color ?? LISTEN_COLOR });
+  return lines;
 }
 
 export class CompactStrip {

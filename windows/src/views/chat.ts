@@ -73,6 +73,7 @@ import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
+import { LISTEN_COLOR, listenMessage, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -1935,7 +1936,7 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    renderMarkdown(live, takeTimers(text).text);
+    renderMarkdown(live, takeListens(takeTimers(text).text).text);
     toEnd();
   });
 
@@ -1962,11 +1963,16 @@ export function buildPrompt(
     showActivity(next, true);
   });
 
-  async function submit() {
-    const query = input.value.trim();
+  /**
+   * Sends what is typed, or `auto`: a message Lumo writes itself (a GitHub
+   * event the chat listened for), which leaves the field, the files waiting
+   * and the screen alone.
+   */
+  async function submit(auto?: string) {
+    const query = auto ?? input.value.trim();
     if (!query || sending) return;
     // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
-    const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
+    const timer = auto ? null : /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
     if (timer && timerMs != null) {
       setInput("");
@@ -1977,7 +1983,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
-    setInput("");
+    if (!auto) setInput("");
     sending = true;
     stopping = false;
     following = true; // a new question goes to the end of the chat
@@ -1985,24 +1991,24 @@ export function buildPrompt(
     Sound.play("send");
 
     // An edited question replaces the one it came from, and what followed it.
-    const edited = editing;
-    editing = null;
+    const edited = auto ? null : editing;
+    if (!auto) editing = null;
     if (edited != null) await rewindTo(edited);
 
     // What the screen button added goes once, then the chip goes.
     const waiting = screen;
     let shared = waiting;
-    if (sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
+    if (!auto && sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
       const folder = await explorerNow();
       if (folder) shared = { ...waiting, folder };
     }
-    if (shared.folder) await attachNamed(shared.folder, query);
+    if (!auto && shared.folder) await attachNamed(shared.folder, query);
 
     // The file goes with the first question asked after it was added, once.
-    const file = State.droppedFile;
+    const file = auto ? null : State.droppedFile;
     const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
     const more = State.moreFiles;
-    const screenContext = screenPayload(shared, more);
+    const screenContext = auto ? null : screenPayload(shared, more);
 
     activity = firstActivity(State.settings.chatProvider, context, screenContext);
     if (activity !== THINKING) activityTimer = setTimeout(() => showActivity(THINKING), FIRST_ACTIVITY_MS);
@@ -2021,8 +2027,12 @@ export function buildPrompt(
       const recorded = !reply.stopped || reply.text !== "";
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       // A timer the answer asked for starts now; its line is not shown.
-      const answered = takeTimers(reply.text);
-      for (const timer of answered.timers) compactTimer(timer.ms, timer.label);
+      const timed = takeTimers(reply.text);
+      for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
+      // What it asked Lumo to listen for on GitHub, and to stop listening to.
+      const answered = takeListens(timed.text);
+      for (const stop of answered.stops) void Bridge.listenCancel(stop.repo, stop.number);
+      for (const ask of answered.listens) void Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, State.chatId);
       if (recorded) {
         State.chatHistory.push({
           id: nextId++,
@@ -2037,9 +2047,9 @@ export function buildPrompt(
         file.sentWith = question.id;
       }
       // The other files went with it, once.
-      if (recorded && State.moreFiles === more) State.moreFiles = [];
+      if (!auto && recorded && State.moreFiles === more) State.moreFiles = [];
       // Rust deleted the screenshots once the turn went, stopped or not.
-      if (screen === waiting) screen = nextScreen(screen);
+      if (!auto && screen === waiting) screen = nextScreen(screen);
       void peekExplorer(true);
       if (reply.session) State.chatSession = reply.session;
       remember();
@@ -2065,9 +2075,51 @@ export function buildPrompt(
       drawModelButton();
       State.notify();
       onHeightChange();
-      input.focus();
+      if (!auto) input.focus();
+      // A GitHub event that came in meanwhile goes now.
+      if (heard.length) window.setTimeout(() => runHeard(), 0);
     }
   }
+
+  // ── Listening to GitHub ───────────────────────────────────────────────────
+
+  /** GitHub events with something for Claude to do, waiting for the chat to be free. */
+  const heard: ListenFired[] = [];
+
+  /**
+   * The next one goes to Claude in the chat that asked for it: that chat is
+   * opened from the history when another is on screen (a new one when it was
+   * deleted; the message says all it needs).
+   */
+  function runHeard() {
+    if (sending) return;
+    const fired = heard.shift();
+    if (!fired) return;
+    if (State.chatId !== fired.watch.chatId) {
+      const saved = loadChats().find((c) => c.id === fired.watch.chatId);
+      if (saved) openChat(saved);
+      else newChat();
+    }
+    void submit(listenMessage(fired));
+  }
+
+  void onEvent<ListenFired>("listen-fired", (fired) => {
+    if (!fired) return;
+    Sound.play(fired.met ? "finish" : "error");
+    compactNotice(`GitHub · ${fired.summary}`, LISTEN_COLOR, 10_000);
+    if (!fired.watch.task) return;
+    heard.push(fired);
+    runHeard();
+  });
+  void onEvent<ListenWatch[]>("listen-changed", (list) => {
+    State.listening = list ?? [];
+    State.notify();
+  });
+  void Bridge.listenList().then((list) => {
+    if (!list) return;
+    State.listening = list;
+    State.notify();
+  });
 
   // ── Ctrl+V ────────────────────────────────────────────────────────────────
 

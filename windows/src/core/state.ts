@@ -1,5 +1,6 @@
 // App state — mirror of AppState.swift (the parts the island needs).
 
+import type { ListenWatch } from "./listen";
 import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../mochi/engine";
@@ -380,6 +381,8 @@ class AppState {
   chatActivity: { label: string | null } | null = null;
   /** A question the chat asks as soon as it is on screen (an email's buttons). */
   chatAsk: string | null = null;
+  /** The pull requests Lumo listens to for the chat (core/listen.ts, listen.rs). */
+  listening: ListenWatch[] = [];
   /** The live activities can show beside the open island (an edge with room for them). */
   activitiesRoom = false;
 
