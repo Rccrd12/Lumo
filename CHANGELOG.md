@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.6.1 — October 11, 2026
+
+- **Listening mode keeps its word**: when Claude wrote the line that starts listening before running a command (checking the CI, say) and then answered, the line was lost and Lumo never listened. Every line of the turn now counts, wherever it was written
+- **Listening mode for Antigravity**: Antigravity in the chat can ask Lumo to keep an eye on a pull request too, as Claude Code does
+- **A screenshot that went no longer stays behind**: after a message, a screenshot sent with it could stay listed in the attachments, and the next message failed with "Only a file dropped on the island can be sent with a question". What went is now taken out, files too
+- **The upload ends on the full bar**: Lumo stays on the full bar while the check pops and the chat takes over, instead of sliding onto an empty card first
+
 ## Windows 0.6.0 — October 11, 2026
 
 - **Windows only**: Lumo no longer ships for Linux. Its build, packages and release, and the Linux-only code behind them, are gone; every release from now on is for Windows
