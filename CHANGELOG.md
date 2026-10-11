@@ -1,5 +1,13 @@
 # Changelog
 
+## Windows and Linux 0.5.5 — October 11, 2026
+
+- **Energy saving** (Settings → General): **None** asks the inbox, GitHub, the calendar, the services, the plan usage and the music more often, near real time; **Light** is Lumo as always; **On** saves energy: the closed island draws 15 frames a second, Lumo dozes with the mouse far away (eyes shut, grey, still) and stops moving with the mouse at rest, the cursor far from the island is read 10 times a second instead of 60, and everything is asked half as often. A permission or a question waiting keeps him awake. **Automatic**, the default, saves energy on battery and, plugged in, does what **On mains power** says (Light or None)
+- **A green leaf** at the closed island's right end while it saves energy
+- **Hide the island into its edge**: a – beside the power button slips it into the edge of the screen, as Hide when unused does; the power button still quits Lumo
+- **The hidden island comes back again**: with Hide when unused, the island often stayed hidden when the mouse went back to the edge. The piece of edge that brings it back is now as long as the closed island, and right where it was, if you moved it
+- **The tray icon**: a left click hides the island or brings it back (Windows); the right click opens the menu, where Pause reads Resume while Lumo is paused
+
 ## Windows and Linux 0.5.4 — October 11, 2026
 
 - **The chat lets you scroll up while an answer is written**: scrolled up to read, it stays where you are until you scroll back to the end, then follows the answer again; the finished answer replaces the streamed one where you were reading. A new question goes back to the end
