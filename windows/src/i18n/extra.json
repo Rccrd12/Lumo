@@ -4315,18 +4315,6 @@
    "id": "Jendela yang terbuka",
    "it": "Finestre aperte"
   },
-  "Open windows ({count})": {
-   "zh-Hans": "打开的窗口（{count}）",
-   "hi": "खुली विंडो ({count})",
-   "es": "Ventanas abiertas ({count})",
-   "ar": "النوافذ المفتوحة ({count})",
-   "fr": "Fenêtres ouvertes ({count})",
-   "bn": "খোলা উইন্ডো ({count})",
-   "pt-BR": "Janelas abertas ({count})",
-   "ru": "Открытые окна ({count})",
-   "id": "Jendela yang terbuka ({count})",
-   "it": "Finestre aperte ({count})"
-  },
   "Screen {number}": {
    "zh-Hans": "屏幕 {number}",
    "hi": "स्क्रीन {number}",
@@ -7503,18 +7491,6 @@
    "id": "Tab browser",
    "it": "Schede del browser"
   },
-  "Browser tabs ({count})": {
-   "zh-Hans": "浏览器标签页（{count}）",
-   "hi": "ब्राउज़र टैब ({count})",
-   "es": "Pestañas del navegador ({count})",
-   "ar": "علامات تبويب المتصفح ({count})",
-   "fr": "Onglets du navigateur ({count})",
-   "bn": "ব্রাউজারের ট্যাব ({count})",
-   "pt-BR": "Abas do navegador ({count})",
-   "ru": "Вкладки браузера ({count})",
-   "id": "Tab browser ({count})",
-   "it": "Schede del browser ({count})"
-  },
   "All tabs": {
    "zh-Hans": "所有标签页",
    "hi": "सभी टैब",
@@ -8307,17 +8283,77 @@
    "id": "Belum ada yang dilampirkan.",
    "it": "Ancora nessun allegato."
   },
-  "Selected texts ({count})": {
-   "zh-Hans": "选中的文本（{count}）",
-   "hi": "चुना गया टेक्स्ट ({count})",
-   "es": "Textos seleccionados ({count})",
-   "ar": "النصوص المحددة ({count})",
-   "fr": "Textes sélectionnés ({count})",
-   "bn": "নির্বাচিত লেখা ({count})",
-   "pt-BR": "Textos selecionados ({count})",
-   "ru": "Выделенный текст ({count})",
-   "id": "Teks terpilih ({count})",
-   "it": "Testi selezionati ({count})"
+  "Screenshot": {
+   "zh-Hans": "截图",
+   "hi": "स्क्रीनशॉट",
+   "es": "Captura de pantalla",
+   "ar": "لقطة شاشة",
+   "fr": "Capture d'écran",
+   "bn": "স্ক্রিনশট",
+   "pt-BR": "Captura de tela",
+   "ru": "Снимок экрана",
+   "id": "Tangkapan layar",
+   "it": "Screenshot"
+  },
+  "Window": {
+   "zh-Hans": "窗口",
+   "hi": "विंडो",
+   "es": "Ventana",
+   "ar": "نافذة",
+   "fr": "Fenêtre",
+   "bn": "উইন্ডো",
+   "pt-BR": "Janela",
+   "ru": "Окно",
+   "id": "Jendela",
+   "it": "Finestra"
+  },
+  "Web page": {
+   "zh-Hans": "网页",
+   "hi": "वेब पेज",
+   "es": "Página web",
+   "ar": "صفحة ويب",
+   "fr": "Page web",
+   "bn": "ওয়েব পেজ",
+   "pt-BR": "Página da web",
+   "ru": "Веб-страница",
+   "id": "Halaman web",
+   "it": "Pagina web"
+  },
+  "Folder": {
+   "zh-Hans": "文件夹",
+   "hi": "फ़ोल्डर",
+   "es": "Carpeta",
+   "ar": "مجلد",
+   "fr": "Dossier",
+   "bn": "ফোল্ডার",
+   "pt-BR": "Pasta",
+   "ru": "Папка",
+   "id": "Folder",
+   "it": "Cartella"
+  },
+  "Remove all": {
+   "zh-Hans": "全部移除",
+   "hi": "सभी हटाएँ",
+   "es": "Quitar todo",
+   "ar": "إزالة الكل",
+   "fr": "Tout retirer",
+   "bn": "সব সরান",
+   "pt-BR": "Remover tudo",
+   "ru": "Удалить все",
+   "id": "Hapus semua",
+   "it": "Rimuovi tutti"
+  },
+  "Files, screenshots, windows, pages and selected text wait here for your next question.": {
+   "zh-Hans": "文件、截图、窗口、网页和选中的文本会在这里等待你的下一个问题。",
+   "hi": "फ़ाइलें, स्क्रीनशॉट, विंडो, पेज और चुना गया टेक्स्ट आपके अगले सवाल के लिए यहाँ इंतज़ार करते हैं।",
+   "es": "Los archivos, capturas, ventanas, páginas y textos seleccionados esperan aquí tu próxima pregunta.",
+   "ar": "تنتظر الملفات ولقطات الشاشة والنوافذ والصفحات والنصوص المحددة هنا سؤالك التالي.",
+   "fr": "Les fichiers, captures, fenêtres, pages et textes sélectionnés attendent ici votre prochaine question.",
+   "bn": "ফাইল, স্ক্রিনশট, উইন্ডো, পেজ আর নির্বাচিত লেখা এখানে আপনার পরের প্রশ্নের অপেক্ষায় থাকে।",
+   "pt-BR": "Arquivos, capturas, janelas, páginas e textos selecionados esperam aqui a sua próxima pergunta.",
+   "ru": "Файлы, снимки экрана, окна, страницы и выделенный текст ждут здесь вашего следующего вопроса.",
+   "id": "File, tangkapan layar, jendela, halaman, dan teks terpilih menunggu di sini untuk pertanyaan Anda berikutnya.",
+   "it": "File, screenshot, finestre, pagine e testo selezionato aspettano qui la tua prossima domanda."
   }
  }
 }

@@ -88,7 +88,7 @@ beforeEach(() => {
 });
 
 const input = () => view.el.querySelector(".chat-input");
-const chips = () => view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent);
+const chips = () => view.el.find(".attach-row").map((r) => r.find(".attach-name")[0].textContent);
 
 test("pasting text is left to the field: nothing is attached", async () => {
   const event = input().fire("paste", { clipboardData: clipboard({ text: "some text" }) });

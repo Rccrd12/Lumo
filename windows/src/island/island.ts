@@ -19,6 +19,7 @@ import { Greeting } from "../mochi/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
 import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../mochi/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
+import { buildPicture } from "../views/picture";
 import { USC, UploadSeq } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
@@ -147,6 +148,8 @@ export class Island {
   private header!: ViewHost;
   private views!: Map<IslandViewName, ViewHost>;
   private uploadCanvas!: UploadCanvas;
+  /** A picture of the chat's previews, opened big over the whole island (views/picture.ts). */
+  private picture = buildPicture();
 
   private width = new Tracked(NOTCH_W);
   private height = new Tracked(0);
@@ -424,6 +427,7 @@ export class Island {
       this.contentEl,
       this.compact.el,
       this.leafEl,
+      this.picture.el,
     );
     this.grips = GRIPS.map((grip) => ({ el: h("div", { class: `edge edge-${grip}` }), grip }));
     this.islandEl = h(
@@ -1595,10 +1599,12 @@ export class Island {
     // The drop canvas draws its own Mochi; two of them would overlap. Out on the
     // desktop, he isn't here at all.
     const away = State.mochiOnDesktop;
-    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !away;
+    // The big picture fills the island: Lumo steps out of its way meanwhile.
+    const picture = State.picture != null;
+    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !away && !picture;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
-    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !away) {
+    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !away && !picture) {
       const d = p.diameter;
       const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";
@@ -1721,6 +1727,8 @@ export class Island {
     if (State.lookPreview && !(expanded && State.view === "wardrobe")) State.lookPreview = null;
 
     this.header.sync();
+    // The big picture belongs to the open chat: anywhere else it closes.
+    this.picture.sync(expanded && State.view === "prompt" && !this.uploadActive);
     for (const [name, view] of this.views) {
       const on = name === State.view;
       view.el.classList.toggle("on", on);

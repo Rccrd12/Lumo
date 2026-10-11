@@ -17,9 +17,13 @@
 // from it, as with the paperclip (views/chat.ts).
 //
 // "Always share the folder open in File Explorer" (Settings → Chat, off by
-// default) does the same for every message: the folder's name shows as a chip
-// while the user types, its listing is taken when the message goes, and the
-// chip's × leaves it out of that one message.
+// default) does the same for every message: the folder's name shows in the
+// attachments while the user types, its listing is taken when the message
+// goes, and its × leaves it out of that one message.
+//
+// What waits is listed one item each (screenItems): two screenshots of the
+// same screen, two windows or two selections are two rows, each with its own
+// × and its own preview.
 
 import type {
   BrowserTab, DroppedFile, ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText,
@@ -32,10 +36,8 @@ export const SCREEN_STRINGS = {
   button: N_("Share your screen or open windows"),
   title: N_("Share with the chat"),
   windows: N_("Open windows"),
-  windowsCount: N_("Open windows ({count})"),
   allWindows: N_("All windows"),
   tabs: N_("Browser tabs"),
-  tabsCount: N_("Browser tabs ({count})"),
   allTabs: N_("All tabs"),
   back: N_("Back"),
   reading: N_("Reading what it shows…"),
@@ -49,15 +51,16 @@ export const SCREEN_STRINGS = {
   needsImages: N_("Screenshots need the Claude Code or Anthropic provider."),
   remove: N_("Remove"),
   selected: N_("Selected text"),
-  selectedCount: N_("Selected texts ({count})"),
   selectedIn: N_("Text from {app}"),
   explorer: N_("Folder open in File Explorer"),
   noExplorer: N_("No folder is open in File Explorer."),
 };
 
-/** How much of the selected text the chip's tooltip shows. */
+/** How much of the selected text the item's tooltip shows. */
 const SELECTION_PREVIEW = 400;
-/** A window's or a tab's title on a chip, at most (the tooltip has it whole). */
+/** How much of it shows under its name, on one line. */
+const SELECTION_LINE = 120;
+/** A window's title as a screenshot's name, at most. */
 const CHIP_TITLE = 32;
 
 /** `text` cut to `max` characters, with "…" when it was longer. */
@@ -149,9 +152,8 @@ export function hostOf(url: string): string {
 
 /** `next` added to `list`: one already there (same title and app) is replaced. */
 export function withWindows(list: SharedWindow[], next: SharedWindow[]): SharedWindow[] {
-  const key = (w: SharedWindow) => `${w.app}\u0000${w.title}`;
-  const fresh = new Set(next.map(key));
-  return [...list.filter((w) => !fresh.has(key(w))), ...next];
+  const fresh = new Set(next.map(windowKey));
+  return [...list.filter((w) => !fresh.has(windowKey(w))), ...next];
 }
 
 /** `next` added to `list`: the same tab is replaced. */
@@ -211,10 +213,10 @@ export interface PendingScreen {
   folder?: ExplorerFolder | null;
   /**
    * "Always share the folder open in File Explorer": the folder found there
-   * (its name only), shown as a chip until the message goes with its listing.
+   * (its name only), shown in the attachments until the message goes with its listing.
    */
   autoFolder?: ExplorerFolder | null;
-  /** That chip was taken off: this message goes without the folder. */
+  /** Its × was pressed: this message goes without the folder. */
   autoOff?: boolean;
 }
 
@@ -227,15 +229,15 @@ export function nextScreen(p: PendingScreen): PendingScreen {
   return { ...emptyScreen(), autoFolder: p.autoFolder ?? null };
 }
 
-/** The folder chip's ×: the shared folder goes, and so does the automatic one, for this message. */
+/** The folder's ×: the shared folder goes, and so does the automatic one, for this message. */
 export function withoutFolder(p: PendingScreen): PendingScreen {
   return { ...p, folder: null, autoOff: true };
 }
 
 /**
  * True when this message should take the folder open in File Explorer by
- * itself: the setting is on, the menu did not already share one, and its chip
- * was not taken off.
+ * itself: the setting is on, the menu did not already share one, and its ×
+ * was not pressed.
  */
 export function sharesFolderByItself(p: PendingScreen, settingOn: boolean): boolean {
   return settingOn && !p.folder && !p.autoOff;
@@ -290,74 +292,123 @@ export function screenPayload(p: PendingScreen, files: readonly { name: string; 
   return out;
 }
 
-export type ChipKind = "windows" | "tabs" | "shots" | "selection" | "folder";
+/** What kind of thing waits for the next question: each one is a row of its own in the attachments. */
+export type ItemKind = "shot" | "window" | "tab" | "selection" | "folder";
 
-export interface ScreenChipInfo {
-  kind: ChipKind;
+/** One thing the screen button or a shortcut added, as the attachments list it. */
+export interface ScreenItem {
+  kind: ItemKind;
+  /** Which one of its kind: a screenshot's path, a window's app and title, a tab's id, a selection's text, the folder's path. */
+  key: string;
   label: string;
+  /** Under the name: what it is, and where it comes from. */
+  detail: string;
+  /** The tooltip: the whole title, the text, the path. */
   title: string;
-  /** The screenshots' previews, shown small on the chip. */
-  thumbs?: string[];
+  /** A screenshot's preview, shown small. */
+  thumb?: string;
 }
 
-/** The chips above the chat: the window list, and the screenshots together. */
-export function screenChips(p: PendingScreen): ScreenChipInfo[] {
-  const out: ScreenChipInfo[] = [];
-  const selections = allSelections(p);
-  if (selections.length === 1) {
-    const { text, app } = selections[0];
+export const ITEM_STRINGS = {
+  file: N_("File"),
+  shot: N_("Screenshot"),
+  window: N_("Window"),
+  tab: N_("Web page"),
+  folder: N_("Folder"),
+};
+
+/** Same app and title: the same window (picking it again replaces it). */
+function windowKey(w: { app: string; title: string }): string {
+  return `${w.app}\u0000${w.title}`;
+}
+
+/** "Window · Code": the kind, then where it comes from when it is known. */
+function kindLine(kind: string, from = ""): string {
+  return [t(kind), from.trim()].filter(Boolean).join(" · ");
+}
+
+/** The text on one line, as the attachments show it under its name. */
+function oneLine(text: string): string {
+  return text.replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Everything waiting, one item each — every screenshot, window, tab and
+ * selection on its own, so its × takes back that one only — then the folder.
+ */
+export function screenItems(p: PendingScreen): ScreenItem[] {
+  const out: ScreenItem[] = [];
+  for (const sel of allSelections(p)) {
     out.push({
       kind: "selection",
-      label: app ? t(SCREEN_STRINGS.selectedIn, { app }) : t(SCREEN_STRINGS.selected),
-      title: text.length > SELECTION_PREVIEW ? `${text.slice(0, SELECTION_PREVIEW)}…` : text,
-    });
-  } else if (selections.length > 1) {
-    const cut = (text: string) => (text.length > SELECTION_PREVIEW ? `${text.slice(0, SELECTION_PREVIEW)}…` : text);
-    out.push({
-      kind: "selection",
-      label: t(SCREEN_STRINGS.selectedCount, { count: selections.length }),
-      title: selections.map((s) => cut(s.text)).join("\n—\n"),
+      key: sel.text,
+      label: sel.app ? t(SCREEN_STRINGS.selectedIn, { app: sel.app }) : t(SCREEN_STRINGS.selected),
+      detail: short(oneLine(sel.text), SELECTION_LINE),
+      title: sel.text.length > SELECTION_PREVIEW ? `${sel.text.slice(0, SELECTION_PREVIEW)}…` : sel.text,
     });
   }
-  if (p.windows.length > 0) {
+  for (const w of p.windows) {
     out.push({
-      kind: "windows",
-      label: p.windows.length === 1 ? short(p.windows[0].title) : t(SCREEN_STRINGS.windowsCount, { count: p.windows.length }),
-      title: windowsTooltip(p.windows),
+      kind: "window",
+      key: windowKey(w),
+      label: w.title.trim() || w.app,
+      detail: kindLine(ITEM_STRINGS.window, w.app),
+      title: windowTooltip(w),
     });
   }
-  if (p.tabs.length > 0) {
+  for (const tab of p.tabs) {
     out.push({
-      kind: "tabs",
-      label: p.tabs.length === 1 ? short(p.tabs[0].title || hostOf(p.tabs[0].url)) : t(SCREEN_STRINGS.tabsCount, { count: p.tabs.length }),
-      title: p.tabs.map((tab) => tabTooltip(tab, " — ")).join("\n"),
+      kind: "tab",
+      key: tab.id,
+      label: tab.title.trim() || hostOf(tab.url) || tab.browser,
+      detail: kindLine(ITEM_STRINGS.tab, tab.url ? hostOf(tab.url) : tab.browser),
+      title: tabTooltip(tab, " — "),
     });
   }
-  if (p.shots.length > 0) {
-    const names = p.shots.map((s) => s.name).join(", ");
-    out.push({ kind: "shots", label: names, title: names, thumbs: p.shots.map((s) => s.preview) });
+  for (const s of p.shots) {
+    out.push({ kind: "shot", key: s.path, label: s.name, detail: t(ITEM_STRINGS.shot), title: s.name, thumb: s.preview });
   }
   const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
-  if (folder) out.push({ kind: "folder", label: folder.name, title: folder.path });
+  if (folder) out.push({ kind: "folder", key: folder.path, label: folder.name, detail: kindLine(ITEM_STRINGS.folder, folder.path), title: folder.path });
   return out;
 }
 
-/** How many things wait for the next question: each screenshot, window and tab, the selection, the folder. */
+/**
+ * `item` taken back, the rest still waiting. A screenshot's file is the
+ * caller's to delete (its path is the item's key).
+ */
+export function withoutItem(p: PendingScreen, item: Pick<ScreenItem, "kind" | "key">): PendingScreen {
+  switch (item.kind) {
+    case "shot":
+      return { ...p, shots: p.shots.filter((s) => s.path !== item.key) };
+    case "window":
+      return { ...p, windows: p.windows.filter((w) => windowKey(w) !== item.key) };
+    case "tab":
+      return { ...p, tabs: p.tabs.filter((tab) => tab.id !== item.key) };
+    case "selection": {
+      const rest = allSelections(p).filter((sel) => sel.text !== item.key);
+      return { ...p, selection: rest[0] ?? null, selections: rest.slice(1) };
+    }
+    case "folder":
+      return withoutFolder(p);
+  }
+}
+
+/** How many things wait for the next question: each screenshot, window, tab and selection, the folder. */
 export function attachedCount(p: PendingScreen): number {
-  const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
-  return allSelections(p).length + p.windows.length + p.tabs.length + p.shots.length + (folder ? 1 : 0);
+  return screenItems(p).length;
 }
 
-/** The list on the chip's tooltip, so the user sees exactly what will be sent. */
-export function windowsTooltip(list: { title: string; app: string }[]): string {
-  return list.map((w) => (w.app ? `${w.title} — ${w.app}` : w.title)).join("\n");
+/** A window's tooltip: its title and its app. */
+function windowTooltip(w: { title: string; app: string }): string {
+  return w.app ? `${w.title} — ${w.app}` : w.title;
 }
 
-// ── What a chip sends, before it is sent ─────────────────────────────────────
+// ── What an attachment sends, before it is sent ──────────────────────────────
 //
-// A click on a chip shows exactly what goes with the question: the pictures,
-// the text read from a window or a tab, the selected text, the folder's
-// listing, a file's name (and the picture, when it is one).
+// A click on an attachment shows exactly what goes with the question: the
+// picture, the text read from a window or a tab, the selected text, the
+// folder's listing, a file's name (and the picture, when it is one).
 
 export const PREVIEW_STRINGS = {
   title: N_("What goes with your question"),
@@ -372,7 +423,7 @@ export const PREVIEW_STRINGS = {
   omitted: N_("Items not listed: {count}"),
 };
 
-/** One thing a chip sends, as the preview shows it. */
+/** One thing that goes with the question, as the preview shows it. */
 export interface PreviewBlock {
   heading: string;
   /** Where it comes from: an app, an address, a path; "" for none. */
@@ -401,26 +452,26 @@ export function formatSize(bytes: number): string {
   return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
 }
 
-/** What the chip of `kind` sends, item by item. */
-export function chipPreview(p: PendingScreen, kind: ChipKind): PreviewBlock[] {
-  switch (kind) {
-    case "shots":
-      return p.shots.map((s) => block({ heading: s.name, image: s.preview }));
+/** What `item` sends, as it will go; nothing once it is no longer waiting. */
+export function itemPreview(p: PendingScreen, item: Pick<ScreenItem, "kind" | "key">): PreviewBlock[] {
+  switch (item.kind) {
+    case "shot":
+      return p.shots.filter((s) => s.path === item.key).map((s) => block({ heading: s.name, image: s.preview }));
     case "selection":
-      return allSelections(p).map((sel) => block({
+      return allSelections(p).filter((sel) => sel.text === item.key).map((sel) => block({
         heading: sel.app ? t(SCREEN_STRINGS.selectedIn, { app: sel.app }) : t(SCREEN_STRINGS.selected),
         detail: sel.title,
         text: sel.text,
       }));
-    case "windows":
-      return p.windows.map((w) => block({
+    case "window":
+      return p.windows.filter((w) => windowKey(w) === item.key).map((w) => block({
         heading: w.title,
         detail: [w.app, w.document ? t(PREVIEW_STRINGS.document, { path: w.document }) : ""].filter(Boolean).join(" · "),
         note: !w.text.trim() ? t(PREVIEW_STRINGS.windowUnread) : w.cut ? t(PREVIEW_STRINGS.cut) : "",
         text: w.text,
       }));
-    case "tabs":
-      return p.tabs.map((tab) => {
+    case "tab":
+      return p.tabs.filter((tab) => tab.id === item.key).map((tab) => {
         const how = !tab.text.trim() ? t(PREVIEW_STRINGS.tabUnread)
           : tab.source === "web" ? t(PREVIEW_STRINGS.downloaded)
           : t(PREVIEW_STRINGS.readInBrowser);

@@ -75,9 +75,10 @@ export function buildUploading(): ViewHost {
         : t("Uploading {name}", { name: State.droppedFile?.name ?? t("file") });
       label.classList.toggle("done", done);
       percent.textContent = done ? "" : `${pct} %`;
-      const w = State.uploadProgress * 526;
-      fill.style.width = `${w}px`;
-      glow.style.transform = `translateX(${Math.max(0, w - 14)}px)`;
+      // The track spans the card, as far from either side.
+      const along = Math.max(0, Math.min(1, State.uploadProgress)) * 100;
+      fill.style.width = `${along}%`;
+      glow.style.left = `max(14px, ${along}%)`;
       glow.style.opacity = State.uploadProgress > 0.01 ? "1" : "0";
       card.classList.toggle("done", done);
     },

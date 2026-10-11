@@ -417,6 +417,11 @@ class AppState {
   chatHistory: ChatMessage[] = [];
   /** The model picker or the past chats are open: the chat takes its full height. */
   chatPanelOpen = false;
+  /**
+   * A picture of the chat's previews, opened big: it fills the whole open
+   * island, and Lumo steps out of its way (views/picture.ts, island.ts).
+   */
+  picture: { src: string; caption: string } | null = null;
   /** The id of the current chat in the history (chats.ts). */
   chatId = newChatId();
   /** The Claude Code session the current chat continues, if Claude Code answered it. */
