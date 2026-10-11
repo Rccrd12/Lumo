@@ -2,6 +2,8 @@
 // Drawn on a 24×24 grid so they read at the same optical size.
 
 export const ICONS = {
+  // leaf (stroke): the energy-saving leaf, its vein running out as the stem
+  leaf: "M20 4c-9 0-15 4-15 10 0 3 2 5 5 5 6 0 10-6 10-15zM4 20l9-9",
   // house.fill
   house: "M12 3.2 2.8 10.6V21h6.6v-5.4h5.2V21h6.6V10.6L12 3.2z",
   // bubble.left.fill

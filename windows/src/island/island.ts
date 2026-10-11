@@ -22,7 +22,8 @@ import { UploadCanvas } from "../upload/canvas";
 import { USC, UploadSeq } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
-import { h } from "../views/dom";
+import { h, svg } from "../views/dom";
+import { ICONS } from "../views/icons";
 import { IslandStateMachine } from "./fsm";
 import { CompactStrip } from "./compact";
 import { ACTIVITIES_GAP, IslandActivities } from "./activities";
@@ -101,6 +102,8 @@ export class Island {
   private countdown!: HTMLElement;
   /** What the closed island says next to Lumo (island/compact.ts). */
   private compact!: CompactStrip;
+  /** The leaf at the closed island's right end while it saves energy (Settings → General → Energy). */
+  private leafEl = h("div", { id: "energy-leaf" }, svg(ICONS.leaf, 13, { stroke: 1.9 }));
   /** When the cursor last moved (performance.now()), for Energy's "at rest". */
   private mouseMovedAt = 0;
   /** Lumo dozes on the closed island, the mouse away, saving energy. */
@@ -419,6 +422,7 @@ export class Island {
       this.uploadCanvas.el,
       this.contentEl,
       this.compact.el,
+      this.leafEl,
     );
     this.grips = GRIPS.map((grip) => ({ el: h("div", { class: `edge edge-${grip}` }), grip }));
     this.islandEl = h(
@@ -1702,6 +1706,10 @@ export class Island {
     // What the closed island says next to Lumo. Standing upright on a side
     // there is no room for it. A change of what it shows resizes the island.
     const compactOn = State.mode === "compact" && !isUpright(this.dock);
+    // Saving energy, a leaf at the right end, opposite Lumo; an email or a
+    // request filling the closed island has the corner to itself.
+    this.leafEl.classList.toggle("on",
+      compactOn && State.effort === "saver" && this.compact.mail == null && this.compact.approval == null);
     State.activitiesRoom = !isUpright(this.dock);
     if (this.compact.sync(compactOn, compactOn || this.activities.isVisible) && State.mode === "compact") {
       this.animateGeometry(this.compact.size == null);

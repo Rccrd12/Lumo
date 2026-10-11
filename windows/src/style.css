@@ -268,6 +268,27 @@ body {
   border-radius: inherit;
 }
 
+/* Saving energy (Settings → General → Energy): a green leaf at the closed
+   island's right end, where Lumo's room is mirrored. */
+#energy-leaf {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 36px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #22c55e;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.25s ease-out;
+}
+
+#energy-leaf.on {
+  opacity: 0.9;
+}
+
 #bot-canvas,
 #greeting-canvas {
   position: absolute;
