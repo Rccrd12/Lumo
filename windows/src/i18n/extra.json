@@ -8343,6 +8343,18 @@
    "id": "File, tangkapan layar, jendela, halaman, dan teks terpilih menunggu di sini untuk pertanyaan Anda berikutnya.",
    "it": "File, screenshot, finestre, pagine e testo selezionato aspettano qui la tua prossima domanda."
   },
+  "File uploaded": {
+   "zh-Hans": "文件已上传",
+   "hi": "फ़ाइल अपलोड हो गई",
+   "es": "Archivo subido",
+   "ar": "تم رفع الملف",
+   "fr": "Fichier envoyé",
+   "bn": "ফাইল আপলোড হয়েছে",
+   "pt-BR": "Arquivo enviado",
+   "ru": "Файл загружен",
+   "id": "File terunggah",
+   "it": "File caricato"
+  },
   "{pr} was merged": {
    "zh-Hans": "{pr} 已合并",
    "hi": "{pr} मर्ज हो गया",

@@ -403,6 +403,8 @@ class AppState {
 
   uploadProgress = 0;
   uploadDuration = 2.4;
+  /** A dropped file just landed in the chat: it says so until `until` (Date.now()). */
+  uploadedNote: { name: string; until: number } | null = null;
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;

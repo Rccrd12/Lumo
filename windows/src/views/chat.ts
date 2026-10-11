@@ -72,7 +72,7 @@ import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
-import { COMPACT_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
+import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_COLOR, listenMessage, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
 
 const STRINGS = {
@@ -307,6 +307,15 @@ function noteChip(label: string, title: string, onRemove: () => void): HTMLEleme
     onRemove();
   });
   const chip = h("div", { class: "chip", title }, h("i", { class: "chip-dot" }), h("span", { text: label }), remove);
+  requestAnimationFrame(() => chip.classList.add("settled"));
+  return chip;
+}
+
+/** "✓ File uploaded · name", a moment after a drop: no ×, it goes on its own. */
+function uploadedChip(name: string): HTMLElement {
+  const label = `${t(UPLOADED_TEXT)} · ${name}`;
+  const chip = h("div", { class: "chip uploaded", title: label },
+    h("span", { class: "chip-check" }, svg(ICONS.check, 9, { stroke: 2.2 })), h("span", { text: label }));
   requestAnimationFrame(() => chip.classList.add("settled"));
   return chip;
 }
@@ -2260,11 +2269,15 @@ export function buildPrompt(
       }
       // Something is already attached: the ways to start make room for it.
       body.classList.toggle("has-context", attached > 0 || editing != null);
-      const editKey = editing != null ? String(editing) : "";
+      // A dropped file just came in: a word that it did, for a moment.
+      const uploaded = State.uploadedNote && State.uploadedNote.until > Date.now() ? State.uploadedNote : null;
+      if (!uploaded) State.uploadedNote = null;
+      const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : "";
       if (chipRow.dataset.label !== editKey) {
         chipRow.dataset.label = editKey;
         clear(chipRow);
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
+        else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
       }
 
       const thinking = State.stateOverride === "thinking";

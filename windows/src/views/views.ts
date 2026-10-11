@@ -9,7 +9,7 @@ import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
 import { buildPrompt } from "./chat";
-import { buildChoose, buildUpload, buildUploading } from "./upload";
+import { buildUpload, buildUploading } from "./upload";
 import { idleCardKey, renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
 import { pillDefinition, sessionSubtitle } from "../core/pills";
 import {
@@ -29,7 +29,6 @@ import { language, t, tl, type Msg } from "../i18n/i18n";
 export interface ViewActions {
   setView(v: IslandViewName): void;
   /** "Cancel" on a dropped file: forgets it and goes back home. */
-  cancelDrop(): void;
   collapse(): void;
   /** The header's –: the island slips into its edge until the mouse comes there. */
   hide(): void;
@@ -728,7 +727,6 @@ export function buildViews(
   }));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
-  map.set("choose", buildChoose(actions));
   map.set("recap", buildRecap(actions));
   map.set("wardrobe", buildWardrobe(actions));
   map.set("live", buildLive(() => openVoiceSettings(actions.setView)));

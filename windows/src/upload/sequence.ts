@@ -105,7 +105,10 @@ export function progressAt(t: number, progStart: number, progEnd: number): numbe
 /** The reference `spring(s, target, response, damping, dt)`, integrated by hand. */
 class USSpring {
   vel = 0;
-  constructor(public v: number) {}
+  v: number;
+  constructor(v: number) {
+    this.v = v;
+  }
 
   step(target: number, response: number, damping: number, dt: number) {
     const k = Math.pow((2 * Math.PI) / response, 2);
@@ -155,7 +158,6 @@ export interface UploadFrame {
   flash: number;
   check: number;
   greenWash: number;
-  chooseAlpha: number;
   progEnd: number;
   growStart: number;
   growEnd: number;
@@ -190,7 +192,6 @@ function restFrame(): UploadFrame {
     flash: 0,
     check: 0,
     greenWash: 0,
-    chooseAlpha: 0,
     progEnd: USC.T_PROG_START + 2.4,
     growStart: USC.T_PROG_START + 2.4 + 0.25,
     growEnd: USC.T_PROG_START + 2.4 + 0.7,
@@ -400,7 +401,7 @@ class UploadSequence {
     // long hover never trips the post-drop visuals.
     const pt = isDragging ? Math.min(t, USC.T_DROP - USC.DT) : t;
 
-    // Morph: 0→1 on entry, 1→0 shrinking to a ball, 0→1 growing back at choose.
+    // Morph: 0→1 on entry, 1→0 shrinking to a ball, 0→1 growing back before the chat.
     let morph: number;
     if (pt < USC.T_CHEW_END) morph = eBack(seg(pt, entered, entered + 0.38));
     else if (pt < growStart) morph = 1 - eOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
@@ -521,7 +522,6 @@ class UploadSequence {
       uploadGreen = (baseGreen + flashExtra) * fadeOut;
     }
     f.greenWash = Math.max(hoverGreen, uploadGreen);
-    f.chooseAlpha = seg(pt, growStart + 0.15, growEnd);
 
     // Mouth rect in island coordinates — the file is clipped against it.
     const R = f.d / 2 / 1.04;
