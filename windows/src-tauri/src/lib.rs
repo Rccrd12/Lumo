@@ -186,10 +186,18 @@ fn language_changed(app: &AppHandle) {
 fn set_collapsed(app: AppHandle, shared: State<Shared>, collapsed: bool) {
     let (pref, placement) = placement(&shared);
     shared.gate.collapsed.store(collapsed, Ordering::Relaxed);
+    // The cursor poll stops before the wake strip is told to take the mouse,
+    // or its last tick could make the strip click-through and the hidden
+    // island would never come back (island.rs while_active).
+    if collapsed {
+        shared.gate.set_active(false);
+    }
     island::apply_geometry(&app, &pref, placement, collapsed);
     // The wake strip must always take the mouse, and a resize invalidates the flag.
     island::refresh_click_through(&app, &shared.gate);
-    shared.gate.set_active(!collapsed);
+    if !collapsed {
+        shared.gate.set_active(true);
+    }
     platform::set_pointer_watch(!collapsed);
 }
 

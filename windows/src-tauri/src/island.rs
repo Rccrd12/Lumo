@@ -434,6 +434,16 @@ impl PollGate {
     pub(crate) fn is_active(&self) -> bool {
         *self.active.lock().unwrap()
     }
+
+    /// Runs `f` only while the poll is on, holding the lock `set_active` takes:
+    /// a tick that read the cursor before the island hid can no longer make
+    /// the window click-through after the wake strip was told to take the mouse.
+    fn while_active(&self, f: impl FnOnce()) {
+        let guard = self.active.lock().unwrap();
+        if *guard {
+            f();
+        }
+    }
 }
 
 pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
@@ -596,6 +606,17 @@ fn target_monitor(app: &AppHandle, pref: &str) -> Option<Monitor> {
 
 #[cfg(test)]
 mod display_tests {
+    #[test]
+    fn a_hidden_island_never_has_its_wake_strip_made_click_through() {
+        let gate = PollGate::new();
+        let mut ran = false;
+        gate.while_active(|| ran = true);
+        assert!(!ran, "the poll is parked: the strip keeps taking the mouse");
+        gate.set_active(true);
+        gate.while_active(|| ran = true);
+        assert!(ran);
+    }
+
     use super::*;
 
     fn d(name: &str, x: i32, y: i32, w: i32, h: i32) -> DisplayId {
@@ -1208,6 +1229,11 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
             while gate.is_active() {
                 let saving = far && crate::energy::current() == crate::energy::Effort::Saver;
                 std::thread::sleep(Duration::from_millis(if saving { period.max(FAR_PERIOD_MS) } else { period }));
+                // The island hid during the sleep: the window is the wake strip
+                // now, which must keep taking the mouse.
+                if !gate.is_active() {
+                    break;
+                }
 
                 // Monitors get plugged in, unplugged, rearranged and rescaled, and
                 // an island pinned to coordinates that no longer exist is an island
@@ -1290,8 +1316,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
 
                 let accept = (on_island || dragging) && !acting;
                 if gate.ignoring.load(Ordering::Relaxed) == accept {
-                    gate.ignoring.store(!accept, Ordering::Relaxed);
-                    let _ = win.set_ignore_cursor_events(!accept);
+                    gate.while_active(|| {
+                        gate.ignoring.store(!accept, Ordering::Relaxed);
+                        let _ = win.set_ignore_cursor_events(!accept);
+                    });
                 }
 
                 let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel });
