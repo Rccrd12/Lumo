@@ -416,7 +416,8 @@ pub(crate) fn is_inside(dir: &std::path::Path, path: &std::path::Path) -> bool {
 /// the same rule as a dropped file.
 fn checked_screen(mut screen: ScreenContext) -> Result<ScreenContext, String> {
     let inbox = crate::files::inbox_dir();
-    if screen.shots.iter().any(|s| !is_inside(&inbox, std::path::Path::new(&s.path))) {
+    let paths = screen.shots.iter().chain(screen.files.iter());
+    if paths.map(|s| std::path::Path::new(&s.path)).any(|p| !is_inside(&inbox, p)) {
         return Err(crate::i18n::t("Only a file dropped on the island can be sent with a question."));
     }
     // A shared window's document is named only when Rust found it (share.rs).
@@ -458,7 +459,8 @@ fn with_screen(provider: &str, screen: Option<&ScreenContext>, query: String) ->
         return Err(crate::i18n::t("Screenshots need the Claude Code or Anthropic provider."));
     }
     let cli = is_cli(provider);
-    let images = if cli { Vec::new() } else { screen.shots.iter().map(|s| s.path.clone()).collect() };
+    // The other providers are sent the screenshots and the files themselves.
+    let images = if cli { Vec::new() } else { screen.shots.iter().chain(screen.files.iter()).map(|s| s.path.clone()).collect() };
     Ok((format!("{}{query}", screen::context_text(screen, cli)), images))
 }
 
@@ -516,9 +518,14 @@ async fn dispatch(
         s.documents = documents;
     }
     chat.arm();
+    let more: Vec<(String, String)> =
+        screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
     let mut reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await?;
     // Remembered once it went, for a fresh Claude Code session after an edit.
     if let Some(ChatContext::File { name, path }) = &context {
+        chat.note_file(name, path);
+    }
+    for (name, path) in &more {
         chat.note_file(name, path);
     }
     reply.turns = chat.turns();
@@ -840,6 +847,8 @@ mod tests {
             windows: vec![WindowInfo { id: 0, title: "Docs".into(), app: "msedge".into(), active: true, minimized: false }],
             shots: vec![ShotRef { name: "Screen 1".into(), path: "/inbox/s1.png".into() }],
             selection: None,
+            selections: Vec::new(),
+            files: Vec::new(),
             folder: None,
             shared_windows: Vec::new(),
             tabs: Vec::new(),

@@ -8306,6 +8306,18 @@
    "ru": "Пока ничего не прикреплено.",
    "id": "Belum ada yang dilampirkan.",
    "it": "Ancora nessun allegato."
+  },
+  "Selected texts ({count})": {
+   "zh-Hans": "选中的文本（{count}）",
+   "hi": "चुना गया टेक्स्ट ({count})",
+   "es": "Textos seleccionados ({count})",
+   "ar": "النصوص المحددة ({count})",
+   "fr": "Textes sélectionnés ({count})",
+   "bn": "নির্বাচিত লেখা ({count})",
+   "pt-BR": "Textos selecionados ({count})",
+   "ru": "Выделенный текст ({count})",
+   "id": "Teks terpilih ({count})",
+   "it": "Testi selezionati ({count})"
   }
  }
 }

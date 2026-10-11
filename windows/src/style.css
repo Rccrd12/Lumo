@@ -2868,9 +2868,10 @@ img.zoomable {
   cursor: zoom-in;
 }
 
+/* Beside Lumo, never over him: the chat's own left margin is his. */
 .zoom {
   position: absolute;
-  inset: 0;
+  inset: 0 0 0 92px;
   z-index: 20;
   display: none;
   flex-direction: column;
@@ -2878,7 +2879,7 @@ img.zoomable {
   justify-content: center;
   gap: 6px;
   padding: 10px 10px 8px;
-  border-radius: inherit;
+  border-radius: 14px;
   background: rgba(0, 0, 0, 0.92);
   cursor: zoom-out;
 }
@@ -3215,6 +3216,50 @@ img.zoomable {
   padding-top: 0;
   font-size: 12.5px;
   color: #b4b9c1;
+}
+
+/* A service's card with its data (views/integrations.ts framed): the tools'
+   card around it, its rows read like the tools' facts. */
+.data-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.data-card .int-stats {
+  gap: 5px;
+  padding-top: 4px;
+  padding-right: 0;
+}
+
+.data-card .int-stat {
+  padding-bottom: 5px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.data-card .int-stat-label {
+  font-size: 12px;
+  color: var(--dim-2);
+}
+
+.data-card .int-stat-value {
+  font-size: 12px;
+  color: var(--ink-2);
+}
+
+.data-card .int-rows {
+  padding-top: 4px;
+}
+
+.data-card .int-name {
+  font-size: 12px;
+}
+
+.data-card .int-ago,
+.data-card .int-sub {
+  font-size: 11px;
 }
 
 .tool-facts {

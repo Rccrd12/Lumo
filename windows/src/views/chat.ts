@@ -56,7 +56,7 @@ import { planColor } from "../core/plan";
 import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
-  PREVIEW_STRINGS, SCREEN_STRINGS, attachedCount, chipPreview, emptyScreen, filePreview, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
+  PREVIEW_STRINGS, SCREEN_STRINGS, attachedCount, chipPreview, withSelection, emptyScreen, filePreview, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
   screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows,
   withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry, type PreviewBlock,
 } from "../core/screen";
@@ -1170,7 +1170,7 @@ export function buildPrompt(
     if (!kind) screen = nextScreen(screen);
     if (kind === "windows") screen = { ...screen, windows: [] };
     if (kind === "tabs") screen = { ...screen, tabs: [] };
-    if (kind === "selection") screen = { ...screen, selection: null };
+    if (kind === "selection") screen = { ...screen, selection: null, selections: [] };
     if (kind === "folder") screen = withoutFolder(screen);
   }
 
@@ -1221,11 +1221,10 @@ export function buildPrompt(
     if (!share) return;
     State.incomingShare = null;
     if (share.kind === "screen") {
-      // A new "Ask about my screen" replaces the screenshots still waiting.
-      clearScreen("shots");
+      // Each "Ask about my screen" adds its screenshot to the ones waiting.
       screen = keepShots(screen, share.shots);
     } else if (share.kind === "selection") {
-      screen = { ...screen, selection: share.selection };
+      screen = withSelection(screen, share.selection);
     } else if (share.kind === "page") {
       screen = { ...screen, tabs: withTabs(screen.tabs, [share.tab]) };
     } else if (share.kind === "file") {
@@ -1718,6 +1717,15 @@ export function buildPrompt(
 
   /** A file joins the chat: picked with the paperclip, or named from a shared folder. */
   async function useFile(file: { name: string; path: string }) {
+    // A file is already waiting: this one goes with it, in the same question.
+    const waiting = State.droppedFile;
+    if (waiting && !waiting.sent) {
+      const known = [waiting, ...State.moreFiles].some((f) => f.path === file.path);
+      if (!known) State.moreFiles = [...State.moreFiles, { name: file.name, path: file.path }];
+      Sound.play("attach");
+      State.notify();
+      return;
+    }
     let reset: Promise<unknown> = Promise.resolve();
     // The CLIs read the file from its path, mid-conversation too. The other
     // providers take a file with the first question only: a new chat, as a drop.
@@ -1872,7 +1880,8 @@ export function buildPrompt(
     // The file goes with the first question asked after it was added, once.
     const file = State.droppedFile;
     const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
-    const screenContext = screenPayload(shared);
+    const more = State.moreFiles;
+    const screenContext = screenPayload(shared, more);
 
     activity = firstActivity(State.settings.chatProvider, context, screenContext);
     if (activity !== THINKING) activityTimer = setTimeout(() => showActivity(THINKING), FIRST_ACTIVITY_MS);
@@ -1906,6 +1915,8 @@ export function buildPrompt(
         file.sent = true;
         file.sentWith = question.id;
       }
+      // The other files went with it, once.
+      if (recorded && State.moreFiles === more) State.moreFiles = [];
       // Rust deleted the screenshots once the turn went, stopped or not.
       if (screen === waiting) screen = nextScreen(screen);
       void peekExplorer(true);
@@ -2019,7 +2030,8 @@ export function buildPrompt(
       const wantChip = file?.name ?? "";
       const extra = screenChips(screen);
       const editKey = editing != null ? [`edit\t${editing}`] : [];
-      const chipKey = [wantChip, ...extra.map((c) => `${c.label}\t${c.title}`), ...shotPaths(screen), ...editKey].join("\n");
+      const moreFiles = State.moreFiles;
+      const chipKey = [wantChip, ...moreFiles.map((f) => `file\t${f.path}`), ...extra.map((c) => `${c.label}\t${c.title}`), ...shotPaths(screen), ...editKey].join("\n");
       if (chipRow.dataset.label !== chipKey) {
         chipRow.dataset.label = chipKey;
         // Something is already attached: the ways to start make room for it.
@@ -2032,12 +2044,28 @@ export function buildPrompt(
             if (sending) return;
             State.droppedFile = null;
             if (State.promptContext?.kind === "file") State.promptContext = null;
+            // The next file waiting takes its place.
+            const [next, ...rest] = State.moreFiles;
+            if (next) {
+              State.moreFiles = rest;
+              State.droppedFile = { ...next };
+              State.promptContext = { kind: "file", name: next.name, path: next.path };
+            }
             Sound.play("pop");
             State.notify();
           };
           filesList.append(screenChip(wantChip, file?.path ?? wantChip, removeFile, undefined, () => {
             if (file) void openFilePreview(file, removeFile);
           }));
+        }
+        for (const more of moreFiles) {
+          const removeMore = () => {
+            if (sending) return;
+            State.moreFiles = State.moreFiles.filter((f) => f.path !== more.path);
+            Sound.play("pop");
+            State.notify();
+          };
+          filesList.append(screenChip(more.name, more.path, removeMore, undefined, () => void openFilePreview(more, removeMore)));
         }
         for (const c of extra) {
           const removeIt = () => {
@@ -2048,7 +2076,7 @@ export function buildPrompt(
           };
           filesList.append(screenChip(c.label, c.title, removeIt, c.thumbs, () => openPreview(chipPreview(screen, c.kind), removeIt)));
         }
-        const count = (wantChip ? 1 : 0) + attachedCount(screen);
+        const count = (wantChip ? 1 : 0) + moreFiles.length + attachedCount(screen);
         filesBadge.textContent = count > 0 ? String(count) : "";
         filesBtn.classList.toggle("has-files", count > 0);
         if (count === 0) filesList.append(h("div", { class: "picker-status", text: t(STRINGS.noAttachments) }));

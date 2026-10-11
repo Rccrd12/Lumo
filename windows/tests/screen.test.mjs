@@ -196,6 +196,7 @@ internals.invoke = async (cmd, args) => {
 let view;
 beforeEach(() => {
   calls.length = 0;
+  State.moreFiles = [];
   answers = {
     screen_displays: DISPLAYS,
     screen_windows: WINDOWS,
@@ -506,7 +507,7 @@ test("a new chat deletes screenshots that were never sent", async () => {
 
 // ── The sharing shortcuts (island/shortcuts.ts runShared hands them over) ─────
 
-test("a screenshot from the shortcut waits as a chip with its picture, and a new one replaces it", () => {
+test("a screenshot from the shortcut waits as a chip with its picture, and a new one joins it", () => {
   State.incomingShare = { kind: "screen", shots: [shot(0)] };
   view.sync();
   assert.equal(State.incomingShare, null, "taken");
@@ -517,8 +518,42 @@ test("a screenshot from the shortcut waits as a chip with its picture, and a new
 
   State.incomingShare = { kind: "screen", shots: [shot(1)] };
   view.sync();
-  assert.deepEqual(sent("screen_discard"), [{ paths: [shot(0).path] }]);
-  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Screen 2"]);
+  State.incomingShare = { kind: "screen", shots: [shot(1)] };
+  view.sync();
+  assert.deepEqual(sent("screen_discard"), [], "none is thrown away");
+  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Screen 1, Screen 2, Screen 2 (2)"]);
+  assert.equal($(".tool-badge").textContent, "3");
+});
+
+test("two selections from the shortcut both go, the same text only once", async () => {
+  const a = { text: "first bit", app: "Word", title: "a.docx" };
+  const b = { text: "second bit", app: "Edge", title: "News" };
+  for (const selection of [a, b, a]) {
+    State.incomingShare = { kind: "selection", selection };
+    view.sync();
+  }
+  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Selected texts (2)"]);
+  $(".chat-input").value = "compare";
+  $(".send-btn").fire("click");
+  await flush();
+  const turn = sent("chat_send")[0];
+  assert.deepEqual(turn.screen.selection, a);
+  assert.deepEqual(turn.screen.selections, [b]);
+});
+
+test("a second file joins the first and both go with the question", async () => {
+  State.droppedFile = { name: "a.pdf", path: "C:\\Lumo\\inbox\\a.pdf" };
+  State.moreFiles = [{ name: "b.pdf", path: "C:\\Lumo\\inbox\\b.pdf" }];
+  view.sync();
+  assert.deepEqual($(".files-list").find(".chip").map((c) => c.find("SPAN")[0].textContent), ["a.pdf", "b.pdf"]);
+  assert.equal($(".tool-badge").textContent, "2");
+  $(".chat-input").value = "compare";
+  $(".send-btn").fire("click");
+  await flush();
+  const turn = sent("chat_send")[0];
+  assert.equal(turn.context.path, "C:\\Lumo\\inbox\\a.pdf");
+  assert.deepEqual(turn.screen.files, [{ name: "b.pdf", path: "C:\\Lumo\\inbox\\b.pdf" }]);
+  assert.deepEqual(State.moreFiles, [], "sent once");
 });
 
 test("selected text from the shortcut goes with the next question once, and × takes it back", async () => {

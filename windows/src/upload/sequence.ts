@@ -48,6 +48,9 @@ export const USC = {
   ENTRY_T_REF: 1.95 - 0.4,
 } as const;
 
+/** How far below the dragged file Mochi waits: half the sheet, half of him, a little air. */
+const UNDER_FILE = 21 + USC.D_BOX / 2 + 4;
+
 // ── Easing ──────────────────────────────────────────────────────────────────
 
 export const eOut = (t: number) => 1 - Math.pow(1 - t, 3);
@@ -350,7 +353,8 @@ class UploadSequence {
       }
       if (this.locked && dist > USC.LOCK_OUT) this.locked = false;
       const tx = Math.max(USC.FOLLOW_MIN - this.reachX, Math.min(USC.FOLLOW_MAX + this.reachX, this.cursorX));
-      const ty = Math.max(USC.REST_Y - this.reachY, Math.min(USC.REST_Y + this.reachY, this.cursorY + 14));
+      // Under the file, mouth up, like a bin waiting for it: never on top of it.
+      const ty = Math.max(USC.REST_Y - this.reachY, Math.min(USC.REST_Y + this.reachY, this.cursorY + 14 + UNDER_FILE));
       const response = this.locked ? 0.18 : 0.35;
       const damping = this.locked ? 0.75 : 0.7;
       this.bx.step(tx, response, damping, dt);

@@ -408,6 +408,8 @@ class AppState {
    * `sentWith` that question's id, so editing it sends the file again (views/chat.ts).
    */
   droppedFile: { name: string; path: string; sent?: boolean; sentWith?: number } | null = null;
+  /** More files added while `droppedFile` still waited: they go with the same question. */
+  moreFiles: { name: string; path: string }[] = [];
   noteMessage: string | null = null;
   /** What a sharing shortcut just took, for the chat to pick up (island/shortcuts.ts). */
   incomingShare: SharedContext | null = null;
@@ -502,6 +504,7 @@ class AppState {
    */
   /** A fresh chat: what was said goes, the history keeps the old one. */
   startChat() {
+    this.moreFiles = [];
     this.chatHistory = [];
     this.chatId = newChatId();
     this.chatSession = null;

@@ -96,6 +96,13 @@ pub struct ScreenContext {
     pub shots: Vec<ShotRef>,
     #[serde(default)]
     pub selection: Option<SelectionRef>,
+    /// More text the user selected and shared before asking, after `selection`.
+    #[serde(default)]
+    pub selections: Vec<SelectionRef>,
+    /// More files the user added (dropped, pasted, picked) after the first
+    /// one, which goes as the chat's file context. In the inbox only.
+    #[serde(default)]
+    pub files: Vec<ShotRef>,
     /// The folder open in File Explorer, with what is in it (explorer.rs).
     #[serde(default)]
     pub folder: Option<crate::explorer::ExplorerFolder>,
@@ -116,6 +123,8 @@ impl ScreenContext {
         self.windows.is_empty()
             && self.shots.is_empty()
             && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
+            && self.selections.iter().all(|s| s.text.trim().is_empty())
+            && self.files.is_empty()
             && self.folder.is_none()
             && self.shared_windows.is_empty()
             && self.tabs.is_empty()
@@ -219,8 +228,8 @@ pub fn windows_text(list: &[WindowInfo]) -> String {
 /// travel with the message and only their names are said.
 pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
     let mut out = String::new();
-    if let Some(text) = screen.selection.as_ref().and_then(|s| crate::selection::tidy(&s.text).map(|t| (s, t))) {
-        let (sel, text) = text;
+    let selected = screen.selection.iter().chain(screen.selections.iter());
+    for (sel, text) in selected.filter_map(|s| crate::selection::tidy(&s.text).map(|t| (s, t))) {
         let app = clip_title(&sel.app);
         let title = clip_title(&sel.title);
         let place = match (app.is_empty(), title.is_empty()) {
@@ -232,6 +241,18 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
         out.push_str(&format!(
             "The user selected this text{place} and shared it just now:\n<selected_text>\n{text}\n</selected_text>\n\n"
         ));
+    }
+    if !screen.files.is_empty() {
+        if with_paths {
+            out.push_str("The user added more files to the chat. Read them from these paths:\n");
+            for f in &screen.files {
+                out.push_str(&format!("- {}: {}\n", clip_title(&f.name), f.path));
+            }
+        } else {
+            let names: Vec<String> = screen.files.iter().map(|f| clip_title(&f.name)).collect();
+            out.push_str(&format!("The user added more files to the chat (attached: {}).\n", names.join(", ")));
+        }
+        out.push('\n');
     }
     if !screen.shots.is_empty() {
         if with_paths {
@@ -968,6 +989,23 @@ mod tests {
     }
 
     #[test]
+    fn every_selection_and_every_added_file_goes() {
+        let sel = |text: &str, app: &str| SelectionRef { text: text.into(), app: app.into(), title: String::new() };
+        let screen = ScreenContext {
+            selection: Some(sel("first bit", "Word")),
+            selections: vec![sel("second bit", "Edge")],
+            files: vec![ShotRef { name: "b.pdf".into(), path: "C:\\inbox\\b.pdf".into() }],
+            ..Default::default()
+        };
+        assert!(!screen.is_empty());
+        let text = context_text(&screen, true);
+        assert!(text.contains("first bit") && text.contains(" in Word"));
+        assert!(text.contains("second bit") && text.contains(" in Edge"));
+        assert!(text.contains("- b.pdf: C:\\inbox\\b.pdf"));
+        assert!(context_text(&screen, false).contains("(attached: b.pdf)"));
+    }
+
+    #[test]
     fn the_context_says_where_the_screenshots_are_or_only_names_them() {
         let screen = ScreenContext {
             windows: vec![win("Docs", "msedge")],
@@ -976,6 +1014,8 @@ mod tests {
                 ShotRef { name: "Screen 2".into(), path: "C:\\inbox\\screenshot-2.png".into() },
             ],
             selection: None,
+            selections: Vec::new(),
+            files: Vec::new(),
             folder: None,
             shared_windows: Vec::new(),
             tabs: Vec::new(),

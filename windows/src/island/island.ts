@@ -921,10 +921,16 @@ export class Island {
    */
   private swallow(path: string) {
     const name = path.split(/[\\/]/).pop() || "file";
+    // A file still waiting to be asked about: this one joins it.
+    const waiting = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile, ...State.moreFiles] : null;
     State.droppedFile = { name, path };
     State.promptContext = { kind: "file", name, path };
-    State.startChat();
-    void Bridge.chatReset();
+    if (waiting) {
+      State.moreFiles = waiting.filter((f) => f.path !== path).map((f) => ({ name: f.name, path: f.path }));
+    } else {
+      State.startChat();
+      void Bridge.chatReset();
+    }
 
     UploadSeq.performDrop(State.uploadDuration);
     this.uploadTens = 0;
@@ -960,8 +966,11 @@ export class Island {
 
   /** "Cancel" on the dropped file: forget it, so the chat does not pick it up. */
   private discardDrop() {
-    State.droppedFile = null;
-    State.promptContext = null;
+    // The files that were waiting before this one still wait.
+    const [next, ...rest] = State.moreFiles;
+    State.droppedFile = next ? { ...next } : null;
+    State.moreFiles = rest;
+    State.promptContext = next ? { kind: "file", name: next.name, path: next.path } : null;
     this.setView(State.defaultView());
   }
 

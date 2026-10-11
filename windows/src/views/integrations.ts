@@ -240,12 +240,13 @@ function toolButton(label: string, onclick: () => void, primary = false, color?:
   return b;
 }
 
-function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () => void): HTMLElement {
+/** The buttons at the bottom of a pill's card (Open…, Refresh, Settings…) and when it was last refreshed. */
+function cardFoot(task: AgentTask, openSettings: () => void): HTMLElement {
   const info = State.integrations[task.id];
   const configured = info?.configured ?? false;
   const def = pillDefinition(task.id);
-  const status = idleStatus(task.id, info, State.settings.model);
   const color = task.color;
+  const hookPill = def?.connect.kind === "hooks";
 
   const actions = h("div", { class: "tool-actions" });
   if (task.id === "integration_claude") {
@@ -254,10 +255,12 @@ function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () =
     actions.append(toolButton(t("Open Claude"), () => void Bridge.openClaudeDesktop(), true, color));
   } else if (task.id === "integration_n8n") {
     actions.append(toolButton(t("Open {name}", { name: "n8n" }), () => void Bridge.openN8n(), true, color));
+  } else if (task.id === "integration_mail" && typeof get(task.id).inbox === "string" && get(task.id).inbox) {
+    const inbox = String(get(task.id).inbox);
+    actions.append(toolButton(t("Open {name}", { name: task.name }), () => void Bridge.openUrl(inbox), true, color));
   } else if (OPEN_URLS[task.id]) {
     actions.append(toolButton(t("Open {name}", { name: task.name }), () => void Bridge.openUrl(OPEN_URLS[task.id]), true, color));
   }
-  const hookPill = def?.connect.kind === "hooks";
   const done = refreshes.get(task.id);
   if (isComingSoon(task.id) || def?.connect.kind === "none") {
     // Nothing to set up, and nothing to refresh.
@@ -277,6 +280,21 @@ function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () =
     actions.append(toolButton(t("Settings…"), openSettings));
   }
 
+  // When it was last refreshed, or what went wrong.
+  const note = done && !done.busy
+    ? h("div", { class: done.error ? "tool-note bad" : "tool-note", text: done.error ?? t("Updated {when}", { when: when(done.at) }), title: done.error ?? "" })
+    : null;
+  return h("div", { class: "tool-foot" }, actions, note);
+}
+
+function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () => void): HTMLElement {
+  const info = State.integrations[task.id];
+  const configured = info?.configured ?? false;
+  const def = pillDefinition(task.id);
+  const status = idleStatus(task.id, info, State.settings.model);
+  const color = task.color;
+  const hookPill = def?.connect.kind === "hooks";
+
   const facts = h("div", { class: "tool-facts" });
   const factList = toolFacts(task, configured, hookPill);
   for (const f of factList) {
@@ -284,11 +302,6 @@ function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () =
     if (f.color) value.style.color = f.color;
     facts.append(h("div", { class: f.value ? "tool-fact" : "tool-fact alone" }, h("span", { class: "tool-fact-label", text: f.label }), value));
   }
-
-  // When it was last refreshed, or what went wrong.
-  const note = done && !done.busy
-    ? h("div", { class: done.error ? "tool-note bad" : "tool-note", text: done.error ?? t("Updated {when}", { when: when(done.at) }), title: done.error ?? "" })
-    : null;
 
   // The sessions themselves, one click away (sessionsDetail).
   const sessionsLink = hookPill && configured && openSessions && recap && groupSessions(recap.turns, task.id, 1).length
@@ -302,8 +315,30 @@ function idleCard(task: AgentTask, openSettings: () => void, openSessions?: () =
     h("div", { class: "int-status" }, dot(status.color, 6), h("span", { class: "int-status-label", text: status.label, title: status.label })),
     facts,
     sessionsLink,
-    h("div", { class: "tool-foot" }, actions, note),
+    cardFoot(task, openSettings),
   );
+}
+
+/**
+ * A service's card with its data (GitHub, Email, Stripe…), laid out like the
+ * tools' cards: its name and what kind of pill it is, whether it is
+ * connected, what it has to say filling the room, its buttons at the bottom.
+ */
+function framed(card: HTMLElement, task: AgentTask, openSettings: () => void): HTMLElement {
+  const def = pillDefinition(task.id);
+  const head = card.firstElementChild as HTMLElement | null;
+  const content = Array.from(card.children).slice(1);
+  // The kind of pill after its name, unless the head already says something there.
+  if (head && !head.querySelector("span")) head.append(h("span", { text: t(def?.subtitle ?? N_("Integration")) }));
+  const error = State.integrations[task.id]?.error ?? null;
+  const status = error ? { label: error, color: "#F4505E" } : { label: t("Connected"), color: "#22C55E" };
+  card.classList.add("tool-card", "data-card");
+  card.append(
+    h("div", { class: "int-status" }, dot(status.color, 6), h("span", { class: "int-status-label", text: status.label, title: status.label })),
+    h("div", { class: "data-body" }, ...content),
+    cardFoot(task, openSettings),
+  );
+  return card;
 }
 
 /** "Today 14:20", "Wed 9:30", "12 Sep 9:30". */
@@ -731,23 +766,23 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
     if (pulse) {
       return hooks.detailOpen
         ? githubDetail(pulse, readStats(d), readActivity(d), hooks.closeDetail)
-        : githubPulseCard(pulse, readStats(d), readActivity(d), hooks.openDetail);
+        : framed(githubPulseCard(pulse, readStats(d), readActivity(d), hooks.openDetail), task, hooks.openSettings);
     }
   }
 
   switch (task.id) {
     case "integration_resend":
-      return resendCard();
+      return framed(resendCard(), task, hooks.openSettings);
     case "integration_github":
-      return githubCard();
+      return framed(githubCard(), task, hooks.openSettings);
     case "integration_stripe":
-      return stripeCard();
+      return framed(stripeCard(), task, hooks.openSettings);
     case "integration_notion":
-      return notionCard();
+      return framed(notionCard(), task, hooks.openSettings);
     case "integration_calcom":
-      return calcomCard();
+      return framed(calcomCard(), task, hooks.openSettings);
     case "integration_mail":
-      return mailCard(hooks.openChat);
+      return framed(mailCard(hooks.openChat), task, hooks.openSettings);
     default:
       return idleCard(task, hooks.openSettings);
   }
