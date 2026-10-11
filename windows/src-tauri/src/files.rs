@@ -23,6 +23,41 @@ pub fn inbox_dir() -> PathBuf {
     settings::local_dir().join("inbox")
 }
 
+/// A picture in the inbox, at most this big, can be previewed in the chat.
+const MAX_PREVIEW_BYTES: u64 = 8 * 1024 * 1024;
+
+/// The MIME type of a picture the webview shows, by its extension.
+pub fn image_mime(path: &Path) -> Option<&'static str> {
+    let ext = path.extension()?.to_str()?.to_ascii_lowercase();
+    Some(match ext.as_str() {
+        "png" => "image/png",
+        "jpg" | "jpeg" => "image/jpeg",
+        "gif" => "image/gif",
+        "webp" => "image/webp",
+        "bmp" => "image/bmp",
+        _ => return None,
+    })
+}
+
+/// A picture the user attached (dropped, pasted or picked), as a data URL for
+/// the chat's preview. Only a file directly in the inbox, and only a picture:
+/// the page can't use this to read anything else.
+pub fn preview(path: &str) -> Option<String> {
+    let path = Path::new(path);
+    let inbox = inbox_dir().canonicalize().ok()?;
+    let real = path.canonicalize().ok()?;
+    if real.parent() != Some(inbox.as_path()) {
+        return None;
+    }
+    let mime = image_mime(&real)?;
+    let meta = std::fs::metadata(&real).ok()?;
+    if !meta.is_file() || meta.len() > MAX_PREVIEW_BYTES {
+        return None;
+    }
+    let bytes = std::fs::read(&real).ok()?;
+    Some(format!("data:{mime};base64,{}", crate::claude::base64_for(&bytes)))
+}
+
 // ── Paths a real drop delivered ─────────────────────────────────────────────
 //
 // `ingest_file` is callable from the page, so on its own it would copy any file
@@ -211,6 +246,25 @@ fn sweep(dir: &Path) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_picture_in_the_inbox_is_previewed() {
+        let png = write_in("preview-test.png", &[0x89, b'P', b'N', b'G']).unwrap();
+        let url = preview(&png.path).expect("a picture in the inbox");
+        assert!(url.starts_with("data:image/png;base64,"), "{url}");
+        let txt = write_in("preview-test.txt", b"secret").unwrap();
+        assert!(preview(&txt.path).is_none(), "not a picture");
+        let outside = std::env::temp_dir().join(format!("lumo-preview-{}.png", std::process::id()));
+        std::fs::write(&outside, b"x").unwrap();
+        assert!(preview(&outside.to_string_lossy()).is_none(), "not in the inbox");
+        assert!(preview("C:\\nowhere\\x.png").is_none());
+        for p in [&png.path, &txt.path] {
+            let _ = std::fs::remove_file(p);
+        }
+        let _ = std::fs::remove_file(&outside);
+        assert_eq!(image_mime(Path::new("a/Photo.JPG")), Some("image/jpeg"));
+        assert_eq!(image_mime(Path::new("a/doc.pdf")), None);
+    }
 
     #[test]
     fn ingest_copies_and_never_overwrites() {

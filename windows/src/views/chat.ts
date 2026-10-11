@@ -56,9 +56,9 @@ import { planColor } from "../core/plan";
 import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
-  SCREEN_STRINGS, emptyScreen, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
+  PREVIEW_STRINGS, SCREEN_STRINGS, chipPreview, emptyScreen, filePreview, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
   screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows,
-  withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry,
+  withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry, type PreviewBlock,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import { COMPUTER_TEXT } from "../core/computer";
@@ -287,7 +287,7 @@ function typingDots(label: string): HTMLElement {
  * A chip for what goes with the question (a dropped or pasted file, what the
  * screen button added), with a way to take it back before it is sent.
  */
-function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[]): HTMLElement {
+function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[], onOpen?: () => void): HTMLElement {
   const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
   remove.addEventListener("click", (e) => {
     e.stopPropagation();
@@ -299,12 +299,14 @@ function screenChip(label: string, title: string, onRemove: () => void, thumbs?:
     : null;
   const chip = h(
     "div",
-    { class: "chip screen-chip", title },
+    { class: onOpen ? "chip screen-chip openable" : "chip screen-chip", title },
     h("i", { class: "chip-dot" }),
     h("span", { text: label }),
     strip,
     remove,
   );
+  // A click shows what it sends (the × takes it back instead).
+  if (onOpen) chip.addEventListener("click", () => onOpen());
   requestAnimationFrame(() => chip.classList.add("settled"));
   return chip;
 }
@@ -1146,6 +1148,8 @@ export function buildPrompt(
       screen = keepShots(screen, share.shots);
     } else if (share.kind === "selection") {
       screen = { ...screen, selection: share.selection };
+    } else if (share.kind === "page") {
+      screen = { ...screen, tabs: withTabs(screen.tabs, [share.tab]) };
     }
   }
 
@@ -1410,6 +1414,56 @@ export function buildPrompt(
       input.focus();
     });
     screenList.append(row, h("div", { class: "screen-actions" }, cancel, keep));
+  }
+
+  // ── What a chip sends ─────────────────────────────────────────────────────
+
+  /** The screen panel, showing what a chip sends: Remove takes it back, Close keeps it. */
+  function openPreview(blocks: PreviewBlock[], onRemove: () => void) {
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closePermissions();
+    closeUsage();
+    if (body.classList.contains("screening")) closeScreen();
+    screenTicket++;
+    body.classList.add("screening");
+    panelChanged();
+    screenTitle.textContent = t(PREVIEW_STRINGS.title);
+    clear(screenList);
+    const items = h("div", { class: "screen-preview" });
+    for (const b of blocks) {
+      items.append(h(
+        "div",
+        { class: "screen-preview-item" },
+        h("div", { class: "screen-preview-head", text: b.heading }),
+        b.detail ? h("div", { class: "screen-preview-detail", text: b.detail }) : null,
+        b.image ? h("img", { class: "screen-preview-img", src: b.image, alt: b.heading }) : null,
+        b.note ? h("div", { class: "screen-preview-note", text: b.note }) : null,
+        b.text ? h("pre", { class: "screen-preview-text", text: b.text }) : null,
+      ));
+    }
+    const remove = h("button", { class: "btn secondary", text: t(SCREEN_STRINGS.remove) });
+    const close = h("button", { class: "btn primary", text: t(PREVIEW_STRINGS.close) });
+    remove.addEventListener("click", () => {
+      closeScreen();
+      onRemove();
+      input.focus();
+    });
+    close.addEventListener("click", () => {
+      closeScreen();
+      input.focus();
+    });
+    screenList.append(items, h("div", { class: "screen-actions" }, remove, close));
+  }
+
+  /** A file's preview, with its picture when it is one in the inbox. */
+  async function openFilePreview(file: { name: string; path: string; size?: number }, onRemove: () => void) {
+    openPreview(filePreview(file), onRemove);
+    const ticket = screenTicket;
+    const image = await Bridge.filePreview(file.path).catch(() => null);
+    if (image && ticket === screenTicket && body.classList.contains("screening")) {
+      openPreview(filePreview(file, image), onRemove);
+    }
   }
 
   function drawHistory() {
@@ -1865,28 +1919,25 @@ export function buildPrompt(
         clear(chipRow);
         // A dropped or pasted file: its × takes it out before it is sent.
         if (wantChip) {
-          chipRow.append(screenChip(wantChip, file?.path ?? wantChip, () => {
+          const removeFile = () => {
             if (sending) return;
             State.droppedFile = null;
             if (State.promptContext?.kind === "file") State.promptContext = null;
             Sound.play("pop");
             State.notify();
+          };
+          chipRow.append(screenChip(wantChip, file?.path ?? wantChip, removeFile, undefined, () => {
+            if (file) void openFilePreview(file, removeFile);
           }));
         }
         for (const c of extra) {
-          chipRow.append(
-            screenChip(
-              c.label,
-              c.title,
-              () => {
-                if (sending) return;
-                clearScreen(c.kind);
-                Sound.play("pop");
-                State.notify();
-              },
-              c.thumbs,
-            ),
-          );
+          const removeIt = () => {
+            if (sending) return;
+            clearScreen(c.kind);
+            Sound.play("pop");
+            State.notify();
+          };
+          chipRow.append(screenChip(c.label, c.title, removeIt, c.thumbs, () => openPreview(chipPreview(screen, c.kind), removeIt)));
         }
         if (editing != null) chipRow.append(screenChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
       }

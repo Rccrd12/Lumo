@@ -537,6 +537,17 @@ test("selected text from the shortcut goes with the next question once, and × t
   assert.equal(view.el.find(".chip").length, 0, "sent once, then forgotten");
 });
 
+test("the page from the shortcut waits as a tab chip and goes with the next question", async () => {
+  const tab = read(TABS[0], "README", "page");
+  State.incomingShare = { kind: "page", tab };
+  view.sync();
+  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Rccrd12/Lumo"]);
+  $(".chat-input").value = "summarise it";
+  $(".send-btn").fire("click");
+  await flush();
+  assert.deepEqual(sent("chat_send")[0].screen, { windows: [], shots: [], tabs: [tab] });
+});
+
 // ── The folder open in File Explorer ─────────────────────────────────────────
 
 test("the File Explorer entry names the folder, and only a click lists it", async () => {
@@ -765,4 +776,80 @@ test("turned off, the chip goes and nothing more is sent", async () => {
   await ask("hi");
   assert.equal(sent("screen_explorer").length, 0);
   assert.equal(sent("chat_send")[0].screen, undefined);
+});
+
+// ── What a chip sends, before it is sent ─────────────────────────────────────
+
+const { chipPreview, filePreview, formatSize } = await import("../src/core/screen.ts");
+
+test("a chip's preview is exactly what goes: pictures, text read, the selection, the listing", () => {
+  const p = {
+    ...emptyScreen(),
+    shots: [{ name: "Screen 1", path: "C:\\s.png", preview: "data:image/png;base64,AAA" }],
+    selection: { text: "hello world", app: "chrome", title: "News" },
+    windows: [SHARED[0], { ...SHARED[1], text: "" }],
+    tabs: [read(TABS[0], "README", "page"), { ...read(TABS[1], "La luce", "web"), cut: true }, { ...TABS[1], id: "x", url: "", text: "" }],
+    folder: { ...FOLDER, omitted: 3 },
+  };
+  assert.deepEqual(chipPreview(p, "shots"), [{ heading: "Screen 1", detail: "", note: "", text: "", image: "data:image/png;base64,AAA" }]);
+  assert.deepEqual(chipPreview(p, "selection").map((b) => [b.heading, b.detail, b.text]), [["Text from chrome", "News", "hello world"]]);
+  const [code, inbox] = chipPreview(p, "windows");
+  assert.equal(code.detail, "Code · Document on disk: C:\\code\\main.rs");
+  assert.equal(code.text, "fn main() {}");
+  assert.equal(inbox.note, "No text could be read from this window: only its title goes.");
+  const [page, web, unread] = chipPreview(p, "tabs");
+  assert.deepEqual([page.detail, page.note, page.text], ["https://github.com/Rccrd12/Lumo · Edge", "Read in the browser, with your login.", "README"]);
+  assert.equal(web.note, "Downloaded from its address, without your login. Cut to fit: it shows more than this.");
+  assert.deepEqual([unread.detail, unread.note], ["Edge", "Nothing could be read from this page: only its title goes."]);
+  const [folder] = chipPreview(p, "folder");
+  assert.equal(folder.text, "Old/\nfile.pdf — 1.5 KB");
+  assert.equal(folder.note, "Items not listed: 3");
+  // The folder that rides along by itself is listed only when the message goes.
+  const auto = chipPreview({ ...emptyScreen(), autoFolder: PEEKED }, "folder");
+  assert.deepEqual(auto.map((b) => [b.heading, b.note, b.text]), [["PDFs", "Its listing is read when you send.", ""]]);
+  assert.deepEqual(chipPreview({ ...emptyScreen(), autoFolder: PEEKED, autoOff: true }, "folder"), []);
+  assert.deepEqual(filePreview({ name: "a.png", path: "C:\\in\\a.png", size: 2048 }, "data:x")[0], {
+    heading: "a.png", detail: "C:\\in\\a.png", note: "2.0 KB", text: "", image: "data:x",
+  });
+  assert.equal(formatSize(512), "512 B");
+  assert.equal(formatSize(5 * 1024 * 1024), "5.0 MB");
+  assert.equal(formatSize(300 * 1024 * 1024), "300 MB");
+});
+
+test("a click on a chip shows what it sends; Close keeps it, Remove takes it back", async () => {
+  await openMenu();
+  entries()[1].fire("click"); // Browser tabs
+  await flush();
+  entries()[2].fire("click"); // Rccrd12/Lumo
+  await flush();
+  view.sync();
+  const chip = () => view.el.find(".chip")[0];
+  assert.ok(chip().classList.contains("openable"));
+  chip().fire("click");
+  assert.ok($(".chat-body").classList.contains("screening"));
+  assert.equal($(".picker-title.screen-title")?.textContent ?? view.el.find(".picker-title").map((e) => e.textContent).includes("What goes with your question"), true);
+  assert.deepEqual(view.el.find(".screen-preview-text").map((e) => e.textContent), ["README"]);
+  const button = (label) => view.el.find(".btn").find((b) => b.textContent === label);
+  button("Close").fire("click");
+  view.sync();
+  assert.ok(!$(".chat-body").classList.contains("screening"));
+  assert.equal(view.el.find(".chip").length, 1, "kept");
+
+  chip().fire("click");
+  button("Remove").fire("click");
+  view.sync();
+  assert.equal(view.el.find(".chip").length, 0, "taken back");
+  assert.equal(sent("chat_send").length, 0, "nothing sent");
+});
+
+test("an attached picture shows itself in the preview", async () => {
+  answers.file_preview = (args) => (args.path.endsWith(".png") ? "data:image/png;base64,QQ==" : null);
+  State.droppedFile = { name: "photo.png", path: "C:\\Lumo\\inbox\\photo.png", size: 4096 };
+  view.sync();
+  view.el.find(".chip")[0].fire("click");
+  await flush();
+  assert.deepEqual(sent("file_preview"), [{ path: "C:\\Lumo\\inbox\\photo.png" }]);
+  assert.deepEqual(view.el.find(".screen-preview-img").map((i) => i.getAttribute("src")), ["data:image/png;base64,QQ=="]);
+  assert.deepEqual(view.el.find(".screen-preview-detail").map((e) => e.textContent), ["C:\\Lumo\\inbox\\photo.png"]);
+  State.droppedFile = null;
 });

@@ -19,6 +19,7 @@
 //   Ctrl+Alt+N       open / close the island (off by default, as on the Mac)
 //   Ctrl+Alt+P       ask about my screen     Ctrl+Alt+X      ask about the selected text
 //   Ctrl+Alt+L       talk with Gemini Live (start or end the conversation)
+//   Ctrl+Alt+B       ask about the page open in the browser
 //
 // The last two are this version's own (the Mac has no such action yet): they
 // open the chat with a screenshot of the display under the cursor, or with
@@ -82,6 +83,9 @@ pub const ACTIONS: &[ActionDef] = &[
     action("askSelection", "Ctrl+Alt+X", true, true),
     // Starts or ends a spoken conversation with Gemini Live (live.rs).
     action("talkToGemini", "Ctrl+Alt+L", true, true),
+    // The page on screen in the front-most Edge or Chrome window, with what
+    // it shows (share.rs), waiting in the chat like the selected text.
+    action("askPage", "Ctrl+Alt+B", true, true),
 ];
 
 pub fn find(id: &str) -> Option<&'static ActionDef> {
@@ -295,7 +299,9 @@ pub fn dispatch<R: Runtime>(app: &AppHandle<R>, action: &str) {
         "wardrobeToggle" => {
             let _ = app.emit_to(WINDOW_LABEL, "open-wardrobe", ());
         }
-        "askScreen" | "askSelection" => share(app, action == "askScreen"),
+        "askScreen" => share(app, Take::Screen),
+        "askSelection" => share(app, Take::Selection),
+        "askPage" => share(app, Take::Page),
         _ => {
             let _ = app.emit_to(WINDOW_LABEL, "shortcut", action.to_string());
         }
@@ -309,7 +315,16 @@ pub fn dispatch<R: Runtime>(app: &AppHandle<R>, action: &str) {
 pub enum Shared {
     Screen { shots: Vec<Shot> },
     Selection { selection: Selected },
+    Page { tab: crate::share::BrowserTab },
     Problem { message: String },
+}
+
+/// What a sharing shortcut takes.
+#[derive(Clone, Copy)]
+enum Take {
+    Screen,
+    Selection,
+    Page,
 }
 
 /// One share at a time: a second press while the first is copying is dropped.
@@ -317,23 +332,28 @@ static SHARING: AtomicBool = AtomicBool::new(false);
 
 /// Takes the screenshot or reads the selection now, before the island takes
 /// the keyboard (the copy has to go to the app in front), then hands it over.
-fn share<R: Runtime>(app: &AppHandle<R>, screen_shot: bool) {
+fn share<R: Runtime>(app: &AppHandle<R>, take: Take) {
     if SHARING.swap(true, Ordering::AcqRel) {
         return;
     }
     let app = app.clone();
     std::thread::spawn(move || {
-        let shared = if screen_shot {
-            let display = screen::display_under_cursor().unwrap_or(0);
-            match screen::capture_unseen(&app, Some(display)) {
-                Ok(shots) => Shared::Screen { shots },
-                Err(message) => Shared::Problem { message },
+        let shared = match take {
+            Take::Screen => {
+                let display = screen::display_under_cursor().unwrap_or(0);
+                match screen::capture_unseen(&app, Some(display)) {
+                    Ok(shots) => Shared::Screen { shots },
+                    Err(message) => Shared::Problem { message },
+                }
             }
-        } else {
-            match selection::grab() {
+            Take::Selection => match selection::grab() {
                 Ok(selection) => Shared::Selection { selection },
                 Err(message) => Shared::Problem { message },
-            }
+            },
+            Take::Page => match tauri::async_runtime::block_on(crate::share::front_page()) {
+                Ok(tab) => Shared::Page { tab },
+                Err(message) => Shared::Problem { message },
+            },
         };
         SHARING.store(false, Ordering::Release);
         let _ = app.emit_to(WINDOW_LABEL, "ask-context", shared);
@@ -447,7 +467,7 @@ mod tests {
         "nextPill", "prevPill", "muteToggle", "desktopToggle", "wardrobeToggle",
     ];
     /// This version's own, after the Mac's.
-    const OWN_IDS: [&str; 3] = ["askScreen", "askSelection", "talkToGemini"];
+    const OWN_IDS: [&str; 4] = ["askScreen", "askSelection", "talkToGemini", "askPage"];
 
     fn never(_: &Shortcut) -> Option<String> {
         None

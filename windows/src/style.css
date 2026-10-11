@@ -2690,6 +2690,74 @@ textarea.chat-input {
   gap: 8px;
 }
 
+/* A click on a chip: what it sends, as it will go (views/chat.ts openPreview). */
+.chip.openable {
+  cursor: pointer;
+}
+
+.chip.openable:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.screen-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.screen-preview-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.screen-preview-head {
+  font: 500 12px var(--font);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+}
+
+.screen-preview-detail {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  overflow-wrap: anywhere;
+}
+
+.screen-preview-note {
+  font: 400 10.5px var(--font);
+  color: #8b929e;
+  font-style: italic;
+}
+
+.screen-preview-img {
+  max-width: 100%;
+  max-height: 220px;
+  align-self: flex-start;
+  object-fit: contain;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.screen-preview-text {
+  margin: 0;
+  max-height: 160px;
+  overflow-y: auto;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 11px/1.45 var(--font);
+  color: #c9ccd2;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
 .chip + .chip {
   margin-left: 6px;
 }

@@ -760,6 +760,13 @@ async fn explorer_attach(folder: String, query: String) -> Result<Option<Dropped
     tauri::async_runtime::spawn_blocking(move || explorer::attach(&folder, &query)).await.map_err(|e| e.to_string())?
 }
 
+/// The chat's preview of an attached picture: a data URL, or nothing for a
+/// file that isn't a picture in the inbox.
+#[tauri::command]
+async fn file_preview(path: String) -> Option<String> {
+    tauri::async_runtime::spawn_blocking(move || files::preview(&path)).await.ok().flatten()
+}
+
 /// Copies a dropped file into the inbox and reports its name back.
 #[tauri::command]
 fn ingest_file(path: String) -> Result<DroppedFile, String> {
@@ -1103,6 +1110,7 @@ pub fn run() {
             calendar::calendar_fetch,
             media::media_control,
             ingest_file,
+            file_preview,
             paste_file,
             paste_copied_file,
             clipboard_text,

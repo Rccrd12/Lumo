@@ -140,7 +140,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       break;
 
     // wardrobeToggle never comes this way (Rust sends `open-wardrobe`), nor do
-    // askScreen / askSelection (`ask-context`, runShared), and
+    // askScreen / askSelection / askPage (`ask-context`, runShared), and
     // attachFrontWindow / desktopToggle aren't in this version.
     default:
       break;
@@ -148,8 +148,9 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
 }
 
 /**
- * "Ask about my screen" or "Ask about the selected text": Rust took the
- * screenshot or read the selection on the key press (shortcuts.rs). The chat
+ * "Ask about my screen", "Ask about the selected text" or "Ask about the page
+ * in the browser": Rust took the screenshot, read the selection or the page on
+ * screen in the browser on the key press (shortcuts.rs). The chat
  * opens with it waiting as a chip, for the user to type a question and press
  * Enter; nothing is sent before that, and the chip's × takes it back.
  */

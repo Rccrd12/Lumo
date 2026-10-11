@@ -92,6 +92,9 @@ the exe it runs from.
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
+| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting as a chip. On Linux the page is downloaded from its address |
+| Click a chip above the chat field | **What goes with your question**: the screenshots and attached pictures shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back |
+| Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
@@ -482,7 +485,8 @@ goes. Each goes with what it shows, not only its name:
 
 The text is cut to fit (about 36,000 characters for all the windows or all the
 tabs of one message). What you picked shows as a chip you can remove before
-sending, and goes with your next question only. Screenshots are saved only in the inbox
+sending, and goes with your next question only; a click on the chip shows
+exactly what it sends. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 

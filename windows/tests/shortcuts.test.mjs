@@ -22,7 +22,7 @@ const MAC_IDS = [
 // ── Defaults (testDefaultsExhaustive, testAllDefaultsHaveModifier, testNoDefaultDuplicates) ──
 
 test("every Mac action has a default, in the Mac's order, with its Mac id, then this version's own", () => {
-  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...MAC_IDS, "askScreen", "askSelection", "talkToGemini"]);
+  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...MAC_IDS, "askScreen", "askSelection", "talkToGemini", "askPage"]);
   for (const d of SHORTCUTS) assert.ok(SHORTCUT_TEXT[d.id], `${d.id} has no label`);
 });
 
@@ -72,7 +72,7 @@ test("only the island toggle is off by default; the two not ported yet are reser
   }
   assert.deepEqual(activeKeys({}).map(([id]) => id), [
     "openChat", "goToAlert", "jumpToTerminal", "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
-    "askScreen", "askSelection", "talkToGemini",
+    "askScreen", "askSelection", "talkToGemini", "askPage",
   ]);
 });
 
@@ -310,6 +310,14 @@ test("the sharing shortcuts open the chat with what Rust took, or say what went 
   emit("ask-context", { kind: "screen", shots: [shot] });
   assert.deepEqual(did, ["resume", "alert:prompt", "keyboard", "hold"]);
   assert.deepEqual(State.incomingShare, { kind: "screen", shots: [shot] });
+  State.incomingShare = null;
+
+  // "Ask about the page in the browser": the tab on screen, read, waits in the chat.
+  did = [];
+  const tab = { id: "Edge|101|0", browser: "Edge", title: "Luce", url: "https://it.wikipedia.org/wiki/Luce", active: true, text: "La luce", cut: false, source: "page" };
+  emit("ask-context", { kind: "page", tab });
+  assert.deepEqual(did, ["resume", "alert:prompt", "keyboard", "hold"]);
+  assert.deepEqual(State.incomingShare, { kind: "page", tab });
   State.incomingShare = null;
 });
 

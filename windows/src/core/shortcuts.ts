@@ -32,6 +32,7 @@ export const SHORTCUT_TEXT = {
   askScreen: N_("Ask about my screen"),
   askSelection: N_("Ask about the selected text"),
   talkToGemini: N_("Talk with Gemini Live"),
+  askPage: N_("Ask about the page in the browser"),
   island: {
     nextPrev: N_("Next or previous pill"),
     byNumber: N_("Go to pill 1 to 9"),
@@ -48,7 +49,7 @@ export const SHORTCUT_TEXT = {
 
 /**
  * Mac `ShortcutAction` raw values, then this version's own (askScreen,
- * askSelection). Stored in settings.json: never rename one.
+ * askSelection, talkToGemini, askPage). Stored in settings.json: never rename one.
  */
 export type ShortcutId =
   | "toggleIsland"
@@ -63,7 +64,8 @@ export type ShortcutId =
   | "wardrobeToggle"
   | "askScreen"
   | "askSelection"
-  | "talkToGemini";
+  | "talkToGemini"
+  | "askPage";
 
 export interface ShortcutDef {
   id: ShortcutId;
@@ -91,6 +93,7 @@ export const SHORTCUTS: readonly ShortcutDef[] = [
   def("askScreen", "Ctrl+Alt+P", true, true),
   def("askSelection", "Ctrl+Alt+X", true, true),
   def("talkToGemini", "Ctrl+Alt+L", true, true),
+  def("askPage", "Ctrl+Alt+B", true, true),
 ];
 
 export interface Binding {

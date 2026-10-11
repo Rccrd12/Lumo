@@ -20,6 +20,7 @@ import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
 import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
+import { SEARCH_STRINGS, applySearch } from "./search";
 import { updatesSection } from "./updates";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
@@ -1915,21 +1916,85 @@ async function render() {
       class: "nav-item",
       "data-page": page.id,
       text: t(page.label),
-      onclick: () => showPage(page.id),
+      onclick: () => {
+        // A section picked from the list: the search is done.
+        if (searchQuery) {
+          searchQuery = "";
+          const field = root.querySelector<HTMLInputElement>(".settings-search");
+          if (field) field.value = "";
+          showSearch();
+        }
+        showPage(page.id);
+      },
     });
     nav.append(button);
     content.append(h("div", { class: "page", "data-page": page.id }, ...pages[page.id]));
   }
 
+  // The search above the list: what is typed shows the matching settings of every section.
+  const search = h("input", {
+    type: "search",
+    class: "settings-search",
+    placeholder: t(SEARCH_STRINGS.placeholder),
+    "aria-label": t(SEARCH_STRINGS.placeholder),
+    spellcheck: "false",
+  }) as HTMLInputElement;
+  search.value = searchQuery;
+  search.addEventListener("input", () => {
+    searchQuery = search.value;
+    showSearch();
+  });
+  search.addEventListener("keydown", (e) => {
+    // Escape empties the field first; a second one closes the island, as ever.
+    if (e.key === "Escape" && search.value) {
+      e.preventDefault();
+      search.value = "";
+      searchQuery = "";
+      showSearch();
+    }
+  });
+  const noMatch = h("p", { class: "search-none" });
+  content.prepend(noMatch);
+
   clear(root);
   root.append(
     h("aside", { class: "sidebar" },
       h("h1", {}, h("span", { text: "Lumo" }), h("span", { class: "version", text: version })),
+      search,
       nav,
     ),
     content,
   );
   showPage(currentPage, false);
+  showSearch();
+}
+
+/** What the search field holds; kept when the sections are drawn again. */
+let searchQuery = "";
+
+/** Every section with the settings that match the search, or the open section when it is empty. */
+function showSearch() {
+  const content = root.querySelector<HTMLElement>(".content");
+  const noMatch = root.querySelector<HTMLElement>(".search-none");
+  if (!content || !noMatch) return;
+  const searching = searchQuery.trim() !== "";
+  root.classList.toggle("searching", searching);
+  if (!searching) {
+    applySearch(content, "");
+    noMatch.hidden = true;
+    showPage(currentPage, false);
+    return;
+  }
+  for (const el of root.querySelectorAll<HTMLElement>("[data-page]")) {
+    if (el.classList.contains("page")) el.hidden = false;
+    else {
+      el.classList.remove("on");
+      el.removeAttribute("aria-current");
+    }
+  }
+  const found = applySearch(content, searchQuery);
+  noMatch.textContent = t(SEARCH_STRINGS.none, { query: searchQuery.trim() });
+  noMatch.hidden = found;
 }
 
 void main();

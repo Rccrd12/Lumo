@@ -988,6 +988,17 @@ pub async fn read_tabs(ids: Vec<String>) -> Result<Vec<BrowserTab>, String> {
     Ok(picked)
 }
 
+/// "Ask about this page" (Ctrl+Alt+B): the tab on screen in the front-most
+/// Edge or Chrome window (Linux: the first window's tab on screen, from the
+/// session file), read like a tab picked in the menu.
+pub async fn front_page() -> Result<BrowserTab, String> {
+    let listed = tauri::async_runtime::spawn_blocking(tabs).await.map_err(|e| e.to_string())??;
+    let Some(front) = listed.iter().find(|t| t.active) else {
+        return Err(t("No page is open in Edge or Chrome."));
+    };
+    read_tabs(vec![front.id.clone()]).await?.into_iter().next().ok_or_else(|| t("No page is open in Edge or Chrome."))
+}
+
 /// A screenshot of one listed window, for the providers that see images. Blocking.
 pub fn window_shot(id: i64) -> Result<crate::screen::Shot, String> {
     let listed = LISTED_WINDOWS.lock().unwrap_or_else(|e| e.into_inner()).clone();

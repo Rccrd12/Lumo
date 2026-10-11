@@ -59,6 +59,45 @@ body.settings-window {
   padding: 0 10px;
 }
 
+/* The search above the list of sections (search.ts). */
+.settings-search {
+  width: 100%;
+  font: 400 12.5px var(--font);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--hairline);
+  border-radius: 8px;
+  color: var(--ink);
+  padding: 6px 9px;
+}
+
+.settings-search:focus {
+  outline: none;
+  border-color: rgba(255, 255, 255, 0.28);
+}
+
+.settings-search::placeholder {
+  color: var(--dim-2);
+}
+
+/* What the search leaves out; whatever a section hides by itself stays hidden. */
+.search-miss {
+  display: none !important;
+}
+
+.search-none {
+  padding: 22px 24px 0;
+  font: 400 12.5px/1.5 var(--font);
+  color: var(--dim);
+}
+
+.search-none[hidden] {
+  display: none;
+}
+
+body.embedded .search-none {
+  padding: 14px 16px 0;
+}
+
 .nav {
   display: flex;
   flex-direction: column;

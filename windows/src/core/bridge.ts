@@ -265,6 +265,8 @@ export const Bridge = {
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
+  /** An attached picture in the inbox as a data URL, for the chat's preview; null for any other file. */
+  filePreview: (path: string) => call<string | null>("file_preview", { path }),
   /**
    * Ctrl+V in the chat: what the page got from the clipboard (an image, a
    * file), sent raw and written into the inbox like a drop.
@@ -584,8 +586,8 @@ export interface ScreenContext {
 }
 
 /**
- * The `ask-context` event: what "Ask about my screen" or "Ask about the
- * selected text" took on the key press, or why it couldn't (shortcuts.rs).
+ * The `ask-context` event: what "Ask about my screen", "Ask about the
+ * selected text" or "Ask about the page in the browser" took on the key press, or why it couldn't (shortcuts.rs).
  */
 /** A new email from the Email pill's poller (mail.rs Message). */
 export interface MailMessage extends MailPeek {
@@ -596,6 +598,8 @@ export interface MailMessage extends MailPeek {
 export type SharedContext =
   | { kind: "screen"; shots: ScreenShot[] }
   | { kind: "selection"; selection: SelectedText }
+  /** "Ask about the page in the browser": the tab on screen, with its page's text. */
+  | { kind: "page"; tab: BrowserTab }
   | { kind: "problem"; message: string };
 
 export interface ModelInfo {
