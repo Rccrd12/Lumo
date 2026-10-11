@@ -92,6 +92,9 @@ the exe it runs from.
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
+| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting as a chip. On Linux the page is downloaded from its address |
+| Click a chip above the chat field | **What goes with your question**: the screenshots and attached pictures shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back |
+| Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
@@ -472,16 +475,18 @@ goes. Each goes with what it shows, not only its name:
   it on disk (Claude Code and Antigravity CLI read it from there). A single
   window also goes with a picture of it, even when other windows cover it, for
   the providers that see images (not when it is minimized);
-- a **tab** with its page's text: the tab on screen in its window is read from
-  the browser; a tab in the background is downloaded from its address, without
-  your cookies, so a page behind a login shows what anyone would see. The tabs
-  are read from Edge's and Chrome's own list of open tabs (their session file,
-  never written). Only http and https pages are downloaded, and only once you
-  pick them.
+- a **tab** with its page's text and address, read in the browser like a
+  window, with your login, exactly what you would see. The tabs are listed from
+  Edge's and Chrome's windows themselves (each window's tab strip, through UI
+  Automation). A tab in the background has nothing on screen to read, so when
+  you pick it Lumo brings it forward in its window for a moment, reads it and
+  puts back the tab you were on (six tabs at most for one message; the others
+  go with their title).
 
 The text is cut to fit (about 36,000 characters for all the windows or all the
 tabs of one message). What you picked shows as a chip you can remove before
-sending, and goes with your next question only. Screenshots are saved only in the inbox
+sending, and goes with your next question only; a click on the chip shows
+exactly what it sends. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
@@ -914,8 +919,10 @@ What changes on Linux:
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
   its menu says so, and nothing is listed or captured. Browser tabs are listed
-  (Edge, Chrome, Chromium) and their pages downloaded, as on Windows, without
-  reading the tab on screen from the browser. For the same reason
+  from Edge's, Chrome's and Chromium's own list of open tabs (their session
+  file, never written) and their pages downloaded from their address, without
+  your cookies, so a page behind a login shows what anyone would see (only
+  http and https, and only once you pick them). For the same reason
   Gemini Live can't look at the screen there; everything else
   in a call works. Typing in the text box you clicked in needs `xdotool` on
   X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland

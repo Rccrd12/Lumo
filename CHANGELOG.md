@@ -1,5 +1,13 @@
 # Changelog
 
+## Windows and Linux 0.5.3 — October 11, 2026
+
+- **Browser tabs show up in the chat's screen menu on Windows**: Edge and Chrome lock their list of open tabs while they run, so Browser tabs never appeared. The tabs now come from the browsers' windows themselves (each window's tab strip, through UI Automation): the tab on screen is read like a window, with your login, and a tab in the background is brought forward for a moment, read, and the tab you were on put back (six at most for one message). A slow browser no longer holds the menu: its entry joins when it answers
+- **Ask about the page in the browser** (`Ctrl+Alt+B`): the page on screen in the front-most Edge or Chrome window waits in the chat with its text and address, like the selected text
+- **See what goes before it goes**: a click on a chip above the chat field shows the screenshots and attached pictures big, the text read from a window or a tab and how it was read, the selected text, the folder's listing, a file's name and path; Close keeps it, Remove takes it back
+- **Search in Settings**: a field above the list of sections shows the matching settings, shortcuts and pills of every section at once, whatever the case, the accents or singular and plural
+- **Readable group headings in Settings** ("Right-click menu"…), near the names' white instead of the hints' grey
+
 ## Windows and Linux 0.5.2 — October 11, 2026
 
 - **Claude can use your computer** (Settings → Chat → Computer use → Let Claude use the computer, off by default, Windows): Claude Code in the chat sees the screen and clicks, types, presses keys, scrolls and drags, through Lumo's own MCP server (`lumo-hook --mcp`, passed to the chat's runs only; your Claude Code settings are untouched), on your Claude plan. Asking every time, each action is an Allow / Deny card that says what it does ("Click · 640, 320", "Type · …"); screenshots don't ask. Esc anywhere stops it. Screenshots leave Lumo out, are sized for every model, and Claude's coordinates are turned back into your screen's, whatever its scaling

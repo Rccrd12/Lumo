@@ -22,7 +22,8 @@
 // chip's × leaves it out of that one message.
 
 import type {
-  BrowserTab, ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText, SharedWindow,
+  BrowserTab, DroppedFile, ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText,
+  SharedWindow,
 } from "./bridge";
 import type { ProviderDef } from "./providers";
 import { N_, t } from "../i18n/i18n";
@@ -123,11 +124,16 @@ export function tabPicks(list: BrowserTab[]): PickEntry[] {
     return {
       id: tab.id,
       label: tab.title || tab.url,
-      // The browser too, when both have tabs open.
-      detail: browsers.size > 1 ? `${host} · ${tab.browser}` : host,
-      title: `${tab.title}\n${tab.url}`,
+      // The browser too, when both have tabs open (alone, when the address isn't known yet).
+      detail: browsers.size > 1 ? [host, tab.browser].filter(Boolean).join(" · ") : host,
+      title: tabTooltip(tab, "\n"),
     };
   })];
+}
+
+/** A tab's title and, when known, its address. */
+function tabTooltip(tab: BrowserTab, between: string): string {
+  return tab.url ? `${tab.title}${between}${tab.url}` : tab.title;
 }
 
 /** "github.com" for an address; the address itself when it has no host. */
@@ -288,7 +294,7 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
     out.push({
       kind: "tabs",
       label: p.tabs.length === 1 ? short(p.tabs[0].title || hostOf(p.tabs[0].url)) : t(SCREEN_STRINGS.tabsCount, { count: p.tabs.length }),
-      title: p.tabs.map((tab) => `${tab.title} — ${tab.url}`).join("\n"),
+      title: p.tabs.map((tab) => tabTooltip(tab, " — ")).join("\n"),
     });
   }
   if (p.shots.length > 0) {
@@ -303,6 +309,108 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
 /** The list on the chip's tooltip, so the user sees exactly what will be sent. */
 export function windowsTooltip(list: { title: string; app: string }[]): string {
   return list.map((w) => (w.app ? `${w.title} — ${w.app}` : w.title)).join("\n");
+}
+
+// ── What a chip sends, before it is sent ─────────────────────────────────────
+//
+// A click on a chip shows exactly what goes with the question: the pictures,
+// the text read from a window or a tab, the selected text, the folder's
+// listing, a file's name (and the picture, when it is one).
+
+export const PREVIEW_STRINGS = {
+  title: N_("What goes with your question"),
+  close: N_("Close"),
+  readInBrowser: N_("Read in the browser, with your login."),
+  downloaded: N_("Downloaded from its address, without your login."),
+  tabUnread: N_("Nothing could be read from this page: only its title goes."),
+  windowUnread: N_("No text could be read from this window: only its title goes."),
+  cut: N_("Cut to fit: it shows more than this."),
+  document: N_("Document on disk: {path}"),
+  folderLater: N_("Its listing is read when you send."),
+  omitted: N_("Items not listed: {count}"),
+};
+
+/** One thing a chip sends, as the preview shows it. */
+export interface PreviewBlock {
+  heading: string;
+  /** Where it comes from: an app, an address, a path; "" for none. */
+  detail: string;
+  /** How it was read, or what is missing; "" for none. */
+  note: string;
+  /** The text that goes; "" for none. */
+  text: string;
+  /** A picture (data URL); "" for none. */
+  image: string;
+}
+
+const block = (over: Partial<PreviewBlock>): PreviewBlock => ({ heading: "", detail: "", note: "", text: "", image: "", ...over });
+
+/** "1.5 KB", "3.2 MB": a file's size, short. */
+export function formatSize(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "";
+  if (bytes < 1024) return `${bytes} B`;
+  const units = ["KB", "MB", "GB"];
+  let v = bytes / 1024;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v < 10 ? v.toFixed(1) : Math.round(v)} ${units[i]}`;
+}
+
+/** What the chip of `kind` sends, item by item. */
+export function chipPreview(p: PendingScreen, kind: ChipKind): PreviewBlock[] {
+  switch (kind) {
+    case "shots":
+      return p.shots.map((s) => block({ heading: s.name, image: s.preview }));
+    case "selection": {
+      const sel = p.selection;
+      if (!sel) return [];
+      return [block({
+        heading: sel.app ? t(SCREEN_STRINGS.selectedIn, { app: sel.app }) : t(SCREEN_STRINGS.selected),
+        detail: sel.title,
+        text: sel.text,
+      })];
+    }
+    case "windows":
+      return p.windows.map((w) => block({
+        heading: w.title,
+        detail: [w.app, w.document ? t(PREVIEW_STRINGS.document, { path: w.document }) : ""].filter(Boolean).join(" · "),
+        note: !w.text.trim() ? t(PREVIEW_STRINGS.windowUnread) : w.cut ? t(PREVIEW_STRINGS.cut) : "",
+        text: w.text,
+      }));
+    case "tabs":
+      return p.tabs.map((tab) => {
+        const how = !tab.text.trim() ? t(PREVIEW_STRINGS.tabUnread)
+          : tab.source === "web" ? t(PREVIEW_STRINGS.downloaded)
+          : t(PREVIEW_STRINGS.readInBrowser);
+        return block({
+          heading: tab.title || tab.url,
+          detail: [tab.url, tab.browser].filter(Boolean).join(" · "),
+          note: tab.text.trim() && tab.cut ? `${how} ${t(PREVIEW_STRINGS.cut)}` : how,
+          text: tab.text,
+        });
+      });
+    case "folder": {
+      const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
+      if (!folder) return [];
+      // The folder that rides along by itself is listed only when the message goes.
+      if (!p.folder) return [block({ heading: folder.name, detail: folder.path, note: t(PREVIEW_STRINGS.folderLater) })];
+      const lines = folder.entries.map((e) => (e.dir ? `${e.name}/` : `${e.name} — ${formatSize(e.size)}`));
+      return [block({
+        heading: folder.name,
+        detail: folder.path,
+        note: folder.omitted > 0 ? t(PREVIEW_STRINGS.omitted, { count: folder.omitted }) : "",
+        text: lines.join("\n"),
+      })];
+    }
+  }
+}
+
+/** A file dropped, pasted or picked: its name, where it is, and its picture when it is one. */
+export function filePreview(file: Pick<DroppedFile, "name" | "path"> & { size?: number }, image = ""): PreviewBlock[] {
+  return [block({ heading: file.name, detail: file.path, note: file.size == null ? "" : formatSize(file.size), image })];
 }
 
 /** The paths of the screenshots waiting, for deleting the ones never sent. */

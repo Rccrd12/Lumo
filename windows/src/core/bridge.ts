@@ -228,7 +228,7 @@ export const Bridge = {
   screenWindowShare: (ids: number[]) => callOrThrow<SharedWindow[]>("screen_window_share", { ids }),
   /** A screenshot of one listed window, saved in the inbox, with a preview. */
   screenWindowShot: (id: number) => callOrThrow<ScreenShot>("screen_window_shot", { id }),
-  /** The tabs open in Edge and Chrome: titles and addresses only. */
+  /** The tabs open in Edge and Chrome: titles (and addresses, where known) only. */
   screenTabs: () => callOrThrow<BrowserTab[]>("screen_tabs"),
   /** The listed tabs picked by id (all of them for `[]`), with their pages' text. */
   screenTabShare: (ids: string[]) => callOrThrow<BrowserTab[]>("screen_tab_share", { ids }),
@@ -265,6 +265,8 @@ export const Bridge = {
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
+  /** An attached picture in the inbox as a data URL, for the chat's preview; null for any other file. */
+  filePreview: (path: string) => call<string | null>("file_preview", { path }),
   /**
    * Ctrl+V in the chat: what the page got from the clipboard (an image, a
    * file), sent raw and written into the inbox like a drop.
@@ -523,6 +525,7 @@ export interface BrowserTab {
   id: string;
   browser: string;
   title: string;
+  /** "" while not known: on Windows, a tab in the background gives its address once read. */
   url: string;
   /** The tab on screen in its window. */
   active: boolean;
@@ -583,8 +586,8 @@ export interface ScreenContext {
 }
 
 /**
- * The `ask-context` event: what "Ask about my screen" or "Ask about the
- * selected text" took on the key press, or why it couldn't (shortcuts.rs).
+ * The `ask-context` event: what "Ask about my screen", "Ask about the
+ * selected text" or "Ask about the page in the browser" took on the key press, or why it couldn't (shortcuts.rs).
  */
 /** A new email from the Email pill's poller (mail.rs Message). */
 export interface MailMessage extends MailPeek {
@@ -595,6 +598,8 @@ export interface MailMessage extends MailPeek {
 export type SharedContext =
   | { kind: "screen"; shots: ScreenShot[] }
   | { kind: "selection"; selection: SelectedText }
+  /** "Ask about the page in the browser": the tab on screen, with its page's text. */
+  | { kind: "page"; tab: BrowserTab }
   | { kind: "problem"; message: string };
 
 export interface ModelInfo {
