@@ -1,6 +1,6 @@
 // Listening: the chat waits for GitHub without holding a turn open. Claude
 // writes `[[listen owner/repo#12 ready: merge it]]` in an answer
-// (claude_code.rs listen_note, src/core/listen.ts takes it out); Lumo keeps
+// (chat.rs listen_note, src/core/listen.ts takes it out); Lumo keeps
 // that watch here, asks GitHub about the pull request now and then, and once
 // what it waited for happens (or can no longer happen) tells the island
 // (`listen-fired`). With a task, the chat that asked sends Claude a message
