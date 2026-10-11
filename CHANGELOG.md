@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows and Linux 0.5.7 — October 11, 2026
+
+- **Several of a kind**: each `Ctrl+Alt+P` adds its screenshot to the ones waiting (Screen 1, Screen 1 (2)…), each shared selection joins the others, and a file added while another waits goes with it in the same question
+- **Service cards like the tools'**: GitHub, Email, Stripe, Notion, Cal.com and Resend show their name and kind, whether they are connected, their rows like VS Code's facts, and Open… and Refresh at the bottom
+- **The drop**: Lumo waits under the dragged file, mouth up, instead of on top of it
+- **The big preview** of a picture leaves Lumo's column free
+
 ## Windows and Linux 0.5.6 — October 11, 2026
 
 - **A PDF open in the browser goes as the PDF**: `Ctrl+Alt+B` on a tab that shows a file (a PDF opened from the disk or the web, a .docx…) attaches the file itself instead of the text its viewer shows. Any other page still goes as its text and address
