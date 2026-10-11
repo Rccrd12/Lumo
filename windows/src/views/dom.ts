@@ -149,3 +149,60 @@ export function dot(color: string, size = 7): HTMLElement {
     style: `width:${size}px;height:${size}px;background:${color}`,
   });
 }
+
+/** A mouse wheel notch scrolls this share of what the webview would (about 100 px on Windows). */
+const WHEEL_SHARE = 0.4;
+/** Deltas this small come from a touchpad, already fine-grained: left to the webview. */
+const FINE_DELTA_PX = 40;
+
+/** Whether something inside `root`, under the pointer, scrolls by itself that way (a code block). */
+function innerScroller(target: EventTarget | null, root: HTMLElement, down: boolean): boolean {
+  for (let n = target instanceof Element ? target : null; n && n !== root; n = n.parentElement) {
+    if (n.scrollHeight <= n.clientHeight + 1) continue;
+    const overflow = getComputedStyle(n).overflowY;
+    if (overflow !== "auto" && overflow !== "scroll") continue;
+    if (down ? n.scrollTop + n.clientHeight < n.scrollHeight - 1 : n.scrollTop > 0) return true;
+  }
+  return false;
+}
+
+/**
+ * A mouse wheel that scrolls `el` in smaller steps, gliding to each: a notch
+ * of the wheel went most of the way down a short chat. A touchpad's fine
+ * deltas, Ctrl (zoom) and Shift (sideways) are left as they were.
+ */
+export function gentleWheel(el: HTMLElement) {
+  let target = 0;
+  let pos = 0;
+  let frame = 0;
+  const stop = () => {
+    if (frame) cancelAnimationFrame(frame);
+    frame = 0;
+  };
+  const step = () => {
+    frame = 0;
+    // Moved by something else meanwhile (following an answer down): that wins.
+    if (Math.abs(el.scrollTop - Math.round(pos)) > 2) return;
+    const max = Math.max(0, el.scrollHeight - el.clientHeight);
+    target = Math.min(Math.max(target, 0), max);
+    const left = target - pos;
+    pos = Math.abs(left) < 0.5 ? target : pos + left * 0.35;
+    el.scrollTop = pos;
+    if (pos !== target) frame = requestAnimationFrame(step);
+  };
+  el.addEventListener("wheel", (e) => {
+    if (e.ctrlKey || e.shiftKey || e.deltaY === 0) return;
+    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * el.clientHeight : e.deltaY;
+    if (Math.abs(dy) < FINE_DELTA_PX || innerScroller(e.target, el, dy > 0)) {
+      stop();
+      return;
+    }
+    e.preventDefault();
+    if (!frame) {
+      pos = el.scrollTop;
+      target = pos;
+    }
+    target += dy * WHEEL_SHARE;
+    if (!frame) frame = requestAnimationFrame(step);
+  }, { passive: false });
+}
