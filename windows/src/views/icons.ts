@@ -18,6 +18,8 @@ export const ICONS = {
   power: "M12 3.5v8M7.1 6.6a7.5 7.5 0 1 0 9.8 0",
   // clock (stroke)
   clock: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM12 7.5V12l3 2",
+  // folder (stroke): what goes with the chat's next question
+  folder: "M3.5 7.5V18a1.5 1.5 0 0 0 1.5 1.5h14a1.5 1.5 0 0 0 1.5-1.5V9.5A1.5 1.5 0 0 0 19 8h-7l-2-2.5H5A1.5 1.5 0 0 0 3.5 7v.5z",
   // trash (stroke)
   trash: "M4.5 6.5h15M9.5 6.5V4.5h5v2M6.5 6.5l1 13h9l1-13M10.2 10v6.5M13.8 10v6.5",
   // plus

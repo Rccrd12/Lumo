@@ -588,3 +588,50 @@ test("Lumo shows the chat's answer: working while it is written, then done or wr
     t.mock.timers.reset();
   }
 });
+
+test("deleting the chat on screen closes it: an empty chat takes its place", async () => {
+  const { loadChats, saveChat } = await import("../src/core/chats.ts");
+  if (!globalThis.localStorage) {
+    const mem = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: (k) => mem.delete(k),
+    };
+  }
+  const turns = [{ role: "user", content: "hi" }];
+  saveChat({ id: "other", title: "Other", updatedAt: 1, provider: "claude-code", session: null, turns });
+  saveChat({ id: "open", title: "Open", updatedAt: 2, provider: "claude-code", session: null, turns });
+  State.chatId = "open";
+  State.chatHistory = [{ id: 1, role: "user", content: "hi" }];
+  view.sync();
+  const historyBtn = view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "Past chats");
+  historyBtn.fire("click");
+  const rows = () => view.el.find(".history-row");
+  const deleteOf = (title) => rows().find((r) => r.getAttribute("title") === title).find(".history-delete")[0];
+
+  deleteOf("Other").fire("click");
+  assert.equal(State.chatId, "open", "another chat: the one on screen stays");
+  assert.ok($(".chat-body").classList.contains("browsing"));
+
+  deleteOf("Open").fire("click");
+  assert.notEqual(State.chatId, "open");
+  assert.equal(State.chatHistory.length, 0);
+  assert.ok(!$(".chat-body").classList.contains("browsing"), "the list closes on the new chat");
+  assert.deepEqual(loadChats().map((c) => c.id), []);
+});
+
+test("the folder beside the past chats holds what is attached, its badge says how many", () => {
+  const badge = $(".tool-badge");
+  assert.equal(badge.textContent, "", "nothing attached: no number");
+  State.droppedFile = { name: "notes.pdf", path: "C:\\Lumo\\inbox\\notes.pdf" };
+  view.sync();
+  assert.equal(badge.textContent, "1");
+  assert.equal($(".chip-row").find(".chip").length, 0, "no longer above the chat");
+  assert.deepEqual($(".files-list").find(".chip").map((c) => c.find("SPAN")[0].textContent), ["notes.pdf"]);
+  $(".files-btn").fire("click");
+  assert.ok($(".chat-body").classList.contains("filing"));
+  $(".files-list").find(".chip-remove")[0].fire("click");
+  view.sync();
+  assert.equal(badge.textContent, "");
+});
