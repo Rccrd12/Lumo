@@ -1,5 +1,13 @@
 # Changelog
 
+## Windows and Linux 0.5.8 — October 11, 2026
+
+- **One attachment, one row**: two `Ctrl+Alt+P` of the same screen, two windows, two tabs or two selected texts no longer share one chip: each waits on its own, and its × takes back that one only (a screenshot's file with it)
+- **The attachments, made anew**: the folder beside the past chats lists everything in rows of one width, lined up whatever the length of their names: the picture (a screenshot, an attached picture) or the kind's icon, the name, what it is under it ("Screenshot", "Window · Code", "Web page · github.com", "File · PDF · 2.0 KB") and a ×. How many sits by the title, **Remove all** shows when there are several, and with nothing attached it says what the folder is for. A click on a row shows what it sends; Close or Remove brings the list back
+- **A file that already went is no longer listed**: sent with a question, it stops waiting in the attachments and in the folder's number
+- **The big picture fills the island**: a click on a picture in a preview shows it over the whole open island, its top bar too, and Lumo steps out of its way until a click or `Esc`
+- **The upload bar in the middle**: the bar of a dropped file runs as far from the card's right side as from its left
+
 ## Windows and Linux 0.5.7 — October 11, 2026
 
 - **Several of a kind**: each `Ctrl+Alt+P` adds its screenshot to the ones waiting (Screen 1, Screen 1 (2)…), each shared selection joins the others, and a file added while another waits goes with it in the same question
