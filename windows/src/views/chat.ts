@@ -27,7 +27,7 @@
 // with the paperclip.
 //
 // With Settings → Chat → "Show remaining usage in the chat" on, a small ring
-// next to the model button fills with what the provider has used — the most
+// just left of the model button fills with what the provider has used — the most
 // used of its limits, in the plan's colours — and opens a menu with each limit,
 // its bar and when it resets (core/chat-usage.ts).
 //
@@ -718,7 +718,10 @@ export function buildPrompt(
   const usageRing = usageRingSvg();
   const usageEl = h("button", { class: "tool-btn chat-usage" }, usageRing.el);
   usageEl.style.display = "none";
-  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn, usageEl), modelBtn);
+  // The ring sits right before the model it measures.
+  const modelRow = h("div", { class: "model-row" },
+    h("div", { class: "chat-tools" }, newBtn, historyBtn),
+    h("div", { class: "model-side" }, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
