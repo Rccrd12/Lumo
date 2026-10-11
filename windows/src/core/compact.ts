@@ -44,8 +44,14 @@ export interface MediaActivity {
   playing: boolean;
 }
 
+/** A dropped file on its way into the chat (island/island.ts swallow). */
+export interface UploadActivity {
+  name: string;
+}
+
 /** One live activity on the closed island. */
 export type CompactItem =
+  | { kind: "upload"; upload: UploadActivity }
   | { kind: "line"; line: CompactLine; notice: boolean }
   | { kind: "timer"; timer: TimerActivity }
   | { kind: "media"; media: MediaActivity };
@@ -106,6 +112,9 @@ export const COMPACT_TEXT = {
   now: N_("now"),
   timer: N_("Timer"),
 };
+
+/** Said once a dropped file is in the chat: on the closed island, and in the chat. */
+export const UPLOADED_TEXT = N_("File uploaded");
 
 // ── What the AI is doing ──────────────────────────────────────────────────────
 
@@ -229,6 +238,8 @@ export class CompactFeed {
   private seenMail = new Set<string>();
   timers: TimerActivity[] = [];
   media: MediaActivity | null = null;
+  /** The file being uploaded: its bar carries on on the closed island. */
+  upload: UploadActivity | null = null;
   /** The calendar's coming events (island/activities.ts), for "in 5 min". */
   events: CalEvent[] = [];
   private nextTimer = 1;
@@ -301,7 +312,7 @@ export class CompactFeed {
 
   /**
    * What the closed island shows now: the email, else the live activities
-   * side by side — a note (each in its turn) or what the AI is doing, the
+   * side by side — the file being uploaded, a note (each in its turn) or what the AI is doing, the
    * event about to start, the two soonest timers, the music.
    * `show` leaves out the notes and the activity, or the music (Settings → Island).
    */
@@ -309,6 +320,7 @@ export class CompactFeed {
     this.drop(now);
     if (this.mail) return { kind: "mail", mail: this.mail.mail };
     const items: CompactItem[] = [];
+    if (this.upload) items.push({ kind: "upload", upload: this.upload });
     const doing = show.notes ? (Array.isArray(activity) ? activity : activity ? [activity] : []) : [];
     // A note stands in for the first line of what is going on while it shows.
     const notice = show.notes ? this.currentNotice(now) : null;

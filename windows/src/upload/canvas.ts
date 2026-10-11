@@ -1,8 +1,8 @@
 // The upload canvas — port of UploadCanvasView.swift.
 //
 // While the sequence engine is active this canvas draws the whole island body:
-// card, dashed drop frame, drop text, progress bar, the choose card, Mochi and
-// the file being sucked in. The island's own Mochi is hidden for the duration,
+// card, dashed drop frame, drop text, progress bar, Mochi and the file being
+// sucked in. The island's own Mochi is hidden for the duration,
 // exactly as on macOS, because this canvas draws its own.
 
 import { State } from "../core/state";
@@ -22,9 +22,8 @@ const FONT = `system-ui, "Segoe UI Variable Text", "Segoe UI", ${SCRIPT_FONTS}, 
 
 /** The card's inner right edge: no text runs past it. */
 const TEXT_RIGHT = USC.CARD_X + USC.CARD_W - 16;
-/** The two choose buttons, as drawn and as hit areas. */
-const ASK_BTN = { x: 114, w: 168 };
-const CANCEL_BTN = { x: 290, w: 120 };
+/** The scene never shrinks below this, even while the island is still opening. */
+const MIN_SCALE = 0.6;
 /** Drop-zone chips (English keys, shown with `t()`). */
 const CHIPS = [N_("PDF"), N_("Images"), N_("Code"), N_("Docs")];
 
@@ -114,67 +113,65 @@ function fitted(ctx: CanvasRenderingContext2D, s: string, maxW: number, weight: 
 }
 
 /**
- * Where the 640 × 176 scene sits in the island: the island grown past it (a
- * resized island) gets the card stretched to its edges, and everything else
- * — the text, the bar, Mochi — in its middle. `left` is where the layer
- * starts in the island (below zero for an island narrower than the scene),
- * `ox`/`oy` where the scene starts in the layer.
+ * Where the 640 × 176 scene sits in the island. The card always reaches the
+ * island's edges, whatever size it was given; the text, the bar and Mochi sit
+ * in its middle, at their own size on a bigger island and scaled down by `s`
+ * on one smaller than the scene (the smallest island is 560 × 160), so the
+ * dashed frame and the bar never run past the card. `ox`/`oy` is where the
+ * scene's corner lands in the island, `reachX`/`reachY` how much farther than
+ * the scene's card the island's card reaches on each side, in scene points.
  */
 export interface UploadStage {
   w: number;
   h: number;
-  left: number;
+  s: number;
   ox: number;
   oy: number;
+  reachX: number;
+  reachY: number;
+}
+
+/** The card drawn on an island of `w` × `h`: inset like the scene's. */
+export function uploadCard(w: number, h: number): { x: number; y: number; w: number; h: number } {
+  return {
+    x: USC.CARD_X,
+    y: USC.CARD_Y,
+    w: Math.max(0, w - 2 * USC.CARD_X),
+    h: Math.max(0, h - USC.CARD_Y - (USC.ISL_H - USC.CARD_Y - USC.CARD_H)),
+  };
 }
 
 export function uploadStage(islandW: number, islandH: number): UploadStage {
-  const w = Math.max(USC.W, Math.round(islandW));
-  const h = Math.max(USC.ISL_H, Math.round(islandH));
-  return { w, h, left: (Math.round(islandW) - w) / 2, ox: (w - USC.W) / 2, oy: (h - USC.ISL_H) / 2 };
-}
-
-export interface UploadCanvasActions {
-  /** Primary button — hand the file to the chat. */
-  ask(): void;
-  /** Secondary button. */
-  cancel(): void;
+  const w = Math.max(1, Math.round(islandW));
+  const h = Math.max(1, Math.round(islandH));
+  const card = uploadCard(w, h);
+  const s = Math.max(MIN_SCALE, Math.min(1, card.w / USC.CARD_W, card.h / USC.CARD_H));
+  // The scene's card centre on the island's card centre.
+  const ox = card.x + card.w / 2 - (USC.CARD_X + USC.CARD_W / 2) * s;
+  const oy = card.y + card.h / 2 - (USC.CARD_Y + USC.CARD_H / 2) * s;
+  return {
+    w, h, s, ox, oy,
+    reachX: Math.max(0, (card.w / s - USC.CARD_W) / 2),
+    reachY: Math.max(0, (card.h / s - USC.CARD_H) / 2),
+  };
 }
 
 export class UploadCanvas {
-  /** Wrapper holding the canvas and the two invisible choose buttons. */
+  /** The layer holding the canvas. */
   readonly el: HTMLElement;
 
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D | null;
-  private overlay: HTMLElement;
   private sizedFor = "";
   private stage: UploadStage = uploadStage(USC.W, USC.ISL_H);
 
-  constructor(actions: UploadCanvasActions) {
+  constructor() {
     this.canvas = document.createElement("canvas");
     this.canvas.id = "upload-canvas";
 
-    // Invisible hit areas at the reference button positions. The labels are
-    // painted on the canvas; these only catch the click.
-    const mk = (x: number, w: number, onclick: () => void) => {
-      const b = document.createElement("button");
-      b.className = "upload-hit";
-      b.dataset.x = String(x);
-      b.style.left = `${x}px`;
-      b.style.top = "113px";
-      b.style.width = `${w}px`;
-      b.style.height = "26px";
-      b.addEventListener("click", onclick);
-      return b;
-    };
-    this.overlay = document.createElement("div");
-    this.overlay.id = "upload-overlay";
-    this.overlay.append(mk(ASK_BTN.x, ASK_BTN.w, actions.ask), mk(CANCEL_BTN.x, CANCEL_BTN.w, actions.cancel));
-
     this.el = document.createElement("div");
     this.el.id = "upload-layer";
-    this.el.append(this.canvas, this.overlay);
+    this.el.append(this.canvas);
 
     this.ctx = this.canvas.getContext("2d");
   }
@@ -184,14 +181,10 @@ export class UploadCanvas {
     const st = uploadStage(islandW, islandH);
     const was = this.stage;
     this.stage = st;
-    if (st.w !== was.w || st.h !== was.h || st.left !== was.left || !this.el.style.width) {
-      this.el.style.left = `${st.left}px`;
+    if (st.w !== was.w || st.h !== was.h || !this.el.style.width) {
+      this.el.style.left = "0px";
       this.el.style.width = `${st.w}px`;
       this.el.style.height = `${st.h}px`;
-      for (const b of Array.from(this.overlay.children) as HTMLElement[]) {
-        b.style.left = `${Number(b.dataset.x) + st.ox}px`;
-        b.style.top = `${113 + st.oy}px`;
-      }
     }
     return st;
   }
@@ -199,7 +192,7 @@ export class UploadCanvas {
   /** A point in the island (page pixels from its corner) in scene points. */
   toScene(x: number, y: number): { x: number; y: number } {
     const st = this.stage;
-    return { x: x - st.left - st.ox, y: y - st.oy };
+    return { x: (x - st.ox) / st.s, y: (y - st.oy) / st.s };
   }
 
   /** `wallTime` in seconds drives the marching dashes, like the macOS timeline. */
@@ -220,18 +213,14 @@ export class UploadCanvas {
     ctx.clearRect(0, 0, st.w, st.h);
 
     this.drawScene(ctx, f, wallTime);
-
-    // The buttons only exist once the choose card has faded in.
-    this.overlay.style.display = f.chooseAlpha > 0.5 ? "block" : "none";
   }
 
   // ── Scene ─────────────────────────────────────────────────────────────────
 
   private drawScene(ctx: CanvasRenderingContext2D, f: UploadFrame, wallTime: number) {
     const st = this.stage;
-    // The card reaches the island's edges, however big it was made.
-    const cardW = st.w - 2 * USC.CARD_X;
-    const cardH = st.h - USC.CARD_Y - (USC.ISL_H - USC.CARD_Y - USC.CARD_H);
+    // The card reaches the island's edges, however big or small it was made.
+    const { w: cardW, h: cardH } = uploadCard(st.w, st.h);
 
     // Island background.
     ctx.fillStyle = "#000000";
@@ -265,7 +254,7 @@ export class UploadCanvas {
       ctx.lineWidth = 1.5;
       ctx.setLineDash([6, 5]);
       ctx.lineDashOffset = -wallTime * 20;
-      rr(ctx, USC.CARD_X + 0.75, USC.CARD_Y + 0.75, cardW - 1.5, cardH - 1.5, USC.CARD_R - 0.5);
+      rr(ctx, USC.CARD_X + 0.75, USC.CARD_Y + 0.75, Math.max(0, cardW - 1.5), Math.max(0, cardH - 1.5), USC.CARD_R - 0.5);
       ctx.stroke();
       ctx.restore();
     }
@@ -273,9 +262,9 @@ export class UploadCanvas {
     // The rest is drawn in scene points, in the middle of the card.
     ctx.save();
     ctx.translate(st.ox, st.oy);
+    ctx.scale(st.s, st.s);
     if (f.zoneAlpha > 0 && f.textAlpha > 0) this.drawDropText(ctx, f);
     if (f.barAlpha > 0 || f.barReveal > 0) this.drawProgressBar(ctx, f);
-    if (f.chooseAlpha > 0) this.drawChoose(ctx, f);
 
     this.drawMochi(ctx, f);
     if (f.fileVisible) this.drawFile(ctx, f);
@@ -391,33 +380,6 @@ export class UploadCanvas {
       ctx.fill();
       ctx.restore();
     }
-    ctx.restore();
-  }
-
-  // ── Choose card ───────────────────────────────────────────────────────────
-
-  private drawChoose(ctx: CanvasRenderingContext2D, f: UploadFrame) {
-    ctx.save();
-    ctx.globalAlpha = f.chooseAlpha;
-    ctx.translate(0, (1 - f.chooseAlpha) * 4);
-
-    const maxW = TEXT_RIGHT - 114;
-    const ready = fitted(ctx, t("{name} is ready.", { name: State.droppedFile?.name ?? t("file") }), maxW, 600, 14);
-    text(ctx, ready.s, 114, 80, ready.font, "#F5F6F8");
-    const what = fitted(ctx, t("What do you want to do with it?"), maxW, 400, 12.5);
-    text(ctx, what.s, 114, 100, what.font, "#9398A1");
-
-    ctx.fillStyle = "#F5F6F8";
-    rr(ctx, ASK_BTN.x, 113, ASK_BTN.w, 26, 13);
-    ctx.fill();
-    const ask = fitted(ctx, t("Ask a question about it"), ASK_BTN.w - 14, 500, 12.5);
-    text(ctx, ask.s, ASK_BTN.x + ASK_BTN.w / 2, 126, ask.font, "#0B0C0E", "center");
-
-    ctx.fillStyle = "rgba(255,255,255,0.09)";
-    rr(ctx, CANCEL_BTN.x, 113, CANCEL_BTN.w, 26, 13);
-    ctx.fill();
-    const cancel = fitted(ctx, t("Cancel"), CANCEL_BTN.w - 14, 500, 12.5);
-    text(ctx, cancel.s, CANCEL_BTN.x + CANCEL_BTN.w / 2, 126, cancel.font, "#F1F2F4", "center");
     ctx.restore();
   }
 
@@ -561,7 +523,8 @@ export class UploadCanvas {
     // is clipped away — that is what makes it look swallowed.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(-this.stage.w, -this.stage.h, 3 * this.stage.w, clipY + this.stage.h);
+    const far = Math.max(this.stage.w, this.stage.h) / this.stage.s;
+    ctx.rect(-far, -far, 3 * far, clipY + far);
     ctx.clip();
 
     for (let i = 0; i < 28; i++) {

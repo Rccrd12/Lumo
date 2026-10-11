@@ -57,6 +57,7 @@ const CLICK_GUARD_MS = 600;
 const MAIL_COLOR = "#EA4335";
 const TIMER_COLOR = "#F5A524";
 const MEDIA_COLOR = "#1DB954";
+const UPLOAD_COLOR = "#34D399";
 /** How often the music is asked about while the closed island shows: Settings → General → Energy sets it. */
 const mediaEvery = () => byEffort(State.effort, 2000, 4000, 8000);
 
@@ -123,6 +124,10 @@ export class CompactStrip {
   private visible = false;
   /** When the request on show came up, against clicks meant for something else. */
   private approvalAt = 0;
+  /** The upload's bar and percentage, moved each frame without a redraw. */
+  private uploadFill: HTMLElement | null = null;
+  private uploadPct: HTMLElement | null = null;
+  private uploadAt = 0;
 
   private host: CompactHost;
 
@@ -223,6 +228,8 @@ export class CompactStrip {
     if (key === this.key) return;
     this.key = key;
     clear(this.el);
+    this.uploadFill = null;
+    this.uploadPct = null;
     this.measured = null;
     const many = s?.kind === "items" && s.items.length > 1;
     this.el.className = [s ? `on ${s.kind}` : "", many ? "many" : "", this.visible ? "shown" : ""].filter(Boolean).join(" ");
@@ -238,8 +245,26 @@ export class CompactStrip {
     this.measured = this.measure();
   }
 
+  /** How far the upload on show has gone, 0 to 1 (island.ts, each frame of it). */
+  progress(p: number) {
+    this.uploadAt = Math.max(0, Math.min(1, p));
+    if (this.uploadFill) this.uploadFill.style.width = `${this.uploadAt * 100}%`;
+    if (this.uploadPct) this.uploadPct.textContent = `${Math.round(this.uploadAt * 100)} %`;
+  }
+
   private itemContent(item: CompactItem, now: number, compact: boolean): Node[] {
     switch (item.kind) {
+      case "upload": {
+        const label = t("Uploading {name}", { name: item.upload.name });
+        this.uploadFill = h("i", { class: "cp-upload-fill", style: `width:${this.uploadAt * 100}%` });
+        this.uploadPct = h("span", { class: "cp-time cp-upload-pct", text: `${Math.round(this.uploadAt * 100)} %` });
+        return [
+          h("span", { class: "cp-icon", style: `color:${UPLOAD_COLOR}` }, svg(ICONS.doc, 12, { stroke: 1.8 })),
+          compact ? null : h("span", { class: "cp-text", text: label, title: label }),
+          h("span", { class: "cp-upload" }, this.uploadFill),
+          this.uploadPct,
+        ].filter((n): n is HTMLElement => n != null);
+      }
       case "line":
         return [
           h("i", { class: item.notice ? "cp-dot notice" : "cp-dot", style: `background:${item.line.color}` }),
@@ -454,6 +479,8 @@ export function openMailInChat(m: MailPeek & { body?: string }, question: string
 /** What an item looks like now, to redraw only when it changes. */
 function itemKey(item: CompactItem, now: number): string {
   switch (item.kind) {
+    case "upload":
+      return `upload:${item.upload.name}`;
     case "line":
       return `line:${item.line.text}:${item.line.color}:${item.notice}`;
     case "timer":
