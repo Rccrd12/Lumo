@@ -7,9 +7,10 @@ import assert from "node:assert/strict";
 import { calls, emit, sent } from "./tauri.mjs";
 import {
   GRID_WEEKS, activityHeader, actionsUrl, ciWord, contributionColor, contributionsLabel, dayLabel,
-  formatCount, gitHubAlert, lastDays, lastWeeks, mainCISummary, myPRsValue, profileUrl, readActivity,
-  readPulse, readStats, safeGitHubUrl, shortRepo, totalLabel, weekColumn, worstCI,
+  formatCount, gitHubAlert, gitHubNote, gitHubRunning, lastDays, lastWeeks, mainCISummary, myPRsValue, profileUrl, readActivity,
+  readPulse, readStats, safeGitHubUrl, shortPR, shortRepo, totalLabel, weekColumn, worstCI,
 } from "../src/core/github.ts";
+import { Feed } from "../src/core/compact.ts";
 import { registerIntegrationHandlers } from "../src/island/integrations.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
@@ -166,6 +167,29 @@ test("the loudest event decides the badge and the sound", () => {
   assert.deepEqual(gitHubAlert([{ kind: "ciFailed", prId: "a" }]), { badge: "error", sound: "error" });
 });
 
+// ── The closed island ─────────────────────────────────────────────────────────
+
+test("a PR or a repo is named short on the closed island", () => {
+  assert.equal(shortPR("octo/lumo#12"), "lumo#12");
+  assert.equal(shortPR("octo/lumo"), "lumo");
+});
+
+test("the CI running after a push or on a PR is what GitHub is doing", () => {
+  const pulse = (myPRs, mainCI) => ({ login: "me", myPRs, toReview: [], mainCI, fetchedAt: 1 });
+  assert.equal(gitHubRunning(null), null);
+  assert.equal(gitHubRunning(pulse([pr("a/b#1", "success")], [repo("a/c", "failure")])), null, "nothing running");
+  assert.equal(gitHubRunning(pulse([pr("a/b#1", "pending")], [])), "CI running on b#1");
+  assert.equal(gitHubRunning(pulse([], [repo("a/c", "pending")])), "CI running on c");
+  assert.equal(gitHubRunning(pulse([pr("a/b#1", "pending")], [repo("a/c", "pending")])), "CI running on b#1 · +1 more");
+});
+
+test("each alert says what happened", () => {
+  assert.equal(gitHubNote({ kind: "ciFailed", prId: "a/b#1" }), "CI failed on b#1");
+  assert.equal(gitHubNote({ kind: "ciPassed", prId: "a/b#1" }), "CI passed on b#1");
+  assert.equal(gitHubNote({ kind: "mainFailed", repo: "a/c" }), "CI failed on c");
+  assert.equal(gitHubNote({ kind: "reviewRequested", prId: "a/b#2" }), "Review requested on b#2");
+});
+
 const island = { reveal: () => {} };
 registerIntegrationHandlers(island);
 
@@ -185,6 +209,25 @@ test("an alert badges the GitHub pill when another pill is on screen", () => {
   emit("github-alerts", [{ kind: "mainFailed", repo: "a/b" }]);
   assert.equal(github().pillBadge, "error");
   assert.equal(github().state, "idle", "Mochi's state is left alone, as on macOS");
+});
+
+test("an alert is said on the closed island, each in its turn, not while the island is open", () => {
+  // The notes said from now on, in their order (the feed is shared with the tests above).
+  const said = () => {
+    const out = [];
+    for (let at = Date.now(); at < Date.now() + 60_000; at += 500) {
+      const shown = Feed.shown(null, at);
+      const text = shown?.kind === "items" ? shown.items[0].line?.text : undefined;
+      if (text && out[out.length - 1] !== text) out.push(text);
+    }
+    return out;
+  };
+  emit("github-alerts", [{ kind: "ciPassed", prId: "a/b#1" }, { kind: "reviewRequested", prId: "a/b#2" }]);
+  const closed = said();
+  assert.deepEqual(closed.slice(-2), ["GitHub · CI passed on b#1", "GitHub · Review requested on b#2"]);
+  State.mode = "expanded";
+  emit("github-alerts", [{ kind: "ciFailed", prId: "a/b#3" }]);
+  assert.ok(!said().includes("GitHub · CI failed on b#3"));
 });
 
 test("no badge while the GitHub pill is the one on screen", () => {

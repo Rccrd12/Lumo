@@ -98,6 +98,14 @@ function taskFor(def: PillDefinition, colors: unknown, name = def.name): AgentTa
   };
 }
 
+/**
+ * A pill whose sessions arrive as hook events: an agent's, or a workspace
+ * tool's (VS Code, Cursor…), which is a catalog pill too. Not a service's.
+ */
+export function isSessionTask(task: AgentTask): boolean {
+  return task.source === "claudeCode" || task.source === "agent";
+}
+
 /** What an integration poller last reported. */
 export interface IntegrationInfo {
   data: Record<string, unknown>;
@@ -197,6 +205,8 @@ export interface Settings {
   quickApprovals: boolean;
   /** The live activities beside the island are as tall as it, and follow its resizes. */
   activitiesFollowIsland: boolean;
+  /** The Email pill leaves out the promotional emails (mail.rs). */
+  mailHidePromotions: boolean;
   /** The right-click menu's own items, in order (core/context-menu.ts). */
   contextMenu: string[];
   /** Who the chat talks to (see core/providers.ts); picked in the chat view. */
@@ -309,6 +319,7 @@ export const DEFAULT_SETTINGS: Settings = {
   planUsageOnline: false,
   quickApprovals: true,
   activitiesFollowIsland: true,
+  mailHidePromotions: false,
   contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],
   chatProvider: "anthropic",
   chatModels: {},
@@ -694,7 +705,7 @@ class AppState {
 
   /** What the Agents tab shows on its badge: a session waiting on you, or one at work. */
   get agentsActivity(): "waiting" | "working" | null {
-    const sessions = this.tasks.filter((t) => !t.isIntegration);
+    const sessions = this.tasks.filter(isSessionTask);
     if (this.pendingApproval || sessions.some((t) => t.state === "approval" || t.state === "question")) return "waiting";
     if (sessions.some((t) => t.state === "working" || t.state === "thinking" || t.state === "searching")) return "working";
     return null;

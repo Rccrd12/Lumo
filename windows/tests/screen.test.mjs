@@ -250,16 +250,16 @@ test("opening the menu only asks which screens there are", async () => {
   assert.ok(nothingCaptured());
 });
 
-test("a screenshot is previewed, kept on Send and goes with the next question once", async () => {
+test("a screenshot is previewed, kept on Attach and goes with the next question once", async () => {
   await openMenu();
   entries()[2].fire("click"); // Screen 1
   await flush();
   assert.deepEqual(sent("screen_capture"), [{ display: 0 }]);
   const img = view.el.find("IMG")[0];
   assert.equal(img.getAttribute("src"), shot(0).preview);
-  assert.equal(view.el.find(".chip").length, 0, "not chat context before Send");
+  assert.equal(view.el.find(".chip").length, 0, "not chat context before Attach");
 
-  view.el.find(".btn").find((b) => b.textContent === "Send").fire("click");
+  view.el.find(".btn").find((b) => b.textContent === "Attach").fire("click");
   view.sync();
   assert.ok(!$(".chat-body").classList.contains("screening"));
   assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Screen 1"]);
@@ -302,12 +302,19 @@ test("closing the panel during a preview deletes it too", async () => {
   assert.deepEqual(sent("screen_discard"), [{ paths: [shot(1).path] }]);
 });
 
-test("a question typed before Send goes right away with the screenshots", async () => {
+test("Attach never sends: a question typed before stays, and goes with the screenshots on Enter", async () => {
   $(".chat-input").value = "explain this error";
   await openMenu();
   entries()[4].fire("click");
   await flush();
-  view.el.find(".btn").find((b) => b.textContent === "Send").fire("click");
+  view.el.find(".btn").find((b) => b.textContent === "Attach").fire("click");
+  await flush();
+  view.sync();
+  assert.equal(sent("chat_send").length, 0, "attached only");
+  assert.equal($(".chat-input").value, "explain this error");
+  assert.deepEqual(view.el.find(".chip").map((c) => c.find("SPAN")[0].textContent), ["Screen 1, Screen 2"]);
+
+  $(".send-btn").fire("click");
   await flush();
   const turn = sent("chat_send")[0];
   assert.equal(turn.query, "explain this error");
@@ -490,7 +497,7 @@ test("a new chat deletes screenshots that were never sent", async () => {
   await openMenu();
   entries()[2].fire("click");
   await flush();
-  view.el.find(".btn").find((b) => b.textContent === "Send").fire("click");
+  view.el.find(".btn").find((b) => b.textContent === "Attach").fire("click");
   view.el.find(".tool-btn")[0].fire("click"); // New chat
   assert.deepEqual(sent("screen_discard"), [{ paths: [shot(0).path] }]);
   view.sync();

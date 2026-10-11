@@ -185,8 +185,15 @@ body.embedded #settings-root {
 }
 
 body.embedded .sidebar {
-  padding: 14px 8px 16px;
+  padding: 14px 8px 10px;
   gap: 12px;
+  /* The list fits the island; should a long language make it a little longer,
+     it scrolls with the wheel, without a bar beside it. */
+  scrollbar-width: none;
+}
+
+body.embedded .sidebar::-webkit-scrollbar {
+  display: none;
 }
 
 body.embedded .page {

@@ -1844,6 +1844,14 @@ input[type="range"]::-webkit-slider-thumb {
   padding: 0 10px;
 }
 
+/* The usage ring, right before the model button it measures. */
+.model-side {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
 /* New chat, past chats, attach: small round buttons in the chat's own style. */
 .chat-tools {
   display: flex;

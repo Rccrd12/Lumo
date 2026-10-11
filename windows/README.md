@@ -117,11 +117,16 @@ them never opens the island, even with Open on hover.
 
 - **What the AI is doing**: "Haiku · Reading main.ts", "Haiku · Writing…",
   "Gemini Live · Looking at the screen", "Claude Code · Waiting for your
-  OK". Nothing at all while nothing is going on.
+  OK" — every pill fed by hooks counts, VS Code, Cursor, Codex and
+  Antigravity included, and two at work show side by side. GitHub says
+  "GitHub · CI running on lumo#12" while the CI of a pull request of yours
+  or of a default branch runs (after a push or a merge). Nothing at all
+  while nothing is going on.
 - **What just happened**, for a few seconds: "Haiku answered" when the chat
   answers while it isn't on screen, "Haiku answered" or "Claude Code
   answered" when Gemini Live's helper is done, a session on another pill
-  that finished, a deploy or a workflow.
+  that finished, a deploy or a workflow, GitHub's CI passing or failing
+  and a review asked of you.
 - **A new email** (the **Email** pill): the sender, the subject and the
   first lines, with **Summarize**, **Draft a reply** and **Open**. It stays
   while the mouse is on it. Summarize and Draft a reply open the chat with
@@ -236,6 +241,12 @@ shows on the closed island (see [The closed island](#the-closed-island)).
 Lumo only reads: the inbox is opened read only, emails stay unread, and
 nothing is ever sent, moved or deleted. The address, the server and the app
 password are in the system keychain.
+
+**Hide promotional emails** (under the Email pill's fields, off by default)
+leaves the promotions out of the card and the closed island: on Gmail, the
+emails in its Promotions tab; with other providers, the emails that carry an
+unsubscribe link (`List-Unsubscribe`: newsletters, offers). A server that
+cannot search that way still shows every unread email.
 
 For Gmail: turn on 2-Step Verification in your Google account, create an app
 password at <https://myaccount.google.com/apppasswords>, and paste it in

@@ -92,6 +92,10 @@ pub struct Settings {
     /// The live activities beside the island are as tall as it, and follow it
     /// when it is resized (Settings → Island).
     pub activities_follow_island: bool,
+    /// The Email pill leaves out the promotional emails (mail.rs): Gmail's
+    /// Promotions category, elsewhere the emails with an unsubscribe link.
+    /// Off until the user turns it on.
+    pub mail_hide_promotions: bool,
     /// What the right-click menu offers besides Refresh and the text actions,
     /// in its order (src/core/context-menu.ts MENU_ITEMS).
     pub context_menu: Vec<String>,
@@ -251,6 +255,7 @@ impl Default for Settings {
             plan_usage_online: false,
             quick_approvals: true,
             activities_follow_island: true,
+            mail_hide_promotions: false,
             context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),
             chat_provider: crate::chat::ANTHROPIC.into(),
             chat_models: BTreeMap::new(),
@@ -567,6 +572,7 @@ mod tests {
   "planUsageOnline": true,
   "quickApprovals": false,
   "activitiesFollowIsland": false,
+  "mailHidePromotions": true,
   "contextMenu": ["settings"],
   "chatProvider": "ollama",
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
@@ -1034,6 +1040,7 @@ mod tests {
                 "planUsageOnline",
                 "quickApprovals",
                 "activitiesFollowIsland",
+                "mailHidePromotions",
                 "contextMenu",
                 "chatProvider",
                 "chatModels",

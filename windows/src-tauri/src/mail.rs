@@ -15,7 +15,7 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::json;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
 use tokio::net::TcpStream;
 use tokio::sync::Notify;
@@ -131,9 +131,16 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
     let idle = imap.capabilities.iter().any(|c| c == "IDLE");
     let account = format!("{address}@{host}");
     let mut known = std::collections::HashMap::new();
+    let mut hiding = hides_promotions(app);
     loop {
         imap.read = 0;
-        let (unread, messages) = timed(host, look(&mut imap, host, &mut known)).await?;
+        let hide = hides_promotions(app);
+        if hide != hiding {
+            // The filter changed: what it lets through now is not news.
+            *LAST_UID.lock().unwrap() = None;
+            hiding = hide;
+        }
+        let (unread, messages) = timed(host, look(&mut imap, host, hide, &mut known)).await?;
         report(app, &account, host, unread, messages);
         let stop = || {
             GENERATION.load(Ordering::Relaxed) != generation
@@ -492,10 +499,44 @@ fn sign_in_error(host: &str, why: &str) -> String {
     tf("{server} refused to sign in: {error}", &[("server", host), ("error", words.join(" ").trim_end_matches(':'))])
 }
 
+/// Settings → Pills → Email: the promotional emails are left out.
+fn hides_promotions(app: &AppHandle) -> bool {
+    app.try_state::<crate::Shared>()
+        .map(|shared| shared.settings.lock().unwrap().mail_hide_promotions)
+        .unwrap_or(false)
+}
+
+/// The search for the unread emails: all of them, or without the promotional
+/// ones — on Gmail its own Promotions category, elsewhere the emails that carry
+/// an unsubscribe link (List-Unsubscribe, RFC 2369: newsletters and offers).
+fn unseen_search(host: &str, hide_promotions: bool) -> &'static str {
+    if !hide_promotions {
+        "UID SEARCH UNSEEN"
+    } else if is_gmail(host) {
+        "UID SEARCH UNSEEN X-GM-RAW \"-category:promotions\""
+    } else {
+        "UID SEARCH UNSEEN NOT HEADER List-Unsubscribe \"\""
+    }
+}
+
 /// The unread count and the newest unread emails; `known` keeps the ones
 /// already fetched on this connection, so only new ones are asked for.
-async fn look(imap: &mut Imap, host: &str, known: &mut std::collections::HashMap<u32, Message>) -> Result<(usize, Vec<Message>), String> {
-    let found = imap.run("UID SEARCH UNSEEN").await?;
+async fn look(
+    imap: &mut Imap,
+    host: &str,
+    hide_promotions: bool,
+    known: &mut std::collections::HashMap<u32, Message>,
+) -> Result<(usize, Vec<Message>), String> {
+    let search = unseen_search(host, hide_promotions);
+    let found = match imap.run(search).await {
+        Ok(found) => found,
+        // A server that cannot filter so still lists every unread email.
+        Err(why) if search != "UID SEARCH UNSEEN" => {
+            log::line(format!("[mail] {host} cannot leave out the promotions: {why}"));
+            imap.run("UID SEARCH UNSEEN").await?
+        }
+        Err(why) => return Err(why),
+    };
     let mut uids = search_uids(&found);
     let unread = uids.len();
     uids.sort_unstable();
@@ -1102,6 +1143,14 @@ mod tests {
         assert_eq!(literal_size("* 1 FETCH (UID 4 BODY[TEXT]<0> {120}"), Some(120));
         assert_eq!(literal_size("* OK hello"), None);
         assert_eq!(literal_size("a {12+}"), Some(12));
+    }
+
+    #[test]
+    fn promotions_are_left_out_only_when_asked() {
+        assert_eq!(unseen_search("imap.gmail.com", false), "UID SEARCH UNSEEN");
+        assert_eq!(unseen_search("imap.example.com", false), "UID SEARCH UNSEEN");
+        assert_eq!(unseen_search("imap.gmail.com", true), r#"UID SEARCH UNSEEN X-GM-RAW "-category:promotions""#);
+        assert_eq!(unseen_search("imap.example.com", true), r#"UID SEARCH UNSEEN NOT HEADER List-Unsubscribe """#);
     }
 
     #[test]

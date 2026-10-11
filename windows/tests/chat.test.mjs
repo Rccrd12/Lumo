@@ -224,6 +224,48 @@ test("a local answer streams into one reply, then the finished text replaces it"
   assert.ok(!$(".model-btn").disabled);
 });
 
+test("scrolled up during an answer, the chat stays put until scrolled back down", async () => {
+  let finish;
+  answers.chat_send = () => new Promise((resolve) => (finish = resolve));
+  const log = $(".chat-log");
+  log.clientHeight = 100;
+  $(".chat-input").value = "tell me a story";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+
+  log.scrollHeight = 1000;
+  emit("chat-delta", "Once upon");
+  assert.equal(log.scrollTop, 1000, "it follows the answer down");
+
+  log.scrollTop = 200; // the user scrolls up to read
+  log.fire("scroll");
+  log.scrollHeight = 1400;
+  emit("chat-delta", "Once upon a time");
+  assert.equal(log.scrollTop, 200, "left where it was read");
+
+  log.scrollTop = 1400 - 100; // back at the end
+  log.fire("scroll");
+  log.scrollHeight = 1600;
+  emit("chat-delta", "Once upon a time, far away");
+  assert.equal(log.scrollTop, 1600, "it follows again");
+
+  log.scrollTop = 300;
+  log.fire("scroll");
+  finish({ text: "Once upon a time, far away." });
+  await flush();
+  view.sync();
+  assert.equal(log.scrollTop, 300, "the finished answer replaces the streamed one where it was read");
+
+  // The next question goes to the end of the chat.
+  answers.chat_send = { text: "The end." };
+  $(".chat-input").value = "and then?";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+  assert.equal(log.scrollTop, log.scrollHeight);
+});
+
 // ── Stop, copy, edit ──────────────────────────────────────────────────────────
 
 /** A key typed in the chat field (`extra`: shiftKey…). */

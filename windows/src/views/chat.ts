@@ -27,7 +27,7 @@
 // with the paperclip.
 //
 // With Settings → Chat → "Show remaining usage in the chat" on, a small ring
-// next to the model button fills with what the provider has used — the most
+// just left of the model button fills with what the provider has used — the most
 // used of its limits, in the plan's colours — and opens a menu with each limit,
 // its bar and when it resets (core/chat-usage.ts).
 //
@@ -84,6 +84,7 @@ const STRINGS = {
   noMatch: N_("No chat says that."),
   deleteChat: N_("Delete this chat"),
   attach: N_("Attach a file"),
+  attachShots: N_("Attach"),
   cancel: N_("Cancel"),
   effort: N_("Effort"),
   effortAuto: N_("Auto"),
@@ -197,6 +198,9 @@ const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
+
+/** This close to the end of the chat, the log follows a written answer down. */
+const FOLLOW_SLACK_PX = 24;
 
 /** How long Lumo shows that an answer came (his hop) or went wrong (his shake). */
 export const SETTLE_MS = 2000;
@@ -659,6 +663,17 @@ export function buildPrompt(
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
+  // The log follows a written answer down while it is read at its end;
+  // scrolled up, it stays put until it is scrolled back down.
+  let following = true;
+  log.addEventListener("scroll", () => {
+    following = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_SLACK_PX;
+  }, { passive: true });
+  function toEnd() {
+    if (following) log.scrollTop = log.scrollHeight;
+  }
+  /** The finished answer is about to replace the streamed one. */
+  let settling = false;
   // A text area of one line that grows with what is typed (up to a few lines,
   // then it scrolls): Enter sends, Shift+Enter starts a new line.
   const input = h("textarea", {
@@ -703,7 +718,10 @@ export function buildPrompt(
   const usageRing = usageRingSvg();
   const usageEl = h("button", { class: "tool-btn chat-usage" }, usageRing.el);
   usageEl.style.display = "none";
-  const modelRow = h("div", { class: "model-row" }, h("div", { class: "chat-tools" }, newBtn, historyBtn, usageEl), modelBtn);
+  // The ring sits right before the model it measures.
+  const modelRow = h("div", { class: "model-row" },
+    h("div", { class: "chat-tools" }, newBtn, historyBtn),
+    h("div", { class: "model-side" }, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -1395,7 +1413,7 @@ export function buildPrompt(
         ),
       );
     }
-    const keep = h("button", { class: "btn primary", text: t(STRINGS.send) });
+    const keep = h("button", { class: "btn primary", text: t(STRINGS.attachShots) });
     const cancel = h("button", { class: "btn secondary", text: t(STRINGS.cancel) });
     keep.addEventListener("click", () => {
       if (!preview) return;
@@ -1404,9 +1422,8 @@ export function buildPrompt(
       closeScreen();
       Sound.play("attach");
       State.notify();
-      // A question already typed goes with it right away.
-      if (input.value.trim()) void submit();
-      else input.focus();
+      // Attached only: the question is written, and sent, when the user wants.
+      input.focus();
     });
     cancel.addEventListener("click", () => {
       closeScreen(); // deletes the previewed screenshots
@@ -1701,7 +1718,7 @@ export function buildPrompt(
       log.append(h("div", { class: "chat-row" }, live));
     }
     renderMarkdown(live, takeTimers(text).text);
-    log.scrollTop = log.scrollHeight;
+    toEnd();
   });
 
   /**
@@ -1718,7 +1735,7 @@ export function buildPrompt(
     const label = log.querySelector(".typing-label");
     if (label) label.textContent = activityLabel(activity);
     else if (again && live) log.append(typingDots(activityLabel(activity)));
-    log.scrollTop = log.scrollHeight;
+    toEnd();
   }
 
   void onEvent<ChatActivity>("chat-activity", (next) => {
@@ -1745,6 +1762,7 @@ export function buildPrompt(
     setInput("");
     sending = true;
     stopping = false;
+    following = true; // a new question goes to the end of the chat
     drawModelButton();
     Sound.play("send");
 
@@ -1822,6 +1840,7 @@ export function buildPrompt(
       clearTimeout(activityTimer);
       activity = THINKING;
       renderedCount = -1; // the finished answer replaces the streamed one
+      settling = true;
       drawModelButton();
       State.notify();
       onHeightChange();
@@ -1946,6 +1965,7 @@ export function buildPrompt(
       const count = State.chatHistory.length + (thinking ? 0.5 : 0);
       if (count !== renderedCount && !live) {
         renderedCount = count;
+        const kept = log.scrollTop;
         clear(log);
         // A new chat opens on a few ways to start, now that it is home.
         if (count === 0) log.append(welcome());
@@ -1955,7 +1975,9 @@ export function buildPrompt(
           log.append(bubble(m, { onEdit: sending ? undefined : startEdit, editing: i === at, dropped: at >= 0 && i > at }));
         });
         if (thinking) log.append(typingDots(activityLabel(activity)));
-        log.scrollTop = log.scrollHeight;
+        // Scrolled up to read: the finished answer replaces the streamed one where it was.
+        log.scrollTop = following || !settling ? log.scrollHeight : kept;
+        settling = false;
       }
 
       // Leaving the chat folds the picker away.

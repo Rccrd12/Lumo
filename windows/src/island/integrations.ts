@@ -4,7 +4,7 @@
 
 import { onEvent, Bridge, type IntegrationUpdate } from "../core/bridge";
 import { compactNotice } from "../core/compact";
-import { gitHubAlert, type GitHubEvent } from "../core/github";
+import { gitHubAlert, gitHubNote, type GitHubEvent } from "../core/github";
 import { availablePills } from "../core/pills";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -35,6 +35,10 @@ export function handleGitHubAlerts(events: GitHubEvent[]) {
   if (!task) return;
   if (State.focusId !== GITHUB) task.pillBadge = alert.badge;
   Sound.play(alert.sound);
+  // Said on the closed island too, each in its turn, like the other integrations' news.
+  if (State.mode !== "expanded") {
+    for (const e of events) compactNotice(`${task.name} · ${gitHubNote(e)}`, task.color);
+  }
   State.notify();
 }
 
