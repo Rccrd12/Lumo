@@ -224,6 +224,14 @@ export const Bridge = {
   screenDisplays: () => callOrThrow<ScreenDisplay[]>("screen_displays"),
   /** Titles and app names of the open windows, front to back. */
   screenWindows: () => callOrThrow<OpenWindow[]>("screen_windows"),
+  /** The listed windows picked by id (all of them for `[]`), with what each one shows (share.rs). */
+  screenWindowShare: (ids: number[]) => callOrThrow<SharedWindow[]>("screen_window_share", { ids }),
+  /** A screenshot of one listed window, saved in the inbox, with a preview. */
+  screenWindowShot: (id: number) => callOrThrow<ScreenShot>("screen_window_shot", { id }),
+  /** The tabs open in Edge and Chrome: titles and addresses only. */
+  screenTabs: () => callOrThrow<BrowserTab[]>("screen_tabs"),
+  /** The listed tabs picked by id (all of them for `[]`), with their pages' text. */
+  screenTabShare: (ids: string[]) => callOrThrow<BrowserTab[]>("screen_tab_share", { ids }),
   /** Screenshots of one display (from 0) or all (null), saved in the inbox, with a preview. */
   screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
   /** Deletes screenshots the user did not keep. */
@@ -322,6 +330,10 @@ export const Bridge = {
   /** Hands a task to the helper of Settings → Voice; its answer. Cards ask for what it may not do alone. */
   liveHelp: (task: string, folder: string | null) => callOrThrow<string>("live_help", { task, folder }),
   liveHelpStop: () => call<void>("live_help_stop"),
+  /** Something to do on the screen, for Claude Code with Lumo's computer tools (live.rs use_computer). */
+  liveComputer: (task: string) => callOrThrow<string>("live_computer", { task }),
+  /** Computer use is on and Claude Code is set up for Lumo: Gemini may hand screen work over. */
+  liveComputerReady: () => call<boolean>("live_computer_ready"),
   /** Types `text` into the window in front, as the keyboard would; never Enter. */
   liveType: (text: string) => callOrThrow<LiveTyped>("live_type", { text }),
   /** The page asks for the microphone now (true), or has its answer (false). */
@@ -485,11 +497,40 @@ export interface ScreenDisplay {
 
 /** One open window: its title and the app it belongs to. */
 export interface OpenWindow {
+  /** Its handle, for picking it (share.rs); 0 when not known. */
+  id?: number;
   title: string;
   app: string;
   /** The window the user was in. */
   active: boolean;
   minimized: boolean;
+}
+
+/** A window the user shared, with what it shows (share.rs SharedWindow). */
+export interface SharedWindow {
+  title: string;
+  app: string;
+  /** Its text, read from the screen; "" when it gives none. */
+  text: string;
+  /** The text was cut to fit. */
+  cut: boolean;
+  /** The document it shows, found on disk; "" if none. */
+  document: string;
+}
+
+/** A tab open in Edge or Chrome (share.rs BrowserTab). */
+export interface BrowserTab {
+  id: string;
+  browser: string;
+  title: string;
+  url: string;
+  /** The tab on screen in its window. */
+  active: boolean;
+  /** Its page's text, once shared; "" in the list. */
+  text: string;
+  cut: boolean;
+  /** "page" (read in the browser), "web" (downloaded), "" (none). */
+  source: string;
 }
 
 /** A screenshot in the inbox; `preview` is a data URL of it. */
@@ -535,6 +576,10 @@ export interface ScreenContext {
   shots: { name: string; path: string }[];
   selection?: SelectedText;
   folder?: ExplorerFolder;
+  /** Windows picked in the menu, with what they show. */
+  sharedWindows?: SharedWindow[];
+  /** Browser tabs picked in the menu, with their pages' text. */
+  tabs?: BrowserTab[];
 }
 
 /**

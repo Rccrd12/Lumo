@@ -30,7 +30,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::Stop;
 use crate::explorer::{self, FolderEntry};
@@ -690,7 +690,7 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
         if agy {
             crate::antigravity_cli::help(&task, folder.as_deref(), &model, &mode, stop2, tell)
         } else {
-            crate::claude_code::help(&task, folder.as_deref(), &model, &effort, &mode, stop2, tell)
+            crate::claude_code::help(&task, folder.as_deref(), &model, &effort, &mode, false, stop2, tell)
         }
     })
     .await
@@ -700,6 +700,64 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
         *current = None;
     }
     result
+}
+
+/// What Gemini Live hands over to be done on the screen always goes to Claude
+/// Code, on Haiku at medium effort, whoever helps otherwise (Settings → Voice):
+/// it is quick, and it uses the computer well.
+pub const COMPUTER_MODEL: &str = "claude-haiku-5-5";
+pub const COMPUTER_EFFORT: &str = "medium";
+
+/// Gemini Live may hand screen work over: computer use is on (Settings →
+/// Chat) and Claude Code is set up for Lumo. Blocking.
+pub fn computer_ready(settings: &crate::settings::Settings) -> bool {
+    crate::computer::enabled(settings) && crate::claude_code::ready()
+}
+
+/// Hands `task`, something to do on the screen, to Claude Code with Lumo's
+/// computer tools: the same turn as in the chat (the glow, Claude's mouse,
+/// the cards, Esc). Its answer, for Gemini to say.
+pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, String> {
+    let task = task.trim().to_string();
+    if task.is_empty() {
+        return Err(t("No response text."));
+    }
+    let settings = app.state::<crate::Shared>().settings.lock().unwrap().clone();
+    let ready = tauri::async_runtime::spawn_blocking({
+        let settings = settings.clone();
+        move || computer_ready(&settings)
+    })
+    .await
+    .unwrap_or(false);
+    if !ready {
+        return Err("Using the screen needs Claude Code set up in Lumo, with its hooks, and Let Claude use the computer on in Settings, under Chat.".into());
+    }
+    let stop = Arc::new(Stop::default());
+    if let Some(old) = HELPING.lock().unwrap_or_else(|e| e.into_inner()).replace(stop.clone()) {
+        old.stop();
+    }
+    let mode = settings.chat_permission_mode.clone();
+    let app2 = app.clone();
+    let stop2 = stop.clone();
+    crate::computer::begin_turn();
+    let result = tauri::async_runtime::spawn_blocking(move || {
+        let tell = |a: &crate::claude_code::Activity| {
+            let _ = app2.emit_to(
+                WINDOW_LABEL,
+                "live-helper-activity",
+                HelperActivity { helper: "Claude Code", kind: a.kind, detail: a.detail.clone() },
+            );
+        };
+        crate::claude_code::help(&task, None, COMPUTER_MODEL, COMPUTER_EFFORT, &mode, true, stop2, tell)
+    })
+    .await
+    .map_err(|e| e.to_string());
+    crate::computer::end_turn(app);
+    let mut current = HELPING.lock().unwrap_or_else(|e| e.into_inner());
+    if current.as_ref().is_some_and(|s| Arc::ptr_eq(s, &stop)) {
+        *current = None;
+    }
+    result?
 }
 
 /// The conversation ended (or the user said stop): the helper's task ends too.
@@ -779,6 +837,19 @@ pub async fn live_help(
         (Helper::of(&s), s.chat_permission_mode.clone())
     };
     help(&app, &helper, &mode, task, folder.filter(|f| !f.trim().is_empty())).await
+}
+
+/// Gemini Live's use_computer: something to do on the screen, for Claude Code.
+#[tauri::command]
+pub async fn live_computer(app: AppHandle, task: String) -> Result<String, String> {
+    use_computer(&app, task).await
+}
+
+/// Whether Gemini Live may offer use_computer.
+#[tauri::command]
+pub async fn live_computer_ready(shared: tauri::State<'_, crate::Shared>) -> Result<bool, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    tauri::async_runtime::spawn_blocking(move || computer_ready(&settings)).await.map_err(|e| e.to_string())
 }
 
 #[tauri::command]

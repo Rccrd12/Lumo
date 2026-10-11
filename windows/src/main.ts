@@ -10,7 +10,9 @@ import { registerHookHandlers } from "./island/hooks";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
 import { registerShortcutHandlers } from "./island/shortcuts";
 import { Recap } from "./recap/recap";
-import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages } from "./i18n/i18n";
+import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t } from "./i18n/i18n";
+import { COMPUTER_TEXT } from "./core/computer";
+import { compactNotice } from "./core/compact";
 
 /** Shows the language Settings asks for ("" = the system's, when Lumo has it). */
 function applyLanguage() {
@@ -48,6 +50,8 @@ async function main() {
   await onEvent<boolean>("pointer-inside", (inside) => island.setPointerInside(inside));
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
   await onEvent<null>("outside-press", () => island.onOutsidePress());
+  // Esc stopped the chat's computer use (computer.rs).
+  await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
   await onEvent<MailMessage[]>("mail-new", (messages) => island.newMail(messages));
 
   /** Pause has to reach Rust too, or the pollers keep calling out. */

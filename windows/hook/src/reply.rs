@@ -69,8 +69,11 @@ pub fn island_card_tool(tool: &str) -> bool {
 /// card from its PreToolUse hook: what runs a command, changes a file or goes
 /// to the network or an MCP server. Reading is left to Claude Code.
 pub fn claude_card_tool(tool: &str) -> bool {
-    matches!(tool, "Bash" | "PowerShell" | "Edit" | "MultiEdit" | "Write" | "NotebookEdit" | "WebFetch")
-        || tool.starts_with("mcp__")
+    // Lumo's computer use tools that only look (a screenshot, a wait) need no card.
+    let looking = tool.starts_with("mcp__") && crate::mcp::lumo_tool(tool).is_some_and(|name| crate::mcp::LOOKING.contains(&name));
+    !looking
+        && (matches!(tool, "Bash" | "PowerShell" | "Edit" | "MultiEdit" | "Write" | "NotebookEdit" | "WebFetch")
+            || tool.starts_with("mcp__"))
 }
 
 /// Claude Code's PreToolUse reply to such a card: allowed only after a click
@@ -296,6 +299,10 @@ mod tests {
         }
         assert!(claude_card_tool("Bash") && claude_card_tool("PowerShell") && claude_card_tool("Write"));
         assert!(claude_card_tool("mcp__github__create_issue"));
+        // Lumo's computer use: what acts gets a card, what only looks does not.
+        assert!(claude_card_tool("mcp__lumo__left_click") && claude_card_tool("mcp__lumo__type") && claude_card_tool("mcp__lumo__key"));
+        assert!(!claude_card_tool("mcp__lumo__screenshot") && !claude_card_tool("mcp__lumo__zoom") && !claude_card_tool("mcp__lumo__wait"));
+        assert!(claude_card_tool("mcp__lumo2__screenshot"), "another server's screenshot is its own");
         assert!(!claude_card_tool("Read") && !claude_card_tool("Grep") && !claude_card_tool("AskUserQuestion"));
     }
 

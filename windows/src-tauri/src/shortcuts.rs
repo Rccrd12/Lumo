@@ -274,6 +274,11 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
             if event.state != ShortcutState::Pressed {
                 return;
             }
+            // Esc, taken while Claude uses the computer for the chat.
+            if crate::computer::is_stop_key(shortcut) {
+                crate::computer::stop(app);
+                return;
+            }
             let Some(registry) = app.try_state::<Registry>() else { return };
             let action = registry.by_id.lock().unwrap().get(&shortcut.id()).copied();
             if let Some(action) = action {

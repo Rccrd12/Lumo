@@ -5,6 +5,7 @@
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
+import { describeComputerAction } from "../core/computer";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
@@ -165,6 +166,9 @@ const APPROVAL_FIELDS = [
 ] as const;
 
 function approvalTarget(tool: string, input: Record<string, unknown>): string {
+  // The chat's computer use: what the click or the keys will do.
+  const action = describeComputerAction(tool, input);
+  if (action) return action;
   for (const field of APPROVAL_FIELDS) {
     const value = input[field];
     if (typeof value === "string" && value.trim()) {

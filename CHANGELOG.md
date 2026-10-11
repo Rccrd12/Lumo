@@ -1,5 +1,14 @@
 # Changelog
 
+## Windows and Linux 0.5.2 — October 11, 2026
+
+- **Claude can use your computer** (Settings → Chat → Computer use → Let Claude use the computer, off by default, Windows): Claude Code in the chat sees the screen and clicks, types, presses keys, scrolls and drags, through Lumo's own MCP server (`lumo-hook --mcp`, passed to the chat's runs only; your Claude Code settings are untouched), on your Claude plan. Asking every time, each action is an Allow / Deny card that says what it does ("Click · 640, 320", "Type · …"); screenshots don't ask. Esc anywhere stops it. Screenshots leave Lumo out, are sized for every model, and Claude's coordinates are turned back into your screen's, whatever its scaling
+- **You can watch it work**: the screen it uses glows around its edges (on whichever display it is), the mouse becomes Claude's own orange arrow and glides from point to point, and each action is drawn where it happens: rings for clicks, a trail for drags, chevrons for scrolling, a bubble with the text typed or the keys pressed. While Claude answers the mouse is its own: your hand gets it back for a card, with Esc, or at the end
+- **Gemini Live hands screen work to Claude Code**: "click Send", "open the display settings and turn on night light" go to Claude Code on Haiku 5.5 at medium effort, whoever helps Gemini otherwise, when Claude Code is set up for Lumo and computer use is on
+- **Share windows and browser tabs with what they show**: the chat's screen button opens a second list for Open windows and for the new Browser tabs (Edge, Chrome): one or all of them. A window goes with its text (read as screen readers do) and the document it has open, a single one also with a picture of it; a tab with its page's text. The folder open in File Explorer is offered only when there is one
+- **Settings from the right-click menu open inside the island**, as the gear does (the Live Activities' one too); "Open the chat" is no longer a right-click item, and the small group headings in Settings are readable
+- **A pill's name never runs under Lumo** on a narrow island
+
 ## Windows and Linux 0.5.1 — October 10, 2026
 
 - **The Claude plan's 5 hours no longer vanish**: Claude Code's status line leaves the 5-hour window out while it is far from its limit, and each of its updates used to drop the figure a chat answer had brought. The window it leaves out is now kept, and when none was ever reported the 5 hours read "plenty left — Claude Code reports it only near the limit", in the chat's usage menu and on the plan card

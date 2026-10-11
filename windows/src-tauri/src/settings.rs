@@ -123,6 +123,9 @@ pub struct Settings {
     /// Every chat message carries the open windows and the documents they
     /// show, found on disk (desk.rs). On until the user turns it off.
     pub chat_share_open: bool,
+    /// The chat's Claude Code may see the screen, click and type (computer.rs,
+    /// lumo-hook --mcp), Windows only. Off until the user turns it on.
+    pub chat_computer_use: bool,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
     /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
@@ -256,6 +259,7 @@ impl Default for Settings {
             chat_show_usage: false,
             chat_share_explorer: false,
             chat_share_open: true,
+            chat_computer_use: false,
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -571,6 +575,7 @@ mod tests {
   "chatShowUsage": true,
   "chatShareExplorer": true,
   "chatShareOpen": false,
+  "chatComputerUse": true,
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -1037,6 +1042,7 @@ mod tests {
                 "chatShowUsage",
                 "chatShareExplorer",
                 "chatShareOpen",
+                "chatComputerUse",
                 "liveModel",
                 "liveThinking",
                 "liveVoice",

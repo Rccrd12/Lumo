@@ -216,6 +216,8 @@ export interface Settings {
   chatShareExplorer: boolean;
   /** Every message carries the open windows and their documents (desk.rs). */
   chatShareOpen: boolean;
+  /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
+  chatComputerUse: boolean;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -315,6 +317,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShowUsage: false,
   chatShareExplorer: false,
   chatShareOpen: true,
+  chatComputerUse: false,
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

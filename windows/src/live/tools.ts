@@ -12,6 +12,9 @@ import { t } from "../i18n/i18n";
 import { TOOL, type FunctionCall, type ToolAnswer } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
 
+/** Who does what Gemini hands over to be done on the screen (live.rs use_computer). */
+export const COMPUTER_HELPER = "Claude Code";
+
 export interface ToolHost {
   /** Settings → Voice allows the screen. */
   screen: boolean;
@@ -154,6 +157,13 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       host.doing(t(S.asked, { helper: host.helper }));
       const answer = await Bridge.liveHelp(task, str(a.folder) || null);
       return { helper: host.helper, answer };
+    }
+    case TOOL.computer: {
+      const task = str(a.task);
+      if (!task) throw new Error("Say what to do on the screen.");
+      host.doing(t(S.asked, { helper: COMPUTER_HELPER }));
+      const answer = await Bridge.liveComputer(task);
+      return { helper: COMPUTER_HELPER, answer };
     }
     case TOOL.stopHelper:
       await Bridge.liveHelpStop();

@@ -447,3 +447,17 @@ test("without Google Search the setup leaves it out and the model is told to ask
   assert.match(text, /no web search of your own/);
   assert.match(P.systemInstruction(CFG), /Google Search finds/);
 });
+
+test("with computer use on, Gemini hands what is to be done on the screen to Claude Code", () => {
+  const on = P.systemInstruction({ ...CFG, computer: true });
+  assert.match(on, /use_computer hands something to do on the screen to Claude Code/);
+  assert.match(on, /Never try to do it yourself/);
+  assert.doesNotMatch(P.systemInstruction(CFG), /use_computer/, "off by default");
+  const names = (cfg) => P.toolDeclarations(cfg).map((d) => d.name);
+  assert.ok(names({ ...CFG, computer: true }).includes("use_computer"));
+  assert.ok(!names(CFG).includes("use_computer"));
+  // Whoever helps otherwise: the screen is Claude Code's.
+  const withAgy = P.toolDeclarations({ ...CFG, helper: "Antigravity CLI", computer: true });
+  assert.match(withAgy.find((d) => d.name === "use_computer").description, /Claude Code/);
+  assert.doesNotMatch(withAgy.find((d) => d.name === "ask_helper").description, /screen/);
+});

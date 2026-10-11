@@ -3,7 +3,8 @@
 // The screen button in the chat offers "Open windows" and one entry per
 // display. Nothing here runs until the user clicks one of them: there is no
 // background capture, no timer, nothing kept in memory. The window list is
-// titles and app names only. A screenshot is one PNG per display, downscaled
+// titles and app names only (what each window shows is share.rs's, once the
+// user picks it). A screenshot is one PNG per display, downscaled
 // so its long edge is at most 1568 px (what Claude reads at full detail),
 // written to the same inbox as dropped files (files.rs) so Claude Code can
 // read it from its path; the island shows it first, and Cancel deletes it.
@@ -30,6 +31,9 @@ const MAX_TITLE_CHARS: usize = 160;
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct WindowInfo {
+    /// The window's handle, for picking it (share.rs); 0 when not known.
+    #[serde(default)]
+    pub id: i64,
     pub title: String,
     pub app: String,
     /// The window the user was in (the one in front, Lumo aside).
@@ -95,6 +99,12 @@ pub struct ScreenContext {
     /// The folder open in File Explorer, with what is in it (explorer.rs).
     #[serde(default)]
     pub folder: Option<crate::explorer::ExplorerFolder>,
+    /// Windows the user picked, with what each one shows (share.rs).
+    #[serde(default)]
+    pub shared_windows: Vec<crate::share::SharedWindow>,
+    /// Browser tabs the user picked, with their pages' text (share.rs).
+    #[serde(default)]
+    pub tabs: Vec<crate::share::BrowserTab>,
     /// The documents the windows show (desk.rs). Only Rust fills it: what a
     /// page sends here is never read.
     #[serde(skip_deserializing)]
@@ -107,6 +117,8 @@ impl ScreenContext {
             && self.shots.is_empty()
             && self.selection.as_ref().is_none_or(|s| s.text.trim().is_empty())
             && self.folder.is_none()
+            && self.shared_windows.is_empty()
+            && self.tabs.is_empty()
             && self.documents.is_empty()
     }
 }
@@ -240,6 +252,14 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
         out.push_str(&windows_text(&screen.windows));
         out.push('\n');
     }
+    if !screen.shared_windows.is_empty() {
+        out.push_str(&crate::share::windows_text(&screen.shared_windows, with_paths));
+        out.push('\n');
+    }
+    if !screen.tabs.is_empty() {
+        out.push_str(&crate::share::tabs_text(&screen.tabs));
+        out.push('\n');
+    }
     if let Some(folder) = &screen.folder {
         out.push_str(&crate::explorer::context_text(folder, with_paths));
         out.push('\n');
@@ -249,6 +269,15 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
         out.push('\n');
     }
     out
+}
+
+/// The inbox file name of a screenshot of one window, taken at `at`.
+#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
+pub fn window_shot_file_name(at: &LocalTime) -> String {
+    format!(
+        "window-{:04}-{:02}-{:02}-{:02}{:02}{:02}.png",
+        at.year, at.month, at.day, at.hour, at.minute, at.second
+    )
 }
 
 /// The menu order of displays given as (x, y, primary): the primary display
@@ -293,6 +322,26 @@ fn preview_url(path: &Path) -> Result<String, String> {
     Ok(format!("data:image/png;base64,{}", crate::claude::base64_for(&bytes)))
 }
 
+/// A screenshot just written, remembered (so it can be deleted) and with its preview.
+fn shot_of(display: usize, path: PathBuf, width: u32, height: u32) -> Result<Shot, String> {
+    remember(&path);
+    let preview = match preview_url(&path) {
+        Ok(url) => url,
+        Err(e) => {
+            discard(&[path.to_string_lossy().to_string()]);
+            return Err(e);
+        }
+    };
+    Ok(Shot {
+        display,
+        name: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
+        path: path.to_string_lossy().to_string(),
+        width,
+        height,
+        preview,
+    })
+}
+
 // ── Platform ──────────────────────────────────────────────────────────────────
 
 /// An app's executable name from its process id ("chrome", "WINWORD").
@@ -307,16 +356,34 @@ pub fn displays() -> Result<Vec<Display>, String> {
 /// `capture` with the island kept out of the picture (Windows 10 2004 and
 /// later: content protection, which Lumo never uses otherwise). Blocking.
 pub fn capture_unseen<R: tauri::Runtime>(app: &tauri::AppHandle<R>, index: Option<usize>) -> Result<Vec<Shot>, String> {
+    unseen(app, |hidden| capture(index, hidden))
+}
+
+/// Runs `f` with Lumo's windows (the island, its live activities) kept out of
+/// screenshots; `f` hears whether they were, to give the compositor a moment.
+pub fn unseen<R: tauri::Runtime, T>(app: &tauri::AppHandle<R>, f: impl FnOnce(bool) -> T) -> T {
     use tauri::Manager;
-    let island = app.get_webview_window(crate::island::WINDOW_LABEL);
-    let hidden = cfg!(windows) && island.as_ref().is_some_and(|w| w.set_content_protected(true).is_ok());
-    let shots = capture(index, hidden);
-    if hidden {
-        if let Some(w) = &island {
-            let _ = w.set_content_protected(false);
-        }
+    let windows: Vec<_> = [crate::island::WINDOW_LABEL, crate::activities::LABEL]
+        .iter()
+        .filter_map(|label| app.get_webview_window(label))
+        .filter(|w| cfg!(windows) && w.set_content_protected(true).is_ok())
+        .collect();
+    let out = f(!windows.is_empty());
+    for w in &windows {
+        let _ = w.set_content_protected(false);
     }
-    shots
+    out
+}
+
+/// Every display's rectangle in physical pixels (left, top, right, bottom), in menu order.
+pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
+    imp::monitor_rects()
+}
+
+/// The part `rect` of the desktop (physical pixels) as a `w` × `h` PNG, in
+/// memory. `settle`: Lumo's windows were just kept out of the picture. Blocking.
+pub fn grab_png(rect: (i32, i32, i32, i32), w: u32, h: u32, settle: bool) -> Result<Vec<u8>, String> {
+    imp::grab_png(rect, w, h, settle)
 }
 
 /// The display the cursor is on, in menu order: what "Ask about my screen" captures.
@@ -336,24 +403,16 @@ pub fn capture(index: Option<usize>, settle: bool) -> Result<Vec<Shot>, String> 
     let shots = imp::capture(index, settle)?;
     let mut out = Vec::new();
     for (display, path, width, height) in shots {
-        remember(&path);
-        let preview = match preview_url(&path) {
-            Ok(url) => url,
-            Err(e) => {
-                discard(&[path.to_string_lossy().to_string()]);
-                return Err(e);
-            }
-        };
-        out.push(Shot {
-            display,
-            name: path.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default(),
-            path: path.to_string_lossy().to_string(),
-            width,
-            height,
-            preview,
-        });
+        out.push(shot_of(display, path, width, height)?);
     }
     Ok(out)
+}
+
+/// One window, as it is drawn even behind others (not minimized), into the
+/// inbox. Blocking.
+pub fn capture_window(id: i64) -> Result<Shot, String> {
+    let (path, width, height) = imp::capture_window(id)?;
+    shot_of(0, path, width, height)
 }
 
 #[cfg(not(windows))]
@@ -379,6 +438,18 @@ mod imp {
     pub fn capture(_index: Option<usize>, _settle: bool) -> Result<Vec<(usize, PathBuf, u32, u32)>, String> {
         unavailable()
     }
+
+    pub fn capture_window(_id: i64) -> Result<(PathBuf, u32, u32), String> {
+        unavailable()
+    }
+
+    pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
+        Vec::new()
+    }
+
+    pub fn grab_png(_rect: (i32, i32, i32, i32), _w: u32, _h: u32, _settle: bool) -> Result<Vec<u8>, String> {
+        unavailable()
+    }
 }
 
 #[cfg(windows)]
@@ -391,7 +462,8 @@ mod imp {
 
     use ::windows::core::{BOOL, GUID, PCWSTR, PWSTR};
     use ::windows::Win32::Foundation::{CloseHandle, GENERIC_WRITE, HWND, LPARAM, RECT};
-    use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED};
+    use ::windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_CLOAKED, DWMWA_EXTENDED_FRAME_BOUNDS};
+    use ::windows::Win32::Storage::Xps::{PrintWindow, PRINT_WINDOW_FLAGS};
     use ::windows::Win32::Graphics::Gdi::{
         BitBlt, CreateCompatibleBitmap, CreateCompatibleDC, DeleteDC, DeleteObject, EnumDisplayMonitors, GetDC,
         GetDIBits, GetMonitorInfoW, ReleaseDC, SelectObject, SetBrushOrgEx, SetStretchBltMode, StretchBlt,
@@ -406,9 +478,9 @@ mod imp {
         OpenProcess, QueryFullProcessImageNameW, PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
     };
     use ::windows::Win32::UI::WindowsAndMessaging::{
-        EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowTextW,
-        GetWindowThreadProcessId, IsIconic, IsWindowVisible, GWL_EXSTYLE, GW_OWNER, MONITORINFOF_PRIMARY,
-        WS_EX_TOOLWINDOW,
+        EnumWindows, GetClassNameW, GetForegroundWindow, GetWindow, GetWindowLongPtrW, GetWindowRect, GetWindowTextW,
+        GetWindowThreadProcessId, IsIconic, IsWindow, IsWindowVisible, GWL_EXSTYLE, GW_OWNER, MONITORINFOF_PRIMARY,
+        PW_RENDERFULLCONTENT, WS_EX_TOOLWINDOW,
     };
 
     // ── Displays ──────────────────────────────────────────────────────────────
@@ -429,6 +501,38 @@ mod imp {
         }
         let keys: Vec<(i32, i32, bool)> = found.iter().map(|(r, p)| (r.left, r.top, *p)).collect();
         display_order(&keys).into_iter().map(|i| found[i]).collect()
+    }
+
+    pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
+        monitors().into_iter().map(|(r, _)| (r.left, r.top, r.right, r.bottom)).collect()
+    }
+
+    pub fn grab_png(rect: (i32, i32, i32, i32), w: u32, h: u32, settle: bool) -> Result<Vec<u8>, String> {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT: AtomicU64 = AtomicU64::new(1);
+        let r = RECT { left: rect.0, top: rect.1, right: rect.2, bottom: rect.3 };
+        if w == 0 || h == 0 || r.right <= r.left || r.bottom <= r.top {
+            return Err(t("That screen isn't connected anymore."));
+        }
+        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        if settle {
+            std::thread::sleep(Duration::from_millis(150));
+        }
+        let result = (|| {
+            let pixels = grab(r, w, h)?;
+            // WIC writes to a file: a private one, read back and deleted at once.
+            let dir = crate::settings::local_dir();
+            crate::platform::ensure_private_dir(&dir).map_err(|e| e.to_string())?;
+            let path = dir.join(format!("computer-{}-{}.png", std::process::id(), NEXT.fetch_add(1, Ordering::Relaxed)));
+            let written = write_png(&path, w, h, &pixels).map_err(|e| e.message());
+            let bytes = written.and_then(|_| std::fs::read(&path).map_err(|e| e.to_string()));
+            let _ = std::fs::remove_file(&path);
+            bytes
+        })();
+        if com.is_ok() {
+            unsafe { CoUninitialize() };
+        }
+        result.map_err(|e| crate::i18n::tf("Couldn't take the screenshot: {error}", &[("error", &e)]))
     }
 
     pub fn displays() -> Result<Vec<Display>, String> {
@@ -531,6 +635,7 @@ mod imp {
         let mut list: Vec<WindowInfo> = found
             .iter()
             .map(|w| WindowInfo {
+                id: w.hwnd as i64,
                 title: clip_title(&w.title),
                 app: names.entry(w.pid).or_insert_with(|| exe_name(w.pid)).clone(),
                 active: false,
@@ -602,6 +707,120 @@ mod imp {
             }
             Ok(bgra.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect())
         }
+    }
+
+    /// Window `hwnd` drawn by itself (PrintWindow, which also draws what other
+    /// windows cover), its visible frame only, scaled to `w` × `h` as BGR rows.
+    fn grab_window(hwnd: HWND, frame: RECT, outer: RECT, w: u32, h: u32) -> Result<Vec<u8>, String> {
+        let (outer_w, outer_h) = (outer.right - outer.left, outer.bottom - outer.top);
+        let (src_x, src_y) = (frame.left - outer.left, frame.top - outer.top);
+        let (src_w, src_h) = (frame.right - frame.left, frame.bottom - frame.top);
+        let (dst_w, dst_h) = (w as i32, h as i32);
+        unsafe {
+            let screen = GetDC(None);
+            if screen.is_invalid() {
+                return Err("GetDC failed".into());
+            }
+            let whole_dc = CreateCompatibleDC(Some(screen));
+            let whole = CreateCompatibleBitmap(screen, outer_w, outer_h);
+            let mem = CreateCompatibleDC(Some(screen));
+            let bitmap = CreateCompatibleBitmap(screen, dst_w, dst_h);
+            let release = || {
+                if !bitmap.is_invalid() {
+                    let _ = DeleteObject(bitmap.into());
+                }
+                if !whole.is_invalid() {
+                    let _ = DeleteObject(whole.into());
+                }
+                if !mem.is_invalid() {
+                    let _ = DeleteDC(mem);
+                }
+                if !whole_dc.is_invalid() {
+                    let _ = DeleteDC(whole_dc);
+                }
+                ReleaseDC(None, screen);
+            };
+            if whole_dc.is_invalid() || whole.is_invalid() || mem.is_invalid() || bitmap.is_invalid() {
+                release();
+                return Err("Out of graphics memory".into());
+            }
+            let old_whole = SelectObject(whole_dc, whole.into());
+            let printed = PrintWindow(hwnd, whole_dc, PRINT_WINDOW_FLAGS(PW_RENDERFULLCONTENT)).as_bool();
+            let old = SelectObject(mem, bitmap.into());
+            SetStretchBltMode(mem, HALFTONE);
+            let _ = SetBrushOrgEx(mem, 0, 0, None);
+            let copied =
+                printed && StretchBlt(mem, 0, 0, dst_w, dst_h, Some(whole_dc), src_x, src_y, src_w, src_h, SRCCOPY).as_bool();
+            SelectObject(mem, old);
+            SelectObject(whole_dc, old_whole);
+
+            let mut info = BITMAPINFO {
+                bmiHeader: BITMAPINFOHEADER {
+                    biSize: std::mem::size_of::<BITMAPINFOHEADER>() as u32,
+                    biWidth: dst_w,
+                    biHeight: -dst_h, // top-down rows
+                    biPlanes: 1,
+                    biBitCount: 32,
+                    biCompression: BI_RGB.0,
+                    ..Default::default()
+                },
+                ..Default::default()
+            };
+            let mut bgra = vec![0u8; w as usize * h as usize * 4];
+            let lines = if copied {
+                GetDIBits(mem, bitmap, 0, h, Some(bgra.as_mut_ptr() as *mut _), &mut info, DIB_RGB_COLORS)
+            } else {
+                0
+            };
+            release();
+            if !copied || lines != dst_h {
+                return Err("The window could not be copied".into());
+            }
+            Ok(bgra.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect())
+        }
+    }
+
+    pub fn capture_window(id: i64) -> Result<(PathBuf, u32, u32), String> {
+        let hwnd = HWND(id as isize as *mut _);
+        let gone = || t("That window isn't open anymore.");
+        unsafe {
+            if !IsWindow(Some(hwnd)).as_bool() {
+                return Err(gone());
+            }
+            if IsIconic(hwnd).as_bool() {
+                return Err(t("That window is minimized."));
+            }
+        }
+        let mut outer = RECT::default();
+        unsafe { GetWindowRect(hwnd, &mut outer) }.map_err(|_| gone())?;
+        // Without the invisible borders Windows 10 and 11 draw around it.
+        let mut frame = RECT::default();
+        let framed = unsafe {
+            DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, &mut frame as *mut RECT as *mut _, std::mem::size_of::<RECT>() as u32)
+        };
+        let inside = frame.left >= outer.left && frame.top >= outer.top && frame.right <= outer.right && frame.bottom <= outer.bottom;
+        if framed.is_err() || !inside || frame.right <= frame.left || frame.bottom <= frame.top {
+            frame = outer;
+        }
+        let (src_w, src_h) = ((frame.right - frame.left).max(0) as u32, (frame.bottom - frame.top).max(0) as u32);
+        if src_w == 0 || src_h == 0 {
+            return Err(gone());
+        }
+        let (w, h) = fit(src_w, src_h, MAX_EDGE);
+        let com = unsafe { CoInitializeEx(None, COINIT_MULTITHREADED) };
+        let result = (|| {
+            let pixels = grab_window(hwnd, frame, outer, w, h)?;
+            let path = crate::files::new_inbox_file(&window_shot_file_name(&crate::platform::local_time()))?;
+            if let Err(e) = write_png(&path, w, h, &pixels) {
+                let _ = std::fs::remove_file(&path);
+                return Err(e.message());
+            }
+            Ok((path, w, h))
+        })();
+        if com.is_ok() {
+            unsafe { CoUninitialize() };
+        }
+        result.map_err(|e| crate::i18n::tf("Couldn't take the screenshot: {error}", &[("error", &e)]))
     }
 
     /// Writes 24-bit BGR rows as a PNG with the Windows Imaging Component.
@@ -684,7 +903,7 @@ mod tests {
     use super::*;
 
     fn win(title: &str, app: &str) -> WindowInfo {
-        WindowInfo { title: title.into(), app: app.into(), active: false, minimized: false }
+        WindowInfo { id: 0, title: title.into(), app: app.into(), active: false, minimized: false }
     }
 
     #[test]
@@ -758,6 +977,8 @@ mod tests {
             ],
             selection: None,
             folder: None,
+            shared_windows: Vec::new(),
+            tabs: Vec::new(),
             documents: Vec::new(),
         };
         let cli = context_text(&screen, true);

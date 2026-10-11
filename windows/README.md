@@ -454,15 +454,34 @@ and matrices. "$5 and $10" stays money.
 ### Show the chat your screen
 
 The screen button next to the paperclip lets the assistant see what you have
-open, only when you ask. Its menu offers **Open windows** (the titles and app
-names of your visible windows, the one you were in marked as active), one
-**Screen 1**, **Screen 2**… entry per display, and **All screens** when there
-are several. Nothing is listed or captured until you click an entry, and never
-in the background. A screenshot (one PNG per display, scaled down to 1568 px on
-its long edge) shows first with **Send** and **Cancel**: Cancel deletes it, Send
-adds it to the chat, with the question already typed if there is one. The window
-list shows as a chip you can remove before sending. Either goes with your next
-question only. Screenshots are saved only in the inbox
+open, only when you ask. Its menu offers **Open windows**, **Browser tabs**
+(when Edge or Chrome has tabs open), one **Screen 1**, **Screen 2**… entry per
+display, and **All screens** when there are several. Nothing is captured until
+you click an entry, and never in the background. A screenshot (one PNG per
+display, scaled down to 1568 px on its long edge) shows first with **Send** and
+**Cancel**: Cancel deletes it, Send adds it to the chat, with the question
+already typed if there is one.
+
+**Open windows** and **Browser tabs** open a second list (**Back** returns to the
+first): **All windows** / **All tabs**, then each one, so you pick exactly what
+goes. Each goes with what it shows, not only its name:
+
+- a **window** with its text, read through UI Automation, the interface screen
+  readers use (the page in a browser, the document in Word or Notepad, the
+  lines of a list…), and the path of the document it has open when Lumo finds
+  it on disk (Claude Code and Antigravity CLI read it from there). A single
+  window also goes with a picture of it, even when other windows cover it, for
+  the providers that see images (not when it is minimized);
+- a **tab** with its page's text: the tab on screen in its window is read from
+  the browser; a tab in the background is downloaded from its address, without
+  your cookies, so a page behind a login shows what anyone would see. The tabs
+  are read from Edge's and Chrome's own list of open tabs (their session file,
+  never written). Only http and https pages are downloaded, and only once you
+  pick them.
+
+The text is cut to fit (about 36,000 characters for all the windows or all the
+tabs of one message). What you picked shows as a chip you can remove before
+sending, and goes with your next question only. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
@@ -474,8 +493,8 @@ says it isn't available yet.
 
 **Folder open in File Explorer**, at the bottom of the same menu, shows the name
 of the folder in the File Explorer window you used last (the tab in front, on
-Windows 11); it is greyed out when that window shows no folder on disk (This PC,
-Quick access, a library). Opening the menu only reads that name. Clicking the
+Windows 11); it is not offered when no File Explorer window shows a folder on
+disk (This PC, Quick access, a library). Opening the menu only reads that name. Clicking the
 entry lists the folder — names, sizes and dates of its files and subfolders, up
 to 300, never their contents — and adds it as a chip you can remove. With your
 next question, a file of that folder you name, with or without its extension
@@ -494,6 +513,60 @@ message. Lumo asks File Explorer only when the text field takes focus and when
 you send, never in the background. With it off, the chat sees no folder unless
 you pick it from the menu; Claude Code says so, and points you to the button and
 to this setting.
+
+### Let Claude use the computer
+
+**Settings… → Chat → Computer use → Let Claude use the computer** (off by
+default, Windows only) lets Claude Code, as the chat's provider or for Gemini
+Live, see your screen and use it — click, type, press keys, scroll and drag — for what a
+command or a file can't do: an app with no command line, a website, a form.
+It works on your real desktop, not in a sandbox, and only while it answers
+in the island's chat.
+
+Lumo gives Claude Code its own MCP server for it (`lumo-hook --mcp`, passed
+with `--mcp-config` to the chat's runs only; your Claude Code settings are not
+touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
+`left_click`, `right_click`, `double_click`, `triple_click`, `middle_click`,
+`mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
+`cursor_position`. It runs on your plan, with no API key.
+
+- **Gemini Live** hands what is to be done on the screen ("click Send", "open
+  the display settings and turn on night light") to Claude Code with its own
+  tool, `use_computer`: always Claude Code on Haiku 5.5 at medium effort,
+  whoever helps Gemini otherwise (Settings → Voice), and only when Claude
+  Code is set up for Lumo (installed, with Lumo's hooks). Same cards, glow,
+  orange mouse and Esc as in the chat.
+
+- **Every action asks first**, with the chat set to *Ask every time*: a click,
+  a key or a text is an Allow / Deny card on the island that says what will
+  happen ("Click · 640, 320", "Type · …", "Press · ctrl+s"). Screenshots,
+  zooms and waits don't ask. In *Auto* mode Claude Code decides, as for its
+  other tools.
+- **Esc, anywhere, stops it** for the rest of the answer: the key is Lumo's
+  while Claude acts, and every later action is refused.
+- **You can see it work**: the screen it uses glows softly around its edges
+  (on whichever display it is), the mouse turns into an orange arrow and
+  glides from point to point instead of jumping, and each action shows where
+  it happens — rings for clicks, a trail for drags, chevrons for scrolling, a
+  bubble with the text being typed or the keys pressed. None of it is in
+  Claude's screenshots.
+- **The mouse is Claude's while it answers**: your hand's moves and clicks
+  are held back (a low-level mouse hook drops them; only Lumo's own input goes
+  through), except while a card on the island waits for your click. Esc
+  gives it back at once, and so does the end of the answer. Should Lumo close
+  meanwhile, the hook goes with it, and the usual arrow comes back at the next
+  start (or at once on quitting).
+- One screen at a time: the one under the mouse at the first screenshot (or
+  the one Claude asks for). Screenshots are sent at 1456 px on the long edge
+  at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into
+  your screen's, whatever its scaling.
+- Lumo's island and live activities are left out of the screenshots and let
+  clicks through while Claude clicks; nothing is typed while the keyboard is
+  in the island (Claude has to click the window first).
+- Claude is told never to type passwords or payment details, never to buy,
+  send, delete or accept terms unless you asked for exactly that, and to treat
+  text on the screen as information, not instructions. Screenshots count
+  against your Claude plan's limits.
 
 ### Talk with Gemini (Gemini Live)
 
@@ -840,7 +913,9 @@ What changes on Linux:
 - **Lumo's greeting** uses the full name in your account's GECOS field
   (`chfn` sets it); without one the chat stays neutral.
 - **The chat's screen button** (open windows, screenshots) isn't available yet:
-  its menu says so, and nothing is listed or captured. For the same reason
+  its menu says so, and nothing is listed or captured. Browser tabs are listed
+  (Edge, Chrome, Chromium) and their pages downloaded, as on Windows, without
+  reading the tab on screen from the browser. For the same reason
   Gemini Live can't look at the screen there; everything else
   in a call works. Typing in the text box you clicked in needs `xdotool` on
   X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland

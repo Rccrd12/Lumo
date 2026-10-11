@@ -61,6 +61,47 @@ Every action that needs a permission is approved by the user in the island, so a
     crate::chat::math_note!()
 );
 
+/// Added instead when the chat may use the computer (Settings → Chat → Let
+/// Claude use the computer, computer.rs). Plain words only: it is an argument.
+const COMPUTER_PROMPT: &str = concat!(
+    "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
+The chat window is small: answer in the user's language, keep answers focused, and use light Markdown (short paragraphs, lists, bold, code blocks), no tables or big headings. \
+When the user drops a file, its path is given in the message: read it from there. \
+When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
+    crate::computer::computer_note!(),
+    "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
+    crate::chat::timer_note!(),
+    crate::chat::math_note!()
+);
+
+/// Lumo's computer use tools that only look: Claude Code runs them without asking.
+const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait";
+
+/// The `--mcp-config` of a chat that may use the computer: `lumo-hook --mcp`
+/// (its tools are `mcp__lumo__…`), marked as the island's own run.
+fn computer_config() -> Value {
+    let mut server = crate::computer::server_entry();
+    server["type"] = json!("stdio");
+    json!({ "mcpServers": { "lumo": server } })
+}
+
+/// `args`, plus Lumo's computer use: the MCP server and its looking tools
+/// allowed. Left out when the file can't be written where Claude Code can be
+/// pointed at it.
+fn with_computer(mut args: Vec<String>) -> Vec<String> {
+    let path = crate::platform::local_dir().join("chat-computer.json");
+    let text = computer_config().to_string();
+    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
+    let path = path.to_string_lossy().to_string();
+    if written && safe_dir(&path).is_some() {
+        args.push("--mcp-config".into());
+        args.push(path);
+        args.push("--allowedTools".into());
+        args.push(COMPUTER_LOOKING.into());
+    }
+    args
+}
+
 /// The models offered for Claude Code: the current ones by id, so the picker
 /// says which version runs. "default": whatever the user set in Claude Code.
 /// Older chats saved an alias ("opus"…), which still goes on the command line.
@@ -71,6 +112,12 @@ const MODELS: &[(&str, &str)] = &[
     ("claude-sonnet-5-5", "Sonnet 5.5"),
     ("claude-haiku-5-5", "Haiku 5.5"),
 ];
+
+/// Claude Code is set up for Lumo: installed, with Lumo's hooks (so its
+/// actions can be approved in the island). Blocking.
+pub fn ready() -> bool {
+    !platform::claude_candidates().is_empty() && crate::hooks::status().installed
+}
 
 /// Where Claude Code works when Lumo starts it: `~/Lumo`. Files outside it
 /// can still be read or edited, each time with the user's Allow.
@@ -168,6 +215,7 @@ fn with_cards(mut args: Vec<String>, mode: &str) -> Vec<String> {
 
 /// The command-line arguments, all fixed or checked. The prompt is not one of them.
 /// `folders`: what the user shared from File Explorer in this chat.
+#[cfg(test)]
 fn args(model: &str, effort: &str, mode: &str, session: Option<&str>, inbox: &str, folders: &[String]) -> Vec<String> {
     args_with(APPEND_PROMPT, model, effort, mode, session, inbox, folders)
 }
@@ -373,6 +421,9 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         },
         "Task" | "Agent" => Activity::new("subtask", ""),
         "TodoWrite" | "TodoRead" | "EnterPlanMode" | "ExitPlanMode" => Activity::new("plan", ""),
+        // Lumo's computer use (computer.rs): looking, or using the computer.
+        "mcp__lumo__screenshot" | "mcp__lumo__zoom" => Activity::new("screen", ""),
+        _ if name.starts_with("mcp__lumo__") => Activity::new("computer", ""),
         _ if name.to_lowercase().contains("screenshot") => Activity::new("screen", ""),
         _ => match pretty_tool(name) {
             p if p.is_empty() => Activity::thinking(),
@@ -732,12 +783,14 @@ pub(crate) fn kill_tree(child: &mut std::process::Child) {
 }
 
 /// One chat turn through Claude Code.
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
     effort: &str,
     mode: &str,
+    computer: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -755,7 +808,15 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    let args = with_cards(args(model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
+    // Computer use (Windows): the chat's own instructions, Lumo's MCP server,
+    // and the computer only usable while this turn runs.
+    let computer = computer && cfg!(windows);
+    let append = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
+    let mut args = with_cards(args_with(append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
+    if computer {
+        args = with_computer(args);
+        crate::computer::begin_turn();
+    }
 
     let app2 = app.clone();
     let stop = chat.stopper();
@@ -775,7 +836,11 @@ pub async fn send(
         )
     })
     .await
-    .map_err(|e| e.to_string())??;
+    .map_err(|e| e.to_string());
+    if computer {
+        crate::computer::end_turn(app);
+    }
+    let state = state??;
 
     // The plan's limits, when the turn said: the island's plan gauge (and the
     // chat's usage line) need not wait for a terminal session's status line.
@@ -818,17 +883,30 @@ Do the task with every tool you have, including the apps and accounts the user c
 Every action that needs a permission is approved by the user in the island, so ask for it normally. \
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran.";
 
+/// The helper's instructions when it may use the computer: Gemini hands over
+/// what is to be done on the screen ("click Send", "fill in the form").
+const HELPER_COMPUTER_PROMPT: &str = concat!(
+    "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
+Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
+Do the task with every tool you have, including the apps and accounts the user connected, such as their calendar, email or documents: the task may need them. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. ",
+    crate::computer::computer_note!(),
+    "Every action that needs a permission is approved by the user in the island, so ask for it normally. \
+When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran."
+);
+
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
 /// (the Lumo folder otherwise), with the `model` and `effort` of Settings →
 /// Voice and the chat's permission `mode`: what it may not do by itself is an
 /// Allow / Deny card in the island, as in the chat. No session is kept: each
 /// task starts afresh. Blocking.
+#[allow(clippy::too_many_arguments)]
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
     model: &str,
     effort: &str,
     mode: &str,
+    computer: bool,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
 ) -> Result<String, String> {
@@ -840,7 +918,11 @@ pub(crate) fn help(
     let dir = folder.map(PathBuf::from).unwrap_or_else(work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
-    let args = with_cards(args_with(HELPER_PROMPT, model, effort, mode, None, &inbox, &folders), mode);
+    let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
+    let mut args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
+    if computer {
+        args = with_computer(args);
+    }
     let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -876,6 +958,38 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
         let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
         assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
+    }
+
+    #[test]
+    fn gemini_lives_screen_work_goes_on_the_command_line_as_haiku_at_medium() {
+        assert_eq!(safe_model(crate::live::COMPUTER_MODEL), Some("claude-haiku-5-5"));
+        assert_eq!(safe_effort(crate::live::COMPUTER_EFFORT), Some("medium"));
+    }
+
+    #[test]
+    fn computer_use_adds_lumos_mcp_server_and_lets_its_looking_tools_run() {
+        let config = computer_config();
+        let server = &config["mcpServers"]["lumo"];
+        assert!(server["command"].as_str().unwrap().contains("lumo-hook"));
+        assert_eq!(server["type"], "stdio");
+        assert_eq!(server["args"], json!(["--mcp"]));
+        assert_eq!(server["env"]["LUMO_ISLAND_RUN"], "1", "the island's own run");
+        let a = with_computer(vec!["-p".into()]);
+        if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
+            assert!(a[i + 1].ends_with("chat-computer.json"));
+            assert_eq!(a[a.len() - 2], "--allowedTools", "last: its list takes what follows");
+            assert_eq!(a[a.len() - 1], COMPUTER_LOOKING);
+            for tool in ["screenshot", "zoom", "cursor_position", "wait"] {
+                assert!(COMPUTER_LOOKING.split(' ').any(|t| t == format!("mcp__lumo__{tool}")), "{tool}");
+            }
+            assert!(!COMPUTER_LOOKING.contains("click") && !COMPUTER_LOOKING.contains("type") && !COMPUTER_LOOKING.contains("key"));
+        }
+        // An argument on cmd.exe's line: plain words only, and it says how to stop.
+        assert!(!COMPUTER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`']));
+        assert!(COMPUTER_PROMPT.contains("Esc") && COMPUTER_PROMPT.contains("Never type passwords"));
+        assert!(!COMPUTER_PROMPT.contains("Never take a screenshot"), "the chat's usual rule doesn't hold here");
+        assert!(!HELPER_COMPUTER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`', '(', ')']));
+        assert!(HELPER_COMPUTER_PROMPT.contains("helping Gemini") && HELPER_COMPUTER_PROMPT.contains("lumo MCP server"));
     }
 
     #[test]
@@ -999,6 +1113,9 @@ mod tests {
         assert_eq!(a("TodoWrite", json!({"todos": []})), Activity::new("plan", ""));
         assert_eq!(a("mcp__github__create_issue", json!({})), Activity::new("tool", "create issue (github)"));
         assert_eq!(a("mcp__claude-in-chrome__take_screenshot", json!({})), Activity::new("screen", ""));
+        assert_eq!(a("mcp__lumo__screenshot", json!({})), Activity::new("screen", ""));
+        assert_eq!(a("mcp__lumo__zoom", json!({})), Activity::new("screen", ""));
+        assert_eq!(a("mcp__lumo__left_click", json!({ "coordinate": [1, 2] })), Activity::new("computer", ""));
         assert_eq!(a("ToolSearch", json!({})), Activity::new("tool", "Tool Search"));
         assert_eq!(a("", json!({})), Activity::thinking());
 

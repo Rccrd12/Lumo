@@ -439,6 +439,11 @@ test("the card names the most specific thing the tool carries", () => {
   assert.equal(target("Task", { prompt: "do it" }), "Task · do it");
   assert.equal(target("Odd", { command: "   ", count: 3 }), "Odd");
   assert.equal(target(undefined, undefined), "Tool");
+  // The chat's computer use: what the click or the keys will do.
+  assert.equal(target("mcp__lumo__left_click", { coordinate: [640, 320] }), "Click · 640, 320");
+  assert.equal(target("mcp__lumo__type", { text: "ciao\nmondo" }), "Type · ciao mondo");
+  assert.equal(target("mcp__lumo__key", { text: "ctrl+s" }), "Press · ctrl+s");
+  assert.equal(target("mcp__github__create_issue", { title: "x" }), "mcp__github__create_issue", "another server: as before");
 });
 
 test("a simple request stays on the closed island, with its buttons (never answered by itself)", () => {

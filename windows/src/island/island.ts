@@ -34,6 +34,7 @@ import { compactNotice, compactTimer, setCompactNewsHandler } from "../core/comp
 import { refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
+import { isComputerTool } from "../core/computer";
 import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { DesktopLink } from "./desktop";
@@ -310,6 +311,9 @@ export class Island {
         if (!req) return;
         Sound.play(d === "deny" ? "blip" : "approve");
         void Bridge.approvalDecision(req.requestId, d);
+        // A click or a key Claude is about to do on another window: the chat
+        // must not take the keyboard back when the card goes (computer.rs).
+        if (isComputerTool(req.tool)) this.lastGesture = 0;
         this.closeApproval();
       },
       answer: (answers) => {
@@ -428,7 +432,7 @@ export class Island {
         this.setView("prompt");
         this.takeKeyboard();
       },
-      openSettings: () => void Bridge.openSettingsWindow(),
+      openSettings: () => this.openSettingsAt(null),
       refreshAll: () => void this.refreshAll(),
       iconPoint: () => {
         // Left of the "+": where the folded icon sits (or will).
@@ -613,10 +617,6 @@ export class Island {
         this.setView("prompt");
         this.takeKeyboard();
         break;
-      case "chat":
-        this.setView("prompt");
-        this.takeKeyboard();
-        break;
       case "timer":
         compactTimer(5 * 60_000, "");
         Sound.play("blip");
@@ -646,7 +646,7 @@ export class Island {
         this.toggleWardrobe();
         break;
       case "settings":
-        void Bridge.openSettingsWindow();
+        this.openSettingsAt(null);
         break;
       case "quit":
         void Bridge.quit();
@@ -655,14 +655,21 @@ export class Island {
     State.notify();
   }
 
-  /** The Settings window, on one of its pages. */
-  private openSettingsAt(page: string) {
-    try {
-      window.localStorage.setItem("lumo.settings.page", page);
-    } catch {
-      // No storage: it opens on the page it was on.
+  /**
+   * Settings inside the island, as the gear in its top right opens them, on
+   * one of its pages (null: the one it was left on). The page in the frame
+   * hears the change of page (a storage event, settings/main.ts).
+   */
+  private openSettingsAt(page: string | null) {
+    if (page) {
+      try {
+        window.localStorage.setItem("lumo.settings.page", page);
+      } catch {
+        // No storage: it opens on the page it was on.
+      }
     }
-    void Bridge.openSettingsWindow();
+    Sound.play("blip");
+    this.setView("settings");
   }
 
   private refreshing = false;
