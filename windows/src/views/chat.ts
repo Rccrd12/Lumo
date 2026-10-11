@@ -38,7 +38,7 @@
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
 
-import { h, svg, clear } from "./dom";
+import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
 import { copyButton, renderMarkdown } from "./markdown";
 import {
@@ -666,6 +666,7 @@ export function buildPrompt(
   // The log follows a written answer down while it is read at its end;
   // scrolled up, it stays put until it is scrolled back down.
   let following = true;
+  gentleWheel(log);
   log.addEventListener("scroll", () => {
     following = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_SLACK_PX;
   }, { passive: true });
@@ -767,10 +768,51 @@ export function buildPrompt(
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
   body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, usagePanel, modelRow, bar);
 
+  // A picture in the preview, clicked: as big as the chat, until a click or Esc.
+  const zoomImg = h("img", { class: "zoom-img", alt: "" }) as HTMLImageElement;
+  const zoomCaption = h("div", { class: "zoom-caption" });
+  // The picture joins the overlay only while it is open.
+  const zoomEl = h("div", { class: "zoom" },
+    zoomCaption,
+    h("button", { class: "zoom-close", title: tl(PREVIEW_STRINGS.close), "aria-label": tl(PREVIEW_STRINGS.close) }, svg(ICONS.xmark, 12)),
+  );
+  zoomEl.addEventListener("click", () => closeZoom());
+  function openZoom(src: string, caption: string) {
+    zoomImg.src = src;
+    zoomImg.alt = caption;
+    zoomCaption.textContent = caption;
+    zoomEl.prepend(zoomImg);
+    zoomEl.classList.add("open");
+  }
+  function closeZoom() {
+    if (!zoomEl.classList.contains("open")) return;
+    zoomEl.classList.remove("open");
+    zoomImg.remove();
+    zoomImg.removeAttribute("src");
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !zoomEl.classList.contains("open")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeZoom();
+  }, true);
+  /** A preview's picture that opens big on a click. */
+  function zoomable(img: HTMLImageElement, caption: string): HTMLImageElement {
+    img.classList.add("zoomable");
+    img.draggable = false;
+    img.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openZoom(img.src, caption);
+    });
+    return img;
+  }
+
   // A click anywhere else — in the island or, through Rust's outside-press,
   // anywhere on the screen — closes the list that is open: the models, the
   // past chats, the screen menu, the permissions.
   function closeListsBut(target: Node | null) {
+    // The big picture sits over the preview it came from: that stays open.
+    if (target != null && zoomEl.contains(target)) return;
     const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
     if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
@@ -781,7 +823,7 @@ export function buildPrompt(
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
 
-  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
+  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body), zoomEl);
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
@@ -1092,6 +1134,7 @@ export function buildPrompt(
   }
 
   function closeScreen() {
+    closeZoom();
     if (!body.classList.contains("screening")) return;
     screenTicket++;
     if (preview) dropShots(preview.map((s) => s.path));
@@ -1408,7 +1451,7 @@ export function buildPrompt(
         h(
           "figure",
           { class: "screen-shot" },
-          h("img", { src: s.preview, alt: screenLabel(s.display) }),
+          zoomable(h("img", { src: s.preview, alt: screenLabel(s.display) }) as HTMLImageElement, screenLabel(s.display)),
           h("figcaption", { text: screenLabel(s.display) }),
         ),
       );
@@ -1447,14 +1490,16 @@ export function buildPrompt(
     panelChanged();
     screenTitle.textContent = t(PREVIEW_STRINGS.title);
     clear(screenList);
-    const items = h("div", { class: "screen-preview" });
+    // One picture alone takes all the room the panel has.
+    const single = blocks.length === 1 && blocks[0].image !== "";
+    const items = h("div", { class: single ? "screen-preview single" : "screen-preview" });
     for (const b of blocks) {
       items.append(h(
         "div",
         { class: "screen-preview-item" },
         h("div", { class: "screen-preview-head", text: b.heading }),
         b.detail ? h("div", { class: "screen-preview-detail", text: b.detail }) : null,
-        b.image ? h("img", { class: "screen-preview-img", src: b.image, alt: b.heading }) : null,
+        b.image ? zoomable(h("img", { class: "screen-preview-img", src: b.image, alt: b.heading }) as HTMLImageElement, b.heading) : null,
         b.note ? h("div", { class: "screen-preview-note", text: b.note }) : null,
         b.text ? h("pre", { class: "screen-preview-text", text: b.text }) : null,
       ));

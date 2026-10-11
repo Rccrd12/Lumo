@@ -678,9 +678,10 @@ Commit statuses and Actions — the GitHub pill shows:
 Click a row for the list, then an item to open it on github.com. The pill gets
 a badge and a sound when the CI of one of your pull requests turns red or green
 (fast runs between two checks included), when a default branch breaks, or when
-someone requests your review. Pull requests are checked every 5 minutes, every
-minute while a CI is running, and as soon as you open the card on data older
-than a minute; contributions every 30 minutes. Nothing is fetched while the pill
+someone requests your review. Pull requests are checked every minute, every
+30 seconds while a CI is running (so the closed island's "CI running" line
+keeps up whichever pill is in front), and as soon as you open the card on data
+older than a minute; contributions every 30 minutes. Nothing is fetched while the pill
 is off or Lumo is paused.
 
 ## Build it yourself

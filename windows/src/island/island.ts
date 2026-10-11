@@ -864,18 +864,30 @@ export class Island {
 
   // ── File drop ───────────────────────────────────────────────────────────────
 
-  private onDragDrop(e: { type: string; paths?: string[] }) {
+  private onDragDrop(e: { type: string; paths?: string[]; client?: { x: number; y: number } }) {
     if (e.type !== "over") void Bridge.log(`drag ${e.type} ${e.paths?.length ?? 0} file(s)`);
     if (State.paused) return;
     switch (e.type) {
       case "enter":
       case "over": {
-        if (State.fileDragOver) return;
+        // WebView2's drag events say where the cursor is; the cursor poll
+        // feeds the sequence too, but a drag's own position never lags.
+        if (e.client) {
+          const rect = this.islandRect();
+          State.mouseInIsland = { x: e.client.x - rect.x, y: e.client.y - rect.y };
+        }
+        const at = this.uploadCanvas.toScene(State.mouseInIsland.x, State.mouseInIsland.y);
+        // Already following this drag: Mochi just chases the file. A drag
+        // left half-way (the sequence ended under it) starts again.
+        if (State.fileDragOver && UploadSeq.isActive && !UploadSeq.dropped) {
+          UploadSeq.updateCursor(at.x, at.y);
+          return;
+        }
         State.fileDragOver = true;
         this.engine.animateMorph(1);
         // enterZone must run before the island expands, so the sequence is
         // already active by the time the view becomes `upload`.
-        UploadSeq.enterZone(State.mouseInIsland.x, State.mouseInIsland.y);
+        UploadSeq.enterZone(at.x, at.y);
         this.alert("upload");
         break;
       }
@@ -1023,7 +1035,10 @@ export class Island {
     const beside = this.activitiesPlace();
     this.activities.place(beside.show, beside.x, beside.y, beside.h);
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
-    this.uploadCanvas.el.style.left = `${(w - EXPANDED_W) / 2}px`;
+    // The drop sequence covers the island, whatever size it was given.
+    const stage = this.uploadCanvas.place(w, hh);
+    UploadSeq.reachX = stage.ox;
+    UploadSeq.reachY = stage.oy;
 
     const rect = this.hitRect();
     const p = this.pushedRect;
@@ -1364,7 +1379,8 @@ export class Island {
     // Windows sends no cursor position with an OLE drag, so the drop sequence is
     // fed from the Win32 cursor poll instead — it runs throughout the drag.
     if (UploadSeq.isActive && !UploadSeq.dropped) {
-      UploadSeq.updateCursor(State.mouseInIsland.x, State.mouseInIsland.y);
+      const at = this.uploadCanvas.toScene(State.mouseInIsland.x, State.mouseInIsland.y);
+      UploadSeq.updateCursor(at.x, at.y);
     }
 
     // The live activities in their own window count as the island.

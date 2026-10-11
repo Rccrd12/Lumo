@@ -678,7 +678,12 @@ export type BridgeEvent =
 export interface DragDropPayload {
   type: "enter" | "over" | "drop" | "leave";
   paths?: string[];
+  /** Where the cursor is, page pixels (WebView2 only: its drag events say so). */
+  client?: { x: number; y: number };
 }
+
+/** A drop handed to Rust that never came back as paths (nothing it could read) ends the drag after this. */
+const DROP_ANSWER_MS = 1500;
 
 interface WebView2Bridge {
   postMessageWithAdditionalObjects(message: unknown, objects: ArrayLike<unknown>): void;
@@ -704,25 +709,39 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
+  // A picture dragged from the island itself (a screenshot's preview) says it
+  // carries a file too: it is not one coming in, so it never opens the drop.
+  let inside = false;
+  let answer: number | null = null;
+  const at = (e: DragEvent) => ({ x: e.clientX, y: e.clientY });
 
+  const onStart = () => {
+    inside = true;
+  };
+  const onEnd = () => {
+    inside = false;
+    depth = 0;
+  };
   const onEnter = (e: DragEvent) => {
-    if (!hasFiles(e)) return;
+    if (inside || !hasFiles(e)) return;
     e.preventDefault();
-    if (depth++ === 0) handler({ type: "enter" });
+    if (depth++ === 0) handler({ type: "enter", client: at(e) });
   };
   const onOver = (e: DragEvent) => {
-    if (!hasFiles(e)) return;
+    if (inside || !hasFiles(e)) return;
     // Without this WebView2 refuses the drop — or navigates to the file.
     e.preventDefault();
     if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    handler({ type: "over" });
+    handler({ type: "over", client: at(e) });
   };
   const onLeave = (e: DragEvent) => {
-    if (!hasFiles(e) || depth === 0) return;
+    if (inside || !hasFiles(e) || depth === 0) return;
     if (--depth === 0) handler({ type: "leave" });
   };
   const onDrop = (e: DragEvent) => {
+    // Never a navigation to what was dropped, ours or not.
     e.preventDefault();
+    if (inside) return;
     depth = 0;
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) {
@@ -730,14 +749,29 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
       return;
     }
     webview.postMessageWithAdditionalObjects("lumo-file-drop", files);
+    // Files with no path on disk (a picture dragged out of a browser) give
+    // Rust nothing to send back: the drag still has to end.
+    if (answer != null) window.clearTimeout(answer);
+    answer = window.setTimeout(() => {
+      answer = null;
+      handler({ type: "drop", paths: [] });
+    }, DROP_ANSWER_MS);
   };
 
+  window.addEventListener("dragstart", onStart);
+  window.addEventListener("dragend", onEnd);
   window.addEventListener("dragenter", onEnter);
   window.addEventListener("dragover", onOver);
   window.addEventListener("dragleave", onLeave);
   window.addEventListener("drop", onDrop);
-  const unlisten = await tauriListen<DragDropPayload>("file-drag", (e) => handler(e.payload));
+  const unlisten = await tauriListen<DragDropPayload>("file-drag", (e) => {
+    if (answer != null) window.clearTimeout(answer);
+    answer = null;
+    handler(e.payload);
+  });
   return () => {
+    window.removeEventListener("dragstart", onStart);
+    window.removeEventListener("dragend", onEnd);
     window.removeEventListener("dragenter", onEnter);
     window.removeEventListener("dragover", onOver);
     window.removeEventListener("dragleave", onLeave);
