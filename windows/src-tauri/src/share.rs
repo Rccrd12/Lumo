@@ -988,15 +988,197 @@ pub async fn read_tabs(ids: Vec<String>) -> Result<Vec<BrowserTab>, String> {
     Ok(picked)
 }
 
+/// What "Ask about this page" takes: the file the tab shows (a PDF opened
+/// from the disk or the web), else the page's text.
+pub enum FrontPage {
+    Page(BrowserTab),
+    File(crate::files::DroppedFile),
+}
+
 /// "Ask about this page" (Ctrl+Alt+B): the tab on screen in the front-most
 /// Edge or Chrome window (Linux: the first window's tab on screen, from the
-/// session file), read like a tab picked in the menu.
-pub async fn front_page() -> Result<BrowserTab, String> {
+/// session file). A tab that shows a file goes to the chat as that file, copied
+/// into the inbox like a drop — Claude reads the PDF itself rather than the
+/// text the viewer happens to show. Any other tab goes as its page's text.
+pub async fn front_page_or_file() -> Result<FrontPage, String> {
     let listed = tauri::async_runtime::spawn_blocking(tabs).await.map_err(|e| e.to_string())??;
     let Some(front) = listed.iter().find(|t| t.active) else {
         return Err(t("No page is open in Edge or Chrome."));
     };
-    read_tabs(vec![front.id.clone()]).await?.into_iter().next().ok_or_else(|| t("No page is open in Edge or Chrome."))
+    if let Some(file) = tab_file(&front.url, &front.title).await {
+        return Ok(FrontPage::File(file));
+    }
+    let tab =
+        read_tabs(vec![front.id.clone()]).await?.into_iter().next().ok_or_else(|| t("No page is open in Edge or Chrome."))?;
+    // On Windows the address of the tab is known once it has been read.
+    if let Some(file) = tab_file(&tab.url, &tab.title).await {
+        return Ok(FrontPage::File(file));
+    }
+    // A PDF viewer that gave no usable address: the file by its name.
+    if !tab.url.to_ascii_lowercase().starts_with("http") {
+        for title in [&tab.title, &front.title] {
+            if let Some(path) = usual_place_file(title) {
+                if let Ok(Ok(file)) = tauri::async_runtime::spawn_blocking(move || crate::files::copy_in(&path)).await {
+                    return Ok(FrontPage::File(file));
+                }
+            }
+        }
+    }
+    Ok(FrontPage::Page(tab))
+}
+
+/// The biggest file a tab hands over: what the Anthropic API takes in one request.
+const MAX_TAB_FILE: usize = crate::files::MAX_PASTE;
+/// How long a file the tab shows may take to download.
+const FILE_TIMEOUT: Duration = Duration::from_secs(30);
+
+/// Extensions of the documents a browser shows in place of a page.
+const DOCUMENT_EXTENSIONS: [&str; 20] = [
+    "pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "odt", "ods", "odp", "rtf", "csv", "txt", "md", "json", "xml",
+    "png", "jpg", "jpeg", "webp",
+];
+
+/// The file a tab shows, in the inbox: one on the disk (file://) is copied,
+/// a document on the web (a PDF…) downloaded. None for an ordinary page, or
+/// when the file can't be had (then the page's text goes, as before).
+async fn tab_file(url: &str, title: &str) -> Option<crate::files::DroppedFile> {
+    if let Some(path) = local_file(url) {
+        let shown = path.clone();
+        return match tauri::async_runtime::spawn_blocking(move || crate::files::copy_in(&path)).await {
+            Ok(Ok(file)) => Some(file),
+            Ok(Err(err)) => {
+                crate::log::line(format!("[tabs] {} not copied: {err}", shown.display()));
+                None
+            }
+            Err(_) => None,
+        };
+    }
+    let name = web_document_name(url, title)?;
+    download_file(url, &name).await
+}
+
+/// The path a tab's address names on this computer, when it is a file there:
+/// `file:///C:/Users/…/a.pdf`, `file://server/share/a.pdf`, or a bare path
+/// (what some address bars show).
+fn local_file(url: &str) -> Option<PathBuf> {
+    let url = url.trim();
+    let lower = url.to_ascii_lowercase();
+    let raw = if lower.starts_with("file://") {
+        let rest = url[7..].split(['?', '#']).next().unwrap_or("");
+        let rest = crate::explorer::percent_decode_text(rest)?;
+        // file://localhost/… is file:///….
+        let rest = if rest.to_ascii_lowercase().starts_with("localhost/") { rest[9..].to_string() } else { rest };
+        if let Some(local) = rest.strip_prefix('/') {
+            // file:///C:/… is C:/… on Windows; file:///home/… is /home/… elsewhere.
+            let drive = local.as_bytes();
+            if drive.len() >= 2 && drive[0].is_ascii_alphabetic() && drive[1] == b':' {
+                local.to_string()
+            } else {
+                format!("/{local}")
+            }
+        } else {
+            // A share on another computer: file://server/share/… is \\server\share\….
+            format!("//{rest}")
+        }
+    } else {
+        let b = url.as_bytes();
+        let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+        let unc = url.starts_with("\\\\");
+        let unix = cfg!(not(windows)) && url.starts_with('/');
+        if !(drive || unc || unix) {
+            return None;
+        }
+        url.to_string()
+    };
+    #[cfg(windows)]
+    let raw = raw.replace('/', "\\");
+    let path = PathBuf::from(raw);
+    path.is_file().then_some(path)
+}
+
+/// The name to give a document the tab shows from the web: its address ends
+/// in a document's extension, or the browser's title is a file name (a PDF
+/// viewer names the tab after the file). None for an ordinary page.
+fn web_document_name(url: &str, title: &str) -> Option<String> {
+    let parsed = reqwest::Url::parse(url.trim()).ok()?;
+    if !matches!(parsed.scheme(), "http" | "https") {
+        return None;
+    }
+    let is_document = |name: &str| {
+        Path::new(name)
+            .extension()
+            .and_then(|e| e.to_str())
+            .is_some_and(|e| DOCUMENT_EXTENSIONS.contains(&e.to_ascii_lowercase().as_str()))
+    };
+    let last = parsed
+        .path_segments()
+        .and_then(|mut s| s.next_back().map(str::to_string))
+        .and_then(|s| crate::explorer::percent_decode_text(&s))
+        .unwrap_or_default();
+    if is_document(&last) {
+        return Some(last);
+    }
+    shown_file_name(title)
+}
+
+/// The file name a PDF viewer's tab is called by: "Notes.pdf", or
+/// "Notes.pdf - Memory usage: 50 MB" as Edge's tab strip names it.
+fn shown_file_name(title: &str) -> Option<String> {
+    let name = title.split(" - ").next().unwrap_or("").trim();
+    name.to_ascii_lowercase().ends_with(".pdf").then(|| name.to_string())
+}
+
+/// A PDF whose tab gave no address to find it by: the file of that name in
+/// Downloads, on the Desktop or in Documents, where a PDF opened in the
+/// browser almost always is.
+fn usual_place_file(title: &str) -> Option<PathBuf> {
+    let name = shown_file_name(title)?;
+    if name.contains(['/', '\\']) {
+        return None;
+    }
+    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })?;
+    let home = PathBuf::from(home);
+    ["Downloads", "Desktop", "Documents"].iter().map(|dir| home.join(dir).join(&name)).find(|p| p.is_file())
+}
+
+/// A document from the web, written into the inbox. Only one served as what
+/// it says it is: a login page answered in its place is not the file.
+async fn download_file(url: &str, name: &str) -> Option<crate::files::DroppedFile> {
+    let parsed = reqwest::Url::parse(url).ok()?;
+    let host = crate::net::host_for_log(&parsed);
+    let client = crate::net::client(&parsed, FILE_TIMEOUT).ok()?;
+    let response = client
+        .get(parsed.clone())
+        .header(
+            "User-Agent",
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0 Safari/537.36",
+        )
+        .send()
+        .await
+        .ok()?;
+    if !response.status().is_success() {
+        crate::log::line(format!("[tabs] {host} answered {} for a file", response.status().as_u16()));
+        return None;
+    }
+    let content_type =
+        response.headers().get("content-type").and_then(|v| v.to_str().ok()).unwrap_or_default().to_ascii_lowercase();
+    if content_type.starts_with("text/html") {
+        crate::log::line(format!("[tabs] {host} answered a page, not the file"));
+        return None;
+    }
+    let body = match crate::net::read_capped(response, MAX_TAB_FILE).await {
+        Ok(body) => body,
+        Err(err) => {
+            crate::log::line(format!("[tabs] {host}: {err}"));
+            return None;
+        }
+    };
+    let pdf = body.starts_with(b"%PDF");
+    if name.to_ascii_lowercase().ends_with(".pdf") && !pdf {
+        return None;
+    }
+    let name = name.to_string();
+    tauri::async_runtime::spawn_blocking(move || crate::files::write_in(&name, &body)).await.ok()?.ok()
 }
 
 /// A screenshot of one listed window, for the providers that see images. Blocking.
@@ -1395,6 +1577,33 @@ mod imp {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_tab_showing_a_file_on_disk_names_it() {
+        let dir = std::env::temp_dir().join(format!("lumo tab {}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let pdf = dir.join("Elettrotecnica.pdf");
+        std::fs::write(&pdf, b"%PDF-1.7").unwrap();
+        let shown = pdf.to_string_lossy().replace('\\', "/");
+        let encoded = shown.replace(' ', "%20");
+        let url = if shown.starts_with('/') { format!("file://{encoded}") } else { format!("file:///{encoded}") };
+        assert_eq!(local_file(&url), Some(pdf.clone()));
+        assert_eq!(local_file(&format!("{url}#page=3")), Some(pdf.clone()), "a page anchor is not part of the path");
+        assert_eq!(local_file(&pdf.to_string_lossy()), Some(pdf.clone()), "a bare path, as some address bars show");
+        assert_eq!(local_file("file:///nowhere/at/all.pdf"), None, "only a file that is there");
+        assert_eq!(local_file("https://example.com/a.pdf"), None);
+        assert_eq!(local_file(&format!("file://{}", dir.to_string_lossy())), None, "not a folder");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_document_on_the_web_is_told_from_a_page() {
+        assert_eq!(web_document_name("https://x.org/docs/Notes%20finali.pdf", "Notes"), Some("Notes finali.pdf".into()));
+        assert_eq!(web_document_name("https://x.org/view?id=4", "Elettrotecnica.pdf - Memory usage: 50 MB"), Some("Elettrotecnica.pdf".into()));
+        assert_eq!(web_document_name("https://x.org/article", "An article"), None);
+        assert_eq!(web_document_name("https://x.org/", ""), None);
+        assert_eq!(web_document_name("edge://settings", "a.pdf"), None);
+    }
 
     /// One command of a session file.
     fn command(id: u8, data: &[u8]) -> Vec<u8> {

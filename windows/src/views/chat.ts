@@ -1211,6 +1211,11 @@ export function buildPrompt(
       screen = { ...screen, selection: share.selection };
     } else if (share.kind === "page") {
       screen = { ...screen, tabs: withTabs(screen.tabs, [share.tab]) };
+    } else if (share.kind === "file") {
+      // A PDF open in the browser goes as the file itself, as if attached
+      // (after this draw: attaching it redraws the chat).
+      const file = share.file;
+      window.setTimeout(() => void useFile(file), 0);
     }
   }
 

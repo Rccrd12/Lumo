@@ -602,6 +602,8 @@ export type SharedContext =
   | { kind: "selection"; selection: SelectedText }
   /** "Ask about the page in the browser": the tab on screen, with its page's text. */
   | { kind: "page"; tab: BrowserTab }
+  /** The same, when the tab shows a file (a PDF): that file, already in the inbox. */
+  | { kind: "file"; file: DroppedFile }
   | { kind: "problem"; message: string };
 
 export interface ModelInfo {

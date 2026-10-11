@@ -316,6 +316,8 @@ pub enum Shared {
     Screen { shots: Vec<Shot> },
     Selection { selection: Selected },
     Page { tab: crate::share::BrowserTab },
+    /// The tab on screen shows a file (a PDF): that file, copied into the inbox.
+    File { file: crate::files::DroppedFile },
     Problem { message: String },
 }
 
@@ -350,8 +352,9 @@ fn share<R: Runtime>(app: &AppHandle<R>, take: Take) {
                 Ok(selection) => Shared::Selection { selection },
                 Err(message) => Shared::Problem { message },
             },
-            Take::Page => match tauri::async_runtime::block_on(crate::share::front_page()) {
-                Ok(tab) => Shared::Page { tab },
+            Take::Page => match tauri::async_runtime::block_on(crate::share::front_page_or_file()) {
+                Ok(crate::share::FrontPage::Page(tab)) => Shared::Page { tab },
+                Ok(crate::share::FrontPage::File(file)) => Shared::File { file },
                 Err(message) => Shared::Problem { message },
             },
         };
