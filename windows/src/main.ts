@@ -87,6 +87,15 @@ async function main() {
         setPaused(false);
         island.alert("wardrobe");
         break;
+      // A left click on the tray icon: the island into its edge, or back.
+      case "toggle":
+        if (State.paused || State.mode === "hidden") {
+          setPaused(false);
+          island.reveal();
+        } else {
+          island.hideInEdge();
+        }
+        break;
       case "pause":
         setPaused(!State.paused);
         if (State.paused) island.fsm.forceHidden();

@@ -8270,6 +8270,18 @@
    "ru": "Спрятать в край экрана",
    "id": "Sembunyikan di tepi layar",
    "it": "Nascondi nel bordo dello schermo"
+  },
+  "Resume": {
+   "zh-Hans": "继续",
+   "hi": "फिर शुरू करें",
+   "es": "Reanudar",
+   "ar": "استئناف",
+   "fr": "Reprendre",
+   "bn": "আবার শুরু করুন",
+   "pt-BR": "Retomar",
+   "ru": "Продолжить",
+   "id": "Lanjutkan",
+   "it": "Riprendi"
   }
  }
 }
