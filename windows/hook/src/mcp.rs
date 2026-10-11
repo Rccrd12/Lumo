@@ -152,6 +152,34 @@ pub const LOOKING: &[&str] = &["screenshot", "zoom", "cursor_position", "wait"];
 /// The name the server has in the island's `--mcp-config`: its tools are `mcp__lumo__<tool>`.
 pub const SERVER: &str = "lumo";
 
+/// Every tool's name, as `tools()` lists them.
+pub const NAMES: &[&str] = &[
+    "screenshot", "zoom", "left_click", "right_click", "middle_click", "double_click", "triple_click", "mouse_move",
+    "left_click_drag", "scroll", "type", "key", "wait", "cursor_position",
+];
+
+/// Which of Lumo's tools an agent's tool name is, whatever the agent puts in
+/// front: "mcp__lumo__screenshot" (Claude Code), "mcp_lumo_screenshot",
+/// "lumo/screenshot", "lumo.left_click"…
+pub fn lumo_tool(name: &str) -> Option<&'static str> {
+    let lower = name.to_ascii_lowercase();
+    let sep = |c: char| matches!(c, '_' | '/' | '.' | ':' | '-');
+    let mut from = 0;
+    while let Some(i) = lower[from..].find(SERVER).map(|i| i + from) {
+        from = i + SERVER.len();
+        if i > 0 && !lower[..i].ends_with(sep) {
+            continue;
+        }
+        let rest = lower[from..].trim_start_matches(sep);
+        if rest.len() < lower.len() - from {
+            if let Some(n) = NAMES.iter().find(|n| **n == rest) {
+                return Some(n);
+            }
+        }
+    }
+    None
+}
+
 /// Runs the server until Claude Code closes stdin.
 pub fn run() -> ! {
     let stdin = std::io::stdin();
@@ -301,6 +329,20 @@ mod tests {
         for n in LOOKING {
             assert!(names.contains(n), "{n}");
         }
+        assert_eq!(names, NAMES, "one list of names");
+    }
+
+    #[test]
+    fn lumos_tools_are_known_whatever_the_agent_calls_them() {
+        assert_eq!(lumo_tool("mcp__lumo__left_click"), Some("left_click"));
+        assert_eq!(lumo_tool("mcp_lumo_screenshot"), Some("screenshot"));
+        assert_eq!(lumo_tool("lumo/type"), Some("type"));
+        assert_eq!(lumo_tool("Lumo.Key"), Some("key"));
+        assert_eq!(lumo_tool("mcp__lumo2__screenshot"), None, "another server");
+        assert_eq!(lumo_tool("mcp__github__screenshot"), None);
+        assert_eq!(lumo_tool("mcp__lumo__format_disk"), None);
+        assert_eq!(lumo_tool("lumoscreenshot"), None, "a separator is needed");
+        assert_eq!(lumo_tool("Bash"), None);
     }
 
     #[test]

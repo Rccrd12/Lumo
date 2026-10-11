@@ -173,6 +173,7 @@ class LiveSession {
       voice: parseVoice(s.liveVoice),
       helper: helperName(s.liveHelper),
       screen: s.liveScreen && HOST_OS === "windows",
+      computer: s.chatComputerUse === true && HOST_OS === "windows",
       search: !searchRefused,
       languageName: languageName(),
       os: HOST_OS === "windows" ? "Windows" : "Linux",

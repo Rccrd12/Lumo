@@ -14,6 +14,10 @@ test("only Lumo's own tools are described", () => {
   assert.ok(!isComputerTool("Bash"));
   assert.equal(describeComputerAction("mcp__github__create_issue", {}), null);
   assert.equal(say("format_disk"), null);
+  // Antigravity CLI's own way of naming them.
+  assert.equal(describeComputerAction("mcp_lumo_left_click", { coordinate: [3, 4] }), "Click · 3, 4");
+  assert.equal(describeComputerAction("lumo/type", { text: "hi" }), "Type · hi");
+  assert.equal(describeComputerAction("mcp__lumo2__type", { text: "hi" }), null);
 });
 
 test("clicks say where, and the keys held", () => {

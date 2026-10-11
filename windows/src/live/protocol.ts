@@ -72,6 +72,11 @@ export interface LiveConfig {
   helper: string;
   /** The model may look at the screen (Settings → Voice). */
   screen: boolean;
+  /**
+   * The helper may use the computer for it: click, type, scroll on the screen
+   * (Settings → Chat → Let Claude use the computer; src-tauri/src/computer.rs).
+   */
+  computer?: boolean;
   /** Google Search is offered (some keys may not use it in a call). */
   search: boolean;
   /** The interface language's English name, for when the user's own is unclear. */
@@ -116,6 +121,11 @@ export function systemInstruction(cfg: LiveConfig): string {
       ? "- Google Search finds facts, news and anything recent."
       : "- You have no web search of your own: for facts, news and anything recent, use ask_helper.",
     `- ask_helper hands a task to ${cfg.helper}, an agent on this computer that can run commands, edit and create files, write code, use the web, and use the apps and accounts the user connected to it, such as their calendar, email, documents or task lists. Use it for anything your other tools can't do: adding an event to the calendar, checking the agenda, drafting an email, anything on the user's accounts. Never tell the user you can't do something before ${cfg.helper} has tried. Give it the whole task with exact dates, times and names, as it hears nothing of the conversation. It can take a while: tell the user you've asked ${cfg.helper}, keep talking if they want, and tell them what it found or did when its answer comes back. What it may not do alone, the user approves on a card in Lumo.`,
+    ...(cfg.computer
+      ? [
+          `- ${cfg.helper} can also use the screen for you: look at it, click, type, press keys and scroll, in any app or website. When the user asks you to do something on the screen ("click Send", "open the display settings and turn on night light", "fill in this form"), hand it to ask_helper with exactly what to do and where, and tell the user ${cfg.helper} is doing it. The user sees the screen glow while it works, approves its actions in Lumo, and can press Esc to stop it. For text in a box the user already clicked in, type_text is quicker.`,
+        ]
+      : []),
     "- set_timer starts a timer that counts down on Lumo's island and rings at the end. control_music plays, pauses or skips the music playing on the computer.",
     "- end_conversation ends the call. Say goodbye first, then call it, when the user says goodbye or asks you to stop.",
     "",
@@ -169,7 +179,7 @@ const str = (description: string): Schema => ({ type: "STRING", description });
  * (NON_BLOCKING): Extended Thinking takes no other kind, and a voice that goes
  * silent while a file is read sounds broken.
  */
-export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper">): FunctionDeclaration[] {
+export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper" | "computer">): FunctionDeclaration[] {
   const list: FunctionDeclaration[] = [];
   if (cfg.screen) {
     list.push({
@@ -213,7 +223,7 @@ export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper">): Fu
     },
     {
       name: TOOL.helper,
-      description: `Hands a task to ${cfg.helper}, an agent on this computer that can run commands, read, edit and create files, write code, browse the web, and use the apps and accounts the user connected to it (calendar, email, documents and more). For anything your other tools can't do. Gives back its answer when it is done.`,
+      description: `Hands a task to ${cfg.helper}, an agent on this computer that can run commands, read, edit and create files, write code, browse the web, and use the apps and accounts the user connected to it (calendar, email, documents and more)${cfg.computer ? ", and use the screen: click, type, press keys and scroll in any app or website" : ""}. For anything your other tools can't do. Gives back its answer when it is done.`,
       parameters: obj({
         task: str("The whole task, with everything the helper needs to know (exact dates, times, names): it hears nothing of the conversation."),
         folder: str("Optional: the absolute folder it should work in."),

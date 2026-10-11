@@ -7,8 +7,22 @@
 
 import { N_, t } from "../i18n/i18n";
 
-/** The MCP server's tools are `mcp__lumo__<name>`. */
-const PREFIX = "mcp__lumo__";
+/** Lumo's tools (lumo-hook --mcp, hook/src/mcp.rs NAMES). */
+const NAMES = new Set([
+  "screenshot", "zoom", "left_click", "right_click", "middle_click", "double_click", "triple_click", "mouse_move",
+  "left_click_drag", "scroll", "type", "key", "wait", "cursor_position",
+]);
+
+/**
+ * Which of Lumo's tools an agent's tool name is: Claude Code calls them
+ * `mcp__lumo__<name>`, Antigravity CLI may put something else in front
+ * (`mcp_lumo_<name>`, `lumo/<name>`). Null for any other tool.
+ */
+export function computerToolName(tool: string): string | null {
+  const m = /(?:^|[_/.:-])lumo[_/.:-]+([a-z_]+)$/i.exec(tool);
+  const name = m?.[1].toLowerCase() ?? "";
+  return NAMES.has(name) ? name : null;
+}
 
 export const COMPUTER_TEXT = {
   click: N_("Click"),
@@ -42,7 +56,7 @@ const TYPED_PREVIEW = 120;
 
 /** True for one of Lumo's computer use tools. */
 export function isComputerTool(tool: string): boolean {
-  return tool.startsWith(PREFIX);
+  return computerToolName(tool) != null;
 }
 
 function point(v: unknown): string | null {
@@ -54,8 +68,8 @@ function point(v: unknown): string | null {
  * Hello", "Press · ctrl+s"), or null when `tool` is not one of Lumo's.
  */
 export function describeComputerAction(tool: string, input: Record<string, unknown>): string | null {
-  if (!isComputerTool(tool)) return null;
-  const name = tool.slice(PREFIX.length);
+  const name = computerToolName(tool);
+  if (name == null) return null;
   const at = point(input.coordinate) ?? t(COMPUTER_TEXT.here);
   const held = typeof input.text === "string" && input.text.trim() ? ` (${input.text.trim()})` : "";
   const line = (label: string, detail: string) => (detail ? `${t(label)} · ${detail}` : t(label));

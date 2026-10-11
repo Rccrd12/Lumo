@@ -517,8 +517,8 @@ to this setting.
 ### Let Claude use the computer
 
 **Settings… → Chat → Computer use → Let Claude use the computer** (off by
-default, Windows only) lets Claude Code, as the chat's provider, see your
-screen and use it — click, type, press keys, scroll and drag — for what a
+default, Windows only) lets Claude Code or Antigravity CLI, as the chat's
+provider or as Gemini Live's helper, see your screen and use it — click, type, press keys, scroll and drag — for what a
 command or a file can't do: an app with no command line, a website, a form.
 It works on your real desktop, not in a sandbox, and only while it answers
 in the island's chat.
@@ -528,7 +528,17 @@ with `--mcp-config` to the chat's runs only; your Claude Code settings are not
 touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
 `left_click`, `right_click`, `double_click`, `triple_click`, `middle_click`,
 `mouse_move`, `left_click_drag`, `scroll`, `type`, `key`, `wait` and
-`cursor_position`. It runs on your Claude plan, with no API key.
+`cursor_position`. It runs on your plan, with no API key.
+
+- **Antigravity CLI** finds the same server in the MCP configuration of
+  Lumo's own work folder (`~/Lumo/.agents/mcp_config.json`, where Lumo adds
+  a `lumo` entry while computer use is on and takes it out when it is off;
+  your global Antigravity configuration is not touched), and each message
+  tells it the tools are there.
+- **Gemini Live** hands what is to be done on the screen ("click Send", "open
+  the display settings and turn on night light") to its helper (Settings →
+  Voice), which then uses the computer as above, with the same cards, glow
+  and Esc.
 
 - **Every action asks first**, with the chat set to *Ask every time*: a click,
   a key or a text is an Allow / Deny card on the island that says what will

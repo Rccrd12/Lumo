@@ -30,7 +30,7 @@ use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::chat::Stop;
 use crate::explorer::{self, FolderEntry};
@@ -675,6 +675,11 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
     }
     let name = helper_name(&helper.id);
     let agy = helper.id == crate::antigravity_cli::PROVIDER;
+    // Computer use (Settings → Chat): the helper may use the screen for Gemini.
+    let computer = crate::computer::enabled(&app.state::<crate::Shared>().settings.lock().unwrap());
+    if computer {
+        crate::computer::begin_turn();
+    }
     let mode = mode.to_string();
     let (model, effort) = (helper.model.clone(), helper.effort.clone());
     let app2 = app.clone();
@@ -688,13 +693,17 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
             );
         };
         if agy {
-            crate::antigravity_cli::help(&task, folder.as_deref(), &model, &mode, stop2, tell)
+            crate::antigravity_cli::help(&task, folder.as_deref(), &model, &mode, computer, stop2, tell)
         } else {
-            crate::claude_code::help(&task, folder.as_deref(), &model, &effort, &mode, stop2, tell)
+            crate::claude_code::help(&task, folder.as_deref(), &model, &effort, &mode, computer, stop2, tell)
         }
     })
     .await
-    .map_err(|e| e.to_string())?;
+    .map_err(|e| e.to_string());
+    if computer {
+        crate::computer::end_turn(app);
+    }
+    let result = result?;
     let mut current = HELPING.lock().unwrap_or_else(|e| e.into_inner());
     if current.as_ref().is_some_and(|s| Arc::ptr_eq(s, &stop)) {
         *current = None;
