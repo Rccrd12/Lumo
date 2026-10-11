@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows and Linux 0.5.4 — October 11, 2026
+
+- **The chat lets you scroll up while an answer is written**: scrolled up to read, it stays where you are until you scroll back to the end, then follows the answer again; the finished answer replaces the streamed one where you were reading. A new question goes back to the end
+- **Every agent at work shows on the closed island**: VS Code, Cursor, Codex and Antigravity sessions now say what they are doing there ("VS Code · Editing app.ts", "Waiting for your OK"), as the other agents did, and count for the Agents tab's badge; two at work show side by side
+- **GitHub on the closed island**: "GitHub · CI running on lumo#12" while the CI of a pull request of yours or of a default branch runs (after a push or a merge), then a note when it passes or fails, and when a review is asked of you
+- **Attaching the screen never sends**: the screenshot preview's button is now Attach, and the message goes only when you press Enter, with the text you added
+- **Hide promotional emails** (Settings → Pills & integrations → Email, off by default): on Gmail the emails in its Promotions tab, with other providers the ones with an unsubscribe link (newsletters, offers), stay off the card and the closed island
+- **The usage ring sits right before the model button** in the chat
+- **Settings inside the island**: the list of sections fits without a scrollbar of its own, and "Right-click menu" in General reads like the other settings (Weekly recap…)
+
 ## Windows and Linux 0.5.3 — October 11, 2026
 
 - **Browser tabs show up in the chat's screen menu on Windows**: Edge and Chrome lock their list of open tabs while they run, so Browser tabs never appeared. The tabs now come from the browsers' windows themselves (each window's tab strip, through UI Automation): the tab on screen is read like a window, with your login, and a tab in the background is brought forward for a moment, read, and the tab you were on put back (six at most for one message). A slow browser no longer holds the menu: its entry joins when it answers

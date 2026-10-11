@@ -78,6 +78,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.5.4](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.4) | Oct 11, 2026 | The chat stays put when scrolled up during an answer, every agent at work (VS Code, Cursor, Codex…) and GitHub's CI on the closed island, the screen attached without sending, promotional emails hidden |
 | [0.5.3](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.3) | Oct 11, 2026 | Browser tabs shared on Windows (read from Edge and Chrome themselves), Ctrl+Alt+B asks about the page in the browser, a click on a chip shows exactly what goes, a search in Settings |
 | [0.5.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.2) | Oct 11, 2026 | Claude uses your computer — a glowing screen, its own orange mouse, every action approved — also for Gemini Live; share windows and browser tabs with what they show; Settings from the right-click menu inside the island |
 | [0.5.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.1) | Oct 10, 2026 | Allow and Deny from the closed island and for the chat's Claude Code, the Claude plan's 5 hours from Anthropic, a right-click menu with Refresh, past sessions and a search in the past chats, the usage ring in the chat, Live Activities that follow the island |
