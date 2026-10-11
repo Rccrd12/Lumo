@@ -78,6 +78,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.5.8](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.8) | Oct 11, 2026 | One row per attachment (two screenshots of the same screen too), the attachments folder made anew, the big picture over the whole island with Lumo aside, the upload bar centred |
 | [0.5.7](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.7) | Oct 11, 2026 | Several screenshots, selections and files with one question, service cards laid out like the tools', Lumo waits under the dragged file, the big preview beside Lumo |
 | [0.5.6](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.6) | Oct 11, 2026 | Ctrl+Alt+B attaches a PDF open in the browser as the file, attachments in a folder beside the past chats, GitHub keeping up on the closed island, gentler chat scrolling, a drop that follows the file, big previews |
 | [0.5.5](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.5) | Oct 11, 2026 | Energy saving (None, Light, Automatic on battery, On) with a leaf on the closed island, a – that hides the island into its edge, the hidden island comes back again, a left click on the tray icon hides or shows it |

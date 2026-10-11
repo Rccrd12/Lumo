@@ -623,15 +623,43 @@ test("deleting the chat on screen closes it: an empty chat takes its place", asy
 
 test("the folder beside the past chats holds what is attached, its badge says how many", () => {
   const badge = $(".tool-badge");
+  const names = () => $(".files-list").find(".attach-row").map((r) => r.find(".attach-name")[0].textContent);
   assert.equal(badge.textContent, "", "nothing attached: no number");
+  assert.equal($(".files-list").find(".files-empty").length, 1, "says what it is for");
   State.droppedFile = { name: "notes.pdf", path: "C:\\Lumo\\inbox\\notes.pdf" };
   view.sync();
   assert.equal(badge.textContent, "1");
   assert.equal($(".chip-row").find(".chip").length, 0, "no longer above the chat");
-  assert.deepEqual($(".files-list").find(".chip").map((c) => c.find("SPAN")[0].textContent), ["notes.pdf"]);
+  assert.deepEqual(names(), ["notes.pdf"]);
+  assert.equal($(".files-list").find(".attach-detail")[0].textContent, "File · PDF");
+  assert.equal($(".files-clear").hidden, true, "Remove all only for several");
   $(".files-btn").fire("click");
   assert.ok($(".chat-body").classList.contains("filing"));
-  $(".files-list").find(".chip-remove")[0].fire("click");
+  $(".files-list").find(".attach-remove")[0].fire("click");
   view.sync();
   assert.equal(badge.textContent, "");
+  assert.deepEqual(names(), []);
+});
+
+test("Remove all empties the attachments, and a file that already went is not listed", async () => {
+  const badge = $(".tool-badge");
+  State.droppedFile = { name: "a.pdf", path: "C:\\Lumo\\inbox\\a.pdf" };
+  State.moreFiles = [{ name: "b.txt", path: "C:\\Lumo\\inbox\\b.txt" }];
+  view.sync();
+  assert.equal(badge.textContent, "2");
+  assert.equal($(".files-count").textContent, "2");
+  assert.equal($(".files-clear").hidden, false);
+  $(".files-clear").fire("click");
+  view.sync();
+  assert.equal(State.droppedFile, null);
+  assert.deepEqual(State.moreFiles, []);
+  assert.equal(badge.textContent, "");
+  assert.equal($(".files-list").find(".attach-row").length, 0);
+
+  // Sent with a question, the file is the chat's: nothing waits any more.
+  State.droppedFile = { name: "a.pdf", path: "C:\\Lumo\\inbox\\a.pdf", sent: true };
+  view.sync();
+  assert.equal(badge.textContent, "");
+  assert.equal($(".files-list").find(".attach-row").length, 0);
+  State.droppedFile = null;
 });

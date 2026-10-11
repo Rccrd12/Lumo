@@ -90,11 +90,11 @@ the exe it runs from.
 | `Esc` | Closes the island |
 | Tray icon | A left click hides the island into its edge, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
-| `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
+| `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting in the attachments (its × takes it back). Each press adds one more, a row of its own. Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
-| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting as a chip. On Linux the page is downloaded from its address. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
-| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. A click on one shows **what goes with your question**: the screenshots and attached pictures shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back |
+| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. On Linux the page is downloaded from its address. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
+| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab and selected text on its own, even two of the same screen — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
@@ -514,9 +514,9 @@ goes. Each goes with what it shows, not only its name:
   go with their title).
 
 The text is cut to fit (about 36,000 characters for all the windows or all the
-tabs of one message). What you picked shows as a chip you can remove before
-sending, and goes with your next question only; a click on the chip shows
-exactly what it sends. Screenshots are saved only in the inbox
+tabs of one message). What you picked waits in the attachments, one row each,
+and you can remove any of them before sending; it goes with your next question
+only, and a click on its row shows exactly what it sends. Screenshots are saved only in the inbox
 (`%LOCALAPPDATA%\com.rccrd12.lumo\inbox`), like dropped files, and are deleted after a
 week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 
@@ -531,7 +531,7 @@ of the folder in the File Explorer window you used last (the tab in front, on
 Windows 11); it is not offered when no File Explorer window shows a folder on
 disk (This PC, Quick access, a library). Opening the menu only reads that name. Clicking the
 entry lists the folder — names, sizes and dates of its files and subfolders, up
-to 300, never their contents — and adds it as a chip you can remove. With your
+to 300, never their contents — and adds it to the attachments, where you can remove it. With your
 next question, a file of that folder you name, with or without its extension
 (*mi leggi il file 'file.pdf'?*), is copied into the inbox and attached exactly
 as if you had picked it with the paperclip, one per question and up to 32 MB.
@@ -542,8 +542,8 @@ asks before reading there. Not available on Linux yet.
 
 **Settings… → Chat → Always share the folder open in File Explorer** (off by
 default) does this for every message: while you type, the folder's name shows
-as a chip, and when you send, its path and listing go with the message, as if
-you had picked the entry each time. The chip's × leaves it out of that one
+in the attachments, and when you send, its path and listing go with the message, as if
+you had picked the entry each time. Its × leaves it out of that one
 message. Lumo asks File Explorer only when the text field takes focus and when
 you send, never in the background. With it off, the chat sees no folder unless
 you pick it from the menu; Claude Code says so, and points you to the button and

@@ -72,6 +72,12 @@ export const ICONS = {
   doc: "M6.5 2.6h7l4 4v14.8h-11V2.6zm6.6 1.6v3.3h3.3l-3.3-3.3zM8.6 11h6.8v1.5H8.6V11zm0 3.4h6.8v1.5H8.6v-1.5z",
   // display (stroke) — the chat's screen button
   display: "M3.5 4.5h17v11.5h-17zM12 16v3.5M8 19.5h8",
+  // macwindow (stroke) — a window shared with the chat
+  window: "M3.5 5h17v14h-17zM3.5 9h17",
+  // globe (stroke) — a browser tab shared with the chat
+  globe: "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17zM3.5 12h17M12 3.5c-2.3 2.4-3.4 5.2-3.4 8.5s1.1 6.1 3.4 8.5M12 3.5c2.3 2.4 3.4 5.2 3.4 8.5s-1.1 6.1-3.4 8.5",
+  // text.alignleft (stroke) — text selected in another app
+  textLines: "M5 6.5h14M5 10.5h14M5 14.5h14M5 18.5h8",
   // Permissions: a shield, outlined like the display and the paperclip.
   shield: "M12 3.2 5 6v5.6c0 4.3 2.9 7.9 7 9.2 4.1-1.3 7-4.9 7-9.2V6l-7-2.8z",
   // stop.fill — the chat's send button while an answer is being written

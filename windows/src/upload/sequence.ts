@@ -23,7 +23,9 @@ export const USC = {
   TEXT_X: 196,
   TEXT_Y: 94,
   BAR_X0: 46,
-  BAR_X1: 520,
+  // As far from the card's right edge as BAR_X0 is from its left (the Mac's
+  // 520 left the bar off centre, short of the right side).
+  BAR_X1: 594,
   BAR_Y: 118,
   CHOOSE_X: 60,
   CHOOSE_Y: 101,

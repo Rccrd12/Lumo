@@ -85,6 +85,8 @@ export const COMPACT_SIZES = {
 } as const;
 export type CompactSizeKind = keyof typeof COMPACT_SIZES;
 export const EXPANDED_W = 640;
+/** The uploading view's track: 36 pt in from either side of the island (views/upload.ts). */
+export const UPLOAD_TRACK_W = EXPANDED_W - 2 * 36;
 
 export const ROUNDED_CORNER = 14; // hidden / compact
 /** Between the island and the edge of the screen it is docked to (island.rs EDGE_GAP). */
@@ -282,7 +284,8 @@ export function botPosition(
       const layout = VIEW_LAYOUTS[view];
       if (view === "uploading") {
         return {
-          cx: 36 + uploadProgress * 526,
+          // Along the track, as wide as the card leaves it (views/upload.ts).
+          cx: 36 + uploadProgress * UPLOAD_TRACK_W,
           cy: layout.botY ?? 103,
           diameter: layout.botDiameter,
           opacity: 1,

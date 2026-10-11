@@ -32,8 +32,13 @@
 // its bar and when it resets (core/chat-usage.ts).
 //
 // With "Always share the folder open in File Explorer" on (Settings → Chat),
-// that folder goes with every message by itself; its chip's × leaves it out
-// of one.
+// that folder goes with every message by itself; its × in the attachments
+// leaves it out of one.
+//
+// Everything that goes with the next question waits in the attachments, the
+// folder beside the past chats: one row each (two screenshots of the same
+// screen are two rows), with its picture or its kind's icon, what it is, and
+// a × that takes back that one only. A click shows what it sends.
 //
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
@@ -56,12 +61,14 @@ import { planColor } from "../core/plan";
 import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
-  PREVIEW_STRINGS, SCREEN_STRINGS, attachedCount, chipPreview, withSelection, emptyScreen, filePreview, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
-  screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows,
-  withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry, type PreviewBlock,
+  ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
+  menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks,
+  windowPicks, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
+  type PreviewBlock, type ScreenItem,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import { COMPUTER_TEXT } from "../core/computer";
+import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
@@ -81,6 +88,8 @@ const STRINGS = {
   pastChats: N_("Past chats"),
   attachments: N_("Attachments"),
   noAttachments: N_("Nothing is attached yet."),
+  attachHint: N_("Files, screenshots, windows, pages and selected text wait here for your next question."),
+  removeAll: N_("Remove all"),
   noPastChats: N_("No past chats yet."),
   searchChats: N_("Search the past chats"),
   noMatch: N_("No chat says that."),
@@ -289,32 +298,91 @@ function typingDots(label: string): HTMLElement {
   );
 }
 
-/**
- * A chip for what goes with the question (a dropped or pasted file, what the
- * screen button added), with a way to take it back before it is sent.
- */
-function screenChip(label: string, title: string, onRemove: () => void, thumbs?: string[], onOpen?: () => void): HTMLElement {
+/** A chip above the chat (the message being edited), with a way to leave it. */
+function noteChip(label: string, title: string, onRemove: () => void): HTMLElement {
   const remove = h("button", { class: "chip-remove", title: tl(SCREEN_STRINGS.remove) }, svg(ICONS.xmark, 8));
   remove.addEventListener("click", (e) => {
     e.stopPropagation();
     onRemove();
   });
-  // Screenshots show themselves, small, so it is clear what goes with the question.
-  const strip = thumbs && thumbs.length > 0
-    ? h("span", { class: "chip-thumbs" }, ...thumbs.map((src) => h("img", { class: "chip-thumb", src, alt: "" })))
-    : null;
-  const chip = h(
-    "div",
-    { class: onOpen ? "chip screen-chip openable" : "chip screen-chip", title },
-    h("i", { class: "chip-dot" }),
-    h("span", { text: label }),
-    strip,
-    remove,
-  );
-  // A click shows what it sends (the × takes it back instead).
-  if (onOpen) chip.addEventListener("click", () => onOpen());
+  const chip = h("div", { class: "chip", title }, h("i", { class: "chip-dot" }), h("span", { text: label }), remove);
   requestAnimationFrame(() => chip.classList.add("settled"));
   return chip;
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+/** A dropped, pasted or picked file, or one of what the screen button and the shortcuts added. */
+type AttachKind = ItemKind | "file";
+
+interface AttachInfo {
+  kind: AttachKind;
+  label: string;
+  /** Under the name: what it is, and where it comes from. */
+  detail: string;
+  title: string;
+  /** A picture of it, when there is one. */
+  thumb?: string;
+}
+
+/** Each kind's icon, on the tile of a row with no picture of its own. */
+const ATTACH_ICONS: Record<AttachKind, { path: string; stroke?: number }> = {
+  file: { path: ICONS.doc },
+  shot: { path: ICONS.display, stroke: 1.8 },
+  window: { path: ICONS.window, stroke: 1.8 },
+  tab: { path: ICONS.globe, stroke: 1.6 },
+  selection: { path: ICONS.textLines, stroke: 1.8 },
+  folder: { path: ICONS.folder, stroke: 1.8 },
+};
+
+/** The files whose picture the attachments show small. */
+const PICTURE_FILE = /\.(png|jpe?g|gif|webp|bmp)$/i;
+
+/** "File · PDF · 2.0 KB": what a file is, under its name. */
+export function fileDetail(file: { name: string; size?: number }): string {
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot > 0 && dot < file.name.length - 1 ? file.name.slice(dot + 1).toUpperCase() : "";
+  return [t(ITEM_STRINGS.file), ext, file.size == null ? "" : formatSize(file.size)].filter(Boolean).join(" · ");
+}
+
+/**
+ * One row of the attachments: its picture or its kind's icon, its name with
+ * what it is under it, and a × that takes back this one only. A click, or
+ * Enter, shows what it sends; Delete takes it back.
+ */
+function attachRow(item: AttachInfo, onRemove: () => void, onOpen: () => void): HTMLElement {
+  const icon = ATTACH_ICONS[item.kind];
+  const tile = h("span", { class: `attach-tile attach-${item.kind}` },
+    item.thumb
+      ? h("img", { class: "attach-thumb", src: item.thumb, alt: "", draggable: "false" })
+      : svg(icon.path, 15, icon.stroke ? { stroke: icon.stroke } : {}));
+  const remove = h("button", { class: "attach-remove", title: t(SCREEN_STRINGS.remove), "aria-label": t(SCREEN_STRINGS.remove) },
+    svg(ICONS.xmark, 9));
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onRemove();
+  });
+  const row = h(
+    "div",
+    { class: "attach-row", title: item.title, role: "button", tabindex: "0" },
+    tile,
+    h("span", { class: "attach-text" },
+      h("span", { class: "attach-name", text: item.label }),
+      item.detail ? h("span", { class: "attach-detail", text: item.detail }) : null),
+    remove,
+  );
+  row.addEventListener("click", () => onOpen());
+  row.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    if (key === "Enter" || key === " ") {
+      e.preventDefault();
+      onOpen();
+    } else if (key === "Delete" || key === "Backspace") {
+      e.preventDefault();
+      onRemove();
+    }
+  });
+  return row;
 }
 
 function saveSettings() {
@@ -765,8 +833,13 @@ export function buildPrompt(
   const historyEl = h("div", { class: "picker history" },
     h("div", { class: "history-head" }, h("div", { class: "picker-title", text: tl(STRINGS.pastChats) }), historySearch),
     historyList);
+  // The attachments: what goes with the next question, one row each.
+  const filesCount = h("span", { class: "files-count" });
+  const removeAllBtn = h("button", { class: "files-clear", text: tl(STRINGS.removeAll) });
   const filesList = h("div", { class: "picker-list files-list" });
-  const filesEl = h("div", { class: "picker files-panel" }, h("div", { class: "picker-title", text: tl(STRINGS.attachments) }), filesList);
+  const filesEl = h("div", { class: "picker files-panel" },
+    h("div", { class: "files-head" }, h("div", { class: "picker-title", text: tl(STRINGS.attachments) }), filesCount, removeAllBtn),
+    filesList);
   // The screen button's menu, then the preview of a screenshot.
   const screenTitle = h("div", { class: "picker-title" });
   const screenList = h("div", { class: "picker-list" });
@@ -778,41 +851,22 @@ export function buildPrompt(
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
   body.append(chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, modelRow, bar);
 
-  // A picture in the preview, clicked: as big as the chat, until a click or Esc.
-  const zoomImg = h("img", { class: "zoom-img", alt: "" }) as HTMLImageElement;
-  const zoomCaption = h("div", { class: "zoom-caption" });
-  // The picture joins the overlay only while it is open.
-  const zoomEl = h("div", { class: "zoom" },
-    zoomCaption,
-    h("button", { class: "zoom-close", title: tl(PREVIEW_STRINGS.close), "aria-label": tl(PREVIEW_STRINGS.close) }, svg(ICONS.xmark, 12)),
-  );
-  zoomEl.addEventListener("click", () => closeZoom());
+  // A picture in a preview, clicked: it fills the whole open island, with
+  // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
   function openZoom(src: string, caption: string) {
-    zoomImg.src = src;
-    zoomImg.alt = caption;
-    zoomCaption.textContent = caption;
-    zoomEl.prepend(zoomImg);
-    zoomEl.classList.add("open");
+    State.picture = { src, caption };
+    State.notify();
   }
   function closeZoom() {
-    if (!zoomEl.classList.contains("open")) return;
-    zoomEl.classList.remove("open");
-    zoomImg.remove();
-    zoomImg.removeAttribute("src");
+    closePicture();
   }
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || !zoomEl.classList.contains("open")) return;
-    e.preventDefault();
-    e.stopPropagation();
-    closeZoom();
-  }, true);
   /** A preview's picture that opens big on a click. */
   function zoomable(img: HTMLImageElement, caption: string): HTMLImageElement {
     img.classList.add("zoomable");
     img.draggable = false;
     img.addEventListener("click", (e) => {
       e.stopPropagation();
-      openZoom(img.src, caption);
+      openZoom(img.getAttribute("src") ?? img.src, caption);
     });
     return img;
   }
@@ -821,8 +875,9 @@ export function buildPrompt(
   // anywhere on the screen — closes the list that is open: the models, the
   // past chats, the screen menu, the permissions.
   function closeListsBut(target: Node | null) {
-    // The big picture sits over the preview it came from: that stays open.
-    if (target != null && zoomEl.contains(target)) return;
+    // The big picture covers the island, over the preview it came from: a
+    // press on it closes the picture only, and the preview stays open.
+    if (State.picture && target != null) return;
     const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
     if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
@@ -834,7 +889,7 @@ export function buildPrompt(
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
 
-  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body), zoomEl);
+  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
@@ -1133,6 +1188,17 @@ export function buildPrompt(
     panelChanged();
   }
 
+  function openFiles() {
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeScreen();
+    closePermissions();
+    closeUsage();
+    body.classList.add("filing");
+    filesBtn.classList.add("open");
+    panelChanged();
+  }
+
   function closeFiles() {
     body.classList.remove("filing");
     filesBtn.classList.remove("open");
@@ -1161,17 +1227,40 @@ export function buildPrompt(
     panelChanged();
   }
 
-  /** Forgets what the screen button or a shortcut added and was not sent yet (a new chat, the chip's ×). */
-  function clearScreen(kind?: ChipKind) {
-    if (!kind || kind === "shots") {
-      dropShots(shotPaths(screen));
-      screen = { ...screen, shots: [] };
+  /** Forgets what the screen button or a shortcut added and was not sent yet (a new chat). */
+  function clearScreen() {
+    dropShots(shotPaths(screen));
+    screen = nextScreen(screen);
+  }
+
+  /** Remove all: every attachment waiting goes, the screenshots' files with them. */
+  function removeAll() {
+    if (sending) return;
+    if (State.droppedFile && !State.droppedFile.sent) {
+      State.droppedFile = null;
+      if (State.promptContext?.kind === "file") State.promptContext = null;
     }
-    if (!kind) screen = nextScreen(screen);
-    if (kind === "windows") screen = { ...screen, windows: [] };
-    if (kind === "tabs") screen = { ...screen, tabs: [] };
-    if (kind === "selection") screen = { ...screen, selection: null, selections: [] };
-    if (kind === "folder") screen = withoutFolder(screen);
+    State.moreFiles = [];
+    dropShots(shotPaths(screen));
+    // The folder that rides along by itself stays out of this message too.
+    screen = { ...nextScreen(screen), autoOff: true };
+    Sound.play("pop");
+    State.notify();
+    input.focus();
+  }
+
+  /** The attachments with nothing in them: what they are for. */
+  function noAttachments(): HTMLElement {
+    return h("div", { class: "files-empty" },
+      h("span", { class: "files-empty-icon" }, svg(ICONS.paperclip, 16, { stroke: 1.6 })),
+      h("div", { class: "files-empty-title", text: t(STRINGS.noAttachments) }),
+      h("div", { class: "files-empty-hint", text: t(STRINGS.attachHint) }));
+  }
+
+  /** Takes back one of them (its ×, or Remove in its preview): a screenshot's file is deleted. */
+  function removeItem(item: ScreenItem) {
+    if (item.kind === "shot" && screen.shots.some((s) => s.path === item.key)) dropShots([item.key]);
+    screen = withoutItem(screen, item);
   }
 
   // ── The folder that goes with every message (Settings → Chat) ─────────────
@@ -1498,9 +1587,12 @@ export function buildPrompt(
     screenList.append(row, h("div", { class: "screen-actions" }, cancel, keep));
   }
 
-  // ── What a chip sends ─────────────────────────────────────────────────────
+  // ── What an attachment sends ──────────────────────────────────────────────
 
-  /** The screen panel, showing what a chip sends: Remove takes it back, Close keeps it. */
+  /**
+   * The screen panel, showing what an attachment sends: Remove takes it back,
+   * Close keeps it; either way the attachments it was opened from come back.
+   */
   function openPreview(blocks: PreviewBlock[], onRemove: () => void) {
     if (picker.isOpen) picker.close();
     closeHistory();
@@ -1532,10 +1624,12 @@ export function buildPrompt(
     remove.addEventListener("click", () => {
       closeScreen();
       onRemove();
+      openFiles();
       input.focus();
     });
     close.addEventListener("click", () => {
       closeScreen();
+      openFiles();
       input.focus();
     });
     screenList.append(items, h("div", { class: "screen-actions" }, remove, close));
@@ -1545,9 +1639,36 @@ export function buildPrompt(
   async function openFilePreview(file: { name: string; path: string; size?: number }, onRemove: () => void) {
     openPreview(filePreview(file), onRemove);
     const ticket = screenTicket;
-    const image = await Bridge.filePreview(file.path).catch(() => null);
+    const image = await filePicture(file.path);
     if (image && ticket === screenTicket && body.classList.contains("screening")) {
       openPreview(filePreview(file, image), onRemove);
+    }
+  }
+
+  // A picture attached as a file shows itself small on its row, and big in
+  // its preview: asked once for both, and forgotten once it is no longer attached.
+  const filePictures = new Map<string, Promise<string | null>>();
+  const filePicturesHere = new Map<string, string>();
+  function filePicture(path: string): Promise<string | null> {
+    let asked = filePictures.get(path);
+    if (!asked) {
+      asked = Bridge.filePreview(path).catch(() => null);
+      filePictures.set(path, asked);
+      void asked.then((src) => {
+        if (!src || filePictures.get(path) !== asked) return;
+        filePicturesHere.set(path, src);
+        State.notify(); // its row shows it
+      });
+    }
+    return asked;
+  }
+  /** Only the files still attached keep their pictures. */
+  function forgetFilePictures(keep: ReadonlySet<string>) {
+    for (const path of filePictures.keys()) {
+      if (!keep.has(path)) {
+        filePictures.delete(path);
+        filePicturesHere.delete(path);
+      }
     }
   }
 
@@ -1763,19 +1884,10 @@ export function buildPrompt(
     else openScreen();
   });
   filesBtn.addEventListener("click", () => {
-    if (body.classList.contains("filing")) {
-      closeFiles();
-      return;
-    }
-    if (picker.isOpen) picker.close();
-    closeHistory();
-    closeScreen();
-    closePermissions();
-    closeUsage();
-    body.classList.add("filing");
-    filesBtn.classList.add("open");
-    panelChanged();
+    if (body.classList.contains("filing")) closeFiles();
+    else openFiles();
   });
+  removeAllBtn.addEventListener("click", () => removeAll());
   historyBtn.addEventListener("click", () => {
     if (sending) return;
     if (body.classList.contains("browsing")) {
@@ -2026,20 +2138,23 @@ export function buildPrompt(
       }
       // The edited question left the chat another way (a new chat, a file): nothing to replace.
       if (editing != null && !State.chatHistory.some((m) => m.id === editing)) editing = null;
-      const file = State.droppedFile;
-      const wantChip = file?.name ?? "";
-      const extra = screenChips(screen);
-      const editKey = editing != null ? [`edit\t${editing}`] : [];
+      // The file that went with a question is the chat's now: only what waits is listed.
+      const file = State.droppedFile && !State.droppedFile.sent ? State.droppedFile : null;
       const moreFiles = State.moreFiles;
-      const chipKey = [wantChip, ...moreFiles.map((f) => `file\t${f.path}`), ...extra.map((c) => `${c.label}\t${c.title}`), ...shotPaths(screen), ...editKey].join("\n");
-      if (chipRow.dataset.label !== chipKey) {
-        chipRow.dataset.label = chipKey;
-        // Something is already attached: the ways to start make room for it.
-        body.classList.toggle("has-context", chipKey !== "");
-        clear(chipRow);
+      const files = [...(file ? [file] : []), ...moreFiles];
+      const items = screenItems(screen);
+      const pictures = files.map((f) => (PICTURE_FILE.test(f.name) ? filePicturesHere.get(f.path) ?? "" : ""));
+      const attached = files.length + items.length;
+      const filesKey = [
+        ...files.map((f, i) => `file\t${f.path}\t${fileDetail(f)}\t${pictures[i] ? "picture" : ""}`),
+        ...items.map((it) => `${it.kind}\t${it.key}\t${it.label}\t${it.detail}`),
+      ].join("\n");
+      if (filesList.dataset.key !== filesKey) {
+        filesList.dataset.key = filesKey;
         clear(filesList);
-        // A dropped or pasted file: its × takes it out before it is sent.
-        if (wantChip) {
+        forgetFilePictures(new Set(files.map((f) => f.path)));
+        // A dropped, pasted or picked file: its × takes it out before it is sent.
+        if (file) {
           const removeFile = () => {
             if (sending) return;
             State.droppedFile = null;
@@ -2054,33 +2169,50 @@ export function buildPrompt(
             Sound.play("pop");
             State.notify();
           };
-          filesList.append(screenChip(wantChip, file?.path ?? wantChip, removeFile, undefined, () => {
-            if (file) void openFilePreview(file, removeFile);
-          }));
+          filesList.append(attachRow(
+            { kind: "file", label: file.name, detail: fileDetail(file), title: file.path, thumb: pictures[0] || undefined },
+            removeFile,
+            () => void openFilePreview(file, removeFile),
+          ));
         }
-        for (const more of moreFiles) {
+        moreFiles.forEach((more, i) => {
           const removeMore = () => {
             if (sending) return;
             State.moreFiles = State.moreFiles.filter((f) => f.path !== more.path);
             Sound.play("pop");
             State.notify();
           };
-          filesList.append(screenChip(more.name, more.path, removeMore, undefined, () => void openFilePreview(more, removeMore)));
-        }
-        for (const c of extra) {
+          filesList.append(attachRow(
+            { kind: "file", label: more.name, detail: fileDetail(more), title: more.path, thumb: pictures[i + (file ? 1 : 0)] || undefined },
+            removeMore,
+            () => void openFilePreview(more, removeMore),
+          ));
+        });
+        // Every screenshot, window, tab and selection on its own: its × takes back that one only.
+        for (const item of items) {
           const removeIt = () => {
             if (sending) return;
-            clearScreen(c.kind);
+            removeItem(item);
             Sound.play("pop");
             State.notify();
           };
-          filesList.append(screenChip(c.label, c.title, removeIt, c.thumbs, () => openPreview(chipPreview(screen, c.kind), removeIt)));
+          filesList.append(attachRow(item, removeIt, () => openPreview(itemPreview(screen, item), removeIt)));
         }
-        const count = (wantChip ? 1 : 0) + moreFiles.length + attachedCount(screen);
-        filesBadge.textContent = count > 0 ? String(count) : "";
-        filesBtn.classList.toggle("has-files", count > 0);
-        if (count === 0) filesList.append(h("div", { class: "picker-status", text: t(STRINGS.noAttachments) }));
-        if (editing != null) chipRow.append(screenChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
+        if (attached === 0) filesList.append(noAttachments());
+        filesBadge.textContent = attached > 0 ? String(attached) : "";
+        filesCount.textContent = attached > 0 ? String(attached) : "";
+        filesBtn.classList.toggle("has-files", attached > 0);
+        removeAllBtn.hidden = attached < 2;
+        // Asked once each; a picture that comes redraws the rows with it.
+        for (const f of files) if (PICTURE_FILE.test(f.name)) void filePicture(f.path);
+      }
+      // Something is already attached: the ways to start make room for it.
+      body.classList.toggle("has-context", attached > 0 || editing != null);
+      const editKey = editing != null ? String(editing) : "";
+      if (chipRow.dataset.label !== editKey) {
+        chipRow.dataset.label = editKey;
+        clear(chipRow);
+        if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
       }
 
       const thinking = State.stateOverride === "thinking";
