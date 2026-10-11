@@ -37,8 +37,6 @@ use crate::platform;
 
 pub const PROVIDER: &str = "claude-code";
 
-/// A turn can wait on the user's Allow / Deny clicks, so it gets a long while.
-const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// The island is told about new text at most this often.
 const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
 /// How often a running turn looks at the Stop button.
@@ -49,6 +47,15 @@ const MAX_TOTAL: usize = 64 * 1024 * 1024;
 /// Earlier turns from another provider, carried over as text, are cut to this.
 const MAX_CARRIED_CHARS: usize = 24_000;
 
+/// How Claude Code waits for GitHub without holding the turn open: Lumo keeps
+/// the watch (listen.rs) and hides that line (src/core/listen.ts). Plain words
+/// only: it goes on the command line.
+macro_rules! listen_note {
+    () => {
+        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: write on a line of its own [[listen owner/repo#123 event: what to do then]], with event one of checks (finished, passed or failed), green (checks passed), approved, ready (checks passed and it can be merged), merged or closed, and leave out the colon and what follows when they only want to be told. Say in a few words that Lumo is listening, and end your answer. Lumo watches GitHub, hides that line and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To stop listening, write [[unlisten owner/repo#123]] on a line of its own."
+    };
+}
+
 /// Added to Claude Code's own instructions. Plain words only: it is an argument.
 const APPEND_PROMPT: &str = concat!(
     "You are Lumo, the user's personal assistant, answering from the Lumo island at the top of their screen. \
@@ -58,6 +65,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
+    listen_note!(),
     crate::chat::math_note!()
 );
 
@@ -71,6 +79,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
+    listen_note!(),
     crate::chat::math_note!()
 );
 
@@ -701,25 +710,20 @@ fn run(
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
 
-    let started = Instant::now();
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     // Text the island was not shown yet (it is told at most every DELTA_INTERVAL).
     let mut unsent = false;
     let mut state = Run::default();
-    let mut timed_out = false;
+    // No time limit: a long piece of work, or a card nobody clicked yet, goes
+    // on until it ends or the user presses Stop.
     loop {
         if stop.is_stopped() && state.result.is_none() {
             kill_tree(&mut child);
             state.stopped = true;
             return Ok(state);
         }
-        let left = TURN_TIMEOUT.saturating_sub(started.elapsed());
-        if left.is_zero() {
-            timed_out = true;
-            break;
-        }
         // Short waits, so Stop is felt at once (only while a turn runs).
-        match rx.recv_timeout(left.min(STOP_POLL)) {
+        match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
                 let activity = state.take_activity();
@@ -736,10 +740,6 @@ fn run(
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
-    }
-    if timed_out {
-        kill_tree(&mut child);
-        return Err(t("Claude Code took too long and was stopped."));
     }
     let status = child.wait().ok();
     let stderr = err_text.join().unwrap_or_default();

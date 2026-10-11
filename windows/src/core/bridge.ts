@@ -8,6 +8,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
 import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
+import type { ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 
 /**
@@ -193,6 +194,13 @@ export const Bridge = {
   chatSend: (query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
     callOrThrow<ChatReply>("chat_send", screen ? { query, context, screen } : { query, context }),
   chatReset: () => call<void>("chat_reset"),
+  /** Listens to a pull request for the chat `chatId` (listen.rs). */
+  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string) =>
+    call<ListenWatch>("listen_add", { repo, number, until, task, chatId }),
+  /** Stops listening to a pull request (`until` null: to everything on it). */
+  listenCancel: (repo: string, number: number, until: string | null = null) =>
+    call<number>("listen_cancel", { repo, number, until }),
+  listenList: () => call<ListenWatch[]>("listen_list"),
   /** The Stop button: `chatSend` then returns what was written so far, `stopped`. */
   chatStop: () => call<void>("chat_stop"),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */

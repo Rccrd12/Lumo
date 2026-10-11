@@ -316,26 +316,9 @@ body {
   inset: 0;
 }
 
-#upload-overlay {
-  position: absolute;
-  inset: 0;
-  display: none;
-}
-
-/* Invisible hit areas over the buttons the canvas paints. */
-.upload-hit {
-  position: absolute;
-  padding: 0;
-  border: 0;
-  border-radius: 13px;
-  background: none;
-  pointer-events: auto;
-  cursor: pointer;
-}
-
 /* The ordinary views step aside while the sequence owns the body. The active
    view sets pointer-events back to auto, which beats the parent's none: it has
-   to be switched off too, or its invisible card swallows the canvas buttons. */
+   to be switched off too, or its invisible card catches the drop's clicks. */
 #views.hidden-by-upload {
   opacity: 0;
   pointer-events: none;
@@ -454,6 +437,30 @@ body {
   color: var(--amber);
   font-variant-numeric: tabular-nums;
   font-weight: 600;
+}
+
+/* A dropped file on its way into the chat: the open island's bar, carried on. */
+#compact .cp-upload {
+  flex: none;
+  position: relative;
+  width: 96px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.09);
+  overflow: hidden;
+}
+
+#compact .cp-upload-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 2px;
+  background: linear-gradient(90deg, #1fa87a, #34d399);
+}
+
+#compact .cp-upload-pct {
+  min-width: 34px;
+  text-align: right;
+  color: #a9adb5;
 }
 
 #compact .cp-btn,
@@ -1509,6 +1516,21 @@ input[type="range"]::-webkit-slider-thumb {
 .chip.settled {
   border-color: rgba(255, 255, 255, 0);
   transform: scale(1);
+}
+
+/* "File uploaded", for a moment after a drop. */
+.chip-check {
+  display: grid;
+  place-items: center;
+  width: 13px;
+  height: 13px;
+  border-radius: 50%;
+  background: #34d399;
+  color: #07130e;
+}
+
+.chip.uploaded {
+  color: var(--green-2);
 }
 
 .chip-dot {

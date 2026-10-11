@@ -25,6 +25,7 @@ mod i18n;
 mod identity;
 mod integrations;
 mod island;
+mod listen;
 mod live;
 mod local_chat;
 mod log;
@@ -1080,6 +1081,9 @@ pub fn run() {
             screen_explorer_peek,
             screen_explorer,
             explorer_attach,
+            listen::listen_add,
+            listen::listen_cancel,
+            listen::listen_list,
             live::live_token,
             live::live_read,
             live::live_find,
@@ -1162,6 +1166,7 @@ pub fn run() {
             pipe::start(handle.clone());
             energy::start(handle.clone());
             integrations::start(handle.clone());
+            listen::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
         })
