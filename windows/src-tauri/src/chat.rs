@@ -919,11 +919,6 @@ mod tests {
         assert!(!is_inside(&inbox, &inbox.join("sub").join("b.txt")));
         assert!(!is_inside(&inbox, &inbox.join("missing.txt")));
         assert!(!is_inside(&inbox, &inbox));
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(base.join("secret.txt"), inbox.join("link.txt")).unwrap();
-            assert!(!is_inside(&inbox, &inbox.join("link.txt")));
-        }
         let _ = std::fs::remove_dir_all(&base);
     }
 }

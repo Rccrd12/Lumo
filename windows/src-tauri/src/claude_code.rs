@@ -668,12 +668,6 @@ fn run(
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
-    // Its own process group, so Stop ends the tools and hooks it started too.
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))?;
@@ -762,22 +756,11 @@ fn run(
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
-/// On Linux the whole process group goes (run() starts the CLI in its own).
 pub(crate) fn kill_tree(child: &mut std::process::Child) {
-    #[cfg(windows)]
-    {
-        let mut kill = Command::new("taskkill");
-        kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
-        platform::no_console(&mut kill);
-        let _ = kill.status();
-    }
-    #[cfg(target_os = "linux")]
-    if let Ok(pid) = i32::try_from(child.id()) {
-        // SAFETY: a plain signal to the group the child leads; no memory is shared.
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-        }
-    }
+    let mut kill = Command::new("taskkill");
+    kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
+    platform::no_console(&mut kill);
+    let _ = kill.status();
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -808,9 +791,8 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    // Computer use (Windows): the chat's own instructions, Lumo's MCP server,
-    // and the computer only usable while this turn runs.
-    let computer = computer && cfg!(windows);
+    // Computer use: the chat's own instructions, Lumo's MCP server, and the
+    // computer only usable while this turn runs.
     let append = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     let mut args = with_cards(args_with(append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
     if computer {
@@ -1207,43 +1189,6 @@ mod tests {
         // Unless it goes with this question anyway.
         let p = prompt(Some(&file), &carried, &files, "go on");
         assert_eq!(p.matches("C:\\inbox\\a.pdf").count(), 1, "{p}");
-    }
-
-    #[test]
-    fn stop_ends_the_cli_and_keeps_what_it_wrote() {
-        // A stand-in for `claude -p`: says something, then hangs until killed.
-        #[cfg(unix)]
-        {
-            let script = r#"echo '{"type":"system","subtype":"init","session_id":"0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"}'
-echo '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/home/me/report.pdf"}}]}}'
-echo '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Half an answer"}}}'
-sleep 30 & wait"#;
-            let stop = Arc::new(Stop::default());
-            let stopper = stop.clone();
-            let seen = std::sync::Mutex::new(String::new());
-            let started = Instant::now();
-            let activities = std::sync::Mutex::new(Vec::new());
-            let state = run(
-                PathBuf::from("/bin/sh"),
-                vec!["-c".into(), script.into()],
-                String::new(),
-                std::env::temp_dir(),
-                stop,
-                |text| {
-                    *seen.lock().unwrap() = text.to_string();
-                    stopper.stop();
-                },
-                |activity| activities.lock().unwrap().push(activity.clone()),
-            )
-            .unwrap();
-            assert!(state.stopped);
-            assert_eq!(state.visible, "Half an answer");
-            assert_eq!(state.session.as_deref(), Some(SID));
-            assert!(state.result.is_none());
-            assert_eq!(*seen.lock().unwrap(), "Half an answer");
-            assert_eq!(*activities.lock().unwrap(), vec![Activity::new("read", "report.pdf")], "told as it happened");
-            assert!(started.elapsed() < Duration::from_secs(10), "not left waiting on the CLI");
-        }
     }
 
     #[test]

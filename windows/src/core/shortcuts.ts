@@ -255,8 +255,8 @@ export type Recorded =
 const MODIFIER_KEYS = new Set(["Control", "Alt", "Shift", "Meta", "AltGraph", "OS", "Super", "Hyper"]);
 
 /** The main key of a press, by name. Letters follow the layout, so Ctrl+Alt+A
- *  is the key labelled A on AZERTY too — which is what RegisterHotKey and X11
- *  grab. Everything else goes by its position. */
+ *  is the key labelled A on AZERTY too — which is what RegisterHotKey
+ *  grabs. Everything else goes by its position. */
 function pressedKey(e: KeyPress): string | null {
   if (/^[a-z]$/i.test(e.key)) return e.key.toUpperCase();
   if (/^Key[A-Z]$/.test(e.code)) return e.code.slice(3);

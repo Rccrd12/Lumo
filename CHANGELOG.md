@@ -1,6 +1,6 @@
 # Changelog
 
-## Windows and Linux 0.5.8 — October 11, 2026
+## Windows 0.5.8 — October 11, 2026
 
 - **One attachment, one row**: two `Ctrl+Alt+P` of the same screen, two windows, two tabs or two selected texts no longer share one chip: each waits on its own, and its × takes back that one only (a screenshot's file with it)
 - **The attachments, made anew**: the folder beside the past chats lists everything in rows of one width, lined up whatever the length of their names: the picture (a screenshot, an attached picture) or the kind's icon, the name, what it is under it ("Screenshot", "Window · Code", "Web page · github.com", "File · PDF · 2.0 KB") and a ×. How many sits by the title, **Remove all** shows when there are several, and with nothing attached it says what the folder is for. A click on a row shows what it sends; Close or Remove brings the list back
@@ -8,14 +8,14 @@
 - **The big picture fills the island**: a click on a picture in a preview shows it over the whole open island, its top bar too, and Lumo steps out of its way until a click or `Esc`
 - **The upload bar in the middle**: the bar of a dropped file runs as far from the card's right side as from its left
 
-## Windows and Linux 0.5.7 — October 11, 2026
+## Windows 0.5.7 — October 11, 2026
 
 - **Several of a kind**: each `Ctrl+Alt+P` adds its screenshot to the ones waiting (Screen 1, Screen 1 (2)…), each shared selection joins the others, and a file added while another waits goes with it in the same question
 - **Service cards like the tools'**: GitHub, Email, Stripe, Notion, Cal.com and Resend show their name and kind, whether they are connected, their rows like VS Code's facts, and Open… and Refresh at the bottom
 - **The drop**: Lumo waits under the dragged file, mouth up, instead of on top of it
 - **The big preview** of a picture leaves Lumo's column free
 
-## Windows and Linux 0.5.6 — October 11, 2026
+## Windows 0.5.6 — October 11, 2026
 
 - **A PDF open in the browser goes as the PDF**: `Ctrl+Alt+B` on a tab that shows a file (a PDF opened from the disk or the web, a .docx…) attaches the file itself instead of the text its viewer shows. Any other page still goes as its text and address
 - **Attachments in a folder**: a folder beside the past chats holds everything attached to the next question (files, screenshots, windows, tabs, the selection, the folder), with a number on it for how many. The chat keeps its whole height, and its text is a size bigger
@@ -26,7 +26,7 @@
 - **Big previews**: a picture alone fills the preview, and a click on any preview picture shows it over the whole chat (a click or Esc closes it)
 - **Settings read more easily**: each setting's name sits on one line with its switch or list, what it does underneath, the whole width
 
-## Windows and Linux 0.5.5 — October 11, 2026
+## Windows 0.5.5 — October 11, 2026
 
 - **Energy saving** (Settings → General): **None** asks the inbox, GitHub, the calendar, the services, the plan usage and the music more often, near real time; **Light** is Lumo as always; **On** saves energy: the closed island draws 15 frames a second, Lumo dozes with the mouse far away (eyes shut, grey, still) and stops moving with the mouse at rest, the cursor far from the island is read 10 times a second instead of 60, and everything is asked half as often. A permission or a question waiting keeps him awake. **Automatic**, the default, saves energy on battery and, plugged in, does what **On mains power** says (Light or None)
 - **A green leaf** at the closed island's right end while it saves energy
@@ -34,7 +34,7 @@
 - **The hidden island comes back again**: with Hide when unused, the island often stayed hidden when the mouse went back to the edge. The piece of edge that brings it back is now as long as the closed island, and right where it was, if you moved it
 - **The tray icon**: a left click hides the island or brings it back (Windows); the right click opens the menu, where Pause reads Resume while Lumo is paused
 
-## Windows and Linux 0.5.4 — October 11, 2026
+## Windows 0.5.4 — October 11, 2026
 
 - **The chat lets you scroll up while an answer is written**: scrolled up to read, it stays where you are until you scroll back to the end, then follows the answer again; the finished answer replaces the streamed one where you were reading. A new question goes back to the end
 - **Every agent at work shows on the closed island**: VS Code, Cursor, Codex and Antigravity sessions now say what they are doing there ("VS Code · Editing app.ts", "Waiting for your OK"), as the other agents did, and count for the Agents tab's badge; two at work show side by side
@@ -44,7 +44,7 @@
 - **The usage ring sits right before the model button** in the chat
 - **Settings inside the island**: the list of sections fits without a scrollbar of its own, and "Right-click menu" in General reads like the other settings (Weekly recap…)
 
-## Windows and Linux 0.5.3 — October 11, 2026
+## Windows 0.5.3 — October 11, 2026
 
 - **Browser tabs show up in the chat's screen menu on Windows**: Edge and Chrome lock their list of open tabs while they run, so Browser tabs never appeared. The tabs now come from the browsers' windows themselves (each window's tab strip, through UI Automation): the tab on screen is read like a window, with your login, and a tab in the background is brought forward for a moment, read, and the tab you were on put back (six at most for one message). A slow browser no longer holds the menu: its entry joins when it answers
 - **Ask about the page in the browser** (`Ctrl+Alt+B`): the page on screen in the front-most Edge or Chrome window waits in the chat with its text and address, like the selected text
@@ -52,7 +52,7 @@
 - **Search in Settings**: a field above the list of sections shows the matching settings, shortcuts and pills of every section at once, whatever the case, the accents or singular and plural
 - **Readable group headings in Settings** ("Right-click menu"…), near the names' white instead of the hints' grey
 
-## Windows and Linux 0.5.2 — October 11, 2026
+## Windows 0.5.2 — October 11, 2026
 
 - **Claude can use your computer** (Settings → Chat → Computer use → Let Claude use the computer, off by default, Windows): Claude Code in the chat sees the screen and clicks, types, presses keys, scrolls and drags, through Lumo's own MCP server (`lumo-hook --mcp`, passed to the chat's runs only; your Claude Code settings are untouched), on your Claude plan. Asking every time, each action is an Allow / Deny card that says what it does ("Click · 640, 320", "Type · …"); screenshots don't ask. Esc anywhere stops it. Screenshots leave Lumo out, are sized for every model, and Claude's coordinates are turned back into your screen's, whatever its scaling
 - **You can watch it work**: the screen it uses glows around its edges (on whichever display it is), the mouse becomes Claude's own orange arrow and glides from point to point, and each action is drawn where it happens: rings for clicks, a trail for drags, chevrons for scrolling, a bubble with the text typed or the keys pressed. While Claude answers the mouse is its own: your hand gets it back for a card, with Esc, or at the end
@@ -61,7 +61,7 @@
 - **Settings from the right-click menu open inside the island**, as the gear does (the Live Activities' one too); "Open the chat" is no longer a right-click item, and the small group headings in Settings are readable
 - **A pill's name never runs under Lumo** on a narrow island
 
-## Windows and Linux 0.5.1 — October 10, 2026
+## Windows 0.5.1 — October 10, 2026
 
 - **The Claude plan's 5 hours no longer vanish**: Claude Code's status line leaves the 5-hour window out while it is far from its limit, and each of its updates used to drop the figure a chat answer had brought. The window it leaves out is now kept, and when none was ever reported the 5 hours read "plenty left — Claude Code reports it only near the limit", in the chat's usage menu and on the plan card
 - **The effort slider is one short row**: a track that fills up to a white knob, a mark per level, the level it is on beside it and Auto at the end (no "Effort" label above). Dragged, the knob snaps to a level as soon as the pointer is past half way to it, and glides there; the arrow keys, Home and End move it too
@@ -86,18 +86,18 @@
 - **The Claude plan's 5 hours from Anthropic** (Settings → Agents → Plan usage → Ask Anthropic, off by default): Claude Code's status line only runs in a terminal and its answers give the 5 hours only near the limit, so from VS Code they never moved. Turned on, Lumo asks Anthropic for the plan's usage with Claude Code's own sign-in, as its /usage does: every 3 minutes while the island is open, and when the usage menu opens. The sign-in is read from Claude Code's credentials at each ask and never kept, logged or sent anywhere but api.anthropic.com. Without it, the usage menu says where to turn it on. The status line's figures now add to what is known instead of replacing it
 - **Allow simple requests from the closed island** (Settings → Island, on by default): when an agent asks to read files or run a command that only looks (`ls`, `git status`, `git log`, `grep`…, with no redirection or substitution), the closed island comes out with who asks, the command, and Deny and Allow. Nothing is ever allowed without a click, and clicks in the first moments are ignored; a click elsewhere on it opens the full card. Edits, writes and any other command open the full card as before. It covers Antigravity's commands (`run_command`) and the chat's own requests too
 - **The chat's Claude Code asks every time again**: set to Ask every time, a command, an edit or a web fetch of the chat's Claude Code comes up as an Allow / Deny card, whatever the Claude Code version. `claude -p` only asks its PermissionRequest hook in some versions, and denied the rest silently ("the command needs your approval and did not start"); the chat's run now adds a PreToolUse hook of its own for that run only (`--settings`), and your settings.json is not touched
-- **A right-click menu of Lumo's own**, instead of the webview's: on the island and its Live Activities, **Refresh** (also Ctrl+R or F5) asks everything again at once — the calendar, the emails and the other services, the plan usage, the agents' hooks and sessions, the weekly recap — and Cut, Copy, Paste and Select all are there in a text field. Settings → General → Right-click menu picks what else it offers: New chat, Open the chat, Timer: 5 minutes, Keep the island open, Sounds, Live Activities, Put the island back in the middle, Wardrobe, Settings, Quit Lumo. The Settings window has the text actions only. Linux reads the clipboard with wl-paste, xclip or xsel
+- **A right-click menu of Lumo's own**, instead of the webview's: on the island and its Live Activities, **Refresh** (also Ctrl+R or F5) asks everything again at once — the calendar, the emails and the other services, the plan usage, the agents' hooks and sessions, the weekly recap — and Cut, Copy, Paste and Select all are there in a text field. Settings → General → Right-click menu picks what else it offers: New chat, Open the chat, Timer: 5 minutes, Keep the island open, Sounds, Live Activities, Put the island back in the middle, Wardrobe, Settings, Quit Lumo. The Settings window has the text actions only
 - **The Live Activities follow the island's height** (Settings → Island, on by default): as tall as the open island, they grow and shrink with it when you resize it; turned off, they keep the height you give them
 - **A pasted or dropped file has its ×** in the chat, to take it out before sending
 - **The physics package's notation reads as math** in answers: `\dd`, `\dv`, `\pdv`, `\abs`, `\norm`, `\vb`, `\vu`, bra-kets, `\grad`, `\qty` and `\order` no longer show as their names ("dd"). The chat also tells the AI to write standard LaTeX, never a macro from your own files
 - **Past sessions in the Code section**: "All sessions" on a tool's card lists its recent sessions — project, when, how long, files, lines and commands — and a click reopens the project's folder in its editor or terminal
 - **Search the past chats**: a field at the top of the past chats finds words in questions and answers alike (accents and case aside), with the matching words highlighted; Enter opens the first, Escape clears the search
 - **The island lands where you drop it**: moved while open, it no longer shifts by the live activities' room when let go, and settles with a softer spring
-- The README shows the live activities, the closed island and a new email, lists 0.5.0's features and the Email and Calendar setup, and links the Linux AppImage directly
+- The README shows the live activities, the closed island and a new email, lists 0.5.0's features and the Email and Calendar setup
 
-## Windows and Linux 0.5.0 — October 9, 2026
+## Windows 0.5.0 — October 9, 2026
 
-- **Gemini Live types in the text box you clicked in**, in any app, when you ask it to write something there. It never presses Enter or sends: line breaks are Shift+Enter, or spaces in a terminal. Nothing is typed into Lumo itself or while a key like Ctrl is held. Linux needs `xdotool` (X11) or `wtype` (Wayland)
+- **Gemini Live types in the text box you clicked in**, in any app, when you ask it to write something there. It never presses Enter or sends: line breaks are Shift+Enter, or spaces in a terminal. Nothing is typed into Lumo itself or while a key like Ctrl is held
 - **Gemini Live asks its helper before saying it can't**: "add this to my calendar", "check my agenda", "draft an email" go to Claude Code (or Antigravity CLI) with the apps and accounts you connected to it, instead of Gemini answering that it can't
 - **Settings → Voice picks the helper's model**, and for Claude Code its effort, as the chat's picker does
 - **The model picker's Effort block takes half the height**: Faster and Smarter sit beside a thinner slider, so a small island leaves the model list its room
@@ -106,7 +106,7 @@
 - **The closed island says what is going on**, like a Dynamic Island: what the AI is doing ("Haiku · Reading main.ts", "Gemini Live · Looking at the screen", "Claude Code · Waiting for your OK"), and for a few seconds what just happened ("Haiku answered", a session that finished, a deploy). Nothing while nothing is going on. Settings → Island → Say what's going on turns it off
 - **The Email pill**: new emails in your inbox (Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an app password) show on the closed island with the sender, the subject and the first lines, and **Summarize**, **Draft a reply** and **Open**. Lumo only reads the inbox: emails stay unread, and nothing is ever sent, moved or deleted. The server says when one arrives (IMAP IDLE), so it shows within seconds. A refused sign-in says what to do (Gmail wants an app password, not the account's), and a long error no longer runs off the card
 - **Live activities beside the open island**: a second island with the timers (one click for 1, 5, 10 or 25 minutes, or type `15m pasta`), the music playing with its buttons, the calendar's next events and the newest emails with Summarize and Draft a reply. Its "–" folds it into an icon right of the "+" in the top bar, and that icon brings it back. The calendar is read from its secret iCal address (Settings → Island → Calendar), and an event about to start shows on the closed island ("Stand-up · in 5 min")
-- **Italiano**: the island, the settings and the tray in Italian (Settings → General → Language, or System on an Italian Windows or Linux)
+- **Italiano**: the island, the settings and the tray in Italian (Settings → General → Language, or System on an Italian Windows)
 - **Math in answers**: formulas ($…$, $$…$$) are drawn as math — fractions, roots, vectors, ℝ, sums, matrices — instead of showing as TeX
 - **Antigravity CLI runs what you allow**: with Lumo's Antigravity hooks, Allow on a command's card now lets it run (headless agy ignored a hook's allow and refused it anyway); no click is a refusal
 - **The chat's lists close on a click outside**: the models, the past chats, the screen menu and the permissions
@@ -117,13 +117,13 @@
 - **Emails read right**: senders and subjects in Windows-1252 ("McDonald’s") and HTML entities (&rsquo;, &egrave;…) no longer show as "�"
 - **Emails in the live activities**: a click on one opens it, and the eye puts it away so the next one moves up. New emails show sooner: Lumo also looks every 20 seconds, fetching only the new ones
 - **Any model sets timers**: ask the chat for one, whichever model answers, and it starts on the island
-- **Timers and the music on the closed island**: ask Gemini Live for a timer, or type `/timer 10m pasta` in the chat, and it counts down next to Lumo and rings at the end. The music playing (the system's media controls on Windows, MPRIS on Linux) shows with previous, play/pause and next, and Gemini Live can play, pause and skip. Settings → Island → Show the music playing turns it off
+- **Timers and the music on the closed island**: ask Gemini Live for a timer, or type `/timer 10m pasta` in the chat, and it counts down next to Lumo and rings at the end. The music playing (the system's media controls) shows with previous, play/pause and next, and Gemini Live can play, pause and skip. Settings → Island → Show the music playing turns it off
 - **The Claude plan's 5-hour limit shows again**: while it is low Claude Code leaves its figure out, and the line now says "plenty left" instead of showing the week alone
 - **A sharing shortcut's island waits for your question**: after Ctrl+Alt+X (or Ctrl+Alt+P) it no longer folds as soon as the mouse is elsewhere; it stays a few seconds, longer while you type, and a click outside closes it at once
 - **"Claude Code answered" no longer looks busy**: the line under a call says it without the moving dots, and goes after a few seconds
-- **Lumo's own names everywhere**: settings in `%APPDATA%\com.rccrd12.lumo` (`~/.config/lumo`), the relay, the inbox, the log (`lumo.log`), the recap and the chat history in `%LOCALAPPDATA%\com.rccrd12.lumo` (`~/.local/share/lumo`), the keys under `com.rccrd12.lumo` in the keychain, Claude Code's folder `~/Lumo`. Everything moves there by itself at the first launch. Hooks installed before keep working; Settings → Agents → Reinstall points them at the new folder. On Linux the command is `lumo` (a desktop shortcut bound to the old one needs `lumo --shortcut …`) and the variables are `LUMO_X11`, `LUMO_DOCK`, `LUMO_LAYER_SHELL` and `LUMO_ANTHROPIC_BASE_URL`. From 0.3.1 or earlier, uninstall the old app before installing this one
+- **Lumo's own names everywhere**: settings in `%APPDATA%\com.rccrd12.lumo`, the relay, the inbox, the log (`lumo.log`), the recap and the chat history in `%LOCALAPPDATA%\com.rccrd12.lumo`, the keys under `com.rccrd12.lumo` in the keychain, Claude Code's folder `~/Lumo`. Everything moves there by itself at the first launch. Hooks installed before keep working; Settings → Agents → Reinstall points them at the new folder. The variable is `LUMO_ANTHROPIC_BASE_URL`. From 0.3.1 or earlier, uninstall the old app before installing this one
 
-## Windows and Linux 0.4.0 — October 9, 2026
+## Windows 0.4.0 — October 9, 2026
 
 - **Talk with Gemini Live**: the microphone button in the chat box, or `Ctrl+Alt+L` from any app, starts a spoken call with Gemini 3.8 Live or Gemini 3.8 Live Extended Thinking, with your Google AI key. You can speak over it, type to it or turn the microphone off; what is said is written in the island as you go, and kept in the past chats. Gemini looks at the screen by itself when it needs to (Windows; Settings → Voice can turn that off), sees the open windows and the folder open in File Explorer, finds files by name, reads text files, images, folders, PDFs and Office documents, opens documents, folders and web pages, starts apps by name, and hands anything else to Claude Code or Antigravity CLI, whose actions come up as Allow / Deny cards over the call. The call goes on when the island closes, moves to a new connection when Google asks without you hearing it, and ends on its own after 5 minutes of silence. The key never leaves the keychain: each connection opens with a short-lived token
 - **Settings → Voice**: the Google AI key, the model, Extended Thinking's level, the voice (30 of Google's), whether Gemini may look at the screen, and the helper
@@ -131,7 +131,7 @@
 - **Lumo moves with the chat too**: blue and busy while it writes its answer, a green hop when the answer comes, a red shake if it fails. Before, he stayed still while the chat wrote
 - **The wardrobe is in two parts**, side by side, each with its title: **Outfits** (auto, none, the leaf, the round glasses, the bow tie, the headphones and the scarf) and **Lumo's style** (Filo, Punto, Goccia or Lucciola, the same choice as Settings → Island → Lumo's look). Rest the pointer on a button to try it on, click to keep it, as before
 
-## Windows and Linux 0.3.2 — October 9, 2026
+## Windows 0.3.2 — October 9, 2026
 
 - **The launch greeting is centred and whole again**: it keeps its own size, whatever size you dragged the island to, and is drawn for the island's zoom and the display it is on, so it is no longer cut off on one side. Resting the mouse on it no longer holds it on screen: it settles into the compact island on its own
 - **Moving the island to another display** no longer cuts Lumo and the pills' mini Lumos: every drawing follows the new display's scale, and the window is put back in place and at the right size after Windows rescales it
@@ -146,7 +146,7 @@
 - **The relay is `lumo-hook`** (`lumo-hook.exe` on Windows) instead of its earlier name. Lumo still puts the same relay beside it under the old name, so the hooks Claude Code and the other agents already have keep working; installing them again from Settings → Agents moves them to the new name
 - **The Windows app is `lumo.exe`**. Installing over an older Lumo closes and removes the exe it had before, and its Start menu and desktop shortcuts and its autostart entry start `lumo.exe`
 
-## Windows and Linux 0.3.1 — October 8, 2026
+## Windows 0.3.1 — October 8, 2026
 
 - **The app and its character are now called Lumo**, a small ring of light, instead of the names of the original project, which belong to it. Running the new installer over 0.3.0 replaces it (0.3.0's own Update now does not find it, since the repository is now called Lumo): one app, one Start menu entry, one autostart entry, with your settings, keys, hooks and history kept
 - **Lumo has his own look**: a ring of light with two lit eyes, whose colour tells what is going on. He breathes softly at rest; blue, he pulses and reads along while an agent works; orange, his light beats twice and sends out a ripple when it waits for you; red, he flashes and shakes, then shows × eyes on an error; green, he hops and smiles ^^ when it is done. The app icon, the launch greeting, the file drop and the weekly recap image show him too. The wardrobe (and Settings → Island → Lumo's look) offers three more looks: Punto, a dot of light, Goccia, a soft drop, and Lucciola, the firefly with clear wings and a glowing tail. The outfits fit every look
@@ -171,20 +171,20 @@
 - **Stop, edit and copy in the chat**: the send button turns into Stop while an answer is written (Escape too), and what was already written stays. Under the mouse, a question can be copied or edited (sending the edit replaces it and what followed), and every answer has a Copy button. You can type the next question while an answer comes
 - **See what the chat is doing**: next to the typing dots, a quiet line says what the answer is busy with. With Claude Code it follows each step (Thinking…, Reading report.pdf, Searching for a pattern, Running a command, Editing main.rs, Searching the web, Looking at the screen, Using a tool) and comes back whenever it returns to its tools between bits of text. The other providers show the file or the screenshots they were given, then Thinking…
 
-## Windows and Linux 0.3.0 — October 8, 2026
+## Windows 0.3.0 — October 8, 2026
 
 - **Chat with your Claude plan**: a Claude Code choice in the model picker runs your own `claude` CLI, signed in with your subscription, with no API key. It reads the files you drop or attach, can edit files and run commands, and every permission is an Allow/Deny card in the island. Pick its effort level under the models
 - **The chat is the home screen**: the island opens on the chat, with three quick starts in a new one. Claude Code and the other agents have their own Agents tab, with a blue dot while a session works and an orange one when it waits for you. The island takes the keyboard only after a click or a shortcut
 - **Ask from anywhere**: `Ctrl+Alt+P` opens the chat with a screenshot of the screen under the mouse, `Ctrl+Alt+X` with the text selected in the app in front (a PDF, a web page). Each waits as a chip until you type the question and press Enter; the clipboard is put back as it was
 - **Chats**: start a new chat, reopen or delete past ones, attach a file with the paperclip
 - **Your screen, when you ask**: a screen button in the chat sends the list of open windows or a screenshot of one or every display, after a preview you confirm. Nothing is captured before you click (Windows)
-- **The island** is bigger by default (115 %, 80–160 % in Settings or Ctrl +/−/0) with bigger icons (125 %, 100–150 %). Drag it by its top bar and let go near any edge of the screen: it docks there, upright on the sides, centred near the middle, with a bounce. Resize it from any free edge or corner; a double click puts the usual size back. A power button quits the app (Windows; on Linux the island stays at the top)
+- **The island** is bigger by default (115 %, 80–160 % in Settings or Ctrl +/−/0) with bigger icons (125 %, 100–150 %). Drag it by its top bar and let go near any edge of the screen: it docks there, upright on the sides, centred near the middle, with a bounce. Resize it from any free edge or corner; a double click puts the usual size back. A power button quits the app
 - **Settings** are split into sections, with an Updates section that checks GitHub for a newer Windows release and runs its installer, only when you click
 - The chat's answers no longer show up as a finished VS Code session
 
-## Windows and Linux 0.2.0 — October 8, 2026
+## Windows 0.2.0 — October 8, 2026
 
-The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — everything except Apple Music and the iPhone, which depend on macOS and iCloud.
+The Windows app catches up with the Mac, from 0.1.1 to 0.2.1 — everything except Apple Music and the iPhone, which depend on macOS and iCloud.
 
 - **Agents**: Codex, GitHub Copilot CLI and Muse Code sessions with Allow / Deny in the island; Gemini CLI, Antigravity, Cursor Agent, OpenCode, Amp and Hermes sessions on their own pills; Claude Code sessions from the Claude app on Windows. Install them all from Settings → Agents, which shows the diff and takes a dated backup before writing — one hardened writer for every agent's config (#278 by @Totopo27, #298 by @kobaltgit, #231 by @BeyondBirthday07)
 - **Questions**: answer Claude Code's multiple-choice questions from the island; answers are checked against the questions asked, and a question answered in the terminal takes the card down (#216 by @PythonTilk)
@@ -193,13 +193,12 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 - **Plan usage**: Claude's 5-hour and weekly limits and Codex's, in the island header (#171 by @AinzDerErste)
 - **Live diff**: each file Claude edits shows in the ticker with its +N −M, and a click opens the diff; the finished card shows Claude's final message
 - **GitHub**: your pull requests with their CI, reviews waiting for you, the CI of your default branches, alerts when CI turns red or green, and your contribution grid
-- **Mochi**: the wardrobe and seasonal outfits, the new greeting and its sound, and Mochi on the desktop (Windows, X11 and layer-shell compositors)
+- **Mochi**: the wardrobe and seasonal outfits, the new greeting and its sound, and Mochi on the desktop
 - **Keyboard shortcuts** from anywhere, changeable in Settings → Shortcuts; the defaults never type an AltGr character on French, German, Spanish, Italian or Portuguese keyboards
 - **Weekly recap** on Monday mornings, shareable as an image; history stays on your computer
 - **Pills**: declare the tools you use and pick your main one; hook-based pills no longer ask for a key; "Open terminal" brings the session's own window forward on Windows
 - **10 languages**: English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português (Brasil), Русский, Bahasa Indonesia — Settings → General → Language (#228; picker from #226 by @alexisrja)
 - **File drop** works from every Explorer view, and Cancel works (#240 by @KauaDc, #126); only files a real drop delivered can be read
-- **Linux**: auto-close on KDE/Wayland and GNOME (#160 by @4rchila, #136), the island at the top on GNOME (#149 by @betodoescher), pinned to its display on Hyprland and Sway with a display picker (#227 by @chuxclay), GNOME large text no longer cuts the island (#122), an Arch Linux PKGBUILD (#299 by @FabioLukas123, #230)
 - The step ticker no longer stops at a session's 20th step (#265 by @PythonTilk), ticker steps keep their own line (from #203 by @shakibbinkabir), `tauri dev` no longer crashes on EBUSY (#202 by @Andrev-91)
 
 ## 0.2.2 — October 8, 2026
@@ -307,7 +306,6 @@ The Windows and Linux app catches up with the Mac, from 0.1.1 to 0.2.1 — every
 
 - Declare the tools you use in Settings: Gemini CLI, Antigravity, Anthropic, Google AI and OpenAI pills join the existing ones (Cursor and Codex pills are coming soon), and you pick the main pill.
 - Chat now supports Google AI (Gemini) and OpenAI in addition to Anthropic; switch provider and model by clicking the model name in the chat view, on macOS.
-- Linux version: the Tauri app now builds for Linux too (AppImage, .deb, .rpm), with the island as a layer-shell overlay on Wayland and Claude Code hooks over a private Unix socket (#21) — thanks @Davy133
 - Compact island on screens without a notch (#22) — thanks @Kamasoutra
 - Only web links (http/https) open from the notch; other kinds of links from Claude or integrations are ignored (#16) — thanks @Cris1670
 - Hook socket limited to your own user account, with size and time limits; logs no longer keep commands, n8n data or full URLs, and stay under 1 MB (#16) — thanks @Cris1670 and @Vignesh-Thangamariappan

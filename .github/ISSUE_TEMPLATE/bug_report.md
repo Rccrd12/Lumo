@@ -10,6 +10,6 @@ labels: bug
 
 **How to reproduce**
 
-**Windows or Linux version** (e.g. Windows 11 24H2, or Ubuntu 24.04 with GNOME)
+**Windows version** (e.g. Windows 11 24H2)
 
 **Lumo version**

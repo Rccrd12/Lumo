@@ -9,7 +9,7 @@
 //   * an edit refuses values of an unexpected type instead of replacing them;
 //   * a dated backup of the current bytes is taken first and must succeed;
 //   * the new contents are written beside the target and renamed over it,
-//     keeping its permissions, and through a symlink to the file it points at.
+//     through a symlink to the file it points at.
 //
 // Nothing here decides *what* to change: callers hand in an `Edit` per file.
 
@@ -268,11 +268,9 @@ fn back_up(path: &Path, bytes: &[u8]) -> std::io::Result<PathBuf> {
         let copy = backup_name(path, &stamp, n);
         let mut options = std::fs::OpenOptions::new();
         options.write(true).create_new(true);
-        #[cfg(unix)]
-        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
         match options.open(&copy) {
             Ok(mut file) => {
-                let written = write_whole(&mut file, bytes).and_then(|()| keep_mode(&file, path));
+                let written = write_whole(&mut file, bytes);
                 drop(file);
                 if let Err(err) = written {
                     let _ = std::fs::remove_file(&copy);
@@ -293,32 +291,12 @@ fn write_whole(file: &mut std::fs::File, bytes: &[u8]) -> std::io::Result<()> {
     file.sync_all()
 }
 
-/// Gives `file` the permissions of `original` (ours only when there is none).
-/// A config can hold API keys: a rewrite or a backup must never widen access.
-fn keep_mode(file: &std::fs::File, original: &Path) -> std::io::Result<()> {
-    #[cfg(unix)]
-    {
-        use std::os::unix::fs::PermissionsExt;
-        let mode = std::fs::metadata(original)
-            .map(|m| m.permissions().mode() & 0o777)
-            .unwrap_or(0o600);
-        file.set_permissions(std::fs::Permissions::from_mode(mode))?;
-    }
-    #[cfg(not(unix))]
-    let _ = (file, original);
-    Ok(())
-}
-
-/// Writes `bytes` to `temp`, which is about to replace `original`: created
-/// readable by us only, then given the original's permissions.
-pub fn write_like(temp: &Path, original: &Path, bytes: &[u8]) -> std::io::Result<()> {
+/// Writes `bytes` to `temp`, whole, before it replaces a config.
+pub fn write_like(temp: &Path, bytes: &[u8]) -> std::io::Result<()> {
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let mut file = options.open(temp)?;
-    write_whole(&mut file, bytes)?;
-    keep_mode(&file, original)
+    write_whole(&mut file, bytes)
 }
 
 /// The file a symlinked config points at (on Windows too), else `path` itself.
@@ -344,7 +322,7 @@ fn replace(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
 
     let name = path.file_name().unwrap_or_default().to_string_lossy();
     let temp = path.with_file_name(format!("{name}.lumo-{}", std::process::id()));
-    let result = write_like(&temp, path, bytes).and_then(|()| std::fs::rename(&temp, path));
+    let result = write_like(&temp, bytes).and_then(|()| std::fs::rename(&temp, path));
     if result.is_err() {
         let _ = std::fs::remove_file(&temp);
     }
@@ -617,27 +595,6 @@ pub mod tests {
             let v: Value = serde_json::from_slice(&std::fs::read(p).unwrap()).unwrap();
             assert_eq!(v["ours"], true);
         }
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[cfg(unix)]
-    #[test]
-    fn rewriting_keeps_permissions_and_symlinks() {
-        use std::os::unix::fs::PermissionsExt;
-        let dir = scratch("perm");
-        let real = dir.join("dotfiles-settings.json");
-        let link = dir.join("settings.json");
-        std::fs::write(&real, b"{}").unwrap();
-        std::fs::set_permissions(&real, std::fs::Permissions::from_mode(0o640)).unwrap();
-        std::os::unix::fs::symlink(&real, &link).unwrap();
-
-        let backups = apply(&add_ours(&link), &fingerprint(b"{}")).unwrap();
-        assert!(std::fs::symlink_metadata(&link).unwrap().file_type().is_symlink());
-        let v: Value = serde_json::from_slice(&std::fs::read(&real).unwrap()).unwrap();
-        assert_eq!(v["ours"], true);
-        let mode = |p: &Path| std::fs::metadata(p).unwrap().permissions().mode() & 0o777;
-        assert_eq!(mode(&real), 0o640);
-        assert_eq!(mode(&backups[0]), 0o640);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

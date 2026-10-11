@@ -1277,7 +1277,7 @@ export function buildPrompt(
   //
   // Only while the setting is on, and only when the text field takes focus or
   // a message went: the folder's name, for the chip. Its listing is taken when
-  // the message goes. Linux (nothing found) or an error: no chip, nothing sent.
+  // the message goes. Nothing found or an error: no chip, nothing sent.
 
   let peeking = false;
   let peekedAt = -Infinity;

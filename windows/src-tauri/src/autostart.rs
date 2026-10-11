@@ -1,7 +1,7 @@
 // "Open at login".
 //
 // The autostart plugin names its entry after the app (productName): the
-// `HKCU\…\Run` value on Windows, `~/.config/autostart/<name>.desktop` on Linux.
+// `HKCU\…\Run` value.
 // At every launch the entry left under the app's old name (migrate.rs) is
 // removed, so the app never starts twice, and with autostart on the current
 // entry is written again, so it points at this exe wherever it now lives.

@@ -1,10 +1,10 @@
 // Relay server for lumo-hook.
 //
-// Windows: the named pipe `\\.\pipe\lumo-<sid>`, one instance per connection.
-// Linux: the Unix socket `$XDG_RUNTIME_DIR/lumo.sock`. Every hook event is
-// forwarded to the island as a `hook` event. `PermissionRequest` is the only one
-// that keeps its connection open: it waits for the island's decision and writes
-// it back on the same connection, which is how approving from the island works.
+// The named pipe `\\.\pipe\lumo-<sid>`, one instance per connection. Every
+// hook event is forwarded to the island as a `hook` event. `PermissionRequest`
+// is the only one that keeps its connection open: it waits for the island's
+// decision and writes it back on the same connection, which is how approving
+// from the island works.
 //
 // Claude Code is never blocked by us. Three things guarantee it:
 //   * lumo-hook gives the connection 300 ms and exits cleanly if we are closed;
@@ -28,7 +28,6 @@ use std::time::Duration;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter, Manager};
 use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
-#[cfg(windows)]
 use tokio::net::windows::named_pipe::{NamedPipeServer, ServerOptions};
 use tokio::sync::mpsc;
 
@@ -62,14 +61,12 @@ pub struct Pending(pub Mutex<HashMap<String, mpsc::Sender<Reply>>>);
 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// `\\.\pipe\lumo-<sid>` — must match lumo-hook's `pipe_path()` exactly.
-#[cfg(windows)]
 pub fn pipe_name() -> String {
     let key = crate::platform::current_user_sid()
         .unwrap_or_else(|| std::env::var("USERNAME").unwrap_or_else(|_| "user".into()));
     format!(r"\\.\pipe\lumo-{key}")
 }
 
-#[cfg(windows)]
 pub fn start(app: AppHandle) {
     tauri::async_runtime::spawn(async move {
         let name = pipe_name();
@@ -102,55 +99,6 @@ pub fn start(app: AppHandle) {
     });
 }
 
-#[cfg(target_os = "linux")]
-pub fn start(app: AppHandle) {
-    use std::os::unix::fs::PermissionsExt;
-    use tokio::net::UnixListener;
-
-    tauri::async_runtime::spawn(async move {
-        let Some(path) = crate::platform::relay_socket_path() else {
-            log::line("no private runtime directory ($XDG_RUNTIME_DIR) — Claude Code hooks are inactive");
-            return;
-        };
-        // A socket file left behind by a crash answers nothing and can go. One
-        // that answers belongs to a Lumo that is still running: like
-        // first_pipe_instance on Windows, we refuse to serve on top of it.
-        if path.exists() {
-            if std::os::unix::net::UnixStream::connect(&path).is_ok() {
-                log::line("another Lumo already serves the relay socket");
-                return;
-            }
-            let _ = std::fs::remove_file(&path);
-        }
-        let listener = match UnixListener::bind(&path) {
-            Ok(l) => l,
-            Err(err) => {
-                log::line(format!("cannot open the relay socket: {err}"));
-                return;
-            }
-        };
-        // The runtime directory is already 0700; this is belt and braces.
-        let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
-        let uid = unsafe { libc::getuid() };
-        loop {
-            let stream = match listener.accept().await {
-                Ok((stream, _)) => stream,
-                Err(_) => {
-                    tokio::time::sleep(Duration::from_millis(200)).await;
-                    continue;
-                }
-            };
-            // Only the relay run by our own user may drive the island.
-            if !matches!(stream.peer_cred(), Ok(c) if c.uid() == uid) {
-                log::line("refused a relay connection from another user");
-                continue;
-            }
-            let app = app.clone();
-            tauri::async_runtime::spawn(async move { handle(app, stream).await });
-        }
-    });
-}
-
 /// One accepted relay connection, whatever carries it.
 trait Relay: AsyncRead + AsyncWrite + Unpin {
     /// Ends the conversation once everything has been written.
@@ -161,7 +109,6 @@ trait Relay: AsyncRead + AsyncWrite + Unpin {
     }
 }
 
-#[cfg(windows)]
 impl Relay for NamedPipeServer {
     fn finish(&mut self) {
         let _ = self.disconnect();
@@ -171,10 +118,6 @@ impl Relay for NamedPipeServer {
         crate::platform::pipe_client_pid(self.as_raw_handle())
     }
 }
-
-/// Dropping the stream closes it; the relay reads up to our newline first.
-#[cfg(target_os = "linux")]
-impl Relay for tokio::net::UnixStream {}
 
 async fn handle(app: AppHandle, mut pipe: impl Relay) {
     let mut buf = Vec::new();

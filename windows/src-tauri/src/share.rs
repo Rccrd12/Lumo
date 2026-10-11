@@ -3,12 +3,12 @@
 // what it shows, not only its name. Only when the user picks it, from a list
 // the menu asks for when it opens.
 //
-// Windows: a window's text is read through UI Automation, the interface
+// A window's text is read through UI Automation, the interface
 // screen readers use (the page in a browser, the document in Word or
 // Notepad, the lines of a list…). The document a window shows, when it is
 // found on disk (desk.rs), goes as its path for the CLIs to read.
 //
-// Tabs, on Windows: listed from the browser windows themselves, through UI
+// Tabs are listed from the browser windows themselves, through UI
 // Automation — each window's tab strip names its tabs and which one is on
 // screen, and the page on screen gives its address. (Edge and Chrome lock
 // their session file while they run, so it can't be read there.) The tab on
@@ -17,12 +17,12 @@
 // forward in its window for a moment — with the user's login, exactly what
 // they would see — then puts back the tab that was there.
 //
-// Tabs, on Linux: Edge, Chrome and Chromium keep their open tabs (address and
-// title) in their session file, read here and never written. With no UI
-// Automation there, a tab's page is downloaded from its address — without the
-// user's cookies, so a page that needs a login shows what anyone would see.
-// Nothing is fetched until the user picks the tab, and only http and https
-// addresses.
+// When a browser's window gives no tab strip, its open tabs (address and
+// title) come from its session file, read here and never written. A tab found
+// that way that can't be read on screen is downloaded from its address —
+// without the user's cookies, so a page that needs a login shows what anyone
+// would see. Nothing is fetched until the user picks the tab, and only http
+// and https addresses.
 //
 // The page only ever names what Rust listed: a window or a tab that was not
 // in the last list is never read, so a script in the page cannot point Lumo
@@ -74,8 +74,8 @@ pub struct SharedWindow {
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BrowserTab {
-    /// What the page names it by: "<browser>|<profile>|<tab>" (Linux),
-    /// "<browser>|<window>|<place in its tab strip>" (Windows).
+    /// What the page names it by: "<browser>|<window>|<place in its tab strip>",
+    /// or "<browser>|<profile>|<tab>" for a tab from a session file.
     pub id: String,
     /// "Edge" or "Chrome".
     pub browser: String,
@@ -564,31 +564,17 @@ struct Browser {
     name: &'static str,
     /// The executable, as screen.rs names a window's app.
     exe: &'static str,
-    /// The profiles' folder, under %LOCALAPPDATA% on Windows, ~/.config on Linux.
+    /// The profiles' folder, under %LOCALAPPDATA%.
     dir: &'static str,
 }
 
-#[cfg(windows)]
 const BROWSERS: &[Browser] = &[
     Browser { name: "Edge", exe: "msedge", dir: "Microsoft\\Edge\\User Data" },
     Browser { name: "Chrome", exe: "chrome", dir: "Google\\Chrome\\User Data" },
 ];
 
-#[cfg(not(windows))]
-const BROWSERS: &[Browser] = &[
-    Browser { name: "Edge", exe: "msedge", dir: "microsoft-edge" },
-    Browser { name: "Chrome", exe: "chrome", dir: "google-chrome" },
-    Browser { name: "Chromium", exe: "chromium", dir: "chromium" },
-];
-
 fn profiles_root(browser: &Browser) -> Option<PathBuf> {
-    #[cfg(windows)]
     let base = std::env::var_os("LOCALAPPDATA").map(PathBuf::from)?;
-    #[cfg(not(windows))]
-    let base = std::env::var_os("XDG_CONFIG_HOME")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| crate::platform::home_dir().join(".config"));
     let root = base.join(browser.dir);
     root.is_dir().then_some(root)
 }
@@ -626,22 +612,17 @@ fn session_file(profile: &Path) -> Option<PathBuf> {
     best.map(|(_, p)| p)
 }
 
-/// The browser has a window open (Windows), or holds its profile lock (Linux).
-fn is_running(browser: &Browser, root: &Path, apps: &HashSet<String>) -> bool {
-    if cfg!(windows) {
-        apps.contains(browser.exe)
-    } else {
-        let _ = apps;
-        root.join("SingletonLock").symlink_metadata().is_ok()
-    }
+/// The browser has a window open.
+fn is_running(browser: &Browser, apps: &HashSet<String>) -> bool {
+    apps.contains(browser.exe)
 }
 
-/// The tabs a browser's session files list (Linux; on Windows, only if a
-/// browser's window gave none — its file is locked while it runs).
+/// The tabs a browser's session files list, only if a browser's window gave
+/// none (its file is locked while it runs).
 fn session_tabs(browser: &Browser, apps: &HashSet<String>) -> Vec<BrowserTab> {
     let mut out = Vec::new();
     let Some(root) = profiles_root(browser) else { return out };
-    if !is_running(browser, &root, apps) {
+    if !is_running(browser, apps) {
         return out;
     }
     let wanted = open_profiles(&root);
@@ -670,8 +651,8 @@ fn session_tabs(browser: &Browser, apps: &HashSet<String>) -> Vec<BrowserTab> {
     out
 }
 
-/// The tabs of the browsers' windows, from each window's tab strip (Windows:
-/// UI Automation; nothing on Linux). The tab on screen has its page's title
+/// The tabs of the browsers' windows, from each window's tab strip (UI
+/// Automation). The tab on screen has its page's title
 /// and address; the others, the name the strip gives them.
 fn strip_tabs(windows: &[WindowInfo]) -> Vec<BrowserTab> {
     let browsers: Vec<(&WindowInfo, &Browser)> = windows
@@ -714,7 +695,7 @@ fn strip_tabs(windows: &[WindowInfo]) -> Vec<BrowserTab> {
 
 /// Every tab open in Edge and Chrome, browser by browser. Blocking.
 pub fn tabs() -> Result<Vec<BrowserTab>, String> {
-    let windows = if cfg!(windows) { crate::screen::windows().unwrap_or_default() } else { Vec::new() };
+    let windows = crate::screen::windows().unwrap_or_default();
     let mut out = strip_tabs(&windows);
     let apps: HashSet<String> = windows.iter().map(|w| w.app.to_ascii_lowercase()).collect();
     for browser in BROWSERS {
@@ -766,10 +747,10 @@ pub fn read_windows(ids: &[i64]) -> Result<Vec<SharedWindow>, String> {
     Ok(out)
 }
 
-/// The text of a tab on screen that a session file listed (Windows, when its
-/// browser's window gave no tab strip), read from the window titled after it.
+/// The text of a tab on screen that a session file listed (when its browser's
+/// window gave no tab strip), read from the window titled after it.
 fn read_on_screen(tab: &BrowserTab, max: usize) -> String {
-    if !cfg!(windows) || !tab.active {
+    if !tab.active {
         return String::new();
     }
     let exe = BROWSERS.iter().find(|b| b.name == tab.browser).map(|b| b.exe).unwrap_or_default();
@@ -996,8 +977,7 @@ pub enum FrontPage {
 }
 
 /// "Ask about this page" (Ctrl+Alt+B): the tab on screen in the front-most
-/// Edge or Chrome window (Linux: the first window's tab on screen, from the
-/// session file). A tab that shows a file goes to the chat as that file, copied
+/// Edge or Chrome window. A tab that shows a file goes to the chat as that file, copied
 /// into the inbox like a drop — Claude reads the PDF itself rather than the
 /// text the viewer happens to show. Any other tab goes as its page's text.
 pub async fn front_page_or_file() -> Result<FrontPage, String> {
@@ -1069,7 +1049,7 @@ fn local_file(url: &str) -> Option<PathBuf> {
         // file://localhost/… is file:///….
         let rest = if rest.to_ascii_lowercase().starts_with("localhost/") { rest[9..].to_string() } else { rest };
         if let Some(local) = rest.strip_prefix('/') {
-            // file:///C:/… is C:/… on Windows; file:///home/… is /home/… elsewhere.
+            // file:///C:/… is C:/…; a path without a drive is no file here.
             let drive = local.as_bytes();
             if drive.len() >= 2 && drive[0].is_ascii_alphabetic() && drive[1] == b':' {
                 local.to_string()
@@ -1084,13 +1064,11 @@ fn local_file(url: &str) -> Option<PathBuf> {
         let b = url.as_bytes();
         let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
         let unc = url.starts_with("\\\\");
-        let unix = cfg!(not(windows)) && url.starts_with('/');
-        if !(drive || unc || unix) {
+        if !(drive || unc) {
             return None;
         }
         url.to_string()
     };
-    #[cfg(windows)]
     let raw = raw.replace('/', "\\");
     let path = PathBuf::from(raw);
     path.is_file().then_some(path)
@@ -1136,7 +1114,7 @@ fn usual_place_file(title: &str) -> Option<PathBuf> {
     if name.contains(['/', '\\']) {
         return None;
     }
-    let home = std::env::var_os(if cfg!(windows) { "USERPROFILE" } else { "HOME" })?;
+    let home = std::env::var_os("USERPROFILE")?;
     let home = PathBuf::from(home);
     ["Downloads", "Desktop", "Documents"].iter().map(|dir| home.join(dir).join(&name)).find(|p| p.is_file())
 }
@@ -1195,61 +1173,6 @@ pub fn window_shot(id: i64) -> Result<crate::screen::Shot, String> {
 
 // ── UI Automation ───────────────────────────────────────────────────────────
 
-#[cfg(not(windows))]
-mod imp {
-    use super::StripEntry;
-
-    /// No UI Automation on Linux: windows give their titles only, and the
-    /// browsers' tabs come from their session files.
-    pub struct Reader;
-
-    /// A tab in a browser window's tab strip.
-    pub struct StripTab {
-        pub entry: StripEntry,
-        pub selected: bool,
-    }
-
-    /// A page a browser window shows.
-    pub struct ShownPage {
-        pub title: String,
-        pub url: String,
-    }
-
-    /// A browser window's tabs, and the pages it shows.
-    #[derive(Default)]
-    pub struct BrowserWindow {
-        pub tabs: Vec<StripTab>,
-        pub pages: Vec<ShownPage>,
-    }
-
-    impl Reader {
-        pub fn new() -> Option<Reader> {
-            None
-        }
-
-        pub fn window_text(&self, _id: i64, _max: usize) -> String {
-            String::new()
-        }
-
-        pub fn browser_window(&self, _id: i64) -> BrowserWindow {
-            BrowserWindow::default()
-        }
-
-        pub fn is_selected(&self, _tab: &StripTab) -> bool {
-            false
-        }
-
-        pub fn select(&self, _tab: &StripTab) -> bool {
-            false
-        }
-
-        pub fn page_text(&self, _page: &ShownPage, _max: usize) -> String {
-            String::new()
-        }
-    }
-}
-
-#[cfg(windows)]
 mod imp {
     use ::windows::core::Interface;
     use ::windows::Win32::Foundation::HWND;

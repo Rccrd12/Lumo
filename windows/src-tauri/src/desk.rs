@@ -134,7 +134,6 @@ fn locate(name: &str, search: bool) -> Option<PathBuf> {
         .find(|p| p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(name)))
 }
 
-#[cfg(windows)]
 fn recent(name: &str) -> Option<PathBuf> {
     let dir = std::env::var_os("APPDATA").map(PathBuf::from)?.join("Microsoft\\Windows\\Recent");
     let link = dir.join(format!("{name}.lnk"));
@@ -146,7 +145,6 @@ fn recent(name: &str) -> Option<PathBuf> {
 }
 
 /// Where a .lnk points (IShellLink).
-#[cfg(windows)]
 fn shortcut_target(link: &Path) -> Option<PathBuf> {
     use windows::core::{Interface, HSTRING};
     use windows::Win32::System::Com::{
@@ -165,23 +163,6 @@ fn shortcut_target(link: &Path) -> Option<PathBuf> {
         let path = String::from_utf16_lossy(&buf[..len]);
         (!path.is_empty()).then(|| PathBuf::from(path))
     }
-}
-
-/// Linux: the desktop's list of recently used files (recently-used.xbel).
-#[cfg(not(windows))]
-fn recent(name: &str) -> Option<PathBuf> {
-    let file = crate::platform::home_dir().join(".local/share/recently-used.xbel");
-    let text = std::fs::read_to_string(file).ok()?;
-    let mut best = None;
-    for part in text.split("href=\"file://").skip(1) {
-        let Some(end) = part.find('"') else { continue };
-        let path = crate::explorer::percent_decode_text(&part[..end])?;
-        let p = PathBuf::from(&path);
-        if p.file_name().is_some_and(|n| n.to_string_lossy().eq_ignore_ascii_case(name)) && p.is_file() {
-            best = Some(p);
-        }
-    }
-    best
 }
 
 /// Found paths, by name, for a minute: a question every few seconds does not

@@ -1,7 +1,7 @@
 // Global keyboard shortcuts — port of HotKeyCenter.swift + ShortcutLogic.swift.
 //
 // The shortcuts are registered from Rust through tauri-plugin-global-shortcut
-// (RegisterHotKey on Windows, XGrabKey on X11). A press is handed to the island
+// (RegisterHotKey). A press is handed to the island
 // as a `shortcut` event carrying the action id; the island does the rest, the
 // same way it handles the tray menu. The wardrobe is the exception: it goes out
 // as its own `open-wardrobe` event, which the wardrobe view listens to.
@@ -77,8 +77,7 @@ pub const ACTIONS: &[ActionDef] = &[
     // Mochi on the desktop is not in this version.
     action("desktopToggle", "Ctrl+Alt+D", true, false),
     action("wardrobeToggle", "Ctrl+Alt+G", true, true),
-    // Not on the Mac: see the top of this file. On Linux, where there is no
-    // screenshot yet, the island says so.
+    // Not on the Mac: see the top of this file.
     action("askScreen", "Ctrl+Alt+P", true, true),
     action("askSelection", "Ctrl+Alt+X", true, true),
     // Starts or ends a spoken conversation with Gemini Live (live.rs).
@@ -88,7 +87,8 @@ pub const ACTIONS: &[ActionDef] = &[
     action("askPage", "Ctrl+Alt+B", true, true),
 ];
 
-pub fn find(id: &str) -> Option<&'static ActionDef> {
+#[cfg(test)]
+fn find(id: &str) -> Option<&'static ActionDef> {
     ACTIONS.iter().find(|a| a.id == id)
 }
 
@@ -135,7 +135,7 @@ pub enum Status {
     Invalid,
     /// Ctrl+Alt+key types a character on one of the keyboard layouts.
     TypesCharacter,
-    /// Global shortcuts can't be registered in this session (Wayland).
+    /// Global shortcuts can't be registered in this session.
     Unsupported,
     /// The action itself isn't in this version.
     NotPorted,
@@ -155,11 +155,6 @@ pub struct ActionStatus {
 #[serde(rename_all = "camelCase")]
 pub struct Report {
     pub actions: Vec<ActionStatus>,
-    /// Why nothing could be registered at all, when that is the case.
-    pub blocked: Option<String>,
-    /// The command a desktop's own shortcut settings can run instead:
-    /// `<this executable> --shortcut <action id>`.
-    pub command: String,
 }
 
 /// What is registered right now: hot-key id → action id, plus the last report.
@@ -260,13 +255,6 @@ pub fn plan(
             (def, outcome)
         })
         .collect()
-}
-
-/// `lumo --shortcut <id>` → the action id, when it names a ported one.
-pub fn from_args(args: &[String]) -> Option<&'static str> {
-    let at = args.iter().position(|a| a == "--shortcut")?;
-    let def = find(args.get(at + 1)?)?;
-    def.ported.then_some(def.id)
 }
 
 // ── Registration ──────────────────────────────────────────────────────────────
@@ -380,7 +368,6 @@ fn release<R: Runtime>(app: &AppHandle<R>) {
 /// can't be had is reported, not fatal.
 pub fn apply<R: Runtime>(app: &AppHandle<R>, stored: &Bindings) {
     release(app);
-    let blocked = crate::platform::global_shortcuts_blocked();
     let gs = app.try_state::<GlobalShortcut<R>>();
 
     let mut by_id = HashMap::new();
@@ -388,7 +375,7 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, stored: &Bindings) {
     for (def, outcome) in plan(stored, typed_character) {
         let status = match outcome {
             Err(status) => status,
-            Ok(_) if blocked.is_some() || gs.is_none() => {
+            Ok(_) if gs.is_none() => {
                 ActionStatus { id: def.id, status: Status::Unsupported, typed: None }
             }
             Ok(shortcut) => {
@@ -431,26 +418,7 @@ pub fn status<R: Runtime>(app: &AppHandle<R>) -> Report {
         .try_state::<Registry>()
         .map(|r| r.report.lock().unwrap().clone())
         .unwrap_or_default();
-    Report {
-        actions,
-        blocked: crate::platform::global_shortcuts_blocked().map(str::to_string),
-        command: format!("{} --shortcut", launch_command()),
-    }
-}
-
-/// How a desktop shortcut should start us: the AppImage when we run from one
-/// (the mounted executable moves on every launch), this executable otherwise.
-fn launch_command() -> String {
-    let exe = std::env::var_os("APPIMAGE")
-        .map(std::path::PathBuf::from)
-        .or_else(|| std::env::current_exe().ok())
-        .map(|p| p.to_string_lossy().to_string())
-        .unwrap_or_else(|| "lumo".to_string());
-    if exe.contains(' ') {
-        format!("\"{exe}\"")
-    } else {
-        exe
-    }
+    Report { actions }
 }
 
 fn typed_character(shortcut: &Shortcut) -> Option<String> {
@@ -625,16 +593,5 @@ mod tests {
         // A hand-edited entry without `enabled` stays on.
         let partial: Bindings = serde_json::from_str(r#"{"openChat":{"keys":"Ctrl+Alt+K"}}"#).unwrap();
         assert!(partial["openChat"].enabled);
-    }
-
-    #[test]
-    fn the_command_line_names_an_action() {
-        let args = |v: &[&str]| v.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-        assert_eq!(from_args(&args(&["lumo", "--shortcut", "openChat"])), Some("openChat"));
-        assert_eq!(from_args(&args(&["lumo", "--shortcut", "wardrobeToggle"])), Some("wardrobeToggle"));
-        assert_eq!(from_args(&args(&["lumo", "--shortcut"])), None);
-        assert_eq!(from_args(&args(&["lumo", "--shortcut", "rm -rf"])), None);
-        assert_eq!(from_args(&args(&["lumo", "--shortcut", "desktopToggle"])), None);
-        assert_eq!(from_args(&args(&["lumo"])), None);
     }
 }

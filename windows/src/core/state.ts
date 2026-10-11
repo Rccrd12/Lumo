@@ -5,8 +5,8 @@ import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../mochi/engine";
 import {
-  DEFAULT_MAIN_PILL, HOST_OS, availablePills, orderPills, pillDefinition, sanitizeDeclared,
-  toggleDeclared, type HostOs, type PillDefinition,
+  DEFAULT_MAIN_PILL, availablePills, orderPills, pillDefinition, sanitizeDeclared,
+  toggleDeclared, type PillDefinition,
 } from "./pills";
 import type { CodexPlanUsage, PlanUsage } from "./plan";
 import type { ProviderId } from "./providers";
@@ -465,9 +465,6 @@ class AppState {
 
   settings: Settings = { ...DEFAULT_SETTINGS };
 
-  /** Which pills this build offers depends on it (Claude Desktop is Windows only). */
-  os: HostOs = HOST_OS;
-
   private listeners = new Set<Listener>();
 
   subscribe(fn: Listener): () => void {
@@ -601,7 +598,7 @@ class AppState {
 
   /** The always-on workspace pill, once the setting has been checked. */
   get mainPillId(): string {
-    return sanitizeDeclared(this.settings, this.os).mainPill;
+    return sanitizeDeclared(this.settings).mainPill;
   }
 
   /**
@@ -609,7 +606,7 @@ class AppState {
    * declared ones go back to idle instead of going away.
    */
   isKept(id: string): boolean {
-    const d = sanitizeDeclared(this.settings, this.os);
+    const d = sanitizeDeclared(this.settings);
     return id === d.mainPill || d.activeIntegrations.includes(id);
   }
 
@@ -619,10 +616,10 @@ class AppState {
    * Safe to call any number of times. AppState.loadIntegrationTasks on macOS.
    */
   loadIntegrationTasks() {
-    const d = sanitizeDeclared(this.settings, this.os);
+    const d = sanitizeDeclared(this.settings);
     this.settings.mainPill = d.mainPill;
     this.settings.activeIntegrations = d.activeIntegrations;
-    for (const def of availablePills(this.os)) {
+    for (const def of availablePills()) {
       const shouldLoad = def.id === d.mainPill || d.activeIntegrations.includes(def.id);
       const idx = this.tasks.findIndex((t) => t.id === def.id);
       if (shouldLoad && idx < 0) this.tasks.push(taskFor(def, this.settings.pillColors));
@@ -708,7 +705,7 @@ class AppState {
 
   /** Declares or undeclares a pill (max 4 next to the main one). */
   toggleIntegration(id: string) {
-    const next = toggleDeclared(sanitizeDeclared(this.settings, this.os), id, this.os);
+    const next = toggleDeclared(sanitizeDeclared(this.settings), id);
     if (!next) return;
     this.settings.activeIntegrations = next;
     if (!next.includes(id) && this.focusId === id) this.focusId = this.mainPillId;

@@ -72,7 +72,7 @@ export function short(text: string, max = CHIP_TITLE): string {
 /** What the menu learned about File Explorer: the folder's name, or why there is none. */
 export interface ExplorerPeek {
   folder: ExplorerFolder | null;
-  /** The error, on Linux for one; "" otherwise. */
+  /** The error, if any; "" otherwise. */
   problem: string;
 }
 

@@ -54,7 +54,6 @@ export const VOICE_SETTINGS = {
   automatic: N_("Automatic"),
   screen: N_("Gemini can look at the screen"),
   screenHint: N_("It takes a screenshot only when it decides it needs one, and only during a call. Nothing is kept: the picture goes to Google and is deleted from this computer."),
-  screenLinux: N_("Not available on Linux yet."),
   helper: N_("Helper"),
   helperHint: N_("What Gemini can't do itself, it hands to this agent, which works in its own session. What the agent may do without asking follows the chat's permissions; anything else comes up as a card in the island for you to allow or deny."),
   helperModel: N_("Helper's model"),

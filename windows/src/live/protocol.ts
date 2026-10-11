@@ -82,8 +82,6 @@ export interface LiveConfig {
   search: boolean;
   /** The interface language's English name, for when the user's own is unclear. */
   languageName: string;
-  /** "Windows" or "Linux". */
-  os: string;
   /** Local date and time, as the model is told it. */
   now: string;
 }
@@ -110,7 +108,7 @@ export function systemInstruction(cfg: LiveConfig): string {
     "- When something takes a moment (a tool, a helper), say so in a few words, then carry on.",
     "",
     "# What you can do on this computer",
-    `The computer runs ${cfg.os}. It is ${cfg.now}. Use your tools by yourself whenever they help; never ask the user to open, find, paste or describe something you can get yourself.`,
+    `The computer runs Windows. It is ${cfg.now}. Use your tools by yourself whenever they help; never ask the user to open, find, paste or describe something you can get yourself.`,
     ...screen,
     "- list_windows tells you which apps and windows are open, and which one the user is in.",
     "- explorer_folder gives you the folder open in File Explorer and what is in it.",

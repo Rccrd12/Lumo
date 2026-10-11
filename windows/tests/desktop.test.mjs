@@ -7,8 +7,8 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   BODY_RADIUS_FRACTION, DesktopMochiController, PANEL_SIZE, RETRACT_DELAY_MS, RETURN_DELAY_MS,
-  agentActive, alertActive, gaze, isOverBody, layerDragTopLeft, lookOrigin, pointerDistance,
-  shouldRetractOnLanding, shouldSleep, windowDragTopLeft,
+  agentActive, alertActive, gaze, isOverBody, lookOrigin, pointerDistance,
+  shouldRetractOnLanding, shouldSleep,
 } from "../src/mochi/desktop-logic.ts";
 
 // ── shouldSleep ───────────────────────────────────────────────────────────────
@@ -30,13 +30,10 @@ test("agent work keeps him awake, idle and sleeping don't", () => {
   assert.equal(agentActive("sleeping"), false);
 });
 
-test("pointer distance: measured with a cursor poll, remembered without one", () => {
-  assert.equal(pointerDistance(true, { x: 60, y: 60 }, 0), 0);
-  assert.equal(pointerDistance(true, { x: 60 + 150, y: 60 }, 0), 150);
-  assert.equal(pointerDistance(true, null, 0), Infinity, "no cursor yet: far");
-  // Linux: near while the pointer was over him a moment ago.
-  assert.equal(pointerDistance(false, null, 100), 0);
-  assert.equal(pointerDistance(false, { x: 60, y: 60 }, 60_000), Infinity);
+test("pointer distance: measured from the cursor poll", () => {
+  assert.equal(pointerDistance({ x: 60, y: 60 }), 0);
+  assert.equal(pointerDistance({ x: 60 + 150, y: 60 }), 150);
+  assert.equal(pointerDistance(null), Infinity, "no cursor yet: far");
 });
 
 // ── isOverBody ────────────────────────────────────────────────────────────────
@@ -110,24 +107,6 @@ test("a permission or a question sends him back to the island", () => {
   assert.equal(alertActive({ pendingApproval: question, tasks: [{ state: "idle" }] }), true);
   // Any agent's permission card counts, Codex's included.
   assert.equal(alertActive({ pendingApproval: { requestId: "r", pillId: "agent_codex" }, tasks: [] }), true);
-});
-
-// ── Linux drags ───────────────────────────────────────────────────────────────
-
-test("layer-shell drag: display coordinates once the overlay is up", () => {
-  const origin = { x: 500, y: 300 };
-  const grab = { x: 60, y: 62 };
-  // Not applied yet: the pointer is still relative to the small surface.
-  assert.deepEqual(layerDragTopLeft(origin, { x: 70, y: 62 }, grab, false), { x: 510, y: 300 });
-  // Applied: the pointer reads in display coordinates.
-  assert.deepEqual(layerDragTopLeft(origin, { x: 900, y: 462 }, grab, true), { x: 840, y: 400 });
-});
-
-test("X11 drag: screen delta, in physical pixels", () => {
-  assert.deepEqual(
-    windowDragTopLeft({ x: 1000, y: 600 }, { x: 520, y: 310 }, { x: 500, y: 300 }, 2),
-    { x: 1040, y: 620 },
-  );
 });
 
 // ── Life cycle ────────────────────────────────────────────────────────────────

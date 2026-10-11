@@ -11,7 +11,7 @@
 //
 // Windows: the front-most File Explorer window (EnumWindows, which goes front
 // to back) and its folder through the Shell's COM objects (IShellWindows), on
-// a thread of their own. Linux: not available yet.
+// a thread of their own.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -59,7 +59,6 @@ pub struct ExplorerFolder {
 
 /// A `file:` URL as a Windows path: `file:///C:/My%20Docs` → `C:\My Docs`,
 /// `file://server/share` → `\\server\share`. Anything else is not a folder.
-#[cfg_attr(not(windows), allow(dead_code))] // only File Explorer gives one
 pub fn path_from_file_url(url: &str) -> Option<String> {
     let rest = url.strip_prefix("file://").or_else(|| url.strip_prefix("FILE://"))?;
     let bytes = percent_decode(rest)?;
@@ -97,7 +96,6 @@ fn percent_decode(s: &str) -> Option<Vec<u8>> {
 
 /// A path File Explorer gave that can be a folder on disk: not one of the
 /// Shell's virtual places (This PC, Quick access, a library: `::{GUID}`…).
-#[cfg_attr(not(windows), allow(dead_code))] // only File Explorer gives one
 pub fn looks_like_folder(path: &str) -> bool {
     let p = path.trim();
     !p.is_empty() && !p.starts_with("::") && !p.contains('\0') && (p.starts_with("\\\\") || p.as_bytes().get(1) == Some(&b':') || p.starts_with('/'))
@@ -292,22 +290,13 @@ pub fn was_shared(path: &str) -> bool {
     SHARED.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|p| p == path)
 }
 
-/// Hidden and system files (desktop.ini, Thumbs.db; dotfiles on Linux), which
-/// File Explorer doesn't show either.
-fn is_hidden(name: &str, meta: &std::fs::Metadata) -> bool {
-    #[cfg(windows)]
-    {
-        use std::os::windows::fs::MetadataExt;
-        const HIDDEN: u32 = 0x2;
-        const SYSTEM: u32 = 0x4;
-        let _ = name;
-        meta.file_attributes() & (HIDDEN | SYSTEM) != 0
-    }
-    #[cfg(not(windows))]
-    {
-        let _ = meta;
-        name.starts_with('.')
-    }
+/// Hidden and system files (desktop.ini, Thumbs.db), which File Explorer
+/// doesn't show either.
+fn is_hidden(meta: &std::fs::Metadata) -> bool {
+    use std::os::windows::fs::MetadataExt;
+    const HIDDEN: u32 = 0x2;
+    const SYSTEM: u32 = 0x4;
+    meta.file_attributes() & (HIDDEN | SYSTEM) != 0
 }
 
 /// What is in `dir`: names, sizes and dates, capped.
@@ -318,7 +307,7 @@ pub fn list_folder(dir: &Path) -> Result<(Vec<FolderEntry>, usize), String> {
     for entry in read.flatten() {
         let Ok(meta) = entry.metadata() else { continue };
         let name = entry.file_name().to_string_lossy().to_string();
-        if is_hidden(&name, &meta) {
+        if is_hidden(&meta) {
             continue;
         }
         let modified = meta
@@ -367,7 +356,7 @@ pub fn attach(folder: &str, query: &str) -> Result<Option<DroppedFile>, String> 
     for entry in std::fs::read_dir(dir).map_err(|e| e.to_string())?.flatten() {
         let Ok(meta) = entry.metadata() else { continue };
         let name = entry.file_name().to_string_lossy().to_string();
-        if meta.is_file() && !is_hidden(&name, &meta) {
+        if meta.is_file() && !is_hidden(&meta) {
             files.push((name, meta.len()));
         }
     }
@@ -386,16 +375,6 @@ pub fn attach(folder: &str, query: &str) -> Result<Option<DroppedFile>, String> 
 
 // ── Platform ──────────────────────────────────────────────────────────────────
 
-#[cfg(not(windows))]
-mod imp {
-    use super::*;
-
-    pub fn front_folder() -> Result<Option<PathBuf>, String> {
-        Err(t("Not available on Linux yet."))
-    }
-}
-
-#[cfg(windows)]
 mod imp {
     use super::*;
 
@@ -635,11 +614,6 @@ mod tests {
         assert!(attach(&folder, "open inner.txt").unwrap().is_none(), "only the folder itself, not below");
         assert!(attach(&folder, "open ../secret.txt").unwrap().is_none());
         assert!(attach(&folder, "nothing named here").unwrap().is_none());
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(base.join("secret.txt"), dir.join("link.txt")).unwrap();
-            assert!(attach(&folder, "read link.txt").unwrap().is_none(), "a link pointing out of the folder");
-        }
 
         let (list, omitted) = list_folder(&dir).unwrap();
         assert_eq!(omitted, 0);

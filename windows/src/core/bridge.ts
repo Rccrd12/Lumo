@@ -13,9 +13,8 @@ import type { RecapHistory, RecapPrefs } from "../recap/summary";
 
 /**
  * Settings open inside the island (an iframe of settings.html, see
- * views/settings-frame.ts) talk to Rust through the island page: a frame has
- * no Tauri connection of its own on Linux, and on Windows Rust's events never
- * reach one.
+ * views/settings-frame.ts) talk to Rust through the island page: Rust's
+ * events never reach a frame.
  */
 export interface TauriHost {
   invoke: typeof invoke;
@@ -77,8 +76,6 @@ export interface BootInfo {
   screen: { x: number; y: number; width: number; height: number; scale: number };
   version: string;
   hookPath: string;
-  /** False where the OS has no global cursor (Wayland): see Island.followPageCursor. */
-  cursorPoll: boolean;
   /** Where the island is drawn in its window, off its usual place (island.rs shift). */
   shift: IslandShift;
   /** The computer runs on its battery (energy.rs). */
@@ -380,16 +377,10 @@ export const Bridge = {
 
   // ── Mochi on the desktop (src-tauri/src/desktop.rs) ───────────────────────
   desktopInfo: () => call<DesktopInfo>("desktop_mochi_info"),
-  /** Dragged out of the island: (x, y) is the pointer in island-window coordinates. */
-  desktopPickUp: (x: number, y: number) => call<boolean>("desktop_mochi_pick_up", { x, y }),
-  /** Linux: the pointer moved during that drag (Windows carries him from Rust). */
-  desktopCarry: (x: number, y: number) => call<void>("desktop_mochi_carry", { x, y }),
-  desktopCarryEnd: (x: number, y: number) => call<void>("desktop_mochi_carry_end", { x, y }),
+  /** Dragged out of the island: the cursor poll carries him from Rust. */
+  desktopPickUp: () => call<boolean>("desktop_mochi_pick_up"),
   /** A drag started on the desktop Mochi; resolves to his top-left corner. */
   desktopDragBegin: () => call<[number, number] | null>("desktop_mochi_drag_begin"),
-  /** X11: top-left corner, physical pixels. */
-  desktopDragMove: (x: number, y: number) => call<void>("desktop_mochi_drag_move", { x, y }),
-  desktopDragEnd: (x: number, y: number) => call<void>("desktop_mochi_drag_end", { x, y }),
   /** From the island to his spot. False: no spot on any connected display. */
   desktopFlyOut: () => call<boolean>("desktop_mochi_fly_out"),
   /** To the island, then hidden. `forget`: he lives in the island again. */
@@ -441,14 +432,10 @@ export type ShortcutStatus =
 
 export interface ShortcutsReport {
   actions: { id: string; status: ShortcutStatus; typed?: string }[];
-  /** "wayland" or "no-display" when no global shortcut can be registered. */
-  blocked: string | null;
-  /** `<executable> --shortcut`: append an action id for a desktop shortcut. */
-  command: string;
 }
 
 /** How the desktop Mochi's window works here (platform::DesktopMode). */
-export type DesktopMode = "poll" | "window" | "layer" | "off";
+export type DesktopMode = "poll" | "off";
 
 export interface DesktopInfo {
   mode: DesktopMode;
@@ -710,7 +697,7 @@ interface WebView2Bridge {
  * never sees drags from the classic Explorer folder view (see
  * src-tauri/src/webview_drop.rs). Enter/over/leave come straight from the page;
  * the drop hands the File objects to Rust, which answers with their real paths
- * as a `file-drag` event. Elsewhere (Linux) Tauri's own drag events still do it.
+ * as a `file-drag` event.
  */
 export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   if (!IS_TAURI) return () => {};

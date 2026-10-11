@@ -7,7 +7,6 @@
 // installed or written. It runs only when the pill shows or is clicked, at most
 // once at a time, for 15 s at most, and is skipped while Lumo is paused.
 
-use std::cmp::Ordering;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{self, AtomicBool};
@@ -89,13 +88,10 @@ pub fn read() -> Option<Value> {
     })();
     // An npm install runs `codex.cmd`: killing cmd.exe alone would leave the
     // node app-server under it running. End the whole tree there.
-    #[cfg(windows)]
-    {
-        let mut kill = Command::new("taskkill");
-        kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
-        platform::no_console(&mut kill);
-        let _ = kill.status();
-    }
+    let mut kill = Command::new("taskkill");
+    kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
+    platform::no_console(&mut kill);
+    let _ = kill.status();
     let _ = child.kill();
     let _ = child.wait();
     answer.map(|result| limits_only(&result))
@@ -130,42 +126,6 @@ fn limits_only(result: &Value) -> Value {
         "rateLimits": result.get("rateLimits").cloned().unwrap_or(Value::Null),
         "rateLimitResetCredits": result.get("rateLimitResetCredits").cloned().unwrap_or(Value::Null),
     })
-}
-
-/// Compares version-like names with their numbers as numbers ("v20.1" > "v9.12"),
-/// like Foundation's `.numeric` comparison the Mac sorts nvm's folders with.
-#[cfg_attr(windows, allow(dead_code))]
-pub fn compare_versions(a: &str, b: &str) -> Ordering {
-    fn parts(s: &str) -> Vec<Result<u64, String>> {
-        let mut out = Vec::new();
-        let mut cur = String::new();
-        let mut digits = false;
-        for c in s.chars() {
-            if c.is_ascii_digit() != digits && !cur.is_empty() {
-                out.push(if digits { Ok(cur.parse().unwrap_or(u64::MAX)) } else { Err(cur.clone()) });
-                cur.clear();
-            }
-            digits = c.is_ascii_digit();
-            cur.push(c);
-        }
-        if !cur.is_empty() {
-            out.push(if digits { Ok(cur.parse().unwrap_or(u64::MAX)) } else { Err(cur) });
-        }
-        out
-    }
-    let (pa, pb) = (parts(a), parts(b));
-    for (x, y) in pa.iter().zip(pb.iter()) {
-        let ord = match (x, y) {
-            (Ok(x), Ok(y)) => x.cmp(y),
-            (Err(x), Err(y)) => x.cmp(y),
-            (Ok(_), Err(_)) => Ordering::Less,
-            (Err(_), Ok(_)) => Ordering::Greater,
-        };
-        if ord != Ordering::Equal {
-            return ord;
-        }
-    }
-    pa.len().cmp(&pb.len())
 }
 
 #[cfg(test)]
@@ -208,12 +168,5 @@ mod tests {
         assert_eq!(kept["rateLimits"]["planType"], "plus");
         assert_eq!(kept["rateLimitResetCredits"]["availableCount"], 1);
         assert!(kept.get("account").is_none());
-    }
-
-    #[test]
-    fn newest_node_first_like_the_mac() {
-        let mut v = vec!["v9.12.0", "v20.1.0", "v18.20.4", "v20.11.1"];
-        v.sort_by(|a, b| compare_versions(b, a));
-        assert_eq!(v, ["v20.11.1", "v20.1.0", "v18.20.4", "v9.12.0"]);
     }
 }

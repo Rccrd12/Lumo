@@ -6,10 +6,10 @@
 // component. Never a command, a file path, file contents or a prompt.
 //
 // The history lives in recap.json under platform::local_dir()
-// (%LOCALAPPDATA%\com.rccrd12.lumo on Windows, ~/.local/share/lumo on Linux), keeps a
-// 12-week rolling window and a hard cap on its length, and is written whole to
-// a temporary file then renamed over the old one, so a crash never leaves half
-// a file. Nothing in it ever leaves the machine.
+// (%LOCALAPPDATA%\com.rccrd12.lumo), keeps a 12-week rolling window and a
+// hard cap on its length, and is written whole to a temporary file then renamed
+// over the old one, so a crash never leaves half a file. Nothing in it ever
+// leaves the machine.
 //
 // Aggregation (weeks, top agent, busiest day…) happens in the island
 // (src/recap/summary.ts): it needs the user's time zone, which JavaScript has
@@ -439,8 +439,6 @@ fn write_history(path: &Path, history: &History) -> std::io::Result<()> {
     let temp = path.with_extension(format!("json.lumo-{}", std::process::id()));
     let mut options = std::fs::OpenOptions::new();
     options.write(true).create(true).truncate(true);
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     let written = options
         .open(&temp)
         .and_then(|mut file| {

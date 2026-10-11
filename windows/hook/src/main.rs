@@ -3,8 +3,7 @@
 //!
 //! Reads the hook JSON on stdin, maps the agent's event and field names onto
 //! Claude Code's (normalize.rs), adds a little terminal context, and hands it to
-//! Lumo over the named pipe `\\.\pipe\lumo-<sid>` (Windows) or the Unix
-//! socket `$XDG_RUNTIME_DIR/lumo.sock` (Linux).
+//! Lumo over the named pipe `\\.\pipe\lumo-<sid>`.
 //!
 //! Hard rule (docs/CLAUDE.md): **never block the agent.**
 //! * If the pipe does not exist — Lumo is closed — we exit 0 immediately, with
@@ -66,15 +65,8 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 /// 1 MiB the app reads from the pipe even once JSON-escaped.
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
 
-#[cfg(windows)]
 mod win;
-#[cfg(windows)]
 use win::connect;
-
-#[cfg(target_os = "linux")]
-mod unix;
-#[cfg(target_os = "linux")]
-use unix::connect;
 
 /// What the command line says: `--agent <name>`, the event name, and
 /// `--wait <seconds>`: how long the agent lets this hook run (Antigravity's

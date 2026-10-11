@@ -5,9 +5,8 @@ Thanks for wanting to help Lumo grow up! 🫶
 ## Getting started
 
 The app lives in `windows/` (Tauri: Rust in `src-tauri/`, TypeScript in `src/`,
-the `lumo-hook` relay in `hook/`). You need [Rust](https://rustup.rs) and
-[Node 22.18+](https://nodejs.org); on Linux, also the system libraries listed in
-[windows/README.md](windows/README.md#linux).
+the `lumo-hook` relay in `hook/`). You need Windows 10/11,
+[Rust](https://rustup.rs), the MSVC build tools and [Node 22.18+](https://nodejs.org).
 
 ```bash
 cd windows
@@ -29,7 +28,7 @@ cargo test --workspace                  # Rust tests
 
 The interface strings come from `windows/i18n-source/Localizable.xcstrings`,
 turned into `windows/src/i18n/strings.json` by `node scripts/gen-strings.mjs`
-(never edit `strings.json` by hand). Strings that only Windows and Linux show go
+(never edit `strings.json` by hand). Strings that only Windows shows go
 in `windows/src/i18n/extra.json`, keyed by the English text, with every language.
 
 ## Good first contributions
@@ -40,7 +39,7 @@ in `windows/src/i18n/extra.json`, keyed by the English text, with every language
 
 ## Rules of the house
 
-- Secrets go in the OS credential store (Windows Credential Manager, Secret Service on Linux), never on disk or in git.
+- Secrets go in the OS credential store (Windows Credential Manager), never on disk or in git.
 - No telemetry, no network calls except to services the user configured.
 - Never block Claude Code: if the app doesn't answer, the hook must exit right away.
 - Never write `~/.claude/settings.json` without a backup and the user's confirmation.

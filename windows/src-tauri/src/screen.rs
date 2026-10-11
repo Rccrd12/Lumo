@@ -9,8 +9,8 @@
 // written to the same inbox as dropped files (files.rs) so Claude Code can
 // read it from its path; the island shows it first, and Cancel deletes it.
 //
-// Windows: EnumWindows for the list, GDI for the capture, WIC for the PNG,
-// all through the `windows` crate. Linux: not available yet.
+// EnumWindows for the list, GDI for the capture, WIC for the PNG, all through
+// the `windows` crate.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -21,7 +21,6 @@ use crate::i18n::t;
 use crate::platform::LocalTime;
 
 /// A screenshot's long edge, at most: Claude's own limit before it downscales.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub const MAX_EDGE: u32 = 1568;
 /// The list is for context, not an inventory.
 const MAX_WINDOWS: usize = 60;
@@ -136,7 +135,6 @@ impl ScreenContext {
 
 /// The size a `width` × `height` capture is saved at: the same, or scaled
 /// down so the long edge is `max`, keeping the aspect ratio.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn fit(width: u32, height: u32, max: u32) -> (u32, u32) {
     let long = width.max(height);
     if long <= max || long == 0 {
@@ -151,7 +149,6 @@ pub fn fit(width: u32, height: u32, max: u32) -> (u32, u32) {
 }
 
 /// The inbox file name of a screenshot of display `index` (from 0), taken at `at`.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn shot_file_name(at: &LocalTime, index: usize) -> String {
     format!(
         "screenshot-{:04}-{:02}-{:02}-{:02}{:02}{:02}-screen{}.png",
@@ -166,7 +163,6 @@ pub fn shot_file_name(at: &LocalTime, index: usize) -> String {
 }
 
 /// An executable's name without its folder or `.exe`: "Code", "chrome".
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn app_name(exe_path: &str) -> String {
     let file = exe_path.rsplit(['\\', '/']).next().unwrap_or(exe_path);
     match file.len().checked_sub(4) {
@@ -190,7 +186,6 @@ pub fn clip_title(title: &str) -> String {
 /// Marks the window the user was in: the foreground one when it is in the
 /// list, else the first (front-most) one — Lumo's own island, which the
 /// click just went to, is never listed.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn mark_active(list: &mut [WindowInfo], foreground: Option<usize>) {
     for w in list.iter_mut() {
         w.active = false;
@@ -293,7 +288,6 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
 }
 
 /// The inbox file name of a screenshot of one window, taken at `at`.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn window_shot_file_name(at: &LocalTime) -> String {
     format!(
         "window-{:04}-{:02}-{:02}-{:02}{:02}{:02}.png",
@@ -303,7 +297,6 @@ pub fn window_shot_file_name(at: &LocalTime) -> String {
 
 /// The menu order of displays given as (x, y, primary): the primary display
 /// first, then the others left to right, top to bottom.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux has no capture yet
 pub fn display_order(rects: &[(i32, i32, bool)]) -> Vec<usize> {
     let mut order: Vec<usize> = (0..rects.len()).collect();
     order.sort_by_key(|&i| {
@@ -366,7 +359,6 @@ fn shot_of(display: usize, path: PathBuf, width: u32, height: u32) -> Result<Sho
 // ── Platform ──────────────────────────────────────────────────────────────────
 
 /// An app's executable name from its process id ("chrome", "WINWORD").
-#[cfg(windows)]
 pub use imp::exe_name;
 
 /// The displays, in menu order. Asked when the menu opens; captures nothing.
@@ -387,7 +379,7 @@ pub fn unseen<R: tauri::Runtime, T>(app: &tauri::AppHandle<R>, f: impl FnOnce(bo
     let windows: Vec<_> = [crate::island::WINDOW_LABEL, crate::activities::LABEL]
         .iter()
         .filter_map(|label| app.get_webview_window(label))
-        .filter(|w| cfg!(windows) && w.set_content_protected(true).is_ok())
+        .filter(|w| w.set_content_protected(true).is_ok())
         .collect();
     let out = f(!windows.is_empty());
     for w in &windows {
@@ -436,44 +428,6 @@ pub fn capture_window(id: i64) -> Result<Shot, String> {
     shot_of(0, path, width, height)
 }
 
-#[cfg(not(windows))]
-mod imp {
-    use super::*;
-
-    fn unavailable<T>() -> Result<T, String> {
-        Err(t("Not available on Linux yet."))
-    }
-
-    pub fn displays() -> Result<Vec<Display>, String> {
-        unavailable()
-    }
-
-    pub fn display_under_cursor() -> Option<usize> {
-        None
-    }
-
-    pub fn windows() -> Result<Vec<WindowInfo>, String> {
-        unavailable()
-    }
-
-    pub fn capture(_index: Option<usize>, _settle: bool) -> Result<Vec<(usize, PathBuf, u32, u32)>, String> {
-        unavailable()
-    }
-
-    pub fn capture_window(_id: i64) -> Result<(PathBuf, u32, u32), String> {
-        unavailable()
-    }
-
-    pub fn monitor_rects() -> Vec<(i32, i32, i32, i32)> {
-        Vec::new()
-    }
-
-    pub fn grab_png(_rect: (i32, i32, i32, i32), _w: u32, _h: u32, _settle: bool) -> Result<Vec<u8>, String> {
-        unavailable()
-    }
-}
-
-#[cfg(windows)]
 mod imp {
     use super::*;
 

@@ -1,6 +1,6 @@
 // Copies the packages Tauri buries in target/release/bundle/ into
 // windows/release/, with the names they ship under. Used by `npm run pack` and
-// by the release workflows, so both produce exactly the same file names.
+// by the release workflow, so both produce exactly the same file names.
 
 import { readFileSync, mkdirSync, copyFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
@@ -12,11 +12,8 @@ const outDir = join(root, "release");
 
 const { version } = JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8"));
 
-// What each platform ships: where Tauri puts it, how to recognise it, and the
-// names it is published under (the rolling name, when there is one, always
-// points at the latest release).
-const arch = process.arch === "arm64" ? "aarch64" : "x86_64";
-const debArch = process.arch === "arm64" ? "arm64" : "amd64";
+// What ships: where Tauri puts it, how to recognise it, and the names it is
+// published under (the rolling name always points at the latest release).
 const PACKAGES = {
   win32: [
     {
@@ -29,15 +26,6 @@ const PACKAGES = {
       suffix: ".msi",
       names: [`Lumo-Windows-${version}.msi`, "Lumo-Windows.msi"],
     },
-  ],
-  linux: [
-    {
-      dir: "appimage",
-      suffix: ".AppImage",
-      names: [`Lumo-Linux-${version}-${arch}.AppImage`, `Lumo-Linux-${arch}.AppImage`],
-    },
-    { dir: "deb", suffix: ".deb", names: [`Lumo-Linux-${version}-${debArch}.deb`] },
-    { dir: "rpm", suffix: ".rpm", names: [`Lumo-Linux-${version}-${arch}.rpm`] },
   ],
 };
 

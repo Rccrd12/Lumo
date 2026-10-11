@@ -2,7 +2,7 @@
 // right-click on Mochi or from the tray menu. Resting the pointer on a button
 // tries the outfit on Mochi; a click keeps it. Two parts side by side, each
 // with its title: the outfits, and Lumo's style — his look, picked the same
-// way: Filo, Punto, Goccia or Lucciola (Windows and Linux only).
+// way: Filo, Punto, Goccia or Lucciola (Windows only).
 
 import { h } from "./dom";
 import { State } from "../core/state";

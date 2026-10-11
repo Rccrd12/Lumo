@@ -21,7 +21,7 @@ use crate::{log, net};
 pub const UPDATE_REPO: &str = "Rccrd12/Lumo";
 
 /// Windows releases are tagged `windows-v0.2.1` (the `windows-latest` rolling
-/// release does not match, and neither do the Mac's `v*` or `linux-v*` tags).
+/// release does not match, and neither does any other tag, like the Mac's `v*`).
 const TAG_PREFIX: &str = "windows-v";
 
 /// Hosts a release download may come from: github.com, then the CDN it redirects to.
@@ -218,9 +218,6 @@ fn user_agent(app: &AppHandle) -> String {
 /// compares the newest Windows one with this build.
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> Result<UpdateInfo, String> {
-    if !cfg!(windows) {
-        return Err(t("Updating from Settings is only available on Windows. On Linux, update Lumo the way you installed it."));
-    }
     let current = app.package_info().version.to_string();
     let url = Url::parse(&format!("https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=30"))
         .map_err(|e| e.to_string())?;
@@ -267,9 +264,6 @@ struct Progress {
 /// repository are accepted.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
-    if !cfg!(windows) {
-        return Err(t("Updating from Settings is only available on Windows. On Linux, update Lumo the way you installed it."));
-    }
     let url = Url::parse(url.trim()).map_err(|_| t("Only installers from Lumo's GitHub releases can be installed."))?;
     if !is_release_download(&url) {
         return Err(t("Only installers from Lumo's GitHub releases can be installed."));
@@ -435,7 +429,6 @@ mod tests {
             release("windows-v0.2.1", &["Lumo-Windows-0.2.1-setup.exe", "Lumo-Windows-0.2.1.msi"]),
             release("windows-latest", &["Lumo-Windows-setup.exe"]),
             release("v0.5.0", &["Lumo.dmg"]),
-            release("linux-v0.4.0", &[]),
             release("windows-v0.3.1", &["Lumo-Windows-0.3.1.msi", "Lumo-Windows-0.3.1-setup.exe"]),
             release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"]),
             beta,
