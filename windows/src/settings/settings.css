@@ -295,11 +295,27 @@ section > h2 + div > .setting:first-child {
   display: none;
 }
 
+/* The name and its control share the first line; what it does goes under
+   both, the whole width of the row. */
 .setting-text {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
+  display: contents;
+}
+
+.setting-text > .setting-label {
+  grid-column: 1;
+  grid-row: 1;
   min-width: 0;
+}
+
+.setting-text > .setting-hint {
+  grid-column: 1 / -1;
+  grid-row: 2;
+  margin-top: -4px;
+}
+
+.setting > .setting-control {
+  grid-column: 2;
+  grid-row: 1;
 }
 
 .setting-label {
@@ -313,7 +329,6 @@ section > h2 + div > .setting:first-child {
 .setting-hint {
   font: 400 12px/1.45 var(--font);
   color: var(--dim);
-  max-width: 460px;
 }
 
 /* Written to follow the name on one line: they start with a capital here. */
@@ -405,6 +420,12 @@ section > h2 + div > .setting:first-child {
   grid-template-columns: minmax(0, 1fr);
 }
 
+/* Name, what it does, then the field the whole width under them. */
+.setting.wide > .setting-control {
+  grid-column: 1;
+  grid-row: 3;
+}
+
 .setting.wide .setting-control {
   justify-content: flex-start;
   flex-wrap: nowrap;
@@ -448,7 +469,9 @@ section > .section-intro + .setting-group {
     grid-template-columns: minmax(0, 1fr);
   }
 
-  .setting-control {
+  .setting > .setting-control {
+    grid-column: 1;
+    grid-row: 3;
     justify-content: flex-start;
   }
 }

@@ -209,6 +209,14 @@ class UploadSequence {
 
   isActive = false;
 
+  /**
+   * How much farther than the 640 × 176 scene the card reaches on each side
+   * (a resized island, upload/canvas.ts uploadStage): Mochi chases the file
+   * that much farther, sideways and, on a taller card, up and down.
+   */
+  reachX = 0;
+  reachY = 0;
+
   cursorX = 600;
   cursorY = 280;
 
@@ -341,11 +349,12 @@ class UploadSequence {
         this.lockAt = this.t;
       }
       if (this.locked && dist > USC.LOCK_OUT) this.locked = false;
-      const tx = Math.max(USC.FOLLOW_MIN, Math.min(USC.FOLLOW_MAX, this.cursorX));
+      const tx = Math.max(USC.FOLLOW_MIN - this.reachX, Math.min(USC.FOLLOW_MAX + this.reachX, this.cursorX));
+      const ty = Math.max(USC.REST_Y - this.reachY, Math.min(USC.REST_Y + this.reachY, this.cursorY + 14));
       const response = this.locked ? 0.18 : 0.35;
       const damping = this.locked ? 0.75 : 0.7;
       this.bx.step(tx, response, damping, dt);
-      this.by.step(USC.REST_Y, response, damping, dt);
+      this.by.step(ty, response, damping, dt);
     }
 
     // Tilt follows how fast Mochi is sliding.

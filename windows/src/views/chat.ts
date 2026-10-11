@@ -38,7 +38,7 @@
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
 
-import { h, svg, clear } from "./dom";
+import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
 import { copyButton, renderMarkdown } from "./markdown";
 import {
@@ -56,7 +56,7 @@ import { planColor } from "../core/plan";
 import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
-  PREVIEW_STRINGS, SCREEN_STRINGS, chipPreview, emptyScreen, filePreview, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
+  PREVIEW_STRINGS, SCREEN_STRINGS, attachedCount, chipPreview, emptyScreen, filePreview, entryLabel, keepShots, menuEntries, nextScreen, screenChips, screenLabel,
   screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows,
   withoutFolder, type ChipKind, type ExplorerPeek, type MenuEntry, type PickEntry, type PreviewBlock,
 } from "../core/screen";
@@ -79,6 +79,8 @@ const STRINGS = {
   openSettings: N_("Open Settings"),
   newChat: N_("New chat"),
   pastChats: N_("Past chats"),
+  attachments: N_("Attachments"),
+  noAttachments: N_("Nothing is attached yet."),
   noPastChats: N_("No past chats yet."),
   searchChats: N_("Search the past chats"),
   noMatch: N_("No chat says that."),
@@ -666,6 +668,7 @@ export function buildPrompt(
   // The log follows a written answer down while it is read at its end;
   // scrolled up, it stays put until it is scrolled back down.
   let following = true;
+  gentleWheel(log);
   log.addEventListener("scroll", () => {
     following = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_SLACK_PX;
   }, { passive: true });
@@ -713,6 +716,11 @@ export function buildPrompt(
   );
   const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
   const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
+  // Everything attached to the next question, in a list of its own, so the
+  // chat keeps its whole height; the badge says how many.
+  const filesBadge = h("span", { class: "tool-badge" });
+  const filesBtn = h("button", { class: "tool-btn files-btn", title: tl(STRINGS.attachments), "aria-label": tl(STRINGS.attachments) },
+    svg(ICONS.folder, 13, { stroke: 1.8 }), filesBadge);
   // What the provider has used, when the option is on and it is known: a ring
   // that fills, and its menu.
   const usageRing = usageRingSvg();
@@ -720,13 +728,14 @@ export function buildPrompt(
   usageEl.style.display = "none";
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
-    h("div", { class: "chat-tools" }, newBtn, historyBtn),
+    h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn),
     h("div", { class: "model-side" }, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
     body.classList.toggle("picking", picker.isOpen);
     if (picker.isOpen) {
+      closeFiles();
       closeHistory();
       closeScreen();
       closePermissions();
@@ -739,7 +748,7 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || ["browsing", "screening", "authorizing", "metering"].some((c) => body.classList.contains(c));
+    const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering"].some((c) => body.classList.contains(c));
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
@@ -756,6 +765,8 @@ export function buildPrompt(
   const historyEl = h("div", { class: "picker history" },
     h("div", { class: "history-head" }, h("div", { class: "picker-title", text: tl(STRINGS.pastChats) }), historySearch),
     historyList);
+  const filesList = h("div", { class: "picker-list files-list" });
+  const filesEl = h("div", { class: "picker files-panel" }, h("div", { class: "picker-title", text: tl(STRINGS.attachments) }), filesList);
   // The screen button's menu, then the preview of a screenshot.
   const screenTitle = h("div", { class: "picker-title" });
   const screenList = h("div", { class: "picker-list" });
@@ -765,15 +776,57 @@ export function buildPrompt(
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
-  body.append(chipRow, log, picker.el, historyEl, screenEl, permEl, usagePanel, modelRow, bar);
+  body.append(chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, modelRow, bar);
+
+  // A picture in the preview, clicked: as big as the chat, until a click or Esc.
+  const zoomImg = h("img", { class: "zoom-img", alt: "" }) as HTMLImageElement;
+  const zoomCaption = h("div", { class: "zoom-caption" });
+  // The picture joins the overlay only while it is open.
+  const zoomEl = h("div", { class: "zoom" },
+    zoomCaption,
+    h("button", { class: "zoom-close", title: tl(PREVIEW_STRINGS.close), "aria-label": tl(PREVIEW_STRINGS.close) }, svg(ICONS.xmark, 12)),
+  );
+  zoomEl.addEventListener("click", () => closeZoom());
+  function openZoom(src: string, caption: string) {
+    zoomImg.src = src;
+    zoomImg.alt = caption;
+    zoomCaption.textContent = caption;
+    zoomEl.prepend(zoomImg);
+    zoomEl.classList.add("open");
+  }
+  function closeZoom() {
+    if (!zoomEl.classList.contains("open")) return;
+    zoomEl.classList.remove("open");
+    zoomImg.remove();
+    zoomImg.removeAttribute("src");
+  }
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape" || !zoomEl.classList.contains("open")) return;
+    e.preventDefault();
+    e.stopPropagation();
+    closeZoom();
+  }, true);
+  /** A preview's picture that opens big on a click. */
+  function zoomable(img: HTMLImageElement, caption: string): HTMLImageElement {
+    img.classList.add("zoomable");
+    img.draggable = false;
+    img.addEventListener("click", (e) => {
+      e.stopPropagation();
+      openZoom(img.src, caption);
+    });
+    return img;
+  }
 
   // A click anywhere else — in the island or, through Rust's outside-press,
   // anywhere on the screen — closes the list that is open: the models, the
   // past chats, the screen menu, the permissions.
   function closeListsBut(target: Node | null) {
+    // The big picture sits over the preview it came from: that stays open.
+    if (target != null && zoomEl.contains(target)) return;
     const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
     if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
+    if (body.classList.contains("filing") && !inside(filesEl, filesBtn)) closeFiles();
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
     if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
     if (body.classList.contains("metering") && !inside(usagePanel, usageEl)) closeUsage();
@@ -781,7 +834,7 @@ export function buildPrompt(
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
 
-  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
+  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body), zoomEl);
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   let sending = false;
@@ -1080,6 +1133,12 @@ export function buildPrompt(
     panelChanged();
   }
 
+  function closeFiles() {
+    body.classList.remove("filing");
+    filesBtn.classList.remove("open");
+    panelChanged();
+  }
+
   // ── Screen button ─────────────────────────────────────────────────────────
   //
   // Opening the menu only asks which displays there are. A window list or a
@@ -1092,6 +1151,7 @@ export function buildPrompt(
   }
 
   function closeScreen() {
+    closeZoom();
     if (!body.classList.contains("screening")) return;
     screenTicket++;
     if (preview) dropShots(preview.map((s) => s.path));
@@ -1168,6 +1228,11 @@ export function buildPrompt(
       screen = { ...screen, selection: share.selection };
     } else if (share.kind === "page") {
       screen = { ...screen, tabs: withTabs(screen.tabs, [share.tab]) };
+    } else if (share.kind === "file") {
+      // A PDF open in the browser goes as the file itself, as if attached
+      // (after this draw: attaching it redraws the chat).
+      const file = share.file;
+      window.setTimeout(() => void useFile(file), 0);
     }
   }
 
@@ -1178,6 +1243,7 @@ export function buildPrompt(
   function openScreen() {
     if (picker.isOpen) picker.close();
     closeHistory();
+    closeFiles();
     closePermissions();
     closeUsage();
     body.classList.add("screening");
@@ -1408,7 +1474,7 @@ export function buildPrompt(
         h(
           "figure",
           { class: "screen-shot" },
-          h("img", { src: s.preview, alt: screenLabel(s.display) }),
+          zoomable(h("img", { src: s.preview, alt: screenLabel(s.display) }) as HTMLImageElement, screenLabel(s.display)),
           h("figcaption", { text: screenLabel(s.display) }),
         ),
       );
@@ -1439,6 +1505,7 @@ export function buildPrompt(
   function openPreview(blocks: PreviewBlock[], onRemove: () => void) {
     if (picker.isOpen) picker.close();
     closeHistory();
+    closeFiles();
     closePermissions();
     closeUsage();
     if (body.classList.contains("screening")) closeScreen();
@@ -1447,14 +1514,16 @@ export function buildPrompt(
     panelChanged();
     screenTitle.textContent = t(PREVIEW_STRINGS.title);
     clear(screenList);
-    const items = h("div", { class: "screen-preview" });
+    // One picture alone takes all the room the panel has.
+    const single = blocks.length === 1 && blocks[0].image !== "";
+    const items = h("div", { class: single ? "screen-preview single" : "screen-preview" });
     for (const b of blocks) {
       items.append(h(
         "div",
         { class: "screen-preview-item" },
         h("div", { class: "screen-preview-head", text: b.heading }),
         b.detail ? h("div", { class: "screen-preview-detail", text: b.detail }) : null,
-        b.image ? h("img", { class: "screen-preview-img", src: b.image, alt: b.heading }) : null,
+        b.image ? zoomable(h("img", { class: "screen-preview-img", src: b.image, alt: b.heading }) as HTMLImageElement, b.heading) : null,
         b.note ? h("div", { class: "screen-preview-note", text: b.note }) : null,
         b.text ? h("pre", { class: "screen-preview-text", text: b.text }) : null,
       ));
@@ -1503,6 +1572,11 @@ export function buildPrompt(
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteChat(c.id);
+        // The chat on screen is gone: so is it from the screen.
+        if (c.id === State.chatId) {
+          newChat();
+          return;
+        }
         Sound.play("pop");
         drawHistory();
       });
@@ -1680,6 +1754,20 @@ export function buildPrompt(
     if (body.classList.contains("screening")) closeScreen();
     else openScreen();
   });
+  filesBtn.addEventListener("click", () => {
+    if (body.classList.contains("filing")) {
+      closeFiles();
+      return;
+    }
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeScreen();
+    closePermissions();
+    closeUsage();
+    body.classList.add("filing");
+    filesBtn.classList.add("open");
+    panelChanged();
+  });
   historyBtn.addEventListener("click", () => {
     if (sending) return;
     if (body.classList.contains("browsing")) {
@@ -1687,6 +1775,7 @@ export function buildPrompt(
       return;
     }
     if (picker.isOpen) picker.close();
+    closeFiles();
     closeScreen();
     closePermissions();
     closeUsage();
@@ -1936,6 +2025,7 @@ export function buildPrompt(
         // Something is already attached: the ways to start make room for it.
         body.classList.toggle("has-context", chipKey !== "");
         clear(chipRow);
+        clear(filesList);
         // A dropped or pasted file: its × takes it out before it is sent.
         if (wantChip) {
           const removeFile = () => {
@@ -1945,7 +2035,7 @@ export function buildPrompt(
             Sound.play("pop");
             State.notify();
           };
-          chipRow.append(screenChip(wantChip, file?.path ?? wantChip, removeFile, undefined, () => {
+          filesList.append(screenChip(wantChip, file?.path ?? wantChip, removeFile, undefined, () => {
             if (file) void openFilePreview(file, removeFile);
           }));
         }
@@ -1956,8 +2046,12 @@ export function buildPrompt(
             Sound.play("pop");
             State.notify();
           };
-          chipRow.append(screenChip(c.label, c.title, removeIt, c.thumbs, () => openPreview(chipPreview(screen, c.kind), removeIt)));
+          filesList.append(screenChip(c.label, c.title, removeIt, c.thumbs, () => openPreview(chipPreview(screen, c.kind), removeIt)));
         }
+        const count = (wantChip ? 1 : 0) + attachedCount(screen);
+        filesBadge.textContent = count > 0 ? String(count) : "";
+        filesBtn.classList.toggle("has-files", count > 0);
+        if (count === 0) filesList.append(h("div", { class: "picker-status", text: t(STRINGS.noAttachments) }));
         if (editing != null) chipRow.append(screenChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
       }
 
@@ -1984,11 +2078,13 @@ export function buildPrompt(
       if (State.view !== "prompt" && picker.isOpen) picker.close();
       if (State.view !== "prompt") {
         closeHistory();
+        closeFiles();
         closeScreen();
         closePermissions();
       }
       newBtn.disabled = sending;
       historyBtn.disabled = sending;
+      filesBtn.disabled = sending;
       attachBtn.disabled = sending;
       screenBtn.disabled = sending;
       micBtn.classList.toggle("lit", State.liveActive);

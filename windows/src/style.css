@@ -2079,6 +2079,79 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* The folder beside the past chats: what is attached, and how many. */
+.files-btn {
+  position: relative;
+}
+
+.tool-badge {
+  position: absolute;
+  top: -4px;
+  right: -6px;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  background: #6366f1;
+  color: #fff;
+  font: 600 9px/14px var(--font);
+  text-align: center;
+  pointer-events: none;
+}
+
+.tool-badge:empty {
+  display: none;
+}
+
+.chat-body .files-panel,
+.chat-body.picking .files-panel {
+  display: none;
+}
+
+.chat-body.filing .files-panel {
+  display: flex;
+}
+
+.chat-body.filing .chat-log,
+.chat-body.filing .chip-row {
+  display: none;
+}
+
+.files-list {
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.files-list .chip {
+  max-width: 100%;
+}
+
+.files-list .chip > span:not(.chip-thumbs) {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The chat has its whole height for the conversation: a size up to read it. */
+.chat-log .bubble,
+.chat-log .md-p,
+.chat-log .md-bullet {
+  font-size: 13.5px;
+}
+
+.chat-log .md-h {
+  font-size: 14px;
+}
+
+.chat-log .md-h1 {
+  font-size: 15px;
+}
+
+.chat-log .md-pre pre {
+  font-size: 11.5px;
+}
+
 /* Claude Code's effort: Auto beside its name, then a short slider with the
    level it is on. Two short rows, so the model list keeps its room. */
 .picker-efforts {
@@ -2764,13 +2837,93 @@ textarea.chat-input {
 }
 
 .screen-preview-img {
-  max-width: 100%;
-  max-height: 220px;
-  align-self: flex-start;
+  width: 100%;
+  max-height: 70vh;
+  align-self: stretch;
   object-fit: contain;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.35);
   border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+/* One picture alone: as big as the panel lets it be. */
+.screen-preview.single {
+  overflow: hidden;
+}
+
+.screen-preview.single .screen-preview-item {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.screen-preview.single .screen-preview-img {
+  flex: 1 1 0;
+  min-height: 0;
+  height: 100%;
+  max-height: none;
+}
+
+/* A preview's picture opens big on a click (views/chat.ts openZoom). */
+img.zoomable {
+  cursor: zoom-in;
+}
+
+.zoom {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: none;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 10px 10px 8px;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.92);
+  cursor: zoom-out;
+}
+
+.zoom.open {
+  display: flex;
+}
+
+.zoom-img {
+  flex: 1 1 0;
+  min-height: 0;
+  max-width: 100%;
+  width: 100%;
+  object-fit: contain;
+  border-radius: 8px;
+}
+
+.zoom-caption {
+  flex: 0 0 auto;
+  max-width: 100%;
+  font: 400 11px var(--font);
+  color: #8b929e;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.zoom-close {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6e8eb;
+  cursor: pointer;
+}
+
+.zoom-close:hover {
+  background: rgba(255, 255, 255, 0.2);
 }
 
 .screen-preview-text {

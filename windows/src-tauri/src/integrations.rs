@@ -338,10 +338,12 @@ async fn poll_github(app: AppHandle) {
 
 // ── GitHub pulse and activity (GithubPoller.swift) ────────────────────────────
 //
-// Two more loops next to the stats above, with the Mac cadence: the pulse (my
-// pull requests and their CI, reviews waiting for me, default-branch CI) 10 s
-// after launch, then every 60 s while some CI is running and every 5 min
-// otherwise; the contribution calendar 15 s after launch, then every 30 min.
+// Two more loops next to the stats above: the pulse (my pull requests and
+// their CI, reviews waiting for me, default-branch CI) 10 s after launch, then
+// every 30 s while some CI is running and every minute otherwise — the closed
+// island says "CI running" from it whichever pill is in front, so it has to
+// keep up without the GitHub card being opened; the contribution calendar 15 s
+// after launch, then every 30 min.
 // Neither touches the network while the pill is off or Lumo is paused, and
 // the island wakes them when the card is opened on stale data.
 //
@@ -414,8 +416,9 @@ fn spawn_github_loops(app: AppHandle) {
             let _ = tokio::time::timeout(wait, GITHUB.pulse_wake.notified()).await;
             let pending = run_github_pulse(&pulse_app).await;
             // A CI running is asked about sooner; Settings → General → Energy
-            // sets how much sooner.
-            let (realtime, light, saver) = if pending { (20, 60, 120) } else { (60, 300, 600) };
+            // sets how much sooner. One pulse is a single GraphQL query, far
+            // inside GitHub's hourly limit even at the quickest.
+            let (realtime, light, saver) = if pending { (15, 30, 120) } else { (30, 60, 300) };
             wait = Duration::from_secs(crate::energy::pick(realtime, light, saver));
         }
     });

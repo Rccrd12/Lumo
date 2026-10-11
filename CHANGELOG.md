@@ -1,5 +1,16 @@
 # Changelog
 
+## Windows and Linux 0.5.6 — October 11, 2026
+
+- **A PDF open in the browser goes as the PDF**: `Ctrl+Alt+B` on a tab that shows a file (a PDF opened from the disk or the web, a .docx…) attaches the file itself instead of the text its viewer shows. Any other page still goes as its text and address
+- **Attachments in a folder**: a folder beside the past chats holds everything attached to the next question (files, screenshots, windows, tabs, the selection, the folder), with a number on it for how many. The chat keeps its whole height, and its text is a size bigger
+- **Deleting the chat on screen closes it**: an empty chat takes its place
+- **GitHub keeps up on the closed island**: "CI running" comes and goes whichever pill is in front, without opening the GitHub card (pull requests are checked every minute, every 30 seconds while a CI runs)
+- **Gentler scrolling in the chat**: a notch of the mouse wheel moves a few lines, gliding, instead of most of the chat
+- **The drop follows the file**: on a resized island the drop card fills it and Lumo chases the file across it, up and down too. Dragging a picture from the chat's preview no longer opens the drop, and a drop with nothing readable no longer leaves the next one stuck
+- **Big previews**: a picture alone fills the preview, and a click on any preview picture shows it over the whole chat (a click or Esc closes it)
+- **Settings read more easily**: each setting's name sits on one line with its switch or list, what it does underneath, the whole width
+
 ## Windows and Linux 0.5.5 — October 11, 2026
 
 - **Energy saving** (Settings → General): **None** asks the inbox, GitHub, the calendar, the services, the plan usage and the music more often, near real time; **Light** is Lumo as always; **On** saves energy: the closed island draws 15 frames a second, Lumo dozes with the mouse far away (eyes shut, grey, still) and stops moving with the mouse at rest, the cursor far from the island is read 10 times a second instead of 60, and everything is asked half as often. A permission or a question waiting keeps him awake. **Automatic**, the default, saves energy on battery and, plugged in, does what **On mains power** says (Light or None)

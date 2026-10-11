@@ -8282,6 +8282,30 @@
    "ru": "Продолжить",
    "id": "Lanjutkan",
    "it": "Riprendi"
+  },
+  "Attachments": {
+   "zh-Hans": "附件",
+   "hi": "अटैचमेंट",
+   "es": "Adjuntos",
+   "ar": "المرفقات",
+   "fr": "Pièces jointes",
+   "bn": "সংযুক্তি",
+   "pt-BR": "Anexos",
+   "ru": "Вложения",
+   "id": "Lampiran",
+   "it": "Allegati"
+  },
+  "Nothing is attached yet.": {
+   "zh-Hans": "还没有附加任何内容。",
+   "hi": "अभी कुछ भी अटैच नहीं है।",
+   "es": "Todavía no hay nada adjunto.",
+   "ar": "لا يوجد شيء مرفق بعد.",
+   "fr": "Rien n'est joint pour l'instant.",
+   "bn": "এখনও কিছু সংযুক্ত করা হয়নি।",
+   "pt-BR": "Nada anexado ainda.",
+   "ru": "Пока ничего не прикреплено.",
+   "id": "Belum ada yang dilampirkan.",
+   "it": "Ancora nessun allegato."
   }
  }
 }

@@ -113,6 +113,27 @@ function fitted(ctx: CanvasRenderingContext2D, s: string, maxW: number, weight: 
   return { font, s: ellipsize(ctx, s, maxW, font) };
 }
 
+/**
+ * Where the 640 × 176 scene sits in the island: the island grown past it (a
+ * resized island) gets the card stretched to its edges, and everything else
+ * — the text, the bar, Mochi — in its middle. `left` is where the layer
+ * starts in the island (below zero for an island narrower than the scene),
+ * `ox`/`oy` where the scene starts in the layer.
+ */
+export interface UploadStage {
+  w: number;
+  h: number;
+  left: number;
+  ox: number;
+  oy: number;
+}
+
+export function uploadStage(islandW: number, islandH: number): UploadStage {
+  const w = Math.max(USC.W, Math.round(islandW));
+  const h = Math.max(USC.ISL_H, Math.round(islandH));
+  return { w, h, left: (Math.round(islandW) - w) / 2, ox: (w - USC.W) / 2, oy: (h - USC.ISL_H) / 2 };
+}
+
 export interface UploadCanvasActions {
   /** Primary button — hand the file to the chat. */
   ask(): void;
@@ -127,7 +148,8 @@ export class UploadCanvas {
   private canvas: HTMLCanvasElement;
   private ctx: CanvasRenderingContext2D | null;
   private overlay: HTMLElement;
-  private sizedFor = 0;
+  private sizedFor = "";
+  private stage: UploadStage = uploadStage(USC.W, USC.ISL_H);
 
   constructor(actions: UploadCanvasActions) {
     this.canvas = document.createElement("canvas");
@@ -138,6 +160,7 @@ export class UploadCanvas {
     const mk = (x: number, w: number, onclick: () => void) => {
       const b = document.createElement("button");
       b.className = "upload-hit";
+      b.dataset.x = String(x);
       b.style.left = `${x}px`;
       b.style.top = "113px";
       b.style.width = `${w}px`;
@@ -156,20 +179,45 @@ export class UploadCanvas {
     this.ctx = this.canvas.getContext("2d");
   }
 
+  /** The island's size: the layer covers it, the scene in its middle. */
+  place(islandW: number, islandH: number): UploadStage {
+    const st = uploadStage(islandW, islandH);
+    const was = this.stage;
+    this.stage = st;
+    if (st.w !== was.w || st.h !== was.h || st.left !== was.left || !this.el.style.width) {
+      this.el.style.left = `${st.left}px`;
+      this.el.style.width = `${st.w}px`;
+      this.el.style.height = `${st.h}px`;
+      for (const b of Array.from(this.overlay.children) as HTMLElement[]) {
+        b.style.left = `${Number(b.dataset.x) + st.ox}px`;
+        b.style.top = `${113 + st.oy}px`;
+      }
+    }
+    return st;
+  }
+
+  /** A point in the island (page pixels from its corner) in scene points. */
+  toScene(x: number, y: number): { x: number; y: number } {
+    const st = this.stage;
+    return { x: x - st.left - st.ox, y: y - st.oy };
+  }
+
   /** `wallTime` in seconds drives the marching dashes, like the macOS timeline. */
   draw(f: UploadFrame, wallTime: number) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    if (this.sizedFor !== dpr) {
-      this.sizedFor = dpr;
-      this.canvas.width = Math.round(USC.W * dpr);
-      this.canvas.height = Math.round(USC.ISL_H * dpr);
-      this.canvas.style.width = `${USC.W}px`;
-      this.canvas.style.height = `${USC.ISL_H}px`;
+    const st = this.stage;
+    const key = `${dpr}|${st.w}|${st.h}`;
+    if (this.sizedFor !== key) {
+      this.sizedFor = key;
+      this.canvas.width = Math.round(st.w * dpr);
+      this.canvas.height = Math.round(st.h * dpr);
+      this.canvas.style.width = `${st.w}px`;
+      this.canvas.style.height = `${st.h}px`;
     }
     const ctx = this.ctx;
     if (!ctx) return;
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-    ctx.clearRect(0, 0, USC.W, USC.ISL_H);
+    ctx.clearRect(0, 0, st.w, st.h);
 
     this.drawScene(ctx, f, wallTime);
 
@@ -180,27 +228,32 @@ export class UploadCanvas {
   // ── Scene ─────────────────────────────────────────────────────────────────
 
   private drawScene(ctx: CanvasRenderingContext2D, f: UploadFrame, wallTime: number) {
+    const st = this.stage;
+    // The card reaches the island's edges, however big it was made.
+    const cardW = st.w - 2 * USC.CARD_X;
+    const cardH = st.h - USC.CARD_Y - (USC.ISL_H - USC.CARD_Y - USC.CARD_H);
+
     // Island background.
     ctx.fillStyle = "#000000";
-    ctx.fillRect(0, 0, USC.W, USC.ISL_H);
+    ctx.fillRect(0, 0, st.w, st.h);
 
     // Card.
     ctx.save();
-    rr(ctx, USC.CARD_X, USC.CARD_Y, USC.CARD_W, USC.CARD_H, USC.CARD_R);
+    rr(ctx, USC.CARD_X, USC.CARD_Y, cardW, cardH, USC.CARD_R);
     ctx.clip();
     ctx.fillStyle = "#0D0E10";
-    ctx.fillRect(USC.CARD_X, USC.CARD_Y, USC.CARD_W, USC.CARD_H);
+    ctx.fillRect(USC.CARD_X, USC.CARD_Y, cardW, cardH);
 
     // Green glow, fanning up from the bottom edge of the card.
     if (f.greenWash > 0) {
-      const gx = USC.CARD_X + USC.CARD_W / 2;
-      const gy = USC.CARD_Y + USC.CARD_H;
+      const gx = USC.CARD_X + cardW / 2;
+      const gy = USC.CARD_Y + cardH;
       const g = ctx.createRadialGradient(gx, gy, 0, gx, gy, USC.CARD_H * 1.5);
       g.addColorStop(0, `rgba(40,212,130,${f.greenWash * 0.9})`);
       g.addColorStop(0.55, `rgba(40,212,130,${f.greenWash * 0.3})`);
       g.addColorStop(1, "rgba(40,212,130,0)");
       ctx.fillStyle = g;
-      ctx.fillRect(USC.CARD_X, USC.CARD_Y, USC.CARD_W, USC.CARD_H);
+      ctx.fillRect(USC.CARD_X, USC.CARD_Y, cardW, cardH);
     }
     ctx.restore();
 
@@ -212,17 +265,21 @@ export class UploadCanvas {
       ctx.lineWidth = 1.5;
       ctx.setLineDash([6, 5]);
       ctx.lineDashOffset = -wallTime * 20;
-      rr(ctx, USC.CARD_X + 0.75, USC.CARD_Y + 0.75, USC.CARD_W - 1.5, USC.CARD_H - 1.5, USC.CARD_R - 0.5);
+      rr(ctx, USC.CARD_X + 0.75, USC.CARD_Y + 0.75, cardW - 1.5, cardH - 1.5, USC.CARD_R - 0.5);
       ctx.stroke();
       ctx.restore();
     }
 
+    // The rest is drawn in scene points, in the middle of the card.
+    ctx.save();
+    ctx.translate(st.ox, st.oy);
     if (f.zoneAlpha > 0 && f.textAlpha > 0) this.drawDropText(ctx, f);
     if (f.barAlpha > 0 || f.barReveal > 0) this.drawProgressBar(ctx, f);
     if (f.chooseAlpha > 0) this.drawChoose(ctx, f);
 
     this.drawMochi(ctx, f);
     if (f.fileVisible) this.drawFile(ctx, f);
+    ctx.restore();
   }
 
   // ── Drop zone text and chips ──────────────────────────────────────────────
@@ -504,7 +561,7 @@ export class UploadCanvas {
     // is clipped away — that is what makes it look swallowed.
     ctx.save();
     ctx.beginPath();
-    ctx.rect(0, 0, USC.W, clipY);
+    ctx.rect(-this.stage.w, -this.stage.h, 3 * this.stage.w, clipY + this.stage.h);
     ctx.clip();
 
     for (let i = 0; i < 28; i++) {

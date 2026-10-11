@@ -306,6 +306,12 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
   return out;
 }
 
+/** How many things wait for the next question: each screenshot, window and tab, the selection, the folder. */
+export function attachedCount(p: PendingScreen): number {
+  const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
+  return (p.selection ? 1 : 0) + p.windows.length + p.tabs.length + p.shots.length + (folder ? 1 : 0);
+}
+
 /** The list on the chip's tooltip, so the user sees exactly what will be sent. */
 export function windowsTooltip(list: { title: string; app: string }[]): string {
   return list.map((w) => (w.app ? `${w.title} — ${w.app}` : w.title)).join("\n");

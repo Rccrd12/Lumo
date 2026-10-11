@@ -93,8 +93,8 @@ the exe it runs from.
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting as a chip (× takes it back). Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
-| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting as a chip. On Linux the page is downloaded from its address |
-| Click a chip above the chat field | **What goes with your question**: the screenshots and attached pictures shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back |
+| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting as a chip. On Linux the page is downloaded from its address. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
+| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. A click on one shows **what goes with your question**: the screenshots and attached pictures shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
@@ -678,9 +678,10 @@ Commit statuses and Actions — the GitHub pill shows:
 Click a row for the list, then an item to open it on github.com. The pill gets
 a badge and a sound when the CI of one of your pull requests turns red or green
 (fast runs between two checks included), when a default branch breaks, or when
-someone requests your review. Pull requests are checked every 5 minutes, every
-minute while a CI is running, and as soon as you open the card on data older
-than a minute; contributions every 30 minutes. Nothing is fetched while the pill
+someone requests your review. Pull requests are checked every minute, every
+30 seconds while a CI is running (so the closed island's "CI running" line
+keeps up whichever pill is in front), and as soon as you open the card on data
+older than a minute; contributions every 30 minutes. Nothing is fetched while the pill
 is off or Lumo is paused.
 
 ## Build it yourself
