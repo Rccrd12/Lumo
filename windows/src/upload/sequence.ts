@@ -27,9 +27,6 @@ export const USC = {
   // 520 left the bar off centre, short of the right side).
   BAR_X1: 594,
   BAR_Y: 118,
-  CHOOSE_X: 60,
-  CHOOSE_Y: 101,
-  CHOOSE_D: 62,
   LOCK_IN: 60,
   LOCK_OUT: 90,
   MOUTH_AJAR: 0.2,
@@ -159,8 +156,6 @@ export interface UploadFrame {
   check: number;
   greenWash: number;
   progEnd: number;
-  growStart: number;
-  growEnd: number;
 }
 
 function restFrame(): UploadFrame {
@@ -193,8 +188,6 @@ function restFrame(): UploadFrame {
     check: 0,
     greenWash: 0,
     progEnd: USC.T_PROG_START + 2.4,
-    growStart: USC.T_PROG_START + 2.4 + 0.25,
-    growEnd: USC.T_PROG_START + 2.4 + 0.7,
   };
 }
 
@@ -205,12 +198,6 @@ class UploadSequence {
 
   get progEnd() {
     return USC.T_PROG_START + this.uploadDuration;
-  }
-  get growStart() {
-    return this.progEnd + 0.25;
-  }
-  get growEnd() {
-    return this.progEnd + 0.7;
   }
 
   isActive = false;
@@ -389,11 +376,7 @@ class UploadSequence {
     f.cursorX = this.cursorX;
     f.cursorY = this.cursorY;
     const progEnd = this.progEnd;
-    const growStart = this.growStart;
-    const growEnd = this.growEnd;
     f.progEnd = progEnd;
-    f.growStart = growStart;
-    f.growEnd = growEnd;
 
     const entered = this.entered >= 0 ? this.entered : 1e9;
     const isDragging = this.dropWall == null;
@@ -401,11 +384,11 @@ class UploadSequence {
     // long hover never trips the post-drop visuals.
     const pt = isDragging ? Math.min(t, USC.T_DROP - USC.DT) : t;
 
-    // Morph: 0→1 on entry, 1→0 shrinking to a ball, 0→1 growing back before the chat.
+    // Morph: 0→1 on entry, then 1→0 shrinking to a ball that rides the bar. He
+    // stays a ball at its end: the chat takes over from there.
     let morph: number;
     if (pt < USC.T_CHEW_END) morph = eBack(seg(pt, entered, entered + 0.38));
-    else if (pt < growStart) morph = 1 - eOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
-    else morph = eBack(seg(pt, growStart, growEnd));
+    else morph = 1 - eOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
     f.morph = Math.max(0, Math.min(morph, 1.08));
 
     // Position and diameter.
@@ -427,12 +410,6 @@ class UploadSequence {
     if (pt >= progEnd) {
       x = USC.BAR_X1;
       y = USC.BAR_Y - 8 * Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.2));
-    }
-    if (pt >= growStart) {
-      const k = eInOut(seg(pt, growStart, growEnd));
-      x = lerp(USC.BAR_X1, USC.CHOOSE_X, k);
-      y = lerp(USC.BAR_Y, USC.CHOOSE_Y, k);
-      d = lerp(14, USC.CHOOSE_D, eBack(seg(pt, growStart, growEnd)));
     }
     f.x = x;
     f.y = y;
@@ -473,9 +450,6 @@ class UploadSequence {
       sx = 1 + 0.25 * st;
       sy = 1 - 0.15 * st;
     }
-    if (pt >= growStart && pt < growEnd) {
-      sy = 1 + 0.06 * Math.sin(Math.PI * seg(pt, growStart, growEnd));
-    }
     f.sx = sx;
     f.sy = sy;
     f.tilt = this.tilt;
@@ -490,7 +464,7 @@ class UploadSequence {
     let eye: UploadEyeShape = "pill";
     if (this.locked && pt < USC.T_SUCK_END) eye = "cup";
     if (pt >= USC.T_SUCK_END && pt < USC.T_CHEW_END + 0.1) eye = "content";
-    if (pt >= progEnd && pt < growEnd + 0.3) eye = "content";
+    if (pt >= progEnd) eye = "content";
     f.eye = eye;
 
     const lkx = pt < USC.T_SUCK_END ? this.cursorX - x : pt < USC.T_PROG_START ? 0 : 40;
@@ -505,10 +479,8 @@ class UploadSequence {
     f.zoneOver = this.entered >= 0 && pt < USC.T_CHEW_END;
     f.zoneAlpha = 1 - seg(pt, USC.T_CHEW_END, USC.T_CHEW_END + 0.2);
     f.textAlpha = f.zoneAlpha * (x > USC.TEXT_X - 40 && isDragging ? 0.25 : 1);
-    f.barReveal =
-      eOut(seg(pt, USC.T_BAR_IN, USC.T_BAR_IN + 0.25)) * (1 - seg(pt, growStart, growStart + 0.2));
-    f.barAlpha =
-      seg(pt, USC.T_BAR_IN + 0.05, USC.T_BAR_IN + 0.25) * (1 - seg(pt, growStart, growStart + 0.2));
+    f.barReveal = eOut(seg(pt, USC.T_BAR_IN, USC.T_BAR_IN + 0.25));
+    f.barAlpha = seg(pt, USC.T_BAR_IN + 0.05, USC.T_BAR_IN + 0.25);
     f.progress = progressAt(pt, USC.T_PROG_START, progEnd);
     f.flash = pt >= progEnd ? Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.3)) : 0;
     f.check = pt >= progEnd ? eBack(seg(pt, progEnd, progEnd + 0.25)) : 0;
@@ -518,8 +490,7 @@ class UploadSequence {
     if (pt >= USC.T_PROG_START) {
       const baseGreen = f.progress * 0.5;
       const flashExtra = pt >= progEnd ? 0.2 * Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.4)) : 0;
-      const fadeOut = 1 - seg(pt, growEnd, growEnd + 0.6);
-      uploadGreen = (baseGreen + flashExtra) * fadeOut;
+      uploadGreen = baseGreen + flashExtra;
     }
     f.greenWash = Math.max(hoverGreen, uploadGreen);
 

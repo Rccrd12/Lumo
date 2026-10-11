@@ -15,7 +15,7 @@ const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { providerDef } = await import("../src/core/providers.ts");
 const {
-  emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
+  afterSent, emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
   seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows, withoutFolder, withoutItem,
 } = await import("../src/core/screen.ts");
 
@@ -942,4 +942,19 @@ test("an attached picture shows itself in the preview", async () => {
   assert.deepEqual(view.el.find(".screen-preview-img").map((i) => i.getAttribute("src")), ["data:image/png;base64,QQ=="]);
   assert.deepEqual(view.el.find(".screen-preview-detail").map((e) => e.textContent), ["C:\\Lumo\\inbox\\photo.png"]);
   State.droppedFile = null;
+});
+
+test("after a message, what went no longer waits, even if the attachments changed meanwhile", () => {
+  const one = { name: "Screen 1", path: "C:\\Lumo\\inbox\\s1.png", preview: "" };
+  const two = { name: "Screen 1 (2)", path: "C:\\Lumo\\inbox\\s2.png", preview: "" };
+  const sent = { ...emptyScreen(), shots: [one], windows: [SHARED[0]] };
+  // Untouched: the next message starts empty, the folder that rides along stays.
+  assert.deepEqual(afterSent(sent, sent), nextScreen(sent));
+  // The folder in File Explorer asked again while the answer came: a new object, same items.
+  const peeked = { ...sent, autoFolder: PEEKED };
+  assert.deepEqual(afterSent(peeked, sent), { ...emptyScreen(), autoFolder: PEEKED });
+  // A screenshot added while the answer came waits for the next message, alone.
+  const added = { ...sent, shots: [one, two] };
+  assert.deepEqual(afterSent(added, sent).shots, [two]);
+  assert.deepEqual(afterSent(added, sent).windows, []);
 });

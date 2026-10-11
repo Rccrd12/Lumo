@@ -81,8 +81,8 @@ const UPLOAD_VIEWS: ReadonlySet<IslandViewName> = new Set(["upload", "uploading"
 
 /** Seconds between the drop and the moment the progress bar starts filling. */
 const PRE_PROGRESS = USC.T_PROG_START - USC.T_DROP;
-/** Seconds after the bar is full until the file is in the chat: the ✓, and Mochi grown back. */
-const UPLOAD_SETTLE = 0.75;
+/** Seconds after the bar is full until the file is in the chat: the ✓ pops and the bar flashes. */
+const UPLOAD_SETTLE = 0.45;
 /** How long the chat says the file was uploaded. */
 const UPLOADED_NOTE_MS = 2600;
 const UPLOAD_COLOR = "#34D399";
@@ -208,6 +208,8 @@ export class Island {
   private uploadAt: number | null = null;
   private uploadTens = 0;
   private uploadDone = false;
+  /** The upload just handed over to the chat: Lumo is already in his place there, no slide. */
+  private snapBot = false;
 
   constructor(root: HTMLElement) {
     this.root = root;
@@ -977,7 +979,7 @@ export class Island {
   /**
    * Sounds and view changes hung off the upload's clock: a `tick` every 10 %,
    * the ✓ chime when the bar completes, then the file goes into the chat once
-   * Mochi has grown back. Runs open or closed: the closed island shows the bar.
+   * the ✓ has popped. Runs open or closed: the closed island shows the bar.
    */
   private stepUpload(nowMs: number) {
     if (this.uploadAt == null) return;
@@ -1017,6 +1019,9 @@ export class Island {
       State.uploadedNote = { name, until: Date.now() + UPLOADED_NOTE_MS };
       window.setTimeout(() => State.notify(), UPLOADED_NOTE_MS + 20);
       if (UPLOAD_VIEWS.has(State.view)) {
+        // The drop canvas fades out over the chat: Lumo appears in his place
+        // there rather than sliding in from the end of the bar.
+        this.snapBot = true;
         this.setView("prompt");
         this.focusChat();
       }
@@ -1597,6 +1602,12 @@ export class Island {
     this.botCx.target = turned ? p.cy : p.cx;
     this.botCy.target = turned ? p.cx : p.cy;
     this.botSize.target = p.diameter / 0.6;
+    if (this.snapBot) {
+      this.snapBot = false;
+      this.botCx.set(this.botCx.target);
+      this.botCy.set(this.botCy.target);
+      this.botSize.set(this.botSize.target);
+    }
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
     // The drop canvas draws its own Mochi; two of them would overlap. Out on the

@@ -62,7 +62,7 @@ import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks,
+  afterSent, menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks,
   windowPicks, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
   type PreviewBlock, type ScreenItem,
 } from "../core/screen";
@@ -2047,9 +2047,10 @@ export function buildPrompt(
         file.sentWith = question.id;
       }
       // The other files went with it, once.
-      if (!auto && recorded && State.moreFiles === more) State.moreFiles = [];
-      // Rust deleted the screenshots once the turn went, stopped or not.
-      if (!auto && screen === waiting) screen = nextScreen(screen);
+      if (!auto && recorded) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
+      // Rust deleted the screenshots once the turn went, stopped or not: what
+      // went no longer waits, even if something changed the attachments meanwhile.
+      if (!auto) screen = screen === waiting ? nextScreen(screen) : afterSent(screen, shared);
       void peekExplorer(true);
       if (reply.session) State.chatSession = reply.session;
       remember();
