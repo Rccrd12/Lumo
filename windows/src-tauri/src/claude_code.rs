@@ -113,6 +113,12 @@ const MODELS: &[(&str, &str)] = &[
     ("claude-haiku-5-5", "Haiku 5.5"),
 ];
 
+/// Claude Code is set up for Lumo: installed, with Lumo's hooks (so its
+/// actions can be approved in the island). Blocking.
+pub fn ready() -> bool {
+    !platform::claude_candidates().is_empty() && crate::hooks::status().installed
+}
+
 /// Where Claude Code works when Lumo starts it: `~/Lumo`. Files outside it
 /// can still be read or edited, each time with the user's Allow.
 pub fn work_dir() -> PathBuf {
@@ -952,6 +958,12 @@ mod tests {
         assert!(a.windows(2).any(|w| w == ["--effort", "max"]));
         let a = args_with(HELPER_PROMPT, "opus & calc", "lots", "default", None, "/inbox", &[]);
         assert!(!a.iter().any(|s| s == "--model" || s == "--effort"));
+    }
+
+    #[test]
+    fn gemini_lives_screen_work_goes_on_the_command_line_as_haiku_at_medium() {
+        assert_eq!(safe_model(crate::live::COMPUTER_MODEL), Some("claude-haiku-5-5"));
+        assert_eq!(safe_effort(crate::live::COMPUTER_EFFORT), Some("medium"));
     }
 
     #[test]

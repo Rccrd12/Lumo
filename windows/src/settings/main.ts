@@ -698,10 +698,10 @@ function chatSharingSection(): HTMLElement {
 
 const COMPUTER_SETTINGS = {
   get title() { return t("Computer use"); },
-  get intro() { return t("Claude Code or Antigravity CLI can see your screen and use it: click, type, press keys and scroll, to do what a command or a file can't. In the chat, and for Gemini Live, which hands them what is to be done on the screen. It works on your real desktop, not in a sandbox."); },
+  get intro() { return t("Claude Code can see your screen and use it: click, type, press keys and scroll, to do what a command or a file can't. In the chat, and for Gemini Live, which hands it what is to be done on the screen (with Haiku 5.5, whoever helps Gemini otherwise). It works on your real desktop, not in a sandbox."); },
   get label() { return t("Let Claude use the computer"); },
   get hint() { return t("Only while the agent answers. Asking every time, each click, key or text is an Allow / Deny card on the island first; screenshots don't ask. Press Esc anywhere to stop it. Lumo's island is left out of its screenshots. Screenshots count against your plan's limits."); },
-  get claudeOnly() { return t("In the chat, pick Claude Code or Antigravity CLI as the provider to use it."); },
+  get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
   get mouse() { return t("While it works, the screen it uses glows and the mouse turns orange: the mouse is Claude's until it answers, except when a card asks you something. Esc gives it back at once."); },
 };
 
@@ -710,7 +710,7 @@ function computerSection(): HTMLElement {
   const windows = navigator.userAgent.includes("Windows");
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
-    note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code" && settings.chatProvider !== "antigravity-cli");
+    note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
   };
   showNote();
   return h(

@@ -7863,18 +7863,6 @@
    "id": "Saat bekerja, layar yang dipakainya bercahaya dan mouse berubah oranye: mouse milik Claude sampai ia selesai menjawab, kecuali saat kartu menanyakan sesuatu kepada Anda. Esc langsung mengembalikannya.",
    "it": "Mentre lavora, lo schermo che usa si illumina e il mouse diventa arancione: il mouse è di Claude finché non ha risposto, tranne quando una scheda ti chiede qualcosa. Esc te lo restituisce subito."
   },
-  "Claude Code or Antigravity CLI can see your screen and use it: click, type, press keys and scroll, to do what a command or a file can't. In the chat, and for Gemini Live, which hands them what is to be done on the screen. It works on your real desktop, not in a sandbox.": {
-   "zh-Hans": "Claude Code 或 Antigravity CLI 可以查看并使用你的屏幕：点击、输入、按键和滚动，完成命令或文件做不到的事。可在聊天中使用，也可供 Gemini Live 使用，它会把需要在屏幕上完成的事交给它们。它在你真实的桌面上操作，而不是在沙盒中。",
-   "hi": "Claude Code या Antigravity CLI आपकी स्क्रीन देख और इस्तेमाल कर सकते हैं: क्लिक, टाइप, कुंजियाँ दबाना और स्क्रॉल करना, ताकि वह हो सके जो कोई कमांड या फ़ाइल नहीं कर सकती। चैट में, और Gemini Live के लिए, जो स्क्रीन पर किए जाने वाले काम उन्हें सौंपता है। यह आपके असली डेस्कटॉप पर काम करता है, सैंडबॉक्स में नहीं।",
-   "es": "Claude Code o Antigravity CLI pueden ver tu pantalla y usarla: hacer clic, escribir, pulsar teclas y desplazarse, para hacer lo que un comando o un archivo no pueden. En el chat y para Gemini Live, que les pasa lo que hay que hacer en pantalla. Trabajan en tu escritorio real, no en un entorno aislado.",
-   "ar": "يستطيع Claude Code أو Antigravity CLI رؤية شاشتك واستخدامها: النقر والكتابة والضغط على المفاتيح والتمرير، لإنجاز ما لا يستطيعه أمر أو ملف. في الدردشة، ولـ Gemini Live الذي يسلّمها ما يجب فعله على الشاشة. يعملان على سطح مكتبك الحقيقي، لا في بيئة معزولة.",
-   "fr": "Claude Code ou Antigravity CLI peuvent voir votre écran et s'en servir : cliquer, saisir, appuyer sur des touches et faire défiler, pour faire ce qu'une commande ou un fichier ne peut pas. Dans le chat, et pour Gemini Live, qui leur confie ce qu'il faut faire à l'écran. Ils agissent sur votre vrai bureau, pas dans un bac à sable.",
-   "bn": "Claude Code বা Antigravity CLI আপনার স্ক্রিন দেখতে ও ব্যবহার করতে পারে: ক্লিক, টাইপ, কী চাপা ও স্ক্রোল, যাতে কমান্ড বা ফাইল যা পারে না তা করা যায়। চ্যাটে, আর Gemini Live-এর জন্য, যে স্ক্রিনে করার কাজ তাদের হাতে দেয়। এটি আপনার আসল ডেস্কটপে কাজ করে, স্যান্ডবক্সে নয়।",
-   "pt-BR": "O Claude Code ou o Antigravity CLI podem ver sua tela e usá-la: clicar, digitar, pressionar teclas e rolar, para fazer o que um comando ou um arquivo não conseguem. No chat e para o Gemini Live, que passa a eles o que deve ser feito na tela. Eles agem na sua área de trabalho real, não em um ambiente isolado.",
-   "ru": "Claude Code или Antigravity CLI могут видеть ваш экран и пользоваться им: щёлкать, вводить текст, нажимать клавиши и прокручивать, чтобы сделать то, что не под силу команде или файлу. В чате и для Gemini Live, который поручает им действия на экране. Они работают на вашем настоящем рабочем столе, а не в песочнице.",
-   "id": "Claude Code atau Antigravity CLI dapat melihat layar Anda dan memakainya: mengeklik, mengetik, menekan tombol, dan menggulir, untuk melakukan yang tidak bisa dilakukan perintah atau file. Di chat, dan untuk Gemini Live, yang menyerahkan kepada mereka apa yang harus dilakukan di layar. Bekerja di desktop Anda yang sebenarnya, bukan di sandbox.",
-   "it": "Claude Code o Antigravity CLI possono vedere lo schermo e usarlo: cliccare, scrivere, premere tasti e scorrere, per fare quello che un comando o un file non possono fare. Nella chat, e per Gemini Live, che affida a loro quello che c'è da fare sullo schermo. Lavorano sul tuo vero desktop, non in un ambiente isolato."
-  },
   "Only while the agent answers. Asking every time, each click, key or text is an Allow / Deny card on the island first; screenshots don't ask. Press Esc anywhere to stop it. Lumo's island is left out of its screenshots. Screenshots count against your plan's limits.": {
    "zh-Hans": "仅在智能体回答时。设为每次询问时，每次点击、按键或输入都会先在灵动岛上显示“允许 / 拒绝”卡片；截图不需询问。在任意位置按 Esc 即可停止。Lumo 的灵动岛不会出现在截图中。截图会计入你的套餐限额。",
    "hi": "केवल जब एजेंट जवाब दे रहा हो। हर बार पूछने पर, हर क्लिक, कुंजी या टेक्स्ट पहले आइलैंड पर अनुमति दें / अस्वीकार करें कार्ड बनता है; स्क्रीनशॉट के लिए नहीं पूछा जाता। रोकने के लिए कहीं भी Esc दबाएँ। Lumo का आइलैंड स्क्रीनशॉट में नहीं आता। स्क्रीनशॉट आपके प्लान की सीमाओं में गिने जाते हैं।",
@@ -7887,17 +7875,29 @@
    "id": "Hanya saat agen menjawab. Dengan Selalu tanya, setiap klik, tombol, atau teks tampil dulu sebagai kartu Izinkan / Tolak di pulau; tangkapan layar tidak bertanya. Tekan Esc di mana saja untuk menghentikannya. Pulau Lumo tidak ikut di tangkapan layarnya. Tangkapan layar dihitung dalam batas paket Anda.",
    "it": "Solo mentre l'agente risponde. Con Chiedi ogni volta, ogni clic, tasto o testo è prima una scheda Consenti / Nega sull'isola; gli screenshot non chiedono. Premi Esc ovunque per fermarlo. L'isola di Lumo resta fuori dai suoi screenshot. Gli screenshot contano nei limiti del tuo piano."
   },
-  "In the chat, pick Claude Code or Antigravity CLI as the provider to use it.": {
-   "zh-Hans": "在聊天中，请将 Claude Code 或 Antigravity CLI 设为提供方以使用它。",
-   "hi": "चैट में इसे इस्तेमाल करने के लिए प्रदाता के रूप में Claude Code या Antigravity CLI चुनें।",
-   "es": "En el chat, elige Claude Code o Antigravity CLI como proveedor para usarlo.",
-   "ar": "في الدردشة، اختر Claude Code أو Antigravity CLI كمزوّد لاستخدامه.",
-   "fr": "Dans le chat, choisissez Claude Code ou Antigravity CLI comme fournisseur pour l'utiliser.",
-   "bn": "চ্যাটে এটি ব্যবহার করতে প্রদানকারী হিসেবে Claude Code বা Antigravity CLI বেছে নিন।",
-   "pt-BR": "No chat, escolha o Claude Code ou o Antigravity CLI como provedor para usá-lo.",
-   "ru": "Чтобы пользоваться этим в чате, выберите поставщиком Claude Code или Antigravity CLI.",
-   "id": "Di chat, pilih Claude Code atau Antigravity CLI sebagai penyedia untuk memakainya.",
-   "it": "Nella chat, scegli Claude Code o Antigravity CLI come provider per usarlo."
+  "Claude Code can see your screen and use it: click, type, press keys and scroll, to do what a command or a file can't. In the chat, and for Gemini Live, which hands it what is to be done on the screen (with Haiku 5.5, whoever helps Gemini otherwise). It works on your real desktop, not in a sandbox.": {
+   "zh-Hans": "Claude Code 可以查看并使用你的屏幕：点击、输入、按键和滚动，完成命令或文件做不到的事。可在聊天中使用，也可供 Gemini Live 使用：它会把需要在屏幕上完成的事交给 Claude Code（使用 Haiku 5.5，无论 Gemini 平时由谁协助）。它在你真实的桌面上操作，而不是在沙盒中。",
+   "hi": "Claude Code आपकी स्क्रीन देख और इस्तेमाल कर सकता है: क्लिक, टाइप, कुंजियाँ दबाना और स्क्रॉल करना, ताकि वह हो सके जो कोई कमांड या फ़ाइल नहीं कर सकती। चैट में, और Gemini Live के लिए, जो स्क्रीन पर किए जाने वाले काम उसे सौंपता है (Haiku 5.5 के साथ, चाहे Gemini की मदद सामान्यतः कोई भी करे)। यह आपके असली डेस्कटॉप पर काम करता है, सैंडबॉक्स में नहीं।",
+   "es": "Claude Code puede ver tu pantalla y usarla: hacer clic, escribir, pulsar teclas y desplazarse, para hacer lo que un comando o un archivo no pueden. En el chat y para Gemini Live, que le pasa lo que hay que hacer en pantalla (con Haiku 5.5, sea quien sea el ayudante habitual de Gemini). Trabaja en tu escritorio real, no en un entorno aislado.",
+   "ar": "يستطيع Claude Code رؤية شاشتك واستخدامها: النقر والكتابة والضغط على المفاتيح والتمرير، لإنجاز ما لا يستطيعه أمر أو ملف. في الدردشة، ولـ Gemini Live الذي يسلّمه ما يجب فعله على الشاشة (باستخدام Haiku 5.5، أيًا كان مساعد Gemini المعتاد). يعمل على سطح مكتبك الحقيقي، لا في بيئة معزولة.",
+   "fr": "Claude Code peut voir votre écran et s'en servir : cliquer, saisir, appuyer sur des touches et faire défiler, pour faire ce qu'une commande ou un fichier ne peut pas. Dans le chat, et pour Gemini Live, qui lui confie ce qu'il faut faire à l'écran (avec Haiku 5.5, quel que soit l'assistant habituel de Gemini). Il agit sur votre vrai bureau, pas dans un bac à sable.",
+   "bn": "Claude Code আপনার স্ক্রিন দেখতে ও ব্যবহার করতে পারে: ক্লিক, টাইপ, কী চাপা ও স্ক্রোল, যাতে কমান্ড বা ফাইল যা পারে না তা করা যায়। চ্যাটে, আর Gemini Live-এর জন্য, যে স্ক্রিনে করার কাজ তার হাতে দেয় (Haiku 5.5 দিয়ে, Gemini-কে সাধারণত যে-ই সাহায্য করুক)। এটি আপনার আসল ডেস্কটপে কাজ করে, স্যান্ডবক্সে নয়।",
+   "pt-BR": "O Claude Code pode ver sua tela e usá-la: clicar, digitar, pressionar teclas e rolar, para fazer o que um comando ou um arquivo não conseguem. No chat e para o Gemini Live, que passa a ele o que deve ser feito na tela (com o Haiku 5.5, seja quem for o ajudante habitual do Gemini). Ele age na sua área de trabalho real, não em um ambiente isolado.",
+   "ru": "Claude Code может видеть ваш экран и пользоваться им: щёлкать, вводить текст, нажимать клавиши и прокручивать, чтобы сделать то, что не под силу команде или файлу. В чате и для Gemini Live, который поручает ему действия на экране (с Haiku 5.5, кто бы ни помогал Gemini обычно). Он работает на вашем настоящем рабочем столе, а не в песочнице.",
+   "id": "Claude Code dapat melihat layar Anda dan memakainya: mengeklik, mengetik, menekan tombol, dan menggulir, untuk melakukan yang tidak bisa dilakukan perintah atau file. Di chat, dan untuk Gemini Live, yang menyerahkan kepadanya apa yang harus dilakukan di layar (dengan Haiku 5.5, siapa pun pembantu Gemini biasanya). Bekerja di desktop Anda yang sebenarnya, bukan di sandbox.",
+   "it": "Claude Code può vedere lo schermo e usarlo: cliccare, scrivere, premere tasti e scorrere, per fare quello che un comando o un file non possono fare. Nella chat, e per Gemini Live, che gli affida quello che c'è da fare sullo schermo (con Haiku 5.5, chiunque aiuti Gemini di solito). Lavora sul tuo vero desktop, non in un ambiente isolato."
+  },
+  "In the chat, pick Claude Code as the provider to use it.": {
+   "zh-Hans": "在聊天中，请将 Claude Code 设为提供方以使用它。",
+   "hi": "चैट में इसे इस्तेमाल करने के लिए प्रदाता के रूप में Claude Code चुनें।",
+   "es": "En el chat, elige Claude Code como proveedor para usarlo.",
+   "ar": "في الدردشة، اختر Claude Code كمزوّد لاستخدامه.",
+   "fr": "Dans le chat, choisissez Claude Code comme fournisseur pour l'utiliser.",
+   "bn": "চ্যাটে এটি ব্যবহার করতে প্রদানকারী হিসেবে Claude Code বেছে নিন।",
+   "pt-BR": "No chat, escolha o Claude Code como provedor para usá-lo.",
+   "ru": "Чтобы пользоваться этим в чате, выберите поставщиком Claude Code.",
+   "id": "Di chat, pilih Claude Code sebagai penyedia untuk memakainya.",
+   "it": "Nella chat, scegli Claude Code come provider per usarlo."
   }
  }
 }

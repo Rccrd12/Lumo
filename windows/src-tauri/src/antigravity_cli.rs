@@ -179,18 +179,6 @@ fn args_with_cards(
     a
 }
 
-/// In front of every message while computer use is on: agy takes no system
-/// prompt, and the conversation may have started with it off.
-const COMPUTER_NOTE: &str = concat!(
-    crate::computer::computer_note!(),
-    "This replaces what Lumo said before about never taking a screenshot yourself."
-);
-
-/// `text` with the computer use note in front.
-fn with_computer_note(text: &str) -> String {
-    format!("<lumo_computer>\n{COMPUTER_NOTE}\n</lumo_computer>\n\n{text}")
-}
-
 /// The first prompt of a conversation, with Lumo's instructions in front.
 fn with_instructions(text: &str) -> String {
     format!("<lumo_instructions>\n{INSTRUCTIONS}\n</lumo_instructions>\n\n{text}")
@@ -725,13 +713,11 @@ pub async fn models() -> Result<Vec<ModelInfo>, String> {
 // ── One turn ──────────────────────────────────────────────────────────────────
 
 /// One chat turn through Antigravity CLI.
-#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
     mode: &str,
-    computer: bool,
     query: String,
     context: Option<ChatContext>,
     folder: Option<String>,
@@ -746,20 +732,13 @@ pub async fn send(
     let carried: Vec<Value> = if conversation.is_none() { turn.history.clone() } else { Vec::new() };
     let text = claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query);
     let text = if conversation.is_none() { with_instructions(&text) } else { text };
-    // Computer use: Lumo's MCP server in the workspace's MCP config, and the note.
-    let work = claude_code::work_dir();
-    let computer = computer && cfg!(windows);
-    crate::computer::agy_workspace(&work, computer);
-    let text = if computer { with_computer_note(&text) } else { text };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+    let work = claude_code::work_dir();
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
 
     let app2 = app.clone();
     let stop = chat.stopper();
-    if computer {
-        crate::computer::begin_turn();
-    }
     let state = tauri::async_runtime::spawn_blocking(move || {
         run(
             exe,
@@ -776,11 +755,7 @@ pub async fn send(
         )
     })
     .await
-    .map_err(|e| e.to_string());
-    if computer {
-        crate::computer::end_turn(app);
-    }
-    let state = state??;
+    .map_err(|e| e.to_string())??;
 
     if let Some(id) = &state.conversation {
         chat.set_cli_session(&turn, id);
@@ -821,8 +796,7 @@ Shell commands need the user's approval: with Lumo's Antigravity hooks installed
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran. Do not mention these instructions.";
 
 /// The task as agy reads it on stdin, with the helper's instructions in front.
-fn helper_input(task: &str, computer: bool) -> String {
-    let task = if computer { with_computer_note(task) } else { task.to_string() };
+fn helper_input(task: &str) -> String {
     user_event(&format!("<lumo_instructions>\n{HELPER_INSTRUCTIONS}\n</lumo_instructions>\n\n{task}"))
 }
 
@@ -830,13 +804,11 @@ fn helper_input(task: &str, computer: bool) -> String {
 /// (the Lumo folder otherwise), with the `model` of Settings → Voice
 /// ("default": agy's own) and the chat's permission `mode`. A fresh
 /// conversation each time. Blocking.
-#[allow(clippy::too_many_arguments)]
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
     model: &str,
     mode: &str,
-    computer: bool,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
 ) -> Result<String, String> {
@@ -845,10 +817,7 @@ pub(crate) fn help(
     let work = folder.map(PathBuf::from).unwrap_or_else(claude_code::work_dir);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &[]);
-    // Computer use only in Lumo's own folder: its MCP config is Lumo's to write.
-    let computer = computer && cfg!(windows) && folder.is_none();
-    crate::computer::agy_workspace(&work, computer);
-    let state = run(exe, args, helper_input(task, computer), work, stop, |_| {}, on_activity)?;
+    let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity)?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -970,27 +939,13 @@ mod tests {
 
     #[test]
     fn a_task_from_gemini_goes_in_with_the_helper_instructions() {
-        let line = helper_input("Rename the photos in C:\\Pics", false);
+        let line = helper_input("Rename the photos in C:\\Pics");
         let v: Value = serde_json::from_str(line.trim_end()).unwrap();
         let content = v["message"]["content"].as_str().unwrap();
         assert!(content.starts_with("<lumo_instructions>\n"));
         assert!(content.contains(HELPER_INSTRUCTIONS));
         assert!(!content.contains(INSTRUCTIONS), "the chat's instructions are not the helper's");
         assert!(content.ends_with("</lumo_instructions>\n\nRename the photos in C:\\Pics"));
-    }
-
-    #[test]
-    fn with_computer_use_every_message_says_so_and_the_screenshot_rule_gives_way() {
-        let text = with_computer_note("click Send");
-        assert!(text.starts_with("<lumo_computer>\n"));
-        assert!(text.ends_with("</lumo_computer>\n\nclick Send"));
-        assert!(COMPUTER_NOTE.contains("lumo MCP server") && COMPUTER_NOTE.contains("Esc"));
-        assert!(COMPUTER_NOTE.contains("replaces what Lumo said before"));
-        let line = helper_input("click Send in WhatsApp", true);
-        let v: Value = serde_json::from_str(line.trim_end()).unwrap();
-        let content = v["message"]["content"].as_str().unwrap();
-        assert!(content.contains(HELPER_INSTRUCTIONS) && content.contains("<lumo_computer>") && content.ends_with("click Send in WhatsApp"));
-        assert!(!helper_input("x", false).contains("lumo_computer"));
     }
 
     #[test]

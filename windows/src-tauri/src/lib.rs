@@ -820,7 +820,7 @@ async fn chat_providers() -> Vec<String> {
                 ready.push(id.to_string());
             }
         }
-        if !platform::claude_candidates().is_empty() && hooks::status().installed {
+        if claude_code::ready() {
             ready.push("claude-code".to_string());
         }
         let antigravity_hooks = agents::list().iter().any(|a| a.id == "antigravity" && a.installed);
@@ -1089,6 +1089,8 @@ pub fn run() {
             live::live_open_app,
             live::live_help,
             live::live_help_stop,
+            live::live_computer,
+            live::live_computer_ready,
             live::live_microphone,
             typing::live_type,
             media::media_now,
@@ -1172,6 +1174,7 @@ pub fn run() {
             hooks::ensure_hook_exe(&handle);
             // Closed while Claude used the computer: the system's own arrow again.
             computer::recover();
+            computer::forget_antigravity(&claude_code::work_dir());
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             integrations::start(handle.clone());

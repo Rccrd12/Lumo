@@ -330,6 +330,10 @@ export const Bridge = {
   /** Hands a task to the helper of Settings → Voice; its answer. Cards ask for what it may not do alone. */
   liveHelp: (task: string, folder: string | null) => callOrThrow<string>("live_help", { task, folder }),
   liveHelpStop: () => call<void>("live_help_stop"),
+  /** Something to do on the screen, for Claude Code with Lumo's computer tools (live.rs use_computer). */
+  liveComputer: (task: string) => callOrThrow<string>("live_computer", { task }),
+  /** Computer use is on and Claude Code is set up for Lumo: Gemini may hand screen work over. */
+  liveComputerReady: () => call<boolean>("live_computer_ready"),
   /** Types `text` into the window in front, as the keyboard would; never Enter. */
   liveType: (text: string) => callOrThrow<LiveTyped>("live_type", { text }),
   /** The page asks for the microphone now (true), or has its answer (false). */

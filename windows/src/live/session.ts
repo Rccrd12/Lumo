@@ -29,7 +29,7 @@ import {
 } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
 import { LIVE_COLOR, compactNotice, speakerName } from "../core/compact";
-import { runTool } from "./tools";
+import { COMPUTER_HELPER, runTool } from "./tools";
 import { Transcript } from "./transcript";
 
 export type LivePhase = "off" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting";
@@ -173,7 +173,8 @@ class LiveSession {
       voice: parseVoice(s.liveVoice),
       helper: helperName(s.liveHelper),
       screen: s.liveScreen && HOST_OS === "windows",
-      computer: s.chatComputerUse === true && HOST_OS === "windows",
+      // Screen work goes to Claude Code, when it is set up and computer use is on.
+      computer: s.chatComputerUse === true && HOST_OS === "windows" && (await Bridge.liveComputerReady()) === true,
       search: !searchRefused,
       languageName: languageName(),
       os: HOST_OS === "windows" ? "Windows" : "Linux",
@@ -544,11 +545,14 @@ class LiveSession {
       this.update();
       return;
     }
-    if (call.name === TOOL.helper) {
-      this.setDoing(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: this.cfg?.helper ?? "" }), true);
+    if (call.name === TOOL.helper || call.name === TOOL.computer) {
+      const screenWork = call.name === TOOL.computer;
+      const helper = screenWork ? COMPUTER_HELPER : this.cfg?.helper ?? "";
+      this.setDoing(t(answer.error != null ? S.helperStopped : S.helperDone, { helper }), true);
       // On the closed island too, by its model's name: "Haiku answered".
       if (!(State.mode === "expanded" && State.view === "live")) {
-        compactNotice(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: liveHelperSpeaker() }), LIVE_COLOR);
+        const speaker = screenWork ? speakerName("claude-code", COMPUTER_HELPER, "claude-haiku-5-5") : liveHelperSpeaker();
+        compactNotice(t(answer.error != null ? S.helperStopped : S.helperDone, { helper: speaker }), LIVE_COLOR);
       }
     }
     this.answer(answer, run.generation);

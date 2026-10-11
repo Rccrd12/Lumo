@@ -61,10 +61,6 @@ pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option
 /// about, and what runs on nobody's say once agy's own confirmation is off.
 /// Reading and writing workspace files needs none.
 pub fn island_card_tool(tool: &str) -> bool {
-    // Lumo's computer use: what acts gets a card, what only looks does not.
-    if let Some(name) = crate::mcp::lumo_tool(tool) {
-        return !crate::mcp::LOOKING.contains(&name);
-    }
     let tool = tool.to_ascii_lowercase();
     ["command", "shell", "terminal", "mcp", "browser"].iter().any(|w| tool.contains(w))
 }
@@ -307,9 +303,6 @@ mod tests {
         assert!(claude_card_tool("mcp__lumo__left_click") && claude_card_tool("mcp__lumo__type") && claude_card_tool("mcp__lumo__key"));
         assert!(!claude_card_tool("mcp__lumo__screenshot") && !claude_card_tool("mcp__lumo__zoom") && !claude_card_tool("mcp__lumo__wait"));
         assert!(claude_card_tool("mcp__lumo2__screenshot"), "another server's screenshot is its own");
-        // Antigravity names them its own way: the same cards.
-        assert!(island_card_tool("mcp_lumo_left_click") && island_card_tool("lumo/type"));
-        assert!(!island_card_tool("mcp_lumo_screenshot") && !island_card_tool("lumo/wait"));
         assert!(!claude_card_tool("Read") && !claude_card_tool("Grep") && !claude_card_tool("AskUserQuestion"));
     }
 

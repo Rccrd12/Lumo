@@ -73,8 +73,9 @@ export interface LiveConfig {
   /** The model may look at the screen (Settings → Voice). */
   screen: boolean;
   /**
-   * The helper may use the computer for it: click, type, scroll on the screen
-   * (Settings → Chat → Let Claude use the computer; src-tauri/src/computer.rs).
+   * use_computer is offered: what is to be done on the screen goes to Claude
+   * Code (Haiku), whoever the helper is. Computer use is on (Settings → Chat)
+   * and Claude Code is set up for Lumo (live.rs use_computer).
    */
   computer?: boolean;
   /** Google Search is offered (some keys may not use it in a call). */
@@ -123,7 +124,7 @@ export function systemInstruction(cfg: LiveConfig): string {
     `- ask_helper hands a task to ${cfg.helper}, an agent on this computer that can run commands, edit and create files, write code, use the web, and use the apps and accounts the user connected to it, such as their calendar, email, documents or task lists. Use it for anything your other tools can't do: adding an event to the calendar, checking the agenda, drafting an email, anything on the user's accounts. Never tell the user you can't do something before ${cfg.helper} has tried. Give it the whole task with exact dates, times and names, as it hears nothing of the conversation. It can take a while: tell the user you've asked ${cfg.helper}, keep talking if they want, and tell them what it found or did when its answer comes back. What it may not do alone, the user approves on a card in Lumo.`,
     ...(cfg.computer
       ? [
-          `- ${cfg.helper} can also use the screen for you: look at it, click, type, press keys and scroll, in any app or website. When the user asks you to do something on the screen ("click Send", "open the display settings and turn on night light", "fill in this form"), hand it to ask_helper with exactly what to do and where, and tell the user ${cfg.helper} is doing it. The user sees the screen glow while it works, approves its actions in Lumo, and can press Esc to stop it. For text in a box the user already clicked in, type_text is quicker.`,
+          `- use_computer hands something to do on the screen to Claude Code, which looks at the screen and clicks, types, presses keys and scrolls in any app or website. Never try to do it yourself: whenever the user asks for something on the screen ("click Send", "open the display settings and turn on night light", "fill in this form", "scroll down"), call use_computer at once with exactly what to do and where, and tell the user Claude Code is doing it. The user sees the screen glow while it works, approves its actions in Lumo, and can press Esc to stop it. For text in a box the user already clicked in, type_text is quicker.`,
         ]
       : []),
     "- set_timer starts a timer that counts down on Lumo's island and rings at the end. control_music plays, pauses or skips the music playing on the computer.",
@@ -164,6 +165,7 @@ export const TOOL = {
   openApp: "open_app",
   type: "type_text",
   helper: "ask_helper",
+  computer: "use_computer",
   stopHelper: "stop_helper",
   timer: "set_timer",
   music: "control_music",
@@ -223,13 +225,22 @@ export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper" | "co
     },
     {
       name: TOOL.helper,
-      description: `Hands a task to ${cfg.helper}, an agent on this computer that can run commands, read, edit and create files, write code, browse the web, and use the apps and accounts the user connected to it (calendar, email, documents and more)${cfg.computer ? ", and use the screen: click, type, press keys and scroll in any app or website" : ""}. For anything your other tools can't do. Gives back its answer when it is done.`,
+      description: `Hands a task to ${cfg.helper}, an agent on this computer that can run commands, read, edit and create files, write code, browse the web, and use the apps and accounts the user connected to it (calendar, email, documents and more). For anything your other tools can't do. Gives back its answer when it is done.`,
       parameters: obj({
         task: str("The whole task, with everything the helper needs to know (exact dates, times, names): it hears nothing of the conversation."),
         folder: str("Optional: the absolute folder it should work in."),
       }, ["task"]),
     },
-    { name: TOOL.stopHelper, description: `Stops the task ${cfg.helper} is working on, when the user no longer wants it.` },
+    ...(cfg.computer
+      ? [{
+        name: TOOL.computer,
+        description: "Hands something to do on the screen to Claude Code, which looks at the screen and clicks, types, presses keys and scrolls for the user, in any app or website. For every request about the screen. Gives back what it did when it is done.",
+        parameters: obj({
+          task: str("Exactly what to do and where, e.g. \"In WhatsApp, open the chat with Marco and click Send\": it hears nothing of the conversation."),
+        }, ["task"]),
+      }]
+      : []),
+    { name: TOOL.stopHelper, description: `Stops the task ${cfg.helper} or Claude Code is working on, when the user no longer wants it.` },
     {
       name: TOOL.timer,
       description: "Starts a timer that counts down on Lumo's island and rings when it is over, e.g. for the pasta or a break.",

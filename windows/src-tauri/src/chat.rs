@@ -553,8 +553,7 @@ async fn send_to(
             }
         }
         if provider == antigravity_cli::PROVIDER {
-            let computer = settings.chat_computer_use;
-            return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, computer, query, context, folder).await;
+            return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
         }
         let computer = settings.chat_computer_use;
         return claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)

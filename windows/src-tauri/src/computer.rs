@@ -100,37 +100,19 @@ pub fn server_entry() -> Value {
     })
 }
 
-/// Antigravity CLI reads MCP servers from its workspace's
-/// `.agents/mcp_config.json`: Lumo's server is added to the one of Lumo's own
-/// folder while computer use is on, and taken out when it is off. Whatever
-/// else the file holds is kept. Never anywhere else: the user's global
-/// configuration is not touched.
-pub fn agy_workspace(work: &std::path::Path, on: bool) {
+/// A build before this one gave Antigravity CLI Lumo's server in the MCP
+/// configuration of Lumo's own folder (`~/Lumo/.agents/mcp_config.json`):
+/// it is taken out again, and whatever else the file holds is kept.
+pub fn forget_antigravity(work: &std::path::Path) {
     let path = work.join(".agents").join("mcp_config.json");
-    let mut config: Value = std::fs::read_to_string(&path)
-        .ok()
-        .and_then(|text| serde_json::from_str(&text).ok())
-        .filter(Value::is_object)
-        .unwrap_or_else(|| json!({}));
-    let has = config.pointer("/mcpServers/lumo").is_some();
-    if on {
-        if config.pointer("/mcpServers/lumo") == Some(&server_entry()) {
-            return;
-        }
-        if !config.get("mcpServers").is_some_and(Value::is_object) {
-            config["mcpServers"] = json!({});
-        }
-        config["mcpServers"]["lumo"] = server_entry();
-    } else if has {
-        if let Some(servers) = config.get_mut("mcpServers").and_then(Value::as_object_mut) {
-            servers.remove("lumo");
-        }
-    } else {
+    let Some(mut config) = std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) else {
+        return;
+    };
+    let Some(servers) = config.get_mut("mcpServers").and_then(Value::as_object_mut) else { return };
+    if servers.remove("lumo").is_none() {
         return;
     }
-    let written = std::fs::create_dir_all(work.join(".agents"))
-        .and_then(|_| std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap_or_default()));
-    if let Err(e) = written {
+    if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap_or_default()) {
         crate::log::line(format!("computer use: {} not written: {e}", path.display()));
     }
 }
@@ -1602,24 +1584,19 @@ mod tests {
     }
 
     #[test]
-    fn antigravitys_workspace_config_gets_lumos_server_and_keeps_the_rest() {
+    fn an_earlier_antigravity_entry_is_taken_out_and_the_rest_kept() {
         let dir = std::env::temp_dir().join(format!("lumo-agy-{}", std::process::id()));
         let file = dir.join(".agents").join("mcp_config.json");
         let _ = std::fs::remove_dir_all(&dir);
-        agy_workspace(&dir, false);
-        assert!(!file.exists(), "off and never on: nothing written");
+        forget_antigravity(&dir);
+        assert!(!file.exists(), "nothing there: nothing written");
         std::fs::create_dir_all(dir.join(".agents")).unwrap();
-        std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"}},"other":1}"#).unwrap();
-        agy_workspace(&dir, true);
+        std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
+        forget_antigravity(&dir);
         let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
+        assert!(v["mcpServers"].get("lumo").is_none());
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
-        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp"]));
-        assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
-        agy_workspace(&dir, false);
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-        assert!(v["mcpServers"].get("lumo").is_none(), "off: taken out");
-        assert_eq!(v["mcpServers"]["mine"]["command"], "x");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
