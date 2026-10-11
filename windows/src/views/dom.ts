@@ -151,9 +151,11 @@ export function dot(color: string, size = 7): HTMLElement {
 }
 
 /** A mouse wheel notch scrolls this share of what the webview would (about 100 px on Windows). */
-const WHEEL_SHARE = 0.4;
-/** Deltas this small come from a touchpad, already fine-grained: left to the webview. */
+const WHEEL_SHARE = 0.45;
+/** Deltas this small come from a touchpad, already fine-grained: taken whole. */
 const FINE_DELTA_PX = 40;
+/** How quickly the glide closes on where the wheel asked to go: most of the way in ~3 × this. */
+const GLIDE_MS = 55;
 
 /** Whether something inside `root`, under the pointer, scrolls by itself that way (a code block). */
 function innerScroller(target: EventTarget | null, root: HTMLElement, down: boolean): boolean {
@@ -167,42 +169,41 @@ function innerScroller(target: EventTarget | null, root: HTMLElement, down: bool
 }
 
 /**
- * A mouse wheel that scrolls `el` in smaller steps, gliding to each: a notch
- * of the wheel went most of the way down a short chat. A touchpad's fine
- * deltas, Ctrl (zoom) and Shift (sideways) are left as they were.
+ * A wheel that scrolls `el` smoothly: every wheel event (a mouse's notches,
+ * cut down, or a touchpad's fine steps) moves where the list is heading, and
+ * the list glides there on the clock, not by frames, so a slow frame never
+ * makes it jump. Ctrl (zoom) and Shift (sideways) are left alone.
  */
 export function gentleWheel(el: HTMLElement) {
   let target = 0;
   let pos = 0;
   let frame = 0;
-  const stop = () => {
-    if (frame) cancelAnimationFrame(frame);
-    frame = 0;
-  };
-  const step = () => {
+  let last = 0;
+  const step = (now: number) => {
     frame = 0;
     // Moved by something else meanwhile (following an answer down): that wins.
-    if (Math.abs(el.scrollTop - Math.round(pos)) > 2) return;
+    if (Math.abs(el.scrollTop - pos) > 3) return;
     const max = Math.max(0, el.scrollHeight - el.clientHeight);
     target = Math.min(Math.max(target, 0), max);
+    const dt = Math.min(64, Math.max(1, now - last));
+    last = now;
     const left = target - pos;
-    pos = Math.abs(left) < 0.5 ? target : pos + left * 0.35;
+    pos = Math.abs(left) < 0.5 ? target : pos + left * (1 - Math.exp(-dt / GLIDE_MS));
     el.scrollTop = pos;
     if (pos !== target) frame = requestAnimationFrame(step);
   };
   el.addEventListener("wheel", (e) => {
     if (e.ctrlKey || e.shiftKey || e.deltaY === 0) return;
-    const dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * el.clientHeight : e.deltaY;
-    if (Math.abs(dy) < FINE_DELTA_PX || innerScroller(e.target, el, dy > 0)) {
-      stop();
-      return;
-    }
+    let dy = e.deltaMode === 1 ? e.deltaY * 16 : e.deltaMode === 2 ? e.deltaY * el.clientHeight : e.deltaY;
+    if (innerScroller(e.target, el, dy > 0)) return;
     e.preventDefault();
+    if (Math.abs(dy) >= FINE_DELTA_PX) dy *= WHEEL_SHARE;
     if (!frame) {
       pos = el.scrollTop;
       target = pos;
+      last = performance.now();
     }
-    target += dy * WHEEL_SHARE;
+    target += dy;
     if (!frame) frame = requestAnimationFrame(step);
   }, { passive: false });
 }

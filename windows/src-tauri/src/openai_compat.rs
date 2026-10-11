@@ -109,14 +109,19 @@ fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Valu
     }
 }
 
-/// Screenshots the user shared from the chat's screen button (screen.rs):
-/// image parts ahead of the message's text, on whichever turn they were added.
+/// Screenshots and files the user shared (screen.rs): image parts, and the
+/// text of a text file, ahead of the message's text, on whichever turn they
+/// were added.
 fn with_images(mut user: Value, images: &[String]) -> Value {
     let parts: Vec<Value> = images
         .iter()
         .filter_map(|path| match file_part(path) {
             Some(FilePart::Image(part)) => Some(part),
-            _ => None,
+            Some(FilePart::Text(body)) => {
+                let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+                Some(json!({ "type": "text", "text": format!("File: {name}\nFile contents:\n{body}") }))
+            }
+            None => None,
         })
         .collect();
     if parts.is_empty() {

@@ -49,6 +49,7 @@ export const SCREEN_STRINGS = {
   needsImages: N_("Screenshots need the Claude Code or Anthropic provider."),
   remove: N_("Remove"),
   selected: N_("Selected text"),
+  selectedCount: N_("Selected texts ({count})"),
   selectedIn: N_("Text from {app}"),
   explorer: N_("Folder open in File Explorer"),
   noExplorer: N_("No folder is open in File Explorer."),
@@ -204,6 +205,8 @@ export interface PendingScreen {
   shots: KeptShot[];
   /** Text selected in another app ("Ask about the selected text"). */
   selection?: SelectedText | null;
+  /** More text selected and shared after `selection`, in order. */
+  selections?: SelectedText[];
   /** The folder open in File Explorer, with what is in it. */
   folder?: ExplorerFolder | null;
   /**
@@ -216,7 +219,7 @@ export interface PendingScreen {
 }
 
 export function emptyScreen(): PendingScreen {
-  return { windows: [], tabs: [], shots: [], selection: null, folder: null, autoFolder: null, autoOff: false };
+  return { windows: [], tabs: [], shots: [], selection: null, selections: [], folder: null, autoFolder: null, autoOff: false };
 }
 
 /** After a message (or a new chat): nothing waits, the folder that rides along by itself stays. */
@@ -238,24 +241,49 @@ export function sharesFolderByItself(p: PendingScreen, settingOn: boolean): bool
   return settingOn && !p.folder && !p.autoOff;
 }
 
-export function hasScreen(p: PendingScreen): boolean {
-  return p.windows.length > 0 || p.tabs.length > 0 || p.shots.length > 0 || !!p.selection || !!p.folder;
+export function hasScreen(p: PendingScreen, files: readonly { name: string; path: string }[] = []): boolean {
+  return p.windows.length > 0 || p.tabs.length > 0 || p.shots.length > 0 || !!p.selection || !!p.folder ||
+    (p.selections?.length ?? 0) > 0 || files.length > 0;
 }
 
-/** The previewed screenshots join what is waiting, named after their screen. */
+/** Every selected text waiting, the first one first. */
+export function allSelections(p: PendingScreen): SelectedText[] {
+  return [...(p.selection ? [p.selection] : []), ...(p.selections ?? [])];
+}
+
+/** A selection joins the ones waiting (the same text twice only once). */
+export function withSelection(p: PendingScreen, sel: SelectedText): PendingScreen {
+  if (!p.selection) return { ...p, selection: sel };
+  if (allSelections(p).some((s) => s.text === sel.text)) return p;
+  return { ...p, selections: [...(p.selections ?? []), sel] };
+}
+
+/**
+ * The previewed screenshots join what is waiting, named after their screen;
+ * a second shot of the same screen is "Screen 1 (2)".
+ */
 export function keepShots(p: PendingScreen, shots: ScreenShot[]): PendingScreen {
-  const kept = shots.map((s) => ({ name: screenLabel(s.display), path: s.path, preview: s.preview }));
+  const taken = new Set(p.shots.map((s) => s.name));
+  const kept = shots.map((s) => {
+    const base = screenLabel(s.display);
+    let name = base;
+    for (let i = 2; taken.has(name); i++) name = `${base} (${i})`;
+    taken.add(name);
+    return { name, path: s.path, preview: s.preview };
+  });
   return { ...p, shots: [...p.shots, ...kept] };
 }
 
-/** What chat_send takes, or null when nothing is waiting. */
-export function screenPayload(p: PendingScreen): ScreenContext | null {
-  if (!hasScreen(p)) return null;
+/** What chat_send takes, or null when nothing is waiting. `files`: the files added after the first. */
+export function screenPayload(p: PendingScreen, files: readonly { name: string; path: string }[] = []): ScreenContext | null {
+  if (!hasScreen(p, files)) return null;
   const out: ScreenContext = {
     windows: [],
     shots: p.shots.map((s) => ({ name: s.name, path: s.path })),
   };
   if (p.selection) out.selection = p.selection;
+  if (p.selections?.length) out.selections = p.selections;
+  if (files.length) out.files = files.map((f) => ({ name: f.name, path: f.path }));
   if (p.folder) out.folder = p.folder;
   if (p.windows.length > 0) out.sharedWindows = p.windows;
   if (p.tabs.length > 0) out.tabs = p.tabs;
@@ -275,12 +303,20 @@ export interface ScreenChipInfo {
 /** The chips above the chat: the window list, and the screenshots together. */
 export function screenChips(p: PendingScreen): ScreenChipInfo[] {
   const out: ScreenChipInfo[] = [];
-  if (p.selection) {
-    const { text, app } = p.selection;
+  const selections = allSelections(p);
+  if (selections.length === 1) {
+    const { text, app } = selections[0];
     out.push({
       kind: "selection",
       label: app ? t(SCREEN_STRINGS.selectedIn, { app }) : t(SCREEN_STRINGS.selected),
       title: text.length > SELECTION_PREVIEW ? `${text.slice(0, SELECTION_PREVIEW)}…` : text,
+    });
+  } else if (selections.length > 1) {
+    const cut = (text: string) => (text.length > SELECTION_PREVIEW ? `${text.slice(0, SELECTION_PREVIEW)}…` : text);
+    out.push({
+      kind: "selection",
+      label: t(SCREEN_STRINGS.selectedCount, { count: selections.length }),
+      title: selections.map((s) => cut(s.text)).join("\n—\n"),
     });
   }
   if (p.windows.length > 0) {
@@ -309,7 +345,7 @@ export function screenChips(p: PendingScreen): ScreenChipInfo[] {
 /** How many things wait for the next question: each screenshot, window and tab, the selection, the folder. */
 export function attachedCount(p: PendingScreen): number {
   const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
-  return (p.selection ? 1 : 0) + p.windows.length + p.tabs.length + p.shots.length + (folder ? 1 : 0);
+  return allSelections(p).length + p.windows.length + p.tabs.length + p.shots.length + (folder ? 1 : 0);
 }
 
 /** The list on the chip's tooltip, so the user sees exactly what will be sent. */
@@ -370,15 +406,12 @@ export function chipPreview(p: PendingScreen, kind: ChipKind): PreviewBlock[] {
   switch (kind) {
     case "shots":
       return p.shots.map((s) => block({ heading: s.name, image: s.preview }));
-    case "selection": {
-      const sel = p.selection;
-      if (!sel) return [];
-      return [block({
+    case "selection":
+      return allSelections(p).map((sel) => block({
         heading: sel.app ? t(SCREEN_STRINGS.selectedIn, { app: sel.app }) : t(SCREEN_STRINGS.selected),
         detail: sel.title,
         text: sel.text,
-      })];
-    }
+      }));
     case "windows":
       return p.windows.map((w) => block({
         heading: w.title,

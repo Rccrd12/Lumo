@@ -580,6 +580,10 @@ export interface ScreenContext {
   windows: OpenWindow[];
   shots: { name: string; path: string }[];
   selection?: SelectedText;
+  /** More selected text, shared after `selection`. */
+  selections?: SelectedText[];
+  /** More files added after the first (the chat's file context), in the inbox. */
+  files?: { name: string; path: string }[];
   folder?: ExplorerFolder;
   /** Windows picked in the menu, with what they show. */
   sharedWindows?: SharedWindow[];
