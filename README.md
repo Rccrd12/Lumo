@@ -78,6 +78,7 @@ Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` t
 
 | Windows and Linux | Date | Highlights |
 |-------------------|------|------------|
+| [0.5.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.2) | Oct 11, 2026 | Claude uses your computer — a glowing screen, its own orange mouse, every action approved — also for Gemini Live; share windows and browser tabs with what they show; Settings from the right-click menu inside the island |
 | [0.5.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.1) | Oct 10, 2026 | Allow and Deny from the closed island and for the chat's Claude Code, the Claude plan's 5 hours from Anthropic, a right-click menu with Refresh, past sessions and a search in the past chats, the usage ring in the chat, Live Activities that follow the island |
 | [0.5.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.0) | Oct 9, 2026 | Live activities (timers, music, calendar, email) on the closed island and beside the open one, the Email pill, the chat knows what's open on your PC, math in answers, Italiano, Lumo's own names everywhere |
 | [0.4.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.4.0) | Oct 9, 2026 | Talk with Gemini Live, which sees your screen, reads your files and asks Claude Code for help; Lumo animates every state; the wardrobe in two parts |
