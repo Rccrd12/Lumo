@@ -1,5 +1,14 @@
 # Changelog
 
+## Windows 0.6.0 — October 11, 2026
+
+- **Windows only**: Lumo no longer ships for Linux. Its build, packages and release, and the Linux-only code behind them, are gone; every release from now on is for Windows
+- **Drop a file on any island size**: on an island smaller than the drop scene, the scene shrinks inside a card that reaches the island's edges, so the frame and the upload bar stay whole
+- **Straight into the chat**: once the bar is full the file waits in the chat, which says "File uploaded" for a moment, with no "what do you want to do with it?" card in between
+- **The upload goes on with the island closed**: its bar carries on as a live activity, and the closed island says when the file is in
+- **Listening mode for GitHub**: Claude in the chat can ask Lumo to keep an eye on a pull request (its checks, green CI, an approval, ready, merged or closed) instead of waiting itself. The closed island says what Lumo is waiting for; when it happens a note and a sound tell you, and with a task the chat that asked lets Claude carry on (merging still asks for your click). The watch survives a restart and asks GitHub only while it is on
+- **No time limit on Claude Code turns**: a turn in the chat is no longer stopped after 15 minutes; it runs until it ends or you press Stop
+
 ## Windows 0.5.8 — October 11, 2026
 
 - **One attachment, one row**: two `Ctrl+Alt+P` of the same screen, two windows, two tabs or two selected texts no longer share one chip: each waits on its own, and its × takes back that one only (a screenshot's file with it)

@@ -77,6 +77,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.6.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.0) | Oct 11, 2026 | Windows only (Linux dropped), drop a file on any island size straight into the chat, the upload carried on with the island closed, a listening mode for GitHub pull requests, no time limit on Claude Code turns |
 | [0.5.8](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.8) | Oct 11, 2026 | One row per attachment (two screenshots of the same screen too), the attachments folder made anew, the big picture over the whole island with Lumo aside, the upload bar centred |
 | [0.5.7](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.7) | Oct 11, 2026 | Several screenshots, selections and files with one question, service cards laid out like the tools', Lumo waits under the dragged file, the big preview beside Lumo |
 | [0.5.6](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.6) | Oct 11, 2026 | Ctrl+Alt+B attaches a PDF open in the browser as the file, attachments in a folder beside the past chats, GitHub keeping up on the closed island, gentler chat scrolling, a drop that follows the file, big previews |
