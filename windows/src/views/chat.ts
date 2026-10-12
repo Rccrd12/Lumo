@@ -202,6 +202,7 @@ const ACTIVITY_STRINGS = {
   searchingFor: N_("Searching for {pattern}"),
   searchingFolder: N_("Searching the folder"),
   command: N_("Running a command"),
+  commandFor: N_("Running a command: {what}"),
   editing: N_("Editing {name}"),
   editingFile: N_("Editing a file"),
   web: N_("Searching the web"),
@@ -262,7 +263,7 @@ export function activityLabel(activity: ChatActivity | null): string {
     case "search":
       return detail ? t(ACTIVITY_STRINGS.searchingFor, { pattern: detail }) : t(ACTIVITY_STRINGS.searchingFolder);
     case "command":
-      return t(ACTIVITY_STRINGS.command);
+      return detail ? t(ACTIVITY_STRINGS.commandFor, { what: detail }) : t(ACTIVITY_STRINGS.command);
     case "edit":
       return detail ? t(ACTIVITY_STRINGS.editing, { name: detail }) : t(ACTIVITY_STRINGS.editingFile);
     case "web":

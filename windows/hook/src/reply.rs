@@ -76,6 +76,62 @@ pub fn claude_card_tool(tool: &str) -> bool {
             || tool.starts_with("mcp__"))
 }
 
+/// Whether a shell command would sit waiting for something to happen: GitHub's
+/// own watchers (`gh pr checks --watch`, `gh run watch`), a long sleep, or a
+/// loop that sleeps. Such a command holds the island's chat with nothing to
+/// show; Lumo listens instead (claude_wait_denied).
+pub fn blocking_wait(command: &str) -> bool {
+    let lower = command.to_ascii_lowercase();
+    let words: Vec<&str> = lower
+        .split(|c: char| c.is_whitespace() || matches!(c, ';' | '&' | '|' | '(' | ')' | '{' | '}' | '"' | '\''))
+        .filter(|w| !w.is_empty())
+        .collect();
+    let has = |seq: &[&str]| words.windows(seq.len()).any(|w| w == seq);
+    if (has(&["gh", "pr", "checks"]) && words.contains(&"--watch")) || has(&["gh", "run", "watch"]) {
+        return true;
+    }
+    let sleeps: Vec<usize> = words
+        .iter()
+        .enumerate()
+        .filter(|(_, w)| matches!(**w, "sleep" | "start-sleep" | "timeout"))
+        .map(|(i, _)| i)
+        .collect();
+    if sleeps.is_empty() {
+        return false;
+    }
+    if words.iter().any(|w| matches!(*w, "while" | "until" | "for" | "do")) {
+        return true;
+    }
+    // A single long sleep: the first number after it, in seconds (30, 30s, 2m, 1h).
+    sleeps.iter().any(|&i| {
+        words[i + 1..].iter().take(3).find_map(|w| seconds(w.trim_start_matches(['-', '/']))).is_some_and(|s| s >= 30.0)
+    })
+}
+
+fn seconds(word: &str) -> Option<f64> {
+    let (num, unit) = word.split_at(word.find(|c: char| !c.is_ascii_digit() && c != '.').unwrap_or(word.len()));
+    let n: f64 = num.parse().ok()?;
+    match unit {
+        "" | "s" => Some(n),
+        "m" => Some(n * 60.0),
+        "h" => Some(n * 3600.0),
+        _ => None,
+    }
+}
+
+/// Claude Code's PreToolUse reply to a command that would wait on GitHub:
+/// denied, with what to do instead.
+pub fn claude_wait_denied() -> String {
+    serde_json::json!({
+        "hookSpecificOutput": {
+            "hookEventName": "PreToolUse",
+            "permissionDecision": "deny",
+            "permissionDecisionReason": "Lumo: do not wait for GitHub (or anything else) in a command, it holds the user's chat. Write [[listen owner/repo#123 event: what to do then]] on a line of its own in your answer instead, say Lumo is listening, and end your answer: Lumo watches GitHub and messages you when it happens.",
+        }
+    })
+    .to_string()
+}
+
 /// Claude Code's PreToolUse reply to such a card: allowed only after a click
 /// on Allow. Anything else is a deny, with a reason Claude reads: `-p` has
 /// nobody else to ask.
@@ -180,6 +236,28 @@ fn answers_fit(question: &Value, answers: &Map<String, Value>) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn a_command_that_would_wait_on_github_is_told_to_let_lumo_listen() {
+        for cmd in [
+            "gh pr checks 22 --watch",
+            "gh pr merge 22 --squash && gh pr checks 22 --watch --interval 30",
+            "gh run watch 123456",
+            "sleep 60 && gh pr view 22",
+            "Start-Sleep -Seconds 120; gh pr view 22",
+            "while true; do gh pr view 22 --json state; sleep 10; done",
+            "until gh pr view 22 --json mergedAt -q .mergedAt | grep -q T; do sleep 5; done",
+            "timeout /t 90",
+        ] {
+            assert!(blocking_wait(cmd), "{cmd}");
+        }
+        for cmd in ["gh pr merge 22 --squash", "gh pr checks 22", "sleep 2 && ls", "npm test -- --timeout 30000", "git status"] {
+            assert!(!blocking_wait(cmd), "{cmd}");
+        }
+        let v: serde_json::Value = serde_json::from_str(&claude_wait_denied()).unwrap();
+        assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "deny");
+        assert!(v["hookSpecificOutput"]["permissionDecisionReason"].as_str().unwrap().contains("[[listen"));
+    }
+
     use super::*;
 
     const AGENTS: &[&str] = &[
