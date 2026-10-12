@@ -52,7 +52,7 @@ const STOPPED_TEXT: &str = "The user pressed Esc to stop you using the computer.
 // ── State of the turn ───────────────────────────────────────────────────────
 
 /// A chat turn with computer use is running.
-static TURN: AtomicBool = AtomicBool::new(false);
+static TURN: AtomicUsize = AtomicUsize::new(0);
 /// The user pressed Esc during it.
 static STOPPED: AtomicBool = AtomicBool::new(false);
 /// An action is under way: the island lets the mouse through (island.rs).
@@ -120,12 +120,15 @@ pub fn forget_antigravity(work: &std::path::Path) {
 pub fn begin_turn() {
     STOPPED.store(false, Ordering::SeqCst);
     *VIEW.lock().unwrap_or_else(|e| e.into_inner()) = None;
-    TURN.store(true, Ordering::SeqCst);
+    TURN.fetch_add(1, Ordering::SeqCst);
 }
 
 /// The turn is over: nothing more is done, and Esc and the mouse are the user's again.
 pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
-    TURN.store(false, Ordering::SeqCst);
+    // Two chats can be answered at once: the computer is let go after the last one.
+    if TURN.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
+        return;
+    }
     ACTING.store(false, Ordering::SeqCst);
     release_stop_key(app);
     disengage(app);
@@ -174,7 +177,7 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
 /// A card came up on the island during the turn (pipe.rs): the hand gets the
 /// mouse back to answer it, and the glow dims.
 pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
-    if !TURN.load(Ordering::SeqCst) {
+    if !(TURN.load(Ordering::SeqCst) > 0) {
         return;
     }
     if CARDS.fetch_add(1, Ordering::SeqCst) == 0 && ENGAGED.load(Ordering::SeqCst) {
@@ -185,7 +188,7 @@ pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
 
 /// The card was answered: Claude has the mouse again.
 pub fn card_down<R: Runtime>(app: &AppHandle<R>) {
-    if !TURN.load(Ordering::SeqCst) {
+    if !(TURN.load(Ordering::SeqCst) > 0) {
         return;
     }
     let left = CARDS.fetch_sub(1, Ordering::SeqCst).saturating_sub(1);
@@ -275,7 +278,7 @@ pub fn is_stop_key(shortcut: &tauri_plugin_global_shortcut::Shortcut) -> bool {
 
 /// Esc was pressed: every later call of this turn is refused.
 pub fn stop<R: Runtime>(app: &AppHandle<R>) {
-    if !TURN.load(Ordering::SeqCst) || STOPPED.swap(true, Ordering::SeqCst) {
+    if !(TURN.load(Ordering::SeqCst) > 0) || STOPPED.swap(true, Ordering::SeqCst) {
         return;
     }
     crate::log::line("computer use: stopped with Esc");
@@ -735,7 +738,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     if !on {
         return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under Chat: Let Claude use the computer.");
     }
-    if !TURN.load(Ordering::SeqCst) {
+    if !(TURN.load(Ordering::SeqCst) > 0) {
         return refuse("Lumo lets Claude use the computer only while it answers in the island's chat.");
     }
     if STOPPED.load(Ordering::SeqCst) {
@@ -1562,12 +1565,12 @@ mod tests {
     fn nothing_is_done_outside_a_turn_or_after_esc() {
         // The state machine alone: serve() needs the app.
         begin_turn();
-        assert!(TURN.load(Ordering::SeqCst) && !STOPPED.load(Ordering::SeqCst));
+        assert!((TURN.load(Ordering::SeqCst) > 0) && !STOPPED.load(Ordering::SeqCst));
         assert!(view().is_err(), "a new turn starts without a screen");
         *VIEW.lock().unwrap() = Some(View::new(0, (0, 0, 800, 600)));
         assert!(view().is_ok());
         begin_turn();
         assert!(view().is_err(), "each turn picks its screen again");
-        TURN.store(false, Ordering::SeqCst);
+        TURN.store(0, Ordering::SeqCst);
     }
 }

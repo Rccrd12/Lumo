@@ -35,12 +35,11 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
 use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity};
 use crate::i18n::{t, tf};
-use crate::island::WINDOW_LABEL;
 use crate::platform;
 
 pub const PROVIDER: &str = "antigravity-cli";
@@ -728,6 +727,7 @@ pub async fn send(
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
 
     let app2 = app.clone();
+    let events = chat.events();
     let stop = chat.stopper();
     let state = tauri::async_runtime::spawn_blocking(move || {
         run(
@@ -736,12 +736,8 @@ pub async fn send(
             input,
             work,
             stop,
-            |text| {
-                let _ = app2.emit_to(WINDOW_LABEL, "chat-delta", text.to_string());
-            },
-            |activity| {
-                let _ = app2.emit_to(WINDOW_LABEL, "chat-activity", activity);
-            },
+            |text| events.delta(&app2, text),
+            |activity| events.activity(&app2, activity),
         )
     })
     .await

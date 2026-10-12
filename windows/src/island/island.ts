@@ -647,12 +647,11 @@ export class Island {
   private menuAction(id: string) {
     switch (id) {
       case "newChat":
-        if (State.chatActivity == null) {
-          State.startChat();
-          State.droppedFile = null;
-          State.promptContext = null;
-          void Bridge.chatReset();
-        }
+        // An answer still being written goes on in its own chat.
+        State.startChat();
+        State.droppedFile = null;
+        State.promptContext = null;
+        void Bridge.chatReset(State.chatId);
         this.setView("prompt");
         this.takeKeyboard();
         break;

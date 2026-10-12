@@ -58,7 +58,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State, WebviewUrl, WebviewWindowBuilder};
 use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 
-use chat::{Chat, ChatContext, ChatReply, ModelInfo};
+use chat::{ChatContext, ChatReply, Chats, ModelInfo};
 use files::DroppedFile;
 use hooks::{HookPreview, HookStatus};
 use island::{PollGate, ScreenInfo};
@@ -592,11 +592,17 @@ fn approval_decline(app: AppHandle, request_id: String) {
 async fn chat_send(
     app: AppHandle,
     shared: State<'_, Shared>,
-    chat: State<'_, Chat>,
+    chats: State<'_, Chats>,
+    chat_id: String,
     query: String,
     context: Option<ChatContext>,
     screen: Option<screen::ScreenContext>,
 ) -> Result<ChatReply, String> {
+    // Held until the answer is done: the user can move to another chat, and
+    // this one keeps being answered in the background.
+    let chat = chats.get(&chat_id);
+    // The settings as they are now: a model, effort or permission picked
+    // while this answer is written goes with the next message.
     let settings = shared.settings.lock().unwrap().clone();
     let shots: Vec<String> = screen.as_ref().map(|s| s.shots.iter().map(|r| r.path.clone()).collect()).unwrap_or_default();
     let reply = chat::send(&app, &chat, &settings, query, context, screen).await;
@@ -643,23 +649,25 @@ fn local_set_key(url: String, key: String) -> Result<(), String> {
     local_chat::set_custom_key(&url, &key)
 }
 
+/// A new chat on screen, `chat_id`. An answer still being written in the
+/// one before goes on in the background.
 #[tauri::command]
-fn chat_reset(chat: State<Chat>) {
-    chat.reset();
+fn chat_reset(chats: State<Chats>, chat_id: String) {
+    chats.focus(&chat_id).reset();
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
 /// returns what was written so far, marked stopped.
 #[tauri::command]
-fn chat_stop(chat: State<Chat>) {
-    chat.stop();
+fn chat_stop(chats: State<Chats>, chat_id: String) {
+    chats.stop(&chat_id);
 }
 
 /// An edited message: the conversation goes back to its first `keep` turns
 /// (as `chat_send` counted them) before the edited one is sent.
 #[tauri::command]
-fn chat_rewind(chat: State<Chat>, keep: usize) {
-    chat.rewind(keep);
+fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
+    chats.get(&chat_id).rewind(keep);
 }
 
 /// One turn of a chat from the history, as the island keeps it.
@@ -673,8 +681,8 @@ struct SavedTurn {
 /// or Antigravity CLI conversation that answered it, if any, so the next
 /// question continues it.
 #[tauri::command]
-fn chat_restore(chat: State<Chat>, turns: Vec<SavedTurn>, session: Option<String>) {
-    chat.restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);
+fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>) {
+    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);
 }
 
 /// "Attach a file" in the chat: the system's file picker, then the same copy
@@ -1031,7 +1039,7 @@ pub fn run() {
             gate: gate.clone(),
         })
         .manage(Pending::default())
-        .manage(Chat::default())
+        .manage(Chats::default())
         .manage(shortcuts::Registry::default())
         .manage(recap::load())
         .invoke_handler(tauri::generate_handler![

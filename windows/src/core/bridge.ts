@@ -193,9 +193,10 @@ export const Bridge = {
    * One chat turn. The API key and any file bytes never leave Rust. `screen`
    * is what the user added from the screen button, sent with this turn only.
    */
-  chatSend: (query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
-    callOrThrow<ChatReply>("chat_send", screen ? { query, context, screen } : { query, context }),
-  chatReset: () => call<void>("chat_reset"),
+  chatSend: (chatId: string, query: string, context: ChatContext | null, screen?: ScreenContext | null) =>
+    callOrThrow<ChatReply>("chat_send", screen ? { chatId, query, context, screen } : { chatId, query, context }),
+  /** A new chat on screen; an answer still written in another one goes on. */
+  chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
   /** Listens to a pull request for the chat `chatId` (listen.rs). */
   listenAdd: (repo: string, number: number, until: string, task: string, chatId: string) =>
     call<ListenWatch>("listen_add", { repo, number, until, task, chatId }),
@@ -203,10 +204,10 @@ export const Bridge = {
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
   listenList: () => call<ListenWatch[]>("listen_list"),
-  /** The Stop button: `chatSend` then returns what was written so far, `stopped`. */
-  chatStop: () => call<void>("chat_stop"),
+  /** The Stop button of one chat: its `chatSend` then returns what was written so far, `stopped`. */
+  chatStop: (chatId: string) => call<void>("chat_stop", { chatId }),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
-  chatRewind: (keep: number) => call<void>("chat_rewind", { keep }),
+  chatRewind: (chatId: string, keep: number) => call<void>("chat_rewind", { chatId, keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
   /** `island`: the island as drawn (x, y, width, height, page pixels), without what sits beside it. */
   islandDrag: (island?: [number, number, number, number]) => call<void>("island_drag", { island: island ?? null }),
@@ -217,8 +218,8 @@ export const Bridge = {
   /** Double click on a grip: the usual width, height, or both. */
   islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
-  chatRestore: (turns: { role: string; content: string }[], session: string | null) =>
-    call<void>("chat_restore", { turns, session }),
+  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null) =>
+    call<void>("chat_restore", { chatId, turns, session }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: async () => {
     dialogs++;

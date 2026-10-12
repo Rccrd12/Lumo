@@ -13,10 +13,15 @@
 // along for a moment, then Thinking….
 //
 // While an answer is written the send button is a Stop button (Escape in the
-// field too): what was written stays, marked stopped. The field stays open
-// meanwhile; Enter sends once the answer is done. Each message has Copy under
-// the mouse, each question Edit: sending the edited text replaces it and drops
-// what followed, here and in Rust (chat.rs rewind).
+// field too): what was written stays, marked stopped. Everything else stays
+// usable meanwhile: the attachments, the past chats, a new chat, the shield,
+// the model and its effort (a change goes with the next message), the usage.
+// Moving to another chat leaves the answer going in the background, in its
+// own chat (chat.rs Chats): it lands there when done, and coming back shows it
+// as far as it got. Enter sends once the chat's answer is done. Each message
+// has Copy under the mouse, each question Edit: sending the edited text
+// replaces it and drops what followed, here and in Rust (chat.rs rewind); sent
+// mid-answer, it stops that answer first.
 //
 // The screen button next to the paperclip adds what is on the user's screen,
 // only when they ask: "Open windows" or "Browser tabs" (Edge, Chrome), which
@@ -214,6 +219,33 @@ const ACTIVITY_STRINGS = {
 };
 
 const THINKING: ChatActivity = { kind: "thinking", detail: "" };
+
+/**
+ * An answer being written. It belongs to its chat: moving to another chat
+ * leaves it going in the background, and it lands in its own chat when done.
+ */
+interface Run {
+  chatId: string;
+  /** The chat's messages: State.chatHistory itself while the chat is on screen. */
+  history: ChatMessage[];
+  /** The CLI session the chat continues (State.chatSession while on screen). */
+  session: string | null;
+  provider: string;
+  /** The answer's text so far: "" until it shows. */
+  text: string;
+  /** What the answer is doing, shown next to the dots until its text does. */
+  activity: ChatActivity;
+  /** The dots are back under the text: the CLI went back to its tools. */
+  dots: boolean;
+  /** Turns the first activity of a provider that streams no tools into Thinking…. */
+  timer?: ReturnType<typeof setTimeout>;
+  /** Stop was pressed: the answer is being ended. */
+  stopping: boolean;
+  /** Deleted from Past chats meanwhile: its answer is stopped, and the chat is not saved again. */
+  forgotten?: boolean;
+  /** Settles once the answer is over (answered, stopped or failed). */
+  done: Promise<void>;
+}
 
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
@@ -909,7 +941,14 @@ export function buildPrompt(
   const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
   (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
-  let sending = false;
+  /** The answers being written, by chat id: the one on screen and any left in the background. */
+  const runs = new Map<string, Run>();
+  /** The answer of the chat on screen, while it is written. */
+  const answering = (): Run | undefined => runs.get(State.chatId);
+  /** A question is being made ready (its folder, its file) before it goes. */
+  let preparing = false;
+  /** The chat the log shows, to notice another one coming on screen. */
+  let shownChat = State.chatId;
   let renderedCount = -1;
   /** What the screen button added, waiting for the next question. */
   let screen = emptyScreen();
@@ -917,14 +956,8 @@ export function buildPrompt(
   let preview: ScreenShot[] | null = null;
   /** Bumped when the panel closes, so a late answer is dropped (and its screenshots deleted). */
   let screenTicket = 0;
-  // A local model answers token by token: where its text so far is shown.
+  // An answer comes token by token: where the on-screen chat's text so far is shown.
   let live: HTMLElement | null = null;
-  /** What the answer is doing, shown next to the dots until its text does. */
-  let activity: ChatActivity = THINKING;
-  /** Turns the first activity of a provider that streams no tools into Thinking…. */
-  let activityTimer: ReturnType<typeof setTimeout> | undefined;
-  /** Stop was pressed: the answer is being ended. */
-  let stopping = false;
   /** The question being edited (its id): sending replaces it and drops what follows. */
   let editing: number | null = null;
   /** What the send button shows now: "send" or "stop". */
@@ -1006,7 +1039,6 @@ export function buildPrompt(
   }
 
   usageEl.addEventListener("click", () => {
-    if (sending) return;
     // Without the relay there is nothing to show yet: the ring leads to Settings.
     if (usageSetup) {
       openSettings();
@@ -1054,37 +1086,41 @@ export function buildPrompt(
     const effort = effortFor(p.id, State.settings.chatEffort);
     modelName.textContent = effort ? `${model} · ${effortLabel(effort)}` : model;
     modelBtn.classList.toggle("open", picker.isOpen);
-    modelBtn.disabled = sending;
     drawSend();
     drawPermButton();
   }
 
-  /** While an answer is written, the send button is its Stop button. */
+  /**
+   * While the chat on screen is answered, the send button is its Stop button;
+   * an edited question sends (it stops that answer and replaces it).
+   */
   function drawSend() {
-    const shows = sending ? "stop" : "send";
+    const run = answering();
+    const stops = run != null && editing == null;
+    const shows = stops ? "stop" : "send";
     if (shows !== sendShows) {
       sendShows = shows;
-      send.replaceChildren(svg(sending ? ICONS.stop : ICONS.arrowUp, 11));
-      send.classList.toggle("stop", sending);
+      send.replaceChildren(svg(stops ? ICONS.stop : ICONS.arrowUp, 11));
+      send.classList.toggle("stop", stops);
     }
-    send.title = t(sending ? STRINGS.stop : STRINGS.send);
+    send.title = t(stops ? STRINGS.stop : STRINGS.send);
     send.setAttribute("aria-label", send.title);
-    send.disabled = stopping;
+    send.disabled = run?.stopping ?? false;
   }
 
   /** The Stop button (or Escape in the text field): what was written so far stays. */
   function stop() {
-    if (!sending || stopping) return;
-    stopping = true;
+    const run = answering();
+    if (!run || run.stopping) return;
+    run.stopping = true;
     drawSend();
-    void Bridge.chatStop();
+    void Bridge.chatStop(run.chatId);
   }
 
   // ── Copy and edit ─────────────────────────────────────────────────────────
 
   /** Edit on a question: its text goes back in the field; sending replaces it. */
   function startEdit(message: ChatMessage) {
-    if (sending) return;
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1124,7 +1160,7 @@ export function buildPrompt(
     State.chatHistory = kept;
     State.chatSession = null;
     renderedCount = -1;
-    await Bridge.chatRewind(keep);
+    await Bridge.chatRewind(State.chatId, keep);
   }
 
   // ── Permissions ───────────────────────────────────────────────────────────
@@ -1181,11 +1217,9 @@ export function buildPrompt(
     permBtn.classList.toggle("lit", mode !== "default");
     permBtn.title = `${t(STRINGS.permissions)} · ${t(PERMISSION_TEXT[mode].name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);
-    permBtn.disabled = sending;
   }
 
   permBtn.addEventListener("click", () => {
-    if (sending) return;
     if (body.classList.contains("authorizing")) {
       closePermissions();
       return;
@@ -1255,7 +1289,6 @@ export function buildPrompt(
 
   /** Remove all: every attachment waiting goes, the screenshots' files with them. */
   function removeAll() {
-    if (sending) return;
     if (State.droppedFile && !State.droppedFile.sent) {
       State.droppedFile = null;
       if (State.promptContext?.kind === "file") State.promptContext = null;
@@ -1470,7 +1503,6 @@ export function buildPrompt(
 
   /** One window (with a picture of it, for who sees images) or all of them, with what they show. */
   async function shareWindows(pick: PickEntry, list: OpenWindow[]) {
-    if (sending) return;
     const ticket = ++screenTicket;
     clear(screenList);
     screenStatus(t(SCREEN_STRINGS.reading));
@@ -1517,7 +1549,6 @@ export function buildPrompt(
 
   /** One tab or all of them, each with its page's text. */
   async function shareTabs(pick: PickEntry) {
-    if (sending) return;
     const ticket = ++screenTicket;
     clear(screenList);
     screenStatus(t(SCREEN_STRINGS.reading));
@@ -1535,7 +1566,6 @@ export function buildPrompt(
   }
 
   async function pickEntry(entry: MenuEntry) {
-    if (sending) return;
     if (entry.kind === "windows") return openWindows();
     if (entry.kind === "tabs") return openTabs();
     const ticket = ++screenTicket;
@@ -1712,6 +1742,13 @@ export function buildPrompt(
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteChat(c.id);
+        // Being answered in the background: that answer ends with it.
+        const run = runs.get(c.id);
+        if (run) {
+          run.forgotten = true;
+          if (!run.stopping) void Bridge.chatStop(c.id);
+          run.stopping = true;
+        }
         // The chat on screen is gone: so is it from the screen.
         if (c.id === State.chatId) {
           newChat();
@@ -1762,17 +1799,23 @@ export function buildPrompt(
   });
 
   function openChat(c: SavedChat) {
-    if (sending) return;
     editing = null;
-    // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-    State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+    const run = runs.get(c.id);
+    if (run) {
+      // Still being answered: it comes back as it is, its answer still coming.
+      State.chatHistory = run.history;
+      State.chatSession = run.session;
+    } else {
+      // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+      State.chatSession = c.session;
+      void Bridge.chatRestore(c.id, c.turns, c.session);
+    }
     State.chatId = c.id;
-    State.chatSession = c.session;
     State.droppedFile = null;
     State.promptContext = null;
     closeScreen();
     clearScreen();
-    void Bridge.chatRestore(c.turns, c.session);
     closeHistory();
     Sound.play("blip");
     renderedCount = -1;
@@ -1781,8 +1824,8 @@ export function buildPrompt(
     input.focus();
   }
 
+  /** A new chat; an answer still being written in the one before goes on in the background. */
   function newChat() {
-    if (sending) return;
     if (editing != null) setInput("");
     editing = null;
     State.startChat();
@@ -1790,7 +1833,7 @@ export function buildPrompt(
     State.promptContext = null;
     closeScreen();
     clearScreen();
-    void Bridge.chatReset();
+    void Bridge.chatReset(State.chatId);
     if (picker.isOpen) picker.close();
     closeHistory();
     Sound.play("blip");
@@ -1803,7 +1846,7 @@ export function buildPrompt(
   /** The empty chat: a question, and three ways to start. */
   function welcome(): HTMLElement {
     const start = (label: string, run: () => void) =>
-      h("button", { class: "welcome-chip", onclick: () => { if (!sending) run(); } }, h("span", { text: t(label) }));
+      h("button", { class: "welcome-chip", onclick: run }, h("span", { text: t(label) }));
     return h(
       "div",
       { class: "chat-welcome" },
@@ -1825,22 +1868,26 @@ export function buildPrompt(
     );
   }
 
-  /** Saves the chat on screen in the history, after each answer. */
-  function remember() {
-    const turns = State.chatHistory.map((m) => ({ role: m.role, content: m.content }));
+  /**
+   * Saves a chat in the history when its question goes (so it can be found
+   * again while it is answered) and after its answer, on screen or not.
+   */
+  function remember(run: Run) {
+    if (run.forgotten) return;
+    const turns = run.history.map((m) => ({ role: m.role, content: m.content }));
     if (turns.length === 0) return;
     saveChat({
-      id: State.chatId,
+      id: run.chatId,
       title: chatTitle(turns),
       updatedAt: Date.now(),
-      provider: State.settings.chatProvider,
-      session: State.chatSession,
+      provider: run.provider,
+      session: run.session,
       turns,
     });
+    if (body.classList.contains("browsing")) drawHistory();
   }
 
   async function attach() {
-    if (sending) return;
     let file;
     try {
       file = await Bridge.pickFile();
@@ -1891,7 +1938,6 @@ export function buildPrompt(
   newBtn.addEventListener("click", newChat);
   attachBtn.addEventListener("click", () => void attach());
   screenBtn.addEventListener("click", () => {
-    if (sending) return;
     if (body.classList.contains("screening")) closeScreen();
     else openScreen();
   });
@@ -1901,7 +1947,6 @@ export function buildPrompt(
   });
   removeAllBtn.addEventListener("click", () => removeAll());
   historyBtn.addEventListener("click", () => {
-    if (sending) return;
     if (body.classList.contains("browsing")) {
       closeHistory();
       return;
@@ -1920,18 +1965,32 @@ export function buildPrompt(
   });
 
   modelBtn.addEventListener("click", () => {
-    if (sending) return;
     if (picker.isOpen) picker.close();
     else picker.open();
   });
 
-  void onEvent<string>("chat-delta", (text) => {
-    if (!sending || !text) return; // nothing visible yet: the dots stay
+  /**
+   * What the closed island says the chat is doing: the answer of the chat on
+   * screen, else the last one left going in the background.
+   */
+  function drawIslandActivity() {
+    const run = answering() ?? [...runs.values()].pop();
+    const next = run ? { label: run.text === "" || run.dots ? activityLabel(run.activity) : null } : null;
+    const now = State.chatActivity;
+    if (next == null ? now == null : now != null && now.label === next.label) return;
+    State.chatActivity = next;
+    State.notify();
+  }
+
+  void onEvent<{ chat: string; text: string }>("chat-delta", ({ chat, text }) => {
+    const run = runs.get(chat);
+    if (!run || !text) return; // nothing visible yet: the dots stay
+    run.text = text;
+    run.dots = false;
     // The closed island says it is writing now.
-    if (State.chatActivity?.label != null) {
-      State.chatActivity = { label: null };
-      State.notify();
-    }
+    drawIslandActivity();
+    // Another chat is on screen: this one's text shows when it comes back.
+    if (chat !== State.chatId) return;
     // The text shows: the dots and what the answer was doing go.
     log.querySelector(".typing")?.parentElement?.remove();
     if (!live) {
@@ -1947,22 +2006,22 @@ export function buildPrompt(
    * Claude Code went back to its tools after some text, so the dots come
    * back under it.
    */
-  function showActivity(next: ChatActivity, again = false) {
-    activity = next;
-    if (sending) {
-      State.chatActivity = { label: activityLabel(activity) };
-      State.notify();
-    }
+  function showActivity(run: Run, next: ChatActivity, again = false) {
+    run.activity = next;
+    if (again && run.text) run.dots = true;
+    drawIslandActivity();
+    if (run.chatId !== State.chatId) return;
     const label = log.querySelector(".typing-label");
-    if (label) label.textContent = activityLabel(activity);
-    else if (again && live) log.append(typingDots(activityLabel(activity)));
+    if (label) label.textContent = activityLabel(next);
+    else if (again && live) log.append(typingDots(activityLabel(next)));
     toEnd();
   }
 
-  void onEvent<ChatActivity>("chat-activity", (next) => {
-    if (!sending || !next) return;
-    clearTimeout(activityTimer);
-    showActivity(next, true);
+  void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
+    const run = runs.get(chat);
+    if (!run || !activity) return;
+    clearTimeout(run.timer);
+    showActivity(run, activity, true);
   });
 
   /**
@@ -1972,7 +2031,7 @@ export function buildPrompt(
    */
   async function submit(auto?: string) {
     const query = auto ?? input.value.trim();
-    if (!query || sending) return;
+    if (!query || preparing) return;
     // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
     const timer = auto ? null : /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
@@ -1982,48 +2041,111 @@ export function buildPrompt(
       Sound.play("blip");
       return;
     }
+    // The chat on screen is being answered: the next question waits for it
+    // (Enter again once it is done), but an edited one stops it and replaces it.
+    const current = answering();
+    if (current) {
+      if (auto || editing == null) return;
+      const here = State.chatId;
+      preparing = true;
+      stop();
+      await current.done;
+      preparing = false;
+      if (State.chatId !== here || editing == null || answering()) return;
+    }
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
     if (!auto) setInput("");
-    sending = true;
-    stopping = false;
     following = true; // a new question goes to the end of the chat
-    drawModelButton();
     Sound.play("send");
 
-    // An edited question replaces the one it came from, and what followed it.
-    const edited = auto ? null : editing;
-    if (!auto) editing = null;
-    if (edited != null) await rewindTo(edited);
+    let run: Run;
+    let finish = () => {};
+    // What went with the question, given back to the field if it did not go.
+    let giveBack = (_all: boolean) => {};
+    let question: ChatMessage;
+    let context: ChatContext | null;
+    let screenContext: ScreenContext | null;
+    preparing = true;
+    try {
+      // An edited question replaces the one it came from, and what followed it.
+      const edited = auto ? null : editing;
+      if (!auto) editing = null;
+      if (edited != null) await rewindTo(edited);
 
-    // What the screen button added goes once, then the chip goes.
-    const waiting = screen;
-    let shared = waiting;
-    if (!auto && sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
-      const folder = await explorerNow();
-      if (folder) shared = { ...waiting, folder };
+      // What the screen button added goes once, then the chip goes.
+      const waiting = screen;
+      let shared = waiting;
+      if (!auto && sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
+        const folder = await explorerNow();
+        if (folder) shared = { ...waiting, folder };
+      }
+      if (!auto && shared.folder) await attachNamed(shared.folder, query);
+
+      // The file goes with the first question asked after it was added, once.
+      const file = auto ? null : State.droppedFile;
+      context = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
+      const more = auto ? [] : State.moreFiles;
+      screenContext = auto ? null : screenPayload(shared, more);
+
+      // The chat it is asked in, whichever is on screen when its answer comes.
+      const chatId = State.chatId;
+      const history = State.chatHistory;
+      question = { id: nextId++, role: "user", content: query };
+      history.push(question);
+
+      // What went with it leaves the field, which is ready for the next question.
+      if (file && context) {
+        file.sent = true;
+        file.sentWith = question.id;
+      }
+      if (more.length > 0) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
+      // Rust deletes the screenshots once the turn went: what went no longer
+      // waits, even if something changed the attachments meanwhile.
+      const cleared = auto ? null : screen === waiting ? nextScreen(screen) : null;
+      if (cleared) screen = cleared;
+      else if (!auto && screenContext) screen = afterSent(screen, shared);
+      giveBack = (all) => {
+        // A file goes with the next question, unless the user moved on.
+        if (file && context && State.droppedFile === file) file.sent = false;
+        if (State.chatId !== chatId) return;
+        const back = more.filter((f) => !State.moreFiles.some((m) => m.path === f.path));
+        if (back.length > 0) State.moreFiles = [...back, ...State.moreFiles];
+        // Rust deletes the screenshots once a turn went, stopped or not: only a failed one keeps them.
+        if (all && cleared && screen === cleared) screen = waiting;
+      };
+
+      const activity = firstActivity(State.settings.chatProvider, context, screenContext);
+      const done = new Promise<void>((resolve) => (finish = resolve));
+      run = {
+        chatId,
+        history,
+        session: State.chatSession,
+        provider: State.settings.chatProvider,
+        text: "",
+        activity,
+        dots: false,
+        stopping: false,
+        done,
+      };
+      const started = run;
+      if (activity !== THINKING) run.timer = setTimeout(() => showActivity(started, THINKING), FIRST_ACTIVITY_MS);
+      runs.set(chatId, run);
+    } finally {
+      preparing = false;
     }
-    if (!auto && shared.folder) await attachNamed(shared.folder, query);
-
-    // The file goes with the first question asked after it was added, once.
-    const file = auto ? null : State.droppedFile;
-    const context: ChatContext | null = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
-    const more = State.moreFiles;
-    const screenContext = auto ? null : screenPayload(shared, more);
-
-    activity = firstActivity(State.settings.chatProvider, context, screenContext);
-    if (activity !== THINKING) activityTimer = setTimeout(() => showActivity(THINKING), FIRST_ACTIVITY_MS);
-
-    const question: ChatMessage = { id: nextId++, role: "user", content: query };
-    State.chatHistory.push(question);
+    // Found in Past chats while it is answered, to come back to it.
+    remember(run);
     State.stateOverride = "thinking";
-    State.chatActivity = { label: activityLabel(activity) };
+    drawIslandActivity();
+    drawModelButton();
     State.notify();
     onHeightChange();
 
+    let outcome: "finished" | "error" | null = null;
     try {
-      const reply = await Bridge.chatSend(query, context, screenContext);
+      const reply = await Bridge.chatSend(run.chatId, query, context, screenContext);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
@@ -2034,51 +2156,51 @@ export function buildPrompt(
       // What it asked Lumo to listen for on GitHub, and to stop listening to.
       const answered = takeListens(timed.text);
       for (const stop of answered.stops) void Bridge.listenCancel(stop.repo, stop.number);
-      for (const ask of answered.listens) void Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, State.chatId);
+      for (const ask of answered.listens) void Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId);
       if (recorded) {
-        State.chatHistory.push({
+        run.history.push({
           id: nextId++,
           role: "assistant",
           content: answered.text,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
         });
+      } else {
+        giveBack(false);
       }
-      if (file && context && recorded) {
-        file.sent = true;
-        file.sentWith = question.id;
+      if (reply.session) run.session = reply.session;
+      if (State.chatId === run.chatId) {
+        State.chatSession = run.session;
+        void peekExplorer(true);
       }
-      // The other files went with it, once.
-      if (!auto && recorded) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
-      // Rust deleted the screenshots once the turn went, stopped or not: what
-      // went no longer waits, even if something changed the attachments meanwhile.
-      if (!auto) screen = screen === waiting ? nextScreen(screen) : afterSent(screen, shared);
-      void peekExplorer(true);
-      if (reply.session) State.chatSession = reply.session;
-      remember();
+      remember(run);
       askOpenRouter(true);
-      settle(reply.stopped ? null : "finished");
+      outcome = reply.stopped ? null : "finished";
       Sound.play(reply.stopped ? "pop" : "finish");
       if (!reply.stopped) noticeAway(COMPACT_TEXT.answered);
     } catch (err) {
-      settle("error");
+      giveBack(true);
+      outcome = "error";
       noticeAway(COMPACT_TEXT.failed);
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       State.view = "note";
       Sound.play("error");
     } finally {
-      sending = false;
-      stopping = false;
-      State.chatActivity = null;
-      live = null;
-      clearTimeout(activityTimer);
-      activity = THINKING;
-      renderedCount = -1; // the finished answer replaces the streamed one
-      settling = true;
+      clearTimeout(run.timer);
+      runs.delete(run.chatId);
+      finish();
+      // Another answer still being written: Lumo keeps thinking.
+      if (runs.size === 0) settle(outcome);
+      if (State.chatId === run.chatId) {
+        live = null;
+        renderedCount = -1; // the finished answer replaces the streamed one
+        settling = true;
+        if (!auto) input.focus();
+      }
+      drawIslandActivity();
       drawModelButton();
       State.notify();
       onHeightChange();
-      if (!auto) input.focus();
       // A GitHub event that came in meanwhile goes now.
       if (heard.length) window.setTimeout(() => runHeard(), 0);
     }
@@ -2095,7 +2217,9 @@ export function buildPrompt(
    * deleted; the message says all it needs).
    */
   function runHeard() {
-    if (sending) return;
+    // Its chat answers one message at a time: the event waits for that answer.
+    const next = heard[0];
+    if (!next || preparing || runs.has(next.watch.chatId)) return;
     const fired = heard.shift();
     if (!fired) return;
     if (State.chatId !== fired.watch.chatId) {
@@ -2149,14 +2273,14 @@ export function buildPrompt(
 
   input.addEventListener("paste", (e) => {
     const data = (e as ClipboardEvent).clipboardData;
-    if (sending || pasteAction(data) === "text") return;
+    if (pasteAction(data) === "text") return;
     e.preventDefault();
     void pasteAttach(pastedFiles(data));
   });
   input.addEventListener("focus", () => void peekExplorer(false));
 
   send.addEventListener("click", () => {
-    if (sending) stop();
+    if (answering() && editing == null) stop();
     else void submit();
   });
   // The field stays open while an answer is written: the next question can be
@@ -2174,12 +2298,12 @@ export function buildPrompt(
     } else if (key === "Escape" && body.classList.contains("screening")) {
       e.preventDefault();
       closeScreen();
-    } else if (key === "Escape" && sending) {
-      e.preventDefault();
-      stop();
     } else if (key === "Escape" && editing != null) {
       e.preventDefault();
       cancelEdit();
+    } else if (key === "Escape" && answering()) {
+      e.preventDefault();
+      stop();
     }
     e.stopPropagation(); // Escape closes the island, not the chat
   });
@@ -2188,9 +2312,18 @@ export function buildPrompt(
     el,
     sync() {
       takeShare();
+      // Another chat came on screen (here, or a new chat from the menu or a
+      // shortcut): the log is drawn again, with its answer if one is coming.
+      if (State.chatId !== shownChat) {
+        shownChat = State.chatId;
+        live = null;
+        renderedCount = -1;
+        drawIslandActivity();
+      }
+      const run = answering();
       // An email's button asked something: it goes at once (after this draw).
       const ask = State.chatAsk;
-      if (ask && !sending) {
+      if (ask && !run && !preparing) {
         State.chatAsk = null;
         setInput(ask);
         window.setTimeout(() => void submit(), 0);
@@ -2220,7 +2353,6 @@ export function buildPrompt(
         // A dropped, pasted or picked file: its × takes it out before it is sent.
         if (file) {
           const removeFile = () => {
-            if (sending) return;
             State.droppedFile = null;
             if (State.promptContext?.kind === "file") State.promptContext = null;
             // The next file waiting takes its place.
@@ -2241,7 +2373,6 @@ export function buildPrompt(
         }
         moreFiles.forEach((more, i) => {
           const removeMore = () => {
-            if (sending) return;
             State.moreFiles = State.moreFiles.filter((f) => f.path !== more.path);
             Sound.play("pop");
             State.notify();
@@ -2255,7 +2386,6 @@ export function buildPrompt(
         // Every screenshot, window, tab and selection on its own: its × takes back that one only.
         for (const item of items) {
           const removeIt = () => {
-            if (sending) return;
             removeItem(item);
             Sound.play("pop");
             State.notify();
@@ -2283,20 +2413,26 @@ export function buildPrompt(
         else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
       }
 
-      const thinking = State.stateOverride === "thinking";
-      const count = State.chatHistory.length + (thinking ? 0.5 : 0);
-      if (count !== renderedCount && !live) {
+      const count = State.chatHistory.length + (run ? 0.5 : 0);
+      if (count !== renderedCount) {
         renderedCount = count;
+        live = null;
         const kept = log.scrollTop;
         clear(log);
         // A new chat opens on a few ways to start, now that it is home.
         if (count === 0) log.append(welcome());
-        // Nothing is edited while an answer is written; what an edit would drop shows faded.
+        // What an edit would drop shows faded.
         const at = editing == null ? -1 : State.chatHistory.findIndex((m) => m.id === editing);
         State.chatHistory.forEach((m, i) => {
-          log.append(bubble(m, { onEdit: sending ? undefined : startEdit, editing: i === at, dropped: at >= 0 && i > at }));
+          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at }));
         });
-        if (thinking) log.append(typingDots(activityLabel(activity)));
+        // The answer being written: its text so far, then the dots while it works.
+        if (run?.text) {
+          live = h("div", { class: "reply" });
+          log.append(h("div", { class: "chat-row" }, live));
+          renderMarkdown(live, takeListens(takeTimers(run.text).text).text);
+        }
+        if (run && (!run.text || run.dots)) log.append(typingDots(activityLabel(run.activity)));
         // Scrolled up to read: the finished answer replaces the streamed one where it was.
         log.scrollTop = following || !settling ? log.scrollHeight : kept;
         settling = false;
@@ -2310,11 +2446,6 @@ export function buildPrompt(
         closeScreen();
         closePermissions();
       }
-      newBtn.disabled = sending;
-      historyBtn.disabled = sending;
-      filesBtn.disabled = sending;
-      attachBtn.disabled = sending;
-      screenBtn.disabled = sending;
       micBtn.classList.toggle("lit", State.liveActive);
       drawModelButton();
       const openRouter = State.mode === "expanded" && State.view === "prompt"

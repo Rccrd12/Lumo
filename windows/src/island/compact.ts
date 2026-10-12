@@ -472,13 +472,11 @@ export function openMailInChat(m: MailPeek & { body?: string }, question: string
     "",
     m.body || m.preview,
   ].join("\n");
-  // Not while an answer is on its way: it would land in the new chat.
-  if (State.chatActivity == null) {
-    State.startChat();
-    State.droppedFile = null;
-    State.promptContext = null;
-    void Bridge.chatReset();
-  }
+  // An answer still being written goes on in its own chat.
+  State.startChat();
+  State.droppedFile = null;
+  State.promptContext = null;
+  void Bridge.chatReset(State.chatId);
   State.incomingShare = { kind: "selection", selection: { text, app: t(MAIL_TEXT.email), title: m.subject } };
   State.chatAsk = question;
 }
