@@ -8,6 +8,7 @@
 // API keys never leave the credential store and file bytes never cross the IPC
 // boundary: the island sends the question and gets the answer's text back.
 
+use std::collections::HashMap;
 use std::future::Future;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
@@ -18,6 +19,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat_usage::ChatUsage;
+use crate::island::WINDOW_LABEL;
 use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
 use crate::{antigravity_cli, claude, claude_code, local_chat, openai_compat, secrets};
@@ -102,6 +104,8 @@ pub struct ModelInfo {
 /// format is ever sent to another.
 #[derive(Default)]
 pub struct Chat {
+    /// The island's id for this chat (chats.ts), on the events its answer sends.
+    id: String,
     inner: Mutex<Conversation>,
     /// The Stop of the turn being answered; a fresh one for each turn.
     stop: Mutex<Arc<Stop>>,
@@ -141,6 +145,15 @@ pub struct Turn {
 }
 
 impl Chat {
+    pub fn new(id: &str) -> Self {
+        Chat { id: id.to_string(), ..Default::default() }
+    }
+
+    /// Where this chat's answer tells the island how it is going.
+    pub fn events(&self) -> ChatEvents {
+        ChatEvents { chat: self.id.clone() }
+    }
+
     pub fn reset(&self) {
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
@@ -299,6 +312,60 @@ impl Chat {
         c.native.push(assistant);
         c.plain.push(json!({ "role": "user", "content": user_text }));
         c.plain.push(json!({ "role": "assistant", "content": answer }));
+    }
+}
+
+/// The events of one chat's answer, tagged with its id: the island shows them
+/// only while that chat is on screen.
+#[derive(Clone)]
+pub struct ChatEvents {
+    chat: String,
+}
+
+impl ChatEvents {
+    /// The text of the answer written so far.
+    pub fn delta(&self, app: &AppHandle, text: &str) {
+        let _ = app.emit_to(WINDOW_LABEL, "chat-delta", json!({ "chat": self.chat, "text": text }));
+    }
+
+    /// What the answer is doing while no text shows (claude_code.rs Activity).
+    pub fn activity(&self, app: &AppHandle, activity: impl Serialize) {
+        let _ = app.emit_to(WINDOW_LABEL, "chat-activity", json!({ "chat": self.chat, "activity": activity }));
+    }
+}
+
+// ── Every chat ────────────────────────────────────────────────────────────────
+
+/// The chats Rust holds a conversation for, by the island's chat id: the one
+/// on screen, and those still being answered in the background after the user
+/// moved to another one. Each has its own Stop, so answers never mix.
+#[derive(Default)]
+pub struct Chats {
+    map: Mutex<HashMap<String, Arc<Chat>>>,
+}
+
+impl Chats {
+    /// The chat with this id; a fresh one when Rust has none yet.
+    pub fn get(&self, id: &str) -> Arc<Chat> {
+        let mut map = self.map.lock().unwrap();
+        map.entry(id.to_string()).or_insert_with(|| Arc::new(Chat::new(id))).clone()
+    }
+
+    /// The chat on screen is now `id`: the others are forgotten once no
+    /// answer holds them (an answer being written keeps its chat alive, and
+    /// commits to it, until it is done).
+    pub fn focus(&self, id: &str) -> Arc<Chat> {
+        let mut map = self.map.lock().unwrap();
+        map.retain(|k, chat| k == id || Arc::strong_count(chat) > 1);
+        map.entry(id.to_string()).or_insert_with(|| Arc::new(Chat::new(id))).clone()
+    }
+
+    /// The Stop button of one chat; the others keep being answered.
+    pub fn stop(&self, id: &str) {
+        let chat = self.map.lock().unwrap().get(id).cloned();
+        if let Some(chat) = chat {
+            chat.stop();
+        }
     }
 }
 
@@ -788,6 +855,32 @@ mod tests {
         assert_eq!(t.history.len(), 4);
         assert_eq!(t.history[3], json!({"role":"assistant","content":"Sure."}));
         assert!(!serde_json::to_string(&t.history).unwrap().contains("web_search"));
+    }
+
+    #[test]
+    fn a_chat_being_answered_survives_moving_to_another_one() {
+        let chats = Chats::default();
+        let answering = chats.get("a");
+        let t = answering.begin("openai");
+        // The user opens another chat, then a third: "a" is still being answered.
+        chats.focus("b").reset();
+        chats.focus("c");
+        let a = chats.get("a");
+        assert!(Arc::ptr_eq(&a, &answering));
+        a.commit(&t, json!({"role":"user","content":"q"}), json!({"role":"assistant","content":"a"}), "q", "a");
+        assert_eq!(chats.get("a").turns(), 2);
+        assert_eq!(chats.get("c").turns(), 0);
+        // Its own Stop only.
+        let other = chats.get("c");
+        other.arm();
+        answering.arm();
+        chats.stop("a");
+        assert!(answering.stopper().is_stopped());
+        assert!(!other.stopper().is_stopped());
+        // Done and off screen: forgotten when another chat comes on screen.
+        drop((a, answering, other));
+        chats.focus("d");
+        assert_eq!(chats.map.lock().unwrap().len(), 1);
     }
 
     #[test]

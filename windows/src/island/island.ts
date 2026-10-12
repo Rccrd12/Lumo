@@ -642,12 +642,11 @@ export class Island {
   private menuAction(id: string) {
     switch (id) {
       case "newChat":
-        if (State.chatActivity == null) {
-          State.startChat();
-          State.droppedFile = null;
-          State.promptContext = null;
-          void Bridge.chatReset();
-        }
+        // An answer still being written goes on in its own chat.
+        State.startChat();
+        State.droppedFile = null;
+        State.promptContext = null;
+        void Bridge.chatReset(State.chatId);
         this.setView("prompt");
         this.takeKeyboard();
         break;
@@ -933,7 +932,7 @@ export class Island {
       State.moreFiles = waiting.filter((f) => f.path !== path).map((f) => ({ name: f.name, path: f.path }));
     } else {
       State.startChat();
-      void Bridge.chatReset();
+      void Bridge.chatReset(State.chatId);
     }
 
     UploadSeq.performDrop(State.uploadDuration);

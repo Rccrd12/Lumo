@@ -819,6 +819,7 @@ pub async fn send(
     }
 
     let app2 = app.clone();
+    let events = chat.events();
     let stop = chat.stopper();
     let state = tauri::async_runtime::spawn_blocking(move || {
         run(
@@ -827,12 +828,8 @@ pub async fn send(
             input,
             work_dir(),
             stop,
-            |text| {
-                let _ = app2.emit_to(WINDOW_LABEL, "chat-delta", text.to_string());
-            },
-            |activity| {
-                let _ = app2.emit_to(WINDOW_LABEL, "chat-activity", activity);
-            },
+            |text| events.delta(&app2, text),
+            |activity| events.activity(&app2, activity),
         )
     })
     .await
