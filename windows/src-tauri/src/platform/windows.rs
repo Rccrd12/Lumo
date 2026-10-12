@@ -536,15 +536,3 @@ pub fn ctrl_alt_types(vk: u16, shift: bool) -> Option<String> {
     None
 }
 
-// ── Desktop Mochi window ──────────────────────────────────────────────────────
-
-/// Windows places a window wherever it is asked, and the cursor poll is there.
-pub fn desktop_mode() -> super::DesktopMode {
-    super::DesktopMode::Poll
-}
-
-/// Same window styles as the island: never takes focus, never in Alt-Tab (it
-/// is created without a taskbar button).
-pub fn prepare_desktop_window(win: &WebviewWindow) {
-    make_non_activating(win);
-}

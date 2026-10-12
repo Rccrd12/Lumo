@@ -44,7 +44,6 @@ async function main() {
   island.applySettings();
   State.loadIntegrationTasks();
   if (boot?.shift) island.onShift(boot.shift);
-  await island.desktop.init();
 
   await onEvent<{ x: number; y: number; panel?: boolean }>("cursor", ({ x, y, panel }) => island.onCursor(x, y, panel === true));
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).

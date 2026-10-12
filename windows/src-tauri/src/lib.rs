@@ -15,7 +15,6 @@ mod codex_plan;
 mod computer;
 mod config_file;
 mod desk;
-mod desktop;
 mod energy;
 mod explorer;
 mod files;
@@ -112,10 +111,8 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
             || activities::room_of(&current) != activities::room_of(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
-        // Where Mochi sits on the desktop is desktop.rs's to say, not a webview's.
+        // Where the island was dragged is island.rs's to say, not a webview's.
         let mut settings = settings.clone();
-        settings.desktop_mochi = current.desktop_mochi.clone();
-        // Where the island was dragged is island.rs's to say, too.
         settings.island_dock = current.island_dock.clone();
         settings.island_offset = current.island_offset;
         settings.island_float = current.island_float;
@@ -1149,20 +1146,12 @@ pub fn run() {
             recap::recap_reveal_saved,
             updater::update_check,
             updater::update_install,
-            desktop::desktop_mochi_info,
-            desktop::desktop_mochi_pick_up,
-            desktop::desktop_mochi_drag_begin,
-            desktop::desktop_mochi_fly_out,
-            desktop::desktop_mochi_fly_home,
-            desktop::desktop_mochi_set_asleep,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
             tray::build(&handle)?;
             // Before the island: see create_settings_window.
             create_settings_window(&handle);
-            // Same rule for Mochi's desktop window.
-            desktop::setup(&handle);
 
             if let Some(win) = island::window(&handle) {
                 platform::make_non_activating(&win);

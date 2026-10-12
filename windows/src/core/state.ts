@@ -286,11 +286,6 @@ export interface Settings {
   liveHelperEffort: string;
   /** Gemini may take a screenshot when it decides it needs one, during a call. */
   liveScreen: boolean;
-  /** Mochi on the desktop. Rust owns it: whatever the page sends back is ignored. */
-  desktopMochi?: {
-    onDesktop: boolean;
-    spot: { x: number; y: number; space: string } | null;
-  };
 }
 
 export const DEFAULT_SETTINGS: Settings = {
@@ -463,11 +458,6 @@ class AppState {
   private sessionDiffTimers = new Map<string, number>();
   /** Never reset, so an id can never point at a newer diff than the one tapped. */
   private nextDiffId = 0;
-  /**
-   * Mochi is out of the island — on the desktop, flying, or being dragged
-   * there — so the island's own Mochi is hidden (AppState.mochiOnDesktop).
-   */
-  mochiOnDesktop = false;
 
   /** Outfit shown on Mochi while the pointer rests on a wardrobe button. */
   wardrobePreview: Outfit | null = null;

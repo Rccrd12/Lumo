@@ -62,7 +62,6 @@ export default defineConfig({
       input: {
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
-        mochi: resolve(__dirname, "mochi.html"),
         activities: resolve(__dirname, "activities.html"),
         computer: resolve(__dirname, "computer.html"),
       },
