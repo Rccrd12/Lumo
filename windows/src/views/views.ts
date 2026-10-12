@@ -17,6 +17,7 @@ import {
 } from "./usage";
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
+import { approvalKey } from "../core/approvals";
 import { Bridge } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
@@ -40,6 +41,8 @@ export interface ViewActions {
   openTarget(): void;
   openUrl(url: string): void;
   decide(d: "allow" | "deny"): void;
+  /** The island takes the keyboard, so Y and N answer the card on screen. */
+  takeKeyboard(): void;
   /** Answers the question Claude Code asked: question text → chosen label. */
   answer(answers: Record<string, string | string[]>): void;
   /** Hands the pending request back to the terminal. */
@@ -471,6 +474,12 @@ function buildEmpty(actions: ViewActions): ViewHost {
 
 /** How long a fresh permission card ignores clicks on its buttons. */
 const CLICK_GUARD_MS = 600;
+/**
+ * Y or N answers only as a key of its own: pressed this long after any other
+ * key. A card that pops up while the chat is being typed in must not take the
+ * next letter of a word as an answer.
+ */
+const KEY_QUIET_MS = 800;
 
 /**
  * The ⌃ in the corner of a waiting card: folds the island to its compact size
@@ -487,10 +496,11 @@ function foldButton(actions: ViewActions): HTMLElement {
 
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
+  const about = h("div", { class: "approval-about" });
   const code = h("div", { class: "code" });
   const row = h("div", { class: "actions" });
   const el = h("div", { class: "view" },
-    card("amber", stack(116, 16, who, code, row), foldButton(actions)));
+    card("amber", stack(116, 16, who, about, code, row), foldButton(actions)));
   let rowKey = "";
   // The card pops up under a cursor that was busy with something else: a click
   // meant for the window underneath must not land on Allow. Clicks in the first
@@ -501,6 +511,31 @@ function buildApproval(actions: ViewActions): ViewHost {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
     actions.decide(d);
   };
+  // The island never takes the keyboard by itself (typing in another app is
+  // never cut off): a click on the card gives it, as the shortcut to the
+  // waiting card does. Then Y and N answer, as the buttons say.
+  el.addEventListener("mousedown", () => {
+    if (State.pendingApproval && !State.pendingApproval.questions) actions.takeKeyboard();
+  });
+  let lastKeyAt = -Infinity;
+  window.addEventListener(
+    "keydown",
+    (e) => {
+      const previous = lastKeyAt;
+      lastKeyAt = performance.now();
+      const req = State.pendingApproval;
+      if (State.mode !== "expanded" || State.view !== "approval" || !req || req.questions) return;
+      const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
+      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      const d = approvalKey(e);
+      if (!d) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (lastKeyAt - previous < KEY_QUIET_MS) return;
+      guarded(d)();
+    },
+    true,
+  );
   return {
     el,
     sync() {
@@ -515,6 +550,13 @@ function buildApproval(actions: ViewActions): ViewHost {
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
       code.textContent = State.pendingApproval?.command || State.pendingApproval?.tool || "…";
+      code.title = code.textContent;
+      // What it is for: the agent's own words, else what the request does.
+      const pending = State.pendingApproval;
+      const text = pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
+      about.textContent = text;
+      about.title = text;
+      about.hidden = !text;
       // Two buttons, built once. Rebuilding them between a mouse-down and a
       // mouse-up would swallow the click, and there is nothing left to vary:
       // "Always" is gone until the remembered-rules list exists to back it.

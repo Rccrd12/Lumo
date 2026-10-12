@@ -1307,6 +1307,20 @@ body {
   user-select: text;
 }
 
+/* The permission card's line saying what the request is for. */
+.approval-about {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  max-width: 100%;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.approval-about[hidden] {
+  display: none;
+}
+
 .stack {
   position: relative;
   z-index: 1;

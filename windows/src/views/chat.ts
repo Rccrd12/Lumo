@@ -131,6 +131,12 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
 };
 
+/**
+ * Auto with Antigravity CLI: headless agy has no judgement of its own to lean
+ * on, so Lumo's stands in for it (core/approvals.ts autoAllows).
+ */
+const AGY_AUTO_NOTE = N_("Commands that only look run without asking; Lumo asks for the rest.");
+
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
   return effort ? t(EFFORT_NAMES[effort] ?? effort) : t(STRINGS.effortAuto);
@@ -1138,7 +1144,10 @@ export function buildPrompt(
           "span",
           { class: "perm-text" },
           h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
-          h("span", { class: "perm-note", text: t(PERMISSION_TEXT[mode].note) }),
+          h("span", {
+            class: "perm-note",
+            text: t(mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
+          }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );

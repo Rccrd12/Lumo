@@ -8498,6 +8498,78 @@
    "ru": "Отслеживаются запросы на слияние: {count}",
    "id": "Mendengarkan {count} pull request",
    "it": "In ascolto di {count} pull request"
+  },
+  "Only looks: changes nothing.": {
+   "zh-Hans": "只是查看：不做任何更改。",
+   "hi": "सिर्फ़ देखता है: कुछ नहीं बदलता।",
+   "es": "Solo mira: no cambia nada.",
+   "ar": "يطّلع فقط: لا يغيّر شيئًا.",
+   "fr": "Regarde seulement : ne change rien.",
+   "bn": "শুধু দেখে: কিছুই বদলায় না।",
+   "pt-BR": "Só consulta: não muda nada.",
+   "ru": "Только смотрит: ничего не меняет.",
+   "id": "Hanya melihat: tidak mengubah apa pun.",
+   "it": "Guarda soltanto: non cambia nulla."
+  },
+  "Runs a command that can change things.": {
+   "zh-Hans": "运行一个可能做出更改的命令。",
+   "hi": "एक ऐसा कमांड चलाता है जो चीज़ें बदल सकता है।",
+   "es": "Ejecuta un comando que puede cambiar cosas.",
+   "ar": "يشغّل أمرًا قد يغيّر أشياء.",
+   "fr": "Lance une commande qui peut changer des choses.",
+   "bn": "এমন একটি কমান্ড চালায় যা কিছু বদলাতে পারে।",
+   "pt-BR": "Executa um comando que pode mudar coisas.",
+   "ru": "Запускает команду, которая может что-то изменить.",
+   "id": "Menjalankan perintah yang bisa mengubah sesuatu.",
+   "it": "Esegue un comando che può cambiare qualcosa."
+  },
+  "Changes a file.": {
+   "zh-Hans": "修改一个文件。",
+   "hi": "एक फ़ाइल बदलता है।",
+   "es": "Cambia un archivo.",
+   "ar": "يغيّر ملفًا.",
+   "fr": "Modifie un fichier.",
+   "bn": "একটি ফাইল বদলায়।",
+   "pt-BR": "Altera um arquivo.",
+   "ru": "Изменяет файл.",
+   "id": "Mengubah sebuah file.",
+   "it": "Modifica un file."
+  },
+  "Reads a web page.": {
+   "zh-Hans": "读取一个网页。",
+   "hi": "एक वेब पेज पढ़ता है।",
+   "es": "Lee una página web.",
+   "ar": "يقرأ صفحة ويب.",
+   "fr": "Lit une page web.",
+   "bn": "একটি ওয়েব পেজ পড়ে।",
+   "pt-BR": "Lê uma página da web.",
+   "ru": "Читает веб-страницу.",
+   "id": "Membaca halaman web.",
+   "it": "Legge una pagina web."
+  },
+  "Uses a tool of {server} (MCP).": {
+   "zh-Hans": "使用 {server} 的工具（MCP）。",
+   "hi": "{server} का एक टूल इस्तेमाल करता है (MCP)।",
+   "es": "Usa una herramienta de {server} (MCP).",
+   "ar": "يستخدم أداة من {server} (MCP).",
+   "fr": "Utilise un outil de {server} (MCP).",
+   "bn": "{server}-এর একটি টুল ব্যবহার করে (MCP)।",
+   "pt-BR": "Usa uma ferramenta de {server} (MCP).",
+   "ru": "Использует инструмент {server} (MCP).",
+   "id": "Memakai alat dari {server} (MCP).",
+   "it": "Usa uno strumento di {server} (MCP)."
+  },
+  "Commands that only look run without asking; Lumo asks for the rest.": {
+   "zh-Hans": "只做查看的命令无需询问即可运行；其余的 Lumo 会先询问。",
+   "hi": "सिर्फ़ देखने वाले कमांड बिना पूछे चलते हैं; बाकी के लिए Lumo पूछता है।",
+   "es": "Los comandos que solo miran se ejecutan sin preguntar; para el resto, Lumo pregunta.",
+   "ar": "تعمل الأوامر التي تطّلع فقط دون سؤال؛ ويسأل Lumo عن الباقي.",
+   "fr": "Les commandes qui regardent seulement s'exécutent sans demander ; Lumo demande pour le reste.",
+   "bn": "শুধু দেখার কমান্ড জিজ্ঞেস না করেই চলে; বাকিগুলোর জন্য Lumo জিজ্ঞেস করে।",
+   "pt-BR": "Comandos que só consultam rodam sem perguntar; para o resto, o Lumo pergunta.",
+   "ru": "Команды, которые только смотрят, выполняются без вопросов; об остальном Lumo спрашивает.",
+   "id": "Perintah yang hanya melihat berjalan tanpa bertanya; untuk sisanya Lumo bertanya.",
+   "it": "I comandi che guardano soltanto partono senza chiedere; per il resto Lumo chiede."
   }
  }
 }

@@ -271,6 +271,7 @@ test("Codex, Copilot CLI and Muse Code get the card on their own pill", () => {
     const id = `agent_${agent}`;
     assert.deepEqual(State.pendingApproval, {
       requestId: `r-${agent}`, sessionId: "s1", pillId: id, tool: "Bash", command: "Bash · npm publish",
+      kind: { text: "Runs a command that can change things." },
     });
     assert.deepEqual(sent("approval_ack"), [{ requestId: `r-${agent}` }]);
     assert.deepEqual(sent("approval_decline"), []);
@@ -419,6 +420,7 @@ test("a permission request puts the card up, says exactly what it authorises, an
     pillId: CLAUDE,
     tool: "Write",
     command: "Write · C:\\Users\\me\\proj\\.env",
+    kind: { text: "Changes a file." },
   });
   assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
   assert.deepEqual(sent("approval_decline"), []);
@@ -798,4 +800,50 @@ test("an Antigravity session outside the chat still keeps its approvals in the a
   // And the chat's other events never make a session.
   hook({ hook_event_name: "PreToolUse", lumo_island: true, lumo_agent: "antigravity", tool_name: "view_file" });
   assert.equal(task("agent_antigravity"), undefined);
+});
+
+test("in Auto, a command of the chat's Antigravity CLI run that only looks runs with no card", () => {
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a4", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "git status --short" },
+  });
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }]);
+  assert.deepEqual(sent("approval_decision"), [], "not a click: nothing for the recap");
+  assert.equal(State.pendingApproval, null);
+  assert.deepEqual(asked, []);
+
+  // Anything else is the usual card, Auto or not.
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a5", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "npm install" },
+  });
+  assert.equal(State.pendingApproval?.requestId, "a5");
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }]);
+});
+
+test("Auto lets nothing through when asking every time, nor for a session outside the chat", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "a6", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "run_command", tool_input: { command: "ls" },
+  });
+  assert.equal(State.pendingApproval?.requestId, "a6", "Ask every time: a card");
+  State.pendingApproval = null;
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
+  hook({ hook_event_name: "PermissionRequest", request_id: "a7", tool_name: "Bash", tool_input: { command: "ls" } });
+  assert.equal(State.pendingApproval?.requestId, "a7", "Claude Code in a terminal: its own rules, and a card");
+  assert.deepEqual(sent("approval_auto_allow"), []);
+});
+
+test("the card says what the request is for: the agent's words, else what it does", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "d1", tool_name: "Bash",
+    tool_input: { command: "git status", description: "Show working tree status" },
+  });
+  assert.equal(State.pendingApproval?.reason, "Show working tree status");
+  assert.equal(State.pendingApproval?.kind, undefined);
+  State.pendingApproval = null;
+  hook({ hook_event_name: "PermissionRequest", request_id: "d2", tool_name: "Bash", tool_input: { command: "npm install" } });
+  assert.equal(State.pendingApproval?.reason, undefined);
+  assert.equal(State.pendingApproval?.kind?.text, "Runs a command that can change things.");
 });

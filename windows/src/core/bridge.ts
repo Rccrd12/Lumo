@@ -179,6 +179,8 @@ export const Bridge = {
     call<void>("approval_decision", { requestId, decision }),
   /** "The card is up" — until this lands the relay only waits a moment. */
   approvalAck: (requestId: string) => call<void>("approval_ack", { requestId }),
+  /** The chat's Antigravity CLI run in Auto lets a command that only looks through, with no card. */
+  approvalAutoAllow: (requestId: string) => call<void>("approval_auto_allow", { requestId }),
   /** Answers a question Claude Code asked: question text → chosen label. */
   approvalAnswer: (requestId: string, answers: Record<string, string | string[]>) =>
     call<void>("approval_answer", { requestId, answers }),
