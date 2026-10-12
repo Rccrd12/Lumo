@@ -386,7 +386,7 @@ pub(crate) use timer_note;
 /// that line (src/core/listen.ts). Plain words only: it goes on the command line.
 macro_rules! listen_note {
     () => {
-        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: write on a line of its own [[listen owner/repo#123 event: what to do then]], with event one of checks (finished, passed or failed), green (checks passed), approved, ready (checks passed and it can be merged), merged or closed, and leave out the colon and what follows when they only want to be told. Say in a few words that Lumo is listening, and end your answer; write that line in your last message, after any tool you run. Lumo watches GitHub, hides that line and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, write [[unlisten owner/repo#123]] on a line of its own."
+        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: write on a line of its own, as plain text (not in backticks or a code block), [[listen owner/repo#123 event: what to do then]] with the real owner, repository and number, with event one of checks (finished, passed or failed), green (checks passed), approved, ready (checks passed and it can be merged), merged or closed, and leave out the colon and what follows when they only want to be told. For example [[listen octocat/hello#42 checks]] to tell them when the checks finish, or [[listen octocat/hello#42 ready: merge it with gh pr merge --squash]]. Say in a few words that Lumo is listening, and end your answer; write that line in your last message, after any tool you run. Lumo watches GitHub, hides that line and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, write [[unlisten owner/repo#123]] on a line of its own."
     };
 }
 pub(crate) use listen_note;
@@ -396,18 +396,39 @@ pub(crate) use listen_note;
 /// before a tool call, added back: the CLIs return only their last message.
 pub fn keep_lumo_lines(answer: String, said: &str) -> String {
     let mut out = answer;
-    for line in said.lines().map(str::trim) {
-        let lower = line.to_ascii_lowercase();
-        let ours = ["[[timer ", "[[listen ", "[[unlisten "].iter().any(|p| lower.starts_with(p)) && line.ends_with("]]");
-        if ours && !out.contains(line) {
+    for marker in lumo_markers(said) {
+        if !out.contains(marker) {
             if !out.is_empty() && !out.ends_with('\n') {
                 out.push('\n');
             }
-            out.push_str(line);
+            out.push_str(marker);
             out.push('\n');
         }
     }
     out
+}
+
+/// The `[[timer …]]`, `[[listen …]]` and `[[unlisten …]]` in `text`, wherever
+/// they were written: on a line of their own, in a sentence or in backticks.
+fn lumo_markers(text: &str) -> Vec<&str> {
+    let mut found = Vec::new();
+    let mut rest = text;
+    while let Some(start) = rest.find("[[") {
+        let tail = &rest[start..];
+        let Some(end) = tail[2..].find("]]").map(|e| e + 4) else { break };
+        let marker = &tail[..end];
+        let word = marker[2..].trim_start().to_ascii_lowercase();
+        let ours = ["timer", "listen", "unlisten"]
+            .iter()
+            .any(|w| word.starts_with(w) && word[w.len()..].starts_with(|c: char| c.is_whitespace() || c == ']'));
+        if ours && !marker[2..end - 2].contains("[[") {
+            found.push(marker);
+            rest = &tail[end..];
+        } else {
+            rest = &tail[2..];
+        }
+    }
+    found
 }
 
 /// How to write math, for every provider that answers in the chat: the island
@@ -706,6 +727,14 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn lumo_lines_are_kept_wherever_they_were_written() {
+        let said = "PR opened: `[[listen Rccrd12/Lumo#30 ready: merge it]]` and [[ Timer 10m pasta]].\n[[listen o/r#3]]\nnot [[ours]] nor [[listening]]";
+        assert_eq!(lumo_markers(said), ["[[listen Rccrd12/Lumo#30 ready: merge it]]", "[[ Timer 10m pasta]]", "[[listen o/r#3]]"]);
+        assert_eq!(keep_lumo_lines("Waiting.".into(), said), "Waiting.\n[[listen Rccrd12/Lumo#30 ready: merge it]]\n[[ Timer 10m pasta]]\n[[listen o/r#3]]\n");
+        assert_eq!(keep_lumo_lines("Ok `[[listen o/r#3]]`".into(), "[[listen o/r#3]]"), "Ok `[[listen o/r#3]]`");
+    }
 
     fn turn_texts(history: &[Value]) -> Vec<(String, Value)> {
         history

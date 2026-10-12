@@ -78,7 +78,7 @@ import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_COLOR, listenMessage, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_COLOR, LISTEN_STRINGS, listenMessage, listeningLine, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -2156,12 +2156,17 @@ export function buildPrompt(
       // What it asked Lumo to listen for on GitHub, and to stop listening to.
       const answered = takeListens(timed.text);
       for (const stop of answered.stops) void Bridge.listenCancel(stop.repo, stop.number);
-      for (const ask of answered.listens) void Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId);
+      const added = await Promise.all(answered.listens.map((ask) => Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId)));
+      // A line Lumo could not read or start is said, never just dropped.
+      const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map((a) => `${a.repo}#${a.number} ${a.until}`)];
+      const content = unheard.length
+        ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
+        : answered.text;
       if (recorded) {
         run.history.push({
           id: nextId++,
           role: "assistant",
-          content: answered.text,
+          content,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
         });
@@ -2405,12 +2410,19 @@ export function buildPrompt(
       // A dropped file just came in: a word that it did, for a moment.
       const uploaded = State.uploadedNote && State.uploadedNote.until > Date.now() ? State.uploadedNote : null;
       if (!uploaded) State.uploadedNote = null;
-      const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : "";
+      const listened = listeningLine(State.listening.filter((w) => w.chatId === State.chatId));
+      const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : listened ? `listen\t${listened}` : "";
       if (chipRow.dataset.label !== editKey) {
         chipRow.dataset.label = editKey;
         clear(chipRow);
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
         else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
+        else if (listened) {
+          // What this chat listens for on GitHub; × stops it.
+          chipRow.append(noteChip(listened, t(LISTEN_STRINGS.hint), () => {
+            for (const w of State.listening.filter((w) => w.chatId === State.chatId)) void Bridge.listenCancel(w.repo, w.number, w.until);
+          }));
+        }
       }
 
       const count = State.chatHistory.length + (run ? 0.5 : 0);

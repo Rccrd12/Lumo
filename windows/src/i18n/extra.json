@@ -8570,6 +8570,30 @@
    "ru": "Выполняет команду: {what}",
    "id": "Menjalankan perintah: {what}",
    "it": "Esegue un comando: {what}"
+  },
+  "Lumo is listening to GitHub and will tell you. × stops listening.": {
+   "zh-Hans": "Lumo 正在监听 GitHub，有消息会告诉你。× 停止监听。",
+   "hi": "Lumo GitHub को सुन रहा है और आपको बताएगा। × सुनना बंद करता है।",
+   "es": "Lumo está escuchando GitHub y te avisará. × deja de escuchar.",
+   "ar": "يستمع Lumo إلى GitHub وسيخبرك. × يوقف الاستماع.",
+   "fr": "Lumo écoute GitHub et vous préviendra. × arrête l'écoute.",
+   "bn": "Lumo GitHub শুনছে এবং আপনাকে জানাবে। × শোনা বন্ধ করে।",
+   "pt-BR": "O Lumo está acompanhando o GitHub e vai te avisar. × para de acompanhar.",
+   "ru": "Lumo следит за GitHub и сообщит вам. × останавливает отслеживание.",
+   "id": "Lumo sedang mendengarkan GitHub dan akan memberi tahu Anda. × berhenti mendengarkan.",
+   "it": "Lumo è in ascolto su GitHub e ti avviserà. × smette di ascoltare."
+  },
+  "Lumo couldn't start listening to: {what}": {
+   "zh-Hans": "Lumo 无法开始监听：{what}",
+   "hi": "Lumo इसे सुनना शुरू नहीं कर सका: {what}",
+   "es": "Lumo no pudo empezar a escuchar: {what}",
+   "ar": "تعذّر على Lumo بدء الاستماع إلى: {what}",
+   "fr": "Lumo n'a pas pu commencer à écouter : {what}",
+   "bn": "Lumo শোনা শুরু করতে পারেনি: {what}",
+   "pt-BR": "O Lumo não conseguiu começar a acompanhar: {what}",
+   "ru": "Lumo не смог начать отслеживание: {what}",
+   "id": "Lumo tidak dapat mulai mendengarkan: {what}",
+   "it": "Lumo non è riuscito a mettersi in ascolto di: {what}"
   }
  }
 }

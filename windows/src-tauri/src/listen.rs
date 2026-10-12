@@ -41,6 +41,9 @@ const MAX_MISSES: u32 = 3;
 /// How often GitHub is asked, signed in or not (60 calls an hour without).
 const EVERY_SIGNED_IN: Duration = Duration::from_secs(30);
 const EVERY_ANONYMOUS: Duration = Duration::from_secs(120);
+/// Without signing in GitHub answers 60 times an hour, and a look at the
+/// checks asks 3 times: each watch adds this much, so it stays under that.
+const ANONYMOUS_PER_WATCH: Duration = Duration::from_secs(240);
 const TASK_CHARS: usize = 2000;
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
@@ -511,6 +514,11 @@ async fn round(app: &AppHandle) -> Via {
     via
 }
 
+/// How long between two rounds without signing in, for this many watches.
+fn anonymous_every(watches: usize) -> Duration {
+    EVERY_ANONYMOUS.max(ANONYMOUS_PER_WATCH * watches.min(MAX_WATCHES) as u32)
+}
+
 /// The listening loop: asleep while there is no watch, else a look every
 /// little while, and at once when one is added.
 pub fn start(app: AppHandle) {
@@ -523,7 +531,7 @@ pub fn start(app: AppHandle) {
                 continue;
             }
             let via = if crate::integrations::PAUSED.load(Ordering::Relaxed) { Via::Token } else { round(&app).await };
-            let every = if via == Via::Anonymous { EVERY_ANONYMOUS } else { EVERY_SIGNED_IN };
+            let every = if via == Via::Anonymous { anonymous_every(list().len()) } else { EVERY_SIGNED_IN };
             let _ = tokio::time::timeout(every, WAKE.notified()).await;
         }
     });
@@ -553,6 +561,14 @@ pub fn listen_list() -> Vec<Watch> {
 mod tests {
     use super::*;
     use serde_json::json;
+
+    #[test]
+    fn without_signing_in_it_stays_under_githubs_hourly_limit() {
+        for n in 1..=MAX_WATCHES {
+            let rounds_an_hour = 3600 / anonymous_every(n).as_secs() as usize;
+            assert!(rounds_an_hour * n * 3 <= 60, "{n} watches");
+        }
+    }
 
     fn watch(until: &str) -> Watch {
         Watch { id: 1, repo: "o/r".into(), number: 12, until: until.into(), task: String::new(), chat_id: "c".into(), started_at: 0 }
