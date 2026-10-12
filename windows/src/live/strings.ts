@@ -45,17 +45,17 @@ export const LIVE_STRINGS = {
 /** Settings → Voice. */
 export const VOICE_SETTINGS = {
   page: N_("Voice"),
-  hint: N_("Talk with Gemini from the island: the microphone button next to the chat box, or {keys}. It answers out loud, looks at your screen by itself when that helps, reads your files, PDFs and folders, opens files, folders, web pages and apps, and asks the helper below for anything else. It uses your Google AI key: each call is billed by Google by the minute, and it ends by itself after 5 minutes of silence."),
+  hint: N_("Talk with Gemini from the island, with the microphone next to the chat box or {keys}. It answers out loud, looks at your screen when that helps and hands the rest to the helper below. It uses your Google AI key, billed by the minute; a call ends after 5 minutes of silence."),
   key: N_("Google AI key"),
   model: N_("Model"),
   thinking: N_("Thinking"),
-  thinkingHint: N_("How long Extended Thinking reasons in the background while it talks. Higher is smarter on hard questions, and slower."),
+  thinkingHint: N_("How long Gemini reasons in the background while it talks. Higher is smarter on hard questions, and slower."),
   voice: N_("Voice"),
   automatic: N_("Automatic"),
   screen: N_("Gemini can look at the screen"),
   screenHint: N_("It takes a screenshot only when it decides it needs one, and only during a call. Nothing is kept: the picture goes to Google and is deleted from this computer."),
   helper: N_("Helper"),
-  helperHint: N_("What Gemini can't do itself, it hands to this agent, which works in its own session. What the agent may do without asking follows the chat's permissions; anything else comes up as a card in the island for you to allow or deny."),
+  helperHint: N_("The agent Gemini hands what it can't do itself. It follows the chat's permissions: anything else is a card in the island for you to allow or deny."),
   helperModel: N_("Helper's model"),
   helperEffort: N_("Helper's effort"),
 };

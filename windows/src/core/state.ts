@@ -51,6 +51,10 @@ export interface ApprovalInfo {
   pillId: string;
   tool: string;
   command: string;
+  /** What the agent says the request is for, in its own words (core/approvals.ts requestReason). */
+  reason?: string;
+  /** What the request does, when the agent did not say (core/approvals.ts requestKind): English, through t(). */
+  kind?: { text: string; vars?: Record<string, string> };
   /** Set when Claude Code is asking a question rather than for a permission. */
   questions?: AskedQuestion[];
   /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */

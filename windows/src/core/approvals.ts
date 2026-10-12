@@ -7,6 +7,8 @@
 // Answering is always an explicit click on Allow or Deny: nothing here allows
 // anything by itself. It only decides where the buttons are.
 
+import { N_ } from "../i18n/i18n";
+
 /** Tools that only read (Claude Code's names, and the common ones of other agents). */
 const READ_TOOLS = new Set([
   "read", "glob", "grep", "ls", "notebookread", "websearch", "todowrite", "todoread",
@@ -70,4 +72,85 @@ export function isSimpleRequest(tool: string, input: Record<string, unknown>): b
     return typeof text === "string" && isLookingCommand(text);
   }
   return false;
+}
+
+/**
+ * The chat's Antigravity CLI run in Auto (Settings → chat → the shield): a
+ * request this lets through runs without a card. agy has no judgement of its
+ * own that Lumo can use headless (antigravity_cli.rs), so this is Lumo's: a
+ * command that only looks, as above, and never one agy itself marked as not
+ * safe to run alone. Everything else, and anything uncertain, still asks.
+ */
+export function autoAllows(tool: string, input: Record<string, unknown>): boolean {
+  if (input.SafeToAutoRun === false || input.safeToAutoRun === false) return false;
+  return isSimpleRequest(tool, input);
+}
+
+/**
+ * Where agents explain a call in their own words: Claude Code's Bash and
+ * PowerShell (`description`), Gemini CLI's shell (`description`), Codex's
+ * (`justification`), Antigravity's (`toolSummary`), and a few common others.
+ */
+const REASON_FIELDS = ["description", "Description", "justification", "explanation", "Explanation", "toolSummary"];
+
+/** The longest explanation the card shows; the whole one is its tooltip anyway. */
+const MAX_REASON = 300;
+
+/**
+ * What the agent says the request is for, in its own words, on one line; null
+ * when it said nothing (or only repeated the command).
+ */
+export function requestReason(input: Record<string, unknown>): string | null {
+  const command = [input.command, input.CommandLine].find((c) => typeof c === "string") as string | undefined;
+  for (const field of REASON_FIELDS) {
+    const value = input[field];
+    if (typeof value !== "string") continue;
+    const line = value.replace(/\s+/g, " ").trim();
+    if (!line || line === command?.trim()) continue;
+    return line.length > MAX_REASON ? `${line.slice(0, MAX_REASON - 1)}…` : line;
+  }
+  return null;
+}
+
+/** What a request does, when the agent did not say: English, shown through t(). */
+export const REQUEST_KINDS = {
+  looks: N_("Only looks: changes nothing."),
+  command: N_("Runs a command that can change things."),
+  edit: N_("Changes a file."),
+  web: N_("Reads a web page."),
+  mcp: N_("Uses a tool of {server} (MCP)."),
+} as const;
+
+/** Tools that change a file (Claude Code's and Antigravity's). */
+const EDIT_TOOLS = new Set(["write", "edit", "multiedit", "notebookedit", "write_to_file", "replace_file_content", "multi_replace_file_content", "write_file", "replace"]);
+
+/** Tools that read a web page. */
+const WEB_TOOLS = new Set(["webfetch", "read_url_content", "web_fetch"]);
+
+/**
+ * What the request does, read off the request itself: the line the card shows
+ * when the agent gave no reason. Null for a tool it cannot say anything sure
+ * about.
+ */
+export function requestKind(tool: string, input: Record<string, unknown>): { text: string; vars?: Record<string, string> } | null {
+  const name = tool.toLowerCase();
+  if (isSimpleRequest(tool, input)) return { text: REQUEST_KINDS.looks };
+  if (SHELL_TOOLS.has(name)) return { text: REQUEST_KINDS.command };
+  if (EDIT_TOOLS.has(name)) return { text: REQUEST_KINDS.edit };
+  if (WEB_TOOLS.has(name)) return { text: REQUEST_KINDS.web };
+  const mcp = /^mcp__(.+?)__/.exec(tool);
+  if (mcp) return { text: REQUEST_KINDS.mcp, vars: { server: mcp[1] } };
+  return null;
+}
+
+/**
+ * Y or N, the keys shown on the permission card's buttons, as a decision; null
+ * for any other key, a held key, or one with Ctrl, Alt or the Windows key.
+ */
+export function approvalKey(
+  e: { key: string; ctrlKey: boolean; altKey: boolean; metaKey: boolean; repeat: boolean },
+): "allow" | "deny" | null {
+  if (e.repeat || e.ctrlKey || e.altKey || e.metaKey) return null;
+  const key = e.key.toLowerCase();
+  return key === "y" ? "allow" : key === "n" ? "deny" : null;
 }

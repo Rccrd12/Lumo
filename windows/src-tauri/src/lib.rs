@@ -567,6 +567,15 @@ fn approval_ack(app: AppHandle, request_id: String) {
     pipe::acknowledge(&app, &request_id);
 }
 
+/// The chat's Antigravity CLI run in Auto: a command that only looks
+/// (core/approvals.ts autoAllows) goes through without a card. Nobody clicked,
+/// so it is not a decision for the recap.
+#[tauri::command]
+fn approval_auto_allow(app: AppHandle, request_id: String) {
+    recap::forget_request(&app, &request_id);
+    pipe::answer(&app, &request_id, "allow");
+}
+
 /// Nobody can act on this request — the island is paused, or another card is
 /// already up. Claude Code falls back to asking in the terminal immediately.
 #[tauri::command]
@@ -1054,6 +1063,7 @@ pub fn run() {
             approval_decision,
             approval_answer,
             approval_ack,
+            approval_auto_allow,
             approval_decline,
             log_line,
             chat_send,

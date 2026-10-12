@@ -349,30 +349,6 @@
    "id": "Penyedia obrolan",
    "it": "Provider di chat"
   },
-  "Chat with Google AI, OpenAI or OpenRouter instead of Claude: add a key here, then click the model name above the chat box to switch provider and model. Keys stay in the system keychain. These providers get no web search and no tools: they can answer, never act on this computer.": {
-   "zh-Hans": "用 Google AI、OpenAI 或 OpenRouter 代替 Claude 聊天：在这里添加密钥，然后点击聊天框上方的模型名称来切换服务商和模型。密钥保存在系统钥匙串中。这些服务商没有网页搜索和工具：它们只能回答，绝不会在这台电脑上执行操作。",
-   "hi": "Claude की जगह Google AI, OpenAI या OpenRouter से चैट करें: यहाँ एक कुंजी जोड़ें, फिर प्रदाता और मॉडल बदलने के लिए चैट बॉक्स के ऊपर मॉडल के नाम पर क्लिक करें। कुंजियाँ सिस्टम कीचेन में रहती हैं। इन प्रदाताओं को न वेब सर्च मिलता है न टूल: वे जवाब दे सकते हैं, इस कंप्यूटर पर कभी कुछ नहीं करते।",
-   "es": "Chatea con Google AI, OpenAI u OpenRouter en lugar de Claude: añade una clave aquí y luego haz clic en el nombre del modelo encima del cuadro de chat para cambiar de proveedor y modelo. Las claves se quedan en el llavero del sistema. Estos proveedores no tienen búsqueda web ni herramientas: pueden responder, nunca actuar en este equipo.",
-   "ar": "دردش مع Google AI أو OpenAI أو OpenRouter بدلًا من Claude: أضف مفتاحًا هنا، ثم انقر على اسم النموذج فوق مربع الدردشة لتبديل المزوّد والنموذج. تبقى المفاتيح في سلسلة مفاتيح النظام. لا يحصل هؤلاء المزوّدون على بحث الويب ولا على الأدوات: يمكنهم الإجابة، ولا يتصرفون أبدًا على هذا الحاسوب.",
-   "fr": "Discute avec Google AI, OpenAI ou OpenRouter à la place de Claude : ajoute une clé ici, puis clique sur le nom du modèle au-dessus de la zone de chat pour changer de fournisseur et de modèle. Les clés restent dans le trousseau du système. Ces fournisseurs n'ont ni recherche web ni outils : ils peuvent répondre, jamais agir sur cet ordinateur.",
-   "bn": "Claude-এর বদলে Google AI, OpenAI বা OpenRouter-এর সঙ্গে চ্যাট করুন: এখানে একটি কী যোগ করুন, তারপর প্রদানকারী ও মডেল বদলাতে চ্যাট বক্সের উপরে মডেলের নামে ক্লিক করুন। কী সিস্টেম কীচেইনে থাকে। এই প্রদানকারীরা ওয়েব সার্চ বা টুল পায় না: তারা উত্তর দিতে পারে, এই কম্পিউটারে কখনো কিছু করে না।",
-   "pt-BR": "Converse com Google AI, OpenAI ou OpenRouter em vez do Claude: adicione uma chave aqui e clique no nome do modelo acima da caixa de chat para trocar de provedor e de modelo. As chaves ficam no chaveiro do sistema. Esses provedores não têm busca na web nem ferramentas: podem responder, nunca agir neste computador.",
-   "ru": "Общайтесь с Google AI, OpenAI или OpenRouter вместо Claude: добавьте ключ здесь, затем нажмите на название модели над полем чата, чтобы сменить провайдера и модель. Ключи хранятся в системной связке ключей. У этих провайдеров нет веб-поиска и инструментов: они могут отвечать, но никогда не действуют на этом компьютере.",
-   "id": "Mengobrol dengan Google AI, OpenAI, atau OpenRouter sebagai ganti Claude: tambahkan kunci di sini, lalu klik nama model di atas kotak obrolan untuk mengganti penyedia dan model. Kunci tetap di keychain sistem. Penyedia ini tidak punya pencarian web maupun alat: mereka bisa menjawab, tidak pernah bertindak di komputer ini.",
-   "it": "Chatta con Google AI, OpenAI o OpenRouter invece che con Claude: aggiungi qui una chiave, poi clicca sul nome del modello sopra il riquadro della chat per cambiare provider e modello. Le chiavi restano nel portachiavi di sistema. Questi provider non hanno ricerca web né strumenti: possono rispondere, mai agire su questo computer."
-  },
-  "Chat with a model you run yourself: Ollama or LM Studio (leave the address empty for the usual one on this computer), or any server that speaks the OpenAI API, such as vLLM or llama.cpp. Once connected, pick it above the chat box.": {
-   "zh-Hans": "与你自己运行的模型聊天：Ollama 或 LM Studio（地址留空即使用本机的默认地址），或任何兼容 OpenAI API 的服务器，例如 vLLM 或 llama.cpp。连接后，在聊天框上方选择它。",
-   "hi": "अपने चलाए मॉडल से चैट करें: Ollama या LM Studio (इस कंप्यूटर के सामान्य पते के लिए पता खाली छोड़ें), या OpenAI API बोलने वाला कोई भी सर्वर, जैसे vLLM या llama.cpp। कनेक्ट होने के बाद, उसे चैट बॉक्स के ऊपर चुनें।",
-   "es": "Chatea con un modelo que ejecutas tú mismo: Ollama o LM Studio (deja la dirección vacía para usar la habitual en este equipo), o cualquier servidor compatible con la API de OpenAI, como vLLM o llama.cpp. Una vez conectado, elígelo encima del cuadro de chat.",
-   "ar": "دردش مع نموذج تشغّله بنفسك: Ollama أو LM Studio (اترك العنوان فارغًا لاستخدام العنوان المعتاد على هذا الحاسوب)، أو أي خادم يتحدث واجهة OpenAI API مثل vLLM أو llama.cpp. بعد الاتصال، اختره فوق مربع الدردشة.",
-   "fr": "Discute avec un modèle que tu fais tourner toi-même : Ollama ou LM Studio (laisse l'adresse vide pour celle habituelle sur cet ordinateur), ou tout serveur qui parle l'API d'OpenAI, comme vLLM ou llama.cpp. Une fois connecté, choisis-le au-dessus de la zone de chat.",
-   "bn": "নিজে চালানো মডেলের সঙ্গে চ্যাট করুন: Ollama বা LM Studio (এই কম্পিউটারের সাধারণ ঠিকানার জন্য ঠিকানা ফাঁকা রাখুন), অথবা OpenAI API বোঝে এমন যেকোনো সার্ভার, যেমন vLLM বা llama.cpp। সংযুক্ত হলে চ্যাট বক্সের উপরে সেটি বেছে নিন।",
-   "pt-BR": "Converse com um modelo que você mesmo executa: Ollama ou LM Studio (deixe o endereço vazio para usar o padrão neste computador), ou qualquer servidor compatível com a API da OpenAI, como vLLM ou llama.cpp. Depois de conectado, escolha-o acima da caixa de chat.",
-   "ru": "Общайтесь с моделью, которую запускаете сами: Ollama или LM Studio (оставьте адрес пустым, чтобы использовать обычный адрес на этом компьютере) или любой сервер с API OpenAI, например vLLM или llama.cpp. После подключения выберите его над полем чата.",
-   "id": "Mengobrol dengan model yang Anda jalankan sendiri: Ollama atau LM Studio (kosongkan alamat untuk alamat biasa di komputer ini), atau server apa pun yang mendukung API OpenAI, seperti vLLM atau llama.cpp. Setelah terhubung, pilih di atas kotak obrolan.",
-   "it": "Chatta con un modello che esegui tu: Ollama o LM Studio (lascia vuoto l'indirizzo per quello solito su questo computer), o qualsiasi server che parli l'API di OpenAI, come vLLM o llama.cpp. Una volta connesso, sceglilo sopra il riquadro della chat."
-  },
   "Choose a model": {
    "zh-Hans": "选择模型",
    "hi": "मॉडल चुनें",
@@ -2269,18 +2245,6 @@
    "id": "Bagikan minggu Anda",
    "it": "Condividi la tua settimana"
   },
-  "Show Codex plan in the notch": {
-   "zh-Hans": "在刘海中显示 Codex 套餐",
-   "hi": "नॉच में Codex प्लान दिखाएं",
-   "es": "Mostrar el plan de Codex en el notch",
-   "ar": "عرض خطة Codex في الشريط العلوي",
-   "fr": "Afficher le forfait Codex dans l'encoche",
-   "bn": "নচে Codex প্ল্যান দেখান",
-   "pt-BR": "Mostrar o plano Codex no notch",
-   "ru": "Показывать тариф Codex в нотче",
-   "id": "Tampilkan paket Codex di notch",
-   "it": "Mostra il piano Codex nel notch"
-  },
   "Show in folder": {
    "zh-Hans": "在文件夹中显示",
    "hi": "फ़ोल्डर में दिखाएँ",
@@ -2293,18 +2257,6 @@
    "id": "Tampilkan di folder",
    "it": "Mostra nella cartella"
   },
-  "Show other coding agents in the island. Lumo adds its entries to each agent's own config: you see the exact change and where the backup goes before anything is written, and uninstalling removes only what Lumo added.": {
-   "zh-Hans": "在岛中显示其他编程代理。Lumo 会把自己的条目添加到各代理的配置中：写入之前，你会看到确切的改动和备份位置；卸载只会移除 Lumo 添加的内容。",
-   "hi": "दूसरे कोडिंग एजेंटों को आइलैंड में दिखाएँ। Lumo हर एजेंट की अपनी कॉन्फ़िग में अपनी प्रविष्टियाँ जोड़ता है: कुछ भी लिखे जाने से पहले आप सटीक बदलाव और बैकअप की जगह देखते हैं, और अनइंस्टॉल करने पर केवल वही हटता है जो Lumo ने जोड़ा था।",
-   "es": "Muestra otros agentes de programación en la isla. Lumo añade sus entradas a la configuración de cada agente: ves el cambio exacto y dónde va la copia de seguridad antes de que se escriba nada, y al desinstalar solo se quita lo que añadió Lumo.",
-   "ar": "اعرض وكلاء البرمجة الآخرين في الشريط. يضيف Lumo إدخالاته إلى إعدادات كل وكيل: ترى التغيير بالضبط ومكان النسخة الاحتياطية قبل كتابة أي شيء، وإلغاء التثبيت يزيل فقط ما أضافه Lumo.",
-   "fr": "Affiche les autres agents de code dans l'île. Lumo ajoute ses entrées à la configuration de chaque agent : tu vois la modification exacte et l'emplacement de la sauvegarde avant que quoi que ce soit soit écrit, et la désinstallation ne retire que ce que Lumo a ajouté.",
-   "bn": "অন্যান্য কোডিং এজেন্টকে আইল্যান্ডে দেখান। Lumo প্রতিটি এজেন্টের নিজস্ব কনফিগে তার এন্ট্রি যোগ করে: কিছু লেখার আগে আপনি সঠিক পরিবর্তন এবং ব্যাকআপ কোথায় যাবে তা দেখতে পান, আর আনইনস্টল করলে শুধু Lumo যা যোগ করেছিল তা-ই সরানো হয়।",
-   "pt-BR": "Mostre outros agentes de programação na ilha. O Lumo adiciona as próprias entradas à configuração de cada agente: você vê a alteração exata e para onde vai o backup antes de qualquer gravação, e desinstalar remove só o que o Lumo adicionou.",
-   "ru": "Показывайте другие агенты для кода в острове. Lumo добавляет свои записи в конфигурацию каждого агента: до любой записи вы видите точное изменение и куда пойдёт резервная копия, а удаление убирает только то, что добавил Lumo.",
-   "id": "Tampilkan agen coding lain di pulau. Lumo menambahkan entrinya ke konfigurasi masing-masing agen: Anda melihat perubahan persisnya dan lokasi cadangan sebelum apa pun ditulis, dan mencopot pemasangan hanya menghapus yang ditambahkan Lumo.",
-   "it": "Mostra altri agenti di programmazione nell'isola. Lumo aggiunge le sue voci alla configurazione di ciascun agente: vedi la modifica esatta e dove va il backup prima che venga scritto qualsiasi cosa, e la disinstallazione rimuove solo ciò che Lumo ha aggiunto."
-  },
   "Show remaining usage in the chat": {
    "zh-Hans": "在聊天中显示剩余用量",
    "hi": "चैट में बचा हुआ उपयोग दिखाएं",
@@ -2316,30 +2268,6 @@
    "ru": "Показывать оставшийся лимит в чате",
    "id": "Tampilkan sisa penggunaan di obrolan",
    "it": "Mostra l'utilizzo rimanente nella chat"
-  },
-  "Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only.": {
-   "zh-Hans": "在岛的顶栏显示你的 Claude 套餐用量（5 小时和每周限额）。Lumo 会在 ~/.claude/settings.json 中添加一个状态栏中继。如果你已有状态栏，它会照常工作。仅限 Pro 和 Max 套餐。",
-   "hi": "आइलैंड के हेडर में आपके Claude प्लान का उपयोग (5 घंटे और साप्ताहिक सीमा) दिखाता है। Lumo ~/.claude/settings.json में एक स्टेटस लाइन रिले जोड़ता है। अगर आपके पास पहले से स्टेटस लाइन है, तो वह पहले की तरह चलती रहेगी। केवल Pro और Max प्लान।",
-   "es": "Muestra el uso de tu plan de Claude (límites de 5 horas y semanal) en la cabecera de la isla. Lumo añade un relay de línea de estado en ~/.claude/settings.json. Si ya tienes una línea de estado, sigue funcionando como antes. Solo planes Pro y Max.",
-   "ar": "يعرض استخدام خطة Claude (حدّا الخمس ساعات والأسبوع) في رأس الشريط. يضيف Lumo مُرحِّلًا لسطر الحالة في ~/.claude/settings.json. إن كان لديك سطر حالة فسيستمر في العمل كما كان. لخطتَي Pro وMax فقط.",
-   "fr": "Affiche l'utilisation de ton forfait Claude (limites sur 5 heures et à la semaine) dans l'en-tête de l'île. Lumo ajoute un relais de ligne d'état dans ~/.claude/settings.json. Si tu as déjà une ligne d'état, elle continue de fonctionner comme avant. Forfaits Pro et Max uniquement.",
-   "bn": "আইল্যান্ডের হেডারে আপনার Claude প্ল্যানের ব্যবহার (৫ ঘণ্টা ও সাপ্তাহিক সীমা) দেখায়। Lumo ~/.claude/settings.json-এ একটি স্ট্যাটাস লাইন রিলে যোগ করে। আপনার আগে থেকে স্ট্যাটাস লাইন থাকলে সেটি আগের মতোই চলবে। শুধু Pro ও Max প্ল্যান।",
-   "pt-BR": "Mostra o uso do seu plano Claude (limites de 5 horas e semanal) no cabeçalho da ilha. O Lumo adiciona um relay de linha de status em ~/.claude/settings.json. Se você já tem uma linha de status, ela continua funcionando como antes. Apenas planos Pro e Max.",
-   "ru": "Показывает использование тарифа Claude (лимиты на 5 часов и на неделю) в заголовке острова. Lumo добавляет ретранслятор строки состояния в ~/.claude/settings.json. Если у вас уже есть строка состояния, она работает как прежде. Только тарифы Pro и Max.",
-   "id": "Menampilkan pemakaian paket Claude Anda (batas 5 jam dan mingguan) di header pulau. Lumo menambahkan relay baris status di ~/.claude/settings.json. Jika Anda sudah punya baris status, baris itu tetap berjalan seperti biasa. Khusus paket Pro dan Max.",
-   "it": "Mostra l'utilizzo del tuo piano Claude (limiti di 5 ore e settimanali) nell'intestazione dell'isola. Lumo aggiunge un relay della riga di stato in ~/.claude/settings.json. Se hai già una riga di stato, continua a funzionare come prima. Solo piani Pro e Max."
-  },
-  "Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Lumo asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT.": {
-   "zh-Hans": "在岛的顶栏显示你的 Codex 套餐用量（每周限额和剩余的免费重置次数）。标签显示时，Lumo 会询问 Codex CLI（codex app-server），不会安装任何东西。Codex 必须已用 ChatGPT 登录。",
-   "hi": "आइलैंड के हेडर में आपके Codex प्लान का उपयोग (साप्ताहिक सीमा और बचे मुफ़्त रीसेट) दिखाता है। टैब दिखने पर Lumo Codex CLI (codex app-server) से पूछता है; कुछ भी इंस्टॉल नहीं होता। Codex में ChatGPT से साइन इन होना ज़रूरी है।",
-   "es": "Muestra el uso de tu plan de Codex (límite semanal y reinicios gratuitos restantes) en la cabecera de la isla. Lumo consulta a la CLI de Codex (codex app-server) cuando aparece la pestaña; no se instala nada. Codex debe tener la sesión iniciada con ChatGPT.",
-   "ar": "يعرض استخدام خطة Codex (الحد الأسبوعي وإعادات التعيين المجانية المتبقية) في رأس الشريط. يسأل Lumo واجهة Codex CLI (codex app-server) عند ظهور التبويب، ولا يُثبَّت أي شيء. يجب تسجيل الدخول إلى Codex بحساب ChatGPT.",
-   "fr": "Affiche l'utilisation de ton forfait Codex (limite hebdomadaire et réinitialisations gratuites restantes) dans l'en-tête de l'île. Lumo interroge la CLI Codex (codex app-server) quand l'onglet s'affiche ; rien n'est installé. Codex doit être connecté avec ChatGPT.",
-   "bn": "আইল্যান্ডের হেডারে আপনার Codex প্ল্যানের ব্যবহার (সাপ্তাহিক সীমা ও বাকি ফ্রি রিসেট) দেখায়। ট্যাব দেখা গেলে Lumo Codex CLI (codex app-server)-কে জিজ্ঞেস করে; কিছুই ইনস্টল হয় না। Codex-এ ChatGPT দিয়ে সাইন ইন থাকতে হবে।",
-   "pt-BR": "Mostra o uso do seu plano Codex (limite semanal e redefinições grátis restantes) no cabeçalho da ilha. O Lumo consulta a CLI do Codex (codex app-server) quando a aba aparece; nada é instalado. O Codex precisa estar conectado com o ChatGPT.",
-   "ru": "Показывает использование тарифа Codex (недельный лимит и оставшиеся бесплатные сбросы) в заголовке острова. Lumo спрашивает Codex CLI (codex app-server), когда видна вкладка; ничего не устанавливается. В Codex нужно войти через ChatGPT.",
-   "id": "Menampilkan pemakaian paket Codex Anda (batas mingguan dan sisa reset gratis) di header pulau. Lumo menanyakan Codex CLI (codex app-server) saat tab tampil; tidak ada yang dipasang. Codex harus masuk dengan ChatGPT.",
-   "it": "Mostra l'utilizzo del tuo piano Codex (limite settimanale e reset gratuiti rimasti) nell'intestazione dell'isola. Lumo interroga la CLI di Codex (codex app-server) quando la pillola è visibile; non viene installato nulla. Codex deve avere l'accesso con ChatGPT."
   },
   "Start a new Antigravity conversation to pick the hooks up.": {
    "zh-Hans": "开启新的 Antigravity 对话即可启用 hooks。",
@@ -2952,18 +2880,6 @@
    "ru": "Среда",
    "id": "Rabu",
    "it": "Mercoledì"
-  },
-  "When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message.": {
-   "zh-Hans": "开启后，你发送的每条消息都会附带文件资源管理器中打开的文件夹的路径及其内容列表（名称、大小、日期），就像你通过屏幕按钮选择了它一样。发送前它的标签会显示在聊天上方；点击 × 可让这条消息不附带它。",
-   "hi": "चालू होने पर, आपका भेजा हर संदेश फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर का पथ और उसमें मौजूद चीज़ों की सूची (नाम, आकार, तारीख़ें) साथ ले जाता है, मानो आपने उसे स्क्रीन बटन से चुना हो। भेजने से पहले उसका लेबल चैट के ऊपर दिखता है; उसका × उसे उस संदेश से हटा देता है।",
-   "es": "Si está activado, cada mensaje que envías lleva la ruta de la carpeta abierta en el Explorador de archivos y la lista de lo que contiene (nombres, tamaños, fechas), como si la eligieras con el botón de pantalla. Su etiqueta aparece sobre el chat antes de enviar; su × la quita de ese mensaje.",
-   "ar": "عند التفعيل، تحمل كل رسالة ترسلها مسار المجلد المفتوح في مستكشف الملفات وقائمة بما فيه (الأسماء والأحجام والتواريخ)، كأنك اخترته من زر الشاشة. تظهر بطاقته فوق المحادثة قبل الإرسال، وزر × يستبعده من تلك الرسالة.",
-   "fr": "Quand c'est activé, chaque message envoyé emporte le chemin du dossier ouvert dans l'Explorateur de fichiers et la liste de ce qu'il contient (noms, tailles, dates), comme si vous l'aviez choisi avec le bouton d'écran. Son étiquette s'affiche au-dessus du chat avant l'envoi ; son × le retire de ce message.",
-   "bn": "চালু থাকলে, আপনার পাঠানো প্রতিটি বার্তার সঙ্গে ফাইল এক্সপ্লোরারে খোলা ফোল্ডারের পাথ আর তার ভেতরের জিনিসের তালিকা (নাম, আকার, তারিখ) যায়, যেন আপনি স্ক্রিন বোতাম থেকে সেটি বেছে নিয়েছেন। পাঠানোর আগে চ্যাটের ওপরে এর লেবেল দেখা যায়; এর × সেটিকে ওই বার্তা থেকে বাদ দেয়।",
-   "pt-BR": "Quando ativado, cada mensagem que você envia leva o caminho da pasta aberta no Explorador de Arquivos e a lista do que há nela (nomes, tamanhos, datas), como se você a escolhesse pelo botão de tela. A etiqueta dela aparece acima do chat antes do envio; o × a tira dessa mensagem.",
-   "ru": "Если включено, каждое ваше сообщение несёт путь к папке, открытой в Проводнике, и список её содержимого (имена, размеры, даты), как если бы вы выбрали её кнопкой экрана. Её метка видна над чатом перед отправкой; × убирает её из этого сообщения.",
-   "id": "Jika aktif, setiap pesan yang Anda kirim membawa jalur folder yang terbuka di File Explorer beserta daftar isinya (nama, ukuran, tanggal), seolah Anda memilihnya dari tombol layar. Labelnya tampil di atas obrolan sebelum dikirim; tombol × mengecualikannya dari pesan itu.",
-   "it": "Quando è attivo, ogni messaggio che invii porta con sé il percorso della cartella aperta in Esplora file e l'elenco del suo contenuto (nomi, dimensioni, date), come se l'avessi scelta con il pulsante dello schermo. La sua etichetta appare sopra la chat prima dell'invio; la sua × la esclude da quel messaggio."
   },
   "Where you code": {
    "zh-Hans": "编程环境",
@@ -4219,18 +4135,6 @@
    "id": "Lumo hanya mencari pembaruan saat Anda mengeklik: tidak ada pemeriksaan di latar belakang.",
    "it": "Lumo cerca aggiornamenti solo quando fai clic: niente viene controllato in background."
   },
-  "Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.": {
-   "zh-Hans": "拖动展开的岛的边缘或角即可调整大小。双击即可恢复常规大小。",
-   "hi": "खुले आइलैंड का आकार बदलने के लिए उसका कोई किनारा या कोना खींचें। उस पर डबल क्लिक करने से सामान्य आकार लौट आता है।",
-   "es": "Arrastra un borde o una esquina de la isla abierta para cambiar su tamaño. Un doble clic devuelve el tamaño habitual.",
-   "ar": "اسحب حافة أو زاوية الجزيرة المفتوحة لتغيير حجمها. النقر المزدوج عليها يعيد الحجم المعتاد.",
-   "fr": "Faites glisser un bord ou un coin de l'île ouverte pour la redimensionner. Un double clic dessus remet la taille habituelle.",
-   "bn": "খোলা আইল্যান্ডের আকার বদলাতে তার একটি প্রান্ত বা কোণ টেনে নিন। তাতে ডাবল ক্লিক করলে স্বাভাবিক আকার ফিরে আসে।",
-   "pt-BR": "Arraste uma borda ou um canto da ilha aberta para redimensioná-la. Um clique duplo nele volta ao tamanho normal.",
-   "ru": "Потяните за край или угол открытого острова, чтобы изменить его размер. Двойной щелчок возвращает обычный размер.",
-   "id": "Seret tepi atau sudut pulau yang terbuka untuk mengubah ukurannya. Klik dua kali untuk kembali ke ukuran biasa.",
-   "it": "Trascina un bordo o un angolo dell'isola aperta per ridimensionarla. Un doppio clic su di essa ripristina la dimensione normale."
-  },
   "Share your screen or open windows": {
    "zh-Hans": "分享你的屏幕或打开的窗口",
    "hi": "अपनी स्क्रीन या खुली विंडो साझा करें",
@@ -4531,18 +4435,6 @@
    "id": "Papan klip sedang sibuk. Coba lagi.",
    "it": "Gli appunti sono occupati. Riprova."
   },
-  "A few seconds after the mouse leaves": {
-   "zh-Hans": "鼠标离开几秒后",
-   "hi": "माउस हटने के कुछ सेकंड बाद",
-   "es": "Unos segundos después de que salga el ratón",
-   "ar": "بعد بضع ثوانٍ من مغادرة الفأرة",
-   "fr": "Quelques secondes après le départ de la souris",
-   "bn": "মাউস সরে যাওয়ার কয়েক সেকেন্ড পরে",
-   "pt-BR": "Alguns segundos depois que o mouse sai",
-   "ru": "Через несколько секунд после ухода мыши",
-   "id": "Beberapa detik setelah mouse pergi",
-   "it": "Qualche secondo dopo che il mouse si allontana"
-  },
   "As soon as the mouse leaves": {
    "zh-Hans": "鼠标一离开就收起",
    "hi": "माउस हटते ही",
@@ -4662,18 +4554,6 @@
    "ru": "Открыть в окне",
    "id": "Buka di jendela",
    "it": "Apri in una finestra"
-  },
-  "Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle.": {
-   "zh-Hans": "拖动岛的顶栏（或收起的岛的任意位置）即可移动：在任意位置松开，它就停在那里；靠近屏幕边缘时会贴靠到边缘，在左右两侧竖立，靠近中间时自动居中。",
-   "hi": "द्वीप को खिसकाने के लिए उसकी ऊपरी पट्टी (या बंद द्वीप को कहीं से भी) खींचें: कहीं भी छोड़ें, वह वहीं रहेगा; स्क्रीन के किनारे के पास वह किनारे से जुड़ जाता है, किनारों पर खड़ा, और बीच के पास छोड़ने पर बीच में।",
-   "es": "Arrastra la isla por su barra superior (o la isla cerrada desde cualquier punto) para moverla: suéltala donde quieras y se queda ahí; cerca de un borde de la pantalla se acopla a él, en vertical en los laterales, centrada si la sueltas cerca del medio.",
-   "ar": "اسحب الجزيرة من شريطها العلوي (أو الجزيرة المغلقة من أي مكان) لتحريكها: اتركها في أي مكان فتبقى هناك؛ وقرب حافة الشاشة تلتصق بها، عموديةً على الجانبين، وفي المنتصف إذا تركتها قربه.",
-   "fr": "Faites glisser l’île par sa barre du haut (ou l’île fermée n’importe où) pour la déplacer : lâchez-la où vous voulez, elle y reste ; près d’un bord de l’écran elle s’y accroche, debout sur les côtés, centrée si vous la lâchez près du milieu.",
-   "bn": "দ্বীপটি সরাতে এর ওপরের বার (বা বন্ধ দ্বীপের যেকোনো জায়গা) টেনে নিন: যেখানে খুশি ছেড়ে দিন, সেখানেই থাকবে; স্ক্রিনের কিনারার কাছে সেটি কিনারায় লেগে যায়, পাশে খাড়া হয়ে, মাঝের কাছে ছাড়লে মাঝখানে।",
-   "pt-BR": "Arraste a ilha pela barra superior (ou a ilha fechada por qualquer ponto) para movê-la: solte onde quiser e ela fica ali; perto de uma borda da tela ela se prende a ela, em pé nas laterais, centralizada se você soltar perto do meio.",
-   "ru": "Перетащите остров за верхнюю панель (или закрытый остров за любое место): отпустите где угодно — он там и останется; у края экрана он прилипает к нему, по бокам встаёт вертикально, а у середины выравнивается по центру.",
-   "id": "Seret pulau dari bilah atasnya (atau pulau yang tertutup dari mana saja) untuk memindahkannya: lepaskan di mana saja dan ia tetap di sana; dekat tepi layar ia menempel ke tepi itu, tegak di sisi kiri dan kanan, di tengah jika dilepas dekat bagian tengah.",
-   "it": "Trascina l’isola dalla barra in alto (o l’isola chiusa da un punto qualsiasi) per spostarla: lasciala dove vuoi e resta lì; vicino a un bordo dello schermo vi si aggancia, in verticale sui lati, centrata se la lasci vicino al centro."
   },
   "Folder open in File Explorer": {
    "zh-Hans": "文件资源管理器中打开的文件夹",
@@ -5611,18 +5491,6 @@
    "id": "Suara",
    "it": "Voce"
   },
-  "Talk with Gemini from the island: the microphone button next to the chat box, or {keys}. It answers out loud, looks at your screen by itself when that helps, reads your files, PDFs and folders, opens files, folders, web pages and apps, and asks the helper below for anything else. It uses your Google AI key: each call is billed by Google by the minute, and it ends by itself after 5 minutes of silence.": {
-   "zh-Hans": "在灵动岛中与 Gemini 对话：点按聊天框旁的麦克风按钮，或按 {keys}。它会大声回答，需要时自己查看你的屏幕，阅读你的文件、PDF 和文件夹，打开文件、文件夹、网页和应用，其他事情则交给下面的助手。它使用你的 Google AI 密钥：每次通话由 Google 按分钟计费，静默 5 分钟后会自动结束。",
-   "hi": "आइलैंड से Gemini से बात करें: चैट बॉक्स के पास वाला माइक्रोफ़ोन बटन, या {keys}। यह बोलकर जवाब देता है, ज़रूरत हो तो खुद आपकी स्क्रीन देखता है, आपकी फ़ाइलें, PDF और फ़ोल्डर पढ़ता है, फ़ाइलें, फ़ोल्डर, वेब पेज और ऐप खोलता है, और बाकी सब नीचे दिए सहायक से करवाता है। यह आपकी Google AI कुंजी इस्तेमाल करता है: हर कॉल का बिल Google मिनट के हिसाब से लेता है, और 5 मिनट की चुप्पी के बाद यह अपने आप खत्म हो जाती है।",
-   "es": "Habla con Gemini desde la isla: el botón del micrófono junto al cuadro del chat, o {keys}. Responde en voz alta, mira tu pantalla por sí mismo cuando sirve, lee tus archivos, PDF y carpetas, abre archivos, carpetas, páginas web y apps, y pide al asistente de abajo todo lo demás. Usa tu clave de Google AI: Google factura cada llamada por minuto, y termina sola tras 5 minutos de silencio.",
-   "ar": "تحدّث مع Gemini من الجزيرة: زر الميكروفون بجانب مربع الدردشة، أو {keys}. يجيب بصوت عالٍ، ويرى شاشتك بنفسه عندما يفيد ذلك، ويقرأ ملفاتك وملفات PDF والمجلدات، ويفتح الملفات والمجلدات وصفحات الويب والتطبيقات، ويطلب كل ما عدا ذلك من المساعد أدناه. يستخدم مفتاح Google AI الخاص بك: تحاسب Google كل مكالمة بالدقيقة، وتنتهي المكالمة وحدها بعد 5 دقائق من الصمت.",
-   "fr": "Parlez avec Gemini depuis l'île : le bouton micro à côté du champ du chat, ou {keys}. Il répond à voix haute, regarde votre écran de lui-même quand c'est utile, lit vos fichiers, PDF et dossiers, ouvre des fichiers, des dossiers, des pages web et des apps, et confie tout le reste à l'assistant ci-dessous. Il utilise votre clé Google AI : chaque appel est facturé par Google à la minute, et il se termine tout seul après 5 minutes de silence.",
-   "bn": "আইল্যান্ড থেকে Gemini-এর সঙ্গে কথা বলুন: চ্যাট বক্সের পাশের মাইক্রোফোন বোতাম, অথবা {keys}। এটি জোরে উত্তর দেয়, দরকার হলে নিজেই আপনার স্ক্রিন দেখে, আপনার ফাইল, PDF ও ফোল্ডার পড়ে, ফাইল, ফোল্ডার, ওয়েব পেজ ও অ্যাপ খোলে, আর বাকি সব নিচের সহকারীকে দিয়ে করায়। এটি আপনার Google AI কী ব্যবহার করে: প্রতিটি কলের বিল Google মিনিট হিসেবে করে, আর ৫ মিনিট নীরবতার পর কলটি নিজেই শেষ হয়।",
-   "pt-BR": "Converse com o Gemini pela ilha: o botão de microfone ao lado da caixa do chat, ou {keys}. Ele responde em voz alta, olha sua tela sozinho quando isso ajuda, lê seus arquivos, PDFs e pastas, abre arquivos, pastas, páginas da web e apps, e pede ao assistente abaixo todo o resto. Usa sua chave do Google AI: o Google cobra cada chamada por minuto, e ela termina sozinha após 5 minutos de silêncio.",
-   "ru": "Говорите с Gemini прямо с острова: кнопка микрофона рядом с полем чата или {keys}. Он отвечает вслух, сам смотрит на экран, когда это помогает, читает ваши файлы, PDF и папки, открывает файлы, папки, веб-страницы и приложения, а всё остальное поручает помощнику ниже. Используется ваш ключ Google AI: Google берёт плату за каждый звонок поминутно, и звонок сам завершается после 5 минут тишины.",
-   "id": "Bicaralah dengan Gemini dari pulau: tombol mikrofon di samping kotak obrolan, atau {keys}. Ia menjawab dengan suara, melihat layar Anda sendiri saat itu membantu, membaca file, PDF, dan folder Anda, membuka file, folder, halaman web, dan aplikasi, serta meminta asisten di bawah untuk hal lainnya. Ia memakai kunci Google AI Anda: Google menagih setiap panggilan per menit, dan panggilan berakhir sendiri setelah 5 menit hening.",
-   "it": "Parla con Gemini dall'isola: il pulsante del microfono accanto al campo della chat, oppure {keys}. Risponde a voce, guarda il tuo schermo da solo quando serve, legge i tuoi file, PDF e cartelle, apre file, cartelle, pagine web e app, e chiede all'assistente qui sotto tutto il resto. Usa la tua chiave Google AI: ogni chiamata è fatturata da Google al minuto e termina da sola dopo 5 minuti di silenzio."
-  },
   "Google AI key": {
    "zh-Hans": "Google AI 密钥",
    "hi": "Google AI कुंजी",
@@ -5646,18 +5514,6 @@
    "ru": "Размышление",
    "id": "Penalaran",
    "it": "Ragionamento"
-  },
-  "How long Extended Thinking reasons in the background while it talks. Higher is smarter on hard questions, and slower.": {
-   "zh-Hans": "Extended Thinking 在说话时于后台推理的时长。越高，处理难题越聪明，但也越慢。",
-   "hi": "Extended Thinking बात करते समय पीछे कितनी देर सोचता है। ऊँचा स्तर कठिन सवालों पर ज़्यादा समझदार है, और धीमा भी।",
-   "es": "Cuánto razona Extended Thinking en segundo plano mientras habla. Más alto es más listo con las preguntas difíciles, y más lento.",
-   "ar": "مدة تفكير Extended Thinking في الخلفية أثناء حديثه. المستوى الأعلى أذكى في الأسئلة الصعبة، وأبطأ.",
-   "fr": "Combien Extended Thinking réfléchit en arrière-plan pendant qu'il parle. Plus haut, il est plus malin sur les questions difficiles, et plus lent.",
-   "bn": "কথা বলার সময় Extended Thinking পেছনে কতক্ষণ চিন্তা করে। বেশি হলে কঠিন প্রশ্নে বেশি বুদ্ধিমান, আর ধীরও।",
-   "pt-BR": "Quanto o Extended Thinking raciocina em segundo plano enquanto fala. Mais alto é mais esperto em perguntas difíceis, e mais lento.",
-   "ru": "Сколько Extended Thinking размышляет в фоне, пока говорит. Чем выше, тем умнее на сложных вопросах и тем медленнее.",
-   "id": "Seberapa lama Extended Thinking bernalar di latar belakang sambil berbicara. Lebih tinggi lebih cerdas untuk pertanyaan sulit, dan lebih lambat.",
-   "it": "Quanto ragiona Extended Thinking in background mentre parla. Più alto è più intelligente sulle domande difficili, e più lento."
   },
   "Automatic": {
    "zh-Hans": "自动",
@@ -5706,18 +5562,6 @@
    "ru": "Помощник",
    "id": "Asisten",
    "it": "Assistente"
-  },
-  "What Gemini can't do itself, it hands to this agent, which works in its own session. What the agent may do without asking follows the chat's permissions; anything else comes up as a card in the island for you to allow or deny.": {
-   "zh-Hans": "Gemini 自己做不到的事，会交给这个智能体，它在自己的会话中工作。它无需询问即可做的事遵循聊天的权限设置；其他操作会以卡片形式出现在灵动岛上，由你允许或拒绝。",
-   "hi": "जो Gemini खुद नहीं कर सकता, वह इस एजेंट को सौंप देता है, जो अपने अलग सत्र में काम करता है। एजेंट बिना पूछे क्या कर सकता है, यह चैट की अनुमतियों के अनुसार है; बाकी सब आइलैंड में एक कार्ड के रूप में आता है, जिसे आप अनुमति दें या मना करें।",
-   "es": "Lo que Gemini no puede hacer por sí mismo se lo pasa a este agente, que trabaja en su propia sesión. Lo que el agente puede hacer sin preguntar sigue los permisos del chat; todo lo demás aparece como una tarjeta en la isla para que lo permitas o lo deniegues.",
-   "ar": "ما لا يستطيع Gemini فعله بنفسه يسلّمه لهذا الوكيل، الذي يعمل في جلسته الخاصة. ما يمكن للوكيل فعله دون أن يسأل يتبع أذونات الدردشة؛ وأي شيء آخر يظهر كبطاقة في الجزيرة لتسمح به أو ترفضه.",
-   "fr": "Ce que Gemini ne sait pas faire lui-même, il le confie à cet agent, qui travaille dans sa propre session. Ce que l'agent peut faire sans demander suit les autorisations du chat ; le reste apparaît sous forme de carte dans l'île, à autoriser ou refuser.",
-   "bn": "Gemini নিজে যা পারে না, তা এই এজেন্টকে দেয়, যা নিজের সেশনে কাজ করে। এজেন্ট না জিজ্ঞেস করে কী করতে পারে, তা চ্যাটের অনুমতি অনুযায়ী; বাকি সব আইল্যান্ডে একটি কার্ড হিসেবে আসে, যা আপনি অনুমতি দেবেন বা প্রত্যাখ্যান করবেন।",
-   "pt-BR": "O que o Gemini não consegue fazer sozinho, ele passa para este agente, que trabalha na própria sessão. O que o agente pode fazer sem perguntar segue as permissões do chat; o resto aparece como um cartão na ilha para você permitir ou negar.",
-   "ru": "То, что Gemini не может сделать сам, он передаёт этому агенту, который работает в своём сеансе. Что агент может делать без вопросов, определяется разрешениями чата; всё остальное появляется карточкой на острове, чтобы вы разрешили или запретили.",
-   "id": "Hal yang tidak bisa dilakukan Gemini sendiri diserahkan ke agen ini, yang bekerja di sesinya sendiri. Apa yang boleh dilakukan agen tanpa bertanya mengikuti izin obrolan; selebihnya muncul sebagai kartu di pulau untuk Anda izinkan atau tolak.",
-   "it": "Ciò che Gemini non sa fare da solo lo affida a questo agente, che lavora in una sessione propria. Ciò che l'agente può fare senza chiedere segue le autorizzazioni della chat; il resto compare come scheda nell'isola, da consentire o negare."
   },
   "The task was stopped.": {
    "zh-Hans": "任务已停止。",
@@ -6175,18 +6019,6 @@
    "id": "ditemukan dari alamat",
    "it": "ricavato dall'indirizzo"
   },
-  "New emails show on the closed island, with Summarize and Draft a reply. Lumo only reads the inbox: it never sends, deletes or marks anything as read. Gmail: turn on 2-Step Verification, then create an app password at myaccount.google.com/apppasswords. The server is needed only for providers other than Gmail, Outlook, iCloud and Yahoo.": {
-   "zh-Hans": "新邮件会显示在收起的岛上，并提供“总结”和“起草回复”。Lumo 只读取收件箱：从不发送、删除或将任何邮件标为已读。Gmail：开启两步验证，然后在 myaccount.google.com/apppasswords 创建应用专用密码。只有 Gmail、Outlook、iCloud 和 Yahoo 以外的服务商才需要填写服务器。",
-   "hi": "नए ईमेल बंद आइलैंड पर दिखते हैं, सारांश और जवाब का मसौदा के साथ। Lumo सिर्फ़ इनबॉक्स पढ़ता है: वह कभी कुछ भेजता, मिटाता या पढ़ा हुआ नहीं करता। Gmail: 2-चरणीय सत्यापन चालू करें, फिर myaccount.google.com/apppasswords पर ऐप पासवर्ड बनाएँ। सर्वर सिर्फ़ Gmail, Outlook, iCloud और Yahoo के अलावा दूसरे प्रदाताओं के लिए चाहिए।",
-   "es": "Los correos nuevos aparecen en la isla cerrada, con Resumir y Redactar respuesta. Lumo solo lee la bandeja de entrada: nunca envía, borra ni marca nada como leído. Gmail: activa la verificación en dos pasos y crea una contraseña de aplicación en myaccount.google.com/apppasswords. El servidor solo hace falta para proveedores distintos de Gmail, Outlook, iCloud y Yahoo.",
-   "ar": "تظهر الرسائل الجديدة على الجزيرة المغلقة، مع «لخّص» و«صياغة رد». يقرأ Lumo صندوق الوارد فقط: لا يرسل شيئًا ولا يحذفه ولا يعلّمه كمقروء أبدًا. Gmail: فعّل التحقق بخطوتين، ثم أنشئ كلمة مرور تطبيق في myaccount.google.com/apppasswords. لا حاجة إلى الخادم إلا لمزوّدين غير Gmail وOutlook وiCloud وYahoo.",
-   "fr": "Les nouveaux e-mails s'affichent sur l'île fermée, avec Résumer et Préparer une réponse. Lumo ne fait que lire la boîte de réception : il n'envoie, ne supprime et ne marque jamais rien comme lu. Gmail : active la validation en deux étapes, puis crée un mot de passe d'application sur myaccount.google.com/apppasswords. Le serveur n'est utile que pour les fournisseurs autres que Gmail, Outlook, iCloud et Yahoo.",
-   "bn": "নতুন ইমেল বন্ধ আইল্যান্ডে দেখা যায়, সারাংশ ও উত্তরের খসড়া সহ। Lumo শুধু ইনবক্স পড়ে: কখনো কিছু পাঠায়, মোছে বা পড়া হিসেবে চিহ্নিত করে না। Gmail: ২-ধাপ যাচাই চালু করুন, তারপর myaccount.google.com/apppasswords-এ একটি অ্যাপ পাসওয়ার্ড তৈরি করুন। সার্ভার শুধু Gmail, Outlook, iCloud ও Yahoo ছাড়া অন্য প্রদানকারীর জন্য দরকার।",
-   "pt-BR": "Os e-mails novos aparecem na ilha fechada, com Resumir e Rascunhar resposta. O Lumo só lê a caixa de entrada: nunca envia, apaga nem marca nada como lido. Gmail: ative a verificação em duas etapas e crie uma senha de app em myaccount.google.com/apppasswords. O servidor só é necessário para provedores além de Gmail, Outlook, iCloud e Yahoo.",
-   "ru": "Новые письма появляются на закрытом острове, с кнопками «Кратко» и «Набросать ответ». Lumo только читает входящие: он никогда ничего не отправляет, не удаляет и не отмечает прочитанным. Gmail: включите двухэтапную аутентификацию и создайте пароль приложения на myaccount.google.com/apppasswords. Сервер нужен только для почты, отличной от Gmail, Outlook, iCloud и Yahoo.",
-   "id": "Email baru muncul di pulau yang tertutup, dengan Ringkas dan Buat draf balasan. Lumo hanya membaca kotak masuk: tidak pernah mengirim, menghapus, atau menandai apa pun sebagai dibaca. Gmail: aktifkan Verifikasi 2 Langkah, lalu buat sandi aplikasi di myaccount.google.com/apppasswords. Server hanya diperlukan untuk penyedia selain Gmail, Outlook, iCloud, dan Yahoo.",
-   "it": "Le nuove email compaiono sull'isola chiusa, con Riassumi e Prepara una risposta. Lumo legge solo la posta in arrivo: non invia, non elimina e non segna mai nulla come letto. Gmail: attiva la verifica in due passaggi, poi crea una password per le app su myaccount.google.com/apppasswords. Il server serve solo per provider diversi da Gmail, Outlook, iCloud e Yahoo."
-  },
   "Say what's going on": {
    "zh-Hans": "显示正在发生的事",
    "hi": "क्या हो रहा है, बताएँ",
@@ -6631,18 +6463,6 @@
    "id": "Beri tahu AI apa yang terbuka",
    "it": "Di' all'IA cosa è aperto"
   },
-  "With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message.": {
-   "zh-Hans": "每条消息都会附上：打开的窗口标题及其显示的文档（PDF、Word 或 Excel 文件…），会在磁盘上找到它们，以便 AI 读取你问到的那个。只有聊天的提供方会收到，且仅随该消息发送。",
-   "hi": "हर संदेश के साथ: खुली विंडो के शीर्षक और उनमें दिखने वाले दस्तावेज़ (PDF, Word या Excel फ़ाइल…), डिस्क पर ढूँढे गए, ताकि AI वह पढ़ सके जिसके बारे में आप पूछें। सिर्फ़ चैट का प्रदाता उन्हें पाता है, उसी संदेश के साथ।",
-   "es": "Con cada mensaje: los títulos de las ventanas abiertas y los documentos que muestran (un PDF, un archivo de Word o Excel…), encontrados en el disco, para que la IA lea el que preguntes. Solo los recibe el proveedor del chat, con ese mensaje.",
-   "ar": "مع كل رسالة: عناوين النوافذ المفتوحة والمستندات التي تعرضها (PDF أو ملف Word أو Excel…)، يُعثر عليها على القرص، ليقرأ الذكاء الاصطناعي ما تسأل عنه. لا يتلقاها إلا مزود الدردشة، مع تلك الرسالة.",
-   "fr": "Avec chaque message : les titres des fenêtres ouvertes et les documents qu'elles affichent (un PDF, un fichier Word ou Excel…), retrouvés sur le disque, pour que l'IA lise celui dont tu parles. Seul le fournisseur du chat les reçoit, avec ce message.",
-   "bn": "প্রতিটি বার্তার সঙ্গে: খোলা উইন্ডোর শিরোনাম আর সেগুলিতে দেখানো নথি (PDF, Word বা Excel ফাইল…), ডিস্কে খুঁজে নেওয়া, যাতে AI আপনি যেটির কথা জিজ্ঞেস করেন সেটি পড়তে পারে। শুধু চ্যাটের প্রদানকারী সেগুলি পায়, সেই বার্তার সঙ্গে।",
-   "pt-BR": "Com cada mensagem: os títulos das janelas abertas e os documentos que elas mostram (um PDF, um arquivo do Word ou do Excel…), encontrados no disco, para a IA ler o que você perguntar. Só o provedor do chat recebe, com aquela mensagem.",
-   "ru": "С каждым сообщением: заголовки открытых окон и документы в них (PDF, файл Word или Excel…), найденные на диске, чтобы ИИ мог прочитать тот, о котором вы спрашиваете. Получает их только провайдер чата, вместе с этим сообщением.",
-   "id": "Bersama setiap pesan: judul jendela yang terbuka dan dokumen yang ditampilkannya (PDF, file Word atau Excel…), ditemukan di disk, agar AI bisa membaca yang kamu tanyakan. Hanya penyedia chat yang menerimanya, bersama pesan itu.",
-   "it": "Con ogni messaggio: i titoli delle finestre aperte e i documenti che mostrano (un PDF, un file Word o Excel…), ritrovati sul disco, così l'IA può leggere quello di cui chiedi. Li riceve solo il provider della chat, insieme a quel messaggio."
-  },
   "{pct}% used": {
    "zh-Hans": "已用 {pct}%",
    "hi": "{pct}% उपयोग हुआ",
@@ -6847,18 +6667,6 @@
    "id": "Untuk aplikasi Antigravity dan Antigravity CLI (agy): keduanya membaca hook ini.",
    "it": "Per l'app Antigravity e per Antigravity CLI (agy): entrambi leggono questi hook."
   },
-  "A ring next to the past chats fills with what the provider in use has used, and a click on it shows each limit and when it resets: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.": {
-   "zh-Hans": "过往聊天旁的圆环会随当前提供方的用量填满，点击它可查看每项限额及其重置时间：Claude Code 的 Claude 套餐 5 小时和每周限额（需要 {path} 中的中继）、Anthropic 和 OpenAI 随每次回答返回的速率限制，以及 OpenRouter 密钥的额度（在聊天打开时和每次回答后向 OpenRouter 询问）。Google 和本地模型不显示任何内容。",
-   "hi": "पिछली चैट के पास एक रिंग उपयोग में प्रदाता के उपयोग से भरती है, और उस पर क्लिक करने से हर सीमा और उसके रीसेट का समय दिखता है: Claude Code के लिए आपके Claude प्लान की 5-घंटे और साप्ताहिक सीमाएँ ({path} के रिले के साथ), Anthropic और OpenAI हर जवाब के साथ जो रेट सीमाएँ भेजते हैं, और आपकी OpenRouter कुंजी के क्रेडिट, जो चैट खुलने पर और जवाब के बाद OpenRouter से पूछे जाते हैं। Google या स्थानीय मॉडल के लिए कुछ नहीं दिखता।",
-   "es": "Un anillo junto a los chats anteriores se llena con lo que ha usado el proveedor en uso, y un clic en él muestra cada límite y cuándo se reinicia: los límites de 5 horas y semanal de tu plan de Claude para Claude Code (con el relay de {path}), los límites de uso que Anthropic y OpenAI devuelven con cada respuesta y los créditos de tu clave de OpenRouter, consultados a OpenRouter al abrir el chat y tras una respuesta. No se muestra nada para Google ni para los modelos locales.",
-   "ar": "تمتلئ حلقة بجانب الدردشات السابقة بما استخدمه المزود الحالي، وتعرض نقرة عليها كل حد ومتى يُعاد ضبطه: حدود خطة Claude لمدة 5 ساعات والأسبوعية لـ Claude Code (مع المرحّل من {path})، وحدود المعدل التي ترسلها Anthropic وOpenAI مع كل إجابة، ورصيد مفتاح OpenRouter، الذي يُسأل عنه OpenRouter عند فتح الدردشة وبعد كل إجابة. لا يظهر شيء لـ Google أو للنماذج المحلية.",
-   "fr": "Un anneau à côté des anciens chats se remplit de ce que le fournisseur utilisé a consommé, et un clic dessus montre chaque limite et quand elle se réinitialise : les limites de 5 heures et hebdomadaire de ton forfait Claude pour Claude Code (avec le relais de {path}), les limites de débit qu'Anthropic et OpenAI renvoient avec chaque réponse, et les crédits de ta clé OpenRouter, demandés à OpenRouter à l'ouverture du chat et après une réponse. Rien n'est affiché pour Google ni pour les modèles locaux.",
-   "bn": "পুরোনো চ্যাটের পাশে একটি রিং ব্যবহৃত প্রদানকারীর ব্যবহারে ভরে ওঠে, আর তাতে ক্লিক করলে প্রতিটি সীমা ও কখন রিসেট হবে দেখা যায়: Claude Code-এর জন্য আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা ({path}-এর রিলে সহ), প্রতিটি উত্তরের সঙ্গে Anthropic ও OpenAI যে রেট সীমা পাঠায়, আর আপনার OpenRouter কী-এর ক্রেডিট, চ্যাট খুললে ও উত্তরের পরে OpenRouter-এর কাছে জানতে চাওয়া। Google বা স্থানীয় মডেলের জন্য কিছু দেখানো হয় না।",
-   "pt-BR": "Um anel ao lado das conversas anteriores se enche com o que o provedor em uso já usou, e um clique nele mostra cada limite e quando ele é reiniciado: os limites de 5 horas e semanal do seu plano Claude para o Claude Code (com o relay de {path}), os limites de taxa que a Anthropic e a OpenAI devolvem com cada resposta e os créditos da sua chave do OpenRouter, consultados ao OpenRouter quando o chat abre e após uma resposta. Nada é mostrado para o Google nem para os modelos locais.",
-   "ru": "Кольцо рядом с прошлыми чатами заполняется тем, что израсходовал текущий провайдер, а щелчок по нему показывает каждый лимит и когда он сбросится: 5-часовой и недельный лимиты вашего плана Claude для Claude Code (с ретранслятором из {path}), лимиты запросов, которые Anthropic и OpenAI присылают с каждым ответом, и кредиты вашего ключа OpenRouter, запрашиваемые у OpenRouter при открытии чата и после ответа. Для Google и локальных моделей ничего не показывается.",
-   "id": "Sebuah cincin di samping obrolan sebelumnya terisi sesuai pemakaian penyedia yang digunakan, dan mengekliknya menampilkan setiap batas dan kapan diatur ulang: batas 5 jam dan mingguan paket Claude kamu untuk Claude Code (dengan relay dari {path}), batas laju yang dikirim Anthropic dan OpenAI bersama setiap jawaban, dan kredit kunci OpenRouter kamu, yang ditanyakan ke OpenRouter saat obrolan dibuka dan setelah jawaban. Tidak ada yang ditampilkan untuk Google atau model lokal.",
-   "it": "Un anello accanto alle chat passate si riempie con quanto ha usato il provider in uso, e un clic su di esso mostra ogni limite e quando si azzera: i limiti di 5 ore e settimanale del tuo piano Claude per Claude Code (con il relay da {path}), i limiti di frequenza che Anthropic e OpenAI rimandano con ogni risposta, e i crediti della tua chiave OpenRouter, chiesti a OpenRouter quando la chat si apre e dopo una risposta. Non viene mostrato nulla per Google o per i modelli locali."
-  },
   "New line in the message": {
    "zh-Hans": "在消息中换行",
    "hi": "संदेश में नई पंक्ति",
@@ -6955,18 +6763,6 @@
    "id": "Tanya Anthropic",
    "it": "Chiedi ad Anthropic"
   },
-  "Claude Code's status line only runs in a terminal, and its answers give the 5 hours only near the limit. Turned on, Lumo asks Anthropic for your plan's usage with Claude Code's sign-in, every 3 minutes while the island is open, as Claude Code's /usage does. The sign-in is only read, never kept or sent anywhere else.": {
-   "zh-Hans": "Claude Code 的状态栏只在终端中运行，而它的回答只在接近上限时才给出 5 小时用量。开启后，Lumo 会用 Claude Code 的登录信息向 Anthropic 查询你的套餐用量，在岛打开时每 3 分钟一次，与 Claude Code 的 /usage 相同。登录信息只会被读取，从不保存或发送到其他地方。",
-   "hi": "Claude Code की स्टेटस लाइन केवल टर्मिनल में चलती है, और उसके जवाब 5 घंटे का आंकड़ा केवल सीमा के पास देते हैं। चालू करने पर, Lumo Claude Code के साइन-इन से Anthropic से आपके प्लान का उपयोग पूछता है, आइलैंड खुला रहने पर हर 3 मिनट में, जैसा Claude Code का /usage करता है। साइन-इन केवल पढ़ा जाता है, कभी रखा या कहीं और भेजा नहीं जाता।",
-   "es": "La línea de estado de Claude Code solo funciona en una terminal, y sus respuestas dan las 5 horas solo cerca del límite. Activado, Lumo pregunta a Anthropic el uso de tu plan con la sesión de Claude Code, cada 3 minutos mientras la isla está abierta, como hace /usage de Claude Code. La sesión solo se lee, nunca se guarda ni se envía a ningún otro sitio.",
-   "ar": "سطر حالة Claude Code لا يعمل إلا في الطرفية، وإجاباته لا تعطي الساعات الخمس إلا قرب الحد. عند التفعيل، يسأل Lumo شركة Anthropic عن استخدام خطتك بتسجيل دخول Claude Code، كل 3 دقائق ما دامت الجزيرة مفتوحة، كما يفعل الأمر ‎/usage في Claude Code. يُقرأ تسجيل الدخول فقط، ولا يُحفظ ولا يُرسل إلى أي مكان آخر.",
-   "fr": "La ligne d'état de Claude Code ne tourne que dans un terminal, et ses réponses ne donnent les 5 heures que près de la limite. Activé, Lumo demande à Anthropic l'utilisation de ton forfait avec la connexion de Claude Code, toutes les 3 minutes tant que l'île est ouverte, comme le fait /usage de Claude Code. La connexion est seulement lue, jamais conservée ni envoyée ailleurs.",
-   "bn": "Claude Code-এর স্ট্যাটাস লাইন শুধু টার্মিনালে চলে, আর এর উত্তর ৫ ঘণ্টার হিসাব দেয় শুধু সীমার কাছাকাছি। চালু করলে, Lumo Claude Code-এর সাইন-ইন দিয়ে Anthropic-কে আপনার প্ল্যানের ব্যবহার জিজ্ঞাসা করে, আইল্যান্ড খোলা থাকলে প্রতি ৩ মিনিটে, যেমন Claude Code-এর /usage করে। সাইন-ইন শুধু পড়া হয়, কখনো রাখা বা অন্য কোথাও পাঠানো হয় না।",
-   "pt-BR": "A linha de status do Claude Code só roda em um terminal, e as respostas dele só dão as 5 horas perto do limite. Ativado, o Lumo pergunta à Anthropic o uso do seu plano com o login do Claude Code, a cada 3 minutos enquanto a ilha está aberta, como faz o /usage do Claude Code. O login é só lido, nunca guardado nem enviado a outro lugar.",
-   "ru": "Строка состояния Claude Code работает только в терминале, а его ответы показывают 5 часов только у самого лимита. Если включить, Lumo спрашивает у Anthropic расход вашего плана со входом Claude Code, каждые 3 минуты, пока остров открыт, как это делает /usage в Claude Code. Вход только читается, нигде не хранится и никуда больше не отправляется.",
-   "id": "Baris status Claude Code hanya berjalan di terminal, dan jawabannya hanya memberi angka 5 jam saat mendekati batas. Jika diaktifkan, Lumo menanyakan pemakaian paket Anda ke Anthropic dengan login Claude Code, setiap 3 menit selama pulau terbuka, seperti /usage di Claude Code. Login hanya dibaca, tidak pernah disimpan atau dikirim ke tempat lain.",
-   "it": "La riga di stato di Claude Code gira solo in un terminale, e le sue risposte danno le 5 ore solo vicino al limite. Se attivo, Lumo chiede ad Anthropic l'utilizzo del tuo piano con l'accesso di Claude Code, ogni 3 minuti mentre l'isola è aperta, come fa /usage di Claude Code. L'accesso viene solo letto, mai conservato né inviato altrove."
-  },
   "Light (default)": {
    "zh-Hans": "轻微（默认）",
    "hi": "हल्की (डिफ़ॉल्ट)",
@@ -7002,18 +6798,6 @@
    "ru": "Разрешать простые запросы с закрытого острова",
    "id": "Izinkan permintaan sederhana dari pulau tertutup",
    "it": "Consenti le richieste semplici dall'isola chiusa"
-  },
-  "an agent asking to read files or run a command that only looks (ls, git status…) shows Deny and Allow on the closed island; edits and other commands still open the full card": {
-   "zh-Hans": "当智能体请求读取文件或运行只查看的命令（ls、git status…）时，收起的岛上会显示“拒绝”和“允许”；编辑和其他命令仍会打开完整卡片",
-   "hi": "जब कोई एजेंट फ़ाइलें पढ़ने या केवल देखने वाला कमांड (ls, git status…) चलाने की अनुमति माँगता है, तो बंद आइलैंड पर अस्वीकार और अनुमति दिखते हैं; संपादन और अन्य कमांड अब भी पूरा कार्ड खोलते हैं",
-   "es": "si un agente pide leer archivos o ejecutar un comando que solo mira (ls, git status…), la isla cerrada muestra Denegar y Permitir; las ediciones y otros comandos siguen abriendo la tarjeta completa",
-   "ar": "عندما يطلب وكيل قراءة ملفات أو تشغيل أمر يكتفي بالاطلاع (ls، git status…) تعرض الجزيرة المغلقة «رفض» و«سماح»؛ أما التعديلات والأوامر الأخرى فتفتح البطاقة الكاملة كما من قبل",
-   "fr": "un agent qui demande à lire des fichiers ou à lancer une commande qui ne fait que regarder (ls, git status…) affiche Refuser et Autoriser sur l'île fermée ; les modifications et les autres commandes ouvrent toujours la carte complète",
-   "bn": "কোনো এজেন্ট ফাইল পড়তে বা শুধু দেখার কমান্ড (ls, git status…) চালাতে চাইলে বন্ধ আইল্যান্ডে প্রত্যাখ্যান ও অনুমতি দেখায়; সম্পাদনা ও অন্য কমান্ড এখনও পুরো কার্ড খোলে",
-   "pt-BR": "um agente pedindo para ler arquivos ou rodar um comando que só olha (ls, git status…) mostra Negar e Permitir na ilha fechada; edições e outros comandos ainda abrem o cartão completo",
-   "ru": "если агент просит прочитать файлы или выполнить команду, которая только смотрит (ls, git status…), на закрытом острове появляются «Запретить» и «Разрешить»; правки и другие команды по-прежнему открывают полную карточку",
-   "id": "agen yang meminta membaca file atau menjalankan perintah yang hanya melihat (ls, git status…) menampilkan Tolak dan Izinkan di pulau tertutup; suntingan dan perintah lain tetap membuka kartu lengkap",
-   "it": "quando un agente chiede di leggere file o di eseguire un comando che guarda soltanto (ls, git status…), l'isola chiusa mostra Nega e Consenti; le modifiche e gli altri comandi aprono sempre la card completa"
   },
   "Search the past chats": {
    "zh-Hans": "搜索以前的聊天",
@@ -7358,18 +7142,6 @@
    "ru": "Меню правой кнопки",
    "id": "Menu klik kanan",
    "it": "Menu del tasto destro"
-  },
-  "A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.": {
-   "zh-Hans": "在岛或其 Live Activities 上点击右键会打开 Lumo 的菜单：刷新（Ctrl+R）会重新获取日历、邮件、集成、套餐用量和智能体；在文本框中还有剪切、复制和粘贴。选择它还提供哪些功能。",
-   "hi": "आइलैंड या उसकी Live Activities पर राइट क्लिक करने से Lumo का मेनू खुलता है: रीफ़्रेश (Ctrl+R) कैलेंडर, ईमेल, इंटीग्रेशन, प्लान उपयोग और एजेंट से फिर पूछता है, और टेक्स्ट फ़ील्ड में काटें, कॉपी और चिपकाएँ होते हैं। चुनें कि यह और क्या दिखाए।",
-   "es": "Un clic derecho en la isla o en sus Live Activities abre el menú de Lumo: Actualizar (Ctrl+R) vuelve a consultar el calendario, los correos, las integraciones, el uso del plan y los agentes, y en un campo de texto están Cortar, Copiar y Pegar. Elige qué más ofrece.",
-   "ar": "النقر بالزر الأيمن على الجزيرة أو على Live Activities يفتح قائمة Lumo: التحديث (Ctrl+R) يطلب من جديد التقويم والبريد والتكاملات واستخدام الخطة والوكلاء، وفي حقل النص تجد القص والنسخ واللصق. اختر ما تعرضه أيضًا.",
-   "fr": "Un clic droit sur l'île ou ses Live Activities ouvre le menu de Lumo : Actualiser (Ctrl+R) redemande le calendrier, les e-mails, les intégrations, l'utilisation du forfait et les agents, et Couper, Copier et Coller sont là dans un champ de texte. Choisis ce qu'il propose d'autre.",
-   "bn": "আইল্যান্ড বা এর Live Activities-এ রাইট ক্লিক করলে Lumo-র মেনু খোলে: রিফ্রেশ (Ctrl+R) ক্যালেন্ডার, ইমেল, ইন্টিগ্রেশন, প্ল্যানের ব্যবহার আর এজেন্টদের আবার জিজ্ঞাসা করে, আর টেক্সট ফিল্ডে কাটুন, কপি ও পেস্ট থাকে। এটি আর কী দেখাবে বেছে নিন।",
-   "pt-BR": "Um clique direito na ilha ou nas Live Activities abre o menu do Lumo: Atualizar (Ctrl+R) consulta de novo o calendário, os e-mails, as integrações, o uso do plano e os agentes, e Recortar, Copiar e Colar ficam disponíveis num campo de texto. Escolha o que mais ele oferece.",
-   "ru": "Правый клик по острову или его Live Activities открывает меню Lumo: «Обновить» (Ctrl+R) заново запрашивает календарь, почту, интеграции, расход плана и агентов, а в текстовом поле есть «Вырезать», «Копировать» и «Вставить». Выберите, что ещё в нём будет.",
-   "id": "Klik kanan pada pulau atau Live Activities-nya membuka menu Lumo: Segarkan (Ctrl+R) menanyakan lagi kalender, email, integrasi, pemakaian paket, dan agen, dan Potong, Salin, dan Tempel ada di kolom teks. Pilih apa lagi yang ditawarkannya.",
-   "it": "Un clic destro sull'isola o sulle sue Live Activities apre il menu di Lumo: Aggiorna (Ctrl+R) richiede di nuovo calendario, email, integrazioni, utilizzo del piano e agenti, e in un campo di testo ci sono Taglia, Copia e Incolla. Scegli cos'altro offre."
   },
   "Follow the island's height": {
    "zh-Hans": "跟随岛的高度",
@@ -7766,42 +7538,6 @@
    "ru": "Прокрутить вправо",
    "id": "Gulir ke kanan",
    "it": "Scorri a destra"
-  },
-  "While it works, the screen it uses glows and the mouse turns orange: the mouse is Claude's until it answers, except when a card asks you something. Esc gives it back at once.": {
-   "zh-Hans": "工作时，它使用的屏幕会发光，鼠标变成橙色：在它回答完之前鼠标归 Claude 使用，只有卡片向你提问时除外。按 Esc 可立即收回。",
-   "hi": "काम करते समय, जिस स्क्रीन का वह उपयोग करता है वह चमकती है और माउस नारंगी हो जाता है: जवाब पूरा होने तक माउस Claude का है, सिवाय तब जब कोई कार्ड आपसे कुछ पूछे। Esc उसे तुरंत लौटा देता है।",
-   "es": "Mientras trabaja, la pantalla que usa brilla y el ratón se vuelve naranja: el ratón es de Claude hasta que responde, salvo cuando una tarjeta te pregunta algo. Esc te lo devuelve al instante.",
-   "ar": "أثناء عمله، تتوهج الشاشة التي يستخدمها ويصبح الماوس برتقاليًا: يبقى الماوس لـ Claude حتى ينتهي من الإجابة، إلا عندما تسألك بطاقة عن شيء. يعيده Esc إليك فورًا.",
-   "fr": "Pendant qu'il travaille, l'écran qu'il utilise brille et la souris devient orange : elle est à Claude jusqu'à la fin de sa réponse, sauf quand une carte vous demande quelque chose. Échap vous la rend aussitôt.",
-   "bn": "কাজ করার সময় সে যে স্ক্রিন ব্যবহার করে তা জ্বলে ওঠে এবং মাউস কমলা হয়ে যায়: উত্তর শেষ না হওয়া পর্যন্ত মাউস Claude-এর, শুধু কোনো কার্ড আপনাকে কিছু জিজ্ঞেস করলে নয়। Esc সঙ্গে সঙ্গে তা ফিরিয়ে দেয়।",
-   "pt-BR": "Enquanto trabalha, a tela que ele usa brilha e o mouse fica laranja: o mouse é do Claude até ele responder, exceto quando um cartão pergunta algo a você. Esc devolve o mouse na hora.",
-   "ru": "Пока он работает, используемый экран светится, а курсор становится оранжевым: мышь принадлежит Claude до конца ответа, кроме моментов, когда карточка о чём-то вас спрашивает. Esc сразу возвращает её вам.",
-   "id": "Saat bekerja, layar yang dipakainya bercahaya dan mouse berubah oranye: mouse milik Claude sampai ia selesai menjawab, kecuali saat kartu menanyakan sesuatu kepada Anda. Esc langsung mengembalikannya.",
-   "it": "Mentre lavora, lo schermo che usa si illumina e il mouse diventa arancione: il mouse è di Claude finché non ha risposto, tranne quando una scheda ti chiede qualcosa. Esc te lo restituisce subito."
-  },
-  "Only while the agent answers. Asking every time, each click, key or text is an Allow / Deny card on the island first; screenshots don't ask. Press Esc anywhere to stop it. Lumo's island is left out of its screenshots. Screenshots count against your plan's limits.": {
-   "zh-Hans": "仅在智能体回答时。设为每次询问时，每次点击、按键或输入都会先在灵动岛上显示“允许 / 拒绝”卡片；截图不需询问。在任意位置按 Esc 即可停止。Lumo 的灵动岛不会出现在截图中。截图会计入你的套餐限额。",
-   "hi": "केवल जब एजेंट जवाब दे रहा हो। हर बार पूछने पर, हर क्लिक, कुंजी या टेक्स्ट पहले आइलैंड पर अनुमति दें / अस्वीकार करें कार्ड बनता है; स्क्रीनशॉट के लिए नहीं पूछा जाता। रोकने के लिए कहीं भी Esc दबाएँ। Lumo का आइलैंड स्क्रीनशॉट में नहीं आता। स्क्रीनशॉट आपके प्लान की सीमाओं में गिने जाते हैं।",
-   "es": "Solo mientras el agente responde. Con Preguntar siempre, cada clic, tecla o texto es primero una tarjeta Permitir / Denegar en la isla; las capturas no preguntan. Pulsa Esc en cualquier lugar para detenerlo. La isla de Lumo no aparece en sus capturas. Las capturas cuentan para los límites de tu plan.",
-   "ar": "أثناء إجابة الوكيل فقط. عند السؤال في كل مرة، تظهر كل نقرة أو مفتاح أو نص أولًا كبطاقة سماح / رفض على الجزيرة؛ لقطات الشاشة لا تطلب إذنًا. اضغط Esc في أي مكان لإيقافه. لا تظهر جزيرة Lumo في لقطاته. تُحتسب لقطات الشاشة ضمن حدود خطتك.",
-   "fr": "Seulement pendant que l'agent répond. En mode Demander à chaque fois, chaque clic, touche ou texte passe d'abord par une carte Autoriser / Refuser sur l'île ; les captures ne demandent rien. Appuyez sur Échap n'importe où pour l'arrêter. L'île de Lumo est exclue de ses captures. Les captures comptent dans les limites de votre forfait.",
-   "bn": "শুধু যখন এজেন্ট উত্তর দিচ্ছে। প্রতিবার জিজ্ঞাসা করলে, প্রতিটি ক্লিক, কী বা লেখা আগে আইল্যান্ডে অনুমতি দিন / প্রত্যাখ্যান কার্ড হয়; স্ক্রিনশটের জন্য জিজ্ঞাসা করা হয় না। থামাতে যেকোনো জায়গায় Esc চাপুন। Lumo-র আইল্যান্ড স্ক্রিনশটে থাকে না। স্ক্রিনশট আপনার প্ল্যানের সীমায় গোনা হয়।",
-   "pt-BR": "Só enquanto o agente responde. Com Perguntar sempre, cada clique, tecla ou texto é primeiro um cartão Permitir / Negar na ilha; as capturas não perguntam. Pressione Esc em qualquer lugar para pará-lo. A ilha do Lumo fica fora das capturas. As capturas contam nos limites do seu plano.",
-   "ru": "Только пока агент отвечает. В режиме «Спрашивать каждый раз» каждый щелчок, клавиша или текст сначала появляется на острове карточкой «Разрешить / Запретить»; для снимков экрана разрешение не нужно. Нажмите Esc где угодно, чтобы остановить. Остров Lumo не попадает в снимки. Снимки расходуют лимиты вашего плана.",
-   "id": "Hanya saat agen menjawab. Dengan Selalu tanya, setiap klik, tombol, atau teks tampil dulu sebagai kartu Izinkan / Tolak di pulau; tangkapan layar tidak bertanya. Tekan Esc di mana saja untuk menghentikannya. Pulau Lumo tidak ikut di tangkapan layarnya. Tangkapan layar dihitung dalam batas paket Anda.",
-   "it": "Solo mentre l'agente risponde. Con Chiedi ogni volta, ogni clic, tasto o testo è prima una scheda Consenti / Nega sull'isola; gli screenshot non chiedono. Premi Esc ovunque per fermarlo. L'isola di Lumo resta fuori dai suoi screenshot. Gli screenshot contano nei limiti del tuo piano."
-  },
-  "Claude Code can see your screen and use it: click, type, press keys and scroll, to do what a command or a file can't. In the chat, and for Gemini Live, which hands it what is to be done on the screen (with Haiku 5.5, whoever helps Gemini otherwise). It works on your real desktop, not in a sandbox.": {
-   "zh-Hans": "Claude Code 可以查看并使用你的屏幕：点击、输入、按键和滚动，完成命令或文件做不到的事。可在聊天中使用，也可供 Gemini Live 使用：它会把需要在屏幕上完成的事交给 Claude Code（使用 Haiku 5.5，无论 Gemini 平时由谁协助）。它在你真实的桌面上操作，而不是在沙盒中。",
-   "hi": "Claude Code आपकी स्क्रीन देख और इस्तेमाल कर सकता है: क्लिक, टाइप, कुंजियाँ दबाना और स्क्रॉल करना, ताकि वह हो सके जो कोई कमांड या फ़ाइल नहीं कर सकती। चैट में, और Gemini Live के लिए, जो स्क्रीन पर किए जाने वाले काम उसे सौंपता है (Haiku 5.5 के साथ, चाहे Gemini की मदद सामान्यतः कोई भी करे)। यह आपके असली डेस्कटॉप पर काम करता है, सैंडबॉक्स में नहीं।",
-   "es": "Claude Code puede ver tu pantalla y usarla: hacer clic, escribir, pulsar teclas y desplazarse, para hacer lo que un comando o un archivo no pueden. En el chat y para Gemini Live, que le pasa lo que hay que hacer en pantalla (con Haiku 5.5, sea quien sea el ayudante habitual de Gemini). Trabaja en tu escritorio real, no en un entorno aislado.",
-   "ar": "يستطيع Claude Code رؤية شاشتك واستخدامها: النقر والكتابة والضغط على المفاتيح والتمرير، لإنجاز ما لا يستطيعه أمر أو ملف. في الدردشة، ولـ Gemini Live الذي يسلّمه ما يجب فعله على الشاشة (باستخدام Haiku 5.5، أيًا كان مساعد Gemini المعتاد). يعمل على سطح مكتبك الحقيقي، لا في بيئة معزولة.",
-   "fr": "Claude Code peut voir votre écran et s'en servir : cliquer, saisir, appuyer sur des touches et faire défiler, pour faire ce qu'une commande ou un fichier ne peut pas. Dans le chat, et pour Gemini Live, qui lui confie ce qu'il faut faire à l'écran (avec Haiku 5.5, quel que soit l'assistant habituel de Gemini). Il agit sur votre vrai bureau, pas dans un bac à sable.",
-   "bn": "Claude Code আপনার স্ক্রিন দেখতে ও ব্যবহার করতে পারে: ক্লিক, টাইপ, কী চাপা ও স্ক্রোল, যাতে কমান্ড বা ফাইল যা পারে না তা করা যায়। চ্যাটে, আর Gemini Live-এর জন্য, যে স্ক্রিনে করার কাজ তার হাতে দেয় (Haiku 5.5 দিয়ে, Gemini-কে সাধারণত যে-ই সাহায্য করুক)। এটি আপনার আসল ডেস্কটপে কাজ করে, স্যান্ডবক্সে নয়।",
-   "pt-BR": "O Claude Code pode ver sua tela e usá-la: clicar, digitar, pressionar teclas e rolar, para fazer o que um comando ou um arquivo não conseguem. No chat e para o Gemini Live, que passa a ele o que deve ser feito na tela (com o Haiku 5.5, seja quem for o ajudante habitual do Gemini). Ele age na sua área de trabalho real, não em um ambiente isolado.",
-   "ru": "Claude Code может видеть ваш экран и пользоваться им: щёлкать, вводить текст, нажимать клавиши и прокручивать, чтобы сделать то, что не под силу команде или файлу. В чате и для Gemini Live, который поручает ему действия на экране (с Haiku 5.5, кто бы ни помогал Gemini обычно). Он работает на вашем настоящем рабочем столе, а не в песочнице.",
-   "id": "Claude Code dapat melihat layar Anda dan memakainya: mengeklik, mengetik, menekan tombol, dan menggulir, untuk melakukan yang tidak bisa dilakukan perintah atau file. Di chat, dan untuk Gemini Live, yang menyerahkan kepadanya apa yang harus dilakukan di layar (dengan Haiku 5.5, siapa pun pembantu Gemini biasanya). Bekerja di desktop Anda yang sebenarnya, bukan di sandbox.",
-   "it": "Claude Code può vedere lo schermo e usarlo: cliccare, scrivere, premere tasti e scorrere, per fare quello che un comando o un file non possono fare. Nella chat, e per Gemini Live, che gli affida quello che c'è da fare sullo schermo (con Haiku 5.5, chiunque aiuti Gemini di solito). Lavora sul tuo vero desktop, non in un ambiente isolato."
   },
   "In the chat, pick Claude Code as the provider to use it.": {
    "zh-Hans": "在聊天中，请将 Claude Code 设为提供方以使用它。",
@@ -8498,6 +8234,330 @@
    "ru": "Отслеживаются запросы на слияние: {count}",
    "id": "Mendengarkan {count} pull request",
    "it": "In ascolto di {count} pull request"
+  },
+  "Only looks: changes nothing.": {
+   "zh-Hans": "只是查看：不做任何更改。",
+   "hi": "सिर्फ़ देखता है: कुछ नहीं बदलता।",
+   "es": "Solo mira: no cambia nada.",
+   "ar": "يطّلع فقط: لا يغيّر شيئًا.",
+   "fr": "Regarde seulement : ne change rien.",
+   "bn": "শুধু দেখে: কিছুই বদলায় না।",
+   "pt-BR": "Só consulta: não muda nada.",
+   "ru": "Только смотрит: ничего не меняет.",
+   "id": "Hanya melihat: tidak mengubah apa pun.",
+   "it": "Guarda soltanto: non cambia nulla."
+  },
+  "Runs a command that can change things.": {
+   "zh-Hans": "运行一个可能做出更改的命令。",
+   "hi": "एक ऐसा कमांड चलाता है जो चीज़ें बदल सकता है।",
+   "es": "Ejecuta un comando que puede cambiar cosas.",
+   "ar": "يشغّل أمرًا قد يغيّر أشياء.",
+   "fr": "Lance une commande qui peut changer des choses.",
+   "bn": "এমন একটি কমান্ড চালায় যা কিছু বদলাতে পারে।",
+   "pt-BR": "Executa um comando que pode mudar coisas.",
+   "ru": "Запускает команду, которая может что-то изменить.",
+   "id": "Menjalankan perintah yang bisa mengubah sesuatu.",
+   "it": "Esegue un comando che può cambiare qualcosa."
+  },
+  "Changes a file.": {
+   "zh-Hans": "修改一个文件。",
+   "hi": "एक फ़ाइल बदलता है।",
+   "es": "Cambia un archivo.",
+   "ar": "يغيّر ملفًا.",
+   "fr": "Modifie un fichier.",
+   "bn": "একটি ফাইল বদলায়।",
+   "pt-BR": "Altera um arquivo.",
+   "ru": "Изменяет файл.",
+   "id": "Mengubah sebuah file.",
+   "it": "Modifica un file."
+  },
+  "Reads a web page.": {
+   "zh-Hans": "读取一个网页。",
+   "hi": "एक वेब पेज पढ़ता है।",
+   "es": "Lee una página web.",
+   "ar": "يقرأ صفحة ويب.",
+   "fr": "Lit une page web.",
+   "bn": "একটি ওয়েব পেজ পড়ে।",
+   "pt-BR": "Lê uma página da web.",
+   "ru": "Читает веб-страницу.",
+   "id": "Membaca halaman web.",
+   "it": "Legge una pagina web."
+  },
+  "Uses a tool of {server} (MCP).": {
+   "zh-Hans": "使用 {server} 的工具（MCP）。",
+   "hi": "{server} का एक टूल इस्तेमाल करता है (MCP)।",
+   "es": "Usa una herramienta de {server} (MCP).",
+   "ar": "يستخدم أداة من {server} (MCP).",
+   "fr": "Utilise un outil de {server} (MCP).",
+   "bn": "{server}-এর একটি টুল ব্যবহার করে (MCP)।",
+   "pt-BR": "Usa uma ferramenta de {server} (MCP).",
+   "ru": "Использует инструмент {server} (MCP).",
+   "id": "Memakai alat dari {server} (MCP).",
+   "it": "Usa uno strumento di {server} (MCP)."
+  },
+  "Commands that only look run without asking; Lumo asks for the rest.": {
+   "zh-Hans": "只做查看的命令无需询问即可运行；其余的 Lumo 会先询问。",
+   "hi": "सिर्फ़ देखने वाले कमांड बिना पूछे चलते हैं; बाकी के लिए Lumo पूछता है।",
+   "es": "Los comandos que solo miran se ejecutan sin preguntar; para el resto, Lumo pregunta.",
+   "ar": "تعمل الأوامر التي تطّلع فقط دون سؤال؛ ويسأل Lumo عن الباقي.",
+   "fr": "Les commandes qui regardent seulement s'exécutent sans demander ; Lumo demande pour le reste.",
+   "bn": "শুধু দেখার কমান্ড জিজ্ঞেস না করেই চলে; বাকিগুলোর জন্য Lumo জিজ্ঞেস করে।",
+   "pt-BR": "Comandos que só consultam rodam sem perguntar; para o resto, o Lumo pergunta.",
+   "ru": "Команды, которые только смотрят, выполняются без вопросов; об остальном Lumo спрашивает.",
+   "id": "Perintah yang hanya melihat berjalan tanpa bertanya; untuk sisanya Lumo bertanya.",
+   "it": "I comandi che guardano soltanto partono senza chiedere; per il resto Lumo chiede."
+  },
+  "A ring next to the past chats shows how much the provider in use has used; a click shows each limit and when it resets. For Claude Code it needs the relay from {path}. Nothing is shown for Google or the local models.": {
+   "zh-Hans": "过往聊天旁的圆环显示当前提供商的用量；点击可查看每项限额及其重置时间。Claude Code 需要 {path} 中的中继。Google 和本地模型不显示。",
+   "hi": "पिछली चैट के पास एक रिंग दिखाती है कि मौजूदा प्रोवाइडर कितना इस्तेमाल हुआ; क्लिक करने पर हर सीमा और उसके रीसेट का समय दिखता है। Claude Code के लिए {path} का रिले चाहिए। Google और लोकल मॉडल के लिए कुछ नहीं दिखता।",
+   "es": "Un anillo junto a los chats anteriores muestra cuánto ha usado el proveedor actual; un clic muestra cada límite y cuándo se reinicia. Para Claude Code necesita el relé de {path}. No se muestra nada para Google ni para los modelos locales.",
+   "ar": "حلقة بجانب المحادثات السابقة تُظهر مقدار ما استخدمه المزوّد الحالي؛ والنقر عليها يعرض كل حد وموعد إعادة تعيينه. يحتاج Claude Code إلى المُرحِّل من {path}. لا يظهر شيء لـ Google أو للنماذج المحلية.",
+   "fr": "Un anneau à côté des anciens chats montre ce que le fournisseur utilisé a consommé ; un clic affiche chaque limite et quand elle se réinitialise. Pour Claude Code, il faut le relais de {path}. Rien ne s'affiche pour Google ni pour les modèles locaux.",
+   "bn": "আগের চ্যাটগুলোর পাশে একটি রিং দেখায় বর্তমান প্রোভাইডার কতটা ব্যবহৃত হয়েছে; ক্লিক করলে প্রতিটি সীমা ও কখন রিসেট হবে দেখায়। Claude Code-এর জন্য {path}-এর রিলে লাগে। Google ও লোকাল মডেলের জন্য কিছু দেখানো হয় না।",
+   "pt-BR": "Um anel ao lado das conversas anteriores mostra quanto o provedor em uso já usou; um clique mostra cada limite e quando ele reinicia. Para o Claude Code, é preciso o relay de {path}. Nada aparece para o Google nem para os modelos locais.",
+   "ru": "Кольцо рядом с прошлыми чатами показывает, сколько израсходовано у текущего провайдера; щелчок показывает каждый лимит и время его сброса. Для Claude Code нужен ретранслятор из раздела {path}. Для Google и локальных моделей ничего не показывается.",
+   "id": "Cincin di samping obrolan sebelumnya menunjukkan pemakaian penyedia yang digunakan; klik untuk melihat setiap batas dan kapan direset. Untuk Claude Code perlu relay dari {path}. Tidak ada yang ditampilkan untuk Google atau model lokal.",
+   "it": "Un anello accanto alle chat passate mostra quanto ha usato il provider in uso; un clic mostra ogni limite e quando si azzera. Per Claude Code serve il relay da {path}. Niente per Google e per i modelli locali."
+  },
+  "Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back.": {
+   "zh-Hans": "仅在代理回答时：它使用的屏幕会发光，鼠标变为橙色。每次询问时，每个操作都会先在岛上显示为卡片。按 Esc 可停止并交还鼠标。",
+   "hi": "सिर्फ़ तब जब एजेंट जवाब दे रहा हो: जिस स्क्रीन का वह इस्तेमाल करता है वह चमकती है और माउस नारंगी हो जाता है। हर बार पूछने पर, हर क्रिया पहले आइलैंड पर एक कार्ड होती है। Esc उसे रोकता है और माउस वापस देता है।",
+   "es": "Solo mientras el agente responde: la pantalla que usa se ilumina y el ratón se vuelve naranja. Preguntando siempre, cada acción es primero una tarjeta en la isla. Esc lo detiene y te devuelve el ratón.",
+   "ar": "فقط أثناء إجابة الوكيل: تتوهج الشاشة التي يستخدمها ويصبح المؤشر برتقاليًا. عند السؤال في كل مرة، يكون كل إجراء بطاقة في الجزيرة أولًا. يوقفه Esc ويعيد إليك الفأرة.",
+   "fr": "Seulement pendant que l'agent répond : l'écran qu'il utilise s'illumine et la souris devient orange. En demandant à chaque fois, chaque action est d'abord une carte sur l'île. Échap l'arrête et vous rend la souris.",
+   "bn": "শুধু এজেন্ট উত্তর দেওয়ার সময়: যে স্ক্রিন সে ব্যবহার করে তা জ্বলে ওঠে আর মাউস কমলা হয়ে যায়। প্রতিবার জিজ্ঞেস করলে, প্রতিটি কাজ আগে আইল্যান্ডে একটি কার্ড হয়। Esc তাকে থামায় ও মাউস ফিরিয়ে দেয়।",
+   "pt-BR": "Só enquanto o agente responde: a tela que ele usa brilha e o mouse fica laranja. Perguntando sempre, cada ação é antes um cartão na ilha. Esc o interrompe e devolve o mouse.",
+   "ru": "Только пока агент отвечает: используемый экран подсвечивается, а курсор становится оранжевым. В режиме «спрашивать каждый раз» каждое действие сначала появляется карточкой на острове. Esc останавливает его и возвращает мышь.",
+   "id": "Hanya saat agen menjawab: layar yang dipakainya menyala dan mouse berubah oranye. Jika selalu bertanya, setiap tindakan muncul dulu sebagai kartu di pulau. Esc menghentikannya dan mengembalikan mouse.",
+   "it": "Solo mentre l'agente risponde: lo schermo che usa si illumina e il mouse diventa arancione. Con Chiedi ogni volta, ogni azione passa prima da una scheda sull'isola. Esc lo ferma e ti ridà il mouse."
+  },
+  "Talk with Gemini from the island, with the microphone next to the chat box or {keys}. It answers out loud, looks at your screen when that helps and hands the rest to the helper below. It uses your Google AI key, billed by the minute; a call ends after 5 minutes of silence.": {
+   "zh-Hans": "在岛上与 Gemini 对话：使用聊天框旁的麦克风或 {keys}。它会语音回答，需要时查看你的屏幕，其余交给下方的助手。使用你的 Google AI 密钥，按分钟计费；静音 5 分钟后通话结束。",
+   "hi": "आइलैंड से Gemini से बात करें, चैट बॉक्स के पास वाले माइक्रोफ़ोन या {keys} से। वह बोलकर जवाब देता है, ज़रूरत पड़ने पर आपकी स्क्रीन देखता है और बाकी काम नीचे दिए सहायक को सौंपता है। यह आपकी Google AI कुंजी इस्तेमाल करता है, प्रति मिनट बिल होता है; 5 मिनट की चुप्पी के बाद कॉल खत्म हो जाती है।",
+   "es": "Habla con Gemini desde la isla, con el micrófono junto al cuadro del chat o {keys}. Responde en voz alta, mira tu pantalla cuando ayuda y deja el resto al asistente de abajo. Usa tu clave de Google AI, facturada por minuto; la llamada termina tras 5 minutos de silencio.",
+   "ar": "تحدّث مع Gemini من الجزيرة، عبر الميكروفون بجانب مربع المحادثة أو {keys}. يجيب بصوت عالٍ، وينظر إلى شاشتك عند الحاجة، ويُسلّم الباقي إلى المساعد أدناه. يستخدم مفتاح Google AI الخاص بك، ويُحتسب بالدقيقة؛ تنتهي المكالمة بعد 5 دقائق من الصمت.",
+   "fr": "Parlez avec Gemini depuis l'île, avec le micro à côté du champ du chat ou {keys}. Il répond à voix haute, regarde votre écran quand c'est utile et confie le reste à l'assistant ci-dessous. Il utilise votre clé Google AI, facturée à la minute ; un appel se termine après 5 minutes de silence.",
+   "bn": "আইল্যান্ড থেকে Gemini-এর সঙ্গে কথা বলুন, চ্যাট বক্সের পাশের মাইক্রোফোন বা {keys} দিয়ে। সে জোরে উত্তর দেয়, দরকার হলে আপনার স্ক্রিন দেখে আর বাকিটা নিচের সহায়ককে দেয়। এটি আপনার Google AI কী ব্যবহার করে, প্রতি মিনিটে বিল হয়; ৫ মিনিট নীরবতার পর কল শেষ হয়।",
+   "pt-BR": "Fale com o Gemini pela ilha, com o microfone ao lado da caixa do chat ou {keys}. Ele responde em voz alta, olha sua tela quando ajuda e passa o resto ao assistente abaixo. Usa sua chave do Google AI, cobrada por minuto; a chamada termina após 5 minutos de silêncio.",
+   "ru": "Говорите с Gemini с острова: микрофон рядом с полем чата или {keys}. Он отвечает вслух, смотрит на экран, когда это помогает, а остальное передаёт помощнику ниже. Использует ваш ключ Google AI с поминутной оплатой; звонок завершается после 5 минут тишины.",
+   "id": "Bicara dengan Gemini dari pulau, dengan mikrofon di samping kotak obrolan atau {keys}. Ia menjawab dengan suara, melihat layar Anda bila membantu, dan menyerahkan sisanya ke asisten di bawah. Memakai kunci Google AI Anda, ditagih per menit; panggilan berakhir setelah 5 menit hening.",
+   "it": "Parla con Gemini dall'isola, con il microfono accanto alla chat o {keys}. Risponde a voce, guarda lo schermo quando serve e affida il resto all'assistente qui sotto. Usa la tua chiave Google AI, fatturata al minuto; la chiamata termina dopo 5 minuti di silenzio."
+  },
+  "New emails show on the closed island. Lumo only reads: it never sends, deletes or marks anything as read. Gmail needs an app password (myaccount.google.com/apppasswords), with 2-Step Verification on.": {
+   "zh-Hans": "新邮件会显示在收起的岛上。Lumo 只读取：从不发送、删除或标记为已读。Gmail 需要应用专用密码（myaccount.google.com/apppasswords），并开启两步验证。",
+   "hi": "नए ईमेल बंद आइलैंड पर दिखते हैं। Lumo सिर्फ़ पढ़ता है: वह कभी कुछ नहीं भेजता, मिटाता या पढ़ा हुआ चिह्नित करता। Gmail के लिए ऐप पासवर्ड चाहिए (myaccount.google.com/apppasswords), 2-चरणीय सत्यापन चालू होना चाहिए।",
+   "es": "Los correos nuevos aparecen en la isla cerrada. Lumo solo lee: nunca envía, elimina ni marca nada como leído. Gmail necesita una contraseña de aplicación (myaccount.google.com/apppasswords), con la verificación en dos pasos activada.",
+   "ar": "تظهر الرسائل الجديدة على الجزيرة المغلقة. يقرأ Lumo فقط: لا يرسل ولا يحذف ولا يضع علامة مقروء على أي شيء أبدًا. يحتاج Gmail إلى كلمة مرور للتطبيقات (myaccount.google.com/apppasswords) مع تفعيل التحقق بخطوتين.",
+   "fr": "Les nouveaux e-mails s'affichent sur l'île fermée. Lumo se contente de lire : il n'envoie, ne supprime et ne marque jamais rien comme lu. Gmail demande un mot de passe d'application (myaccount.google.com/apppasswords), avec la validation en deux étapes activée.",
+   "bn": "নতুন ইমেল বন্ধ আইল্যান্ডে দেখা যায়। Lumo শুধু পড়ে: কখনও কিছু পাঠায় না, মোছে না বা পড়া হিসেবে চিহ্নিত করে না। Gmail-এর জন্য অ্যাপ পাসওয়ার্ড লাগে (myaccount.google.com/apppasswords), ২-ধাপ যাচাই চালু রেখে।",
+   "pt-BR": "Novos e-mails aparecem na ilha fechada. O Lumo só lê: nunca envia, apaga ou marca nada como lido. O Gmail precisa de uma senha de app (myaccount.google.com/apppasswords), com a verificação em duas etapas ativada.",
+   "ru": "Новые письма показываются на свёрнутом острове. Lumo только читает: никогда ничего не отправляет, не удаляет и не помечает прочитанным. Для Gmail нужен пароль приложения (myaccount.google.com/apppasswords) и включённая двухэтапная аутентификация.",
+   "id": "Email baru muncul di pulau yang tertutup. Lumo hanya membaca: tidak pernah mengirim, menghapus, atau menandai apa pun sebagai dibaca. Gmail memerlukan sandi aplikasi (myaccount.google.com/apppasswords), dengan Verifikasi 2 Langkah aktif.",
+   "it": "Le nuove email compaiono sull'isola chiusa. Lumo legge soltanto: non invia, non cancella e non segna nulla come letto. Gmail richiede una password per le app (myaccount.google.com/apppasswords), con la verifica in due passaggi attiva."
+  },
+  "Drag the top bar to move the island: near an edge it docks to it. Drag an edge or a corner to resize it; a double click puts the usual size back.": {
+   "zh-Hans": "拖动顶部栏可移动岛：靠近屏幕边缘时会吸附上去。拖动边缘或角落可调整大小；双击恢复常规大小。",
+   "hi": "आइलैंड को खिसकाने के लिए ऊपर की पट्टी खींचें: किनारे के पास वह उससे चिपक जाता है। आकार बदलने के लिए किनारा या कोना खींचें; डबल क्लिक से सामान्य आकार लौट आता है।",
+   "es": "Arrastra la barra superior para mover la isla: cerca de un borde se acopla a él. Arrastra un borde o una esquina para cambiar su tamaño; un doble clic devuelve el tamaño habitual.",
+   "ar": "اسحب الشريط العلوي لتحريك الجزيرة: قرب الحافة تلتصق بها. اسحب حافة أو زاوية لتغيير حجمها؛ والنقر المزدوج يعيد الحجم المعتاد.",
+   "fr": "Faites glisser la barre du haut pour déplacer l'île : près d'un bord, elle s'y ancre. Faites glisser un bord ou un coin pour la redimensionner ; un double-clic rétablit la taille habituelle.",
+   "bn": "আইল্যান্ড সরাতে উপরের বার টানুন: কোনো প্রান্তের কাছে গেলে সেখানে আটকে যায়। আকার বদলাতে একটি প্রান্ত বা কোণ টানুন; ডাবল ক্লিকে স্বাভাবিক আকার ফেরে।",
+   "pt-BR": "Arraste a barra superior para mover a ilha: perto de uma borda, ela se encaixa nela. Arraste uma borda ou um canto para redimensioná-la; um clique duplo volta ao tamanho normal.",
+   "ru": "Перетащите верхнюю панель, чтобы переместить остров: у края экрана он прикрепляется к нему. Потяните за край или угол, чтобы изменить размер; двойной щелчок возвращает обычный размер.",
+   "id": "Seret bilah atas untuk memindahkan pulau: di dekat tepi layar ia menempel ke sana. Seret tepi atau sudut untuk mengubah ukurannya; klik dua kali mengembalikan ukuran biasa.",
+   "it": "Trascina la barra in alto per spostare l'isola: vicino a un bordo si aggancia. Trascina un bordo o un angolo per ridimensionarla; un doppio clic ripristina la dimensione normale."
+  },
+  "Claude Code can see your screen and use it (click, type, scroll) when a command isn't enough, in the chat and for Gemini Live. It works on your real desktop, not in a sandbox.": {
+   "zh-Hans": "当命令不够用时，Claude Code 可以查看并操作你的屏幕（点击、输入、滚动），适用于聊天和 Gemini Live。它在你真实的桌面上工作，而不是沙盒中。",
+   "hi": "जब कोई कमांड काफ़ी न हो, Claude Code आपकी स्क्रीन देख और इस्तेमाल कर सकता है (क्लिक, टाइप, स्क्रॉल), चैट में और Gemini Live के लिए। यह आपके असली डेस्कटॉप पर काम करता है, सैंडबॉक्स में नहीं।",
+   "es": "Claude Code puede ver tu pantalla y usarla (hacer clic, escribir, desplazarse) cuando un comando no basta, en el chat y para Gemini Live. Trabaja en tu escritorio real, no en un entorno aislado.",
+   "ar": "يمكن لـ Claude Code رؤية شاشتك واستخدامها (النقر والكتابة والتمرير) عندما لا يكفي أمر، في المحادثة ولـ Gemini Live. يعمل على سطح مكتبك الحقيقي، لا في بيئة معزولة.",
+   "fr": "Claude Code peut voir votre écran et s'en servir (cliquer, taper, faire défiler) quand une commande ne suffit pas, dans le chat et pour Gemini Live. Il travaille sur votre vrai bureau, pas dans un bac à sable.",
+   "bn": "কোনো কমান্ড যথেষ্ট না হলে Claude Code আপনার স্ক্রিন দেখতে ও ব্যবহার করতে পারে (ক্লিক, টাইপ, স্ক্রল), চ্যাটে ও Gemini Live-এর জন্য। এটি আপনার আসল ডেস্কটপে কাজ করে, স্যান্ডবক্সে নয়।",
+   "pt-BR": "O Claude Code pode ver sua tela e usá-la (clicar, digitar, rolar) quando um comando não basta, no chat e para o Gemini Live. Ele trabalha na sua área de trabalho real, não em uma sandbox.",
+   "ru": "Claude Code может видеть ваш экран и пользоваться им (щёлкать, печатать, прокручивать), когда команды недостаточно, — в чате и для Gemini Live. Он работает на вашем настоящем рабочем столе, а не в песочнице.",
+   "id": "Claude Code dapat melihat dan memakai layar Anda (klik, ketik, gulir) saat perintah saja tidak cukup, di obrolan dan untuk Gemini Live. Ia bekerja di desktop Anda yang sebenarnya, bukan di sandbox.",
+   "it": "Claude Code può vedere lo schermo e usarlo (cliccare, scrivere, scorrere) quando un comando non basta, nella chat e per Gemini Live. Lavora sul tuo vero desktop, non in un ambiente isolato."
+  },
+  "Lumo asks Anthropic for your plan's usage every 3 minutes while the island is open, as /usage does, so it shows outside the terminal too. Claude Code's sign-in is only read, never kept.": {
+   "zh-Hans": "岛打开时，Lumo 每 3 分钟向 Anthropic 查询一次你的套餐用量，与 /usage 相同，因此在终端之外也能看到。Claude Code 的登录信息只会被读取，绝不保存。",
+   "hi": "आइलैंड खुला रहने पर Lumo हर 3 मिनट में Anthropic से आपके प्लान का उपयोग पूछता है, जैसे /usage करता है, ताकि वह टर्मिनल के बाहर भी दिखे। Claude Code का साइन-इन सिर्फ़ पढ़ा जाता है, कभी रखा नहीं जाता।",
+   "es": "Lumo pide a Anthropic el uso de tu plan cada 3 minutos mientras la isla está abierta, como hace /usage, para que se vea también fuera de la terminal. El inicio de sesión de Claude Code solo se lee, nunca se guarda.",
+   "ar": "يسأل Lumo شركة Anthropic عن استخدام خطتك كل 3 دقائق ما دامت الجزيرة مفتوحة، كما يفعل /usage، ليظهر خارج الطرفية أيضًا. يُقرأ تسجيل دخول Claude Code فقط ولا يُحفظ أبدًا.",
+   "fr": "Lumo demande à Anthropic l'utilisation de votre forfait toutes les 3 minutes tant que l'île est ouverte, comme /usage, pour l'afficher aussi hors du terminal. La connexion de Claude Code est seulement lue, jamais conservée.",
+   "bn": "আইল্যান্ড খোলা থাকলে Lumo প্রতি ৩ মিনিটে Anthropic-এর কাছে আপনার প্ল্যানের ব্যবহার জানতে চায়, /usage যেমন করে, যাতে টার্মিনালের বাইরেও দেখা যায়। Claude Code-এর সাইন-ইন শুধু পড়া হয়, কখনও রাখা হয় না।",
+   "pt-BR": "O Lumo pede à Anthropic o uso do seu plano a cada 3 minutos enquanto a ilha está aberta, como o /usage faz, para que apareça também fora do terminal. O login do Claude Code é só lido, nunca guardado.",
+   "ru": "Пока остров открыт, Lumo каждые 3 минуты запрашивает у Anthropic расход вашего плана, как это делает /usage, чтобы он был виден и вне терминала. Вход Claude Code только читается и никогда не сохраняется.",
+   "id": "Lumo menanyakan pemakaian paket Anda ke Anthropic setiap 3 menit selama pulau terbuka, seperti /usage, agar terlihat juga di luar terminal. Info masuk Claude Code hanya dibaca, tidak pernah disimpan.",
+   "it": "Lumo chiede ad Anthropic l'utilizzo del tuo piano ogni 3 minuti mentre l'isola è aperta, come fa /usage, così lo vedi anche fuori dal terminale. L'accesso di Claude Code viene solo letto, mai conservato."
+  },
+  "Chat with Google AI, OpenAI or OpenRouter: add a key here, then pick the model above the chat box. Keys stay in the system keychain. These providers can only answer, never act on this computer.": {
+   "zh-Hans": "与 Google AI、OpenAI 或 OpenRouter 聊天：在此添加密钥，然后在聊天框上方选择模型。密钥保存在系统钥匙串中。这些提供商只能回答，绝不会在这台电脑上执行操作。",
+   "hi": "Google AI, OpenAI या OpenRouter से चैट करें: यहाँ कुंजी जोड़ें, फिर चैट बॉक्स के ऊपर मॉडल चुनें। कुंजियाँ सिस्टम कीचेन में रहती हैं। ये प्रोवाइडर सिर्फ़ जवाब दे सकते हैं, इस कंप्यूटर पर कभी कुछ नहीं करते।",
+   "es": "Chatea con Google AI, OpenAI u OpenRouter: añade una clave aquí y luego elige el modelo encima del cuadro del chat. Las claves se quedan en el llavero del sistema. Estos proveedores solo pueden responder, nunca actuar en este equipo.",
+   "ar": "تحدّث مع Google AI أو OpenAI أو OpenRouter: أضف مفتاحًا هنا، ثم اختر النموذج فوق مربع المحادثة. تبقى المفاتيح في سلسلة مفاتيح النظام. هؤلاء المزوّدون يجيبون فقط، ولا يتصرفون على هذا الكمبيوتر أبدًا.",
+   "fr": "Discutez avec Google AI, OpenAI ou OpenRouter : ajoutez une clé ici, puis choisissez le modèle au-dessus du champ du chat. Les clés restent dans le trousseau du système. Ces fournisseurs peuvent seulement répondre, jamais agir sur cet ordinateur.",
+   "bn": "Google AI, OpenAI বা OpenRouter-এর সঙ্গে চ্যাট করুন: এখানে একটি কী যোগ করুন, তারপর চ্যাট বক্সের উপরে মডেল বেছে নিন। কীগুলো সিস্টেম কিচেইনে থাকে। এই প্রোভাইডাররা শুধু উত্তর দিতে পারে, এই কম্পিউটারে কখনও কিছু করে না।",
+   "pt-BR": "Converse com Google AI, OpenAI ou OpenRouter: adicione uma chave aqui e escolha o modelo acima da caixa do chat. As chaves ficam no chaveiro do sistema. Esses provedores só podem responder, nunca agir neste computador.",
+   "ru": "Общайтесь с Google AI, OpenAI или OpenRouter: добавьте ключ здесь, затем выберите модель над полем чата. Ключи хранятся в системной связке ключей. Эти провайдеры могут только отвечать и никогда не действуют на этом компьютере.",
+   "id": "Mengobrol dengan Google AI, OpenAI, atau OpenRouter: tambahkan kunci di sini, lalu pilih model di atas kotak obrolan. Kunci tetap di keychain sistem. Penyedia ini hanya bisa menjawab, tidak pernah bertindak di komputer ini.",
+   "it": "Chatta con Google AI, OpenAI o OpenRouter: aggiungi una chiave qui, poi scegli il modello sopra la chat. Le chiavi restano nel portachiavi di sistema. Questi provider possono solo rispondere, mai agire su questo computer."
+  },
+  "Every message carries the folder open in File Explorer and the list of its files, as if you shared it from the screen button. The × on its chip leaves it out of one message.": {
+   "zh-Hans": "每条消息都会附带文件资源管理器中打开的文件夹及其文件列表，就像你通过屏幕按钮共享一样。点击其标签上的 × 可在某条消息中排除它。",
+   "hi": "हर संदेश के साथ फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर और उसकी फ़ाइलों की सूची जाती है, जैसे आपने उसे स्क्रीन बटन से साझा किया हो। उसकी चिप पर × उसे किसी एक संदेश से हटा देता है।",
+   "es": "Cada mensaje lleva la carpeta abierta en el Explorador de archivos y la lista de sus archivos, como si la compartieras con el botón de pantalla. La × de su etiqueta la deja fuera de un mensaje.",
+   "ar": "تحمل كل رسالة المجلد المفتوح في مستكشف الملفات وقائمة ملفاته، كأنك شاركته من زر الشاشة. علامة × على شارته تستبعده من رسالة واحدة.",
+   "fr": "Chaque message emporte le dossier ouvert dans l'Explorateur de fichiers et la liste de ses fichiers, comme si vous le partagiez avec le bouton d'écran. Le × de son étiquette l'exclut d'un message.",
+   "bn": "প্রতিটি বার্তার সঙ্গে ফাইল এক্সপ্লোরারে খোলা ফোল্ডার ও তার ফাইলের তালিকা যায়, যেন আপনি স্ক্রিন বোতাম থেকে শেয়ার করেছেন। এর চিপের × একটি বার্তা থেকে এটি বাদ দেয়।",
+   "pt-BR": "Cada mensagem leva a pasta aberta no Explorador de Arquivos e a lista dos seus arquivos, como se você a compartilhasse pelo botão de tela. O × na etiqueta dela a deixa de fora de uma mensagem.",
+   "ru": "Каждое сообщение несёт папку, открытую в Проводнике, и список её файлов, как если бы вы поделились ею кнопкой экрана. Крестик на её метке исключает её из одного сообщения.",
+   "id": "Setiap pesan membawa folder yang terbuka di File Explorer dan daftar filenya, seolah Anda membagikannya dari tombol layar. Tanda × pada labelnya mengecualikannya dari satu pesan.",
+   "it": "Ogni messaggio porta con sé la cartella aperta in Esplora file e l'elenco dei suoi file, come se la condividessi dal pulsante dello schermo. La × sulla sua etichetta la esclude da un messaggio."
+  },
+  "Shows your Codex plan's weekly limit in the island's header, asked from the Codex CLI; nothing is installed. Codex must be signed in with ChatGPT.": {
+   "zh-Hans": "在岛的标题栏显示 Codex 套餐的每周限额，数据来自 Codex CLI；无需安装任何东西。Codex 必须用 ChatGPT 登录。",
+   "hi": "आइलैंड के हेडर में आपके Codex प्लान की साप्ताहिक सीमा दिखाता है, Codex CLI से पूछकर; कुछ भी इंस्टॉल नहीं होता। Codex में ChatGPT से साइन इन होना चाहिए।",
+   "es": "Muestra el límite semanal de tu plan de Codex en la cabecera de la isla, consultado a la CLI de Codex; no se instala nada. Codex debe tener la sesión iniciada con ChatGPT.",
+   "ar": "يعرض الحد الأسبوعي لخطة Codex في رأس الجزيرة، بسؤال واجهة Codex السطرية؛ لا يُثبَّت شيء. يجب أن يكون Codex مسجّل الدخول عبر ChatGPT.",
+   "fr": "Affiche la limite hebdomadaire de votre forfait Codex dans l'en-tête de l'île, demandée à la CLI de Codex ; rien n'est installé. Codex doit être connecté avec ChatGPT.",
+   "bn": "আইল্যান্ডের হেডারে আপনার Codex প্ল্যানের সাপ্তাহিক সীমা দেখায়, Codex CLI থেকে জেনে; কিছুই ইনস্টল হয় না। Codex-এ ChatGPT দিয়ে সাইন ইন থাকতে হবে।",
+   "pt-BR": "Mostra o limite semanal do seu plano Codex no cabeçalho da ilha, consultado na CLI do Codex; nada é instalado. O Codex precisa estar conectado com o ChatGPT.",
+   "ru": "Показывает недельный лимит вашего плана Codex в заголовке острова, запрашивая его у Codex CLI; ничего не устанавливается. В Codex нужно войти через ChatGPT.",
+   "id": "Menampilkan batas mingguan paket Codex Anda di header pulau, ditanyakan ke CLI Codex; tidak ada yang dipasang. Codex harus masuk dengan ChatGPT.",
+   "it": "Mostra nell'intestazione dell'isola il limite settimanale del piano Codex, chiesto alla CLI di Codex; non viene installato nulla. Codex deve avere l'accesso con ChatGPT."
+  },
+  "Show other coding agents in the island. Before writing to an agent's config, Lumo shows you the exact change and makes a backup; uninstalling removes only what Lumo added.": {
+   "zh-Hans": "在岛上显示其他编程代理。在写入代理配置之前，Lumo 会向你展示确切的更改并进行备份；卸载只会移除 Lumo 添加的内容。",
+   "hi": "आइलैंड में दूसरे कोडिंग एजेंट दिखाएँ। किसी एजेंट के कॉन्फ़िग में लिखने से पहले Lumo आपको सटीक बदलाव दिखाता है और बैकअप बनाता है; अनइंस्टॉल करने पर सिर्फ़ वही हटता है जो Lumo ने जोड़ा।",
+   "es": "Muestra otros agentes de programación en la isla. Antes de escribir en la configuración de un agente, Lumo te enseña el cambio exacto y hace una copia de seguridad; desinstalar quita solo lo que Lumo añadió.",
+   "ar": "اعرض وكلاء برمجة آخرين في الجزيرة. قبل الكتابة في إعدادات أي وكيل، يُريك Lumo التغيير بدقة ويأخذ نسخة احتياطية؛ وإلغاء التثبيت يزيل فقط ما أضافه Lumo.",
+   "fr": "Affichez d'autres agents de code dans l'île. Avant d'écrire dans la configuration d'un agent, Lumo vous montre le changement exact et fait une sauvegarde ; la désinstallation ne retire que ce que Lumo a ajouté.",
+   "bn": "আইল্যান্ডে অন্য কোডিং এজেন্ট দেখান। কোনো এজেন্টের কনফিগে লেখার আগে Lumo আপনাকে সঠিক পরিবর্তন দেখায় ও ব্যাকআপ রাখে; আনইনস্টল করলে শুধু Lumo যা যোগ করেছে তা সরে।",
+   "pt-BR": "Mostre outros agentes de programação na ilha. Antes de escrever na configuração de um agente, o Lumo mostra a mudança exata e faz um backup; desinstalar remove só o que o Lumo adicionou.",
+   "ru": "Показывайте на острове других агентов для программирования. Прежде чем записать что-то в настройки агента, Lumo показывает точное изменение и делает резервную копию; удаление убирает только добавленное Lumo.",
+   "id": "Tampilkan agen pemrograman lain di pulau. Sebelum menulis ke konfigurasi agen, Lumo menunjukkan perubahan persisnya dan membuat cadangan; mencopot hanya menghapus yang ditambahkan Lumo.",
+   "it": "Mostra altri agenti di programmazione nell'isola. Prima di scrivere nella configurazione di un agente, Lumo ti mostra la modifica esatta e fa un backup; disinstallare toglie solo ciò che Lumo ha aggiunto."
+  },
+  "Shows your Claude plan's 5-hour and weekly limits in the island's header, through a status line relay in ~/.claude/settings.json. A status line you already have keeps working. Pro and Max plans only.": {
+   "zh-Hans": "在岛的标题栏显示 Claude 套餐的 5 小时和每周限额，通过 ~/.claude/settings.json 中的状态栏中继实现。你已有的状态栏照常工作。仅限 Pro 和 Max 套餐。",
+   "hi": "आइलैंड के हेडर में आपके Claude प्लान की 5 घंटे और साप्ताहिक सीमाएँ दिखाता है, ~/.claude/settings.json में स्टेटस लाइन रिले के ज़रिए। आपकी मौजूदा स्टेटस लाइन काम करती रहती है। सिर्फ़ Pro और Max प्लान।",
+   "es": "Muestra los límites de 5 horas y semanal de tu plan de Claude en la cabecera de la isla, mediante un relé de la línea de estado en ~/.claude/settings.json. La línea de estado que ya tengas sigue funcionando. Solo planes Pro y Max.",
+   "ar": "يعرض حدود خطة Claude لمدة 5 ساعات والحد الأسبوعي في رأس الجزيرة، عبر مُرحِّل لسطر الحالة في ‎~/.claude/settings.json. يظل سطر الحالة الموجود لديك يعمل. لخطتي Pro وMax فقط.",
+   "fr": "Affiche les limites de 5 heures et hebdomadaire de votre forfait Claude dans l'en-tête de l'île, via un relais de ligne d'état dans ~/.claude/settings.json. Une ligne d'état que vous avez déjà continue de fonctionner. Forfaits Pro et Max uniquement.",
+   "bn": "আইল্যান্ডের হেডারে আপনার Claude প্ল্যানের ৫ ঘণ্টা ও সাপ্তাহিক সীমা দেখায়, ~/.claude/settings.json-এ একটি স্ট্যাটাস লাইন রিলের মাধ্যমে। আপনার আগের স্ট্যাটাস লাইন কাজ করতে থাকে। শুধু Pro ও Max প্ল্যান।",
+   "pt-BR": "Mostra os limites de 5 horas e semanal do seu plano Claude no cabeçalho da ilha, por meio de um relay da linha de status em ~/.claude/settings.json. Uma linha de status que você já tenha continua funcionando. Só planos Pro e Max.",
+   "ru": "Показывает 5-часовой и недельный лимиты вашего плана Claude в заголовке острова через ретранслятор строки состояния в ~/.claude/settings.json. Ваша текущая строка состояния продолжит работать. Только планы Pro и Max.",
+   "id": "Menampilkan batas 5 jam dan mingguan paket Claude Anda di header pulau, melalui relay status line di ~/.claude/settings.json. Status line yang sudah Anda punya tetap berfungsi. Hanya paket Pro dan Max.",
+   "it": "Mostra i limiti di 5 ore e settimanali del piano Claude nell'intestazione dell'isola, con un relay della riga di stato in ~/.claude/settings.json. La tua riga di stato continua a funzionare. Solo piani Pro e Max."
+  },
+  "Pick what the right-click menu on the island offers, besides Refresh (Ctrl+R) and, in a text field, Cut, Copy and Paste.": {
+   "zh-Hans": "选择岛上右键菜单提供的内容，除了刷新（Ctrl+R）以及文本框中的剪切、复制和粘贴。",
+   "hi": "चुनें कि आइलैंड पर राइट-क्लिक मेनू में और क्या हो, रीफ़्रेश (Ctrl+R) और टेक्स्ट फ़ील्ड में कट, कॉपी और पेस्ट के अलावा।",
+   "es": "Elige qué ofrece el menú del clic derecho en la isla, además de Actualizar (Ctrl+R) y, en un campo de texto, Cortar, Copiar y Pegar.",
+   "ar": "اختر ما تقدمه قائمة النقر بزر الماوس الأيمن على الجزيرة، إلى جانب التحديث (Ctrl+R) وفي حقل النص القص والنسخ واللصق.",
+   "fr": "Choisissez ce que propose le menu du clic droit sur l'île, en plus d'Actualiser (Ctrl+R) et, dans un champ de texte, Couper, Copier et Coller.",
+   "bn": "আইল্যান্ডে রাইট-ক্লিক মেনুতে আর কী থাকবে বেছে নিন, রিফ্রেশ (Ctrl+R) এবং টেক্সট ফিল্ডে কাট, কপি ও পেস্ট ছাড়াও।",
+   "pt-BR": "Escolha o que o menu do clique direito na ilha oferece, além de Atualizar (Ctrl+R) e, em um campo de texto, Recortar, Copiar e Colar.",
+   "ru": "Выберите, что предлагает меню правой кнопки на острове, помимо «Обновить» (Ctrl+R) и, в текстовом поле, «Вырезать», «Копировать» и «Вставить».",
+   "id": "Pilih apa yang ditawarkan menu klik kanan di pulau, selain Muat ulang (Ctrl+R) dan, di kolom teks, Potong, Salin, dan Tempel.",
+   "it": "Scegli cosa offre il menu del clic destro sull'isola, oltre ad Aggiorna (Ctrl+R) e, in un campo di testo, Taglia, Copia e Incolla."
+  },
+  "Chat with a model you run yourself: Ollama, LM Studio or any OpenAI-compatible server (vLLM, llama.cpp…). Leave the address empty for the usual one on this computer.": {
+   "zh-Hans": "与你自己运行的模型聊天：Ollama、LM Studio 或任何兼容 OpenAI 的服务器（vLLM、llama.cpp…）。地址留空即使用本机的默认地址。",
+   "hi": "अपने चलाए मॉडल से चैट करें: Ollama, LM Studio या कोई भी OpenAI-संगत सर्वर (vLLM, llama.cpp…)। इस कंप्यूटर के सामान्य पते के लिए पता खाली छोड़ें।",
+   "es": "Chatea con un modelo que ejecutas tú: Ollama, LM Studio o cualquier servidor compatible con OpenAI (vLLM, llama.cpp…). Deja la dirección vacía para la habitual en este equipo.",
+   "ar": "تحدّث مع نموذج تشغّله بنفسك: Ollama أو LM Studio أو أي خادم متوافق مع OpenAI ‏(vLLM وllama.cpp…). اترك العنوان فارغًا لاستخدام العنوان المعتاد على هذا الكمبيوتر.",
+   "fr": "Discutez avec un modèle que vous faites tourner vous-même : Ollama, LM Studio ou tout serveur compatible OpenAI (vLLM, llama.cpp…). Laissez l'adresse vide pour celle habituelle sur cet ordinateur.",
+   "bn": "নিজের চালানো মডেলের সঙ্গে চ্যাট করুন: Ollama, LM Studio বা যেকোনো OpenAI-সামঞ্জস্যপূর্ণ সার্ভার (vLLM, llama.cpp…)। এই কম্পিউটারের সাধারণ ঠিকানার জন্য ঠিকানা খালি রাখুন।",
+   "pt-BR": "Converse com um modelo que você mesmo roda: Ollama, LM Studio ou qualquer servidor compatível com OpenAI (vLLM, llama.cpp…). Deixe o endereço vazio para o habitual neste computador.",
+   "ru": "Общайтесь с моделью, которую запускаете сами: Ollama, LM Studio или любой сервер, совместимый с OpenAI (vLLM, llama.cpp…). Оставьте адрес пустым для обычного адреса на этом компьютере.",
+   "id": "Mengobrol dengan model yang Anda jalankan sendiri: Ollama, LM Studio, atau server apa pun yang kompatibel dengan OpenAI (vLLM, llama.cpp…). Kosongkan alamat untuk alamat biasa di komputer ini.",
+   "it": "Chatta con un modello che fai girare tu: Ollama, LM Studio o un server compatibile con OpenAI (vLLM, llama.cpp…). Lascia vuoto l'indirizzo per quello solito su questo computer."
+  },
+  "With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them.": {
+   "zh-Hans": "每条消息都会附带打开窗口的标题及其显示的文档，以便 AI 读取你询问的那个。只有聊天的提供商会收到它们。",
+   "hi": "हर संदेश के साथ खुली विंडो के शीर्षक और उनमें दिख रहे दस्तावेज़, ताकि AI वह पढ़ सके जिसके बारे में आप पूछें। इन्हें सिर्फ़ चैट का प्रोवाइडर पाता है।",
+   "es": "Con cada mensaje, los títulos de las ventanas abiertas y los documentos que muestran, para que la IA pueda leer el que preguntas. Solo los recibe el proveedor del chat.",
+   "ar": "مع كل رسالة، عناوين النوافذ المفتوحة والمستندات التي تعرضها، ليتمكن الذكاء الاصطناعي من قراءة ما تسأل عنه. لا يتلقاها إلا مزوّد المحادثة.",
+   "fr": "Avec chaque message, les titres des fenêtres ouvertes et les documents qu'elles affichent, pour que l'IA puisse lire celui dont vous parlez. Seul le fournisseur du chat les reçoit.",
+   "bn": "প্রতিটি বার্তার সঙ্গে খোলা উইন্ডোর শিরোনাম ও সেগুলোতে দেখানো নথি, যাতে AI আপনার জিজ্ঞাসিত নথিটি পড়তে পারে। শুধু চ্যাটের প্রোভাইডার এগুলো পায়।",
+   "pt-BR": "Com cada mensagem, os títulos das janelas abertas e os documentos que elas mostram, para que a IA possa ler o que você perguntar. Só o provedor do chat os recebe.",
+   "ru": "С каждым сообщением — заголовки открытых окон и показанные в них документы, чтобы ИИ мог прочитать тот, о котором вы спрашиваете. Их получает только провайдер чата.",
+   "id": "Bersama setiap pesan, judul jendela yang terbuka dan dokumen yang ditampilkannya, agar AI bisa membaca yang Anda tanyakan. Hanya penyedia obrolan yang menerimanya.",
+   "it": "Con ogni messaggio, i titoli delle finestre aperte e i documenti che mostrano, così l'IA può leggere quello di cui chiedi. Li riceve solo il provider della chat."
+  },
+  "The agent Gemini hands what it can't do itself. It follows the chat's permissions: anything else is a card in the island for you to allow or deny.": {
+   "zh-Hans": "Gemini 将自己做不到的事交给这个代理。它遵循聊天的权限设置：其他操作会在岛上显示为卡片，由你允许或拒绝。",
+   "hi": "वह एजेंट जिसे Gemini वह काम सौंपता है जो वह खुद नहीं कर सकता। यह चैट की अनुमतियों का पालन करता है: बाकी सब आइलैंड में एक कार्ड होता है, जिसे आप अनुमति दें या मना करें।",
+   "es": "El agente al que Gemini pasa lo que no puede hacer solo. Sigue los permisos del chat: lo demás es una tarjeta en la isla para que lo permitas o lo deniegues.",
+   "ar": "الوكيل الذي يُسلّمه Gemini ما لا يستطيع فعله بنفسه. يتبع أذونات المحادثة: وأي شيء آخر يظهر بطاقة في الجزيرة لتسمح به أو ترفضه.",
+   "fr": "L'agent à qui Gemini confie ce qu'il ne sait pas faire seul. Il suit les autorisations du chat : le reste est une carte dans l'île, à autoriser ou refuser.",
+   "bn": "যে এজেন্টকে Gemini নিজে না পারা কাজ দেয়। এটি চ্যাটের অনুমতি মেনে চলে: বাকি সবকিছু আইল্যান্ডে একটি কার্ড হয়, আপনি অনুমতি দেবেন বা নাকচ করবেন।",
+   "pt-BR": "O agente a quem o Gemini passa o que não consegue fazer sozinho. Ele segue as permissões do chat: o resto é um cartão na ilha para você permitir ou negar.",
+   "ru": "Агент, которому Gemini передаёт то, что не может сделать сам. Он следует разрешениям чата: всё остальное — карточка на острове, которую вы разрешаете или отклоняете.",
+   "id": "Agen yang menerima dari Gemini apa yang tidak bisa dilakukannya sendiri. Ia mengikuti izin obrolan: selebihnya muncul sebagai kartu di pulau untuk Anda izinkan atau tolak.",
+   "it": "L'agente a cui Gemini affida quello che non sa fare da solo. Segue i permessi della chat: il resto è una scheda nell'isola, da consentire o negare."
+  },
+  "reads and commands that only look (ls, git status…) are answered from the closed island; anything else opens the full card": {
+   "zh-Hans": "读取和仅查看的命令（ls、git status…）可在收起的岛上回答；其他请求会打开完整卡片",
+   "hi": "पढ़ना और सिर्फ़ देखने वाले कमांड (ls, git status…) बंद आइलैंड से ही जवाब दिए जाते हैं; बाकी सब पूरा कार्ड खोलता है",
+   "es": "las lecturas y los comandos que solo miran (ls, git status…) se responden desde la isla cerrada; lo demás abre la tarjeta completa",
+   "ar": "تُجاب القراءات والأوامر التي تطّلع فقط (ls وgit status…) من الجزيرة المغلقة؛ وأي شيء آخر يفتح البطاقة الكاملة",
+   "fr": "les lectures et les commandes qui regardent seulement (ls, git status…) se valident depuis l'île fermée ; le reste ouvre la carte complète",
+   "bn": "পড়া ও শুধু দেখার কমান্ড (ls, git status…) বন্ধ আইল্যান্ড থেকেই উত্তর দেওয়া যায়; বাকি সব পুরো কার্ড খোলে",
+   "pt-BR": "leituras e comandos que só consultam (ls, git status…) são respondidos na ilha fechada; o resto abre o cartão completo",
+   "ru": "чтение и команды, которые только смотрят (ls, git status…), подтверждаются со свёрнутого острова; всё остальное открывает полную карточку",
+   "id": "pembacaan dan perintah yang hanya melihat (ls, git status…) dijawab dari pulau yang tertutup; selebihnya membuka kartu lengkap",
+   "it": "letture e comandi che guardano soltanto (ls, git status…) si approvano dall'isola chiusa; il resto apre la scheda completa"
+  },
+  "Show in the island": {
+   "zh-Hans": "在岛上显示",
+   "hi": "आइलैंड में दिखाएँ",
+   "es": "Mostrar en la isla",
+   "ar": "عرض في الجزيرة",
+   "fr": "Afficher dans l'île",
+   "bn": "আইল্যান্ডে দেখান",
+   "pt-BR": "Mostrar na ilha",
+   "ru": "Показывать на острове",
+   "id": "Tampilkan di pulau",
+   "it": "Mostra nell'isola"
+  },
+  "Show Codex plan in the island": {
+   "zh-Hans": "在岛上显示 Codex 套餐",
+   "hi": "आइलैंड में Codex प्लान दिखाएँ",
+   "es": "Mostrar el plan de Codex en la isla",
+   "ar": "عرض خطة Codex في الجزيرة",
+   "fr": "Afficher le forfait Codex dans l'île",
+   "bn": "আইল্যান্ডে Codex প্ল্যান দেখান",
+   "pt-BR": "Mostrar o plano Codex na ilha",
+   "ru": "Показывать план Codex на острове",
+   "id": "Tampilkan paket Codex di pulau",
+   "it": "Mostra il piano Codex nell'isola"
+  },
+  "How long Gemini reasons in the background while it talks. Higher is smarter on hard questions, and slower.": {
+   "zh-Hans": "Gemini 在通话时于后台思考的时长。越高，难题回答越聪明，但也越慢。",
+   "hi": "बात करते समय Gemini बैकग्राउंड में कितनी देर सोचता है। ज़्यादा होने पर कठिन सवालों में ज़्यादा समझदार, और धीमा।",
+   "es": "Cuánto razona Gemini en segundo plano mientras habla. Más alto es más listo con preguntas difíciles, y más lento.",
+   "ar": "مدة تفكير Gemini في الخلفية أثناء الحديث. الأعلى أذكى في الأسئلة الصعبة، وأبطأ.",
+   "fr": "Combien de temps Gemini réfléchit en arrière-plan pendant qu'il parle. Plus haut, il est plus malin sur les questions difficiles, et plus lent.",
+   "bn": "কথা বলার সময় Gemini পটভূমিতে কতক্ষণ ভাবে। বেশি হলে কঠিন প্রশ্নে বেশি বুদ্ধিমান, আর ধীর।",
+   "pt-BR": "Quanto o Gemini raciocina em segundo plano enquanto fala. Mais alto é mais esperto em perguntas difíceis, e mais lento.",
+   "ru": "Сколько Gemini рассуждает в фоне во время разговора. Чем выше, тем умнее на сложных вопросах и тем медленнее.",
+   "id": "Berapa lama Gemini bernalar di latar belakang saat berbicara. Lebih tinggi lebih cerdas untuk pertanyaan sulit, dan lebih lambat.",
+   "it": "Quanto ragiona Gemini in background mentre parla. Più alto è più intelligente sulle domande difficili, e più lento."
+  },
+  "After a few seconds": {
+   "zh-Hans": "几秒后",
+   "hi": "कुछ सेकंड बाद",
+   "es": "Tras unos segundos",
+   "ar": "بعد بضع ثوانٍ",
+   "fr": "Après quelques secondes",
+   "bn": "কয়েক সেকেন্ড পরে",
+   "pt-BR": "Após alguns segundos",
+   "ru": "Через несколько секунд",
+   "id": "Setelah beberapa detik",
+   "it": "Dopo qualche secondo"
   }
  }
 }

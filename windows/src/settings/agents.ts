@@ -11,7 +11,7 @@ import { t } from "../i18n/i18n";
 const TEXT = {
   get title() { return t("Agents"); },
   get intro() {
-    return t("Show other coding agents in the island. Lumo adds its entries to each agent's own config: you see the exact change and where the backup goes before anything is written, and uninstalling removes only what Lumo added.");
+    return t("Show other coding agents in the island. Before writing to an agent's config, Lumo shows you the exact change and makes a backup; uninstalling removes only what Lumo added.");
   },
   get none() { return t("Lumo could not list the agents."); },
   get approvals() { return t("Sessions, and Allow / Deny from the island"); },

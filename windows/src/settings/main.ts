@@ -241,11 +241,11 @@ function claudeSection(status: HookStatus): HTMLElement {
  * that has been confirmed. A status line the user had keeps working.
  */
 const PLAN_SETTINGS_TEXT = {
-  get claude() { return t("Shows your Claude plan usage (5-hour and weekly limits) in the island's header. Lumo adds a status line relay in ~/.claude/settings.json. If you already have a status line, it keeps working as before. Pro and Max plans only."); },
-  get showClaude() { return t("Show in notch"); },
+  get claude() { return t("Shows your Claude plan's 5-hour and weekly limits in the island's header, through a status line relay in ~/.claude/settings.json. A status line you already have keeps working. Pro and Max plans only."); },
+  get showClaude() { return t("Show in the island"); },
   get claudeTitle() { return t("Claude plan"); },
-  get codex() { return t("Shows your Codex plan usage (weekly limit and free resets left) in the island's header. Lumo asks the Codex CLI (codex app-server) when the pill shows; nothing is installed. Codex must be signed in with ChatGPT."); },
-  get showCodex() { return t("Show Codex plan in the notch"); },
+  get codex() { return t("Shows your Codex plan's weekly limit in the island's header, asked from the Codex CLI; nothing is installed. Codex must be signed in with ChatGPT."); },
+  get showCodex() { return t("Show Codex plan in the island"); },
 };
 
 function planSection(status: HookStatus): HTMLElement {
@@ -301,7 +301,7 @@ function planSection(status: HookStatus): HTMLElement {
             }),
       ),
       setting(t("Ask Anthropic"),
-        t("Claude Code's status line only runs in a terminal, and its answers give the 5 hours only near the limit. Turned on, Lumo asks Anthropic for your plan's usage with Claude Code's sign-in, every 3 minutes while the island is open, as Claude Code's /usage does. The sign-in is only read, never kept or sent anywhere else."),
+        t("Lumo asks Anthropic for your plan's usage every 3 minutes while the island is open, as /usage does, so it shows outside the terminal too. Claude Code's sign-in is only read, never kept."),
         toggle(settings.planUsageOnline, (on) => {
           settings.planUsageOnline = on;
           void save();
@@ -552,12 +552,12 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
 
 const CHAT_STRINGS = {
   get providersTitle() { return t("Chat providers"); },
-  get providersHint() { return t("Chat with Google AI, OpenAI or OpenRouter instead of Claude: add a key here, then click the model name above the chat box to switch provider and model. Keys stay in the system keychain. These providers get no web search and no tools: they can answer, never act on this computer."); },
+  get providersHint() { return t("Chat with Google AI, OpenAI or OpenRouter: add a key here, then pick the model above the chat box. Keys stay in the system keychain. These providers can only answer, never act on this computer."); },
   get stored() { return `••••••••  ${t("(stored)")}`; },
   get save() { return t("Save"); },
   get remove() { return t("Remove"); },
   get localTitle() { return t("Local models"); },
-  get localHint() { return t("Chat with a model you run yourself: Ollama or LM Studio (leave the address empty for the usual one on this computer), or any server that speaks the OpenAI API, such as vLLM or llama.cpp. Once connected, pick it above the chat box."); },
+  get localHint() { return t("Chat with a model you run yourself: Ollama, LM Studio or any OpenAI-compatible server (vLLM, llama.cpp…). Leave the address empty for the usual one on this computer."); },
   get connect() { return t("Connect"); },
   get connecting() { return t("Connecting…"); },
   get disconnect() { return t("Disconnect"); },
@@ -658,7 +658,7 @@ function chatUsageSection(): HTMLElement {
     {},
     ...sectionHead(t("Remaining usage")),
     setting(t("Show remaining usage in the chat"),
-      t("A ring next to the past chats fills with what the provider in use has used, and a click on it shows each limit and when it resets: your Claude plan's 5-hour and weekly limits for Claude Code (with the relay from {path}), the rate limits Anthropic and OpenAI send back with each answer, and your OpenRouter key's credits, asked from OpenRouter when the chat opens and after an answer. Nothing is shown for Google or the local models.", { path: `${t("Agents")} → ${t("Plan usage")}` }),
+      t("A ring next to the past chats shows how much the provider in use has used; a click shows each limit and when it resets. For Claude Code it needs the relay from {path}. Nothing is shown for Google or the local models.", { path: `${t("Agents")} → ${t("Plan usage")}` }),
       toggle(settings.chatShowUsage, (on) => {
         settings.chatShowUsage = on;
         void save();
@@ -671,7 +671,7 @@ function chatUsageSection(): HTMLElement {
 
 const SHARING_TEXT = {
   get title() { return t("Share with the chat"); },
-  get hint() { return t("When this is on, every message you send carries the path of the folder open in File Explorer and the list of what is in it (names, sizes, dates), as if you picked it from the screen button. Its chip shows above the chat before you send; its × leaves it out of that message."); },
+  get hint() { return t("Every message carries the folder open in File Explorer and the list of its files, as if you shared it from the screen button. The × on its chip leaves it out of one message."); },
   get explorer() { return t("Always share the folder open in File Explorer"); },
 };
 
@@ -681,7 +681,7 @@ function chatSharingSection(): HTMLElement {
     {},
     ...sectionHead(SHARING_TEXT.title),
     setting(t("Tell the AI what's open"),
-      t("With every message: the open windows' titles and the documents they show (a PDF, a Word or Excel file…), found on disk, so the AI can read the one you ask about. Only the chat's provider gets them, with that message."),
+      t("With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them."),
       toggle(settings.chatShareOpen !== false, (on) => {
         settings.chatShareOpen = on;
         void save();
@@ -700,11 +700,10 @@ function chatSharingSection(): HTMLElement {
 
 const COMPUTER_SETTINGS = {
   get title() { return t("Computer use"); },
-  get intro() { return t("Claude Code can see your screen and use it: click, type, press keys and scroll, to do what a command or a file can't. In the chat, and for Gemini Live, which hands it what is to be done on the screen (with Haiku 5.5, whoever helps Gemini otherwise). It works on your real desktop, not in a sandbox."); },
+  get intro() { return t("Claude Code can see your screen and use it (click, type, scroll) when a command isn't enough, in the chat and for Gemini Live. It works on your real desktop, not in a sandbox."); },
   get label() { return t("Let Claude use the computer"); },
-  get hint() { return t("Only while the agent answers. Asking every time, each click, key or text is an Allow / Deny card on the island first; screenshots don't ask. Press Esc anywhere to stop it. Lumo's island is left out of its screenshots. Screenshots count against your plan's limits."); },
+  get hint() { return t("Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back."); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
-  get mouse() { return t("While it works, the screen it uses glows and the mouse turns orange: the mouse is Claude's until it answers, except when a card asks you something. Esc gives it back at once."); },
 };
 
 /** Settings → Chat → Computer use: off until the user turns it on. */
@@ -719,7 +718,7 @@ function computerSection(): HTMLElement {
     {},
     ...sectionHead(COMPUTER_SETTINGS.title, COMPUTER_SETTINGS.intro),
     setting(COMPUTER_SETTINGS.label,
-      h("span", {}, COMPUTER_SETTINGS.hint, " ", COMPUTER_SETTINGS.mouse),
+      COMPUTER_SETTINGS.hint,
       toggle(settings.chatComputerUse === true, (on) => {
         settings.chatComputerUse = on;
         showNote();
@@ -1104,7 +1103,7 @@ const INTEGRATIONS: IntegrationDef[] = [
       { key: "mail-app-password", label: N_("App password"), placeholder: "abcd efgh ijkl mnop", secret: true },
       { key: "mail-imap-server", label: N_("IMAP server"), placeholder: N_("found from the address"), secret: false },
     ],
-    hint: N_("New emails show on the closed island, with Summarize and Draft a reply. Lumo only reads the inbox: it never sends, deletes or marks anything as read. Gmail: turn on 2-Step Verification, then create an app password at myaccount.google.com/apppasswords. The server is needed only for providers other than Gmail, Outlook, iCloud and Yahoo.") },
+    hint: N_("New emails show on the closed island. Lumo only reads: it never sends, deletes or marks anything as read. Gmail needs an app password (myaccount.google.com/apppasswords), with 2-Step Verification on.") },
 ];
 
 const MAX_ACTIVE = MAX_DECLARED;
@@ -1301,7 +1300,7 @@ function contextMenuRows(): HTMLElement[] {
     })));
   // Named like the other settings of General (Weekly recap…), its switches under it.
   return [
-    setting(t("Right-click menu"), t("A right click on the island or its Live Activities opens Lumo's menu: Refresh (Ctrl+R) asks the calendar, the emails, the integrations, the plan usage and the agents again, and Cut, Copy and Paste are there in a text field. Pick what else it offers.")),
+    setting(t("Right-click menu"), t("Pick what the right-click menu on the island offers, besides Refresh (Ctrl+R) and, in a text field, Cut, Copy and Paste.")),
     h("div", { class: "setting-list" }, ...items),
   ];
 }
@@ -1409,9 +1408,7 @@ function islandSection(): HTMLElement {
     setting(t("Put the island back in the centre"), null,
       h("button", { text: t("Put back"), onclick: () => void Bridge.islandRecenter() })),
     h("p", { class: "section-note" },
-      t("Drag the island by its top bar (or the closed island anywhere) to move it: let go anywhere and it stays there; near an edge of the screen it docks to it, upright on the sides, centred when you drop it near the middle."),
-      h("br"),
-      t("Drag an edge or a corner of the open island to resize it. A double click on it puts the usual size back.")),
+      t("Drag the top bar to move the island: near an edge it docks to it. Drag an edge or a corner to resize it; a double click puts the usual size back.")),
   );
 }
 
@@ -1419,7 +1416,7 @@ function islandSection(): HTMLElement {
 function behaviourRows(): HTMLElement[] {
   const close = h("select", {}) as HTMLSelectElement;
   close.append(
-    h("option", { value: "timer", text: t("A few seconds after the mouse leaves") }),
+    h("option", { value: "timer", text: t("After a few seconds") }),
     h("option", { value: "leave", text: t("As soon as the mouse leaves") }),
     h("option", { value: "click", text: t("On a click outside the island") }),
     h("option", { value: "never", text: t("Only when I close it") }),
@@ -1462,7 +1459,7 @@ function behaviourRows(): HTMLElement[] {
     setting(t("Show the music playing"), t("with play, pause and skip, when nothing else is showing"),
       toggle(settings.compactMedia, (v) => { settings.compactMedia = v; void save(); })),
     setting(t("Allow simple requests from the closed island"),
-      t("an agent asking to read files or run a command that only looks (ls, git status…) shows Deny and Allow on the closed island; edits and other commands still open the full card"),
+      t("reads and commands that only look (ls, git status…) are answered from the closed island; anything else opens the full card"),
       toggle(settings.quickApprovals !== false, (v) => { settings.quickApprovals = v; void save(); })),
     group(t("Live Activities")),
     setting(t("Live Activities"), t("beside the open island: timers, the music, the calendar and the newest emails"),

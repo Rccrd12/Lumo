@@ -220,7 +220,13 @@ never folds it, it comes up even when the island is already open or another
 pill is in front, and the pill you were on comes back once you answer. To keep
 it for later, fold it with the **⌃** in its corner (or `Esc` in the island): the
 island shrinks to its compact size and stays on screen, nothing is answered, and
-opening it again shows the card. **Open terminal** brings the window the session
+opening it again shows the card. Under the request, a line says what it is
+for: the agent's own words when it gave some (Claude Code and Gemini CLI
+describe each command), else what the request does ("Only looks: changes
+nothing.", "Changes a file."). Once the island has the keyboard (a click on the
+card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say; a
+letter typed right after another key, mid-word, is never taken as an answer.
+**Open terminal** brings the window the session
 runs in to the front.
 
 Lumo always stays in the island: he can't be dragged out onto the desktop
@@ -297,7 +303,7 @@ weekly Claude limits, and another for Codex. Click one for the details and the
 reset times. Both are off by default; turn them on in **Settings… → Agents → Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
-  line. **Show in notch** first shows you the diff of the `statusLine` change in
+  line. **Show in the island** first shows you the diff of the `statusLine` change in
   `%USERPROFILE%\.claude\settings.json`, takes a dated backup and writes only
   after your click, with the same writer as the hooks: the status line becomes `lumo-hook --statusline`, which
   passes only the limits on (300 ms at most) and runs the status line you had
@@ -416,7 +422,11 @@ permission requests do, as a card over the chat.
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
-(it reads and plans, and changes nothing). It
+(it reads and plans, and changes nothing). Headless Antigravity CLI has no
+judgement of its own that Lumo can use, so with it **Auto** is Lumo's: a command
+that only looks (`git status`, `ls`, `cat`, `rg`…, with no redirection or
+substitution) runs without a card, unless agy itself marked it as not safe to
+run alone, and everything else is the usual card. It
 lights up while it may do more than ask. There is no mode that lets every
 action through: Lumo never passes `bypassPermissions` or
 `--dangerously-skip-permissions`.
