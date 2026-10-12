@@ -929,16 +929,12 @@ export class Island {
    */
   private swallow(path: string) {
     const name = path.split(/[\\/]/).pop() || "file";
-    // A file still waiting to be asked about: this one joins it.
+    // A file still waiting to be asked about: this one joins it. Either way it
+    // goes into the chat open now, with the next question asked there.
     const waiting = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile, ...State.moreFiles] : null;
     State.droppedFile = { name, path };
     State.promptContext = { kind: "file", name, path };
-    if (waiting) {
-      State.moreFiles = waiting.filter((f) => f.path !== path).map((f) => ({ name: f.name, path: f.path }));
-    } else {
-      State.startChat();
-      void Bridge.chatReset(State.chatId);
-    }
+    if (waiting) State.moreFiles = waiting.filter((f) => f.path !== path).map((f) => ({ name: f.name, path: f.path }));
 
     UploadSeq.performDrop(State.uploadDuration);
     this.uploadAt = performance.now();

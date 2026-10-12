@@ -198,7 +198,7 @@ fn parse_models(body: &Value) -> Option<Vec<String>> {
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
-/// What a dropped file adds to the first message: text inline (cut), anything
+/// What a dropped file adds to its message: text inline (cut), anything
 /// else by name only.
 fn file_note(name: &str, path: &str) -> String {
     let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -236,7 +236,7 @@ fn read_prefix(path: &str, limit: usize) -> Option<String> {
 }
 
 fn user_text(first: bool, context: Option<&ChatContext>, query: &str) -> String {
-    match context.filter(|_| first) {
+    match chat::turn_context(first, context) {
         Some(ChatContext::File { name, path }) => format!("{}\n\n{query}", file_note(name, path)),
         Some(ChatContext::Window { app_name, title, url }) => {
             format!("{}\n\n{query}", chat::window_line(app_name, title, url.as_deref()))

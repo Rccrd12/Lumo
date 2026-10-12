@@ -66,24 +66,23 @@ fn models_endpoint(messages: &Url) -> Url {
     url
 }
 
-/// The user's content blocks for one turn. File / window context rides along
-/// with the first message only, exactly like ClaudeService.chat().
+/// The user's content blocks for one turn. The window context rides along with
+/// the first message only, like ClaudeService.chat(); a file with the question
+/// asked after it was added (chat::turn_context).
 fn user_content(first: bool, context: Option<&ChatContext>, query: &str) -> Vec<Value> {
     let mut content: Vec<Value> = Vec::new();
-    if first {
-        match context {
-            Some(ChatContext::File { name, path }) => {
-                if let Some(block) = file_block(path) {
-                    content.push(block);
-                }
-                content.push(json!({ "type": "text", "text": format!("File: {name}") }));
+    match chat::turn_context(first, context) {
+        Some(ChatContext::File { name, path }) => {
+            if let Some(block) = file_block(path) {
+                content.push(block);
             }
-            Some(ChatContext::Window { app_name, title, url }) => {
-                let line = chat::window_line(app_name, title, url.as_deref());
-                content.push(json!({ "type": "text", "text": line }));
-            }
-            None => {}
+            content.push(json!({ "type": "text", "text": format!("File: {name}") }));
         }
+        Some(ChatContext::Window { app_name, title, url }) => {
+            let line = chat::window_line(app_name, title, url.as_deref());
+            content.push(json!({ "type": "text", "text": line }));
+        }
+        None => {}
     }
     content.push(json!({ "type": "text", "text": query }));
     content
@@ -377,7 +376,7 @@ mod tests {
     }
 
     #[test]
-    fn context_is_sent_with_the_first_turn_only() {
+    fn the_window_is_sent_with_the_first_turn_only() {
         let ctx = ChatContext::Window { app_name: "Edge".into(), title: "Docs".into(), url: Some("https://x.dev".into()) };
         let first = user_content(true, Some(&ctx), "q");
         assert_eq!(first.len(), 2);

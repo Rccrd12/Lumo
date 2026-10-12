@@ -1914,19 +1914,11 @@ export function buildPrompt(
       State.notify();
       return;
     }
-    let reset: Promise<unknown> = Promise.resolve();
-    // The CLIs read the file from its path, mid-conversation too. The other
-    // providers take a file with the first question only: a new chat, as a drop.
-    if (!isCliProvider(State.settings.chatProvider)) {
-      State.startChat();
-      reset = Bridge.chatReset(State.chatId);
-      renderedCount = -1;
-    }
+    // It joins the chat open now: every provider takes it with the next question.
     State.droppedFile = { name: file.name, path: file.path };
     State.promptContext = { kind: "file", name: file.name, path: file.path };
     Sound.play("attach");
     State.notify();
-    await reset;
   }
 
   /**
