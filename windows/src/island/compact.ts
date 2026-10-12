@@ -60,7 +60,7 @@ const TIMER_COLOR = "#F5A524";
 const MEDIA_COLOR = "#1DB954";
 const UPLOAD_COLOR = "#34D399";
 /** How often the music is asked about while the closed island shows: Settings → General → Energy sets it. */
-const mediaEvery = () => byEffort(State.effort, 2000, 4000, 8000);
+const mediaEvery = () => byEffort(State.effort, 1000, 4000, 8000);
 
 export interface CompactHost {
   /** The island comes out of its edge, as for any news (fsm.reveal). */

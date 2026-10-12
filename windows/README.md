@@ -147,7 +147,7 @@ them never opens the island, even with Open on hover.
 
 | Choice | What it does |
 |---|---|
-| **None — near real time** | Everything is asked more often: the inbox looks again every 8 s besides IMAP IDLE, GitHub's pulse every minute (20 s while a CI runs), the calendar every 2 minutes, the other services three times as often, the music every 2 s |
+| **None — near real time** | Everything is asked more often: the inbox looks again every 5 s besides IMAP IDLE, GitHub's pulse every 10 s (5 s while a CI runs) and the contributions every 5 minutes, the calendar every minute, the other services six times as often (5 s at least), the music every second |
 | **Light** | As Lumo always was |
 | **On — save energy** | The closed island draws 15 frames a second instead of 30; with the mouse far from it Lumo dozes — eyes shut, grey, no motion at all — and with the mouse at rest for a second he stops moving; the cursor far from the island is read 10 times a second instead of 60; everything is asked half as often (the inbox every minute, GitHub every 10 minutes, the calendar every 30). A permission or a question waiting keeps him awake. Opening and closing the island stay smooth |
 | **Automatic** (the default) | On while the computer runs on its battery; plugged in, what **On mains power** says (Light, or None) |
@@ -684,7 +684,8 @@ a badge and a sound when the CI of one of your pull requests turns red or green
 someone requests your review. Pull requests are checked every minute, every
 30 seconds while a CI is running (so the closed island's "CI running" line
 keeps up whichever pill is in front), and as soon as you open the card on data
-older than a minute; contributions every 30 minutes. Nothing is fetched while the pill
+older than a minute; contributions every 30 minutes. With Energy saving on
+**None** it is every 10 seconds (5 while a CI runs), contributions every 5 minutes. Nothing is fetched while the pill
 is off or Lumo is paused.
 
 ## Build it yourself

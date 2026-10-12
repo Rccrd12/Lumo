@@ -32,7 +32,7 @@ import { byEffort } from "../core/energy";
 export { ACTIVITIES_GAP, ACTIVITIES_TALL, ACTIVITIES_W } from "../views/activities-view";
 
 /** How often the calendar is asked: Settings → General → Energy sets it. */
-const calendarEvery = () => byEffort(State.effort, 2 * 60_000, 15 * 60_000, 30 * 60_000);
+const calendarEvery = () => byEffort(State.effort, 60_000, 15 * 60_000, 30 * 60_000);
 /** The longest their own window may take to say it has drawn them. */
 const HAND_OFF_MS = 400;
 const CALENDAR_STALE_MS = 5 * 60_000;

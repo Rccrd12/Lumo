@@ -87,10 +87,11 @@ pub(crate) fn enabled(app: &AppHandle, id: &str) -> bool {
 }
 
 /// How long a poller waits between two polls, for Settings → General →
-/// Energy: a third of it (10 s at least) with nothing spared, twice it while
-/// saving energy.
+/// Energy: a sixth of it (5 s at least) with nothing spared, twice it while
+/// saving energy. Even the quickest stays far inside each service's limits
+/// (GitHub's REST calls: about 3 a minute against 5,000 an hour).
 pub fn cadence(every_secs: u64) -> Duration {
-    Duration::from_secs(crate::energy::pick((every_secs / 3).max(10), every_secs, every_secs * 2))
+    Duration::from_secs(crate::energy::pick((every_secs / 6).max(5), every_secs, every_secs * 2))
 }
 
 fn spawn<F, Fut>(app: AppHandle, id: &'static str, delay_secs: u64, every_secs: u64, poll: F)
@@ -416,9 +417,9 @@ fn spawn_github_loops(app: AppHandle) {
             let _ = tokio::time::timeout(wait, GITHUB.pulse_wake.notified()).await;
             let pending = run_github_pulse(&pulse_app).await;
             // A CI running is asked about sooner; Settings → General → Energy
-            // sets how much sooner. One pulse is a single GraphQL query, far
-            // inside GitHub's hourly limit even at the quickest.
-            let (realtime, light, saver) = if pending { (15, 30, 120) } else { (30, 60, 300) };
+            // sets how much sooner. One pulse is a single GraphQL query: even
+            // every 5 seconds it spends 720 of GitHub's 5,000 points an hour.
+            let (realtime, light, saver) = if pending { (5, 30, 120) } else { (10, 60, 300) };
             wait = Duration::from_secs(crate::energy::pick(realtime, light, saver));
         }
     });
@@ -427,7 +428,7 @@ fn spawn_github_loops(app: AppHandle) {
         loop {
             let _ = tokio::time::timeout(wait, GITHUB.activity_wake.notified()).await;
             run_github_activity(&app).await;
-            wait = Duration::from_secs(crate::energy::pick(1800, 1800, 3600));
+            wait = Duration::from_secs(crate::energy::pick(300, 1800, 3600));
         }
     });
 }
