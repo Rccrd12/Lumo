@@ -18,10 +18,29 @@ test("without a colon it only tells the user; the event is read in any case", ()
   assert.equal(got.text, "");
 });
 
-test("an unknown event or a malformed line is not a watch", () => {
-  assert.deepEqual(takeListens("[[listen o/r#3 deployed: x]]").listens, []);
-  assert.deepEqual(takeListens("[[listen o#3 merged]]").listens, []);
-  assert.deepEqual(takeListens("[[listen o/r merged]]").listens, []);
+test("an event Lumo cannot watch, or no pull request, is taken out and said", () => {
+  const got = takeListens("ok [[listen o/r#3 deployed: x]] [[listen o#3 merged]] [[listen o/r merged]]");
+  assert.deepEqual(got.listens, []);
+  assert.equal(got.text, "ok");
+  assert.deepEqual(got.unread, ["[[listen o/r#3 deployed: x]]", "[[listen o#3 merged]]", "[[listen o/r merged]]"]);
+});
+
+test("without an event it waits for the checks, as a small model writes it", () => {
+  const got = takeListens("[[listen Rccrd12/Lumo#30]]\nSto aspettando che i check finiscano.");
+  assert.deepEqual(got.listens, [{ repo: "Rccrd12/Lumo", number: 30, until: "checks", task: "" }]);
+  assert.equal(got.text, "Sto aspettando che i check finiscano.");
+  assert.deepEqual(takeListens("[[listen o/r#3: merge it]]").listens, [{ repo: "o/r", number: 3, until: "checks", task: "merge it" }]);
+});
+
+test("backticks, a code block, a sentence, spaces, a link or another word for the event", () => {
+  const one = (s) => takeListens(s);
+  assert.deepEqual(one("Ok `[[listen o/r#3 ready: merge it]]` fatto").listens, [{ repo: "o/r", number: 3, until: "ready", task: "merge it" }]);
+  assert.equal(one("Ok `[[listen o/r#3 ready: merge it]]` fatto").text, "Ok fatto");
+  assert.equal(one("```\n[[listen o/r #3 merged]]\n```\nAscolto.").text, "Ascolto.");
+  assert.equal(one("[[ Listen  o/r # 3  Merge ]]").listens[0].until, "merged");
+  assert.deepEqual(one("[[listen https://github.com/o/r/pull/3/checks: tell me]]").listens, [{ repo: "o/r", number: 3, until: "checks", task: "tell me" }]);
+  assert.equal(one("[[listen o/r/pull/3 passed]]").listens[0].until, "green");
+  assert.equal(one("[[listen o/r#3 ready merge it]]").listens[0].task, "merge it");
 });
 
 test("unlisten stops it, and a line still being written never shows", () => {

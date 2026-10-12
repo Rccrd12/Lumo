@@ -58,30 +58,104 @@ export const LISTEN_TEXT = {
   many: N_("Listening to {count} pull requests"),
 };
 
-const REPO = "([A-Za-z0-9_.-]+\\/[A-Za-z0-9_.-]+)#(\\d+)";
-const LISTEN_RE = new RegExp(`[ \\t]*\\[\\[\\s*listen\\s+${REPO}\\s+([a-z]+)\\s*(?::((?:(?!\\]\\]).)*))?\\]\\][ \\t]*\\n?`, "gi");
-const UNLISTEN_RE = new RegExp(`[ \\t]*\\[\\[\\s*unlisten\\s+${REPO}\\s*\\]\\][ \\t]*\\n?`, "gi");
+export const LISTEN_STRINGS = {
+  hint: N_("Lumo is listening to GitHub and will tell you. × stops listening."),
+  unread: N_("Lumo couldn't start listening to: {what}"),
+};
+
+/** What a model may write for each event (listen.rs UNTILS), small models included. */
+const UNTIL_WORDS: Record<string, ListenUntil> = {
+  checks: "checks", check: "checks", ci: "checks", tests: "checks", done: "checks", finished: "checks", finish: "checks", completed: "checks", complete: "checks",
+  green: "green", pass: "green", passed: "green", passing: "green", success: "green", succeeded: "green",
+  approved: "approved", approve: "approved", approval: "approved", reviewed: "approved",
+  ready: "ready", mergeable: "ready",
+  merged: "merged",
+  closed: "closed",
+};
+
+/** Verbs that are an event only on their own. */
+const ALONE_WORDS: Record<string, ListenUntil> = { merge: "merged", close: "closed" };
+
+/** Without an event, Lumo waits for the checks to finish: what one waits for most. */
+export const LISTEN_DEFAULT: ListenUntil = "checks";
+
+const NAME = "[A-Za-z0-9_.-]+";
+/** `owner/repo#12`, `owner/repo #12`, `owner/repo/pull/12` or a link to the pull request. */
+const PR_REFS = [
+  new RegExp(`^(?:https?:\\/\\/)?(?:www\\.)?github\\.com\\/(${NAME}\\/${NAME})\\/pulls?\\/(\\d+)(?:\\/[\\w-]*)*`, "i"),
+  new RegExp(`^(${NAME}\\/${NAME})\\/pulls?\\/(\\d+)`, "i"),
+  new RegExp(`^(${NAME}\\/${NAME})\\s*#\\s*(\\d+)`, "i"),
+];
+
+/**
+ * A line for Lumo, however it was written: in backticks, in the middle of a
+ * sentence, with spaces. The text after the word is read by `readRef`.
+ */
+const MARKER_RE = /(`{0,3})[ \t]*\[\[\s*(un)?listen\b((?:(?!\]\]).)*)\]\][ \t]*\1[ \t]*/gi;
+
+/** Where a line for Lumo was, until its row is taken out. */
+const GONE = "\u0000";
+
+function readRef(body: string): { repo: string; number: number; rest: string } | null {
+  const text = body.trim().replace(/^[<(]/, "");
+  for (const re of PR_REFS) {
+    const m = re.exec(text);
+    if (!m) continue;
+    const repo = m[1].replace(/\.git$/i, "");
+    const number = parseInt(m[2], 10);
+    if (number > 0) return { repo, number, rest: text.slice(m[0].length).replace(/^[>)]/, "") };
+  }
+  return null;
+}
+
+/**
+ * The event and what to do then, from what follows the pull request:
+ * ` ready: merge it`, ` merged`, `: merge it` or nothing (the checks). An
+ * event Lumo cannot watch is null, so the user is told instead of nothing
+ * happening.
+ */
+function readUntil(rest: string): { until: ListenUntil; task: string } | null {
+  const colon = rest.indexOf(":");
+  const head = (colon < 0 ? rest : rest.slice(0, colon)).trim().replace(/^[-–—,]\s*/, "");
+  const task = colon < 0 ? "" : rest.slice(colon + 1).trim();
+  if (!head) return { until: LISTEN_DEFAULT, task };
+  const words = head.split(/\s+/);
+  const first = words[0].toLowerCase();
+  // `merge` alone means merged; `merge it` is what to do, with no event.
+  const until = UNTIL_WORDS[first] ?? (words.length === 1 ? ALONE_WORDS[first] : undefined);
+  if (!until) return null;
+  // `[[listen o/r#3 ready merge it]]`: what follows the event, without a colon.
+  const more = words.slice(1).join(" ");
+  return { until, task: task || more };
+}
 
 /**
  * The watches an answer asked for and the ones it stopped, and the answer
- * without those lines. A marker still being written (`[[lis…`) is hidden too,
- * so it never flashes up while streaming.
+ * without those lines. A line Lumo cannot read is taken out too, and listed in
+ * `unread`, so the chat can say so. A marker still being written (`[[lis…`)
+ * is hidden, so it never flashes up while streaming.
  */
-export function takeListens(text: string): { text: string; listens: ListenAsk[]; stops: ListenStop[] } {
+export function takeListens(text: string): { text: string; listens: ListenAsk[]; stops: ListenStop[]; unread: string[] } {
   const listens: ListenAsk[] = [];
   const stops: ListenStop[] = [];
-  let out = text.replace(LISTEN_RE, (_all, repo: string, number: string, until: string, task?: string) => {
-    const u = until.toLowerCase() as ListenUntil;
-    const n = parseInt(number, 10);
-    if (LISTEN_UNTILS.includes(u) && n > 0) listens.push({ repo, number: n, until: u, task: (task ?? "").trim() });
-    return "";
+  const unread: string[] = [];
+  let out = text.replace(MARKER_RE, (all: string, _ticks: string, un: string | undefined, body: string) => {
+    const ref = readRef(body);
+    if (un) {
+      if (ref) stops.push({ repo: ref.repo, number: ref.number });
+      else unread.push(all.replace(/`/g, "").trim());
+      return GONE;
+    }
+    const asked = ref ? readUntil(ref.rest) : null;
+    if (ref && asked) listens.push({ repo: ref.repo, number: ref.number, until: asked.until, task: asked.task });
+    else unread.push(all.replace(/`/g, "").trim());
+    return GONE;
   });
-  out = out.replace(UNLISTEN_RE, (_all, repo: string, number: string) => {
-    stops.push({ repo, number: parseInt(number, 10) });
-    return "";
-  });
-  out = out.replace(/\[\[[^\]]*$/, "");
-  return { text: out.replace(/\n{3,}/g, "\n\n").trim(), listens, stops };
+  // The line's own row, and a code block that only held it.
+  out = out.replace(/^[ \t]*(?:\u0000[ \t]*)+(?:\n|$)/gm, "").replaceAll(GONE, "");
+  out = out.replace(/```[A-Za-z]*[ \t]*\n?\s*```[ \t]*\n?/g, "");
+  out = out.replace(/`{0,3}\[\[(?:(?!\]\]).)*$/, "");
+  return { text: out.replace(/\n{3,}/g, "\n\n").trim(), listens, stops, unread };
 }
 
 /** What the chat sends Claude once a watch with something to do ends. */
