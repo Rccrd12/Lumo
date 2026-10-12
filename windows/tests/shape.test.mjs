@@ -31,7 +31,7 @@ test("a picked height makes every open view at least that tall", () => {
   assert.equal(islandSize("expanded", "prompt", 0, tall).h, 500);
   assert.equal(islandSize("expanded", "overview", 0, tall).h, 500);
   // Never shorter than a view needs, nor the chat than 200.
-  assert.equal(islandSize("expanded", "mail", 0, { width: 640, height: 160 }).h, 240);
+  assert.equal(islandSize("expanded", "live", 0, { width: 640, height: 160 }).h, 240);
   assert.equal(chatHeight({ width: 640, height: 160 }, 0), 200);
   assert.equal(chatHeight({ width: 640, height: 5000 }, 0), 640);
 });

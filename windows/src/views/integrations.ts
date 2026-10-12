@@ -8,7 +8,7 @@ import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { State, type AgentTask } from "../core/state";
 import { Bridge } from "../core/bridge";
-import { isComingSoon, pillDefinition } from "../core/pills";
+import { pillDefinition } from "../core/pills";
 import { refreshHookPills } from "../island/integrations";
 import { readActivity, readPulse, readStats } from "../core/github";
 import { githubDetail, githubPulseCard } from "./github";
@@ -69,7 +69,6 @@ export function idleStatus(
   info: { configured: boolean; error: string | null } | undefined,
   chatModel: string,
 ): { label: string; color: string } {
-  if (isComingSoon(id)) return { label: t("Coming soon"), color: "#6B7079" };
   if (info?.error) return { label: info.error, color: "#F4505E" };
   const configured = info?.configured ?? false;
   const def = pillDefinition(id);
@@ -262,7 +261,7 @@ function cardFoot(task: AgentTask, openSettings: () => void): HTMLElement {
     actions.append(toolButton(t("Open {name}", { name: task.name }), () => void Bridge.openUrl(OPEN_URLS[task.id]), true, color));
   }
   const done = refreshes.get(task.id);
-  if (isComingSoon(task.id) || def?.connect.kind === "none") {
+  if (def?.connect.kind === "none") {
     // Nothing to set up, and nothing to refresh.
   } else if (configured && (hookPill || def?.category !== "ai")) {
     // A hook pill has nothing to poll: Refresh looks at its hooks (and sessions) again.

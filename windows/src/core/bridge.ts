@@ -418,7 +418,7 @@ export interface LiveHelperActivity {
 
 export type ShortcutStatus =
   | "active" | "off" | "inUse" | "duplicate" | "invalid"
-  | "typesCharacter" | "unsupported" | "notPorted";
+  | "typesCharacter" | "unsupported";
 
 export interface ShortcutsReport {
   actions: { id: string; status: ShortcutStatus; typed?: string }[];

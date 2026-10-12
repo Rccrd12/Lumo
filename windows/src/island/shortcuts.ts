@@ -140,8 +140,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       break;
 
     // wardrobeToggle never comes this way (Rust sends `open-wardrobe`), nor do
-    // askScreen / askSelection / askPage (`ask-context`, runShared), and
-    // attachFrontWindow / desktopToggle aren't in this version.
+    // askScreen / askSelection / askPage (`ask-context`, runShared).
     default:
       break;
   }

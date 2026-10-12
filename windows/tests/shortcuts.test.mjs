@@ -15,8 +15,8 @@ import { registerShortcutHandlers, runGlobalShortcut, runIslandKey } from "../sr
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
 const MAC_IDS = [
-  "toggleIsland", "openChat", "goToAlert", "jumpToTerminal", "attachFrontWindow",
-  "nextPill", "prevPill", "muteToggle", "desktopToggle", "wardrobeToggle",
+  "toggleIsland", "openChat", "goToAlert", "jumpToTerminal",
+  "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
 ];
 
 // ── Defaults (testDefaultsExhaustive, testAllDefaultsHaveModifier, testNoDefaultDuplicates) ──
@@ -56,19 +56,18 @@ test("no default types a character with AltGr on the checked European layouts", 
 
 test("the defaults are the same on both sides of the bridge", () => {
   const rust = readFileSync(new URL("../src-tauri/src/shortcuts.rs", import.meta.url), "utf8");
-  const rows = [...rust.matchAll(/^\s*action\("(\w+)", "([^"]+)", (true|false), (true|false)\),/gm)]
-    .map(([, id, keys, on, ported]) => ({ id, keys, on: on === "true", ported: ported === "true" }));
+  const rows = [...rust.matchAll(/^\s*action\("(\w+)", "([^"]+)", (true|false)\),/gm)]
+    .map(([, id, keys, on]) => ({ id, keys, on: on === "true" }));
   assert.deepEqual(
     rows,
-    SHORTCUTS.map((d) => ({ id: d.id, keys: d.defaultKeys, on: d.enabledByDefault, ported: d.ported })),
+    SHORTCUTS.map((d) => ({ id: d.id, keys: d.defaultKeys, on: d.enabledByDefault })),
   );
 });
 
 // testEnabledByDefault
-test("only the island toggle is off by default; the two not ported yet are reserved", () => {
+test("only the island toggle is off by default", () => {
   for (const d of SHORTCUTS) {
     assert.equal(d.enabledByDefault, d.id !== "toggleIsland", d.id);
-    assert.equal(d.ported, !["attachFrontWindow", "desktopToggle"].includes(d.id), d.id);
   }
   assert.deepEqual(activeKeys({}).map(([id]) => id), [
     "openChat", "goToAlert", "jumpToTerminal", "nextPill", "prevPill", "muteToggle", "wardrobeToggle",

@@ -19,7 +19,6 @@ pub struct Settings {
     pub sound_enabled: bool,
     pub sound_volume: f64,
     pub auto_close_interval: f64,
-    pub absence_interval: f64,
     pub active_integrations: Vec<String>,
     /// The always-on workspace pill (src/core/pills.ts checks it is one).
     pub main_pill: String,
@@ -201,7 +200,6 @@ impl Default for Settings {
             sound_enabled: true,
             sound_volume: 0.12,
             auto_close_interval: 15.0,
-            absence_interval: 180.0,
             active_integrations: vec![
                 "integration_resend".into(),
                 "integration_n8n".into(),
@@ -517,7 +515,6 @@ mod tests {
   "soundEnabled": false,
   "soundVolume": 0.5,
   "autoCloseInterval": 30.0,
-  "absenceInterval": 60.0,
   "activeIntegrations": ["integration_notion"],
   "mainPill": "agent_cursor",
   "screen": "cursor",
@@ -943,7 +940,6 @@ mod tests {
                 "soundEnabled",
                 "soundVolume",
                 "autoCloseInterval",
-                "absenceInterval",
                 "activeIntegrations",
                 "mainPill",
                 "screen",

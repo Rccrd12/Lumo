@@ -23,11 +23,9 @@ export const SHORTCUT_TEXT = {
   openChat: N_("Open the chat"),
   goToAlert: N_("Go to the waiting permission or question"),
   jumpToTerminal: N_("Open the terminal"),
-  attachFrontWindow: N_("Attach the front window to the chat"),
   nextPill: N_("Next pill"),
   prevPill: N_("Previous pill"),
   muteToggle: N_("Mute or unmute Lumo"),
-  desktopToggle: N_("Send Lumo to the desktop"),
   wardrobeToggle: N_("Open the wardrobe"),
   askScreen: N_("Ask about my screen"),
   askSelection: N_("Ask about the selected text"),
@@ -56,11 +54,9 @@ export type ShortcutId =
   | "openChat"
   | "goToAlert"
   | "jumpToTerminal"
-  | "attachFrontWindow"
   | "nextPill"
   | "prevPill"
   | "muteToggle"
-  | "desktopToggle"
   | "wardrobeToggle"
   | "askScreen"
   | "askSelection"
@@ -71,29 +67,25 @@ export interface ShortcutDef {
   id: ShortcutId;
   defaultKeys: string;
   enabledByDefault: boolean;
-  /** False for the Mac actions this version can't do yet: reserved, never registered. */
-  ported: boolean;
 }
 
-const def = (id: ShortcutId, defaultKeys: string, enabledByDefault: boolean, ported: boolean): ShortcutDef =>
-  ({ id, defaultKeys, enabledByDefault, ported });
+const def = (id: ShortcutId, defaultKeys: string, enabledByDefault: boolean): ShortcutDef =>
+  ({ id, defaultKeys, enabledByDefault });
 
 /** Same order and defaults as ACTIONS in src-tauri/src/shortcuts.rs. */
 export const SHORTCUTS: readonly ShortcutDef[] = [
-  def("toggleIsland", "Ctrl+Alt+N", false, true),
-  def("openChat", "Ctrl+Alt+Space", true, true),
-  def("goToAlert", "Ctrl+Alt+A", true, true),
-  def("jumpToTerminal", "Ctrl+Alt+T", true, true),
-  def("attachFrontWindow", "Ctrl+Alt+F", true, false),
-  def("nextPill", "Ctrl+Alt+Right", true, true),
-  def("prevPill", "Ctrl+Alt+Left", true, true),
-  def("muteToggle", "Ctrl+Alt+S", true, true),
-  def("desktopToggle", "Ctrl+Alt+D", true, false),
-  def("wardrobeToggle", "Ctrl+Alt+G", true, true),
-  def("askScreen", "Ctrl+Alt+P", true, true),
-  def("askSelection", "Ctrl+Alt+X", true, true),
-  def("talkToGemini", "Ctrl+Alt+L", true, true),
-  def("askPage", "Ctrl+Alt+B", true, true),
+  def("toggleIsland", "Ctrl+Alt+N", false),
+  def("openChat", "Ctrl+Alt+Space", true),
+  def("goToAlert", "Ctrl+Alt+A", true),
+  def("jumpToTerminal", "Ctrl+Alt+T", true),
+  def("nextPill", "Ctrl+Alt+Right", true),
+  def("prevPill", "Ctrl+Alt+Left", true),
+  def("muteToggle", "Ctrl+Alt+S", true),
+  def("wardrobeToggle", "Ctrl+Alt+G", true),
+  def("askScreen", "Ctrl+Alt+P", true),
+  def("askSelection", "Ctrl+Alt+X", true),
+  def("talkToGemini", "Ctrl+Alt+L", true),
+  def("askPage", "Ctrl+Alt+B", true),
 ];
 
 export interface Binding {
@@ -311,7 +303,7 @@ export function duplicates(entries: Iterable<[string, string]>): Set<string> {
 
 /** The (id, keys) pairs Lumo would register with `stored`. */
 export function activeKeys(stored: Bindings | undefined): [string, string][] {
-  return SHORTCUTS.filter((d) => d.ported)
+  return SHORTCUTS
     .map((d) => [d.id, effective(d, stored)] as const)
     .filter(([, b]) => b.enabled && b.keys)
     .map(([id, b]) => [id, b.keys]);
