@@ -40,11 +40,13 @@ export interface ViewActions {
   /** The ↗ button: opens whatever the focused pill points at. */
   openTarget(): void;
   openUrl(url: string): void;
-  decide(d: "allow" | "deny"): void;
+  /** Answers `requestId` only if it is still the one waiting. */
+  decide(d: "allow" | "deny", requestId: string): void;
   /** The island takes the keyboard, so Y and N answer the card on screen. */
   takeKeyboard(): void;
   /** Answers the question Claude Code asked: question text → chosen label. */
-  answer(answers: Record<string, string | string[]>): void;
+  /** Answers the question `requestId` asked, only if it is still the one waiting. */
+  answer(answers: Record<string, string | string[]>, requestId: string): void;
   /** Hands the pending request back to the terminal. */
   answerInTerminal(): void;
   toggleSound(): void;
@@ -102,6 +104,18 @@ function agentWho(task: AgentTask | null, label: string): HTMLElement {
   }
   row.append(h("span", { text: label }));
   return row;
+}
+
+/**
+ * Who is asking, on the permission and question cards: the project of the
+ * session that asks, on a pill two sessions can share, and "1/N" while other
+ * requests wait in line behind this one.
+ */
+function requestWho(label: string): HTMLElement {
+  const task = State.focusTask;
+  const project = State.pendingApproval?.project;
+  const waiting = State.approvalQueue.length;
+  return agentWho(task && project ? { ...task, name: project } : task, waiting ? `${label} · 1/${waiting + 1}` : label);
 }
 
 function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElement {
@@ -509,7 +523,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   let shownAt = 0;
   const guarded = (d: "allow" | "deny") => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
-    actions.decide(d);
+    // The request on screen: one that just took its place from the line is not drawn yet.
+    if (shownFor != null) actions.decide(d, shownFor);
   };
   // The island never takes the keyboard by itself (typing in another app is
   // never cut off): a click on the card gives it, as the shortcut to the
@@ -545,7 +560,7 @@ function buildApproval(actions: ViewActions): ViewHost {
         shownAt = performance.now();
       }
       clear(who);
-      who.append(agentWho(State.focusTask, t("needs permission")));
+      who.append(requestWho(t("needs permission")));
       // The whole point of approving here rather than in the terminal: this line
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
@@ -594,7 +609,7 @@ function buildQuestion(actions: ViewActions): ViewHost {
     answers[question] = answer;
     picked = new Set();
     index += 1;
-    if (index >= total) actions.answer(answers);
+    if (index >= total) actions.answer(answers, requestId);
     else State.notify();
   };
 
@@ -629,7 +644,7 @@ function buildQuestion(actions: ViewActions): ViewHost {
       const asking = questions.length > 1
         ? t("is asking ({index} of {total})", { index: index + 1, total: questions.length })
         : t("is asking");
-      who.append(agentWho(State.focusTask, asking));
+      who.append(requestWho(asking));
       title.textContent = q.question;
       title.title = q.question;
 

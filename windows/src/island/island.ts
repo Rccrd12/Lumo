@@ -41,6 +41,7 @@ import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { DesktopLink } from "./desktop";
 import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
+import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
 
 /** Saving energy, the wait before each frame of the closed island: about SAVER_FPS a second. */
@@ -236,11 +237,18 @@ export class Island {
     });
   }
 
-  /** The request has its answer: the card goes and the session carries on. */
+  /**
+   * The request has its answer: the card goes and the session carries on, or
+   * the next request in line comes up.
+   */
   private closeApproval() {
     const fromChat = State.pendingApproval?.fromChat ?? false;
     State.endApproval();
     this.fsm.pinned = false;
+    if (State.pendingApproval) {
+      presentApproval(this);
+      return;
+    }
     // The chat asked: back to the chat, where the answer is still coming.
     // Gemini's helper asked: back to the call.
     this.setView(fromChat ? (State.liveActive ? "live" : "prompt") : State.agentsView());
@@ -274,18 +282,21 @@ export class Island {
   }
 
   /** Deny or Allow clicked on the closed island: answered, and it stays closed. */
-  private decideClosed(d: "allow" | "deny") {
+  private decideClosed(d: "allow" | "deny", requestId: string) {
     const req = State.pendingApproval;
     void Bridge.log(`decide ${d} req=${req?.requestId ?? "none"} (closed island)`);
-    if (!req) return;
+    // A click meant for a request that is no longer the one waiting answers nothing.
+    if (!req || req.requestId !== requestId) return;
     Sound.play(d === "deny" ? "blip" : "approve");
     void Bridge.approvalDecision(req.requestId, d);
-    State.endApproval();
     if (State.mode === "expanded") {
       this.closeApproval();
       return;
     }
+    State.endApproval();
     this.dropPin();
+    // The next request in line, if any, comes up in its turn.
+    presentApproval(this);
     State.notify();
   }
 
@@ -332,10 +343,10 @@ export class Island {
       openUrl: (url) => {
         if (url) void Bridge.openUrl(url);
       },
-      decide: (d) => {
+      decide: (d, requestId) => {
         const req = State.pendingApproval;
         void Bridge.log(`decide ${d} req=${req?.requestId ?? "none"}`);
-        if (!req) return;
+        if (!req || req.requestId !== requestId) return;
         Sound.play(d === "deny" ? "blip" : "approve");
         void Bridge.approvalDecision(req.requestId, d);
         // A click or a key Claude is about to do on another window: the chat
@@ -344,9 +355,9 @@ export class Island {
         this.closeApproval();
       },
       takeKeyboard: () => this.takeKeyboard(),
-      answer: (answers) => {
+      answer: (answers, requestId) => {
         const req = State.pendingApproval;
-        if (!req) return;
+        if (!req || req.requestId !== requestId) return;
         Sound.play("approve");
         void Bridge.approvalAnswer(req.requestId, answers);
         this.closeApproval();
@@ -411,7 +422,7 @@ export class Island {
         this.takeKeyboard();
       },
       changed: () => State.notify(),
-      decide: (d) => this.decideClosed(d),
+      decide: (d, requestId) => this.decideClosed(d, requestId),
     });
 
     this.header = buildHeader(actions);
