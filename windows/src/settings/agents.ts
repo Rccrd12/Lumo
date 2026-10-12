@@ -4,7 +4,7 @@
 
 import { Bridge, type AgentHookStatus } from "../core/bridge";
 import { clear, h } from "../views/dom";
-import { renderDiff, sectionHead, setting, statusDot } from "./parts";
+import { errorText, renderDiff, sectionHead, setting, statusDot } from "./parts";
 import { t } from "../i18n/i18n";
 
 /** In the current language (src/i18n); the settings window redraws on a change. */
@@ -36,10 +36,6 @@ const TEXT = {
   },
   failed: (err: unknown) => t("Could not write: {error}", { error: errorText(err) }),
 };
-
-function errorText(err: unknown): string {
-  return String(err).replace(/^Error:\s*/, "");
-}
 
 export function agentsSection(list: AgentHookStatus[] | null): HTMLElement {
   const blocks = h("div", { class: "setting-list" });

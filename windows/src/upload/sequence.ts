@@ -6,6 +6,8 @@
 // for one frame. All coordinates are island points (the island is 640 × 176),
 // so every constant below is the macOS constant unchanged.
 
+import { lerp, seg } from "../core/anim";
+
 /** Constants — exact mirror of USC in UploadSequenceEngine.swift. */
 export const USC = {
   W: 640,
@@ -61,8 +63,6 @@ export const eBack = (t: number) => {
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 };
 
-export const seg = (t: number, a: number, b: number) => Math.max(0, Math.min(1, (t - a) / (b - a)));
-export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /** Squeeze keyframes for the suckEnd → chew1 phase. */
 function squeezeY(t: number): number {

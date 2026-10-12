@@ -4,7 +4,7 @@
 // one (looks.ts) or the firefly.
 // Everything is laid out in a 640×150 reference space.
 
-import { closeCurve } from "../core/anim";
+import { closeCurve, lerp, seg } from "../core/anim";
 import { Sound } from "../core/sound";
 import { COMPACT_BOT_X, COMPACT_W, NOTCH_H } from "../core/layout";
 import {
@@ -76,9 +76,6 @@ const E = {
   },
 };
 
-const clamp = (v: number, a: number, b: number) => Math.max(a, Math.min(b, v));
-const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
-const seg = (t: number, a: number, b: number) => clamp((t - a) / (b - a), 0, 1);
 
 // ── Pose ──────────────────────────────────────────────────────────────────────
 

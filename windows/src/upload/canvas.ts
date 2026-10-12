@@ -5,6 +5,7 @@
 // sucked in. The island's own Mochi is hidden for the duration,
 // exactly as on macOS, because this canvas draws its own.
 
+import { lerp } from "../core/anim";
 import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
@@ -14,7 +15,7 @@ import {
 import { drawLookDropping, isRoundLook } from "../mochi/looks";
 import { parseLook } from "../mochi/wardrobe";
 import {
-  USC, eIn, eInOut, eOut, lerp, progressAt,
+  USC, eIn, eInOut, eOut, progressAt,
   type UploadEyeShape, type UploadFrame,
 } from "./sequence";
 

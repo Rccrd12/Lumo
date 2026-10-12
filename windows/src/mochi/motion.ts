@@ -10,12 +10,12 @@
 // moves): the loops scale with it, what happens when the state begins (the
 // shake, the hop, the flash) and the "your turn" heartbeat do not.
 
+import { lerp } from "../core/anim";
 import type { BotStateName } from "../core/layout";
 
 const TAU = Math.PI * 2;
 
 export const ease = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 const mod = (v: number, m: number) => ((v % m) + m) % m;
 const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 

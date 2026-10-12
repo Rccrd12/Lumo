@@ -27,7 +27,7 @@ export const LUMO_BOTTOM: RGB = [0.953, 0.851, 0.541]; // #F3D98A
 export const LUMO_GLOW: RGB = [0.851, 1, 0.42]; // #D9FF6B
 const INK = "rgb(26,20,18)";
 
-const rgba = (c: RGB, a = 1) =>
+export const rgba = (c: RGB, a = 1) =>
   `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
 
 export interface LumoPose {

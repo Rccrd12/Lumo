@@ -8,10 +8,10 @@ import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
 import {
-  LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose,
+  LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, rgba, type LumoPose,
 } from "./lumo";
 import {
-  LOOK_IDLE, LOOK_SHAPE, drawLookBehind, drawLookBlush, drawLookBody, drawLookEyes, lookBodyPath,
+  LOOK_IDLE, LOOK_SHAPE, drawLookBehind, drawLookBlush, drawLookBody, drawLookEyes, heartPath, lookBodyPath, starPath,
   type LookPose, type RoundLook,
 } from "./looks";
 import {
@@ -132,9 +132,6 @@ export function hexToRGB(hex: string): RGB {
   return [((v >> 16) & 255) / 255, ((v >> 8) & 255) / 255, (v & 255) / 255];
 }
 
-const rgba = (c: RGB, a = 1) =>
-  `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
-
 const mix3 = (a: RGB, b: RGB, t: number): RGB => [
   lerp(a[0], b[0], t), lerp(a[1], b[1], t), lerp(a[2], b[2], t),
 ];
@@ -147,24 +144,6 @@ function roundRectPath(x: CanvasRenderingContext2D, X: number, Y: number, W: num
   x.arcTo(X + W, Y + H, X, Y + H, r);
   x.arcTo(X, Y + H, X, Y, r);
   x.arcTo(X, Y, X + W, Y, r);
-  x.closePath();
-}
-
-function heartPath(x: CanvasRenderingContext2D, s: number) {
-  x.beginPath();
-  x.moveTo(0, s * 0.38);
-  x.bezierCurveTo(-s * 1.05, -s * 0.15, -s * 0.5, -s * 0.95, 0, -s * 0.38);
-  x.bezierCurveTo(s * 0.5, -s * 0.95, s * 1.05, -s * 0.15, 0, s * 0.38);
-  x.closePath();
-}
-
-function starPath(x: CanvasRenderingContext2D, ro: number, ri: number) {
-  x.beginPath();
-  for (let i = 0; i < 10; i++) {
-    const r = i % 2 ? ri : ro;
-    const a = -Math.PI / 2 + (i * Math.PI) / 5;
-    x.lineTo(Math.cos(a) * r, Math.sin(a) * r);
-  }
   x.closePath();
 }
 

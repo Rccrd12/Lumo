@@ -7,8 +7,9 @@
 // The light takes the state's colour: warm at rest, blue while an agent works,
 // orange when it waits for you, red on an error, green when it is done.
 
-import type { RGB } from "./lumo";
-import { poolOfLight } from "./motion";
+import { lerp } from "../core/anim";
+import { rgba, type RGB } from "./lumo";
+import { ease, poolOfLight } from "./motion";
 import type { LumoLook } from "./wardrobe";
 
 export type RoundLook = Exclude<LumoLook, "lucciola">;
@@ -74,15 +75,10 @@ export interface LookPose {
   floor?: { dx: number; dy: number };
 }
 
-export const rgba = (c: RGB, a = 1) =>
-  `rgba(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)},${a})`;
-
 export const mixRGB = (a: RGB, b: RGB, k: number): RGB => [
   a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k,
 ];
 
-const ease = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
-const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
 /** How much the canvas is scaled: shadows are not, so their blur is scaled by hand. */
 export function pxScale(x: CanvasRenderingContext2D): number {
@@ -538,7 +534,7 @@ function rrect(x: CanvasRenderingContext2D, X: number, Y: number, W: number, H: 
   x.closePath();
 }
 
-function heartPath(x: CanvasRenderingContext2D, s: number) {
+export function heartPath(x: CanvasRenderingContext2D, s: number) {
   x.beginPath();
   x.moveTo(0, s * 0.38);
   x.bezierCurveTo(-s * 1.05, -s * 0.15, -s * 0.5, -s * 0.95, 0, -s * 0.38);
@@ -546,7 +542,7 @@ function heartPath(x: CanvasRenderingContext2D, s: number) {
   x.closePath();
 }
 
-function starPath(x: CanvasRenderingContext2D, ro: number, ri: number) {
+export function starPath(x: CanvasRenderingContext2D, ro: number, ri: number) {
   x.beginPath();
   for (let i = 0; i < 10; i++) {
     const r = i % 2 ? ri : ro;
