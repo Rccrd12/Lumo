@@ -303,7 +303,7 @@ weekly Claude limits, and another for Codex. Click one for the details and the
 reset times. Both are off by default; turn them on in **Settings… → Agents → Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
-  line. **Show in notch** first shows you the diff of the `statusLine` change in
+  line. **Show in the island** first shows you the diff of the `statusLine` change in
   `%USERPROFILE%\.claude\settings.json`, takes a dated backup and writes only
   after your click, with the same writer as the hooks: the status line becomes `lumo-hook --statusline`, which
   passes only the limits on (300 ms at most) and runs the status line you had
