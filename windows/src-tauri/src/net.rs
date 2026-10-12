@@ -246,6 +246,11 @@ pub(crate) mod tests {
     }
 
     /// One-shot HTTP server on a free port answering the next request with `body`.
+    ///
+    /// The whole request is read before answering and the connection is closed
+    /// gracefully: closing a socket with unread bytes, or before the client has
+    /// read the answer, sends a reset, and Windows then throws away the answer
+    /// the client had not read yet (ConnectionReset, os error 10054).
     pub(crate) fn serve_once(status: &str, headers: &str, body: Vec<u8>) -> String {
         use std::io::{Read, Write};
         let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
@@ -253,12 +258,49 @@ pub(crate) mod tests {
         let head = format!("HTTP/1.1 {status}\r\n{headers}Connection: close\r\n\r\n");
         std::thread::spawn(move || {
             let (mut conn, _) = listener.accept().unwrap();
-            let mut buf = [0u8; 8192];
-            let _ = conn.read(&mut buf);
+            // Never hang a test run on a client that stops talking.
+            let _ = conn.set_read_timeout(Some(Duration::from_secs(10)));
+            read_request(&mut conn);
             let _ = conn.write_all(head.as_bytes());
             let _ = conn.write_all(&body);
+            let _ = conn.flush();
+            // End of the answer, then wait for the client to close its side
+            // (or give up on the answer) before the socket is dropped.
+            let _ = conn.shutdown(std::net::Shutdown::Write);
+            let mut sink = [0u8; 8192];
+            while matches!(conn.read(&mut sink), Ok(n) if n > 0) {}
         });
         url
+    }
+
+    /// Reads one request: the head up to the blank line, then `Content-Length`
+    /// bytes of body.
+    fn read_request(conn: &mut std::net::TcpStream) {
+        use std::io::Read;
+        let mut data = Vec::new();
+        let mut buf = [0u8; 8192];
+        let head_end = loop {
+            if let Some(i) = data.windows(4).position(|w| w == b"\r\n\r\n") {
+                break i + 4;
+            }
+            match conn.read(&mut buf) {
+                Ok(n) if n > 0 => data.extend_from_slice(&buf[..n]),
+                _ => return,
+            }
+        };
+        let length = String::from_utf8_lossy(&data[..head_end])
+            .lines()
+            .find_map(|line| {
+                let (name, value) = line.split_once(':')?;
+                name.trim().eq_ignore_ascii_case("content-length").then(|| value.trim().parse::<usize>().ok())?
+            })
+            .unwrap_or(0);
+        while data.len() < head_end + length {
+            match conn.read(&mut buf) {
+                Ok(n) if n > 0 => data.extend_from_slice(&buf[..n]),
+                _ => return,
+            }
+        }
     }
 
     fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {

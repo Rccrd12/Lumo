@@ -117,7 +117,9 @@ function main() {
     } catch {
       // missing: out of date
     }
-    if (current !== text) {
+    // A Windows checkout may have turned the line endings into CRLF: only the
+    // content counts.
+    if (current.replace(/\r\n/g, "\n") !== text) {
       console.error("src/i18n/strings.json is out of date: run `node scripts/gen-strings.mjs`.");
       process.exit(1);
     }
