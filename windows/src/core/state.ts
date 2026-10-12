@@ -1,11 +1,12 @@
 // App state — mirror of AppState.swift (the parts the island needs).
 
+import type { ListenWatch } from "./listen";
 import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
 import type { EyeShape } from "../mochi/engine";
 import {
-  DEFAULT_MAIN_PILL, HOST_OS, availablePills, orderPills, pillDefinition, sanitizeDeclared,
-  toggleDeclared, type HostOs, type PillDefinition,
+  DEFAULT_MAIN_PILL, availablePills, orderPills, pillDefinition, sanitizeDeclared,
+  toggleDeclared, type PillDefinition,
 } from "./pills";
 import type { CodexPlanUsage, PlanUsage } from "./plan";
 import type { ProviderId } from "./providers";
@@ -50,6 +51,10 @@ export interface ApprovalInfo {
   pillId: string;
   tool: string;
   command: string;
+  /** What the agent says the request is for, in its own words (core/approvals.ts requestReason). */
+  reason?: string;
+  /** What the request does, when the agent did not say (core/approvals.ts requestKind): English, through t(). */
+  kind?: { text: string; vars?: Record<string, string> };
   /** Set when Claude Code is asking a question rather than for a permission. */
   questions?: AskedQuestion[];
   /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
@@ -380,6 +385,8 @@ class AppState {
   chatActivity: { label: string | null } | null = null;
   /** A question the chat asks as soon as it is on screen (an email's buttons). */
   chatAsk: string | null = null;
+  /** The pull requests Lumo listens to for the chat (core/listen.ts, listen.rs). */
+  listening: ListenWatch[] = [];
   /** The live activities can show beside the open island (an edge with room for them). */
   activitiesRoom = false;
 
@@ -400,6 +407,8 @@ class AppState {
 
   uploadProgress = 0;
   uploadDuration = 2.4;
+  /** A dropped file just landed in the chat: it says so until `until` (Date.now()). */
+  uploadedNote: { name: string; until: number } | null = null;
   fileDragOver = false;
 
   promptContext: PromptContext | null = null;
@@ -459,9 +468,6 @@ class AppState {
   lastActivity = performance.now();
 
   settings: Settings = { ...DEFAULT_SETTINGS };
-
-  /** Which pills this build offers depends on it (Claude Desktop is Windows only). */
-  os: HostOs = HOST_OS;
 
   private listeners = new Set<Listener>();
 
@@ -596,7 +602,7 @@ class AppState {
 
   /** The always-on workspace pill, once the setting has been checked. */
   get mainPillId(): string {
-    return sanitizeDeclared(this.settings, this.os).mainPill;
+    return sanitizeDeclared(this.settings).mainPill;
   }
 
   /**
@@ -604,7 +610,7 @@ class AppState {
    * declared ones go back to idle instead of going away.
    */
   isKept(id: string): boolean {
-    const d = sanitizeDeclared(this.settings, this.os);
+    const d = sanitizeDeclared(this.settings);
     return id === d.mainPill || d.activeIntegrations.includes(id);
   }
 
@@ -614,10 +620,10 @@ class AppState {
    * Safe to call any number of times. AppState.loadIntegrationTasks on macOS.
    */
   loadIntegrationTasks() {
-    const d = sanitizeDeclared(this.settings, this.os);
+    const d = sanitizeDeclared(this.settings);
     this.settings.mainPill = d.mainPill;
     this.settings.activeIntegrations = d.activeIntegrations;
-    for (const def of availablePills(this.os)) {
+    for (const def of availablePills()) {
       const shouldLoad = def.id === d.mainPill || d.activeIntegrations.includes(def.id);
       const idx = this.tasks.findIndex((t) => t.id === def.id);
       if (shouldLoad && idx < 0) this.tasks.push(taskFor(def, this.settings.pillColors));
@@ -703,7 +709,7 @@ class AppState {
 
   /** Declares or undeclares a pill (max 4 next to the main one). */
   toggleIntegration(id: string) {
-    const next = toggleDeclared(sanitizeDeclared(this.settings, this.os), id, this.os);
+    const next = toggleDeclared(sanitizeDeclared(this.settings), id);
     if (!next) return;
     this.settings.activeIntegrations = next;
     if (!next.includes(id) && this.focusId === id) this.focusId = this.mainPillId;

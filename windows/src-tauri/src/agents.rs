@@ -24,11 +24,10 @@ const MARKER: &str = "lumo-hook";
 
 // ── The relay command line ────────────────────────────────────────────────────
 
-/// The shell an agent runs its hook commands through on Windows. On Linux every
-/// agent uses `sh` (or bash), so there is only one way to quote.
+/// The shell an agent runs its hook commands through.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub enum Shell {
-    /// Git Bash on Windows (Claude Code), `sh` on Linux.
+    /// Git Bash (Claude Code).
     Sh,
     /// `powershell -Command` (Gemini CLI, Copilot CLI's `powershell` field).
     PowerShell,
@@ -36,26 +35,19 @@ pub enum Shell {
     Cmd,
 }
 
-/// Where the relay is and which OS the command is for. Kept apart from the
-/// real install so tests can build both the Windows and the Linux command.
+/// Where the relay is. Kept apart from the real install so tests can build the
+/// command for any path.
 pub struct Relay {
     pub exe: String,
-    pub windows: bool,
 }
 
 impl Relay {
     pub fn current() -> Self {
-        Self {
-            exe: settings::hook_exe_path().to_string_lossy().to_string(),
-            windows: cfg!(windows),
-        }
+        Self { exe: settings::hook_exe_path().to_string_lossy().to_string() }
     }
 
     /// The relay followed by `args`, as one command line for `shell`.
     pub fn command(&self, shell: Shell, args: &str) -> String {
-        if !self.windows {
-            return format!("{} {args}", sh_quote(&self.exe));
-        }
         let exe = match shell {
             // Git Bash reads backslashes as escapes: forward slashes, quoted.
             Shell::Sh => format!("\"{}\"", self.exe.replace('\\', "/")),
@@ -72,15 +64,9 @@ impl Relay {
     }
 }
 
-/// The relay command for the running OS, for `args`.
+/// The relay command for `args`.
 pub fn relay_command(shell: Shell, args: &str) -> String {
     Relay::current().command(shell, args)
-}
-
-/// `s` as one single-quoted POSIX shell word: `'` becomes `'\''`, nothing else
-/// is special inside single quotes.
-fn sh_quote(s: &str) -> String {
-    format!("'{}'", s.replace('\'', r"'\''"))
 }
 
 /// A path no Windows shell would split or interpret.
@@ -718,11 +704,12 @@ const COPILOT_EVENTS: &[(&str, u64)] = &[
 
 fn copilot_entry(relay: &Relay, event: &str, timeout: u64) -> Value {
     let args = format!("--agent copilot {event}");
-    let mut entry = json!({ "type": "command", "bash": relay.command(Shell::Sh, &args), "timeoutSec": timeout });
-    if relay.windows {
-        entry["powershell"] = json!(relay.command(Shell::PowerShell, &args));
-    }
-    entry
+    json!({
+        "type": "command",
+        "bash": relay.command(Shell::Sh, &args),
+        "powershell": relay.command(Shell::PowerShell, &args),
+        "timeoutSec": timeout,
+    })
 }
 
 fn copilot_entry_is_ours(entry: &Value) -> bool {
@@ -926,7 +913,6 @@ import json, os, subprocess, threading
 HOOK = {HOOK}
 _current_session_id = ''
 
-
 def _fire(fields):
     """Non-blocking: start the relay and return at once. Reaps it in a thread."""
     def _run():
@@ -941,7 +927,6 @@ def _fire(fields):
         except Exception:
             pass
     threading.Thread(target=_run, daemon=True).start()
-
 
 def register(ctx):
     def on_session_start(**kwargs):
@@ -998,12 +983,8 @@ mod tests {
     use super::*;
     use crate::config_file::tests::scratch;
 
-    fn linux() -> Relay {
-        Relay { exe: "/home/me/.local/share/lumo/bin/lumo-hook".into(), windows: false }
-    }
-
-    fn windows(exe: &str) -> Relay {
-        Relay { exe: exe.into(), windows: true }
+    fn relay(exe: &str) -> Relay {
+        Relay { exe: exe.into() }
     }
 
     const WIN: &str = r"C:\Users\me\AppData\Local\com.rccrd12.lumo\bin\lumo-hook.exe";
@@ -1021,7 +1002,7 @@ mod tests {
             std::fs::create_dir_all(file.parent().unwrap()).unwrap();
             std::fs::write(&file, text).unwrap();
         }
-        let relay = linux();
+        let relay = relay(WIN);
         let plan = config_file::preview(&agent.edits(&home, &relay, true)).unwrap();
         assert!(plan.diff.contains(MARKER), "{}", plan.diff);
         apply_in(agent, &home, &relay, true, &plan.fingerprint).unwrap();
@@ -1041,11 +1022,7 @@ mod tests {
 
     #[test]
     fn the_command_is_quoted_for_the_shell_that_runs_it() {
-        assert_eq!(
-            linux().command(Shell::Cmd, "--agent codex"),
-            "'/home/me/.local/share/lumo/bin/lumo-hook' --agent codex"
-        );
-        let w = windows(WIN);
+        let w = relay(WIN);
         assert_eq!(
             w.command(Shell::Sh, "Stop"),
             "\"C:/Users/me/AppData/Local/com.rccrd12.lumo/bin/lumo-hook.exe\" Stop"
@@ -1057,7 +1034,7 @@ mod tests {
         // A plain path is left bare, so cmd and PowerShell both run it.
         assert_eq!(w.command(Shell::Cmd, "--agent cursor"), format!("{WIN} --agent cursor"));
 
-        let spaced = windows(WIN_SPACE);
+        let spaced = relay(WIN_SPACE);
         assert_eq!(spaced.command(Shell::Cmd, "x"), format!("\"{WIN_SPACE}\" x"));
         assert_eq!(
             spaced.command(Shell::PowerShell, "x"),
@@ -1066,19 +1043,12 @@ mod tests {
     }
 
     #[test]
-    fn the_hook_path_is_one_shell_word_whatever_it_contains() {
-        assert_eq!(sh_quote("/home/a b/x"), "'/home/a b/x'");
-        assert_eq!(sh_quote(r#"/h/$(id)`x`\"y"#), r#"'/h/$(id)`x`\"y'"#);
-        assert_eq!(sh_quote("/h/it's"), r"'/h/it'\''s'");
-    }
-
-    #[test]
     fn installing_removes_what_lumo_wrote_under_its_old_name() {
         // Antigravity: the old group goes, Lumo's comes, the user's stays.
         let mut root = Map::new();
-        root.insert(crate::migrate::OLD_GROUP.into(), antigravity_block(&linux()));
+        root.insert(crate::migrate::OLD_GROUP.into(), antigravity_block(&relay(WIN)));
         root.insert("mine".into(), json!({}));
-        let after = antigravity_install(&Value::Object(root), &antigravity_block(&linux())).unwrap();
+        let after = antigravity_install(&Value::Object(root), &antigravity_block(&relay(WIN))).unwrap();
         assert!(after.get(crate::migrate::OLD_GROUP).is_none());
         assert!(after.get(ANTIGRAVITY_GROUP).is_some() && after.get("mine").is_some());
 
@@ -1089,13 +1059,13 @@ mod tests {
         std::fs::create_dir_all(old.parent().unwrap()).unwrap();
         std::fs::write(&old, format!("// {}\n", crate::migrate::OLD_MARKER)).unwrap();
         assert!(Agent::OpenCode.installed(&home), "counts as installed until replaced");
-        let edits = Agent::OpenCode.edits(&home, &linux(), true);
+        let edits = Agent::OpenCode.edits(&home, &relay(WIN), true);
         let plan = config_file::preview(&edits).unwrap();
         config_file::apply(&edits, &plan.fingerprint).unwrap();
         assert!(!old.exists());
         assert!(Agent::OpenCode.files(&home)[0].exists());
         std::fs::write(&old, "// somebody's own plugin\n").unwrap();
-        assert_eq!(Agent::OpenCode.edits(&home, &linux(), true).len(), 1, "not Lumo's: not touched");
+        assert_eq!(Agent::OpenCode.edits(&home, &relay(WIN), true).len(), 1, "not Lumo's: not touched");
         let _ = std::fs::remove_dir_all(home);
     }
 
@@ -1146,7 +1116,7 @@ mod tests {
                 };
                 for odd in shaped.iter().copied().chain(["[1,2]", "{ broken", "\"text\""]) {
                     std::fs::write(&file, odd).unwrap();
-                    let edits = agent.edits(&home, &linux(), true);
+                    let edits = agent.edits(&home, &relay(WIN), true);
                     assert!(config_file::preview(&edits).is_err(), "{agent:?} accepted {odd}");
                     assert_eq!(std::fs::read_to_string(&file).unwrap(), odd);
                 }
@@ -1184,15 +1154,15 @@ mod tests {
     #[test]
     fn a_lumo_group_someone_else_wrote_is_neither_replaced_nor_removed() {
         let theirs = json!({ "lumo": { "Stop": [{ "command": "/bin/notify" }] } });
-        assert!(antigravity_install(&theirs, &antigravity_block(&linux())).is_err());
+        assert!(antigravity_install(&theirs, &antigravity_block(&relay(WIN))).is_err());
         assert_eq!(antigravity_uninstall(&theirs).unwrap(), theirs);
     }
 
     #[test]
     fn on_windows_antigravity_runs_the_relay_path_quoted_only_when_needed() {
-        let block = antigravity_block(&windows(WIN));
+        let block = antigravity_block(&relay(WIN));
         assert_eq!(block["Stop"][0]["command"], format!("{WIN} --agent antigravity Stop"));
-        let block = antigravity_block(&windows(WIN_SPACE));
+        let block = antigravity_block(&relay(WIN_SPACE));
         assert_eq!(block["Stop"][0]["command"], format!("\"{WIN_SPACE}\" --agent antigravity Stop"));
     }
 
@@ -1239,7 +1209,7 @@ mod tests {
 
     #[test]
     fn on_windows_codex_gets_a_command_cmd_can_run() {
-        let after = codex_install(&json!({}), &windows(WIN_SPACE).command(Shell::Cmd, "--agent codex")).unwrap();
+        let after = codex_install(&json!({}), &relay(WIN_SPACE).command(Shell::Cmd, "--agent codex")).unwrap();
         assert_eq!(after["hooks"]["Stop"][0]["hooks"][0]["command"], format!("\"{WIN_SPACE}\" --agent codex"));
     }
 
@@ -1251,8 +1221,8 @@ mod tests {
             let entry = &installed["hooks"][event][0];
             assert_eq!(entry["timeoutSec"], *timeout);
             assert!(entry["bash"].as_str().unwrap().ends_with(&format!("--agent copilot {event}")));
-            // No PowerShell line on Linux.
-            assert!(entry.get("powershell").is_none());
+            let powershell = entry["powershell"].as_str().unwrap();
+            assert!(powershell.ends_with(&format!("--agent copilot {event}")));
         }
         assert!(removed.is_none(), "the file should be gone");
         let _ = std::fs::remove_dir_all(home);
@@ -1269,7 +1239,7 @@ mod tests {
 
     #[test]
     fn on_windows_copilot_gets_a_powershell_line_too() {
-        let entry = copilot_entry(&windows(WIN), "preToolUse", 10);
+        let entry = copilot_entry(&relay(WIN), "preToolUse", 10);
         assert_eq!(entry["powershell"], format!("& '{WIN}' --agent copilot preToolUse"));
         assert_eq!(
             entry["bash"],
@@ -1305,14 +1275,14 @@ mod tests {
     fn plugins_call_the_relay_directly_and_go_away_whole() {
         for agent in [Agent::OpenCode, Agent::Amp, Agent::Hermes] {
             let home = scratch(&format!("plugin-{}", agent.id()));
-            let relay = linux();
+            let relay = relay(WIN);
             let plan = config_file::preview(&agent.edits(&home, &relay, true)).unwrap();
             apply_in(agent, &home, &relay, true, &plan.fingerprint).unwrap();
             assert!(agent.installed(&home), "{agent:?}");
             let main = std::fs::read_to_string(&agent.files(&home)[0]).unwrap();
             // The relay itself, at this machine's path, as a string literal: no
             // shell, no macOS path.
-            assert!(main.contains(r#""/home/me/.local/share/lumo/bin/lumo-hook""#), "{agent:?}");
+            assert!(main.contains(&serde_json::to_string(WIN).unwrap()), "{agent:?}");
             assert!(!main.contains("/bin/sh") && !main.contains("nb-hook"), "{agent:?}");
             assert!(main.contains(&format!("'--agent', '{}'", agent.id())), "{agent:?}");
             // Never a verdict for the agent.
@@ -1335,7 +1305,7 @@ mod tests {
         std::fs::create_dir_all(file.parent().unwrap()).unwrap();
         std::fs::write(&file, "export const Mine = async () => ({});\n").unwrap();
         for install in [true, false] {
-            let err = config_file::preview(&Agent::OpenCode.edits(&home, &linux(), install)).unwrap_err();
+            let err = config_file::preview(&Agent::OpenCode.edits(&home, &relay(WIN), install)).unwrap_err();
             assert!(err.contains("wasn't written by Lumo"), "{err}");
         }
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "export const Mine = async () => ({});\n");
@@ -1344,7 +1314,7 @@ mod tests {
 
     #[test]
     fn a_windows_path_is_a_valid_string_in_every_plugin() {
-        let plugins = Agent::Hermes.plugin(&windows(WIN_SPACE)).unwrap();
+        let plugins = Agent::Hermes.plugin(&relay(WIN_SPACE)).unwrap();
         let literal = serde_json::to_string(WIN_SPACE).unwrap();
         assert!(plugins[0].contains(&format!("HOOK = {literal}")));
         assert!(literal.contains(r"C:\\Users\\Jane O'Neil"));

@@ -138,8 +138,8 @@ export type Inline =
 
 /**
  * `code`, **bold**, __bold__, *italic*, _italic_ and [text](url), whichever
- * comes first. No lookbehind: older WebKitGTK builds reject it, and one bad
- * regex literal would take the whole island down with it.
+ * comes first. No lookbehind: one regex literal an engine rejects would take
+ * the whole island down with it.
  */
 const INLINE = /`([^`\n]+)`|\*\*([^*]+?)\*\*|__([^_]+?)__|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_(?!\w)|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
 

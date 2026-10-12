@@ -4,13 +4,12 @@
 
 # Lumo
 
-**A tiny friend that lives at the top of your screen on Windows and Linux and keeps an eye on your AI coding agent sessions.**
+**A tiny friend that lives at the top of your screen on Windows and keeps an eye on your AI coding agent sessions.**
 
 Approve permissions, watch your agents work, drop a file, chat with Claude, keep an eye on your timers, music, calendar and email — all without leaving what you're doing.
 
 [![Version](https://img.shields.io/github/v/release/Rccrd12/Lumo?filter=windows-v*&label=version&color=0A84FF)](https://github.com/Rccrd12/Lumo/releases)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&logoColor=white)
-![Linux](https://img.shields.io/badge/Linux-AppImage%20%7C%20deb%20%7C%20rpm-FCC624?logo=linux&logoColor=black)
 ![Tauri 2](https://img.shields.io/badge/Tauri-2-FFC131?logo=tauri&logoColor=black)
 ![Code: MIT](https://img.shields.io/badge/code-MIT-green)
 
@@ -49,7 +48,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the top edge of the screen.
 - 📅 **Weekly recap** — every Monday Lumo sums up the past week: time coding, sessions, files, lines changed, commands, permissions, top agent and project. Share it as a 1080 × 1920 image with Lumo — project names optional. All local.
 - 🌍 **11 languages** — English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português, Русский, Bahasa Indonesia, Italiano. Pick one in Settings → General → Language.
-- 🔒 **Private by design** — no telemetry, no account. Keys live in Windows Credential Manager or the Linux Secret Service (GNOME Keyring, KWallet). The app only talks to the services you plug in.
+- 🔒 **Private by design** — no telemetry, no account. Keys live in Windows Credential Manager. The app only talks to the services you plug in.
 
 <p align="center">
 <img src="windows/screenshots/activities.png" width="640" alt="The open island with the live activities beside it: a timer, the music playing, the next events and the newest emails">
@@ -74,10 +73,12 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 ## Versions
 
-Windows and Linux builds are in Releases under the `windows-v*` and `linux-v*` tags; the newest builds are always at [`windows-latest`](https://github.com/Rccrd12/Lumo/releases/tag/windows-latest) and [`linux-latest`](https://github.com/Rccrd12/Lumo/releases/tag/linux-latest). See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
+Windows builds are in Releases under the `windows-v*` tags; the newest build is always at [`windows-latest`](https://github.com/Rccrd12/Lumo/releases/tag/windows-latest). See [CHANGELOG.md](CHANGELOG.md) for the full notes of each version.
 
-| Windows and Linux | Date | Highlights |
-|-------------------|------|------------|
+| Windows | Date | Highlights |
+|---------|------|------------|
+| [0.6.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.1) | Oct 11, 2026 | Listening mode that no longer misses its line, listening mode for Antigravity, a sent screenshot no longer blocks the next message, the upload ending on the full bar |
+| [0.6.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.0) | Oct 11, 2026 | Windows only (Linux dropped), drop a file on any island size straight into the chat, the upload carried on with the island closed, a listening mode for GitHub pull requests, no time limit on Claude Code turns |
 | [0.5.8](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.8) | Oct 11, 2026 | One row per attachment (two screenshots of the same screen too), the attachments folder made anew, the big picture over the whole island with Lumo aside, the upload bar centred |
 | [0.5.7](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.7) | Oct 11, 2026 | Several screenshots, selections and files with one question, service cards laid out like the tools', Lumo waits under the dragged file, the big preview beside Lumo |
 | [0.5.6](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.6) | Oct 11, 2026 | Ctrl+Alt+B attaches a PDF open in the browser as the file, attachments in a folder beside the past chats, GitHub keeping up on the closed island, gentler chat scrolling, a drop that follows the file, big previews |
@@ -112,23 +113,9 @@ There is no notch on a PC, so the island slides out of the top edge of the scree
 instead of hiding inside one. See [`windows/README.md`](windows/README.md) for the
 rest of the differences.
 
-### Linux
-
-Download **[Lumo-Linux-x86_64.AppImage](https://github.com/Rccrd12/Lumo/releases/download/linux-latest/Lumo-Linux-x86_64.AppImage)** (x86_64, always the newest version). The `.deb` and `.rpm` packages and `SHA256SUMS` are in each [`linux-v*` release](https://github.com/Rccrd12/Lumo/releases/tag/linux-v0.5.0). You can also [build it from source](#build-from-source).
-
-- **AppImage** (any distribution): `chmod +x Lumo-Linux-*.AppImage`, then run it.
-- **Debian / Ubuntu**: `sudo apt install ./Lumo-Linux-*.deb`
-- **Fedora / openSUSE**: `sudo dnf install ./Lumo-Linux-*.rpm`
-
-Check a download with `sha256sum -c SHA256SUMS --ignore-missing`.
-
-The island sits on the top edge on compositors with layer-shell — COSMIC, KDE
-Plasma, Hyprland, Sway and other wlroots compositors. GNOME has no layer-shell,
-so there it runs through XWayland as a dock window at the top of the screen. See [`windows/README.md`](windows/README.md#linux).
-
 ### Build from source
 
-**Windows** — requirements: [Rust](https://rustup.rs), Node 22.18+, MSVC build tools.
+Requirements: [Rust](https://rustup.rs), Node 22.18+, MSVC build tools.
 
 ```powershell
 git clone https://github.com/Rccrd12/Lumo.git
@@ -136,20 +123,6 @@ cd Lumo/windows
 npm install
 npm run tauri dev           # live-reloading development build
 npm run pack                # installer lands in windows/release/
-```
-
-**Linux** — requirements: [Rust](https://rustup.rs), Node 22.18+, and the WebKitGTK,
-gtk-layer-shell and appindicator development packages (Debian/Ubuntu names below).
-
-```bash
-sudo apt install build-essential pkg-config \
-  libwebkit2gtk-4.1-dev libgtk-layer-shell-dev libayatana-appindicator3-dev \
-  librsvg2-dev libssl-dev libdbus-1-dev patchelf \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-git clone https://github.com/Rccrd12/Lumo.git
-cd Lumo/windows
-npm install
-npm run pack                # AppImage, .deb and .rpm land in windows/release/
 ```
 
 ## Setup
@@ -161,12 +134,12 @@ Click the Lumo icon in the system tray → **Settings…**
 | **Claude Code hooks** | live sessions and approvals | Settings → Agents → Claude Code → **Install hooks** — Lumo backs up `~/.claude/settings.json`, merges its hooks and shows you the diff before writing anything |
 | **Other agents** | their sessions in the island | Settings → Agents, same backup, diff and confirmation |
 | **Plan usage** | Claude and Codex limits in the island's header | Settings → Agents → Plan usage |
-| **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager / Secret Service |
-| **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager / Secret Service |
+| **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager |
+| **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager |
 | **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |
-| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: address, IMAP server and an app password · Windows Credential Manager / Secret Service |
-| **Calendar** | the next events in the live activities and on the closed island | Settings → Island → Calendar: your calendar's secret iCal address · Windows Credential Manager / Secret Service |
-| Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Settings → Pills & integrations · Windows Credential Manager / Secret Service, all optional |
+| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: address, IMAP server and an app password · Windows Credential Manager |
+| **Calendar** | the next events in the live activities and on the closed island | Settings → Island → Calendar: your calendar's secret iCal address · Windows Credential Manager |
+| Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Settings → Pills & integrations · Windows Credential Manager, all optional |
 
 If Lumo isn't running, the hook exits immediately: **Claude Code is never blocked.**
 
@@ -191,20 +164,19 @@ The full list of supported agents, what each one installs and how it answers is 
 | `Ctrl+Alt+G` | opens the wardrobe |
 | `Esc` | closes the island |
 
-Every global shortcut can be changed or turned off in **Settings… → Shortcuts**. On Linux, global shortcuts work in an X11 session; on Wayland, Settings lists commands to bind in your desktop's own keyboard settings.
+Every global shortcut can be changed or turned off in **Settings… → Shortcuts**.
 
 ## How it works
 
 - A [Tauri 2](https://tauri.app) app (Rust + TypeScript): the island is a transparent, always-on-top window that never steals focus; Lumo is drawn in Canvas 2D, with no images.
-- Claude Code and the other agents' hooks go through a tiny `lumo-hook` relay: a named pipe on Windows, a Unix socket in `$XDG_RUNTIME_DIR` on Linux. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
-- On Wayland the island is a gtk-layer-shell overlay anchored to the top edge, and click-through is its input region.
+- Claude Code and the other agents' hooks go through a tiny `lumo-hook` relay over a named pipe. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
 - Integrations are lightweight pollers, paused when nothing is watching.
 - Details and differences from the original Mac app in [`windows/README.md`](windows/README.md).
 
 ## Privacy
 
 - No telemetry, no account, no background update checks.
-- Keys live in Windows Credential Manager or the Linux Secret Service, never on disk and never in the interface.
+- Keys live in Windows Credential Manager, never on disk and never in the interface.
 - The only network requests Lumo makes are to the services you configure yourself.
 - Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → Chat.
 - Email and the calendar are only read: emails stay unread, and nothing is ever sent, moved or deleted.

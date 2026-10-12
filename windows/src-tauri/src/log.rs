@@ -1,6 +1,5 @@
-// Small append-only log at %LOCALAPPDATA%\com.rccrd12.lumo\lumo.log (Windows) or
-// ~/.local/share/lumo/lumo.log (Linux) — the equivalent of nbLog() in
-// HookServer.swift. Nothing leaves the machine.
+// Small append-only log at %LOCALAPPDATA%\com.rccrd12.lumo\lumo.log — the
+// equivalent of nbLog() in HookServer.swift. Nothing leaves the machine.
 
 use std::io::Write;
 
@@ -23,9 +22,6 @@ pub fn line(message: impl AsRef<str>) {
     }
     let mut options = std::fs::OpenOptions::new();
     options.create(true).append(true);
-    // Readable by us only, like the macOS log.
-    #[cfg(unix)]
-    std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
     if let Ok(mut file) = options.open(path) {
         let _ = writeln!(file, "{stamp} {}", message.as_ref());
     }

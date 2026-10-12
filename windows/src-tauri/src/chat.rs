@@ -381,6 +381,35 @@ macro_rules! timer_note {
 }
 pub(crate) use timer_note;
 
+/// How the CLIs that can act (Claude Code, Antigravity) wait for GitHub
+/// without holding the turn open: Lumo keeps the watch (listen.rs) and hides
+/// that line (src/core/listen.ts). Plain words only: it goes on the command line.
+macro_rules! listen_note {
+    () => {
+        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: write on a line of its own [[listen owner/repo#123 event: what to do then]], with event one of checks (finished, passed or failed), green (checks passed), approved, ready (checks passed and it can be merged), merged or closed, and leave out the colon and what follows when they only want to be told. Say in a few words that Lumo is listening, and end your answer; write that line in your last message, after any tool you run. Lumo watches GitHub, hides that line and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, write [[unlisten owner/repo#123]] on a line of its own."
+    };
+}
+pub(crate) use listen_note;
+
+/// `answer`, with the lines for Lumo (`[[timer …]]`, `[[listen …]]`,
+/// `[[unlisten …]]`) that were written earlier in the turn, in a message
+/// before a tool call, added back: the CLIs return only their last message.
+pub fn keep_lumo_lines(answer: String, said: &str) -> String {
+    let mut out = answer;
+    for line in said.lines().map(str::trim) {
+        let lower = line.to_ascii_lowercase();
+        let ours = ["[[timer ", "[[listen ", "[[unlisten "].iter().any(|p| lower.starts_with(p)) && line.ends_with("]]");
+        if ours && !out.contains(line) {
+            if !out.is_empty() && !out.ends_with('\n') {
+                out.push('\n');
+            }
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    out
+}
+
 /// How to write math, for every provider that answers in the chat: the island
 /// draws standard LaTeX, and a macro from the user's own files (`\dd`) would
 /// show as its name.
@@ -1012,11 +1041,6 @@ mod tests {
         assert!(!is_inside(&inbox, &inbox.join("sub").join("b.txt")));
         assert!(!is_inside(&inbox, &inbox.join("missing.txt")));
         assert!(!is_inside(&inbox, &inbox));
-        #[cfg(unix)]
-        {
-            std::os::unix::fs::symlink(base.join("secret.txt"), inbox.join("link.txt")).unwrap();
-            assert!(!is_inside(&inbox, &inbox.join("link.txt")));
-        }
         let _ = std::fs::remove_dir_all(&base);
     }
 }

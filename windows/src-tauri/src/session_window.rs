@@ -6,13 +6,10 @@
 // process is still alive, so walking up from it finds that window's process.
 // What is found is kept per session ID, here in memory only, and looked up when
 // the button is clicked. Where nothing is found — a classic console, whose
-// window belongs to a conhost that is no ancestor, or Linux — the island falls
-// back to VS Code as before.
+// window belongs to a conhost that is no ancestor — the island falls back to
+// VS Code as before.
 //
 // The OS calls live in platform/; this file is the logic, tested on fixtures.
-
-// The process-tree half only runs on Windows; Linux keeps the fallback.
-#![cfg_attr(not(windows), allow(dead_code))]
 
 use std::collections::HashMap;
 use std::sync::Mutex;

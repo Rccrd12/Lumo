@@ -67,7 +67,7 @@ import { refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks,
+  afterSent, menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks,
   windowPicks, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
   type PreviewBlock, type ScreenItem,
 } from "../core/screen";
@@ -77,7 +77,8 @@ import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
-import { COMPACT_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
+import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
+import { LISTEN_COLOR, listenMessage, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -134,6 +135,12 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
   auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
 };
+
+/**
+ * Auto with Antigravity CLI: headless agy has no judgement of its own to lean
+ * on, so Lumo's stands in for it (core/approvals.ts autoAllows).
+ */
+const AGY_AUTO_NOTE = N_("Commands that only look run without asking; Lumo asks for the rest.");
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
@@ -200,6 +207,7 @@ const ACTIVITY_STRINGS = {
   searchingFor: N_("Searching for {pattern}"),
   searchingFolder: N_("Searching the folder"),
   command: N_("Running a command"),
+  commandFor: N_("Running a command: {what}"),
   editing: N_("Editing {name}"),
   editingFile: N_("Editing a file"),
   web: N_("Searching the web"),
@@ -287,7 +295,7 @@ export function activityLabel(activity: ChatActivity | null): string {
     case "search":
       return detail ? t(ACTIVITY_STRINGS.searchingFor, { pattern: detail }) : t(ACTIVITY_STRINGS.searchingFolder);
     case "command":
-      return t(ACTIVITY_STRINGS.command);
+      return detail ? t(ACTIVITY_STRINGS.commandFor, { what: detail }) : t(ACTIVITY_STRINGS.command);
     case "edit":
       return detail ? t(ACTIVITY_STRINGS.editing, { name: detail }) : t(ACTIVITY_STRINGS.editingFile);
     case "web":
@@ -338,6 +346,15 @@ function noteChip(label: string, title: string, onRemove: () => void): HTMLEleme
     onRemove();
   });
   const chip = h("div", { class: "chip", title }, h("i", { class: "chip-dot" }), h("span", { text: label }), remove);
+  requestAnimationFrame(() => chip.classList.add("settled"));
+  return chip;
+}
+
+/** "✓ File uploaded · name", a moment after a drop: no ×, it goes on its own. */
+function uploadedChip(name: string): HTMLElement {
+  const label = `${t(UPLOADED_TEXT)} · ${name}`;
+  const chip = h("div", { class: "chip uploaded", title: label },
+    h("span", { class: "chip-check" }, svg(ICONS.check, 9, { stroke: 2.2 })), h("span", { text: label }));
   requestAnimationFrame(() => chip.classList.add("settled"));
   return chip;
 }
@@ -1164,7 +1181,10 @@ export function buildPrompt(
           "span",
           { class: "perm-text" },
           h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
-          h("span", { class: "perm-note", text: t(PERMISSION_TEXT[mode].note) }),
+          h("span", {
+            class: "perm-note",
+            text: t(mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
+          }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
@@ -1300,7 +1320,7 @@ export function buildPrompt(
   //
   // Only while the setting is on, and only when the text field takes focus or
   // a message went: the folder's name, for the chip. Its listing is taken when
-  // the message goes. Linux (nothing found) or an error: no chip, nothing sent.
+  // the message goes. Nothing found or an error: no chip, nothing sent.
 
   let peeking = false;
   let peekedAt = -Infinity;
@@ -1985,7 +2005,7 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    renderMarkdown(live, takeTimers(text).text);
+    renderMarkdown(live, takeListens(takeTimers(text).text).text);
     toEnd();
   });
 
@@ -2012,11 +2032,16 @@ export function buildPrompt(
     showActivity(run, activity, true);
   });
 
-  async function submit() {
-    const query = input.value.trim();
+  /**
+   * Sends what is typed, or `auto`: a message Lumo writes itself (a GitHub
+   * event the chat listened for), which leaves the field, the files waiting
+   * and the screen alone.
+   */
+  async function submit(auto?: string) {
+    const query = auto ?? input.value.trim();
     if (!query || preparing) return;
     // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
-    const timer = /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
+    const timer = auto ? null : /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
     if (timer && timerMs != null) {
       setInput("");
@@ -2028,7 +2053,7 @@ export function buildPrompt(
     // (Enter again once it is done), but an edited one stops it and replaces it.
     const current = answering();
     if (current) {
-      if (editing == null) return;
+      if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;
       stop();
@@ -2039,7 +2064,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
-    setInput("");
+    if (!auto) setInput("");
     following = true; // a new question goes to the end of the chat
     Sound.play("send");
 
@@ -2053,24 +2078,24 @@ export function buildPrompt(
     preparing = true;
     try {
       // An edited question replaces the one it came from, and what followed it.
-      const edited = editing;
-      editing = null;
+      const edited = auto ? null : editing;
+      if (!auto) editing = null;
       if (edited != null) await rewindTo(edited);
 
       // What the screen button added goes once, then the chip goes.
       const waiting = screen;
       let shared = waiting;
-      if (sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
+      if (!auto && sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
         const folder = await explorerNow();
         if (folder) shared = { ...waiting, folder };
       }
-      if (shared.folder) await attachNamed(shared.folder, query);
+      if (!auto && shared.folder) await attachNamed(shared.folder, query);
 
       // The file goes with the first question asked after it was added, once.
-      const file = State.droppedFile;
+      const file = auto ? null : State.droppedFile;
       context = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
-      const more = State.moreFiles;
-      screenContext = screenPayload(shared, more);
+      const more = auto ? [] : State.moreFiles;
+      screenContext = auto ? null : screenPayload(shared, more);
 
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = State.chatId;
@@ -2084,8 +2109,11 @@ export function buildPrompt(
         file.sentWith = question.id;
       }
       if (more.length > 0) State.moreFiles = State.moreFiles.filter((f) => !more.includes(f));
-      const cleared = screen === waiting ? nextScreen(screen) : null;
+      // Rust deletes the screenshots once the turn went: what went no longer
+      // waits, even if something changed the attachments meanwhile.
+      const cleared = auto ? null : screen === waiting ? nextScreen(screen) : null;
       if (cleared) screen = cleared;
+      else if (!auto && screenContext) screen = afterSent(screen, shared);
       giveBack = (all) => {
         // A file goes with the next question, unless the user moved on.
         if (file && context && State.droppedFile === file) file.sent = false;
@@ -2131,8 +2159,12 @@ export function buildPrompt(
       const recorded = !reply.stopped || reply.text !== "";
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       // A timer the answer asked for starts now; its line is not shown.
-      const answered = takeTimers(reply.text);
-      for (const timer of answered.timers) compactTimer(timer.ms, timer.label);
+      const timed = takeTimers(reply.text);
+      for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
+      // What it asked Lumo to listen for on GitHub, and to stop listening to.
+      const answered = takeListens(timed.text);
+      for (const stop of answered.stops) void Bridge.listenCancel(stop.repo, stop.number);
+      for (const ask of answered.listens) void Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId);
       if (recorded) {
         run.history.push({
           id: nextId++,
@@ -2171,14 +2203,58 @@ export function buildPrompt(
         live = null;
         renderedCount = -1; // the finished answer replaces the streamed one
         settling = true;
-        input.focus();
+        if (!auto) input.focus();
       }
       drawIslandActivity();
       drawModelButton();
       State.notify();
       onHeightChange();
+      // A GitHub event that came in meanwhile goes now.
+      if (heard.length) window.setTimeout(() => runHeard(), 0);
     }
   }
+
+  // ── Listening to GitHub ───────────────────────────────────────────────────
+
+  /** GitHub events with something for Claude to do, waiting for the chat to be free. */
+  const heard: ListenFired[] = [];
+
+  /**
+   * The next one goes to Claude in the chat that asked for it: that chat is
+   * opened from the history when another is on screen (a new one when it was
+   * deleted; the message says all it needs).
+   */
+  function runHeard() {
+    // Its chat answers one message at a time: the event waits for that answer.
+    const next = heard[0];
+    if (!next || preparing || runs.has(next.watch.chatId)) return;
+    const fired = heard.shift();
+    if (!fired) return;
+    if (State.chatId !== fired.watch.chatId) {
+      const saved = loadChats().find((c) => c.id === fired.watch.chatId);
+      if (saved) openChat(saved);
+      else newChat();
+    }
+    void submit(listenMessage(fired));
+  }
+
+  void onEvent<ListenFired>("listen-fired", (fired) => {
+    if (!fired) return;
+    Sound.play(fired.met ? "finish" : "error");
+    compactNotice(`GitHub · ${fired.summary}`, LISTEN_COLOR, 10_000);
+    if (!fired.watch.task) return;
+    heard.push(fired);
+    runHeard();
+  });
+  void onEvent<ListenWatch[]>("listen-changed", (list) => {
+    State.listening = list ?? [];
+    State.notify();
+  });
+  void Bridge.listenList().then((list) => {
+    if (!list) return;
+    State.listening = list;
+    State.notify();
+  });
 
   // ── Ctrl+V ────────────────────────────────────────────────────────────────
 
@@ -2334,11 +2410,15 @@ export function buildPrompt(
       }
       // Something is already attached: the ways to start make room for it.
       body.classList.toggle("has-context", attached > 0 || editing != null);
-      const editKey = editing != null ? String(editing) : "";
+      // A dropped file just came in: a word that it did, for a moment.
+      const uploaded = State.uploadedNote && State.uploadedNote.until > Date.now() ? State.uploadedNote : null;
+      if (!uploaded) State.uploadedNote = null;
+      const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : "";
       if (chipRow.dataset.label !== editKey) {
         chipRow.dataset.label = editKey;
         clear(chipRow);
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
+        else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
       }
 
       const count = State.chatHistory.length + (run ? 0.5 : 0);
@@ -2358,7 +2438,7 @@ export function buildPrompt(
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          renderMarkdown(live, takeTimers(run.text).text);
+          renderMarkdown(live, takeListens(takeTimers(run.text).text).text);
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(activityLabel(run.activity)));
         // Scrolled up to read: the finished answer replaces the streamed one where it was.

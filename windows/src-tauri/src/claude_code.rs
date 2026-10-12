@@ -37,8 +37,6 @@ use crate::platform;
 
 pub const PROVIDER: &str = "claude-code";
 
-/// A turn can wait on the user's Allow / Deny clicks, so it gets a long while.
-const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// The island is told about new text at most this often.
 const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
 /// How often a running turn looks at the Stop button.
@@ -58,6 +56,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
+    crate::chat::listen_note!(),
     crate::chat::math_note!()
 );
 
@@ -71,6 +70,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
+    crate::chat::listen_note!(),
     crate::chat::math_note!()
 );
 
@@ -195,15 +195,30 @@ fn card_settings(relay: &str) -> Value {
     })
 }
 
-/// `args`, plus the card hook when the mode asks every time and the file
-/// could be written where Claude Code can be pointed at it.
+/// The settings a run in Auto or Plan adds for itself instead: a PreToolUse
+/// hook on shell commands that lets everything through as the mode says, but
+/// a command that would sit waiting on GitHub (`gh pr checks --watch`, a sleep
+/// loop): Claude is told to let Lumo listen instead (lumo-hook reply::blocking_wait).
+fn guard_settings(relay: &str) -> Value {
+    json!({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": "Bash|PowerShell",
+                "hooks": [{ "type": "command", "command": relay, "timeout": 10 }],
+            }],
+        },
+    })
+}
+
+/// `args`, plus the card hook when the mode asks every time (the guard
+/// otherwise), when the file could be written where Claude Code can be
+/// pointed at it.
 fn with_cards(mut args: Vec<String>, mode: &str) -> Vec<String> {
-    if permission_mode(mode) != "default" {
-        return args;
-    }
-    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-card --wait 110 PreToolUse");
-    let path = crate::platform::local_dir().join("chat-cards.json");
-    let text = card_settings(&relay).to_string();
+    let cards = permission_mode(mode) == "default";
+    let (flags, file) = if cards { ("--chat-card --wait 110 PreToolUse", "chat-cards.json") } else { ("--chat-guard PreToolUse", "chat-guard.json") };
+    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, flags);
+    let path = crate::platform::local_dir().join(file);
+    let text = if cards { card_settings(&relay) } else { guard_settings(&relay) }.to_string();
     let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -412,7 +427,8 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         }
         "Grep" | "Glob" => Activity::new("search", short(&field(&["pattern"]))),
         "LS" => Activity::new("search", ""),
-        "Bash" | "PowerShell" => Activity::new("command", ""),
+        // What the command is for, as Claude Code describes it ("Watch the PR's checks").
+        "Bash" | "PowerShell" => Activity::new("command", short(&field(&["description"]))),
         "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => Activity::new("edit", file_name(&field(&["file_path", "notebook_path"]))),
         "WebSearch" | "web_search" => Activity::new("web", ""),
         "WebFetch" | "web_fetch" => match host(&field(&["url"])) {
@@ -445,6 +461,8 @@ struct Run {
     session: Option<String>,
     /// The text of the assistant message being written, for the island.
     visible: String,
+    /// Every text of the turn, each message on its own lines (chat::keep_lumo_lines).
+    said: String,
     /// The `result` line: final text, or the error Claude Code reported.
     result: Option<Result<String, String>>,
     denied: usize,
@@ -502,6 +520,7 @@ impl Run {
                 match event["type"].as_str() {
                     Some("message_start") => {
                         self.blocks.clear();
+                        self.said.push('\n');
                         let changed = !self.visible.is_empty();
                         self.visible.clear();
                         changed
@@ -540,6 +559,7 @@ impl Run {
                     Some("content_block_delta") if event["delta"]["type"] == "text_delta" => {
                         let text = event["delta"]["text"].as_str().unwrap_or("");
                         self.visible.push_str(text);
+                        self.said.push_str(text);
                         if !text.is_empty() {
                             // The text shows instead: a later tool call is news again.
                             self.activity = None;
@@ -659,12 +679,6 @@ fn run(
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
-    // Its own process group, so Stop ends the tools and hooks it started too.
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))?;
@@ -707,25 +721,20 @@ fn run(
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
 
-    let started = Instant::now();
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     // Text the island was not shown yet (it is told at most every DELTA_INTERVAL).
     let mut unsent = false;
     let mut state = Run::default();
-    let mut timed_out = false;
+    // No time limit: a long piece of work, or a card nobody clicked yet, goes
+    // on until it ends or the user presses Stop.
     loop {
         if stop.is_stopped() && state.result.is_none() {
             kill_tree(&mut child);
             state.stopped = true;
             return Ok(state);
         }
-        let left = TURN_TIMEOUT.saturating_sub(started.elapsed());
-        if left.is_zero() {
-            timed_out = true;
-            break;
-        }
         // Short waits, so Stop is felt at once (only while a turn runs).
-        match rx.recv_timeout(left.min(STOP_POLL)) {
+        match rx.recv_timeout(STOP_POLL) {
             Ok(line) => {
                 unsent |= state.feed(&line);
                 let activity = state.take_activity();
@@ -743,10 +752,6 @@ fn run(
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
         }
     }
-    if timed_out {
-        kill_tree(&mut child);
-        return Err(t("Claude Code took too long and was stopped."));
-    }
     let status = child.wait().ok();
     let stderr = err_text.join().unwrap_or_default();
     if state.result.is_none() {
@@ -762,22 +767,11 @@ fn run(
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
-/// On Linux the whole process group goes (run() starts the CLI in its own).
 pub(crate) fn kill_tree(child: &mut std::process::Child) {
-    #[cfg(windows)]
-    {
-        let mut kill = Command::new("taskkill");
-        kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
-        platform::no_console(&mut kill);
-        let _ = kill.status();
-    }
-    #[cfg(target_os = "linux")]
-    if let Ok(pid) = i32::try_from(child.id()) {
-        // SAFETY: a plain signal to the group the child leads; no memory is shared.
-        unsafe {
-            libc::kill(-pid, libc::SIGKILL);
-        }
-    }
+    let mut kill = Command::new("taskkill");
+    kill.args(["/T", "/F", "/PID", &child.id().to_string()]);
+    platform::no_console(&mut kill);
+    let _ = kill.status();
     let _ = child.kill();
     let _ = child.wait();
 }
@@ -808,9 +802,8 @@ pub async fn send(
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
     let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
-    // Computer use (Windows): the chat's own instructions, Lumo's MCP server,
-    // and the computer only usable while this turn runs.
-    let computer = computer && cfg!(windows);
+    // Computer use: the chat's own instructions, Lumo's MCP server, and the
+    // computer only usable while this turn runs.
     let append = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     let mut args = with_cards(args_with(append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
     if computer {
@@ -862,6 +855,7 @@ pub async fn send(
         Some(Err(e)) => return Err(tf("Claude Code: {error}", &[("error", &e)])),
         None => unreachable!("run() returns an error without a result"),
     };
+    let answer = chat::keep_lumo_lines(answer, &state.said);
     let answer = if answer.trim().is_empty() && state.denied > 0 {
         t("Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island.")
     } else {
@@ -1032,10 +1026,11 @@ mod tests {
         assert_eq!(entry["matcher"], CARD_MATCHER);
         assert_eq!(entry["hooks"][0]["timeout"], 120, "longer than the relay waits");
         assert!(entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
-        // Auto and Plan only add nothing: Claude Code decides, or changes nothing.
-        for mode in ["auto", "plan"] {
-            assert!(!with_cards(vec![], mode).iter().any(|a| a == "--settings"), "{mode}");
-        }
+        // Auto and Plan only add the guard on shell commands: Claude Code decides.
+        let v = guard_settings("'/x/lumo-hook' --chat-guard PreToolUse");
+        let entry = &v["hooks"]["PreToolUse"][0];
+        assert_eq!(entry["matcher"], "Bash|PowerShell");
+        assert!(!entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
     }
 
     #[test]
@@ -1052,6 +1047,30 @@ mod tests {
         for wholesale in ["bypassPermissions", "dontAsk", "", "plan & calc"] {
             assert_eq!(mode(wholesale), "default", "{wholesale}");
         }
+    }
+
+    #[test]
+    fn a_listen_line_written_before_a_tool_call_reaches_the_island() {
+        // Claude writes the line, checks the CI with a command, then answers:
+        // the result is only the last message, the line must not be lost.
+        let mut run = Run::default();
+        let lines = [
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start"}}"#,
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Ok.\n[[listen Rccrd12/Lumo#22 checks]]\n"}}}"#,
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"message_start"}}"#,
+            r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"The checks are still running."}}}"#,
+            r#"{"type":"result","subtype":"success","is_error":false,"result":"The checks are still running."}"#,
+        ];
+        for l in &lines {
+            run.feed(l.as_bytes());
+        }
+        let answer = match run.result.clone() {
+            Some(Ok(text)) => chat::keep_lumo_lines(text, &run.said),
+            other => panic!("{other:?}"),
+        };
+        assert_eq!(answer, "The checks are still running.\n[[listen Rccrd12/Lumo#22 checks]]\n");
+        // Written in the last message already: not twice.
+        assert_eq!(chat::keep_lumo_lines("Ok.\n[[listen o/r#1 merged]]".into(), "Ok.\n[[listen o/r#1 merged]]"), "Ok.\n[[listen o/r#1 merged]]");
     }
 
     #[test]
@@ -1098,6 +1117,8 @@ mod tests {
         assert_eq!(a("LS", json!({"path": "/home/me"})), Activity::new("search", ""));
         assert_eq!(a("Bash", json!({"command": "rm -rf /tmp/x"})), Activity::new("command", ""), "the command itself stays out");
         assert_eq!(a("PowerShell", json!({"command": "Get-ChildItem"})), Activity::new("command", ""));
+        // What it is for, when Claude Code says: a long one is not a mystery.
+        assert_eq!(a("Bash", json!({"command": "gh pr checks 22 --watch", "description": "Watch the PR's checks"})), Activity::new("command", "Watch the PR's checks"));
         for tool in ["Edit", "Write", "MultiEdit"] {
             assert_eq!(a(tool, json!({"file_path": "/work/src/main.rs"})), Activity::new("edit", "main.rs"));
         }
@@ -1204,43 +1225,6 @@ mod tests {
         // Unless it goes with this question anyway.
         let p = prompt(Some(&file), &carried, &files, "go on");
         assert_eq!(p.matches("C:\\inbox\\a.pdf").count(), 1, "{p}");
-    }
-
-    #[test]
-    fn stop_ends_the_cli_and_keeps_what_it_wrote() {
-        // A stand-in for `claude -p`: says something, then hangs until killed.
-        #[cfg(unix)]
-        {
-            let script = r#"echo '{"type":"system","subtype":"init","session_id":"0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"}'
-echo '{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"toolu_1","name":"Read","input":{"file_path":"/home/me/report.pdf"}}]}}'
-echo '{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Half an answer"}}}'
-sleep 30 & wait"#;
-            let stop = Arc::new(Stop::default());
-            let stopper = stop.clone();
-            let seen = std::sync::Mutex::new(String::new());
-            let started = Instant::now();
-            let activities = std::sync::Mutex::new(Vec::new());
-            let state = run(
-                PathBuf::from("/bin/sh"),
-                vec!["-c".into(), script.into()],
-                String::new(),
-                std::env::temp_dir(),
-                stop,
-                |text| {
-                    *seen.lock().unwrap() = text.to_string();
-                    stopper.stop();
-                },
-                |activity| activities.lock().unwrap().push(activity.clone()),
-            )
-            .unwrap();
-            assert!(state.stopped);
-            assert_eq!(state.visible, "Half an answer");
-            assert_eq!(state.session.as_deref(), Some(SID));
-            assert!(state.result.is_none());
-            assert_eq!(*seen.lock().unwrap(), "Half an answer");
-            assert_eq!(*activities.lock().unwrap(), vec![Activity::new("read", "report.pdf")], "told as it happened");
-            assert!(started.elapsed() < Duration::from_secs(10), "not left waiting on the CLI");
-        }
     }
 
     #[test]

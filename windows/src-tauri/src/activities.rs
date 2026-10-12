@@ -100,9 +100,6 @@ fn island_k(win: &WebviewWindow) -> f64 {
 /// do, and the size is kept when the button is let go.
 #[tauri::command]
 pub fn activities_resize(app: AppHandle, fx: f64, fy: f64, height: f64) {
-    if !platform::CURSOR_POLL {
-        return;
-    }
     std::thread::spawn(move || {
         let Some(win) = island::window(&app) else { return };
         let Some((sx, sy)) = cursor_physical() else { return };
@@ -217,7 +214,7 @@ fn physical_size(app: &AppHandle, s: &Settings, p: (f64, f64)) -> (u32, u32) {
 /// a window made in a synchronous command can deadlock on Windows.
 #[tauri::command]
 pub async fn activities_prepare(app: AppHandle) {
-    if platform::CURSOR_POLL && window(&app).is_none() {
+    if window(&app).is_none() {
         let _ = create(&app);
     }
 }
@@ -225,9 +222,6 @@ pub async fn activities_prepare(app: AppHandle) {
 /// Shown while the island is open (and they are off it); hidden otherwise.
 #[tauri::command]
 pub fn activities_show(app: AppHandle, show: bool) {
-    if !platform::CURSOR_POLL {
-        return;
-    }
     if !show {
         if let Some(win) = window(&app) {
             let _ = win.hide();
@@ -300,9 +294,6 @@ pub fn snap_side(rect: (f64, f64, f64, f64), island: (f64, f64, f64, f64), scale
 /// side they join it, anywhere else they stay.
 #[tauri::command]
 pub fn activities_drag(app: AppHandle, from: Option<(f64, f64, f64, f64)>) {
-    if !platform::CURSOR_POLL {
-        return;
-    }
     std::thread::spawn(move || {
         let Some((cx, cy)) = cursor_physical() else { return };
         let Some(win) = create(&app) else { return };
@@ -409,9 +400,6 @@ fn slide(win: &WebviewWindow, from: (f64, f64, f64, f64), to: (f64, f64, f64, f6
 /// right edge; `fy` −1 top, 1 bottom), and the size is kept when let go.
 #[tauri::command]
 pub fn activities_window_resize(app: AppHandle, fx: f64, fy: f64) {
-    if !platform::CURSOR_POLL {
-        return;
-    }
     std::thread::spawn(move || {
         let Some(win) = window(&app) else { return };
         let Some((sx, sy)) = cursor_physical() else { return };

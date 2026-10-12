@@ -62,10 +62,7 @@ const MAX_TOTAL: usize = 64 * 1024 * 1024;
 const MAX_MODELS: usize = 60;
 
 /// How the install hint says to install agy (antigravity.google/docs/cli/install).
-#[cfg(windows)]
 const INSTALL: &str = "irm https://antigravity.google/cli/install.ps1 | iex";
-#[cfg(not(windows))]
-const INSTALL: &str = "curl -fsSL https://antigravity.google/cli/install.sh | bash";
 
 /// In front of the first prompt of a conversation: agy takes no system prompt.
 const INSTRUCTIONS: &str = concat!(
@@ -77,12 +74,12 @@ You cannot see the user's screen, their open windows or the folder open in File 
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
     crate::chat::timer_note!(),
+    crate::chat::listen_note!(),
     crate::chat::math_note!()
 );
 
 /// "default": no `--model`, whatever the user picked in agy itself.
 const DEFAULT_MODEL: &str = "default";
-
 
 fn not_installed() -> String {
     tf(
@@ -307,6 +304,8 @@ struct Run {
     conversation: Option<String>,
     /// The text of the response step being written, for the island.
     visible: String,
+    /// Every text of the turn, each step on its own lines (chat::keep_lumo_lines).
+    said: String,
     /// The `step_index` `visible` belongs to.
     text_step: Option<u64>,
     /// The `result` event: final text, or the error agy reported.
@@ -395,8 +394,10 @@ impl Run {
                 if self.text_step != Some(index) {
                     self.text_step = Some(index);
                     self.visible.clear();
+                    self.said.push('\n');
                 }
                 self.visible.push_str(text);
+                self.said.push_str(text);
                 // The text shows instead: a later tool step is news again.
                 self.activity = None;
                 self.activity_changed = false;
@@ -524,12 +525,6 @@ fn run(
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
     platform::no_console(&mut cmd);
-    // Its own process group, so Stop ends the tools and hooks it started too.
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
     let mut child = cmd
         .spawn()
         .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
@@ -671,11 +666,6 @@ fn list_models(exe: PathBuf) -> Vec<String> {
     let mut cmd = Command::new(&exe);
     cmd.arg("models").stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
     platform::no_console(&mut cmd);
-    #[cfg(target_os = "linux")]
-    {
-        use std::os::unix::process::CommandExt;
-        cmd.process_group(0);
-    }
     let Ok(mut child) = cmd.spawn() else { return Vec::new() };
     let stdout = child.stdout.take();
     let reader = std::thread::spawn(move || {
@@ -772,6 +762,7 @@ pub async fn send(
         Some(Err(e)) => return Err(result_error(&e)),
         None => unreachable!("run() returns an error without a result"),
     };
+    let answer = chat::keep_lumo_lines(answer, &state.said);
     let answer = if answer.trim().is_empty() {
         crate::log::line(format!("antigravity: empty answer; {} denied; stderr: {}", state.denied, state.stderr_tail));
         empty_answer(state.denied, &state.stderr_tail)
@@ -1102,81 +1093,5 @@ mod tests {
         assert_eq!(parse_models(r#"{"models":[{"slug":"gemini-3-pro"}]}"#), ["gemini-3-pro"]);
         assert_eq!(parse_models("--evil-1\ngemini-3 & calc\n"), Vec::<String>::new());
         assert!(parse_models("").is_empty());
-    }
-
-    #[cfg(unix)]
-    fn script(text: &str) -> (PathBuf, Vec<String>) {
-        (PathBuf::from("/bin/sh"), vec!["-c".into(), text.into()])
-    }
-
-    #[test]
-    fn a_turn_reads_its_prompt_from_stdin_and_ends_once_answered() {
-        // A stand-in for headless agy: reads one event, answers it, then waits
-        // for stdin to close as agy does.
-        #[cfg(unix)]
-        {
-            let dir = std::env::temp_dir().join(format!("lumo-agy-{}", std::process::id()));
-            std::fs::create_dir_all(&dir).unwrap();
-            let (exe, args) = script(&format!(
-                r#"read -r line; printf '%s\n' "$line" > got.json
-echo '{{"event":"step_update","conversation_id":"{CID}","step_index":1,"state":"ACTIVE","step_type":"agent_response","text_delta":"Hi"}}'
-echo '{{"event":"result","conversation_id":"{CID}","status":"SUCCESS","response":"Hi there"}}'
-cat > /dev/null
-echo 'Tool run_command denied: requires approval' >&2"#
-            ));
-            let started = Instant::now();
-            let texts = std::sync::Mutex::new(Vec::new());
-            let state = run(exe, args, user_event("hello"), dir.clone(), Arc::new(Stop::default()), |t| texts.lock().unwrap().push(t.to_string()), |_| {}).unwrap();
-            assert_eq!(state.result, Some(Ok("Hi there".into())));
-            assert_eq!(state.conversation.as_deref(), Some(CID));
-            assert_eq!(state.denied, 1);
-            assert_eq!(*texts.lock().unwrap(), ["Hi"]);
-            assert!(started.elapsed() < Duration::from_secs(10), "stdin was closed once answered");
-            let got: Value = serde_json::from_str(std::fs::read_to_string(dir.join("got.json")).unwrap().trim()).unwrap();
-            assert_eq!(got, json!({"event": "user", "message": {"content": "hello"}}));
-
-            // No result: what stderr said, or how to sign in.
-            let (exe, args) = script("echo 'Error: authentication required' >&2; exit 1");
-            let err = run(exe, args, String::new(), dir.clone(), Arc::new(Stop::default()), |_| {}, |_| {}).unwrap_err();
-            assert_eq!(err, not_signed_in());
-            let _ = std::fs::remove_dir_all(&dir);
-        }
-    }
-
-    #[test]
-    fn stop_ends_the_cli_and_keeps_what_it_wrote() {
-        #[cfg(unix)]
-        {
-            let (exe, args) = script(&format!(
-                r#"echo '{{"event":"step_update","conversation_id":"{CID}","step_index":1,"state":"ACTIVE","step_type":"tool","tool_info":{{"name":"view_file","parameters":{{"AbsolutePath":"/home/me/report.pdf"}}}}}}'
-echo '{{"event":"step_update","conversation_id":"{CID}","step_index":2,"state":"ACTIVE","step_type":"agent_response","text_delta":"Half an answer"}}'
-sleep 30 & wait"#
-            ));
-            let stop = Arc::new(Stop::default());
-            let stopper = stop.clone();
-            let seen = std::sync::Mutex::new(String::new());
-            let activities = std::sync::Mutex::new(Vec::new());
-            let started = Instant::now();
-            let state = run(
-                exe,
-                args,
-                user_event("go"),
-                std::env::temp_dir(),
-                stop,
-                |text| {
-                    *seen.lock().unwrap() = text.to_string();
-                    stopper.stop();
-                },
-                |activity| activities.lock().unwrap().push(activity.clone()),
-            )
-            .unwrap();
-            assert!(state.stopped);
-            assert_eq!(state.visible, "Half an answer");
-            assert_eq!(state.conversation.as_deref(), Some(CID));
-            assert!(state.result.is_none());
-            assert_eq!(*seen.lock().unwrap(), "Half an answer");
-            assert_eq!(*activities.lock().unwrap(), vec![Activity::new("read", "report.pdf")], "told as it happened");
-            assert!(started.elapsed() < Duration::from_secs(10), "not left waiting on the CLI");
-        }
     }
 }

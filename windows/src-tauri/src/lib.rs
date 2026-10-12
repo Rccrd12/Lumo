@@ -25,6 +25,7 @@ mod i18n;
 mod identity;
 mod integrations;
 mod island;
+mod listen;
 mod live;
 mod local_chat;
 mod log;
@@ -47,7 +48,6 @@ mod shortcuts;
 mod tray;
 mod typing;
 mod updater;
-#[cfg(windows)]
 mod webview_drop;
 
 use std::process::Command;
@@ -77,9 +77,6 @@ pub struct BootInfo {
     screen: ScreenInfo,
     version: String,
     hook_path: String,
-    /// False where the OS has no global cursor (Wayland): the page then reports
-    /// the cursor from its own mouse events.
-    cursor_poll: bool,
     /// Where the island is drawn in its window (island::shift).
     shift: island::ShiftPayload,
     /// The computer runs on its battery (energy.rs), for Settings → General → Energy.
@@ -100,7 +97,6 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
         screen,
         version: env!("CARGO_PKG_VERSION").to_string(),
         hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
-        cursor_poll: platform::CURSOR_POLL,
         shift,
         on_battery: energy::on_battery(),
     }
@@ -163,7 +159,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
 }
 
 /// The island reports the system's languages at launch, for "System" in
-/// Settings → Language (WebView2 and WebKitGTK know them best).
+/// Settings → Language (WebView2 knows them best).
 #[tauri::command]
 fn set_system_languages(app: AppHandle, languages: Vec<String>) {
     if i18n::set_system(languages) {
@@ -198,17 +194,12 @@ fn set_collapsed(app: AppHandle, shared: State<Shared>, collapsed: bool) {
     if !collapsed {
         shared.gate.set_active(true);
     }
-    platform::set_pointer_watch(!collapsed);
 }
 
 /// The front end pushes the island shape; Rust decides click-through from it.
 #[tauri::command]
-fn set_island_rect(app: AppHandle, shared: State<Shared>, x: f64, y: f64, width: f64, height: f64) {
+fn set_island_rect(shared: State<Shared>, x: f64, y: f64, width: f64, height: f64) {
     shared.gate.set_rect(island::IslandRect { x, y, w: width, h: height });
-    // Without the cursor poll the input region is the click-through: it follows the island.
-    if !platform::CURSOR_POLL {
-        island::refresh_click_through(&app, &shared.gate);
-    }
 }
 
 #[tauri::command]
@@ -352,7 +343,7 @@ fn open_in_vscode(path: Option<String>) -> bool {
     let path = path.filter(|p| !p.is_empty());
     // It arrives in a hook payload: only an existing folder, given by its full
     // path, goes any further. `code` would read `--something` as an option, and
-    // xdg-open would launch a file with whatever handles its type.
+    // Explorer would launch a file with whatever handles its type.
     if let Some(p) = path.as_deref() {
         let p = std::path::Path::new(p);
         if !(p.is_absolute() && p.is_dir()) {
@@ -388,8 +379,7 @@ fn open_session(session_id: Option<String>, path: Option<String>) -> bool {
     open_in_vscode(path)
 }
 
-/// The Claude Desktop pill's target: the Claude app (Windows only — it has no
-/// Linux build).
+/// The Claude Desktop pill's target: the Claude app.
 #[tauri::command]
 fn open_claude_desktop() -> bool {
     platform::open_claude_desktop()
@@ -405,7 +395,7 @@ fn diff_file(path: &str) -> Option<&std::path::Path> {
 
 /// The diff card's ↗: opens the edited file in VS Code when `code` is on PATH,
 /// otherwise shows its folder. The file itself is never opened by its type —
-/// xdg-open or Explorer would run a script that Claude just wrote.
+/// Explorer would run a script that Claude just wrote.
 #[tauri::command]
 fn open_file_in_vscode(path: String) -> bool {
     let Some(file) = diff_file(&path) else { return false };
@@ -575,6 +565,15 @@ fn approval_answer(
 #[tauri::command]
 fn approval_ack(app: AppHandle, request_id: String) {
     pipe::acknowledge(&app, &request_id);
+}
+
+/// The chat's Antigravity CLI run in Auto: a command that only looks
+/// (core/approvals.ts autoAllows) goes through without a card. Nobody clicked,
+/// so it is not a decision for the recap.
+#[tauri::command]
+fn approval_auto_allow(app: AppHandle, request_id: String) {
+    recap::forget_request(&app, &request_id);
+    pipe::answer(&app, &request_id, "allow");
 }
 
 /// Nobody can act on this request — the island is paused, or another card is
@@ -1022,28 +1021,17 @@ pub fn run() {
     // Before anything opens a folder or a WebView starts.
     migrate::folders();
     migrate::keys();
-    platform::prepare_environment();
     let loaded = settings::load();
     i18n::set_picked(&loaded.language);
     let gate = Arc::new(PollGate::new());
 
     let mut builder = tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, argv, _cwd| {
-            // `lumo --shortcut <action>`: what a desktop's own keyboard
-            // settings run where we can't listen for keys ourselves (Wayland).
-            match shortcuts::from_args(&argv) {
-                Some(action) => shortcuts::dispatch(app, action),
-                None => {
-                    let _ = app.emit_to(island::WINDOW_LABEL, "tray", "open".to_string());
-                }
-            }
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            let _ = app.emit_to(island::WINDOW_LABEL, "tray", "open".to_string());
         }))
         .plugin(tauri_plugin_autostart::init(MacosLauncher::LaunchAgent, None))
         .plugin(tauri_plugin_dialog::init());
-    // Where no global shortcut can work, the plugin isn't even started.
-    if platform::global_shortcuts_blocked().is_none() {
-        builder = builder.plugin(shortcuts::plugin());
-    }
+    builder = builder.plugin(shortcuts::plugin());
 
     builder
         .manage(Shared {
@@ -1083,6 +1071,7 @@ pub fn run() {
             approval_decision,
             approval_answer,
             approval_ack,
+            approval_auto_allow,
             approval_decline,
             log_line,
             chat_send,
@@ -1110,6 +1099,9 @@ pub fn run() {
             screen_explorer_peek,
             screen_explorer,
             explorer_attach,
+            listen::listen_add,
+            listen::listen_cancel,
+            listen::listen_list,
             live::live_token,
             live::live_read,
             live::live_find,
@@ -1159,11 +1151,7 @@ pub fn run() {
             updater::update_install,
             desktop::desktop_mochi_info,
             desktop::desktop_mochi_pick_up,
-            desktop::desktop_mochi_carry,
-            desktop::desktop_mochi_carry_end,
             desktop::desktop_mochi_drag_begin,
-            desktop::desktop_mochi_drag_move,
-            desktop::desktop_mochi_drag_end,
             desktop::desktop_mochi_fly_out,
             desktop::desktop_mochi_fly_home,
             desktop::desktop_mochi_set_asleep,
@@ -1177,26 +1165,13 @@ pub fn run() {
             desktop::setup(&handle);
 
             if let Some(win) = island::window(&handle) {
-                // Where Tauri takes the drop itself (Linux), its paths are the
-                // ones ingest_file may copy (files.rs).
-                win.on_window_event(|event| {
-                    if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                        files::allow_dropped(paths.iter().map(|p| p.to_string_lossy().to_string()));
-                    }
-                });
                 platform::make_non_activating(&win);
-                #[cfg(windows)]
                 webview_drop::install(&handle);
                 live::install(&handle);
                 island::apply_geometry(&handle, &loaded.screen, island::Placement::of(&loaded), false);
                 let _ = win.show();
             }
             gate.collapsed.store(false, Ordering::Relaxed);
-            // Nothing drawn yet, so nothing takes the mouse until the page
-            // reports the island's shape.
-            if !platform::CURSOR_POLL {
-                island::refresh_click_through(&handle, &gate);
-            }
             gate.set_active(true);
             island::spawn_cursor_poll(handle.clone(), gate.clone());
 
@@ -1209,6 +1184,7 @@ pub fn run() {
             pipe::start(handle.clone());
             energy::start(handle.clone());
             integrations::start(handle.clone());
+            listen::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
         })

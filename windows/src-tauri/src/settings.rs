@@ -515,13 +515,6 @@ fn save_to(path: &Path, settings: &Settings) -> std::io::Result<()> {
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e))?;
 
-    // A dotfiles setup can make settings.json a symlink: write to the file it
-    // points at, so the link survives the rename below.
-    #[cfg(unix)]
-    let resolved = std::fs::canonicalize(path).unwrap_or_else(|_| path.to_path_buf());
-    #[cfg(unix)]
-    let path = resolved.as_path();
-
     // Write beside the target and rename over it: a crash, a full disk or a
     // power cut leaves the previous settings.json intact rather than half a file.
     let temp = path.with_extension(format!("json.lumo-{}", std::process::id()));
@@ -866,13 +859,11 @@ mod tests {
 
     /// Opens `path` the way a process that shares nothing does: nobody else can
     /// read or write it until the handle is dropped.
-    #[cfg(windows)]
     fn locked(path: &Path) -> std::fs::File {
         use std::os::windows::fs::OpenOptionsExt;
         std::fs::OpenOptions::new().read(true).share_mode(0).open(path).unwrap()
     }
 
-    #[cfg(windows)]
     #[test]
     fn a_file_that_could_not_be_read_is_set_aside_before_it_is_saved_over() {
         let (dir, file) = scratch("locked-then-free");
@@ -888,7 +879,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    #[cfg(windows)]
     #[test]
     fn a_file_that_still_cannot_be_read_is_not_saved_over() {
         let (dir, file) = scratch("locked");
@@ -977,22 +967,6 @@ mod tests {
     }
 
     // ── Writing ───────────────────────────────────────────────────────────────
-
-    /// A dotfiles setup keeps the real file elsewhere and links to it.
-    #[cfg(unix)]
-    #[test]
-    fn a_save_through_a_symlink_keeps_the_link_and_writes_its_target() {
-        let (dir, file) = scratch("symlink");
-        let real = dir.join("dotfiles-settings.json");
-        std::fs::write(&real, CUSTOM).unwrap();
-        std::os::unix::fs::symlink(&real, &file).unwrap();
-
-        save_to(&file, &Settings::default()).unwrap();
-        assert!(std::fs::symlink_metadata(&file).unwrap().file_type().is_symlink());
-        assert_eq!(shown(&parse(&std::fs::read(&real).unwrap()).unwrap()), defaults());
-        assert_eq!(names(&dir), ["dotfiles-settings.json", "settings.json"]);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
 
     #[test]
     fn every_field_survives_a_save_and_a_load() {

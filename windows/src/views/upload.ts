@@ -1,12 +1,10 @@
-// Drop zone, upload progress and the "what do you want to do with it" card —
-// ports of UploadView / UploadingView / ChooseView from IslandViewContent.swift.
-//
-// Sending a file by email is not in the Windows v1, so `choose` offers the one
-// action the spec asks for: ask a question about it.
+// Drop zone and upload progress — ports of UploadView / UploadingView from
+// IslandViewContent.swift. Once the bar is full the file goes straight into
+// the chat (island.ts uploadFinished): there is no card asking what to do.
 
-import { h, clear } from "./dom";
+import { h } from "./dom";
 import { State } from "../core/state";
-import type { ViewActions, ViewHost } from "./views";
+import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
 /** Dashed rounded rect drawn as SVG so the dashes can march like on macOS. */
@@ -81,45 +79,6 @@ export function buildUploading(): ViewHost {
       glow.style.left = `max(14px, ${along}%)`;
       glow.style.opacity = State.uploadProgress > 0.01 ? "1" : "0";
       card.classList.toggle("done", done);
-    },
-  };
-}
-
-export function buildChoose(actions: ViewActions): ViewHost {
-  const title = h("div", { class: "title" });
-  const sub = h("div", { class: "sub", text: tl("What do you want to do with it?") });
-  const row = h(
-    "div",
-    { class: "actions" },
-    h("button", {
-      class: "btn primary",
-      text: tl("Ask a question"),
-      onclick: () => actions.setView("prompt"),
-    }),
-    h("button", {
-      class: "btn secondary",
-      text: tl("Cancel"),
-      onclick: () => actions.cancelDrop(),
-    }),
-  );
-  const el = h(
-    "div",
-    { class: "view" },
-    h(
-      "div",
-      { class: "card" },
-      h("div", { class: "stack", style: "padding:0 18px 0 98px" }, title, sub, row),
-    ),
-  );
-
-  return {
-    el,
-    sync() {
-      clear(title);
-      title.append(
-        h("b", { text: State.droppedFile?.name ?? t("file") }),
-        document.createTextNode(t(" is ready.")),
-      );
     },
   };
 }

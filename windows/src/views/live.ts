@@ -7,7 +7,6 @@
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { State } from "../core/state";
-import { HOST_OS } from "../core/pills";
 import { Live, helperName } from "../live/session";
 import { LIVE_EXTENDED, LIVE_MODEL, isExtended, liveModelName, parseLiveModel } from "../live/protocol";
 import { LIVE_STRINGS as S } from "../live/strings";
@@ -147,7 +146,7 @@ export function buildLive(openSettings: () => void): ViewHost {
       bulb.setAttribute("aria-pressed", String(thinking));
       bulb.disabled = Live.phase === "connecting" || Live.phase === "reconnecting";
       const helper = helperName(State.settings.liveHelper);
-      const screen = State.settings.liveScreen && HOST_OS === "windows";
+      const screen = State.settings.liveScreen;
       intro.textContent = t(screen ? S.intro : S.introNoScreen, { helper });
       problem.textContent = Live.problem ?? "";
       problem.hidden = !Live.problem;

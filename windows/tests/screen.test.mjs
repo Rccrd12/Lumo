@@ -15,7 +15,7 @@ const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { providerDef } = await import("../src/core/providers.ts");
 const {
-  emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
+  afterSent, emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
   seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows, withoutFolder, withoutItem,
 } = await import("../src/core/screen.ts");
 
@@ -80,7 +80,7 @@ test("the File Explorer entry comes last, and only when a folder is open", () =>
   assert.deepEqual(found, { kind: "explorer", folder: PEEKED });
   assert.equal(entryLabel(found), "Folder open in File Explorer");
   assert.deepEqual(menuEntries([], { folder: null, problem: "" }).map(entryLabel), ["Open windows"], "none open: no entry");
-  assert.deepEqual(menuEntries([], { folder: PEEKED, problem: "Not available on Linux yet." }).map(entryLabel), ["Open windows"]);
+  assert.deepEqual(menuEntries([], { folder: PEEKED, problem: "The screen couldn't be read." }).map(entryLabel), ["Open windows"]);
 });
 
 test("the browser tabs come after the windows, only when a browser has some open", () => {
@@ -505,14 +505,14 @@ test("a local model can't take a screenshot: the screens are greyed out and say 
   assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "Screenshots need the Claude Code or Anthropic provider."));
 });
 
-test("on Linux the menu says it isn't available, and nothing else happens", async () => {
-  answers.screen_displays = () => Promise.reject(new Error("Not available on Linux yet."));
-  answers.screen_windows = () => Promise.reject(new Error("Not available on Linux yet."));
+test("when the screen can't be read the menu says so, and nothing else happens", async () => {
+  answers.screen_displays = () => Promise.reject(new Error("The screen couldn't be read."));
+  answers.screen_windows = () => Promise.reject(new Error("The screen couldn't be read."));
   await openMenu();
-  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "Not available on Linux yet."));
+  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "The screen couldn't be read."));
   entries()[0].fire("click");
   await flush();
-  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "Not available on Linux yet."));
+  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "The screen couldn't be read."));
   assert.equal(rows().length, 0);
 });
 
@@ -651,14 +651,14 @@ test("the File Explorer entry names the folder, and only a click lists it", asyn
   assert.equal(sent("explorer_attach").length, 0);
 });
 
-test("no File Explorer window, or Linux: no entry for it", async () => {
+test("no File Explorer window, or it can't be read: no entry for it", async () => {
   answers.screen_explorer_peek = null;
   await openMenu();
   assert.equal(explorerEntry(), undefined);
   assert.equal(sent("screen_explorer").length, 0);
 
   $(".screen-btn").fire("click");
-  answers.screen_explorer_peek = () => Promise.reject(new Error("Not available on Linux yet."));
+  answers.screen_explorer_peek = () => Promise.reject(new Error("The screen couldn't be read."));
   await openMenu();
   assert.equal(explorerEntry(), undefined);
 });
@@ -817,9 +817,9 @@ test("a folder picked from the menu is sent once, not twice", async () => {
   assert.deepEqual(sent("chat_send")[0].screen.folder, FOLDER);
 });
 
-test("no File Explorer window, or Linux: no chip, nothing sent, no error", async () => {
-  answers.screen_explorer_peek = () => Promise.reject(new Error("Not available on Linux yet."));
-  answers.screen_explorer = () => Promise.reject(new Error("Not available on Linux yet."));
+test("no File Explorer window, or it can't be read: no chip, nothing sent, no error", async () => {
+  answers.screen_explorer_peek = () => Promise.reject(new Error("The screen couldn't be read."));
+  answers.screen_explorer = () => Promise.reject(new Error("The screen couldn't be read."));
   await turnOnSharing();
   assert.equal(folderChips().length, 0);
   await ask("hi");
@@ -942,4 +942,19 @@ test("an attached picture shows itself in the preview", async () => {
   assert.deepEqual(view.el.find(".screen-preview-img").map((i) => i.getAttribute("src")), ["data:image/png;base64,QQ=="]);
   assert.deepEqual(view.el.find(".screen-preview-detail").map((e) => e.textContent), ["C:\\Lumo\\inbox\\photo.png"]);
   State.droppedFile = null;
+});
+
+test("after a message, what went no longer waits, even if the attachments changed meanwhile", () => {
+  const one = { name: "Screen 1", path: "C:\\Lumo\\inbox\\s1.png", preview: "" };
+  const two = { name: "Screen 1 (2)", path: "C:\\Lumo\\inbox\\s2.png", preview: "" };
+  const sent = { ...emptyScreen(), shots: [one], windows: [SHARED[0]] };
+  // Untouched: the next message starts empty, the folder that rides along stays.
+  assert.deepEqual(afterSent(sent, sent), nextScreen(sent));
+  // The folder in File Explorer asked again while the answer came: a new object, same items.
+  const peeked = { ...sent, autoFolder: PEEKED };
+  assert.deepEqual(afterSent(peeked, sent), { ...emptyScreen(), autoFolder: PEEKED });
+  // A screenshot added while the answer came waits for the next message, alone.
+  const added = { ...sent, shots: [one, two] };
+  assert.deepEqual(afterSent(added, sent).shots, [two]);
+  assert.deepEqual(afterSent(added, sent).windows, []);
 });

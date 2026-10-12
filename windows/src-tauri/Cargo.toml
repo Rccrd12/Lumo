@@ -1,6 +1,6 @@
 [package]
 name = "lumo"
-description = "Lumo for Windows and Linux — a small ring of light at the top of your screen"
+description = "Lumo for Windows — a small ring of light at the top of your screen"
 authors = ["Louis Raille", "Riccardo Gentili"]
 version.workspace = true
 edition.workspace = true
@@ -79,17 +79,3 @@ windows = { version = "0.61", features = [
   "Win32_UI_Shell",
   "Win32_UI_WindowsAndMessaging",
 ] }
-
-[target.'cfg(target_os = "linux")'.dependencies]
-# Secret Service (GNOME Keyring, KWallet) over D-Bus, encrypted in transit.
-keyring = { version = "3", features = ["sync-secret-service", "crypto-rust"] }
-libc = "0.2"
-# The music playing, for the closed island (media.rs): MPRIS over D-Bus. The
-# version the Secret Service above runs on: nothing new is compiled.
-dbus = "0.9"
-# The GTK that Tauri already runs on, to reach its window for layer-shell and
-# the input region. libgtk-layer-shell itself is called directly (platform/linux.rs).
-gtk = "0.18"
-# The island's webview, to let it use the microphone once a Gemini Live
-# conversation starts (live.rs). The version wry runs on: nothing new is compiled.
-webkit2gtk = "2.0"

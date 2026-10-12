@@ -88,9 +88,6 @@ pub fn ensure_private_dir(dir: &std::path::Path) -> std::io::Result<()> {
     std::fs::create_dir_all(dir)
 }
 
-/// Nothing to set up before the webview starts.
-pub fn prepare_environment() {}
-
 pub fn local_time() -> LocalTime {
     let t = unsafe { GetLocalTime() };
     LocalTime {
@@ -294,9 +291,6 @@ fn local_full_name() -> Option<String> {
 
 // ── Cursor ────────────────────────────────────────────────────────────────────
 
-/// The 60 Hz poll reads the cursor and flips click-through from it.
-pub const CURSOR_POLL: bool = true;
-
 /// The computer runs on its battery (energy.rs). Unknown reads as mains power.
 pub fn on_battery() -> bool {
     let mut status = SYSTEM_POWER_STATUS::default();
@@ -384,15 +378,6 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
     }
 }
-
-/// Click-through here is the poll's WS_EX_TRANSPARENT toggle, not a region.
-pub fn set_input_region(_win: &WebviewWindow, _rect: Option<(f64, f64, f64, f64)>) {}
-
-/// The cursor poll already parks itself with the island (island.rs): nothing to do.
-pub fn set_pointer_watch(_active: bool) {}
-
-/// `set_position` already places a Win32 window on the right display.
-pub fn pin_to_monitor(_win: &WebviewWindow, _x: i32, _y: i32) {}
 
 // ── Session windows ("Open terminal") ─────────────────────────────────────────
 //
@@ -517,11 +502,6 @@ pub fn open_claude_desktop() -> bool {
 
 // ── Global shortcuts ──────────────────────────────────────────────────────────
 
-/// RegisterHotKey works in every Windows session.
-pub fn global_shortcuts_blocked() -> Option<&'static str> {
-    None
-}
-
 /// The character Ctrl+Alt(+Shift)+`vk` types on one of the installed keyboard
 /// layouts, if any. Windows reads Ctrl+Alt as AltGr, so registering such a
 /// combination as a global shortcut would stop the user typing that character
@@ -565,21 +545,6 @@ pub fn desktop_mode() -> super::DesktopMode {
 
 /// Same window styles as the island: never takes focus, never in Alt-Tab (it
 /// is created without a taskbar button).
-pub fn prepare_desktop_window(win: &WebviewWindow, _mode: super::DesktopMode) -> bool {
+pub fn prepare_desktop_window(win: &WebviewWindow) {
     make_non_activating(win);
-    true
-}
-
-/// The cursor poll toggles WS_EX_TRANSPARENT from the body hit test instead.
-pub fn set_desktop_shape(_win: &WebviewWindow, _shape: super::MouseShape) {}
-
-/// Layer-shell only (Linux).
-pub fn set_layer_margins(_win: &WebviewWindow, _x: f64, _y: f64) {}
-
-/// Layer-shell only (Linux).
-pub fn set_layer_overlay(_win: &WebviewWindow, _on: bool) {}
-
-/// Layer-shell only (Linux): the logical size of the display the island is on.
-pub fn layer_display(_island: &WebviewWindow, _mochi: &WebviewWindow) -> Option<(f64, f64)> {
-    None
 }

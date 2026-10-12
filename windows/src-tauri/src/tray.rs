@@ -1,6 +1,5 @@
 // Notification-area icon. A left click hides the island into its edge or
-// brings it back (Windows; on Linux the menu is all a tray icon offers); the
-// right click opens the menu: Open, Recenter the island, Weekly recap,
+// brings it back; the right click opens the menu: Open, Recenter the island, Weekly recap,
 // Wardrobe, Settings, Pause (Resume while paused), Quit.
 
 use std::sync::atomic::{AtomicBool, Ordering};

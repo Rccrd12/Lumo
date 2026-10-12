@@ -72,7 +72,7 @@ export function short(text: string, max = CHIP_TITLE): string {
 /** What the menu learned about File Explorer: the folder's name, or why there is none. */
 export interface ExplorerPeek {
   folder: ExplorerFolder | null;
-  /** The error, on Linux for one; "" otherwise. */
+  /** The error, if any; "" otherwise. */
   problem: string;
 }
 
@@ -227,6 +227,21 @@ export function emptyScreen(): PendingScreen {
 /** After a message (or a new chat): nothing waits, the folder that rides along by itself stays. */
 export function nextScreen(p: PendingScreen): PendingScreen {
   return { ...emptyScreen(), autoFolder: p.autoFolder ?? null };
+}
+
+/**
+ * After a message went with `sent`: what waits now in `now`. The same, the
+ * next message starts empty; changed meanwhile (the folder in File Explorer
+ * asked again while the answer was coming, a screenshot added), only what
+ * went is taken out. Rust deletes the screenshots that went, so one left
+ * waiting would make the next message fail.
+ */
+export function afterSent(now: PendingScreen, sent: PendingScreen): PendingScreen {
+  if (now === sent) return nextScreen(now);
+  let rest: PendingScreen = { ...now, autoOff: false };
+  for (const item of screenItems(sent)) if (item.kind !== "folder") rest = withoutItem(rest, item);
+  if (sent.folder && rest.folder?.path === sent.folder.path) rest = { ...rest, folder: null };
+  return rest;
 }
 
 /** The folder's ×: the shared folder goes, and so does the automatic one, for this message. */

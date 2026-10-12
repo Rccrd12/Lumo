@@ -20,7 +20,7 @@ const { VIEW_LAYOUTS, islandSize } = await import("../src/core/layout.ts");
 
 const CFG = {
   model: P.LIVE_MODEL, thinking: "medium", voice: "", helper: "Claude Code", screen: true, search: true,
-  languageName: "French", os: "Windows", now: "Friday 9 October 2026 at 16:00",
+  languageName: "French", now: "Friday 9 October 2026 at 16:00",
 };
 
 /** Answers the commands `fn` knows during `body`, as Rust would; the rest get null. */

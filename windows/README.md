@@ -48,14 +48,13 @@ GitHub for the newest `windows-v*` release of
 when you click it, never in the background. When there is a newer one, **Update
 now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder,
 starts it with its usual window, and Lumo quits so the installer can replace
-it. Only installers from that repository's GitHub releases are accepted. On
-Linux, update Lumo the way you installed it.
+it. Only installers from that repository's GitHub releases are accepted.
 
 ### Your data
 
-Settings are in `%APPDATA%\com.rccrd12.lumo` (`~/.config/lumo` on Linux); the
-relay, the inbox, the log, the weekly recap and the chat history in
-`%LOCALAPPDATA%\com.rccrd12.lumo` (`~/.local/share/lumo`); keys in the system
+Settings are in `%APPDATA%\com.rccrd12.lumo`; the relay, the inbox, the log,
+the weekly recap and the chat history in `%LOCALAPPDATA%\com.rccrd12.lumo`;
+keys in the system
 keychain under `com.rccrd12.lumo`. Updating from 0.4.0 or earlier moves them
 there at the first launch, keys and chat history included. Hooks you installed
 before keep working; installing them again (Settings → Agents → Reinstall)
@@ -92,8 +91,8 @@ the exe it runs from.
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting in the attachments (its × takes it back). Each press adds one more, a row of its own. Type the question and press Enter; nothing is sent before that (Windows) |
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
-| `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted. On Linux it reads the selection with xclip, xsel or wl-paste |
-| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. On Linux the page is downloaded from its address. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
+| `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted |
+| `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab and selected text on its own, even two of the same screen — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
@@ -140,8 +139,7 @@ them never opens the island, even with Open on hover.
 - **The next event**: "Stand-up · in 5 min", from the calendar in the live
   activities.
 - **The music playing**, with previous, play/pause and next: Spotify, a
-  browser, any player that shows in the system's media controls (Windows)
-  or speaks MPRIS (Linux). Gemini Live can play, pause and skip too.
+  browser, any player that shows in the system's media controls. Gemini Live can play, pause and skip too.
 
 ### Energy saving
 
@@ -157,8 +155,7 @@ them never opens the island, even with Open on hover.
 While it saves energy, a green leaf shows at the closed island's right end.
 
 Whether the computer runs on its battery is asked of the system every 20
-seconds (Windows: the power status; Linux: a battery discharging in
-`/sys/class/power_supply`). A desktop has no battery, so Automatic there is
+seconds (the power status). A desktop has no battery, so Automatic there is
 always the mains-power choice.
 
 ### Live activities
@@ -179,7 +176,7 @@ On Windows it can be moved and resized like the island: drag its top bar and
 it comes off the island into a window of its own, which stays wherever you
 leave it (it shows while the island is open); drop it against the island's
 left or right side and it joins it there. Its edges and bottom corners resize
-it. On Linux it stays on the island's left.
+it.
 
 The calendar is read from its **secret iCal address**, pasted in Settings →
 Island → Calendar (Google Calendar: Settings → your calendar → Integrate
@@ -223,7 +220,13 @@ never folds it, it comes up even when the island is already open or another
 pill is in front, and the pill you were on comes back once you answer. To keep
 it for later, fold it with the **⌃** in its corner (or `Esc` in the island): the
 island shrinks to its compact size and stays on screen, nothing is answered, and
-opening it again shows the card. **Open terminal** brings the window the session
+opening it again shows the card. Under the request, a line says what it is
+for: the agent's own words when it gave some (Claude Code and Gemini CLI
+describe each command), else what the request does ("Only looks: changes
+nothing.", "Changes a file."). Once the island has the keyboard (a click on the
+card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say; a
+letter typed right after another key, mid-word, is never taken as an answer.
+**Open terminal** brings the window the session
 runs in to the front.
 
 Lumo always stays in the island: he can't be dragged out onto the desktop
@@ -300,7 +303,7 @@ weekly Claude limits, and another for Codex. Click one for the details and the
 reset times. Both are off by default; turn them on in **Settings… → Agents → Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
-  line. **Show in notch** first shows you the diff of the `statusLine` change in
+  line. **Show in the island** first shows you the diff of the `statusLine` change in
   `%USERPROFILE%\.claude\settings.json`, takes a dated backup and writes only
   after your click, with the same writer as the hooks: the status line becomes `lumo-hook --statusline`, which
   passes only the limits on (300 ms at most) and runs the status line you had
@@ -337,7 +340,7 @@ Weekly recap** turns it off or clears it.
 
 Lumo speaks the Mac app's ten languages — English, 简体中文, हिन्दी, Español,
 العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa Indonesia —
-and Italiano, which only Windows and Linux have (the Mac's strings in Italian
+and Italiano, which only Windows has (the Mac's strings in Italian
 are in `src/i18n/strings-it.json`). **Settings… → General → Language** picks one; **System** (the
 default) follows your system's language when it is one of these, English
 otherwise. The island, the settings window and the tray menu switch at once —
@@ -350,7 +353,7 @@ in, as on the Mac.
 
 The translations are the Mac's own (`i18n-source/Localizable.xcstrings`,
 turned into `src/i18n/strings.json` by `node scripts/gen-strings.mjs`), plus
-`src/i18n/extra.json` for what only Windows and Linux show. Both are keyed by
+`src/i18n/extra.json` for what only Windows shows. Both are keyed by
 the English text; a string missing in a language shows in English. The Rust
 side (tray, errors) embeds the same two files.
 
@@ -381,8 +384,8 @@ PC — nothing leaves it then — and warns before a key would travel over plain
 Answers from every provider are shown as **Markdown**: headings, lists, bold,
 inline code, quotes, and code blocks with a copy button. It is built from text
 nodes, never parsed as HTML, and only `http`/`https` links open. Lumo greets
-you by your first name when your account has one (the Windows display name or
-the Linux GECOS full name; a bare login name is not used).
+you by your first name when your account has one (the Windows display name; a
+bare login name is not used).
 
 To send the Claude chat through an Anthropic-compatible gateway, set
 `LUMO_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
@@ -398,8 +401,8 @@ configure yourself.
 
 Pick **Claude Code** above the chat box and the island talks to the Claude Code
 CLI you already use, signed in with your own Claude plan (Pro, Max…): no API key.
-Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Lumo`
-(`~/Lumo` on Linux); it never reads, stores or forwards any Claude credential,
+Lumo runs the unmodified `claude` binary as `claude -p`, in `%USERPROFILE%\Lumo`;
+it never reads, stores or forwards any Claude credential,
 and the usage counts against your plan's limits like any Claude Code session.
 
 Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
@@ -419,7 +422,11 @@ permission requests do, as a card over the chat.
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
-(it reads and plans, and changes nothing). It
+(it reads and plans, and changes nothing). Headless Antigravity CLI has no
+judgement of its own that Lumo can use, so with it **Auto** is Lumo's: a command
+that only looks (`git status`, `ls`, `cat`, `rg`…, with no redirection or
+substitution) runs without a card, unless agy itself marked it as not safe to
+run alone, and everything else is the usual card. It
 lights up while it may do more than ask. There is no mode that lets every
 action through: Lumo never passes `bypassPermissions` or
 `--dangerously-skip-permissions`.
@@ -431,10 +438,9 @@ Antigravity CLI (`agy`), signed in with your own Google account: no API key.
 Lumo runs the unmodified `agy` in headless mode (prompt on stdin as
 stream-json), in the same folder as Claude Code; it never reads, stores or
 forwards any Google credential. Install it with
-`irm https://antigravity.google/cli/install.ps1 | iex` in PowerShell
-(`curl -fsSL https://antigravity.google/cli/install.sh | bash` on Linux) and run
+`irm https://antigravity.google/cli/install.ps1 | iex` in PowerShell and run
 `agy` once in a terminal to sign in. Lumo looks for it on `PATH`, then in
-`%LOCALAPPDATA%\agy\bin` (`~/.local/bin` on Linux).
+`%LOCALAPPDATA%\agy\bin`.
 
 Like Claude Code, it reads the files you drop or attach and the folder you
 share, says what it is doing next to the typing dots, stops on **Stop**, and
@@ -474,8 +480,7 @@ quick search of your folders. So "explain page 45 of the PDF I have open"
 just works: Claude Code and Antigravity CLI get the path and read the file
 themselves (its folder is opened to them for this chat); the other providers
 get the document in front attached, when the question is about it. Only the
-chat's provider gets this, with that message; nothing is kept. Windows only
-for now: Linux lists no windows yet.
+chat's provider gets this, with that message; nothing is kept.
 
 ### Math in answers
 
@@ -523,8 +528,7 @@ week. The island keeps itself out of the screenshot (Windows 10 2004 and later).
 Claude Code reads the screenshots from their path; Anthropic, Google AI, OpenAI
 and OpenRouter receive them as images; the local model servers take the window
 list only. Claude Code is told to ask you to press the screen button when it
-needs to see something, never to capture the screen itself. On Linux the button
-says it isn't available yet.
+needs to see something, never to capture the screen itself.
 
 **Folder open in File Explorer**, at the bottom of the same menu, shows the name
 of the folder in the File Explorer window you used last (the tab in front, on
@@ -538,7 +542,7 @@ as if you had picked it with the paperclip, one per question and up to 32 MB.
 Claude Code is also given the folder itself, for the rest of that chat, so it
 can open its other files, each with its usual permission card. Folders whose
 path has characters such as `&` or `%` are left out of that, and Claude Code
-asks before reading there. Not available on Linux yet.
+asks before reading there.
 
 **Settings… → Chat → Always share the folder open in File Explorer** (off by
 default) does this for every message: while you type, the folder's name shows
@@ -634,15 +638,14 @@ Gemini uses the computer by itself, when it decides it needs to:
   File Explorer, **reads** text files, images and folders, and **reads PDFs**
   and Office documents through Gemini Flash.
 - **It opens** documents, folders and web pages, and **starts apps** by
-  their name, from the Start menu (or the Linux app menu). It never runs a
+  their name, from the Start menu. It never runs a
   program or a script by its file.
 - **It types in the text box you clicked in**, in any app, when you ask it
   to write something there. It never presses Enter and never sends: a line
   break is Shift+Enter (a new line in a message or an email), and in a
   terminal line breaks are typed as spaces, so nothing runs. Nothing is
   typed into Lumo itself, or while a key like Ctrl is held, and it stops if
-  you move to another window. On Linux it needs `xdotool` (X11) or `wtype`
-  (Wayland).
+  you move to another window.
 - **Anything else goes to Claude Code or Antigravity CLI** (Settings →
   Voice → Helper, with the helper's model and, for Claude Code, its
   effort), which works on the task in its own session and reports back;
@@ -716,8 +719,7 @@ Lumo-Windows-setup.exe            the same file under the rolling name
 (and the .msi as `Lumo-Windows-X.Y.Z.msi` and `Lumo-Windows.msi`).
 
 Installing is optional — `target/release/lumo.exe` runs on its own (`tauri build`
-names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`; on Linux
-the binary is `lumo`). There is no
+names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`). There is no
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
@@ -761,8 +763,7 @@ Claude Code: the exact diff, the path of the dated backup, nothing written until
 you click, and uninstalling removes only Lumo's entries. A config Lumo cannot
 read, or where it finds something it does not expect, is left alone and the
 reason is shown. Each agent gets its own pill (`agent_<name>`, the Mac's ids and
-colours). The files are the Mac's, under `%USERPROFILE%` on Windows and `~` on
-Linux.
+colours). The files are the Mac's, under `%USERPROFILE%`.
 
 | Agent | Installs | Permissions |
 |---|---|---|
@@ -832,12 +833,11 @@ own window.
 - The Cursor pill carries both Cursor Agent's own hooks and Claude Code running
   in Cursor's terminal.
 - Hermes: Lumo writes the plugin but does not run the `hermes` CLI, so it is
-  turned on once by hand. Hermes runs natively on Linux; on Windows it is
-  untested.
-- Plan usage: the user's previous status line runs through Git Bash on Windows
-  (`/bin/sh` on Linux and Mac); without Git Bash it is not run, rather than
+  turned on once by hand. Hermes is untested on Windows.
+- Plan usage: the user's previous status line runs through Git Bash (`/bin/sh`
+  on the Mac); without Git Bash it is not run, rather than
   guessed at with `cmd`. The Codex CLI is looked for on `PATH` and in npm's,
-  Volta's, Bun's and pnpm's folders (and nvm's on Linux).
+  Volta's, Bun's and pnpm's folders.
 - The chat's model picker opens inside the chat card instead of a popover, and
   it also offers OpenRouter and any OpenAI-compatible server, which the Mac
   does not. Google AI, OpenAI and OpenRouter can see an image you dropped (sent
@@ -885,93 +885,3 @@ own window.
   their sides.
 - Lumo doesn't go out onto the desktop: he stays in the island, and the Mac's
   ⌃⌥D shortcut isn't there.
-
-## Linux
-
-The same app builds for Linux: everything that differs lives in
-`src-tauri/src/platform/`, and the relay's transport in `hook/src/unix.rs`.
-
-```bash
-sudo apt install build-essential pkg-config \
-  libwebkit2gtk-4.1-dev libgtk-layer-shell-dev libayatana-appindicator3-dev \
-  librsvg2-dev libssl-dev libdbus-1-dev patchelf \
-  gstreamer1.0-plugins-base gstreamer1.0-plugins-good
-npm install
-npm run tauri dev      # live-reloading development build
-npm run pack           # AppImage, .deb and .rpm in windows/release/
-```
-
-On Arch Linux, install `webkit2gtk-4.1`, `gtk-layer-shell` and
-`libayatana-appindicator` and build the same way; store API keys with GNOME
-Keyring or KWallet.
-
-What changes on Linux:
-
-- **The island** is a gtk-layer-shell overlay anchored to the top edge, over any
-  top panel, on compositors that support it: COSMIC, KDE Plasma, Hyprland, Sway
-  and other wlroots compositors. GNOME has no layer-shell and ignores where a
-  Wayland window asks to go, so there Lumo runs through XWayland as a dock
-  window: top centre, on every workspace, still there after Super+D.
-  `LUMO_X11=0` keeps the native Wayland window, `LUMO_DOCK=0` makes it a
-  utility window instead of a dock. `LUMO_LAYER_SHELL=0` forces the regular
-  window anywhere.
-- **Click-through** is the window's input region, kept equal to the island
-  shape, so the compositor sends every other click to what is underneath.
-- **Moving, docking and resizing the island** (dragging its top bar, its
-  grips) follow the cursor across the screen, which Linux does not give
-  Lumo: the island stays at the top centre at its usual size there. Zoom and
-  icon size work.
-- **Lumo's eyes** follow the pointer only while it is over the island: Wayland
-  gives no app the cursor position anywhere else.
-- **Claude Code hooks** go through `~/.local/share/lumo/bin/lumo-hook` and a
-  Unix socket at `$XDG_RUNTIME_DIR/lumo.sock`. Both ends check that the other
-  runs as the same user. Every other agent uses the same relay, single-quoted
-  for `sh`, and its config under `~` (see Supported agents). A config that is a
-  symlink (dotfiles) is written through to its target, with its permissions
-  kept.
-- **Global shortcuts** are X11 key grabs, so they work in an X11 session.
-  On X11, AltGr is a modifier of its own and never clashes with `Ctrl+Alt`;
-  combinations the desktop already uses (GNOME's `Ctrl+Alt+T` terminal and
-  `Ctrl+Alt+←`/`→` workspace switching) show up as *In use*. Wayland has no
-  key grabs — the GlobalShortcuts portal isn't supported yet — so nothing is
-  registered there, and **Settings → Shortcuts** lists commands to bind in your
-  desktop's own keyboard settings instead:
-  `lumo --shortcut openChat` (or the AppImage's path) runs the action in the
-  Lumo that is already open. The ids are `toggleIsland`, `openChat`,
-  `goToAlert`, `jumpToTerminal`, `nextPill`, `prevPill`, `muteToggle` and
-  `wardrobeToggle`.
-- **Keys** live in the Secret Service (GNOME Keyring, KWallet).
-- **Plan usage**: the status line relay is `~/.local/share/lumo/bin/lumo-hook
-  --statusline` and runs your previous status line with `/bin/sh -c`, like Claude
-  Code. Codex is found on `$PATH`, in `~/.local/bin`, npm's global prefix, Volta,
-  Bun, pnpm, or nvm (newest Node first), since a desktop launch often has a
-  shorter `$PATH` than your shell.
-- **Lumo's greeting** uses the full name in your account's GECOS field
-  (`chfn` sets it); without one the chat stays neutral.
-- **The chat's screen button** (open windows, screenshots) isn't available yet:
-  its menu says so, and nothing is listed or captured. Browser tabs are listed
-  from Edge's, Chrome's and Chromium's own list of open tabs (their session
-  file, never written) and their pages downloaded from their address, without
-  your cookies, so a page behind a login shows what anyone would see (only
-  http and https, and only once you pick them). For the same reason
-  Gemini Live can't look at the screen there; everything else
-  in a call works. Typing in the text box you clicked in needs `xdotool` on
-  X11 or `wtype` on Wayland, where line breaks are typed as spaces (Wayland
-  doesn't say which window is in front).
-- **Files**: preferences in `~/.config/lumo/`, the log at
-  `~/.local/share/lumo/lumo.log`, the weekly recap history beside it in
-  `recap.json`. A saved recap image goes to the pictures folder named in
-  `~/.config/user-dirs.dirs`, else `~/Pictures`, else `~/Downloads`.
-- **Languages**: Hindi, Bengali, Chinese and Arabic need fonts that carry those
-  scripts; Lumo asks for the Noto families (`fonts-noto-core` and
-  `fonts-noto-cjk` on Debian and Ubuntu, `noto-fonts` and `noto-fonts-cjk` on
-  Arch). **System** reads the language from the webview, which follows
-  `LANGUAGE` / `LANG`.
-- **Copying the recap image** needs a WebKitGTK with image clipboard support;
-  where it is missing, the island says so and Save still works.
-- What the Windows build leaves out, this one does too: sending a file by
-  email and dragging Lumo onto a window.
-- **Open terminal** opens the folder in VS Code: Wayland lets no app bring
-  another app's window forward, and X11 would need a window-manager client this
-  build doesn't carry.
-- No **Claude Desktop** pill: the Claude app has no Linux build.

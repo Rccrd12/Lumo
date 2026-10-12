@@ -80,8 +80,8 @@ fn read_settings_lossy() -> Value {
         .unwrap_or_else(|| json!({}))
 }
 
-/// On Windows Claude Code runs hook commands through Git Bash; on Linux through
-/// `sh`. Either way the relay path is one quoted shell word.
+/// Claude Code runs hook commands through Git Bash: the relay path is one
+/// quoted shell word.
 fn hook_command(event: &str) -> String {
     agents::relay_command(Shell::Sh, event)
 }
@@ -338,7 +338,7 @@ fn save_status_line_previous(status_line: &Value) -> std::io::Result<()> {
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)?;
     }
-    config_file::write_like(&path, &path, config_file::pretty(status_line).as_bytes())
+    config_file::write_like(&path, config_file::pretty(status_line).as_bytes())
 }
 
 /// Copies the relay (lumo-hook.exe / lumo-hook) into the local data dir's
@@ -393,7 +393,6 @@ pub fn ensure_hook_exe(app: &AppHandle) {
     crate::migrate::old_relay(&src, &configs, install_relay);
 }
 
-#[cfg(windows)]
 fn install_relay(src: &Path, dest: &Path) {
     let same = match (std::fs::metadata(src), std::fs::metadata(dest)) {
         (Ok(a), Ok(b)) => a.len() == b.len() && a.modified().ok() == b.modified().ok(),
@@ -408,26 +407,6 @@ fn install_relay(src: &Path, dest: &Path) {
         if !dest.exists() {
             crate::log::line(format!("could not install {}: {err}", platform::HOOK_EXE));
         }
-    }
-}
-
-/// Linux does not keep the modification time on copy, so the contents decide.
-/// The new relay is written beside the old one and renamed over it: a hook
-/// starting at that moment runs either the old relay or the new one, never half
-/// of one, and a relay that is running right now does not block the update.
-#[cfg(unix)]
-fn install_relay(src: &Path, dest: &Path) {
-    use std::os::unix::fs::PermissionsExt;
-    if matches!((std::fs::read(src), std::fs::read(dest)), (Ok(a), Ok(b)) if a == b) {
-        return;
-    }
-    let temp = dest.with_extension(format!("new-{}", std::process::id()));
-    let result = std::fs::copy(src, &temp)
-        .and_then(|_| std::fs::set_permissions(&temp, std::fs::Permissions::from_mode(0o755)))
-        .and_then(|_| std::fs::rename(&temp, dest));
-    if let Err(err) = result {
-        let _ = std::fs::remove_file(&temp);
-        crate::log::line(format!("could not install {}: {err}", platform::HOOK_EXE));
     }
 }
 

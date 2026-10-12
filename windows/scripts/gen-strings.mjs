@@ -1,6 +1,6 @@
 // Generates src/i18n/strings.json from the Mac app's string catalog
-// (i18n-source/Localizable.xcstrings), so Windows and Linux show the
-// Mac's own translations.
+// (i18n-source/Localizable.xcstrings), so Windows shows the Mac's own
+// translations.
 //
 //   node scripts/gen-strings.mjs           writes src/i18n/strings.json
 //   node scripts/gen-strings.mjs --check   fails if the file is out of date
@@ -12,7 +12,7 @@
 // their categories ({ "one": …, "other": … }) and are keyed by the English
 // "other" form. English is the key itself, so it is not stored.
 //
-// Strings the Mac does not have (Windows and Linux only) live in
+// Strings the Mac does not have (Windows only) live in
 // src/i18n/extra.json, written by hand; see src/i18n/i18n.ts.
 
 import { readFileSync, writeFileSync } from "node:fs";

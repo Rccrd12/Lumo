@@ -9,10 +9,6 @@
 // interrupt what is running (a Claude Code session, a build): there it is
 // Ctrl+Insert, which only ever copies. Nothing runs before the key press, and
 // nothing is kept once the text is handed to the chat.
-//
-// Linux: X11 and Wayland keep the selection apart from the clipboard (the
-// "primary" selection), so it is read as it is with xclip, xsel or wl-paste,
-// and nothing is pressed.
 
 use serde::Serialize;
 
@@ -33,7 +29,6 @@ pub struct Selected {
 }
 
 /// The keys that copy in the app in front.
-#[cfg_attr(not(windows), allow(dead_code))] // Linux reads the primary selection
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum CopyKeys {
     CtrlC,
@@ -42,7 +37,6 @@ pub enum CopyKeys {
 
 /// Apps where Ctrl+C can mean "stop": terminals, and the editors and IDEs that
 /// have a terminal inside. Names as `screen::app_name` gives them, any case.
-#[cfg_attr(not(windows), allow(dead_code))]
 const TERMINAL_APPS: &[&str] = &[
     "WindowsTerminal", "OpenConsole", "conhost", "cmd", "powershell", "pwsh", "wsl", "bash",
     "wezterm-gui", "alacritty", "mintty", "kitty", "Tabby", "Hyper", "ConEmu", "ConEmu64",
@@ -52,7 +46,6 @@ const TERMINAL_APPS: &[&str] = &[
 ];
 
 /// Window classes of the console and of Windows Terminal, whatever runs in them.
-#[cfg_attr(not(windows), allow(dead_code))]
 const TERMINAL_CLASSES: &[&str] = &["ConsoleWindowClass", "CASCADIA_HOSTING_WINDOW_CLASS", "PseudoConsoleWindow"];
 
 /// A terminal, or an editor with one inside: where a key can stop or run something.
@@ -61,7 +54,6 @@ pub fn is_terminal(app: &str, class: &str) -> bool {
 }
 
 /// How to copy in the app `app` whose window class is `class`.
-#[cfg_attr(not(windows), allow(dead_code))]
 pub fn copy_keys(app: &str, class: &str) -> CopyKeys {
     if is_terminal(app, class) {
         CopyKeys::CtrlInsert
@@ -96,67 +88,6 @@ pub fn grab() -> Result<Selected, String> {
     imp::grab()
 }
 
-#[cfg(not(windows))]
-mod imp {
-    use super::*;
-
-    use std::io::Read;
-    use std::process::{Command, Stdio};
-    use std::time::{Duration, Instant};
-
-    /// Runs `cmd args`, at most two seconds. `None` when the tool isn't installed.
-    fn read(cmd: &str, args: &[&str]) -> Option<Result<String, ()>> {
-        let mut child = match Command::new(cmd).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn() {
-            Ok(c) => c,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return None,
-            Err(_) => return Some(Err(())),
-        };
-        // Read while it runs, so a long selection can't fill the pipe and stall it.
-        let stdout = child.stdout.take();
-        let reader = std::thread::spawn(move || {
-            let mut out = Vec::new();
-            if let Some(stdout) = stdout {
-                let _ = stdout.take(4 * MAX_CHARS as u64).read_to_end(&mut out);
-            }
-            out
-        });
-        let deadline = Instant::now() + Duration::from_secs(2);
-        let ok = loop {
-            match child.try_wait() {
-                Ok(Some(status)) => break status.success(),
-                Ok(None) if Instant::now() < deadline => std::thread::sleep(Duration::from_millis(20)),
-                _ => {
-                    let _ = child.kill();
-                    let _ = child.wait();
-                    break false;
-                }
-            }
-        };
-        let out = reader.join().unwrap_or_default();
-        Some(if ok { Ok(String::from_utf8_lossy(&out).into_owned()) } else { Err(()) })
-    }
-
-    pub fn grab() -> Result<Selected, String> {
-        let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
-        let wl: (&str, &[&str]) = ("wl-paste", &["--primary", "--no-newline", "--type", "text/plain"]);
-        let xclip: (&str, &[&str]) = ("xclip", &["-o", "-selection", "primary"]);
-        let xsel: (&str, &[&str]) = ("xsel", &["-o", "-p"]);
-        let tools = if wayland { [wl, xclip, xsel] } else { [xclip, xsel, wl] };
-        for (cmd, args) in tools {
-            match read(cmd, args) {
-                None => continue,
-                Some(Ok(text)) => {
-                    let text = tidy(&text).ok_or_else(nothing_selected)?;
-                    return Ok(Selected { text, app: String::new(), title: String::new() });
-                }
-                Some(Err(())) => return Err(nothing_selected()),
-            }
-        }
-        Err(t("Install xclip (or wl-clipboard on Wayland) to share the selected text."))
-    }
-}
-
-#[cfg(windows)]
 mod imp {
     use super::*;
 
@@ -429,7 +360,6 @@ mod imp {
     }
 }
 
-#[cfg(windows)]
 pub(crate) use imp::{class_name, keys_released, window_text};
 
 #[cfg(test)]

@@ -11,7 +11,7 @@
 // a shortcut), and typing stops if the user moves to another window.
 //
 // Windows: SendInput with Unicode characters, so any language types as it is,
-// whatever the keyboard layout. Linux: xdotool on X11, wtype on Wayland.
+// whatever the keyboard layout.
 
 use serde::Serialize;
 
@@ -68,23 +68,21 @@ fn push_text(out: &mut Vec<Piece>, text: &str) {
     }
 }
 
-/// How many characters the pieces type.
-#[cfg_attr(windows, allow(dead_code))] // Windows counts as it goes
+/// How many characters the pieces type (type_text counts as it goes).
+#[cfg(test)]
 pub fn count(pieces: &[Piece]) -> usize {
     pieces.iter().map(|p| if let Piece::Text(t) = p { t.chars().count() } else { 1 }).sum()
 }
 
-/// Terminals as Linux names them, beyond the ones selection.rs knows.
-fn linux_terminal(app: &str) -> bool {
+/// Names that read as a terminal, beyond the ones selection.rs knows.
+fn terminal_like(app: &str) -> bool {
     let a = app.to_lowercase();
-    ["term", "konsole", "kitty", "alacritty", "tilix", "ptyxis", "kgx", "foot", "guake", "yakuake", "console"]
-        .iter()
-        .any(|w| a.contains(w))
+    ["term", "console", "kitty", "alacritty"].iter().any(|w| a.contains(w))
 }
 
 /// A window where a line break could run a command.
 pub fn is_terminal(app: &str, class: &str) -> bool {
-    crate::selection::is_terminal(app, class) || linux_terminal(app) || linux_terminal(class)
+    crate::selection::is_terminal(app, class) || terminal_like(app) || terminal_like(class)
 }
 
 fn lumo_in_front() -> String {
@@ -103,7 +101,6 @@ pub fn type_text(text: &str) -> Result<Typed, String> {
     imp::type_text(text)
 }
 
-#[cfg(windows)]
 mod imp {
     use super::*;
 
@@ -190,63 +187,6 @@ mod imp {
     }
 }
 
-#[cfg(target_os = "linux")]
-mod imp {
-    use super::*;
-
-    use std::process::{Command, Stdio};
-
-    fn run(cmd: &str, args: &[&str]) -> Option<String> {
-        let out = Command::new(cmd).args(args).stdin(Stdio::null()).stderr(Stdio::null()).output().ok()?;
-        out.status.success().then(|| String::from_utf8_lossy(&out.stdout).trim().to_string())
-    }
-
-    fn wayland() -> bool {
-        std::env::var("XDG_SESSION_TYPE").is_ok_and(|s| s.eq_ignore_ascii_case("wayland"))
-            || std::env::var_os("WAYLAND_DISPLAY").is_some() && std::env::var_os("DISPLAY").is_none()
-    }
-
-    fn missing() -> String {
-        "Typing needs xdotool (X11) or wtype (Wayland), and it isn't installed: tell the user.".into()
-    }
-
-    pub fn type_text(text: &str) -> Result<Typed, String> {
-        if wayland() {
-            // Wayland says nothing of the window in front: line breaks go as
-            // spaces, in case it is a terminal.
-            if crate::platform::find_on_path("wtype").is_none() {
-                return Err(missing());
-            }
-            let pieces = pieces(text, true);
-            for piece in &pieces {
-                if let Piece::Text(t) = piece {
-                    run("wtype", &["--", t]).ok_or_else(|| "The text couldn't be typed.".to_string())?;
-                }
-            }
-            return Ok(Typed { chars: count(&pieces), app: String::new(), title: String::new(), flattened: pieces_had_breaks(text) });
-        }
-        if crate::platform::find_on_path("xdotool").is_none() {
-            return Err(missing());
-        }
-        let pid = run("xdotool", &["getactivewindow", "getwindowpid"]).ok_or_else(nothing_in_front)?;
-        if pid.parse::<u32>().ok() == Some(std::process::id()) {
-            return Err(lumo_in_front());
-        }
-        let class = run("xdotool", &["getactivewindow", "getwindowclassname"]).unwrap_or_default();
-        let title = crate::screen::clip_title(&run("xdotool", &["getactivewindow", "getwindowname"]).unwrap_or_default());
-        let terminal = is_terminal(&class, &class);
-        let pieces = pieces(text, terminal);
-        for piece in &pieces {
-            let ok = match piece {
-                Piece::Text(t) => run("xdotool", &["type", "--clearmodifiers", "--delay", "8", "--", t]),
-                Piece::Break => run("xdotool", &["key", "--clearmodifiers", "shift+Return"]),
-            };
-            ok.ok_or_else(|| "The text couldn't be typed.".to_string())?;
-        }
-        Ok(Typed { chars: count(&pieces), app: class, title, flattened: terminal && pieces_had_breaks(text) })
-    }
-}
-
 /// The text has line breaks (which a terminal gets as spaces).
 fn pieces_had_breaks(text: &str) -> bool {
     text.chars().take(MAX_CHARS).any(|c| c == '\n' || c == '\r')
@@ -297,8 +237,6 @@ mod tests {
         assert!(is_terminal("WindowsTerminal", ""));
         assert!(is_terminal("", "ConsoleWindowClass"));
         assert!(is_terminal("Code", ""), "an editor with a terminal inside");
-        assert!(is_terminal("gnome-terminal-server", "Gnome-terminal"));
-        assert!(is_terminal("konsole", "konsole"));
         assert!(!is_terminal("chrome", "Chrome_WidgetWin_1"));
         assert!(!is_terminal("WINWORD", "OpusApp"));
     }

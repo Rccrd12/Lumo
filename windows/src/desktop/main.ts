@@ -7,14 +7,14 @@
 // like the Mac, and a few frames a second asleep — with no cursor polling at
 // all while he sleeps.
 
-import { Bridge, emitToWindow, onEvent, type DesktopMode } from "../core/bridge";
+import { Bridge, emitToWindow, onEvent } from "../core/bridge";
 import type { BotEmoteName } from "../core/layout";
 import { Sound } from "../core/sound";
 import { BotEngine } from "../mochi/engine";
 import { DEFAULT_LOOK, parseLook } from "../mochi/wardrobe";
 import {
   DESKTOP_EVENTS, DOUBLE_CLICK_MS, DRAG_THRESHOLD, PANEL_SIZE, agentActive, gaze, isOverBody,
-  layerDragTopLeft, lookOrigin, pointerDistance, shouldSleep, windowDragTopLeft,
+  lookOrigin, pointerDistance, shouldSleep,
   type DesktopSnapshot, type Point,
 } from "../mochi/desktop-logic";
 
@@ -34,7 +34,6 @@ const ASLEEP_FRAME_MS = 250;
 class DesktopMochi {
   private engine = new BotEngine();
   private canvas: HTMLCanvasElement;
-  private mode: DesktopMode = "off";
 
   private snap: DesktopSnapshot = {
     state: "idle", outfit: "none", look: DEFAULT_LOOK, soundEnabled: true, soundVolume: 0.12, paused: false,
@@ -45,21 +44,14 @@ class DesktopMochi {
   /** Whether the island has told us anything yet. */
   private informed = false;
   private lastAgentActive = performance.now();
-  /** Pointer in window coordinates, and when the page last heard of it. */
+  /** Pointer in window coordinates. */
   private cursor: Point | null = null;
-  private lastPointer = -Infinity;
 
   private timer: number | null = null;
   private lastDraw = 0;
 
-  /** Canvas offset inside the window: non-zero only in a layer-shell drag. */
-  private offset: Point = { x: 0, y: 0 };
-  private press: { client: Point; screen: Point } | null = null;
+  private press: Point | null = null;
   private dragging = false;
-  /** Window's top-left corner when the drag began (mode's space). */
-  private dragOrigin: Point | null = null;
-  private dragTopLeft: Point | null = null;
-  private moveFrame = false;
   private pokeTimer: number | null = null;
 
   constructor(canvas: HTMLCanvasElement) {
@@ -74,9 +66,6 @@ class DesktopMochi {
 
   async start() {
     void Sound.preload();
-    const info = await Bridge.desktopInfo();
-    if (info) this.mode = info.mode;
-
     await onEvent<DesktopSnapshot>(DESKTOP_EVENTS.state, (s) => this.onSnapshot(s));
     await onEvent<{ emote: BotEmoteName; duration: number }>(DESKTOP_EVENTS.emote, (e) => {
       this.lastAgentActive = performance.now();
@@ -127,7 +116,6 @@ class DesktopMochi {
     this.cancelPoke();
     this.press = null;
     this.dragging = false;
-    this.setOffset({ x: 0, y: 0 });
     if (this.timer != null) window.clearTimeout(this.timer);
     this.timer = null;
     Sound.idle();
@@ -135,7 +123,7 @@ class DesktopMochi {
 
   private updateSleep(now: number) {
     if (!this.visible) return;
-    const distance = pointerDistance(this.mode === "poll", this.cursor, now - this.lastPointer);
+    const distance = pointerDistance(this.cursor);
     const sleep =
       !this.dragging &&
       (this.snap.paused || shouldSleep((now - this.lastAgentActive) / 1000, distance));
@@ -157,7 +145,6 @@ class DesktopMochi {
   /** Pointer in window coordinates: his eyes, and waking up. */
   private notePointer(p: Point) {
     this.cursor = p;
-    this.lastPointer = performance.now();
     if (this.asleep) this.wake();
     this.schedule();
   }
@@ -187,24 +174,23 @@ class DesktopMochi {
     const dt = Math.min(0.05, Math.max(0, (now - this.lastDraw) / 1000));
     this.lastDraw = now;
     this.updateSleep(now);
-    this.draw(dt, now);
+    this.draw(dt);
     this.schedule();
   }
 
-  private draw(dt: number, now: number) {
+  private draw(dt: number) {
     const ctx = this.canvas.getContext("2d");
     if (!ctx) return;
     const engine = this.engine;
     engine.setOutfit(this.snap.outfit, true);
     engine.look = parseLook(this.snap.look);
     if (!this.asleep) {
-      // Windows: the global cursor. Linux: only while the pointer is over him.
-      const fresh = this.mode === "poll" || now - this.lastPointer < 1500;
-      const g = this.cursor && fresh ? gaze(lookOrigin(0, 0), this.cursor) : { lookX: 0, lookY: 0 };
+      // The global cursor, from the poll.
+      const g = this.cursor ? gaze(lookOrigin(0, 0), this.cursor) : { lookX: 0, lookY: 0 };
       engine.lookX = g.lookX;
       engine.lookY = g.lookY;
     }
-    // No dancing: the Windows and Linux app has no music signal to dance to.
+    // No dancing: the Windows app has no music signal to dance to.
     engine.update(dt);
     const dpr = this.dpr();
     ctx.setTransform(dpr, 0, 0, dpr, SIDE * dpr, 0);
@@ -219,14 +205,14 @@ class DesktopMochi {
   // ── Input ───────────────────────────────────────────────────────────────────
 
   private local(e: MouseEvent): Point {
-    return { x: e.clientX - this.offset.x, y: e.clientY - this.offset.y };
+    return { x: e.clientX, y: e.clientY };
   }
 
   private wireInput() {
     document.addEventListener("pointerdown", (e) => {
       Sound.resume();
       if (e.button !== 0 || !isOverBody(this.local(e))) return;
-      this.press = { client: this.local(e), screen: { x: e.screenX, y: e.screenY } };
+      this.press = this.local(e);
       this.dragging = false;
       try {
         document.documentElement.setPointerCapture(e.pointerId);
@@ -241,18 +227,18 @@ class DesktopMochi {
       if (!press) return;
       if (!this.dragging) {
         const l = this.local(e);
-        if (Math.hypot(l.x - press.client.x, l.y - press.client.y) <= DRAG_THRESHOLD) return;
+        if (Math.hypot(l.x - press.x, l.y - press.y) <= DRAG_THRESHOLD) return;
         this.beginDrag();
       }
-      this.dragTo(e);
     });
 
-    document.addEventListener("pointerup", (e) => {
+    document.addEventListener("pointerup", () => {
       const press = this.press;
       this.press = null;
       if (!press) return;
+      // The cursor poll sees the release and drops him.
       if (this.dragging) {
-        this.endDrag(e);
+        this.dragging = false;
         return;
       }
       // Single click → poke, once it is clear it isn't a double click.
@@ -276,16 +262,6 @@ class DesktopMochi {
       e.preventDefault();
       if (isOverBody(this.local(e))) void emitToWindow(ISLAND, DESKTOP_EVENTS.wardrobe);
     });
-
-    document.addEventListener("pointerleave", () => {
-      if (this.mode !== "poll" && !this.dragging) this.cursor = null;
-    });
-
-    // A layer-shell drag stretches the window over the display; once it is
-    // back to its own size, so is the canvas.
-    window.addEventListener("resize", () => {
-      if (!this.dragging && window.innerWidth <= PANEL_SIZE + 20) this.setOffset({ x: 0, y: 0 });
-    });
   }
 
   private cancelPoke() {
@@ -293,60 +269,15 @@ class DesktopMochi {
     this.pokeTimer = null;
   }
 
+  /** The cursor poll carries him from here; a refusal ends the drag. */
   private beginDrag() {
     this.dragging = true;
     this.cancelPoke();
-    this.dragOrigin = null;
-    this.dragTopLeft = null;
     void Bridge.desktopDragBegin().then((pos) => {
-      if (!pos) {
-        this.dragging = false;
-        this.press = null;
-        return;
-      }
-      this.dragOrigin = { x: pos[0], y: pos[1] };
+      if (pos) return;
+      this.dragging = false;
+      this.press = null;
     });
-  }
-
-  /** Linux: the page drives the drag. Windows: the cursor poll carries him. */
-  private dragTo(e: PointerEvent) {
-    const origin = this.dragOrigin;
-    const press = this.press;
-    if (!origin || !press || this.mode === "poll") return;
-    if (this.mode === "layer") {
-      const applied = window.innerWidth > PANEL_SIZE + 20;
-      const topLeft = layerDragTopLeft(origin, { x: e.clientX, y: e.clientY }, press.client, applied);
-      this.dragTopLeft = topLeft;
-      this.setOffset(applied ? topLeft : { x: topLeft.x - origin.x, y: topLeft.y - origin.y });
-      return;
-    }
-    if (this.mode === "window") {
-      const topLeft = windowDragTopLeft(origin, { x: e.screenX, y: e.screenY }, press.screen, this.dpr());
-      this.dragTopLeft = topLeft;
-      if (this.moveFrame) return;
-      this.moveFrame = true;
-      requestAnimationFrame(() => {
-        this.moveFrame = false;
-        const p = this.dragTopLeft;
-        if (p && this.dragging) void Bridge.desktopDragMove(p.x, p.y);
-      });
-    }
-  }
-
-  private endDrag(e: PointerEvent) {
-    this.dragTo(e);
-    this.dragging = false;
-    const topLeft = this.dragTopLeft;
-    this.dragOrigin = null;
-    this.dragTopLeft = null;
-    if (this.mode === "poll" || !topLeft) return;
-    void Bridge.desktopDragEnd(Math.round(topLeft.x), Math.round(topLeft.y));
-  }
-
-  private setOffset(p: Point) {
-    this.offset = p;
-    this.canvas.style.left = `${p.x}px`;
-    this.canvas.style.top = `${p.y}px`;
   }
 }
 

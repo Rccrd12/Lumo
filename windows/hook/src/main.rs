@@ -3,8 +3,7 @@
 //!
 //! Reads the hook JSON on stdin, maps the agent's event and field names onto
 //! Claude Code's (normalize.rs), adds a little terminal context, and hands it to
-//! Lumo over the named pipe `\\.\pipe\lumo-<sid>` (Windows) or the Unix
-//! socket `$XDG_RUNTIME_DIR/lumo.sock` (Linux).
+//! Lumo over the named pipe `\\.\pipe\lumo-<sid>`.
 //!
 //! Hard rule (docs/CLAUDE.md): **never block the agent.**
 //! * If the pipe does not exist — Lumo is closed — we exit 0 immediately, with
@@ -66,15 +65,8 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 /// 1 MiB the app reads from the pipe even once JSON-escaped.
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
 
-#[cfg(windows)]
 mod win;
-#[cfg(windows)]
 use win::connect;
-
-#[cfg(target_os = "linux")]
-mod unix;
-#[cfg(target_os = "linux")]
-use unix::connect;
 
 /// What the command line says: `--agent <name>`, the event name, and
 /// `--wait <seconds>`: how long the agent lets this hook run (Antigravity's
@@ -86,6 +78,9 @@ struct Args {
     /// `--chat-card`: the PreToolUse hook the island's Claude Code chat adds
     /// for itself (claude_code.rs card_settings), whose answer is the card's.
     chat_card: bool,
+    /// `--chat-guard`: the same chat's PreToolUse hook when nothing gets a
+    /// card (auto, plan): it only stops the commands that would wait on GitHub.
+    chat_guard: bool,
 }
 
 fn args() -> Args {
@@ -93,10 +88,13 @@ fn args() -> Args {
     let mut event = String::new();
     let mut wait = None;
     let mut chat_card = false;
+    let mut chat_guard = false;
     let mut it = std::env::args().skip(1);
     while let Some(arg) = it.next() {
         if arg == "--chat-card" {
             chat_card = true;
+        } else if arg == "--chat-guard" {
+            chat_guard = true;
         } else if arg == "--agent" {
             agent = it.next().unwrap_or_default();
         } else if arg == "--wait" {
@@ -105,7 +103,7 @@ fn args() -> Args {
             event = arg;
         }
     }
-    Args { agent, event, wait, chat_card }
+    Args { agent, event, wait, chat_card, chat_guard }
 }
 
 /// How long a card of the island's Antigravity CLI chat may wait for a click.
@@ -145,6 +143,19 @@ fn main() {
     // permission requests go through, as the chat's Allow / Deny card.
     // Everything else gets the usual "no opinion".
     let from_island = is_island_run(&env);
+    // A command of the island's Claude Code chat that would sit waiting on
+    // GitHub (`gh pr checks --watch`, a sleep loop) holds the whole chat:
+    // Claude is told to let Lumo listen instead (listen.rs), at once.
+    if from_island && args.agent.is_empty() && (args.chat_card || args.chat_guard) {
+        if waits_on_github(&raw) {
+            print(Some(reply::claude_wait_denied()));
+            std::process::exit(0);
+        }
+        if args.chat_guard {
+            // Not ours to show: Claude Code goes on as its mode says.
+            std::process::exit(0);
+        }
+    }
     let prepared = prepare(&raw, &args, &env, &cwd).filter(|e| !from_island || e.name == "PermissionRequest");
     let Some(event) = prepared else {
         // Nothing we could forward. An agent that needs JSON still gets its
@@ -182,6 +193,13 @@ fn main() {
         print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
     }
     std::process::exit(0);
+}
+
+/// A PreToolUse of a shell command that would wait (reply::blocking_wait).
+fn waits_on_github(raw: &[u8]) -> bool {
+    let Ok(v) = serde_json::from_slice::<Value>(raw) else { return false };
+    matches!(v["tool_name"].as_str(), Some("Bash" | "PowerShell"))
+        && v["tool_input"]["command"].as_str().is_some_and(reply::blocking_wait)
 }
 
 fn print(line: Option<String>) {
@@ -441,7 +459,7 @@ mod tests {
     use super::*;
 
     fn run(raw: &str, agent: &str, event: &str) -> (Value, Event) {
-        let args = Args { agent: agent.into(), event: event.into(), wait: None, chat_card: false };
+        let args = Args { agent: agent.into(), event: event.into(), wait: None, chat_card: false, chat_guard: false };
         let ev = prepare(raw.as_bytes(), &args, &|_| None, "/home/me/here").expect("forwarded");
         let v = serde_json::from_str(ev.line.trim_end()).unwrap();
         (v, ev)
@@ -453,7 +471,7 @@ mod tests {
 
     #[test]
     fn the_islands_own_runs_are_marked() {
-        let args = Args { agent: String::new(), event: String::new(), wait: None, chat_card: false };
+        let args = Args { agent: String::new(), event: String::new(), wait: None, chat_card: false, chat_guard: false };
         let raw = br#"{"hook_event_name":"PermissionRequest","tool_name":"Write"}"#;
         let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap();
         assert!(ev.line.contains(r#""lumo_island":true"#));
@@ -466,7 +484,7 @@ mod tests {
     #[test]
     fn an_acting_tool_of_the_islands_claude_code_chat_is_a_permission_request() {
         let island = env_of(&[("LUMO_ISLAND_RUN", "1")]);
-        let card = Args { agent: String::new(), event: "PreToolUse".into(), wait: Some(110), chat_card: true };
+        let card = Args { agent: String::new(), event: "PreToolUse".into(), wait: Some(110), chat_card: true, chat_guard: false };
         let command = br#"{"hook_event_name":"PreToolUse","session_id":"s","tool_name":"PowerShell","tool_input":{"command":"Start-Process whatsapp:"}}"#;
         let ev = prepare(command, &card, &island, "/p").unwrap();
         assert!(ev.island_card);
@@ -484,14 +502,14 @@ mod tests {
         let own = Args { chat_card: false, ..card };
         assert!(!prepare(command, &own, &island, "/p").unwrap().island_card);
         // And never outside the island's chat.
-        let card = Args { agent: String::new(), event: "PreToolUse".into(), wait: Some(110), chat_card: true };
+        let card = Args { agent: String::new(), event: "PreToolUse".into(), wait: Some(110), chat_card: true, chat_guard: false };
         assert!(!prepare(command, &card, &|_| None, "/p").unwrap().island_card);
     }
 
     #[test]
     fn a_shell_command_of_the_islands_antigravity_chat_is_a_permission_request() {
         let island = env_of(&[("LUMO_ISLAND_RUN", "1")]);
-        let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100), chat_card: false };
+        let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100), chat_card: false, chat_guard: false };
         let command = br#"{"hook_event_name":"PreToolUse","conversationId":"c1","toolCall":{"name":"run_command","args":{"CommandLine":"npm test"}}}"#;
         let ev = prepare(command, &agy, &island, "/p").unwrap();
         assert!(ev.island_card);
@@ -519,7 +537,7 @@ mod tests {
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
         // And no other agent's PreToolUse turns into a request.
-        let gemini = Args { agent: "gemini".into(), event: "PreToolUse".into(), wait: None, chat_card: false };
+        let gemini = Args { agent: "gemini".into(), event: "PreToolUse".into(), wait: None, chat_card: false, chat_guard: false };
         let ev = prepare(command, &gemini, &island, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
@@ -606,7 +624,7 @@ mod tests {
 
     #[test]
     fn what_cannot_be_read_is_not_forwarded() {
-        let args = Args { agent: "copilot".into(), event: "preToolUse".into(), wait: None, chat_card: false };
+        let args = Args { agent: "copilot".into(), event: "preToolUse".into(), wait: None, chat_card: false, chat_guard: false };
         for raw in ["", "not json", "[1,2]"] {
             assert!(prepare(raw.as_bytes(), &args, &|_| None, "/").is_none());
         }

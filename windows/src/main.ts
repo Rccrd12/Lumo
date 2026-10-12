@@ -43,12 +43,10 @@ async function main() {
   void Bridge.setSystemLanguages(systemLanguages());
   island.applySettings();
   State.loadIntegrationTasks();
-  if (boot && !boot.cursorPoll) island.followPageCursor();
   if (boot?.shift) island.onShift(boot.shift);
   await island.desktop.init();
 
   await onEvent<{ x: number; y: number; panel?: boolean }>("cursor", ({ x, y, panel }) => island.onCursor(x, y, panel === true));
-  await onEvent<boolean>("pointer-inside", (inside) => island.setPointerInside(inside));
   // A press elsewhere on the screen: folds the open island when set to (Settings → Island).
   await onEvent<null>("outside-press", () => island.onOutsidePress());
   // Esc stopped the chat's computer use (computer.rs).

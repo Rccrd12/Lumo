@@ -47,13 +47,9 @@ fn beside(new: &Path, name: &str) -> Option<PathBuf> {
     new.parent().map(|p| p.join(name))
 }
 
-/// The old data folder name on this OS.
+/// The old data folder name.
 fn old_folder_name() -> &'static str {
-    if cfg!(windows) {
-        OLD_TITLE
-    } else {
-        OLD
-    }
+    OLD_TITLE
 }
 
 /// The old local data folder (the relay, the inbox, the log, the recap).
@@ -123,10 +119,6 @@ pub fn folders() {
     if log.exists() {
         let _ = std::fs::rename(&log, local.join("lumo.log"));
     }
-    #[cfg(target_os = "linux")]
-    if let Some(cache) = std::env::var_os("XDG_CACHE_HOME").map(PathBuf::from).or_else(|| Some(platform::home_dir().join(".cache"))) {
-        let _ = std::fs::remove_dir_all(cache.join(OLD));
-    }
     let work = crate::claude_code::work_dir();
     take_over(&platform::home_dir().join(OLD_TITLE), &work, &[]);
 }
@@ -167,7 +159,7 @@ pub fn old_relay(src: &Path, configs: &[PathBuf], install: fn(&Path, &Path)) {
     let used = configs.iter().any(|p| std::fs::read_to_string(p).is_ok_and(|t| mentions_old_relay(&t)));
     if used {
         install(src, &bin.join(platform::HOOK_EXE));
-        let old_name = format!("{OLD_RELAY}{}", if cfg!(windows) { ".exe" } else { "" });
+        let old_name = format!("{OLD_RELAY}.exe");
         install(src, &bin.join(old_name));
         return;
     }

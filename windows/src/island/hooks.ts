@@ -15,7 +15,8 @@ import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
-import { isSimpleRequest } from "../core/approvals";
+import { autoAllows, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { parsePermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
 import { N_, t } from "../i18n/i18n";
@@ -176,6 +177,19 @@ function approvalTarget(tool: string, input: Record<string, unknown>): string {
     }
   }
   return tool;
+}
+
+/**
+ * The line under the who-row that says what the request is for: the agent's
+ * own words when it gave some, else what the request does, read off it.
+ * Nothing for the chat's computer use, whose target already says it.
+ */
+function approvalAbout(tool: string, input: Record<string, unknown>): { reason?: string; kind?: { text: string; vars?: Record<string, string> } } {
+  if (describeComputerAction(tool, input)) return {};
+  const reason = requestReason(input);
+  if (reason) return { reason };
+  const kind = requestKind(tool, input);
+  return kind ? { kind } : {};
 }
 
 /**
@@ -502,6 +516,18 @@ function handleHook(island: Island, payload: HookPayload) {
       }
 
       const requestId = payload.request_id ?? "";
+      // The chat's Antigravity CLI run in Auto: agy has no judgement of its own
+      // to lean on headless, so Lumo's stands in for it. A command that only
+      // looks (core/approvals.ts) runs without a card; anything else, and
+      // anything uncertain, is the usual card.
+      if (
+        chatAgy && requestId && parsePermissionMode(State.settings.chatPermissionMode) === "auto"
+        && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {})
+      ) {
+        void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by Auto)`);
+        void Bridge.approvalAutoAllow(requestId);
+        break;
+      }
       // One card, one request. A second one must never quietly replace the first
       // — that would leave a human staring at request B while request A waits for
       // a decision nobody can give. Hand it straight back to the terminal.
@@ -538,6 +564,7 @@ function handleHook(island: Island, payload: HookPayload) {
         pillId: fromChat ? (State.focusId ?? agentId) : agentId,
         tool,
         command: approvalTarget(tool, input),
+        ...approvalAbout(tool, input),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
         ...(quick ? { quick } : {}),

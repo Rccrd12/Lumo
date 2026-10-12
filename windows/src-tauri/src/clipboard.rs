@@ -6,11 +6,8 @@
 // which the page may not see at all: the island asks here, on the paste only,
 // and the first file of the list is copied into the inbox like a dropped one.
 //
-// Linux: not read yet; the page's own paste still works for images.
-//
 // The text on the clipboard is read here too, for the right-click menu's
 // Paste (src/views/context-menu.ts): the page may not read it by itself.
-// Linux asks wl-paste, xclip or xsel, whichever there is.
 
 use std::path::PathBuf;
 
@@ -40,48 +37,6 @@ pub fn text() -> Option<String> {
     imp::text().map(|t| t.chars().take(MAX_TEXT).collect::<String>()).filter(|t| !t.is_empty())
 }
 
-#[cfg(not(windows))]
-mod imp {
-    use super::*;
-
-    use std::process::{Command, Stdio};
-    use std::time::Duration;
-
-    pub fn copied_paths() -> Vec<PathBuf> {
-        Vec::new()
-    }
-
-    /// The first of wl-paste (Wayland), xclip and xsel that answers within a second.
-    pub fn text() -> Option<String> {
-        let wayland = std::env::var_os("WAYLAND_DISPLAY").is_some();
-        let tools: &[(&str, &[&str])] = if wayland {
-            &[("wl-paste", &["--no-newline", "--type", "text"]), ("xclip", &["-selection", "clipboard", "-o"]), ("xsel", &["-b", "-o"])]
-        } else {
-            &[("xclip", &["-selection", "clipboard", "-o"]), ("xsel", &["-b", "-o"])]
-        };
-        tools.iter().find_map(|(tool, args)| run(tool, args))
-    }
-
-    fn run(tool: &str, args: &[&str]) -> Option<String> {
-        let child = Command::new(tool).args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null()).spawn().ok()?;
-        let (tx, rx) = std::sync::mpsc::channel();
-        let id = child.id();
-        std::thread::spawn(move || {
-            let _ = tx.send(child.wait_with_output());
-        });
-        match rx.recv_timeout(Duration::from_secs(1)) {
-            Ok(Ok(out)) if out.status.success() => Some(String::from_utf8_lossy(&out.stdout[..out.stdout.len().min(MAX_TEXT * 4)]).into_owned()),
-            Ok(_) => None,
-            Err(_) => {
-                // A clipboard owner that does not answer: the tool goes.
-                let _ = Command::new("kill").arg(id.to_string()).status();
-                None
-            }
-        }
-    }
-}
-
-#[cfg(windows)]
 mod imp {
     use super::*;
 

@@ -223,8 +223,8 @@ export function buildRecap(actions: ViewActions): ViewHost {
 /**
  * Puts the PNG on the clipboard through the web Clipboard API — no new
  * dependency. It needs the document focused, and the island never takes focus
- * on its own, so it is lent focus for the duration. WebKitGTK builds without
- * image clipboard support say no, and the caller offers Save instead.
+ * on its own, so it is lent focus for the duration. If the clipboard says no,
+ * the caller offers Save instead.
  */
 async function copyImage(canvas: HTMLCanvasElement): Promise<boolean> {
   const Item = (window as { ClipboardItem?: typeof ClipboardItem }).ClipboardItem;
