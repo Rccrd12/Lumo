@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.6.3 — October 12, 2026
+
+- **Listening starts however Claude writes the line**: the event is optional (it waits for the checks), other words for it are read, and backticks, code blocks, a sentence around it, spaces or a link to the pull request all work. A line Lumo cannot read or start is taken out and said under the answer
+- **The chat shows what it listens for**: a chip with × to stop it. The lines kept from before a tool call are found anywhere in the text
+- **GitHub's limit is never hit**: without signing in, the rounds space out with the number of watches
+- **Steadier tests on Windows**: the network tests no longer fail by chance
+
 ## Windows 0.6.2 — October 12, 2026
 
 - **Y and N answer a permission card**: once the island has the keyboard (a click on the card, or `Ctrl+Alt+A`), the letters shown on the buttons allow or deny. A letter typed right after another key is ignored, so a card that pops up while you type never takes a word's letter as an answer
