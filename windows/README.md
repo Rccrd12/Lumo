@@ -463,8 +463,8 @@ so they can be removed.
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
 kept on this computer only, 40 at most. The paperclip in the text field opens
-the file picker: with Claude Code the file joins the conversation, with the
-other providers it starts a new chat, as a drop does. `Ctrl+V` in the text
+the file picker: the file joins the chat open now, as a drop does, and goes
+with the next question whatever the provider. `Ctrl+V` in the text
 field does the same with what you copied: a screenshot (`Win+Shift+S`) or
 another image is saved in the inbox (up to 32 MB), and a file copied in File
 Explorer is copied there like a dropped one (the first, when you copied

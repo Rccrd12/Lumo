@@ -136,13 +136,13 @@ test("a file copied in File Explorer comes from Rust, whatever the page saw", as
   assert.equal(State.droppedFile.path, COPIED.path);
 });
 
-test("another provider takes the pasted file in a new chat, as with the paperclip", async () => {
+test("another provider takes the pasted file in the chat open now, as with the paperclip", async () => {
   State.settings = { ...State.settings, chatProvider: "anthropic" };
   State.chatHistory = [{ id: 1, role: "user", content: "hi" }];
   input().fire("paste", { clipboardData: clipboard({ files: [screenshot()] }) });
   await flush();
-  assert.equal(sent("chat_reset").length, 1);
-  assert.deepEqual(State.chatHistory, []);
+  assert.equal(sent("chat_reset").length, 0);
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["hi"]);
   assert.equal(State.droppedFile.path, SAVED.path);
 });
 

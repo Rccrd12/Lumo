@@ -714,7 +714,7 @@ test("a file the user added and hasn't sent yet is never replaced", async () => 
   assert.equal(sent("chat_send")[0].context.name, "contract.docx");
 });
 
-test("another provider takes the named file in a new chat, as with the paperclip", async () => {
+test("another provider takes the named file in the chat open now, as with the paperclip", async () => {
   State.settings = { ...State.settings, chatProvider: "anthropic" };
   State.chatHistory = [{ id: 1, role: "user", content: "hi" }, { id: 2, role: "assistant", content: "hello" }];
   await shareFolder();
@@ -722,10 +722,9 @@ test("another provider takes the named file in a new chat, as with the paperclip
   $(".send-btn").fire("click");
   await flush();
   await flush();
-  const order = calls.map(([cmd]) => cmd).filter((cmd) => cmd === "chat_reset" || cmd === "chat_send");
-  assert.deepEqual(order, ["chat_reset", "chat_send"]);
+  assert.equal(sent("chat_reset").length, 0);
   assert.deepEqual(sent("chat_send")[0].context, { kind: "file", name: "file.pdf", path: COPIED.path });
-  assert.deepEqual(State.chatHistory.map((m) => m.content), ["read file.pdf", "I see VS Code."]);
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["hi", "hello", "read file.pdf", "I see VS Code."]);
 });
 
 // ── "Always share the folder open in File Explorer" (Settings → Chat) ─────────

@@ -84,11 +84,11 @@ pub(crate) fn url(p: &Provider, tail: &str) -> Result<Url, String> {
 }
 
 /// The user's message for one turn: plain text, or text and an image part
-/// when the first turn carries a dropped picture.
+/// when the turn carries a dropped picture.
 fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Value {
     let mut prefix = String::new();
     let mut image = None;
-    match context.filter(|_| first) {
+    match chat::turn_context(first, context) {
         Some(ChatContext::File { name, path }) => match file_part(path) {
             Some(FilePart::Image(part)) => {
                 image = Some(part);
@@ -401,7 +401,7 @@ mod tests {
     }
 
     #[test]
-    fn context_rides_with_the_first_turn_as_text_or_an_image() {
+    fn a_file_rides_with_its_turn_as_text_or_an_image() {
         let dir = std::env::temp_dir().join(format!("lumo-oai-{}", std::process::id()));
         std::fs::create_dir_all(&dir).unwrap();
         let txt = dir.join("notes.txt");
@@ -411,7 +411,8 @@ mod tests {
             user_message(true, Some(&ctx), "sum up")["content"],
             "File: notes.txt\nFile contents:\nhello\n\nsum up"
         );
-        assert_eq!(user_message(false, Some(&ctx), "more")["content"], "more");
+        // Dropped mid-conversation: it rides with that question all the same.
+        assert_eq!(user_message(false, Some(&ctx), "more")["content"], "File: notes.txt\nFile contents:\nhello\n\nmore");
 
         let png = dir.join("pic.png");
         std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();

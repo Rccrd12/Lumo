@@ -389,9 +389,16 @@ pub fn window_line(app_name: &str, title: &str, url: Option<&str>) -> String {
     text
 }
 
+/// What goes with this turn: a file whenever it is given (the page sends each
+/// one once, with the question asked after it was added, mid-conversation too),
+/// the window only with the first question.
+pub fn turn_context(first: bool, context: Option<&ChatContext>) -> Option<&ChatContext> {
+    context.filter(|c| first || matches!(c, ChatContext::File { .. }))
+}
+
 /// The plain-text record of what the user asked, context included.
 pub fn plain_question(first: bool, context: Option<&ChatContext>, query: &str) -> String {
-    match context.filter(|_| first) {
+    match turn_context(first, context) {
         Some(ChatContext::File { name, .. }) => format!("File: {name}\n\n{query}"),
         Some(ChatContext::Window { app_name, title, url }) => {
             format!("{}\n\n{query}", window_line(app_name, title, url.as_deref()))
@@ -846,12 +853,14 @@ mod tests {
     }
 
     #[test]
-    fn context_goes_with_the_first_question_only() {
+    fn a_file_goes_with_any_question_and_the_window_with_the_first_only() {
         let file = ChatContext::File { name: "a.txt".into(), path: "/x/a.txt".into() };
         assert_eq!(plain_question(true, Some(&file), "why?"), "File: a.txt\n\nwhy?");
-        assert_eq!(plain_question(false, Some(&file), "why?"), "why?");
+        // Dropped mid-conversation: it goes with the next question all the same.
+        assert_eq!(plain_question(false, Some(&file), "why?"), "File: a.txt\n\nwhy?");
         let win = ChatContext::Window { app_name: "Code".into(), title: "main.rs".into(), url: None };
         assert_eq!(plain_question(true, Some(&win), "q"), "Context — App: Code, Window: main.rs\n\nq");
+        assert_eq!(plain_question(false, Some(&win), "q"), "q");
         assert_eq!(window_line("Edge", "Docs", Some("https://x.dev")), "Context — App: Edge, Window: Docs, URL: https://x.dev");
     }
 
