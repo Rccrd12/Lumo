@@ -61,6 +61,10 @@ export interface ApprovalInfo {
   fromChat?: boolean;
   /** Simple (a read, a command that only looks): answered on the closed island (core/approvals.ts). */
   quick?: boolean;
+  /** Simple enough for the closed island, for a request waiting in line: whether it goes there is decided when it comes up. */
+  simple?: boolean;
+  /** The project of the session asking, when the pill is named after one (two sessions can share a pill). */
+  project?: string;
 }
 
 /** One question of an AskUserQuestion call. */
@@ -436,6 +440,11 @@ class AppState {
   /** The Claude Code session the current chat continues, if Claude Code answered it. */
   chatSession: string | null = null;
   pendingApproval: ApprovalInfo | null = null;
+  /**
+   * Requests that came while the card was up, oldest first (the Mac's
+   * ApprovalQueue): each comes up in turn once the one before is answered.
+   */
+  approvalQueue: ApprovalInfo[] = [];
   /** The pill that was in front when the card came up; it comes back after. */
   focusBeforeApproval: string | null = null;
 
@@ -543,6 +552,12 @@ class AppState {
     this.focusBeforeApproval = null;
     if (previous && this.focusId === req.pillId && this.tasks.some((t) => t.id === previous)) {
       this.focusId = previous;
+    }
+    // The next request in line takes the card; whoever ended this one shows it.
+    const next = this.approvalQueue.shift();
+    if (next) {
+      this.beginApproval(next);
+      if (!next.fromChat) this.updateTask(next.pillId, next.questions ? "question" : "approval");
     }
     this.notify();
   }

@@ -5,7 +5,7 @@
 import { afterEach, beforeEach, mock, test } from "node:test";
 import assert from "node:assert/strict";
 import { calls, emit, sent } from "./tauri.mjs";
-import { registerHookHandlers } from "../src/island/hooks.ts";
+import { MAX_WAITING, liveSessions, presentApproval, registerHookHandlers } from "../src/island/hooks.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
 const CLAUDE = "integration_claude";
@@ -41,6 +41,8 @@ beforeEach(() => {
   State.paused = false;
   State.isPinned = false;
   State.pendingApproval = null;
+  State.approvalQueue = [];
+  liveSessions.clear();
   State.settings = { ...DEFAULT_SETTINGS };
   State.loadIntegrationTasks();
   quickFits = true;
@@ -421,6 +423,7 @@ test("a permission request puts the card up, says exactly what it authorises, an
     tool: "Write",
     command: "Write · C:\\Users\\me\\proj\\.env",
     kind: { text: "Changes a file." },
+    project: "proj",
   });
   assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
   assert.deepEqual(sent("approval_decline"), []);
@@ -546,13 +549,17 @@ test("a request from Claude Code in Cursor's terminal goes on the Cursor pill", 
   assert.equal(task().state, "idle");
 });
 
-test("a second request never replaces the card: it goes back to the terminal", () => {
+test("a second request never replaces the card: it waits in line, acknowledged", () => {
   ask("r1");
+  asked = [];
   ask("r2", { tool_name: "Bash", tool_input: { command: "ls" } });
   assert.equal(State.pendingApproval.requestId, "r1");
   assert.equal(State.pendingApproval.tool, "Write");
-  assert.deepEqual(sent("approval_decline"), [{ requestId: "r2" }]);
-  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
+  assert.deepEqual(State.approvalQueue.map((q) => q.requestId), ["r2"]);
+  assert.deepEqual(sent("approval_decline"), []);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }, { requestId: "r2" }]);
+  // The card on screen stays where it is.
+  assert.deepEqual(asked, []);
 });
 
 test("the same request arriving twice is acknowledged again, not declined", () => {
@@ -734,8 +741,9 @@ test("a declined permission request leaves the stop timer running", () => {
     { lumo_agent: "gemini" },
   );
   assert.equal(task("agent_gemini"), undefined);
-  // So is a second request while a card is already up.
+  // So is a request past a full line.
   ask("r1");
+  for (let i = 0; i < 4; i++) ask(`w${i}`);
   afterStop(() => ask("r2"));
   assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }, { requestId: "r2" }]);
   assert.equal(task().state, "idle");
@@ -846,4 +854,148 @@ test("the card says what the request is for: the agent's words, else what it doe
   hook({ hook_event_name: "PermissionRequest", request_id: "d2", tool_name: "Bash", tool_input: { command: "npm install" } });
   assert.equal(State.pendingApproval?.reason, undefined);
   assert.equal(State.pendingApproval?.kind?.text, "Runs a command that can change things.");
+});
+
+// ── Requests in line (the Mac's ApprovalQueue) ───────────────────────────────
+
+/** A request of another session, in another project. */
+const askOther = (request_id, extra = {}) =>
+  ask(request_id, { session_id: "s2", cwd: "C:\\Users\\me\\other", tool_name: "Bash", tool_input: { command: "npm test" }, ...extra });
+
+test("an answered card hands it to the next request in line, which says whose it is", () => {
+  ask("r1");
+  askOther("r2");
+  assert.equal(task().state, "approval");
+  State.endApproval();
+  assert.equal(State.pendingApproval.requestId, "r2");
+  assert.equal(State.pendingApproval.project, "other");
+  assert.deepEqual(State.approvalQueue, []);
+  assert.equal(task().state, "approval");
+  assert.equal(State.isPinned, true);
+  asked = [];
+  presentApproval(island);
+  assert.deepEqual(asked, ["alert:approval"]);
+});
+
+test("a simple request in line comes up on the closed island, if it can show it", () => {
+  ask("r1");
+  askOther("r2", { tool_input: { command: "git status" } });
+  assert.equal(State.approvalQueue[0].simple, true);
+  asked = [];
+  // The first one's turn ends in its terminal: the card goes, the next comes up.
+  hook({ hook_event_name: "Stop", session_id: "s1", cwd: "C:\\Users\\me\\proj" });
+  assert.equal(State.pendingApproval.requestId, "r2");
+  assert.equal(State.pendingApproval.quick, true);
+  assert.ok(asked.includes("quick"));
+  assert.ok(!asked.includes("alert:approval"));
+  assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }]);
+});
+
+test("the end of a turn takes its requests out of the line, and leaves the others", () => {
+  ask("r1");
+  askOther("r2");
+  ask("r3", { session_id: "s3" });
+  hook({ hook_event_name: "Stop", session_id: "s2", cwd: "C:\\Users\\me\\other" });
+  assert.equal(State.pendingApproval.requestId, "r1");
+  assert.deepEqual(State.approvalQueue.map((q) => q.requestId), ["r3"]);
+  assert.deepEqual(sent("approval_decline"), [{ requestId: "r2" }]);
+});
+
+test("past a full line, the newest request goes back to its terminal", () => {
+  ask("r1");
+  for (let i = 0; i < MAX_WAITING; i++) askOther(`w${i}`);
+  askOther("late");
+  assert.equal(State.approvalQueue.length, MAX_WAITING);
+  assert.deepEqual(sent("approval_decline"), [{ requestId: "late" }]);
+});
+
+test("a request already in line arriving again is acknowledged again, not queued twice", () => {
+  ask("r1");
+  askOther("r2");
+  askOther("r2");
+  assert.equal(State.approvalQueue.length, 1);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }, { requestId: "r2" }, { requestId: "r2" }]);
+});
+
+test("each request has its 110 s from when it came, in line too", () => {
+  ask("r1");
+  seconds(50);
+  askOther("r2");
+  seconds(60);
+  // r1 ran out: r2 takes the card, with the 50 s it has left.
+  assert.equal(State.pendingApproval.requestId, "r2");
+  seconds(49);
+  assert.equal(State.pendingApproval?.requestId, "r2");
+  seconds(1);
+  assert.equal(State.pendingApproval, null);
+});
+
+test("a request whose time runs out in line just leaves it", () => {
+  ask("r1");
+  askOther("r2", { lumo_card_secs: 5 });
+  seconds(4);
+  assert.deepEqual(State.approvalQueue, []);
+  assert.equal(State.pendingApproval.requestId, "r1");
+});
+
+// ── Several sessions on one pill ──────────────────────────────────────────────
+
+const work = (session_id, cwd, event = "PreToolUse") =>
+  hook({ hook_event_name: event, session_id, cwd, tool_name: "Bash", tool_input: { command: "ls" } });
+
+test("a session stopping leaves the pill working while another one is at it", () => {
+  work("a", "/p/alpha");
+  work("b", "/p/beta");
+  hook({ hook_event_name: "Stop", session_id: "b", cwd: "/p/beta", last_assistant_message: "Beta done" });
+  assert.equal(task().state, "working");
+  assert.equal(task().steps.at(-1), "Beta done");
+  seconds(5.2);
+  assert.equal(task().state, "working");
+  hook({ hook_event_name: "Stop", session_id: "a", cwd: "/p/alpha" });
+  assert.equal(task().state, "finished");
+});
+
+test("the pill keeps the name of the session that started working first", () => {
+  work("a", "/p/alpha");
+  work("b", "/p/beta");
+  assert.equal(task().name, "alpha");
+  assert.equal(task().sessionId, "a");
+  // Alpha's turn ends: beta, still at work, owns the pill.
+  hook({ hook_event_name: "Stop", session_id: "a", cwd: "/p/alpha" });
+  work("b", "/p/beta");
+  assert.equal(task().name, "beta");
+  assert.equal(task().sessionCwd, "/p/beta");
+});
+
+test("a session ending leaves the pill, its steps and its diffs to the other", () => {
+  work("a", "/p/alpha");
+  work("b", "/p/beta");
+  hook({
+    hook_event_name: "PostToolUse", session_id: "b", cwd: "/p/beta",
+    tool_name: "Write", tool_input: { file_path: "/p/beta/x.ts", content: "x\n" },
+  });
+  hook({ hook_event_name: "SessionEnd", session_id: "a", cwd: "/p/alpha" });
+  assert.equal(task().state, "working");
+  assert.equal(task().name, "beta");
+  assert.equal(task().sessionId, "b");
+  assert.equal(State.sessionDiffs.get(CLAUDE)?.length, 1);
+  hook({ hook_event_name: "SessionEnd", session_id: "b", cwd: "/p/beta" });
+  assert.equal(task().state, "idle");
+  assert.equal(task().name, "VS Code");
+});
+
+test("an agent's pill stays while another of its sessions goes on", () => {
+  hook({ hook_event_name: "UserPromptSubmit", session_id: "a", lumo_agent: "codex", prompt: "one" });
+  hook({ hook_event_name: "UserPromptSubmit", session_id: "b", lumo_agent: "codex", prompt: "two" });
+  hook({ hook_event_name: "SessionEnd", session_id: "a", lumo_agent: "codex" });
+  assert.equal(task("agent_codex").state, "thinking");
+  hook({ hook_event_name: "Interrupt", session_id: "b", lumo_agent: "codex" });
+  assert.equal(task("agent_codex").state, "idle");
+});
+
+test("the chat's own Claude Code runs are not sessions of the pill", () => {
+  work("a", "/p/alpha");
+  hook({ hook_event_name: "PermissionRequest", request_id: "c1", session_id: "chat", lumo_island: true, tool_name: "Bash" });
+  hook({ hook_event_name: "Stop", session_id: "a", cwd: "/p/alpha" });
+  assert.equal(task().state, "finished");
 });

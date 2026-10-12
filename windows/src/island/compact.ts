@@ -70,7 +70,7 @@ export interface CompactHost {
   /** Redraw: the size may change with what is shown. */
   changed(): void;
   /** Deny or Allow, clicked on a simple request. */
-  decide(d: "allow" | "deny"): void;
+  decide(d: "allow" | "deny", requestId: string): void;
 }
 
 /** The request waiting, when it is simple enough for the closed island. */
@@ -78,7 +78,9 @@ function approvalInput(): ApprovalPeek | null {
   const req = State.pendingApproval;
   if (!req?.quick || req.questions) return null;
   const task = State.tasks.find((x) => x.id === req.pillId);
-  return { requestId: req.requestId, who: task?.name ?? req.tool, color: task?.color ?? "#F5A524", command: req.command || req.tool };
+  const waiting = State.approvalQueue.length;
+  const who = req.project ?? task?.name ?? req.tool;
+  return { requestId: req.requestId, who: waiting ? `${who} · 1/${waiting + 1}` : who, color: task?.color ?? "#F5A524", command: req.command || req.tool };
 }
 
 /**
@@ -370,7 +372,8 @@ export class CompactStrip {
     const decide = (d: "allow" | "deny") => (e: Event) => {
       e.stopPropagation();
       if (performance.now() - this.approvalAt < CLICK_GUARD_MS) return;
-      this.host.decide(d);
+      // The request this card shows, never the next one in line that took its place.
+      this.host.decide(d, a.requestId);
     };
     return h("div", { class: "cp-mail cp-approval", title: t(APPROVAL_TEXT.open) },
       h("div", { class: "cp-mail-head" },
