@@ -77,6 +77,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.6.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.2) | Oct 12, 2026 | Y and N answer a permission card that says what it is for, Auto for Antigravity CLI, every chat control usable mid-answer with answers going on in their own chat, no more waiting commands for GitHub, a dropped file joins the open chat, shorter Settings descriptions |
 | [0.6.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.1) | Oct 11, 2026 | Listening mode that no longer misses its line, listening mode for Antigravity, a sent screenshot no longer blocks the next message, the upload ending on the full bar |
 | [0.6.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.0) | Oct 11, 2026 | Windows only (Linux dropped), drop a file on any island size straight into the chat, the upload carried on with the island closed, a listening mode for GitHub pull requests, no time limit on Claude Code turns |
 | [0.5.8](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.5.8) | Oct 11, 2026 | One row per attachment (two screenshots of the same screen too), the attachments folder made anew, the big picture over the whole island with Lumo aside, the upload bar centred |

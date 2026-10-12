@@ -1,5 +1,16 @@
 # Changelog
 
+## Windows 0.6.2 — October 12, 2026
+
+- **Y and N answer a permission card**: once the island has the keyboard (a click on the card, or `Ctrl+Alt+A`), the letters shown on the buttons allow or deny. A letter typed right after another key is ignored, so a card that pops up while you type never takes a word's letter as an answer
+- **A permission card says what it is for**: under the request, the agent's own explanation of it (Claude Code, Gemini CLI, Codex, Antigravity), else what the request does
+- **Auto for Antigravity CLI in the chat**: a command that only looks runs without a card, unless Antigravity marked it unsafe; everything else still asks
+- **Every chat control works while an answer is written**: attachments, past chats, new chat, the shield, the model, its effort and the usage menu; a change of model, effort or permission goes with the next message
+- **An answer goes on in its own chat**: moving to another chat leaves the answer running in the background; it lands and is saved in its chat, and coming back shows it as far as it got. Another chat can ask meanwhile
+- **The chat no longer sits on a command that waits for GitHub**: asked to merge and say when it is done, Claude is told to let Lumo listen instead of running a command that waits, and the line by the dots says what a command is for ("Running a command: Watch the PR's checks")
+- **A dropped file joins the open chat**: a file dropped on the island, picked with the paperclip or pasted waits in the chat on screen and goes with the next question, whatever the provider, instead of starting a new chat
+- **Shorter Settings descriptions**: the longest ones are rewritten to the point, in every language
+
 ## Windows 0.6.1 — October 11, 2026
 
 - **Listening mode keeps its word**: when Claude wrote the line that starts listening before running a command (checking the CI, say) and then answered, the line was lost and Lumo never listened. Every line of the turn now counts, wherever it was written
