@@ -188,12 +188,11 @@ export function runIslandKey(host: ShortcutHost, action: IslandKeyAction) {
       focusPill(host, pillByNumber(ids, action.number), false);
       break;
     case "newChat":
-      // Not while an answer is on its way: it would land in the new chat.
-      if (State.stateOverride === "thinking") return;
+      // An answer still being written goes on in its own chat.
       State.startChat();
       State.droppedFile = null;
       State.promptContext = null;
-      void Bridge.chatReset();
+      void Bridge.chatReset(State.chatId);
       Sound.play("blip");
       host.setView("prompt");
       break;

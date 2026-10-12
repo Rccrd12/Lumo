@@ -15,10 +15,9 @@ use std::time::{Duration, Instant};
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::AppHandle;
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
-use crate::island::WINDOW_LABEL;
 use crate::settings::Settings;
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
@@ -272,10 +271,11 @@ pub async fn send(
 
     // What the island shows so far: kept if Stop is pressed mid-answer.
     let mut shown = String::new();
+    let events = chat.events();
     let streamed = chat
         .unless_stopped(stream(&base, server.key.as_deref(), model, &body, |visible| {
             shown.clone_from(&visible);
-            let _ = app.emit_to(WINDOW_LABEL, "chat-delta", visible);
+            events.delta(app, &visible);
         }))
         .await;
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);

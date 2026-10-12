@@ -461,14 +461,15 @@ test("island keys: pills by number, new chat, settings, pin", () => {
   runIslandKey(host, { kind: "cycle", delta: 1 });
   assert.equal(State.focusId, ids[2 % ids.length]);
 
+  // Mid-answer too: the answer goes on in its own chat (views/chat.ts).
   State.chatHistory = [{ id: 1, role: "user", content: "hi" }];
   State.stateOverride = "thinking";
-  runIslandKey(host, { kind: "newChat" });
-  assert.equal(State.chatHistory.length, 1, "not while an answer is on its way");
-  State.stateOverride = null;
+  const before = State.chatId;
   runIslandKey(host, { kind: "newChat" });
   assert.deepEqual(State.chatHistory, []);
-  assert.equal(sent("chat_reset").length, 1);
+  assert.notEqual(State.chatId, before);
+  assert.deepEqual(sent("chat_reset"), [{ chatId: State.chatId }]);
+  State.stateOverride = null;
 
   // Settings open inside the island now, with the keyboard for their fields.
   runIslandKey(host, { kind: "settings" });

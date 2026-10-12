@@ -202,13 +202,13 @@ test("a local answer streams into one reply, then the finished text replaces it"
   $(".send-btn").fire("click");
   await flush();
   view.sync(); // what State.notify() does in the island
-  assert.ok($(".model-btn").disabled, "no switching mid-answer");
+  assert.ok(!$(".model-btn").disabled, "the model can be changed mid-answer, for the next message");
   assert.ok($(".typing"), "dots until the first visible text");
 
-  emit("chat-delta", ""); // still thinking
+  emit("chat-delta", { chat: State.chatId, text: "" }); // still thinking
   assert.ok($(".typing"));
-  emit("chat-delta", "Hel");
-  emit("chat-delta", "Hello **there**");
+  emit("chat-delta", { chat: State.chatId, text: "Hel" });
+  emit("chat-delta", { chat: State.chatId, text: "Hello **there**" });
   view.sync(); // another view update mid-stream must not wipe the live answer
   assert.equal($(".typing"), null);
   const replies = view.el.find(".reply");
@@ -235,19 +235,19 @@ test("scrolled up during an answer, the chat stays put until scrolled back down"
   view.sync();
 
   log.scrollHeight = 1000;
-  emit("chat-delta", "Once upon");
+  emit("chat-delta", { chat: State.chatId, text: "Once upon" });
   assert.equal(log.scrollTop, 1000, "it follows the answer down");
 
   log.scrollTop = 200; // the user scrolls up to read
   log.fire("scroll");
   log.scrollHeight = 1400;
-  emit("chat-delta", "Once upon a time");
+  emit("chat-delta", { chat: State.chatId, text: "Once upon a time" });
   assert.equal(log.scrollTop, 200, "left where it was read");
 
   log.scrollTop = 1400 - 100; // back at the end
   log.fire("scroll");
   log.scrollHeight = 1600;
-  emit("chat-delta", "Once upon a time, far away");
+  emit("chat-delta", { chat: State.chatId, text: "Once upon a time, far away" });
   assert.equal(log.scrollTop, 1600, "it follows again");
 
   log.scrollTop = 300;
@@ -328,7 +328,7 @@ test("while an answer is written, the field stays open and send is a Stop button
   assert.equal(sent("chat_send").length, 1);
   assert.equal(input.value, "and another");
 
-  emit("chat-delta", "Once upon");
+  emit("chat-delta", { chat: State.chatId, text: "Once upon" });
   $(".send-btn").fire("click");
   assert.equal(sent("chat_stop").length, 1);
   assert.ok($(".send-btn").disabled, "pressed once");
@@ -414,7 +414,7 @@ test("Edit puts a question back; sending it replaces it and drops what followed"
     return { text: `answer ${n}`, turns: 2 * n, query: args.query };
   };
   await ask("two, but better");
-  assert.deepEqual(sent("chat_rewind"), [{ keep: 2 }]);
+  assert.deepEqual(sent("chat_rewind"), [{ chatId: State.chatId, keep: 2 }]);
   assert.equal(sent("chat_send").at(-1).query, "two, but better");
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1", "two, but better", "answer 2"]);
   assert.equal(view.el.find(".dropped").length, 0);
@@ -426,13 +426,13 @@ test("Edit puts a question back; sending it replaces it and drops what followed"
   view.sync();
   n = 0;
   await ask("one");
-  assert.deepEqual(sent("chat_rewind").at(-1), { keep: 0 });
+  assert.deepEqual(sent("chat_rewind").at(-1), { chatId: State.chatId, keep: 0 });
   assert.equal(sent("chat_send").at(-1).query, "one");
   assert.equal(sent("chat_send").at(-1).context?.name, "a.pdf");
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1"]);
 });
 
-test("Escape or the chip's × leaves an edit, and nothing is edited mid-answer", async () => {
+test("Escape or the chip's × leaves an edit", async () => {
   answers.chat_send = { text: "hi", turns: 2 };
   await ask("hello");
   assert.ok(!$(".chat-body").classList.contains("has-context"));
@@ -450,10 +450,123 @@ test("Escape or the chip's × leaves an edit, and nothing is edited mid-answer",
   $(".chip-row").querySelector(".chip-remove").fire("click");
   view.sync();
   assert.equal(view.el.find(".editing").length, 0);
+});
 
+test("an edit sent mid-answer stops that answer, then replaces the question", async () => {
+  const pending = heldAnswers();
+  await ask("hello");
+  assert.equal(rows()[0].find(".msg-action").length, 2, "Edit stays while the answer is written");
+  editOf(0).fire("click");
+  view.sync();
+  assert.ok(!$(".send-btn").classList.contains("stop"), "the button sends the edit");
+  $(".chat-input").value = "hello again";
+  $(".send-btn").fire("click");
+  await flush();
+  assert.equal(sent("chat_stop").length, 1, "the answer is stopped first");
+  assert.equal(sent("chat_send").length, 1);
+  pending[0]({ text: "", stopped: true, turns: 0 });
+  await flush();
+  await flush();
+  await flush();
+  assert.deepEqual(sent("chat_send").map((a) => a.query), ["hello", "hello again"]);
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["hello again"]);
+  pending[1]({ text: "hi", turns: 2 });
+  await flush();
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["hello again", "hi"]);
+});
+
+// ── Mid-answer ────────────────────────────────────────────────────────────────
+
+test("mid-answer every control stays usable", async () => {
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  view.sync();
   heldAnswers();
-  await ask("more");
-  assert.equal(rows()[0].find(".msg-action").length, 1, "Copy only while an answer is written");
+  await ask("a long task");
+  for (const b of view.el.find(".tool-btn")) assert.ok(!b.disabled, `${b.getAttribute("title") ?? b.className} works`);
+  assert.ok(!$(".model-btn").disabled);
+  assert.ok(!$(".perm-btn").disabled);
+
+  // The shield changes the mode for the next message.
+  $(".perm-btn").fire("click");
+  assert.ok($(".chat-body").classList.contains("authorizing"));
+  view.el.find(".perm-row")[1].fire("click");
+  assert.equal(State.settings.chatPermissionMode, "auto");
+
+  // Past chats and the attachments open.
+  view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "Past chats").fire("click");
+  assert.ok($(".chat-body").classList.contains("browsing"));
+  $(".files-btn").fire("click");
+  assert.ok($(".chat-body").classList.contains("filing"));
+
+  // A file added now waits for the next question; its × takes it back.
+  State.droppedFile = { name: "next.pdf", path: "/inbox/next.pdf" };
+  view.sync();
+  assert.equal($(".tool-badge").textContent, "1");
+  $(".files-list").find(".attach-remove")[0].fire("click");
+  view.sync();
+  assert.equal(State.droppedFile, null);
+});
+
+test("moving to another chat mid-answer leaves it answering; it lands in its own chat", async (t) => {
+  if (!globalThis.localStorage) {
+    t.after(() => delete globalThis.localStorage);
+    const mem = new Map();
+    globalThis.localStorage = {
+      getItem: (k) => (mem.has(k) ? mem.get(k) : null),
+      setItem: (k, v) => mem.set(k, String(v)),
+      removeItem: (k) => mem.delete(k),
+    };
+  }
+  const { deleteChat, loadChats } = await import("../src/core/chats.ts");
+  const pending = heldAnswers();
+  await ask("write a poem");
+  const first = State.chatId;
+  assert.ok(loadChats().some((c) => c.id === first), "found in Past chats while it is answered");
+  emit("chat-delta", { chat: first, text: "Roses" });
+
+  // New chat: nothing is stopped, the new one is empty and can ask at once.
+  view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "New chat").fire("click");
+  view.sync();
+  assert.notEqual(State.chatId, first);
+  assert.deepEqual(sent("chat_reset"), [{ chatId: State.chatId }]);
+  assert.equal(sent("chat_stop").length, 0);
+  assert.equal(State.chatHistory.length, 0);
+  assert.equal($(".typing"), null);
+  assert.equal(view.el.find(".reply").length, 0);
+  assert.ok(!$(".send-btn").classList.contains("stop"), "this chat is not answering");
+  emit("chat-delta", { chat: first, text: "Roses are red" });
+  assert.equal(view.el.find(".reply").length, 0, "the other chat's text stays in it");
+
+  // Asked here, while the first one is still written.
+  await ask("what time is it?");
+  const second = State.chatId;
+  assert.deepEqual(sent("chat_send").map((a) => [a.chatId, a.query]), [[first, "write a poem"], [second, "what time is it?"]]);
+
+  // Back to the first: its text so far, still coming.
+  const historyBtn = view.el.find(".tool-btn").find((b) => b.getAttribute("title") === "Past chats");
+  historyBtn.fire("click");
+  view.el.find(".history-row").find((r) => r.getAttribute("title") === "write a poem").fire("click");
+  view.sync();
+  assert.equal(State.chatId, first);
+  assert.equal(sent("chat_restore").length, 0, "Rust still has it");
+  assert.equal(view.el.find(".reply")[0].textContent, "Roses are red");
+  assert.ok($(".send-btn").classList.contains("stop"));
+
+  // The second answer lands in its own chat, off screen.
+  pending[1]({ text: "Noon.", turns: 2 });
+  await flush();
+  view.sync();
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["write a poem"]);
+  assert.deepEqual(loadChats().find((c) => c.id === second).turns.map((t) => t.content), ["what time is it?", "Noon."]);
+  assert.equal(State.stateOverride, "thinking", "the first one is still being written");
+
+  pending[0]({ text: "Roses are red, violets are blue.", turns: 2 });
+  await flush();
+  view.sync();
+  assert.deepEqual(State.chatHistory.map((m) => m.content), ["write a poem", "Roses are red, violets are blue."]);
+  assert.equal(loadChats().find((c) => c.id === first).turns.length, 2);
+  assert.ok(!$(".send-btn").classList.contains("stop"));
+  for (const id of [first, second]) deleteChat(id);
 });
 
 // ── What the answer is doing ──────────────────────────────────────────────────
@@ -469,24 +582,24 @@ test("while Claude Code works, the dots say what it does, and come back after so
   assert.ok($(".typing"), "the dots stay");
   assert.equal(label(), "Thinking…", "Claude Code says for itself what it reads");
 
-  emit("chat-activity", { kind: "read", detail: "report.pdf" });
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "read", detail: "report.pdf" } });
   assert.equal(label(), "Reading report.pdf");
   view.sync(); // an update mid-answer keeps the line
   assert.equal(label(), "Reading report.pdf");
 
-  emit("chat-delta", "Let me check one thing.");
+  emit("chat-delta", { chat: State.chatId, text: "Let me check one thing." });
   assert.equal($(".typing"), null, "the text shows instead");
   assert.equal(label(), null);
 
-  emit("chat-activity", { kind: "command", detail: "" });
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "command", detail: "" } });
   assert.equal(label(), "Running a command", "back to its tools: the dots come back");
   assert.ok(rows().at(-1).querySelector(".typing"), "under what was written");
   assert.equal(view.el.find(".reply").length, 1);
-  emit("chat-activity", { kind: "edit", detail: "main.rs" });
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "edit", detail: "main.rs" } });
   assert.equal(view.el.find(".typing").length, 1, "one line, updated in place");
   assert.equal(label(), "Editing main.rs");
 
-  emit("chat-delta", "Done: main.rs is fixed.");
+  emit("chat-delta", { chat: State.chatId, text: "Done: main.rs is fixed." });
   assert.equal(label(), null);
   assert.equal(view.el.find(".reply")[0].textContent, "Done: main.rs is fixed.");
 
@@ -494,7 +607,7 @@ test("while Claude Code works, the dots say what it does, and come back after so
   await flush();
   view.sync();
   assert.equal(label(), null);
-  emit("chat-activity", { kind: "read", detail: "late.txt" });
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "read", detail: "late.txt" } });
   assert.equal(label(), null, "nothing after the answer");
 });
 
