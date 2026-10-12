@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.6.4 — October 12, 2026
+
+- **Permission requests wait in line**: a second request while a card is up no longer goes back to its terminal. Up to 4 wait behind the card, each with its sound and its pill in approval, and comes up once the one before is answered, dropped or timed out. The card says "1/N" and the project of the session asking, and a click or Y/N answers only the request on screen
+- **Several sessions on one pill**: two VS Code projects no longer clobber each other. A Stop finishes the pill only when no other session is at work, and the card, steps and diffs stay with the sessions still there
+- **Energy None asks everything more often**: the inbox every 5 seconds, GitHub every 10 (5 while a CI runs), the other services a sixth of their usual interval, the calendar every minute and the music every second. Light and On are unchanged
+- **A lighter app**: about 2,500 lines of code nothing used are gone, among them Lumo on the desktop (switched off since 0.3.2), island views and shortcuts nothing could open, and a stray screenshot. The integrations and pull request watches reuse one connection instead of opening a new one each time. Nothing changes on screen
+
 ## Windows 0.6.3 — October 12, 2026
 
 - **Listening starts however Claude writes the line**: the event is optional (it waits for the checks), other words for it are read, and backticks, code blocks, a sentence around it, spaces or a link to the pull request all work. A line Lumo cannot read or start is taken out and said under the answer
