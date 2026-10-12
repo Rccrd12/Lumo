@@ -194,7 +194,6 @@ export function buildHeader(actions: ViewActions): ViewHost {
       clear(soundBtn);
       soundBtn.append(svg(State.settings.soundEnabled ? ICONS.speakerOn : ICONS.speakerOff, 14));
       syncPlanPills();
-      el.style.opacity = v === "confused" ? "0" : "1";
     },
   };
 
@@ -751,18 +750,6 @@ function buildNote(): ViewHost {
   };
 }
 
-// ── Placeholders filled in later stages ───────────────────────────────────────
-
-function buildPlaceholder(title: Msg, sub: string): ViewHost {
-  const body = h(
-    "div",
-    { class: "stack", style: "padding:0 18px 0 118px" },
-    h("div", { class: "title", text: title }),
-    h("div", { class: "sub", text: sub }),
-  );
-  return { el: h("div", { class: "view" }, card(null, body)), sync() {} };
-}
-
 // ── Registry ──────────────────────────────────────────────────────────────────
 
 export function buildViews(
@@ -787,9 +774,5 @@ export function buildViews(
   map.set("recap", buildRecap(actions));
   map.set("wardrobe", buildWardrobe(actions));
   map.set("live", buildLive(() => openVoiceSettings(actions.setView)));
-  // Not in the Windows v1: sending a file by email, window attach + web result.
-  map.set("mail", buildPlaceholder(tl("Sending by email isn't in this version."), ""));
-  map.set("searching", buildPlaceholder(tl("Claude is searching…"), ""));
-  map.set("result", buildPlaceholder(tl("Result"), ""));
   return map;
 }

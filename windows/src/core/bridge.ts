@@ -377,19 +377,6 @@ export const Bridge = {
   updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
   /** Downloads that release's installer, starts it and quits Lumo. */
   updateInstall: (url: string) => callOrThrow<void>("update_install", { url }),
-
-  // ── Mochi on the desktop (src-tauri/src/desktop.rs) ───────────────────────
-  desktopInfo: () => call<DesktopInfo>("desktop_mochi_info"),
-  /** Dragged out of the island: the cursor poll carries him from Rust. */
-  desktopPickUp: () => call<boolean>("desktop_mochi_pick_up"),
-  /** A drag started on the desktop Mochi; resolves to his top-left corner. */
-  desktopDragBegin: () => call<[number, number] | null>("desktop_mochi_drag_begin"),
-  /** From the island to his spot. False: no spot on any connected display. */
-  desktopFlyOut: () => call<boolean>("desktop_mochi_fly_out"),
-  /** To the island, then hidden. `forget`: he lives in the island again. */
-  desktopFlyHome: (forget: boolean) => call<boolean>("desktop_mochi_fly_home", { forget }),
-  /** Asleep, the cursor poll stops. */
-  desktopSetAsleep: (asleep: boolean) => call<void>("desktop_mochi_set_asleep", { asleep }),
 };
 
 /** What opens one Gemini Live connection (live.rs Token). */
@@ -431,22 +418,13 @@ export interface LiveHelperActivity {
 
 export type ShortcutStatus =
   | "active" | "off" | "inUse" | "duplicate" | "invalid"
-  | "typesCharacter" | "unsupported" | "notPorted";
+  | "typesCharacter" | "unsupported";
 
 export interface ShortcutsReport {
   actions: { id: string; status: ShortcutStatus; typed?: string }[];
 }
 
-/** How the desktop Mochi's window works here (platform::DesktopMode). */
-export type DesktopMode = "poll" | "off";
-
-export interface DesktopInfo {
-  mode: DesktopMode;
-  /** He was on the desktop when the app last quit. */
-  onDesktop: boolean;
-}
-
-/** An event for one window only (island ⇄ desktop Mochi). Never throws. */
+/** An event for one window only (island ⇄ activities window). Never throws. */
 export async function emitToWindow(label: string, event: string, payload?: unknown) {
   if (!IS_TAURI) return;
   try {
@@ -672,12 +650,6 @@ async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Prom
   if (!IS_TAURI) throw new Error("not running inside Lumo");
   return tauriInvoke<T>(cmd, args);
 }
-
-export type BridgeEvent =
-  | { name: "cursor"; payload: { x: number; y: number } }
-  | { name: "tray"; payload: string }
-  | { name: "hook"; payload: Record<string, unknown> }
-  | { name: "screen-changed"; payload: null };
 
 export interface DragDropPayload {
   type: "enter" | "over" | "drop" | "leave";

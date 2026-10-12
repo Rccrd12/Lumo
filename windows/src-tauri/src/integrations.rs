@@ -48,11 +48,16 @@ pub(crate) fn emit(app: &AppHandle, update: IntegrationUpdate) {
     let _ = app.emit_to(WINDOW_LABEL, "integration", update);
 }
 
+/// One client for every poll: building one loads the TLS roots again and
+/// starts an empty connection pool. A clone shares both.
 fn client() -> reqwest::Client {
-    reqwest::Client::builder()
-        .timeout(TIMEOUT)
-        .build()
-        .unwrap_or_default()
+    static CLIENT: std::sync::LazyLock<reqwest::Client> = std::sync::LazyLock::new(|| {
+        reqwest::Client::builder()
+            .timeout(TIMEOUT)
+            .build()
+            .unwrap_or_default()
+    });
+    CLIENT.clone()
 }
 
 /// Set from the tray's Pause item. While it is on, nothing reaches the network:

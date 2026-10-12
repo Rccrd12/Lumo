@@ -13,7 +13,7 @@ import {
 import { DEFAULT_SETTINGS, parseCloseMode, parseMotion, type Settings } from "../core/state";
 import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../mochi/wardrobe";
 import {
-  MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, isComingSoon, mainPillChoices,
+  MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
 } from "../core/pills";
 import { h, clear } from "../views/dom";
@@ -490,7 +490,6 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
 
   /** Why a pill would show nothing yet, as on the Mac's row. */
   function hint(def: PillDefinition): string | null {
-    if (isComingSoon(def.id)) return t("Coming soon");
     if (def.connect.kind === "hooks" && !connected[def.id]) return t("Hooks not installed");
     if (def.connect.kind === "key" && !connected[def.id]) return t("Key not configured");
     if (def.connect.kind === "server" && !settings[def.connect.field]) return t("Not connected");
@@ -1627,7 +1626,6 @@ function shortcutsSection(initial: ShortcutsReport | null): HTMLElement {
     clear(list);
     const dups = duplicates(activeKeys(settings.shortcuts));
     for (const d of SHORTCUTS) {
-      if (!d.ported) continue;
       const binding = effective(d, settings.shortcuts);
       const keycap = h("button", {
         class: "keycap",

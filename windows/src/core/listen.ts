@@ -13,8 +13,6 @@ export const LISTEN_COLOR = pillDefinition("integration_github")?.color ?? "#F45
 /** What a watch waits for (listen.rs UNTILS). */
 export type ListenUntil = "checks" | "green" | "approved" | "ready" | "merged" | "closed";
 
-export const LISTEN_UNTILS: ListenUntil[] = ["checks", "green", "approved", "ready", "merged", "closed"];
-
 /** A watch as Rust keeps it. */
 export interface ListenWatch {
   id: number;

@@ -355,8 +355,11 @@ enum Answer {
     Unknown,
 }
 
+/// Shared by every watch, like integrations.rs's: one set of TLS roots, one pool.
 fn client() -> reqwest::Client {
-    reqwest::Client::builder().timeout(Duration::from_secs(15)).build().unwrap_or_default()
+    static CLIENT: LazyLock<reqwest::Client> =
+        LazyLock::new(|| reqwest::Client::builder().timeout(Duration::from_secs(15)).build().unwrap_or_default());
+    CLIENT.clone()
 }
 
 async fn rest(token: Option<&str>, path: &str) -> Answer {

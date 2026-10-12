@@ -409,11 +409,6 @@ export function withoutItem(p: PendingScreen, item: Pick<ScreenItem, "kind" | "k
   }
 }
 
-/** How many things wait for the next question: each screenshot, window, tab and selection, the folder. */
-export function attachedCount(p: PendingScreen): number {
-  return screenItems(p).length;
-}
-
 /** A window's tooltip: its title and its app. */
 function windowTooltip(w: { title: string; app: string }): string {
   return w.app ? `${w.title} — ${w.app}` : w.title;

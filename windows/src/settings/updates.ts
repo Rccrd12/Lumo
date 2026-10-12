@@ -5,7 +5,7 @@
 
 import { Bridge, onEvent, type UpdateInfo } from "../core/bridge";
 import { clear, h } from "../views/dom";
-import { sectionHead, setting } from "./parts";
+import { errorText, sectionHead, setting } from "./parts";
 import { t } from "../i18n/i18n";
 
 const TEXT = {
@@ -43,10 +43,6 @@ let listening = false;
 function set(next: Phase) {
   phase = next;
   redraw?.();
-}
-
-function errorText(err: unknown): string {
-  return String(err).replace(/^Error:\s*/, "");
 }
 
 function lastInfo(): UpdateInfo | null {

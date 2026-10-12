@@ -4,6 +4,11 @@
 
 import { h } from "../views/dom";
 
+/** An error from Rust as the words to show, without its "Error:" prefix. */
+export function errorText(err: unknown): string {
+  return String(err).replace(/^Error:\s*/, "");
+}
+
 export function statusDot(ok: boolean): HTMLElement {
   return h("i", { class: "dot", style: `background:${ok ? "#22c55e" : "#f4505e"}` });
 }

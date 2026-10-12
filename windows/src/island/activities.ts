@@ -29,7 +29,7 @@ import {
 import { language } from "../i18n/i18n";
 import { byEffort } from "../core/energy";
 
-export { ACTIVITIES_GAP, ACTIVITIES_TALL, ACTIVITIES_W } from "../views/activities-view";
+export { ACTIVITIES_GAP, ACTIVITIES_W } from "../views/activities-view";
 
 /** How often the calendar is asked: Settings → General → Energy sets it. */
 const calendarEvery = () => byEffort(State.effort, 60_000, 15 * 60_000, 30 * 60_000);

@@ -39,8 +39,6 @@ import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
 import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
-import { DesktopLink } from "./desktop";
-import { DRAG_THRESHOLD } from "../mochi/desktop-logic";
 import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
 
@@ -95,8 +93,6 @@ const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 :
 
 export class Island {
   readonly fsm = new IslandStateMachine();
-  /** Mochi on the desktop: his life cycle and the drag out of the island. */
-  readonly desktop: DesktopLink;
 
   private root: HTMLElement;
   private islandEl!: HTMLElement;
@@ -197,9 +193,6 @@ export class Island {
   onGreetingDone: (() => void) | null = null;
   onWake: (() => void) | null = null;
 
-  /** Where a press on Mochi started: moving past DRAG_THRESHOLD drags him out. */
-  private botPress: { x: number; y: number } | null = null;
-
   /**
    * Drop bookkeeping: when the file was dropped (performance.now(), null once
    * it is in the chat), the last tick played, and whether the ✓ has fired. The
@@ -214,10 +207,6 @@ export class Island {
 
   constructor(root: HTMLElement) {
     this.root = root;
-    this.desktop = new DesktopLink({
-      reveal: () => this.reveal(),
-      wardrobeFromDesktop: () => this.wardrobeFromDesktop(),
-    });
     this.build();
     this.wireFsm();
     this.wireInput();
@@ -492,8 +481,6 @@ export class Island {
   private wireFsm() {
     this.applyBehaviour();
     this.fsm.onTransition = (from, to) => {
-      // The greeting is over, however it ended: back to his desktop spot.
-      if (from === "greeting" && to !== "greeting") this.desktop.launch();
       switch (to) {
         case "hidden":
           this.setMode("hidden");
@@ -761,17 +748,9 @@ export class Island {
   }
 
   /**
-   * Right-click on the desktop Mochi (macOS openWardrobeFromDesktop): opens the
-   * wardrobe from any state, or goes back if it is already open.
-   */
-  wardrobeFromDesktop() {
-    this.wardrobeAnywhere();
-  }
-
-  /**
    * The wardrobe from any state — compact or hidden island included — or back
-   * to the usual view if it is already open. The desktop Mochi's right-click
-   * and the wardrobe shortcut (`open-wardrobe`) both land here.
+   * to the usual view if it is already open. The wardrobe shortcut
+   * (`open-wardrobe`) lands here.
    */
   wardrobeAnywhere() {
     if (State.mode === "expanded" && State.view === "wardrobe") {
@@ -1284,10 +1263,6 @@ export class Island {
         return;
       }
       if (movable) this.pendingMove = { x: e.clientX, y: e.clientY, click: false };
-      // A press on Mochi may become a drag out to the desktop.
-      if (e.button === 0 && this.isBotHit(e.clientX, e.clientY)) {
-        this.botPress = { x: e.clientX, y: e.clientY };
-      }
       // Right-click on Mochi opens the wardrobe, and closes it again.
       if (e.button === 2 && this.isBotHit(e.clientX, e.clientY)) {
         this.cancelBotHover();
@@ -1316,25 +1291,6 @@ export class Island {
       e.preventDefault();
       if (State.mode === "hidden" || this.isBotHit(e.clientX, e.clientY)) return;
       this.openMenu(e.clientX, e.clientY, e.target);
-    });
-
-    // Dragging Mochi out of the island puts him on the desktop.
-    window.addEventListener("mousemove", (e) => {
-      if (this.desktop.carrying) return;
-      const press = this.botPress;
-      if (!press) return;
-      if (!(e.buttons & 1)) {
-        this.botPress = null;
-        return;
-      }
-      if (Math.hypot(e.clientX - press.x, e.clientY - press.y) <= DRAG_THRESHOLD) return;
-      this.botPress = null;
-      if (!this.canDragOut()) return;
-      this.cancelBotHover();
-      this.desktop.pickUp();
-    });
-    window.addEventListener("mouseup", () => {
-      this.botPress = null;
     });
 
     // Typing the question keeps a shortcut's grace going (capture phase: the
@@ -1460,15 +1416,7 @@ export class Island {
     if (!stillAway) this.ensureRunning();
   }
 
-  /** The greeting and the drop sequence draw a Mochi of their own: not that one. */
-  private canDragOut(): boolean {
-    if (State.mode === "hidden" || !this.desktop.canPickUp()) return false;
-    return !(State.mode === "expanded" && (State.view === "greeting" || this.uploadActive));
-  }
-
   private isBotHit(x: number, y: number): boolean {
-    // Out on the desktop, the island's Mochi is invisible: nothing to hit.
-    if (State.mochiOnDesktop) return false;
     const rect = this.islandRect();
     const cx = rect.x + this.botCx.value;
     const cy = rect.y + this.botCy.value;
@@ -1617,15 +1565,13 @@ export class Island {
     }
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
-    // The drop canvas draws its own Mochi; two of them would overlap. Out on the
-    // desktop, he isn't here at all.
-    const away = State.mochiOnDesktop;
+    // The drop canvas draws its own Mochi; two of them would overlap.
     // The big picture fills the island: Lumo steps out of its way meanwhile.
     const picture = State.picture != null;
-    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !away && !picture;
+    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
-    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !away && !picture) {
+    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture) {
       const d = p.diameter;
       const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";

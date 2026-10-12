@@ -42,7 +42,7 @@ pub fn edge_gap() -> f64 {
     f64::from_bits(GAP_BITS.load(Ordering::Relaxed))
 }
 /// Logical size of the invisible strip that wakes the island when it is hidden:
-/// as long as the closed island (src/core/layout.ts COMPACT_W, WAKE_STRIP_W).
+/// as long as the closed island (src/core/layout.ts COMPACT_W).
 pub const STRIP_W: f64 = 288.0;
 pub const STRIP_H: f64 = 6.0;
 
@@ -98,35 +98,6 @@ impl Dock {
     /// On a side the closed island stands upright.
     fn upright(self) -> bool {
         matches!(self, Dock::Left | Dock::Right)
-    }
-}
-
-/// The edge in effect, for Mochi's flights home (desktop.rs).
-static DOCK: std::sync::atomic::AtomicU8 = std::sync::atomic::AtomicU8::new(0);
-
-pub fn dock() -> Dock {
-    match DOCK.load(Ordering::Relaxed) {
-        1 => Dock::Bottom,
-        2 => Dock::Left,
-        3 => Dock::Right,
-        _ => Dock::Top,
-    }
-}
-
-/// Where Mochi's flights home aim, as a physical point on screen: the middle
-/// of the island's top, wherever it is docked or floats. `pos`/`size` are the
-/// window's, `k` its scale times the zoom, `rect` the island as last drawn
-/// (page pixels); before one was drawn, the closed pill against the top.
-pub fn anchor(pos: (f64, f64), size: (f64, f64), k: f64, rect: IslandRect) -> (f64, f64) {
-    if rect.w > 0.0 {
-        return (pos.0 + (rect.x + rect.w / 2.0) * k, pos.1 + rect.y * k);
-    }
-    let pill_long = NOTCH_PILL.0 * k;
-    match dock() {
-        Dock::Top => (pos.0 + size.0 / 2.0, pos.1 + edge_gap() * k),
-        Dock::Bottom => (pos.0 + size.0 / 2.0, pos.1 + size.1 - (edge_gap() + NOTCH_PILL.1) * k),
-        Dock::Left => (pos.0 + (edge_gap() + NOTCH_PILL.1 / 2.0) * k, pos.1 + (size.1 - pill_long) / 2.0),
-        Dock::Right => (pos.0 + size.0 - (edge_gap() + NOTCH_PILL.1 / 2.0) * k, pos.1 + (size.1 - pill_long) / 2.0),
     }
 }
 
@@ -951,13 +922,6 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let zoom = clamp_zoom(placement.zoom);
     ZOOM_BITS.store(zoom.to_bits(), Ordering::Relaxed);
     GAP_BITS.store(placement.gap.to_bits(), Ordering::Relaxed);
-    let dock_bits = match placement.dock {
-        Dock::Top => 0,
-        Dock::Bottom => 1,
-        Dock::Left => 2,
-        Dock::Right => 3,
-    };
-    DOCK.store(dock_bits, Ordering::Relaxed);
     let area = area_of(&m);
     let (x, y, pw, ph) = frame(area, scale, placement, collapsed);
     let (sx, sy) = shift(area, scale, placement);

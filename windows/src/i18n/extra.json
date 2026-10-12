@@ -157,18 +157,6 @@
    "id": "Menanyakan Codex…",
    "it": "Chiedo a Codex…"
   },
-  "Attach the front window to the chat": {
-   "zh-Hans": "将前台窗口附加到聊天",
-   "hi": "सामने वाली विंडो को चैट से जोड़ें",
-   "es": "Adjuntar la ventana activa al chat",
-   "ar": "إرفاق النافذة الأمامية بالدردشة",
-   "fr": "Joindre la fenêtre au premier plan au chat",
-   "bn": "সামনের উইন্ডোটি চ্যাটে যুক্ত করুন",
-   "pt-BR": "Anexar a janela em primeiro plano ao chat",
-   "ru": "Прикрепить активное окно к чату",
-   "id": "Lampirkan jendela depan ke obrolan",
-   "it": "Allega alla chat la finestra in primo piano"
-  },
   "Auto (seasons)": {
    "zh-Hans": "自动（随季节）",
    "hi": "ऑटो (मौसम के अनुसार)",
@@ -2005,18 +1993,6 @@
    "id": "Mulai ulang OpenCode untuk memuat plugin.",
    "it": "Riavvia OpenCode per caricare il plugin."
   },
-  "Result": {
-   "zh-Hans": "结果",
-   "hi": "परिणाम",
-   "es": "Resultado",
-   "ar": "النتيجة",
-   "fr": "Résultat",
-   "bn": "ফলাফল",
-   "pt-BR": "Resultado",
-   "ru": "Результат",
-   "id": "Hasil",
-   "it": "Risultato"
-  },
   "Round glasses": {
    "zh-Hans": "圆框眼镜",
    "hi": "गोल चश्मा",
@@ -2125,18 +2101,6 @@
    "id": "Kunci rahasia",
    "it": "Chiave segreta"
   },
-  "Send Lumo to the desktop": {
-   "zh-Hans": "把 Lumo 送到桌面",
-   "hi": "Lumo को डेस्कटॉप पर भेजें",
-   "es": "Enviar a Lumo al escritorio",
-   "ar": "إرسال Lumo إلى سطح المكتب",
-   "fr": "Envoyer Lumo sur le bureau",
-   "bn": "Lumo-কে ডেস্কটপে পাঠান",
-   "pt-BR": "Enviar o Lumo para a área de trabalho",
-   "ru": "Отправить Lumo на рабочий стол",
-   "id": "Kirim Lumo ke desktop",
-   "it": "Manda Lumo sul desktop"
-  },
   "Send the message": {
    "zh-Hans": "发送消息",
    "hi": "संदेश भेजें",
@@ -2148,18 +2112,6 @@
    "ru": "Отправить сообщение",
    "id": "Kirim pesan",
    "it": "Invia il messaggio"
-  },
-  "Sending by email isn't in this version.": {
-   "zh-Hans": "此版本暂不支持通过邮件发送。",
-   "hi": "ईमेल से भेजना इस संस्करण में नहीं है।",
-   "es": "El envío por correo no está en esta versión.",
-   "ar": "الإرسال بالبريد الإلكتروني غير متاح في هذا الإصدار.",
-   "fr": "L'envoi par e-mail n'est pas dans cette version.",
-   "bn": "ইমেলে পাঠানো এই সংস্করণে নেই।",
-   "pt-BR": "O envio por e-mail não está nesta versão.",
-   "ru": "Отправки по почте в этой версии нет.",
-   "id": "Mengirim lewat email belum ada di versi ini.",
-   "it": "L'invio via email non è disponibile in questa versione."
   },
   "Sending replaces this message and everything after it.": {
    "zh-Hans": "发送后将替换这条消息及其后的所有内容。",

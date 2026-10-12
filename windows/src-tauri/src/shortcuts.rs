@@ -54,37 +54,31 @@ pub struct ActionDef {
     pub id: &'static str,
     pub default_keys: &'static str,
     pub enabled_by_default: bool,
-    /// False for the Mac actions this version cannot do yet. Their ids and
-    /// defaults stay reserved so a later port lands on the same keys.
-    pub ported: bool,
 }
 
-const fn action(id: &'static str, keys: &'static str, on: bool, ported: bool) -> ActionDef {
-    ActionDef { id, default_keys: keys, enabled_by_default: on, ported }
+const fn action(id: &'static str, keys: &'static str, on: bool) -> ActionDef {
+    ActionDef { id, default_keys: keys, enabled_by_default: on }
 }
 
-/// Same order as `ShortcutAction.allCases`.
+/// Same order as `ShortcutAction.allCases`, less the two the Mac has and this
+/// version doesn't (attachFrontWindow, desktopToggle).
 pub const ACTIONS: &[ActionDef] = &[
-    action("toggleIsland", "Ctrl+Alt+N", false, true),
-    action("openChat", "Ctrl+Alt+Space", true, true),
-    action("goToAlert", "Ctrl+Alt+A", true, true),
-    action("jumpToTerminal", "Ctrl+Alt+T", true, true),
-    // Dragging Mochi onto a window is not in this version.
-    action("attachFrontWindow", "Ctrl+Alt+F", true, false),
-    action("nextPill", "Ctrl+Alt+Right", true, true),
-    action("prevPill", "Ctrl+Alt+Left", true, true),
-    action("muteToggle", "Ctrl+Alt+S", true, true),
-    // Mochi on the desktop is not in this version.
-    action("desktopToggle", "Ctrl+Alt+D", true, false),
-    action("wardrobeToggle", "Ctrl+Alt+G", true, true),
+    action("toggleIsland", "Ctrl+Alt+N", false),
+    action("openChat", "Ctrl+Alt+Space", true),
+    action("goToAlert", "Ctrl+Alt+A", true),
+    action("jumpToTerminal", "Ctrl+Alt+T", true),
+    action("nextPill", "Ctrl+Alt+Right", true),
+    action("prevPill", "Ctrl+Alt+Left", true),
+    action("muteToggle", "Ctrl+Alt+S", true),
+    action("wardrobeToggle", "Ctrl+Alt+G", true),
     // Not on the Mac: see the top of this file.
-    action("askScreen", "Ctrl+Alt+P", true, true),
-    action("askSelection", "Ctrl+Alt+X", true, true),
+    action("askScreen", "Ctrl+Alt+P", true),
+    action("askSelection", "Ctrl+Alt+X", true),
     // Starts or ends a spoken conversation with Gemini Live (live.rs).
-    action("talkToGemini", "Ctrl+Alt+L", true, true),
+    action("talkToGemini", "Ctrl+Alt+L", true),
     // The page on screen in the front-most Edge or Chrome window, with what
     // it shows (share.rs), waiting in the chat like the selected text.
-    action("askPage", "Ctrl+Alt+B", true, true),
+    action("askPage", "Ctrl+Alt+B", true),
 ];
 
 #[cfg(test)]
@@ -137,8 +131,6 @@ pub enum Status {
     TypesCharacter,
     /// Global shortcuts can't be registered in this session.
     Unsupported,
-    /// The action itself isn't in this version.
-    NotPorted,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -234,9 +226,7 @@ pub fn plan(
         .map(|def| {
             let refuse = |status, typed| Err(ActionStatus { id: def.id, status, typed });
             let binding = effective(def, stored);
-            let outcome = if !def.ported {
-                refuse(Status::NotPorted, None)
-            } else if !binding.enabled || binding.keys.trim().is_empty() {
+            let outcome = if !binding.enabled || binding.keys.trim().is_empty() {
                 refuse(Status::Off, None)
             } else {
                 match parse(&binding.keys) {
@@ -433,9 +423,9 @@ fn typed_character(shortcut: &Shortcut) -> Option<String> {
 mod tests {
     use super::*;
 
-    const MAC_IDS: [&str; 10] = [
-        "toggleIsland", "openChat", "goToAlert", "jumpToTerminal", "attachFrontWindow",
-        "nextPill", "prevPill", "muteToggle", "desktopToggle", "wardrobeToggle",
+    const MAC_IDS: [&str; 8] = [
+        "toggleIsland", "openChat", "goToAlert", "jumpToTerminal",
+        "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
     ];
     /// This version's own, after the Mac's.
     const OWN_IDS: [&str; 4] = ["askScreen", "askSelection", "talkToGemini", "askPage"];
@@ -480,14 +470,11 @@ mod tests {
     }
 
     #[test]
-    fn the_actions_not_ported_yet_are_reserved_not_registered() {
+    fn every_action_but_the_island_toggle_is_registered_by_default() {
         let plan = plan(&Bindings::new(), never);
         for (def, outcome) in plan {
-            let reserved = matches!(def.id, "attachFrontWindow" | "desktopToggle");
-            assert_eq!(def.ported, !reserved);
             match outcome {
-                Ok(_) => assert!(def.ported && def.enabled_by_default, "{}", def.id),
-                Err(s) if reserved => assert_eq!(s.status, Status::NotPorted),
+                Ok(_) => assert!(def.enabled_by_default, "{}", def.id),
                 Err(s) => assert_eq!((def.id, s.status), ("toggleIsland", Status::Off)),
             }
         }
@@ -546,7 +533,7 @@ mod tests {
         // Same key, other modifiers: not a duplicate.
         stored.insert("jumpToTerminal".into(), Binding { keys: "Ctrl+Shift+A".into(), enabled: true });
         let plan = super::plan(&stored, never);
-        assert!(plan.iter().all(|(d, o)| o.is_ok() || !d.ported || d.id == "toggleIsland"));
+        assert!(plan.iter().all(|(d, o)| o.is_ok() || d.id == "toggleIsland"));
 
         // A disabled action doesn't hold its keys.
         stored.insert("goToAlert".into(), Binding { keys: "Ctrl+Alt+A".into(), enabled: false });

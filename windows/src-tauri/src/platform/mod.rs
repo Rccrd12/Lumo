@@ -23,28 +23,3 @@ pub fn home_dir() -> PathBuf {
         .unwrap_or_else(|| PathBuf::from("."))
 }
 
-/// How the desktop Mochi's window can be placed and clicked on this system.
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-pub enum DesktopMode {
-    /// Placed anywhere, and a cursor poll drives click-through, the eyes and
-    /// the drag, exactly like the island.
-    Poll,
-    /// Mochi stays in the island.
-    Off,
-}
-
-impl DesktopMode {
-    pub fn as_str(self) -> &'static str {
-        match self {
-            DesktopMode::Poll => "poll",
-            DesktopMode::Off => "off",
-        }
-    }
-
-    /// The space a saved spot is measured in: physical pixels of the whole
-    /// desktop, as the OS reports monitors. A spot from another space is not
-    /// trusted.
-    pub fn space(self) -> &'static str {
-        "screen"
-    }
-}

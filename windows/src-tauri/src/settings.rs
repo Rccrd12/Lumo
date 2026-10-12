@@ -19,7 +19,6 @@ pub struct Settings {
     pub sound_enabled: bool,
     pub sound_volume: f64,
     pub auto_close_interval: f64,
-    pub absence_interval: f64,
     pub active_integrations: Vec<String>,
     /// The always-on workspace pill (src/core/pills.ts checks it is one).
     pub main_pill: String,
@@ -186,26 +185,6 @@ pub struct Settings {
     /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `mochi_outfit`: a
     /// code this build doesn't know reads as "".
     pub language: String,
-    /// Mochi on the desktop: whether he lives there, and his spot. Owned by
-    /// the Rust side (desktop.rs) — what a webview sends back is ignored.
-    pub desktop_mochi: DesktopMochiPref,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", default)]
-pub struct DesktopMochiPref {
-    /// He was on the desktop when the app quit: he flies back out at launch.
-    pub on_desktop: bool,
-    /// Top-left corner of his window where the user last left him.
-    pub spot: Option<DesktopSpot>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct DesktopSpot {
-    pub x: f64,
-    pub y: f64,
-    /// What x and y are measured in (`DesktopMode::space`).
-    pub space: String,
 }
 
 /// A little bigger than the Mac's icons, which sit closer to the eye.
@@ -221,7 +200,6 @@ impl Default for Settings {
             sound_enabled: true,
             sound_volume: 0.12,
             auto_close_interval: 15.0,
-            absence_interval: 180.0,
             active_integrations: vec![
                 "integration_resend".into(),
                 "integration_n8n".into(),
@@ -288,7 +266,6 @@ impl Default for Settings {
             lumo_character: "filo".into(),
             pill_colors: BTreeMap::new(),
             language: String::new(),
-            desktop_mochi: DesktopMochiPref::default(),
         }
     }
 }
@@ -538,7 +515,6 @@ mod tests {
   "soundEnabled": false,
   "soundVolume": 0.5,
   "autoCloseInterval": 30.0,
-  "absenceInterval": 60.0,
   "activeIntegrations": ["integration_notion"],
   "mainPill": "agent_cursor",
   "screen": "cursor",
@@ -599,8 +575,7 @@ mod tests {
   "lumoMotion": "lively",
   "lumoCharacter": "goccia",
   "pillColors": { "integration_claude": "#2DD4BF" },
-  "language": "pt-BR",
-  "desktopMochi": { "onDesktop": true, "spot": { "x": 1500.5, "y": -300.0, "space": "screen" } }
+  "language": "pt-BR"
 }"##;
 
     fn custom() -> Value {
@@ -704,30 +679,6 @@ mod tests {
         assert!(!loaded.chat_share_explorer);
         assert_eq!(loaded.chat_effort, "high");
         assert!(parse(CUSTOM.as_bytes()).unwrap().chat_share_explorer);
-    }
-
-    #[test]
-    fn a_file_from_before_the_desktop_mochi_keeps_him_in_the_island() {
-        let loaded = parse(&custom_with("desktopMochi", None)).unwrap();
-        assert_eq!(loaded.desktop_mochi, DesktopMochiPref::default());
-        assert!(!loaded.desktop_mochi.on_desktop);
-        assert_eq!(loaded.mochi_outfit, "witchHat");
-    }
-
-    #[test]
-    fn a_half_written_desktop_spot_costs_only_the_spot() {
-        let loaded = parse(&custom_with(
-            "desktopMochi",
-            Some(json!({ "onDesktop": true, "spot": { "x": "left" } })),
-        ))
-        .unwrap();
-        // The whole field falls back, and nothing else does.
-        assert_eq!(loaded.desktop_mochi, DesktopMochiPref::default());
-        assert_eq!(loaded.model, "some-model");
-
-        let loaded = parse(&custom_with("desktopMochi", Some(json!({ "onDesktop": true })))).unwrap();
-        assert!(loaded.desktop_mochi.on_desktop);
-        assert_eq!(loaded.desktop_mochi.spot, None);
     }
 
     #[test]
@@ -989,7 +940,6 @@ mod tests {
                 "soundEnabled",
                 "soundVolume",
                 "autoCloseInterval",
-                "absenceInterval",
                 "activeIntegrations",
                 "mainPill",
                 "screen",
@@ -1051,7 +1001,6 @@ mod tests {
                 "lumoCharacter",
                 "pillColors",
                 "language",
-                "desktopMochi",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

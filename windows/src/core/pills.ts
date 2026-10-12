@@ -24,11 +24,10 @@ export const PILL_CATEGORIES: { id: PillCategory; title: string }[] = [
 /**
  * Whether the pill does anything on this build:
  * - `yes`: works on Windows;
- * - `soon`: can be declared, shows "Coming soon" (macOS has it, this build not yet);
  * - `no`: never offered here (macOS only, or retired: Gemini CLI, replaced by
  *   Antigravity CLI). The ID stays reserved.
  */
-export type PillSupport = "yes" | "soon" | "no";
+export type PillSupport = "yes" | "no";
 
 /** What makes the pill connected. */
 export type PillConnect =
@@ -146,11 +145,7 @@ export function pillDefinition(id: string): PillDefinition | undefined {
 
 /** The pills this build offers, in catalog order. */
 export function availablePills(): PillDefinition[] {
-  return PILL_CATALOG.filter((p) => p.support === "yes" || p.support === "soon");
-}
-
-export function isComingSoon(id: string): boolean {
-  return pillDefinition(id)?.support === "soon";
+  return PILL_CATALOG.filter((p) => p.support === "yes");
 }
 
 /** True for pills whose sessions arrive as hook events (Mac #183). */
@@ -160,7 +155,7 @@ export function isHookPill(id: string): boolean {
 
 /** Workspace tools that can be the main pill. */
 export function mainPillChoices(): PillDefinition[] {
-  return availablePills().filter((p) => p.category === "workspace" && p.support !== "soon");
+  return availablePills().filter((p) => p.category === "workspace");
 }
 
 /** PillDefinition.sessionSubtitle — next to the name in a live session's card. */

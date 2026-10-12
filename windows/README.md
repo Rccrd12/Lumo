@@ -742,7 +742,6 @@ npm run icons          # regenerates src-tauri/icons from scripts/gen-icons.mjs
 windows/
   src/                 island front end (TypeScript, no framework)
     mochi/             Lumo and the launch greeting, in Canvas 2D
-    desktop/           Lumo's own little window on the desktop (switched off)
     island/            state machine, hooks, integrations
     views/             every island view
     settings/          the settings window

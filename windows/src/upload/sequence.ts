@@ -6,6 +6,8 @@
 // for one frame. All coordinates are island points (the island is 640 × 176),
 // so every constant below is the macOS constant unchanged.
 
+import { Ease, lerp, seg } from "../core/anim";
+
 /** Constants — exact mirror of USC in UploadSequenceEngine.swift. */
 export const USC = {
   W: 640,
@@ -52,17 +54,13 @@ const UNDER_FILE = 21 + USC.D_BOX / 2 + 4;
 
 // ── Easing ──────────────────────────────────────────────────────────────────
 
-export const eOut = (t: number) => 1 - Math.pow(1 - t, 3);
-export const eIn = (t: number) => t * t * t;
-export const eInOut = (t: number) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
+export const { out: eOut, easeIn: eIn, inOut: eInOut } = Ease;
 export const eBack = (t: number) => {
   const c1 = 1.70158;
   const c3 = c1 + 1;
   return 1 + c3 * Math.pow(t - 1, 3) + c1 * Math.pow(t - 1, 2);
 };
 
-export const seg = (t: number, a: number, b: number) => Math.max(0, Math.min(1, (t - a) / (b - a)));
-export const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 
 /** Squeeze keyframes for the suckEnd → chew1 phase. */
 function squeezeY(t: number): number {
@@ -303,11 +301,6 @@ class UploadSequence {
   /** True once the file has been dropped (the post-drop timeline is running). */
   get dropped(): boolean {
     return this.dropWall != null;
-  }
-
-  /** Seconds since the drop, or null while still dragging. */
-  sinceDrop(): number | null {
-    return this.dropWall == null ? null : this.now() - this.dropWall;
   }
 
   // ── Public entry point ────────────────────────────────────────────────────

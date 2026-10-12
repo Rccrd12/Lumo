@@ -62,7 +62,7 @@ body {
   top: 0;
   left: 50%;
   transform: translateX(-50%);
-  /* As long as the closed island (layout.ts WAKE_STRIP_W, island.rs STRIP_W). */
+  /* As long as the closed island (layout.ts COMPACT_W, island.rs STRIP_W). */
   width: 288px;
   height: 6px;
   background: transparent;
@@ -481,14 +481,6 @@ body {
 #compact .cp-close:hover {
   background: rgba(255, 255, 255, 0.1);
   color: var(--ink);
-}
-
-#compact .cp-media {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 4px;
 }
 
 /* Three still bars, lit while it plays: no animation, so it costs nothing. */
@@ -1354,14 +1346,6 @@ body {
   opacity: 0.4;
 }
 
-.status-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font: 400 11px var(--font);
-  color: var(--dim-2);
-}
-
 /* ── Settings view (in-island) ──────────────────────────────────────────── */
 
 /* The Settings page itself, in a frame (views/settings-frame.ts). */
@@ -1397,12 +1381,6 @@ body {
 
 .settings-frame-wait[hidden] {
   display: none;
-}
-
-.settings-rows {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
 }
 
 .settings-row {
@@ -1487,10 +1465,6 @@ input[type="range"]::-webkit-slider-thumb {
 
 .grow {
   flex: 1 1 auto;
-}
-
-.nowrap {
-  white-space: nowrap;
 }
 
 /* ── Chat (prompt view) ─────────────────────────────────────────────────── */
@@ -2543,12 +2517,6 @@ input[type="range"]::-webkit-slider-thumb {
 .perm-note {
   font-size: 10.5px;
   color: #5c6370;
-}
-
-.picker-label {
-  font-size: 11px;
-  color: #8b929e;
-  margin-right: 2px;
 }
 
 .picker-title {

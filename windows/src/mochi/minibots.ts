@@ -52,10 +52,6 @@ export function createMiniBot(task: AgentTask, bodySize: number): HTMLElement {
   return slot;
 }
 
-export function releaseMiniBot(canvas: HTMLCanvasElement) {
-  live.delete(canvas);
-}
-
 /** Drops every canvas no longer in the document (views are rebuilt wholesale). */
 export function pruneMiniBots() {
   for (const [canvas] of live) {
@@ -90,5 +86,3 @@ export function tickMiniBots(dt: number) {
     mb.engine.draw(ctx, mb.cssSize, mb.cssSize);
   }
 }
-
-export const miniBotCount = () => live.size;

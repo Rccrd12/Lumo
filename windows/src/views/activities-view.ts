@@ -42,8 +42,6 @@ export const ACTIVITIES_TEXT = {
 /** The panel's width by default and its gap from the island (activities.rs). */
 export const ACTIVITIES_W = 264;
 export const ACTIVITIES_GAP = 12;
-/** Its height beside the island when none was picked, if the window has room. */
-export const ACTIVITIES_TALL = 400;
 /** Minutes offered as one-click timers. */
 const QUICK_TIMERS = [1, 5, 10, 25];
 /** Emails shown at once; ignoring one brings the next up. */
