@@ -42,7 +42,7 @@ pub fn edge_gap() -> f64 {
     f64::from_bits(GAP_BITS.load(Ordering::Relaxed))
 }
 /// Logical size of the invisible strip that wakes the island when it is hidden:
-/// as long as the closed island (src/core/layout.ts COMPACT_W, WAKE_STRIP_W).
+/// as long as the closed island (src/core/layout.ts COMPACT_W).
 pub const STRIP_W: f64 = 288.0;
 pub const STRIP_H: f64 = 6.0;
 

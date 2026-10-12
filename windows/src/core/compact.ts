@@ -422,13 +422,6 @@ export function compactNotice(text: string, color: string, ms = NOTICE_MS) {
   onNews?.();
 }
 
-/** A new email on the closed island; false when it was already shown. */
-export function compactMail(mail: MailPeek): boolean {
-  const shown = Feed.showMail(mail, Date.now());
-  if (shown) onNews?.();
-  return shown;
-}
-
 /** A timer on the closed island (Gemini Live, the chat's /timer). */
 export function compactTimer(ms: number, label: string): TimerActivity {
   const timer = Feed.startTimer(ms, label, Date.now());

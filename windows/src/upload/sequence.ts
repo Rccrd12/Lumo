@@ -305,11 +305,6 @@ class UploadSequence {
     return this.dropWall != null;
   }
 
-  /** Seconds since the drop, or null while still dragging. */
-  sinceDrop(): number | null {
-    return this.dropWall == null ? null : this.now() - this.dropWall;
-  }
-
   // ── Public entry point ────────────────────────────────────────────────────
 
   frame(): UploadFrame {

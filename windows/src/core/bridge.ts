@@ -673,12 +673,6 @@ async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Prom
   return tauriInvoke<T>(cmd, args);
 }
 
-export type BridgeEvent =
-  | { name: "cursor"; payload: { x: number; y: number } }
-  | { name: "tray"; payload: string }
-  | { name: "hook"; payload: Record<string, unknown> }
-  | { name: "screen-changed"; payload: null };
-
 export interface DragDropPayload {
   type: "enter" | "over" | "drop" | "leave";
   paths?: string[];

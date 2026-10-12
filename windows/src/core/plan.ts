@@ -45,7 +45,6 @@ export const PLAN_TEXT = {
   get claudeTitle() { return t("Claude plan"); },
   get codexTitle() { return t("Codex plan"); },
   get claudePillTitle() { return t("Claude plan usage"); },
-  get codexPillTitle() { return t("Codex plan usage"); },
   get waiting() { return t("Waiting for a response from Claude Code"); },
   get askingCodex() { return t("Asking Codex…"); },
   get justNow() { return t("just now"); },
