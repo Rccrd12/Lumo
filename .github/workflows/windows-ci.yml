@@ -67,12 +67,3 @@ jobs:
 
       - name: Rust tests
         run: cargo test --workspace --locked
-
-      # TEMPORARY: repeats the network tests to show they no longer flake.
-      - name: Network tests, 25 runs
-        shell: pwsh
-        run: |
-          for ($i = 1; $i -le 25; $i++) {
-            cargo test -p lumo --locked -q -- net:: local_chat::
-            if ($LASTEXITCODE -ne 0) { Write-Error "failed on run $i"; exit 1 }
-          }
