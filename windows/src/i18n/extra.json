@@ -8558,6 +8558,18 @@
    "ru": "Через несколько секунд",
    "id": "Setelah beberapa detik",
    "it": "Dopo qualche secondo"
+  },
+  "Running a command: {what}": {
+   "zh-Hans": "正在运行命令：{what}",
+   "hi": "कमांड चला रहा है: {what}",
+   "es": "Ejecutando un comando: {what}",
+   "ar": "ينفّذ أمرًا: {what}",
+   "fr": "Lance une commande : {what}",
+   "bn": "একটি কমান্ড চালাচ্ছে: {what}",
+   "pt-BR": "Executando um comando: {what}",
+   "ru": "Выполняет команду: {what}",
+   "id": "Menjalankan perintah: {what}",
+   "it": "Esegue un comando: {what}"
   }
  }
 }

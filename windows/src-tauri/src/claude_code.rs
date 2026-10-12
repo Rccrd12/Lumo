@@ -195,15 +195,30 @@ fn card_settings(relay: &str) -> Value {
     })
 }
 
-/// `args`, plus the card hook when the mode asks every time and the file
-/// could be written where Claude Code can be pointed at it.
+/// The settings a run in Auto or Plan adds for itself instead: a PreToolUse
+/// hook on shell commands that lets everything through as the mode says, but
+/// a command that would sit waiting on GitHub (`gh pr checks --watch`, a sleep
+/// loop): Claude is told to let Lumo listen instead (lumo-hook reply::blocking_wait).
+fn guard_settings(relay: &str) -> Value {
+    json!({
+        "hooks": {
+            "PreToolUse": [{
+                "matcher": "Bash|PowerShell",
+                "hooks": [{ "type": "command", "command": relay, "timeout": 10 }],
+            }],
+        },
+    })
+}
+
+/// `args`, plus the card hook when the mode asks every time (the guard
+/// otherwise), when the file could be written where Claude Code can be
+/// pointed at it.
 fn with_cards(mut args: Vec<String>, mode: &str) -> Vec<String> {
-    if permission_mode(mode) != "default" {
-        return args;
-    }
-    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-card --wait 110 PreToolUse");
-    let path = crate::platform::local_dir().join("chat-cards.json");
-    let text = card_settings(&relay).to_string();
+    let cards = permission_mode(mode) == "default";
+    let (flags, file) = if cards { ("--chat-card --wait 110 PreToolUse", "chat-cards.json") } else { ("--chat-guard PreToolUse", "chat-guard.json") };
+    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, flags);
+    let path = crate::platform::local_dir().join(file);
+    let text = if cards { card_settings(&relay) } else { guard_settings(&relay) }.to_string();
     let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -412,7 +427,8 @@ fn activity_for(name: &str, input: &Value) -> Activity {
         }
         "Grep" | "Glob" => Activity::new("search", short(&field(&["pattern"]))),
         "LS" => Activity::new("search", ""),
-        "Bash" | "PowerShell" => Activity::new("command", ""),
+        // What the command is for, as Claude Code describes it ("Watch the PR's checks").
+        "Bash" | "PowerShell" => Activity::new("command", short(&field(&["description"]))),
         "Edit" | "Write" | "MultiEdit" | "NotebookEdit" => Activity::new("edit", file_name(&field(&["file_path", "notebook_path"]))),
         "WebSearch" | "web_search" => Activity::new("web", ""),
         "WebFetch" | "web_fetch" => match host(&field(&["url"])) {
@@ -1013,10 +1029,11 @@ mod tests {
         assert_eq!(entry["matcher"], CARD_MATCHER);
         assert_eq!(entry["hooks"][0]["timeout"], 120, "longer than the relay waits");
         assert!(entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
-        // Auto and Plan only add nothing: Claude Code decides, or changes nothing.
-        for mode in ["auto", "plan"] {
-            assert!(!with_cards(vec![], mode).iter().any(|a| a == "--settings"), "{mode}");
-        }
+        // Auto and Plan only add the guard on shell commands: Claude Code decides.
+        let v = guard_settings("'/x/lumo-hook' --chat-guard PreToolUse");
+        let entry = &v["hooks"]["PreToolUse"][0];
+        assert_eq!(entry["matcher"], "Bash|PowerShell");
+        assert!(!entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
     }
 
     #[test]
@@ -1103,6 +1120,8 @@ mod tests {
         assert_eq!(a("LS", json!({"path": "/home/me"})), Activity::new("search", ""));
         assert_eq!(a("Bash", json!({"command": "rm -rf /tmp/x"})), Activity::new("command", ""), "the command itself stays out");
         assert_eq!(a("PowerShell", json!({"command": "Get-ChildItem"})), Activity::new("command", ""));
+        // What it is for, when Claude Code says: a long one is not a mystery.
+        assert_eq!(a("Bash", json!({"command": "gh pr checks 22 --watch", "description": "Watch the PR's checks"})), Activity::new("command", "Watch the PR's checks"));
         for tool in ["Edit", "Write", "MultiEdit"] {
             assert_eq!(a(tool, json!({"file_path": "/work/src/main.rs"})), Activity::new("edit", "main.rs"));
         }
