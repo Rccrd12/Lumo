@@ -119,14 +119,14 @@ const RETRY_MOST: Duration = Duration::from_secs(600);
 /// How long one IDLE lasts before Lumo looks again anyway. The server should
 /// say at once when an email arrives, but some (Gmail) can be slow to: looking
 /// every 20 seconds costs one tiny SEARCH, as only new emails are fetched.
-/// Settings → General → Energy makes it 8 seconds with nothing spared, a
+/// Settings → General → Energy makes it 5 seconds with nothing spared, a
 /// minute while saving energy.
 fn idle_for() -> Duration {
-    Duration::from_secs(crate::energy::pick(8, 20, 60))
+    Duration::from_secs(crate::energy::pick(5, 20, 60))
 }
 /// Without IDLE, how often the inbox is asked.
 fn poll_every() -> Duration {
-    Duration::from_secs(crate::energy::pick(10, 30, 90))
+    Duration::from_secs(crate::energy::pick(5, 30, 90))
 }
 
 /// One connection: sign in, then look each time the server says something
