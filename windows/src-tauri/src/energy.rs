@@ -85,7 +85,7 @@ pub fn refresh(app: &AppHandle) {
     if EFFORT.swap(code, Ordering::Relaxed) != code {
         crate::log::line(format!("energy: {effort:?}"));
         crate::mail::wake();
-        crate::integrations::wake_github_loops();
+        crate::integrations::wake_github_pulse();
     }
 }
 

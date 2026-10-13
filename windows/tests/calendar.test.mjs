@@ -64,6 +64,13 @@ test("daily with a count, monthly on the nth weekday, yearly", () => {
   assert.deepEqual(parseIcs(text, local(2026, 11, 1), local(2026, 11, 30)).filter((e) => e.title === "Board").map((e) => new Date(e.start).getDate()), [12]);
   assert.deepEqual(by("Birthday"), [12]);
   assert.deepEqual(by("Run"), [9]);
+  // Into the next year: the second Thursday of January 2027 is the 14th.
+  assert.deepEqual(parseIcs(text, local(2027, 1, 1), local(2027, 1, 31)).filter((e) => e.title === "Board").map((e) => new Date(e.start).getDate()), [14]);
+});
+
+test("monthly on a weekday with no number is every one of them", () => {
+  const text = ics(["UID:w", "DTSTART:20261005T090000", "RRULE:FREQ=MONTHLY;BYDAY=MO", "SUMMARY:Standup"]);
+  assert.deepEqual(parseIcs(text, local(2026, 10, 1), local(2026, 10, 31)).map((e) => new Date(e.start).getDate()), [5, 12, 19, 26]);
 });
 
 test("the event about to start", () => {

@@ -257,7 +257,9 @@ pub fn asks_about(query: &str, doc: &OpenDocument) -> bool {
         "tabella", "table", "capitolo", "chapter", "aperto", "aperta", "open", "questo", "questa", "this",
         "word", "excel", "powerpoint", "libro", "book", "articolo", "article", "contratto", "contract",
     ];
-    WORDS.iter().any(|w| q.contains(w))
+    // Each keyword starts a word of the question: "password" is not about a
+    // Word document, nor "openai" about what is open.
+    q.split(|c: char| !c.is_alphanumeric()).any(|word| WORDS.iter().any(|w| word.starts_with(w)))
 }
 
 #[cfg(test)]
@@ -282,6 +284,8 @@ mod tests {
         assert!(asks_about("Mi spieghi cosa dice la pagina 45 del PDF che ho aperto?", &d));
         assert!(asks_about("riassumi contratto affitto", &d));
         assert!(!asks_about("che tempo fa domani a Roma?", &d));
+        assert!(asks_about("Translate these pages", &d));
+        assert!(!asks_about("How do I reset my password?", &d));
     }
 
     #[test]

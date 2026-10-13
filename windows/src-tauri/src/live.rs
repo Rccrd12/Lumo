@@ -580,7 +580,7 @@ pub fn pick_app<'a>(apps: &'a [App], query: &str) -> Option<&'a App> {
                 0
             } else if name.starts_with(&q) {
                 1
-            } else if words(&a.name).iter().any(|w| *w == q) {
+            } else if words(&a.name).contains(&q) {
                 2
             } else if match_score(query, &a.name).is_some() {
                 3

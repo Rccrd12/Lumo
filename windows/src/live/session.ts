@@ -149,6 +149,8 @@ class LiveSession {
   private unlisten: (() => void) | null = null;
   /** Bumped by every start: an older start still waiting on Rust or the microphone gives up. */
   private call = 0;
+  /** `start` is waiting on Rust, before the call is on. */
+  private starting = false;
 
   get active(): boolean {
     return this.phase !== "off";
@@ -164,8 +166,16 @@ class LiveSession {
 
   /** Starts a call (on a click or the shortcut). Does nothing while one is on. */
   async start() {
-    if (this.active) return;
+    if (this.active || this.starting) return;
     const s = State.settings;
+    // A second press while Rust answers would start a second call.
+    this.starting = true;
+    let computer: boolean;
+    try {
+      computer = s.chatComputerUse === true && (await Bridge.liveComputerReady()) === true;
+    } finally {
+      this.starting = false;
+    }
     this.cfg = {
       model: parseLiveModel(s.liveModel),
       thinking: parseThinking(s.liveThinking),
@@ -173,7 +183,7 @@ class LiveSession {
       helper: helperName(s.liveHelper),
       screen: s.liveScreen,
       // Screen work goes to Claude Code, when it is set up and computer use is on.
-      computer: s.chatComputerUse === true && (await Bridge.liveComputerReady()) === true,
+      computer,
       search: !searchRefused,
       languageName: languageName(),
       now: localNow(),
@@ -238,7 +248,8 @@ class LiveSession {
       if (!this.active || ![...this.running.values()].some((r) => r.name === TOOL.helper && !r.cancelled)) return;
       this.setDoing(`${a.helper}: ${activityLabel({ kind: a.kind, detail: a.detail })}`);
     }).then((un) => {
-      if (this.active) this.unlisten = un;
+      // The call may have ended, or another started, while this was set up.
+      if (call === this.call && this.active) this.unlisten = un;
       else un();
     });
     this.lastVoice = performance.now();
@@ -407,6 +418,9 @@ class LiveSession {
   /** A new connection carrying on the same conversation. */
   private async reconnect(phase: LivePhase = "reconnecting") {
     if (!this.active) return;
+    // Ended, or ended and started again, during a wait below: this one gives up.
+    const call = this.call;
+    const current = () => call === this.call && this.active;
     this.reconnects++;
     this.moveBy = null;
     if (this.moveTimer) clearTimeout(this.moveTimer);
@@ -426,14 +440,15 @@ class LiveSession {
     }
     this.setPhase(phase);
     if (this.reconnects > 1) await wait(600 * this.reconnects);
+    if (!current()) return;
     let token;
     try {
       token = await Bridge.liveToken();
     } catch (err) {
-      this.fail(String(err).replace(/^Error:\s*/, ""));
+      if (current()) this.fail(String(err).replace(/^Error:\s*/, ""));
       return;
     }
-    if (!this.active) return;
+    if (!current()) return;
     if (!token) {
       this.fail(t(S.lost));
       return;

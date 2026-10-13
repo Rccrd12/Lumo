@@ -633,7 +633,11 @@ async fn dispatch(
         if !is_cli(&settings.chat_provider) && context.is_none() {
             let front = documents.iter().find(|d| d.active).or(documents.first());
             if let Some(doc) = front.filter(|d| crate::desk::asks_about(&query, d)) {
-                match crate::files::copy_in(std::path::Path::new(&doc.path)) {
+                let path = std::path::PathBuf::from(&doc.path);
+                let copied = tauri::async_runtime::spawn_blocking(move || crate::files::copy_in(&path))
+                    .await
+                    .unwrap_or_else(|e| Err(e.to_string()));
+                match copied {
                     Ok(f) => context = Some(ChatContext::File { name: f.name, path: f.path }),
                     Err(e) => crate::log::line(format!("[desk] {e}")),
                 }

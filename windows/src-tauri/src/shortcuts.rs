@@ -341,12 +341,14 @@ fn share<R: Runtime>(app: &AppHandle<R>, take: Take) {
     });
 }
 
-/// Unregisters everything Lumo holds.
-fn release<R: Runtime>(app: &AppHandle<R>) {
+/// Unregisters everything Lumo holds (also while a new shortcut is recorded
+/// in Settings, so a combination Lumo already holds is recorded, not run).
+pub fn release<R: Runtime>(app: &AppHandle<R>) {
     if let Some(gs) = app.try_state::<GlobalShortcut<R>>() {
         if let Err(err) = gs.unregister_all() {
             crate::log::line(format!("shortcuts: unregister failed: {err}"));
         }
+        crate::computer::keep_stop_key(app);
     }
     if let Some(registry) = app.try_state::<Registry>() {
         registry.by_id.lock().unwrap().clear();
@@ -394,13 +396,6 @@ pub fn apply<R: Runtime>(app: &AppHandle<R>, stored: &Bindings) {
         *registry.report.lock().unwrap() = report;
     }
     let _ = app.emit("shortcuts-status", status(app));
-}
-
-/// Lets go of every shortcut while a new one is being recorded in Settings,
-/// so pressing a combination Lumo already holds records it instead of
-/// running it.
-pub fn suspend<R: Runtime>(app: &AppHandle<R>) {
-    release(app);
 }
 
 pub fn status<R: Runtime>(app: &AppHandle<R>) -> Report {

@@ -271,9 +271,6 @@ class UploadSequence {
     this.cursorY = y;
   }
 
-  /** The island stays open per the spec, so leaving the zone changes nothing. */
-  exitZone() {}
-
   performDrop(uploadDuration: number) {
     this.uploadDuration = uploadDuration;
     this.dropWall = this.now();

@@ -360,7 +360,7 @@ pub fn attach(folder: &str, query: &str) -> Result<Option<DroppedFile>, String> 
             files.push((name, meta.len()));
         }
     }
-    files.sort_by(|a, b| a.0.to_lowercase().cmp(&b.0.to_lowercase()));
+    files.sort_by_key(|a| a.0.to_lowercase());
     let names: Vec<&str> = files.iter().map(|(n, _)| n.as_str()).collect();
     for i in mentioned_files(query, &names) {
         let (name, size) = &files[i];

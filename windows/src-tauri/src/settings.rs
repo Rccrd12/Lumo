@@ -487,7 +487,12 @@ fn write_whole(file: &mut std::fs::File, bytes: &[u8]) -> std::io::Result<()> {
 }
 
 /// `save`, for the file at `path`, whose directory already exists.
+/// One save at a time: Settings, a drag of the island and the hook installer
+/// can save together, and two writes into the same temporary file would mix.
+static SAVING: Mutex<()> = Mutex::new(());
+
 fn save_to(path: &Path, settings: &Settings) -> std::io::Result<()> {
+    let _one = SAVING.lock().unwrap_or_else(PoisonError::into_inner);
     keep_what_was_not_loaded(path)?;
     let json = serde_json::to_vec_pretty(settings)
         .map_err(|e| std::io::Error::new(ErrorKind::InvalidData, e))?;

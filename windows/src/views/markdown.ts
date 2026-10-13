@@ -67,8 +67,15 @@ export function parseMarkdown(input: string): Block[] {
       }
       const tex: string[] = [first];
       for (i++; i < lines.length && !lines[i].includes(closer); i++) tex.push(lines[i]);
-      if (i < lines.length) tex.push(lines[i].slice(0, lines[i].indexOf(closer)));
+      let after = "";
+      if (i < lines.length) {
+        const end = lines[i].indexOf(closer);
+        tex.push(lines[i].slice(0, end));
+        after = lines[i].slice(end + 2).trim();
+      }
       blocks.push({ kind: "math", tex: tex.join("\n") });
+      // As on one line: anything after the closer goes on as text.
+      if (after) blocks.push({ kind: "paragraph", text: after });
       i++;
       continue;
     }

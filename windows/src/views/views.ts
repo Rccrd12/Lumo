@@ -692,7 +692,7 @@ function buildError(actions: ViewActions): ViewHost {
   const detail = h("div", { class: "detail" });
   const row = h("div", { class: "actions" },
     btn(tl("Retry"), "primary", () => actions.setView(State.agentsView())),
-    btn(tl("Open in n8n"), "secondary", () => actions.openUrl("")),
+    btn(tl("Open in n8n"), "secondary", () => void Bridge.openN8n()),
   );
   const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, row)));
   return {

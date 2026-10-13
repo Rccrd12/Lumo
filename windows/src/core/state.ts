@@ -88,18 +88,6 @@ export type PromptContext =
   | { kind: "window"; appName: string; title: string; url?: string }
   | { kind: "file"; name: string; path?: string };
 
-export interface ResultItem {
-  label: string;
-  detail: string;
-  url?: string;
-}
-
-export interface SearchResult {
-  title: string;
-  items: ResultItem[];
-  note?: string;
-}
-
 /** A fresh, idle task for a catalog pill, in the colour the user gave it if any. */
 function taskFor(def: PillDefinition, colors: unknown, name = def.name): AgentTask {
   return {
@@ -419,7 +407,6 @@ class AppState {
   noteMessage: string | null = null;
   /** What a sharing shortcut just took, for the chat to pick up (island/shortcuts.ts). */
   incomingShare: SharedContext | null = null;
-  searchResult: SearchResult | null = null;
   chatHistory: ChatMessage[] = [];
   /** The model picker or the past chats are open: the chat takes its full height. */
   chatPanelOpen = false;
@@ -461,8 +448,6 @@ class AppState {
   wardrobePreview: Outfit | null = null;
   /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
   lookPreview: LumoLook | null = null;
-
-  lastActivity = performance.now();
 
   settings: Settings = { ...DEFAULT_SETTINGS };
 

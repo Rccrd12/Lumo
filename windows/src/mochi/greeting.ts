@@ -482,6 +482,10 @@ export class Greeting {
     const t = (performance.now() - this.startMs) / 1000;
     if (!Number.isFinite(this.tc) || this.tc > t) this.tc = t;
     this.cancelTimers();
+    // draw() fires only after a greeting played to its end: this one fires
+    // when the collapse is over (leave() follows at once, so not in `timers`).
+    const started = this.startMs;
+    if (!this.fired) window.setTimeout(() => this.startMs === started && this.fire(), T.COLLAPSE * 1000);
     Sound.fadeOut(GREETING_SOUND, 0.25);
   }
 

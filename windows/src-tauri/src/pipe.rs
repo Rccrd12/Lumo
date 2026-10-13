@@ -20,7 +20,7 @@
 // lumo-hook's job, so the wire format Claude Code expects lives in exactly
 // one place.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::Mutex;
 use std::time::Duration;
@@ -60,6 +60,15 @@ pub struct Pending(pub Mutex<HashMap<String, mpsc::Sender<Reply>>>);
 
 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
+/// Requests of the island chat's own Antigravity CLI run: the only ones Auto
+/// may allow without a click (core/approvals.ts autoAllows). Kept here so a
+/// mistake in the page can never allow a Claude Code or Codex request.
+static AUTO_ALLOWABLE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
+
+fn with_auto_allowable<T>(f: impl FnOnce(&mut HashSet<String>) -> T) -> T {
+    f(AUTO_ALLOWABLE.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashSet::new))
+}
+
 /// `\\.\pipe\lumo-<sid>` — must match lumo-hook's `pipe_path()` exactly.
 pub fn pipe_name() -> String {
     let key = crate::platform::current_user_sid()
@@ -81,6 +90,10 @@ pub fn start(app: AppHandle) {
         };
         loop {
             if server.connect().await.is_err() {
+                // A relay that came and went before it was taken (ERROR_NO_DATA)
+                // leaves the instance broken until it is disconnected: every
+                // later connect on it would fail too.
+                let _ = server.disconnect();
                 tokio::time::sleep(Duration::from_millis(200)).await;
                 continue;
             }
@@ -191,6 +204,11 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         pending.0.lock().unwrap().insert(id.clone(), tx);
     }
     crate::recap::note_request(&app, &id, &payload);
+    let island_agy = payload.get("lumo_island") == Some(&json!(true))
+        && payload.get("lumo_agent").and_then(Value::as_str) == Some("antigravity");
+    if island_agy {
+        with_auto_allowable(|set| set.insert(id.clone()));
+    }
     payload["request_id"] = json!(id);
     log::line(format!("hook PermissionRequest id={id}"));
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
@@ -200,6 +218,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     let decision = wait_for_decision(&id, &mut rx).await;
     crate::computer::card_down(&app);
     app.state::<Pending>().0.lock().unwrap().remove(&id);
+    with_auto_allowable(|set| set.remove(&id));
 
     // No decision: say nothing at all. lumo-hook then writes nothing to stdout
     // and Claude Code asks in the terminal, exactly as if Lumo were closed.
@@ -310,6 +329,16 @@ pub fn answer(app: &AppHandle, request_id: &str, decision: &str) {
     };
     log::line(format!("decision id={request_id} {word}"));
     send(app, request_id, Reply::Decision(word.to_string()), false);
+}
+
+/// Auto in the island chat's Antigravity CLI run allows a command that only
+/// looks. Refused for any other request: those always wait for a click.
+pub fn auto_allow(app: &AppHandle, request_id: &str) {
+    if !with_auto_allowable(|set| set.contains(request_id)) {
+        log::line(format!("auto-allow refused id={request_id}: not the island chat's Antigravity CLI run"));
+        return;
+    }
+    answer(app, request_id, "allow");
 }
 
 /// Called when an option is picked for a question Claude Code asked. `answers`

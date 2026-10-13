@@ -2450,14 +2450,6 @@ export function buildPrompt(
         settling = false;
       }
 
-      // Leaving the chat folds the picker away.
-      if (State.view !== "prompt" && picker.isOpen) picker.close();
-      if (State.view !== "prompt") {
-        closeHistory();
-        closeFiles();
-        closeScreen();
-        closePermissions();
-      }
       micBtn.classList.toggle("lit", State.liveActive);
       drawModelButton();
       const openRouter = State.mode === "expanded" && State.view === "prompt"

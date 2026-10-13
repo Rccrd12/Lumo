@@ -33,6 +33,8 @@ class RecapController {
   /** Bumped on every load, so the view knows to rebuild (and leave share mode). */
   version = 0;
   private checking = false;
+  /** The recap is about to show (after SHOW_DELAY_MS). */
+  private scheduled = false;
 
   /** Reads last week from Rust. A plain browser (`npm run dev`) gets the sample week. */
   async load(now = new Date()): Promise<WeeklySummary | null> {
@@ -55,14 +57,17 @@ class RecapController {
   /** Monday ≥ 8 am, not shown yet this week, something to show, nobody interrupted. */
   async check(host: RecapHost, now = new Date()) {
     // The clock first: six days out of seven this is all that runs.
-    if (this.checking || !shouldAutoShow(now, "") || !this.quiet()) return;
+    if (this.checking || this.scheduled || !shouldAutoShow(now, "") || !this.quiet()) return;
     this.checking = true;
     try {
       const prefs = IS_TAURI ? await Bridge.recapPrefs() : null;
       if (!prefs?.enabled || !shouldAutoShow(now, prefs.lastShownWeek)) return;
       if (!(await this.load(now))) return;
       const week = dayKey(mondayOf(now));
+      // A second check before this fires would show the recap twice.
+      this.scheduled = true;
       window.setTimeout(() => {
+        this.scheduled = false;
         if (!this.quiet()) return;
         host.alert("recap");
         void Bridge.recapMarkShown(week);

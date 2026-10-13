@@ -6,8 +6,6 @@ export const ICONS = {
   minus: "M6.5 12h11",
   // leaf (stroke): the energy-saving leaf, its vein running out as the stem
   leaf: "M20 4c-9 0-15 4-15 10 0 3 2 5 5 5 6 0 10-6 10-15zM4 20l9-9",
-  // house.fill
-  house: "M12 3.2 2.8 10.6V21h6.6v-5.4h5.2V21h6.6V10.6L12 3.2z",
   // bubble.left.fill
   bubble: "M12 3.6c-5 0-9 3.3-9 7.4 0 2.3 1.3 4.4 3.3 5.7-.2 1.2-.8 2.4-1.7 3.4 1.9-.2 3.6-.9 4.9-1.9 .8.2 1.6.3 2.5.3 5 0 9-3.3 9-7.5s-4-7.4-9-7.4z",
   // paperclip (stroke)

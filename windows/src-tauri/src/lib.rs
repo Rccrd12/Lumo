@@ -60,7 +60,7 @@ use tauri_plugin_autostart::{ManagerExt, MacosLauncher};
 use chat::{ChatContext, ChatReply, Chats, ModelInfo};
 use files::DroppedFile;
 use hooks::{HookPreview, HookStatus};
-use island::{PollGate, ScreenInfo};
+use island::PollGate;
 use pipe::Pending;
 use settings::Settings;
 
@@ -73,9 +73,7 @@ pub struct Shared {
 #[serde(rename_all = "camelCase")]
 pub struct BootInfo {
     settings: Settings,
-    screen: ScreenInfo,
     version: String,
-    hook_path: String,
     /// Where the island is drawn in its window (island::shift).
     shift: island::ShiftPayload,
     /// The computer runs on its battery (energy.rs), for Settings → General → Energy.
@@ -89,13 +87,10 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
     let hooks_status = hooks::status();
     settings.hooks_installed = hooks_status.installed;
     settings.plan_relay_installed = hooks_status.plan_relay_installed;
-    let screen = island::screen_info(&app, &settings.screen);
     let shift = island::current_shift(&app, &settings.screen, island::Placement::of(&settings));
     BootInfo {
         settings,
-        screen,
         version: env!("CARGO_PKG_VERSION").to_string(),
-        hook_path: settings::hook_exe_path().to_string_lossy().to_string(),
         shift,
         on_battery: energy::on_battery(),
     }
@@ -570,7 +565,7 @@ fn approval_ack(app: AppHandle, request_id: String) {
 #[tauri::command]
 fn approval_auto_allow(app: AppHandle, request_id: String) {
     recap::forget_request(&app, &request_id);
-    pipe::answer(&app, &request_id, "allow");
+    pipe::auto_allow(&app, &request_id);
 }
 
 /// Nobody can act on this request — the island is paused, or another card is
@@ -785,10 +780,11 @@ async fn file_preview(path: String) -> Option<String> {
     tauri::async_runtime::spawn_blocking(move || files::preview(&path)).await.ok().flatten()
 }
 
-/// Copies a dropped file into the inbox and reports its name back.
+/// Copies a dropped file into the inbox and reports its name back. Off the
+/// main thread: a big file takes a while to copy, and the island keeps moving.
 #[tauri::command]
-fn ingest_file(path: String) -> Result<DroppedFile, String> {
-    files::ingest(&path)
+async fn ingest_file(path: String) -> Result<DroppedFile, String> {
+    tauri::async_runtime::spawn_blocking(move || files::ingest(&path)).await.map_err(|e| e.to_string())?
 }
 
 /// Ctrl+V in the chat with an image (or a file the page can read): its bytes,
@@ -936,7 +932,7 @@ fn shortcuts_status(app: AppHandle) -> shortcuts::Report {
 #[tauri::command]
 fn shortcuts_suspend(app: AppHandle, shared: State<Shared>, suspended: bool) {
     if suspended {
-        shortcuts::suspend(&app);
+        shortcuts::release(&app);
     } else {
         let stored = shared.settings.lock().unwrap().shortcuts.clone();
         shortcuts::apply(&app, &stored);

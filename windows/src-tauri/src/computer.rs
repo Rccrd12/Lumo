@@ -140,7 +140,6 @@ fn engage(app: &AppHandle) {
     if ENGAGED.swap(true, Ordering::SeqCst) {
         return;
     }
-    CARDS.store(0, Ordering::SeqCst);
     let rect = VIEW
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -152,7 +151,12 @@ fn engage(app: &AppHandle) {
     if let Some(rect) = rect {
         overlay_show(app, rect);
     }
-    imp::take_mouse(true);
+    // A card already waiting on the island keeps the mouse the user's until it is answered.
+    if CARDS.load(Ordering::SeqCst) == 0 {
+        imp::take_mouse(true);
+    } else {
+        fx(app, json!({ "kind": "pause" }));
+    }
 }
 
 /// The glow goes, the mouse is the user's again (also after Esc).
@@ -174,12 +178,11 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
     });
 }
 
-/// A card came up on the island during the turn (pipe.rs): the hand gets the
-/// mouse back to answer it, and the glow dims.
+/// A card came up on the island (pipe.rs): during the turn, the hand gets the
+/// mouse back to answer it, and the glow dims. Cards are counted even outside
+/// a turn, so one that came up before the turn and is answered during it
+/// keeps the count right.
 pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
-    if !(TURN.load(Ordering::SeqCst) > 0) {
-        return;
-    }
     if CARDS.fetch_add(1, Ordering::SeqCst) == 0 && ENGAGED.load(Ordering::SeqCst) {
         imp::take_mouse(false);
         fx(app, json!({ "kind": "pause" }));
@@ -188,11 +191,8 @@ pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
 
 /// The card was answered: Claude has the mouse again.
 pub fn card_down<R: Runtime>(app: &AppHandle<R>) {
-    if !(TURN.load(Ordering::SeqCst) > 0) {
-        return;
-    }
-    let left = CARDS.fetch_sub(1, Ordering::SeqCst).saturating_sub(1);
-    if left == 0 && ENGAGED.load(Ordering::SeqCst) && !STOPPED.load(Ordering::SeqCst) {
+    let before = CARDS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))).unwrap_or(0);
+    if before == 1 && ENGAGED.load(Ordering::SeqCst) && !STOPPED.load(Ordering::SeqCst) {
         imp::take_mouse(true);
         fx(app, json!({ "kind": "resume" }));
     }
@@ -313,6 +313,17 @@ fn hold_stop_key<R: Runtime>(app: &AppHandle<R>) {
     }
 }
 
+/// Every shortcut was just let go (shortcuts.rs): Esc is taken again while
+/// Claude acts, or it could not be stopped until its next action.
+pub fn keep_stop_key<R: Runtime>(app: &AppHandle<R>) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    if STOP_KEY.load(Ordering::SeqCst) {
+        if let Err(err) = app.global_shortcut().register(stop_shortcut()) {
+            crate::log::line(format!("computer use: Esc not registered again: {err}"));
+        }
+    }
+}
+
 fn release_stop_key<R: Runtime>(app: &AppHandle<R>) {
     use tauri_plugin_global_shortcut::GlobalShortcutExt;
     if STOP_KEY.swap(false, Ordering::SeqCst) {
@@ -365,7 +376,7 @@ impl View {
     }
 
     /// A point of the screenshot on the screen, in physical pixels.
-    pub fn to_screen(&self, x: i64, y: i64) -> Result<(i32, i32), String> {
+    pub fn to_screen(self, x: i64, y: i64) -> Result<(i32, i32), String> {
         if x < 0 || y < 0 || x >= self.w as i64 || y >= self.h as i64 {
             return Err(format!(
                 "({x}, {y}) is outside the screenshot, which is {}×{} pixels.",
@@ -379,7 +390,7 @@ impl View {
     }
 
     /// A point of the screen in the screenshot's pixels (outside it when off this screen).
-    pub fn from_screen(&self, px: i32, py: i32) -> (i64, i64) {
+    pub fn from_screen(self, px: i32, py: i32) -> (i64, i64) {
         let (sw, sh) = self.src();
         let x = ((px - self.rect.0) as f64 * self.w as f64 / sw).floor() as i64;
         let y = ((py - self.rect.1) as f64 * self.h as f64 / sh).floor() as i64;
@@ -1117,9 +1128,9 @@ mod imp {
     pub fn glide(from: (i32, i32), to: (i32, i32), ms: u64, stop: &dyn Fn() -> bool) -> Result<(), String> {
         let start = std::time::Instant::now();
         let total = ms as f64;
-        while ms > 0 {
+        while ms > 0 && !stop() {
             let t = start.elapsed().as_secs_f64() * 1000.0 / total;
-            if t >= 1.0 || stop() {
+            if t >= 1.0 {
                 break;
             }
             let e = ease(t);

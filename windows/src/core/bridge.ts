@@ -72,10 +72,7 @@ export interface IslandShift {
 
 export interface BootInfo {
   settings: Settings;
-  /** Logical screen rect of the monitor the island lives on. */
-  screen: { x: number; y: number; width: number; height: number; scale: number };
   version: string;
-  hookPath: string;
   /** Where the island is drawn in its window, off its usual place (island.rs shift). */
   shift: IslandShift;
   /** The computer runs on its battery (energy.rs). */

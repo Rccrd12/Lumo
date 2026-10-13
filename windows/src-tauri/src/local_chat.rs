@@ -344,7 +344,7 @@ async fn stream(
     body: &Value,
     mut on_delta: impl FnMut(String),
 ) -> Result<String, String> {
-    let mut reply = net::client(base, Duration::from_secs(300))?
+    let mut reply = net::streaming_client(base, Duration::from_secs(300))?
         .post(net::join(base, "v1/chat/completions"))
         .header("Authorization", bearer(key))
         .json(body)

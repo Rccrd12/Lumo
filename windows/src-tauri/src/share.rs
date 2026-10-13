@@ -1545,7 +1545,7 @@ mod tests {
         let mut body = ints(&[tab, index]);
         body.extend_from_slice(&(url.len() as i32).to_le_bytes());
         body.extend_from_slice(url.as_bytes());
-        while body.len() % 4 != 0 {
+        while !body.len().is_multiple_of(4) {
             body.push(0);
         }
         let units: Vec<u16> = title.encode_utf16().collect();
@@ -1553,7 +1553,7 @@ mod tests {
         for u in &units {
             body.extend_from_slice(&u.to_le_bytes());
         }
-        while body.len() % 4 != 0 {
+        while !body.len().is_multiple_of(4) {
             body.push(0);
         }
         // What follows the title in a real file (page state, transition…) is ignored.

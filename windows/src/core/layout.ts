@@ -50,7 +50,6 @@ export interface ViewLayout {
 export const DEFAULT_ISLAND_ZOOM = 1.15;
 export const MIN_ISLAND_ZOOM = 0.8;
 export const MAX_ISLAND_ZOOM = 1.6;
-export const PANEL_H = 320;
 
 // No notch on a PC: these are the hidden/compact sizes from docs/SPEC.md.
 export const NOTCH_W = 184;

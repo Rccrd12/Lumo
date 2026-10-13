@@ -1934,6 +1934,8 @@ async function render() {
 
   declaredViews.length = 0;
   localRedraw = null;
+  // A shortcut being recorded ends with the section it was in.
+  shortcutsListener?.stop();
   shortcutsListener = null;
 
   // Every section is built, so what one redraws (declaredViews, the local

@@ -209,6 +209,10 @@ function handle(fx: Fx) {
       root.classList.add("paused");
       break;
     case "hide":
+      // A glide or typing still running would put the halo back.
+      if (glide != null) cancelAnimationFrame(glide);
+      if (typing != null) window.clearInterval(typing);
+      glide = typing = null;
       root.className = "";
       halo.classList.remove("on", "idle");
       at = null;
