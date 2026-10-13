@@ -324,7 +324,10 @@ the details and the reset times. All are off by default; turn them on in
   once, with agy's own sign-in (20 s at most, never while paused). The pill shows
   the most used of agy's quotas; the card shows Gemini's 5-hour and weekly limits
   first, then the other model groups (Claude and GPT). agy must be signed in with
-  your Google account.
+  your Google account. With **Show remaining usage in the chat** on, the chat's
+  usage ring shows the same quotas while you chat with Antigravity CLI (asked
+  when the chat opens and after each answer, at most once a minute), even
+  with the pill off.
 
 ## Weekly recap
 

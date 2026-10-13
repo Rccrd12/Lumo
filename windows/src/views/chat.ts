@@ -63,7 +63,7 @@ import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
 import { planColor } from "../core/plan";
-import { refreshClaudePlanOnline } from "./usage";
+import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
@@ -972,11 +972,14 @@ export function buildPrompt(
   /** The chat was on screen with OpenRouter and the option on, at the last sync. */
   let openRouterShown = false;
   let openRouterAsking = false;
+  /** The same for Antigravity CLI, whose quotas are asked of agy (antigravity_plan.rs). */
+  let antigravityShown = false;
+  const antigravityUsage = () => State.settings.chatShowUsage && State.settings.chatProvider === "antigravity-cli";
 
   let usageLineShown: UsageLine | null = null;
 
   function drawUsage(now = Date.now()) {
-    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now);
+    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1021,6 +1024,8 @@ export function buildPrompt(
   function openUsage() {
     // Asked of Anthropic when turned on (at most every 3 minutes).
     if (State.settings.chatProvider === "claude-code") refreshClaudePlanOnline();
+    // agy is asked again when its numbers are more than a minute old.
+    if (antigravityUsage()) refreshAntigravityPlanUsage();
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1076,7 +1081,10 @@ export function buildPrompt(
   // sync() only runs while the chat is on screen: leaving it is seen here, so
   // coming back counts as opening the chat again.
   State.subscribe(() => {
-    if (State.view !== "prompt" || State.mode !== "expanded") openRouterShown = false;
+    if (State.view !== "prompt" || State.mode !== "expanded") {
+      openRouterShown = false;
+      antigravityShown = false;
+    }
   });
 
   function drawModelButton() {
@@ -2180,6 +2188,8 @@ export function buildPrompt(
       }
       remember(run);
       askOpenRouter(true);
+      // An answer from agy used some of its quota: asked again (at most once a minute).
+      if (antigravityUsage()) refreshAntigravityPlanUsage();
       outcome = reply.stopped ? null : "finished";
       Sound.play(reply.stopped ? "pop" : "finish");
       if (!reply.stopped) noticeAway(COMPACT_TEXT.answered);
@@ -2456,6 +2466,10 @@ export function buildPrompt(
         && State.settings.chatShowUsage && State.settings.chatProvider === "openrouter";
       if (openRouter && !openRouterShown) askOpenRouter(false);
       openRouterShown = openRouter;
+      // agy: asked when the chat opens on it (stale numbers only), as for OpenRouter.
+      const agyShown = State.mode === "expanded" && State.view === "prompt" && antigravityUsage();
+      if (agyShown && !antigravityShown) refreshAntigravityPlanUsage();
+      antigravityShown = agyShown;
       drawUsage();
 
       input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);

@@ -51,6 +51,26 @@ test("Claude Code: a 5-hour window reported without a figure reads as plenty lef
   assert.ok(line.text.startsWith("5 hours: plenty left (in 1 h 20) · Week: 80% left ("), line.text);
 });
 
+test("Antigravity CLI: what is left of each of agy's quotas, Gemini first", async () => {
+  const { parseAntigravityPlan } = await import("../src/core/plan.ts");
+  const agy = parseAntigravityPlan({ groups: [
+    { name: "Gemini Models", buckets: [{ id: "gemini-weekly", window: "weekly", remainingFraction: 0.31, resetsAt: NOW / 1000 + 3 * 86_400 }] },
+    { name: "Claude and GPT models", buckets: [{ id: "3p-weekly", window: "weekly", remainingFraction: 1, resetsAt: NOW / 1000 + 3 * 86_400 }] },
+  ] }, NOW - 30_000);
+  const line = usageLine(on({ chatProvider: "antigravity-cli" }), plan, undefined, NOW, agy);
+  assert.ok(line.text.startsWith("Gemini · Week: 31% left ("), line.text);
+  assert.ok(line.text.includes(" · Claude and GPT · Week: 100% left ("), line.text);
+  assert.deepEqual(line.rows.map((r) => [r.label, r.value]), [["Gemini · Week", "69% used"], ["Claude and GPT · Week", "0% used"]]);
+  assert.equal(line.pct, 69);
+  assert.equal(line.color, "#F59E0B");
+  assert.equal(line.title, "Antigravity CLI · just now");
+  // Before agy has answered: it says it is asking. Off: nothing.
+  const asking = usageLine(on({ chatProvider: "antigravity-cli" }), plan, undefined, NOW, null);
+  assert.equal(asking.text, "Asking Antigravity CLI…");
+  assert.equal(asking.rows.length, 0);
+  assert.equal(usageLine({ ...DEFAULT_SETTINGS, chatProvider: "antigravity-cli" }, plan, undefined, NOW, agy), null);
+});
+
 test("Claude Code without the relay points to Settings rather than showing numbers", () => {
   const line = usageLine(on({ chatProvider: "claude-code", planRelayInstalled: false }), plan, undefined, NOW);
   assert.equal(line.text, "Plan usage: install the relay in Settings → Agents → Plan usage");
