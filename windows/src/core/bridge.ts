@@ -657,7 +657,8 @@ async function callOrThrow<T>(cmd: string, args?: Record<string, unknown>): Prom
 }
 
 export interface DragDropPayload {
-  type: "enter" | "over" | "drop" | "leave";
+  /** `dropping`: the files were let go on the island; their paths follow as a `drop`. */
+  type: "enter" | "over" | "dropping" | "drop" | "leave";
   paths?: string[];
   /** Where the cursor is, page pixels (WebView2 only: its drag events say so). */
   client?: { x: number; y: number };
@@ -729,6 +730,7 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
       handler({ type: "drop", paths: [] });
       return;
     }
+    handler({ type: "dropping" });
     webview.postMessageWithAdditionalObjects("lumo-file-drop", files);
     // Files with no path on disk (a picture dragged out of a browser) give
     // Rust nothing to send back: the drag still has to end.

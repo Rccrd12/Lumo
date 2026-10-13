@@ -53,6 +53,8 @@ const MOVE_THRESHOLD = 4;
 const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
+/** After the button is let go, how long a drop has to show up before the drag counts as gone elsewhere (ms). */
+const STRAY_DRAG_MS = 300;
 /**
  * After a shortcut opened the island (open the island, open the chat, a
  * sharing one…), how long it stays open with the mouse elsewhere (s); each
@@ -177,6 +179,14 @@ export class Island {
   private collapsed = false;
   private collapseTimer: number | null = null;
   private wasInIsland = false;
+  /**
+   * The drop zone a file drag opened, and the view the island showed before
+   * (null: it was closed). Cleared once the file is dropped on it.
+   */
+  private dragOpened: { view: IslandViewName | null } | null = null;
+  private strayTimer: number | null = null;
+  /** The button was let go: the drag is over, whatever the cursor does next. */
+  private strayReleased = false;
   /** Last shape handed to Rust for the click-through test. */
   private pushedRect = { x: -1, y: -1, w: -1, h: -1 };
 
@@ -880,6 +890,9 @@ export class Island {
           UploadSeq.updateCursor(at.x, at.y);
           return;
         }
+        if (!this.dragOpened && !(State.mode === "expanded" && UPLOAD_VIEWS.has(State.view))) {
+          this.dragOpened = { view: State.mode === "expanded" ? State.view : null };
+        }
         State.fileDragOver = true;
         this.engine.animateMorph(1);
         // enterZone must run before the island expands, so the sequence is
@@ -896,7 +909,12 @@ export class Island {
         State.notify();
         break;
       }
+      case "dropping":
+        // The file is ours: the drag ends with the drop, not as a stray.
+        this.forgetDrag();
+        break;
       case "drop": {
+        this.forgetDrag();
         State.fileDragOver = false;
         const path = e.paths?.[0];
         if (!path) {
@@ -908,6 +926,60 @@ export class Island {
         break;
       }
     }
+  }
+
+  /**
+   * The left button was let go somewhere on the screen (island.rs). A drag
+   * that opened the drop zone and was cancelled, or dropped somewhere else,
+   * never tells the page it ended when it did not end over the window: the
+   * drop zone closes here, unless the drop itself shows up meanwhile.
+   */
+  onLeftUp() {
+    if (!this.dragOpened) return;
+    this.strayReleased = true;
+    this.scheduleStrayClose(STRAY_DRAG_MS);
+  }
+
+  /** The cursor, mid-drag: carried away from the window, the drop zone it opened closes, as on a mouse leave. */
+  private followDrag(x: number, y: number) {
+    if (!this.dragOpened || this.strayReleased) return;
+    const away = x < 0 || y < 0 || x > window.innerWidth || y > window.innerHeight;
+    if (away && this.strayTimer == null) this.scheduleStrayClose(LEAVE_CLOSE_DELAY * 1000);
+    else if (!away && this.strayTimer != null) {
+      window.clearTimeout(this.strayTimer);
+      this.strayTimer = null;
+    }
+  }
+
+  private scheduleStrayClose(ms: number) {
+    if (this.strayTimer != null) window.clearTimeout(this.strayTimer);
+    this.strayTimer = window.setTimeout(() => {
+      this.strayTimer = null;
+      this.closeStrayDrag();
+    }, ms);
+  }
+
+  private forgetDrag() {
+    if (this.strayTimer != null) window.clearTimeout(this.strayTimer);
+    this.strayTimer = null;
+    this.strayReleased = false;
+    this.dragOpened = null;
+  }
+
+  /** The drag that opened the drop zone went elsewhere: the island goes back to what it was. */
+  private closeStrayDrag() {
+    const opened = this.dragOpened;
+    this.forgetDrag();
+    // A file being eaten, or one already eaten, is not a stray drag.
+    if (!opened || UploadSeq.dropped || this.uploadAt != null) return;
+    State.fileDragOver = false;
+    this.engine.animateMorph(0);
+    if (State.mode !== "expanded" || !UPLOAD_VIEWS.has(State.view)) {
+      State.notify();
+      return;
+    }
+    if (opened.view == null) this.collapse();
+    else this.setView(opened.view);
   }
 
   /**
@@ -1362,6 +1434,7 @@ export class Island {
     State.mouse = { x, y };
     const rect = this.islandRect();
     State.mouseInIsland = { x: x - rect.x, y: y - rect.y };
+    this.followDrag(x, y);
 
     // Windows sends no cursor position with an OLE drag, so the drop sequence is
     // fed from the Win32 cursor poll instead — it runs throughout the drag.

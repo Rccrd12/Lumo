@@ -39,11 +39,7 @@ pub async fn calendar_fetch() -> Result<Option<String>, String> {
     let Some(raw) = secrets::get(URL_KEY) else { return Ok(None) };
     let url = ics_url(&raw)?;
     let client = net::client(&url, Duration::from_secs(20))?;
-    let response = client
-        .get(url.clone())
-        .send()
-        .await
-        .map_err(|_| tf("Can't reach {server}.", &[("server", url.host_str().unwrap_or(""))]))?;
+    let response = get(&client, &url).await?;
     if !response.status().is_success() {
         return Err(tf("The calendar address answered {code}.", &[("code", response.status().as_str())]));
     }
@@ -53,6 +49,33 @@ pub async fn calendar_fetch() -> Result<Option<String>, String> {
         return Err(t("That is not a calendar address."));
     }
     Ok(Some(text))
+}
+
+/// Waits between tries: a request that fails right after the computer wakes,
+/// or while the network changes, mostly succeeds a few seconds later.
+const RETRY_WAITS: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
+
+/// The answer to a GET, tried again after a lost connection, a timeout or a
+/// passing server error (5xx, 429) before the failure is shown.
+async fn get(client: &reqwest::Client, url: &Url) -> Result<reqwest::Response, String> {
+    let mut waits = RETRY_WAITS.iter();
+    loop {
+        let result = client.get(url.clone()).send().await;
+        let passing = match &result {
+            Ok(response) => should_retry(response.status()),
+            Err(_) => true,
+        };
+        match waits.next() {
+            Some(wait) if passing => tokio::time::sleep(*wait).await,
+            _ => {
+                return result.map_err(|_| tf("Can't reach {server}.", &[("server", url.host_str().unwrap_or(""))]));
+            }
+        }
+    }
+}
+
+fn should_retry(status: reqwest::StatusCode) -> bool {
+    status.is_server_error() || status == reqwest::StatusCode::TOO_MANY_REQUESTS
 }
 
 #[cfg(test)]
@@ -65,5 +88,13 @@ mod tests {
         assert!(ics_url(" https://calendar.google.com/calendar/ical/a/private-b/basic.ics ").is_ok());
         assert!(ics_url("file:///etc/passwd").is_err());
         assert!(ics_url("not a url").is_err());
+    }
+
+    #[test]
+    fn passing_server_errors_are_tried_again() {
+        assert!(should_retry(reqwest::StatusCode::SERVICE_UNAVAILABLE));
+        assert!(should_retry(reqwest::StatusCode::TOO_MANY_REQUESTS));
+        assert!(!should_retry(reqwest::StatusCode::NOT_FOUND));
+        assert!(!should_retry(reqwest::StatusCode::OK));
     }
 }
