@@ -41,6 +41,7 @@ beforeEach(() => {
   State.paused = false;
   State.isPinned = false;
   State.pendingApproval = null;
+  State.pinnedBeforeApproval = null;
   State.approvalQueue = [];
   liveSessions.clear();
   State.settings = { ...DEFAULT_SETTINGS };
@@ -581,6 +582,15 @@ test("an unanswered card is withdrawn after 107 s, before Lumo stops waiting at 
   assert.equal(task().state, "working");
   assert.equal(task().pillBadge, null);
   assert.deepEqual(asked, ["dropPin", "setView:overview"]);
+});
+
+test("a pin set before the card stays once the card is gone", () => {
+  State.mode = "expanded";
+  State.isPinned = true;
+  ask("r1");
+  seconds(107);
+  assert.equal(State.pendingApproval, null);
+  assert.equal(State.isPinned, true);
 });
 
 test("a card answered in time leaves nothing for the 107 s timer to undo", () => {

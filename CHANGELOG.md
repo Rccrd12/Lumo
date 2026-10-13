@@ -1,5 +1,18 @@
 # Changelog
 
+## Windows 0.6.5 — October 13, 2026
+
+- **Permission cards with computer use**: a card answered while Claude was using the computer no longer leaves the next cards without the mouse. Esc keeps stopping Claude after the shortcuts change in Settings
+- **Cards go when Lumo stops waiting**: an unanswered card leaves at 107 seconds, before the terminal takes over, so a late click is never lost
+- **Auto only allows what only looks**: `git branch new-name`, `git reflog expire`, `git grep -O`, `find -fprint0`, `tree -o`, `rg --pre`, PowerShell script blocks, `hostname new-name` and `date -s` now ask. Auto can only ever allow the island chat's own Antigravity CLI requests
+- **Hooks keep arriving**: a relay that came and went too fast no longer stops Lumo from hearing the next ones
+- **Calendar**: monthly events on "the 2nd Thursday" go on after December, and "every Monday of the month" shows every Monday
+- **Fewer freezes**: a big dropped file is copied without stopping the island, the live activities' window opens without risking a deadlock, and two saves of the settings at once no longer mix. Reading and writing hooks, keys and saved images happens off the main thread, so the island no longer stutters on them
+- **Pin stays**: a pin set with Ctrl+P is still there after a permission card
+- **Smaller fixes**: quick clicks outside the island are seen in Energy Saver; local models are no longer cut off after 5 minutes; an emoji is never typed in two halves; the Monday recap still comes when the greeting is cut short, and never twice; Gemini Live never starts two calls; a failed drop keeps the file that was waiting; a stray `}` no longer cuts a formula short; "Tell the AI what's open" only sends the document when the question is about it
+- **Settings**: integration keys and the calendar address have a Remove button, and Save with an empty field no longer erases them. Gemini CLI comes back in Agents only while hooks from an earlier version are still installed, to remove them. Proton Mail has no default server any more (its Bridge never connected)
+- "Open in n8n" on an error card opens n8n, and shows only for n8n workflows
+
 ## Windows 0.6.4 — October 12, 2026
 
 - **Permission requests wait in line**: a second request while a card is up no longer goes back to its terminal. Up to 4 wait behind the card, each with its sound and its pill in approval, and comes up once the one before is answered, dropped or timed out. The card says "1/N" and the project of the session asking, and a click or Y/N answers only the request on screen

@@ -540,7 +540,7 @@ pub fn start(app: AppHandle) {
     });
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, task: String, chat_id: String) -> Result<Watch, String> {
     let watch = add(&repo, number, &until, &task, &chat_id)?;
     log::line(format!("listen: {} {}", watch.label(), watch.until));
@@ -548,14 +548,14 @@ pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, task
     Ok(watch)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn listen_cancel(app: AppHandle, repo: String, number: u64, until: Option<String>) -> usize {
     let n = cancel(&repo, number, until.as_deref());
     changed(&app);
     n
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 pub fn listen_list() -> Vec<Watch> {
     list()
 }

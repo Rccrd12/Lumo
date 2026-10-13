@@ -326,7 +326,7 @@ fn open_url(url: String) {
 
 /// "Open terminal" opens the working folder in VS Code when `code` is on PATH,
 /// and falls back to the file manager otherwise.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_in_vscode(path: Option<String>) -> bool {
     // No shell anywhere near this. The path is a project folder chosen by
     // whoever is using Claude Code, and a shell would happily read `&`, `^`, `%`
@@ -388,7 +388,7 @@ fn diff_file(path: &str) -> Option<&std::path::Path> {
 /// The diff card's ↗: opens the edited file in VS Code when `code` is on PATH,
 /// otherwise shows its folder. The file itself is never opened by its type —
 /// Explorer would run a script that Claude just wrote.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_file_in_vscode(path: String) -> bool {
     let Some(file) = diff_file(&path) else { return false };
     if let Some(code) = platform::find_on_path("code") {
@@ -419,25 +419,28 @@ fn set_paused(app: AppHandle, paused: bool) {
 
 // ── Claude Code hooks ─────────────────────────────────────────────────────────
 
-#[tauri::command]
+// Commands marked `async` read or write files, the registry or the Credential
+// Manager: they run off the main thread, so the island never stutters on them.
+
+#[tauri::command(async)]
 fn hooks_status() -> HookStatus {
     hooks::status()
 }
 
 /// Pill ID → whether that agent's hooks reach Lumo. Read-only.
-#[tauri::command]
+#[tauri::command(async)]
 fn agent_hooks_status() -> std::collections::HashMap<String, bool> {
     agent_hooks::status()
 }
 
 /// Returns the diff the user has to look at before anything is written.
-#[tauri::command]
+#[tauri::command(async)]
 fn hooks_preview(install: bool) -> Result<HookPreview, String> {
     hooks::preview(install)
 }
 
 /// Only ever called from an explicit click in the settings window.
-#[tauri::command]
+#[tauri::command(async)]
 fn hooks_apply(
     app: AppHandle,
     shared: State<Shared>,
@@ -461,20 +464,20 @@ fn hooks_apply(
 
 // ── Other agents' hooks and plugins ──────────────────────────────────────────
 
-#[tauri::command]
+#[tauri::command(async)]
 fn agent_hooks_list() -> Vec<agents::AgentStatus> {
     agents::list()
 }
 
 /// The diff the user has to look at before anything is written.
-#[tauri::command]
+#[tauri::command(async)]
 fn agent_hooks_preview(agent: String, install: bool) -> Result<config_file::Plan, String> {
     agents::preview(&agent, install)
 }
 
 /// Only ever called from an explicit click in the settings window, with the
 /// fingerprint of the preview the user looked at.
-#[tauri::command]
+#[tauri::command(async)]
 fn agent_hooks_apply(agent: String, install: bool, fingerprint: String) -> Result<String, String> {
     let backups = agents::apply(&agent, install, &fingerprint)?;
     let done = if install { "installed" } else { "removed" };
@@ -486,13 +489,13 @@ fn agent_hooks_apply(agent: String, install: bool, fingerprint: String) -> Resul
 
 /// The diff of putting the plan usage relay into (or taking it out of) the
 /// status line, before anything is written.
-#[tauri::command]
+#[tauri::command(async)]
 fn status_line_preview(install: bool) -> Result<HookPreview, String> {
     hooks::status_line_preview(install)
 }
 
 /// Only ever called from an explicit click in the settings window.
-#[tauri::command]
+#[tauri::command(async)]
 fn status_line_apply(
     app: AppHandle,
     shared: State<Shared>,
@@ -636,7 +639,7 @@ async fn local_connect(provider: String, url: String) -> Result<local_chat::Conn
 
 /// Stores the custom server's key for the address typed next to it; it is only
 /// ever sent to that address.
-#[tauri::command]
+#[tauri::command(async)]
 fn local_set_key(url: String, key: String) -> Result<(), String> {
     local_chat::set_custom_key(&url, &key)
 }
@@ -747,7 +750,7 @@ async fn screen_capture(app: AppHandle, display: Option<usize>) -> Result<Vec<sc
 }
 
 /// Cancel in the preview: the screenshots are deleted from the inbox.
-#[tauri::command]
+#[tauri::command(async)]
 fn screen_discard(paths: Vec<String>) {
     screen::discard(&paths);
 }
@@ -854,12 +857,12 @@ async fn chat_providers() -> Vec<String> {
     .unwrap_or_default()
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn secret_present(key: String) -> bool {
     secrets::present(&key)
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> {
     // Bound to its server's address: only local_set_key may store it.
     if key == local_chat::CUSTOM_KEY {
@@ -876,7 +879,7 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     Ok(())
 }
 
-#[tauri::command]
+#[tauri::command(async)]
 fn secret_clear(app: AppHandle, key: String) -> Result<(), String> {
     let had = key == "github-token" && secrets::present(&key);
     secrets::clear(&key)?;
@@ -899,7 +902,7 @@ fn secret_changed(app: &AppHandle, key: &str) {
 }
 
 /// Opens the configured n8n instance — the URL lives in the Credential Manager.
-#[tauri::command]
+#[tauri::command(async)]
 fn open_n8n() {
     if let Some(url) = secrets::get("n8n-url") {
         open_url(url);

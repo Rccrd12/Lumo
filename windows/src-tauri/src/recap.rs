@@ -746,7 +746,7 @@ pub fn recap_clear(store: State<Store>) {
 }
 
 /// `data` is the canvas's PNG as a data URL. Returns where it was written.
-#[tauri::command]
+#[tauri::command(async)]
 pub fn recap_save_png(store: State<Store>, data: String, week: String) -> Result<String, String> {
     let path = save_png(&platform::picture_dirs(), &data, &week)?;
     let shown = path.to_string_lossy().to_string();
