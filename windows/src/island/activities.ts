@@ -15,10 +15,14 @@
 //
 // It costs nothing while the island is shut: only drawn, and only asking for
 // the music, while on screen. The calendar is fetched every 15 minutes from
-// the address in Settings → Island, and when it shows if older than 5.
+// the address in Settings → Island, and when it shows if older than 5. A
+// failed fetch (the network not back yet after sleep, a dropped connection)
+// is tried again within the minute, and the events already read stay on
+// screen: the error shows only when nothing was ever read, or after
+// a few failures in a row (src/core/calendar.ts).
 
 import { Bridge, IS_TAURI, emitToWindow, onEvent } from "../core/bridge";
-import { parseIcs, type CalEvent } from "../core/calendar";
+import { calendarRetryIn, parseIcs, showsCalendarError, type CalEvent } from "../core/calendar";
 import { Feed, compactTimer } from "../core/compact";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -46,6 +50,10 @@ export const Calendar = {
   configured: false,
   error: null as string | null,
   fetchedAt: 0,
+  /** Failed fetches in a row; a good one sets it back to 0. */
+  failures: 0,
+  /** The file was read at least once since Lumo started. */
+  hasRead: false,
   busy: false,
   timer: null as number | null,
   effort: "" as string,
@@ -64,13 +72,14 @@ export const Calendar = {
     });
   },
 
-  schedule() {
+  /** The next fetch in `wait` (the usual wait, or sooner after a failure). */
+  schedule(wait = calendarEvery()) {
     if (this.timer != null) window.clearTimeout(this.timer);
     this.effort = State.effort;
     this.timer = window.setTimeout(() => {
-      void this.refresh();
       this.schedule();
-    }, calendarEvery());
+      void this.refresh();
+    }, wait);
   },
 
   async refresh() {
@@ -83,9 +92,14 @@ export const Calendar = {
       this.events = text ? parseIcs(text, now - DAY, now + 8 * DAY) : [];
       this.error = null;
       this.fetchedAt = now;
+      this.hasRead = text != null;
+      if (this.failures > 0) this.schedule();
+      this.failures = 0;
     } catch (err) {
-      this.error = String(err).replace(/^Error:\s*/, "");
-      this.fetchedAt = Date.now();
+      // fetchedAt stays: the island showing asks again (refreshIfStale).
+      this.failures++;
+      if (showsCalendarError(this.failures, this.hasRead)) this.error = String(err).replace(/^Error:\s*/, "");
+      this.schedule(calendarRetryIn(this.failures, calendarEvery()));
     } finally {
       this.busy = false;
       Feed.events = this.events;
