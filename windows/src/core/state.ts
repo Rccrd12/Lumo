@@ -427,6 +427,8 @@ class AppState {
   approvalQueue: ApprovalInfo[] = [];
   /** The pill that was in front when the card came up; it comes back after. */
   focusBeforeApproval: string | null = null;
+  /** Whether the island was pinned (Ctrl+P) when the card came up; it is again after. */
+  pinnedBeforeApproval: boolean | null = null;
 
   integrations: Record<string, IntegrationInfo> = {};
 
@@ -505,6 +507,7 @@ class AppState {
 
   beginApproval(info: ApprovalInfo) {
     this.pendingApproval = info;
+    if (this.pinnedBeforeApproval == null) this.pinnedBeforeApproval = this.isPinned;
     this.isPinned = true;
     if (this.focusBeforeApproval == null) this.focusBeforeApproval = this.focusId;
     this.setFocus(info.pillId);
@@ -518,7 +521,9 @@ class AppState {
     const req = this.pendingApproval;
     if (!req) return;
     this.pendingApproval = null;
-    this.isPinned = false;
+    // A pin the user had set stays, as long as the island is still open.
+    this.isPinned = this.pinnedBeforeApproval === true && this.mode === "expanded";
+    this.pinnedBeforeApproval = null;
     if (!req.fromChat) this.updateTask(req.pillId, "working");
     this.setPillBadge(req.pillId, null);
     const previous = this.focusBeforeApproval;

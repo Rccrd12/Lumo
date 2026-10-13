@@ -233,7 +233,7 @@ export class Island {
   private closeApproval() {
     const fromChat = State.pendingApproval?.fromChat ?? false;
     State.endApproval();
-    this.fsm.pinned = false;
+    this.fsm.pinned = State.isPinned;
     if (State.pendingApproval) {
       presentApproval(this);
       return;
@@ -808,11 +808,11 @@ export class Island {
     this.collapse();
   }
 
-  /** An alert stopped waiting for an answer: let the island auto-close again. */
+  /** An alert stopped waiting for an answer: let the island auto-close again, unless the user pinned it. */
   dropPin() {
-    this.fsm.pinned = false;
+    this.fsm.pinned = State.isPinned;
     // The countdown the pin held back starts now, if the mouse is elsewhere.
-    if (!this.wasInIsland) this.fsm.mouseLeft();
+    if (!State.isPinned && !this.wasInIsland) this.fsm.mouseLeft();
   }
 
   /** New emails from the Email pill (mail.rs): the closed island shows the newest. */
