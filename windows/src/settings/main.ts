@@ -246,6 +246,8 @@ const PLAN_SETTINGS_TEXT = {
   get claudeTitle() { return t("Claude plan"); },
   get codex() { return t("Shows your Codex plan's weekly limit in the island's header, asked from the Codex CLI; nothing is installed. Codex must be signed in with ChatGPT."); },
   get showCodex() { return t("Show Codex plan in the island"); },
+  get antigravity() { return t("Shows your Antigravity CLI quotas (5-hour and weekly) in the island's header, asked from agy as its /usage does; nothing is installed. agy must be signed in with your Google account."); },
+  get showAntigravity() { return t("Show Antigravity CLI usage in the island"); },
 };
 
 function planSection(status: HookStatus): HTMLElement {
@@ -311,6 +313,14 @@ function planSection(status: HookStatus): HTMLElement {
       setting(PLAN_SETTINGS_TEXT.showCodex, PLAN_SETTINGS_TEXT.codex,
         toggle(settings.showCodexPlanInNotch, (on) => {
           settings.showCodexPlanInNotch = on;
+          void save();
+        }),
+      ),
+      // Antigravity CLI: the same, Lumo asks agy when the pill shows.
+      group("Antigravity CLI"),
+      setting(PLAN_SETTINGS_TEXT.showAntigravity, PLAN_SETTINGS_TEXT.antigravity,
+        toggle(settings.showAntigravityPlanInNotch, (on) => {
+          settings.showAntigravityPlanInNotch = on;
           void save();
         }),
       ),

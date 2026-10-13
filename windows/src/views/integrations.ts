@@ -144,7 +144,8 @@ export function idleCardKey(id: string, now = Date.now()): string {
   const r = refreshes.get(id);
   const refreshed = r ? `${r.busy}|${r.at}|${r.error}|${Math.floor((now - r.at) / 60_000)}` : "";
   const plan = id === "integration_claude" ? `${State.settings.planRelayInstalled}|${dominantPct(State.planUsage, now)}`
-    : id === "agent_codex" ? String(dominantPct(State.codexPlanUsage, now)) : "";
+    : id === "agent_codex" ? String(dominantPct(State.codexPlanUsage, now))
+    : id === "agent_antigravity" ? String(dominantPct(State.antigravityPlanUsage, now)) : "";
   return `${refreshed}~${recapAt}~${plan}`;
 }
 
@@ -220,8 +221,8 @@ function toolFacts(task: AgentTask, configured: boolean, hookPill: boolean): { l
       ? { label: t(TOOL_TEXT.planUsage), value: pct == null ? PLAN_TEXT.none : `${Math.round(pct)}%`, color: pct == null ? undefined : planColor(pct) }
       : { label: t(TOOL_TEXT.planUsage), value: t(TOOL_TEXT.notInstalled) });
   }
-  if (task.id === "agent_codex") {
-    const pct = dominantPct(State.codexPlanUsage);
+  if (task.id === "agent_codex" || task.id === "agent_antigravity") {
+    const pct = dominantPct(task.id === "agent_codex" ? State.codexPlanUsage : State.antigravityPlanUsage);
     if (pct != null) out.push({ label: t(TOOL_TEXT.planUsage), value: `${Math.round(pct)}%`, color: planColor(pct) });
   }
   if (task.id === "ai_anthropic" && configured) out.push({ label: t(TOOL_TEXT.model), value: State.settings.model });

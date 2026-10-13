@@ -82,6 +82,9 @@ pub struct Settings {
     /// Show the Codex plan pill (5 h / weekly limits from `codex app-server`).
     /// Off by default; nothing is installed for it.
     pub show_codex_plan_in_notch: bool,
+    /// Show the Antigravity CLI pill (quotas from `agy -p /usage`).
+    /// Off by default; nothing is installed for it.
+    pub show_antigravity_plan_in_notch: bool,
     /// Ask Anthropic for the Claude plan's usage with Claude Code's sign-in
     /// (plan_usage.rs). Off unless turned on.
     pub plan_usage_online: bool,
@@ -235,6 +238,7 @@ impl Default for Settings {
             show_plan_in_notch: false,
             plan_relay_installed: false,
             show_codex_plan_in_notch: false,
+            show_antigravity_plan_in_notch: false,
             plan_usage_online: false,
             quick_approvals: true,
             activities_follow_island: true,
@@ -550,6 +554,7 @@ mod tests {
   "showPlanInNotch": true,
   "planRelayInstalled": true,
   "showCodexPlanInNotch": true,
+  "showAntigravityPlanInNotch": true,
   "planUsageOnline": true,
   "quickApprovals": false,
   "activitiesFollowIsland": false,
@@ -975,6 +980,7 @@ mod tests {
                 "showPlanInNotch",
                 "planRelayInstalled",
                 "showCodexPlanInNotch",
+                "showAntigravityPlanInNotch",
                 "planUsageOnline",
                 "quickApprovals",
                 "activitiesFollowIsland",

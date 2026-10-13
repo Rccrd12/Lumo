@@ -37,7 +37,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 🖥️ **The chat knows what's open on your PC** — the windows and documents you have open (a PDF, a Word file, a spreadsheet…) go with your question, so "what's this PDF about?" just works. Settings → Chat turns it off.
 - ➗ **Math in answers** — formulas in LaTeX (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`) are drawn as math: fractions, roots, matrices, sums, vectors.
 - 🖼️ **Show the chat your screen** — your open windows or a screenshot, only when you ask; `Ctrl+Alt+P` asks about the screen, `Ctrl+Alt+X` about the selected text, from any app.
-- 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, and your Codex limits. Off by default; Settings → Agents → Plan usage.
+- 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, your Codex limits and your Antigravity CLI quotas. Off by default; Settings → Agents → Plan usage.
 - 📋 **Declare the tools you use** — Settings → Pills & integrations: pick your main tool (VS Code, Cursor, Codex or Antigravity), then up to 4 more agents, chat providers and services.
 - 📎 **Drop a file on the island** — Lumo turns into a box and swallows it, then answers questions about it.
 - 🧲 **An island that docks anywhere** — drag it to the top, bottom, left or right edge, resize it, zoom it.
@@ -137,7 +137,7 @@ Click the Lumo icon in the system tray → **Settings…**
 |---|---|---|
 | **Claude Code hooks** | live sessions and approvals | Settings → Agents → Claude Code → **Install hooks** — Lumo backs up `~/.claude/settings.json`, merges its hooks and shows you the diff before writing anything |
 | **Other agents** | their sessions in the island | Settings → Agents, same backup, diff and confirmation |
-| **Plan usage** | Claude and Codex limits in the island's header | Settings → Agents → Plan usage |
+| **Plan usage** | Claude, Codex and Antigravity CLI limits in the island's header | Settings → Agents → Plan usage |
 | **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager |
 | **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager |
 | **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |

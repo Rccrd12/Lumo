@@ -445,6 +445,66 @@
    "id": "Pemakaian paket Codex",
    "it": "Utilizzo del piano Codex"
   },
+  "Asking Antigravity CLI…": {
+   "zh-Hans": "正在询问 Antigravity CLI…",
+   "hi": "Antigravity CLI से पूछ रहे हैं…",
+   "es": "Consultando a Antigravity CLI…",
+   "ar": "جارٍ سؤال Antigravity CLI…",
+   "fr": "Interrogation d'Antigravity CLI…",
+   "bn": "Antigravity CLI-কে জিজ্ঞাসা করা হচ্ছে…",
+   "pt-BR": "Consultando o Antigravity CLI…",
+   "ru": "Запрос к Antigravity CLI…",
+   "id": "Menanyakan Antigravity CLI…",
+   "it": "Chiedo ad Antigravity CLI…"
+  },
+  "Antigravity CLI usage": {
+   "zh-Hans": "Antigravity CLI 用量",
+   "hi": "Antigravity CLI का उपयोग",
+   "es": "Uso de Antigravity CLI",
+   "ar": "استخدام Antigravity CLI",
+   "fr": "Utilisation d'Antigravity CLI",
+   "bn": "Antigravity CLI-এর ব্যবহার",
+   "pt-BR": "Uso do Antigravity CLI",
+   "ru": "Использование Antigravity CLI",
+   "id": "Pemakaian Antigravity CLI",
+   "it": "Utilizzo di Antigravity CLI"
+  },
+  "Antigravity CLI did not answer": {
+   "zh-Hans": "Antigravity CLI 没有回应",
+   "hi": "Antigravity CLI ने जवाब नहीं दिया",
+   "es": "Antigravity CLI no respondió",
+   "ar": "لم يُجب Antigravity CLI",
+   "fr": "Antigravity CLI n'a pas répondu",
+   "bn": "Antigravity CLI উত্তর দেয়নি",
+   "pt-BR": "O Antigravity CLI não respondeu",
+   "ru": "Antigravity CLI не ответил",
+   "id": "Antigravity CLI tidak menjawab",
+   "it": "Antigravity CLI non ha risposto"
+  },
+  "Show Antigravity CLI usage in the island": {
+   "zh-Hans": "在岛中显示 Antigravity CLI 用量",
+   "hi": "द्वीप में Antigravity CLI का उपयोग दिखाएँ",
+   "es": "Mostrar el uso de Antigravity CLI en la isla",
+   "ar": "إظهار استخدام Antigravity CLI في الجزيرة",
+   "fr": "Afficher l'utilisation d'Antigravity CLI dans l'île",
+   "bn": "দ্বীপে Antigravity CLI-এর ব্যবহার দেখান",
+   "pt-BR": "Mostrar o uso do Antigravity CLI na ilha",
+   "ru": "Показывать использование Antigravity CLI на острове",
+   "id": "Tampilkan pemakaian Antigravity CLI di pulau",
+   "it": "Mostra l'utilizzo di Antigravity CLI nell'isola"
+  },
+  "Shows your Antigravity CLI quotas (5-hour and weekly) in the island's header, asked from agy as its /usage does; nothing is installed. agy must be signed in with your Google account.": {
+   "zh-Hans": "在岛的顶栏中显示你的 Antigravity CLI 配额（5 小时和每周），像 /usage 一样向 agy 询问；无需安装任何东西。agy 必须已用你的 Google 账号登录。",
+   "hi": "आपके Antigravity CLI कोटा (5 घंटे और साप्ताहिक) द्वीप के हेडर में दिखाता है, जो /usage की तरह agy से पूछे जाते हैं; कुछ भी इंस्टॉल नहीं होता। agy में आपके Google खाते से साइन इन होना ज़रूरी है।",
+   "es": "Muestra tus cuotas de Antigravity CLI (5 horas y semanal) en la cabecera de la isla, consultadas a agy como hace su /usage; no se instala nada. agy debe tener la sesión iniciada con tu cuenta de Google.",
+   "ar": "يعرض حصص Antigravity CLI الخاصة بك (5 ساعات وأسبوعية) في رأس الجزيرة، ويسأل عنها agy كما يفعل أمر /usage؛ لا يُثبَّت أي شيء. يجب أن يكون agy مسجَّل الدخول بحساب Google الخاص بك.",
+   "fr": "Affiche vos quotas Antigravity CLI (5 heures et semaine) dans l'en-tête de l'île, demandés à agy comme le fait son /usage ; rien n'est installé. agy doit être connecté avec votre compte Google.",
+   "bn": "আপনার Antigravity CLI কোটা (৫ ঘণ্টা ও সাপ্তাহিক) দ্বীপের হেডারে দেখায়, /usage-এর মতো agy-কে জিজ্ঞাসা করে; কিছুই ইনস্টল হয় না। agy-তে আপনার Google অ্যাকাউন্ট দিয়ে সাইন ইন থাকতে হবে।",
+   "pt-BR": "Mostra suas cotas do Antigravity CLI (5 horas e semanal) no cabeçalho da ilha, consultadas ao agy como o /usage dele faz; nada é instalado. O agy precisa estar conectado com sua conta Google.",
+   "ru": "Показывает квоты Antigravity CLI (5 часов и неделя) в заголовке острова, запрашивая их у agy, как это делает его /usage; ничего не устанавливается. В agy нужно войти с вашим аккаунтом Google.",
+   "id": "Menampilkan kuota Antigravity CLI Anda (5 jam dan mingguan) di header pulau, ditanyakan ke agy seperti /usage-nya; tidak ada yang dipasang. agy harus sudah masuk dengan akun Google Anda.",
+   "it": "Mostra le quote di Antigravity CLI (5 ore e settimanale) nell'intestazione dell'isola, chieste ad agy come fa il suo /usage; non viene installato nulla. agy deve aver fatto l'accesso con il tuo account Google."
+  },
   "Codex runs new hooks only once you trust them: start Codex and review them once with /hooks.": {
    "zh-Hans": "Codex 只会运行你信任的新 hooks：启动 Codex，并用 /hooks 检查一次。",
    "hi": "Codex नए hooks तभी चलाता है जब आप उन पर भरोसा करें: Codex शुरू करें और /hooks से एक बार उनकी समीक्षा करें।",
