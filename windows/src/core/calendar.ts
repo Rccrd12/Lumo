@@ -237,3 +237,19 @@ export function parseIcs(text: string, from: number, to: number): CalEvent[] {
 export function eventSoon(events: CalEvent[], now: number, soonMs = 15 * 60_000): CalEvent | null {
   return events.find((e) => !e.allDay && e.start - now <= soonMs && e.start - now > -5 * 60_000 && e.end > now) ?? null;
 }
+
+// ── A failed fetch ───────────────────────────────────────────────────────────
+
+const CALENDAR_RETRY_MS = 30_000;
+/** Failed fetches in a row before the error replaces the events already read. */
+export const CALENDAR_FAILURES_SHOWN = 3;
+
+/** After `failures` failed fetches in a row, the wait before the next: 30 s, then doubled, never past `every`. */
+export function calendarRetryIn(failures: number, every: number): number {
+  return Math.min(every, CALENDAR_RETRY_MS * 2 ** Math.max(0, failures - 1));
+}
+
+/** Whether a failed fetch is shown, or the events already read are kept. */
+export function showsCalendarError(failures: number, hasRead: boolean): boolean {
+  return !hasRead || failures >= CALENDAR_FAILURES_SHOWN;
+}
