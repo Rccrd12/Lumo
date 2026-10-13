@@ -77,6 +77,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.6.5](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.5) | Oct 13, 2026 | About 30 fixes from a full code review: computer use, permission cards, the relay, the calendar, Gemini Live; Remove buttons for integration keys |
 | [0.6.4](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.4) | Oct 12, 2026 | Permission requests that wait in line, several sessions sharing a pill, Energy None asking more often, about 2,500 lines of unused code removed |
 | [0.6.3](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.3) | Oct 12, 2026 | Listening mode that starts however the line is written, a chip in the chat to see and stop it, no hit on GitHub's rate limit |
 | [0.6.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.2) | Oct 12, 2026 | Y and N answer a permission card that says what it is for, Auto for Antigravity CLI, every chat control usable mid-answer with answers going on in their own chat, no more waiting commands for GitHub, a dropped file joins the open chat, shorter Settings descriptions |
