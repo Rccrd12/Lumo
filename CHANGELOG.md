@@ -1,7 +1,10 @@
 # Changelog
 
-## Windows 0.6.5 — October 13, 2026
+## Windows 0.7.0 — October 13, 2026
 
+- **Antigravity CLI usage**: a new pill in the island's header shows your Antigravity CLI quotas (5-hour and weekly), asked of agy as its own `/usage` does, with a card for the details and a Refresh button. Nothing is installed; off by default, in Settings → Agents → Plan usage. With "Show remaining usage in the chat" on, the chat's usage ring shows the same quotas while you chat with Antigravity CLI
+- **Calendar that rides out a bad network**: a failed fetch (the network not back yet after sleep, a dropped connection, a passing server error) is tried again within the minute, and the events already read stay on screen; the error shows only after a few failures in a row
+- **Drop zone that closes**: a file dragged over the island and then dropped somewhere else, or cancelled, no longer leaves the drop zone open
 - **Permission cards with computer use**: a card answered while Claude was using the computer no longer leaves the next cards without the mouse. Esc keeps stopping Claude after the shortcuts change in Settings
 - **Cards go when Lumo stops waiting**: an unanswered card leaves at 107 seconds, before the terminal takes over, so a late click is never lost
 - **Auto only allows what only looks**: `git branch new-name`, `git reflog expire`, `git grep -O`, `find -fprint0`, `tree -o`, `rg --pre`, PowerShell script blocks, `hostname new-name` and `date -s` now ask. Auto can only ever allow the island chat's own Antigravity CLI requests
