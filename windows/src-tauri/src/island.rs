@@ -1234,6 +1234,12 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     let handle = app.clone();
                     let _ = app.run_on_main_thread(move || platform::unblock_webview_drops(&handle));
                 }
+                // Let go: a file drag that opened the drop zone has ended, wherever
+                // the file went. The page hears nothing of a drag that ends outside
+                // the window (cancelled, or dropped somewhere else), so it hears it here.
+                if !down && was_down && !acting {
+                    let _ = win.emit("left-up", ());
+                }
                 was_down = down;
 
                 if (x - last.0).abs() < 1.0 && (y - last.1).abs() < 1.0 && acting == was_acting {
