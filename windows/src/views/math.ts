@@ -102,10 +102,9 @@ class Parser {
     this.s = s;
   }
 
-  parse(stop?: (s: string, i: number) => boolean): Node[] {
+  parse(): Node[] {
     const out: Node[] = [];
     while (this.i < this.s.length) {
-      if (stop?.(this.s, this.i)) break;
       const c = this.s[this.i];
       if (c === "}") break;
       if (c === "^" || c === "_") {
@@ -120,6 +119,16 @@ class Parser {
       }
       const atom = this.atom();
       if (atom) out.push(atom);
+    }
+    return out;
+  }
+
+  /** The whole formula: a "}" with no "{" is skipped, not the end of it. */
+  parseAll(): Node[] {
+    const out = this.parse();
+    while (this.i < this.s.length) {
+      this.i++;
+      out.push(...this.parse());
     }
     return out;
   }
@@ -399,7 +408,7 @@ function drawAll(nodes: Node[], tag: "span" | "div"): HTMLElement {
 export function renderMath(tex: string, display = false): HTMLElement {
   let nodes: Node[];
   try {
-    nodes = new Parser(tex.trim()).parse();
+    nodes = new Parser(tex.trim()).parseAll();
   } catch {
     return h("span", { class: "md-code", text: tex });
   }

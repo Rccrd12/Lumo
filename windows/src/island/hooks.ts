@@ -673,10 +673,10 @@ function handleHook(island: Island, payload: HookPayload) {
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(!fromChat && !isExternalAgent ? { project: projectName } : {}),
       };
-      // Lumo answers within 108 s or not at all. For the chat's Antigravity CLI
-      // and Claude Code runs, the relay says how long it waits: the card goes
-      // just before.
-      const cardMs = chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 110_000;
+      // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
+      // For the chat's Antigravity CLI and Claude Code runs, the relay says how
+      // long it waits. Either way the card goes just before.
+      const cardMs = chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
         State.approvalQueue.push({ ...info, ...(!questions && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);

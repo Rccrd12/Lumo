@@ -48,7 +48,7 @@ beforeEach(() => {
   quickFits = true;
 });
 
-// hooks.ts keeps timer handles between events: the 110 s approval timeout, and
+// hooks.ts keeps timer handles between events: the 107 s approval timeout, and
 // one 5.2 s return to idle per pill that has stopped. Letting every timer fire
 // before the reset clears them all; otherwise the next test would cancel a timer
 // that belongs to a mock clock that no longer exists.
@@ -569,11 +569,11 @@ test("the same request arriving twice is acknowledged again, not declined", () =
   assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }, { requestId: "r1" }]);
 });
 
-test("an unanswered card is withdrawn after 110 s", () => {
+test("an unanswered card is withdrawn after 107 s, before Lumo stops waiting at 108 s", () => {
   ask("r1");
   State.view = "approval";
   asked = [];
-  seconds(109);
+  seconds(106);
   assert.notEqual(State.pendingApproval, null);
   seconds(1);
   assert.equal(State.pendingApproval, null);
@@ -583,7 +583,7 @@ test("an unanswered card is withdrawn after 110 s", () => {
   assert.deepEqual(asked, ["dropPin", "setView:overview"]);
 });
 
-test("a card answered in time leaves nothing for the 110 s timer to undo", () => {
+test("a card answered in time leaves nothing for the 107 s timer to undo", () => {
   ask("r1");
   // What the Allow button does to the state before the timer fires.
   State.pendingApproval = null;
@@ -917,14 +917,14 @@ test("a request already in line arriving again is acknowledged again, not queued
   assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }, { requestId: "r2" }, { requestId: "r2" }]);
 });
 
-test("each request has its 110 s from when it came, in line too", () => {
+test("each request has its 107 s from when it came, in line too", () => {
   ask("r1");
   seconds(50);
   askOther("r2");
   seconds(60);
-  // r1 ran out: r2 takes the card, with the 50 s it has left.
+  // r1 ran out: r2 takes the card, with the 47 s it has left.
   assert.equal(State.pendingApproval.requestId, "r2");
-  seconds(49);
+  seconds(46);
   assert.equal(State.pendingApproval?.requestId, "r2");
   seconds(1);
   assert.equal(State.pendingApproval, null);

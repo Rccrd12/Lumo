@@ -344,15 +344,6 @@ pub struct CursorPayload {
     pub panel: bool,
 }
 
-#[derive(Serialize, Clone)]
-pub struct ScreenInfo {
-    pub x: f64,
-    pub y: f64,
-    pub width: f64,
-    pub height: f64,
-    pub scale: f64,
-}
-
 /// The island shape in window-logical coordinates, pushed by the front end.
 /// The poll thread owns the click-through decision so it lands in the same 16 ms
 /// tick as the cursor read — an IPC round trip here loses clicks.
@@ -612,7 +603,7 @@ mod display_tests {
         let rescaled = [lap.clone(), d("DELL U2720Q", 1920, 0, 1920, 1080)];
         assert_eq!(pick_display(&key, &rescaled), Some(1));
         // Unplugged: nothing, so the caller falls back to the primary display.
-        assert_eq!(pick_display(&key, &[lap.clone()]), None);
+        assert_eq!(pick_display(&key, std::slice::from_ref(&lap)), None);
     }
 
     #[test]
@@ -630,24 +621,6 @@ mod display_tests {
         assert_eq!(pick_display("at:1920,0", &[lap.clone(), ext.clone()]), Some(1));
         assert_eq!(pick_display("primary", &[lap, ext]), None);
         assert_eq!(pick_display("at:nonsense", &[]), None);
-    }
-}
-
-pub fn screen_info(app: &AppHandle, pref: &str) -> ScreenInfo {
-    match target_monitor(app, pref) {
-        Some(m) => {
-            let scale = m.scale_factor();
-            let p = m.position();
-            let s = m.size();
-            ScreenInfo {
-                x: p.x as f64 / scale,
-                y: p.y as f64 / scale,
-                width: s.width as f64 / scale,
-                height: s.height as f64 / scale,
-                scale,
-            }
-        }
-        None => ScreenInfo { x: 0.0, y: 0.0, width: 1920.0, height: 1080.0, scale: 1.0 },
     }
 }
 
@@ -1185,7 +1158,18 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
             let mut far = false;
             while gate.is_active() {
                 let saving = far && crate::energy::current() == crate::energy::Effort::Saver;
-                std::thread::sleep(Duration::from_millis(if saving { period.max(FAR_PERIOD_MS) } else { period }));
+                if saving {
+                    // Still at 60 Hz for the button alone: a quick click would
+                    // fall between two reads 100 ms apart.
+                    for _ in 0..FAR_PERIOD_MS / period {
+                        std::thread::sleep(Duration::from_millis(period));
+                        if left_button_down() != was_down {
+                            break;
+                        }
+                    }
+                } else {
+                    std::thread::sleep(Duration::from_millis(period));
+                }
                 // The island hid during the sleep: the window is the wake strip
                 // now, which must keep taking the mouse.
                 if !gate.is_active() {
@@ -1197,13 +1181,13 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // nobody can reach. Checked about twice a second — the cursor poll
                 // is already running, so this costs one monitor query.
                 ticks = ticks.wrapping_add(1);
-                if ticks % screen_every == 0 {
+                if ticks.is_multiple_of(screen_every) {
                     let now = current_screen_key(&app);
                     if now.is_some() && now != last_screen {
                         let first = last_screen.is_none();
                         last_screen = now;
                         if !first {
-                            crate::log::line("display layout changed — repositioning".to_string());
+                            crate::log::line("display layout changed — repositioning");
                             let _ = app.emit_to(WINDOW_LABEL, "screen-changed", ());
                         }
                     }

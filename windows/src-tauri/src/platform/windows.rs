@@ -206,7 +206,8 @@ pub fn current_user_sid() -> Option<String> {
             let _ = CloseHandle(token);
             return None;
         }
-        let mut buf = vec![0u8; needed as usize];
+        // u64s: TOKEN_USER holds pointers and must be 8-byte aligned.
+        let mut buf = vec![0u64; (needed as usize).div_ceil(8)];
         let ok = GetTokenInformation(
             token,
             TokenUser,

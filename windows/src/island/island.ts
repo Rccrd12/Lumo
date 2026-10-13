@@ -5,7 +5,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, chatHeight,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
@@ -556,7 +556,6 @@ export class Island {
     State.view = view;
     if (State.mode !== "expanded") this.setMode("expanded");
     else this.animateGeometry(false);
-    State.lastActivity = performance.now();
     State.notify();
   }
 
@@ -572,7 +571,6 @@ export class Island {
     }
     const grew = VIEW_LAYOUTS[view].height >= VIEW_LAYOUTS[State.view].height;
     State.view = view;
-    State.lastActivity = performance.now();
     this.animateGeometry(!grew);
     State.notify();
   }
@@ -894,7 +892,6 @@ export class Island {
         State.fileDragOver = false;
         this.engine.animateMorph(0);
         // The island deliberately stays open: the drag session is still alive.
-        UploadSeq.exitZone();
         State.notify();
         break;
       }
@@ -922,6 +919,8 @@ export class Island {
     // A file still waiting to be asked about: this one joins it. Either way it
     // goes into the chat open now, with the next question asked there.
     const waiting = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile, ...State.moreFiles] : null;
+    // Put back if the copy fails: the next question goes with what was there.
+    const before = { file: State.droppedFile, more: State.moreFiles, context: State.promptContext };
     State.droppedFile = { name, path };
     State.promptContext = { kind: "file", name, path };
     if (waiting) State.moreFiles = waiting.filter((f) => f.path !== path).map((f) => ({ name: f.name, path: f.path }));
@@ -951,6 +950,9 @@ export class Island {
       })
       .catch((err) => {
         if (State.droppedFile?.path !== path) return;
+        State.droppedFile = before.file;
+        State.moreFiles = before.more;
+        State.promptContext = before.context;
         UploadSeq.deactivate();
         this.uploadAt = null;
         Feed.upload = null;
@@ -958,7 +960,9 @@ export class Island {
         this.engine.animateMorph(0);
         this.setView("note");
         Sound.play("error");
-        window.setTimeout(() => this.setView(State.defaultView()), 2400);
+        window.setTimeout(() => {
+          if (State.view === "note") this.setView(State.defaultView());
+        }, 2400);
       });
   }
 
@@ -1240,7 +1244,6 @@ export class Island {
 
     this.islandEl.addEventListener("mousedown", (e) => {
       Sound.resume();
-      State.lastActivity = performance.now();
       this.lastGesture = performance.now();
       // The chat came up on its own: the first click in it brings the keyboard.
       if (State.mode === "expanded" && (State.view === "prompt" || State.view === "live") && e.button === 0 && !document.hasFocus()) {
@@ -1321,7 +1324,6 @@ export class Island {
         if (State.pendingApproval) this.foldApproval();
         else if (!State.isPinned) this.collapse();
       }
-      State.lastActivity = performance.now();
     });
 
     void onDragDrop((e) => this.onDragDrop(e));
@@ -1514,7 +1516,8 @@ export class Island {
       el.classList.toggle("on", resizable && gripFactors(grip, this.dock) != null);
     }
 
-    tickMiniBots(dt);
+    // The pills' little bots are only on the open overview.
+    if (State.mode === "expanded" && State.view === "overview") tickMiniBots(dt);
     // A ticker scroll that loses its frames freezes mid-way, rows overlapping.
     const viewAnimating = this.views.get(State.view)?.tick?.(nowMs) === true;
     this.stepUpload(nowMs);
@@ -1872,10 +1875,6 @@ export class Island {
   /** The bar at the top of the open island: tabs, settings, sound. */
   private onTopBar(clientY: number): boolean {
     return clientY - this.islandRect().y < TOP_BAR_H;
-  }
-
-  get chatHeight() {
-    return chatHeight(this.shape, this.chatCount);
   }
 
   /** What the chat's height follows: its messages, or the most room while a list is open. */

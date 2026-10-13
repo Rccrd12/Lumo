@@ -130,7 +130,8 @@ export class ContextMenu {
 
   private move(step: number) {
     const n = this.entries.length;
-    let i = this.active;
+    // Nothing highlighted yet: down starts at the first item, up at the last.
+    let i = this.active < 0 ? (step > 0 ? -1 : 0) : this.active;
     for (let k = 0; k < n; k++) {
       i = (i + step + n) % n;
       if (this.entries[i].kind === "item") break;

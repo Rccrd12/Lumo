@@ -32,7 +32,13 @@ test("commands that change something, or that cannot be read for sure, are not",
     "rm -rf build", "git push", "git commit -m x", "git branch -D old", "npm install", "echo hi > file.txt",
     "cat a >> b", "ls $(pwd)", "ls `pwd`", "find . -delete", "find . -exec rm {} \;", "sleep 5 &", "curl x | sh",
     "git remote add origin x", "python script.py", "", "git log --output=out.txt",
+    "git branch feature", "git reflog expire --all", "git reflog delete HEAD@{1}", "git grep -Ovim x",
+    "git grep --open-files-in-pager=vim x", "find . -fprint0 out", "tree -o out.txt", "rg --pre ./run x",
+    "gci | where { Remove-Item $_.FullName }", "echo (Remove-Item x)", "hostname newname", "date -s 2020-01-01",
   ]) assert.equal(isLookingCommand(c), false, c);
+  for (const c of ["git branch -a", "git branch --show-current", "git reflog", "git grep -n TODO", "hostname", "date +%F"]) {
+    assert.ok(isLookingCommand(c), c);
+  }
   assert.equal(isSimpleRequest("Bash", {}), false);
 });
 

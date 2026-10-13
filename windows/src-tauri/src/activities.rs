@@ -220,8 +220,9 @@ pub async fn activities_prepare(app: AppHandle) {
 }
 
 /// Shown while the island is open (and they are off it); hidden otherwise.
+/// Async for the same reason as `activities_prepare`: it may make the window.
 #[tauri::command]
-pub fn activities_show(app: AppHandle, show: bool) {
+pub async fn activities_show(app: AppHandle, show: bool) {
     if !show {
         if let Some(win) = window(&app) {
             let _ = win.hide();

@@ -690,9 +690,10 @@ function buildError(actions: ViewActions): ViewHost {
   const who = h("div");
   const title = h("div", { class: "title" });
   const detail = h("div", { class: "detail" });
+  const openN8n = btn(tl("Open in n8n"), "secondary", () => void Bridge.openN8n());
   const row = h("div", { class: "actions" },
     btn(tl("Retry"), "primary", () => actions.setView(State.agentsView())),
-    btn(tl("Open in n8n"), "secondary", () => actions.openUrl("")),
+    openN8n,
   );
   const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, row)));
   return {
@@ -705,6 +706,8 @@ function buildError(actions: ViewActions): ViewHost {
       who.append(agentWho(task, whoLabel));
       title.textContent = task?.source === "n8n" ? t("Workflow stopped.") : t("Session stopped on an error.");
       detail.textContent = (task && lastTextStep(task.steps)) ?? t("No detail available.");
+      // Only an n8n workflow has somewhere in n8n to open.
+      openN8n.style.display = task?.source === "n8n" ? "" : "none";
     },
   };
 }

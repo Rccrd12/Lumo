@@ -148,8 +148,20 @@ mod imp {
         for piece in &pieces {
             match piece {
                 Piece::Text(t) => {
-                    let units: Vec<u16> = t.encode_utf16().collect();
-                    for chunk in units.chunks(BATCH) {
+                    // Batches of whole characters: an emoji's two UTF-16 halves
+                    // never go in two batches.
+                    let mut batches: Vec<(Vec<u16>, usize)> = Vec::new();
+                    let mut buf = [0u16; 2];
+                    for c in t.chars() {
+                        match batches.last_mut() {
+                            Some((units, chars)) if units.len() < BATCH => {
+                                units.extend_from_slice(c.encode_utf16(&mut buf));
+                                *chars += 1;
+                            }
+                            _ => batches.push((c.encode_utf16(&mut buf).to_vec(), 1)),
+                        }
+                    }
+                    for (chunk, chars) in &batches {
                         // The user moved to another window: the rest would go there.
                         if unsafe { GetForegroundWindow() } != front {
                             return Err(format!("The user moved to another window: typing stopped after {typed} characters."));
@@ -163,7 +175,7 @@ mod imp {
                         if !send(&inputs) {
                             return Err(format!("The window in front refused the keys after {typed} characters."));
                         }
-                        typed += String::from_utf16_lossy(chunk).chars().count();
+                        typed += chars;
                         std::thread::sleep(PAUSE);
                     }
                 }

@@ -162,7 +162,11 @@ fn unique_in(dir: &Path, name: &str) -> PathBuf {
     (2..1000)
         .map(|i| dir.join(format!("{stem} ({i}){ext}")))
         .find(|candidate| !candidate.exists())
-        .unwrap_or(dest)
+        // A thousand copies under one name: the time tells this one apart.
+        .unwrap_or_else(|| {
+            let nanos = SystemTime::now().duration_since(SystemTime::UNIX_EPOCH).map(|d| d.as_nanos()).unwrap_or(0);
+            dir.join(format!("{stem} ({nanos}){ext}"))
+        })
 }
 
 /// Where Lumo writes a file of its own for the chat (a screenshot): a fresh

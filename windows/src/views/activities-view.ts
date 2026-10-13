@@ -73,7 +73,7 @@ export type ActivitiesAction =
   | { kind: "refresh" }
   | { kind: "fold" };
 
-/** "14:00", "Tomorrow 9:30", "Mon 12 Oct", or the day for a whole-day event. */
+/** "14:00", "Tomorrow 9:30", "Mon 12 Oct" (a whole-day event says "All day" instead). */
 export function eventWhen(e: CalEvent, now: number, lang = language()): string {
   const d = new Date(e.start);
   const today = new Date(now);
@@ -82,7 +82,6 @@ export function eventWhen(e: CalEvent, now: number, lang = language()): string {
   const time = d.toLocaleTimeString(lang, { hour: "2-digit", minute: "2-digit" });
   const day = days <= 0 ? t(ACTIVITIES_TEXT.today) : days === 1 ? t(ACTIVITIES_TEXT.tomorrow)
     : d.toLocaleDateString(lang, { weekday: "short", day: "numeric", month: "short" });
-  if (e.allDay) return days <= 0 ? t(ACTIVITIES_TEXT.today) : day;
   return days <= 0 ? time : `${day} ${time}`;
 }
 
@@ -342,7 +341,7 @@ export class ActivitiesView {
   // ── Music ───────────────────────────────────────────────────────────────────
 
   private drawMusic(m: MediaActivity | null) {
-    const key = m ? `${m.title}|${m.artist}|${m.app}|${m.playing}` : "none";
+    const key = `${language()}|${m ? `${m.title}|${m.artist}|${m.app}|${m.playing}` : "none"}`;
     if (key === this.keys.music) return;
     this.keys.music = key;
     clear(this.musicBox);

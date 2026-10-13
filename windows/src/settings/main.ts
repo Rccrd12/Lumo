@@ -1150,23 +1150,40 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
         style: "flex:1 1 auto;min-width:0",
       }) as HTMLInputElement;
       const saveBtn = h("button", { text: t("Save") });
+      const removeBtn = h("button", { class: "danger", text: CHAT_STRINGS.remove });
       const dotEl = statusDot(present[field.key] ?? false);
+      const refresh = () => {
+        input.placeholder = present[field.key] ? CHAT_STRINGS.stored : t(field.placeholder);
+        dotEl.style.background = present[field.key] ? "#22c55e" : "#f4505e";
+        removeBtn.style.display = present[field.key] ? "" : "none";
+      };
+      // An empty field saves nothing: what is stored goes only with Remove.
       saveBtn.addEventListener("click", async () => {
         const value = input.value.trim();
+        if (!value) return;
         try {
           await Bridge.secretSet(field.key, value);
-          present[field.key] = value.length > 0;
+          present[field.key] = true;
           input.value = "";
-          input.placeholder = value ? CHAT_STRINGS.stored : t(field.placeholder);
-          dotEl.style.background = value ? "#22c55e" : "#f4505e";
+          refresh();
         } catch {
           dotEl.style.background = "#f5a524";
         }
       });
+      removeBtn.addEventListener("click", async () => {
+        try {
+          await Bridge.secretClear(field.key);
+          present[field.key] = false;
+          refresh();
+        } catch {
+          dotEl.style.background = "#f5a524";
+        }
+      });
+      refresh();
       rows.append(
         h("div", { class: "field-row" },
           h("label", { text: t(field.label) }),
-          input, saveBtn, dotEl,
+          input, saveBtn, removeBtn, dotEl,
         ),
       );
     }
@@ -1480,27 +1497,38 @@ function calendarRow(): HTMLElement {
     style: "flex:1 1 auto;min-width:0",
   }) as HTMLInputElement;
   const dotEl = statusDot(false);
-  void Bridge.secretPresent(key).then((on) => {
-    if (on) {
-      input.placeholder = CHAT_STRINGS.stored;
-      dotEl.style.background = "#22c55e";
-    }
-  });
   const saveBtn = h("button", { text: t("Save") });
+  const removeBtn = h("button", { class: "danger", text: CHAT_STRINGS.remove });
+  const show = (stored: boolean) => {
+    input.placeholder = stored ? CHAT_STRINGS.stored : "https://calendar.google.com/calendar/ical/…/basic.ics";
+    dotEl.style.background = stored ? "#22c55e" : "#f4505e";
+    removeBtn.style.display = stored ? "" : "none";
+  };
+  show(false);
+  void Bridge.secretPresent(key).then((on) => show(on === true));
+  // An empty field saves nothing: the address goes only with Remove.
   saveBtn.addEventListener("click", async () => {
     const value = input.value.trim();
+    if (!value) return;
     try {
       await Bridge.secretSet(key, value);
       input.value = "";
-      input.placeholder = value ? CHAT_STRINGS.stored : "https://calendar.google.com/calendar/ical/…/basic.ics";
-      dotEl.style.background = value ? "#22c55e" : "#f4505e";
+      show(true);
+    } catch {
+      dotEl.style.background = "#f5a524";
+    }
+  });
+  removeBtn.addEventListener("click", async () => {
+    try {
+      await Bridge.secretClear(key);
+      show(false);
     } catch {
       dotEl.style.background = "#f5a524";
     }
   });
   return wideSetting(h("span", { class: "with-dot" }, t("Calendar"), dotEl),
     t("The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.", { store: KEY_STORE }),
-    input, saveBtn);
+    input, saveBtn, removeBtn);
 }
 
 /**
@@ -1934,6 +1962,8 @@ async function render() {
 
   declaredViews.length = 0;
   localRedraw = null;
+  // A shortcut being recorded ends with the section it was in.
+  shortcutsListener?.stop();
   shortcutsListener = null;
 
   // Every section is built, so what one redraws (declaredViews, the local

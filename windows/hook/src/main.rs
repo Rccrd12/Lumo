@@ -27,7 +27,7 @@ use std::io::{Read, Write};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use serde_json::{Map, Value};
+use serde_json::Value;
 
 mod mcp;
 mod normalize;
@@ -270,8 +270,6 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         map.insert("cwd".into(), Value::String(cwd.to_string()));
     }
 
-    add_terminal_context(map, env);
-
     // Kept whole: what goes back to Claude Code must be its own input, not the
     // shortened copy the island is shown.
     let question = (map.get("tool_name").and_then(Value::as_str) == Some("AskUserQuestion"))
@@ -285,22 +283,6 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let mut line = payload.to_string();
     line.push('\n');
     Some(Event { line, name, question, island_card })
-}
-
-/// Which terminal the session runs in. Unlike macOS, Lumo here accepts events
-/// from every terminal, so this is context only — never a filter.
-fn add_terminal_context(map: &mut Map<String, Value>, env: &dyn Fn(&str) -> Option<String>) {
-    for (key, var) in [
-        ("term_program", "TERM_PROGRAM"),
-        ("wt_session", "WT_SESSION"),
-        ("term_session_id", "TERM_SESSION_ID"),
-        ("vscode_pid", "VSCODE_PID"),
-        ("session_pid", "CLAUDE_CODE_SSE_PORT"),
-    ] {
-        if !map.contains_key(key) {
-            map.insert(key.into(), Value::String(env(var).unwrap_or_default()));
-        }
-    }
 }
 
 /// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for

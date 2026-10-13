@@ -121,6 +121,16 @@ pub fn client(url: &Url, timeout: Duration) -> Result<reqwest::Client, String> {
     builder.build().map_err(|e| e.to_string())
 }
 
+/// A client for an answer that streams in: no limit on the whole answer, which
+/// a slow local model may take many minutes to write, only on a silence of `idle`.
+pub fn streaming_client(url: &Url, idle: Duration) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder().connect_timeout(Duration::from_secs(10).min(idle)).read_timeout(idle);
+    if is_loopback_url(url) {
+        builder = builder.no_proxy();
+    }
+    builder.build().map_err(|e| e.to_string())
+}
+
 /// The body of `response`, refused past `limit` bytes.
 pub async fn read_capped(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>, String> {
     if response.content_length().is_some_and(|n| n > limit as u64) {

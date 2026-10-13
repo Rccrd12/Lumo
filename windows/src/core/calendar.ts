@@ -145,12 +145,17 @@ function occurrences(start: number, rule: Rule, to: number): number[] {
         batch.push(new Date(weekStart.getFullYear(), weekStart.getMonth(), weekStart.getDate() + day, h, mi, s).getTime());
       }
     } else if (rule.freq === "MONTHLY") {
-      const y = first.getFullYear();
-      const m = first.getMonth() + step * rule.interval;
+      // Year and month counted on: nthWeekday checks the month it is given.
+      const month = new Date(first.getFullYear(), first.getMonth() + step * rule.interval, 1);
+      const y = month.getFullYear();
+      const m = month.getMonth();
       if (rule.byDay.length) {
         for (const b of rule.byDay) {
-          const d = nthWeekday(y, m, b.day, b.n || 1, h, mi, s);
-          if (d) batch.push(d.getTime());
+          // "BYDAY=MO" with no number: every Monday of the month.
+          for (const n of b.n ? [b.n] : [1, 2, 3, 4, 5]) {
+            const d = nthWeekday(y, m, b.day, n, h, mi, s);
+            if (d) batch.push(d.getTime());
+          }
         }
         batch.sort((a, b) => a - b);
       } else {

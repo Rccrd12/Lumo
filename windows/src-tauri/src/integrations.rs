@@ -516,13 +516,9 @@ async fn run_github_activity(app: &AppHandle) {
     emit_github(app);
 }
 
-/// Settings → General → Energy changed: the pulse is asked now, and its next
-/// wait follows the new effort.
-pub fn wake_github_loops() {
-    wake_github_pulse();
-}
-
-fn wake_github_pulse() {
+/// The pulse is asked now (Settings → General → Energy changed: its next wait
+/// follows the new effort).
+pub fn wake_github_pulse() {
     if !GITHUB.pulse_busy.load(Ordering::SeqCst) {
         GITHUB.pulse_wake.notify_one();
     }

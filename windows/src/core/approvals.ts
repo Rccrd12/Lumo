@@ -34,7 +34,17 @@ const GIT_LOOKING = new Set([
 ]);
 
 /** `find` options that act on what they find. */
-const FIND_ACTING = /\s-(delete|exec|execdir|ok|okdir|fprint|fprintf|fls)\b/;
+const FIND_ACTING = /\s-(delete|exec|execdir|ok|okdir|fprint0?|fprintf|fls)(\s|$)/;
+
+/** Options that make a looking command write a file or run a program. */
+const ACTING_OPTIONS: Record<string, RegExp> = {
+  rg: /^--pre(=|$)/,
+  tree: /^-o$/,
+  date: /^(-s|--set)(=|$)/,
+};
+
+/** `git branch` arguments that only list. */
+const BRANCH_LISTING = new Set(["-a", "-r", "-v", "-vv", "--all", "--remotes", "--list", "--show-current"]);
 
 /** One command of a pipeline or a list: true when it only looks. */
 function looks(segment: string): boolean {
@@ -44,21 +54,31 @@ function looks(segment: string): boolean {
   const name = words[0].split(/[\\/]/).pop()!.toLowerCase().replace(/\.exe$/, "");
   if (name === "git") {
     const sub = words.slice(1).find((w) => !w.startsWith("-"))?.toLowerCase() ?? "";
-    if (sub === "branch") return !words.some((w) => /^-(d|D|m|M|c|C|-delete|-move|-copy)$/.test(w)) && words.length <= 3;
+    const rest = words.slice(words.indexOf(sub) + 1);
+    // "git branch new" makes a branch: only the listing forms look.
+    if (sub === "branch") return rest.every((w) => BRANCH_LISTING.has(w));
     if (sub === "remote") return words.length === 2 || (words.length === 3 && words[2] === "-v");
+    // "git reflog expire" and "git reflog delete" rewrite the reflog.
+    if (sub === "reflog" && rest.some((w) => w === "expire" || w === "delete")) return false;
+    // "git grep -O<program>" opens the matches in that program.
+    if (sub === "grep" && rest.some((w) => /^(-O|--open-files-in-pager)/.test(w))) return false;
     return GIT_LOOKING.has(sub) && !words.some((w) => /^--output(=|$)/.test(w));
   }
   if (!LOOKING.has(name)) return false;
   if (name === "find" && FIND_ACTING.test(` ${words.slice(1).join(" ")}`)) return false;
-  return true;
+  // "hostname new" renames the computer.
+  if (name === "hostname") return words.length === 1;
+  const acting = ACTING_OPTIONS[name];
+  return !acting || !words.slice(1).some((w) => acting.test(w));
 }
 
 /** A shell command made only of commands that look, with no redirection or substitution. */
 export function isLookingCommand(command: string): boolean {
   const text = command.trim();
   if (!text || text.length > 400) return false;
-  // Writing to a file, running something inside, or a background job: not simple.
-  if (/[>`]|\$\(|<\(|(^|[^&])&($|[^&])/.test(text)) return false;
+  // Writing to a file, running something inside (a PowerShell script block or
+  // subexpression too), or a background job: not simple.
+  if (/[>`{}()]|\$\(|<\(|(^|[^&])&($|[^&])/.test(text)) return false;
   return text.split(/\|\||&&|[|;\n]/).every(looks);
 }
 
