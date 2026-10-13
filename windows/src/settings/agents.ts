@@ -58,7 +58,13 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
   const block = h("div", { class: "setting-block" }, head, body);
 
   async function refresh() {
-    const fresh = (await Bridge.agentHooksList())?.find((a) => a.id === status.id);
+    const list = await Bridge.agentHooksList();
+    const fresh = list?.find((a) => a.id === status.id);
+    // A retired agent whose hooks were just removed leaves the list.
+    if (list && !fresh && status.retired) {
+      block.remove();
+      return;
+    }
     if (fresh) status = fresh;
     draw();
   }
@@ -76,7 +82,8 @@ function agentBlock(initial: AgentHookStatus): HTMLElement {
       install.disabled = true;
       install.title = TEXT.relayMissing;
     }
-    const buttons: HTMLElement[] = [install];
+    // A retired agent can only have its hooks removed.
+    const buttons: HTMLElement[] = status.retired ? [] : [install];
     if (status.installed) {
       buttons.push(h("button", {
         class: "danger",

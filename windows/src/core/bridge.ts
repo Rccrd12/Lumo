@@ -624,6 +624,8 @@ export interface AgentHookStatus {
   approvals: boolean;
   /** What to do once it is written. */
   note: string;
+  /** No longer offered (Gemini CLI): listed only to remove the hooks left behind. */
+  retired?: boolean;
 }
 
 export interface AgentHookPlan {

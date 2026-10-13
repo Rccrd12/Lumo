@@ -867,13 +867,7 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
     }
     let before = (key == "github-token").then(|| secrets::get(&key));
     secrets::set(&key, &value)?;
-    if key.starts_with("mail-") {
-        mail::keys_changed();
-    }
-    // The live activities fetch the new calendar at once.
-    if key == calendar::URL_KEY {
-        let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
-    }
+    secret_changed(&app, &key);
     if let Some(before) = before {
         if secrets::get(&key) != before {
             integrations::github_token_changed(&app);
@@ -886,10 +880,22 @@ fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> 
 fn secret_clear(app: AppHandle, key: String) -> Result<(), String> {
     let had = key == "github-token" && secrets::present(&key);
     secrets::clear(&key)?;
+    secret_changed(&app, &key);
     if had {
         integrations::github_token_changed(&app);
     }
     Ok(())
+}
+
+/// What follows a key at once: the inbox reconnects, the live activities
+/// fetch the calendar again.
+fn secret_changed(app: &AppHandle, key: &str) {
+    if key.starts_with("mail-") {
+        mail::keys_changed();
+    }
+    if key == calendar::URL_KEY {
+        let _ = app.emit_to(island::WINDOW_LABEL, "calendar-changed", ());
+    }
 }
 
 /// Opens the configured n8n instance — the URL lives in the Credential Manager.

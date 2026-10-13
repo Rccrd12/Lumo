@@ -340,6 +340,9 @@ pub struct AgentStatus {
     /// The island can allow or deny this agent's permission requests.
     pub approvals: bool,
     pub note: String,
+    /// No longer offered (Gemini CLI): listed only while its hooks are still
+    /// there, so they can be removed.
+    pub retired: bool,
 }
 
 fn find(id: &str) -> Result<Agent, String> {
@@ -366,16 +369,19 @@ pub fn list() -> Vec<AgentStatus> {
     let hook_ready = settings::hook_exe_path().exists();
     Agent::ALL
         .iter()
-        // Gemini CLI was replaced by Antigravity CLI: no longer offered at all.
-        .filter(|&&a| a != Agent::Gemini)
-        .map(|&a| AgentStatus {
+        .map(|&a| (a, a.installed(&home)))
+        // Gemini CLI was replaced by Antigravity CLI: only hooks installed by
+        // an earlier build keep it on the list, to be removed.
+        .filter(|&(a, installed)| a != Agent::Gemini || installed)
+        .map(|(a, installed)| AgentStatus {
             id: a.id(),
             name: a.name(),
-            installed: a.installed(&home),
+            installed,
             path: a.files(&home).iter().map(|p| p.display().to_string()).collect::<Vec<_>>().join("\n"),
             hook_ready,
             approvals: a.approvals(),
             note: a.note(),
+            retired: a == Agent::Gemini,
         })
         .collect()
 }

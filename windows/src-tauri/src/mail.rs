@@ -241,12 +241,9 @@ pub fn server_of(typed: &str, address: &str) -> (String, u16) {
         "yahoo.com" | "yahoo.it" | "ymail.com" => "imap.mail.yahoo.com".to_string(),
         "libero.it" => "imapmail.libero.it".to_string(),
         "aol.com" => "imap.aol.com".to_string(),
-        "proton.me" | "protonmail.com" => "127.0.0.1".to_string(),
         d => format!("imap.{d}"),
     };
-    // Proton Mail is read through its Bridge, on this computer.
-    let port = if host == "127.0.0.1" { 1143 } else { 993 };
-    (host, port)
+    (host, 993)
 }
 
 fn is_gmail(host: &str) -> bool {
