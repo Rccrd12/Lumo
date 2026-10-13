@@ -4,12 +4,17 @@
 //
 // - Claude Code: the Claude plan's 5-hour and weekly limits, from the status
 //   line relay (core/plan.ts), with the same labels and colours as the plan card.
+// - Antigravity CLI: agy's quotas, from its own /usage (antigravity_plan.rs),
+//   the same numbers as the Antigravity CLI pill.
 // - Anthropic and OpenAI: the rate limits read off the chat's own answers
 //   (src-tauri/src/chat_usage.rs, the `chat-usage` event). No call of their own.
 // - OpenRouter: the key's credits, from its key endpoint (Bridge.chatUsage).
 // - Google, the model servers and the custom one: nothing.
 
-import { PLAN_TEXT, ageLabel, dominantPct, effectivePct, planColor, resetLabel, type PlanUsage, type PlanWindow } from "./plan";
+import {
+  PLAN_TEXT, ageLabel, antigravityGroupName, dominantPct, effectivePct, planColor, resetLabel,
+  type AntigravityPlanUsage, type PlanUsage, type PlanWindow,
+} from "./plan";
 import { providerDef } from "./providers";
 import type { Settings } from "./state";
 import { language, t } from "../i18n/i18n";
@@ -167,6 +172,37 @@ function planLine(settings: Settings, plan: PlanUsage | null, now: number): Usag
   };
 }
 
+/** agy's quotas: one row per bucket, Gemini first, the group named when there are several. */
+function antigravityLine(plan: AntigravityPlanUsage | null, now: number): UsageLine {
+  if (!plan || plan.buckets.length === 0) {
+    return { text: PLAN_TEXT.askingAntigravity, title: PLAN_TEXT.antigravityTitle, color: planColor(null), pct: null, rows: [] };
+  }
+  const groups = new Set(plan.buckets.map((b) => b.group));
+  const parts: string[] = [];
+  const rows: UsageRow[] = [];
+  for (const b of plan.buckets) {
+    const weekly = b.window === "weekly";
+    const window = weekly ? PLAN_TEXT.week : b.window === "5h" ? PLAN_TEXT.fiveHours : b.window;
+    const label = groups.size > 1 ? `${antigravityGroupName(b.group)} · ${window}` : window;
+    const used = effectivePct(b.w, now);
+    parts.push(`${USAGE_TEXT.pctLeft(label, Math.round(100 - used))} (${resetLabel(b.w, weekly, now)})`);
+    rows.push({
+      label,
+      value: USAGE_TEXT.usedPct(Math.round(used)),
+      pct: used,
+      reset: b.w.resetsAt > now ? USAGE_TEXT.resets(resetLabel(b.w, weekly, now)) : PLAN_TEXT.resetting,
+    });
+  }
+  const pct = dominantPct(plan, now);
+  return {
+    text: parts.join(" · "),
+    title: `${PLAN_TEXT.antigravityTitle} · ${ageLabel(plan.updatedAt, now)}`,
+    color: planColor(pct),
+    pct,
+    rows,
+  };
+}
+
 function rateLine(seen: SeenUsage, now: number): UsageLine | null {
   const parts: string[] = [];
   const resets: string[] = [];
@@ -217,10 +253,12 @@ export function usageLine(
   plan: PlanUsage | null,
   seen: SeenUsage | undefined,
   now = Date.now(),
+  agy: AntigravityPlanUsage | null = null,
 ): UsageLine | null {
   if (!settings.chatShowUsage) return null;
   const provider = providerDef(settings.chatProvider).id;
   if (provider === "claude-code") return planLine(settings, plan, now);
+  if (provider === "antigravity-cli") return antigravityLine(agy, now);
   if (!seen || seen.provider !== provider) return null;
   if (provider === "anthropic" || provider === "openai") return rateLine(seen, now);
   if (provider === "openrouter") return creditsLine(seen, now);

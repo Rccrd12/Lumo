@@ -299,8 +299,9 @@ It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
 As on the Mac, the island's header can show your plan limits: a small pill
 ("Claude 73%", green below 50 %, orange up to 80 %, red above) for the 5-hour and
-weekly Claude limits, and another for Codex. Click one for the details and the
-reset times. Both are off by default; turn them on in **Settings… → Agents → Plan usage**.
+weekly Claude limits, another for Codex and one for Antigravity CLI. Click one for
+the details and the reset times. All are off by default; turn them on in
+**Settings… → Agents → Plan usage**.
 
 - **Claude** (Pro and Max plans): the numbers come from Claude Code's own status
   line. **Show in the island** first shows you the diff of the `statusLine` change in
@@ -317,6 +318,16 @@ reset times. Both are off by default; turn them on in **Settings… → Agents �
   once a minute) Lumo starts `codex app-server` and asks it
   `account/rateLimits/read`, as Codex's `/status` does, then stops it (15 s at
   most, never while paused). Codex must be signed in with ChatGPT.
+- **Antigravity CLI** (not on the Mac): nothing is installed either. When the
+  pill shows (or is clicked, at most once a minute) Lumo runs
+  `agy -p /usage --output-format json --log-file NUL`, agy's own `/usage` printed
+  once, with agy's own sign-in (20 s at most, never while paused). The pill shows
+  the most used of agy's quotas; the card shows Gemini's 5-hour and weekly limits
+  first, then the other model groups (Claude and GPT). agy must be signed in with
+  your Google account. With **Show remaining usage in the chat** on, the chat's
+  usage ring shows the same quotas while you chat with Antigravity CLI (asked
+  when the chat opens and after each answer, at most once a minute), even
+  with the pill off.
 
 ## Weekly recap
 

@@ -7,11 +7,12 @@ import assert from "node:assert/strict";
 import {
   claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct, effectivePct,
   mergeWindow, parseClaudePlan, parseCodexPlan, pillLabel, planColor, resetLabel, restorePlanUsage,
+  parseAntigravityPlan, antigravityGroupName, antigravitySubtitle,
 } from "../src/core/plan.ts";
 import { emit } from "./tauri.mjs";
 import { registerHookHandlers } from "../src/island/hooks.ts";
 import {
-  claudePillVisible, codexPillVisible, openPlanColor, planCardOpen,
+  claudePillVisible, codexPillVisible, antigravityPillVisible, openPlanColor, planCardOpen,
 } from "../src/views/usage.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
@@ -200,6 +201,56 @@ test("Codex is asked again only once its numbers are a minute old", () => {
   assert.equal(codexIsStale({ updatedAt: NOW - 60_000 }, NOW), true);
 });
 
+// ── Antigravity CLI (agy -p /usage, through antigravity_plan.rs) ──────────────
+
+const agy = (groups) => parseAntigravityPlan({ groups }, NOW);
+
+test("agy's buckets become windows, Gemini first and the short window before the week", () => {
+  const u = agy([
+    { name: "Claude and GPT models", buckets: [{ id: "3p-weekly", window: "weekly", remainingFraction: 1, resetsAt: future }] },
+    { name: "Gemini Models", buckets: [
+      { id: "gemini-weekly", window: "weekly", remainingFraction: 0.31, resetsAt: future },
+      { id: "gemini-5h", window: "5h", remainingFraction: 0.9, resetsAt: future },
+    ] },
+  ]);
+  assert.deepEqual(u.buckets.map((b) => [b.group, b.window]), [
+    ["Gemini Models", "5h"], ["Gemini Models", "weekly"], ["Claude and GPT models", "weekly"],
+  ]);
+  assert.equal(Math.round(u.buckets[1].w.usedPct), 69);
+  assert.equal(u.buckets[1].w.resetsAt, future * 1000);
+  // The pill shows the most used limit of each window.
+  assert.equal(Math.round(u.fiveHour.usedPct), 10);
+  assert.equal(Math.round(u.sevenDay.usedPct), 69);
+  assert.equal(pillLabel("Antigravity", u, NOW), "Antigravity 69%");
+  assert.equal(u.updatedAt, NOW);
+});
+
+test("a weekly bucket is known by its id when agy gives no window", () => {
+  const u = agy([{ name: "Gemini Models", buckets: [
+    { id: "gemini-weekly", remainingFraction: 0.5, resetsAt: future },
+    { id: "gemini-session", remainingFraction: 0.75, resetsAt: future },
+  ] }]);
+  assert.deepEqual(u.buckets.map((b) => b.window), ["5h", "weekly"]);
+  assert.equal(u.sevenDay.usedPct, 50);
+  assert.equal(u.fiveHour.usedPct, 25);
+});
+
+test("no groups, or buckets without figures, is nothing", () => {
+  assert.equal(parseAntigravityPlan(null, NOW), null);
+  assert.equal(parseAntigravityPlan({}, NOW), null);
+  assert.equal(agy([]), null);
+  assert.equal(agy([{ name: "Gemini Models", buckets: [{ id: "x", remainingFraction: 0.5 }] }]), null);
+  assert.equal(agy([{ name: "Gemini Models", buckets: [{ id: "x", resetsAt: future }] }]), null);
+});
+
+test("group names lose their trailing \"models\" on the card", () => {
+  assert.equal(antigravityGroupName("Gemini Models"), "Gemini");
+  assert.equal(antigravityGroupName("Claude and GPT models"), "Claude and GPT");
+  assert.equal(antigravityGroupName("Models"), "Models");
+  assert.equal(antigravitySubtitle(null, NOW), "Asking Antigravity CLI…");
+  assert.equal(antigravitySubtitle({ updatedAt: NOW, buckets: [] }, NOW), "just now");
+});
+
 // ── The pills in the island ───────────────────────────────────────────────────
 
 registerHookHandlers({ alert() {}, setView() {}, reveal() {}, dropPin() {} });
@@ -210,13 +261,22 @@ beforeEach(() => {
   State.paused = false;
   State.planUsage = null;
   State.codexPlanUsage = null;
+  State.antigravityPlanUsage = null;
   State.showingPlanDetail = false;
-  State.planDetailIsCodex = false;
+  State.planDetail = "claude";
 });
 
-test("both pills are off by default, so the header is as it shipped", () => {
+test("every pill is off by default, so the header is as it shipped", () => {
   assert.equal(claudePillVisible(), false);
   assert.equal(codexPillVisible(), false);
+  assert.equal(antigravityPillVisible(), false);
+});
+
+test("the Antigravity CLI pill needs only its switch, on the overview", () => {
+  State.settings.showAntigravityPlanInNotch = true;
+  assert.equal(antigravityPillVisible(), true);
+  State.view = "prompt";
+  assert.equal(antigravityPillVisible(), false);
 });
 
 test("the Claude pill needs the switch and the relay, and the overview", () => {
@@ -242,12 +302,21 @@ test("an open card follows its pill, and Mochi wears that plan's colour", () => 
   assert.equal(planCardOpen(), true);
   assert.equal(openPlanColor(), "#6B7079");
   // The Codex card cannot be open without its pill.
-  State.planDetailIsCodex = true;
+  State.planDetail = "codex";
   assert.equal(planCardOpen(), false);
   State.settings.showCodexPlanInNotch = true;
   assert.equal(planCardOpen(), true);
   State.codexPlanUsage = { sevenDay: win(85, Date.now() / 1000 + 3600), updatedAt: Date.now() };
   assert.equal(openPlanColor(), "#F4505E");
+  // The same for Antigravity CLI.
+  State.planDetail = "antigravity";
+  assert.equal(planCardOpen(), false);
+  State.settings.showAntigravityPlanInNotch = true;
+  assert.equal(planCardOpen(), true);
+  State.antigravityPlanUsage = parseAntigravityPlan({ groups: [{ name: "Gemini Models", buckets: [
+    { id: "gemini-weekly", window: "weekly", remainingFraction: 0.4, resetsAt: Date.now() / 1000 + 3600 },
+  ] }] });
+  assert.equal(openPlanColor(), "#F59E0B");
 });
 
 test("focusing another pill closes the plan card", () => {

@@ -33,7 +33,7 @@ import { refreshConfigured, refreshHookPills } from "./integrations";
 import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
 import { MENU_TEXT, pickedItems } from "../core/context-menu";
 import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
-import { refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
+import { refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
@@ -734,6 +734,7 @@ export class Island {
     });
     refreshClaudePlanOnline(true);
     if (State.settings.showCodexPlanInNotch) refreshCodexPlanUsage(true);
+    if (State.settings.showAntigravityPlanInNotch) refreshAntigravityPlanUsage(true);
     await Promise.allSettled([
       refreshConfigured(),
       refreshHookPills(),

@@ -169,6 +169,12 @@ export const Bridge = {
    * is missing, not signed in or slow (15 s).
    */
   codexPlanUsage: () => call<unknown>("codex_plan_usage"),
+  /**
+   * Asks Antigravity CLI (`agy -p /usage`) for its quotas, as its /usage does.
+   * Its groups and buckets (antigravity_plan.rs), or null when agy is missing,
+   * not signed in or slow (20 s).
+   */
+  antigravityPlanUsage: () => call<unknown>("antigravity_plan_usage"),
   /** The Claude plan's usage from Anthropic, as the status line's `rate_limits` (plan_usage.rs). Throws why it could not. */
   planUsageFetch: () => callOrThrow<unknown>("plan_usage_fetch"),
 

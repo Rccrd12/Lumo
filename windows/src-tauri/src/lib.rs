@@ -4,6 +4,7 @@ mod activities;
 mod agent_hooks;
 mod agents;
 mod antigravity_cli;
+mod antigravity_plan;
 mod autostart;
 mod calendar;
 mod chat;
@@ -524,6 +525,13 @@ fn status_line_apply(
 #[tauri::command]
 async fn codex_plan_usage() -> Option<serde_json::Value> {
     tauri::async_runtime::spawn_blocking(codex_plan::read).await.ok().flatten()
+}
+
+/// Antigravity CLI quotas, asked of agy (`agy -p /usage`) when its pill
+/// shows. Off the main thread: it can take a few seconds.
+#[tauri::command]
+async fn antigravity_plan_usage() -> Option<serde_json::Value> {
+    tauri::async_runtime::spawn_blocking(antigravity_plan::read).await.ok().flatten()
 }
 
 /// The Claude plan's usage asked of Anthropic with Claude Code's sign-in
@@ -1069,6 +1077,7 @@ pub fn run() {
             status_line_preview,
             status_line_apply,
             codex_plan_usage,
+            antigravity_plan_usage,
             plan_usage_fetch,
             approval_decision,
             approval_answer,

@@ -8,6 +8,8 @@
 // `account/rateLimits/read`, the source of Codex's /status), asked by the app
 // when the pill shows. Nothing is read from any credentials, nothing is fetched
 // by Lumo itself.
+// Antigravity CLI: the numbers come from agy itself (`agy -p /usage`, its own
+// /usage panel printed once), asked by the app when the pill shows, the same way.
 
 export interface PlanWindow {
   /** 0–100, clamped. */
@@ -28,12 +30,29 @@ export interface PlanUsage {
   updatedAt: number;
 }
 
+/** The plans with a pill in the header. */
+export type PlanKind = "claude" | "codex" | "antigravity";
+
 export interface CodexPlanUsage extends PlanUsage {
   /** Free full resets available. */
   resetCredits?: number;
   /** Soonest expiry among the available ones (epoch ms). */
   resetCreditExpiresAt?: number;
   planType?: string;
+}
+
+/** One of agy's quota buckets: a group's 5-hour or weekly limit. */
+export interface AntigravityBucket {
+  /** The group's name, as agy gives it ("Gemini Models"). */
+  group: string;
+  /** agy's window: "5h", "weekly", or another it may add. */
+  window: string;
+  w: PlanWindow;
+}
+
+export interface AntigravityPlanUsage extends PlanUsage {
+  /** Every bucket, the Gemini group first, the short windows before the week. */
+  buckets: AntigravityBucket[];
 }
 
 import { dayMonth, t, weekdayShort } from "../i18n/i18n";
@@ -47,6 +66,8 @@ export const PLAN_TEXT = {
   get claudePillTitle() { return t("Claude plan usage"); },
   get waiting() { return t("Waiting for a response from Claude Code"); },
   get askingCodex() { return t("Asking Codex…"); },
+  get antigravityTitle() { return "Antigravity CLI"; },
+  get askingAntigravity() { return t("Asking Antigravity CLI…"); },
   get justNow() { return t("just now"); },
   minAgo: (n: number) => t("{n} min ago", { n }),
   hAgo: (n: number) => t("{n} h ago", { n }),
@@ -134,6 +155,54 @@ export function parseCodexPlan(result: unknown, now = Date.now()): CodexPlanUsag
   return usage.fiveHour || usage.sevenDay ? usage : null;
 }
 
+// ── Antigravity CLI ───────────────────────────────────────────────────────────
+
+/** A weekly window by agy's name for it or its bucket's id. */
+const isWeekly = (window: string, id: string): boolean => /week|7d/i.test(window || id);
+
+/**
+ * The groups antigravity_plan.rs passes on: `remainingFraction` (0–1) becomes
+ * the percentage used. The pill's 5-hour and weekly figures are the most used
+ * bucket of each window, whatever its group.
+ */
+export function parseAntigravityPlan(result: unknown, now = Date.now()): AntigravityPlanUsage | null {
+  const groups = asObj(result)?.groups;
+  if (!Array.isArray(groups)) return null;
+  const buckets: AntigravityBucket[] = [];
+  for (const g of groups.map(asObj)) {
+    if (!g || !Array.isArray(g.buckets)) continue;
+    const group = typeof g.name === "string" ? g.name : "";
+    for (const b of g.buckets.map(asObj)) {
+      if (!b || !isNum(b.remainingFraction) || !isNum(b.resetsAt) || b.resetsAt <= 0) continue;
+      const window = typeof b.window === "string" ? b.window : "";
+      const id = typeof b.id === "string" ? b.id : "";
+      const used = Math.min(100, Math.max(0, (1 - b.remainingFraction) * 100));
+      buckets.push({ group, window: isWeekly(window, id) ? "weekly" : window || "5h", w: { usedPct: used, resetsAt: b.resetsAt * 1000 } });
+    }
+  }
+  if (!buckets.length) return null;
+  const gemini = (b: AntigravityBucket) => (/gemini/i.test(b.group) ? 0 : 1);
+  const weekly = (b: AntigravityBucket) => (b.window === "weekly" ? 1 : 0);
+  // A stable sort: agy's own order within the same rank.
+  buckets.sort((a, b) => gemini(a) - gemini(b) || weekly(a) - weekly(b));
+  const usage: AntigravityPlanUsage = { updatedAt: now, buckets };
+  const most = (list: AntigravityBucket[]) =>
+    list.reduce<PlanWindow | undefined>((m, b) => (!m || b.w.usedPct > m.usedPct ? b.w : m), undefined);
+  const fiveHour = most(buckets.filter((b) => b.window !== "weekly"));
+  const sevenDay = most(buckets.filter((b) => b.window === "weekly"));
+  if (fiveHour) usage.fiveHour = fiveHour;
+  if (sevenDay) usage.sevenDay = sevenDay;
+  return usage;
+}
+
+/** "Gemini Models" → "Gemini", "Claude and GPT models" → "Claude and GPT". */
+export const antigravityGroupName = (group: string): string => group.replace(/\s+models?$/i, "").trim() || group;
+
+/** The Antigravity card's subtitle: "3 min ago". */
+export function antigravitySubtitle(u: AntigravityPlanUsage | null, now = Date.now()): string {
+  return u ? ageLabel(u.updatedAt, now) : PLAN_TEXT.askingAntigravity;
+}
+
 // ── Shared ────────────────────────────────────────────────────────────────────
 
 /** What to show for a window: 0 once its reset time has passed. */
@@ -164,7 +233,7 @@ export function planColor(pct: number | null): string {
 }
 
 /** "Claude 73%" / "Codex 12%" on the pill; "Claude —" while there are no numbers. */
-export function pillLabel(name: "Claude" | "Codex", u: PlanUsage | null | undefined, now = Date.now()): string {
+export function pillLabel(name: string, u: PlanUsage | null | undefined, now = Date.now()): string {
   const pct = dominantPct(u, now);
   return pct == null ? `${name} ${PLAN_TEXT.none}` : `${name} ${Math.round(pct)}%`;
 }
@@ -215,8 +284,8 @@ export function codexResetsLabel(u: CodexPlanUsage | null): string {
 /** How long a Codex answer stays good before the pill asks again (as on the Mac). */
 export const CODEX_STALE_MS = 60_000;
 
-/** True when the Codex numbers are missing or older than a minute. */
-export const codexIsStale = (u: CodexPlanUsage | null, now = Date.now()): boolean =>
+/** True when the Codex (or Antigravity CLI) numbers are missing or older than a minute. */
+export const codexIsStale = (u: PlanUsage | null, now = Date.now()): boolean =>
   !u || now - u.updatedAt >= CODEX_STALE_MS;
 
 /** A stored Claude usage, if it still looks like one (the last numbers survive a restart). */

@@ -1,7 +1,8 @@
-// Plan usage in the island: the Claude and Codex pills in the header and the
-// card behind each. Same behaviour as ClaudePlanHeaderPill, ClaudePlanCardView
-// and CodexPlanCardView on the Mac; the numbers and labels come from
-// core/plan.ts.
+// Plan usage in the island: the Claude, Codex and Antigravity CLI pills in the
+// header and the card behind each. Same behaviour as ClaudePlanHeaderPill,
+// ClaudePlanCardView and CodexPlanCardView on the Mac (Antigravity CLI, which
+// the Mac does not have, works as Codex does); the numbers and labels come
+// from core/plan.ts.
 //
 // The pills sit in the header's right side, before the gear, on the overview
 // only, Claude first. Clicking one puts its card in place of the overview's
@@ -12,8 +13,9 @@
 import { Bridge } from "../core/bridge";
 import {
   mergeWindow, parseClaudePlan, PLAN_TEXT, claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct,
-  effectivePct, parseCodexPlan, pillLabel, planColor, resetLabel,
-  type CodexPlanUsage, type PlanUsage, type PlanWindow,
+  effectivePct, parseCodexPlan, pillLabel, planColor, resetLabel, parseAntigravityPlan, antigravityGroupName,
+  antigravitySubtitle,
+  type AntigravityPlanUsage, type CodexPlanUsage, type PlanKind, type PlanUsage, type PlanWindow,
 } from "../core/plan";
 import { byEffort } from "../core/energy";
 import { State } from "../core/state";
@@ -33,18 +35,30 @@ export function codexPillVisible(): boolean {
   return State.view === "overview" && State.settings.showCodexPlanInNotch;
 }
 
-/** A plan card is open and its pill is still there. */
-export function planCardOpen(): boolean {
-  if (!State.showingPlanDetail) return false;
-  return State.planDetailIsCodex ? codexPillVisible() : claudePillVisible();
+/** The Antigravity CLI pill is in the header: overview, turned on (nothing to install). */
+export function antigravityPillVisible(): boolean {
+  return State.view === "overview" && State.settings.showAntigravityPlanInNotch;
 }
 
-const claudeColor = (now = Date.now()) => planColor(dominantPct(State.planUsage, now));
-const codexColor = (now = Date.now()) => planColor(dominantPct(State.codexPlanUsage, now));
+/** Whether `kind`'s pill is in the header. */
+export function planPillVisible(kind: PlanKind): boolean {
+  return kind === "codex" ? codexPillVisible() : kind === "antigravity" ? antigravityPillVisible() : claudePillVisible();
+}
+
+/** A plan card is open and its pill is still there. */
+export function planCardOpen(): boolean {
+  return State.showingPlanDetail && planPillVisible(State.planDetail);
+}
+
+/** The numbers behind `kind`'s pill. */
+const usageOf = (kind: PlanKind): PlanUsage | null =>
+  kind === "codex" ? State.codexPlanUsage : kind === "antigravity" ? State.antigravityPlanUsage : State.planUsage;
+
+const colorOf = (kind: PlanKind, now = Date.now()) => planColor(dominantPct(usageOf(kind), now));
 
 /** The colour of the open card's plan, which Mochi wears while it is open. */
 export function openPlanColor(): string {
-  return State.planDetailIsCodex ? codexColor() : claudeColor();
+  return colorOf(State.planDetail);
 }
 
 /** Closes the plan card (view, mode or focus changed). */
@@ -195,6 +209,46 @@ export function refreshCodexPlanUsage(force = false): void {
     });
 }
 
+// ── Antigravity CLI numbers ───────────────────────────────────────────────────
+
+let antigravityInFlight = false;
+/** The Antigravity card's Refresh: whether it is at work, and whether its last answer brought nothing. */
+let antigravityRefresh: { busy: boolean; failed: boolean } = { busy: false, failed: false };
+
+/**
+ * Asks agy again when the numbers are missing or older than a minute (or at
+ * once: the card's Refresh). As for Codex: only from the pill (shown or
+ * clicked) and its card, never on a timer, never while paused.
+ */
+export function refreshAntigravityPlanUsage(force = false): void {
+  if (antigravityInFlight || State.paused || (!force && !codexIsStale(State.antigravityPlanUsage))) return;
+  antigravityInFlight = true;
+  const started = Date.now();
+  if (force) {
+    antigravityRefresh = { busy: true, failed: false };
+    State.notify();
+  }
+  void Bridge.antigravityPlanUsage()
+    .then((result) => {
+      const usage = parseAntigravityPlan(result);
+      if (usage) State.antigravityPlanUsage = usage;
+      if (force) antigravityRefresh = { busy: true, failed: !usage };
+    })
+    .finally(() => {
+      window.setTimeout(() => {
+        antigravityInFlight = false;
+        if (force) antigravityRefresh = { ...antigravityRefresh, busy: false };
+        State.notify();
+      }, Math.max(0, 500 - (Date.now() - started)));
+    });
+}
+
+/** Asks Codex or agy again, as `kind`'s pill does when it shows or is clicked. */
+export function refreshPlanUsage(kind: PlanKind, force = false): void {
+  if (kind === "codex") refreshCodexPlanUsage(force);
+  else if (kind === "antigravity") refreshAntigravityPlanUsage(force);
+}
+
 // ── Pill ──────────────────────────────────────────────────────────────────────
 
 export interface PlanPill {
@@ -202,32 +256,32 @@ export interface PlanPill {
   sync(): void;
 }
 
+const PILL_NAME: Record<PlanKind, string> = { claude: "Claude", codex: "Codex", antigravity: "Antigravity" };
+
 /** One pill: colour dot and label, lit while hovered or while its card is open. */
-export function buildPlanPill(codex: boolean): PlanPill {
+export function buildPlanPill(kind: PlanKind): PlanPill {
   const label = h("span", { class: "plan-pill-label" });
   const dotEl = h("i", { class: "plan-pill-dot" });
-  const isOpen = () => State.showingPlanDetail && State.planDetailIsCodex === codex;
+  const isOpen = () => State.showingPlanDetail && State.planDetail === kind;
   const el = h("button", {
     class: "plan-pill",
-    title: codex ? tl("Codex plan usage") : tl("Claude plan usage"),
+    title: kind === "codex" ? tl("Codex plan usage") : kind === "antigravity" ? tl("Antigravity CLI usage") : tl("Claude plan usage"),
     onclick: () => {
       const open = isOpen();
-      State.planDetailIsCodex = codex;
+      State.planDetail = kind;
       State.showingPlanDetail = !open;
-      if (codex) refreshCodexPlanUsage();
+      refreshPlanUsage(kind);
       State.notify();
     },
   }, dotEl, label);
   return {
     el,
     sync() {
-      const color = codex ? codexColor() : claudeColor();
+      const color = colorOf(kind);
       el.style.setProperty("--plan", color);
       el.classList.toggle("active", isOpen());
       dotEl.style.background = color;
-      label.textContent = codex
-        ? pillLabel("Codex", State.codexPlanUsage)
-        : pillLabel("Claude", State.planUsage);
+      label.textContent = pillLabel(PILL_NAME[kind], usageOf(kind));
     },
   };
 }
@@ -284,19 +338,20 @@ export class PlanCard {
 
   /** Re-renders when the numbers change, or every 30 s for the countdowns. */
   sync(now = Date.now()) {
-    const codex = State.planDetailIsCodex;
-    const u = codex ? State.codexPlanUsage : State.planUsage;
-    const key = `${language()}|${codex}|${JSON.stringify(u)}|${JSON.stringify(codexRefresh)}|${JSON.stringify(claudeRefresh)}|${State.settings.planUsageOnline}|${Math.floor(now / 30_000)}`;
+    const kind = State.planDetail;
+    const u = usageOf(kind);
+    const key = `${language()}|${kind}|${JSON.stringify(u)}|${JSON.stringify(codexRefresh)}|${JSON.stringify(antigravityRefresh)}|${JSON.stringify(claudeRefresh)}|${State.settings.planUsageOnline}|${Math.floor(now / 30_000)}`;
     if (key === this.key) return;
     this.key = key;
     clear(this.el);
-    if (codex) this.drawCodex(State.codexPlanUsage, now);
+    if (kind === "codex") this.drawCodex(State.codexPlanUsage, now);
+    else if (kind === "antigravity") this.drawAntigravity(State.antigravityPlanUsage, now);
     else this.drawClaude(State.planUsage, now);
   }
 
   private drawClaude(u: PlanUsage | null, now: number) {
     this.el.append(
-      head(claudeColor(now), PLAN_TEXT.claudeTitle, claudeSubtitle(u, now)),
+      head(colorOf("claude", now), PLAN_TEXT.claudeTitle, claudeSubtitle(u, now)),
       h("div", { class: "plan-rows" },
         gaugeRow(PLAN_TEXT.fiveHours, u?.fiveHour, false, now, u?.sevenDay != null),
         gaugeRow(PLAN_TEXT.week, u?.sevenDay, true, now),
@@ -340,6 +395,44 @@ export class PlanCard {
     refresh.toggleAttribute("disabled", busy);
     const foot = h("div", { class: "plan-foot" }, refresh);
     if (!busy && codexRefresh.failed) foot.append(h("span", { class: "tool-note bad", text: t("Codex did not answer") }));
-    this.el.append(head(codexColor(now), PLAN_TEXT.codexTitle, codexSubtitle(u, now)), rows, foot);
+    this.el.append(head(colorOf("codex", now), PLAN_TEXT.codexTitle, codexSubtitle(u, now)), rows, foot);
+  }
+
+  private drawAntigravity(u: AntigravityPlanUsage | null, now: number) {
+    const rows = h("div", { class: "plan-rows" });
+    const buckets = u?.buckets ?? [];
+    // agy has a quota per group of models ("Gemini", "Claude and GPT"): the
+    // group's name goes in front when there is more than one. The card has
+    // room for two limits, Gemini's first; any other group shows its most
+    // used limit on one line.
+    const groups = new Set(buckets.map((b) => b.group));
+    const named = (b: (typeof buckets)[number], window: string) =>
+      groups.size > 1 ? `${antigravityGroupName(b.group)} · ${window}` : window;
+    const windowName = (window: string) =>
+      window === "weekly" ? PLAN_TEXT.week : window === "5h" ? PLAN_TEXT.fiveHours : window;
+    const shown = buckets.slice(0, 2);
+    if (!shown.length) rows.append(gaugeRow(PLAN_TEXT.week, undefined, true, now));
+    for (const b of shown) rows.append(gaugeRow(named(b, windowName(b.window)), b.w, b.window === "weekly", now));
+    const rest = buckets.slice(2).filter((b) => !shown.some((s) => s.group === b.group));
+    const other = rest.reduce<(typeof rest)[number] | undefined>((m, b) => (!m || effectivePct(b.w, now) > effectivePct(m.w, now) ? b : m), undefined);
+    if (other) {
+      const pct = effectivePct(other.w, now);
+      rows.append(h("div", { class: "plan-row" },
+        h("span", { class: "plan-label", text: antigravityGroupName(other.group) }),
+        h("span", { class: "plan-credits", text: `${Math.round(pct)}%`, style: `color:${planColor(pct)}` }),
+      ));
+    }
+    // agy can be asked again at once: Refresh, which turns while it does.
+    const busy = antigravityRefresh.busy;
+    const refresh = h("button", {
+      class: busy ? "tool-action busy" : "tool-action",
+      onclick: () => refreshAntigravityPlanUsage(true),
+    },
+    busy ? h("i", { class: "tool-spin" }) : svg(ICONS.arrowClockwise, 10, { stroke: 2.4 }),
+    h("span", { text: busy ? tl("Refreshing…") : tl("Refresh") }));
+    refresh.toggleAttribute("disabled", busy);
+    const foot = h("div", { class: "plan-foot" }, refresh);
+    if (!busy && antigravityRefresh.failed) foot.append(h("span", { class: "tool-note bad", text: t("Antigravity CLI did not answer") }));
+    this.el.append(head(colorOf("antigravity", now), PLAN_TEXT.antigravityTitle, antigravitySubtitle(u, now)), rows, foot);
   }
 }
