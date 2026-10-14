@@ -645,6 +645,13 @@ async fn dispatch(
         }
         s.documents = documents;
     }
+    // The Email pill: a question about email gets the newest unread ones, so
+    // every provider can answer it, not only those with a mail tool of their own.
+    if crate::mail::asks_about(&query) && crate::integrations::enabled(app, crate::mail::ID) {
+        if let Some((unread, messages)) = crate::mail::inbox() {
+            screen.get_or_insert_with(ScreenContext::default).mail = crate::mail::context_text(unread, &messages);
+        }
+    }
     chat.arm();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
@@ -1017,6 +1024,7 @@ mod tests {
             shared_windows: Vec::new(),
             tabs: Vec::new(),
             documents: Vec::new(),
+            mail: String::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {
             let (q, images) = with_screen(cli, Some(&screen), "what is this?".into()).unwrap();

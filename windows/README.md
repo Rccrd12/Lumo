@@ -167,7 +167,8 @@ what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
 or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
 previous, play/pause and next), **Calendar** (the next events) and **Email**
 (the newest unread: a click on one opens it, with Summarize, Draft a reply and
-the eye, which puts it away so the next one moves up). Its **–** (top right)
+the eye, which puts it away so the next one moves up; a click elsewhere on the
+box opens the inbox in Gmail or Outlook). Its **–** (top right)
 folds it, with a flight, into an icon left of the **+** in the island's top
 bar; that icon brings it back. Settings → Island → **Live Activities** turns
 it off.
@@ -274,9 +275,14 @@ For Gmail: turn on 2-Step Verification in your Google account, create an app
 password at <https://myaccount.google.com/apppasswords>, and paste it in
 Settings with your address; the server is found from the address. Your
 Google account's own password is refused ("Application-specific password
-required"). Claude
-Code and Antigravity CLI see the email only when you press Summarize or
-Draft a reply: it goes with that question, like a selected text.
+required").
+
+The chat sees the inbox when you ask about it: a question that speaks of
+email ("quali sono le ultime email?", "any new mail?", "la posta") goes with
+the newest unread emails (sender, date, subject and the start of the text),
+whichever provider answers, Claude, Gemini, Antigravity CLI or a local model.
+Other questions go without them. Summarize and Draft a reply send the whole
+email with their question, like a selected text.
 
 ## Claude Code
 

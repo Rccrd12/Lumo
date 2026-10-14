@@ -61,7 +61,7 @@ export interface ActivitiesData {
   timers: TimerActivity[];
   media: MediaActivity | null;
   calendar: { configured: boolean; error: string | null; events: CalEvent[] };
-  mail: { on: boolean; error: string | null; messages: MailRow[] };
+  mail: { on: boolean; error: string | null; messages: MailRow[]; inbox?: string };
 }
 
 export type ActivitiesAction =
@@ -69,6 +69,7 @@ export type ActivitiesAction =
   | { kind: "cancelTimer"; id: number }
   | { kind: "media"; action: "toggle" | "next" | "previous" }
   | { kind: "mail"; id: string; what: "summary" | "reply" | "ignore" | "open" }
+  | { kind: "inbox" }
   | { kind: "settings" }
   | { kind: "refresh" }
   | { kind: "fold" };
@@ -108,6 +109,9 @@ export class ActivitiesView {
   private musicBox = h("div", { class: "act-rows" });
   private calendarBox = h("div", { class: "act-rows" });
   private mailBox = h("div", { class: "act-rows" });
+  /** The Email card: a click on it, off its emails and buttons, opens the inbox. */
+  private mailCard: HTMLElement | null = null;
+  private inbox = "";
   private timerInput: HTMLInputElement;
   private keys = { timer: "", music: "", calendar: "", mail: "" };
   private data: ActivitiesData | null = null;
@@ -143,8 +147,12 @@ export class ActivitiesView {
       this.section(ICONS.timer, ACTIVITIES_TEXT.timer, "#F5A524", undefined, this.timerList, quick, form),
       this.section(ICONS.play, ACTIVITIES_TEXT.music, "#1DB954", undefined, this.musicBox),
       this.section(ICONS.clock, ACTIVITIES_TEXT.calendar, "#4285F4", 1.8, this.calendarBox),
-      this.section(ICONS.envelope, ACTIVITIES_TEXT.email, "#EA4335", 1.8, this.mailBox),
+      (this.mailCard = this.section(ICONS.envelope, ACTIVITIES_TEXT.email, "#EA4335", 1.8, this.mailBox)),
     );
+    this.mailCard.addEventListener("click", (e) => {
+      if (!this.inbox || (e.target as Element).closest("button, .act-mail.link")) return;
+      this.act({ kind: "inbox" });
+    });
     const fold = h("button", {
       class: "act-fold", title: tl(ACTIVITIES_TEXT.fold), "aria-label": tl(ACTIVITIES_TEXT.fold),
       onclick: () => this.fold(),
@@ -400,6 +408,13 @@ export class ActivitiesView {
 
   private drawMail(mail: ActivitiesData["mail"]) {
     const rows = mail.messages.slice(0, MAIL_ROWS);
+    this.inbox = mail.on && !mail.error ? mail.inbox ?? "" : "";
+    if (this.mailCard) {
+      this.mailCard.style.cursor = this.inbox ? "pointer" : "";
+      this.mailCard.title = this.inbox
+        ? t("Open {name}", { name: this.inbox.includes("google.com") ? "Gmail" : t(ACTIVITIES_TEXT.email) })
+        : "";
+    }
     const key = `${language()}|${mail.on}|${mail.error}|${rows.map((m) => m.id).join(",")}`;
     if (key === this.keys.mail) return;
     this.keys.mail = key;

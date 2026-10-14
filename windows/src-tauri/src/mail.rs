@@ -64,6 +64,9 @@ pub struct Message {
 static LAST_UID: Mutex<Option<(String, u32)>> = Mutex::new(None);
 /// What the island was last sent, so an unchanged inbox sends nothing.
 static LAST_SENT: Mutex<Option<String>> = Mutex::new(None);
+/// The inbox as last read (unread count, newest unread emails), for the chat
+/// (chat.rs): any provider can say what the newest emails are.
+static INBOX: Mutex<Option<(usize, Vec<Message>)>> = Mutex::new(None);
 
 // ── Watching the inbox ────────────────────────────────────────────────────────
 
@@ -93,10 +96,12 @@ pub async fn run(app: AppHandle) {
     let mut backoff = RETRY_FIRST;
     loop {
         if !crate::integrations::enabled(&app, ID) || crate::integrations::PAUSED.load(Ordering::Relaxed) {
+            *INBOX.lock().unwrap() = None;
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
         }
         let Some((address, password)) = secrets::get(ADDRESS_KEY).zip(secrets::get(PASSWORD_KEY)) else {
+            *INBOX.lock().unwrap() = None;
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
         };
@@ -192,6 +197,7 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
         *last = Some((account.to_string(), newest.max(seen.unwrap_or(0))));
         fresh
     };
+    *INBOX.lock().unwrap() = Some((unread, messages.clone()));
     // Only what changed reaches the island: a quiet inbox wakes nothing.
     let data = json!({ "messages": messages, "unread": unread, "inbox": inbox_link(host) });
     let text = data.to_string();
@@ -211,8 +217,60 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
 
 fn fail(app: &AppHandle, error: String) {
     *LAST_SENT.lock().unwrap() = None;
+    *INBOX.lock().unwrap() = None;
     log::line(format!("[mail] {error}"));
     emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None });
+}
+
+// ── For the chat ──────────────────────────────────────────────────────────────
+
+/// Of each email's text, what goes to the chat with a question about email.
+const CHAT_BODY_CHARS: usize = 1500;
+
+/// The inbox as last read, while the pill is on and signed in.
+pub fn inbox() -> Option<(usize, Vec<Message>)> {
+    INBOX.lock().unwrap().clone()
+}
+
+/// Whether `query` speaks of email ("le ultime email", "any new mail?",
+/// "la posta", "my inbox"): only then does the inbox go with it.
+pub fn asks_about(query: &str) -> bool {
+    let q = query.to_lowercase();
+    ["mail", "inbox", "posta", "correo", "courriel", "postfach", "newsletter"].iter().any(|w| q.contains(w))
+}
+
+/// The newest unread emails, as the chat's provider reads them.
+pub fn context_text(unread: usize, messages: &[Message]) -> String {
+    let mut out = String::from(
+        "Lumo reads the user's inbox (the Email pill, read only: Lumo cannot send, move or delete email). ",
+    );
+    if messages.is_empty() {
+        out.push_str("Right now there is no unread email.\n");
+        return out;
+    }
+    out.push_str(&format!(
+        "Their newest unread emails, newest first ({} of {} unread; emails already read are not listed):\n",
+        messages.len(),
+        unread.max(messages.len())
+    ));
+    for m in messages {
+        let from = match (m.from.trim(), m.address.trim()) {
+            ("", a) => a.to_string(),
+            (f, "") => f.to_string(),
+            (f, a) => format!("{f} <{a}>"),
+        };
+        let subject = if m.subject.trim().is_empty() { "(no subject)" } else { m.subject.trim() };
+        out.push_str(&format!("- From {from}, {}: {subject}\n", m.date.trim()));
+        let text = if m.body.trim().is_empty() { &m.preview } else { &m.body };
+        let text: String = text.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !text.is_empty() {
+            let cut: String = text.chars().take(CHAT_BODY_CHARS).collect();
+            let more = if cut.len() < text.len() { "…" } else { "" };
+            out.push_str(&format!("  {cut}{more}\n"));
+        }
+    }
+    out.push_str("Answer questions about the user's email from this list. To reply, write a draft for them to send themselves.\n");
+    out
 }
 
 fn uid_of(id: &str) -> Option<u32> {
@@ -1131,6 +1189,29 @@ fn preview(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn questions_about_email_bring_the_inbox() {
+        assert!(asks_about("quali sono le ultime email?"));
+        assert!(asks_about("Any new MAIL from Ada?"));
+        assert!(asks_about("cosa c'è nella posta"));
+        assert!(!asks_about("what is Claude doing?"));
+    }
+
+    #[test]
+    fn the_inbox_reads_as_a_list_for_the_chat() {
+        let m = Message {
+            id: "a@x:4".into(), from: "Ada".into(), address: "ada@example.org".into(), subject: "Lunch".into(),
+            preview: "Shall we".into(), body: "Shall we\n  meet at noon?".into(), date: "Wed, 14 Oct 2026 12:00".into(),
+            link: None,
+        };
+        let text = context_text(5, std::slice::from_ref(&m));
+        assert!(text.contains("1 of 5 unread"));
+        assert!(text.contains("- From Ada <ada@example.org>, Wed, 14 Oct 2026 12:00: Lunch\n  Shall we meet at noon?\n"));
+        let long = Message { body: "x".repeat(CHAT_BODY_CHARS + 10), ..m };
+        assert!(context_text(1, &[long]).contains(&format!("{}…", "x".repeat(CHAT_BODY_CHARS))));
+        assert!(context_text(0, &[]).contains("no unread email"));
+    }
 
     #[test]
     fn the_server_comes_from_the_address_unless_typed() {
