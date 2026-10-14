@@ -14,7 +14,7 @@ import {
 import { gitHubRunning, readPulse } from "../core/github";
 import { LISTEN_COLOR, listeningLine } from "../core/listen";
 import { byEffort } from "../core/energy";
-import { Bridge, type MailMessage } from "../core/bridge";
+import { Bridge, onEvent, type MailMessage } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, isSessionTask, type AgentTask } from "../core/state";
@@ -150,6 +150,14 @@ export class CompactStrip {
       if (this.shown?.kind !== "mail") return;
       Feed.holdMail(Date.now() + 3000);
       this.schedule();
+    });
+    // Y or N while the closed island shows a request (approval_keys.rs): as
+    // its Allow or Deny, the open card being the one to answer when it is up.
+    void onEvent<"allow" | "deny">("approval-key", (d) => {
+      const a = this.approval;
+      if (!this.visible || !a || State.mode !== "compact") return;
+      if (performance.now() - this.approvalAt < CLICK_GUARD_MS) return;
+      this.host.decide(d, a.requestId);
     });
   }
 
