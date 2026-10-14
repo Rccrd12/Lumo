@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { uploadCard, uploadStage } from "../src/upload/canvas.ts";
-import { USC } from "../src/upload/sequence.ts";
+import { USC, UploadSeq } from "../src/upload/sequence.ts";
 import { CompactFeed } from "../src/core/compact.ts";
 import { MIN_ISLAND_H, MIN_ISLAND_W, botPosition } from "../src/core/layout.ts";
 
@@ -69,4 +69,36 @@ test("the closed island shows the upload first, and nothing once it is done", ()
   assert.equal(feed.shown(null, 1, { notes: false, media: false }).items[0].kind, "upload");
   feed.upload = null;
   assert.equal(feed.shown(null, 1).items[0].kind, "line");
+});
+
+test("Lumo waits in the card's top-left corner, whatever the island's size", () => {
+  for (const [w, h] of [[640, 176], [1040, 300]]) {
+    const st = uploadStage(w, h);
+    UploadSeq.reachX = st.reachX;
+    UploadSeq.reachY = st.reachY;
+    UploadSeq.deactivate();
+    UploadSeq.enterZone(500, 120);
+    const f = UploadSeq.frame();
+    // In island pixels: the same corner of the card on both islands.
+    assert.ok(Math.abs(st.ox + f.x * st.s - USC.REST_X) < 0.5);
+    assert.ok(Math.abs(st.oy + f.y * st.s - USC.REST_Y) < 0.5);
+  }
+  UploadSeq.deactivate();
+  UploadSeq.reachX = 0;
+  UploadSeq.reachY = 0;
+});
+
+test("a drag that goes off the island and back carries on instead of starting over", () => {
+  UploadSeq.deactivate();
+  UploadSeq.enterZone(500, 120);
+  UploadSeq.setOver(false);
+  assert.equal(UploadSeq.frame().fileVisible, false);
+  assert.equal(UploadSeq.frame().zoneOver, false);
+  UploadSeq.enterZone(480, 110);
+  assert.ok(UploadSeq.isActive);
+  const f = UploadSeq.frame();
+  assert.equal(f.fileVisible, true);
+  assert.equal(f.zoneOver, true);
+  assert.equal(f.cursorX, 480);
+  UploadSeq.deactivate();
 });

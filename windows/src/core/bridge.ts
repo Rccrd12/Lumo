@@ -679,8 +679,16 @@ interface WebView2Bridge {
  * src-tauri/src/webview_drop.rs). Enter/over/leave come straight from the page;
  * the drop hands the File objects to Rust, which answers with their real paths
  * as a `file-drag` event.
+ *
+ * During a drag the whole window takes the mouse (island.rs), not just the
+ * island: `accepts` says whether a page point is on the island, and only there
+ * is the drag said to be over and the file taken. Elsewhere the cursor shows
+ * "no drop" and the island hears a `leave`.
  */
-export async function onDragDrop(handler: (e: DragDropPayload) => void) {
+export async function onDragDrop(
+  handler: (e: DragDropPayload) => void,
+  accepts: (x: number, y: number) => boolean = () => true,
+) {
   if (!IS_TAURI) return () => {};
   const webview = (window as unknown as { chrome?: { webview?: WebView2Bridge } }).chrome?.webview;
   if (!webview) {
@@ -691,6 +699,8 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
+  // The cursor is on the island itself (`accepts`), not just in the window.
+  let over = false;
   // A picture dragged from the island itself (a screenshot's preview) says it
   // carries a file too: it is not one coming in, so it never opens the drop.
   let inside = false;
@@ -703,28 +713,54 @@ export async function onDragDrop(handler: (e: DragDropPayload) => void) {
   const onEnd = () => {
     inside = false;
     depth = 0;
+    over = false;
   };
   const onEnter = (e: DragEvent) => {
     if (inside || !hasFiles(e)) return;
     e.preventDefault();
-    if (depth++ === 0) handler({ type: "enter", client: at(e) });
+    depth++;
+    track(e);
+  };
+  /** Enter and leave follow the island's edge, not the window's. */
+  const track = (e: DragEvent) => {
+    const on = accepts(e.clientX, e.clientY);
+    if (on && !over) {
+      over = true;
+      handler({ type: "enter", client: at(e) });
+    } else if (!on && over) {
+      over = false;
+      handler({ type: "leave" });
+    }
+    return on;
   };
   const onOver = (e: DragEvent) => {
     if (inside || !hasFiles(e)) return;
     // Without this WebView2 refuses the drop — or navigates to the file.
+    // Off the island it is refused: "none" shows the no-drop cursor.
     e.preventDefault();
-    if (e.dataTransfer) e.dataTransfer.dropEffect = "copy";
-    handler({ type: "over", client: at(e) });
+    const on = track(e);
+    if (e.dataTransfer) e.dataTransfer.dropEffect = on ? "copy" : "none";
+    if (on) handler({ type: "over", client: at(e) });
   };
   const onLeave = (e: DragEvent) => {
     if (inside || !hasFiles(e) || depth === 0) return;
-    if (--depth === 0) handler({ type: "leave" });
+    if (--depth === 0 && over) {
+      over = false;
+      handler({ type: "leave" });
+    }
   };
   const onDrop = (e: DragEvent) => {
     // Never a navigation to what was dropped, ours or not.
     e.preventDefault();
     if (inside) return;
     depth = 0;
+    // Let go beside the island: not ours (the drop zone closes on the release).
+    const on = over || accepts(e.clientX, e.clientY);
+    over = false;
+    if (!on) {
+      handler({ type: "leave" });
+      return;
+    }
     const files = e.dataTransfer?.files;
     if (!files || files.length === 0) {
       handler({ type: "drop", paths: [] });

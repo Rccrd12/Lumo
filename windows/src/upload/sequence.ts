@@ -17,21 +17,20 @@ export const USC = {
   CARD_W: 620,
   CARD_H: 124,
   CARD_R: 20,
-  REST_X: 140,
-  REST_Y: 104,
+  // Mochi waits in the card's top-left corner, his wings inside it, and
+  // watches the file from there (the Mac's 140 × 104 left him mid-card, where
+  // he chased the cursor).
+  REST_X: 70,
+  REST_Y: 90,
   D_BOX: 62,
-  FOLLOW_MIN: 60, // CARD_X + 50
-  FOLLOW_MAX: 580, // CARD_X + CARD_W - 50
-  TEXT_X: 196,
+  /** The drop text, centred on the card. */
+  TEXT_CX: 320, // CARD_X + CARD_W / 2
   TEXT_Y: 94,
   BAR_X0: 46,
   // As far from the card's right edge as BAR_X0 is from its left (the Mac's
   // 520 left the bar off centre, short of the right side).
   BAR_X1: 594,
   BAR_Y: 118,
-  LOCK_IN: 60,
-  LOCK_OUT: 90,
-  MOUTH_AJAR: 0.2,
   MOUTH_OPEN: 0.42,
   MOUTH_MAX: 0.5,
   // Phase timestamps, in seconds on the reference timeline (drop = 1.95).
@@ -48,9 +47,6 @@ export const USC = {
   /** Entry offset: gives 0.40 s of following before the drop. */
   ENTRY_T_REF: 1.95 - 0.4,
 } as const;
-
-/** How far below the dragged file Mochi waits: half the sheet, half of him, a little air. */
-const UNDER_FILE = 21 + USC.D_BOX / 2 + 4;
 
 // ── Easing ──────────────────────────────────────────────────────────────────
 
@@ -202,8 +198,8 @@ class UploadSequence {
 
   /**
    * How much farther than the 640 × 176 scene the card reaches on each side
-   * (a resized island, upload/canvas.ts uploadStage): Mochi chases the file
-   * that much farther, sideways and, on a taller card, up and down.
+   * (a resized island, upload/canvas.ts uploadStage): Mochi's corner is that
+   * much farther left and up.
    */
   reachX = 0;
   reachY = 0;
@@ -219,14 +215,11 @@ class UploadSequence {
   private by = new USSpring(USC.REST_Y);
   private tilt = 0;
   private mouth = new USSpring(0);
-  private locked = false;
+  /** Ball (0) to open box (1): a spring, so leaving and coming back never jumps. */
+  private morph = new USSpring(0);
+  /** The file is over the island (a drag can leave it and come back). */
+  private over = false;
   private lockAt = -9;
-  private entered = -9;
-
-  private prevX = 600;
-  private prevY = 280;
-  private prevT = 0;
-  private speed = 0;
 
   private now(): number {
     return performance.now() / 1000;
@@ -234,45 +227,55 @@ class UploadSequence {
 
   // ── Session lifecycle ─────────────────────────────────────────────────────
 
+  /** Mochi's corner of the card, in scene points. */
+  private get restX() {
+    return USC.REST_X - this.reachX;
+  }
+
+  private get restY() {
+    return USC.REST_Y - this.reachY;
+  }
+
   /** A file entered the island. Coordinates are island points. */
   enterZone(x: number, y: number) {
-    const now = this.now();
+    // Still following this drag: carry on rather than start over.
+    if (this.isActive && this.dropWall == null) {
+      this.updateCursor(x, y);
+      this.setOver(true);
+      return;
+    }
     this.cursorX = x;
     this.cursorY = y;
-    this.prevX = x;
-    this.prevY = y;
-    this.prevT = now;
-    this.speed = 0;
 
     this.t = USC.ENTRY_T_REF;
-    this.entered = USC.ENTRY_T_REF;
-    this.bx = new USSpring(USC.REST_X);
-    this.by = new USSpring(USC.REST_Y);
+    this.bx = new USSpring(this.restX);
+    this.by = new USSpring(this.restY);
     this.tilt = 0;
     this.mouth = new USSpring(0);
-    this.locked = false;
+    this.morph = new USSpring(0);
+    this.over = false;
     this.lockAt = -9;
+    this.setOver(true);
 
-    this.entryWall = now;
+    this.entryWall = this.now();
     this.dropWall = null;
     this.isActive = true;
   }
 
+  /** The file went off the island (false) or back on it (true), mid-drag. */
+  setOver(over: boolean) {
+    if (over && !this.over) this.lockAt = this.t;
+    this.over = over;
+  }
+
   updateCursor(x: number, y: number) {
-    const now = this.now();
-    const dt = now - this.prevT;
-    if (dt > 0.001) {
-      this.speed = Math.hypot(x - this.prevX, y - this.prevY) / dt;
-    }
-    this.prevX = x;
-    this.prevY = y;
-    this.prevT = now;
     this.cursorX = x;
     this.cursorY = y;
   }
 
   performDrop(uploadDuration: number) {
     this.uploadDuration = uploadDuration;
+    this.over = true;
     this.dropWall = this.now();
     // Restart the canonical post-drop timeline however long the user hovered.
     // Spring state (position and velocity) is deliberately preserved.
@@ -324,22 +327,14 @@ class UploadSequence {
   private stepOnce(dt: number) {
     const isDragging = this.dropWall == null;
 
-    // Horizontal follow and lock, only while dragging inside the zone.
-    if (isDragging && this.entered >= 0) {
-      const dist = Math.hypot(this.cursorX - this.bx.v, this.cursorY + 14 - this.by.v);
-      if (!this.locked && dist < USC.LOCK_IN && this.speed < 180) {
-        this.locked = true;
-        this.lockAt = this.t;
-      }
-      if (this.locked && dist > USC.LOCK_OUT) this.locked = false;
-      const tx = Math.max(USC.FOLLOW_MIN - this.reachX, Math.min(USC.FOLLOW_MAX + this.reachX, this.cursorX));
-      // Under the file, mouth up, like a bin waiting for it: never on top of it.
-      const ty = Math.max(USC.REST_Y - this.reachY, Math.min(USC.REST_Y + this.reachY, this.cursorY + 14 + UNDER_FILE));
-      const response = this.locked ? 0.18 : 0.35;
-      const damping = this.locked ? 0.75 : 0.7;
-      this.bx.step(tx, response, damping, dt);
-      this.by.step(ty, response, damping, dt);
+    // Mochi stays in his corner; it only moves when the island is resized.
+    if (isDragging) {
+      this.bx.step(this.restX, 0.35, 0.8, dt);
+      this.by.step(this.restY, 0.35, 0.8, dt);
     }
+
+    // Into a box while the file is over the island, back to himself off it.
+    this.morph.step(this.over || !isDragging ? 1 : 0, 0.38, 0.55, dt);
 
     // Tilt follows how fast Mochi is sliding.
     const tiltTarget = isDragging ? Math.max(-0.18, Math.min(0.18, this.bx.vel * 0.0015)) : 0;
@@ -350,8 +345,7 @@ class UploadSequence {
     if (!isDragging && t >= USC.T_SUCK_END) {
       this.mouth.v = Math.max(0, lerp(USC.MOUTH_MAX, 0, eIn(seg(t, USC.T_SUCK_END, USC.T_CLOSE_END))));
     } else {
-      let mt = 0;
-      if (this.entered >= 0) mt = this.locked || !isDragging ? USC.MOUTH_OPEN : USC.MOUTH_AJAR;
+      let mt = this.over || !isDragging ? USC.MOUTH_OPEN : 0;
       if (!isDragging && t < USC.T_SUCK_END) mt = USC.MOUTH_MAX;
       this.mouth.step(mt, 0.25, 0.6, dt);
       if (this.mouth.v < 0) this.mouth.v = 0;
@@ -368,16 +362,15 @@ class UploadSequence {
     const progEnd = this.progEnd;
     f.progEnd = progEnd;
 
-    const entered = this.entered >= 0 ? this.entered : 1e9;
     const isDragging = this.dropWall == null;
     // Clamp the phase clock to just before the drop while still dragging, so a
     // long hover never trips the post-drop visuals.
     const pt = isDragging ? Math.min(t, USC.T_DROP - USC.DT) : t;
 
-    // Morph: 0→1 on entry, then 1→0 shrinking to a ball that rides the bar. He
-    // stays a ball at its end: the chat takes over from there.
+    // Morph: 0→1 while the file is over him, then 1→0 shrinking to a ball that
+    // rides the bar. He stays a ball at its end: the chat takes over from there.
     let morph: number;
-    if (pt < USC.T_CHEW_END) morph = eBack(seg(pt, entered, entered + 0.38));
+    if (pt < USC.T_CHEW_END) morph = this.morph.v;
     else morph = 1 - eOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
     f.morph = Math.max(0, Math.min(morph, 1.08));
 
@@ -445,14 +438,14 @@ class UploadSequence {
     f.tilt = this.tilt;
     f.hop =
       this.lockAt > 0 && isDragging
-        ? -5 * Math.sin(Math.PI * seg(pt, this.lockAt, this.lockAt + 0.15))
+        ? -5 * Math.sin(Math.PI * seg(t, this.lockAt, this.lockAt + 0.15))
         : 0;
 
     f.mouth = this.mouth.v;
 
     // Eyes.
     let eye: UploadEyeShape = "pill";
-    if (this.locked && pt < USC.T_SUCK_END) eye = "cup";
+    if (this.over && pt < USC.T_SUCK_END) eye = "cup";
     if (pt >= USC.T_SUCK_END && pt < USC.T_CHEW_END + 0.1) eye = "content";
     if (pt >= progEnd) eye = "content";
     f.eye = eye;
@@ -462,13 +455,14 @@ class UploadSequence {
     f.lookX = Math.max(-1, Math.min(1, lkx / 200));
     f.lookY = Math.max(-1, Math.min(1, lky / 150));
 
-    f.fileVisible = pt < USC.T_SUCK_END;
+    // Off the island the file is not drawn: the canvas would cut it at its edge.
+    f.fileVisible = isDragging ? this.over : pt < USC.T_SUCK_END;
     f.suck = seg(pt, USC.T_SUCK_START, USC.T_SUCK_END);
 
     // Content alphas.
-    f.zoneOver = this.entered >= 0 && pt < USC.T_CHEW_END;
+    f.zoneOver = this.over && pt < USC.T_CHEW_END;
     f.zoneAlpha = 1 - seg(pt, USC.T_CHEW_END, USC.T_CHEW_END + 0.2);
-    f.textAlpha = f.zoneAlpha * (x > USC.TEXT_X - 40 && isDragging ? 0.25 : 1);
+    f.textAlpha = f.zoneAlpha;
     f.barReveal = eOut(seg(pt, USC.T_BAR_IN, USC.T_BAR_IN + 0.25));
     f.barAlpha = seg(pt, USC.T_BAR_IN + 0.05, USC.T_BAR_IN + 0.25);
     f.progress = progressAt(pt, USC.T_PROG_START, progEnd);
