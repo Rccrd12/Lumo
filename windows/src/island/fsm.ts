@@ -3,6 +3,14 @@
 
 export type FsmState = "hidden" | "petit" | "home" | "greeting";
 
+/**
+ * What the open island is doing that a mouse leave should respect: nothing,
+ * something it may wait for (`linger`: the chat's field has the cursor, the
+ * drop menu is open), or something it waits for however long it takes (`keep`:
+ * a message is being written).
+ */
+export type LeaveHold = "none" | "linger" | "keep";
+
 export class IslandStateMachine {
   state: FsmState = "hidden";
 
@@ -51,6 +59,13 @@ export class IslandStateMachine {
   greetAutoCollapseDelay = 0.6;
   /** An alert waiting for an answer stays open, even when the mouse leaves. */
   pinned = false;
+
+  /** With a `linger` hold, the mouse-leave countdown lasts at least this long (s). */
+  lingerDelay = 10;
+  /** Asked each time a mouse-leave countdown starts or ends (see LeaveHold). */
+  leaveHold: (() => LeaveHold) | null = null;
+  /** The hold the running (or held back) countdown was started with. */
+  private lastHold: LeaveHold = "none";
 
   /**
    * A Gemini Live call is on: the compact island stays on screen (it does
@@ -145,6 +160,17 @@ export class IslandStateMachine {
     }
   }
 
+  /**
+   * The hold may have changed (a key typed, the field left, a menu opened or
+   * closed): the countdown of an island the mouse has left starts again with
+   * it. Typing keeps the hold as it is, so a keystroke never restarts it.
+   */
+  holdChanged() {
+    if (this.state !== "home" || this.mouseInside) return;
+    if (this.currentHold() === this.lastHold) return;
+    this.scheduleHomeCollapse();
+  }
+
   click() {
     if (this.state !== "petit") return;
     this.cancelTimers();
@@ -197,15 +223,28 @@ export class IslandStateMachine {
 
   private scheduleHomeCollapse() {
     this.clear("homeCollapse");
-    if (this.pinned || !this.leaveCloses) return;
-    const ms = Math.max(this.homeDelay * 1000, this.graceUntil - performance.now());
+    const hold = this.currentHold();
+    this.lastHold = hold;
+    if (this.pinned || !this.leaveCloses || hold === "keep") return;
+    const floor = hold === "linger" ? this.lingerDelay : 0;
+    const ms = Math.max(this.homeDelay * 1000, floor * 1000, this.graceUntil - performance.now());
     this.homeCollapseDueAt = performance.now() + ms;
     this.homeCollapse = window.setTimeout(() => {
       this.homeCollapse = null;
       this.homeCollapseDueAt = null;
-      // An alert pinned while the countdown ran keeps the island open.
-      if (this.state === "home" && !this.pinned) this.transition("petit");
+      // An alert pinned while the countdown ran keeps the island open, and so
+      // does a message being written that no event told us about.
+      if (this.state !== "home" || this.pinned) return;
+      if (this.currentHold() === "keep") {
+        this.lastHold = "keep";
+        return;
+      }
+      this.transition("petit");
     }, ms);
+  }
+
+  private currentHold(): LeaveHold {
+    return this.leaveHold?.() ?? "none";
   }
 
   private scheduleGreetCollapse(delay: number) {

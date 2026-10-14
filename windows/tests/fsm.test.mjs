@@ -367,3 +367,95 @@ test("a sharing shortcut's grace keeps the island open with the mouse elsewhere,
   t.mock.timers.tick(600);
   assert.equal(fsm.state, "petit");
 });
+
+// ── Holding a leave back: the chat's field, a message being written ──────────
+
+function openLeaving(hold) {
+  let current = hold;
+  fsm.leaveHold = () => current;
+  fsm.homeToPetitDelay = 0.6;
+  fsm.mouseEntered();
+  fsm.click();
+  return (next) => {
+    current = next;
+    fsm.holdChanged();
+  };
+}
+
+test("with the cursor in the chat's field, leaving folds the island after 10 s, not at once", () => {
+  openLeaving("linger");
+  fsm.mouseLeft();
+  seconds(9.9);
+  assert.equal(fsm.state, "home");
+  seconds(0.1);
+  assert.equal(fsm.state, "petit");
+});
+
+test("a message being written keeps the island open however long the mouse is away", () => {
+  openLeaving("keep");
+  fsm.mouseLeft();
+  assert.equal(fsm.homeCollapseDueAt, null, "no countdown bar");
+  seconds(600);
+  assert.equal(fsm.state, "home");
+});
+
+test("starting to write mid-countdown stops it; emptying the field starts 10 s again", () => {
+  const set = openLeaving("linger");
+  fsm.mouseLeft();
+  seconds(8);
+  set("keep");
+  seconds(60);
+  assert.equal(fsm.state, "home");
+  set("linger");
+  seconds(9.9);
+  assert.equal(fsm.state, "home");
+  seconds(0.1);
+  assert.equal(fsm.state, "petit");
+});
+
+test("typing more keeps the hold as it is: a keystroke never restarts the countdown", () => {
+  const set = openLeaving("linger");
+  fsm.mouseLeft();
+  seconds(5);
+  set("linger");
+  seconds(5);
+  assert.equal(fsm.state, "petit");
+});
+
+test("leaving the field (the keyboard gone to another app) folds the island on the usual delay", () => {
+  const set = openLeaving("linger");
+  fsm.mouseLeft();
+  seconds(3);
+  set("none");
+  seconds(0.6);
+  assert.equal(fsm.state, "petit");
+});
+
+test("a message written without telling the island is still not cut off when the countdown ends", () => {
+  let current = "linger";
+  fsm.leaveHold = () => current;
+  fsm.homeToPetitDelay = 0.6;
+  fsm.mouseEntered();
+  fsm.click();
+  fsm.mouseLeft();
+  current = "keep";
+  seconds(10);
+  assert.equal(fsm.state, "home");
+});
+
+test("a longer auto-close delay is kept over the 10 s of a hold", () => {
+  openLeaving("linger");
+  fsm.homeToPetitDelay = 30;
+  fsm.mouseLeft();
+  seconds(29);
+  assert.equal(fsm.state, "home");
+  seconds(1);
+  assert.equal(fsm.state, "petit");
+});
+
+test("no hold change while the mouse is on the island starts a countdown", () => {
+  const set = openLeaving("keep");
+  set("none");
+  seconds(60);
+  assert.equal(fsm.state, "home");
+});
