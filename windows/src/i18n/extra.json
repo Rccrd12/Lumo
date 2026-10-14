@@ -5419,6 +5419,18 @@
    "id": "Gemini Live mengakhiri panggilan: {detail}",
    "it": "Gemini Live ha terminato la chiamata: {detail}"
   },
+  "Looking at what Lumo knows": {
+   "zh-Hans": "正在查看 Lumo 知道的信息",
+   "hi": "Lumo जो जानता है, उसे देख रहा है",
+   "es": "Mirando lo que sabe Lumo",
+   "ar": "يطّلع على ما يعرفه Lumo",
+   "fr": "Regarde ce que Lumo sait",
+   "bn": "Lumo যা জানে তা দেখছে",
+   "pt-BR": "Olhando o que o Lumo sabe",
+   "ru": "Смотрит, что знает Lumo",
+   "id": "Melihat apa yang Lumo ketahui",
+   "it": "Guarda cosa sa Lumo"
+  },
   "Looking at the open windows": {
    "zh-Hans": "正在查看打开的窗口",
    "hi": "खुली विंडो देख रहा है",

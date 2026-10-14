@@ -9,6 +9,7 @@
 import { Bridge, type LiveReading } from "../core/bridge";
 import { compactTimer, parseDuration, timerLeft } from "../core/compact";
 import { t } from "../i18n/i18n";
+import { gatherLumo, lumoStatus, parseTopic } from "./lumo";
 import { TOOL, type FunctionCall, type ToolAnswer } from "./protocol";
 import { LIVE_STRINGS as S } from "./strings";
 
@@ -77,6 +78,11 @@ export async function runTool(call: FunctionCall, host: ToolHost): Promise<ToolA
 async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
   const a = call.args;
   switch (call.name) {
+    case TOOL.lumo: {
+      host.doing(t(S.lookingLumo));
+      const topic = parseTopic(a.about);
+      return lumoStatus(await gatherLumo(topic), topic);
+    }
     case TOOL.look: {
       if (!host.screen) throw new Error("The user turned screenshots off in Lumo's settings.");
       host.doing(t(S.lookingScreen));
