@@ -219,11 +219,11 @@ mod tests {
     #[test]
     fn due_ones_ring_once_and_missed_ones_say_so() {
         let r = |id, at| Reminder { id, at, text: format!("r{id}") };
-        let started = 100 * H;
-        let mut list = vec![r(1, 99 * H), r(2, 101 * H), r(3, 200 * H), r(4, started - STALE_MS - H)];
-        let due = take_due(&mut list, 101 * H, started);
+        let started = 1000 * H;
+        let mut list = vec![r(1, 999 * H), r(2, 1001 * H), r(3, 1100 * H), r(4, started - STALE_MS - H)];
+        let due = take_due(&mut list, 1001 * H, started);
         assert_eq!(due.iter().map(|d| (d.reminder.id, d.missed)).collect::<Vec<_>>(), [(1, true), (2, false)]);
-        assert_eq!(list, [r(3, 200 * H)], "the stale one is dropped, the later one stays");
-        assert!(take_due(&mut list, 150 * H, started).is_empty());
+        assert_eq!(list, [r(3, 1100 * H)], "the stale one is dropped, the later one stays");
+        assert!(take_due(&mut list, 1050 * H, started).is_empty());
     }
 }
