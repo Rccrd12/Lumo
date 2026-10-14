@@ -14,7 +14,7 @@ import {
 import { gitHubRunning, readPulse } from "../core/github";
 import { LISTEN_COLOR, listeningLine } from "../core/listen";
 import { byEffort } from "../core/energy";
-import { Bridge, type MailMessage } from "../core/bridge";
+import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, isSessionTask, type AgentTask } from "../core/state";
@@ -29,6 +29,11 @@ const MEDIA_TEXT = {
   next: N_("Next"),
   play: N_("Play"),
   pause: N_("Pause"),
+};
+
+const REMINDER_TEXT = {
+  reminder: N_("Reminder"),
+  missed: N_("Missed reminder"),
 };
 
 const MAIL_TEXT = {
@@ -142,6 +147,12 @@ export class CompactStrip {
 
   constructor(host: CompactHost) {
     this.host = host;
+    // A reminder at a time (reminders.rs) rings like a timer, and stays longer.
+    void onEvent<ReminderDue>("reminder-due", (due) => {
+      if (!due?.reminder) return;
+      Sound.play("finish");
+      compactNotice(`${t(due.missed ? REMINDER_TEXT.missed : REMINDER_TEXT.reminder)} · ${due.reminder.text}`, TIMER_COLOR, 30_000);
+    });
     // The email stays while the mouse is on it, and a little after.
     this.el.addEventListener("mouseenter", () => {
       if (this.shown?.kind === "mail") Feed.holdMail(Infinity);

@@ -7,6 +7,8 @@
 // Extended Thinking, which thinks in the background while it talks (at the
 // level picked there) and only takes tool calls that do not block it.
 
+import { pcInstructions, pcToolDeclarations } from "./pc-protocol";
+
 /** Settings → Voice: the models Lumo talks with. */
 export const LIVE_MODEL = "gemini-3.8-live";
 export const LIVE_EXTENDED = "gemini-3.8-live-extended-thinking";
@@ -126,6 +128,7 @@ export function systemInstruction(cfg: LiveConfig): string {
         ]
       : []),
     "- set_timer starts a timer that counts down on Lumo's island and rings at the end. control_music plays, pauses or skips the music playing on the computer.",
+    ...pcInstructions(),
     "- end_conversation ends the call. Say goodbye first, then call it, when the user says goodbye or asks you to stop.",
     "",
     "# Rules",
@@ -138,10 +141,11 @@ export function systemInstruction(cfg: LiveConfig): string {
 }
 
 type Schema = {
-  type: "OBJECT" | "STRING" | "INTEGER";
+  type: "OBJECT" | "STRING" | "INTEGER" | "ARRAY";
   description?: string;
   properties?: Record<string, Schema>;
   required?: string[];
+  items?: Schema;
 };
 
 export interface FunctionDeclaration {
@@ -252,6 +256,7 @@ export function toolDeclarations(cfg: Pick<LiveConfig, "screen" | "helper" | "co
       description: "Plays or pauses the music (or video) playing on the computer, or skips to the next or previous track.",
       parameters: obj({ action: str("\"play_pause\", \"next\" or \"previous\".") }, ["action"]),
     },
+    ...pcToolDeclarations(),
     { name: TOOL.end, description: "Ends the call. Say goodbye first." },
   );
   for (const d of list) d.behavior = "NON_BLOCKING";

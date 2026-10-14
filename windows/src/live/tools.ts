@@ -10,6 +10,8 @@ import { Bridge, type LiveReading } from "../core/bridge";
 import { compactTimer, parseDuration, timerLeft } from "../core/compact";
 import { t } from "../i18n/i18n";
 import { TOOL, type FunctionCall, type ToolAnswer } from "./protocol";
+import { isPcTool } from "./pc-protocol";
+import { runPcTool } from "./pc-tools";
 import { LIVE_STRINGS as S } from "./strings";
 
 /** Who does what Gemini hands over to be done on the screen (live.rs use_computer). */
@@ -186,6 +188,7 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       host.end();
       return { ending: true };
     default:
+      if (isPcTool(call.name)) return await runPcTool(call, (label) => host.doing(label));
       throw new Error(`There is no tool called ${call.name}.`);
   }
 }
