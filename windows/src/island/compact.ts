@@ -224,7 +224,7 @@ export class CompactStrip {
       ? { who: speakerName(p.id, t(p.name), activeModel(State.settings)), label: chat.label, color: p.accent }
       : null;
     const liveInput = Live.active
-      ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, color: LIVE_COLOR }
+      ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, muted: Live.muted, color: LIVE_COLOR }
       : null;
     return activityLines(chatInput, liveInput, agentInputs(), serviceLines());
   }

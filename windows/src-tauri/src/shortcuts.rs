@@ -18,7 +18,7 @@
 //   Ctrl+Alt+T       open the terminal       Ctrl+Alt+G      wardrobe
 //   Ctrl+Alt+N       open / close the island (off by default, as on the Mac)
 //   Ctrl+Alt+P       ask about my screen     Ctrl+Alt+X      ask about the selected text
-//   Ctrl+Alt+L       talk with Gemini Live (start or end the conversation)
+//   Ctrl+Alt+L       talk with Gemini Live (start, then pause or resume the conversation)
 //   Ctrl+Alt+B       ask about the page open in the browser
 //
 // The last two are this version's own (the Mac has no such action yet): they
@@ -74,7 +74,7 @@ pub const ACTIONS: &[ActionDef] = &[
     // Not on the Mac: see the top of this file.
     action("askScreen", "Ctrl+Alt+P", true),
     action("askSelection", "Ctrl+Alt+X", true),
-    // Starts or ends a spoken conversation with Gemini Live (live.rs).
+    // Starts a spoken conversation with Gemini Live (live.rs), then pauses or resumes it.
     action("talkToGemini", "Ctrl+Alt+L", true),
     // The page on screen in the front-most Edge or Chrome window, with what
     // it shows (share.rs), waiting in the chat like the selected text.

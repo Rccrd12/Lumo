@@ -413,21 +413,58 @@ test("before a call, the view says what Gemini can do and offers to start", () =
   State.settings = { ...DEFAULT_SETTINGS };
 });
 
-test("the shortcut opens the call view and starts a call; with no answer from Rust it ends saying so", async () => {
+const shortcutHost = (opened) => ({
+  alert: (v) => opened.push(v), setView: () => {}, collapse: () => {}, emote: () => {},
+  setPinned: () => {}, takeKeyboard: () => {}, wardrobeAnywhere: () => {}, holdOpen: () => {},
+});
+
+test("the shortcut starts a call without opening the closed island; with no answer from Rust it ends saying so", async () => {
   const { runGlobalShortcut } = await import("../src/island/shortcuts.ts");
   const opened = [];
-  const shortcutHost = {
-    alert: (v) => opened.push(v), setView: () => {}, collapse: () => {}, emote: () => {},
-    setPinned: () => {}, takeKeyboard: () => {}, wardrobeAnywhere: () => {}, holdOpen: () => {},
-  };
-  runGlobalShortcut(shortcutHost, "talkToGemini", () => {});
-  assert.deepEqual(opened, ["live"]);
+  State.mode = "compact";
+  runGlobalShortcut(shortcutHost(opened), "talkToGemini", () => {});
+  assert.deepEqual(opened, [], "the island stays closed");
   await new Promise((r) => setTimeout(r, 10));
   assert.equal(Live.active, false);
   assert.equal(Live.problem, "The connection to Gemini Live was lost.");
   assert.ok(sent("live_token").length >= 1);
   // The microphone was never asked for: there was nothing to talk to.
   assert.equal(sent("live_microphone").filter((a) => a.on).length, 0);
+});
+
+test("on an open island the shortcut opens the call view; on a call, it pauses and resumes it", async () => {
+  const { runGlobalShortcut } = await import("../src/island/shortcuts.ts");
+  const opened = [];
+  State.mode = "expanded";
+  State.view = "prompt";
+  runGlobalShortcut(shortcutHost(opened), "talkToGemini", () => {});
+  assert.deepEqual(opened, ["live"]);
+  await new Promise((r) => setTimeout(r, 10));
+
+  Live.phase = "listening";
+  Live.muted = false;
+  try {
+    // A call behind another view comes back first, untouched.
+    runGlobalShortcut(shortcutHost(opened), "talkToGemini", () => {});
+    assert.deepEqual(opened, ["live", "live"]);
+    assert.equal(Live.muted, false);
+    // On the call view, or with the island closed: pause, then resume. It never ends the call.
+    State.view = "live";
+    runGlobalShortcut(shortcutHost(opened), "talkToGemini", () => {});
+    assert.equal(Live.muted, true);
+    State.mode = "compact";
+    runGlobalShortcut(shortcutHost(opened), "talkToGemini", () => {});
+    assert.equal(Live.muted, false);
+    runGlobalShortcut(shortcutHost(opened), "talkToGemini", () => {});
+    assert.equal(Live.muted, true);
+    assert.equal(Live.active, true);
+    assert.deepEqual(opened, ["live", "live"], "the closed island stays closed");
+  } finally {
+    Live.phase = "off";
+    Live.muted = false;
+    State.mode = "hidden";
+    State.view = "prompt";
+  }
 });
 
 test("a close reason loses the link Google's 123 bytes cut in half", () => {
