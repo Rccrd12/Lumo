@@ -22,6 +22,7 @@ import { colorDot } from "./colors";
 import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
+import { PLAN_AGENT, agentPlanOn } from "../core/plan";
 import { updatesSection } from "./updates";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
@@ -250,7 +251,7 @@ const PLAN_SETTINGS_TEXT = {
   get showAntigravity() { return t("Show Antigravity CLI usage in the island"); },
 };
 
-function planSection(status: HookStatus): HTMLElement {
+function planSection(status: HookStatus, connected: Record<string, boolean>): HTMLElement {
   const body = h("div", { class: "setting-list" });
   const section = h("section", {}, ...sectionHead(t("Plan usage")), body);
 
@@ -266,6 +267,17 @@ function planSection(status: HookStatus): HTMLElement {
     if (!status.planRelayInstalled) settings.showPlanInNotch = false;
     redraw();
   };
+
+  /** Codex's or agy's switch: on by itself once the agent is added, until turned off here. */
+  function agentPlanToggle(kind: "codex" | "antigravity"): HTMLElement {
+    return toggle(agentPlanOn(kind, settings, connected[PLAN_AGENT[kind]] ?? false), (on) => {
+      if (kind === "codex") settings.showCodexPlanInNotch = on;
+      else settings.showAntigravityPlanInNotch = on;
+      const others = (settings.hiddenPlanPills ?? []).filter((k) => k !== kind);
+      settings.hiddenPlanPills = on ? others : [...others, kind];
+      void save();
+    });
+  }
 
   function draw() {
     // The switch shows "on" while the install it asked for is being reviewed.
@@ -311,18 +323,12 @@ function planSection(status: HookStatus): HTMLElement {
       // Codex: nothing to install, Lumo asks the Codex CLI when the pill shows.
       group("Codex"),
       setting(PLAN_SETTINGS_TEXT.showCodex, PLAN_SETTINGS_TEXT.codex,
-        toggle(settings.showCodexPlanInNotch, (on) => {
-          settings.showCodexPlanInNotch = on;
-          void save();
-        }),
+        agentPlanToggle("codex"),
       ),
       // Antigravity CLI: the same, Lumo asks agy when the pill shows.
       group("Antigravity CLI"),
       setting(PLAN_SETTINGS_TEXT.showAntigravity, PLAN_SETTINGS_TEXT.antigravity,
-        toggle(settings.showAntigravityPlanInNotch, (on) => {
-          settings.showAntigravityPlanInNotch = on;
-          void save();
-        }),
+        agentPlanToggle("antigravity"),
       ),
     );
   }
@@ -1983,7 +1989,7 @@ async function render() {
     island: [islandSection()],
     chat: [apiSection(hasKey), agyCliSection(), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
-    agents: [claudeSection(status), agentsSection(agents), planSection(status)],
+    agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present)],
     shortcuts: [shortcutsSection(shortcutReport)],
     updates: [updatesSection(version)],
