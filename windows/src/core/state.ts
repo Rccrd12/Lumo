@@ -198,6 +198,11 @@ export interface Settings {
   showCodexPlanInNotch: boolean;
   /** Show the Antigravity CLI pill in the island's header. */
   showAntigravityPlanInNotch: boolean;
+  /**
+   * The plan pills turned off in Settings ("codex", "antigravity"): an added
+   * agent's pill shows on its own otherwise.
+   */
+  hiddenPlanPills: string[];
   /** Ask Anthropic for the Claude plan's usage with Claude Code's sign-in (plan_usage.rs). */
   planUsageOnline: boolean;
   /** Simple permission requests are answered on the closed island (core/approvals.ts). */
@@ -314,6 +319,7 @@ export const DEFAULT_SETTINGS: Settings = {
   planRelayInstalled: false,
   showCodexPlanInNotch: false,
   showAntigravityPlanInNotch: false,
+  hiddenPlanPills: [],
   planUsageOnline: false,
   quickApprovals: true,
   activitiesFollowIsland: true,

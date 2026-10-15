@@ -12,7 +12,7 @@
 
 import { Bridge } from "../core/bridge";
 import {
-  mergeWindow, parseClaudePlan, PLAN_TEXT, claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct,
+  agentPlanOn, mergeWindow, parseClaudePlan, PLAN_AGENT, PLAN_TEXT, claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct,
   effectivePct, parseCodexPlan, pillLabel, planColor, resetLabel, parseAntigravityPlan, antigravityGroupName,
   antigravitySubtitle,
   type AntigravityPlanUsage, type CodexPlanUsage, type PlanKind, type PlanUsage, type PlanWindow,
@@ -30,14 +30,19 @@ export function claudePillVisible(): boolean {
   return State.view === "overview" && s.showPlanInNotch && s.planRelayInstalled;
 }
 
-/** The Codex pill is in the header: overview, turned on (nothing to install). */
-export function codexPillVisible(): boolean {
-  return State.view === "overview" && State.settings.showCodexPlanInNotch;
+/** Codex or agy has its pill: turned on, or the agent was added and the pill not turned off. */
+export function agentPlanWanted(kind: "codex" | "antigravity"): boolean {
+  return agentPlanOn(kind, State.settings, State.integrations[PLAN_AGENT[kind]]?.configured ?? false);
 }
 
-/** The Antigravity CLI pill is in the header: overview, turned on (nothing to install). */
+/** The Codex pill is in the header: overview, wanted (nothing to install). */
+export function codexPillVisible(): boolean {
+  return State.view === "overview" && agentPlanWanted("codex");
+}
+
+/** The Antigravity CLI pill is in the header: overview, wanted (nothing to install). */
 export function antigravityPillVisible(): boolean {
-  return State.view === "overview" && State.settings.showAntigravityPlanInNotch;
+  return State.view === "overview" && agentPlanWanted("antigravity");
 }
 
 /** Whether `kind`'s pill is in the header. */
