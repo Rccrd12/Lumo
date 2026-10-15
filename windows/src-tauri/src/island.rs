@@ -332,6 +332,28 @@ fn centre_in_panel(dock: Dock, panel: (f64, f64), w: f64, h: f64, shift: (f64, f
     (cx + shift.0, cy + shift.1)
 }
 
+/// Where the open island is on the screen, in physical pixels (left, top,
+/// right, bottom), from where it was put and how wide it is: for a window
+/// placed beside it (plan_island.rs). Its height is the one picked, or
+/// `fallback_h` page pixels when each view has its own.
+pub fn open_rect(app: &AppHandle, fallback_h: f64) -> Option<(f64, f64, f64, f64)> {
+    let (pref, p) = {
+        let s = app.state::<crate::Shared>().settings.lock().unwrap().clone();
+        (s.screen.clone(), Placement::of(&s))
+    };
+    let m = target_monitor(app, &pref)?;
+    let scale = m.scale_factor();
+    let area = area_of(&m);
+    let (x, y, _, _) = frame(area, scale, p, false);
+    let w = clamp_width(p.width);
+    let h = if p.height > 0.0 { clamp_height(p.height) } else { fallback_h };
+    let (cx, cy) = centre_in_panel(p.dock, panel_size(p), w, h, shift(area, scale, p));
+    let k = scale * clamp_zoom(p.zoom);
+    let (cx, cy) = (x as f64 + cx * k, y as f64 + cy * k);
+    let (hw, hh) = (w * k / 2.0, h * k / 2.0);
+    Some((cx - hw, cy - hh, cx + hw, cy + hh))
+}
+
 /// Margin around the island that still counts as "on the island", in logical px.
 /// Wider than the macOS 6 pt because a click must never be swallowed.
 const HIT_MARGIN: f64 = 14.0;
@@ -340,7 +362,8 @@ const HIT_MARGIN: f64 = 14.0;
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
-    /// Over the live activities' own window, which counts as the island.
+    /// Over the live activities' own window with the button held (moved or
+    /// resized): only then does it count as the island.
     pub panel: bool,
 }
 
@@ -909,9 +932,13 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
     let _ = win.set_position(PhysicalPosition::new(x, y));
     // The page keeps its 720 × 320 layout; the webview draws it bigger.
     let _ = win.set_zoom(zoom);
-    // The live activities in their own window are drawn at the same zoom.
+    // The live activities in their own window are drawn at the same zoom,
+    // and so is the Plan island.
     if let Some(panel) = crate::activities::window(app) {
         let _ = panel.set_zoom(zoom);
+    }
+    if let Some(plan) = crate::plan_island::window(app) {
+        let _ = plan.set_zoom(zoom);
     }
     let _ = win.set_always_on_top(true);
     platform::raise_topmost(&win);
@@ -922,7 +949,7 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
 /// above it, even when it is always on top too. Claude's hand (computer.rs)
 /// goes last, so it stays above the island.
 pub fn keep_on_top(app: &AppHandle) {
-    for label in [WINDOW_LABEL, crate::activities::LABEL, crate::computer::OVERLAY] {
+    for label in [WINDOW_LABEL, crate::activities::LABEL, crate::plan_island::LABEL, crate::computer::OVERLAY] {
         let Some(win) = app.get_webview_window(label) else { continue };
         platform::raise_topmost(&win);
     }
@@ -1281,7 +1308,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel });
+                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down });
             }
         }
     });

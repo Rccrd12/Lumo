@@ -852,6 +852,99 @@ select option {
   user-select: text;
 }
 
+/* Settings → Updates → Changelog: one folded entry per version, newest first. */
+.changelog {
+  display: flex;
+  flex-direction: column;
+}
+
+.changelog-entry {
+  border-top: 1px solid var(--hairline);
+}
+
+.changelog-entry:first-child {
+  border-top: 0;
+}
+
+.changelog-entry > summary {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 8px 0;
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.changelog-entry > summary::-webkit-details-marker {
+  display: none;
+}
+
+.changelog-entry > summary::before {
+  content: "";
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid var(--dim-2);
+  border-bottom: 1.5px solid var(--dim-2);
+  transform: translateY(-2px) rotate(-45deg);
+  transition: transform 0.15s ease;
+}
+
+.changelog-entry[open] > summary::before {
+  transform: translateY(-3px) rotate(45deg);
+}
+
+.changelog-version {
+  font: 600 13px var(--font);
+}
+
+.changelog-date {
+  font: 400 12px var(--font);
+  color: var(--dim-2);
+}
+
+.changelog-installed {
+  font: 500 11px var(--font);
+  color: #86efac;
+  background: rgba(34, 197, 94, 0.12);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+
+.changelog-body {
+  font: 400 12px/1.5 var(--font);
+  color: var(--dim);
+  padding-block: 0 10px;
+  padding-inline: 16px 0;
+  user-select: text;
+  overflow-wrap: anywhere;
+}
+
+.changelog-body ul {
+  padding-inline-start: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.changelog-body p + ul,
+.changelog-body ul + p {
+  margin-top: 6px;
+}
+
+.changelog-body strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.changelog-body code {
+  font: 400 11.5px var(--mono);
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
 .progress {
   position: relative;
   height: 6px;

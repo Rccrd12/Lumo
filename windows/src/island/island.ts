@@ -39,6 +39,7 @@ import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
 import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
+import { IslandPlan } from "./plan";
 import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
 
@@ -123,6 +124,8 @@ export class Island {
   private menu!: ContextMenu;
   /** The live activities beside the open island (island/activities.ts). */
   private activities!: IslandActivities;
+  /** The Plan island, in its own window (island/plan.ts). */
+  plan!: IslandPlan;
   /** The island's height when the live activities first showed: theirs since. */
   private activitiesStartH: number | null = null;
   private wakeStrip!: HTMLElement;
@@ -410,6 +413,7 @@ export class Island {
         State.notify();
       },
       showActivities: () => this.activities.unfold(),
+      showPlan: () => this.plan.unfold(),
       previewLook: (look) => {
         State.lookPreview = look;
         State.notify();
@@ -487,6 +491,11 @@ export class Island {
       },
       movable: this.canResize && IS_TAURI,
       changed: () => State.notify(),
+    });
+
+    this.plan = new IslandPlan({
+      openSettings: () => this.openSettingsAt(null),
+      refreshAll: () => void this.refreshAll(),
     });
 
     this.root.append(this.wakeStrip, this.activities.view.el, this.islandEl);
@@ -1205,9 +1214,12 @@ export class Island {
     const right = State.settings.activitiesSide === "right";
     const x = right ? at.x + at.w + ACTIVITIES_GAP : at.x - ACTIVITIES_GAP - w;
     const s = State.settings;
-    const fits = this.activities.detached || (x >= 0 && x + w <= window.innerWidth);
-    const show = State.mode === "expanded" && !isUpright(this.dock) && s.activitiesPanel !== false &&
-      s.activitiesFolded !== true && !NO_ACTIVITIES.has(State.view) && fits && at.h >= 120;
+    const fits = x >= 0 && x + w <= window.innerWidth;
+    // In their own window they stay on screen when the island closes: only
+    // their "–" puts them away.
+    const show = !isUpright(this.dock) && s.activitiesPanel !== false && s.activitiesFolded !== true && (
+      this.activities.detached ||
+      (State.mode === "expanded" && !NO_ACTIVITIES.has(State.view) && fits && at.h >= 120));
     // The height picked with its grip, else as tall as the island or taller
     // when the window has the room: its cards need more than a short view gives.
     const bottom = this.dock === "bottom";
@@ -1493,9 +1505,11 @@ export class Island {
       UploadSeq.updateCursor(at.x, at.y);
     }
 
-    // The live activities in their own window count as the island.
+    // The live activities in their own window stand on their own: leaving the
+    // island for them closes it, and resting on them never opens it. Only
+    // while they are dragged or resized off the open island do they count as it.
     const hit = this.hitRect();
-    const inIsland = overPanel || (
+    const inIsland = (overPanel && State.mode === "expanded") || (
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
       y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
 
@@ -1859,7 +1873,7 @@ export class Island {
     this.leafEl.classList.toggle("on",
       compactOn && State.effort === "saver" && this.compact.mail == null && this.compact.approval == null);
     State.activitiesRoom = !isUpright(this.dock);
-    if (this.compact.sync(compactOn, compactOn || this.activities.isVisible) && State.mode === "compact") {
+    if (this.compact.sync(compactOn, compactOn || this.activities.onScreen) && State.mode === "compact") {
       this.animateGeometry(this.compact.size == null);
     }
     this.activities.sync();

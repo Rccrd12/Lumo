@@ -97,6 +97,8 @@ export const ICONS = {
   backward: "M21 6.2v11.6a.7.7 0 0 1-1.1.6L12 13v4.8a.7.7 0 0 1-1.1.6l-8.2-5.8a.7.7 0 0 1 0-1.2l8.2-5.8a.7.7 0 0 1 1.1.6V11l7.9-5.4a.7.7 0 0 1 1.1.6z",
   // square.grid.2x2 (the live activities, folded).
   activities: "M4.5 4.5h6v6h-6zM13.5 4.5h6v6h-6zM4.5 13.5h6v6h-6zM13.5 13.5h6v6h-6z",
+  // list.bullet.clipboard (the agent's plan, folded).
+  plan: "M8.5 5H6.5A1.5 1.5 0 0 0 5 6.5v12A1.5 1.5 0 0 0 6.5 20h11a1.5 1.5 0 0 0 1.5-1.5v-12A1.5 1.5 0 0 0 17.5 5h-2M9 3.8h6v2.7H9zM8.5 11l1.2 1.2 2-2.2M13.5 11.3h2.5M8.5 15.5h.01M11.5 15.5h4.5",
   // envelope (a new email).
   envelope: "M3.5 6h17v12h-17zM3.8 6.4 12 13l8.2-6.6",
 } as const;

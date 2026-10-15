@@ -186,6 +186,12 @@ export interface Settings {
   activitiesDetached: boolean;
   activitiesX: number;
   activitiesY: number;
+  /** The Plan island's window (plan_island.rs): moved by hand to this physical position, and its size (0 = default). Rust's. */
+  agentPlanMoved: boolean;
+  agentPlanX: number;
+  agentPlanY: number;
+  agentPlanWidth: number;
+  agentPlanHeight: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -266,6 +272,8 @@ export interface Settings {
    * else English), or one of src/i18n's ten codes ("fr", "pt-BR", "zh-Hans"…).
    */
   language: string;
+  /** When Lumo opens, one look at GitHub for a newer release (Settings → Updates). */
+  updateCheckOnOpen: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -312,6 +320,11 @@ export const DEFAULT_SETTINGS: Settings = {
   activitiesDetached: false,
   activitiesX: 0,
   activitiesY: 0,
+  agentPlanMoved: false,
+  agentPlanX: 0,
+  agentPlanY: 0,
+  agentPlanWidth: 0,
+  agentPlanHeight: 0,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -344,6 +357,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lumoCharacter: DEFAULT_LOOK,
   pillColors: {},
   language: "",
+  updateCheckOnOpen: true,
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",
@@ -383,6 +397,8 @@ class AppState {
   listening: ListenWatch[] = [];
   /** The live activities can show beside the open island (an edge with room for them). */
   activitiesRoom = false;
+  /** The Plan island is folded into its icon in the top bar (island/plan.ts). */
+  planIcon = false;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };

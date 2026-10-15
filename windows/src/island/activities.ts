@@ -3,7 +3,8 @@
 // emails. Beside the open island (left or right) it is drawn in the island's
 // page; dragged by its top bar it comes off into a window of its own
 // (activities.html, activities.rs), put wherever it is left, and joins the
-// island again when dropped against its side. Its grips resize it. Its "–"
+// island again when dropped against its side. There it stays on screen when
+// the island closes, until its "–" puts it away. Its grips resize it. Its "–"
 // folds it into an icon left of the "+" in the island's top bar, which brings
 // it back. Coming off and joining again, one is drawn before the other goes
 // (activities.rs), so they never blink.
@@ -13,7 +14,7 @@
 // island's page, and does what is asked — for the view beside the island and
 // for the one in its own window alike.
 //
-// It costs nothing while the island is shut: only drawn, and only asking for
+// It costs nothing while it is off screen: only drawn, and only asking for
 // the music, while on screen. The calendar is fetched every 15 minutes from
 // the address in Settings → Island, and when it shows if older than 5. A
 // failed fetch (the network not back yet after sleep, a dropped connection)
@@ -213,6 +214,11 @@ export class IslandActivities {
 
   get isVisible(): boolean {
     return this.visible;
+  }
+
+  /** On screen, beside the island or in their own window. */
+  get onScreen(): boolean {
+    return this.visible || this.windowShown;
   }
 
   /** The panel in its own window instead of beside the island. */

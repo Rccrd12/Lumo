@@ -1,11 +1,16 @@
 // Settings → Updates: this build's version, and a newer one from GitHub when
-// there is one. Nothing is checked in the background: only the button asks
-// (src-tauri/src/updater.rs), and only "Update now" downloads and runs the
-// installer, which then replaces Lumo.
+// there is one. GitHub is asked when the button is clicked, and once when
+// Lumo opens unless that is turned off (core/update-check.ts, which leaves
+// what it found here); only "Update now" downloads and runs the installer
+// (src-tauri/src/updater.rs), which then replaces Lumo. Under it, the
+// changelog built into the app (./changelog.ts).
 
+import CHANGELOG from "virtual:lumo-changelog";
 import { Bridge, onEvent, type UpdateInfo } from "../core/bridge";
+import { foundFor, rememberFound } from "../core/update-check";
 import { clear, h } from "../views/dom";
 import { errorText, sectionHead, setting } from "./parts";
+import { changelogList, parseChangelog } from "./changelog";
 import { t } from "../i18n/i18n";
 
 const TEXT = {
@@ -22,7 +27,9 @@ const TEXT = {
   get updateHint() { return t("The installer opens and Lumo closes while it runs."); },
   get downloading() { return t("Downloading the installer…"); },
   get launching() { return t("The installer is starting. Lumo closes now so it can be updated."); },
-  get onClick() { return t("Lumo only looks for updates when you click: nothing is checked in the background."); },
+  get changelog() { return t("Changelog"); },
+  get changelogIntro() { return t("What changed in each version of Lumo."); },
+  get installed() { return t("Installed"); },
   get noTelemetry() { return t("No telemetry. Network requests only go to the services you configure yourself."); },
 };
 
@@ -52,7 +59,9 @@ function lastInfo(): UpdateInfo | null {
 async function check() {
   set({ kind: "checking" });
   try {
-    set({ kind: "checked", info: await Bridge.updateCheck() });
+    const info = await Bridge.updateCheck();
+    rememberFound(info);
+    set({ kind: "checked", info });
   } catch (err) {
     set({ kind: "failed", error: errorText(err), info: null });
   }
@@ -69,7 +78,16 @@ async function install(info: UpdateInfo) {
   }
 }
 
-export function updatesSection(version: string): HTMLElement {
+/**
+ * `checkOnOpen` is Settings → Updates → Check when Lumo opens, as a row
+ * settings/main.ts builds with its switch.
+ */
+export function updatesSection(version: string, checkOnOpen: HTMLElement): HTMLElement {
+  // A newer release the island found when Lumo opened: shown at once, with Update now.
+  if (phase.kind === "idle") {
+    const found = foundFor(version);
+    if (found) phase = { kind: "checked", info: found };
+  }
   if (!listening) {
     listening = true;
     void onEvent<{ received: number; total: number }>("update-progress", (p) => {
@@ -90,9 +108,10 @@ export function updatesSection(version: string): HTMLElement {
     const info = lastInfo();
     body.append(
       setting(h("span", {}, TEXT.version, " ", h("span", { class: "version-number", text: info?.current || version || "—" })),
-        `${TEXT.onClick} ${TEXT.noTelemetry}`,
+        TEXT.noTelemetry,
         checkBtn,
       ),
+      checkOnOpen,
     );
 
     switch (phase.kind) {
@@ -160,4 +179,13 @@ export function updatesSection(version: string): HTMLElement {
   redraw = draw;
   draw();
   return h("section", {}, ...sectionHead(TEXT.title), body);
+}
+
+/** The changelog built into the app, the installed version marked. */
+export function changelogSection(version: string): HTMLElement {
+  const entries = parseChangelog(CHANGELOG);
+  return h("section", {},
+    ...sectionHead(TEXT.changelog, TEXT.changelogIntro),
+    changelogList(entries, version, TEXT.installed),
+  );
 }

@@ -69,6 +69,14 @@ pub struct Settings {
     pub activities_detached: bool,
     pub activities_x: f64,
     pub activities_y: f64,
+    /// The Plan island's window (plan_island.rs): moved by hand to this
+    /// physical desktop position (else right of the island), and its size in
+    /// page pixels (0 = the default one). Owned by Rust, like the above.
+    pub agent_plan_moved: bool,
+    pub agent_plan_x: f64,
+    pub agent_plan_y: f64,
+    pub agent_plan_width: f64,
+    pub agent_plan_height: f64,
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -191,6 +199,9 @@ pub struct Settings {
     /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `mochi_outfit`: a
     /// code this build doesn't know reads as "".
     pub language: String,
+    /// When Lumo opens, ask GitHub once whether a newer Windows release is out
+    /// (updater.rs) and say so on the island. Settings → Updates turns it off.
+    pub update_check_on_open: bool,
 }
 
 /// A little bigger than the Mac's icons, which sit closer to the eye.
@@ -235,6 +246,11 @@ impl Default for Settings {
             activities_detached: false,
             activities_x: 0.0,
             activities_y: 0.0,
+            agent_plan_moved: false,
+            agent_plan_x: 0.0,
+            agent_plan_y: 0.0,
+            agent_plan_width: 0.0,
+            agent_plan_height: 0.0,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -274,6 +290,7 @@ impl Default for Settings {
             lumo_character: "filo".into(),
             pill_colors: BTreeMap::new(),
             language: String::new(),
+            update_check_on_open: true,
         }
     }
 }
@@ -552,6 +569,11 @@ mod tests {
   "activitiesDetached": true,
   "activitiesX": 120.0,
   "activitiesY": 80.0,
+  "agentPlanMoved": true,
+  "agentPlanX": 300.0,
+  "agentPlanY": 60.0,
+  "agentPlanWidth": 320.0,
+  "agentPlanHeight": 380.0,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -590,7 +612,8 @@ mod tests {
   "lumoMotion": "lively",
   "lumoCharacter": "goccia",
   "pillColors": { "integration_claude": "#2DD4BF" },
-  "language": "pt-BR"
+  "language": "pt-BR",
+  "updateCheckOnOpen": false
 }"##;
 
     fn custom() -> Value {
@@ -751,6 +774,13 @@ mod tests {
             expected[key] = defaults()[key].clone();
             assert_eq!(shown(&loaded), expected, "without {key}");
         }
+    }
+
+    #[test]
+    fn a_file_from_before_the_update_check_checks_when_lumo_opens() {
+        assert!(parse(&custom_with("updateCheckOnOpen", None)).unwrap().update_check_on_open);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().update_check_on_open);
+        assert!(Settings::default().update_check_on_open);
     }
 
     #[test]
@@ -979,6 +1009,11 @@ mod tests {
                 "activitiesDetached",
                 "activitiesX",
                 "activitiesY",
+                "agentPlanMoved",
+                "agentPlanX",
+                "agentPlanY",
+                "agentPlanWidth",
+                "agentPlanHeight",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -1018,6 +1053,7 @@ mod tests {
                 "lumoCharacter",
                 "pillColors",
                 "language",
+                "updateCheckOnOpen",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

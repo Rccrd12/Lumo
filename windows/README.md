@@ -44,11 +44,18 @@ You can also [build it yourself](#build-it-yourself).
 
 **Settings… → Updates** shows the version you run. **Check for updates** asks
 GitHub for the newest `windows-v*` release of
-[Rccrd12/Lumo](https://github.com/Rccrd12/Lumo/releases) — only
-when you click it, never in the background. When there is a newer one, **Update
+[Rccrd12/Lumo](https://github.com/Rccrd12/Lumo/releases). Lumo also asks once
+each time it opens, and when a newer version is out the island says so for a
+few seconds and Settings opens on Updates with it; **Check when Lumo opens**
+turns that off. When there is a newer one, **Update
 now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder,
 starts it with its usual window, and Lumo quits so the installer can replace
-it. Only installers from that repository's GitHub releases are accepted.
+it. Nothing is downloaded without that click. Only installers from that
+repository's GitHub releases are accepted.
+
+Under it, the **Changelog** lists what changed in every version, the installed
+one marked. It is the repository's `CHANGELOG.md`, built into the app, so it is
+there offline and always matches the build.
 
 ### Your data
 
@@ -188,6 +195,24 @@ read.
 Settings → Island → **Say what's going on** and **Show the music playing**
 turn them off. While the island is hidden nothing is asked or counted: the
 music is only asked about while the closed island is on screen.
+
+### Plan
+
+A third island, right of the main one, with the plan an agent follows. It is
+shut and out of reach until an agent makes one: give an agent a job and, as
+soon as it writes its to-do list (Claude Code's TodoWrite or the plan it leaves
+Plan Mode with; Codex's `update_plan`, Gemini CLI's `write_todos` and
+OpenCode's `todowrite` when their hooks pass those calls on), the island
+opens with it, whether the main island is open or not. Each step shows where it
+stands (to do, under way, done, dropped), with who follows the plan, in which
+folder, and how far along it is; it moves on live as the agent works. Nothing is
+asked of the agents: the plan is read off the hooks Lumo already has.
+
+Like the live activities it is moved by its top bar, stays wherever you leave
+it, and is resized from its edges and bottom corners. Its **–** folds it into an
+icon in the island's top bar, left of the usage pills; that icon brings it back,
+and a new plan opens it again. A finished plan stays a few seconds, then the
+island shuts; a session that ends takes its plan with it.
 
 ### Keyboard shortcuts
 

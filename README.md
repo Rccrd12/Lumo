@@ -180,7 +180,7 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 
 ## Privacy
 
-- No telemetry, no account, no background update checks.
+- No telemetry, no account. The only update check is one request to GitHub when Lumo opens (off in Settings → Updates), and nothing is downloaded without your click.
 - Keys live in Windows Credential Manager, never on disk and never in the interface.
 - The only network requests Lumo makes are to the services you configure yourself.
 - Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → Chat.

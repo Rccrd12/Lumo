@@ -1,8 +1,10 @@
 // Settings → Updates: is there a newer Windows build on GitHub, and if so,
 // download its installer and run it.
 //
-// Nothing here runs on its own: the check and the download only ever start from
-// a click in Settings (no telemetry, no background calls). The installer is the
+// The check runs when Settings → Updates → Check for updates is clicked, and once
+// when Lumo opens unless Settings turns that off (src/core/update-check.ts); no
+// telemetry, nothing about this computer is sent. The download only ever starts
+// from a click on Update now. The installer is the
 // same NSIS setup.exe the release workflow publishes (.github/workflows/windows.yml,
 // named by scripts/pack.mjs), run with its own window so the user sees every
 // step; Lumo quits right after starting it so its files can be replaced.
@@ -213,7 +215,7 @@ fn user_agent(app: &AppHandle) -> String {
     format!("Lumo/{} (+https://github.com/{UPDATE_REPO})", app.package_info().version)
 }
 
-/// Settings → Updates → Check for updates. Asks GitHub for the repository's
+/// Settings → Updates → Check for updates, and the check when Lumo opens. Asks GitHub for the repository's
 /// releases (one anonymous request, nothing about this computer in it) and
 /// compares the newest Windows one with this build.
 #[tauri::command]
