@@ -660,7 +660,10 @@ Gemini uses the computer by itself, when it decides it needs to:
   the other services you connected, timers and music, the chat, and the
   week's recap. "What is Claude doing?", "did CI pass?", "how much of my
   limit is left?" are answered from Lumo itself, with no call to any
-  service. It never answers a card: only your click does.
+  service. It never answers a card: only your click does. Its quick look
+  only counts the emails, the chat's messages and the services; who wrote,
+  what was said and the services' data reach Google only when you ask
+  about them.
 - **It sees the open windows** and **the folder open in File Explorer**.
 - **It finds files by name** in your home, Desktop, Documents, Downloads,
   Pictures, Music and Videos folders (OneDrive's too) and the folder open in
@@ -693,7 +696,8 @@ Gemini uses the computer by itself, when it decides it needs to:
   are never touched.
 - **It reads your notifications** from Windows' notification centre. The
   first time, Windows asks whether Lumo may (Settings → Privacy & security →
-  Notifications).
+  Notifications). Codes in them (a run of 4 to 8 digits, like a sign-in
+  code or a PIN) are hidden before Gemini reads them.
 - **It sets reminders at a time** ("remind me tomorrow at 9 to call the
   bank"): they ring on the island like a timer, are kept across restarts, and
   one that came due while Lumo wasn't running rings when it starts again.

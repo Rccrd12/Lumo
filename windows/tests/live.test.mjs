@@ -530,6 +530,13 @@ test("a reminder's time: a local date and time, a bare date at 9, or a length fr
   assert.equal(PC.reminderTime({}, now), null);
 });
 
+test("a notification's codes never reach Google", () => {
+  assert.equal(PC.hideCodes("Your code is 482913"), "Your code is ••••");
+  assert.equal(PC.hideCodes("Codice: 482 913, scade tra 10 minuti"), "Codice: ••••, scade tra 10 minuti");
+  assert.equal(PC.hideCodes("PIN 1234-5678"), "PIN ••••");
+  assert.equal(PC.hideCodes("Meeting at 10:30 in room 12"), "Meeting at 10:30 in room 12", "short numbers stay");
+});
+
 test("control_computer and arrange_windows check the action before Rust is asked", async () => {
   const { host: h, log } = host();
   const bad = await runTool({ id: "p1", name: "control_computer", args: { action: "explode" } }, h);
