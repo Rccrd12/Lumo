@@ -158,8 +158,9 @@ test("the email: the text in full only when asked for it", () => {
   assert.equal(full.unread, 3);
   assert.deepEqual(full.newestUnread[0], { from: "Marco", subject: "Cena", date: "Wed", text: "Ci vediamo alle 8 da me." });
   const short = L.lumoStatus(facts({ integrations }), "all").email;
-  assert.equal(short.newestUnread[0].preview, "Ci vediamo?");
-  assert.equal(short.newestUnread[0].text, undefined);
+  assert.equal(short.unread, 3);
+  assert.equal(short.newestUnread, undefined, "the short look only counts them");
+  assert.doesNotMatch(JSON.stringify(short), /Marco|Cena|vediamo/);
 });
 
 test("the calendar: what is on now and what comes, never what is over", () => {
@@ -191,6 +192,8 @@ test("the other services: their own data, kept small", () => {
   assert.ok(out.Vercel.deployments[0].url.length <= 240);
   assert.deepEqual(out.Stripe, { error: "Invalid key" });
   assert.equal(out.Notion, undefined, "not connected: left out");
+  const short = L.lumoStatus(facts({ integrations }), "all").services;
+  assert.deepEqual(short, { Vercel: "connected", Stripe: { error: "Invalid key" } }, "the short look: which are connected, no data");
 });
 
 test("timers, music, the chat and the week", () => {
@@ -203,7 +206,7 @@ test("timers, music, the chat and the week", () => {
   assert.equal(out.timers.timers.length, 1);
   assert.equal(out.timers.timers[0].label, "Pasta");
   assert.equal(out.timers.music.app, "Spotify");
-  assert.deepEqual(out.chat.messages, [{ from: "user", text: "Ciao" }, { from: "Anthropic", text: "Ciao!" }]);
+  assert.equal(out.chat.messages, 2, "the short look only counts them");
   assert.equal(out.week.mostUsedAgent, "Codex");
   assert.match(out.more, /about/);
 });

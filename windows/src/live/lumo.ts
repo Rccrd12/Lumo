@@ -68,7 +68,9 @@ export async function gatherLumo(topic: LumoTopic): Promise<LumoFacts> {
   }
   const wants = (t: LumoTopic) => topic === "all" || topic === t;
   const [media, week] = await Promise.all([
-    wants("timers") ? Bridge.mediaNow().catch(() => Feed.media) : Promise.resolve(Feed.media),
+    // `call` answers null rather than throwing, so a failed ask reads as
+    // nothing playing; the feed's own track is what the island is showing.
+    wants("timers") ? Bridge.mediaNow().then((m) => m ?? Feed.media) : Promise.resolve(Feed.media),
     wants("week")
       ? Bridge.recapHistory(mondayOf(new Date(now)).getTime() / 1000)
         .then((h) => (h && Array.isArray(h.turns) ? summarize(h, mondayOf(new Date(now))) : null))
@@ -288,11 +290,14 @@ function email(f: LumoFacts, full: boolean): Json {
   if (missing || !i) return missing ?? {};
   const list = Array.isArray(i.data.messages) ? (i.data.messages as Json[]) : [];
   const out: Json = { unread: typeof i.data.unread === "number" ? i.data.unread : list.length };
-  out.newestUnread = list.slice(0, full ? 10 : 5).map((m) => ({
+  // The short look counts them: who wrote and what goes to Google only when
+  // the user asks about the email itself.
+  if (!full) return { ...out, more: "Ask with `about` \"email\" for the senders, subjects and text." };
+  out.newestUnread = list.slice(0, 10).map((m) => ({
     from: cut(m.from || m.address, 80),
     subject: cut(m.subject, 160),
     ...(m.date ? { date: cut(m.date, 60) } : {}),
-    ...(full ? { text: cut(m.body || m.preview, 1500) } : { preview: cut(m.preview, 160) }),
+    text: cut(m.body || m.preview, 1500),
   }));
   return out;
 }
@@ -317,7 +322,9 @@ function services(f: LumoFacts, full: boolean): Json {
     const def = pillDefinition(id);
     if (!def || def.category !== "service" || id === "integration_github" || id === "integration_mail") continue;
     if (!i.configured && !i.error) continue;
-    out[def.name] = notReady(i, def.name) ?? trimData(i.data, full ? 10 : 4, full ? 240 : 120);
+    // The short look says only which are connected: their data (who booked,
+    // what was paid, to whom an email went) is other people's too.
+    out[def.name] = notReady(i, def.name) ?? (full ? trimData(i.data, 10, 240) : "connected");
   }
   return Object.keys(out).length ? out : { none: "No other service is connected in Lumo." };
 }
@@ -333,13 +340,13 @@ function timers(f: LumoFacts): Json {
 }
 
 function chat(f: LumoFacts, full: boolean): Json {
-  const msgs = f.chat.messages.slice(-(full ? 10 : 4));
+  const out: Json = { provider: f.chat.provider, model: f.chat.model };
+  if (!f.chat.messages.length) return { ...out, messages: "The chat is empty." };
+  // The short look counts the messages; their text only when asked about the chat.
+  if (!full) return { ...out, messages: f.chat.messages.length };
   return {
-    provider: f.chat.provider,
-    model: f.chat.model,
-    messages: msgs.length
-      ? msgs.map((m) => ({ from: m.role === "user" ? "user" : f.chat.provider, text: cut(m.content, full ? 1200 : 240) }))
-      : "The chat is empty.",
+    ...out,
+    messages: f.chat.messages.slice(-10).map((m) => ({ from: m.role === "user" ? "user" : f.chat.provider, text: cut(m.content, 1200) })),
   };
 }
 
@@ -381,6 +388,6 @@ export function lumoStatus(f: LumoFacts, topic: LumoTopic): Json {
   if (topic !== "all") return { [topic]: sections[topic]() };
   const out: Json = {};
   for (const [name, read] of Object.entries(sections)) out[name] = read();
-  out.more = "Ask again with `about` set to one section for all of it (the emails' text, every step, every event…).";
+  out.more = "Ask again with `about` set to one section for all of it (the emails, the chat's messages, the services' data, every step, every event…).";
   return out;
 }

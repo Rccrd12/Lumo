@@ -162,14 +162,6 @@ export class CompactStrip {
       Feed.holdMail(Date.now() + 3000);
       this.schedule();
     });
-    // Y or N while the closed island shows a request (approval_keys.rs): as
-    // its Allow or Deny, the open card being the one to answer when it is up.
-    void onEvent<"allow" | "deny">("approval-key", (d) => {
-      const a = this.approval;
-      if (!this.visible || !a || State.mode !== "compact") return;
-      if (performance.now() - this.approvalAt < CLICK_GUARD_MS) return;
-      this.host.decide(d, a.requestId);
-    });
   }
 
   /** The size the closed island takes for what it shows, or null for the plain one. */

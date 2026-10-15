@@ -135,6 +135,13 @@ export function said(ms: number): string {
   return new Date(ms).toLocaleString("en-GB", { weekday: "short", day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
+/** A notification's text with its codes hidden: a run of 4 to 8 digits, spaces
+ *  or dashes between them allowed, is most likely a sign-in code, and it has no
+ *  business going to Google. */
+export function hideCodes(text: string): string {
+  return text.replace(/(?<!\d)\d(?:[ -]?\d){3,7}(?!\d)/g, "••••");
+}
+
 /** What the model hears of a plan. */
 export function planResult(plan: PcFilePlan): Record<string, unknown> {
   return {

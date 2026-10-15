@@ -41,7 +41,7 @@ pub fn unix_seconds(ticks: i64) -> i64 {
 
 pub fn read() -> Result<Vec<Notification>, String> {
     let mut list = imp::read()?;
-    list.sort_by(|a, b| b.at.cmp(&a.at));
+    list.sort_by_key(|r| std::cmp::Reverse(r.at));
     list.truncate(MAX);
     Ok(list)
 }

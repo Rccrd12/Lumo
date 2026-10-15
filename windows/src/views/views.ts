@@ -19,7 +19,7 @@ import {
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
 import { approvalKey } from "../core/approvals";
-import { Bridge, onEvent } from "../core/bridge";
+import { Bridge } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
@@ -541,10 +541,9 @@ function buildApproval(actions: ViewActions): ViewHost {
   el.addEventListener("mousedown", () => {
     if (State.pendingApproval && !State.pendingApproval.questions) actions.takeKeyboard();
   });
-  // Y and N answer even with the chat field holding the keyboard, and from
-  // another app too: while the card is on screen the island holds them as
-  // global keys (approval_keys.rs), which come as `approval-key`. The keydown
-  // below is what is left when they could not be had.
+  // Then Y and N answer, as the buttons say, even with the chat field holding
+  // the keyboard. Only while the island has it: in another app they are just
+  // letters, never an answer.
   let lastKeyAt = -Infinity;
   const cardOnScreen = () => {
     const req = State.pendingApproval;
@@ -574,9 +573,6 @@ function buildApproval(actions: ViewActions): ViewHost {
     },
     true,
   );
-  void onEvent<"allow" | "deny">("approval-key", (d) => {
-    if (cardOnScreen()) answerKey(d);
-  });
   return {
     el,
     sync() {

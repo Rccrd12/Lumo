@@ -89,16 +89,34 @@ test("Lumo waits in the card's top-left corner, whatever the island's size", () 
 });
 
 test("a drag that goes off the island and back carries on instead of starting over", () => {
-  UploadSeq.deactivate();
-  UploadSeq.enterZone(500, 120);
-  UploadSeq.setOver(false);
-  assert.equal(UploadSeq.frame().fileVisible, false);
-  assert.equal(UploadSeq.frame().zoneOver, false);
-  UploadSeq.enterZone(480, 110);
-  assert.ok(UploadSeq.isActive);
-  const f = UploadSeq.frame();
-  assert.equal(f.fileVisible, true);
-  assert.equal(f.zoneOver, true);
-  assert.equal(f.cursorX, 480);
-  UploadSeq.deactivate();
+  // The clock is ours: Lumo has to have had time to turn into a box, since
+  // carrying on and starting over differ by where his springs are.
+  const realNow = performance.now.bind(performance);
+  let clock = 1000;
+  performance.now = () => clock;
+  try {
+    UploadSeq.deactivate();
+    UploadSeq.enterZone(500, 120);
+    clock += 400;
+    const boxed = UploadSeq.frame().morph;
+    assert.ok(boxed > 0.9, `Lumo is a box over the island (${boxed})`);
+    UploadSeq.setOver(false);
+    clock += 60;
+    assert.equal(UploadSeq.frame().fileVisible, false);
+    assert.equal(UploadSeq.frame().zoneOver, false);
+    const left = UploadSeq.frame().morph;
+
+    UploadSeq.enterZone(480, 110);
+    assert.ok(UploadSeq.isActive);
+    const f = UploadSeq.frame();
+    assert.equal(f.fileVisible, true);
+    assert.equal(f.zoneOver, true);
+    assert.equal(f.cursorX, 480);
+    // Eased on from where he was, not back to himself and in again from 0.
+    assert.equal(f.morph, left);
+    assert.ok(f.morph > 0.2, `carried on (${f.morph})`);
+  } finally {
+    performance.now = realNow;
+    UploadSeq.deactivate();
+  }
 });

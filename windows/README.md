@@ -224,12 +224,11 @@ island shrinks to its compact size and stays on screen, nothing is answered, and
 opening it again shows the card. Under the request, a line says what it is
 for: the agent's own words when it gave some (Claude Code and Gemini CLI
 describe each command), else what the request does ("Only looks: changes
-nothing.", "Changes a file."). While the card (or the closed island's Deny
-and Allow) is on screen, **Y** allows and **N** denies, as the buttons say,
-even with the chat field focused or another app in front: Lumo holds the two
-keys only while a request waits, so in that moment Y and N typed elsewhere go
-to the card. A letter typed in the island right after another key, mid-word,
-is never taken as an answer.
+nothing.", "Changes a file."). Once the island has the keyboard (a click on the
+card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say, even
+with the chat field focused. In another app they are just letters, never an
+answer. A letter typed right after another key, mid-word, is never taken as an
+answer.
 **Open terminal** brings the window the session
 runs in to the front.
 
@@ -661,7 +660,10 @@ Gemini uses the computer by itself, when it decides it needs to:
   the other services you connected, timers and music, the chat, and the
   week's recap. "What is Claude doing?", "did CI pass?", "how much of my
   limit is left?" are answered from Lumo itself, with no call to any
-  service. It never answers a card: only your click does.
+  service. It never answers a card: only your click does. Its quick look
+  only counts the emails, the chat's messages and the services; who wrote,
+  what was said and the services' data reach Google only when you ask
+  about them.
 - **It sees the open windows** and **the folder open in File Explorer**.
 - **It finds files by name** in your home, Desktop, Documents, Downloads,
   Pictures, Music and Videos folders (OneDrive's too) and the folder open in
@@ -694,7 +696,8 @@ Gemini uses the computer by itself, when it decides it needs to:
   are never touched.
 - **It reads your notifications** from Windows' notification centre. The
   first time, Windows asks whether Lumo may (Settings → Privacy & security →
-  Notifications).
+  Notifications). Codes in them (a run of 4 to 8 digits, like a sign-in
+  code or a PIN) are hidden before Gemini reads them.
 - **It sets reminders at a time** ("remind me tomorrow at 9 to call the
   bank"): they ring on the island like a timer, are kept across restarts, and
   one that came due while Lumo wasn't running rings when it starts again.

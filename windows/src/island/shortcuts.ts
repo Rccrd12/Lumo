@@ -22,6 +22,8 @@ const CLAUDE_DESKTOP_ID = "agent_claude-desktop";
 /** What the shortcuts need from the island. */
 export interface ShortcutHost {
   alert(view: IslandViewName): void;
+  /** Brings the island out of its edge, to the closed island. */
+  reveal(): void;
   setView(view: IslandViewName): void;
   collapse(): void;
   emote(name: BotEmoteName): void;
@@ -132,6 +134,10 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       resume();
       if (!Live.active) {
         if (State.mode === "expanded") host.alert("live");
+        // Tucked into the edge, it comes out: the closed island shows the
+        // call, and a hidden one would leave the microphone on with nothing
+        // on screen to end it.
+        else if (State.mode === "hidden") host.reveal();
         void Live.start();
       } else if (State.mode === "expanded" && State.view !== "live") {
         host.alert("live");

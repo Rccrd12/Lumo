@@ -5,7 +5,7 @@ import { Bridge } from "../core/bridge";
 import { timerLeft } from "../core/compact";
 import { N_, t } from "../i18n/i18n";
 import {
-  CONTROL_ACTIONS, PC_TOOL, WINDOW_ACTIONS, numberArg, planResult, reminderTime, said, statusResult, textArg,
+  CONTROL_ACTIONS, PC_TOOL, WINDOW_ACTIONS, hideCodes, numberArg, planResult, reminderTime, said, statusResult, textArg,
 } from "./pc-protocol";
 import type { FunctionCall } from "./protocol";
 
@@ -59,7 +59,7 @@ export async function runPcTool(call: FunctionCall, doing: (label: string | null
       doing(t(PC_STRINGS.readingNotifications));
       const list = await Bridge.pcNotifications();
       if (list.length === 0) return { none: "There are no notifications." };
-      return { notifications: list.map((x) => ({ app: x.app, text: x.text, when: x.at ? said(x.at * 1000) : undefined })) };
+      return { notifications: list.map((x) => ({ app: x.app, text: hideCodes(x.text), when: x.at ? said(x.at * 1000) : undefined })) };
     }
     case PC_TOOL.remind: {
       const text = textArg(a.text);
