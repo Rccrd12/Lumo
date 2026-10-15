@@ -198,6 +198,11 @@ export interface Settings {
   showCodexPlanInNotch: boolean;
   /** Show the Antigravity CLI pill in the island's header. */
   showAntigravityPlanInNotch: boolean;
+  /**
+   * The plan pills turned off in Settings ("codex", "antigravity"): an added
+   * agent's pill shows on its own otherwise.
+   */
+  hiddenPlanPills: string[];
   /** Ask Anthropic for the Claude plan's usage with Claude Code's sign-in (plan_usage.rs). */
   planUsageOnline: boolean;
   /** Simple permission requests are answered on the closed island (core/approvals.ts). */
@@ -314,6 +319,7 @@ export const DEFAULT_SETTINGS: Settings = {
   planRelayInstalled: false,
   showCodexPlanInNotch: false,
   showAntigravityPlanInNotch: false,
+  hiddenPlanPills: [],
   planUsageOnline: false,
   quickApprovals: true,
   activitiesFollowIsland: true,
@@ -715,12 +721,25 @@ class AppState {
   }
 
   /**
-   * What the island opens on. A card waiting for an answer comes first, so
-   * reopening a folded island shows it again (Mac #117, #290).
+   * The tab last open, Chat or Agents: closing and reopening the island
+   * brings it back (island.ts records it as the view changes).
    */
-  /** What the island opens on: a waiting card first, else the chat. */
+  lastTab: "chat" | "agents" = "chat";
+
+  /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
+  noteTab(view: IslandViewName) {
+    if (view === "prompt" || view === "live") this.lastTab = "chat";
+    else if (view === "overview" || view === "empty") this.lastTab = "agents";
+  }
+
+  /**
+   * What the island opens on. A card waiting for an answer comes first, so
+   * reopening a folded island shows it again (Mac #117, #290); otherwise the
+   * tab it was left on, Chat or Agents.
+   */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    if (this.lastTab === "agents") return this.agentsView();
     return this.liveActive ? "live" : "prompt";
   }
 

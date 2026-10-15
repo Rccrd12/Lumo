@@ -33,7 +33,7 @@ import { refreshConfigured, refreshHookPills } from "./integrations";
 import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
 import { MENU_TEXT, pickedItems } from "../core/context-menu";
 import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
-import { refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
+import { agentPlanWanted, refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
@@ -748,8 +748,8 @@ export class Island {
       return def && !isHookPill(id) && def.category !== "ai" && (State.integrations[id]?.configured ?? false);
     });
     refreshClaudePlanOnline(true);
-    if (State.settings.showCodexPlanInNotch) refreshCodexPlanUsage(true);
-    if (State.settings.showAntigravityPlanInNotch) refreshAntigravityPlanUsage(true);
+    if (agentPlanWanted("codex")) refreshCodexPlanUsage(true);
+    if (agentPlanWanted("antigravity")) refreshAntigravityPlanUsage(true);
     await Promise.allSettled([
       refreshConfigured(),
       refreshHookPills(),
@@ -1840,6 +1840,7 @@ export class Island {
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
         || this.lastSyncedView === "approval";
       this.lastSyncedView = State.view;
+      State.noteTab(State.view);
       this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
         this.focusChat();

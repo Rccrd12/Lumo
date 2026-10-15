@@ -152,9 +152,11 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         None => &buf[..],
     };
     let Ok(mut payload) = serde_json::from_slice::<Value>(line) else { return };
-    // A tool call of the chat's computer use (lumo-hook --mcp): one answer line.
-    if let Some(request) = payload.get("lumo_computer") {
-        let answer = crate::computer::serve(&app, request).await;
+    // A tool call of the chat's computer use or of Lumo's email tools
+    // (lumo-hook --mcp): one answer line.
+    let tool_call = payload.get("lumo_computer").map(|r| (false, r)).or_else(|| payload.get("lumo_mail").map(|r| (true, r)));
+    if let Some((mail, request)) = tool_call {
+        let answer = if mail { crate::mail::serve(&app, request).await } else { crate::computer::serve(&app, request).await };
         let _ = pipe.write_all(format!("{answer}\n").as_bytes()).await;
         let _ = pipe.flush().await;
         // A screenshot is bigger than the pipe's buffer, and disconnecting

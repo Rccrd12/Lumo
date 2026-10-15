@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { eventSoon, parseIcs, parseIcsDate } from "../src/core/calendar.ts";
+import { calendarWebLink, eventSoon, parseIcs, parseIcsDate } from "../src/core/calendar.ts";
 
 const local = (y, m, d, h = 0, mi = 0) => new Date(y, m - 1, d, h, mi).getTime();
 const ics = (...events) => ["BEGIN:VCALENDAR", ...events.flatMap((e) => ["BEGIN:VEVENT", ...e, "END:VEVENT"]), "END:VCALENDAR"].join("\r\n");
@@ -83,4 +83,13 @@ test("the event about to start", () => {
   assert.equal(eventSoon(events, local(2026, 10, 9, 13)), null);
   assert.equal(eventSoon(events, local(2026, 10, 9, 14, 3))?.title, "Call");
   assert.equal(eventSoon(events, local(2026, 10, 9, 14, 10)), null);
+});
+
+test("the calendar's web page, from the app that wrote the file", () => {
+  const head = (prodid) => ["BEGIN:VCALENDAR", `PRODID:${prodid}`, "VERSION:2.0", "END:VCALENDAR"].join("\r\n");
+  assert.equal(calendarWebLink(head("-//Google Inc//Google Calendar 70.9054//EN")), "https://calendar.google.com/calendar/r");
+  assert.equal(calendarWebLink(head("-//Microsoft Corporation//Outlook 16.0 MIMEDIR//EN")), "https://outlook.live.com/calendar/0/view/day");
+  assert.equal(calendarWebLink(head("-//Apple Inc.//iCloud//EN")), "https://www.icloud.com/calendar/");
+  assert.equal(calendarWebLink(head("-//Someone//Their Calendar//EN")), null);
+  assert.equal(calendarWebLink("BEGIN:VCALENDAR\r\nEND:VCALENDAR"), null);
 });

@@ -253,3 +253,16 @@ export function calendarRetryIn(failures: number, every: number): number {
 export function showsCalendarError(failures: number, hasRead: boolean): boolean {
   return !hasRead || failures >= CALENDAR_FAILURES_SHOWN;
 }
+
+/**
+ * The calendar's own web page, told by the app that wrote the file (its
+ * PRODID), so the address itself never leaves calendar.rs. Null when the
+ * calendar has no page Lumo knows.
+ */
+export function calendarWebLink(text: string): string | null {
+  const prodid = /^PRODID:(.*)$/im.exec(text)?.[1]?.toLowerCase() ?? "";
+  if (prodid.includes("google")) return "https://calendar.google.com/calendar/r";
+  if (prodid.includes("microsoft")) return "https://outlook.live.com/calendar/0/view/day";
+  if (prodid.includes("apple")) return "https://www.icloud.com/calendar/";
+  return null;
+}

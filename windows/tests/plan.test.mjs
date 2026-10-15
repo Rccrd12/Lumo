@@ -264,6 +264,7 @@ beforeEach(() => {
   State.antigravityPlanUsage = null;
   State.showingPlanDetail = false;
   State.planDetail = "claude";
+  State.integrations = {};
 });
 
 test("every pill is off by default, so the header is as it shipped", () => {
@@ -277,6 +278,21 @@ test("the Antigravity CLI pill needs only its switch, on the overview", () => {
   assert.equal(antigravityPillVisible(), true);
   State.view = "prompt";
   assert.equal(antigravityPillVisible(), false);
+});
+
+test("an added agent shows its pill on its own, until it is turned off", () => {
+  State.integrations.agent_antigravity = { data: {}, error: null, loaded: false, configured: true };
+  assert.equal(antigravityPillVisible(), true);
+  assert.equal(codexPillVisible(), false);
+  State.integrations.agent_codex = { data: {}, error: null, loaded: false, configured: true };
+  assert.equal(codexPillVisible(), true);
+  // Turned off in Settings: it stays off, hooks or not, and so does a switch left on.
+  State.settings.hiddenPlanPills = ["antigravity"];
+  State.settings.showAntigravityPlanInNotch = true;
+  assert.equal(antigravityPillVisible(), false);
+  assert.equal(codexPillVisible(), true);
+  State.view = "chat";
+  assert.equal(codexPillVisible(), false);
 });
 
 test("the Claude pill needs the switch and the relay, and the overview", () => {

@@ -645,11 +645,12 @@ async fn dispatch(
         }
         s.documents = documents;
     }
-    // The Email pill: a question about email gets the newest unread ones, so
-    // every provider can answer it, not only those with a mail tool of their own.
+    // The Email pill: a question about email gets the newest emails, read or
+    // not, so every provider can answer it, not only those with a mail tool of
+    // their own.
     if crate::mail::asks_about(&query) && crate::integrations::enabled(app, crate::mail::ID) {
-        if let Some((unread, messages)) = crate::mail::inbox() {
-            screen.get_or_insert_with(ScreenContext::default).mail = crate::mail::context_text(unread, &messages);
+        if let Some(text) = crate::mail::for_chat(app).await {
+            screen.get_or_insert_with(ScreenContext::default).mail = text;
         }
     }
     chat.arm();

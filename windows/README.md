@@ -281,10 +281,19 @@ required").
 
 The chat sees the inbox when you ask about it: a question that speaks of
 email ("quali sono le ultime email?", "any new mail?", "la posta") goes with
-the newest unread emails (sender, date, subject and the start of the text),
-whichever provider answers, Claude, Gemini, Antigravity CLI or a local model.
-Other questions go without them. Summarize and Draft a reply send the whole
-email with their question, like a selected text.
+the ten newest emails, read or unread (sender, date, subject and the start of
+the text), whichever provider answers, Claude, Gemini, Antigravity CLI or a
+local model. Other questions go without them. Summarize and Draft a reply
+send the whole email with their question, like a selected text.
+
+Antigravity CLI, which has no email of its own as Claude Code has its Gmail
+tools, also gets Lumo's email tools while the Email pill is on: the newest
+emails, a search of the whole mailbox (Gmail's own search on Gmail) and one
+email in full. Lumo adds them to the MCP configuration of its own folder
+(`~/Lumo/.agents/mcp_config.json`, your other entries kept, taken out when
+the pill is off), and they answer only while Antigravity answers in the
+island, in the chat or for Gemini Live. They only read, so they need no card,
+and they can't send, move, mark or delete anything.
 
 ## Claude Code
 

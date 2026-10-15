@@ -281,6 +281,23 @@ export function codexResetsLabel(u: CodexPlanUsage | null): string {
   return text;
 }
 
+/** The agent pill each plan belongs to (src/core/pills.ts). */
+export const PLAN_AGENT: Record<"codex" | "antigravity", string> = { codex: "agent_codex", antigravity: "agent_antigravity" };
+
+/**
+ * Whether Codex's or agy's pill belongs in the header: its switch was turned
+ * on, or the agent was added (its hooks are in) and the pill was not turned
+ * off in Settings → Agents → Plan usage.
+ */
+export function agentPlanOn(
+  kind: "codex" | "antigravity",
+  s: { showCodexPlanInNotch: boolean; showAntigravityPlanInNotch: boolean; hiddenPlanPills: string[] },
+  hooked: boolean,
+): boolean {
+  if (Array.isArray(s.hiddenPlanPills) && s.hiddenPlanPills.includes(kind)) return false;
+  return (kind === "codex" ? s.showCodexPlanInNotch : s.showAntigravityPlanInNotch) || hooked;
+}
+
 /** How long a Codex answer stays good before the pill asks again (as on the Mac). */
 export const CODEX_STALE_MS = 60_000;
 

@@ -85,6 +85,9 @@ pub struct Settings {
     /// Show the Antigravity CLI pill (quotas from `agy -p /usage`).
     /// Off by default; nothing is installed for it.
     pub show_antigravity_plan_in_notch: bool,
+    /// The plan pills turned off in Settings ("codex", "antigravity"). Without
+    /// that, an agent whose hooks are in shows its pill on its own.
+    pub hidden_plan_pills: Vec<String>,
     /// Ask Anthropic for the Claude plan's usage with Claude Code's sign-in
     /// (plan_usage.rs). Off unless turned on.
     pub plan_usage_online: bool,
@@ -239,6 +242,7 @@ impl Default for Settings {
             plan_relay_installed: false,
             show_codex_plan_in_notch: false,
             show_antigravity_plan_in_notch: false,
+            hidden_plan_pills: Vec::new(),
             plan_usage_online: false,
             quick_approvals: true,
             activities_follow_island: true,
@@ -555,6 +559,7 @@ mod tests {
   "planRelayInstalled": true,
   "showCodexPlanInNotch": true,
   "showAntigravityPlanInNotch": true,
+  "hiddenPlanPills": ["codex"],
   "planUsageOnline": true,
   "quickApprovals": false,
   "activitiesFollowIsland": false,
@@ -981,6 +986,7 @@ mod tests {
                 "planRelayInstalled",
                 "showCodexPlanInNotch",
                 "showAntigravityPlanInNotch",
+                "hiddenPlanPills",
                 "planUsageOnline",
                 "quickApprovals",
                 "activitiesFollowIsland",
