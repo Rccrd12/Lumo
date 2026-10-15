@@ -1199,7 +1199,8 @@ pub fn run() {
             hooks::ensure_hook_exe(&handle);
             // Closed while Claude used the computer: the system's own arrow again.
             computer::recover();
-            computer::forget_antigravity(&claude_code::work_dir());
+            // Antigravity CLI's email tools follow the Email pill (set again before each run).
+            computer::agy_workspace(&claude_code::work_dir(), integrations::enabled(&handle, mail::ID));
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());

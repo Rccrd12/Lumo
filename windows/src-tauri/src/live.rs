@@ -667,6 +667,7 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
     let agy = helper.id == crate::antigravity_cli::PROVIDER;
     let mode = mode.to_string();
     let (model, effort) = (helper.model.clone(), helper.effort.clone());
+    let mail = crate::integrations::enabled(app, crate::mail::ID);
     let app2 = app.clone();
     let stop2 = stop.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -678,7 +679,7 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
             );
         };
         if agy {
-            crate::antigravity_cli::help(&task, folder.as_deref(), &model, &mode, stop2, tell)
+            crate::antigravity_cli::help(&task, folder.as_deref(), &model, &mode, mail, stop2, tell)
         } else {
             crate::claude_code::help(&task, folder.as_deref(), &model, &effort, &mode, false, stop2, tell)
         }
