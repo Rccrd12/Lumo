@@ -1169,6 +1169,7 @@ pub fn run() {
 
             if let Some(win) = island::window(&handle) {
                 platform::make_non_activating(&win);
+                platform::watch_foreground(&handle);
                 webview_drop::install(&handle);
                 live::install(&handle);
                 island::apply_geometry(&handle, &loaded.screen, island::Placement::of(&loaded), false);
