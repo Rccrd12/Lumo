@@ -68,12 +68,6 @@ static ENGAGED: AtomicBool = AtomicBool::new(false);
 /// Cards waiting on the island meanwhile: the hand has the mouse to answer them.
 static CARDS: AtomicUsize = AtomicUsize::new(0);
 
-/// Claude is using the computer in this turn: its own key presses must not
-/// count as the user's (approval_keys.rs).
-pub fn engaged() -> bool {
-    ENGAGED.load(Ordering::SeqCst)
-}
-
 /// The overlay's window (computer.html).
 pub const OVERLAY: &str = "computer";
 

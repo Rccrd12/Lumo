@@ -224,12 +224,11 @@ island shrinks to its compact size and stays on screen, nothing is answered, and
 opening it again shows the card. Under the request, a line says what it is
 for: the agent's own words when it gave some (Claude Code and Gemini CLI
 describe each command), else what the request does ("Only looks: changes
-nothing.", "Changes a file."). While the card (or the closed island's Deny
-and Allow) is on screen, **Y** allows and **N** denies, as the buttons say,
-even with the chat field focused or another app in front: Lumo holds the two
-keys only while a request waits, so in that moment Y and N typed elsewhere go
-to the card. A letter typed in the island right after another key, mid-word,
-is never taken as an answer.
+nothing.", "Changes a file."). Once the island has the keyboard (a click on the
+card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say, even
+with the chat field focused. In another app they are just letters, never an
+answer. A letter typed right after another key, mid-word, is never taken as an
+answer.
 **Open terminal** brings the window the session
 runs in to the front.
 

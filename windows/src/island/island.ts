@@ -203,13 +203,6 @@ export class Island {
   private botHoverStart = { x: 0, y: 0 };
 
   private lastSyncedView: IslandViewName | null = null;
-  /** Y and N are held as global keys for the request on screen (approval_keys.rs). */
-  /**
-   * Whether Rust holds Y and N for us. Unknown until the first sync: the page
-   * can have been reloaded while they were held, and a hold nothing gives
-   * back would keep the two letters from every app for the rest of the session.
-   */
-  private approvalKeys: boolean | null = null;
 
   /** The launch greeting ended, or the island came out of hidden — two of the
    *  moments the Monday recap may open (see src/recap/recap.ts). */
@@ -1869,17 +1862,6 @@ export class Island {
       this.animateGeometry(this.compact.size == null);
     }
     this.activities.sync();
-
-    // Y and N answer the request on screen from anywhere (approval_keys.rs):
-    // held while a card or the closed island's Deny / Allow is showing, and
-    // given back to other apps as soon as nothing waits.
-    const req = State.pendingApproval;
-    const keysWanted = (expanded && State.view === "approval" && req != null && !req.questions)
-      || (compactOn && this.compact.approval != null);
-    if (keysWanted !== this.approvalKeys) {
-      this.approvalKeys = keysWanted;
-      void Bridge.setApprovalKeys(keysWanted);
-    }
 
     // The compact island shows Lumo alone: the other pills' mini Lumos are
     // only in the open island.
