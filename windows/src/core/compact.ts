@@ -100,6 +100,8 @@ export const COMPACT_TEXT = {
   speaking: N_("Speaking"),
   listening: N_("Listening"),
   connecting: N_("Connecting…"),
+  // The same words as the call view's (live/strings.ts).
+  muted: N_("Microphone off"),
   working: N_("Working…"),
   waiting: N_("Waiting for your OK"),
   question: N_("Has a question for you"),
@@ -130,6 +132,8 @@ export interface LiveActivityInput {
   phase: "off" | "connecting" | "listening" | "thinking" | "speaking" | "reconnecting";
   /** What a tool or the helper is doing, if anything; done lines are notes, not activity. */
   doing: string | null;
+  /** The call is paused: the microphone is off. */
+  muted?: boolean;
   color: string;
 }
 
@@ -151,7 +155,7 @@ export function activityLine(
     return { text: `${chat.who} · ${chat.label ?? t(COMPACT_TEXT.writing)}`, color: chat.color };
   }
   if (live && live.phase !== "off") {
-    const what = live.doing ?? liveWords(live.phase);
+    const what = live.doing ?? (live.muted && live.phase === "listening" ? t(COMPACT_TEXT.muted) : liveWords(live.phase));
     return { text: `Gemini Live · ${what}`, color: live.color };
   }
   if (agent) {

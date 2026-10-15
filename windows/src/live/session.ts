@@ -242,6 +242,8 @@ class LiveSession {
       return;
     }
     this.mic = mic;
+    // Paused (the shortcut) while the call was connecting.
+    mic.setMuted(this.muted);
 
     void onEvent<LiveHelperActivity>("live-helper-activity", (a) => {
       // What comes after the helper's answer is not news any more.
