@@ -44,11 +44,18 @@ You can also [build it yourself](#build-it-yourself).
 
 **Settings… → Updates** shows the version you run. **Check for updates** asks
 GitHub for the newest `windows-v*` release of
-[Rccrd12/Lumo](https://github.com/Rccrd12/Lumo/releases) — only
-when you click it, never in the background. When there is a newer one, **Update
+[Rccrd12/Lumo](https://github.com/Rccrd12/Lumo/releases). Lumo also asks once
+each time it opens, and when a newer version is out the island says so for a
+few seconds and Settings opens on Updates with it; **Check when Lumo opens**
+turns that off. When there is a newer one, **Update
 now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder,
 starts it with its usual window, and Lumo quits so the installer can replace
-it. Only installers from that repository's GitHub releases are accepted.
+it. Nothing is downloaded without that click. Only installers from that
+repository's GitHub releases are accepted.
+
+Under it, the **Changelog** lists what changed in every version, the installed
+one marked. It is the repository's `CHANGELOG.md`, built into the app, so it is
+there offline and always matches the build.
 
 ### Your data
 

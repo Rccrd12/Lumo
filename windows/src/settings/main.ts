@@ -23,7 +23,7 @@ import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSett
 import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
-import { updatesSection } from "./updates";
+import { changelogSection, updatesSection } from "./updates";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
@@ -1992,7 +1992,13 @@ async function render() {
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present)],
     shortcuts: [shortcutsSection(shortcutReport)],
-    updates: [updatesSection(version)],
+    updates: [
+      updatesSection(version, setting(t("Check when Lumo opens"),
+        t("Each time Lumo opens, it asks GitHub once whether a newer version is out, and says so on the island."),
+        toggle(settings.updateCheckOnOpen !== false, (v) => { settings.updateCheckOnOpen = v; void save(); }),
+      )),
+      changelogSection(version),
+    ],
   };
   // The chat page ends on what goes with every message.
   pages.chat.push(chatSharingSection(), computerSection());

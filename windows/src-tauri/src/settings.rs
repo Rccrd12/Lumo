@@ -191,6 +191,9 @@ pub struct Settings {
     /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `mochi_outfit`: a
     /// code this build doesn't know reads as "".
     pub language: String,
+    /// When Lumo opens, ask GitHub once whether a newer Windows release is out
+    /// (updater.rs) and say so on the island. Settings → Updates turns it off.
+    pub update_check_on_open: bool,
 }
 
 /// A little bigger than the Mac's icons, which sit closer to the eye.
@@ -274,6 +277,7 @@ impl Default for Settings {
             lumo_character: "filo".into(),
             pill_colors: BTreeMap::new(),
             language: String::new(),
+            update_check_on_open: true,
         }
     }
 }
@@ -590,7 +594,8 @@ mod tests {
   "lumoMotion": "lively",
   "lumoCharacter": "goccia",
   "pillColors": { "integration_claude": "#2DD4BF" },
-  "language": "pt-BR"
+  "language": "pt-BR",
+  "updateCheckOnOpen": false
 }"##;
 
     fn custom() -> Value {
@@ -751,6 +756,13 @@ mod tests {
             expected[key] = defaults()[key].clone();
             assert_eq!(shown(&loaded), expected, "without {key}");
         }
+    }
+
+    #[test]
+    fn a_file_from_before_the_update_check_checks_when_lumo_opens() {
+        assert!(parse(&custom_with("updateCheckOnOpen", None)).unwrap().update_check_on_open);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().update_check_on_open);
+        assert!(Settings::default().update_check_on_open);
     }
 
     #[test]
@@ -1018,6 +1030,7 @@ mod tests {
                 "lumoCharacter",
                 "pillColors",
                 "language",
+                "updateCheckOnOpen",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);
