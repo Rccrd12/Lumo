@@ -646,6 +646,16 @@ Gemini uses the computer by itself, when it decides it needs to:
   made smaller and sent to Google; the file is deleted at once, nothing is
   kept. Turn **Gemini can look at the screen** off in Settings → Voice and
   it can't.
+- **It knows what Lumo knows**: what each agent is doing (Claude Code in
+  VS Code or Cursor, Codex, Antigravity and the others: the project, the
+  last steps and message, the files changed), the cards waiting for your
+  answer, the Claude, Codex and Antigravity usage limits, GitHub (your pull
+  requests and their CI, reviews waiting, the default branches, the pull
+  requests Lumo watches), the newest emails, the calendar's coming events,
+  the other services you connected, timers and music, the chat, and the
+  week's recap. "What is Claude doing?", "did CI pass?", "how much of my
+  limit is left?" are answered from Lumo itself, with no call to any
+  service. It never answers a card: only your click does.
 - **It sees the open windows** and **the folder open in File Explorer**.
 - **It finds files by name** in your home, Desktop, Documents, Downloads,
   Pictures, Music and Videos folders (OneDrive's too) and the folder open in
