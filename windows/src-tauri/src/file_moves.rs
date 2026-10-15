@@ -65,18 +65,21 @@ fn show(p: &Path) -> String {
     p.to_string_lossy().into_owned()
 }
 
-/// A path we may touch: inside `home`, outside its AppData, with no `..`.
+/// A path we may touch: inside `home`, outside its AppData, through no hidden
+/// folder at any depth, with no `..`.
 pub fn allowed(path: &Path, home: &Path) -> bool {
     use std::path::Component;
     if path.components().any(|c| matches!(c, Component::ParentDir)) {
         return false;
     }
     let Ok(rest) = path.strip_prefix(home) else { return false };
-    let first = rest.components().next().map(|c| c.as_os_str().to_string_lossy().to_lowercase());
-    match first {
-        None => false,
-        Some(f) => f != "appdata" && !f.starts_with('.'),
+    let mut parts = rest.components().map(|c| c.as_os_str().to_string_lossy().to_lowercase()).peekable();
+    if parts.peek().is_none() {
+        return false;
     }
+    // Every part, not just the first: `Documents\.ssh` and a project's `.git`
+    // are as much not ours to move as `AppData` is.
+    parts.all(|p| p != "appdata" && !p.starts_with('.'))
 }
 
 fn path_of(raw: &str) -> Option<PathBuf> {
@@ -86,6 +89,9 @@ fn path_of(raw: &str) -> Option<PathBuf> {
 /// Checks what was asked and writes the plan, doing nothing. `home` is the
 /// user's home folder; the plan replaces any plan still waiting.
 pub fn plan_in(asks: &[Ask], folders: &[String], home: &Path) -> Result<Plan, String> {
+    // Whatever comes of this one, the plan before it is no longer on offer: a
+    // plan the user said no to must never be confirmed later by its id.
+    STORE.lock().unwrap().pending = None;
     if asks.is_empty() && folders.is_empty() {
         return Err("Say what to move, or which folders to make.".into());
     }
@@ -263,6 +269,8 @@ mod tests {
         assert!(!allowed(home, home), "not the home folder itself");
         assert!(!allowed(&home.join("AppData").join("x"), home));
         assert!(!allowed(&home.join(".ssh").join("id"), home));
+        assert!(!allowed(&home.join("Documents").join(".ssh").join("id"), home), "hidden at any depth");
+        assert!(!allowed(&home.join("code").join("app").join(".git").join("HEAD"), home));
         assert!(!allowed(Path::new(r"C:\Windows\System32"), home));
         assert!(!allowed(&home.join("Downloads").join("..").join("AppData"), home));
     }

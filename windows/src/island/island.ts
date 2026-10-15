@@ -204,7 +204,12 @@ export class Island {
 
   private lastSyncedView: IslandViewName | null = null;
   /** Y and N are held as global keys for the request on screen (approval_keys.rs). */
-  private approvalKeys = false;
+  /**
+   * Whether Rust holds Y and N for us. Unknown until the first sync: the page
+   * can have been reloaded while they were held, and a hold nothing gives
+   * back would keep the two letters from every app for the rest of the session.
+   */
+  private approvalKeys: boolean | null = null;
 
   /** The launch greeting ended, or the island came out of hidden — two of the
    *  moments the Monday recap may open (see src/recap/recap.ts). */

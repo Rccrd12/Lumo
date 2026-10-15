@@ -235,8 +235,11 @@ pub fn inbox() -> Option<(usize, Vec<Message>)> {
 /// Whether `query` speaks of email ("le ultime email", "any new mail?",
 /// "la posta", "my inbox"): only then does the inbox go with it.
 pub fn asks_about(query: &str) -> bool {
+    const WORDS: &[&str] = &["mail", "email", "inbox", "posta", "correo", "courriel", "postfach", "newsletter"];
+    // Each keyword starts a word of the question, as desk.rs does: "proposta"
+    // and "impostazioni" are not about the post, nor "Mailchimp" about mail.
     let q = query.to_lowercase();
-    ["mail", "inbox", "posta", "correo", "courriel", "postfach", "newsletter"].iter().any(|w| q.contains(w))
+    q.split(|c: char| !c.is_alphanumeric()).any(|word| WORDS.iter().any(|w| word.starts_with(w)))
 }
 
 /// The newest unread emails, as the chat's provider reads them.
@@ -1195,7 +1198,12 @@ mod tests {
         assert!(asks_about("quali sono le ultime email?"));
         assert!(asks_about("Any new MAIL from Ada?"));
         assert!(asks_about("cosa c'è nella posta"));
+        assert!(asks_about("leggi la mia e-mail"));
         assert!(!asks_about("what is Claude doing?"));
+        // The inbox is the user's: a word that merely holds one of ours never brings it.
+        assert!(!asks_about("fammi una proposta"));
+        assert!(!asks_about("apri le impostazioni"));
+        assert!(!asks_about("l'ho fatto apposta"));
     }
 
     #[test]

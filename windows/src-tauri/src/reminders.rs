@@ -24,6 +24,8 @@ pub const MAX_REMINDERS: usize = 100;
 pub const MAX_AHEAD_MS: u64 = 366 * 24 * 3_600_000;
 /// How long after starting the first reminders may ring.
 const STARTUP_MS: u64 = 10_000;
+/// How long one note shows on the closed island (core/compact.ts NOTICE_MS).
+const NOTE_MS: u64 = 4_500;
 /// Missed by more than this while Lumo was off: dropped without ringing.
 pub const STALE_MS: u64 = 7 * 24 * 3_600_000;
 
@@ -75,13 +77,30 @@ fn load(s: &mut Store) {
     s.list.truncate(MAX_REMINDERS);
 }
 
-fn save(list: &[Reminder]) {
+/// Writes beside the file and renames over it, as settings.rs does: a crash
+/// or a full disk leaves the reminders that were there rather than half a file.
+fn save(list: &[Reminder]) -> std::io::Result<()> {
+    use std::io::Write;
     let path = file();
     if let Some(dir) = path.parent() {
-        let _ = std::fs::create_dir_all(dir);
+        std::fs::create_dir_all(dir)?;
     }
-    if let Ok(text) = serde_json::to_string(list) {
-        let _ = std::fs::write(path, text);
+    let text = serde_json::to_vec(list).map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let temp = path.with_extension(format!("json.lumo-{}", std::process::id()));
+    let written = std::fs::File::create(&temp)
+        .and_then(|mut file| file.write_all(&text).and_then(|()| file.sync_all()))
+        .and_then(|()| std::fs::rename(&temp, &path));
+    if written.is_err() {
+        let _ = std::fs::remove_file(&temp);
+    }
+    written
+}
+
+/// A save whose failure only goes in the log: the reminder is already gone
+/// from the list in memory, so there is nothing to tell the user.
+fn save_noted(list: &[Reminder]) {
+    if let Err(err) = save(list) {
+        crate::log::line(format!("could not save the reminders: {err}"));
     }
 }
 
@@ -109,27 +128,41 @@ pub fn check(at: u64, text: &str, now: u64, count: usize) -> Result<String, Stri
     Ok(text)
 }
 
-/// The reminders due by `now`, taken off `list`; `started` marks the ones
-/// missed while Lumo was off (due before it started), and the ones missed by
-/// more than STALE_MS are dropped.
+/// At most this many ring at once: the closed island keeps four notes waiting
+/// and drops the oldest, so the rest wait their turn (and stay on disk until
+/// they have had it) rather than going by unseen.
+const AT_ONCE: usize = 4;
+
+/// The reminders due by `now`, taken off `list`, `AT_ONCE` at most and the
+/// oldest first; `started` marks the ones missed while Lumo was off (due
+/// before it started), and the ones missed by more than STALE_MS are dropped.
 pub fn take_due(list: &mut Vec<Reminder>, now: u64, started: u64) -> Vec<Due> {
-    let (due, rest): (Vec<Reminder>, Vec<Reminder>) = list.drain(..).partition(|r| r.at <= now);
+    let (due, mut rest): (Vec<Reminder>, Vec<Reminder>) = list.drain(..).partition(|r| r.at <= now);
+    let mut due: Vec<Reminder> = due.into_iter().filter(|r| now.saturating_sub(r.at) <= STALE_MS).collect();
+    due.sort_by_key(|r| r.at);
+    if due.len() > AT_ONCE {
+        rest.extend(due.split_off(AT_ONCE));
+        rest.sort_by_key(|r| r.at);
+    }
     *list = rest;
-    due.into_iter()
-        .filter(|r| now.saturating_sub(r.at) <= STALE_MS)
-        .map(|r| Due { missed: r.at < started, reminder: r })
-        .collect()
+    due.into_iter().map(|r| Due { missed: r.at < started, reminder: r }).collect()
 }
 
 pub fn add(at: u64, text: &str) -> Result<Reminder, String> {
     let mut s = STORE.lock().unwrap();
     load(&mut s);
     let text = check(at, text, now_ms(), s.list.len())?;
-    let id = s.list.iter().map(|r| r.id).max().unwrap_or(0) + 1;
+    let id = s.list.iter().map(|r| r.id).max().unwrap_or(0).saturating_add(1);
     let r = Reminder { id, at, text };
     s.list.push(r.clone());
     s.list.sort_by_key(|r| r.at);
-    save(&s.list);
+    // Kept only once it is on disk: a reminder Lumo could not write would be
+    // lost at the next restart, and the user was told it was set.
+    if let Err(err) = save(&s.list) {
+        crate::log::line(format!("could not save the reminders: {err}"));
+        s.list.retain(|r| r.id != id);
+        return Err("Could not keep that reminder.".into());
+    }
     s.version += 1;
     CHANGED.notify_all();
     Ok(r)
@@ -148,7 +181,7 @@ pub fn cancel(id: u32) -> bool {
     s.list.retain(|r| r.id != id);
     let gone = s.list.len() != before;
     if gone {
-        save(&s.list);
+        save_noted(&s.list);
         s.version += 1;
         CHANGED.notify_all();
     }
@@ -158,30 +191,37 @@ pub fn cancel(id: u32) -> bool {
 /// The thread that rings them.
 pub fn start(app: AppHandle) {
     let started = now_ms();
-    std::thread::spawn(move || loop {
+    std::thread::spawn(move || {
         // The island listens once its page has loaded: a reminder missed while
-        // Lumo was off waits for it rather than ringing to no one.
-        if now_ms() < started + STARTUP_MS {
-            std::thread::sleep(Duration::from_millis(started + STARTUP_MS - now_ms()));
-        }
-        let mut s = STORE.lock().unwrap();
-        load(&mut s);
-        let due = take_due(&mut s.list, now_ms(), started);
-        if !due.is_empty() {
-            save(&s.list);
-            drop(s);
-            for d in due {
-                let _ = app.emit_to(WINDOW_LABEL, "reminder-due", d);
+        // Lumo was off waits for it rather than ringing to no one. Waited out
+        // once, here: inside the loop a clock put back would wait it out again,
+        // in a sleep the list changing cannot interrupt.
+        std::thread::sleep(Duration::from_millis(STARTUP_MS));
+        loop {
+            let mut s = STORE.lock().unwrap();
+            load(&mut s);
+            let due = take_due(&mut s.list, now_ms(), started);
+            if !due.is_empty() {
+                save_noted(&s.list);
+                drop(s);
+                let rang = due.len();
+                for d in due {
+                    let _ = app.emit_to(WINDOW_LABEL, "reminder-due", d);
+                }
+                // More than a handful came due together (Lumo was off for a
+                // while): the next ones wait for these to have been read.
+                std::thread::sleep(Duration::from_millis(NOTE_MS * rang as u64));
+                continue;
             }
-            continue;
+            let version = s.version;
+            // Asleep until the next is due, or the list changes; with none, until it changes.
+            let wait =
+                s.list.iter().map(|r| r.at).min().map(|at| Duration::from_millis(at.saturating_sub(now_ms()).max(1)));
+            // Waking once an hour at most keeps a clock change (or a sleep) from
+            // pushing a reminder late.
+            let wait = wait.unwrap_or(Duration::from_secs(3600)).min(Duration::from_secs(3600));
+            let _ = CHANGED.wait_timeout_while(s, wait, |s| s.version == version);
         }
-        let version = s.version;
-        // Asleep until the next is due, or the list changes; with none, until it changes.
-        let wait = s.list.iter().map(|r| r.at).min().map(|at| Duration::from_millis(at.saturating_sub(now_ms()).max(1)));
-        // Waking once an hour at most keeps a clock change (or a sleep) from
-        // pushing a reminder late.
-        let wait = wait.unwrap_or(Duration::from_secs(3600)).min(Duration::from_secs(3600));
-        let _ = CHANGED.wait_timeout_while(s, wait, |s| s.version == version);
     });
 }
 
@@ -225,5 +265,18 @@ mod tests {
         assert_eq!(due.iter().map(|d| (d.reminder.id, d.missed)).collect::<Vec<_>>(), [(1, true), (2, false)]);
         assert_eq!(list, [r(3, 1100 * H)], "the stale one is dropped, the later one stays");
         assert!(take_due(&mut list, 1050 * H, started).is_empty());
+    }
+
+    #[test]
+    fn a_pile_of_missed_ones_rings_a_few_at_a_time() {
+        let r = |id, at| Reminder { id, at, text: format!("r{id}") };
+        let started = 1000 * H;
+        let mut list: Vec<Reminder> = (1..=7).map(|id| r(id, (990 + u64::from(id)) * H)).collect();
+        let first = take_due(&mut list, started, started);
+        assert_eq!(first.iter().map(|d| d.reminder.id).collect::<Vec<_>>(), [1, 2, 3, 4], "the oldest first");
+        assert_eq!(list.len(), 3, "the rest wait their turn rather than being dropped");
+        let then = take_due(&mut list, started, started);
+        assert_eq!(then.iter().map(|d| d.reminder.id).collect::<Vec<_>>(), [5, 6, 7]);
+        assert!(list.is_empty());
     }
 }

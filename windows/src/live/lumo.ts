@@ -68,7 +68,9 @@ export async function gatherLumo(topic: LumoTopic): Promise<LumoFacts> {
   }
   const wants = (t: LumoTopic) => topic === "all" || topic === t;
   const [media, week] = await Promise.all([
-    wants("timers") ? Bridge.mediaNow().catch(() => Feed.media) : Promise.resolve(Feed.media),
+    // `call` answers null rather than throwing, so a failed ask reads as
+    // nothing playing; the feed's own track is what the island is showing.
+    wants("timers") ? Bridge.mediaNow().then((m) => m ?? Feed.media) : Promise.resolve(Feed.media),
     wants("week")
       ? Bridge.recapHistory(mondayOf(new Date(now)).getTime() / 1000)
         .then((h) => (h && Array.isArray(h.turns) ? summarize(h, mondayOf(new Date(now))) : null))

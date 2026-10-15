@@ -1,5 +1,17 @@
 # Changelog
 
+## Windows 0.8.0 — October 15, 2026
+
+- **Gemini Live does more on the computer**: it changes the volume, a laptop's brightness and the power plan, and locks the computer; it arranges the windows (front, left or right half, maximise, minimise, close); it says how the computer is doing (processor, memory, disks, battery, the busiest programs); it tidies files in your home folder, in two steps, with the plan read out first and "put them back" to undo it; it reads Windows' notifications; and it sets reminders at a time, which ring on the island and are kept across restarts
+- **Gemini Live knows what Lumo knows**: what each agent is doing, the cards waiting for you, the usage limits, GitHub, the newest emails, the calendar, the services you connected, timers and music, the chat and the week's recap. "What is Claude doing?" and "did CI pass?" are answered from Lumo itself, with no call to any service. It still never answers a card: only your click does
+- **Y and N answer a waiting permission** from the chat field and from other apps, as long as a request is on screen
+- **Ctrl+Alt+L** starts a call without opening the island, and pressed again pauses the microphone and picks it up again
+- **The island stays above** other always-on-top windows
+- **The island waits before folding** while you are writing in the chat or the drop menu is open: 10 seconds with the field empty, and not at all while a message is half written
+- **Drop menu**: the title and the chips are centred, Lumo waits in the card's corner and watches the file, and a file is taken only on the island itself
+- **Email**: a click on the Email box opens the inbox in Gmail or Outlook, and a question about email brings the newest unread ones whichever provider answers
+- **Fixes found reviewing all of the above**: a question holding a word like "proposta" or "impostazioni" no longer sends the inbox with it; reminders are written the way the settings are, so a crash cannot lose them, and a pile of missed ones rings a few at a time instead of silently dropping the oldest; a clock put back no longer stops them ringing; a plan of file moves the user refused can no longer be confirmed afterwards; a hidden folder at any depth (`.ssh`, a project's `.git`) is left alone, not only one at the top; `Ctrl+Alt+L` on a hidden island brings it out instead of opening the microphone with nothing on screen; Y and N are given back to other apps after the island's page reloads
+
 ## Windows 0.7.0 — October 13, 2026
 
 - **Antigravity CLI usage**: a new pill in the island's header shows your Antigravity CLI quotas (5-hour and weekly), asked of agy as its own `/usage` does, with a card for the details and a Refresh button. Nothing is installed; off by default, in Settings → Agents → Plan usage. With "Show remaining usage in the chat" on, the chat's usage ring shows the same quotas while you chat with Antigravity CLI

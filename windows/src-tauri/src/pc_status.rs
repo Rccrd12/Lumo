@@ -214,7 +214,7 @@ mod imp {
         Some(Battery {
             percent: s.BatteryLifePercent as u32,
             charging: s.ACLineStatus == 1,
-            minutes_left: (s.BatteryLifeTime != u32::MAX && s.ACLineStatus != 1).then(|| s.BatteryLifeTime / 60),
+            minutes_left: (s.BatteryLifeTime != u32::MAX && s.ACLineStatus != 1).then_some(s.BatteryLifeTime / 60),
         })
     }
 
