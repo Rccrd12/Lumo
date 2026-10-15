@@ -261,6 +261,11 @@ pub fn plugin<R: Runtime>() -> tauri::plugin::TauriPlugin<R> {
                 crate::computer::stop(app);
                 return;
             }
+            // Y or N, taken while a permission waits.
+            if let Some(decision) = crate::approval_keys::decision(shortcut) {
+                crate::approval_keys::pressed(app, decision);
+                return;
+            }
             let Some(registry) = app.try_state::<Registry>() else { return };
             let action = registry.by_id.lock().unwrap().get(&shortcut.id()).copied();
             if let Some(action) = action {
@@ -349,6 +354,7 @@ pub fn release<R: Runtime>(app: &AppHandle<R>) {
             crate::log::line(format!("shortcuts: unregister failed: {err}"));
         }
         crate::computer::keep_stop_key(app);
+        crate::approval_keys::keep(app);
     }
     if let Some(registry) = app.try_state::<Registry>() {
         registry.by_id.lock().unwrap().clear();

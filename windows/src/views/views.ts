@@ -19,7 +19,7 @@ import {
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
 import { approvalKey } from "../core/approvals";
-import { Bridge } from "../core/bridge";
+import { Bridge, onEvent } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
@@ -537,29 +537,46 @@ function buildApproval(actions: ViewActions): ViewHost {
   };
   // The island never takes the keyboard by itself (typing in another app is
   // never cut off): a click on the card gives it, as the shortcut to the
-  // waiting card does. Then Y and N answer, as the buttons say.
+  // waiting card does.
   el.addEventListener("mousedown", () => {
     if (State.pendingApproval && !State.pendingApproval.questions) actions.takeKeyboard();
   });
+  // Y and N answer even with the chat field holding the keyboard, and from
+  // another app too: while the card is on screen the island holds them as
+  // global keys (approval_keys.rs), which come as `approval-key`. The keydown
+  // below is what is left when they could not be had.
   let lastKeyAt = -Infinity;
+  const cardOnScreen = () => {
+    const req = State.pendingApproval;
+    return State.mode === "expanded" && State.view === "approval" && req != null && !req.questions;
+  };
+  const answerKey = (d: "allow" | "deny") => {
+    const previous = lastKeyAt;
+    lastKeyAt = performance.now();
+    if (lastKeyAt - previous < KEY_QUIET_MS) return;
+    guarded(d)();
+  };
   window.addEventListener(
     "keydown",
     (e) => {
-      const previous = lastKeyAt;
-      lastKeyAt = performance.now();
-      const req = State.pendingApproval;
-      if (State.mode !== "expanded" || State.view !== "approval" || !req || req.questions) return;
-      const target = e.target as { tagName?: string; isContentEditable?: boolean } | null;
-      if (target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable) return;
+      if (!cardOnScreen()) {
+        lastKeyAt = performance.now();
+        return;
+      }
       const d = approvalKey(e);
-      if (!d) return;
+      if (!d) {
+        lastKeyAt = performance.now();
+        return;
+      }
       e.preventDefault();
       e.stopPropagation();
-      if (lastKeyAt - previous < KEY_QUIET_MS) return;
-      guarded(d)();
+      answerKey(d);
     },
     true,
   );
+  void onEvent<"allow" | "deny">("approval-key", (d) => {
+    if (cardOnScreen()) answerKey(d);
+  });
   return {
     el,
     sync() {

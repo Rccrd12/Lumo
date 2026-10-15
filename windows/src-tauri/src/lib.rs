@@ -5,6 +5,7 @@ mod agent_hooks;
 mod agents;
 mod antigravity_cli;
 mod antigravity_plan;
+mod approval_keys;
 mod autostart;
 mod calendar;
 mod chat;
@@ -202,6 +203,12 @@ fn focus_window(app: AppHandle, focused: bool) {
     if focused {
         let _ = win.set_focus();
     }
+}
+
+/// Y and N answer the waiting permission from anywhere (approval_keys.rs), or not.
+#[tauri::command]
+fn set_approval_keys(app: AppHandle, on: bool) {
+    approval_keys::hold(&app, on);
 }
 
 #[tauri::command]
@@ -1059,6 +1066,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            set_approval_keys,
             reposition,
             list_monitors,
             open_url,

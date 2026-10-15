@@ -103,6 +103,9 @@ export const Bridge = {
   /** Give the window keyboard focus (chat field) and take it away again. */
   focusWindow: (focused: boolean) => call<void>("focus_window", { focused }),
 
+  /** Y and N held as global keys while a permission waits on screen, or given back. */
+  setApprovalKeys: (on: boolean) => call<void>("set_approval_keys", { on }),
+
   reposition: () => call<void>("reposition"),
 
   /** Displays the island can be pinned to: `key` is what `settings.screen` stores. */
