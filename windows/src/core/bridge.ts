@@ -354,6 +354,26 @@ export const Bridge = {
   liveComputerReady: () => call<boolean>("live_computer_ready"),
   /** Types `text` into the window in front, as the keyboard would; never Enter. */
   liveType: (text: string) => callOrThrow<LiveTyped>("live_type", { text }),
+  // ── Gemini Live's tools for the computer itself (src/live/pc-tools.ts) ────
+  /** Volume, brightness, power plan or lock (system_control.rs); the state after. */
+  pcControl: (action: string, value: number | null, plan: string | null) =>
+    callOrThrow<Record<string, unknown>>("pc_control", { action, value, plan }),
+  /** Front, left/right half, maximise, minimise, restore or close a window (window_control.rs). */
+  pcWindow: (window: string, action: string) => callOrThrow<{ title: string; app: string }>("pc_window", { window, action }),
+  /** Processor, memory, disks, battery and the busiest programs (pc_status.rs). */
+  pcStatus: () => callOrThrow<PcStatus>("pc_status"),
+  /** A plan of moves, checked, nothing done (file_moves.rs). */
+  pcFilesPlan: (moves: { from: string; to: string }[], folders: string[]) => callOrThrow<PcFilePlan>("pc_files_plan", { moves, folders }),
+  /** The plan the user agreed to. */
+  pcFilesApply: (id: number) => callOrThrow<PcFilesDone>("pc_files_apply", { id }),
+  /** The last plan applied, put back. */
+  pcFilesUndo: () => callOrThrow<PcFilesDone>("pc_files_undo"),
+  /** Windows' notification centre (notifications.rs). */
+  pcNotifications: () => callOrThrow<{ app: string; text: string; at: number }[]>("pc_notifications"),
+  /** Reminders at a time, kept across restarts (reminders.rs); `reminder-due` when one rings. */
+  remindersAdd: (at: number, text: string) => callOrThrow<Reminder>("reminders_add", { at, text }),
+  remindersList: () => call<Reminder[]>("reminders_list"),
+  remindersCancel: (id: number) => call<boolean>("reminders_cancel", { id }),
   /** The page asks for the microphone now (true), or has its answer (false). */
   liveMicrophone: (on: boolean) => call<void>("live_microphone", { on }),
 
@@ -407,6 +427,44 @@ export interface LiveFound {
 }
 
 /** What live_type typed, and where (live.rs Typed). */
+export interface PcStatus {
+  cpuPercent: number;
+  memoryUsedGb: number;
+  memoryTotalGb: number;
+  disks: { drive: string; freeGb: number; totalGb: number }[];
+  battery?: { percent: number; charging: boolean; minutesLeft?: number };
+  uptimeHours: number;
+  busiest: { name: string; cpuPercent: number; memoryMb: number }[];
+  biggest: { name: string; cpuPercent: number; memoryMb: number }[];
+}
+
+export interface PcFilePlan {
+  id: number;
+  moves: { from: string; to: string }[];
+  newFolders: string[];
+  skipped: string[];
+}
+
+export interface PcFilesDone {
+  moved: number;
+  newFolders: number;
+  failed: string[];
+}
+
+/** A reminder at a time (reminders.rs); `at` is Unix ms. */
+export interface Reminder {
+  id: number;
+  at: number;
+  text: string;
+}
+
+/** The `reminder-due` event. */
+export interface ReminderDue {
+  reminder: Reminder;
+  /** It came due while Lumo wasn't running. */
+  missed: boolean;
+}
+
 export interface LiveTyped {
   chars: number;
   app: string;

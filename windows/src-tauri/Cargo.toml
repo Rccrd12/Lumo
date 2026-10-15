@@ -40,9 +40,18 @@ webview2-com = "0.39"
 wv2_core = { package = "windows-core", version = "0.62" }
 windows = { version = "0.61", features = [
   "Win32_Foundation",
+  # Gemini Live's read_notifications (notifications.rs): the notification
+  # centre, the app that sent each one.
+  "ApplicationModel",
+  "Foundation_Collections",
+  "UI_Notifications",
+  "UI_Notifications_Management",
   # The music playing, for the closed island (media.rs): the system's media
   # controls, the ones the volume flyout shows.
   "Media_Control",
+  # Gemini Live's control_computer (system_control.rs): the speakers' volume.
+  "Win32_Media_Audio",
+  "Win32_Media_Audio_Endpoints",
   # The chat's screen button (screen.rs): the window list skips cloaked
   # windows, GDI copies a display, WIC writes the PNG.
   "Win32_Graphics_Dwm",
@@ -68,6 +77,12 @@ windows = { version = "0.61", features = [
   "Win32_System_Pipes",
   # Settings → General → Energy, "Automatic": on battery or on mains (energy.rs).
   "Win32_System_Power",
+  # Gemini Live's computer_status (pc_status.rs): each program's memory.
+  "Win32_System_ProcessStatus",
+  # control_computer's power plans (PowerGetActiveScheme takes a registry key).
+  "Win32_System_Registry",
+  # Gemini Live's control_computer: locking the computer.
+  "Win32_System_Shutdown",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
   # "Folder open in File Explorer" in the chat (explorer.rs): IShellWindows

@@ -77,7 +77,9 @@ test("every tool runs without blocking the voice; the screen tool exists only wh
   assert.ok(on.every((d) => d.behavior === "NON_BLOCKING"));
   assert.deepEqual(on.map((d) => d.name), [
     "look_at_screen", "lumo_status", "list_windows", "explorer_folder", "find_files", "read_file", "read_document",
-    "open", "open_app", "type_text", "ask_helper", "stop_helper", "set_timer", "control_music", "end_conversation",
+    "open", "open_app", "type_text", "ask_helper", "stop_helper", "set_timer", "control_music",
+    "control_computer", "arrange_windows", "computer_status", "move_files", "confirm_file_moves", "undo_file_moves",
+    "read_notifications", "set_reminder", "list_reminders", "cancel_reminder", "end_conversation",
   ]);
   const off = P.toolDeclarations({ ...CFG, screen: false }).map((d) => d.name);
   assert.ok(!off.includes("look_at_screen"));
@@ -497,4 +499,98 @@ test("with computer use on, Gemini hands what is to be done on the screen to Cla
   const withAgy = P.toolDeclarations({ ...CFG, helper: "Antigravity CLI", computer: true });
   assert.match(withAgy.find((d) => d.name === "use_computer").description, /Claude Code/);
   assert.doesNotMatch(withAgy.find((d) => d.name === "ask_helper").description, /screen/);
+});
+
+// ── The computer itself (src/live/pc-protocol.ts, pc-tools.ts) ────────────────
+
+const PC = await import("../src/live/pc-protocol.ts");
+
+test("the computer's own tools are explained, and moving files waits for the user's yes", () => {
+  const text = P.systemInstruction(CFG);
+  assert.match(text, /control_computer sets the volume/);
+  assert.match(text, /call confirm_file_moves with its id only after they say yes/);
+  assert.match(text, /Do not disturb/);
+  const decl = P.toolDeclarations(CFG);
+  const move = decl.find((d) => d.name === "move_files");
+  assert.equal(move.parameters.properties.moves.type, "ARRAY");
+  assert.deepEqual(move.parameters.properties.moves.items.required, ["from", "to"]);
+  assert.match(decl.find((d) => d.name === "confirm_file_moves").description, /Never call it before the user said yes/);
+  assert.ok(PC.isPcTool("set_reminder") && !PC.isPcTool("open"));
+});
+
+test("a reminder's time: a local date and time, a bare date at 9, or a length from now", () => {
+  assert.equal(PC.parseLocalTime("2026-10-15T09:30"), new Date(2026, 9, 15, 9, 30).getTime());
+  assert.equal(PC.parseLocalTime("2026-10-15 18:05"), new Date(2026, 9, 15, 18, 5).getTime());
+  assert.equal(PC.parseLocalTime("2026-10-15"), new Date(2026, 9, 15, 9, 0).getTime());
+  assert.equal(PC.parseLocalTime("2026-02-31T10:00"), null, "no 31 February");
+  assert.equal(PC.parseLocalTime("tomorrow"), null);
+  const now = 1_000_000;
+  assert.equal(PC.reminderTime({ in: "1h30m" }, now), now + 90 * 60_000);
+  assert.equal(PC.reminderTime({ at: "2026-10-15T09:30", in: "1h" }, now), new Date(2026, 9, 15, 9, 30).getTime(), "at wins");
+  assert.equal(PC.reminderTime({}, now), null);
+});
+
+test("control_computer and arrange_windows check the action before Rust is asked", async () => {
+  const { host: h, log } = host();
+  const bad = await runTool({ id: "p1", name: "control_computer", args: { action: "explode" } }, h);
+  assert.match(bad.error, /Say one of: volume/);
+  assert.equal(sent("pc_control").length, 0);
+  await withRust((cmd) => (cmd === "pc_control" ? { volume: 30, muted: false } : cmd === "pc_window" ? { title: "Inbox - Chrome", app: "chrome" } : null), async () => {
+    const vol = await runTool({ id: "p2", name: "control_computer", args: { action: "volume", value: 30 } }, h);
+    assert.deepEqual(sent("pc_control").at(-1), { action: "volume", value: 30, plan: null });
+    assert.deepEqual(vol.result, { volume: 30, muted: false });
+    const win = await runTool({ id: "p3", name: "arrange_windows", args: { window: "chrome", action: "left" } }, h);
+    assert.deepEqual(sent("pc_window").at(-1), { window: "chrome", action: "left" });
+    assert.deepEqual(win.result, { done: "left", window: "Inbox - Chrome", app: "chrome" });
+  });
+  assert.ok(log.doing.includes("Adjusting the computer") && log.doing.includes("Arranging the windows"));
+});
+
+test("move_files only plans; confirm_file_moves does the plan by its id", async () => {
+  const { host: h } = host();
+  const plan = { id: 4, moves: [{ from: "C:\\Users\\a\\Downloads\\x.pdf", to: "C:\\Users\\a\\Downloads\\PDF\\x.pdf" }], newFolders: ["C:\\Users\\a\\Downloads\\PDF"], skipped: [] };
+  await withRust((cmd) => (cmd === "pc_files_plan" ? plan : cmd === "pc_files_apply" ? { moved: 1, newFolders: 1, failed: [] } : null), async () => {
+    const a = await runTool({
+      id: "m1",
+      name: "move_files",
+      args: { moves: [{ from: plan.moves[0].from, to: "C:\\Users\\a\\Downloads\\PDF" }, { from: "", to: "x" }, "junk"], folders: ["C:\\Users\\a\\Downloads\\PDF", 3] },
+    }, h);
+    assert.deepEqual(sent("pc_files_plan").at(-1), {
+      moves: [{ from: plan.moves[0].from, to: "C:\\Users\\a\\Downloads\\PDF" }],
+      folders: ["C:\\Users\\a\\Downloads\\PDF"],
+    });
+    assert.equal(a.result.plan_id, 4);
+    assert.match(a.result.note, /Nothing has moved yet/);
+    assert.equal(sent("pc_files_apply").length, 0);
+    const b = await runTool({ id: "m2", name: "confirm_file_moves", args: { plan_id: 4 } }, h);
+    assert.deepEqual(sent("pc_files_apply").at(-1), { id: 4 });
+    assert.equal(b.result.moved, 1);
+  });
+});
+
+test("computer_status reads in plain words", () => {
+  const r = PC.statusResult({
+    cpuPercent: 12.5, memoryUsedGb: 9.1, memoryTotalGb: 16, disks: [{ drive: "C:", freeGb: 40.2, totalGb: 476.3 }],
+    battery: { percent: 64, charging: false, minutesLeft: 150 }, uptimeHours: 30.5,
+    busiest: [{ name: "chrome", cpuPercent: 8.2, memoryMb: 2100 }], biggest: [{ name: "Code", cpuPercent: 1, memoryMb: 2400 }],
+  });
+  assert.equal(r.processor, "12.5%");
+  assert.equal(r.memory, "9.1 of 16 GB in use");
+  assert.deepEqual(r.disks, ["C: 40.2 GB free of 476.3"]);
+  assert.equal(r.battery, "64%, about 150 min left");
+  assert.deepEqual(r.busiest, ["chrome 8.2%"]);
+  assert.deepEqual(r.most_memory, ["Code 2400 MB"]);
+});
+
+test("set_reminder sends Rust the time in ms; a time it can't read asks again", async () => {
+  const { host: h } = host();
+  const bad = await runTool({ id: "r1", name: "set_reminder", args: { text: "call the bank", at: "tomorrow" } }, h);
+  assert.match(bad.error, /Say when/);
+  const at = new Date(2030, 0, 2, 9, 0).getTime();
+  await withRust((cmd, args) => (cmd === "reminders_add" ? { id: 1, at: args.at, text: args.text } : null), async () => {
+    const ok = await runTool({ id: "r2", name: "set_reminder", args: { text: "call the bank", at: "2030-01-02T09:00" } }, h);
+    assert.deepEqual(sent("reminders_add").at(-1), { at, text: "call the bank" });
+    assert.equal(ok.result.set, true);
+    assert.equal(ok.result.id, 1);
+  });
 });

@@ -670,6 +670,28 @@ Gemini uses the computer by itself, when it decides it needs to:
   terminal line breaks are typed as spaces, so nothing runs. Nothing is
   typed into Lumo itself, or while a key like Ctrl is held, and it stops if
   you move to another window.
+- **It changes the computer's settings**: the volume (up, down, a level,
+  mute), a laptop screen's brightness, the power plan (saver, balanced,
+  performance), and it locks the computer when you ask. Windows gives apps
+  no way to turn on Do not disturb, so that one stays yours.
+- **It arranges the windows**: brings one to the front, puts it on the left
+  or right half of its screen, maximises, minimises or closes it, by its app
+  or its title ("VS Code on the left, Chrome on the right"). Closing works
+  like the window's ×: an app with unsaved work asks you itself.
+- **It tells how the computer is doing**: processor, memory, disks,
+  battery, and the programs using the most, measured once when you ask.
+- **It tidies files** in your home folder: it moves, renames and sorts
+  them into folders, in two steps. First it says what it would do (how many
+  files, where, what it skips) and moves nothing; only after your yes does
+  it do that plan, and "put them back" undoes the last one. Nothing is ever
+  deleted or overwritten, and AppData and anything outside your home folder
+  are never touched.
+- **It reads your notifications** from Windows' notification centre. The
+  first time, Windows asks whether Lumo may (Settings → Privacy & security →
+  Notifications).
+- **It sets reminders at a time** ("remind me tomorrow at 9 to call the
+  bank"): they ring on the island like a timer, are kept across restarts, and
+  one that came due while Lumo wasn't running rings when it starts again.
 - **Anything else goes to Claude Code or Antigravity CLI** (Settings →
   Voice → Helper, with the helper's model and, for Claude Code, its
   effort), which works on the task in its own session and reports back;
