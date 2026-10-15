@@ -393,6 +393,13 @@ export const Bridge = {
   activitiesWindowResize: (fx: number, fy: number) => call<void>("activities_window_resize", { fx, fy }),
   /** Their own window takes the keyboard, or gives it back. */
   activitiesFocus: (focused: boolean) => call<void>("activities_focus", { focused }),
+  // ── The Plan island (src-tauri/src/plan_island.rs) ───────────────────────
+  /** Its window, shown (right of the island the first time, then where it was left) or hidden. */
+  planShow: (show: boolean) => call<void>("plan_show", { show }),
+  /** Picked up by its top bar: it follows the mouse until let go. */
+  planDrag: () => call<void>("plan_drag"),
+  /** A grip of its window. */
+  planWindowResize: (fx: number, fy: number) => call<void>("plan_window_resize", { fx, fy }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
 

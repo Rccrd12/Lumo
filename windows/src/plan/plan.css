@@ -1,0 +1,13 @@
+/* The Plan island's own window: transparent around the panel. */
+@import "../style.css";
+
+html,
+body {
+  background: transparent;
+  overflow: hidden;
+}
+
+#app {
+  position: fixed;
+  inset: 0;
+}

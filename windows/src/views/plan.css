@@ -1,0 +1,270 @@
+/* The Plan island (views/plan-view.ts), in its own window: the live
+   activities' panel, with the agent's steps in it. */
+
+.agent-plan {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: #000;
+  border-radius: 22px;
+  color: var(--ink);
+  font-size: 11.5px;
+  transform-origin: 50% 50%;
+  will-change: transform, opacity;
+  backface-visibility: hidden;
+  transition: opacity 0.22s ease-in-out, transform 0.4s cubic-bezier(0.32, 0, 0.18, 1);
+}
+
+.agent-plan.instant {
+  transition: none;
+}
+
+.agent-plan.folding {
+  pointer-events: none;
+  transition: opacity 0.4s ease-in, transform 0.4s cubic-bezier(0.5, 0, 0.75, 0);
+}
+
+.agent-plan.gone {
+  opacity: 0 !important;
+  pointer-events: none;
+}
+
+.agent-plan .plan-head {
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0 16px;
+  cursor: default;
+}
+
+.agent-plan .plan-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-weight: 600;
+  color: var(--dim);
+}
+
+.agent-plan .plan-count {
+  margin-left: auto;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-plan.finished .plan-count {
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* The "–" that folds it, as the live activities'. */
+.agent-plan .act-fold {
+  width: 22px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  color: var(--dim-2);
+  cursor: pointer;
+}
+
+.agent-plan .act-fold i {
+  width: 10px;
+  height: 2px;
+  border-radius: 1px;
+  background: currentColor;
+}
+
+.agent-plan .act-fold:hover {
+  background: var(--tab-on);
+  color: var(--ink);
+}
+
+.agent-plan .plan-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 6px 10px 12px;
+}
+
+.agent-plan .plan-who {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 6px;
+  white-space: nowrap;
+}
+
+.agent-plan .plan-who .n {
+  font-weight: 600;
+  color: var(--ink-2);
+}
+
+.agent-plan .plan-who .p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--dim);
+}
+
+.agent-plan .plan-bar {
+  flex: none;
+  height: 3px;
+  margin: 0 6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.06);
+  overflow: hidden;
+}
+
+.agent-plan .plan-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  border-radius: 2px;
+  transition: width 0.4s ease;
+}
+
+.agent-plan .plan-steps {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  padding: 9px 8px;
+  list-style: none;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-radius: 14px;
+  background: var(--card);
+  border: 1px solid var(--hairline);
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+.agent-plan .plan-step {
+  flex: none;
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 5px 6px;
+  border-radius: 8px;
+  color: var(--ink-2);
+  line-height: 1.35;
+}
+
+.agent-plan .plan-step.active {
+  background: rgba(255, 255, 255, 0.05);
+  font-weight: 600;
+}
+
+.agent-plan .plan-step.done .plan-text {
+  color: var(--dim);
+}
+
+.agent-plan .plan-step.skipped .plan-text {
+  color: var(--dim-3);
+  text-decoration: line-through;
+}
+
+.agent-plan .plan-text {
+  flex: 1;
+  min-width: 0;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+}
+
+.agent-plan .plan-mark {
+  flex: none;
+  width: 14px;
+  height: 14px;
+  margin-top: 1px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  border: 1.5px solid var(--dim-4);
+  color: #000;
+}
+
+.agent-plan .plan-mark.active {
+  border-color: var(--agent, var(--ink));
+  box-shadow: inset 0 0 0 2.5px #000, inset 0 0 0 7px var(--agent, var(--ink));
+}
+
+.agent-plan .plan-mark.done {
+  border-color: var(--green);
+  background: var(--green);
+}
+
+.agent-plan .plan-mark.skipped i {
+  width: 6px;
+  height: 1.5px;
+  border-radius: 1px;
+  background: var(--dim-4);
+}
+
+.agent-plan .plan-note {
+  flex: none;
+  padding: 0 6px;
+  color: var(--dim);
+  font-size: 10.5px;
+  line-height: 1.35;
+}
+
+.agent-plan .plan-note:empty {
+  display: none;
+}
+
+.agent-plan .plan-grip {
+  position: absolute;
+  z-index: 2;
+}
+
+.agent-plan .plan-grip.e-left,
+.agent-plan .plan-grip.e-right {
+  top: 22px;
+  bottom: 22px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.agent-plan .plan-grip.e-left {
+  left: -4px;
+}
+
+.agent-plan .plan-grip.e-right {
+  right: -4px;
+}
+
+.agent-plan .plan-grip.e-bottom {
+  left: 22px;
+  right: 22px;
+  bottom: -4px;
+  height: 8px;
+  cursor: ns-resize;
+}
+
+.agent-plan .plan-grip.c-bl,
+.agent-plan .plan-grip.c-br {
+  bottom: -4px;
+  width: 16px;
+  height: 16px;
+}
+
+.agent-plan .plan-grip.c-bl {
+  left: -4px;
+  cursor: nesw-resize;
+}
+
+.agent-plan .plan-grip.c-br {
+  right: -4px;
+  cursor: nwse-resize;
+}

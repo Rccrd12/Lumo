@@ -445,6 +445,18 @@ function handleHook(island: Island, payload: HookPayload) {
   // back to the pill you were on.
   const focused = State.focusId === agentId;
 
+  /** The plan this tool call carries, if any, to the Plan island (island/plan.ts). */
+  const followPlan = () => {
+    const task = State.tasks.find((x) => x.id === agentId);
+    island.plan?.onTool({
+      pillId: agentId,
+      sessionId,
+      agent: isExternalAgent ? agentName(validAgent!) : "Claude Code",
+      color: task?.color ?? (isExternalAgent ? agentColor(validAgent!) : pillDefinition(agentId)?.color ?? "#f5f6f8"),
+      project: projectName,
+    }, payload.tool_name ?? "", payload.tool_input);
+  };
+
   switch (name) {
     case "SessionStart":
       ensurePill();
@@ -476,6 +488,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "working");
       const tool = payload.tool_name ?? "Tool";
       State.appendStep(agentId, stepLabel(tool, payload.tool_input ?? {}));
+      followPlan();
       surface("overview", false);
       break;
     }
@@ -492,6 +505,7 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       State.updateTask(agentId, "working");
       recordDiff(agentId, payload);
+      followPlan();
       break;
 
     case "PostToolUseFailure":
@@ -579,6 +593,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "SessionEnd":
       liveSessions.end(agentId, sessionId);
+      island.plan?.endSession(agentId, sessionId);
       // Other sessions are still behind the pill: its card, diffs and state are
       // theirs; it only shows the one that owns it now.
       if (liveSessions.live(agentId).length) {

@@ -39,6 +39,7 @@ import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
 import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
+import { IslandPlan } from "./plan";
 import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
 
@@ -123,6 +124,8 @@ export class Island {
   private menu!: ContextMenu;
   /** The live activities beside the open island (island/activities.ts). */
   private activities!: IslandActivities;
+  /** The Plan island, in its own window (island/plan.ts). */
+  plan!: IslandPlan;
   /** The island's height when the live activities first showed: theirs since. */
   private activitiesStartH: number | null = null;
   private wakeStrip!: HTMLElement;
@@ -410,6 +413,7 @@ export class Island {
         State.notify();
       },
       showActivities: () => this.activities.unfold(),
+      showPlan: () => this.plan.unfold(),
       previewLook: (look) => {
         State.lookPreview = look;
         State.notify();
@@ -487,6 +491,11 @@ export class Island {
       },
       movable: this.canResize && IS_TAURI,
       changed: () => State.notify(),
+    });
+
+    this.plan = new IslandPlan({
+      openSettings: () => this.openSettingsAt(null),
+      refreshAll: () => void this.refreshAll(),
     });
 
     this.root.append(this.wakeStrip, this.activities.view.el, this.islandEl);
