@@ -24,7 +24,9 @@ fn keys() -> [Shortcut; 2] {
 
 /// The answer a global press gives, while Y and N are held: none for any other key.
 pub fn decision(shortcut: &Shortcut) -> Option<&'static str> {
-    if !HELD.load(Ordering::Relaxed) {
+    // Claude using the computer presses real keys: a Y it types must never
+    // answer a permission, only the user's own click does then.
+    if !HELD.load(Ordering::Relaxed) || crate::computer::engaged() {
         return None;
     }
     key_decision(shortcut)
