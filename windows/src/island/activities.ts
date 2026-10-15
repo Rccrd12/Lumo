@@ -247,7 +247,10 @@ export class IslandActivities {
       timers: Feed.timers,
       media: Feed.media,
       calendar: { configured: Calendar.configured, error: Calendar.error, events: Calendar.events },
-      mail: { on, error: info?.error ?? null, messages: visibleMail(messages) },
+      mail: {
+        on, error: info?.error ?? null, messages: visibleMail(messages),
+        inbox: typeof info?.data?.inbox === "string" ? info.data.inbox : undefined,
+      },
     };
   }
 
@@ -275,6 +278,11 @@ export class IslandActivities {
           askAboutMail(m, a.what);
           this.host.openChat();
         }
+        break;
+      }
+      case "inbox": {
+        const inbox = this.data().mail.inbox;
+        if (inbox) void Bridge.openUrl(inbox);
         break;
       }
       case "settings":
