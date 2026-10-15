@@ -1840,6 +1840,7 @@ export class Island {
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
         || this.lastSyncedView === "approval";
       this.lastSyncedView = State.view;
+      State.noteTab(State.view);
       this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
         this.focusChat();
