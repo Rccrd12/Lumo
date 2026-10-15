@@ -5,6 +5,7 @@ mod agent_hooks;
 mod agents;
 mod antigravity_cli;
 mod antigravity_plan;
+mod approval_keys;
 mod autostart;
 mod calendar;
 mod chat;
@@ -18,6 +19,7 @@ mod config_file;
 mod desk;
 mod energy;
 mod explorer;
+mod file_moves;
 mod files;
 mod github;
 mod hooks;
@@ -33,11 +35,14 @@ mod mail;
 mod media;
 mod migrate;
 mod net;
+mod notifications;
 mod openai_compat;
+mod pc_status;
 mod pipe;
 mod plan_usage;
 mod platform;
 mod recap;
+mod reminders;
 mod screen;
 mod secrets;
 mod selection;
@@ -45,10 +50,12 @@ mod session_window;
 mod settings;
 mod share;
 mod shortcuts;
+mod system_control;
 mod tray;
 mod typing;
 mod updater;
 mod webview_drop;
+mod window_control;
 
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -202,6 +209,12 @@ fn focus_window(app: AppHandle, focused: bool) {
     if focused {
         let _ = win.set_focus();
     }
+}
+
+/// Y and N answer the waiting permission from anywhere (approval_keys.rs), or not.
+#[tauri::command]
+fn set_approval_keys(app: AppHandle, on: bool) {
+    approval_keys::hold(&app, on);
 }
 
 #[tauri::command]
@@ -1059,6 +1072,7 @@ pub fn run() {
             set_collapsed,
             set_island_rect,
             focus_window,
+            set_approval_keys,
             reposition,
             list_monitors,
             open_url,
@@ -1125,6 +1139,16 @@ pub fn run() {
             live::live_computer_ready,
             live::live_microphone,
             typing::live_type,
+            system_control::pc_control,
+            pc_status::pc_status,
+            window_control::pc_window,
+            file_moves::pc_files_plan,
+            file_moves::pc_files_apply,
+            file_moves::pc_files_undo,
+            notifications::pc_notifications,
+            reminders::reminders_add,
+            reminders::reminders_list,
+            reminders::reminders_cancel,
             media::media_now,
             activities::activities_resize,
             activities::activities_show,
@@ -1169,6 +1193,7 @@ pub fn run() {
 
             if let Some(win) = island::window(&handle) {
                 platform::make_non_activating(&win);
+                platform::watch_foreground(&handle);
                 webview_drop::install(&handle);
                 live::install(&handle);
                 island::apply_geometry(&handle, &loaded.screen, island::Placement::of(&loaded), false);
@@ -1188,6 +1213,7 @@ pub fn run() {
             energy::start(handle.clone());
             integrations::start(handle.clone());
             listen::start(handle.clone());
+            reminders::start(handle.clone());
             shortcuts::apply(&handle, &loaded.shortcuts);
             Ok(())
         })

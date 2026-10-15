@@ -14,7 +14,7 @@ import {
 import { gitHubRunning, readPulse } from "../core/github";
 import { LISTEN_COLOR, listeningLine } from "../core/listen";
 import { byEffort } from "../core/energy";
-import { Bridge, type MailMessage } from "../core/bridge";
+import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, isSessionTask, type AgentTask } from "../core/state";
@@ -29,6 +29,11 @@ const MEDIA_TEXT = {
   next: N_("Next"),
   play: N_("Play"),
   pause: N_("Pause"),
+};
+
+const REMINDER_TEXT = {
+  reminder: N_("Reminder"),
+  missed: N_("Missed reminder"),
 };
 
 const MAIL_TEXT = {
@@ -142,6 +147,12 @@ export class CompactStrip {
 
   constructor(host: CompactHost) {
     this.host = host;
+    // A reminder at a time (reminders.rs) rings like a timer, and stays longer.
+    void onEvent<ReminderDue>("reminder-due", (due) => {
+      if (!due?.reminder) return;
+      Sound.play("finish");
+      compactNotice(`${t(due.missed ? REMINDER_TEXT.missed : REMINDER_TEXT.reminder)} · ${due.reminder.text}`, TIMER_COLOR, 30_000);
+    });
     // The email stays while the mouse is on it, and a little after.
     this.el.addEventListener("mouseenter", () => {
       if (this.shown?.kind === "mail") Feed.holdMail(Infinity);
@@ -150,6 +161,14 @@ export class CompactStrip {
       if (this.shown?.kind !== "mail") return;
       Feed.holdMail(Date.now() + 3000);
       this.schedule();
+    });
+    // Y or N while the closed island shows a request (approval_keys.rs): as
+    // its Allow or Deny, the open card being the one to answer when it is up.
+    void onEvent<"allow" | "deny">("approval-key", (d) => {
+      const a = this.approval;
+      if (!this.visible || !a || State.mode !== "compact") return;
+      if (performance.now() - this.approvalAt < CLICK_GUARD_MS) return;
+      this.host.decide(d, a.requestId);
     });
   }
 
@@ -224,7 +243,7 @@ export class CompactStrip {
       ? { who: speakerName(p.id, t(p.name), activeModel(State.settings)), label: chat.label, color: p.accent }
       : null;
     const liveInput = Live.active
-      ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, color: LIVE_COLOR }
+      ? { phase: Live.phase, doing: Live.doingDone ? null : Live.doing, muted: Live.muted, color: LIVE_COLOR }
       : null;
     return activityLines(chatInput, liveInput, agentInputs(), serviceLines());
   }

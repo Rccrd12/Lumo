@@ -5419,6 +5419,18 @@
    "id": "Gemini Live mengakhiri panggilan: {detail}",
    "it": "Gemini Live ha terminato la chiamata: {detail}"
   },
+  "Looking at what Lumo knows": {
+   "zh-Hans": "正在查看 Lumo 知道的信息",
+   "hi": "Lumo जो जानता है, उसे देख रहा है",
+   "es": "Mirando lo que sabe Lumo",
+   "ar": "يطّلع على ما يعرفه Lumo",
+   "fr": "Regarde ce que Lumo sait",
+   "bn": "Lumo যা জানে তা দেখছে",
+   "pt-BR": "Olhando o que o Lumo sabe",
+   "ru": "Смотрит, что знает Lumo",
+   "id": "Melihat apa yang Lumo ketahui",
+   "it": "Guarda cosa sa Lumo"
+  },
   "Looking at the open windows": {
    "zh-Hans": "正在查看打开的窗口",
    "hi": "खुली विंडो देख रहा है",
@@ -8606,6 +8618,102 @@
    "ru": "Lumo не смог начать отслеживание: {what}",
    "id": "Lumo tidak dapat mulai mendengarkan: {what}",
    "it": "Lumo non è riuscito a mettersi in ascolto di: {what}"
+  },
+  "Reminder": {
+   "zh-Hans": "提醒",
+   "hi": "रिमाइंडर",
+   "es": "Recordatorio",
+   "ar": "تذكير",
+   "fr": "Rappel",
+   "bn": "রিমাইন্ডার",
+   "pt-BR": "Lembrete",
+   "ru": "Напоминание",
+   "id": "Pengingat",
+   "it": "Promemoria"
+  },
+  "Missed reminder": {
+   "zh-Hans": "错过的提醒",
+   "hi": "छूटा हुआ रिमाइंडर",
+   "es": "Recordatorio perdido",
+   "ar": "تذكير فائت",
+   "fr": "Rappel manqué",
+   "bn": "মিস হওয়া রিমাইন্ডার",
+   "pt-BR": "Lembrete perdido",
+   "ru": "Пропущенное напоминание",
+   "id": "Pengingat terlewat",
+   "it": "Promemoria perso"
+  },
+  "Adjusting the computer": {
+   "zh-Hans": "正在调整电脑",
+   "hi": "कंप्यूटर की सेटिंग बदल रहा है",
+   "es": "Ajustando el ordenador",
+   "ar": "يضبط الكمبيوتر",
+   "fr": "Règle l'ordinateur",
+   "bn": "কম্পিউটার ঠিক করছে",
+   "pt-BR": "Ajustando o computador",
+   "ru": "Настраивает компьютер",
+   "id": "Menyesuaikan komputer",
+   "it": "Regola il computer"
+  },
+  "Arranging the windows": {
+   "zh-Hans": "正在整理窗口",
+   "hi": "विंडो व्यवस्थित कर रहा है",
+   "es": "Ordenando las ventanas",
+   "ar": "يرتّب النوافذ",
+   "fr": "Range les fenêtres",
+   "bn": "উইন্ডো সাজাচ্ছে",
+   "pt-BR": "Organizando as janelas",
+   "ru": "Расставляет окна",
+   "id": "Menata jendela",
+   "it": "Sistema le finestre"
+  },
+  "Checking how the computer is doing": {
+   "zh-Hans": "正在查看电脑状态",
+   "hi": "कंप्यूटर की स्थिति देख रहा है",
+   "es": "Mirando cómo va el ordenador",
+   "ar": "يتحقق من حالة الكمبيوتر",
+   "fr": "Regarde l'état de l'ordinateur",
+   "bn": "কম্পিউটারের অবস্থা দেখছে",
+   "pt-BR": "Vendo como está o computador",
+   "ru": "Проверяет состояние компьютера",
+   "id": "Memeriksa kondisi komputer",
+   "it": "Controlla come sta il computer"
+  },
+  "Moving files": {
+   "zh-Hans": "正在移动文件",
+   "hi": "फ़ाइलें ले जा रहा है",
+   "es": "Moviendo archivos",
+   "ar": "ينقل الملفات",
+   "fr": "Déplace des fichiers",
+   "bn": "ফাইল সরাচ্ছে",
+   "pt-BR": "Movendo arquivos",
+   "ru": "Перемещает файлы",
+   "id": "Memindahkan file",
+   "it": "Sposta i file"
+  },
+  "Reading the notifications": {
+   "zh-Hans": "正在读取通知",
+   "hi": "सूचनाएँ पढ़ रहा है",
+   "es": "Leyendo las notificaciones",
+   "ar": "يقرأ الإشعارات",
+   "fr": "Lit les notifications",
+   "bn": "বিজ্ঞপ্তি পড়ছে",
+   "pt-BR": "Lendo as notificações",
+   "ru": "Читает уведомления",
+   "id": "Membaca notifikasi",
+   "it": "Legge le notifiche"
+  },
+  "Setting a reminder": {
+   "zh-Hans": "正在设置提醒",
+   "hi": "रिमाइंडर सेट कर रहा है",
+   "es": "Poniendo un recordatorio",
+   "ar": "يضبط تذكيرًا",
+   "fr": "Crée un rappel",
+   "bn": "রিমাইন্ডার সেট করছে",
+   "pt-BR": "Criando um lembrete",
+   "ru": "Ставит напоминание",
+   "id": "Membuat pengingat",
+   "it": "Imposta un promemoria"
   }
  }
 }

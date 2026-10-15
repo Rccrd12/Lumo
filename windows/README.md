@@ -90,7 +90,7 @@ the exe it runs from.
 | Tray icon | A left click hides the island into its edge, or brings it back (Windows). A right click: Open, Weekly recap, Wardrobe…, Settings…, Pause (**Resume** while paused), Quit |
 | `Ctrl+Alt+Space` | Opens the chat, from any app |
 | `Ctrl+Alt+P` | **Ask about my screen**: takes a screenshot of the screen under the mouse and opens the chat with it waiting in the attachments (its × takes it back). Each press adds one more, a row of its own. Type the question and press Enter; nothing is sent before that (Windows) |
-| `Ctrl+Alt+L` | **Talk with Gemini Live**: opens the island on a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)); pressed again while the call is on screen, ends it |
+| `Ctrl+Alt+L` | **Talk with Gemini Live**: starts a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)) without opening the island when it is closed; pressed again, pauses the call (the microphone goes off) or picks it up again. End is in the call view |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted |
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab and selected text on its own, even two of the same screen — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
@@ -167,7 +167,8 @@ what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
 or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
 previous, play/pause and next), **Calendar** (the next events) and **Email**
 (the newest unread: a click on one opens it, with Summarize, Draft a reply and
-the eye, which puts it away so the next one moves up). Its **–** (top right)
+the eye, which puts it away so the next one moves up; a click elsewhere on the
+box opens the inbox in Gmail or Outlook). Its **–** (top right)
 folds it, with a flight, into an icon left of the **+** in the island's top
 bar; that icon brings it back. Settings → Island → **Live Activities** turns
 it off.
@@ -223,9 +224,12 @@ island shrinks to its compact size and stays on screen, nothing is answered, and
 opening it again shows the card. Under the request, a line says what it is
 for: the agent's own words when it gave some (Claude Code and Gemini CLI
 describe each command), else what the request does ("Only looks: changes
-nothing.", "Changes a file."). Once the island has the keyboard (a click on the
-card, or `Ctrl+Alt+A`), **Y** allows and **N** denies, as the buttons say; a
-letter typed right after another key, mid-word, is never taken as an answer.
+nothing.", "Changes a file."). While the card (or the closed island's Deny
+and Allow) is on screen, **Y** allows and **N** denies, as the buttons say,
+even with the chat field focused or another app in front: Lumo holds the two
+keys only while a request waits, so in that moment Y and N typed elsewhere go
+to the card. A letter typed in the island right after another key, mid-word,
+is never taken as an answer.
 **Open terminal** brings the window the session
 runs in to the front.
 
@@ -274,9 +278,14 @@ For Gmail: turn on 2-Step Verification in your Google account, create an app
 password at <https://myaccount.google.com/apppasswords>, and paste it in
 Settings with your address; the server is found from the address. Your
 Google account's own password is refused ("Application-specific password
-required"). Claude
-Code and Antigravity CLI see the email only when you press Summarize or
-Draft a reply: it goes with that question, like a selected text.
+required").
+
+The chat sees the inbox when you ask about it: a question that speaks of
+email ("quali sono le ultime email?", "any new mail?", "la posta") goes with
+the newest unread emails (sender, date, subject and the start of the text),
+whichever provider answers, Claude, Gemini, Antigravity CLI or a local model.
+Other questions go without them. Summarize and Draft a reply send the whole
+email with their question, like a selected text.
 
 ## Claude Code
 
@@ -643,6 +652,16 @@ Gemini uses the computer by itself, when it decides it needs to:
   made smaller and sent to Google; the file is deleted at once, nothing is
   kept. Turn **Gemini can look at the screen** off in Settings → Voice and
   it can't.
+- **It knows what Lumo knows**: what each agent is doing (Claude Code in
+  VS Code or Cursor, Codex, Antigravity and the others: the project, the
+  last steps and message, the files changed), the cards waiting for your
+  answer, the Claude, Codex and Antigravity usage limits, GitHub (your pull
+  requests and their CI, reviews waiting, the default branches, the pull
+  requests Lumo watches), the newest emails, the calendar's coming events,
+  the other services you connected, timers and music, the chat, and the
+  week's recap. "What is Claude doing?", "did CI pass?", "how much of my
+  limit is left?" are answered from Lumo itself, with no call to any
+  service. It never answers a card: only your click does.
 - **It sees the open windows** and **the folder open in File Explorer**.
 - **It finds files by name** in your home, Desktop, Documents, Downloads,
   Pictures, Music and Videos folders (OneDrive's too) and the folder open in
@@ -657,6 +676,28 @@ Gemini uses the computer by itself, when it decides it needs to:
   terminal line breaks are typed as spaces, so nothing runs. Nothing is
   typed into Lumo itself, or while a key like Ctrl is held, and it stops if
   you move to another window.
+- **It changes the computer's settings**: the volume (up, down, a level,
+  mute), a laptop screen's brightness, the power plan (saver, balanced,
+  performance), and it locks the computer when you ask. Windows gives apps
+  no way to turn on Do not disturb, so that one stays yours.
+- **It arranges the windows**: brings one to the front, puts it on the left
+  or right half of its screen, maximises, minimises or closes it, by its app
+  or its title ("VS Code on the left, Chrome on the right"). Closing works
+  like the window's ×: an app with unsaved work asks you itself.
+- **It tells how the computer is doing**: processor, memory, disks,
+  battery, and the programs using the most, measured once when you ask.
+- **It tidies files** in your home folder: it moves, renames and sorts
+  them into folders, in two steps. First it says what it would do (how many
+  files, where, what it skips) and moves nothing; only after your yes does
+  it do that plan, and "put them back" undoes the last one. Nothing is ever
+  deleted or overwritten, and AppData and anything outside your home folder
+  are never touched.
+- **It reads your notifications** from Windows' notification centre. The
+  first time, Windows asks whether Lumo may (Settings → Privacy & security →
+  Notifications).
+- **It sets reminders at a time** ("remind me tomorrow at 9 to call the
+  bank"): they ring on the island like a timer, are kept across restarts, and
+  one that came due while Lumo wasn't running rings when it starts again.
 - **Anything else goes to Claude Code or Antigravity CLI** (Settings →
   Voice → Helper, with the helper's model and, for Claude Code, its
   effort), which works on the task in its own session and reports back;

@@ -125,17 +125,19 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       break;
     }
 
-    // Gemini Live: starts a call, or ends the one on screen. A call going on
-    // behind another view comes back first, so one press never ends it unseen.
+    // Gemini Live: starts a call where the island is, closed or open, and
+    // then pauses it (the microphone goes off) or picks it up again. A call
+    // going on behind another open view comes back first. End is in the call view.
     case "talkToGemini":
       resume();
       if (!Live.active) {
-        host.alert("live");
+        if (State.mode === "expanded") host.alert("live");
         void Live.start();
-      } else if (State.mode === "expanded" && State.view === "live") {
-        Live.end();
-      } else {
+      } else if (State.mode === "expanded" && State.view !== "live") {
         host.alert("live");
+      } else {
+        Live.toggleMute();
+        Sound.play("tick");
       }
       break;
 

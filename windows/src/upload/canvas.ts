@@ -21,8 +21,11 @@ import {
 
 const FONT = `system-ui, "Segoe UI Variable Text", "Segoe UI", ${SCRIPT_FONTS}, sans-serif`;
 
-/** The card's inner right edge: no text runs past it. */
-const TEXT_RIGHT = USC.CARD_X + USC.CARD_W - 16;
+/**
+ * How wide the drop text may run, centred on the card: clear of Mochi and his
+ * wings in the top-left corner, and as far from the right edge.
+ */
+const TEXT_MAX_W = 2 * (USC.TEXT_CX - (USC.REST_X + USC.D_BOX * 0.9));
 /** The scene never shrinks below this, even while the island is still opening. */
 const MIN_SCALE = 0.6;
 /** Drop-zone chips (English keys, shown with `t()`). */
@@ -277,8 +280,8 @@ export class UploadCanvas {
   private drawDropText(ctx: CanvasRenderingContext2D, f: UploadFrame) {
     ctx.save();
     ctx.globalAlpha = f.textAlpha;
-    const title = fitted(ctx, t("Drop your files here"), TEXT_RIGHT - USC.TEXT_X, 500, 13);
-    text(ctx, title.s, USC.TEXT_X, USC.TEXT_Y - 4, title.font, "#D5D7DB");
+    const title = fitted(ctx, t("Drop your files here"), TEXT_MAX_W, 500, 13);
+    text(ctx, title.s, USC.TEXT_CX, USC.TEXT_Y - 4, title.font, "#D5D7DB", "center");
 
     // The macOS port measures chips the same rough way, so the row lines up; a
     // translation wider than that estimate gets the room it needs.
@@ -290,17 +293,18 @@ export class UploadCanvas {
     };
     let ws = widths();
     const rowW = () => ws.reduce((a, b) => a + b, 0) + 6 * (ws.length - 1);
-    while (rowW() > TEXT_RIGHT - USC.TEXT_X && chipPx > 8.5) {
+    while (rowW() > TEXT_MAX_W && chipPx > 8.5) {
       chipPx -= 0.5;
       ws = widths();
     }
-    let cx = USC.TEXT_X;
+    // The row centred under the title, each label centred in its chip.
+    let cx = USC.TEXT_CX - rowW() / 2;
     labels.forEach((chip, i) => {
       const w = ws[i];
       ctx.fillStyle = "rgba(255,255,255,0.07)";
       rr(ctx, cx, USC.TEXT_Y + 9, w, 18, 9);
       ctx.fill();
-      text(ctx, chip, cx + 8, USC.TEXT_Y + 18, `500 ${chipPx}px ${FONT}`, "#B9BDC4");
+      text(ctx, chip, cx + w / 2, USC.TEXT_Y + 18, `500 ${chipPx}px ${FONT}`, "#B9BDC4", "center");
       cx += w + 6;
     });
     ctx.restore();
@@ -510,23 +514,28 @@ export class UploadCanvas {
     const W0 = 34;
     const H0 = 42;
     const p = eIn(f.suck);
-    const topY = lerp(cy - H0 / 2, m.y - 2, eInOut(f.suck));
+    // Mochi waits in his corner, so the file is usually beside him or below
+    // his mouth: it rises first, over him, then drops in from above.
+    const lift = Math.min(36, Math.max(0, cy - m.y) * 0.6);
+    const topY = lerp(cy - H0 / 2, m.y - 2, eOut(f.suck)) - lift * Math.sin(Math.PI * f.suck);
     const hs = lerp(1.08, 0.55, eInOut(f.suck));
     const Hh = H0 * hs;
     const sc = lerp(1, 0.55, p);
     const q = eOut(f.suck);
-    const fCx = lerp(cx, m.x + m.w / 2, eOut(f.suck));
+    const fCx = lerp(cx, m.x + m.w / 2, eInOut(f.suck));
     const wob = Math.sin(f.suck * Math.PI * 2) * 0.1 * (1 - p);
     const clipY = m.y + m.h * 0.5;
 
     // The sheet is drawn as 28 horizontal strips, each narrowed towards the
-    // mouth, so the page appears to funnel in. Everything below the mouth line
-    // is clipped away — that is what makes it look swallowed.
+    // mouth, so the page appears to funnel in. What goes below the mouth line
+    // right over the mouth is clipped away — that is what makes it look
+    // swallowed — and only there, so the file is whole on its way to him.
     ctx.save();
     ctx.beginPath();
     const far = Math.max(this.stage.w, this.stage.h) / this.stage.s;
-    ctx.rect(-far, -far, 3 * far, clipY + far);
-    ctx.clip();
+    ctx.rect(-far, -far, 3 * far, 3 * far);
+    ctx.rect(m.x - 2, clipY, m.w + 4, far);
+    ctx.clip("evenodd");
 
     for (let i = 0; i < 28; i++) {
       const v0 = i / 28;

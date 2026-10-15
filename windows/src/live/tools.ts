@@ -9,7 +9,10 @@
 import { Bridge, type LiveReading } from "../core/bridge";
 import { compactTimer, parseDuration, timerLeft } from "../core/compact";
 import { t } from "../i18n/i18n";
+import { gatherLumo, lumoStatus, parseTopic } from "./lumo";
 import { TOOL, type FunctionCall, type ToolAnswer } from "./protocol";
+import { isPcTool } from "./pc-protocol";
+import { runPcTool } from "./pc-tools";
 import { LIVE_STRINGS as S } from "./strings";
 
 /** Who does what Gemini hands over to be done on the screen (live.rs use_computer). */
@@ -77,6 +80,11 @@ export async function runTool(call: FunctionCall, host: ToolHost): Promise<ToolA
 async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
   const a = call.args;
   switch (call.name) {
+    case TOOL.lumo: {
+      host.doing(t(S.lookingLumo));
+      const topic = parseTopic(a.about);
+      return lumoStatus(await gatherLumo(topic), topic);
+    }
     case TOOL.look: {
       if (!host.screen) throw new Error("The user turned screenshots off in Lumo's settings.");
       host.doing(t(S.lookingScreen));
@@ -186,6 +194,7 @@ async function run(call: FunctionCall, host: ToolHost): Promise<unknown> {
       host.end();
       return { ending: true };
     default:
+      if (isPcTool(call.name)) return await runPcTool(call, (label) => host.doing(label));
       throw new Error(`There is no tool called ${call.name}.`);
   }
 }

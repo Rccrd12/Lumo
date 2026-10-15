@@ -115,6 +115,10 @@ pub struct ScreenContext {
     /// page sends here is never read.
     #[serde(skip_deserializing)]
     pub documents: Vec<crate::desk::OpenDocument>,
+    /// The newest unread emails, when the question is about email (mail.rs).
+    /// Only Rust fills it, like `documents`.
+    #[serde(skip_deserializing)]
+    pub mail: String,
 }
 
 impl ScreenContext {
@@ -128,6 +132,7 @@ impl ScreenContext {
             && self.shared_windows.is_empty()
             && self.tabs.is_empty()
             && self.documents.is_empty()
+            && self.mail.is_empty()
     }
 }
 
@@ -282,6 +287,10 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
     }
     if !screen.documents.is_empty() {
         out.push_str(&crate::desk::documents_text(&screen.documents, with_paths));
+        out.push('\n');
+    }
+    if !screen.mail.is_empty() {
+        out.push_str(&screen.mail);
         out.push('\n');
     }
     out
@@ -960,6 +969,14 @@ mod tests {
     }
 
     #[test]
+    fn the_inbox_goes_with_a_question_about_email() {
+        let screen = ScreenContext { mail: "Lumo reads the user's inbox.\n".into(), ..Default::default() };
+        assert!(!screen.is_empty());
+        assert!(context_text(&screen, false).contains("Lumo reads the user's inbox."));
+        assert!(!context_text(&ScreenContext::default(), false).contains("inbox"));
+    }
+
+    #[test]
     fn the_context_says_where_the_screenshots_are_or_only_names_them() {
         let screen = ScreenContext {
             windows: vec![win("Docs", "msedge")],
@@ -974,6 +991,7 @@ mod tests {
             shared_windows: Vec::new(),
             tabs: Vec::new(),
             documents: Vec::new(),
+            mail: String::new(),
         };
         let cli = context_text(&screen, true);
         assert!(cli.contains("Read them from these paths:\n- Screen 1: C:\\inbox\\screenshot-1.png\n- Screen 2: C:\\inbox\\screenshot-2.png\n"));

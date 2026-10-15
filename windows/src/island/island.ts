@@ -25,7 +25,7 @@ import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
-import { IslandStateMachine } from "./fsm";
+import { IslandStateMachine, type LeaveHold } from "./fsm";
 import { CompactStrip } from "./compact";
 import { ACTIVITIES_GAP, IslandActivities } from "./activities";
 import type { MailMessage } from "../core/bridge";
@@ -53,6 +53,12 @@ const MOVE_THRESHOLD = 4;
 const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
+/**
+ * With the cursor in the chat's empty field or the drop menu open, the mouse
+ * leaving folds the island only after this long (s); a message being written
+ * keeps it open.
+ */
+const LINGER_CLOSE_DELAY = 10;
 /** After the button is let go, how long a drop has to show up before the drag counts as gone elsewhere (ms). */
 const STRAY_DRAG_MS = 300;
 /**
@@ -197,6 +203,8 @@ export class Island {
   private botHoverStart = { x: 0, y: 0 };
 
   private lastSyncedView: IslandViewName | null = null;
+  /** Y and N are held as global keys for the request on screen (approval_keys.rs). */
+  private approvalKeys = false;
 
   /** The launch greeting ended, or the island came out of hidden — two of the
    *  moments the Monday recap may open (see src/recap/recap.ts). */
@@ -231,6 +239,7 @@ export class Island {
     });
     State.subscribe(() => {
       this.fsm.held = State.liveActive;
+      this.fsm.holdChanged();
       this.dirty = true;
       this.ensureRunning();
     });
@@ -490,6 +499,14 @@ export class Island {
 
   private wireFsm() {
     this.applyBehaviour();
+    this.fsm.lingerDelay = LINGER_CLOSE_DELAY;
+    this.fsm.leaveHold = () => this.leaveHold();
+    // Typing, the chat's field taking or losing the cursor, the island losing
+    // the keyboard to another app: the countdown follows.
+    const changed = () => this.fsm.holdChanged();
+    for (const type of ["input", "focusin", "focusout"]) document.addEventListener(type, changed, true);
+    window.addEventListener("focus", changed);
+    window.addEventListener("blur", changed);
     this.fsm.onTransition = (from, to) => {
       switch (to) {
         case "hidden":
@@ -784,6 +801,23 @@ export class Island {
     this.fsm.autoHide = s.islandAutoHide === true;
   }
 
+  /**
+   * What a mouse leave must wait for (fsm.ts LeaveHold): a message being
+   * written in the chat keeps the island open; the cursor in the chat's empty
+   * field, or the drop menu opened from its tab, give it LINGER_CLOSE_DELAY.
+   */
+  private leaveHold(): LeaveHold {
+    if (State.mode !== "expanded") return "none";
+    // Opened by a drag passing by: that one closes as the drag goes (followDrag).
+    if (State.view === "upload" && !this.dragOpened) return "linger";
+    const field = document.activeElement;
+    if (State.view === "prompt" && document.hasFocus() &&
+        field instanceof HTMLTextAreaElement && field.classList.contains("chat-input")) {
+      return field.value.trim() !== "" ? "keep" : "linger";
+    }
+    return "none";
+  }
+
   /** The mouse came to rest on the closed island: open it, when that is asked for. */
   private scheduleHoverOpen() {
     this.cancelHoverOpen();
@@ -884,12 +918,22 @@ export class Island {
           State.mouseInIsland = { x: e.client.x - rect.x, y: e.client.y - rect.y };
         }
         const at = this.uploadCanvas.toScene(State.mouseInIsland.x, State.mouseInIsland.y);
-        // Already following this drag: Mochi just chases the file. A drag
-        // left half-way (the sequence ended under it) starts again.
+        // Already following this drag: Mochi just watches the file.
         if (State.fileDragOver && UploadSeq.isActive && !UploadSeq.dropped) {
           UploadSeq.updateCursor(at.x, at.y);
           return;
         }
+        // Back on the island after going off it: the same scene carries on,
+        // Mochi opens up again where he is instead of starting over.
+        if (UploadSeq.isActive && !UploadSeq.dropped && this.uploadActive) {
+          State.fileDragOver = true;
+          this.engine.animateMorph(1);
+          UploadSeq.updateCursor(at.x, at.y);
+          UploadSeq.setOver(true);
+          State.notify();
+          return;
+        }
+        // A drag left half-way (the sequence ended under it) starts again.
         if (!this.dragOpened && !(State.mode === "expanded" && UPLOAD_VIEWS.has(State.view))) {
           this.dragOpened = { view: State.mode === "expanded" ? State.view : null };
         }
@@ -905,6 +949,7 @@ export class Island {
         if (!State.fileDragOver) return;
         State.fileDragOver = false;
         this.engine.animateMorph(0);
+        UploadSeq.setOver(false);
         // The island deliberately stays open: the drag session is still alive.
         State.notify();
         break;
@@ -1215,6 +1260,12 @@ export class Island {
     return { x, y, w, h: hh };
   }
 
+  /** A page point on the island itself (where a file can be dropped). */
+  private overIsland(x: number, y: number): boolean {
+    const r = this.islandRect();
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+
   /** The edge the island hangs from: always the top where it cannot be moved. */
   private get dock(): Dock {
     return this.canResize ? parseDock(State.settings.islandDock) : "top";
@@ -1399,7 +1450,8 @@ export class Island {
       }
     });
 
-    void onDragDrop((e) => this.onDragDrop(e));
+    // A file is taken only with the cursor on the island, not just near it.
+    void onDragDrop((e) => this.onDragDrop(e), (x, y) => this.overIsland(x, y));
 
     // Outside Tauri (plain browser) drive the cursor from DOM events so the
     // island can be inspected with `npm run dev`.
@@ -1812,6 +1864,17 @@ export class Island {
       this.animateGeometry(this.compact.size == null);
     }
     this.activities.sync();
+
+    // Y and N answer the request on screen from anywhere (approval_keys.rs):
+    // held while a card or the closed island's Deny / Allow is showing, and
+    // given back to other apps as soon as nothing waits.
+    const req = State.pendingApproval;
+    const keysWanted = (expanded && State.view === "approval" && req != null && !req.questions)
+      || (compactOn && this.compact.approval != null);
+    if (keysWanted !== this.approvalKeys) {
+      this.approvalKeys = keysWanted;
+      void Bridge.setApprovalKeys(keysWanted);
+    }
 
     // The compact island shows Lumo alone: the other pills' mini Lumos are
     // only in the open island.

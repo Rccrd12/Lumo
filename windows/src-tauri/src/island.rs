@@ -914,6 +914,18 @@ pub fn apply_geometry(app: &AppHandle, pref: &str, placement: Placement, collaps
         let _ = panel.set_zoom(zoom);
     }
     let _ = win.set_always_on_top(true);
+    platform::raise_topmost(&win);
+}
+
+/// Another app came to the front (platform::watch_foreground): the island, its
+/// wake strip included, and the live activities in their own window go back
+/// above it, even when it is always on top too. Claude's hand (computer.rs)
+/// goes last, so it stays above the island.
+pub fn keep_on_top(app: &AppHandle) {
+    for label in [WINDOW_LABEL, crate::activities::LABEL, crate::computer::OVERLAY] {
+        let Some(win) = app.get_webview_window(label) else { continue };
+        platform::raise_topmost(&win);
+    }
 }
 
 #[cfg(test)]

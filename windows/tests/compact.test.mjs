@@ -31,6 +31,9 @@ test("the chat comes first, then the call, then the agents", () => {
   // What a tool does says more than the phase.
   assert.equal(activityLine(null, { ...live, phase: "thinking", doing: "Looking at the screen" }, null).text,
     "Gemini Live · Looking at the screen");
+  // A paused call (the shortcut) says its microphone is off.
+  assert.equal(activityLine(null, { ...live, phase: "listening", muted: true }, null).text, "Gemini Live · Microphone off");
+  assert.equal(activityLine(null, { ...live, phase: "listening", muted: false }, null).text, "Gemini Live · Listening");
   assert.equal(activityLine(null, null, { ...agent, state: "approval" }).text, "Claude Code · Waiting for your OK");
   assert.equal(activityLine(null, null, { ...agent, state: "thinking", step: null }).text, "Claude Code · Thinking…");
 });

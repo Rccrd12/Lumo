@@ -3193,8 +3193,11 @@ img.zoomable {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  align-items: center;
   gap: 8px;
-  padding-left: 196px;
+  /* Centred on the card, clear of Lumo in its top-left corner. */
+  padding: 0 130px;
+  text-align: center;
 }
 
 .drop-title {
@@ -3209,6 +3212,7 @@ img.zoomable {
 
 .drop-tags {
   display: flex;
+  justify-content: center;
   gap: 6px;
 }
 

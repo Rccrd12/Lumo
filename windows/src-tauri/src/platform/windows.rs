@@ -24,11 +24,13 @@ use ::windows::Win32::UI::Input::KeyboardAndMouse::{
     GetAsyncKeyState, GetKeyboardLayoutList, MapVirtualKeyExW, ToUnicodeEx, HKL, MAPVK_VK_TO_VSC,
     VK_CONTROL, VK_LBUTTON, VK_MENU, VK_RBUTTON, VK_SHIFT,
 };
+use ::windows::Win32::UI::Accessibility::{SetWinEventHook, HWINEVENTHOOK};
 use ::windows::Win32::UI::WindowsAndMessaging::{
     EnumChildWindows, EnumWindows, GetClassNameW, GetCursorPos, GetSystemMetrics, GetWindow, GetWindowLongPtrW,
     GetWindowTextW, GetWindowThreadProcessId, IsIconic, IsWindowVisible, SetForegroundWindow,
-    SetWindowLongPtrW, ShowWindow, GWL_EXSTYLE, GW_OWNER, SM_SWAPBUTTON, SW_RESTORE, WS_EX_NOACTIVATE,
-    WS_EX_TOOLWINDOW,
+    SetWindowLongPtrW, SetWindowPos, ShowWindow, EVENT_SYSTEM_FOREGROUND, GWL_EXSTYLE, GW_OWNER, HWND_TOPMOST,
+    SM_SWAPBUTTON, SWP_NOACTIVATE, SWP_NOMOVE, SWP_NOOWNERZORDER, SWP_NOSIZE, SW_RESTORE, WINEVENT_OUTOFCONTEXT,
+    WINEVENT_SKIPOWNPROCESS, WS_EX_NOACTIVATE, WS_EX_TOOLWINDOW,
 };
 
 use super::LocalTime;
@@ -377,6 +379,55 @@ pub fn set_activating(win: &WebviewWindow, activating: bool) {
             ex | WS_EX_NOACTIVATE.0 as isize
         };
         SetWindowLongPtrW(hwnd, GWL_EXSTYLE, want);
+    }
+}
+
+/// Puts the window back on top of every other always-on-top window.
+///
+/// `set_always_on_top(true)` is not enough to stay there: tao only calls
+/// SetWindowPos when the flag changes, so asking again does nothing, and every
+/// other topmost window (the taskbar, another app's overlay or player) that
+/// comes to the front is put above ours.
+pub fn raise_topmost(win: &WebviewWindow) {
+    let Some(hwnd) = hwnd_of(win) else { return };
+    unsafe {
+        let _ = SetWindowPos(
+            hwnd,
+            Some(HWND_TOPMOST),
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_NOOWNERZORDER,
+        );
+    }
+}
+
+static FOREGROUND_APP: std::sync::OnceLock<AppHandle> = std::sync::OnceLock::new();
+
+unsafe extern "system" fn foreground_changed(_: HWINEVENTHOOK, _: u32, _: HWND, _: i32, _: i32, _: u32, _: u32) {
+    if let Some(app) = FOREGROUND_APP.get() {
+        crate::island::keep_on_top(app);
+    }
+}
+
+/// Calls `island::keep_on_top` each time a window of another app comes to the
+/// front. An event from the system, not a timer: nothing runs in between.
+/// Called once, on the main thread, whose message loop delivers the events.
+pub fn watch_foreground(app: &AppHandle) {
+    if FOREGROUND_APP.set(app.clone()).is_err() {
+        return;
+    }
+    unsafe {
+        SetWinEventHook(
+            EVENT_SYSTEM_FOREGROUND,
+            EVENT_SYSTEM_FOREGROUND,
+            None,
+            Some(foreground_changed),
+            0,
+            0,
+            WINEVENT_OUTOFCONTEXT | WINEVENT_SKIPOWNPROCESS,
+        );
     }
 }
 
