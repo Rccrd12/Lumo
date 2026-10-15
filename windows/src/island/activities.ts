@@ -22,7 +22,7 @@
 // a few failures in a row (src/core/calendar.ts).
 
 import { Bridge, IS_TAURI, emitToWindow, onEvent } from "../core/bridge";
-import { calendarRetryIn, parseIcs, showsCalendarError, type CalEvent } from "../core/calendar";
+import { calendarRetryIn, calendarWebLink, parseIcs, showsCalendarError, type CalEvent } from "../core/calendar";
 import { Feed, compactTimer } from "../core/compact";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -48,6 +48,8 @@ const DAY = 86_400_000;
 export const Calendar = {
   events: [] as CalEvent[],
   configured: false,
+  /** The calendar's web page (Google Calendar, Outlook, iCloud), when Lumo knows it. */
+  link: null as string | null,
   error: null as string | null,
   fetchedAt: 0,
   /** Failed fetches in a row; a good one sets it back to 0. */
@@ -90,6 +92,7 @@ export const Calendar = {
       const now = Date.now();
       this.configured = text != null;
       this.events = text ? parseIcs(text, now - DAY, now + 8 * DAY) : [];
+      this.link = text ? calendarWebLink(text) : null;
       this.error = null;
       this.fetchedAt = now;
       this.hasRead = text != null;
@@ -246,7 +249,7 @@ export class IslandActivities {
       lang: language(),
       timers: Feed.timers,
       media: Feed.media,
-      calendar: { configured: Calendar.configured, error: Calendar.error, events: Calendar.events },
+      calendar: { configured: Calendar.configured, error: Calendar.error, events: Calendar.events, link: Calendar.link ?? undefined },
       mail: {
         on, error: info?.error ?? null, messages: visibleMail(messages),
         inbox: typeof info?.data?.inbox === "string" ? info.data.inbox : undefined,
@@ -285,6 +288,9 @@ export class IslandActivities {
         if (inbox) void Bridge.openUrl(inbox);
         break;
       }
+      case "calendarWeb":
+        if (Calendar.link) void Bridge.openUrl(Calendar.link);
+        break;
       case "settings":
         this.host.openSettings();
         break;
