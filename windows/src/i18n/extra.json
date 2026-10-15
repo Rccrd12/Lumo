@@ -4135,18 +4135,6 @@
    "id": "Penginstal sedang dimulai. Lumo ditutup sekarang agar bisa diperbarui.",
    "it": "Il programma di installazione si sta avviando. Lumo ora si chiude per poter essere aggiornato."
   },
-  "Lumo only looks for updates when you click: nothing is checked in the background.": {
-   "zh-Hans": "Lumo 只在你点击时检查更新，不会在后台检查。",
-   "hi": "Lumo सिर्फ़ आपके क्लिक करने पर अपडेट देखता है: बैकग्राउंड में कुछ भी जाँचा नहीं जाता।",
-   "es": "Lumo solo busca actualizaciones cuando haces clic: no se comprueba nada en segundo plano.",
-   "ar": "لا يبحث Lumo عن التحديثات إلا عند النقر: لا يُفحص شيء في الخلفية.",
-   "fr": "Lumo ne cherche des mises à jour que lorsque vous cliquez : rien n'est vérifié en arrière-plan.",
-   "bn": "আপনি ক্লিক করলেই কেবল Lumo আপডেট খোঁজে: ব্যাকগ্রাউন্ডে কিছুই যাচাই হয় না।",
-   "pt-BR": "O Lumo só procura atualizações quando você clica: nada é verificado em segundo plano.",
-   "ru": "Lumo ищет обновления только по нажатию кнопки: в фоне ничего не проверяется.",
-   "id": "Lumo hanya mencari pembaruan saat Anda mengeklik: tidak ada pemeriksaan di latar belakang.",
-   "it": "Lumo cerca aggiornamenti solo quando fai clic: niente viene controllato in background."
-  },
   "Share your screen or open windows": {
    "zh-Hans": "分享你的屏幕或打开的窗口",
    "hi": "अपनी स्क्रीन या खुली विंडो साझा करें",
@@ -8714,6 +8702,78 @@
    "ru": "Ставит напоминание",
    "id": "Membuat pengingat",
    "it": "Imposta un promemoria"
+  },
+  "Check when Lumo opens": {
+   "zh-Hans": "Lumo 启动时检查",
+   "hi": "Lumo खुलने पर जाँचें",
+   "es": "Buscar al abrir Lumo",
+   "ar": "التحقق عند فتح Lumo",
+   "fr": "Vérifier à l'ouverture de Lumo",
+   "bn": "Lumo খোলার সময় যাচাই করুন",
+   "pt-BR": "Verificar ao abrir o Lumo",
+   "ru": "Проверять при запуске Lumo",
+   "id": "Periksa saat Lumo dibuka",
+   "it": "Controlla all'apertura di Lumo"
+  },
+  "Each time Lumo opens, it asks GitHub once whether a newer version is out, and says so on the island.": {
+   "zh-Hans": "每次 Lumo 启动时，都会向 GitHub 询问一次是否有新版本，并在灵动岛上提示。",
+   "hi": "हर बार Lumo खुलने पर यह GitHub से एक बार पूछता है कि कोई नया संस्करण आया है या नहीं, और आइलैंड पर बताता है।",
+   "es": "Cada vez que Lumo se abre, pregunta una vez a GitHub si hay una versión más reciente y lo avisa en la isla.",
+   "ar": "في كل مرة يُفتح فيها Lumo، يسأل GitHub مرة واحدة عن وجود إصدار أحدث، ويُعلمك بذلك على الجزيرة.",
+   "fr": "À chaque ouverture, Lumo demande une fois à GitHub si une version plus récente est sortie, et le signale sur l'île.",
+   "bn": "প্রতিবার Lumo খোলার সময় এটি GitHub-কে একবার জিজ্ঞাসা করে নতুন সংস্করণ এসেছে কিনা, এবং আইল্যান্ডে জানায়।",
+   "pt-BR": "Sempre que o Lumo abre, ele pergunta uma vez ao GitHub se há uma versão mais nova e avisa na ilha.",
+   "ru": "При каждом запуске Lumo один раз спрашивает GitHub, вышла ли новая версия, и сообщает об этом на острове.",
+   "id": "Setiap kali Lumo dibuka, Lumo bertanya sekali ke GitHub apakah ada versi yang lebih baru, lalu memberi tahu di pulau.",
+   "it": "A ogni apertura, Lumo chiede una volta a GitHub se è uscita una versione più recente e lo segnala sull'isola."
+  },
+  "Changelog": {
+   "zh-Hans": "更新日志",
+   "hi": "बदलावों की सूची",
+   "es": "Registro de cambios",
+   "ar": "سجل التغييرات",
+   "fr": "Journal des modifications",
+   "bn": "পরিবর্তনের তালিকা",
+   "pt-BR": "Registro de alterações",
+   "ru": "Список изменений",
+   "id": "Catatan perubahan",
+   "it": "Changelog"
+  },
+  "What changed in each version of Lumo.": {
+   "zh-Hans": "Lumo 每个版本的变化。",
+   "hi": "Lumo के हर संस्करण में क्या बदला।",
+   "es": "Lo que cambió en cada versión de Lumo.",
+   "ar": "ما الذي تغيّر في كل إصدار من Lumo.",
+   "fr": "Ce qui a changé dans chaque version de Lumo.",
+   "bn": "Lumo-র প্রতিটি সংস্করণে কী বদলেছে।",
+   "pt-BR": "O que mudou em cada versão do Lumo.",
+   "ru": "Что изменилось в каждой версии Lumo.",
+   "id": "Apa yang berubah di setiap versi Lumo.",
+   "it": "Cosa è cambiato in ogni versione di Lumo."
+  },
+  "Installed": {
+   "zh-Hans": "已安装",
+   "hi": "इंस्टॉल है",
+   "es": "Instalada",
+   "ar": "مثبّت",
+   "fr": "Installée",
+   "bn": "ইনস্টল করা",
+   "pt-BR": "Instalada",
+   "ru": "Установлена",
+   "id": "Terpasang",
+   "it": "Installata"
+  },
+  "Lumo {version} is available: Settings → Updates": {
+   "zh-Hans": "Lumo {version} 已推出：设置 → 更新",
+   "hi": "Lumo {version} उपलब्ध है: सेटिंग्स → अपडेट",
+   "es": "Lumo {version} está disponible: Ajustes → Actualizaciones",
+   "ar": "Lumo {version} متاح: الإعدادات ← التحديثات",
+   "fr": "Lumo {version} est disponible : Réglages → Mises à jour",
+   "bn": "Lumo {version} উপলব্ধ: সেটিংস → আপডেট",
+   "pt-BR": "Lumo {version} está disponível: Ajustes → Atualizações",
+   "ru": "Доступна версия Lumo {version}: Настройки → Обновления",
+   "id": "Lumo {version} tersedia: Pengaturan → Pembaruan",
+   "it": "Lumo {version} è disponibile: Impostazioni → Aggiornamenti"
   }
  }
 }

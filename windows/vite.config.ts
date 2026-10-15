@@ -1,5 +1,5 @@
 import { defineConfig, type Plugin } from "vite";
-import { existsSync, mkdirSync, readdirSync, copyFileSync, createReadStream } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, copyFileSync, createReadStream } from "node:fs";
 import { resolve, join, extname } from "node:path";
 
 // ───────────────────────────────────────────────────────────────────────────────
@@ -41,8 +41,35 @@ function sharedSounds(): Plugin {
   };
 }
 
+/** The repository's CHANGELOG.md, the one every release adds its section to. */
+export const CHANGELOG_FILE = resolve(__dirname, "../CHANGELOG.md");
+
+/**
+ * `virtual:lumo-changelog`: CHANGELOG.md as a string, built into the app so
+ * Settings → Updates shows it with no network (src/settings/changelog.ts).
+ */
+function changelog(): Plugin {
+  const id = "virtual:lumo-changelog";
+  const resolved = `\0${id}`;
+  return {
+    name: "lumo-changelog",
+    resolveId(source) {
+      return source === id ? resolved : null;
+    },
+    load(source) {
+      if (source !== resolved) return null;
+      if (!existsSync(CHANGELOG_FILE)) {
+        this.warn(`changelog not found at ${CHANGELOG_FILE} — Settings will show none`);
+        return "export default \"\";";
+      }
+      this.addWatchFile(CHANGELOG_FILE);
+      return `export default ${JSON.stringify(readFileSync(CHANGELOG_FILE, "utf8"))};`;
+    },
+  };
+}
+
 export default defineConfig({
-  plugins: [sharedSounds()],
+  plugins: [sharedSounds(), changelog()],
   clearScreen: false,
   server: {
     port: 1420,

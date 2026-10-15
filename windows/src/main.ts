@@ -13,6 +13,7 @@ import { Recap } from "./recap/recap";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t } from "./i18n/i18n";
 import { COMPUTER_TEXT } from "./core/computer";
 import { compactNotice } from "./core/compact";
+import { CHECK_DELAY_MS, NOTICE_MS as UPDATE_NOTICE_MS, checkOnOpen } from "./core/update-check";
 
 /** Shows the language Settings asks for ("" = the system's, when Lumo has it). */
 function applyLanguage() {
@@ -134,6 +135,19 @@ async function main() {
   await onEvent<null>("recap-check", checkRecap);
 
   island.launch();
+
+  // A newer Lumo on GitHub: said on the island once it is up (Settings →
+  // Updates → Check when Lumo opens). Only Update now, there, installs it.
+  if (IS_TAURI) {
+    window.setTimeout(() => {
+      void checkOnOpen({
+        enabled: State.settings.updateCheckOnOpen !== false,
+        check: Bridge.updateCheck,
+        notify: (latest) => compactNotice(t("Lumo {version} is available: Settings → Updates", { version: latest }), "#22c55e", UPDATE_NOTICE_MS),
+        log: (line) => void Bridge.log(line),
+      });
+    }, CHECK_DELAY_MS);
+  }
 
   // In a plain browser there is no wake strip behind the cursor: make the whole
   // page wake the island so the visuals can be checked with `npm run dev`.
