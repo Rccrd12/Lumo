@@ -219,7 +219,8 @@ pub async fn activities_prepare(app: AppHandle) {
     }
 }
 
-/// Shown while the island is open (and they are off it); hidden otherwise.
+/// Shown while they are off the island and not folded, whether the island is
+/// open or not; hidden otherwise.
 /// Async for the same reason as `activities_prepare`: it may make the window.
 #[tauri::command]
 pub async fn activities_show(app: AppHandle, show: bool) {

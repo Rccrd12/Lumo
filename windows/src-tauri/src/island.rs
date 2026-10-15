@@ -340,7 +340,8 @@ const HIT_MARGIN: f64 = 14.0;
 pub struct CursorPayload {
     pub x: f64,
     pub y: f64,
-    /// Over the live activities' own window, which counts as the island.
+    /// Over the live activities' own window with the button held (moved or
+    /// resized): only then does it count as the island.
     pub panel: bool,
 }
 
@@ -1281,7 +1282,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel });
+                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down });
             }
         }
     });
