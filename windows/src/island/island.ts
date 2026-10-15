@@ -25,7 +25,7 @@ import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
 import { h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
-import { IslandStateMachine } from "./fsm";
+import { IslandStateMachine, type LeaveHold } from "./fsm";
 import { CompactStrip } from "./compact";
 import { ACTIVITIES_GAP, IslandActivities } from "./activities";
 import type { MailMessage } from "../core/bridge";
@@ -53,6 +53,12 @@ const MOVE_THRESHOLD = 4;
 const TOP_BAR_H = 42;
 /** "Close when the mouse leaves": a short grace, so brushing past the edge doesn't fold it (s). */
 const LEAVE_CLOSE_DELAY = 0.6;
+/**
+ * With the cursor in the chat's empty field or the drop menu open, the mouse
+ * leaving folds the island only after this long (s); a message being written
+ * keeps it open.
+ */
+const LINGER_CLOSE_DELAY = 10;
 /** After the button is let go, how long a drop has to show up before the drag counts as gone elsewhere (ms). */
 const STRAY_DRAG_MS = 300;
 /**
@@ -231,6 +237,7 @@ export class Island {
     });
     State.subscribe(() => {
       this.fsm.held = State.liveActive;
+      this.fsm.holdChanged();
       this.dirty = true;
       this.ensureRunning();
     });
@@ -490,6 +497,14 @@ export class Island {
 
   private wireFsm() {
     this.applyBehaviour();
+    this.fsm.lingerDelay = LINGER_CLOSE_DELAY;
+    this.fsm.leaveHold = () => this.leaveHold();
+    // Typing, the chat's field taking or losing the cursor, the island losing
+    // the keyboard to another app: the countdown follows.
+    const changed = () => this.fsm.holdChanged();
+    for (const type of ["input", "focusin", "focusout"]) document.addEventListener(type, changed, true);
+    window.addEventListener("focus", changed);
+    window.addEventListener("blur", changed);
     this.fsm.onTransition = (from, to) => {
       switch (to) {
         case "hidden":
@@ -782,6 +797,23 @@ export class Island {
     this.fsm.closeOnLeave = !holding && (mode === "timer" || mode === "leave");
     this.fsm.homeToPetitDelay = mode === "leave" ? LEAVE_CLOSE_DELAY : s.autoCloseInterval;
     this.fsm.autoHide = s.islandAutoHide === true;
+  }
+
+  /**
+   * What a mouse leave must wait for (fsm.ts LeaveHold): a message being
+   * written in the chat keeps the island open; the cursor in the chat's empty
+   * field, or the drop menu opened from its tab, give it LINGER_CLOSE_DELAY.
+   */
+  private leaveHold(): LeaveHold {
+    if (State.mode !== "expanded") return "none";
+    // Opened by a drag passing by: that one closes as the drag goes (followDrag).
+    if (State.view === "upload" && !this.dragOpened) return "linger";
+    const field = document.activeElement;
+    if (State.view === "prompt" && document.hasFocus() &&
+        field instanceof HTMLTextAreaElement && field.classList.contains("chat-input")) {
+      return field.value.trim() !== "" ? "keep" : "linger";
+    }
+    return "none";
   }
 
   /** The mouse came to rest on the closed island: open it, when that is asked for. */
