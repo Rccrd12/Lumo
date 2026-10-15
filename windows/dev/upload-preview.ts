@@ -26,7 +26,8 @@ UploadSeq.reachX = placed.reachX;
 UploadSeq.reachY = placed.reachY;
 stage.append(canvas.el);
 
-// The cursor walks in from the right, settles over the box, then drops.
+// The cursor walks in from the right, goes off the island and back on (Lumo
+// turns back into himself and opens up again), then drops.
 // The whole thing restarts every 12 s so it can be watched (and screenshotted)
 // without reloading the page.
 const CYCLE = 12;
@@ -49,9 +50,10 @@ function loop(now: number) {
     UploadSeq.enterZone(520, 96);
   }
   if (!dropped) {
-    const x = 520 - Math.min(1, t / 0.9) * 260;
-    UploadSeq.updateCursor(x, 96);
-    if (t >= 1.2) {
+    const x = 520 - Math.min(1, t / 0.9) * 140;
+    UploadSeq.updateCursor(x, 120);
+    UploadSeq.setOver(t < 1.2 || t >= 2.2);
+    if (t >= 3) {
       dropped = true;
       UploadSeq.performDrop(2.4);
     }

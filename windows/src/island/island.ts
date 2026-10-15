@@ -918,12 +918,22 @@ export class Island {
           State.mouseInIsland = { x: e.client.x - rect.x, y: e.client.y - rect.y };
         }
         const at = this.uploadCanvas.toScene(State.mouseInIsland.x, State.mouseInIsland.y);
-        // Already following this drag: Mochi just chases the file. A drag
-        // left half-way (the sequence ended under it) starts again.
+        // Already following this drag: Mochi just watches the file.
         if (State.fileDragOver && UploadSeq.isActive && !UploadSeq.dropped) {
           UploadSeq.updateCursor(at.x, at.y);
           return;
         }
+        // Back on the island after going off it: the same scene carries on,
+        // Mochi opens up again where he is instead of starting over.
+        if (UploadSeq.isActive && !UploadSeq.dropped && this.uploadActive) {
+          State.fileDragOver = true;
+          this.engine.animateMorph(1);
+          UploadSeq.updateCursor(at.x, at.y);
+          UploadSeq.setOver(true);
+          State.notify();
+          return;
+        }
+        // A drag left half-way (the sequence ended under it) starts again.
         if (!this.dragOpened && !(State.mode === "expanded" && UPLOAD_VIEWS.has(State.view))) {
           this.dragOpened = { view: State.mode === "expanded" ? State.view : null };
         }
@@ -939,6 +949,7 @@ export class Island {
         if (!State.fileDragOver) return;
         State.fileDragOver = false;
         this.engine.animateMorph(0);
+        UploadSeq.setOver(false);
         // The island deliberately stays open: the drag session is still alive.
         State.notify();
         break;
@@ -1249,6 +1260,12 @@ export class Island {
     return { x, y, w, h: hh };
   }
 
+  /** A page point on the island itself (where a file can be dropped). */
+  private overIsland(x: number, y: number): boolean {
+    const r = this.islandRect();
+    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+  }
+
   /** The edge the island hangs from: always the top where it cannot be moved. */
   private get dock(): Dock {
     return this.canResize ? parseDock(State.settings.islandDock) : "top";
@@ -1433,7 +1450,8 @@ export class Island {
       }
     });
 
-    void onDragDrop((e) => this.onDragDrop(e));
+    // A file is taken only with the cursor on the island, not just near it.
+    void onDragDrop((e) => this.onDragDrop(e), (x, y) => this.overIsland(x, y));
 
     // Outside Tauri (plain browser) drive the cursor from DOM events so the
     // island can be inspected with `npm run dev`.
