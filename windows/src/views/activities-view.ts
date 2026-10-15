@@ -60,7 +60,7 @@ export interface ActivitiesData {
   lang: string;
   timers: TimerActivity[];
   media: MediaActivity | null;
-  calendar: { configured: boolean; error: string | null; events: CalEvent[] };
+  calendar: { configured: boolean; error: string | null; events: CalEvent[]; link?: string };
   mail: { on: boolean; error: string | null; messages: MailRow[]; inbox?: string };
 }
 
@@ -70,6 +70,7 @@ export type ActivitiesAction =
   | { kind: "media"; action: "toggle" | "next" | "previous" }
   | { kind: "mail"; id: string; what: "summary" | "reply" | "ignore" | "open" }
   | { kind: "inbox" }
+  | { kind: "calendarWeb" }
   | { kind: "settings" }
   | { kind: "refresh" }
   | { kind: "fold" };
@@ -110,8 +111,11 @@ export class ActivitiesView {
   private calendarBox = h("div", { class: "act-rows" });
   private mailBox = h("div", { class: "act-rows" });
   /** The Email card: a click on it, off its emails and buttons, opens the inbox. */
-  private mailCard: HTMLElement | null = null;
+  private mailCard: HTMLElement;
   private inbox = "";
+  /** The Calendar card: a click on it, off its buttons, opens the calendar's web page. */
+  private calendarCard: HTMLElement;
+  private calendarLink = "";
   private timerInput: HTMLInputElement;
   private keys = { timer: "", music: "", calendar: "", mail: "" };
   private data: ActivitiesData | null = null;
@@ -146,12 +150,16 @@ export class ActivitiesView {
     const body = h("div", { class: "act-body" },
       this.section(ICONS.timer, ACTIVITIES_TEXT.timer, "#F5A524", undefined, this.timerList, quick, form),
       this.section(ICONS.play, ACTIVITIES_TEXT.music, "#1DB954", undefined, this.musicBox),
-      this.section(ICONS.clock, ACTIVITIES_TEXT.calendar, "#4285F4", 1.8, this.calendarBox),
+      (this.calendarCard = this.section(ICONS.clock, ACTIVITIES_TEXT.calendar, "#4285F4", 1.8, this.calendarBox)),
       (this.mailCard = this.section(ICONS.envelope, ACTIVITIES_TEXT.email, "#EA4335", 1.8, this.mailBox)),
     );
     this.mailCard.addEventListener("click", (e) => {
       if (!this.inbox || (e.target as Element).closest("button, .act-mail.link")) return;
       this.act({ kind: "inbox" });
+    });
+    this.calendarCard.addEventListener("click", (e) => {
+      if (!this.calendarLink || (e.target as Element).closest("button")) return;
+      this.act({ kind: "calendarWeb" });
     });
     const fold = h("button", {
       class: "act-fold", title: tl(ACTIVITIES_TEXT.fold), "aria-label": tl(ACTIVITIES_TEXT.fold),
@@ -183,7 +191,9 @@ export class ActivitiesView {
     return h("section", { class: "act-card" },
       h("div", { class: "act-card-head" },
         h("span", { class: "act-icon", style: `color:${color}` }, svg(icon, 12, stroke ? { stroke } : {})),
-        h("span", { text: tl(title) })),
+        h("span", { text: tl(title) }),
+        // Shown only on a card that opens a page (.act-card.link).
+        h("span", { class: "act-open" }, svg(ICONS.arrowUpRight, 10, { stroke: 1.8 }))),
       ...content,
     );
   }
@@ -378,6 +388,8 @@ export class ActivitiesView {
   // ── Calendar ────────────────────────────────────────────────────────────────
 
   private drawCalendar(cal: ActivitiesData["calendar"], now: number) {
+    this.calendarLink = cal.configured && !cal.error ? cal.link ?? "" : "";
+    linkCard(this.calendarCard, this.calendarLink, () => calendarSite(this.calendarLink));
     const coming = cal.events.filter((e) => e.end > now).slice(0, 4);
     const key = `${language()}|${cal.configured}|${cal.error}|${Math.floor(now / 60_000)}|${coming.map((e) => `${e.start}${e.title}`).join("|")}`;
     if (key === this.keys.calendar) return;
@@ -409,12 +421,7 @@ export class ActivitiesView {
   private drawMail(mail: ActivitiesData["mail"]) {
     const rows = mail.messages.slice(0, MAIL_ROWS);
     this.inbox = mail.on && !mail.error ? mail.inbox ?? "" : "";
-    if (this.mailCard) {
-      this.mailCard.style.cursor = this.inbox ? "pointer" : "";
-      this.mailCard.title = this.inbox
-        ? t("Open {name}", { name: this.inbox.includes("google.com") ? "Gmail" : t(ACTIVITIES_TEXT.email) })
-        : "";
-    }
+    linkCard(this.mailCard, this.inbox, () => (this.inbox.includes("google.com") ? "Gmail" : t(ACTIVITIES_TEXT.email)));
     const key = `${language()}|${mail.on}|${mail.error}|${rows.map((m) => m.id).join(",")}`;
     if (key === this.keys.mail) return;
     this.keys.mail = key;
@@ -463,3 +470,16 @@ export class ActivitiesView {
   }
 }
 
+/** A card that opens a page when clicked: lit on hover, and titled "Open …". */
+function linkCard(card: HTMLElement, url: string, name: () => string) {
+  card.classList.toggle("link", !!url);
+  card.title = url ? t("Open {name}", { name: name() }) : "";
+}
+
+/** The name of the site a calendar link opens. */
+function calendarSite(url: string): string {
+  if (url.includes("google.com")) return "Google Calendar";
+  if (url.includes("outlook")) return "Outlook";
+  if (url.includes("icloud")) return "iCloud";
+  return t(ACTIVITIES_TEXT.calendar);
+}

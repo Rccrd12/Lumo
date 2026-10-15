@@ -109,6 +109,39 @@
   display: flex;
 }
 
+/* A card that opens a page (Email: the inbox; Calendar: its web page): it
+   lights up under the pointer, shows an arrow, and gives a little when pressed.
+   Not while the pointer is on one of its own buttons or emails. */
+.activities .act-card.link {
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.activities .act-card.link:hover:not(:has(button:hover, .act-mail.link:hover)) {
+  background-color: #1c1d21;
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.activities .act-card.link:active:not(:has(button:active, .act-mail.link:active)) {
+  background-color: #222328;
+  transform: scale(0.985);
+}
+
+.activities .act-open {
+  display: none;
+  margin-left: auto;
+  color: var(--dim);
+  transition: color 0.15s ease;
+}
+
+.activities .act-card.link .act-open {
+  display: flex;
+}
+
+.activities .act-card.link:hover:not(:has(button:hover, .act-mail.link:hover)) .act-open {
+  color: var(--ink);
+}
+
 .activities .act-rows {
   display: flex;
   flex-direction: column;
