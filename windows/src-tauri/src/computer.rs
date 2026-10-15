@@ -99,20 +99,42 @@ pub fn server_entry() -> Value {
     })
 }
 
-/// A build before this one gave Antigravity CLI Lumo's server in the MCP
-/// configuration of Lumo's own folder (`~/Lumo/.agents/mcp_config.json`):
-/// it is taken out again, and whatever else the file holds is kept.
-pub fn forget_antigravity(work: &std::path::Path) {
+/// Antigravity CLI reads MCP servers from its workspace's
+/// `.agents/mcp_config.json`. Lumo's server goes in the one of Lumo's own
+/// folder with its email tools only (`--tools=mail`, mail.rs) while the Email
+/// pill is on, and comes out when it is off; computer use never goes to agy
+/// (Gemini Live's screen work is Claude Code's). An entry an earlier build put
+/// there for the computer is replaced. Whatever else the file holds is kept,
+/// and the user's global configuration is never touched.
+pub fn agy_workspace(work: &std::path::Path, mail: bool) {
     let path = work.join(".agents").join("mcp_config.json");
-    let Some(mut config) = std::fs::read_to_string(&path).ok().and_then(|text| serde_json::from_str::<Value>(&text).ok()) else {
-        return;
+    let read = std::fs::read_to_string(&path).ok();
+    let mut config = match read.as_deref().map(serde_json::from_str::<Value>) {
+        Some(Ok(v)) if v.is_object() => v,
+        // A file Lumo can't read is the user's: left alone.
+        Some(_) => return,
+        None if !mail => return,
+        None => json!({}),
     };
-    let Some(servers) = config.get_mut("mcpServers").and_then(Value::as_object_mut) else { return };
-    if servers.remove("lumo").is_none() {
+    let entry = mail.then(|| {
+        let mut server = server_entry();
+        server["args"] = json!(["--mcp", "--tools=mail"]);
+        server
+    });
+    let Some(root) = config.as_object_mut() else { return };
+    let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
+    let Some(servers) = servers.as_object_mut() else { return };
+    if servers.get("lumo") == entry.as_ref() {
         return;
     }
-    if let Err(e) = std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap_or_default()) {
-        crate::log::line(format!("computer use: {} not written: {e}", path.display()));
+    match entry {
+        Some(e) => servers.insert("lumo".into(), e),
+        None => servers.remove("lumo"),
+    };
+    let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok())
+        && std::fs::write(&path, serde_json::to_string_pretty(&config).unwrap_or_default()).is_ok();
+    if !written {
+        crate::log::line(format!("antigravity: {} not written", path.display()));
     }
 }
 
@@ -1556,19 +1578,32 @@ mod tests {
     }
 
     #[test]
-    fn an_earlier_antigravity_entry_is_taken_out_and_the_rest_kept() {
+    fn antigravity_gets_lumos_email_tools_only_and_the_rest_is_kept() {
         let dir = std::env::temp_dir().join(format!("lumo-agy-{}", std::process::id()));
         let file = dir.join(".agents").join("mcp_config.json");
+        let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        forget_antigravity(&dir);
-        assert!(!file.exists(), "nothing there: nothing written");
-        std::fs::create_dir_all(dir.join(".agents")).unwrap();
+        agy_workspace(&dir, false);
+        assert!(!file.exists(), "off and nothing there: nothing written");
+        agy_workspace(&dir, true);
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=mail"]));
+
+        // An earlier build's computer use entry, next to the user's own.
         std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
-        forget_antigravity(&dir);
-        let v: Value = serde_json::from_str(&std::fs::read_to_string(&file).unwrap()).unwrap();
-        assert!(v["mcpServers"].get("lumo").is_none());
+        agy_workspace(&dir, true);
+        let v = read();
+        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=mail"]), "the email, never the computer");
+        assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
+        agy_workspace(&dir, false);
+        let v = read();
+        assert!(v["mcpServers"].get("lumo").is_none());
+        assert_eq!(v["mcpServers"]["mine"]["command"], "x");
+
+        std::fs::write(&file, "not json").unwrap();
+        agy_workspace(&dir, true);
+        assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
