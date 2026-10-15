@@ -665,7 +665,8 @@ body {
 }
 
 /* The folded live activities' icon, landing in the top bar. */
-.tab-activities.pop {
+.tab-activities.pop,
+.plan-btn.pop {
   animation: tab-pop 0.36s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 

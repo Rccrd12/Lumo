@@ -1,6 +1,7 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
 mod activities;
+mod plan_island;
 mod agent_hooks;
 mod agents;
 mod antigravity_cli;
@@ -127,6 +128,12 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.activities_y = current.activities_y;
         settings.activities_width = current.activities_width;
         settings.activities_height = current.activities_height;
+        // And where the Plan island was left and how big (plan_island.rs).
+        settings.agent_plan_moved = current.agent_plan_moved;
+        settings.agent_plan_x = current.agent_plan_x;
+        settings.agent_plan_y = current.agent_plan_y;
+        settings.agent_plan_width = current.agent_plan_width;
+        settings.agent_plan_height = current.agent_plan_height;
         *current = settings;
         (screen_changed, autostart_changed, shortcuts_changed)
     };
@@ -1148,6 +1155,9 @@ pub fn run() {
             activities::activities_drag,
             activities::activities_window_resize,
             activities::activities_focus,
+            plan_island::plan_show,
+            plan_island::plan_drag,
+            plan_island::plan_window_resize,
             calendar::calendar_fetch,
             media::media_control,
             ingest_file,

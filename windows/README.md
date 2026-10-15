@@ -189,6 +189,24 @@ Settings → Island → **Say what's going on** and **Show the music playing**
 turn them off. While the island is hidden nothing is asked or counted: the
 music is only asked about while the closed island is on screen.
 
+### Plan
+
+A third island, right of the main one, with the plan an agent follows. It is
+shut and out of reach until an agent makes one: give an agent a job and, as
+soon as it writes its to-do list (Claude Code's TodoWrite or the plan it leaves
+Plan Mode with; Codex's `update_plan`, Gemini CLI's `write_todos` and
+OpenCode's `todowrite` when their hooks pass those calls on), the island
+opens with it, whether the main island is open or not. Each step shows where it
+stands (to do, under way, done, dropped), with who follows the plan, in which
+folder, and how far along it is; it moves on live as the agent works. Nothing is
+asked of the agents: the plan is read off the hooks Lumo already has.
+
+Like the live activities it is moved by its top bar, stays wherever you leave
+it, and is resized from its edges and bottom corners. Its **–** folds it into an
+icon in the island's top bar, left of the usage pills; that icon brings it back,
+and a new plan opens it again. A finished plan stays a few seconds, then the
+island shuts; a session that ends takes its plan with it.
+
 ### Keyboard shortcuts
 
 Every global shortcut can be changed or turned off in **Settings… → Shortcuts**:

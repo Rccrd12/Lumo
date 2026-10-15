@@ -8714,6 +8714,30 @@
    "ru": "Ставит напоминание",
    "id": "Membuat pengingat",
    "it": "Imposta un promemoria"
+  },
+  "Plan": {
+   "zh-Hans": "计划",
+   "hi": "योजना",
+   "es": "Plan",
+   "ar": "الخطة",
+   "fr": "Plan",
+   "bn": "পরিকল্পনা",
+   "pt-BR": "Plano",
+   "ru": "План",
+   "id": "Rencana",
+   "it": "Plan"
+  },
+  "{done} of {total}": {
+   "zh-Hans": "{done}/{total}",
+   "hi": "{total} में से {done}",
+   "es": "{done} de {total}",
+   "ar": "{done} من {total}",
+   "fr": "{done} sur {total}",
+   "bn": "{total}-এর মধ্যে {done}",
+   "pt-BR": "{done} de {total}",
+   "ru": "{done} из {total}",
+   "id": "{done} dari {total}",
+   "it": "{done} di {total}"
   }
  }
 }
