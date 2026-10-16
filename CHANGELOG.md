@@ -1,5 +1,16 @@
 # Changelog
 
+## Windows 0.9.0 — October 16, 2026
+
+- **Plan island**: when an agent writes its plan (Claude Code, Codex, Gemini CLI, OpenCode), a third island opens right of the island in a window of its own and follows the steps live. It moves by its top bar, resizes from its grips, and its "–" folds it into an icon left of the usage pills. A finished plan stays a few seconds, then the island shuts
+- **Changelog in Settings**: Settings → Updates lists every version's notes, folded, with the installed one marked
+- **A note when a newer Lumo is out**: when it opens, Lumo asks GitHub once for the newest Windows release; a newer one shows a note on the island and leaves Settings on Updates with Update now ready. "Check when Lumo opens" in Settings → Updates turns it off
+- **Antigravity CLI reads email** as Claude Code does: the newest emails, a search of the whole mailbox and one email in full, while the Email pill is on. Read only, so no card. A question about email in the chat brings the ten newest emails, read or not, for every provider
+- **Usage for every agent**: Codex and Antigravity CLI show their usage pill as soon as their hooks are installed; turning it off in Settings keeps it off
+- **The island reopens on its tab**: closed on Agents, it opens again on Agents; a card waiting for an answer still comes first
+- **Email and Calendar boxes** light up under the pointer, and the Calendar box opens the calendar's web page (Google Calendar, Outlook or iCloud)
+- **Detached live activities stay open**: in their own window they no longer go away when the island closes; only their "–" puts them away, and the music on them stays current
+
 ## Windows 0.8.0 — October 15, 2026
 
 - **Gemini Live does more on the computer**: it changes the volume, a laptop's brightness and the power plan, and locks the computer; it arranges the windows (front, left or right half, maximise, minimise, close); it says how the computer is doing (processor, memory, disks, battery, the busiest programs); it tidies files in your home folder, in two steps, with the plan read out first and "put them back" to undo it; it reads Windows' notifications; and it sets reminders at a time, which ring on the island and are kept across restarts
