@@ -318,6 +318,44 @@ pub fn lumo_tool(name: &str) -> Option<&'static str> {
     None
 }
 
+/// Which of Lumo's tools a call is: by the tool's own name, or, when the
+/// agent calls MCP tools through one tool of its own (Antigravity's
+/// `call_mcp_tool`), by what its input names: the server `lumo` and one of
+/// Lumo's tools, or the two already together ("mcp_lumo_update_plan").
+pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
+    if let Some(name) = lumo_tool(tool) {
+        return Some(name);
+    }
+    if !tool.to_ascii_lowercase().contains("mcp") {
+        return None;
+    }
+    let parsed;
+    let input = match input {
+        Some(Value::String(s)) => {
+            parsed = serde_json::from_str::<Value>(s).ok()?;
+            &parsed
+        }
+        Some(v) => v,
+        None => return None,
+    };
+    // Its own strings, and those of the objects in it (not the arguments' contents).
+    let mut words: Vec<&str> = Vec::new();
+    for v in input.as_object()?.values() {
+        match v {
+            Value::String(s) => words.push(s),
+            Value::Object(inner) => words.extend(inner.values().filter_map(Value::as_str)),
+            _ => {}
+        }
+    }
+    if let Some(name) = words.iter().find_map(|w| lumo_tool(w)) {
+        return Some(name);
+    }
+    if !words.iter().any(|w| w.trim().eq_ignore_ascii_case(SERVER)) {
+        return None;
+    }
+    words.iter().find_map(|w| NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).find(|n| w.trim().eq_ignore_ascii_case(n)).copied())
+}
+
 /// Whether Lumo's tool `name` (as `lumo_tool` gives it) only reads: what
 /// looks at the screen, the email tools and the plan, which only shows. None
 /// gets a card.
@@ -595,6 +633,23 @@ mod tests {
         assert_eq!(lumo_tool("mcp_lumo_update_plan"), Some("update_plan"));
         assert!(only_reads("update_plan"));
         assert!(!crate::reply::island_card_tool("mcp_lumo_update_plan"), "no card to show a plan");
+        // Antigravity calls every MCP tool through call_mcp_tool.
+        let call = json!({ "ServerName": "lumo", "ToolName": "update_plan", "Arguments": "{}", "toolSummary": "Update plan on Lumo island" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&call)), Some("update_plan"));
+        assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)));
+        let text = json!(call.to_string());
+        assert_eq!(lumo_call("call_mcp_tool", Some(&text)), Some("update_plan"), "its input as JSON text");
+        let nested = json!({ "tool": { "server": "Lumo", "name": "mail_read" } });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&nested)), Some("mail_read"));
+        let joined = json!({ "name": "mcp_lumo_update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&joined)), Some("update_plan"));
+        // Another server's tool, or a computer tool, still asks.
+        let github = json!({ "ServerName": "github", "ToolName": "update_plan" });
+        assert_eq!(lumo_call("call_mcp_tool", Some(&github)), None);
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&github)));
+        let click = json!({ "ServerName": "lumo", "ToolName": "left_click" });
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&click)));
+        assert_eq!(lumo_call("view_file", Some(&call)), None, "only an MCP call");
     }
 
     #[test]

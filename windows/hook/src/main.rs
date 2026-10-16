@@ -253,7 +253,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let tool = map.get("tool_name").and_then(Value::as_str).unwrap_or("");
     let island_card = is_island_run(env)
         && name == "PreToolUse"
-        && ((args.agent == "antigravity" && reply::island_card_tool(tool))
+        && ((args.agent == "antigravity" && reply::island_card(tool, map.get("tool_input")))
             || (args.agent.is_empty() && args.chat_card && reply::claude_card_tool(tool)));
     let name = if island_card { "PermissionRequest".to_string() } else { name };
     if island_card {

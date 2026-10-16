@@ -14,8 +14,12 @@
 // The island chat's Claude Code runs send their plan through the chat
 // (`chat-plan`), the agents in a terminal through their hooks.
 //
-// It lives in a window of its own (plan.html, plan_island.rs), shown on its
-// own whether the island is open or not, which only draws: this page holds
+// Beside the island it shows only while the island is open, as the live
+// activities do: the island closing puts it away, opening brings it back.
+// Moved away from it, it stays on screen until its "–".
+//
+// It lives in a window of its own (plan.html, plan_island.rs), which only
+// draws: this page holds
 // the plans, sends the window the one to show and hears its clicks. Nothing
 // runs while there is no plan, and nothing ticks while there is one.
 
@@ -96,7 +100,7 @@ export class IslandPlan {
       // A plan just made: the island opens with it, even folded before.
       this.viewing = null;
       this.folded = false;
-      if (!this.shown) {
+      if (!this.shown && this.inSight()) {
         this.fly = true;
         Sound.play("open");
       }
@@ -148,8 +152,13 @@ export class IslandPlan {
     this.folded = false;
     this.viewing = null;
     this.fly = true;
-    Sound.play("open");
+    if (this.inSight()) Sound.play("open");
     this.changed();
+  }
+
+  /** Beside the island (not moved away), it shows only while the island is open. */
+  private inSight(): boolean {
+    return State.settings.agentPlanMoved === true || State.mode === "expanded";
   }
 
   /**
@@ -220,14 +229,17 @@ export class IslandPlan {
       this.folded = false;
       this.viewing = null;
     }
-    const want = any && !this.folded && !State.paused;
-    if (State.planIcon !== any || State.planOpen !== want) {
+    const open = any && !this.folded && !State.paused;
+    const want = open && this.inSight();
+    if (State.planIcon !== any || State.planOpen !== open) {
       State.planIcon = any;
-      State.planOpen = want;
+      State.planOpen = open;
       // The chat draws the icon on the next notify (this may be one).
       queueMicrotask(() => State.notify());
     }
     this.send();
+    // Put away with the island: it comes back out of it when the island opens.
+    if (open && !want) this.fly = true;
     if (want === this.shown) return;
     this.shown = want;
     if (!want) {

@@ -61,8 +61,14 @@ pub fn stdout(agent: &str, event: &str, decision: Option<&str>, question: Option
 /// about, and what runs on nobody's say once agy's own confirmation is off.
 /// Reading and writing workspace files needs none.
 pub fn island_card_tool(tool: &str) -> bool {
+    island_card(tool, None)
+}
+
+/// `island_card_tool`, knowing the call's input: a call of Lumo's own email
+/// or plan tool through agy's `call_mcp_tool` gets no card either.
+pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     // Lumo's email tools only read the user's mailbox, its plan tool only shows (mcp.rs).
-    if crate::mcp::lumo_tool(tool).is_some_and(|name| crate::mcp::MAIL_NAMES.contains(&name) || name == crate::mcp::PLAN_NAME) {
+    if crate::mcp::lumo_call(tool, input).is_some_and(|name| crate::mcp::MAIL_NAMES.contains(&name) || name == crate::mcp::PLAN_NAME) {
         return false;
     }
     let tool = tool.to_ascii_lowercase();

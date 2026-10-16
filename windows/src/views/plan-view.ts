@@ -62,7 +62,25 @@ function marker(step: PlanStep): HTMLElement {
   const el = h("span", { class: `plan-mark ${step.status}` });
   if (step.status === "done") el.append(svg(ICONS.check, 10, { stroke: 2.6 }));
   else if (step.status === "skipped") el.append(h("i"));
-  else if (step.status === "active") el.append(h("b"));
+  else if (step.status === "active") el.append(litRing());
+  return el;
+}
+
+/** The lit ring and its dot, drawn together so the dot sits in its middle at any zoom. */
+function litRing(): SVGSVGElement {
+  const el = document.createElementNS(SVG_NS, "svg");
+  el.setAttribute("viewBox", "0 0 14 14");
+  el.classList.add("plan-lit");
+  const circle = (r: number, cls: string) => {
+    const c = document.createElementNS(SVG_NS, "circle");
+    c.setAttribute("cx", "7");
+    c.setAttribute("cy", "7");
+    c.setAttribute("r", String(r));
+    c.classList.add(cls);
+    el.append(c);
+  };
+  circle(6.25, "plan-lit-ring");
+  circle(3, "plan-lit-dot");
   return el;
 }
 

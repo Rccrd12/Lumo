@@ -342,23 +342,35 @@
   display: grid;
   place-items: center;
   border-radius: 50%;
-  /* The ring is drawn inside the box, not as a border: the dot is placed in
-     the same box, so the two stay concentric at any zoom. */
   box-shadow: inset 0 0 0 1.5px var(--dim-4);
   background: var(--card);
   color: #000;
   transition: box-shadow 0.3s ease, background 0.3s ease;
 }
 
+/* Under way: a ring and its dot, one drawing (views/plan-view.ts litRing). */
 .agent-plan .plan-mark.active {
-  box-shadow: inset 0 0 0 1.5px var(--agent, var(--ink));
+  box-shadow: none;
 }
 
-.agent-plan .plan-mark.active b {
+.agent-plan .plan-lit {
   position: absolute;
-  inset: 4px;
-  border-radius: 50%;
-  background: var(--agent, var(--ink));
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.agent-plan .plan-lit-ring {
+  fill: none;
+  stroke: var(--agent, var(--ink));
+  stroke-width: 1.5;
+}
+
+.agent-plan .plan-lit-dot {
+  fill: var(--agent, var(--ink));
+  transform-box: fill-box;
+  transform-origin: center;
 }
 
 .agent-plan .plan-mark.done {
@@ -404,7 +416,7 @@
 }
 
 /* A step just started: its dot grows and the row lights up. */
-.agent-plan .plan-step.now-active .plan-mark b {
+.agent-plan .plan-step.now-active .plan-lit-dot {
   animation: plan-dot 0.4s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
 
