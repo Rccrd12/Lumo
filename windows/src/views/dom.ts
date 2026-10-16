@@ -181,7 +181,7 @@ export function gentleWheel(el: HTMLElement) {
   };
   const step = () => {
     frame = 0;
-    // Moved by something else meanwhile (following an answer down): that wins.
+    // Moved by something else meanwhile (a chat opening at its end): that wins.
     if (Math.abs(el.scrollTop - Math.round(pos)) > 2) return;
     const max = Math.max(0, el.scrollHeight - el.clientHeight);
     target = Math.min(Math.max(target, 0), max);
