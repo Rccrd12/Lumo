@@ -55,7 +55,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have (load them with ToolSearch first if they are deferred), and keep it up to date as you go: Lumo shows it to the user step by step. ",
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -70,7 +70,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have (load them with ToolSearch first if they are deferred), and keep it up to date as you go: Lumo shows it to the user step by step. ",
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -481,6 +481,10 @@ struct Run {
     /// Plan tool calls of the main conversation not passed on yet (`take_plans`):
     /// name and whole input, for the Plan island (src/island/plan.ts).
     plans: Vec<(String, Value)>,
+    /// TaskCreate calls waiting for their result, which says the task's id:
+    /// tool call id and input. The ids go on over the session (and further),
+    /// so TaskUpdate's can only be matched with the ones TaskCreate answered.
+    creating: Vec<(String, Value)>,
     /// The Claude plan's limits this turn reported (`rate_limit_event`), in the
     /// status line's shape: `five_hour` / `seven_day` → `used_percentage`, `resets_at`.
     rate_limits: serde_json::Map<String, Value>,
@@ -509,6 +513,26 @@ fn plan_window(info: &Value) -> Option<(String, Value)> {
 /// The tools an agent writes its plan with (src/core/agent-plan.ts reads them).
 fn is_plan_tool(name: &str) -> bool {
     matches!(name, "TodoWrite" | "ExitPlanMode" | "TaskCreate" | "TaskUpdate")
+}
+
+/// The id of the task a TaskCreate result says it made: the structured
+/// result (`tool_use_result.task.id`), else its text ("Task #4 created…").
+/// None when it failed.
+fn created_task_id(line: &Value, result: &Value) -> Option<String> {
+    if result["is_error"].as_bool() == Some(true) {
+        return None;
+    }
+    if let Some(id) = line["tool_use_result"]["task"]["id"].as_str().filter(|s| !s.is_empty()) {
+        return Some(id.to_string());
+    }
+    let text = match &result["content"] {
+        Value::String(s) => s.clone(),
+        Value::Array(parts) => parts.iter().filter_map(|p| p["text"].as_str()).collect::<Vec<_>>().join(" "),
+        _ => String::new(),
+    };
+    let rest = &text[text.find('#')? + 1..];
+    let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+    (!digits.is_empty()).then_some(digits)
 }
 
 impl Run {
@@ -591,8 +615,10 @@ impl Run {
                     if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
-                        self.started_tool(id, activity_for(name, &block["input"]));
-                        if is_plan_tool(name) {
+                        self.started_tool(id.clone(), activity_for(name, &block["input"]));
+                        if name == "TaskCreate" {
+                            self.creating.push((id.clone(), block["input"].clone()));
+                        } else if is_plan_tool(name) {
                             self.plans.push((name.to_string(), block["input"].clone()));
                         }
                     }
@@ -605,6 +631,13 @@ impl Run {
                 for block in v["message"]["content"].as_array().into_iter().flatten() {
                     if block["type"] == "tool_result" {
                         let id = block["tool_use_id"].as_str().unwrap_or("");
+                        if let Some(pos) = self.creating.iter().position(|(c, _)| c == id) {
+                            let (_, mut input) = self.creating.remove(pos);
+                            if let Some(task) = created_task_id(&v, block) {
+                                input["taskId"] = Value::String(task);
+                                self.plans.push(("TaskCreate".to_string(), input));
+                            }
+                        }
                         let before = self.pending.len();
                         self.pending.retain(|(p, _)| p != id);
                         answered |= self.pending.len() != before;
@@ -1196,7 +1229,25 @@ mod tests {
         assert_eq!(plans[0].0, "TodoWrite");
         assert_eq!(plans[0].1["todos"][0]["content"], "Create the folder");
         assert!(run.take_plans().is_empty());
-        assert!(APPEND_PROMPT.contains("TodoWrite") && COMPUTER_PROMPT.contains("TodoWrite"));
+        assert!(APPEND_PROMPT.contains("TaskCreate") && COMPUTER_PROMPT.contains("TaskCreate"));
+    }
+
+    #[test]
+    fn a_task_created_is_passed_on_with_the_id_its_result_gives() {
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"c1","name":"TaskCreate","input":{"subject":"Write game.py"}},{"type":"tool_use","id":"c2","name":"TaskCreate","input":{"subject":"Write main.py"}}]}}"#);
+        assert!(run.take_plans().is_empty(), "not before its id is known");
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"c1","content":"Task #4 created successfully: Write game.py"}]},"tool_use_result":{"task":{"id":"4","subject":"Write game.py"}}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"c2","content":"Task #5 created successfully: Write main.py"}]}}"#);
+        let plans = run.take_plans();
+        assert_eq!(plans.len(), 2);
+        assert_eq!(plans[0].1["taskId"], "4");
+        assert_eq!(plans[1].1["taskId"], "5");
+        assert_eq!(plans[1].1["subject"], "Write main.py");
+        // One that failed is no step.
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"c3","name":"TaskCreate","input":{"subject":"x"}}]}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"c3","is_error":true,"content":"bad"}]}}"#);
+        assert!(run.take_plans().is_empty());
     }
 
     #[test]

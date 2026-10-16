@@ -35,7 +35,7 @@ use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
 use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity};
@@ -74,7 +74,8 @@ You cannot see the user's screen, their open windows or the folder open in File 
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. \
 The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read) read their mailbox, read or unread mail alike, and Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking. They only read: to answer an email, write a draft for the user to send themselves. \
-Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
+Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), start your answer with your plan as a Markdown checklist, one `- [ ]` line per step, before doing anything else; then, each time you finish a step, write the whole checklist again with the steps done ticked (`- [x]`). Do this even for small jobs. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -187,6 +188,22 @@ fn user_event(text: &str) -> String {
     let mut line = json!({ "event": "user", "message": { "content": text } }).to_string();
     line.push('\n');
     line
+}
+
+/// The Markdown checklist in `text` (`- [ ]` / `- [x]` lines), when it has
+/// at least two steps: the plan agy writes, as the instructions ask. Only its
+/// lines, so the text around it changing is no news.
+fn checklist(text: &str) -> Option<String> {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(str::trim_end)
+        .filter(|l| {
+            let l: &str = l;
+            let l = l.strip_prefix(' ').unwrap_or(l);
+            ["- [ ] ", "- [x] ", "- [X] ", "* [ ] ", "* [x] ", "* [X] "].iter().any(|p| l.starts_with(p))
+        })
+        .collect();
+    (lines.len() >= 2).then(|| lines.join("\n"))
 }
 
 // ── What agy is doing ─────────────────────────────────────────────────────────
@@ -735,13 +752,24 @@ pub async fn send(
     let events = chat.events();
     let stop = chat.stopper();
     let state = tauri::async_runtime::spawn_blocking(move || {
+        // The plan agy writes as a checklist, for the Plan island
+        // (src/island/plan.ts), each time it changes.
+        let mut plan_sent = String::new();
         run(
             exe,
             args,
             input,
             work,
             stop,
-            |text| events.delta(&app2, text),
+            |text| {
+                events.delta(&app2, text);
+                if let Some(list) = checklist(text) {
+                    if list != plan_sent {
+                        let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": "Checklist", "input": { "text": list }, "agent": "Antigravity CLI", "color": "#E879F9" }));
+                        plan_sent = list;
+                    }
+                }
+            },
             |activity| events.activity(&app2, activity),
         )
     })
@@ -839,6 +867,16 @@ mod tests {
     /// Without Lumo's hooks, whatever this computer has installed.
     fn args(model: &str, mode: &str, conversation: Option<&str>, work: &str, inbox: &str, folders: &[String]) -> Vec<String> {
         args_with_cards(model, mode, conversation, work, inbox, folders, false)
+    }
+
+    #[test]
+    fn the_checklist_agy_writes_is_its_plan() {
+        let text = "Ecco il piano:\n\n- [x] Creare la cartella\n- [ ] Scrivere game.py\n- [ ] Scrivere main.py\n\nInizio.";
+        assert_eq!(checklist(text).as_deref(), Some("- [x] Creare la cartella\n- [ ] Scrivere game.py\n- [ ] Scrivere main.py"));
+        // One line, or a plain list, is no plan.
+        assert_eq!(checklist("- [ ] Only one"), None);
+        assert_eq!(checklist("- a\n- b"), None);
+        assert!(INSTRUCTIONS.contains("- [ ]"));
     }
 
     #[test]

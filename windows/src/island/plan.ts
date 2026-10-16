@@ -62,8 +62,12 @@ export class IslandPlan {
     });
     // Claude Code in the island's own chat (claude_code.rs): its runs send no
     // session hooks, so its plan comes straight from the chat's stream.
-    void onEvent<{ tool: string; input: Record<string, unknown> }>("chat-plan", ({ tool, input }) => {
-      this.onTool({ pillId: "chat", sessionId: String(State.chatId ?? ""), agent: "Claude Code", color: "#F5F6F8", project: t("Chat") }, tool, input);
+    // Antigravity CLI's runs send the checklist it writes as its plan.
+    void onEvent<{ tool: string; input: Record<string, unknown>; agent?: string; color?: string }>("chat-plan", ({ tool, input, agent, color }) => {
+      this.onTool({
+        pillId: "chat", sessionId: String(State.chatId ?? ""),
+        agent: agent ?? "Claude Code", color: color ?? "#F5F6F8", project: t("Chat"),
+      }, tool, input);
     });
     State.subscribe(() => this.sync());
   }

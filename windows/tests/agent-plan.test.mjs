@@ -56,6 +56,19 @@ test("Codex's update_plan, with its explanation", () => {
   assert.deepEqual(u.steps.map((s) => s.status), ["active", "pending"]);
 });
 
+test("a checklist written as the plan: ticked steps done, the first left under way", () => {
+  const u = readPlanUpdate("Checklist", { text: "- [x] Create the folder\n- [ ] Write game.py\n- [ ] Write main.py" });
+  assert.deepEqual(u, {
+    kind: "list",
+    steps: [
+      { text: "Create the folder", status: "done" },
+      { text: "Write game.py", status: "active" },
+      { text: "Write main.py", status: "pending" },
+    ],
+  });
+  assert.equal(readPlanUpdate("Checklist", { text: "- [ ] One" }), null);
+});
+
 test("the plan Claude Code leaves Plan Mode with: its top-level list items", () => {
   const md = [
     "# Fix the login",
@@ -96,6 +109,16 @@ test("Claude Code's TaskCreate and TaskUpdate, one step at a time", () => {
   assert.equal(book.apply(owner(), readPlanUpdate("TaskCreate", { subject: "Third" }), 7), "new");
   assert.equal(book.apply(owner(), readPlanUpdate("TaskUpdate", { taskId: "3", status: "in_progress" }), 8), "changed");
   assert.deepEqual(book.current().steps, [{ text: "Third", status: "active" }]);
+});
+
+test("TaskCreate with the id its result gave: TaskUpdate finds the step by it", () => {
+  const book = new PlanBook();
+  assert.equal(book.apply(owner("x"), readPlanUpdate("TaskCreate", { subject: "Game", taskId: "4" }), 1), "new");
+  assert.equal(book.apply(owner("x"), readPlanUpdate("TaskCreate", { subject: "UI", taskId: "5" }), 2), "changed");
+  assert.equal(book.apply(owner("x"), readPlanUpdate("TaskUpdate", { taskId: "5", status: "in_progress" }), 3), "changed");
+  assert.deepEqual(book.current().steps, [{ text: "Game", status: "pending" }, { text: "UI", status: "active" }]);
+  // An id from before (task #1 of another plan) changes nothing here.
+  assert.equal(book.apply(owner("x"), readPlanUpdate("TaskUpdate", { taskId: "1", status: "completed" }), 4), null);
 });
 
 test("a new plan, or the same one moving on", () => {
@@ -230,6 +253,18 @@ test("its arrows go back through the plans done, and a new plan comes first", as
   assert.equal(island.plan.current.steps[0].text, "Third");
   assert.equal(lastState().index, 0);
   assert.equal(lastState().live, true);
+});
+
+test("a terminal's TaskCreate counts once done, with the id the relay kept", () => {
+  const post = (tool_name, tool_input, extra = {}) =>
+    hook({ hook_event_name: "PostToolUse", session_id: "s1", cwd: "C:\\code\\Lumo", tool_name, tool_input, ...extra });
+  tool("TaskCreate", { subject: "Game" });
+  assert.equal(island.plan.book.size, 0, "not before it is made");
+  post("TaskCreate", { subject: "Game" }, { lumo_task_id: "12" });
+  post("TaskCreate", { subject: "UI" }, { lumo_task_id: "13" });
+  tool("TaskUpdate", { taskId: "13", status: "in_progress" });
+  post("TaskUpdate", { taskId: "13", status: "in_progress" });
+  assert.deepEqual(island.plan.current.steps, [{ text: "Game", status: "pending" }, { text: "UI", status: "active" }]);
 });
 
 test("paused, it stays shut", () => {

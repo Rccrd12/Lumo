@@ -129,8 +129,8 @@ export function stepsFromMarkdown(md: string): PlanStep[] {
 export type PlanUpdate =
   /** The whole list, as it now stands. */
   | { kind: "list"; steps: PlanStep[]; note?: string; fresh?: boolean }
-  /** One step added at the end (Claude Code's TaskCreate). */
-  | { kind: "add"; step: PlanStep }
+  /** One step added at the end (Claude Code's TaskCreate), with the id its result gave when known. */
+  | { kind: "add"; step: PlanStep; id?: string }
   /** One step changed, by its id (Claude Code's TaskUpdate: ids count from 1, over the whole session). */
   | { kind: "set"; id: string; status?: PlanStepStatus; text?: string };
 
@@ -143,9 +143,20 @@ export function readPlanUpdate(tool: string, input: Record<string, unknown> | un
     const steps = typeof input.plan === "string" ? stepsFromMarkdown(input.plan) : [];
     return steps.length ? { kind: "list", steps, fresh: true } : null;
   }
+  // A Markdown checklist an agent writes as its plan (the island chat's
+  // Antigravity CLI): the steps ticked are done, the first one left is under way.
+  if (name === "checklist") {
+    const steps = typeof input.text === "string" ? stepsFromMarkdown(input.text) : [];
+    if (steps.length < 2) return null;
+    const next = steps.findIndex((s) => s.status !== "done");
+    if (next >= 0) steps[next] = { ...steps[next], status: "active" };
+    return { kind: "list", steps };
+  }
   if (name === "taskcreate") {
     const text = textOf(input, ["subject", "content", "description", "title"]);
-    return text ? { kind: "add", step: { text, status: "pending" } } : null;
+    const id = input.taskId ?? input.task_id ?? input.id;
+    if (!text) return null;
+    return { kind: "add", step: { text, status: "pending" }, ...(typeof id === "string" || typeof id === "number" ? { id: String(id) } : {}) };
   }
   if (name === "taskupdate") {
     const id = input.taskId ?? input.task_id ?? input.id;
@@ -245,7 +256,13 @@ export class PlanBook {
         if (fresh) note = undefined;
         const tasks = this.taskIds.get(key) ?? { next: 1, ids: [] };
         if (fresh) tasks.ids = [];
-        tasks.ids.push(String(tasks.next++));
+        if (update.id !== undefined) {
+          // The id its result gave: the next ones follow it.
+          tasks.ids.push(update.id);
+          if (Number.isInteger(Number(update.id))) tasks.next = Math.max(tasks.next, Number(update.id) + 1);
+        } else {
+          tasks.ids.push(String(tasks.next++));
+        }
         this.taskIds.set(key, tasks);
         break;
       }

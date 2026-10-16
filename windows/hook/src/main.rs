@@ -262,6 +262,14 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     }
     map.insert("hook_event_name".into(), Value::String(name.clone()));
 
+    // A task Claude Code made: its id is all that is kept of the result, for
+    // the Plan island (TaskUpdate names the task by it).
+    if map.get("tool_name").and_then(Value::as_str) == Some("TaskCreate") {
+        let id = map.get("tool_response").and_then(|r| r.pointer("/task/id")).and_then(Value::as_str).map(str::to_string);
+        if let Some(id) = id {
+            map.insert("lumo_task_id".into(), Value::String(id));
+        }
+    }
     for field in DROPPED_FIELDS {
         map.remove(*field);
     }
@@ -461,6 +469,16 @@ mod tests {
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
         assert!(!ev.line.contains("lumo_island"));
         assert!(!is_island_run(&|_| None));
+    }
+
+    #[test]
+    fn a_task_made_keeps_only_its_id_of_the_result() {
+        let args = Args { agent: String::new(), event: "PostToolUse".into(), wait: None, chat_card: false, chat_guard: false };
+        let raw = br#"{"hook_event_name":"PostToolUse","session_id":"s","tool_name":"TaskCreate","tool_input":{"subject":"Write game.py"},"tool_response":{"task":{"id":"7","subject":"Write game.py"}}}"#;
+        let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["lumo_task_id"], "7");
+        assert!(v.get("tool_response").is_none());
     }
 
     #[test]
