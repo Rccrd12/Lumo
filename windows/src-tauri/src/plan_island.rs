@@ -3,11 +3,13 @@
 // A third island with the plan an agent follows, in a window of its own that
 // only draws: the island's page holds the plans and says when it shows. The
 // first time it comes right of the open island, level with it (or left of
-// it, on the right edge); moved by its top bar, it stays where it was left,
+// it, on the right edge), and as tall as it until its height is picked with
+// a grip, following it as it grows and shrinks; moved by its top bar, it stays where it was left,
 // and let go near its place beside the island it joins it again; its grips
 // resize it. Both follow the global cursor, which only the cursor
 // poll gives (Windows), and are kept in Settings.
 
+use std::sync::Mutex;
 use std::time::Duration;
 
 use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, PhysicalSize, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -33,6 +35,15 @@ pub fn clamp_width(w: f64) -> f64 {
 
 pub fn clamp_height(h: f64) -> f64 {
     if h.is_finite() && h > 0.0 { h.clamp(MIN_H, MAX_H) } else { DEFAULT_H }
+}
+
+/// The open island's height, in page pixels, as its page last said (`plan_fit`).
+static ISLAND_H: Mutex<f64> = Mutex::new(0.0);
+
+/// Its height in page pixels: the one picked with a grip, else the open
+/// island's (`island_h`), else its own default.
+pub fn height_of(picked: f64, island_h: f64) -> f64 {
+    if picked.is_finite() && picked > 0.0 { clamp_height(picked) } else { clamp_height(island_h) }
 }
 
 pub fn window(app: &AppHandle) -> Option<WebviewWindow> {
@@ -122,7 +133,8 @@ fn kept_on(m: (f64, f64, f64, f64, f64), at: (f64, f64), size: (f64, f64)) -> (f
 /// Its size in physical pixels at the display `scale`: drawn at the island's zoom.
 fn physical_size(s: &Settings, scale: f64) -> (f64, f64) {
     let k = scale * island::zoom();
-    ((clamp_width(s.agent_plan_width) * k).round(), (clamp_height(s.agent_plan_height) * k).round())
+    let h = height_of(s.agent_plan_height, *ISLAND_H.lock().unwrap());
+    ((clamp_width(s.agent_plan_width) * k).round(), (h * k).round())
 }
 
 /// Where it goes beside the open island, in physical pixels, and its size
@@ -185,6 +197,24 @@ pub async fn plan_show(app: AppHandle, show: bool) {
     let _ = win.set_position(PhysicalPosition::new(at.0.round() as i32, at.1.round() as i32));
     let _ = win.show();
     let _ = win.set_always_on_top(true);
+}
+
+/// The open island's height (page pixels), each time it changes: beside it
+/// and with no height picked, it takes it too.
+#[tauri::command]
+pub fn plan_fit(app: AppHandle, height: f64) {
+    if !height.is_finite() || height <= 0.0 {
+        return;
+    }
+    *ISLAND_H.lock().unwrap() = height;
+    let Some(win) = window(&app) else { return };
+    let settings = app.state::<crate::Shared>().settings.lock().unwrap().clone();
+    if settings.agent_plan_moved || settings.agent_plan_height > 0.0 || !win.is_visible().unwrap_or(false) {
+        return;
+    }
+    let Some((at, size)) = attached_at(&app, &settings, &monitors(&app)) else { return };
+    let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
+    let _ = win.set_position(PhysicalPosition::new(at.0.round() as i32, at.1.round() as i32));
 }
 
 /// Settings only Rust writes (where it is, how big): kept and sent to the pages.
@@ -280,7 +310,10 @@ pub fn plan_window_resize(app: AppHandle, fx: f64, fy: f64) {
                 s.agent_plan_x = last.0;
                 s.agent_plan_y = last.1;
                 s.agent_plan_width = clamp_width(last.2 / scale);
-                s.agent_plan_height = clamp_height(last.3 / scale);
+                // Only a grip that moves its height picks it: else it stays as tall as the island.
+                if fy != 0.0 {
+                    s.agent_plan_height = clamp_height(last.3 / scale);
+                }
             });
         }
     });
@@ -315,6 +348,14 @@ mod tests {
         // Further at 200 %.
         assert!(snaps_home((1800.0, 40.0), (1652.0, 10.0), 2.0));
         assert!(!snaps_home((1700.0, 400.0), (1652.0, 10.0), 1.0));
+    }
+
+    #[test]
+    fn as_tall_as_the_island_until_its_height_is_picked() {
+        assert_eq!(height_of(0.0, 420.0), 420.0);
+        assert_eq!(height_of(300.0, 420.0), 300.0, "picked with a grip");
+        assert_eq!(height_of(0.0, 0.0), DEFAULT_H, "the island not open yet");
+        assert_eq!(height_of(0.0, 90.0), MIN_H);
     }
 
     #[test]

@@ -16,6 +16,7 @@ const view = new PlanView({
   act,
   drag: () => void Bridge.planDrag(),
   resize: (fx, fy) => void Bridge.planWindowResize(fx, fy),
+  toward: () => Bridge.towardIsland("plan").then((p) => (p ? { x: p[0], y: p[1] } : null)),
 });
 // Out of sight until the island's page says it shows (plan-appear).
 view.el.classList.add("gone");
@@ -26,8 +27,8 @@ void onEvent<PlanData>("plan-state", (data) => {
   view.render(data);
 });
 
-// Shown: out of its corner (a plan just made, or the icon clicked), or at once.
-void onEvent<{ fly: boolean }>("plan-appear", ({ fly }) => view.appear(!fly));
+// Shown: out of the island's side (a plan just made, or the icon clicked), or at once.
+void onEvent<{ fly: boolean }>("plan-appear", ({ fly }) => void view.appear(!fly));
 
 void emitToWindow("island", "plan-hello");
 

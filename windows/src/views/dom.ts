@@ -206,3 +206,25 @@ export function gentleWheel(el: HTMLElement) {
     if (!frame) frame = requestAnimationFrame(step);
   }, { passive: false });
 }
+
+/** A point in page pixels. */
+export interface PagePoint {
+  x: number;
+  y: number;
+}
+
+/**
+ * How far a panel at `r` moves as it shrinks toward `target` (page pixels):
+ * to it when it is on the page, else to the edge of the page nearest it, so a
+ * panel in a window of its own folds toward the island and stays in sight.
+ * With no target, into its top right corner.
+ */
+export function shrinkOffset(r: DOMRect, target: PagePoint | null): { dx: number; dy: number } {
+  const cx = r.left + r.width / 2;
+  const cy = r.top + r.height / 2;
+  if (!target) return { dx: r.width / 2 - 20, dy: -r.height / 2 + 20 };
+  const inset = 20;
+  const x = Math.min(Math.max(target.x, inset), Math.max(inset, window.innerWidth - inset));
+  const y = Math.min(Math.max(target.y, inset), Math.max(inset, window.innerHeight - inset));
+  return { dx: x - cx, dy: y - cy };
+}

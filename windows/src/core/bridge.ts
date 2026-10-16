@@ -400,6 +400,10 @@ export const Bridge = {
   planDrag: () => call<void>("plan_drag"),
   /** A grip of its window. */
   planWindowResize: (fx: number, fy: number) => call<void>("plan_window_resize", { fx, fy }),
+  /** The open island's height (page pixels): beside it, it is as tall until its height is picked. */
+  planFit: (height: number) => call<void>("plan_fit", { height }),
+  /** Where the island's middle is, in the page pixels of window `label` (the Plan island's, the live activities'), to fly to and from. */
+  towardIsland: (label: string) => call<[number, number] | null>("toward_island", { label }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
 

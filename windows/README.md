@@ -207,16 +207,19 @@ opens with it, whether the main island is open or not. Each step shows where it
 stands (to do, under way, done, dropped), with who follows the plan, in which
 folder, and how far along it is; it moves on live as the agent works. Nothing is
 asked of the agents: the plan is read off the hooks Lumo already has. In the
-island's own chat, Claude Code (its task list) and Antigravity CLI (a checklist
-in its answer) are asked to write their plan for any job of more than one step,
-and the island shows it the same way. The chats with an API key (Anthropic,
+island's own chat, Claude Code (its task list) and Antigravity CLI (Lumo's own
+`update_plan` tool, which Lumo gives it) are asked to write their plan for any
+job of more than one step, and to move it on as each step starts and ends; the
+island shows it the same way. The chats with an API key (Anthropic,
 OpenAI, Google, OpenRouter, local models) only answer and do no steps, so they
 have no plan.
 
-Like the live activities it is moved by its top bar, stays wherever you leave
-it, and goes back beside the island when let go near its place there; it is
-resized from its edges and bottom corners. Its **–** folds it into an icon in
-the chat, left of the usage ring; that icon brings it back, and a new plan opens
+Beside the island it is as tall as the island, until its height is picked with
+a grip. Like the live activities it is moved by its top bar, stays wherever you
+leave it, and goes back beside the island when let go near its place there; it
+is resized from its edges and bottom corners. It comes out of the island and
+folds back toward it, as the live activities do in their own window. Its **–**
+folds it into an icon in the chat, left of the usage ring; that icon brings it back, and a new plan opens
 it again. A finished plan stays a few seconds, then the island folds into its
 icon, as it does when the session ends. The plans done are kept (the newest
 twenty, until Lumo quits): the icon opens the island on the newest, and its

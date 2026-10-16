@@ -7,7 +7,7 @@ import "./activities.css";
 import type { CalEvent } from "../core/calendar";
 import { parseDuration, timerLeft, type MailPeek, type MediaActivity, type TimerActivity } from "../core/compact";
 import { Sound } from "../core/sound";
-import { clear, h, svg } from "./dom";
+import { clear, h, shrinkOffset, svg, type PagePoint } from "./dom";
 import { ICONS } from "./icons";
 import { N_, language, t, tl } from "../i18n/i18n";
 
@@ -97,8 +97,8 @@ export interface ViewHooks {
   resize(fx: number, fy: number): void;
   /** The field wants the keyboard. */
   focus(): void;
-  /** Where the folded icon is, in page pixels, if on this page. */
-  iconPoint(): { x: number; y: number } | null;
+  /** Where the folded icon is, in page pixels: on this page, or the island seen from their own window. */
+  iconPoint(): PagePoint | null | Promise<PagePoint | null>;
   /** It can be moved and resized (the cursor poll, Windows). */
   movable: boolean;
 }
@@ -251,17 +251,15 @@ export class ActivitiesView {
 
   /**
    * "–": it flies into its icon next to the "+" (or, in its own window,
-   * shrinks into its top corner), then says so. Only transform and opacity
+   * shrinks toward the island), then says so. Only transform and opacity
    * move, on a layer of its own, so it stays smooth.
    */
-  private fold() {
+  private async fold() {
     if (this.folding) return;
     this.folding = true;
     Sound.play("close");
-    const target = this.hooks.iconPoint();
-    const r = this.el.getBoundingClientRect();
-    const dx = target ? target.x - (r.left + r.width / 2) : r.width / 2 - 20;
-    const dy = target ? target.y - (r.top + r.height / 2) : -r.height / 2 + 20;
+    const target = await Promise.resolve(this.hooks.iconPoint()).catch(() => null);
+    const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), target);
     this.el.classList.add("folding");
     requestAnimationFrame(() => {
       this.el.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.06)`;
@@ -291,13 +289,11 @@ export class ActivitiesView {
     this.el.classList.remove("gone");
   }
 
-  /** Comes out of the icon (or its corner) to its place. */
-  flyIn() {
+  /** Comes out of the icon (or, in its own window, from the island's side) to its place. */
+  async flyIn() {
+    const target = await Promise.resolve(this.hooks.iconPoint()).catch(() => null);
     this.el.classList.remove("gone");
-    const target = this.hooks.iconPoint();
-    const r = this.el.getBoundingClientRect();
-    const dx = target ? target.x - (r.left + r.width / 2) : r.width / 2 - 20;
-    const dy = target ? target.y - (r.top + r.height / 2) : -r.height / 2 + 20;
+    const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), target);
     this.el.classList.add("instant");
     this.el.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.06)`;
     this.el.style.opacity = "0";

@@ -349,7 +349,7 @@ export class IslandActivities {
           void Bridge.activitiesPrepare();
         }
         if (swap) this.view.reveal();
-        else if (this.unfolding) this.view.flyIn();
+        else if (this.unfolding) void this.view.flyIn();
         else this.view.reveal();
         this.host.changed();
       } else if (swap) {

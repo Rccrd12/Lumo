@@ -10,7 +10,7 @@
 import "./plan.css";
 import { planFinished, planId, planProgress, type AgentPlan, type PlanStep } from "../core/agent-plan";
 import { Sound } from "../core/sound";
-import { clear, dot, h, svg } from "./dom";
+import { clear, dot, h, shrinkOffset, svg, type PagePoint } from "./dom";
 import { ICONS } from "./icons";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -51,6 +51,8 @@ export interface PlanViewHooks {
   drag(): void;
   /** A grip was pressed: `fx` / `fy` how width and height follow the mouse. */
   resize(fx: number, fy: number): void;
+  /** Where the island is, in this page's pixels: it folds toward it and comes out of it. */
+  toward(): Promise<PagePoint | null>;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -254,15 +256,15 @@ export class PlanView {
     }
   }
 
-  /** "–": it shrinks into its top corner, then says so (the window hides). */
-  private fold() {
+  /** "–": it shrinks toward the island, then says so (the window hides). */
+  private async fold() {
     if (this.folding) return;
     this.folding = true;
     Sound.play("close");
-    const r = this.el.getBoundingClientRect();
+    const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), await this.hooks.toward().catch(() => null));
     this.el.classList.add("folding");
     requestAnimationFrame(() => {
-      this.el.style.transform = `translate3d(${r.width / 2 - 20}px, ${-r.height / 2 + 20}px, 0) scale(0.06)`;
+      this.el.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.06)`;
       this.el.style.opacity = "0";
     });
     window.setTimeout(() => {
@@ -278,13 +280,17 @@ export class PlanView {
     }, 440);
   }
 
-  /** Comes out of its corner to its place; at once with `instant`. */
-  appear(instant: boolean) {
+  /** Comes out of the island's side to its place; at once with `instant`. */
+  async appear(instant: boolean) {
+    if (instant) {
+      this.el.classList.remove("gone");
+      return;
+    }
+    const target = await this.hooks.toward().catch(() => null);
     this.el.classList.remove("gone");
-    if (instant) return;
-    const r = this.el.getBoundingClientRect();
+    const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), target);
     this.el.classList.add("instant");
-    this.el.style.transform = `translate3d(${r.width / 2 - 20}px, ${-r.height / 2 + 20}px, 0) scale(0.06)`;
+    this.el.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.06)`;
     this.el.style.opacity = "0";
     void this.el.offsetWidth;
     this.el.classList.remove("instant");

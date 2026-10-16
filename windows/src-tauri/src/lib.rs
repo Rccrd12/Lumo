@@ -1158,6 +1158,8 @@ pub fn run() {
             plan_island::plan_show,
             plan_island::plan_drag,
             plan_island::plan_window_resize,
+            plan_island::plan_fit,
+            activities::toward_island,
             calendar::calendar_fetch,
             media::media_control,
             ingest_file,
@@ -1209,7 +1211,7 @@ pub fn run() {
             hooks::ensure_hook_exe(&handle);
             // Closed while Claude used the computer: the system's own arrow again.
             computer::recover();
-            // Antigravity CLI's email tools follow the Email pill (set again before each run).
+            // Antigravity CLI's plan tool, and its email tools following the Email pill (set again before each run).
             computer::agy_workspace(&claude_code::work_dir(), integrations::enabled(&handle, mail::ID));
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
