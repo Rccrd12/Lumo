@@ -1,5 +1,5 @@
-/* The Plan island (views/plan-view.ts), in its own window: the live
-   activities' panel, with the agent's steps in it. */
+/* The Plan island (views/plan-view.ts), beside the island and in its own
+   window: the live activities' panel, with the agent's steps in it. */
 
 .agent-plan {
   position: relative;

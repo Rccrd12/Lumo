@@ -198,12 +198,12 @@ music is only asked about while the closed island is on screen.
 
 ### Plan
 
-A third island, right of the main one, with the plan an agent follows. It is
+A third island beside the main one, with the plan an agent follows. It is
 shut and out of reach until an agent makes one: give an agent a job and, as
 soon as it writes its to-do list (Claude Code's TodoWrite or the plan it leaves
 Plan Mode with; Codex's `update_plan`, Gemini CLI's `write_todos` and
 OpenCode's `todowrite` when their hooks pass those calls on), the island
-opens with it, whether the main island is open or not. Each step shows where it
+opens with it. Each step shows where it
 stands (to do, under way, done, dropped), with who follows the plan, in which
 folder, and how far along it is; it moves on live as the agent works. Nothing is
 asked of the agents: the plan is read off the hooks Lumo already has. In the
@@ -214,16 +214,16 @@ island shows it the same way. The chats with an API key (Anthropic,
 OpenAI, Google, OpenRouter, local models) only answer and do no steps, so they
 have no plan.
 
-Beside the island it is as tall as the island, until its height is picked with
-a grip, and it shows only while the island is open: closing the island puts it
-away, opening it brings it back (a plan made meanwhile waits for it). Moved
-away from the island, it stays on screen until its **–**. Like the live activities it is moved by its top bar, stays wherever you
-leave it, and goes back beside the island when let go near its place there; it
-is resized from its edges and bottom corners. It comes out of the island and
-folds back toward it, as the live activities do in their own window, and the
-open island stays open while the mouse rests on it. Its **–** folds it; its
-icon in the chat, left of the usage ring, shows while there are plans and opens
-or folds it, and a new plan opens it again. A finished plan stays a few seconds, then the island folds into its
+It behaves exactly as the live activities do, on the side of the main island
+they leave free (the right, or the left when they are on the right). Beside
+the island it fades in and out with it and follows it as it opens, closes and
+resizes, as tall as it while the live activities follow the island's height
+(Settings → Island); a plan made while the island is closed shows when it
+opens. Dragged by its top bar it comes off into a window of its own that stays
+on screen, wherever you leave it, until its **–**; let go against the island's
+side it joins it again. It is resized from its edges and bottom corners. Its
+**–** folds it into its icon in the chat, left of the usage ring, which shows
+while there are plans and opens or folds it; a new plan opens it again. A finished plan stays a few seconds, then the island folds into its
 icon, as it does when the session ends. The plans done are kept (the newest
 twenty, until Lumo quits): the icon opens the island on the newest, and its
 arrows go back through the older ones.

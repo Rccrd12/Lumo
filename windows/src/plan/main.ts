@@ -1,7 +1,7 @@
-// The Plan island's window (plan_island.rs). This page only draws: the
-// island's page sends the plan to show (`plan-state`) and hears the clicks
-// (`plan-action`). The top bar moves the window and the grips resize it,
-// both followed by Rust.
+// The Plan island in a window of its own (plan_island.rs), off the island.
+// This page only draws: the island's page sends the plan to show
+// (`plan-state`) and hears the clicks (`plan-action`). The top bar moves the
+// window and the grips resize it, both followed by Rust.
 
 import "./plan.css";
 import { Bridge, emitToWindow, onEvent } from "../core/bridge";
@@ -14,21 +14,32 @@ const root = document.getElementById("app")!;
 const act = (a: PlanAction) => void emitToWindow("island", "plan-action", a);
 const view = new PlanView({
   act,
-  drag: () => void Bridge.planDrag(),
+  drag: () => void Bridge.planDrag(null),
   resize: (fx, fy) => void Bridge.planWindowResize(fx, fy),
-  toward: () => Bridge.towardIsland("plan").then((p) => (p ? { x: p[0], y: p[1] } : null)),
+  // Its icon is in the island: it folds toward it and comes out of it.
+  iconPoint: () => Bridge.towardIsland("plan").then((p) => (p ? { x: p[0], y: p[1] } : null)),
+  movable: true,
 });
-// Out of sight until the island's page says it shows (plan-appear).
-view.el.classList.add("gone");
 root.append(view.el);
+let last: PlanData | null = null;
 
 void onEvent<PlanData>("plan-state", (data) => {
   if (isLanguage(data.lang) && setLanguage(data.lang)) applyDocumentLanguage();
+  last = data;
   view.render(data);
 });
 
-// Shown: out of the island's side (a plan just made, or the icon clicked), or at once.
-void onEvent<{ fly: boolean }>("plan-appear", ({ fly }) => void view.appear(!fly));
+// Shown again: out of its icon after it was clicked, else at once. Taken off
+// the island (`painted`), the island's page waits to hear it has been drawn
+// here before it lets go of its own.
+void onEvent<{ fly: boolean; painted: boolean }>("plan-appear", ({ fly, painted }) => {
+  if (last) view.render(last);
+  if (fly) void view.flyIn();
+  else view.reveal();
+  if (painted) {
+    requestAnimationFrame(() => requestAnimationFrame(() => void emitToWindow("island", "plan-painted")));
+  }
+});
 
 // Its icon in the chat clicked while it is open: it folds as with its "–".
 void onEvent<null>("plan-fold", () => void view.fold());

@@ -1,8 +1,9 @@
 // The Plan island, drawn: the plan an agent follows, step by step
-// (core/agent-plan.ts reads it, island/plan.ts holds it). It lives in a window
-// of its own (plan.html, plan_island.rs), right of the island at first, then
-// wherever it is moved. Its "–" folds it into an icon in the chat, left of
-// the usage ring; its arrows go back through the plans done.
+// (core/agent-plan.ts reads it, island/plan.ts holds it). As the live
+// activities' panel, the same view is beside the island in its page and alone
+// in the Plan island's own window (plan.html, plan_island.rs) once it is
+// taken off it. Its "–" folds it into an icon in the chat, left of the usage
+// ring; its arrows go back through the plans done.
 //
 // Every animation runs once (a step done, a plan coming in): nothing loops,
 // so it costs nothing while it sits still.
@@ -23,6 +24,8 @@ export const PLAN_TEXT = {
   newer: N_("Next"),
 };
 
+/** Its width by default (plan_island.rs DEFAULT_WIDTH). */
+export const PLAN_W = 280;
 /** How far a press on the top bar travels before it picks the panel up. */
 const DRAG_THRESHOLD = 4;
 /** The progress ring: its size and its radius, in page pixels. */
@@ -51,8 +54,10 @@ export interface PlanViewHooks {
   drag(): void;
   /** A grip was pressed: `fx` / `fy` how width and height follow the mouse. */
   resize(fx: number, fy: number): void;
-  /** Where the island is, in this page's pixels: it folds toward it and comes out of it. */
-  toward(): Promise<PagePoint | null>;
+  /** Where its icon is, in page pixels: on this page, or the island seen from its own window. */
+  iconPoint(): PagePoint | null | Promise<PagePoint | null>;
+  /** It can be moved and resized (the cursor poll, Windows). */
+  movable: boolean;
 }
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -133,10 +138,15 @@ export class PlanView {
   private index = 0;
   private stood = new Map<string, PlanStep["status"]>();
   private folding = false;
+  private grips: HTMLElement[] = [];
   private hooks: PlanViewHooks;
+  private side: () => "left" | "right" | "free";
+  private followsIsland: () => boolean;
 
-  constructor(hooks: PlanViewHooks) {
+  constructor(hooks: PlanViewHooks, side: () => "left" | "right" | "free" = () => "free", followsIsland: () => boolean = () => false) {
     this.hooks = hooks;
+    this.side = side;
+    this.followsIsland = followsIsland;
     const fold = h("button", {
       class: "act-fold", title: tl(PLAN_TEXT.fold), "aria-label": tl(PLAN_TEXT.fold),
       onclick: () => this.fold(),
@@ -159,20 +169,26 @@ export class PlanView {
     this.body = h("div", { class: "plan-body" }, summary, this.list, this.note);
     this.el = h("div", { class: "agent-plan" }, head, this.body);
     this.wireDrag(head);
-    for (const [cls, fx, fy] of [["e-left", -1, 0], ["e-right", 1, 0], ["e-bottom", 0, 1], ["c-bl", -1, 1], ["c-br", 1, 1]] as const) {
-      const grip = h("div", { class: `plan-grip ${cls}` });
-      grip.addEventListener("mousedown", (e) => {
-        if (e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        this.hooks.resize(fx, fy);
-      });
-      this.el.append(grip);
+    if (hooks.movable) {
+      for (const [cls, fx, fy] of [["e-left", -1, 0], ["e-right", 1, 0], ["e-bottom", 0, 1], ["c-bl", -1, 1], ["c-br", 1, 1]] as const) {
+        const grip = h("div", { class: `plan-grip ${cls}` });
+        grip.dataset.fx = String(fx);
+        grip.dataset.fy = String(fy);
+        grip.addEventListener("mousedown", (e) => {
+          if (e.button !== 0) return;
+          e.preventDefault();
+          e.stopPropagation();
+          this.hooks.resize(fx, fy);
+        });
+        this.grips.push(grip);
+        this.el.append(grip);
+      }
     }
   }
 
   /** The top bar, pressed and moved past a few pixels, picks the panel up. */
   private wireDrag(head: HTMLElement) {
+    if (!this.hooks.movable) return;
     head.addEventListener("mousedown", (e) => {
       if (e.button !== 0 || (e.target as Element).closest("button")) return;
       const start = { x: e.screenX, y: e.screenY };
@@ -199,6 +215,15 @@ export class PlanView {
 
   /** Draws what changed; nothing when nothing did. */
   render(data: PlanData) {
+    // Only the grips on its free sides: beside the island, not the one facing
+    // it; and none for the height while it follows the island's.
+    const side = this.side();
+    const follows = this.followsIsland();
+    for (const g of this.grips) {
+      const fx = Number(g.dataset.fx);
+      const fy = Number(g.dataset.fy);
+      g.style.display = (side === "left" && fx > 0) || (side === "right" && fx < 0) || (follows && fy !== 0) ? "none" : "";
+    }
     const plan = data.plan;
     const index = data.index ?? 0;
     const count = data.count ?? (plan ? 1 : 0);
@@ -274,37 +299,49 @@ export class PlanView {
     }
   }
 
-  /** "–" (or its icon in the chat): it shrinks toward the island, then says so (the window hides). */
+  /**
+   * "–" (or its icon in the chat): it flies into its icon in the chat (or, in
+   * its own window, shrinks toward the island), then says so. Only transform
+   * and opacity move, on a layer of its own, so it stays smooth.
+   */
   async fold() {
     if (this.folding) return;
     this.folding = true;
     Sound.play("close");
-    const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), await this.hooks.toward().catch(() => null));
+    const target = await Promise.resolve(this.hooks.iconPoint()).catch(() => null);
+    const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), target);
     this.el.classList.add("folding");
     requestAnimationFrame(() => {
       this.el.style.transform = `translate3d(${dx}px, ${dy}px, 0) scale(0.06)`;
       this.el.style.opacity = "0";
     });
     window.setTimeout(() => {
+      // Stays out of sight until it is shown again (reveal, flyIn).
       this.el.classList.add("gone");
       this.hooks.act({ kind: "fold" });
-      this.el.classList.add("instant");
-      this.el.classList.remove("folding");
-      this.el.style.transform = "";
-      this.el.style.opacity = "";
-      void this.el.offsetWidth;
-      this.el.classList.remove("instant");
+      this.unfoldInstantly();
       this.folding = false;
     }, 440);
   }
 
-  /** Comes out of the island's side to its place; at once with `instant`. */
-  async appear(instant: boolean) {
-    if (instant) {
-      this.el.classList.remove("gone");
-      return;
-    }
-    const target = await this.hooks.toward().catch(() => null);
+  /** Back to its place with no animation (it is hidden by now). */
+  private unfoldInstantly() {
+    this.el.classList.add("instant");
+    this.el.classList.remove("folding");
+    this.el.style.transform = "";
+    this.el.style.opacity = "";
+    void this.el.offsetWidth;
+    this.el.classList.remove("instant");
+  }
+
+  /** Shown again without a flight. */
+  reveal() {
+    this.el.classList.remove("gone");
+  }
+
+  /** Comes out of its icon (or, in its own window, from the island's side) to its place. */
+  async flyIn() {
+    const target = await Promise.resolve(this.hooks.iconPoint()).catch(() => null);
     this.el.classList.remove("gone");
     const { dx, dy } = shrinkOffset(this.el.getBoundingClientRect(), target);
     this.el.classList.add("instant");
