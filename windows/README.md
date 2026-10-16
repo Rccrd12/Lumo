@@ -215,7 +215,9 @@ OpenAI, Google, OpenRouter, local models) only answer and do no steps, so they
 have no plan.
 
 Beside the island it is as tall as the island, until its height is picked with
-a grip. Like the live activities it is moved by its top bar, stays wherever you
+a grip, and it shows only while the island is open: closing the island puts it
+away, opening it brings it back (a plan made meanwhile waits for it). Moved
+away from the island, it stays on screen until its **–**. Like the live activities it is moved by its top bar, stays wherever you
 leave it, and goes back beside the island when let go near its place there; it
 is resized from its edges and bottom corners. It comes out of the island and
 folds back toward it, as the live activities do in their own window, and the

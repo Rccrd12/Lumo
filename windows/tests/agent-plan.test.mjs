@@ -163,7 +163,8 @@ beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout"] });
   calls.length = 0;
   State.tasks = [];
-  State.mode = "hidden";
+  // Beside the island it shows only while the island is open.
+  State.mode = "expanded";
   State.paused = false;
   State.settings = { ...DEFAULT_SETTINGS };
   liveSessions.clear();
@@ -281,6 +282,47 @@ test("a terminal's TaskCreate counts once done, with the id the relay kept", () 
   tool("TaskUpdate", { taskId: "13", status: "in_progress" });
   post("TaskUpdate", { taskId: "13", status: "in_progress" });
   assert.deepEqual(island.plan.current.steps, [{ text: "Game", status: "pending" }, { text: "UI", status: "active" }]);
+});
+
+test("beside the island, it closes with the island and comes back out of it when it opens", async () => {
+  tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.deepEqual(shows(), [true]);
+  State.mode = "hidden";
+  State.notify();
+  assert.deepEqual(shows(), [true, false]);
+  assert.equal(State.planOpen, true, "not folded: its icon still reads open");
+  // The plan moves on meanwhile, out of sight.
+  tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
+  assert.deepEqual(shows(), [true, false]);
+  calls.length = 0;
+  State.mode = "expanded";
+  State.notify();
+  assert.deepEqual(shows(), [true]);
+  await new Promise((r) => setImmediate(r));
+  const appear = calls.find(([c, a]) => c === "plugin:event|emit_to" && a.event === "plan-appear");
+  assert.deepEqual(appear?.[1].payload, { fly: true }, "out of the island's side");
+  assert.deepEqual(lastState().plan.steps.map((s) => s.status), ["done", "active"]);
+});
+
+test("beside the closed island, a new plan waits for it to open", () => {
+  State.mode = "hidden";
+  tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.deepEqual(shows(), []);
+  assert.equal(State.planIcon, true);
+  State.mode = "expanded";
+  State.notify();
+  assert.deepEqual(shows(), [true]);
+});
+
+test("moved away from the island, it stays when the island closes", () => {
+  State.settings = { ...State.settings, agentPlanMoved: true };
+  tool("TodoWrite", todos(["Read", "in_progress"]));
+  State.mode = "hidden";
+  State.notify();
+  assert.deepEqual(shows(), [true]);
+  // Its "–" still puts it away.
+  emit("plan-action", { kind: "fold" });
+  assert.deepEqual(shows(), [true, false]);
 });
 
 test("paused, it stays shut", () => {
