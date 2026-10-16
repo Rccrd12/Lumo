@@ -77,6 +77,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.9.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.9.2) | Oct 16, 2026 | The Plan island follows the island chat's plan with the newest Claude models too |
 | [0.9.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.9.1) | Oct 16, 2026 | The Plan island also follows the plan of Claude Code in the island's own chat |
 | [0.9.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.9.0) | Oct 16, 2026 | A Plan island that follows the agent's plan live, the changelog in Settings and a note when a newer Lumo is out, Antigravity CLI reading email, usage pills for every agent, an island that reopens on its tab, detached live activities that stay open |
 | [0.8.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.8.0) | Oct 15, 2026 | Gemini Live changes settings, arranges windows, tidies files and sets reminders, and answers from what Lumo knows; Y and N answer a permission from the chat field; an island that stays on top and waits while you write |
