@@ -1,5 +1,9 @@
 # Changelog
 
+## Windows 0.9.1 — October 16, 2026
+
+- **The chat's plan on the Plan island**: Claude Code in the island's own chat now opens the Plan island too. Given a job of several steps, it writes its plan as a list of steps, which the island follows live as for an agent in a terminal
+
 ## Windows 0.9.0 — October 16, 2026
 
 - **Plan island**: when an agent writes its plan (Claude Code, Codex, Gemini CLI, OpenCode), a third island opens right of the island in a window of its own and follows the steps live. It moves by its top bar, resizes from its grips, and its "–" folds it into an icon left of the usage pills. A finished plan stays a few seconds, then the island shuts
