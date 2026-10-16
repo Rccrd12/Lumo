@@ -779,6 +779,7 @@ export function buildPrompt(
   onHeightChange: () => void,
   openSettings: () => void = () => void Bridge.openSettingsWindow(),
   talk: () => void = () => {},
+  showPlan: () => void = () => {},
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
@@ -843,10 +844,16 @@ export function buildPrompt(
   const usageRing = usageRingSvg();
   const usageEl = h("button", { class: "tool-btn chat-usage" }, usageRing.el);
   usageEl.style.display = "none";
+  // The Plan island, folded (island/plan.ts): its icon, left of the ring.
+  const planBtn = h("button", {
+    class: "tool-btn plan-btn", title: tl("Plan"), "aria-label": tl("Plan"),
+    onclick: () => showPlan(),
+  }, svg(ICONS.plan, 13, { stroke: 1.8 }));
+  planBtn.style.display = "none";
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
     h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn),
-    h("div", { class: "model-side" }, usageEl, modelBtn));
+    h("div", { class: "model-side" }, planBtn, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -2327,6 +2334,13 @@ export function buildPrompt(
     el,
     sync() {
       takeShare();
+      if (State.planIcon && planBtn.style.display === "none") {
+        // It just landed: a little pop.
+        planBtn.classList.remove("pop");
+        void planBtn.offsetWidth;
+        planBtn.classList.add("pop");
+      }
+      planBtn.style.display = State.planIcon ? "" : "none";
       // Another chat came on screen (here, or a new chat from the menu or a
       // shortcut): the log is drawn again, with its answer if one is coming.
       if (State.chatId !== shownChat) {

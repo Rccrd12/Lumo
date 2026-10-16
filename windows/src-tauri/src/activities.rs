@@ -386,7 +386,7 @@ fn joined_rect(app: &AppHandle, side: &str) -> Option<(f64, f64, f64, f64)> {
 }
 
 /// Moves (and sizes) the window from `from` to `to` in a tenth of a second, easing out.
-fn slide(win: &WebviewWindow, from: (f64, f64, f64, f64), to: (f64, f64, f64, f64)) {
+pub(crate) fn slide(win: &WebviewWindow, from: (f64, f64, f64, f64), to: (f64, f64, f64, f64)) {
     const STEPS: u32 = 8;
     for i in 1..=STEPS {
         let t = i as f64 / STEPS as f64;

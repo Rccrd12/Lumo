@@ -3,8 +3,9 @@
 // A third island with the plan an agent follows, in a window of its own that
 // only draws: the island's page holds the plans and says when it shows. The
 // first time it comes right of the open island, level with it (or left of
-// it, on the right edge); moved by its top bar, it stays where it was left;
-// its grips resize it. Both follow the global cursor, which only the cursor
+// it, on the right edge); moved by its top bar, it stays where it was left,
+// and let go near its place beside the island it joins it again; its grips
+// resize it. Both follow the global cursor, which only the cursor
 // poll gives (Windows), and are kept in Settings.
 
 use std::time::Duration;
@@ -124,6 +125,34 @@ fn physical_size(s: &Settings, scale: f64) -> (f64, f64) {
     ((clamp_width(s.agent_plan_width) * k).round(), (clamp_height(s.agent_plan_height) * k).round())
 }
 
+/// Where it goes beside the open island, in physical pixels, and its size
+/// there: right of the island (left of it, hanging from the right edge),
+/// past the live activities when they are beside it on that side.
+fn attached_at(app: &AppHandle, settings: &Settings, list: &[(f64, f64, f64, f64, f64)]) -> Option<((f64, f64), (f64, f64))> {
+    let rect = island::open_rect(app, 200.0)?;
+    let m = monitor_at(list, (rect.0, rect.1)).or_else(|| list.first().copied())?;
+    let size = physical_size(settings, m.4);
+    let p = island::Placement::of(settings);
+    // The live activities beside the island on its right push it further.
+    let activities_right = (settings.activities_panel
+        && !settings.activities_folded
+        && !settings.activities_detached
+        && settings.activities_side == "right")
+        .then(|| crate::activities::clamp_width(settings.activities_width));
+    let k = m.4 * island::clamp_zoom(p.zoom);
+    Some((kept_on(m, beside_island(rect, size, k, p.dock, activities_right), size), size))
+}
+
+/// Let go this close to its place beside the island (logical pixels), it
+/// goes back there, and follows the island again.
+const SNAP: f64 = 90.0;
+
+/// Whether a window let go at `at` is close enough to its place `home` to join it.
+pub fn snaps_home(at: (f64, f64), home: (f64, f64), scale: f64) -> bool {
+    let reach = SNAP * scale;
+    (at.0 - home.0).abs() < reach && (at.1 - home.1).abs() < reach
+}
+
 /// Shown with a plan to show, hidden otherwise. Async: a window made in a
 /// synchronous command can deadlock on Windows.
 #[tauri::command]
@@ -146,19 +175,8 @@ pub async fn plan_show(app: AppHandle, show: bool) {
         let m = monitor_at(&list, saved).unwrap();
         kept_on(m, saved, physical_size(&settings, m.4))
     } else {
-        let Some(rect) = island::open_rect(&app, 200.0) else { return };
-        let m = monitor_at(&list, (rect.0, rect.1)).or_else(|| list.first().copied());
-        let Some(m) = m else { return };
-        let size = physical_size(&settings, m.4);
-        let p = island::Placement::of(&settings);
-        // The live activities beside the island on its right push it further.
-        let activities_right = (settings.activities_panel
-            && !settings.activities_folded
-            && !settings.activities_detached
-            && settings.activities_side == "right")
-            .then(|| crate::activities::clamp_width(settings.activities_width));
-        let k = m.4 * island::clamp_zoom(p.zoom);
-        kept_on(m, beside_island(rect, size, k, p.dock, activities_right), size)
+        let Some((at, _)) = attached_at(&app, &settings, &list) else { return };
+        at
     };
     let scale = monitor_at(&list, at).map(|m| m.4).unwrap_or(1.0);
     let (w, h) = physical_size(&settings, scale);
@@ -183,7 +201,9 @@ fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
     let _ = app.emit("settings-changed", after);
 }
 
-/// Its top bar dragged: it follows the mouse until let go, and stays there.
+/// Its top bar dragged: it follows the mouse until let go. Let go near its
+/// place beside the island, it slides back there and follows the island
+/// again; anywhere else it stays where it was left.
 #[tauri::command]
 pub fn plan_drag(app: AppHandle) {
     std::thread::spawn(move || {
@@ -201,13 +221,25 @@ pub fn plan_drag(app: AppHandle) {
                 let _ = win.set_position(PhysicalPosition::new(at.0 as i32, at.1 as i32));
             }
         }
-        if at != (start.x as f64, start.y as f64) {
-            update_settings(&app, |s| {
-                s.agent_plan_moved = true;
-                s.agent_plan_x = at.0;
-                s.agent_plan_y = at.1;
-            });
+        if at == (start.x as f64, start.y as f64) {
+            return;
         }
+        let settings = app.state::<crate::Shared>().settings.lock().unwrap().clone();
+        let list = monitors(&app);
+        let scale = monitor_at(&list, at).map(|m| m.4).unwrap_or(1.0);
+        if let Some((home, size)) = attached_at(&app, &settings, &list) {
+            if snaps_home(at, home, scale) {
+                let now = win.outer_size().map(|s| (s.width as f64, s.height as f64)).unwrap_or(size);
+                crate::activities::slide(&win, (at.0, at.1, now.0, now.1), (home.0, home.1, size.0, size.1));
+                update_settings(&app, |s| s.agent_plan_moved = false);
+                return;
+            }
+        }
+        update_settings(&app, |s| {
+            s.agent_plan_moved = true;
+            s.agent_plan_x = at.0;
+            s.agent_plan_y = at.1;
+        });
     });
 }
 
@@ -240,8 +272,11 @@ pub fn plan_window_resize(app: AppHandle, fx: f64, fy: f64) {
         }
         if last != start {
             update_settings(&app, |s| {
-                // Where it is now, so it shows there again (not beside the island).
-                s.agent_plan_moved = true;
+                // Its left or top edge moved it: it shows there again, not
+                // beside the island. Its right or bottom one keeps it in place.
+                if (last.0, last.1) != (start.0, start.1) {
+                    s.agent_plan_moved = true;
+                }
                 s.agent_plan_x = last.0;
                 s.agent_plan_y = last.1;
                 s.agent_plan_width = clamp_width(last.2 / scale);
@@ -271,6 +306,15 @@ mod tests {
         let m = (0.0, 0.0, 1920.0, 1080.0, 1.0);
         assert_eq!(kept_on(m, (1800.0, 10.0), (280.0, 340.0)), (1640.0, 10.0));
         assert_eq!(kept_on(m, (100.0, -50.0), (280.0, 340.0)), (100.0, 0.0));
+    }
+
+    #[test]
+    fn let_go_near_its_place_it_joins_the_island_again() {
+        assert!(snaps_home((1700.0, 40.0), (1652.0, 10.0), 1.0));
+        assert!(!snaps_home((1800.0, 40.0), (1652.0, 10.0), 1.0));
+        // Further at 200 %.
+        assert!(snaps_home((1800.0, 40.0), (1652.0, 10.0), 2.0));
+        assert!(!snaps_home((1700.0, 400.0), (1652.0, 10.0), 1.0));
     }
 
     #[test]

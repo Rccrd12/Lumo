@@ -211,10 +211,13 @@ Code in the island's own chat is asked to write its plan for a job of several
 steps, and the island shows it the same way.
 
 Like the live activities it is moved by its top bar, stays wherever you leave
-it, and is resized from its edges and bottom corners. Its **–** folds it into an
-icon in the island's top bar, left of the usage pills; that icon brings it back,
-and a new plan opens it again. A finished plan stays a few seconds, then the
-island shuts; a session that ends takes its plan with it.
+it, and goes back beside the island when let go near its place there; it is
+resized from its edges and bottom corners. Its **–** folds it into an icon in
+the chat, left of the usage ring; that icon brings it back, and a new plan opens
+it again. A finished plan stays a few seconds, then the island folds into its
+icon, as it does when the session ends. The plans done are kept (the newest
+twenty, until Lumo quits): the icon opens the island on the newest, and its
+arrows go back through the older ones.
 
 ### Keyboard shortcuts
 
