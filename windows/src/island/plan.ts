@@ -49,6 +49,8 @@ export class IslandPlan {
   private fly = false;
   private sentKey = "";
   private doneTimer: number | null = null;
+  /** The open island's height last told to its window (`fitIsland`). */
+  private islandH = 0;
   private host: IslandPlanHost;
 
   constructor(host: IslandPlanHost) {
@@ -112,6 +114,16 @@ export class IslandPlan {
     let any = false;
     for (const p of this.book.list()) if (p.pillId === pillId) any = this.retire(p.key) || any;
     if (any) this.changed();
+  }
+
+  /**
+   * The open island's height (page pixels): beside it, with no height picked
+   * with a grip, the window is as tall (plan_island.rs).
+   */
+  fitIsland(h: number) {
+    if (!IS_TAURI || !(h > 0) || Math.abs(h - this.islandH) < 0.5) return;
+    this.islandH = h;
+    void Bridge.planFit(h);
   }
 
   /** The icon in the chat was clicked: back it comes, on the newest plan. */

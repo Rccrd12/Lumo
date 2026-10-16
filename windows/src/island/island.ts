@@ -1190,6 +1190,8 @@ export class Island {
     // the state-driven DOM sync.
     const beside = this.activitiesPlace();
     this.activities.place(beside.show, beside.x, beside.y, beside.h);
+    // The Plan island is as tall as the open island (its height, not each frame of a resize).
+    if (State.mode === "expanded" && State.view !== "greeting") this.plan?.fitIsland(this.targetSize().h);
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     // The drop sequence covers the island, whatever size it was given.
     const stage = this.uploadCanvas.place(w, hh);

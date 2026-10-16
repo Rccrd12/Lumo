@@ -273,6 +273,27 @@ fn island_on_screen(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     Some((left, top, left + r.w * k, top + r.h * k))
 }
 
+/// Where the island's middle is, in the page pixels of window `label` (the
+/// live activities' own, the Plan island's): they fold toward it and come
+/// out of it. Where the open island goes, when it is hidden.
+#[tauri::command]
+pub fn toward_island(app: AppHandle, label: String) -> Option<(f64, f64)> {
+    if label != LABEL && label != crate::plan_island::LABEL {
+        return None;
+    }
+    let win = app.get_webview_window(&label)?;
+    let o = win.outer_position().ok()?;
+    let r = island_on_screen(&app).or_else(|| island::open_rect(&app, 200.0))?;
+    let k = win.scale_factor().unwrap_or(1.0) * island::zoom();
+    Some(page_point(((r.0 + r.2) / 2.0, (r.1 + r.3) / 2.0), (o.x as f64, o.y as f64), k))
+}
+
+/// A physical point on the screen, in the page pixels of a window at `origin` drawn `k` times.
+pub fn page_point(p: (f64, f64), origin: (f64, f64), k: f64) -> (f64, f64) {
+    let k = if k.is_finite() && k > 0.0 { k } else { 1.0 };
+    (((p.0 - origin.0) / k).round(), ((p.1 - origin.1) / k).round())
+}
+
 /// Which side of the island a window at `rect` (physical l, t, r, b) joins
 /// when let go there, if any.
 pub fn snap_side(rect: (f64, f64, f64, f64), island: (f64, f64, f64, f64), scale: f64) -> Option<&'static str> {
@@ -472,6 +493,13 @@ pub fn cursor_over(cursor: (f64, f64)) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_island_is_found_in_the_windows_own_pixels() {
+        // A window at (1700, 10) at 150 %: the island's middle left of it.
+        assert_eq!(page_point((1320.0, 130.0), (1700.0, 10.0), 1.5), (-253.0, 80.0));
+        assert_eq!(page_point((10.0, 10.0), (0.0, 0.0), 0.0), (10.0, 10.0));
+    }
 
     #[test]
     fn let_go_against_a_side_they_join_it() {

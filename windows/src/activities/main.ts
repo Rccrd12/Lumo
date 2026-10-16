@@ -22,7 +22,8 @@ function ensureView(): ActivitiesView {
     drag: () => void Bridge.activitiesDrag(null),
     resize: (fx, fy) => void Bridge.activitiesWindowResize(fx, fy),
     focus: () => void Bridge.activitiesFocus(true),
-    iconPoint: () => null,
+    // Their icon is in the island: they fold toward it and come out of it.
+    iconPoint: () => Bridge.towardIsland("activities").then((p) => (p ? { x: p[0], y: p[1] } : null)),
     movable: true,
   }, () => "free");
   root.append(view.el);
@@ -41,7 +42,7 @@ void onEvent<ActivitiesData>("activities-state", (data) => {
 void onEvent<{ fly: boolean; painted: boolean }>("activities-appear", ({ fly, painted }) => {
   const v = ensureView();
   if (last) v.render(last);
-  if (fly) v.flyIn();
+  if (fly) void v.flyIn();
   else v.reveal();
   if (painted) {
     requestAnimationFrame(() => requestAnimationFrame(() => void emitToWindow("island", "activities-painted")));

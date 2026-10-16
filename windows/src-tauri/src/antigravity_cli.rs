@@ -75,7 +75,7 @@ Shell commands need the user's approval: with Lumo's Antigravity hooks installed
 When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. \
 The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read) read their mailbox, read or unread mail alike, and Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking. They only read: to answer an email, write a draft for the user to send themselves. \
 Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), start your answer with your plan as a Markdown checklist, one `- [ ]` line per step, before doing anything else; then, each time you finish a step, write the whole checklist again with the steps done ticked (`- [x]`). Do this even for small jobs. ",
+Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then, each time you finish a step, call update_plan again with the whole list, that step completed and the next in_progress, before working on the next one, and once more when the last is done. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -340,6 +340,10 @@ struct Run {
     pending: Vec<(u64, Activity)>,
     /// The last lines agy wrote on stderr: why an answer came back empty.
     stderr_tail: String,
+    /// The plans agy gave Lumo's update_plan tool, not yet passed on (`take_plan`).
+    plan: Option<Value>,
+    /// The last plan passed on: the same call seen again is no news.
+    plan_seen: Option<Value>,
 }
 
 impl Run {
@@ -431,6 +435,9 @@ impl Run {
                     }
                     self.finished_tool(index);
                 } else {
+                    if is_plan_tool(name) {
+                        self.saw_plan(&info["parameters"]);
+                    }
                     self.started_tool(index, activity_for(name, &info["parameters"]));
                 }
                 false
@@ -469,6 +476,24 @@ impl Run {
         self.set_activity(next);
     }
 
+    /// Lumo's update_plan called with `params` (an object, or its JSON text).
+    fn saw_plan(&mut self, params: &Value) {
+        let params = match params {
+            Value::String(s) => serde_json::from_str::<Value>(s).unwrap_or(Value::Null),
+            v => v.clone(),
+        };
+        if !params["plan"].as_array().is_some_and(|p| !p.is_empty()) || self.plan_seen.as_ref() == Some(&params) {
+            return;
+        }
+        self.plan_seen = Some(params.clone());
+        self.plan = Some(params);
+    }
+
+    /// The plan agy last gave, once.
+    fn take_plan(&mut self) -> Option<Value> {
+        self.plan.take()
+    }
+
     /// The activity, once each time it changes.
     fn take_activity(&mut self) -> Option<Activity> {
         if !self.activity_changed {
@@ -477,6 +502,14 @@ impl Run {
         self.activity_changed = false;
         self.activity.clone()
     }
+}
+
+/// Whether agy's tool `name` is Lumo's update_plan (lumo-hook's MCP server,
+/// `--tools=plan`), whatever agy puts in front: "mcp_lumo_update_plan",
+/// "lumo/update_plan"…
+fn is_plan_tool(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.contains("lumo") && lower.trim_end().ends_with("update_plan")
 }
 
 /// Why a run ended without a result, from what agy wrote on stderr.
@@ -526,8 +559,9 @@ fn result_error(error: &str) -> String {
 }
 
 /// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
-/// it grows, `on_activity` what agy is doing each time it changes. Stop ends
-/// the CLI and its children; the run so far is returned, `stopped`.
+/// it grows, `on_activity` what agy is doing each time it changes, `on_plan`
+/// each plan it gives Lumo's update_plan tool. Stop ends the CLI and its
+/// children; the run so far is returned, `stopped`.
 fn run(
     exe: PathBuf,
     args: Vec<String>,
@@ -536,6 +570,7 @@ fn run(
     stop: Arc<Stop>,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_plan: impl FnMut(&Value),
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -618,6 +653,9 @@ fn run(
                 }
                 if let Some(activity) = activity {
                     on_activity(&activity);
+                }
+                if let Some(plan) = state.take_plan() {
+                    on_plan(&plan);
                 }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
@@ -744,7 +782,7 @@ pub async fn send(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
-    // Lumo's email tools, while the Email pill is on, and only during this turn.
+    // Lumo's plan tool, and its email tools while the Email pill is on (only during this turn).
     crate::computer::agy_workspace(&work, crate::integrations::enabled(app, crate::mail::ID));
     let _mail = crate::mail::agent_turn();
 
@@ -752,8 +790,13 @@ pub async fn send(
     let events = chat.events();
     let stop = chat.stopper();
     let state = tauri::async_runtime::spawn_blocking(move || {
-        // The plan agy writes as a checklist, for the Plan island
-        // (src/island/plan.ts), each time it changes.
+        // agy's plan, for the Plan island (src/island/plan.ts): what it gives
+        // Lumo's update_plan tool, as it goes. A checklist in its answer is
+        // its plan only while it has not called the tool.
+        let emit = |tool: &str, input: Value| {
+            let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input, "agent": "Antigravity CLI", "color": "#E879F9" }));
+        };
+        let by_tool = std::cell::Cell::new(false);
         let mut plan_sent = String::new();
         run(
             exe,
@@ -763,14 +806,18 @@ pub async fn send(
             stop,
             |text| {
                 events.delta(&app2, text);
-                if let Some(list) = checklist(text) {
+                if let Some(list) = checklist(text).filter(|_| !by_tool.get()) {
                     if list != plan_sent {
-                        let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": "Checklist", "input": { "text": list }, "agent": "Antigravity CLI", "color": "#E879F9" }));
+                        emit("Checklist", json!({ "text": list }));
                         plan_sent = list;
                     }
                 }
             },
             |activity| events.activity(&app2, activity),
+            |plan| {
+                by_tool.set(true);
+                emit("update_plan", plan.clone());
+            },
         )
     })
     .await
@@ -846,7 +893,7 @@ pub(crate) fn help(
         crate::computer::agy_workspace(&work, mail);
     }
     let _mail = crate::mail::agent_turn();
-    let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity)?;
+    let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity, |_| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -876,7 +923,32 @@ mod tests {
         // One line, or a plain list, is no plan.
         assert_eq!(checklist("- [ ] Only one"), None);
         assert_eq!(checklist("- a\n- b"), None);
-        assert!(INSTRUCTIONS.contains("- [ ]"));
+    }
+
+    #[test]
+    fn the_plan_agy_gives_lumos_tool_is_passed_on_once() {
+        assert!(is_plan_tool("mcp_lumo_update_plan") && is_plan_tool("lumo/update_plan"));
+        assert!(!is_plan_tool("update_plan"), "not Lumo's");
+        assert!(!is_plan_tool("mcp_lumo_mail_read"));
+        assert!(INSTRUCTIONS.contains("update_plan"));
+        let mut run = Run::default();
+        let step = |index: u64, state: &str, params: &str| {
+            format!(r#"{{"event":"step_update","step_index":{index},"state":"{state}","step_type":"tool","tool_info":{{"name":"mcp_lumo_update_plan","parameters":{params}}}}}"#)
+        };
+        let first = r#"{"plan":[{"step":"Read","status":"in_progress"},{"step":"Write","status":"pending"}]}"#;
+        run.feed(step(2, "ACTIVE", first).as_bytes());
+        assert_eq!(run.take_plan().unwrap()["plan"][0]["status"], "in_progress");
+        // The same call again (its step said more, or ended): no news.
+        run.feed(step(2, "ACTIVE", first).as_bytes());
+        run.feed(step(2, "DONE", first).as_bytes());
+        assert!(run.take_plan().is_none());
+        // Its parameters as JSON text, as agy may give them.
+        let next = serde_json::to_string(r#"{"plan":[{"step":"Read","status":"completed"},{"step":"Write","status":"in_progress"}]}"#).unwrap();
+        run.feed(step(5, "ACTIVE", &next).as_bytes());
+        assert_eq!(run.take_plan().unwrap()["plan"][1]["status"], "in_progress");
+        // No steps, no plan.
+        run.feed(step(6, "ACTIVE", r#"{"plan":[]}"#).as_bytes());
+        assert!(run.take_plan().is_none());
     }
 
     #[test]
