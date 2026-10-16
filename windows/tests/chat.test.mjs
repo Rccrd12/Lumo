@@ -224,46 +224,43 @@ test("a local answer streams into one reply, then the finished text replaces it"
   assert.ok(!$(".model-btn").disabled);
 });
 
-test("scrolled up during an answer, the chat stays put until scrolled back down", async () => {
+test("sending and the answer being written never scroll the chat", async () => {
   let finish;
   answers.chat_send = () => new Promise((resolve) => (finish = resolve));
   const log = $(".chat-log");
   log.clientHeight = 100;
+  log.scrollHeight = 600;
+  log.scrollTop = 250; // where the user is reading
+  log.fire("scroll");
   $(".chat-input").value = "tell me a story";
   $(".send-btn").fire("click");
   await flush();
   view.sync();
+  assert.equal(log.scrollTop, 250, "sending leaves the chat where it was");
 
   log.scrollHeight = 1000;
   emit("chat-delta", { chat: State.chatId, text: "Once upon" });
-  assert.equal(log.scrollTop, 1000, "it follows the answer down");
+  assert.equal(log.scrollTop, 250, "the answer being written does not pull it down");
 
-  log.scrollTop = 200; // the user scrolls up to read
+  log.scrollTop = 900; // read at its end
   log.fire("scroll");
   log.scrollHeight = 1400;
   emit("chat-delta", { chat: State.chatId, text: "Once upon a time" });
-  assert.equal(log.scrollTop, 200, "left where it was read");
-
-  log.scrollTop = 1400 - 100; // back at the end
-  log.fire("scroll");
-  log.scrollHeight = 1600;
-  emit("chat-delta", { chat: State.chatId, text: "Once upon a time, far away" });
-  assert.equal(log.scrollTop, 1600, "it follows again");
+  assert.equal(log.scrollTop, 900, "not even from the end of the chat");
 
   log.scrollTop = 300;
   log.fire("scroll");
-  finish({ text: "Once upon a time, far away." });
+  finish({ text: "Once upon a time." });
   await flush();
   view.sync();
   assert.equal(log.scrollTop, 300, "the finished answer replaces the streamed one where it was read");
 
-  // The next question goes to the end of the chat.
   answers.chat_send = { text: "The end." };
   $(".chat-input").value = "and then?";
   $(".send-btn").fire("click");
   await flush();
   view.sync();
-  assert.equal(log.scrollTop, log.scrollHeight);
+  assert.equal(log.scrollTop, 300, "the next question does not scroll it either");
 });
 
 // ── Stop, copy, edit ──────────────────────────────────────────────────────────

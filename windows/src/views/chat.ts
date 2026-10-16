@@ -250,9 +250,6 @@ interface Run {
 /** A provider that streams no tools shows the screenshots or the file this long, then Thinking…. */
 const FIRST_ACTIVITY_MS = 1200;
 
-/** This close to the end of the chat, the log follows a written answer down. */
-const FOLLOW_SLACK_PX = 24;
-
 /** How long Lumo shows that an answer came (his hop) or went wrong (his shake). */
 export const SETTLE_MS = 2000;
 
@@ -783,18 +780,10 @@ export function buildPrompt(
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
-  // The log follows a written answer down while it is read at its end;
-  // scrolled up, it stays put until it is scrolled back down.
-  let following = true;
+  // The log stays where it is read: sending a question and the answer being
+  // written never scroll it. Only a chat coming on screen opens at its end.
   gentleWheel(log);
-  log.addEventListener("scroll", () => {
-    following = log.scrollHeight - log.scrollTop - log.clientHeight < FOLLOW_SLACK_PX;
-  }, { passive: true });
-  function toEnd() {
-    if (following) log.scrollTop = log.scrollHeight;
-  }
-  /** The finished answer is about to replace the streamed one. */
-  let settling = false;
+  let openedChat = true;
   // A text area of one line that grows with what is typed (up to a few lines,
   // then it scrolls): Enter sends, Shift+Enter starts a new line.
   const input = h("textarea", {
@@ -2013,7 +2002,6 @@ export function buildPrompt(
       log.append(h("div", { class: "chat-row" }, live));
     }
     renderMarkdown(live, takeListens(takeTimers(text).text).text);
-    toEnd();
   });
 
   /**
@@ -2029,7 +2017,6 @@ export function buildPrompt(
     const label = log.querySelector(".typing-label");
     if (label) label.textContent = activityLabel(next);
     else if (again && live) log.append(typingDots(activityLabel(next)));
-    toEnd();
   }
 
   void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
@@ -2072,7 +2059,6 @@ export function buildPrompt(
     closeHistory();
     closeScreen();
     if (!auto) setInput("");
-    following = true; // a new question goes to the end of the chat
     Sound.play("send");
 
     let run: Run;
@@ -2216,7 +2202,6 @@ export function buildPrompt(
       if (State.chatId === run.chatId) {
         live = null;
         renderedCount = -1; // the finished answer replaces the streamed one
-        settling = true;
         if (!auto) input.focus();
       }
       drawIslandActivity();
@@ -2347,6 +2332,7 @@ export function buildPrompt(
         shownChat = State.chatId;
         live = null;
         renderedCount = -1;
+        openedChat = true;
         drawIslandActivity();
       }
       const run = answering();
@@ -2469,9 +2455,9 @@ export function buildPrompt(
           renderMarkdown(live, takeListens(takeTimers(run.text).text).text);
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(activityLabel(run.activity)));
-        // Scrolled up to read: the finished answer replaces the streamed one where it was.
-        log.scrollTop = following || !settling ? log.scrollHeight : kept;
-        settling = false;
+        // The chat stays where it was read; one just opened shows its end.
+        log.scrollTop = openedChat ? log.scrollHeight : kept;
+        openedChat = false;
       }
 
       micBtn.classList.toggle("lit", State.liveActive);
