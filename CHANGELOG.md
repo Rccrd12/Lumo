@@ -1,5 +1,13 @@
 # Changelog
 
+## Windows 0.10.0 — October 16, 2026
+
+- **The Plan island joins the island again**: let go near its place beside the island, it slides back there and follows the island again; resizing it from its right or bottom edge keeps it there
+- **Its icon in the chat**: the folded Plan island now waits in the chat, left of the usage ring, instead of the top bar
+- **Plans done are kept**: a finished plan, or one whose session ended, is kept (the newest twenty). The island folds into its icon instead of going away, the icon opens it on the newest plan, and arrows go back through the older ones
+- **A new look for the Plan island**: a progress ring, a thread between the steps, and short animations as steps come in, get checked and light up, and as plans slide in
+- **The chat stays where you read**: sending a question, the answer being written and the finished answer no longer scroll the chat. Only a chat coming on screen opens at its end
+
 ## Windows 0.9.2 — October 16, 2026
 
 - **The chat's plan with the newest models**: Claude Code only hands its newest models (such as claude-haiku-5-5) the tools it writes a plan with when asked, so in the island's chat the plan stayed text and the Plan island shut. The chat now asks for them, and the Plan island follows the plan step by step. A second plan in the same chat follows its own steps too
