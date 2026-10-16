@@ -397,8 +397,10 @@ class AppState {
   listening: ListenWatch[] = [];
   /** The live activities can show beside the open island (an edge with room for them). */
   activitiesRoom = false;
-  /** The Plan island is folded into its icon in the top bar (island/plan.ts). */
+  /** The Plan island's icon shows in the chat: there are plans to look at (island/plan.ts). */
   planIcon = false;
+  /** The Plan island is open (its icon in the chat looks pressed). */
+  planOpen = false;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };

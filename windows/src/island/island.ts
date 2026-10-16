@@ -413,7 +413,7 @@ export class Island {
         State.notify();
       },
       showActivities: () => this.activities.unfold(),
-      showPlan: () => this.plan.unfold(),
+      showPlan: () => this.plan.toggle(),
       previewLook: (look) => {
         State.lookPreview = look;
         State.notify();
@@ -1492,8 +1492,12 @@ export class Island {
     });
   }
 
-  /** Cursor in window-logical coordinates. */
-  onCursor(x: number, y: number, overPanel = false) {
+  /** The cursor poll last said the cursor is over the Plan island's window. */
+  private overPlan = false;
+
+  /** Cursor in window-logical coordinates; `overPlan` from the cursor poll, kept until it says again. */
+  onCursor(x: number, y: number, overPanel = false, overPlan?: boolean) {
+    if (overPlan !== undefined) this.overPlan = overPlan;
     if (x !== State.mouse.x || y !== State.mouse.y) this.mouseMovedAt = performance.now();
     State.mouse = { x, y };
     const rect = this.islandRect();
@@ -1510,8 +1514,10 @@ export class Island {
     // The live activities in their own window stand on their own: leaving the
     // island for them closes it, and resting on them never opens it. Only
     // while they are dragged or resized off the open island do they count as it.
+    // The Plan island keeps the open island open while the cursor rests on it,
+    // as the live activities beside it do; it never opens it.
     const hit = this.hitRect();
-    const inIsland = (overPanel && State.mode === "expanded") || (
+    const inIsland = ((overPanel || this.overPlan) && State.mode === "expanded") || (
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
       y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
 

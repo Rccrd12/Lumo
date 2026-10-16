@@ -256,8 +256,8 @@ export class PlanView {
     }
   }
 
-  /** "–": it shrinks toward the island, then says so (the window hides). */
-  private async fold() {
+  /** "–" (or its icon in the chat): it shrinks toward the island, then says so (the window hides). */
+  async fold() {
     if (this.folding) return;
     this.folding = true;
     Sound.play("close");
