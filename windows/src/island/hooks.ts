@@ -161,6 +161,8 @@ interface HookPayload {
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
   rate_limits?: unknown;
+  /** PostToolUse of TaskCreate: the id of the task made (the relay keeps it of the result). */
+  lumo_task_id?: string;
 }
 
 const PROJECT_ALIASES: Record<string, string> = {
@@ -446,7 +448,16 @@ function handleHook(island: Island, payload: HookPayload) {
   const focused = State.focusId === agentId;
 
   /** The plan this tool call carries, if any, to the Plan island (island/plan.ts). */
-  const followPlan = () => {
+  /**
+   * The plan the tool call carries. Claude Code's TaskCreate only counts once
+   * done (`post`): its result says the task's id, which TaskUpdate then names.
+   */
+  const followPlan = (post: boolean) => {
+    let input = payload.tool_input;
+    if (payload.tool_name === "TaskCreate") {
+      if (!post) return;
+      if (payload.lumo_task_id) input = { ...input, taskId: payload.lumo_task_id };
+    }
     const task = State.tasks.find((x) => x.id === agentId);
     island.plan?.onTool({
       pillId: agentId,
@@ -454,7 +465,7 @@ function handleHook(island: Island, payload: HookPayload) {
       agent: isExternalAgent ? agentName(validAgent!) : "Claude Code",
       color: task?.color ?? (isExternalAgent ? agentColor(validAgent!) : pillDefinition(agentId)?.color ?? "#f5f6f8"),
       project: projectName,
-    }, payload.tool_name ?? "", payload.tool_input);
+    }, payload.tool_name ?? "", input);
   };
 
   switch (name) {
@@ -488,7 +499,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "working");
       const tool = payload.tool_name ?? "Tool";
       State.appendStep(agentId, stepLabel(tool, payload.tool_input ?? {}));
-      followPlan();
+      followPlan(false);
       surface("overview", false);
       break;
     }
@@ -505,7 +516,7 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       State.updateTask(agentId, "working");
       recordDiff(agentId, payload);
-      followPlan();
+      followPlan(true);
       break;
 
     case "PostToolUseFailure":

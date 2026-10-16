@@ -206,9 +206,12 @@ OpenCode's `todowrite` when their hooks pass those calls on), the island
 opens with it, whether the main island is open or not. Each step shows where it
 stands (to do, under way, done, dropped), with who follows the plan, in which
 folder, and how far along it is; it moves on live as the agent works. Nothing is
-asked of the agents: the plan is read off the hooks Lumo already has. Claude
-Code in the island's own chat is asked to write its plan for a job of several
-steps, and the island shows it the same way.
+asked of the agents: the plan is read off the hooks Lumo already has. In the
+island's own chat, Claude Code (its task list) and Antigravity CLI (a checklist
+in its answer) are asked to write their plan for any job of more than one step,
+and the island shows it the same way. The chats with an API key (Anthropic,
+OpenAI, Google, OpenRouter, local models) only answer and do no steps, so they
+have no plan.
 
 Like the live activities it is moved by its top bar, stays wherever you leave
 it, and goes back beside the island when let go near its place there; it is
