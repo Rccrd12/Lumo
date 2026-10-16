@@ -89,6 +89,13 @@ test("Claude Code's TaskCreate and TaskUpdate, one step at a time", () => {
   assert.deepEqual(book.current().steps, [{ text: "First", status: "active" }, { text: "Second", status: "pending" }]);
   // An id it never saw changes nothing.
   assert.equal(book.apply(owner(), readPlanUpdate("TaskUpdate", { taskId: "9", status: "completed" }), 4), null);
+  // The ids go on over the session: the next plan's first task is #3.
+  book.apply(owner(), readPlanUpdate("TaskUpdate", { taskId: "1", status: "completed" }), 5);
+  book.apply(owner(), readPlanUpdate("TaskUpdate", { taskId: "2", status: "completed" }), 6);
+  book.drop(book.current().key);
+  assert.equal(book.apply(owner(), readPlanUpdate("TaskCreate", { subject: "Third" }), 7), "new");
+  assert.equal(book.apply(owner(), readPlanUpdate("TaskUpdate", { taskId: "3", status: "in_progress" }), 8), "changed");
+  assert.deepEqual(book.current().steps, [{ text: "Third", status: "active" }]);
 });
 
 test("a new plan, or the same one moving on", () => {

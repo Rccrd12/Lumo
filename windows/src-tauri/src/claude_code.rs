@@ -55,7 +55,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have, and keep it up to date as you go: Lumo shows it to the user step by step. ",
+When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have (load them with ToolSearch first if they are deferred), and keep it up to date as you go: Lumo shows it to the user step by step. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -70,7 +70,7 @@ When the user drops a file, its path is given in the message: read it from there
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
-When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have, and keep it up to date as you go: Lumo shows it to the user step by step. ",
+When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have (load them with ToolSearch first if they are deferred), and keep it up to date as you go: Lumo shows it to the user step by step. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -697,6 +697,10 @@ fn run(
     }
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
+    // Claude Code only gives its newer models its to-do tools (TodoWrite, or
+    // TaskCreate and TaskUpdate) when asked: without them the chat's plan is
+    // only text, and the Plan island stays shut.
+    cmd.env("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1");
     platform::no_console(&mut cmd);
     let mut child = cmd
         .spawn()
