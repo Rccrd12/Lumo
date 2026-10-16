@@ -20,8 +20,9 @@
 //!
 //! `--tools=plan` offers `update_plan` (Codex's own tool, which the models
 //! know): the agent's plan, step by step, for the Plan island. The call is
-//! answered here and goes nowhere: Antigravity CLI's run reads its input off
-//! agy's stream (antigravity_cli.rs), as it does every tool step.
+//! handed to Lumo (`{"lumo_plan": {"input": …}}`, antigravity_cli.rs), and
+//! answered as done even when Lumo can't be reached: a plan not shown never
+//! stops the agent's work.
 
 use std::io::{BufRead, Read, Write};
 use std::sync::mpsc;
@@ -388,13 +389,11 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     }
     let input = params.get("arguments").cloned().unwrap_or_else(|| json!({}));
     if name == PLAN_NAME {
-        // Shown from agy's stream, not from here: nothing to ask Lumo.
-        let ok = input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty());
-        return if ok {
-            json!({ "content": [{ "type": "text", "text": "Plan shown to the user." }] })
-        } else {
-            failed("The plan needs at least one step.")
-        };
+        if !input.get("plan").and_then(Value::as_array).is_some_and(|p| !p.is_empty()) {
+            return failed("The plan needs at least one step.");
+        }
+        let _ = lumo(&json!({ "lumo_plan": { "input": input } }));
+        return json!({ "content": [{ "type": "text", "text": "Plan shown to the user." }] });
     }
     let key = if MAIL_NAMES.contains(&name) { "lumo_mail" } else { "lumo_computer" };
     let request = json!({ key: { "tool": name, "input": input } });
@@ -554,8 +553,16 @@ mod tests {
         assert!(said.contains("Plan island") && said.contains("read only") && !said.contains("screenshot"));
 
         let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[{"step":"Read","status":"in_progress"}]}}}"#;
-        let v: Value = serde_json::from_str(&handle_with(line, kit, &never).unwrap()).unwrap();
-        assert!(v["result"].get("isError").is_none(), "Lumo is not asked");
+        let shown = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_plan"]["input"]["plan"][0]["step"], "Read");
+            Ok(json!({ "text": "Plan shown to the user." }))
+        };
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();
+        assert!(v["result"].get("isError").is_none());
+        // Lumo not there: the agent goes on all the same.
+        let closed = |_: &Value| -> Result<Value, String> { Err("Lumo isn't running.".into()) };
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &closed).unwrap()).unwrap();
+        assert!(v["result"].get("isError").is_none());
         let line = r#"{"jsonrpc":"2.0","id":3,"method":"tools/call","params":{"name":"update_plan","arguments":{"plan":[]}}}"#;
         let v: Value = serde_json::from_str(&handle_with(line, kit, &never).unwrap()).unwrap();
         assert_eq!(v["result"]["isError"], true);
