@@ -200,3 +200,13 @@ test("paused, it stays shut", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
   assert.deepEqual(shows(), []);
 });
+
+test("the island chat's Claude Code sends its plan through the chat, and it opens", () => {
+  emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "in_progress"], ["Write game.py", "pending"]) });
+  assert.deepEqual(shows(), [true]);
+  assert.equal(island.plan.current.pillId, "chat");
+  assert.equal(island.plan.current.agent, "Claude Code");
+  emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "completed"], ["Write game.py", "completed"]) });
+  mock.timers.tick(8_000);
+  assert.deepEqual(shows(), [true, false]);
+});

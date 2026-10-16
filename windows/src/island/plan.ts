@@ -6,6 +6,9 @@
 // into an icon in the island's top bar, left of the plan usage pills, which
 // brings it back. A plan done stays a moment, then the island shuts again.
 //
+// The island chat's Claude Code runs send their plan through the chat
+// (`chat-plan`), the agents in a terminal through their hooks.
+//
 // It lives in a window of its own (plan.html, plan_island.rs), shown on its
 // own whether the island is open or not, which only draws: this page holds
 // the plans, sends the window the one to show and hears its clicks. Nothing
@@ -15,7 +18,7 @@ import { Bridge, IS_TAURI, emitToWindow, onEvent } from "../core/bridge";
 import { PlanBook, planFinished, planKey, readPlanUpdate, type AgentPlan, type PlanOwner } from "../core/agent-plan";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
-import { language } from "../i18n/i18n";
+import { language, t } from "../i18n/i18n";
 import type { PlanAction, PlanData } from "../views/plan-view";
 
 /** How long a plan done stays on screen before the island shuts. */
@@ -46,6 +49,11 @@ export class IslandPlan {
       this.sentKey = "";
       this.send();
       if (this.shown) void emitToWindow("plan", "plan-appear", { fly: false });
+    });
+    // Claude Code in the island's own chat (claude_code.rs): its runs send no
+    // session hooks, so its plan comes straight from the chat's stream.
+    void onEvent<{ tool: string; input: Record<string, unknown> }>("chat-plan", ({ tool, input }) => {
+      this.onTool({ pillId: "chat", sessionId: String(State.chatId ?? ""), agent: "Claude Code", color: "#F5F6F8", project: t("Chat") }, tool, input);
     });
     State.subscribe(() => this.sync());
   }

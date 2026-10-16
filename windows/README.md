@@ -206,7 +206,9 @@ OpenCode's `todowrite` when their hooks pass those calls on), the island
 opens with it, whether the main island is open or not. Each step shows where it
 stands (to do, under way, done, dropped), with who follows the plan, in which
 folder, and how far along it is; it moves on live as the agent works. Nothing is
-asked of the agents: the plan is read off the hooks Lumo already has.
+asked of the agents: the plan is read off the hooks Lumo already has. Claude
+Code in the island's own chat is asked to write its plan for a job of several
+steps, and the island shows it the same way.
 
 Like the live activities it is moved by its top bar, stays wherever you leave
 it, and is resized from its edges and bottom corners. Its **–** folds it into an

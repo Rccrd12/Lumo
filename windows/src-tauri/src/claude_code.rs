@@ -54,7 +54,8 @@ The chat window is small: answer in the user's language, keep answers focused, a
 When the user drops a file, its path is given in the message: read it from there. \
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. \
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
-Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
+Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
+When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have, and keep it up to date as you go: Lumo shows it to the user step by step. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -68,7 +69,8 @@ The chat window is small: answer in the user's language, keep answers focused, a
 When the user drops a file, its path is given in the message: read it from there. \
 When the user shares the folder open in File Explorer, its path and listing are given in the message: read its files from there. ",
     crate::computer::computer_note!(),
-    "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. ",
+    "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
+When the user gives you a job with several steps, such as writing code or changing files, write your plan first with the TodoWrite tool, or TaskCreate and TaskUpdate when those are the tools you have, and keep it up to date as you go: Lumo shows it to the user step by step. ",
     crate::chat::timer_note!(),
     crate::chat::listen_note!(),
     crate::chat::math_note!()
@@ -476,6 +478,9 @@ struct Run {
     blocks: Vec<(u64, String, String, String)>,
     /// Tool calls not answered yet, oldest first: id and what each is doing.
     pending: Vec<(String, Activity)>,
+    /// Plan tool calls of the main conversation not passed on yet (`take_plans`):
+    /// name and whole input, for the Plan island (src/island/plan.ts).
+    plans: Vec<(String, Value)>,
     /// The Claude plan's limits this turn reported (`rate_limit_event`), in the
     /// status line's shape: `five_hour` / `seven_day` → `used_percentage`, `resets_at`.
     rate_limits: serde_json::Map<String, Value>,
@@ -501,7 +506,17 @@ fn plan_window(info: &Value) -> Option<(String, Value)> {
     }
 }
 
+/// The tools an agent writes its plan with (src/core/agent-plan.ts reads them).
+fn is_plan_tool(name: &str) -> bool {
+    matches!(name, "TodoWrite" | "ExitPlanMode" | "TaskCreate" | "TaskUpdate")
+}
+
 impl Run {
+    /// The plan tool calls seen since the last time, oldest first.
+    fn take_plans(&mut self) -> Vec<(String, Value)> {
+        std::mem::take(&mut self.plans)
+    }
+
     /// Takes one line; true when the visible text changed.
     fn feed(&mut self, line: &[u8]) -> bool {
         let Ok(v) = serde_json::from_slice::<Value>(line) else { return false };
@@ -577,6 +592,9 @@ impl Run {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
                         self.started_tool(id, activity_for(name, &block["input"]));
+                        if is_plan_tool(name) {
+                            self.plans.push((name.to_string(), block["input"].clone()));
+                        }
                     }
                 }
                 false
@@ -651,8 +669,8 @@ impl Run {
 }
 
 /// Runs `claude -p` once in `dir`, blocking. `on_text` gets the visible text as
-/// it grows, `on_activity` what Claude Code is doing each time it changes.
-/// Stop ends the CLI and its children; the run so far is returned, `stopped`.
+/// it grows, `on_activity` what Claude Code is doing each time it changes,
+/// `on_plan` each plan tool call (name, whole input). Stop ends the CLI and its children; the run so far is returned, `stopped`.
 fn run(
     exe: PathBuf,
     args: Vec<String>,
@@ -661,6 +679,7 @@ fn run(
     stop: Arc<Stop>,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_plan: impl FnMut(&str, &Value),
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
@@ -747,6 +766,9 @@ fn run(
                 if let Some(activity) = activity {
                     on_activity(&activity);
                 }
+                for (name, input) in state.take_plans() {
+                    on_plan(&name, &input);
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -812,6 +834,7 @@ pub async fn send(
     }
 
     let app2 = app.clone();
+    let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
     let state = tauri::async_runtime::spawn_blocking(move || {
@@ -823,6 +846,10 @@ pub async fn send(
             stop,
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
+            // The plan Claude writes in the chat, for the Plan island.
+            |tool, input| {
+                let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
+            },
         )
     })
     .await
@@ -914,7 +941,7 @@ pub(crate) fn help(
     if computer {
         args = with_computer(args);
     }
-    let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity)?;
+    let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity, |_, _| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -1152,6 +1179,20 @@ mod tests {
             out.extend(run.take_activity());
         }
         out
+    }
+
+    #[test]
+    fn the_plan_claude_writes_in_the_chat_is_passed_on_once() {
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"text","text":"Ok."},{"type":"tool_use","id":"t1","name":"TodoWrite","input":{"todos":[{"content":"Create the folder","status":"in_progress"}]}},{"type":"tool_use","id":"t2","name":"Write","input":{}}]}}"#);
+        // A subagent's plan stays out.
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":"t9","message":{"content":[{"type":"tool_use","id":"t3","name":"TodoWrite","input":{"todos":[]}}]}}"#);
+        let plans = run.take_plans();
+        assert_eq!(plans.len(), 1);
+        assert_eq!(plans[0].0, "TodoWrite");
+        assert_eq!(plans[0].1["todos"][0]["content"], "Create the folder");
+        assert!(run.take_plans().is_empty());
+        assert!(APPEND_PROMPT.contains("TodoWrite") && COMPUTER_PROMPT.contains("TodoWrite"));
     }
 
     #[test]
