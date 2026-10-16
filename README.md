@@ -77,6 +77,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.9.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.9.0) | Oct 16, 2026 | A Plan island that follows the agent's plan live, the changelog in Settings and a note when a newer Lumo is out, Antigravity CLI reading email, usage pills for every agent, an island that reopens on its tab, detached live activities that stay open |
 | [0.8.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.8.0) | Oct 15, 2026 | Gemini Live changes settings, arranges windows, tidies files and sets reminders, and answers from what Lumo knows; Y and N answer a permission from the chat field; an island that stays on top and waits while you write |
 | [0.7.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.7.0) | Oct 13, 2026 | Antigravity CLI quotas in the header and the chat, a calendar that rides out a bad network, a drop zone that closes when the file goes elsewhere, about 30 fixes from a full code review: computer use, permission cards, the relay, the calendar, Gemini Live; Remove buttons for integration keys |
 | [0.6.4](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.6.4) | Oct 12, 2026 | Permission requests that wait in line, several sessions sharing a pill, Energy None asking more often, about 2,500 lines of unused code removed |
