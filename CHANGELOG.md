@@ -1,5 +1,13 @@
 # Changelog
 
+## Windows 0.11.0 — October 16, 2026
+
+- **The Plan island behaves as the live activities**: beside the open island, on the side they leave free, it fades in and out with the island and follows it as it opens, closes and resizes, as tall as the island. Dragged by its top bar it comes off into a window of its own that stays on screen until its "–", and let go against the island's side it joins it again
+- **Its icon in the chat opens and folds it**: the icon stays while the Plan island is open, a click folds it into the icon, and it comes back out of it
+- **Antigravity CLI's plan, step by step**: in the island chat, Antigravity CLI writes its plan with Lumo's own `update_plan` tool and moves it on as each step starts and ends, instead of ticking every step at the end. Lumo's own plan and email tools no longer ask for permission with a card
+- **The live activities fold toward the island**: in their own window, they fold toward the island and come out of it, instead of the screen's corner
+- **The step under way** has its dot in the middle of its ring
+
 ## Windows 0.10.1 — October 16, 2026
 
 - **The chat's plan, for real**: Claude Code in the island chat now writes its plan as its first step for any job of more than one step, so the Plan island opens and follows it; before, the model mostly skipped it
