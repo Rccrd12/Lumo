@@ -111,7 +111,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
             || current.island_edge_gap != settings.island_edge_gap
-            || activities::room_of(&current) != activities::room_of(&settings);
+            || activities::side_room(&current) != activities::side_room(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
         // Where the island was dragged is island.rs's to say, not a webview's.
@@ -1155,10 +1155,11 @@ pub fn run() {
             activities::activities_drag,
             activities::activities_window_resize,
             activities::activities_focus,
+            plan_island::plan_resize,
             plan_island::plan_show,
+            plan_island::plan_prepare,
             plan_island::plan_drag,
             plan_island::plan_window_resize,
-            plan_island::plan_fit,
             activities::toward_island,
             calendar::calendar_fetch,
             media::media_control,

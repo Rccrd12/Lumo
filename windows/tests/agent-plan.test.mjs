@@ -149,25 +149,72 @@ test("the plan shown: the one under way moved on last, else the one just finishe
 
 // ── The island, through the hooks ─────────────────────────────────────────────
 
+/** The view drawn beside the island: what it was asked to do. */
+class Classes {
+  set = new Set();
+  add(c) { this.set.add(c); }
+  remove(c) { this.set.delete(c); }
+  contains(c) { return this.set.has(c); }
+  toggle(c, on = !this.set.has(c)) {
+    if (on) this.set.add(c);
+    else this.set.delete(c);
+    return on;
+  }
+}
+const panel = {
+  hooks: null,
+  el: { style: {}, classList: new Classes(), offsetWidth: 0, getBoundingClientRect: () => ({ left: 0, top: 0, width: 280, height: 300 }) },
+  drawn: null,
+  flights: 0,
+  folds: 0,
+  render(data) { this.drawn = data; },
+  reveal() {},
+  async flyIn() { this.flights++; },
+  // Its "–" or its icon: it folds, then says so.
+  async fold() {
+    this.folds++;
+    this.hooks.act({ kind: "fold" });
+  },
+};
+
 const island = { alert() {}, setView() {}, reveal() {}, dropPin() {}, quickApproval: () => false };
-island.plan = new IslandPlan({ openSettings() {}, refreshAll() {} });
+island.plan = new IslandPlan({
+  openSettings() {}, refreshAll() {},
+  makeView(hooks) {
+    panel.hooks = hooks;
+    return panel;
+  },
+  iconPoint: () => null,
+  movable: true,
+  side: () => "right",
+  changed() {},
+});
 registerHookHandlers(island);
 
 const hook = (payload) => emit("hook", payload);
-const shows = () => sent("plan_show").map((a) => a.show);
 const tool = (tool_name, tool_input, session_id = "s1") =>
   hook({ hook_event_name: "PreToolUse", session_id, cwd: "C:\\code\\Lumo", tool_name, tool_input });
-const lastState = () => calls.filter(([c, a]) => c === "plugin:event|emit_to" && a.event === "plan-state").at(-1)?.[1].payload;
+/** A frame of the island (island.ts planPlace): beside it while it is open, in its own window always. */
+const frame = () => {
+  const plan = island.plan;
+  plan.place(plan.wanted && (plan.detached || State.mode === "expanded"), 0, 0, 300);
+};
+const beside = () => {
+  frame();
+  return panel.el.classList.contains("shown");
+};
+const windowShows = () => sent("plan_show").map((a) => a.show);
 
 beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout"] });
   calls.length = 0;
   State.tasks = [];
-  // Beside the island it shows only while the island is open.
   State.mode = "expanded";
   State.paused = false;
   State.settings = { ...DEFAULT_SETTINGS };
   liveSessions.clear();
+  panel.flights = 0;
+  panel.folds = 0;
 });
 
 afterEach(() => {
@@ -175,101 +222,103 @@ afterEach(() => {
   hook({ hook_event_name: "SessionEnd", session_id: "s2", cwd: "C:\\code\\Lumo" });
   // Plans done are kept: each test starts with the island folded.
   emit("plan-action", { kind: "fold" });
+  State.settings = { ...DEFAULT_SETTINGS };
+  frame();
   mock.timers.runAll();
   mock.timers.reset();
 });
 
-test("shut until an agent makes a plan; then it opens with it", async () => {
+test("shut until an agent makes a plan; then it comes out of its icon beside the open island", () => {
   tool("Bash", { command: "ls" });
-  assert.deepEqual(shows(), []);
+  assert.equal(beside(), false);
   tool("TodoWrite", todos(["Read", "in_progress"], ["Fix", "pending"]));
-  assert.deepEqual(shows(), [true]);
-  await Promise.resolve();
-  const data = lastState();
-  assert.equal(data.plan.agent, "Claude Code");
-  assert.equal(data.plan.project, "Lumo");
-  assert.deepEqual(data.plan.steps.map((s) => s.status), ["active", "pending"]);
-  // It moves on with the agent, without opening again.
+  assert.equal(beside(), true);
+  assert.equal(panel.flights, 1);
+  assert.deepEqual(windowShows(), [], "drawn in the island's page, not in a window");
+  assert.equal(panel.drawn.plan.agent, "Claude Code");
+  assert.equal(panel.drawn.plan.project, "Lumo");
+  assert.deepEqual(panel.drawn.plan.steps.map((s) => s.status), ["active", "pending"]);
+  // It moves on with the agent, without coming out again.
   tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
-  assert.deepEqual(shows(), [true]);
-  assert.deepEqual(lastState().plan.steps.map((s) => s.status), ["done", "active"]);
+  assert.equal(beside(), true);
+  assert.equal(panel.flights, 1);
+  assert.deepEqual(panel.drawn.plan.steps.map((s) => s.status), ["done", "active"]);
 });
 
 test("the \"–\" folds it into its icon, which brings it back", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.equal(beside(), true);
   assert.equal(State.planIcon, true, "the icon shows while it is open");
   assert.equal(State.planOpen, true);
   emit("plan-action", { kind: "fold" });
-  assert.deepEqual(shows(), [true, false]);
+  assert.equal(beside(), false);
   assert.equal(State.planIcon, true);
   assert.equal(State.planOpen, false);
   // Folded, it stays folded while the plan moves on…
   tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
-  assert.deepEqual(shows(), [true, false]);
+  assert.equal(beside(), false);
   island.plan.toggle();
-  assert.deepEqual(shows(), [true, false, true]);
-  assert.equal(State.planIcon, true);
+  assert.equal(beside(), true);
+  assert.equal(panel.flights, 2, "out of its icon");
   assert.equal(State.planOpen, true);
   // …and a new plan opens it again.
   emit("plan-action", { kind: "fold" });
+  assert.equal(beside(), false);
   tool("TodoWrite", todos(["Something else", "pending"]), "s2");
-  assert.deepEqual(shows(), [true, false, true, false, true]);
+  assert.equal(beside(), true);
 });
 
-test("its icon clicked while it is open folds it, with its window's animation", async () => {
+test("its icon clicked while it is open folds it, with its animation", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  await Promise.resolve();
-  calls.length = 0;
+  assert.equal(beside(), true);
   island.plan.toggle();
-  assert.ok(calls.some(([c, a]) => c === "plugin:event|emit_to" && a.event === "plan-fold"), "its window is asked to fold");
-  // The window, once folded, says so.
-  emit("plan-action", { kind: "fold" });
+  assert.equal(panel.folds, 1);
   assert.equal(State.planOpen, false);
   assert.equal(State.planIcon, true);
+  assert.equal(beside(), false);
 });
 
 test("a plan done stays a moment, then folds into its icon, which opens it again", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
   tool("TodoWrite", todos(["Read", "completed"]));
-  assert.deepEqual(shows(), [true]);
+  assert.equal(beside(), true);
   mock.timers.tick(8_000);
-  assert.deepEqual(shows(), [true, false]);
+  assert.equal(beside(), false);
   assert.equal(State.planIcon, true);
   assert.deepEqual(island.plan.current.steps, [{ text: "Read", status: "done" }]);
   island.plan.unfold();
-  assert.deepEqual(shows(), [true, false, true]);
-  assert.equal(lastState().live, false);
+  assert.equal(beside(), true);
+  assert.equal(panel.drawn.live, false);
 });
 
 test("the session ending puts its plan with those done", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.equal(beside(), true);
   hook({ hook_event_name: "SessionEnd", session_id: "s1", cwd: "C:\\code\\Lumo" });
-  assert.deepEqual(shows(), [true, false]);
+  assert.equal(beside(), false);
   assert.equal(State.planIcon, true);
   assert.equal(island.plan.current.steps[0].text, "Read");
 });
 
-test("its arrows go back through the plans done, and a new plan comes first", async () => {
+test("its arrows go back through the plans done, and a new plan comes first", () => {
   tool("TodoWrite", todos(["First", "completed"]), "s1");
   mock.timers.tick(8_000);
   tool("TodoWrite", todos(["Second", "completed"]), "s2");
   mock.timers.tick(8_000);
   island.plan.unfold();
-  await Promise.resolve();
   assert.equal(island.plan.current.steps[0].text, "Second");
-  const count = lastState().count;
-  assert.ok(count >= 2);
+  assert.ok(island.plan.data().count >= 2);
   emit("plan-action", { kind: "older" });
   assert.equal(island.plan.current.steps[0].text, "First");
-  assert.equal(lastState().index, 1);
+  assert.equal(island.plan.data().index, 1);
   emit("plan-action", { kind: "newer" });
   assert.equal(island.plan.current.steps[0].text, "Second");
   emit("plan-action", { kind: "older" });
   // A new plan shows at once, whatever was looked at.
   tool("TodoWrite", todos(["Third", "in_progress"]), "s1");
   assert.equal(island.plan.current.steps[0].text, "Third");
-  assert.equal(lastState().index, 0);
-  assert.equal(lastState().live, true);
+  assert.equal(island.plan.data().index, 0);
+  assert.equal(island.plan.data().live, true);
 });
 
 test("a terminal's TaskCreate counts once done, with the id the relay kept", () => {
@@ -284,59 +333,65 @@ test("a terminal's TaskCreate counts once done, with the id the relay kept", () 
   assert.deepEqual(island.plan.current.steps, [{ text: "Game", status: "pending" }, { text: "UI", status: "active" }]);
 });
 
-test("beside the island, it closes with the island and comes back out of it when it opens", async () => {
+test("beside the island, it fades out with the island and back in when it opens", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.deepEqual(shows(), [true]);
+  assert.equal(beside(), true);
   State.mode = "hidden";
-  State.notify();
-  assert.deepEqual(shows(), [true, false]);
+  assert.equal(beside(), false);
   assert.equal(State.planOpen, true, "not folded: its icon still reads open");
-  // The plan moves on meanwhile, out of sight.
   tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
-  assert.deepEqual(shows(), [true, false]);
-  calls.length = 0;
   State.mode = "expanded";
-  State.notify();
-  assert.deepEqual(shows(), [true]);
-  await new Promise((r) => setImmediate(r));
-  const appear = calls.find(([c, a]) => c === "plugin:event|emit_to" && a.event === "plan-appear");
-  assert.deepEqual(appear?.[1].payload, { fly: true }, "out of the island's side");
-  assert.deepEqual(lastState().plan.steps.map((s) => s.status), ["done", "active"]);
+  assert.equal(beside(), true);
+  assert.equal(panel.flights, 1, "with the island, not out of its icon again");
+  assert.deepEqual(panel.drawn.plan.steps.map((s) => s.status), ["done", "active"]);
 });
 
 test("beside the closed island, a new plan waits for it to open", () => {
   State.mode = "hidden";
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.deepEqual(shows(), []);
+  assert.equal(beside(), false);
   assert.equal(State.planIcon, true);
   State.mode = "expanded";
-  State.notify();
-  assert.deepEqual(shows(), [true]);
+  assert.equal(beside(), true);
+  assert.equal(panel.flights, 0);
 });
 
-test("moved away from the island, it stays when the island closes", () => {
+test("in its own window, it stays when the island closes, until its \"–\"", () => {
   State.settings = { ...State.settings, agentPlanMoved: true };
   tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.equal(beside(), false, "not beside the island");
+  assert.deepEqual(windowShows(), [true]);
   State.mode = "hidden";
-  State.notify();
-  assert.deepEqual(shows(), [true]);
-  // Its "–" still puts it away.
+  frame();
+  assert.deepEqual(windowShows(), [true]);
   emit("plan-action", { kind: "fold" });
-  assert.deepEqual(shows(), [true, false]);
+  frame();
+  assert.deepEqual(windowShows(), [true, false]);
+});
+
+test("taken off the island, it shows in its window before the page lets go of it", () => {
+  tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.equal(beside(), true);
+  State.settings = { ...State.settings, agentPlanMoved: true };
+  frame();
+  assert.deepEqual(windowShows(), [true]);
+  assert.equal(panel.el.classList.contains("shown"), true, "still drawn here");
+  emit("plan-painted", null);
+  assert.equal(panel.el.classList.contains("shown"), false);
 });
 
 test("paused, it stays shut", () => {
   State.paused = true;
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.deepEqual(shows(), []);
+  assert.equal(beside(), false);
 });
 
 test("the island chat's Claude Code sends its plan through the chat, and it opens", () => {
   emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "in_progress"], ["Write game.py", "pending"]) });
-  assert.deepEqual(shows(), [true]);
+  assert.equal(beside(), true);
   assert.equal(island.plan.current.pillId, "chat");
   assert.equal(island.plan.current.agent, "Claude Code");
   emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "completed"], ["Write game.py", "completed"]) });
   mock.timers.tick(8_000);
-  assert.deepEqual(shows(), [true, false]);
+  assert.equal(beside(), false);
 });

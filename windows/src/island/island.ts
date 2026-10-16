@@ -40,6 +40,7 @@ import { isComputerTool } from "../core/computer";
 import { t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { IslandPlan } from "./plan";
+import { PlanView } from "../views/plan-view";
 import { presentApproval } from "./hooks";
 import { DOZE_DISTANCE, SAVER_FPS, STILL_AFTER_MS, distanceTo } from "../core/energy";
 
@@ -124,8 +125,10 @@ export class Island {
   private menu!: ContextMenu;
   /** The live activities beside the open island (island/activities.ts). */
   private activities!: IslandActivities;
-  /** The Plan island, in its own window (island/plan.ts). */
+  /** The Plan island beside the open island, or in its own window (island/plan.ts). */
   plan!: IslandPlan;
+  /** The island's height when the Plan island first showed: its own since. */
+  private planStartH: number | null = null;
   /** The island's height when the live activities first showed: theirs since. */
   private activitiesStartH: number | null = null;
   private wakeStrip!: HTMLElement;
@@ -496,9 +499,21 @@ export class Island {
     this.plan = new IslandPlan({
       openSettings: () => this.openSettingsAt(null),
       refreshAll: () => void this.refreshAll(),
+      makeView: (hooks, side, follows) => new PlanView(hooks, side, follows),
+      iconPoint: () => {
+        // Its icon in the chat, left of the usage ring; else the island's middle.
+        const icon = this.islandEl.querySelector(".plan-btn") as HTMLElement | null;
+        const r = icon && icon.style.display !== "none" ? icon.getBoundingClientRect() : null;
+        if (r && r.width > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        const at = this.islandRect();
+        return { x: at.x + at.w / 2, y: at.y + at.h / 2 };
+      },
+      movable: this.canResize && IS_TAURI,
+      side: () => this.planSide(),
+      changed: () => State.notify(),
     });
 
-    this.root.append(this.wakeStrip, this.activities.view.el, this.islandEl);
+    this.root.append(this.wakeStrip, this.activities.view.el, this.plan.view.el, this.islandEl);
     this.applyGeometry();
   }
 
@@ -1190,8 +1205,10 @@ export class Island {
     // the state-driven DOM sync.
     const beside = this.activitiesPlace();
     this.activities.place(beside.show, beside.x, beside.y, beside.h);
-    // The Plan island is as tall as the open island (its height, not each frame of a resize).
-    if (State.mode === "expanded" && State.view !== "greeting") this.plan?.fitIsland(this.targetSize().h);
+    if (this.plan) {
+      const plan = this.planPlace();
+      this.plan.place(plan.show, plan.x, plan.y, plan.h);
+    }
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     // The drop sequence covers the island, whatever size it was given.
     const stage = this.uploadCanvas.place(w, hh);
@@ -1236,12 +1253,44 @@ export class Island {
     return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
   }
 
-  /** What takes the mouse: the island, the live activities beside it, and the right-click menu. */
+  /** The side of the island the Plan island is drawn on: the one the live activities leave free (plan_island.rs side_of). */
+  private planSide(): "left" | "right" {
+    return State.settings.activitiesPanel !== false && State.settings.activitiesSide === "right" ? "left" : "right";
+  }
+
+  /** Whether the Plan island shows beside the open island, and where: as the live activities, on the other side. */
+  private planPlace(): { show: boolean; x: number; y: number; h: number } {
+    const at = this.islandRect();
+    const w = this.plan.width;
+    const x = this.planSide() === "right" ? at.x + at.w + ACTIVITIES_GAP : at.x - ACTIVITIES_GAP - w;
+    const fits = x >= 0 && x + w <= window.innerWidth;
+    // In its own window it stays on screen when the island closes: only its
+    // "–" puts it away.
+    const show = !isUpright(this.dock) && this.plan.wanted && (
+      this.plan.detached ||
+      (State.mode === "expanded" && !NO_ACTIVITIES.has(State.view) && fits && at.h >= 120));
+    const bottom = this.dock === "bottom";
+    const room = bottom ? at.y + at.h - 10 : window.innerHeight - at.y - 14;
+    // Following the island (Settings → Island, as the live activities): as
+    // tall as it. Otherwise the height picked with its grip, else the
+    // island's height when it first showed.
+    const picked = this.plan.pickedHeight;
+    if (show && this.planStartH == null) this.planStartH = this.targetSize().h;
+    const start = this.planStartH ?? at.h;
+    const h = Math.min(room, this.plan.followsIsland ? at.h : picked > 0 ? picked : start);
+    return { show, x, y: bottom ? at.y + at.h - h : at.y, h };
+  }
+
+  /** What takes the mouse: the island, the live activities and the Plan island beside it, and the right-click menu. */
   private hitRect(): { x: number; y: number; w: number; h: number } {
     let rect = this.islandRect();
     if (this.activities?.isVisible) {
       const beside = this.activitiesPlace();
       rect = union(rect, { x: beside.x, y: beside.y, w: this.activities.width, h: beside.h });
+    }
+    if (this.plan?.isVisible) {
+      const beside = this.planPlace();
+      rect = union(rect, { x: beside.x, y: beside.y, w: this.plan.width, h: beside.h });
     }
     const menu = this.menu?.rect();
     return menu ? union(rect, menu) : rect;
@@ -1492,12 +1541,8 @@ export class Island {
     });
   }
 
-  /** The cursor poll last said the cursor is over the Plan island's window. */
-  private overPlan = false;
-
-  /** Cursor in window-logical coordinates; `overPlan` from the cursor poll, kept until it says again. */
-  onCursor(x: number, y: number, overPanel = false, overPlan?: boolean) {
-    if (overPlan !== undefined) this.overPlan = overPlan;
+  /** Cursor in window-logical coordinates; `overPanel` over the live activities' or the Plan island's own window, the button held. */
+  onCursor(x: number, y: number, overPanel = false) {
     if (x !== State.mouse.x || y !== State.mouse.y) this.mouseMovedAt = performance.now();
     State.mouse = { x, y };
     const rect = this.islandRect();
@@ -1511,13 +1556,12 @@ export class Island {
       UploadSeq.updateCursor(at.x, at.y);
     }
 
-    // The live activities in their own window stand on their own: leaving the
-    // island for them closes it, and resting on them never opens it. Only
-    // while they are dragged or resized off the open island do they count as it.
-    // The Plan island keeps the open island open while the cursor rests on it,
-    // as the live activities beside it do; it never opens it.
+    // The live activities and the Plan island in their own window stand on
+    // their own: leaving the island for them closes it, and resting on them
+    // never opens it. Only while they are dragged or resized off the open
+    // island do they count as it.
     const hit = this.hitRect();
-    const inIsland = ((overPanel || this.overPlan) && State.mode === "expanded") || (
+    const inIsland = (overPanel && State.mode === "expanded") || (
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
       y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
 

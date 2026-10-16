@@ -664,6 +664,22 @@ body {
   pointer-events: auto;
 }
 
+/* The Plan island beside the open island (island/plan.ts; its own look is
+   in views/plan.css), as the live activities. */
+
+#plan {
+  position: absolute;
+  top: 10px;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+#plan.shown {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 /* The folded live activities' icon, landing in the top bar. */
 .tab-activities.pop,
 .plan-btn.pop {

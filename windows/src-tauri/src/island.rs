@@ -115,9 +115,10 @@ pub struct Placement {
     /// view's own), in page pixels.
     pub width: f64,
     pub height: f64,
-    /// The live activities beside the open island (on the top and bottom
-    /// edges), as (width, height) page pixels, or (0, 0) when they are not:
-    /// the window is wider by their room on each side, and tall enough.
+    /// The live activities and the Plan island beside the open island (on the
+    /// top and bottom edges), as (width, height) page pixels, or (0, 0) when
+    /// there are none: the window is wider by that room on each side, and
+    /// tall enough (activities.rs side_room).
     pub activities: (f64, f64),
     /// Between the island and its edge of the screen, in page pixels (edge_gap_of).
     pub gap: f64,
@@ -132,7 +133,7 @@ impl Placement {
             float: s.island_float.max(0.0),
             width: s.island_width,
             height: s.island_height,
-            activities: crate::activities::room_of(s),
+            activities: crate::activities::side_room(s),
             gap: edge_gap_of(&s.island_edge_gap),
         }
     }
@@ -170,8 +171,8 @@ fn finite(v: f64) -> f64 {
 fn panel_size(p: Placement) -> (f64, f64) {
     let up = |v: f64| (v / PANEL_STEP).ceil() * PANEL_STEP;
     let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + p.gap };
-    // The live activities on one side: the same room on the other keeps the
-    // island centred (activities.rs GAP).
+    // The live activities on one side, the Plan island on the other: the same
+    // room on both keeps the island centred (activities.rs GAP).
     let (aw, ah) = if p.dock.upright() { (0.0, 0.0) } else { p.activities };
     let beside = if aw > 0.0 { 2.0 * (aw + crate::activities::GAP) } else { 0.0 };
     (
@@ -365,7 +366,7 @@ pub struct CursorPayload {
     /// Over the live activities' own window with the button held (moved or
     /// resized): only then does it count as the island.
     pub panel: bool,
-    /// Over the Plan island's window: the open island stays open.
+    /// Over the Plan island's own window with the button held, as `panel`.
     pub plan: bool,
 }
 
@@ -1311,7 +1312,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down, plan: on_plan });
+                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down, plan: on_plan && down });
             }
         }
     });
@@ -1340,6 +1341,9 @@ pub fn let_mouse_through(app: &AppHandle, through: bool) {
     }
     if let Some(panel) = crate::activities::window(app) {
         let _ = panel.set_ignore_cursor_events(through);
+    }
+    if let Some(plan) = crate::plan_island::window(app) {
+        let _ = plan.set_ignore_cursor_events(through);
     }
 }
 

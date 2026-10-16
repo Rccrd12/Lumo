@@ -394,14 +394,16 @@ export const Bridge = {
   /** Their own window takes the keyboard, or gives it back. */
   activitiesFocus: (focused: boolean) => call<void>("activities_focus", { focused }),
   // ── The Plan island (src-tauri/src/plan_island.rs) ───────────────────────
-  /** Its window, shown (right of the island the first time, then where it was left) or hidden. */
+  /** A grip beside the island: the size follows the mouse (`plan-resize`). */
+  planResize: (fx: number, fy: number, height: number) => call<void>("plan_resize", { fx, fy, height }),
+  /** Its own window, shown (where it was left) or hidden. */
   planShow: (show: boolean) => call<void>("plan_show", { show }),
-  /** Picked up by its top bar: it follows the mouse until let go. */
-  planDrag: () => call<void>("plan_drag"),
-  /** A grip of its window. */
+  /** Makes its own window ahead, hidden, so it is ready when it is taken off the island. */
+  planPrepare: () => call<void>("plan_prepare"),
+  /** Picked up by its top bar: from beside the island (x, y, w, h in page pixels) or from its window. */
+  planDrag: (from: [number, number, number, number] | null) => call<void>("plan_drag", { from }),
+  /** A grip of its own window. */
   planWindowResize: (fx: number, fy: number) => call<void>("plan_window_resize", { fx, fy }),
-  /** The open island's height (page pixels): beside it, it is as tall until its height is picked. */
-  planFit: (height: number) => call<void>("plan_fit", { height }),
   /** Where the island's middle is, in the page pixels of window `label` (the Plan island's, the live activities'), to fly to and from. */
   towardIsland: (label: string) => call<[number, number] | null>("toward_island", { label }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */

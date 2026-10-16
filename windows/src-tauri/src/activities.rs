@@ -60,10 +60,17 @@ pub fn room_of(s: &Settings) -> (f64, f64) {
     (clamp_width(s.activities_width), clamp_height(s.activities_height))
 }
 
+/// The room kept on each side of the open island: the live activities' and
+/// the Plan island's, whichever is the larger (plan_island.rs).
+pub fn side_room(s: &Settings) -> (f64, f64) {
+    let (a, p) = (room_of(s), crate::plan_island::room_of(s));
+    (a.0.max(p.0), a.1.max(p.1))
+}
+
 /// Settings that leave the island's window as it is (where the activities
 /// are, not how much room they take): saved and sent to the pages, without
 /// placing the window again. Anything else goes through `update_island`.
-fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
+pub(crate) fn update_settings(app: &AppHandle, change: impl FnOnce(&mut Settings)) {
     let shared = app.state::<crate::Shared>();
     let (before, after) = {
         let mut s = shared.settings.lock().unwrap();
@@ -88,7 +95,7 @@ struct SizePayload {
 }
 
 /// The island's display scale times its zoom: page pixels to physical ones.
-fn island_k(win: &WebviewWindow) -> f64 {
+pub(crate) fn island_k(win: &WebviewWindow) -> f64 {
     win.scale_factor().unwrap_or(1.0) * island::zoom()
 }
 
@@ -128,7 +135,8 @@ pub fn activities_resize(app: AppHandle, fx: f64, fy: f64, height: f64) {
                     let s = shared.settings.lock().unwrap();
                     (s.screen.clone(), island::Placement::of(&s))
                 };
-                p.activities = room;
+                // The Plan island's room on that side is kept too.
+                p.activities = (p.activities.0.max(room.0), p.activities.1.max(room.1));
                 let collapsed = shared.gate.collapsed.load(std::sync::atomic::Ordering::Relaxed);
                 island::apply_geometry(&app, &pref, p, collapsed);
             }
@@ -190,7 +198,7 @@ fn create(app: &AppHandle) -> Option<WebviewWindow> {
 }
 
 /// The monitor a physical point is on, as (x, y, w, h, scale).
-fn monitor_at(app: &AppHandle, p: (f64, f64)) -> Option<(f64, f64, f64, f64, f64)> {
+pub(crate) fn monitor_at(app: &AppHandle, p: (f64, f64)) -> Option<(f64, f64, f64, f64, f64)> {
     let list = app.available_monitors().ok()?;
     let found = list.iter().find(|m| {
         let (pos, size) = (m.position(), m.size());
@@ -260,7 +268,7 @@ pub async fn activities_show(app: AppHandle, show: bool) {
 }
 
 /// Where the island is on the screen, in physical pixels (left, top, right, bottom).
-fn island_on_screen(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
+pub(crate) fn island_on_screen(app: &AppHandle) -> Option<(f64, f64, f64, f64)> {
     let win = island::window(app)?;
     let o = win.outer_position().ok()?;
     let k = island_k(&win);
