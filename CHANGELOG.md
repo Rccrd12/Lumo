@@ -1,5 +1,9 @@
 # Changelog
 
+## Windows 0.9.2 — October 16, 2026
+
+- **The chat's plan with the newest models**: Claude Code only hands its newest models (such as claude-haiku-5-5) the tools it writes a plan with when asked, so in the island's chat the plan stayed text and the Plan island shut. The chat now asks for them, and the Plan island follows the plan step by step. A second plan in the same chat follows its own steps too
+
 ## Windows 0.9.1 — October 16, 2026
 
 - **The chat's plan on the Plan island**: Claude Code in the island's own chat now opens the Plan island too. Given a job of several steps, it writes its plan as a list of steps, which the island follows live as for an agent in a terminal
