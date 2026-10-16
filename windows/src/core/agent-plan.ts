@@ -126,7 +126,7 @@ export type PlanUpdate =
   | { kind: "list"; steps: PlanStep[]; note?: string; fresh?: boolean }
   /** One step added at the end (Claude Code's TaskCreate). */
   | { kind: "add"; step: PlanStep }
-  /** One step changed, by its id (Claude Code's TaskUpdate: ids count from 1). */
+  /** One step changed, by its id (Claude Code's TaskUpdate: ids count from 1, over the whole session). */
   | { kind: "set"; id: string; status?: PlanStepStatus; text?: string };
 
 /** The plan in a tool call, if it carries one. */
@@ -202,6 +202,11 @@ export interface PlanOwner {
  */
 export class PlanBook {
   private plans = new Map<string, AgentPlan>();
+  /**
+   * Claude Code's task ids, by plan key: they count from 1 over the whole
+   * session, so a second plan's first task is not #1. Kept when a plan goes.
+   */
+  private taskIds = new Map<string, { next: number; ids: string[] }>();
 
   get size(): number {
     return this.plans.size;
@@ -233,11 +238,16 @@ export class PlanBook {
         if (kept.length >= MAX_STEPS) return null;
         steps = [...kept, update.step];
         if (fresh) note = undefined;
+        const tasks = this.taskIds.get(key) ?? { next: 1, ids: [] };
+        if (fresh) tasks.ids = [];
+        tasks.ids.push(String(tasks.next++));
+        this.taskIds.set(key, tasks);
         break;
       }
       case "set": {
         if (!before) return null;
-        const i = Number(update.id) - 1;
+        const tasks = this.taskIds.get(key);
+        const i = tasks ? tasks.ids.indexOf(update.id) : Number(update.id) - 1;
         if (!Number.isInteger(i) || i < 0 || i >= before.steps.length) return null;
         steps = before.steps.map((s, j) => (j === i ? { text: update.text ?? s.text, status: update.status ?? s.status } : s));
         fresh = false;
