@@ -41,6 +41,11 @@ export function planKey(pillId: string, sessionId: string): string {
   return `${pillId}|${sessionId}`;
 }
 
+/** One plan among all a session made: its key and when it was made. */
+export function planId(plan: Pick<AgentPlan, "key" | "createdAt">): string {
+  return `${plan.key}@${plan.createdAt}`;
+}
+
 /** Every agent's word for where a step stands, in Lumo's. */
 export function stepStatus(raw: unknown): PlanStepStatus {
   const s = typeof raw === "string" ? raw.toLowerCase().replace(/[\s-]+/g, "_") : "";
@@ -280,6 +285,14 @@ export class PlanBook {
       }
     }
     return any;
+  }
+
+  /** Every plan kept: those under way first, each the one moved on last first. */
+  list(): AgentPlan[] {
+    const all = [...this.plans.values()];
+    const under = all.filter((p) => !planFinished(p.steps)).sort((a, b) => b.updatedAt - a.updatedAt);
+    const done = all.filter((p) => planFinished(p.steps)).sort((a, b) => b.updatedAt - a.updatedAt);
+    return [...under, ...done];
   }
 
   /**

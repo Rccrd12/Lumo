@@ -146,16 +146,6 @@ export function buildHeader(actions: ViewActions): ViewHost {
     },
   }, svg(ICONS.activities, 12, { stroke: 1.9 }));
 
-  // The Plan island, folded (island/plan.ts): left of the plan usage pills.
-  const planBtn = h("button", {
-    class: "plan-btn", title: tl("Plan"),
-    onclick: () => {
-      actions.blip();
-      actions.showPlan();
-    },
-  }, svg(ICONS.plan, 14, { stroke: 1.8 }));
-  planBtn.style.display = "none";
-
   const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
   const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
   // Slips the island into the edge of the screen it hangs from, like Hide
@@ -182,7 +172,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
     "div",
     { id: "header" },
     h("div", { class: "tabs" }, tabChat, tabAgents, tabActivities, tabDrop),
-    h("div", { class: "header-actions" }, planBtn, planPills, gearBtn, soundBtn, hideBtn, quitBtn),
+    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
 
@@ -203,12 +193,6 @@ export function buildHeader(actions: ViewActions): ViewHost {
         tabActivities.classList.add("pop");
       }
       tabActivities.style.display = folded ? "" : "none";
-      if (State.planIcon && planBtn.style.display === "none") {
-        planBtn.classList.remove("pop");
-        void planBtn.offsetWidth;
-        planBtn.classList.add("pop");
-      }
-      planBtn.style.display = State.planIcon ? "" : "none";
       gearBtn.classList.toggle("on", v === "settings");
       clear(gearBtn);
       gearBtn.append(svg(v === "settings" ? ICONS.gearFill : ICONS.gear, 14));
@@ -812,6 +796,9 @@ export function buildViews(
   map.set("prompt", buildPrompt(onChatHeightChange, () => actions.setView("settings"), () => {
     actions.setView("live");
     void Live.start();
+  }, () => {
+    actions.blip();
+    actions.showPlan();
   }));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());

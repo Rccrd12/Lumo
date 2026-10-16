@@ -149,6 +149,8 @@ beforeEach(() => {
 afterEach(() => {
   hook({ hook_event_name: "SessionEnd", session_id: "s1", cwd: "C:\\code\\Lumo" });
   hook({ hook_event_name: "SessionEnd", session_id: "s2", cwd: "C:\\code\\Lumo" });
+  // Plans done are kept: each test starts with the island folded.
+  emit("plan-action", { kind: "fold" });
   mock.timers.runAll();
   mock.timers.reset();
 });
@@ -186,20 +188,48 @@ test("the \"–\" folds it into its icon, which brings it back", () => {
   assert.deepEqual(shows(), [true, false, true, false, true]);
 });
 
-test("a plan done stays a moment, then the island shuts", () => {
+test("a plan done stays a moment, then folds into its icon, which opens it again", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
   tool("TodoWrite", todos(["Read", "completed"]));
   assert.deepEqual(shows(), [true]);
   mock.timers.tick(8_000);
   assert.deepEqual(shows(), [true, false]);
-  assert.equal(island.plan.current, null);
+  assert.equal(State.planIcon, true);
+  assert.deepEqual(island.plan.current.steps, [{ text: "Read", status: "done" }]);
+  island.plan.unfold();
+  assert.deepEqual(shows(), [true, false, true]);
+  assert.equal(lastState().live, false);
 });
 
-test("the session ending takes its plan away", () => {
+test("the session ending puts its plan with those done", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
   hook({ hook_event_name: "SessionEnd", session_id: "s1", cwd: "C:\\code\\Lumo" });
   assert.deepEqual(shows(), [true, false]);
-  assert.equal(State.planIcon, false);
+  assert.equal(State.planIcon, true);
+  assert.equal(island.plan.current.steps[0].text, "Read");
+});
+
+test("its arrows go back through the plans done, and a new plan comes first", async () => {
+  tool("TodoWrite", todos(["First", "completed"]), "s1");
+  mock.timers.tick(8_000);
+  tool("TodoWrite", todos(["Second", "completed"]), "s2");
+  mock.timers.tick(8_000);
+  island.plan.unfold();
+  await Promise.resolve();
+  assert.equal(island.plan.current.steps[0].text, "Second");
+  const count = lastState().count;
+  assert.ok(count >= 2);
+  emit("plan-action", { kind: "older" });
+  assert.equal(island.plan.current.steps[0].text, "First");
+  assert.equal(lastState().index, 1);
+  emit("plan-action", { kind: "newer" });
+  assert.equal(island.plan.current.steps[0].text, "Second");
+  emit("plan-action", { kind: "older" });
+  // A new plan shows at once, whatever was looked at.
+  tool("TodoWrite", todos(["Third", "in_progress"]), "s1");
+  assert.equal(island.plan.current.steps[0].text, "Third");
+  assert.equal(lastState().index, 0);
+  assert.equal(lastState().live, true);
 });
 
 test("paused, it stays shut", () => {

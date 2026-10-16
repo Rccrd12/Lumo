@@ -2,9 +2,13 @@
 // agent follows step by step. Shut and out of reach until an agent makes a
 // plan (core/agent-plan.ts reads it off the hooks): then it opens with it,
 // and its steps move on as the agent works. Like the live activities it can
-// be moved (by its top bar) and resized (its grips), and its "–" folds it
-// into an icon in the island's top bar, left of the plan usage pills, which
-// brings it back. A plan done stays a moment, then the island shuts again.
+// be moved (by its top bar), let go near its place beside the island it joins
+// it again, and resized (its grips); its "–" folds it into an icon in the
+// chat, left of the usage ring, which brings it back.
+//
+// A plan done stays a moment, then the island folds into its icon. The plans
+// done are kept (the newest few): the icon opens the island again on the
+// newest, and its arrows go back through the older ones.
 //
 // The island chat's Claude Code runs send their plan through the chat
 // (`chat-plan`), the agents in a terminal through their hooks.
@@ -15,14 +19,16 @@
 // runs while there is no plan, and nothing ticks while there is one.
 
 import { Bridge, IS_TAURI, emitToWindow, onEvent } from "../core/bridge";
-import { PlanBook, planFinished, planKey, readPlanUpdate, type AgentPlan, type PlanOwner } from "../core/agent-plan";
+import { PlanBook, planFinished, planId, planKey, readPlanUpdate, type AgentPlan, type PlanOwner } from "../core/agent-plan";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
 import { language, t } from "../i18n/i18n";
 import type { PlanAction, PlanData } from "../views/plan-view";
 
-/** How long a plan done stays on screen before the island shuts. */
+/** How long a plan done stays on screen before the island folds. */
 const DONE_LINGER_MS = 8_000;
+/** Plans done kept to go back to. */
+const KEPT_PLANS = 20;
 
 export interface IslandPlanHost {
   openSettings(): void;
@@ -31,7 +37,11 @@ export interface IslandPlanHost {
 
 export class IslandPlan {
   readonly book = new PlanBook();
-  /** Folded into its icon with the "–". */
+  /** The plans done or whose session ended, the newest first. */
+  private past: AgentPlan[] = [];
+  /** The plan looked at (`planId`), or null for the newest. */
+  private viewing: string | null = null;
+  /** Folded into its icon with the "–", or once its plan was done. */
   private folded = false;
   /** Its window is shown. */
   private shown = false;
@@ -58,9 +68,15 @@ export class IslandPlan {
     State.subscribe(() => this.sync());
   }
 
-  /** The plan on screen, or the one folded into the icon. */
+  /** Every plan, the newest first: those under way, then those done. */
+  plans(): AgentPlan[] {
+    return [...this.book.list(), ...this.past];
+  }
+
+  /** The plan on screen, or the one the icon brings back. */
   get current(): AgentPlan | null {
-    return this.book.current();
+    const all = this.plans();
+    return (this.viewing && all.find((p) => planId(p) === this.viewing)) || all[0] || null;
   }
 
   /** A tool call of an agent's session: its plan, if it carries one, moves on. */
@@ -71,6 +87,7 @@ export class IslandPlan {
     if (!result) return;
     if (result === "new" && this.book.current()?.key === planKey(owner.pillId, owner.sessionId)) {
       // A plan just made: the island opens with it, even folded before.
+      this.viewing = null;
       this.folded = false;
       if (!this.shown) {
         this.fly = true;
@@ -81,23 +98,41 @@ export class IslandPlan {
     this.sync();
   }
 
-  /** The session ended: its plan goes. */
+  /** The session ended: its plan is put with those done. */
   endSession(pillId: string, sessionId: string) {
-    if (this.book.drop(planKey(pillId, sessionId))) this.changed();
+    if (this.retire(planKey(pillId, sessionId))) this.changed();
   }
 
   /** Every session of the pill ended. */
   endPill(pillId: string) {
-    if (this.book.dropPill(pillId)) this.changed();
+    let any = false;
+    for (const p of this.book.list()) if (p.pillId === pillId) any = this.retire(p.key) || any;
+    if (any) this.changed();
   }
 
-  /** The icon in the top bar was clicked: back it comes. */
+  /** The icon in the chat was clicked: back it comes, on the newest plan. */
   unfold() {
-    if (!this.folded) return;
+    if (!this.folded || !this.plans().length) return;
     this.folded = false;
+    this.viewing = null;
     this.fly = true;
     Sound.play("open");
     this.changed();
+  }
+
+  /**
+   * A plan out of the book, kept with those done. The island folds when it
+   * was the one followed and no other is under way.
+   */
+  private retire(key: string): boolean {
+    const plan = this.book.get(key);
+    if (!plan) return false;
+    const id = planId(plan);
+    const followed = this.current != null && planId(this.current) === id;
+    this.book.drop(key);
+    this.past = [plan, ...this.past.filter((p) => planId(p) !== id)].slice(0, KEPT_PLANS);
+    if (followed && !this.book.list().some((p) => !planFinished(p.steps))) this.folded = true;
+    return true;
   }
 
   private act(a: PlanAction) {
@@ -105,6 +140,15 @@ export class IslandPlan {
       case "fold":
         this.folded = true;
         break;
+      case "older":
+      case "newer": {
+        const all = this.plans();
+        const at = Math.max(0, all.findIndex((p) => this.current != null && planId(p) === planId(this.current)));
+        const next = Math.min(all.length - 1, Math.max(0, at + (a.kind === "older" ? 1 : -1)));
+        // Back on the newest, it follows the plans as they come again.
+        this.viewing = next === 0 ? null : planId(all[next]);
+        break;
+      }
       case "settings":
         this.host.openSettings();
         break;
@@ -121,7 +165,7 @@ export class IslandPlan {
     State.notify();
   }
 
-  /** A plan done on screen: it goes after a moment, and the next one under way shows. */
+  /** A plan done on screen: after a moment it goes with those done, and the island folds. */
   private armDone() {
     if (this.doneTimer != null) window.clearTimeout(this.doneTimer);
     this.doneTimer = null;
@@ -131,7 +175,7 @@ export class IslandPlan {
       this.doneTimer = null;
       const now = this.book.get(plan.key);
       if (now && planFinished(now.steps) && now.updatedAt === plan.updatedAt) {
-        this.book.drop(plan.key);
+        this.retire(plan.key);
         this.changed();
       }
     }, DONE_LINGER_MS);
@@ -139,15 +183,18 @@ export class IslandPlan {
 
   /** Its window shown or hidden as it should be, with the plan it shows. */
   sync() {
-    const plan = this.book.current();
-    const icon = plan != null && this.folded;
+    const any = this.plans().length > 0;
+    if (!any) {
+      this.folded = false;
+      this.viewing = null;
+    }
+    const icon = any && this.folded;
     if (State.planIcon !== icon) {
       State.planIcon = icon;
-      // The top bar draws the icon on the next notify (this may be one).
+      // The chat draws the icon on the next notify (this may be one).
       queueMicrotask(() => State.notify());
     }
-    if (!plan) this.folded = false;
-    const want = plan != null && !this.folded && !State.paused;
+    const want = any && !this.folded && !State.paused;
     this.send();
     if (want === this.shown) return;
     this.shown = want;
@@ -167,7 +214,16 @@ export class IslandPlan {
 
   private send() {
     if (!IS_TAURI) return;
-    const data: PlanData = { lang: language(), plan: this.book.current() };
+    const all = this.plans();
+    const plan = this.current;
+    const index = plan ? all.findIndex((p) => planId(p) === planId(plan)) : -1;
+    const data: PlanData = {
+      lang: language(),
+      plan,
+      index: Math.max(0, index),
+      count: all.length,
+      live: plan != null && this.book.get(plan.key) === plan,
+    };
     const key = JSON.stringify(data);
     if (key === this.sentKey) return;
     this.sentKey = key;

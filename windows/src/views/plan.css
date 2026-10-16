@@ -48,15 +48,51 @@
   color: var(--dim);
 }
 
-.agent-plan .plan-count {
+/* Back and forth through the plans, when there are more than one. */
+.agent-plan .plan-nav {
   margin-left: auto;
+  display: none;
+  align-items: center;
+  gap: 2px;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+  font-size: 10.5px;
 }
 
-.agent-plan.finished .plan-count {
-  color: var(--green);
-  font-weight: 600;
+.agent-plan .plan-nav.on {
+  display: flex;
+}
+
+.agent-plan .plan-place {
+  min-width: 26px;
+  text-align: center;
+}
+
+.agent-plan .plan-arrow {
+  width: 20px;
+  height: 20px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--dim-2);
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease;
+}
+
+.agent-plan .plan-arrow:hover:not(:disabled) {
+  background: var(--tab-on);
+  color: var(--ink);
+}
+
+.agent-plan .plan-arrow:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+.agent-plan .plan-nav:not(.on) + .act-fold {
+  margin-left: auto;
 }
 
 /* The "–" that folds it, as the live activities'. */
@@ -93,53 +129,145 @@
   padding: 6px 10px 12px;
 }
 
-.agent-plan .plan-who {
+/* Another plan slides in from the side it comes from. */
+.agent-plan .plan-body.from-left {
+  animation: plan-from-left 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.agent-plan .plan-body.from-right {
+  animation: plan-from-right 0.32s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.agent-plan .plan-body.fresh {
+  animation: plan-fresh 0.3s ease-out;
+}
+
+@keyframes plan-from-left {
+  from { transform: translateX(-18px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes plan-from-right {
+  from { transform: translateX(18px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+@keyframes plan-fresh {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Who follows it, and how far along: the ring fills step by step. */
+.agent-plan .plan-summary {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 6px 0;
+}
+
+.agent-plan .plan-ring-box {
+  position: relative;
+  flex: none;
+  width: 34px;
+  height: 34px;
+}
+
+.agent-plan .plan-ring {
+  display: block;
+  transform: rotate(-90deg);
+}
+
+.agent-plan .plan-ring circle {
+  fill: none;
+  stroke-width: 3;
+}
+
+.agent-plan .plan-ring-track {
+  stroke: rgba(255, 255, 255, 0.08);
+}
+
+.agent-plan .plan-ring-arc {
+  stroke-linecap: round;
+  transition: stroke-dashoffset 0.6s cubic-bezier(0.3, 0.7, 0.2, 1), stroke 0.3s ease;
+}
+
+.agent-plan .plan-ring-text {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+
+.agent-plan.finished .plan-ring-text {
+  color: var(--green);
+}
+
+.agent-plan .plan-ring-box.celebrate {
+  animation: plan-celebrate 0.6s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+@keyframes plan-celebrate {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.18); }
+  100% { transform: scale(1); }
+}
+
+.agent-plan .plan-meta {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.agent-plan .plan-agent {
   display: flex;
   align-items: center;
   gap: 6px;
   min-width: 0;
-  padding: 0 6px;
   white-space: nowrap;
 }
 
-.agent-plan .plan-who .n {
+.agent-plan .plan-agent .n {
   font-weight: 600;
   color: var(--ink-2);
 }
 
-.agent-plan .plan-who .p {
+.agent-plan .plan-agent .p {
   overflow: hidden;
   text-overflow: ellipsis;
   color: var(--dim);
 }
 
-.agent-plan .plan-bar {
-  flex: none;
-  height: 3px;
-  margin: 0 6px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.06);
-  overflow: hidden;
+.agent-plan .plan-status {
+  color: var(--dim);
+  font-size: 10.5px;
+  font-variant-numeric: tabular-nums;
 }
 
-.agent-plan .plan-bar i {
-  display: block;
-  height: 100%;
-  width: 0;
-  border-radius: 2px;
-  transition: width 0.4s ease;
+.agent-plan.finished .plan-status {
+  color: var(--green);
+  font-weight: 600;
+}
+
+/* A plan done, looked at again: a touch quieter. */
+.agent-plan.past .plan-steps {
+  opacity: 0.85;
 }
 
 .agent-plan .plan-steps {
   flex: 1;
   min-height: 0;
   margin: 0;
-  padding: 9px 8px;
+  padding: 8px 8px;
   list-style: none;
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 2px;
   border-radius: 14px;
   background: var(--card);
   border: 1px solid var(--hairline);
@@ -148,19 +276,41 @@
 }
 
 .agent-plan .plan-step {
+  position: relative;
   flex: none;
   display: flex;
   align-items: flex-start;
-  gap: 8px;
-  padding: 5px 6px;
-  border-radius: 8px;
+  gap: 9px;
+  padding: 6px 6px 6px 6px;
+  border-radius: 9px;
   color: var(--ink-2);
   line-height: 1.35;
+  transition: background 0.3s ease;
+}
+
+/* The thread from one step's marker to the next. */
+.agent-plan .plan-step:not(:last-child)::after {
+  content: "";
+  position: absolute;
+  left: 12.25px;
+  top: 22px;
+  bottom: -7px;
+  width: 1.5px;
+  border-radius: 1px;
+  background: var(--dim-4);
+  opacity: 0.45;
+  transition: background 0.4s ease, opacity 0.4s ease;
+}
+
+.agent-plan .plan-step.done:not(:last-child)::after {
+  background: var(--green);
+  opacity: 0.55;
 }
 
 .agent-plan .plan-step.active {
-  background: rgba(255, 255, 255, 0.05);
+  background: rgba(255, 255, 255, 0.055);
   font-weight: 600;
+  color: var(--ink);
 }
 
 .agent-plan .plan-step.done .plan-text {
@@ -183,6 +333,8 @@
 }
 
 .agent-plan .plan-mark {
+  position: relative;
+  z-index: 1;
   flex: none;
   width: 14px;
   height: 14px;
@@ -191,12 +343,20 @@
   place-items: center;
   border-radius: 7px;
   border: 1.5px solid var(--dim-4);
+  background: var(--card);
   color: #000;
+  transition: border-color 0.3s ease, background 0.3s ease;
 }
 
 .agent-plan .plan-mark.active {
   border-color: var(--agent, var(--ink));
-  box-shadow: inset 0 0 0 2.5px #000, inset 0 0 0 7px var(--agent, var(--ink));
+}
+
+.agent-plan .plan-mark.active b {
+  width: 6px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--agent, var(--ink));
 }
 
 .agent-plan .plan-mark.done {
@@ -211,12 +371,63 @@
   background: var(--dim-4);
 }
 
+/* Steps coming in, one after the other. */
+.agent-plan .plan-step.enter {
+  animation: plan-step-in 0.34s cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+@keyframes plan-step-in {
+  from { transform: translateY(6px); opacity: 0; }
+  to { transform: none; opacity: 1; }
+}
+
+/* A step just done: its check pops in. */
+.agent-plan .plan-step.now-done .plan-mark {
+  animation: plan-check 0.45s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.agent-plan .plan-step.now-done .plan-mark svg {
+  stroke-dasharray: 24;
+  animation: plan-check-draw 0.4s 0.08s ease-out both;
+}
+
+@keyframes plan-check {
+  0% { transform: scale(0.6); }
+  100% { transform: scale(1); }
+}
+
+@keyframes plan-check-draw {
+  from { stroke-dashoffset: 24; }
+  to { stroke-dashoffset: 0; }
+}
+
+/* A step just started: its dot grows and the row lights up. */
+.agent-plan .plan-step.now-active .plan-mark b {
+  animation: plan-dot 0.4s cubic-bezier(0.3, 1.6, 0.5, 1);
+}
+
+.agent-plan .plan-step.now-active {
+  animation: plan-light 0.7s ease-out;
+}
+
+@keyframes plan-dot {
+  from { transform: scale(0); }
+  to { transform: scale(1); }
+}
+
+@keyframes plan-light {
+  from { background: rgba(255, 255, 255, 0.14); }
+  to { background: rgba(255, 255, 255, 0.055); }
+}
+
 .agent-plan .plan-note {
   flex: none;
-  padding: 0 6px;
+  margin: 0 6px;
+  padding-left: 8px;
+  border-left: 2px solid var(--agent, var(--dim-4));
   color: var(--dim);
   font-size: 10.5px;
-  line-height: 1.35;
+  line-height: 1.4;
 }
 
 .agent-plan .plan-note:empty {
