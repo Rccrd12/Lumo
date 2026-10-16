@@ -1,5 +1,11 @@
 # Changelog
 
+## Windows 0.10.1 — October 16, 2026
+
+- **The chat's plan, for real**: Claude Code in the island chat now writes its plan as its first step for any job of more than one step, so the Plan island opens and follows it; before, the model mostly skipped it
+- **Steps that move on**: Claude Code's step numbers go on from one plan to the next, and the Plan island now follows them by the number each step was given, in the chat and in a terminal, where each new step no longer shows twice
+- **Antigravity CLI's plan**: in the island chat it writes its plan as a checklist, ticked as it goes, which the Plan island follows
+
 ## Windows 0.10.0 — October 16, 2026
 
 - **The Plan island joins the island again**: let go near its place beside the island, it slides back there and follows the island again; resizing it from its right or bottom edge keeps it there
