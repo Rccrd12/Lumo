@@ -3,8 +3,9 @@
 // plan (core/agent-plan.ts reads it off the hooks): then it opens with it,
 // and its steps move on as the agent works. Like the live activities it can
 // be moved (by its top bar), let go near its place beside the island it joins
-// it again, and resized (its grips); its "–" folds it into an icon in the
-// chat, left of the usage ring, which brings it back.
+// it again, and resized (its grips); its "–" folds it. Its icon in the chat,
+// left of the usage ring, shows while there are plans: it opens the island,
+// and folds it when it is open.
 //
 // A plan done stays a moment, then the island folds into its icon. The plans
 // done are kept (the newest few): the icon opens the island again on the
@@ -126,7 +127,22 @@ export class IslandPlan {
     void Bridge.planFit(h);
   }
 
-  /** The icon in the chat was clicked: back it comes, on the newest plan. */
+  /** The icon in the chat was clicked: open, the island folds; folded, it comes back. */
+  toggle() {
+    if (this.folded) {
+      this.unfold();
+      return;
+    }
+    // Its window folds it with its own animation, then says so (plan-action fold).
+    if (this.shown) {
+      void emitToWindow("plan", "plan-fold");
+      return;
+    }
+    this.folded = true;
+    this.changed();
+  }
+
+  /** Back it comes, on the newest plan. */
   unfold() {
     if (!this.folded || !this.plans().length) return;
     this.folded = false;
@@ -204,13 +220,13 @@ export class IslandPlan {
       this.folded = false;
       this.viewing = null;
     }
-    const icon = any && this.folded;
-    if (State.planIcon !== icon) {
-      State.planIcon = icon;
+    const want = any && !this.folded && !State.paused;
+    if (State.planIcon !== any || State.planOpen !== want) {
+      State.planIcon = any;
+      State.planOpen = want;
       // The chat draws the icon on the next notify (this may be one).
       queueMicrotask(() => State.notify());
     }
-    const want = any && !this.folded && !State.paused;
     this.send();
     if (want === this.shown) return;
     this.shown = want;

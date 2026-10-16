@@ -393,7 +393,7 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
             return failed("The plan needs at least one step.");
         }
         let _ = lumo(&json!({ "lumo_plan": { "input": input } }));
-        return json!({ "content": [{ "type": "text", "text": "Plan shown to the user." }] });
+        return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     let key = if MAIL_NAMES.contains(&name) { "lumo_mail" } else { "lumo_computer" };
     let request = json!({ key: { "tool": name, "input": input } });
@@ -412,6 +412,28 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
     let text = answer.get("text").and_then(Value::as_str).unwrap_or("Done.");
     content.push(json!({ "type": "text", "text": text }));
     json!({ "content": content })
+}
+
+/// What update_plan answers: the step to work on now, and a reminder to call
+/// it again as soon as that step is done, so the user sees each step move on
+/// (models tend to work through every step and tick them all at the end).
+pub fn plan_answer(input: &Value) -> String {
+    let steps = input["plan"].as_array().map(Vec::as_slice).unwrap_or(&[]);
+    let status = |s: &Value| s["status"].as_str().unwrap_or("").to_ascii_lowercase();
+    if !steps.is_empty() && steps.iter().all(|s| status(s) == "completed") {
+        return "Plan shown to the user: every step is done.".into();
+    }
+    let now = steps
+        .iter()
+        .find(|s| status(*s) == "in_progress")
+        .or_else(|| steps.iter().find(|s| status(*s) != "completed"))
+        .and_then(|s| s["step"].as_str())
+        .unwrap_or("");
+    format!(
+        "Plan shown to the user. Work on this step only now: \"{now}\". As soon as it is done, call update_plan \
+again with it completed and the next one in_progress, before any tool of the next step: the user follows \
+the plan step by step and must see each one move on, not all of them at the end."
+    )
 }
 
 fn failed(message: &str) -> Value {
@@ -559,6 +581,9 @@ mod tests {
         };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &shown).unwrap()).unwrap();
         assert!(v["result"].get("isError").is_none());
+        assert!(v["result"]["content"][0]["text"].as_str().unwrap().contains("\"Read\""), "the step to work on now");
+        let done = json!({ "plan": [{ "step": "Read", "status": "completed" }] });
+        assert!(plan_answer(&done).contains("every step is done"));
         // Lumo not there: the agent goes on all the same.
         let closed = |_: &Value| -> Result<Value, String> { Err("Lumo isn't running.".into()) };
         let v: Value = serde_json::from_str(&handle_with(line, kit, &closed).unwrap()).unwrap();

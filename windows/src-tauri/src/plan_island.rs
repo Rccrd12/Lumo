@@ -37,6 +37,26 @@ pub fn clamp_height(h: f64) -> f64 {
     if h.is_finite() && h > 0.0 { h.clamp(MIN_H, MAX_H) } else { DEFAULT_H }
 }
 
+/// Where its window is on the screen while it shows (physical l, t, r, b).
+static SHOWN_AT: Mutex<Option<(f64, f64, f64, f64)>> = Mutex::new(None);
+
+fn remember(win: &WebviewWindow) {
+    let rect = match (win.is_visible(), win.outer_position(), win.outer_size()) {
+        (Ok(true), Ok(p), Ok(s)) => Some((p.x as f64, p.y as f64, (p.x + s.width as i32) as f64, (p.y + s.height as i32) as f64)),
+        _ => None,
+    };
+    *SHOWN_AT.lock().unwrap() = rect;
+}
+
+/// Whether the cursor (physical) is over its window, when it shows: the open
+/// island stays open while it rests there, as over the live activities beside it.
+pub fn cursor_over(cursor: (f64, f64)) -> bool {
+    SHOWN_AT
+        .lock()
+        .unwrap()
+        .is_some_and(|r| cursor.0 >= r.0 && cursor.0 <= r.2 && cursor.1 >= r.1 && cursor.1 <= r.3)
+}
+
 /// The open island's height, in page pixels, as its page last said (`plan_fit`).
 static ISLAND_H: Mutex<f64> = Mutex::new(0.0);
 
@@ -173,10 +193,12 @@ pub async fn plan_show(app: AppHandle, show: bool) {
         if let Some(win) = window(&app) {
             let _ = win.hide();
         }
+        *SHOWN_AT.lock().unwrap() = None;
         return;
     }
     let Some(win) = create(&app) else { return };
     if win.is_visible().unwrap_or(false) {
+        remember(&win);
         return;
     }
     let settings = app.state::<crate::Shared>().settings.lock().unwrap().clone();
@@ -197,6 +219,7 @@ pub async fn plan_show(app: AppHandle, show: bool) {
     let _ = win.set_position(PhysicalPosition::new(at.0.round() as i32, at.1.round() as i32));
     let _ = win.show();
     let _ = win.set_always_on_top(true);
+    remember(&win);
 }
 
 /// The open island's height (page pixels), each time it changes: beside it
@@ -215,6 +238,7 @@ pub fn plan_fit(app: AppHandle, height: f64) {
     let Some((at, size)) = attached_at(&app, &settings, &monitors(&app)) else { return };
     let _ = win.set_size(PhysicalSize::new(size.0 as u32, size.1 as u32));
     let _ = win.set_position(PhysicalPosition::new(at.0.round() as i32, at.1.round() as i32));
+    remember(&win);
 }
 
 /// Settings only Rust writes (where it is, how big): kept and sent to the pages.
@@ -261,10 +285,12 @@ pub fn plan_drag(app: AppHandle) {
             if snaps_home(at, home, scale) {
                 let now = win.outer_size().map(|s| (s.width as f64, s.height as f64)).unwrap_or(size);
                 crate::activities::slide(&win, (at.0, at.1, now.0, now.1), (home.0, home.1, size.0, size.1));
+                remember(&win);
                 update_settings(&app, |s| s.agent_plan_moved = false);
                 return;
             }
         }
+        remember(&win);
         update_settings(&app, |s| {
             s.agent_plan_moved = true;
             s.agent_plan_x = at.0;
@@ -301,6 +327,7 @@ pub fn plan_window_resize(app: AppHandle, fx: f64, fy: f64) {
             let _ = win.set_position(PhysicalPosition::new(x as i32, y as i32));
         }
         if last != start {
+            remember(&win);
             update_settings(&app, |s| {
                 // Its left or top edge moved it: it shows there again, not
                 // beside the island. Its right or bottom one keeps it in place.

@@ -833,7 +833,7 @@ export function buildPrompt(
   const usageRing = usageRingSvg();
   const usageEl = h("button", { class: "tool-btn chat-usage" }, usageRing.el);
   usageEl.style.display = "none";
-  // The Plan island, folded (island/plan.ts): its icon, left of the ring.
+  // The Plan island (island/plan.ts): its icon, left of the ring, opens and folds it.
   const planBtn = h("button", {
     class: "tool-btn plan-btn", title: tl("Plan"), "aria-label": tl("Plan"),
     onclick: () => showPlan(),
@@ -2326,6 +2326,7 @@ export function buildPrompt(
         planBtn.classList.add("pop");
       }
       planBtn.style.display = State.planIcon ? "" : "none";
+      planBtn.classList.toggle("open", State.planOpen);
       // Another chat came on screen (here, or a new chat from the menu or a
       // shortcut): the log is drawn again, with its answer if one is coming.
       if (State.chatId !== shownChat) {

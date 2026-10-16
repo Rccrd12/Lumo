@@ -30,6 +30,9 @@ void onEvent<PlanData>("plan-state", (data) => {
 // Shown: out of the island's side (a plan just made, or the icon clicked), or at once.
 void onEvent<{ fly: boolean }>("plan-appear", ({ fly }) => void view.appear(!fly));
 
+// Its icon in the chat clicked while it is open: it folds as with its "–".
+void onEvent<null>("plan-fold", () => void view.fold());
+
 void emitToWindow("island", "plan-hello");
 
 // Lumo's own right-click menu, never the webview's: the text actions,

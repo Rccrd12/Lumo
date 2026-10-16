@@ -196,19 +196,35 @@ test("shut until an agent makes a plan; then it opens with it", async () => {
 
 test("the \"–\" folds it into its icon, which brings it back", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
+  assert.equal(State.planIcon, true, "the icon shows while it is open");
+  assert.equal(State.planOpen, true);
   emit("plan-action", { kind: "fold" });
   assert.deepEqual(shows(), [true, false]);
   assert.equal(State.planIcon, true);
+  assert.equal(State.planOpen, false);
   // Folded, it stays folded while the plan moves on…
   tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
   assert.deepEqual(shows(), [true, false]);
-  island.plan.unfold();
+  island.plan.toggle();
   assert.deepEqual(shows(), [true, false, true]);
-  assert.equal(State.planIcon, false);
+  assert.equal(State.planIcon, true);
+  assert.equal(State.planOpen, true);
   // …and a new plan opens it again.
   emit("plan-action", { kind: "fold" });
   tool("TodoWrite", todos(["Something else", "pending"]), "s2");
   assert.deepEqual(shows(), [true, false, true, false, true]);
+});
+
+test("its icon clicked while it is open folds it, with its window's animation", async () => {
+  tool("TodoWrite", todos(["Read", "in_progress"]));
+  await Promise.resolve();
+  calls.length = 0;
+  island.plan.toggle();
+  assert.ok(calls.some(([c, a]) => c === "plugin:event|emit_to" && a.event === "plan-fold"), "its window is asked to fold");
+  // The window, once folded, says so.
+  emit("plan-action", { kind: "fold" });
+  assert.equal(State.planOpen, false);
+  assert.equal(State.planIcon, true);
 });
 
 test("a plan done stays a moment, then folds into its icon, which opens it again", () => {

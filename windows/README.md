@@ -218,9 +218,10 @@ Beside the island it is as tall as the island, until its height is picked with
 a grip. Like the live activities it is moved by its top bar, stays wherever you
 leave it, and goes back beside the island when let go near its place there; it
 is resized from its edges and bottom corners. It comes out of the island and
-folds back toward it, as the live activities do in their own window. Its **–**
-folds it into an icon in the chat, left of the usage ring; that icon brings it back, and a new plan opens
-it again. A finished plan stays a few seconds, then the island folds into its
+folds back toward it, as the live activities do in their own window, and the
+open island stays open while the mouse rests on it. Its **–** folds it; its
+icon in the chat, left of the usage ring, shows while there are plans and opens
+or folds it, and a new plan opens it again. A finished plan stays a few seconds, then the island folds into its
 icon, as it does when the session ends. The plans done are kept (the newest
 twenty, until Lumo quits): the icon opens the island on the newest, and its
 arrows go back through the older ones.

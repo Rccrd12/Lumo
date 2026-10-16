@@ -365,6 +365,8 @@ pub struct CursorPayload {
     /// Over the live activities' own window with the button held (moved or
     /// resized): only then does it count as the island.
     pub panel: bool,
+    /// Over the Plan island's window: the open island stays open.
+    pub plan: bool,
 }
 
 /// The island shape in window-logical coordinates, pushed by the front end.
@@ -1265,9 +1267,10 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // file drag: make sure the drop target is ours before it arrives.
                 let down = left_button_down();
                 let on_panel = crate::activities::cursor_over((cx, cy));
+                let on_plan = crate::plan_island::cursor_over((cx, cy));
                 let acting = crate::computer::acting();
                 if down && !was_down && !acting {
-                    if !on_island && !on_panel {
+                    if !on_island && !on_panel && !on_plan {
                         let _ = win.emit("outside-press", ());
                     }
                     let handle = app.clone();
@@ -1308,7 +1311,7 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                     });
                 }
 
-                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down });
+                let _ = win.emit("cursor", CursorPayload { x, y, panel: on_panel && down, plan: on_plan });
             }
         }
     });
