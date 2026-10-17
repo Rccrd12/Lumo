@@ -49,6 +49,7 @@
       "icons/icon.ico"
     ],
     "resources": { "../target/release/lumo-hook.exe": "lumo-hook.exe" },
+    "publisher": "Riccardo Gentili",
     "copyright": "© 2026 Louis Raillé, Riccardo Gentili",
     "category": "DeveloperTool",
     "shortDescription": "Lumo lives at the top of your screen",

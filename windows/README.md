@@ -33,10 +33,20 @@ always the newest version, and run it. The .exe installs for the current user on
 
 This is only because the app isn't signed with a paid certificate yet. Lumo is open source, and Microsoft Defender scans the installer as clean.
 
-Microsoft Defender once flagged the installer by mistake (`Trojan:Win32/Wacatac.H!ml`,
-a machine-learning false positive); Microsoft reviewed it and removed the detection.
-If Defender still blocks it on your PC, update its definitions (`Update-MpSignature`
-in PowerShell) and try again.
+Microsoft Defender has flagged unsigned builds by mistake (`Trojan:Win32/Wacatac.H!ml`
+on the installer, `Trojan:Win32/Bearfoos.A!ml` on the installed `lumo.exe`). The `!ml`
+means its machine-learning model guessed, not that it matched known malware: an
+unsigned, newly released app that starts with Windows, takes screenshots, reads the
+clipboard and can move the mouse (computer use) looks like remote-control software
+to it. If Defender blocks Lumo on your PC:
+
+1. Check the file is the one CI built. Each release lists `SHA256SUMS.txt`; compare
+   with `Get-FileHash "$env:LOCALAPPDATA\Lumo\lumo.exe"` in PowerShell.
+2. Restore it from **Windows Security → Protection history**, update Defender's
+   definitions (`Update-MpSignature`) and try again.
+3. Report it as a false positive at
+   [microsoft.com/wdsi/filesubmission](https://www.microsoft.com/wdsi/filesubmission)
+   (*Software developer*, *Incorrectly detected as malware*).
 
 You can also [build it yourself](#build-it-yourself).
 

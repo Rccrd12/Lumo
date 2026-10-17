@@ -15,8 +15,9 @@ permissions:
 # Publishing is on: Microsoft reviewed the Defender false positive
 # (Trojan:Win32/Wacatac.H!ml) and removed the detection. Before pushing a
 # windows-v* tag, run this workflow by hand and scan the artifacts with Defender:
-# a new unsigned build can still trip its machine-learning model. Set this to
-# 'false' to build tags without publishing.
+# a new unsigned build can still trip its machine-learning model, as 0.11.0's
+# installed lumo.exe did (Trojan:Win32/Bearfoos.A!ml). Set this to 'false' to
+# build tags without publishing.
 env:
   PUBLISH: 'true'
 
@@ -81,6 +82,26 @@ jobs:
           "version=$version" >> $env:GITHUB_OUTPUT
           Get-ChildItem release | Format-Table Name, Length
 
+      # The installer copies lumo.exe and lumo-hook.exe as they are, so these
+      # hashes let anyone check the files on their PC against what CI built
+      # (Get-FileHash), and give Microsoft something to match when a build is
+      # reported as a false positive.
+      - name: Hash what ships
+        shell: pwsh
+        run: |
+          $v = "${{ steps.pack.outputs.version }}"
+          $files = @(
+            "release/Lumo-Windows-$v-setup.exe",
+            "release/Lumo-Windows-$v.msi",
+            "target/release/lumo.exe",
+            "target/release/lumo-hook.exe"
+          )
+          $lines = foreach ($f in $files) {
+            "$((Get-FileHash $f -Algorithm SHA256).Hash.ToLower())  $(Split-Path $f -Leaf)"
+          }
+          $lines | Set-Content -Encoding ascii release/SHA256SUMS.txt
+          $lines
+
       # Upload only on a manual run or when publishing a release.
       # The repo is public, so artifacts are downloadable by any signed-in GitHub
       # user; the condition keeps them off automatic tag builds while downloads
@@ -114,6 +135,7 @@ jobs:
           path: |
             windows/target/release/lumo.exe
             windows/target/release/lumo-hook.exe
+            windows/release/SHA256SUMS.txt
           retention-days: 3
 
       - name: Publish the release
@@ -129,12 +151,17 @@ jobs:
           Download ``Lumo-Windows-$v.msi`` (Windows Installer) or ``Lumo-Windows-$v-setup.exe`` and run it. The installer is not
           code-signed yet, so Windows SmartScreen shows a warning: click
           **More info → Run anyway**.
+
+          ``SHA256SUMS.txt`` lists the SHA-256 of both installers and of the
+          ``lumo.exe`` and ``lumo-hook.exe`` they install. To check a file:
+          ``Get-FileHash "`$env:LOCALAPPDATA\Lumo\lumo.exe"`` in PowerShell.
           "@
           # --latest=false: the download links point at the rolling
           # windows-latest release below, not at GitHub's Latest slot.
           gh release create "${{ github.ref_name }}" `
             "release/Lumo-Windows-$v-setup.exe" `
             "release/Lumo-Windows-$v.msi" `
+            "release/SHA256SUMS.txt" `
             --title "Lumo for Windows $v" `
             --notes $notes `
             --latest=false
@@ -154,11 +181,12 @@ jobs:
             git tag -f windows-latest "${{ github.sha }}"
             git push -f origin windows-latest
             gh release edit windows-latest --title "Lumo for Windows (latest)" --notes "Always the newest Windows build — currently $v."
-            gh release upload windows-latest "release/Lumo-Windows-setup.exe" "release/Lumo-Windows.msi" --clobber
+            gh release upload windows-latest "release/Lumo-Windows-setup.exe" "release/Lumo-Windows.msi" "release/SHA256SUMS.txt" --clobber
           } else {
             gh release create windows-latest `
               "release/Lumo-Windows-setup.exe" `
               "release/Lumo-Windows.msi" `
+              "release/SHA256SUMS.txt" `
               --title "Lumo for Windows (latest)" `
               --notes "Always the newest Windows build — currently $v." `
               --latest=false
