@@ -701,6 +701,8 @@ test("Lumo shows the chat's answer: working while it is written, then done or wr
 
 test("deleting the chat on screen closes it: an empty chat takes its place", async () => {
   const { loadChats, saveChat } = await import("../src/core/chats.ts");
+  const deleted = [];
+  view = buildPrompt(() => {}, undefined, undefined, undefined, (id) => deleted.push(id));
   if (!globalThis.localStorage) {
     const mem = new Map();
     globalThis.localStorage = {
@@ -729,6 +731,7 @@ test("deleting the chat on screen closes it: an empty chat takes its place", asy
   assert.equal(State.chatHistory.length, 0);
   assert.ok(!$(".chat-body").classList.contains("browsing"), "the list closes on the new chat");
   assert.deepEqual(loadChats().map((c) => c.id), []);
+  assert.deepEqual(deleted, ["other", "open"], "each deleted chat's plans go too");
 });
 
 test("the folder beside the past chats holds what is attached, its badge says how many", () => {

@@ -417,6 +417,7 @@ export class Island {
       },
       showActivities: () => this.activities.unfold(),
       showPlan: () => this.plan.toggle(),
+      forgetChatPlan: (chatId) => this.plan.forgetChat(chatId),
       previewLook: (look) => {
         State.lookPreview = look;
         State.notify();

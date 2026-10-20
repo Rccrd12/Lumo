@@ -66,6 +66,8 @@ export interface ViewActions {
   showActivities(): void;
   /** The folded Plan island's icon: it comes back. */
   showPlan(): void;
+  /** A chat deleted from Past chats: its plans go too. */
+  forgetChatPlan(chatId: string): void;
 }
 
 export interface ViewHost {
@@ -799,7 +801,7 @@ export function buildViews(
   }, () => {
     actions.blip();
     actions.showPlan();
-  }));
+  }, (chatId) => actions.forgetChatPlan(chatId)));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("recap", buildRecap(actions));
