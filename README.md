@@ -77,6 +77,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.11.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.11.1) | Oct 20, 2026 | The island opens on the chat at startup again; deleting a chat drops its plans |
 | [0.11.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.11.0) | Oct 16, 2026 | The Plan island behaves as the live activities; Antigravity CLI moves its plan on step by step |
 | [0.10.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.10.1) | Oct 16, 2026 | The island chat's Claude Code and Antigravity CLI write their plan, and the Plan island follows its steps |
 | [0.10.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.10.0) | Oct 16, 2026 | The Plan island joins the island again, keeps finished plans and gets a new look; the chat no longer scrolls on its own |

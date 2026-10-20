@@ -1,5 +1,10 @@
 # Changelog
 
+## Windows 0.11.1 — October 20, 2026
+
+- **The island opens on the chat at startup** again, instead of the Agents tab. Only a tab seen on the open island counts as the last one
+- **Deleting a chat drops its plans**: a chat deleted from Past chats takes its plans off the Plan island, finished or not. If nothing else is left, the island and its icon go away
+
 ## Windows 0.11.0 — October 16, 2026
 
 - **The Plan island behaves as the live activities**: beside the open island, on the side they leave free, it fades in and out with the island and follows it as it opens, closes and resizes, as tall as the island. Dragged by its top bar it comes off into a window of its own that stays on screen until its "–", and let go against the island's side it joins it again
