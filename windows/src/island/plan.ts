@@ -210,6 +210,20 @@ export class IslandPlan {
     if (any) this.changed();
   }
 
+  /**
+   * The island chat was deleted: its plans go with it, under way or done,
+   * and are not kept to go back to.
+   */
+  forgetChat(chatId: string) {
+    const key = planKey("chat", chatId);
+    const had = this.book.drop(key);
+    const kept = this.past.filter((p) => p.key !== key);
+    if (!had && kept.length === this.past.length) return;
+    this.past = kept;
+    if (this.viewing && !this.plans().some((p) => planId(p) === this.viewing)) this.viewing = null;
+    this.changed();
+  }
+
   /** The icon in the chat was clicked: open, the island folds; folded, it comes back. */
   toggle() {
     if (this.folded) {

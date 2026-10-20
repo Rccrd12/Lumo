@@ -777,6 +777,7 @@ export function buildPrompt(
   openSettings: () => void = () => void Bridge.openSettingsWindow(),
   talk: () => void = () => {},
   showPlan: () => void = () => {},
+  chatDeleted: (chatId: string) => void = () => {},
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
@@ -1746,6 +1747,8 @@ export function buildPrompt(
       remove.addEventListener("click", (e) => {
         e.stopPropagation();
         deleteChat(c.id);
+        // The plan it made goes with it, finished or not.
+        chatDeleted(c.id);
         // Being answered in the background: that answer ends with it.
         const run = runs.get(c.id);
         if (run) {
