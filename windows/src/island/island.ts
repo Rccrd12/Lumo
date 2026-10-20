@@ -1901,12 +1901,14 @@ export class Island {
     // (a card going away, a session ending) it waits for a click, so typing in
     // another app is never cut off.
     // Settings have fields too, and are only ever opened on purpose.
+    // Only a tab seen on the open island counts: the view the app starts on
+    // (State.view's "overview") or one set while folded is not where you left it.
+    if (expanded) State.noteTab(State.view);
     if (this.lastSyncedView !== State.view) {
       // A permission card can have taken the keyboard too, for Y and N.
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
         || this.lastSyncedView === "approval";
       this.lastSyncedView = State.view;
-      State.noteTab(State.view);
       this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
         this.focusChat();
