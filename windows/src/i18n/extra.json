@@ -9998,6 +9998,30 @@
    "ru": "Скрыть, как это работает",
    "id": "Sembunyikan cara kerja",
    "it": "Nascondi come funziona"
+  },
+  "In progress": {
+   "zh-Hans": "制作中",
+   "hi": "बन रहा है",
+   "es": "En curso",
+   "ar": "قيد الإعداد",
+   "fr": "En cours",
+   "bn": "তৈরি হচ্ছে",
+   "pt-BR": "Em andamento",
+   "ru": "В работе",
+   "id": "Sedang dibuat",
+   "it": "In lavorazione"
+  },
+  "Lumo is making it with you in the workshop": {
+   "zh-Hans": "Lumo 正在工坊里和你一起制作",
+   "hi": "Lumo इसे वर्कशॉप में आपके साथ बना रहा है",
+   "es": "Lumo lo está haciendo contigo en el taller",
+   "ar": "يصنعها Lumo معك في الورشة",
+   "fr": "Lumo le fabrique avec vous dans l'atelier",
+   "bn": "Lumo ওয়ার্কশপে আপনার সাথে এটি বানাচ্ছে",
+   "pt-BR": "O Lumo está fazendo com você na oficina",
+   "ru": "Lumo делает его вместе с вами в мастерской",
+   "id": "Lumo sedang membuatnya bersama Anda di bengkel",
+   "it": "Lumo lo sta costruendo con te nell'officina"
   }
  }
 }

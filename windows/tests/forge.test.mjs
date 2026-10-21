@@ -93,6 +93,27 @@ test("the Tools tab lists the tools with their switch, and Add a tool opens the 
   assert.ok(card.classList.contains("guiding"), "the ? brings it back");
 });
 
+test("the tool the workshop is making is listed, In progress, and a click goes back to it", async () => {
+  State.view = "tools";
+  tools.sync();
+  assert.ok(tools.el.querySelector(".tools-empty"), "nothing yet");
+  State.useSlot("forge");
+  const forgeId = State.chatId;
+  State.chatHistory.push({ id: 1, role: "user", content: "make a benchmark" });
+  State.useSlot("chat");
+  State.view = "tools";
+  tools.sync();
+  assert.equal(tools.el.querySelector(".tools-empty"), null);
+  const row = tools.el.querySelector(".tool-row.building");
+  assert.equal(row.querySelector(".tool-name").textContent, "New tool");
+  assert.match(row.querySelector(".review-badge").textContent, /In progress/);
+  row.querySelector(".tool-row-head").fire("click");
+  assert.equal(shown, "prompt");
+  assert.equal(State.chatId, forgeId, "the same workshop chat, as it was");
+  State.startChat();
+  State.useSlot("chat");
+});
+
 test("Delete asks a second click", async () => {
   State.view = "tools";
   State.tools = [TOOL];

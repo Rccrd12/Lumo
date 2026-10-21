@@ -222,6 +222,21 @@ export function latestDraft(messages: readonly { role: string; content: string }
   return null;
 }
 
+/**
+ * A tool the workshop is making and hasn't saved as it is, for the Tools tab
+ * to list: the user asked for one and there is no draft yet, the newest draft
+ * isn't the one saved (`savedKey`, the draft the chat last saved or opened
+ * on), or they asked for more since. Null when there is nothing being made.
+ */
+export function workshopTool(messages: readonly { role: string; content: string }[], savedKey: string | null): { draft: ToolDraft | null } | null {
+  if (!messages.some((m) => m.role === "user")) return null;
+  const draft = latestDraft(messages);
+  if (!draft || savedKey !== draftKey(draft)) return { draft };
+  let last = messages.length - 1;
+  while (last >= 0 && !(messages[last].role === "assistant" && draftIn(messages[last].content))) last--;
+  return messages.slice(last + 1).some((m) => m.role === "user") ? { draft } : null;
+}
+
 /** What the chat shows of an answer: its words, the blocks taken out. */
 export function stripDraft(text: string): { text: string; draft: boolean; writing: boolean } {
   let draft = false;

@@ -578,6 +578,12 @@ class AppState {
     this.promptContext = null;
   }
 
+  /** The workshop's chat, on screen or put aside; null before it was ever opened. */
+  workshopChat(): { chatId: string; chatHistory: ChatMessage[] } | null {
+    if (this.chatSlot === "forge") return { chatId: this.chatId, chatHistory: this.chatHistory };
+    return this.parkedChats.forge ?? null;
+  }
+
   /** A fresh chat: what was said goes, the history keeps the old one. */
   startChat() {
     this.moreFiles = [];

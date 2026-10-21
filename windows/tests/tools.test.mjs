@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   WORKSHOP_PREFIX, blocksOf, draftIn, draftKey, draftOf, isAbsolutePath, isWorkshopChat, latestDraft, reviewState, stripDraft,
-  toolId, tryInput, userToolTarget,
+  toolId, tryInput, userToolTarget, workshopTool,
 } from "../src/core/tools.ts";
 import { State } from "../src/core/state.ts";
 
@@ -163,4 +163,15 @@ test("the approval card names one of the user's tools and what it is given, cut 
   const long = userToolTarget("X", { text: "a".repeat(500) });
   assert.equal(long.length, 160);
   assert.ok(long.endsWith("…"));
+});
+
+test("the tool the workshop is making: none asked, asked with no draft yet, a draft not saved, saved, asked for more", () => {
+  const ask = { role: "user", content: "make a benchmark" };
+  const reply = { role: "assistant", content: answer };
+  assert.equal(workshopTool([], null), null);
+  assert.deepEqual(workshopTool([ask], null), { draft: null });
+  assert.equal(workshopTool([ask, reply], null).draft.name, "Benchmark del PC");
+  const key = draftKey(latestDraft([reply]));
+  assert.equal(workshopTool([ask, reply], key), null, "saved as it is");
+  assert.equal(workshopTool([ask, reply, { role: "user", content: "make it faster" }], key).draft.name, "Benchmark del PC");
 });

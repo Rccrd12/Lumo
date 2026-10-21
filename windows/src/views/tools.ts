@@ -11,6 +11,9 @@
 // detail, with Always ask / Trust. Each call asks the user on the island,
 // unless they trust that tool and Lumo can hold it to what it declared.
 // The terminal button adds the tools to Claude Code in the terminal.
+//
+// A tool the workshop is still making is listed first, marked In progress:
+// a click goes back to it.
 
 import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
@@ -18,7 +21,8 @@ import { Bridge, onEvent } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { compactNotice } from "../core/compact";
 import { State } from "../core/state";
-import { reviewState, type ReviewState, type ToolInfo } from "../core/tools";
+import { reviewState, toolId, workshopTool, type ReviewState, type ToolDraft, type ToolInfo } from "../core/tools";
+import { FORGE_STRINGS, savedLink } from "./forge";
 import type { ViewActions, ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
@@ -68,6 +72,8 @@ export const TOOLS_STRINGS = {
   off: N_("Off"),
   ran: N_("{name} ran"),
   ranFailed: N_("{name} failed"),
+  building: N_("In progress"),
+  buildingText: N_("Lumo is making it with you in the workshop"),
 };
 
 /** What a tool says it needs, in words, with its icon. */
@@ -399,9 +405,43 @@ export function buildTools(actions: ViewActions): ViewHost {
     return h("div", { class: `tool-row${tool.enabled ? "" : " off"}${isOpen ? " open" : ""}` }, head, isOpen ? detail(tool) : null);
   }
 
+  /** The tool the workshop is making, if any: the draft so far, or none yet. */
+  function inWorkshop(): { draft: ToolDraft | null } | null {
+    const chat = State.workshopChat();
+    if (!chat) return null;
+    return workshopTool(chat.chatHistory, savedLink(chat.chatId)?.key ?? null);
+  }
+
+  /** Its row: In progress, and a click goes back to the workshop as it was. */
+  function buildingRow(draft: ToolDraft | null): HTMLElement {
+    const name = draft?.name.trim() || t(FORGE_STRINGS.newTool);
+    const head = h("div", { class: "tool-row-head", role: "button", tabindex: "0" },
+      toolTile(draft?.name ? toolId(draft.name) : "lumo"),
+      h("span", { class: "tool-text" },
+        h("span", { class: "tool-name", text: name }),
+        h("span", { class: "tool-desc", text: draft?.description.split("\n")[0] || t(TOOLS_STRINGS.buildingText) })),
+      h("span", { class: "review-badge building" }, h("i"), h("span", { text: t(TOOLS_STRINGS.building) })),
+      svg(ICONS.chevronRight, 10, { stroke: 2 }));
+    const go = () => {
+      actions.blip();
+      State.useSlot("forge");
+      actions.setView("prompt");
+    };
+    head.addEventListener("click", go);
+    head.addEventListener("keydown", (e) => {
+      const key = (e as KeyboardEvent).key;
+      if (key === "Enter" || key === " ") {
+        e.preventDefault();
+        go();
+      }
+    });
+    return h("div", { class: "tool-row building" }, head);
+  }
+
   function draw() {
     const tools = State.tools;
-    const key = JSON.stringify([tools, open, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, t(TOOLS_STRINGS.on)]);
+    const building = inWorkshop();
+    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], open, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, t(TOOLS_STRINGS.on)]);
     if (key === drawn) return;
     drawn = key;
     terminalBtn.classList.toggle("open", terminalHas);
@@ -414,7 +454,8 @@ export function buildTools(actions: ViewActions): ViewHost {
     clear(list);
     const on = tools.filter((x) => x.enabled).length;
     count.textContent = tools.length ? t(TOOLS_STRINGS.count, { on, all: tools.length }) : "";
-    if (!tools.length) {
+    if (building) list.append(buildingRow(building.draft));
+    if (!tools.length && !building) {
       list.append(h("div", { class: "tools-empty" },
         h("div", { class: "tools-empty-art" }, toolTile("lumo", 34)),
         h("div", { class: "tools-empty-title", text: t(TOOLS_STRINGS.emptyTitle) }),
