@@ -1,5 +1,14 @@
 # Changelog
 
+## Windows 0.12.0 — October 21, 2026
+
+- **Tools tab**: a third tab, after the agents, lists your own tools, each with its switch (a new tool is on). A tool is a small program Lumo and its agents can use for you: a benchmark of your PC, a report from your app, anything you have a script for
+- **The tool workshop**: Add a tool opens a chat of its own where Lumo writes the tool with you, or brings in a script you already have, and shows it beside the conversation with what it needs, its files and its parameters. Try runs it on your PC, Save adds it. How it works shows over the workshop at first, and its "?" brings it back. A tool still being made is listed first on the Tools tab, In progress
+- **Lumo's supervisor**: once saved, and after any change, a tool is read by a second model in a conversation of its own. It says in plain words what the tool really does, what to know before using it, and whether it looks safe, needs reading first or is dangerous (a dangerous tool is turned off). Agents only get a tool the supervisor read as it is now
+- **What a tool needs is enforced**: Python tools can't use the internet, read outside their folder, write outside their work folder or start programs unless they said so; Node.js tools run under Node's permission model
+- **Each call asks you**: when an agent uses one of your tools, Lumo shows its card with what it will do and the supervisor's words. A reviewed tool Lumo can hold to what it declared can be trusted to run without asking
+- **Your tools everywhere**: Claude Code and the API providers in the island chat get them, and a button on the Tools tab adds them to Claude Code in the terminal
+
 ## Windows 0.11.1 — October 20, 2026
 
 - **The island opens on the chat at startup** again, instead of the Agents tab. Only a tab seen on the open island counts as the last one
