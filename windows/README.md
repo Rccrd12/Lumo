@@ -805,7 +805,9 @@ model, in a conversation of its own: the one picked for the chat. It says in
 plain words, in Lumo's language, what the tool really does, what to know
 before using it, what it does without declaring it, and a verdict: **Looks
 safe**, **Read this first** or **Dangerous** (a dangerous tool is turned off;
-turning it back on takes a second click). Agents only get a tool the
+turning it back on takes a second click). A tool that does its evident job is
+safe even when that job changes or deletes files: Read this first is kept for
+what would surprise someone who read its description, so it means something. Agents only get a tool the
 supervisor read as it is now; **Review again** asks once more.
 
 **What a tool needs is enforced.** Python tools run under an audit hook that
