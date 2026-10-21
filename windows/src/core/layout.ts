@@ -19,7 +19,8 @@ export type IslandViewName =
   | "greeting"
   | "recap"
   | "wardrobe"
-  | "live";
+  | "live"
+  | "tools";
 
 export type BotStateName =
   | "idle"
@@ -123,6 +124,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   // A Gemini Live call (views/live.ts): the chat's room, Lumo where he is in it.
   live: { height: 240, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
+  // The Tools tab (views/tools.ts): the list, Lumo where he is in the chat.
+  tools: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually
@@ -148,6 +151,9 @@ const MIN_CHAT_H = 200;
 export const CHAT_PANEL_OPEN = 99;
 /** A list open in the chat needs room for its rows and the text field below it. */
 const MIN_PANEL_H = 340;
+/** The chat's message count in the tool workshop, whose panel needs room for its draft and buttons. */
+export const CHAT_FORGE = 199;
+const MIN_FORGE_H = 440;
 
 /** The display edge the island hangs from. */
 export type Dock = "top" | "bottom" | "left" | "right";
@@ -183,7 +189,7 @@ export function pickedHeight(shape: IslandShape): number {
 /** The chat's height: the one picked, or one that grows with the messages. */
 export function chatHeight(shape: IslandShape, messageCount: number): number {
   const picked = pickedHeight(shape);
-  const floor = messageCount >= CHAT_PANEL_OPEN ? MIN_PANEL_H : MIN_CHAT_H;
+  const floor = messageCount >= CHAT_FORGE ? MIN_FORGE_H : messageCount >= CHAT_PANEL_OPEN ? MIN_PANEL_H : MIN_CHAT_H;
   return Math.max(floor, picked > 0 ? picked : chatPromptHeight(messageCount));
 }
 

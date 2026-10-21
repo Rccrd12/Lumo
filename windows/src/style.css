@@ -4673,3 +4673,1180 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   background: #ff6672;
   color: #fff;
 }
+
+/* ── Tools tab (views/tools.ts) ─────────────────────────────────────────── */
+
+.tab-tools.on {
+  color: #ffd27a;
+}
+
+.tools-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 14px 84px;
+}
+
+.tools-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.tools-title {
+  font: 600 14px var(--font);
+  color: var(--ink);
+}
+
+.tools-count {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.tools-head-space {
+  flex: 1 1 auto;
+}
+
+.tools-head .tool-btn {
+  align-self: center;
+}
+
+.tools-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.tool-row {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.tool-row:hover,
+.tool-row.open {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.tool-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 8px;
+  outline: none;
+}
+
+.tool-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(145deg, var(--tile, #f5a524), color-mix(in srgb, var(--tile, #f5a524) 45%, #000));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 8px color-mix(in srgb, var(--tile, #f5a524) 30%, transparent);
+  transition: filter 0.2s ease-out;
+}
+
+.tool-row.off .tool-tile {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.tool-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tool-name {
+  font: 600 12.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-row.off .tool-name {
+  color: var(--dim);
+}
+
+.tool-desc {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-desc.missing {
+  color: var(--red-text);
+}
+
+.tool-needs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--dim-3);
+}
+
+.tool-needs.words {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.need-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.need-chip,
+.param-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 10.5px var(--font);
+  color: #c9cdd4;
+}
+
+.need-chip.need-network {
+  color: #7dd3fc;
+}
+
+.need-chip.need-write,
+.need-chip.need-system {
+  color: #fcd34d;
+}
+
+.param-chip i {
+  font: 400 10px var(--mono);
+  font-style: normal;
+  color: var(--dim-3);
+}
+
+.param-chip.required span::after {
+  content: "*";
+  color: #f5a524;
+  margin-left: 1px;
+}
+
+.need-none {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.tool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 12px 10px 46px;
+}
+
+.tool-detail-text {
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.tool-detail-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-params,
+.forge-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tool-detail-label {
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim-3);
+}
+
+.tool-detail-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+}
+
+.tools-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.tools-act {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c9cdd4;
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.tools-act:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: var(--ink);
+}
+
+.tools-act.primary {
+  background: rgba(245, 165, 36, 0.16);
+  color: #ffd27a;
+}
+
+.tools-act.primary:hover {
+  background: rgba(245, 165, 36, 0.26);
+}
+
+.tools-act.danger:hover,
+.tools-act.danger.confirm {
+  background: rgba(244, 80, 94, 0.18);
+  color: var(--red-text);
+}
+
+.tools-empty {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 2px;
+}
+
+.tools-empty-art {
+  margin-bottom: 2px;
+}
+
+.tools-empty-title {
+  font: 600 13px var(--font);
+  color: var(--ink);
+}
+
+.tools-empty-text {
+  font: 400 11.5px var(--font);
+  color: var(--dim);
+  max-width: 420px;
+}
+
+/* Add a tool: the whole width, at the bottom. */
+.tools-add {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px 8px 9px;
+  border-radius: 12px;
+  border: 1px dashed rgba(245, 165, 36, 0.45);
+  background: linear-gradient(90deg, rgba(245, 165, 36, 0.1), rgba(244, 114, 182, 0.06));
+  color: var(--dim);
+  text-align: left;
+  cursor: default;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out, transform 0.08s ease-out;
+}
+
+.tools-add:hover {
+  border-color: rgba(245, 165, 36, 0.8);
+  background: linear-gradient(90deg, rgba(245, 165, 36, 0.18), rgba(244, 114, 182, 0.1));
+  color: var(--ink);
+}
+
+.tools-add:active {
+  transform: scale(0.985);
+}
+
+.tools-add-plus {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #1a1206;
+  background: linear-gradient(135deg, #ffd27a, #f5a524 60%, #f472b6);
+  box-shadow: 0 2px 10px rgba(245, 165, 36, 0.35);
+}
+
+.tools-add-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tools-add-title {
+  font: 600 12.5px var(--font);
+  color: var(--ink);
+}
+
+.tools-add-hint {
+  font: 400 10.5px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Tool workshop (the chat as views/forge.ts) ─────────────────────────── */
+
+.forge-head,
+.forge-panel,
+.forge-guide,
+.forge-help {
+  display: none;
+}
+
+.chat-card.forge {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.045) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    linear-gradient(160deg, #17140f 0%, #131417 45%, #121318 100%);
+  border-color: rgba(245, 165, 36, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 210, 122, 0.08);
+}
+
+/* The tool beside the conversation: a share of the island, so a narrow one
+   keeps room for the field. */
+.chat-card.forge {
+  --forge-panel: clamp(196px, 34%, 260px);
+}
+
+.chat-card.forge.forge-draft .chat-body {
+  padding-right: calc(var(--forge-panel) + 20px);
+}
+
+/* No tool yet: the "?" has the top right corner. */
+.chat-card.forge:not(.forge-draft) .forge-head {
+  margin-right: 30px;
+}
+
+.chat-card.forge .forge-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding: 0 2px;
+}
+
+.forge-head-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #1a1206;
+  background: linear-gradient(135deg, #ffd27a, #f5a524 60%, #f472b6);
+}
+
+.forge-head-title {
+  flex: none;
+  white-space: nowrap;
+  font: 600 12.5px var(--font);
+  color: var(--ink);
+}
+
+.forge-head-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 400 12px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--dim-2);
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.forge-back:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.chat-card.forge .chat-row.user .bubble {
+  background: linear-gradient(135deg, rgba(245, 165, 36, 0.24), rgba(244, 114, 182, 0.16));
+}
+
+.chat-card.forge .chat-bar {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(245, 165, 36, 0.16);
+  border-radius: 14px;
+  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.chat-card.forge .chat-bar:focus-within {
+  border-color: rgba(245, 165, 36, 0.45);
+  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.08);
+}
+
+.chat-card.forge .send-btn {
+  background: linear-gradient(135deg, #ffd27a, #f5a524);
+}
+
+.forge-welcome-sub {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  margin-top: -4px;
+}
+
+/* The draft, named in the answer that hands it over. */
+.forge-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 999px;
+  background: rgba(245, 165, 36, 0.1);
+  border: 1px solid rgba(245, 165, 36, 0.22);
+  font: 500 11px var(--font);
+  color: #ffd27a;
+}
+
+.forge-chip-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #1a1206;
+  background: #f5a524;
+}
+
+/* While the blocks are written: a line that glows along. */
+.forge-writing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 11px var(--font);
+  color: #ffd27a;
+}
+
+.forge-writing i {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #f5a524, transparent) 0 0 / 200% 100%, rgba(245, 165, 36, 0.15);
+  animation: forge-glow 1.2s linear infinite;
+}
+
+@keyframes forge-glow {
+  from {
+    background-position: 100% 0, 0 0;
+  }
+  to {
+    background-position: -100% 0, 0 0;
+  }
+}
+
+/* The tool as it stands, beside the conversation. */
+.chat-card.forge.forge-draft .forge-panel {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  width: var(--forge-panel);
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.forge-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  /* The "?" sits in the panel's corner. */
+  padding-right: 22px;
+}
+
+.forge-tool-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.forge-tool-name {
+  max-width: 100%;
+  font: 600 13px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-status {
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.forge-status.draft {
+  color: #f5a524;
+}
+
+.forge-status.saved {
+  color: var(--green-2);
+}
+
+.forge-status.changed {
+  color: var(--cyan);
+}
+
+.forge-desc {
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  user-select: text;
+}
+
+.forge-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.forge-section-title {
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim-3);
+}
+
+.forge-files {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.forge-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 7px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #c9cdd4;
+  font: 400 11px var(--mono);
+  text-align: left;
+  cursor: default;
+}
+
+.forge-file:hover,
+.forge-file.open {
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+}
+
+.forge-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-file-badge {
+  font: 600 9px var(--font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a1206;
+  background: #f5a524;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.forge-file-size {
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+}
+
+.forge-code,
+.forge-output {
+  margin: 0;
+  max-height: 140px;
+  overflow: auto;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  font: 400 10.5px/1.45 var(--mono);
+  color: #d6d9de;
+  white-space: pre;
+  user-select: text;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.forge-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.forge-try {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.forge-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forge-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forge-field-name {
+  flex: 0 0 72px;
+  font: 500 10.5px var(--mono);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-field.required .forge-field-name::after {
+  content: "*";
+  color: #f5a524;
+}
+
+.forge-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink);
+  font: 400 11px var(--font);
+  padding: 4px 7px;
+  outline: none;
+  cursor: text;
+  user-select: text;
+}
+
+.forge-input:focus {
+  border-color: rgba(245, 165, 36, 0.5);
+}
+
+.forge-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.forge-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ink-2);
+  font: 600 11.5px var(--font);
+  cursor: default;
+  transition: transform 0.08s ease-out, background 0.12s ease-out, filter 0.12s ease-out;
+}
+
+.forge-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.forge-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.forge-btn.primary {
+  background: linear-gradient(135deg, #ffd27a, #f5a524 70%);
+  color: #1a1206;
+  box-shadow: 0 2px 12px rgba(245, 165, 36, 0.25);
+}
+
+.forge-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.forge-btn.primary.done {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--green-2);
+  box-shadow: none;
+}
+
+.forge-btn:disabled {
+  opacity: 0.75;
+}
+
+.forge-ready {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 500 10.5px var(--font);
+  color: var(--green-2);
+}
+
+.forge-error {
+  font: 400 10.5px var(--font);
+  color: var(--red-text);
+}
+
+.forge-result {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.forge-result-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px var(--font);
+}
+
+.forge-result.ok .forge-result-head {
+  color: var(--green-2);
+}
+
+.forge-result.fail .forge-result-head {
+  color: var(--red-text);
+}
+
+.forge-result-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.forge-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-2);
+  font: 500 10.5px var(--font);
+  cursor: default;
+}
+
+.forge-link:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* How it works, over the whole workshop: the field, the usage and the rest
+   hidden under it until its dash puts it away. */
+.chat-card.forge.guiding .chat-body,
+.chat-card.forge.guiding .forge-panel {
+  visibility: hidden;
+}
+
+.chat-card.forge.guiding .forge-guide {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  left: 78px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  animation: forge-guide-in 0.18s ease-out;
+}
+
+@keyframes forge-guide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.forge-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forge-guide-title {
+  flex: 1 1 auto;
+  font: 600 14px var(--font);
+  color: var(--ink);
+}
+
+.forge-guide-hide,
+.forge-help {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c9cdd4;
+  cursor: default;
+  transition: background 0.12s, color 0.12s;
+}
+
+.forge-guide-hide {
+  display: grid;
+}
+
+.forge-guide-hide:hover,
+.forge-help:hover {
+  background: rgba(245, 165, 36, 0.22);
+  color: #ffd27a;
+}
+
+.forge-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.forge-steps .forge-step {
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.forge-step-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* How it works put away: its "?" at the top right of the workshop. */
+.chat-card.forge:not(.guiding) .forge-help {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 12px;
+  display: grid;
+  font: 700 12px var(--font);
+}
+
+.chat-card.forge.forge-draft:not(.guiding) .forge-help {
+  top: 18px;
+  right: 18px;
+}
+
+.forge-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font: 400 11.5px var(--font);
+  color: #c5c8cd;
+}
+
+.forge-step-n {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 10px var(--font);
+  color: #1a1206;
+  background: linear-gradient(135deg, #ffd27a, #f5a524);
+}
+
+/* ── The supervisor's review and the trust choice (views/tools.ts) ────────── */
+
+.review-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 6px;
+  border-radius: 999px;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.02em;
+  color: var(--dim-2);
+  background: rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+
+.review-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.review-badge.ok {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.review-badge.caution {
+  color: #fcd34d;
+  background: rgba(252, 211, 77, 0.1);
+}
+
+.review-badge.danger {
+  color: var(--red-text);
+  background: rgba(244, 80, 94, 0.14);
+}
+
+.review-badge.building {
+  color: #fbbf24;
+  background: rgba(245, 165, 36, 0.12);
+}
+
+.review-badge.building i {
+  animation: review-pulse 1.1s ease-in-out infinite;
+}
+
+/* The tool the workshop is still making, first in the list. */
+.tool-row.building {
+  border-style: dashed;
+  border-color: rgba(245, 165, 36, 0.35);
+  cursor: pointer;
+}
+
+.tool-row.building:hover {
+  border-color: rgba(245, 165, 36, 0.55);
+}
+
+.tool-row.building > .tool-row-head > svg {
+  flex: none;
+  color: var(--dim-2);
+}
+
+.review-badge.reviewing i {
+  animation: review-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes review-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.supervisor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.supervisor.ok {
+  border-color: rgba(74, 222, 128, 0.18);
+}
+
+.supervisor.caution {
+  border-color: rgba(252, 211, 77, 0.22);
+}
+
+.supervisor.danger {
+  border-color: rgba(244, 80, 94, 0.3);
+  background: rgba(244, 80, 94, 0.06);
+}
+
+.supervisor-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim-3);
+}
+
+.supervisor-summary {
+  font: 400 11.5px var(--font);
+  color: #d4d7dc;
+  user-select: text;
+}
+
+.supervisor-points {
+  margin: 0;
+  padding-left: 16px;
+  font: 400 11px var(--font);
+  color: #b0b5be;
+  user-select: text;
+}
+
+.supervisor-points li + li {
+  margin-top: 2px;
+}
+
+.supervisor-warn {
+  font: 500 10.5px var(--font);
+  color: #fcd34d;
+}
+
+.supervisor.danger .supervisor-warn {
+  color: var(--red-text);
+}
+
+.trust {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trust-opts {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.trust-opt {
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--dim-2);
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.trust-opt.on {
+  background: rgba(245, 165, 36, 0.2);
+  color: #ffd27a;
+}
+
+.trust-opt:hover:not(.on):not(:disabled) {
+  color: var(--ink);
+}
+
+.trust-opt:disabled {
+  opacity: 0.4;
+}
+
+.tools-head .tools-term {
+  width: auto;
+  min-width: 24px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 6px;
+  border-radius: 12px;
+}
+
+.tools-term.open {
+  color: #ffd27a;
+  background: rgba(245, 165, 36, 0.14);
+}
+
+.tools-term.confirm {
+  color: var(--ink);
+  background: rgba(245, 165, 36, 0.24);
+}
+
+.tools-term-label {
+  font: 500 11px var(--font);
+  white-space: nowrap;
+}
+
+.tools-term-label:empty {
+  display: none;
+}
+
+.forge-tool-badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.forge-review {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 2px solid #4ade80;
+}
+
+.forge-review.caution {
+  border-left-color: #fcd34d;
+}
+
+.forge-review.danger {
+  border-left-color: var(--red-text);
+}
+
+.forge-review-text {
+  font: 400 11px var(--font);
+  color: #c9cdd4;
+}

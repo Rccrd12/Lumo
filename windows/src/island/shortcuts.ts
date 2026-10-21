@@ -65,6 +65,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
 
     case "openChat":
       resume();
+      State.useSlot("chat");
       host.alert("prompt");
       host.takeKeyboard();
       host.holdOpen();

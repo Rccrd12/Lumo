@@ -6,6 +6,7 @@
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
 import { describeComputerAction } from "../core/computer";
+import { userToolTarget } from "../core/tools";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
@@ -163,6 +164,8 @@ interface HookPayload {
   rate_limits?: unknown;
   /** PostToolUse of TaskCreate: the id of the task made (the relay keeps it of the result). */
   lumo_task_id?: string;
+  /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
+  lumo_user_tool?: { name?: string; summary?: string };
 }
 
 const PROJECT_ALIASES: Record<string, string> = {
@@ -682,6 +685,7 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       const tool = payload.tool_name ?? "Tool";
       const input = payload.tool_input ?? {};
+      const userTool = payload.lumo_user_tool ?? null;
       // Claude Code asking a question is not a permission to grant: the island
       // shows the options and sends back the one that was picked. Only Claude
       // Code asks questions this way.
@@ -692,8 +696,10 @@ function handleHook(island: Island, payload: HookPayload) {
         sessionId,
         pillId: fromChat ? (State.focusId ?? agentId) : agentId,
         tool,
-        command: approvalTarget(tool, input),
-        ...approvalAbout(tool, input),
+        // One of the user's tools: its name and what it is given, and the
+        // supervisor's words for what it does.
+        command: userTool ? userToolTarget(userTool.name ?? tool, input) : approvalTarget(tool, input),
+        ...(userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.

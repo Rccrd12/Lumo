@@ -3,13 +3,16 @@
 // OpenRouter. One table describes them; one client talks to all three.
 //
 // Same contract as claude.rs: the key never leaves the credential store and
-// file bytes never cross the IPC boundary. Chat only — no tools are sent, so
-// the model can answer but never act on the machine.
+// file bytes never cross the IPC boundary. The only tools sent are the user's
+// own (the Tools tab, tools.rs), each call asked for on the island; a model
+// that can't take tools is asked again without them.
 
 use std::time::Duration;
 
 use reqwest::Url;
 use serde_json::{json, Value};
+
+use tauri::AppHandle;
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::chat_usage::{self, ChatUsage};
@@ -73,6 +76,8 @@ pub fn provider(id: &str) -> Option<&'static Provider> {
 }
 
 const MAX_TOKENS: u32 = 4096;
+/// Rounds of the user's tools one answer may take before it must answer.
+const MAX_TOOL_ROUNDS: usize = 8;
 /// Text and code files are inlined; anything larger is skipped.
 const MAX_INLINE_TEXT: u64 = 200_000;
 /// Images are sent inline as data URLs; past this size they are skipped.
@@ -182,6 +187,7 @@ fn status_error(p: &Provider, status: u16, detail: &str) -> String {
 /// One chat turn with a cloud provider. For OpenAI, `usage` gets the rate
 /// limits the answer came back with (chat_usage.rs).
 pub async fn send(
+    app: &AppHandle,
     chat: &Chat,
     p: &'static Provider,
     model: &str,
@@ -196,37 +202,101 @@ pub async fn send(
     }
     let turn = chat.begin(p.id);
     let user = with_images(user_message(turn.first, context.as_ref(), &query), images);
-    let body = request_body(p, model, &chat::system_prompt(false), &turn.history, &user);
-
+    let mut body = request_body(p, model, &chat::system_prompt_in(chat, false), &turn.history, &user);
+    let tools = tauri::async_runtime::spawn_blocking(crate::tools::api_tools).await.unwrap_or_default();
+    if !tools.is_empty() {
+        body["tools"] = function_tools(&tools);
+    }
     let endpoint = url(p, "chat/completions")?;
-    let request = async {
-        let response = net::client(&endpoint, Duration::from_secs(90))?
-            .post(endpoint.clone())
-            .bearer_auth(&key)
-            .json(&body)
-            .send()
-            .await
-            .map_err(|e| tf("Network error: {error}", &[("error", &e.to_string())]))?;
-        if p.id == "openai" {
-            *usage = chat_usage::from_openai(response.headers(), chat_usage::now_ms());
+
+    // Not streamed: Stop drops the request (or the tool's card), and nothing was written yet.
+    let mut said: Vec<String> = Vec::new();
+    let answer = async {
+        let mut rounds = 0;
+        loop {
+            let json = match post(p, &endpoint, &key, &body, usage).await {
+                // A model that takes no tools refuses the request: once more without them.
+                Err((400 | 404 | 422, _)) if body.get("tools").is_some() => {
+                    body.as_object_mut().map(|b| b.remove("tools"));
+                    continue;
+                }
+                other => other.map_err(|(_, e)| e)?,
+            };
+            let message = json.pointer("/choices/0/message").cloned().unwrap_or(Value::Null);
+            let calls = message["tool_calls"].as_array().cloned().unwrap_or_default();
+            if calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
+                return Ok::<_, String>(json);
+            }
+            rounds += 1;
+            if let Some(text) = message["content"].as_str().map(str::trim).filter(|t| !t.is_empty()) {
+                said.push(text.to_string());
+            }
+            let mut turn_messages = vec![message.clone()];
+            for call in &calls {
+                let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
+                let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
+                let (text, _) = crate::tools::call_for_chat(app, name, input).await;
+                turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
+            }
+            if let Some(messages) = body["messages"].as_array_mut() {
+                messages.extend(turn_messages);
+            }
         }
-        let status = response.status();
-        if !status.is_success() {
-            let body = net::read_capped(response, net::MAX_ERROR_BODY).await.unwrap_or_default();
-            return Err(status_error(p, status.as_u16(), &net::error_detail(&body)));
-        }
-        net::read_capped(response, net::MAX_BODY).await
     };
-    // Not streamed: Stop drops the request, and nothing was written yet.
-    let Some(bytes) = chat.unless_stopped(request).await else {
+    let Some(json) = chat.unless_stopped(answer).await else {
         return Ok(ChatReply::stopped(String::new(), None));
     };
-    let json: Value = serde_json::from_slice(&bytes?).map_err(|e| tf("Bad API response: {error}", &[("error", &e.to_string())]))?;
-    let text = reply_text(p, &json)?;
+    let text = reply_text(p, &json?)?;
+    // After the user's tools, what was said before each call comes first.
+    let text = if said.is_empty() { text } else { said.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n") };
 
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
     Ok(ChatReply::answer(text, None))
+}
+
+/// The user's tools that are on and reviewed (tools.rs), as functions.
+fn function_tools(tools: &[(String, String, Value)]) -> Value {
+    Value::Array(
+        tools
+            .iter()
+            .map(|(id, description, schema)| json!({ "type": "function", "function": { "name": id, "description": description, "parameters": schema } }))
+            .collect(),
+    )
+}
+
+/// One question with no conversation and no tools: the supervisor's review
+/// of a tool (tool_review.rs).
+pub async fn complete(p: &'static Provider, model: &str, system: &str, prompt: &str) -> Result<String, String> {
+    let key = secrets::get(p.key).ok_or_else(|| tf("{name} API key missing. Add it in Settings.", &[("name", p.name)]))?;
+    let user = json!({ "role": "user", "content": prompt });
+    let body = request_body(p, model, system, &[], &user);
+    let endpoint = url(p, "chat/completions")?;
+    let json = post(p, &endpoint, &key, &body, &mut None).await.map_err(|(_, e)| e)?;
+    reply_text(p, &json)
+}
+
+/// One request to the chat completions endpoint, its answer as JSON; an
+/// error with the HTTP status (0 when there was none).
+async fn post(p: &Provider, endpoint: &Url, key: &str, body: &Value, usage: &mut Option<ChatUsage>) -> Result<Value, (u16, String)> {
+    let response = net::client(endpoint, Duration::from_secs(90))
+        .map_err(|e| (0, e))?
+        .post(endpoint.clone())
+        .bearer_auth(key)
+        .json(body)
+        .send()
+        .await
+        .map_err(|e| (0, tf("Network error: {error}", &[("error", &e.to_string())])))?;
+    if p.id == "openai" {
+        *usage = chat_usage::from_openai(response.headers(), chat_usage::now_ms());
+    }
+    let status = response.status();
+    if !status.is_success() {
+        let body = net::read_capped(response, net::MAX_ERROR_BODY).await.unwrap_or_default();
+        return Err((status.as_u16(), status_error(p, status.as_u16(), &net::error_detail(&body))));
+    }
+    let bytes = net::read_capped(response, net::MAX_BODY).await.map_err(|e| (0, e))?;
+    serde_json::from_slice(&bytes).map_err(|e| (0, tf("Bad API response: {error}", &[("error", &e.to_string())])))
 }
 
 /// The provider's chat models. Only ever asked with the user's key, once they

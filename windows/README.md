@@ -768,6 +768,76 @@ The microphone is only asked for when a call starts. On Windows, the
 microphone must be allowed for desktop apps in **Settings → Privacy &
 security → Microphone**.
 
+## Your tools
+
+The wrench tab, between the agents and the "+", holds **your own tools**:
+small programs Lumo's agents can use for you, a benchmark of your PC, a report
+from one of your apps, anything you have a script for. Each has its switch (a
+new one is on); a click on one shows what it does, its parameters and what it
+needs, with **Change with Lumo**, its folder and **Delete** (a second click
+confirms it).
+
+**Add a tool**, at the bottom, opens the **tool workshop**: the chat, with its
+attachments, usage ring, Plan island, model picker, paperclip, screen button
+and permissions, in a look of its own and with past chats of its own. Tell
+Lumo what the tool should do, or give it a script you already have (the
+paperclip, or the folder open in File Explorer): the AI writes the tool and
+it shows beside the conversation, with its description, its parameters, what
+it needs (the internet, reading or changing files, the system) and its files.
+**Try** runs it once on your PC, with the values you type above it, and
+**Tell Lumo** puts how it went in the field; **Save tool** keeps it, on.
+Nothing runs or is saved without that click. Opened from **Change with Lumo**,
+the workshop starts on the tool as it is, and saving updates it.
+
+A tool is a folder in `%APPDATA%\com.rccrd12.lumo\tools`: its script (Python,
+PowerShell, Node.js, a `.bat`, `.cmd` or `.exe`) and `tool.json`, which says
+its name, the description an AI reads to know when to use it, its parameters,
+what it needs and whether it is on. A script you already had can stay where
+it is. A script gets its parameters as JSON on stdin and in
+`LUMO_TOOL_INPUT` (or on its command line, when `tool.json` gives `args`),
+and what it prints is its answer. It may write its own files in the folder
+`LUMO_TOOL_WORK` names, which is also its `TEMP`. A run stops after two
+minutes (or the `timeout` it gives).
+
+**Lumo's supervisor.** Once saved, and after any change to it (a file, its
+`tool.json`, the script it runs from elsewhere), a tool is read by a second
+model, in a conversation of its own: the one picked for the chat. It says in
+plain words, in Lumo's language, what the tool really does, what to know
+before using it, what it does without declaring it, and a verdict: **Looks
+safe**, **Read this first** or **Dangerous** (a dangerous tool is turned off;
+turning it back on takes a second click). A tool that does its evident job is
+safe even when that job changes or deletes files: Read this first is kept for
+what would surprise someone who read its description, so it means something. Agents only get a tool the
+supervisor read as it is now; **Review again** asks once more.
+
+**What a tool needs is enforced.** Python tools run under an audit hook that
+refuses what they didn't declare: the internet, reading files outside their
+folder and Python's, writing anywhere but their work folder, starting
+programs, the registry, loading DLLs. Node.js tools run with Node's
+permission model (files and programs; Node 20 or later). Without the
+internet declared, every tool is pointed at a proxy that isn't there. Lumo
+can't hold PowerShell, `.bat`, `.cmd` or `.exe` tools to what they declare,
+and says so. These are guard rails for honest tools that overreach, read
+together with the review, not a sandbox for code written to escape it.
+
+**Each call asks you.** Every call of a tool is an Allow / Deny card on the
+island, whoever makes it, with the supervisor's words for what the tool does.
+In a tool's detail, **Trust it** lets agents use it without asking: only
+offered for a reviewed tool that isn't dangerous, does nothing it didn't
+declare, and that Lumo can hold to what it declared. A change that asks for
+more takes the trust back.
+
+The tools go to Claude Code in the island's chat and when Gemini Live hands
+it a task, through Lumo's MCP server (`lumo-hook --mcp --tools=user`), and to
+the chat's Anthropic API, OpenAI, Google AI and OpenRouter models as tools of
+their own (a model that can't take tools is asked again without them). The
+terminal button at the top adds them to **Claude Code in the terminal** for
+all your projects (`claude mcp add --scope user lumo_tools`, which Claude
+Code writes in its own settings; a second click confirms, and clicking again
+takes them away): a click on Claude Code's own card for a tool is the one
+that call needs. Local models (Ollama, LM Studio, a custom server) don't get
+the tools. The closed island says when a tool ran.
+
 ## GitHub
 
 With a token in **Settings… → Pills & integrations → GitHub** — a classic token with

@@ -10,6 +10,7 @@ import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
 import type { ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
+import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 
 /**
  * Settings open inside the island (an iframe of settings.html, see
@@ -208,6 +209,28 @@ export const Bridge = {
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
   listenList: () => call<ListenWatch[]>("listen_list"),
+  // The user's own tools (the Tools tab, tools.rs).
+  toolsList: () => call<ToolInfo[]>("tools_list"),
+  /** The user's click on Save in the workshop: the draft becomes a tool, on. */
+  toolsSave: (draft: ToolDraft) => callOrThrow<ToolInfo>("tools_save", { draft }),
+  toolsSetEnabled: (id: string, enabled: boolean) => callOrThrow<void>("tools_set_enabled", { id, enabled }),
+  toolsDelete: (id: string) => callOrThrow<void>("tools_delete", { id }),
+  /** The user's click on Try in the workshop: runs the draft once with `input`. */
+  toolsTry: (draft: ToolDraft, input: Record<string, unknown>) => callOrThrow<ToolRun>("tools_try", { draft, input }),
+  /** A tool's files and what they hold, for the workshop to change it. */
+  toolsFiles: (id: string) => call<[string, string][]>("tools_files", { id }),
+  /** Opens a tool's folder in File Explorer, or the folder of them all. */
+  toolsReveal: (id: string | null) => call<void>("tools_reveal", { id }),
+  /** "Always ask" or "Trust" for one tool; refused for one Lumo can't hold to what it declared. */
+  toolsSetTrust: (id: string, trust: boolean) => callOrThrow<void>("tools_set_trust", { id, trust }),
+  /** Has the supervisor review a tool again (tool_review.rs); the answer comes as `tool-review`. */
+  toolsReview: (id: string) => call<void>("tools_review", { id }),
+  /** The tools being reviewed now. */
+  toolsReviewing: () => call<string[]>("tools_reviewing"),
+  /** Whether Claude Code in the terminal has the tools' MCP server. */
+  toolsTerminalHas: () => call<boolean>("tools_terminal_has"),
+  /** Adds the tools' server to Claude Code in the terminal (`claude mcp add`), or takes it away. */
+  toolsTerminalSet: (on: boolean) => callOrThrow<boolean>("tools_terminal_set", { on }),
   /** The Stop button of one chat: its `chatSend` then returns what was written so far, `stopped`. */
   chatStop: (chatId: string) => call<void>("chat_stop", { chatId }),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */

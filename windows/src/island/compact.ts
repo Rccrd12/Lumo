@@ -486,7 +486,8 @@ export function openMailInChat(m: MailPeek & { body?: string }, question: string
     "",
     m.body || m.preview,
   ].join("\n");
-  // An answer still being written goes on in its own chat.
+  // An answer still being written goes on in its own chat; the chat, never the tool workshop.
+  State.useSlot("chat");
   State.startChat();
   State.droppedFile = null;
   State.promptContext = null;

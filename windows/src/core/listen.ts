@@ -151,7 +151,8 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
   });
   // The line's own row, and a code block that only held it.
   out = out.replace(/^[ \t]*(?:\u0000[ \t]*)+(?:\n|$)/gm, "").replaceAll(GONE, "");
-  out = out.replace(/```[A-Za-z]*[ \t]*\n?\s*```[ \t]*\n?/g, "");
+  // (Not a block closing right before another opens: "```" then "```lumo-file x".)
+  out = out.replace(/```[A-Za-z]*[ \t]*\n?\s*```(?![\w-])[ \t]*\n?/g, "");
   out = out.replace(/`{0,3}\[\[(?:(?!\]\]).)*$/, "");
   return { text: out.replace(/\n{3,}/g, "\n\n").trim(), listens, stops, unread };
 }

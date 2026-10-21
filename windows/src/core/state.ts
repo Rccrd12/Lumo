@@ -16,6 +16,7 @@ import type { SharedContext } from "./bridge";
 import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../mochi/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
+import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
 
 export type AgentSource = "claudeCode" | "n8n" | "agent";
 export type PillBadge = "approval" | "finished" | "error";
@@ -374,6 +375,16 @@ export const MAX_DIFFS_PER_PILL = 50;
 /** A pill's diffs are forgotten after an hour without a new one, as on macOS. */
 export const DIFF_TTL_MS = 3_600_000;
 
+/** A chat put aside while the other slot is on screen (AppState.useSlot). */
+interface ParkedChat {
+  chatId: string;
+  chatHistory: ChatMessage[];
+  chatSession: string | null;
+  droppedFile: AppState["droppedFile"];
+  moreFiles: AppState["moreFiles"];
+  promptContext: PromptContext | null;
+}
+
 class AppState {
   mode: IslandMode = "hidden";
   view: IslandViewName = "overview";
@@ -444,6 +455,20 @@ class AppState {
   picture: { src: string; caption: string } | null = null;
   /** The id of the current chat in the history (chats.ts). */
   chatId = newChatId();
+  /**
+   * What the chat view shows: the chat, or the tool workshop (views/forge.ts),
+   * a chat of its own with its own history, opened from the Tools tab.
+   */
+  chatSlot: "chat" | "forge" = "chat";
+  /** The other slot's chat, put aside while this one is on screen (useSlot). */
+  private parkedChats: Partial<Record<"chat" | "forge", ParkedChat>> = {};
+  /** The user's tools (tools.rs), as the Tools tab lists them. */
+  tools: ToolInfo[] = [];
+  /**
+   * The Tools tab opened the workshop: Add a tool (`edit` null), or Change
+   * with Lumo on a tool. The chat view takes it on its next draw.
+   */
+  forgeAsk: { edit: ToolInfo | null } | null = null;
   /** The Claude Code session the current chat continues, if Claude Code answered it. */
   chatSession: string | null = null;
   pendingApproval: ApprovalInfo | null = null;
@@ -526,11 +551,44 @@ class AppState {
    * A permission card or a question comes up: its pill comes to the front, and
    * the pill that was there is remembered (HookServer.focusBeforeApproval).
    */
+  /**
+   * The chat view shows `slot`: the chat or the tool workshop. Each keeps its
+   * own chat, files and all, while the other is on screen; an answer still
+   * being written goes on in its own chat.
+   */
+  useSlot(slot: "chat" | "forge") {
+    if (slot === this.chatSlot) return;
+    this.parkedChats[this.chatSlot] = {
+      chatId: this.chatId,
+      chatHistory: this.chatHistory,
+      chatSession: this.chatSession,
+      droppedFile: this.droppedFile,
+      moreFiles: this.moreFiles,
+      promptContext: this.promptContext,
+    };
+    this.chatSlot = slot;
+    const back = this.parkedChats[slot];
+    delete this.parkedChats[slot];
+    if (back) {
+      Object.assign(this, back);
+      return;
+    }
+    this.startChat();
+    this.droppedFile = null;
+    this.promptContext = null;
+  }
+
+  /** The workshop's chat, on screen or put aside; null before it was ever opened. */
+  workshopChat(): { chatId: string; chatHistory: ChatMessage[] } | null {
+    if (this.chatSlot === "forge") return { chatId: this.chatId, chatHistory: this.chatHistory };
+    return this.parkedChats.forge ?? null;
+  }
+
   /** A fresh chat: what was said goes, the history keeps the old one. */
   startChat() {
     this.moreFiles = [];
     this.chatHistory = [];
-    this.chatId = newChatId();
+    this.chatId = this.chatSlot === "forge" ? `${WORKSHOP_PREFIX}${newChatId()}` : newChatId();
     this.chatSession = null;
   }
 
@@ -742,11 +800,21 @@ class AppState {
    * The tab last open, Chat or Agents: closing and reopening the island
    * brings it back (island.ts records it as the view changes).
    */
-  lastTab: "chat" | "agents" = "chat";
+  lastTab: "chat" | "agents" | "tools" = "chat";
+  /**
+   * On the Tools tab, whether the workshop was on screen rather than the list:
+   * back to the list, the workshop's chat stays parked, but the island reopens
+   * on the list.
+   */
+  private toolsInWorkshop = false;
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
-    if (view === "prompt" || view === "live") this.lastTab = "chat";
+    if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
+      this.lastTab = "tools";
+      this.toolsInWorkshop = view === "prompt";
+    }
+    else if (view === "prompt" || view === "live") this.lastTab = "chat";
     else if (view === "overview" || view === "empty") this.lastTab = "agents";
   }
 
@@ -758,6 +826,7 @@ class AppState {
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
     if (this.lastTab === "agents") return this.agentsView();
+    if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
   }
 

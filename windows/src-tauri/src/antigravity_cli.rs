@@ -183,6 +183,11 @@ fn with_instructions(text: &str) -> String {
     format!("<lumo_instructions>\n{INSTRUCTIONS}\n</lumo_instructions>\n\n{text}")
 }
 
+/// The same in the tool workshop, with its instructions after Lumo's.
+fn with_workshop_instructions(text: &str) -> String {
+    format!("<lumo_instructions>\n{INSTRUCTIONS}{}\n</lumo_instructions>\n\n{text}", crate::chat::workshop_note!())
+}
+
 /// What goes in on stdin: one `user` event of agy's stream-json input.
 fn user_event(text: &str) -> String {
     let mut line = json!({ "event": "user", "message": { "content": text } }).to_string();
@@ -795,7 +800,11 @@ pub async fn send(
     // a message was edited) are carried over once, as text, with the instructions.
     let carried: Vec<Value> = if conversation.is_none() { turn.history.clone() } else { Vec::new() };
     let text = claude_code::prompt(context.as_ref(), &carried, &chat.files(), &query);
-    let text = if conversation.is_none() { with_instructions(&text) } else { text };
+    let text = match conversation {
+        Some(_) => text,
+        None if chat.is_workshop() => with_workshop_instructions(&text),
+        None => with_instructions(&text),
+    };
     let input = user_event(&text);
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();

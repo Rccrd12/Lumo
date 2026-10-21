@@ -51,6 +51,8 @@ mod settings;
 mod share;
 mod shortcuts;
 mod system_control;
+mod tool_review;
+mod tools;
 mod tray;
 mod typing;
 mod updater;
@@ -1189,6 +1191,18 @@ pub fn run() {
             recap::recap_reveal_saved,
             updater::update_check,
             updater::update_install,
+            tools::tools_list,
+            tools::tools_save,
+            tools::tools_set_enabled,
+            tools::tools_delete,
+            tools::tools_try,
+            tools::tools_files,
+            tools::tools_reveal,
+            tools::tools_set_trust,
+            tools::tools_terminal_has,
+            tools::tools_terminal_set,
+            tool_review::tools_review,
+            tool_review::tools_reviewing,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();

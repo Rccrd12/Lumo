@@ -81,7 +81,10 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
 pub fn claude_card_tool(tool: &str) -> bool {
     // Lumo's tools that only look (a screenshot, a wait) or read email need no card.
     let looking = tool.starts_with("mcp__") && crate::mcp::lumo_tool(tool).is_some_and(crate::mcp::only_reads);
+    // The user's own tools: Lumo asks for each call itself (tools.rs approve).
+    let users = tool.starts_with("mcp__lumo_tools__");
     !looking
+        && !users
         && (matches!(tool, "Bash" | "PowerShell" | "Edit" | "MultiEdit" | "Write" | "NotebookEdit" | "WebFetch")
             || tool.starts_with("mcp__"))
 }
@@ -393,6 +396,7 @@ mod tests {
         assert!(claude_card_tool("mcp__lumo__left_click") && claude_card_tool("mcp__lumo__type") && claude_card_tool("mcp__lumo__key"));
         assert!(!claude_card_tool("mcp__lumo__screenshot") && !claude_card_tool("mcp__lumo__zoom") && !claude_card_tool("mcp__lumo__wait"));
         assert!(claude_card_tool("mcp__lumo2__screenshot"), "another server's screenshot is its own");
+        assert!(!claude_card_tool("mcp__lumo_tools__benchmark"), "Lumo asks for the user's tools itself");
         assert!(!claude_card_tool("Read") && !claude_card_tool("Grep") && !claude_card_tool("AskUserQuestion"));
     }
 
