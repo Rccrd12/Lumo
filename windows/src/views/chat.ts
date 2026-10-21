@@ -47,6 +47,11 @@
 //
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
+//
+// The same view is the tool workshop (views/forge.ts) while State.chatSlot is
+// "forge": a chat of its own (its own past chats, attachments and field, kept
+// while the chat is on screen), a look of its own, and the tool the AI is
+// writing beside the conversation.
 
 import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
@@ -79,6 +84,8 @@ import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_COLOR, LISTEN_STRINGS, listenMessage, listeningLine, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
+import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
+import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -163,6 +170,8 @@ interface BubbleOptions {
   /** The question being edited, and what sending it would drop. */
   editing?: boolean;
   dropped?: boolean;
+  /** A tool workshop's answer: the draft's blocks show as one line naming it. */
+  workshop?: boolean;
 }
 
 /**
@@ -190,7 +199,14 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     );
   }
   const reply = h("div", { class: "reply" });
-  renderMarkdown(reply, message.content);
+  if (opts.workshop) {
+    const shown = stripDraft(message.content);
+    renderMarkdown(reply, shown.text);
+    const draft = shown.draft ? draftIn(message.content) : null;
+    if (draft) reply.append(draftChip(draft.name));
+  } else {
+    renderMarkdown(reply, message.content);
+  }
   // A stopped answer says so on a line of its own, Copy beside it; otherwise
   // Copy floats over the answer's bottom right corner and takes no room.
   const foot = message.stopped
@@ -333,6 +349,23 @@ function typingDots(label: string): HTMLElement {
     h("div", { class: "typing" }, h("i"), h("i"), h("i")),
     h("span", { class: "typing-label", text: label }),
   );
+}
+
+/**
+ * An answer as far as it is written, without Lumo's lines; in the tool
+ * workshop, the tool's blocks give way to a line saying it is being written.
+ */
+function drawAnswer(into: HTMLElement, text: string, workshop: boolean) {
+  const shown = takeListens(takeTimers(text).text).text;
+  if (!workshop) {
+    renderMarkdown(into, shown);
+    return;
+  }
+  const words = stripDraft(shown);
+  renderMarkdown(into, words.text);
+  if (words.writing || words.draft) {
+    into.append(h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) })));
+  }
 }
 
 /** A chip above the chat (the message being edited), with a way to leave it. */
@@ -778,6 +811,7 @@ export function buildPrompt(
   talk: () => void = () => {},
   showPlan: () => void = () => {},
   chatDeleted: (chatId: string) => void = () => {},
+  openTools: () => void = () => {},
 ): ViewHost {
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
@@ -895,7 +929,16 @@ export function buildPrompt(
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
-  body.append(chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, modelRow, bar);
+  // The tool workshop's title row and, beside the conversation, its tool.
+  const forge = buildForgePanel({
+    tell: (text) => {
+      setInput(text);
+      input.focus();
+      input.setSelectionRange(input.value.length, input.value.length);
+    },
+    back: () => openTools(),
+  });
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, modelRow, bar);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -935,8 +978,9 @@ export function buildPrompt(
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
 
-  const el = h("div", { class: "view" }, h("div", { class: "card wash chat-card" }, body));
-  (el.querySelector(".card") as HTMLElement).style.setProperty("--wash", "rgba(99,102,241,0.5)");
+  const cardEl = h("div", { class: "card wash chat-card" }, body, forge.el);
+  const el = h("div", { class: "view" }, cardEl);
+  cardEl.style.setProperty("--wash", "rgba(99,102,241,0.5)");
 
   /** The answers being written, by chat id: the one on screen and any left in the background. */
   const runs = new Map<string, Run>();
@@ -1727,9 +1771,15 @@ export function buildPrompt(
     }
   }
 
+  /** The past chats of what is on screen: the chat's, or the tool workshop's. */
+  function slotChats(): SavedChat[] {
+    const workshop = State.chatSlot === "forge";
+    return loadChats().filter((c) => isWorkshopChat(c.id) === workshop);
+  }
+
   function drawHistory() {
     clear(historyList);
-    const chats = loadChats();
+    const chats = slotChats();
     if (chats.length === 0) {
       historyList.append(h("div", { class: "picker-status", text: t(STRINGS.noPastChats) }));
       return;
@@ -1800,7 +1850,7 @@ export function buildPrompt(
       e.preventDefault();
       // Enter opens the first chat found.
       const query = historySearch.value.trim();
-      const first = query ? searchChats(loadChats(), query)[0]?.chat : loadChats()[0];
+      const first = query ? searchChats(slotChats(), query)[0]?.chat : slotChats()[0];
       if (first) openChat(first);
     }
   });
@@ -1873,6 +1923,112 @@ export function buildPrompt(
         }),
       ),
     );
+  }
+
+  /** The tool workshop's empty chat: a question, and three ways to start. */
+  function forgeWelcome(): HTMLElement {
+    const start = (label: string, run: () => void) =>
+      h("button", { class: "welcome-chip", onclick: run }, h("span", { text: t(label) }));
+    const write = (text: string) => {
+      setInput(t(text));
+      void Bridge.focusWindow(true);
+      window.setTimeout(() => {
+        input.focus();
+        input.setSelectionRange(input.value.length, input.value.length);
+      }, 60);
+    };
+    return h(
+      "div",
+      { class: "chat-welcome forge-welcome" },
+      h("div", { class: "welcome-title", text: t(FORGE_STRINGS.welcome) }),
+      h("div", { class: "forge-welcome-sub", text: t(FORGE_STRINGS.welcomeSub) }),
+      h(
+        "div",
+        { class: "welcome-chips" },
+        start(FORGE_STRINGS.startNew, () => write(FORGE_STRINGS.startNewText)),
+        start(FORGE_STRINGS.startScript, () => {
+          write(FORGE_STRINGS.startScriptText);
+          void attach();
+        }),
+        start(FORGE_STRINGS.startApp, () => write(FORGE_STRINGS.startAppText)),
+      ),
+    );
+  }
+
+  // ── The tool workshop ─────────────────────────────────────────────────────
+
+  /** What the slot left behind waits for it: what the screen button added, the field, by slot. */
+  const parkedUi: Partial<Record<"chat" | "forge", { screen: typeof screen; text: string }>> = {};
+  let shownSlot = State.chatSlot;
+  /** The newest draft of the workshop chat on screen, worked out again when its messages change. */
+  let draftSeen = "";
+  let draft: ToolDraft | null = null;
+
+  /** The other slot came on screen (State.useSlot): its field, its attachments, its chat in Rust. */
+  function slotChanged() {
+    parkedUi[shownSlot] = { screen, text: input.value };
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeFiles();
+    closeScreen();
+    closePermissions();
+    closeUsage();
+    editing = null;
+    const back = parkedUi[State.chatSlot];
+    delete parkedUi[State.chatSlot];
+    screen = back?.screen ?? emptyScreen();
+    setInput(back?.text ?? "");
+    shownSlot = State.chatSlot;
+    // Rust lets a chat go once another is on screen: it gets this one back as it is.
+    if (!runs.has(State.chatId) && State.chatHistory.length > 0) {
+      State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map((m) => ({ role: m.role, content: m.content })), State.chatSession);
+    }
+    const workshop = State.chatSlot === "forge";
+    cardEl.classList.toggle("forge", workshop);
+    cardEl.style.setProperty("--wash", workshop ? "rgba(245,165,36,0.42)" : "rgba(99,102,241,0.5)");
+    renderedCount = -1;
+    // A GitHub event that came while the workshop was on screen goes now.
+    if (!workshop && heard.length) window.setTimeout(() => runHeard(), 0);
+  }
+
+  /**
+   * The Tools tab opened the workshop. Add a tool goes on with the tool being
+   * made, unless it is saved as it is (then a new one starts); Change with
+   * Lumo opens a new workshop chat on that tool.
+   */
+  function takeForgeAsk() {
+    const ask = State.forgeAsk;
+    if (!ask || State.chatSlot !== "forge") return;
+    State.forgeAsk = null;
+    if (ask.edit) {
+      void openOnTool(ask.edit);
+      return;
+    }
+    const current = latestDraft(State.chatHistory);
+    const link = savedLink(State.chatId);
+    if (current && link?.key === draftKey(current) && !answering()) newChat();
+  }
+
+  /**
+   * A new workshop chat on a saved tool: it starts with the tool as it is,
+   * which the AI sees as its own answer, and saving updates that tool.
+   */
+  async function openOnTool(tool: ToolInfo) {
+    const files = (await Bridge.toolsFiles(tool.id)) ?? [];
+    newChat();
+    const seed = draftOf(tool, files.map(([name, content]) => ({ name, content })));
+    const turns: { role: "user" | "assistant"; content: string }[] = [
+      { role: "user", content: t(FORGE_STRINGS.editAsk, { name: tool.name }) },
+      { role: "assistant", content: `${t(FORGE_STRINGS.editHere, { name: tool.name })}\n\n${blocksOf(seed)}` },
+    ];
+    State.chatHistory = turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+    void Bridge.chatRestore(State.chatId, turns, null);
+    const parsed = latestDraft(State.chatHistory);
+    if (parsed) linkSaved(State.chatId, tool.id, draftKey(parsed));
+    saveChat({ id: State.chatId, title: chatTitle(turns), updatedAt: Date.now(), provider: State.settings.chatProvider, session: null, turns });
+    renderedCount = -1;
+    State.notify();
   }
 
   /**
@@ -2004,7 +2160,7 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    renderMarkdown(live, takeListens(takeTimers(text).text).text);
+    drawAnswer(live, text, isWorkshopChat(chat));
   });
 
   /**
@@ -2227,6 +2383,8 @@ export function buildPrompt(
    * deleted; the message says all it needs).
    */
   function runHeard() {
+    // The tool workshop is on screen: the event waits for the chat to come back.
+    if (State.chatSlot !== "chat") return;
     // Its chat answers one message at a time: the event waits for that answer.
     const next = heard[0];
     if (!next || preparing || runs.has(next.watch.chatId)) return;
@@ -2321,6 +2479,18 @@ export function buildPrompt(
   return {
     el,
     sync() {
+      if (State.chatSlot !== shownSlot) slotChanged();
+      takeForgeAsk();
+      const workshop = State.chatSlot === "forge";
+      if (workshop) {
+        const seen = `${State.chatId}\t${State.chatHistory.length}\t${State.chatHistory.at(-1)?.content.length ?? 0}`;
+        if (seen !== draftSeen) {
+          draftSeen = seen;
+          draft = latestDraft(State.chatHistory);
+        }
+        forge.sync(State.chatId, draft);
+      }
+      micBtn.hidden = workshop;
       takeShare();
       if (State.planIcon && planBtn.style.display === "none") {
         // It just landed: a little pop.
@@ -2446,17 +2616,17 @@ export function buildPrompt(
         const kept = log.scrollTop;
         clear(log);
         // A new chat opens on a few ways to start, now that it is home.
-        if (count === 0) log.append(welcome());
+        if (count === 0) log.append(workshop ? forgeWelcome() : welcome());
         // What an edit would drop shows faded.
         const at = editing == null ? -1 : State.chatHistory.findIndex((m) => m.id === editing);
         State.chatHistory.forEach((m, i) => {
-          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at }));
+          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop }));
         });
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          renderMarkdown(live, takeListens(takeTimers(run.text).text).text);
+          drawAnswer(live, run.text, workshop);
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(activityLabel(run.activity)));
         // The chat stays where it was read; one just opened shows its end.
@@ -2476,7 +2646,9 @@ export function buildPrompt(
       antigravityShown = agyShown;
       drawUsage();
 
-      input.placeholder = t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
+      input.placeholder = workshop
+        ? t(FORGE_STRINGS.placeholder)
+        : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
     },
     focus() {
       input.focus();

@@ -4,7 +4,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -432,6 +432,7 @@ export class Island {
     this.compact = new CompactStrip({
       reveal: () => this.reveal(),
       openChat: () => {
+        State.useSlot("chat");
         this.alert("prompt");
         this.takeKeyboard();
       },
@@ -476,6 +477,7 @@ export class Island {
 
     this.activities = new IslandActivities({
       openChat: () => {
+        State.useSlot("chat");
         this.setView("prompt");
         this.takeKeyboard();
       },
@@ -694,6 +696,7 @@ export class Island {
     switch (id) {
       case "newChat":
         // An answer still being written goes on in its own chat.
+        State.useSlot("chat");
         State.startChat();
         State.droppedFile = null;
         State.promptContext = null;
@@ -2071,8 +2074,9 @@ export class Island {
     return clientY - this.islandRect().y < TOP_BAR_H;
   }
 
-  /** What the chat's height follows: its messages, or the most room while a list is open. */
+  /** What the chat's height follows: its messages, or the most room while a list (or the tool workshop) is open. */
   private get chatCount(): number {
+    if (State.chatSlot === "forge") return CHAT_FORGE;
     return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
   }
 }

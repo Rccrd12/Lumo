@@ -267,7 +267,7 @@ pub async fn send(
     }
     let turn = chat.begin(server.id);
     let user = json!({ "role": "user", "content": user_text(turn.first, context.as_ref(), &query) });
-    let body = request_body(model, &chat::system_prompt(false), &turn.history, &user);
+    let body = request_body(model, &chat::system_prompt_in(chat, false), &turn.history, &user);
 
     // What the island shows so far: kept if Stop is pressed mid-answer.
     let mut shown = String::new();

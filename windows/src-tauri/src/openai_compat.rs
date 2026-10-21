@@ -196,7 +196,7 @@ pub async fn send(
     }
     let turn = chat.begin(p.id);
     let user = with_images(user_message(turn.first, context.as_ref(), &query), images);
-    let body = request_body(p, model, &chat::system_prompt(false), &turn.history, &user);
+    let body = request_body(p, model, &chat::system_prompt_in(chat, false), &turn.history, &user);
 
     let endpoint = url(p, "chat/completions")?;
     let request = async {

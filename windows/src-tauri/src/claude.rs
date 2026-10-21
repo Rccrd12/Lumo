@@ -159,7 +159,7 @@ pub async fn send(
     let mut content = image_blocks(images);
     content.extend(user_content(turn.first, context.as_ref(), &query));
     let user = json!({ "role": "user", "content": content });
-    let body = request_body(model, &chat::system_prompt(true), &turn.history, &user);
+    let body = request_body(model, &chat::system_prompt_in(chat, true), &turn.history, &user);
 
     // Not streamed: Stop drops the request, and nothing was written yet.
     let Some(response) = chat.unless_stopped(call(&endpoint, &key, &body, usage)).await else {

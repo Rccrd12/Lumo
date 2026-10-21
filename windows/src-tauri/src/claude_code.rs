@@ -79,27 +79,65 @@ Lumo shows the user your plan on its Plan island. So whenever the user gives you
 /// Lumo's computer use tools that only look: Claude Code runs them without asking.
 const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait";
 
+/// The MCP server of the user's own tools (the Tools tab, tools.rs): its
+/// tools are `mcp__lumo_tools__<id>`, each call a card in the island.
+const TOOLS_SERVER: &str = "lumo_tools";
+
+/// Added in the tool workshop: Claude Code can try what it writes.
+const WORKSHOP_TRY: &str = " In the workshop you may try the script before you give it: write it in a folder named tool-workshop inside your working directory and run it, asking for permissions as usual, then fix what fails. Plan the work first, as said above.";
+
 /// The `--mcp-config` of a chat that may use the computer: `lumo-hook --mcp`
 /// (its tools are `mcp__lumo__…`), marked as the island's own run.
+#[cfg(test)]
 fn computer_config() -> Value {
-    let mut server = crate::computer::server_entry();
-    server["type"] = json!("stdio");
-    json!({ "mcpServers": { "lumo": server } })
+    mcp_config(true, false)
+}
+
+/// Lumo's MCP servers for a chat turn: computer use, and the user's tools
+/// while one of them is on.
+fn mcp_config(computer: bool, tools: bool) -> Value {
+    let mut servers = serde_json::Map::new();
+    if computer {
+        let mut server = crate::computer::server_entry();
+        server["type"] = json!("stdio");
+        servers.insert("lumo".into(), server);
+    }
+    if tools {
+        let mut server = crate::computer::server_entry();
+        server["type"] = json!("stdio");
+        server["args"] = json!(["--mcp", "--tools=user"]);
+        servers.insert(TOOLS_SERVER.into(), server);
+    }
+    json!({ "mcpServers": servers })
 }
 
 /// `args`, plus Lumo's computer use: the MCP server and its looking tools
 /// allowed. Left out when the file can't be written where Claude Code can be
 /// pointed at it.
-fn with_computer(mut args: Vec<String>) -> Vec<String> {
-    let path = crate::platform::local_dir().join("chat-computer.json");
-    let text = computer_config().to_string();
+#[cfg(test)]
+fn with_computer(args: Vec<String>) -> Vec<String> {
+    with_mcp(args, true, false)
+}
+
+/// `args`, plus Lumo's MCP servers: computer use (its looking tools allowed)
+/// and the user's tools. Left out when the file can't be written where Claude
+/// Code can be pointed at it.
+fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool) -> Vec<String> {
+    if !computer && !tools {
+        return args;
+    }
+    let name = if computer { "chat-computer.json" } else { "chat-tools.json" };
+    let path = crate::platform::local_dir().join(name);
+    let text = mcp_config(computer, tools).to_string();
     let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
         args.push("--mcp-config".into());
         args.push(path);
-        args.push("--allowedTools".into());
-        args.push(COMPUTER_LOOKING.into());
+        if computer {
+            args.push("--allowedTools".into());
+            args.push(COMPUTER_LOOKING.into());
+        }
     }
     args
 }
@@ -863,10 +901,14 @@ pub async fn send(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     // Computer use: the chat's own instructions, Lumo's MCP server, and the
     // computer only usable while this turn runs.
-    let append = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
-    let mut args = with_cards(args_with(append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
+    let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
+    // The tool workshop: what a tool is and how to hand one over, too.
+    let append = if chat.is_workshop() { format!("{base}{}{WORKSHOP_TRY}", crate::chat::workshop_note!()) } else { base.to_string() };
+    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
+    // The user's tools that are on, for Claude to use (each call asks on the island).
+    let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
+    args = with_mcp(args, computer, tools);
     if computer {
-        args = with_computer(args);
         crate::computer::begin_turn();
     }
 
@@ -974,10 +1016,9 @@ pub(crate) fn help(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
-    let mut args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
-    if computer {
-        args = with_computer(args);
-    }
+    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
+    // The user's own tools too, while one is on.
+    let args = with_mcp(args, computer, crate::tools::any_enabled());
     let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity, |_, _| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
@@ -1019,6 +1060,22 @@ mod tests {
     fn gemini_lives_screen_work_goes_on_the_command_line_as_haiku_at_medium() {
         assert_eq!(safe_model(crate::live::COMPUTER_MODEL), Some("claude-haiku-5-5"));
         assert_eq!(safe_effort(crate::live::COMPUTER_EFFORT), Some("medium"));
+    }
+
+    #[test]
+    fn the_users_tools_come_as_a_server_of_their_own_with_no_tool_allowed_ahead() {
+        let config = mcp_config(false, true);
+        let server = &config["mcpServers"][TOOLS_SERVER];
+        assert_eq!(server["args"], json!(["--mcp", "--tools=user"]));
+        assert!(config["mcpServers"].get("lumo").is_none());
+        let both = mcp_config(true, true);
+        assert!(both["mcpServers"].get("lumo").is_some() && both["mcpServers"].get(TOOLS_SERVER).is_some());
+        let a = with_mcp(vec!["-p".into()], false, true);
+        assert!(!a.iter().any(|s| s == "--allowedTools"), "each call of a tool is a card");
+        assert_eq!(with_mcp(vec!["-p".into()], false, false), ["-p"]);
+        let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
+        assert!(!workshop.contains(['%', '"', '&', '|', '<', '>', '^', '`']), "plain words on the command line");
+        assert!(workshop.contains("lumo-tool") && workshop.contains("lumo-file"));
     }
 
     #[test]

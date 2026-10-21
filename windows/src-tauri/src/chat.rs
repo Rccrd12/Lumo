@@ -149,6 +149,12 @@ impl Chat {
         Chat { id: id.to_string(), ..Default::default() }
     }
 
+    /// A chat of the tool workshop (the Tools tab's Add a tool, src/views/forge.ts):
+    /// its id says so, and its answers get the workshop's instructions too.
+    pub fn is_workshop(&self) -> bool {
+        is_workshop(&self.id)
+    }
+
     /// Where this chat's answer tells the island how it is going.
     pub fn events(&self) -> ChatEvents {
         ChatEvents { chat: self.id.clone() }
@@ -440,6 +446,31 @@ macro_rules! math_note {
     };
 }
 pub(crate) use math_note;
+
+/// The tool workshop's chats: their ids start so (src/core/tools.ts WORKSHOP_PREFIX).
+pub fn is_workshop(chat_id: &str) -> bool {
+    chat_id.starts_with("forge-")
+}
+
+/// What the tool workshop adds to every provider's instructions: what a tool
+/// is, and how to hand one over (src/core/tools.ts parseDraft reads it). Plain
+/// words only: it also goes on Claude Code's command line.
+macro_rules! workshop_note {
+    () => {
+        " This chat is Lumo's tool workshop. Here you help the user make a tool, or bring in a script or program they already have, so that Lumo and its agents can use it. A tool is a small program that does one job, a description that tells an AI when to use it, and its parameters. The user may not read code: talk about what the tool does in plain words, ask at most one or two short questions when something important is unclear, and never ask them to edit code. On Windows prefer Python or PowerShell, with no extra packages unless they are needed, and say which ones. The script gets its parameters as a JSON object on standard input and in the LUMO_TOOL_INPUT environment variable, and prints its result as text on standard output; for a script that already exists and takes command line arguments, map the parameters with args instead, writing {name} for the value of a parameter. Each time the tool is ready or changes, end your answer with the whole tool: first a fenced code block whose language is lumo-tool, holding JSON with name, description, entry, params, permissions, and optionally args and timeout in seconds; then, after a blank line, for each file of the tool, a fenced code block whose language is lumo-file followed by a space and the file name, holding the whole file. params is a list of objects with name, type as string, number, integer or boolean, description and required. permissions lists what the tool needs, from network, read, write and system. entry is the file that runs: one of the files, or the full path of a script the user already has on their computer, which then runs where it is and needs no lumo-file block. Write the description for an AI: what the tool does, when to use it and what it returns. Lumo shows the draft to the user, who can try it and save it with a click: never save, install or register the tool yourself, and never say it is saved. Keep the words around the blocks short: what the tool does, what it needs and how to use it. When the user tells you how a try went, fix the tool and give it again whole."
+    };
+}
+pub(crate) use workshop_note;
+
+/// The system prompt for `chat`: Mochi's, and the workshop's for a workshop chat.
+pub fn system_prompt_in(chat: &Chat, web_search: bool) -> String {
+    let base = system_prompt(web_search);
+    if chat.is_workshop() {
+        format!("{base}{}", workshop_note!())
+    } else {
+        base
+    }
+}
 
 /// Mochi's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the

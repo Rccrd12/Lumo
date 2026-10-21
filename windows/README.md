@@ -768,6 +768,42 @@ The microphone is only asked for when a call starts. On Windows, the
 microphone must be allowed for desktop apps in **Settings → Privacy &
 security → Microphone**.
 
+## Your tools
+
+The wrench tab, between the agents and the "+", holds **your own tools**:
+small programs Lumo's agents can use for you, a benchmark of your PC, a report
+from one of your apps, anything you have a script for. Each has its switch (a
+new one is on); a click on one shows what it does, its parameters and what it
+needs, with **Change with Lumo**, its folder and **Delete** (a second click
+confirms it).
+
+**Add a tool**, at the bottom, opens the **tool workshop**: the chat, with its
+attachments, usage ring, Plan island, model picker, paperclip, screen button
+and permissions, in a look of its own and with past chats of its own. Tell
+Lumo what the tool should do, or give it a script you already have (the
+paperclip, or the folder open in File Explorer): the AI writes the tool and
+it shows beside the conversation, with its description, its parameters, what
+it needs (the internet, reading or changing files, the system) and its files.
+**Try** runs it once on your PC, with the values you type above it, and
+**Tell Lumo** puts how it went in the field; **Save tool** keeps it, on.
+Nothing runs or is saved without that click. Opened from **Change with Lumo**,
+the workshop starts on the tool as it is, and saving updates it.
+
+A tool is a folder in `%APPDATA%\com.rccrd12.lumo\tools`: its script (Python,
+PowerShell, Node.js, a `.bat`, `.cmd` or `.exe`) and `tool.json`, which says
+its name, the description an AI reads to know when to use it, its parameters,
+what it needs and whether it is on. A script you already had can stay where
+it is. A script gets its parameters as JSON on stdin and in
+`LUMO_TOOL_INPUT` (or on its command line, when `tool.json` gives `args`),
+and what it prints is its answer. A run stops after two minutes (or the
+`timeout` it gives).
+
+The tools that are on go to Claude Code in the island's chat and when Gemini
+Live hands it a task, through Lumo's MCP server (`lumo-hook --mcp
+--tools=user`): Claude Code asks you on the island before each use, as for
+any MCP tool, and the closed island says when one ran. What a tool says it
+needs is shown to you, not enforced yet.
+
 ## GitHub
 
 With a token in **Settings… → Pills & integrations → GitHub** — a classic token with

@@ -4673,3 +4673,840 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   background: #ff6672;
   color: #fff;
 }
+
+/* ── Tools tab (views/tools.ts) ─────────────────────────────────────────── */
+
+.tab-tools.on {
+  color: #ffd27a;
+}
+
+.tools-body {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px 14px 84px;
+}
+
+.tools-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 2px;
+}
+
+.tools-title {
+  font: 600 14px var(--font);
+  color: var(--ink);
+}
+
+.tools-count {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.tools-head-space {
+  flex: 1 1 auto;
+}
+
+.tools-head .tool-btn {
+  align-self: center;
+}
+
+.tools-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.tool-row {
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.tool-row:hover,
+.tool-row.open {
+  background: rgba(255, 255, 255, 0.06);
+  border-color: rgba(255, 255, 255, 0.07);
+}
+
+.tool-row-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px 7px 8px;
+  outline: none;
+}
+
+.tool-tile {
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 9px;
+  color: #fff;
+  background: linear-gradient(145deg, var(--tile, #f5a524), color-mix(in srgb, var(--tile, #f5a524) 45%, #000));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.25), 0 2px 8px color-mix(in srgb, var(--tile, #f5a524) 30%, transparent);
+  transition: filter 0.2s ease-out;
+}
+
+.tool-row.off .tool-tile {
+  filter: grayscale(1) brightness(0.6);
+}
+
+.tool-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.tool-name {
+  font: 600 12.5px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-row.off .tool-name {
+  color: var(--dim);
+}
+
+.tool-desc {
+  font: 400 11px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tool-desc.missing {
+  color: var(--red-text);
+}
+
+.tool-needs {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--dim-3);
+}
+
+.tool-needs.words {
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.need-dot {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.need-chip,
+.param-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 10.5px var(--font);
+  color: #c9cdd4;
+}
+
+.need-chip.need-network {
+  color: #7dd3fc;
+}
+
+.need-chip.need-write,
+.need-chip.need-system {
+  color: #fcd34d;
+}
+
+.param-chip i {
+  font: 400 10px var(--mono);
+  font-style: normal;
+  color: var(--dim-3);
+}
+
+.param-chip.required span::after {
+  content: "*";
+  color: #f5a524;
+  margin-left: 1px;
+}
+
+.need-none {
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.tool-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  padding: 0 12px 10px 46px;
+}
+
+.tool-detail-text {
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  white-space: pre-wrap;
+  user-select: text;
+}
+
+.tool-detail-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.tool-params,
+.forge-params {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.tool-detail-label {
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--dim-3);
+}
+
+.tool-detail-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+}
+
+.tool-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.tool-action {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 0;
+  border-radius: 999px;
+  padding: 4px 10px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c9cdd4;
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.tool-action:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: var(--ink);
+}
+
+.tool-action.primary {
+  background: rgba(245, 165, 36, 0.16);
+  color: #ffd27a;
+}
+
+.tool-action.primary:hover {
+  background: rgba(245, 165, 36, 0.26);
+}
+
+.tool-action.danger:hover,
+.tool-action.danger.confirm {
+  background: rgba(244, 80, 94, 0.18);
+  color: var(--red-text);
+}
+
+.tools-empty {
+  margin: auto 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 4px 2px;
+}
+
+.tools-empty-art {
+  margin-bottom: 2px;
+}
+
+.tools-empty-title {
+  font: 600 13px var(--font);
+  color: var(--ink);
+}
+
+.tools-empty-text {
+  font: 400 11.5px var(--font);
+  color: var(--dim);
+  max-width: 420px;
+}
+
+/* Add a tool: the whole width, at the bottom. */
+.tools-add {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 12px 8px 9px;
+  border-radius: 12px;
+  border: 1px dashed rgba(245, 165, 36, 0.45);
+  background: linear-gradient(90deg, rgba(245, 165, 36, 0.1), rgba(244, 114, 182, 0.06));
+  color: var(--dim);
+  text-align: left;
+  cursor: default;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out, transform 0.08s ease-out;
+}
+
+.tools-add:hover {
+  border-color: rgba(245, 165, 36, 0.8);
+  background: linear-gradient(90deg, rgba(245, 165, 36, 0.18), rgba(244, 114, 182, 0.1));
+  color: var(--ink);
+}
+
+.tools-add:active {
+  transform: scale(0.985);
+}
+
+.tools-add-plus {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #1a1206;
+  background: linear-gradient(135deg, #ffd27a, #f5a524 60%, #f472b6);
+  box-shadow: 0 2px 10px rgba(245, 165, 36, 0.35);
+}
+
+.tools-add-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.tools-add-title {
+  font: 600 12.5px var(--font);
+  color: var(--ink);
+}
+
+.tools-add-hint {
+  font: 400 10.5px var(--font);
+  color: var(--dim-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ── Tool workshop (the chat as views/forge.ts) ─────────────────────────── */
+
+.forge-head,
+.forge-panel {
+  display: none;
+}
+
+.chat-card.forge {
+  background:
+    radial-gradient(circle at 1px 1px, rgba(255, 255, 255, 0.045) 1px, transparent 1.4px) 0 0 / 14px 14px,
+    linear-gradient(160deg, #17140f 0%, #131417 45%, #121318 100%);
+  border-color: rgba(245, 165, 36, 0.14);
+  box-shadow: inset 0 1px 0 rgba(255, 210, 122, 0.08);
+}
+
+.chat-card.forge .chat-body {
+  padding-right: 256px;
+}
+
+.chat-card.forge .forge-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 20px;
+  padding: 0 2px;
+}
+
+.forge-head-mark {
+  width: 18px;
+  height: 18px;
+  border-radius: 6px;
+  display: grid;
+  place-items: center;
+  color: #1a1206;
+  background: linear-gradient(135deg, #ffd27a, #f5a524 60%, #f472b6);
+}
+
+.forge-head-title {
+  flex: none;
+  white-space: nowrap;
+  font: 600 12.5px var(--font);
+  color: var(--ink);
+}
+
+.forge-head-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  font: 400 12px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 9px 3px 7px;
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--dim-2);
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.forge-back:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.chat-card.forge .chat-row.user .bubble {
+  background: linear-gradient(135deg, rgba(245, 165, 36, 0.24), rgba(244, 114, 182, 0.16));
+}
+
+.chat-card.forge .chat-bar {
+  background: rgba(255, 255, 255, 0.055);
+  border: 1px solid rgba(245, 165, 36, 0.16);
+  border-radius: 14px;
+  transition: border-color 0.2s ease-out, box-shadow 0.2s ease-out;
+}
+
+.chat-card.forge .chat-bar:focus-within {
+  border-color: rgba(245, 165, 36, 0.45);
+  box-shadow: 0 0 0 3px rgba(245, 165, 36, 0.08);
+}
+
+.chat-card.forge .send-btn {
+  background: linear-gradient(135deg, #ffd27a, #f5a524);
+}
+
+.forge-welcome-sub {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  margin-top: -4px;
+}
+
+/* The draft, named in the answer that hands it over. */
+.forge-chip {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px 10px 3px 4px;
+  border-radius: 999px;
+  background: rgba(245, 165, 36, 0.1);
+  border: 1px solid rgba(245, 165, 36, 0.22);
+  font: 500 11px var(--font);
+  color: #ffd27a;
+}
+
+.forge-chip-mark {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  color: #1a1206;
+  background: #f5a524;
+}
+
+/* While the blocks are written: a line that glows along. */
+.forge-writing {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 500 11px var(--font);
+  color: #ffd27a;
+}
+
+.forge-writing i {
+  width: 36px;
+  height: 3px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #f5a524, transparent) 0 0 / 200% 100%, rgba(245, 165, 36, 0.15);
+  animation: forge-glow 1.2s linear infinite;
+}
+
+@keyframes forge-glow {
+  from {
+    background-position: 100% 0, 0 0;
+  }
+  to {
+    background-position: -100% 0, 0 0;
+  }
+}
+
+/* The tool as it stands, beside the conversation. */
+.chat-card.forge .forge-panel {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  width: 236px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 12px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.forge-tool {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.forge-tool-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 3px;
+}
+
+.forge-tool-name {
+  max-width: 100%;
+  font: 600 13px var(--font);
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-status {
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  padding: 1px 7px;
+  border-radius: 999px;
+  border: 1px solid currentColor;
+}
+
+.forge-status.draft {
+  color: #f5a524;
+}
+
+.forge-status.saved {
+  color: var(--green-2);
+}
+
+.forge-status.changed {
+  color: var(--cyan);
+}
+
+.forge-desc {
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  user-select: text;
+}
+
+.forge-section {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.forge-section-title {
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--dim-3);
+}
+
+.forge-files {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.forge-file {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  border: 0;
+  border-radius: 8px;
+  padding: 4px 7px;
+  background: rgba(0, 0, 0, 0.25);
+  color: #c9cdd4;
+  font: 400 11px var(--mono);
+  text-align: left;
+  cursor: default;
+}
+
+.forge-file:hover,
+.forge-file.open {
+  background: rgba(0, 0, 0, 0.4);
+  color: var(--ink);
+}
+
+.forge-file-name {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-file-badge {
+  font: 600 9px var(--font);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #1a1206;
+  background: #f5a524;
+  border-radius: 4px;
+  padding: 0 4px;
+}
+
+.forge-file-size {
+  font: 400 10px var(--font);
+  color: var(--dim-3);
+}
+
+.forge-code,
+.forge-output {
+  margin: 0;
+  max-height: 140px;
+  overflow: auto;
+  padding: 7px 8px;
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.45);
+  font: 400 10.5px/1.45 var(--mono);
+  color: #d6d9de;
+  white-space: pre;
+  user-select: text;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.forge-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.forge-try {
+  display: flex;
+  flex-direction: column;
+  gap: 7px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.forge-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.forge-field {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forge-field-name {
+  flex: 0 0 72px;
+  font: 500 10.5px var(--mono);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.forge-field.required .forge-field-name::after {
+  content: "*";
+  color: #f5a524;
+}
+
+.forge-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, 0.3);
+  color: var(--ink);
+  font: 400 11px var(--font);
+  padding: 4px 7px;
+  outline: none;
+  cursor: text;
+  user-select: text;
+}
+
+.forge-input:focus {
+  border-color: rgba(245, 165, 36, 0.5);
+}
+
+.forge-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.forge-btn {
+  flex: 1 1 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 0;
+  border-radius: 999px;
+  padding: 7px 10px;
+  background: rgba(255, 255, 255, 0.09);
+  color: var(--ink-2);
+  font: 600 11.5px var(--font);
+  cursor: default;
+  transition: transform 0.08s ease-out, background 0.12s ease-out, filter 0.12s ease-out;
+}
+
+.forge-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.forge-btn:active:not(:disabled) {
+  transform: scale(0.95);
+}
+
+.forge-btn.primary {
+  background: linear-gradient(135deg, #ffd27a, #f5a524 70%);
+  color: #1a1206;
+  box-shadow: 0 2px 12px rgba(245, 165, 36, 0.25);
+}
+
+.forge-btn.primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.forge-btn.primary.done {
+  background: rgba(52, 211, 153, 0.15);
+  color: var(--green-2);
+  box-shadow: none;
+}
+
+.forge-btn:disabled {
+  opacity: 0.75;
+}
+
+.forge-ready {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 500 10.5px var(--font);
+  color: var(--green-2);
+}
+
+.forge-error {
+  font: 400 10.5px var(--font);
+  color: var(--red-text);
+}
+
+.forge-result {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.forge-result-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11px var(--font);
+}
+
+.forge-result.ok .forge-result-head {
+  color: var(--green-2);
+}
+
+.forge-result.fail .forge-result-head {
+  color: var(--red-text);
+}
+
+.forge-result-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: currentColor;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.forge-link {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  border-radius: 999px;
+  padding: 2px 8px;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink-2);
+  font: 500 10.5px var(--font);
+  cursor: default;
+}
+
+.forge-link:hover {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+.forge-empty {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.forge-step {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  font: 400 11.5px var(--font);
+  color: #c5c8cd;
+}
+
+.forge-step-n {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font: 700 10px var(--font);
+  color: #1a1206;
+  background: linear-gradient(135deg, #ffd27a, #f5a524);
+}

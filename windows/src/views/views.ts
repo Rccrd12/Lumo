@@ -24,6 +24,7 @@ import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
+import { TOOLS_STRINGS, buildTools } from "./tools";
 import { Live } from "../live/session";
 import type { LumoLook, Outfit, OutfitSelection } from "../mochi/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
@@ -134,10 +135,21 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
 export function buildHeader(actions: ViewActions): ViewHost {
   // The chat is home; the coding agents and pills have their own tab, with a
   // dot while a session works (or waits on you).
-  const tabChat = h("button", { class: "tab", title: tl("Chat"), onclick: () => go("prompt") }, svg(ICONS.bubble, 13));
+  // The chat view shows the chat again, not the tool workshop.
+  const tabChat = h("button", {
+    class: "tab", title: tl("Chat"),
+    onclick: () => {
+      State.useSlot("chat");
+      go("prompt");
+    },
+  }, svg(ICONS.bubble, 13));
   const agentsBadge = h("i", { class: "tab-badge" });
   const tabAgents = h("button", { class: "tab", title: tl("Agents"), onclick: () => go(State.agentsView()) },
     svg(ICONS.code, 13, { stroke: 2 }), agentsBadge);
+  // The user's own tools (views/tools.ts), between the agents and the "+";
+  // lit in the tool workshop too, which is theirs.
+  const tabTools = h("button", { class: "tab tab-tools", title: tl(TOOLS_STRINGS.tab), onclick: () => go("tools") },
+    svg(ICONS.wrench, 12, { stroke: 1.9 }));
   const tabDrop = h("button", { class: "tab tab-drop", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
   // The live activities, folded (island/activities.ts): left of the "+".
   const tabActivities = h("button", {
@@ -173,7 +185,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabChat, tabAgents, tabActivities, tabDrop),
+    h("div", { class: "tabs" }, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
@@ -182,7 +194,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
     el,
     sync() {
       const v = State.view;
-      tabChat.classList.toggle("on", v === "prompt");
+      const forge = v === "prompt" && State.chatSlot === "forge";
+      tabChat.classList.toggle("on", v === "prompt" && !forge);
+      tabTools.classList.toggle("on", v === "tools" || forge);
       tabAgents.classList.toggle("on", v === "overview" || v === "empty");
       const activity = State.agentsActivity;
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
@@ -801,11 +815,15 @@ export function buildViews(
   }, () => {
     actions.blip();
     actions.showPlan();
-  }, (chatId) => actions.forgetChatPlan(chatId)));
+  }, (chatId) => actions.forgetChatPlan(chatId), () => {
+    actions.blip();
+    actions.setView("tools");
+  }));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("recap", buildRecap(actions));
   map.set("wardrobe", buildWardrobe(actions));
   map.set("live", buildLive(() => openVoiceSettings(actions.setView)));
+  map.set("tools", buildTools(actions));
   return map;
 }
