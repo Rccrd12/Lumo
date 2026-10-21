@@ -795,10 +795,19 @@ class AppState {
    * brings it back (island.ts records it as the view changes).
    */
   lastTab: "chat" | "agents" | "tools" = "chat";
+  /**
+   * On the Tools tab, whether the workshop was on screen rather than the list:
+   * back to the list, the workshop's chat stays parked, but the island reopens
+   * on the list.
+   */
+  private toolsInWorkshop = false;
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
-    if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) this.lastTab = "tools";
+    if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
+      this.lastTab = "tools";
+      this.toolsInWorkshop = view === "prompt";
+    }
     else if (view === "prompt" || view === "live") this.lastTab = "chat";
     else if (view === "overview" || view === "empty") this.lastTab = "agents";
   }
@@ -811,7 +820,7 @@ class AppState {
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
     if (this.lastTab === "agents") return this.agentsView();
-    if (this.lastTab === "tools") return this.chatSlot === "forge" ? "prompt" : "tools";
+    if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
   }
 

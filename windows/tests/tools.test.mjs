@@ -137,6 +137,10 @@ test("the chat and the tool workshop keep their own chats, files and all", () =>
   State.noteTab("prompt");
   assert.equal(State.lastTab, "tools");
   assert.equal(State.defaultView(), "prompt");
+  // Back from the workshop to the list: the island reopens on the list.
+  State.noteTab("tools");
+  assert.equal(State.chatSlot, "forge", "the workshop's chat stays put aside");
+  assert.equal(State.defaultView(), "tools");
   State.useSlot("chat");
   State.noteTab("prompt");
   assert.equal(State.lastTab, "chat");
