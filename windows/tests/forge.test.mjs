@@ -84,7 +84,13 @@ test("the Tools tab lists the tools with their switch, and Add a tool opens the 
   chat.sync();
   assert.ok(chat.el.querySelector(".chat-card").classList.contains("forge"));
   assert.ok(isWorkshopChat(State.chatId));
-  assert.ok(chat.el.querySelector(".forge-empty"), "how it works, until there is a draft");
+  const card = chat.el.querySelector(".chat-card");
+  assert.ok(card.classList.contains("guiding"), "how it works over the workshop at first");
+  assert.ok(!card.classList.contains("forge-draft"), "no tool beside the conversation yet");
+  chat.el.querySelector(".forge-guide-hide").fire("click");
+  assert.ok(!card.classList.contains("guiding"), "the dash puts it away");
+  chat.el.querySelector(".forge-help").fire("click");
+  assert.ok(card.classList.contains("guiding"), "the ? brings it back");
 });
 
 test("Delete asks a second click", async () => {

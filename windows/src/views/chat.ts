@@ -978,7 +978,7 @@ export function buildPrompt(
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
 
-  const cardEl = h("div", { class: "card wash chat-card" }, body, forge.el);
+  const cardEl = h("div", { class: "card wash chat-card" }, body, forge.el, forge.guide, forge.help);
   const el = h("div", { class: "view" }, cardEl);
   cardEl.style.setProperty("--wash", "rgba(99,102,241,0.5)");
 

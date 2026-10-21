@@ -9986,6 +9986,18 @@
    "ru": "Имя папки Lumo не подходит для командной строки Claude Code.",
    "id": "Nama folder Lumo tidak bisa dipakai di baris perintah Claude Code.",
    "it": "La cartella di Lumo ha un nome che la riga di comando di Claude Code non accetta."
+  },
+  "Hide how it works": {
+   "zh-Hans": "收起使用方法",
+   "hi": "यह कैसे काम करता है, छिपाएँ",
+   "es": "Ocultar cómo funciona",
+   "ar": "إخفاء طريقة العمل",
+   "fr": "Masquer le fonctionnement",
+   "bn": "কীভাবে কাজ করে, লুকান",
+   "pt-BR": "Ocultar como funciona",
+   "ru": "Скрыть, как это работает",
+   "id": "Sembunyikan cara kerja",
+   "it": "Nascondi come funziona"
   }
  }
 }

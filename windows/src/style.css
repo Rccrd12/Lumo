@@ -5020,7 +5020,9 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 /* ── Tool workshop (the chat as views/forge.ts) ─────────────────────────── */
 
 .forge-head,
-.forge-panel {
+.forge-panel,
+.forge-guide,
+.forge-help {
   display: none;
 }
 
@@ -5032,8 +5034,19 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   box-shadow: inset 0 1px 0 rgba(255, 210, 122, 0.08);
 }
 
-.chat-card.forge .chat-body {
-  padding-right: 256px;
+/* The tool beside the conversation: a share of the island, so a narrow one
+   keeps room for the field. */
+.chat-card.forge {
+  --forge-panel: clamp(196px, 34%, 260px);
+}
+
+.chat-card.forge.forge-draft .chat-body {
+  padding-right: calc(var(--forge-panel) + 20px);
+}
+
+/* No tool yet: the "?" has the top right corner. */
+.chat-card.forge:not(.forge-draft) .forge-head {
+  margin-right: 30px;
 }
 
 .chat-card.forge .forge-head {
@@ -5166,13 +5179,13 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 }
 
 /* The tool as it stands, beside the conversation. */
-.chat-card.forge .forge-panel {
+.chat-card.forge.forge-draft .forge-panel {
   position: absolute;
   z-index: 2;
   top: 10px;
   right: 10px;
   bottom: 10px;
-  width: 236px;
+  width: var(--forge-panel);
   display: flex;
   flex-direction: column;
   gap: 10px;
@@ -5189,6 +5202,8 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   display: flex;
   align-items: center;
   gap: 10px;
+  /* The "?" sits in the panel's corner. */
+  padding-right: 22px;
 }
 
 .forge-tool-text {
@@ -5485,10 +5500,107 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   background: rgba(255, 255, 255, 0.15);
 }
 
-.forge-empty {
+/* How it works, over the whole workshop: the field, the usage and the rest
+   hidden under it until its dash puts it away. */
+.chat-card.forge.guiding .chat-body,
+.chat-card.forge.guiding .forge-panel {
+  visibility: hidden;
+}
+
+.chat-card.forge.guiding .forge-guide {
+  position: absolute;
+  z-index: 3;
+  top: 10px;
+  right: 10px;
+  bottom: 10px;
+  left: 78px;
   display: flex;
   flex-direction: column;
-  gap: 9px;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: 16px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(255, 255, 255, 0.025));
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+  animation: forge-guide-in 0.18s ease-out;
+}
+
+@keyframes forge-guide-in {
+  from {
+    opacity: 0;
+    transform: translateY(-4px);
+  }
+}
+
+.forge-guide-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.forge-guide-title {
+  flex: 1 1 auto;
+  font: 600 14px var(--font);
+  color: var(--ink);
+}
+
+.forge-guide-hide,
+.forge-help {
+  flex: none;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  color: #c9cdd4;
+  cursor: default;
+  transition: background 0.12s, color 0.12s;
+}
+
+.forge-guide-hide {
+  display: grid;
+}
+
+.forge-guide-hide:hover,
+.forge-help:hover {
+  background: rgba(245, 165, 36, 0.22);
+  color: #ffd27a;
+}
+
+.forge-steps {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 8px;
+}
+
+.forge-steps .forge-step {
+  padding: 10px 11px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.forge-step-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+/* How it works put away: its "?" at the top right of the workshop. */
+.chat-card.forge:not(.guiding) .forge-help {
+  position: absolute;
+  z-index: 4;
+  top: 10px;
+  right: 12px;
+  display: grid;
+  font: 700 12px var(--font);
+}
+
+.chat-card.forge.forge-draft:not(.guiding) .forge-help {
+  top: 18px;
+  right: 18px;
 }
 
 .forge-step {

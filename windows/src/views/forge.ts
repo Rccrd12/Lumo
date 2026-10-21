@@ -2,8 +2,10 @@
 // by the Tools tab's Add a tool or Change with Lumo. Everything of the chat
 // is there (the attachments, the usage, the Plan island, the model picker,
 // the paperclip, the screen button, the permissions), with a look of its own
-// and, beside the conversation, the tool as it stands: what it does, its
-// parameters, what it needs, its files, Try and Save.
+// and, beside the conversation once the AI wrote one, the tool as it stands:
+// what it does, its parameters, what it needs, its files, Try and Save.
+// How it works covers the workshop at first; its dash puts it away into a
+// "?" at the top right, which brings it back.
 //
 // The AI hands the tool over in its answers (core/tools.ts parseDraft). Try
 // runs the draft once on the user's click, with the values typed above it,
@@ -30,6 +32,8 @@ export const FORGE_STRINGS = {
   newTool: N_("New tool"),
   back: N_("Back to your tools"),
   how: N_("How it works"),
+  hideHow: N_("Hide how it works"),
+  showHow: N_("How it works"),
   step1: N_("Tell Lumo what the tool should do, or give it your script"),
   step2: N_("Lumo writes it and shows it here"),
   step3: N_("Try it on your PC"),
@@ -126,13 +130,28 @@ export interface ForgeHooks {
 export interface ForgePanel {
   /** The title row, at the top of the conversation. */
   head: HTMLElement;
-  /** The tool as it stands, beside the conversation. */
+  /** The tool as it stands, beside the conversation (only while there is a draft). */
   el: HTMLElement;
+  /** How it works, over the whole workshop until it is put away with its dash. */
+  guide: HTMLElement;
+  /** The "?" at the top right that brings How it works back. */
+  help: HTMLElement;
   /** Draws the newest draft of the workshop chat on screen. */
   sync(chatId: string, draft: ToolDraft | null): void;
 }
 
 type Status = "draft" | "saved" | "changed";
+
+/** Whether How it works is put away (localStorage): open the first time. */
+const GUIDE_KEY = "lumo.forge.guide.v1";
+
+function readGuideOpen(): boolean {
+  try {
+    return localStorage.getItem(GUIDE_KEY) !== "closed";
+  } catch {
+    return true;
+  }
+}
 
 export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
   const headName = h("span", { class: "forge-head-name" });
@@ -146,6 +165,47 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
     backBtn);
 
   const el = h("div", { class: "forge-panel" });
+
+  // How it works: open over the workshop (the field, the usage and the rest
+  // hidden under it) until its dash puts it away into the "?", remembered.
+  let guideOpen = readGuideOpen();
+  const hideBtn = h("button", { class: "forge-guide-hide", title: tl(FORGE_STRINGS.hideHow), "aria-label": tl(FORGE_STRINGS.hideHow) },
+    svg(ICONS.minus, 12, { stroke: 2.2 }));
+  hideBtn.addEventListener("click", () => setGuide(false));
+  const step = (n: number, text: string) =>
+    h("div", { class: "forge-step" }, h("span", { class: "forge-step-n", text: String(n) }), h("span", { class: "forge-step-text", text: tl(text) }));
+  const guide = h("div", { class: "forge-guide", role: "dialog", "aria-label": tl(FORGE_STRINGS.how) },
+    h("div", { class: "forge-guide-head" },
+      h("span", { class: "forge-head-mark" }, svg(ICONS.wrench, 11, { stroke: 2 })),
+      h("span", { class: "forge-guide-title", text: tl(FORGE_STRINGS.how) }),
+      hideBtn),
+    h("div", { class: "forge-steps" },
+      step(1, FORGE_STRINGS.step1),
+      step(2, FORGE_STRINGS.step2),
+      step(3, FORGE_STRINGS.step3),
+      step(4, FORGE_STRINGS.step4)),
+    h("div", { class: "forge-note", text: tl(TOOLS_STRINGS.asks) }));
+  const help = h("button", { class: "forge-help", title: tl(FORGE_STRINGS.showHow), "aria-label": tl(FORGE_STRINGS.showHow), text: "?" });
+  help.addEventListener("click", () => setGuide(true));
+
+  function setGuide(open: boolean) {
+    guideOpen = open;
+    try {
+      localStorage.setItem(GUIDE_KEY, open ? "open" : "closed");
+    } catch {
+      // Only remembered when it can be.
+    }
+    Sound.play(open ? "blip" : "pop");
+    layout();
+  }
+
+  /** The workshop's card: How it works over it, or the tool beside the conversation. */
+  function layout() {
+    const card = el.parentElement;
+    if (!card) return;
+    card.classList.toggle("guiding", guideOpen);
+    card.classList.toggle("forge-draft", current != null);
+  }
 
   let chatId = "";
   let current: ToolDraft | null = null;
@@ -222,18 +282,6 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
 
   function seconds(ms: number): string {
     return ms < 1000 ? `${ms} ms` : `${(ms / 1000).toFixed(1)} s`;
-  }
-
-  function empty(): HTMLElement {
-    const step = (n: number, text: string) =>
-      h("div", { class: "forge-step" }, h("span", { class: "forge-step-n", text: String(n) }), h("span", { text: t(text) }));
-    return h("div", { class: "forge-empty" },
-      h("div", { class: "forge-section-title", text: t(FORGE_STRINGS.how) }),
-      step(1, FORGE_STRINGS.step1),
-      step(2, FORGE_STRINGS.step2),
-      step(3, FORGE_STRINGS.step3),
-      step(4, FORGE_STRINGS.step4),
-      h("div", { class: "forge-note", text: t(TOOLS_STRINGS.asks) }));
   }
 
   function section(title: string, ...children: (Node | null)[]): HTMLElement {
@@ -384,6 +432,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
       for (const k of Object.keys(typed)) delete typed[k];
     }
     current = draft;
+    layout();
     headName.textContent = draft ? `· ${draft.name}` : `· ${t(FORGE_STRINGS.newTool)}`;
     const key = JSON.stringify([
       id, draft ? draftKey(draft) : null, draft ? status(draft) : null, tried, saving, saveError, openFile, t(FORGE_STRINGS.draft),
@@ -397,7 +446,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
     const kept = el.scrollTop;
     clear(el);
     if (draft) draw(draft);
-    else el.append(empty());
+
     el.scrollTop = kept;
     if (focused) fields.get(focused)?.focus();
   }
@@ -411,7 +460,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
     if (link && State.tools.length && !State.tools.some((x) => x.id === link.tool)) drawn = "";
   });
 
-  return { head, el, sync };
+  return { head, el, guide, help, sync };
 }
 
 /** What a workshop answer shows in place of the draft's blocks: a line naming it. */
