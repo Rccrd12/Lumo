@@ -208,12 +208,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         return;
     }
 
-    let id = format!("{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed));
-    let (tx, mut rx) = mpsc::channel::<Reply>(4);
-    {
-        let pending = app.state::<Pending>();
-        pending.0.lock().unwrap().insert(id.clone(), tx);
-    }
+    let (id, mut rx) = pending_request(&app);
     crate::recap::note_request(&app, &id, &payload);
     let island_agy = payload.get("lumo_island") == Some(&json!(true))
         && payload.get("lumo_agent").and_then(Value::as_str) == Some("antigravity");
@@ -222,6 +217,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     }
     payload["request_id"] = json!(id);
     log::line(format!("hook PermissionRequest id={id}"));
+    let tool_name = payload.get("tool_name").and_then(Value::as_str).map(str::to_string);
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
 
     // While Claude uses the computer, the hand gets its mouse back to answer.
@@ -231,6 +227,13 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
 
+    // Allowed on the card for one of the user's tools: that click is the one
+    // its call needs (tools.rs), not a second card.
+    if decision.as_deref() == Some("allow") {
+        if let Some(tool) = &tool_name {
+            crate::tools::note_allowed(tool);
+        }
+    }
     // No decision: say nothing at all. lumo-hook then writes nothing to stdout
     // and Claude Code asks in the terminal, exactly as if Lumo were closed.
     if let Some(d) = decision {
@@ -238,6 +241,27 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         let _ = pipe.flush().await;
     }
     pipe.finish();
+}
+
+/// A new request id, waiting for the island's replies.
+fn pending_request(app: &AppHandle) -> (String, mpsc::Receiver<Reply>) {
+    let id = format!("{}-{}", std::process::id(), COUNTER.fetch_add(1, Ordering::Relaxed));
+    let (tx, rx) = mpsc::channel::<Reply>(4);
+    app.state::<Pending>().0.lock().unwrap().insert(id.clone(), tx);
+    (id, rx)
+}
+
+/// Lumo's own Allow / Deny card, for a call of one of the user's tools
+/// (tools.rs): `payload` is shaped as a permission request, and the click
+/// comes back as `allow` or `deny`. None when the island couldn't show it.
+pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
+    let (id, mut rx) = pending_request(app);
+    payload["request_id"] = json!(id);
+    log::line(format!("tool card id={id}"));
+    let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
+    let decision = wait_for_decision(&id, &mut rx).await;
+    app.state::<Pending>().0.lock().unwrap().remove(&id);
+    decision
 }
 
 /// Finds, once per session, the window it runs in — see session_window.rs.

@@ -38,6 +38,9 @@ use serde_json::{json, Value};
 /// The longest a call may take: `wait` asks for up to a minute, and a typed
 /// text or a drag needs a little more.
 const CALL_BUDGET: Duration = Duration::from_secs(90);
+/// A call of one of the user's tools waits for the island's card (108 s at
+/// most, pipe.rs) and then runs up to its own time limit (600 s, tools.rs).
+const TOOL_CALL_BUDGET: Duration = Duration::from_secs(108 + 600 + 12);
 /// What Lumo may answer with, at most: a screenshot is well under this.
 const MAX_ANSWER: usize = 24 * 1024 * 1024;
 /// The protocol version answered when the client names none we know.
@@ -527,7 +530,8 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
     std::thread::spawn(move || {
         let _ = tx.send(exchange(&line));
     });
-    match rx.recv_timeout(CALL_BUDGET) {
+    let budget = if request.get("lumo_tool").is_some() { TOOL_CALL_BUDGET } else { CALL_BUDGET };
+    match rx.recv_timeout(budget) {
         Ok(Some(bytes)) => serde_json::from_slice(&bytes).map_err(|_| closed()),
         Ok(None) => Err(closed()),
         Err(_) => Err("Lumo took too long to answer.".into()),

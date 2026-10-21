@@ -795,14 +795,46 @@ its name, the description an AI reads to know when to use it, its parameters,
 what it needs and whether it is on. A script you already had can stay where
 it is. A script gets its parameters as JSON on stdin and in
 `LUMO_TOOL_INPUT` (or on its command line, when `tool.json` gives `args`),
-and what it prints is its answer. A run stops after two minutes (or the
-`timeout` it gives).
+and what it prints is its answer. It may write its own files in the folder
+`LUMO_TOOL_WORK` names, which is also its `TEMP`. A run stops after two
+minutes (or the `timeout` it gives).
 
-The tools that are on go to Claude Code in the island's chat and when Gemini
-Live hands it a task, through Lumo's MCP server (`lumo-hook --mcp
---tools=user`): Claude Code asks you on the island before each use, as for
-any MCP tool, and the closed island says when one ran. What a tool says it
-needs is shown to you, not enforced yet.
+**Lumo's supervisor.** Once saved, and after any change to it (a file, its
+`tool.json`, the script it runs from elsewhere), a tool is read by a second
+model, in a conversation of its own: the one picked for the chat. It says in
+plain words, in Lumo's language, what the tool really does, what to know
+before using it, what it does without declaring it, and a verdict: **Looks
+safe**, **Read this first** or **Dangerous** (a dangerous tool is turned off;
+turning it back on takes a second click). Agents only get a tool the
+supervisor read as it is now; **Review again** asks once more.
+
+**What a tool needs is enforced.** Python tools run under an audit hook that
+refuses what they didn't declare: the internet, reading files outside their
+folder and Python's, writing anywhere but their work folder, starting
+programs, the registry, loading DLLs. Node.js tools run with Node's
+permission model (files and programs; Node 20 or later). Without the
+internet declared, every tool is pointed at a proxy that isn't there. Lumo
+can't hold PowerShell, `.bat`, `.cmd` or `.exe` tools to what they declare,
+and says so. These are guard rails for honest tools that overreach, read
+together with the review, not a sandbox for code written to escape it.
+
+**Each call asks you.** Every call of a tool is an Allow / Deny card on the
+island, whoever makes it, with the supervisor's words for what the tool does.
+In a tool's detail, **Trust it** lets agents use it without asking: only
+offered for a reviewed tool that isn't dangerous, does nothing it didn't
+declare, and that Lumo can hold to what it declared. A change that asks for
+more takes the trust back.
+
+The tools go to Claude Code in the island's chat and when Gemini Live hands
+it a task, through Lumo's MCP server (`lumo-hook --mcp --tools=user`), and to
+the chat's Anthropic API, OpenAI, Google AI and OpenRouter models as tools of
+their own (a model that can't take tools is asked again without them). The
+terminal button at the top adds them to **Claude Code in the terminal** for
+all your projects (`claude mcp add --scope user lumo_tools`, which Claude
+Code writes in its own settings; a second click confirms, and clicking again
+takes them away): a click on Claude Code's own card for a tool is the one
+that call needs. Local models (Ollama, LM Studio, a custom server) don't get
+the tools. The closed island says when a tool ran.
 
 ## GitHub
 

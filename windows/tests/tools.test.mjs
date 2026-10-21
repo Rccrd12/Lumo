@@ -5,8 +5,8 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  WORKSHOP_PREFIX, blocksOf, draftIn, draftKey, draftOf, isAbsolutePath, isWorkshopChat, latestDraft, stripDraft,
-  toolId, tryInput,
+  WORKSHOP_PREFIX, blocksOf, draftIn, draftKey, draftOf, isAbsolutePath, isWorkshopChat, latestDraft, reviewState, stripDraft,
+  toolId, tryInput, userToolTarget,
 } from "../src/core/tools.ts";
 import { State } from "../src/core/state.ts";
 
@@ -141,4 +141,22 @@ test("the chat and the tool workshop keep their own chats, files and all", () =>
   State.noteTab("prompt");
   assert.equal(State.lastTab, "chat");
   State.droppedFile = null;
+});
+
+test("a tool's badge: reviewing, needing a review (none, or of an older version), or the supervisor's verdict", () => {
+  const review = { fingerprint: "f", verdict: "caution", summary: "Sends a report.", points: [], undeclared: [], model: "m", at: 1 };
+  const tool = { id: "t", reviewed: true, review };
+  assert.equal(reviewState(tool, false), "caution");
+  assert.equal(reviewState(tool, true), "reviewing");
+  assert.equal(reviewState({ ...tool, reviewed: false }, false), "none", "the review is of an older version");
+  assert.equal(reviewState({ id: "t" }, false), "none");
+});
+
+test("the approval card names one of the user's tools and what it is given, cut when long", () => {
+  assert.equal(userToolTarget("Benchmark", {}), "Benchmark");
+  assert.equal(userToolTarget("Benchmark", { quick: true, rounds: 3, note: "", gone: null }), "Benchmark · quick: true, rounds: 3");
+  assert.equal(userToolTarget("Report", { day: "ieri" }), "Report · day: ieri");
+  const long = userToolTarget("X", { text: "a".repeat(500) });
+  assert.equal(long.length, 160);
+  assert.ok(long.endsWith("…"));
 });

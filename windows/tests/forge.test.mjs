@@ -93,7 +93,7 @@ test("Delete asks a second click", async () => {
   tools.sync();
   tools.el.querySelector(".tool-row-head").fire("click");
   tools.sync();
-  const del = () => tools.el.find(".tool-action").find((b) => b.classList.contains("danger"));
+  const del = () => tools.el.find(".tools-act").find((b) => b.classList.contains("danger"));
   del().fire("click", { stopPropagation() {} });
   tools.sync();
   assert.equal(sent("tools_delete").length, 0);
@@ -102,6 +102,73 @@ test("Delete asks a second click", async () => {
   await flush();
   assert.deepEqual(sent("tools_delete"), [{ id: "bench" }]);
   assert.equal(State.tools.length, 0);
+});
+
+test("the supervisor's words, Always ask or Trust, and a dangerous tool turned on with a second click", async () => {
+  State.view = "tools";
+  const review = { fingerprint: "f", verdict: "ok", summary: "Times your CPU and prints a score.", points: ["Takes 30 s"], undeclared: [], model: "claude-opus-5-5", at: 1 };
+  State.tools = [{ ...TOOL, reviewed: true, review, mayTrust: true, unguarded: [], trust: false }];
+  tools.sync();
+  assert.match(tools.el.querySelector(".review-badge").className, /\bok\b/);
+  tools.el.querySelector(".tool-row-head").fire("click");
+  tools.sync();
+  assert.equal(tools.el.querySelector(".supervisor-summary").textContent, review.summary);
+  assert.equal(tools.el.querySelector(".supervisor-points").find("LI")[0].textContent, "Takes 30 s");
+
+  answers.tools_set_trust = null;
+  const opts = () => tools.el.find(".trust-opt");
+  assert.ok(opts()[0].classList.contains("on"), "asks every time until the user says otherwise");
+  opts()[1].fire("click", { stopPropagation() {} });
+  await flush();
+  assert.deepEqual(sent("tools_set_trust"), [{ id: "bench", trust: true }]);
+
+  // A script Lumo can't hold to what it declared: no Trust to pick.
+  State.tools = [{ ...TOOL, reviewed: true, review, mayTrust: false, unguarded: ["network", "write"] }];
+  tools.sync();
+  assert.ok(opts()[1].getAttribute("disabled") != null);
+
+  answers.tools_review = null;
+  button(tools.el, "Review again").fire("click", { stopPropagation() {} });
+  await flush();
+  assert.deepEqual(sent("tools_review"), [{ id: "bench" }]);
+  tools.sync();
+  assert.match(tools.el.querySelector(".review-badge").className, /reviewing/);
+  emit("tool-review", { id: "bench", state: "failed", error: "No API key" });
+  tools.sync();
+  assert.match(tools.el.querySelector(".supervisor").textContent, /No API key/);
+
+  // Found dangerous (and so turned off): on again only with a second click.
+  answers.tools_set_enabled = null;
+  State.tools = [{ ...TOOL, enabled: false, reviewed: true, review: { ...review, verdict: "danger" } }];
+  tools.sync();
+  const sw = () => tools.el.querySelector(".switch");
+  sw().fire("click", { stopPropagation() {} });
+  await flush();
+  assert.equal(sent("tools_set_enabled").length, 0);
+  tools.sync();
+  assert.match(tools.el.querySelector(".tool-desc").textContent, /Turn on anyway/);
+  sw().fire("click", { stopPropagation() {} });
+  await flush();
+  assert.deepEqual(sent("tools_set_enabled"), [{ id: "bench", enabled: true }]);
+});
+
+test("Claude Code in the terminal gets the tools on a second click", async () => {
+  answers.tools_terminal_has = false;
+  answers.tools_terminal_set = true;
+  State.view = "tools";
+  State.notify();
+  await flush();
+  tools.sync();
+  const term = () => tools.el.querySelector(".tools-term");
+  term().fire("click");
+  tools.sync();
+  assert.equal(sent("tools_terminal_set").length, 0);
+  assert.match(term().textContent, /Add to Claude Code/);
+  term().fire("click");
+  await flush();
+  assert.deepEqual(sent("tools_terminal_set"), [{ on: true }]);
+  tools.sync();
+  assert.ok(term().classList.contains("open"));
 });
 
 test("the workshop is a chat of its own: the AI's draft shows beside it, Try and Save only on a click", async () => {

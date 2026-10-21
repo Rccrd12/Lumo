@@ -80,8 +80,12 @@ Lumo shows the user your plan on its Plan island. So whenever the user gives you
 const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait";
 
 /// The MCP server of the user's own tools (the Tools tab, tools.rs): its
-/// tools are `mcp__lumo_tools__<id>`, each call a card in the island.
-const TOOLS_SERVER: &str = "lumo_tools";
+/// tools are `mcp__lumo_tools__<id>`. Claude Code may call them without
+/// asking: Lumo asks for each call itself, with its own card (tools.rs approve).
+const TOOLS_SERVER: &str = crate::tools::SERVER;
+
+/// Every tool of the user's tools server, for `--allowedTools`.
+const TOOLS_SERVER_ALLOWED: &str = "mcp__lumo_tools";
 
 /// Added in the tool workshop: Claude Code can try what it writes.
 const WORKSHOP_TRY: &str = " In the workshop you may try the script before you give it: write it in a folder named tool-workshop inside your working directory and run it, asking for permissions as usual, then fix what fails. Plan the work first, as said above.";
@@ -134,9 +138,10 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool) -> Vec<String> {
     if written && safe_dir(&path).is_some() {
         args.push("--mcp-config".into());
         args.push(path);
-        if computer {
+        let allowed: Vec<&str> = [computer.then_some(COMPUTER_LOOKING), tools.then_some(TOOLS_SERVER_ALLOWED)].into_iter().flatten().collect();
+        if !allowed.is_empty() {
             args.push("--allowedTools".into());
-            args.push(COMPUTER_LOOKING.into());
+            args.push(allowed.join(" "));
         }
     }
     args
@@ -739,6 +744,22 @@ impl Run {
     }
 }
 
+/// A command that runs Claude Code's `exe`. An npm install is a script that
+/// needs its own Node: its folder goes first on PATH.
+pub(crate) fn cli_command(exe: &std::path::Path) -> Command {
+    let mut cmd = Command::new(exe);
+    if let Some(parent) = exe.parent() {
+        let mut dirs = vec![parent.to_path_buf()];
+        if let Some(path) = std::env::var_os("PATH") {
+            dirs.extend(std::env::split_paths(&path));
+        }
+        if let Ok(joined) = std::env::join_paths(dirs) {
+            cmd.env("PATH", joined);
+        }
+    }
+    cmd
+}
+
 /// Runs `claude -p` once in `dir`, blocking. `on_text` gets the visible text as
 /// it grows, `on_activity` what Claude Code is doing each time it changes,
 /// `on_plan` each plan tool call (name, whole input). Stop ends the CLI and its children; the run so far is returned, `stopped`.
@@ -754,18 +775,8 @@ fn run(
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
 
-    let mut cmd = Command::new(&exe);
+    let mut cmd = cli_command(&exe);
     cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
-    // An npm install is a script that needs its own Node: its folder first on PATH.
-    if let Some(parent) = exe.parent() {
-        let mut dirs = vec![parent.to_path_buf()];
-        if let Some(path) = std::env::var_os("PATH") {
-            dirs.extend(std::env::split_paths(&path));
-        }
-        if let Ok(joined) = std::env::join_paths(dirs) {
-            cmd.env("PATH", joined);
-        }
-    }
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
     // Claude Code only gives its newer models its to-do tools (TodoWrite, or
@@ -1034,6 +1045,30 @@ pub(crate) fn help(
     }
 }
 
+/// One question for Claude Code, answered without acting (plan mode, in a
+/// folder of its own, none of the user's tools): the supervisor's review of a tool
+/// (tool_review.rs). The question goes on stdin, never the command line.
+pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    let exe = platform::claude_candidates()
+        .into_iter()
+        .next()
+        .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
+    let mut args: Vec<String> =
+        ["-p", "--output-format", "stream-json", "--verbose", "--permission-mode", "plan"].iter().map(|s| s.to_string()).collect();
+    if let Some(m) = safe_model(model) {
+        args.push("--model".into());
+        args.push(m.into());
+    }
+    let dir = platform::local_dir().join("tool-review");
+    let state = run(exe, args, prompt.to_string(), dir, Arc::new(Stop::default()), |_| {}, |_| {}, |_, _| {})?;
+    match state.result {
+        Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
+        Some(Ok(_)) => Ok(state.visible.trim().to_string()),
+        Some(Err(e)) => Err(tf("Claude Code: {error}", &[("error", &e)])),
+        None => Err(t("No response text.")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1063,7 +1098,7 @@ mod tests {
     }
 
     #[test]
-    fn the_users_tools_come_as_a_server_of_their_own_with_no_tool_allowed_ahead() {
+    fn the_users_tools_come_as_a_server_of_their_own_that_lumo_guards_itself() {
         let config = mcp_config(false, true);
         let server = &config["mcpServers"][TOOLS_SERVER];
         assert_eq!(server["args"], json!(["--mcp", "--tools=user"]));
@@ -1071,7 +1106,13 @@ mod tests {
         let both = mcp_config(true, true);
         assert!(both["mcpServers"].get("lumo").is_some() && both["mcpServers"].get(TOOLS_SERVER).is_some());
         let a = with_mcp(vec!["-p".into()], false, true);
-        assert!(!a.iter().any(|s| s == "--allowedTools"), "each call of a tool is a card");
+        if a.iter().any(|s| s == "--mcp-config") {
+            // Claude Code lets the calls through: Lumo's own card asks for each (tools.rs approve).
+            assert_eq!(a[a.len() - 2], "--allowedTools");
+            assert_eq!(a[a.len() - 1], TOOLS_SERVER_ALLOWED);
+            let b = with_mcp(vec!["-p".into()], true, true);
+            assert_eq!(b[b.len() - 1], format!("{COMPUTER_LOOKING} {TOOLS_SERVER_ALLOWED}"));
+        }
         assert_eq!(with_mcp(vec!["-p".into()], false, false), ["-p"]);
         let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
         assert!(!workshop.contains(['%', '"', '&', '|', '<', '>', '^', '`']), "plain words on the command line");

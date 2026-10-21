@@ -14,6 +14,8 @@ use std::time::Duration;
 use reqwest::Url;
 use serde_json::{json, Value};
 
+use tauri::AppHandle;
+
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::chat_usage::{self, ChatUsage};
 use crate::i18n::{t, tf};
@@ -28,6 +30,8 @@ const ANTHROPIC_VERSION: &str = "2023-06-01";
 /// a fallback model inside the same call, so the island never shows a dead end.
 const FALLBACK_BETA: &str = "server-side-fallback-2026-07-01";
 const MAX_TOKENS: u32 = 4096;
+/// Rounds of the user's tools one answer may take before it must answer.
+const MAX_TOOL_ROUNDS: usize = 8;
 /// Text and code files are inlined; anything larger is skipped, as on macOS.
 const MAX_INLINE_TEXT: u64 = 200_000;
 
@@ -107,6 +111,30 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     })
 }
 
+/// The user's tools that are on and reviewed (tools.rs), as the Messages API
+/// takes them, after its web search.
+fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value {
+    if let Some(list) = body["tools"].as_array_mut() {
+        for (id, description, schema) in tools.iter().filter(|(id, _, _)| id != "web_search") {
+            list.push(json!({ "name": id, "description": description, "input_schema": schema }));
+        }
+    }
+    body
+}
+
+/// The user's tool calls of an answer that stopped for them, as the next
+/// user turn's tool_result blocks: each call asks on the island (tools.rs).
+async fn run_user_tools(app: &AppHandle, blocks: &[Value]) -> Vec<Value> {
+    let mut results = Vec::new();
+    for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
+        let id = b["id"].as_str().unwrap_or_default();
+        let name = b["name"].as_str().unwrap_or_default();
+        let (text, failed) = crate::tools::call_for_chat(app, name, b["input"].clone()).await;
+        results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
+    }
+    results
+}
+
 /// The assistant's full text from a Messages API content array — the same as
 /// claudeResponseText() on the Mac (#67). Web search answers interleave text
 /// with tool blocks, and citations split a sentence across adjacent text
@@ -145,6 +173,7 @@ fn interpret(response: &Value) -> Result<(Vec<Value>, String), String> {
 /// in the note view. `usage` gets the rate limits the answer came back with
 /// (chat_usage.rs), a refused one included.
 pub async fn send(
+    app: &AppHandle,
     chat: &Chat,
     model: &str,
     query: String,
@@ -159,19 +188,63 @@ pub async fn send(
     let mut content = image_blocks(images);
     content.extend(user_content(turn.first, context.as_ref(), &query));
     let user = json!({ "role": "user", "content": content });
-    let body = request_body(model, &chat::system_prompt_in(chat, true), &turn.history, &user);
+    let tools = tauri::async_runtime::spawn_blocking(crate::tools::api_tools).await.unwrap_or_default();
+    let mut body = with_user_tools(request_body(model, &chat::system_prompt_in(chat, true), &turn.history, &user), &tools);
 
-    // Not streamed: Stop drops the request, and nothing was written yet.
-    let Some(response) = chat.unless_stopped(call(&endpoint, &key, &body, usage)).await else {
+    // Not streamed: Stop drops the request (or the tool's card), and nothing was written yet.
+    let mut said: Vec<String> = Vec::new();
+    let answer = async {
+        let mut rounds = 0;
+        loop {
+            let response = call(&endpoint, &key, &body, usage).await?;
+            let stopped_for_tools = response["stop_reason"] == "tool_use" && !tools.is_empty();
+            if !stopped_for_tools || rounds == MAX_TOOL_ROUNDS {
+                return Ok::<_, String>(response);
+            }
+            rounds += 1;
+            let blocks = response["content"].as_array().cloned().unwrap_or_default();
+            if let Some(text) = response_text(&blocks) {
+                said.push(text);
+            }
+            let results = run_user_tools(app, &blocks).await;
+            if let Some(messages) = body["messages"].as_array_mut() {
+                messages.push(json!({ "role": "assistant", "content": blocks }));
+                messages.push(json!({ "role": "user", "content": results }));
+            }
+        }
+    };
+    let Some(response) = chat.unless_stopped(answer).await else {
         return Ok(ChatReply::stopped(String::new(), None));
     };
     let (blocks, text) = interpret(&response?)?;
 
     // Store the whole content — tool_use / tool_result blocks included — so the
-    // next turn has the right context.
+    // next turn has the right context. After the user's tools, the answer is
+    // kept as its text: the calls and their results stay with this turn.
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
-    chat.commit(&turn, user, json!({ "role": "assistant", "content": blocks }), &plain, &text);
+    if said.is_empty() {
+        chat.commit(&turn, user, json!({ "role": "assistant", "content": blocks }), &plain, &text);
+        return Ok(ChatReply::answer(text, None));
+    }
+    said.push(text);
+    let text = said.join("\n\n");
+    chat.commit(&turn, user, json!({ "role": "assistant", "content": text }), &plain, &text);
     Ok(ChatReply::answer(text, None))
+}
+
+/// One question with no conversation and no tools: the supervisor's review
+/// of a tool (tool_review.rs).
+pub async fn complete(model: &str, system: &str, prompt: &str) -> Result<String, String> {
+    let key = secrets::get(KEY).ok_or_else(|| t("API key missing. Open settings."))?;
+    let endpoint = endpoint()?;
+    let body = json!({
+        "model": model,
+        "max_tokens": MAX_TOKENS,
+        "system": system,
+        "messages": [{ "role": "user", "content": prompt }],
+    });
+    let response = call(&endpoint, &key, &body, &mut None).await?;
+    Ok(interpret(&response)?.1)
 }
 
 async fn call(endpoint: &Url, key: &str, body: &Value, usage: &mut Option<ChatUsage>) -> Result<Value, String> {

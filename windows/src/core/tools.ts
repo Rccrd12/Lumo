@@ -45,6 +45,18 @@ export interface ToolDraft {
   replaces?: string | null;
 }
 
+/** What the supervisor said about a tool (tools.rs Review, tool_review.rs). */
+export interface ToolReview {
+  fingerprint: string;
+  verdict: "ok" | "caution" | "danger";
+  summary: string;
+  points: string[];
+  /** What the code does that the tool didn't declare. */
+  undeclared: string[];
+  model: string;
+  at: number;
+}
+
 /** A saved tool (tools.rs ToolInfo). */
 export interface ToolInfo {
   id: string;
@@ -61,6 +73,39 @@ export interface ToolInfo {
   dir: string;
   files: string[];
   missing: boolean;
+  /** The user lets agents run it without a card (counts only while `mayTrust`). */
+  trust?: boolean;
+  /** The supervisor's last review, maybe of an older version of the tool. */
+  review?: ToolReview;
+  /** The review is of the tool as it is now: only then do agents get it. */
+  reviewed?: boolean;
+  /** What it didn't declare and Lumo couldn't stop it doing anyway. */
+  unguarded?: string[];
+  mayTrust?: boolean;
+}
+
+/** Where a tool stands with the supervisor, for its badge. */
+export type ReviewState = "reviewing" | "none" | "ok" | "caution" | "danger";
+
+export function reviewState(tool: ToolInfo, reviewing: boolean): ReviewState {
+  if (reviewing) return "reviewing";
+  if (!tool.reviewed || !tool.review) return "none";
+  return tool.review.verdict;
+}
+
+/** The longest line of input the approval card shows. */
+const MAX_TARGET = 160;
+
+/**
+ * The approval card's line for a call of one of the user's tools: its name,
+ * then what it is given ("Benchmark · quick: true, rounds: 3").
+ */
+export function userToolTarget(name: string, input: Record<string, unknown>): string {
+  const parts = Object.entries(input ?? {})
+    .filter(([, v]) => v !== undefined && v !== null && v !== "")
+    .map(([k, v]) => `${k}: ${typeof v === "string" ? v : JSON.stringify(v)}`);
+  const line = parts.length ? `${name} · ${parts.join(", ")}` : name;
+  return line.length > MAX_TARGET ? `${line.slice(0, MAX_TARGET - 1)}…` : line;
 }
 
 /** What a try in the workshop came back with (tools.rs RunResult). */

@@ -11,17 +11,28 @@
 // The agents get the tools that are on through `lumo-hook --mcp --tools=user`,
 // an MCP server Claude Code starts for the island's chat (claude_code.rs). The
 // relay asks Lumo for the list (`{"lumo_tools": …}`) and hands each call to Lumo
-// (`{"lumo_tool": {"tool": …, "input": …}}`, pipe.rs), which runs it here: a
-// tool turned off, or gone, is refused. Claude Code asks the user on the
-// island before each call, as for every MCP tool.
+// (`{"lumo_tool": {"tool": …, "input": …}}`, pipe.rs), which runs it here. The
+// chat's API providers call `serve_call` themselves (claude.rs, openai_compat.rs).
+//
+// Three things stand between an agent and a tool:
+//   * the supervisor's review (tool_review.rs): a tool is offered only once a
+//     second model read it, and any change to it (a file, its tool.json, the
+//     script it runs from elsewhere) asks for a new review (`fingerprint`);
+//   * the user's click: every call is an Allow / Deny card on the island
+//     (`approve`), unless the user chose to trust that tool, which is only
+//     offered when Lumo can hold it to what it declared;
+//   * the guard: what the tool said it needs is what it may do. Python runs
+//     under tool_guard.py's audit hook, Node under its permission model; the
+//     other kinds can't be held to it (`unguarded`), and are never trusted.
 //
 // A script gets its parameters as JSON on stdin and in LUMO_TOOL_INPUT, or on
 // its command line when tool.json gives `args` ("--count", "{count}"); what it
-// prints is its answer.
+// prints is its answer. It may write in LUMO_TOOL_WORK (and TEMP points there).
 
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
@@ -46,6 +57,15 @@ const MAX_ID: usize = 48;
 const MAX_OUTPUT: usize = 32 * 1024;
 const DEFAULT_TIMEOUT_S: u64 = 120;
 const MAX_TIMEOUT_S: u64 = 600;
+/// Where a run may write: one folder per tool, under Lumo's local data.
+const WORK_DIR: &str = "tool-runs";
+/// The guard Python tools run under, written next to Lumo's local data.
+const GUARD: &str = include_str!("tool_guard.py");
+const GUARD_FILE: &str = "lumo_guard.py";
+/// The MCP server name of the tools (claude_code.rs and the terminal's Claude Code).
+pub const SERVER: &str = "lumo_tools";
+/// How long a click on Claude Code's own card for a tool covers its call.
+const ALLOWED_FOR: Duration = Duration::from_secs(30);
 
 #[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
 #[serde(rename_all = "camelCase")]
@@ -95,6 +115,36 @@ pub struct Manifest {
     pub created: u64,
     #[serde(default)]
     pub updated: u64,
+    /// The user chose to let agents run it without a card. Only counts while
+    /// `may_trust` says so.
+    #[serde(default)]
+    pub trust: bool,
+    /// The supervisor's last review, of the tool as it was then.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub review: Option<Review>,
+}
+
+/// What the supervisor said about a tool (tool_review.rs).
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct Review {
+    /// `fingerprint` of the tool it read: another one means it changed since.
+    pub fingerprint: String,
+    /// "ok", "caution" or "danger".
+    pub verdict: String,
+    /// What the tool does, in plain words, in the user's language.
+    pub summary: String,
+    /// What to know before using it.
+    #[serde(default)]
+    pub points: Vec<String>,
+    /// What the code does that the tool didn't declare, from PERMISSIONS.
+    #[serde(default)]
+    pub undeclared: Vec<String>,
+    /// Which model reviewed it.
+    #[serde(default)]
+    pub model: String,
+    #[serde(default)]
+    pub at: u64,
 }
 
 /// A tool as the Tools tab shows it.
@@ -108,6 +158,12 @@ pub struct ToolInfo {
     pub files: Vec<String>,
     /// The file that runs isn't there any more.
     pub missing: bool,
+    /// The review is of the tool as it is now.
+    pub reviewed: bool,
+    /// What it didn't declare and Lumo couldn't stop it doing anyway.
+    pub unguarded: Vec<String>,
+    /// The user may let it run without a card.
+    pub may_trust: bool,
 }
 
 #[derive(Deserialize, Clone, Debug)]
@@ -231,7 +287,8 @@ fn entry_path(dir: &Path, entry: &str) -> PathBuf {
     }
 }
 
-fn info(dir: &Path, manifest: Manifest) -> ToolInfo {
+/// A tool's own files, by name: everything in its folder but tool.json.
+fn own_files(dir: &Path) -> Vec<String> {
     let mut files: Vec<String> = std::fs::read_dir(dir)
         .map(|rd| {
             rd.filter_map(Result::ok)
@@ -242,8 +299,89 @@ fn info(dir: &Path, manifest: Manifest) -> ToolInfo {
         })
         .unwrap_or_default();
     files.sort();
-    let missing = !entry_path(dir, &manifest.entry).is_file();
-    ToolInfo { manifest, dir: dir.to_string_lossy().to_string(), files, missing }
+    files
+}
+
+fn info(dir: &Path, manifest: Manifest) -> ToolInfo {
+    let files = own_files(dir);
+    let path = entry_path(dir, &manifest.entry);
+    let missing = !path.is_file();
+    let reviewed = manifest.review.as_ref().is_some_and(|r| r.fingerprint == fingerprint(dir, &manifest));
+    let unguarded = unguarded(&path, &manifest.permissions);
+    let may_trust = reviewed
+        && unguarded.is_empty()
+        && manifest.review.as_ref().is_some_and(|r| r.verdict != "danger" && r.undeclared.is_empty());
+    ToolInfo { manifest, dir: dir.to_string_lossy().to_string(), files, missing, reviewed, unguarded, may_trust }
+}
+
+// ── What was reviewed ─────────────────────────────────────────────────────────
+
+/// FNV-1a over `bytes`: to tell a changed tool from the one reviewed.
+fn fnv(hash: &mut u64, bytes: &[u8]) {
+    for b in bytes {
+        *hash ^= u64::from(*b);
+        *hash = hash.wrapping_mul(0x0100_0000_01b3);
+    }
+}
+
+/// The tool as the supervisor reads it: its tool.json (but whether it is on,
+/// trusted or reviewed), every file of its folder, and the script it runs from
+/// elsewhere (by size and time: it can be a big program). Any change to one of
+/// them is another fingerprint, and the review no longer counts.
+pub fn fingerprint(dir: &Path, m: &Manifest) -> String {
+    let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+    let what = json!([m.name, m.description, m.entry, m.args, m.params, m.permissions, m.timeout]).to_string();
+    fnv(&mut h, what.as_bytes());
+    for name in own_files(dir) {
+        fnv(&mut h, name.as_bytes());
+        let bytes = std::fs::read(dir.join(&name)).unwrap_or_default();
+        fnv(&mut h, &(bytes.len() as u64).to_le_bytes());
+        fnv(&mut h, &bytes);
+    }
+    let entry = Path::new(&m.entry);
+    if entry.is_absolute() {
+        if let Ok(meta) = std::fs::metadata(entry) {
+            let modified = meta.modified().ok().and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok()).map(|d| d.as_nanos()).unwrap_or(0);
+            fnv(&mut h, &meta.len().to_le_bytes());
+            fnv(&mut h, &modified.to_le_bytes());
+        }
+    }
+    format!("{h:016x}")
+}
+
+// ── What Lumo can hold a tool to ──────────────────────────────────────────────
+
+/// The major version of the Node.js on PATH (0: none), asked once.
+fn node_major() -> u32 {
+    static MAJOR: OnceLock<u32> = OnceLock::new();
+    *MAJOR.get_or_init(|| {
+        let Some(node) = platform::find_on_path("node") else { return 0 };
+        let mut cmd = Command::new(node);
+        cmd.arg("--version").stdin(Stdio::null()).stderr(Stdio::null());
+        platform::no_console(&mut cmd);
+        cmd.output()
+            .ok()
+            .and_then(|o| String::from_utf8(o.stdout).ok())
+            .and_then(|v| v.trim().trim_start_matches('v').split('.').next().and_then(|n| n.parse().ok()))
+            .unwrap_or(0)
+    })
+}
+
+/// The kind of file `path` is, by its extension.
+fn extension(path: &Path) -> String {
+    path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase()
+}
+
+/// What a tool that runs `path` didn't declare and Lumo couldn't stop it doing
+/// anyway: nothing for Python (tool_guard.py), the network for Node (its
+/// permission model has files and programs only), everything for the rest.
+pub fn unguarded(path: &Path, declared: &[String]) -> Vec<String> {
+    let undeclared = PERMISSIONS.iter().filter(|p| !declared.iter().any(|d| d == *p)).map(|p| p.to_string());
+    match extension(path).as_str() {
+        "py" | "pyw" => Vec::new(),
+        "js" | "mjs" | "cjs" if node_major() >= 20 => undeclared.filter(|p| p == "network").collect(),
+        _ => undeclared.collect(),
+    }
 }
 
 /// Every tool, by name.
@@ -356,6 +494,9 @@ pub fn save(draft: &Draft) -> Result<ToolInfo, String> {
         std::fs::write(dir.join(&f.name), f.content.as_bytes()).map_err(|e| e.to_string())?;
     }
     let now = now_ms();
+    // Trust outlives a change that asks for nothing more; the old review
+    // stays, and no longer counts unless nothing changed (`fingerprint`).
+    let trust = old.as_ref().is_some_and(|(_, m)| m.trust && d.permissions.iter().all(|p| m.permissions.contains(p)));
     let manifest = Manifest {
         id,
         name: d.name,
@@ -368,6 +509,8 @@ pub fn save(draft: &Draft) -> Result<ToolInfo, String> {
         timeout: d.timeout,
         created: old.as_ref().map(|(_, m)| m.created).filter(|c| *c > 0).unwrap_or(now),
         updated: now,
+        trust,
+        review: old.and_then(|(_, m)| m.review),
     };
     write_manifest(&dir, &manifest)?;
     Ok(info(&dir, manifest))
@@ -382,6 +525,46 @@ pub fn set_enabled(id: &str, on: bool) -> Result<(), String> {
     let (dir, mut m) = find(id).ok_or_else(|| t("That tool isn't there any more."))?;
     m.enabled = on;
     write_manifest(&dir, &m)
+}
+
+/// "Always ask" or "Trust": refused for a tool Lumo can't hold to what it declared.
+pub fn set_trust(id: &str, trust: bool) -> Result<(), String> {
+    let (dir, mut m) = find(id).ok_or_else(|| t("That tool isn't there any more."))?;
+    if trust && !info(&dir, m.clone()).may_trust {
+        return Err(t("Lumo can't let this tool run without asking."));
+    }
+    m.trust = trust;
+    write_manifest(&dir, &m)
+}
+
+/// Keeps the supervisor's review, if the tool is still the one it read. A tool
+/// it finds dangerous is turned off: turning it back on is the user's call.
+pub fn set_review(id: &str, review: Review) -> Result<ToolInfo, String> {
+    let (dir, mut m) = find(id).ok_or_else(|| t("That tool isn't there any more."))?;
+    if review.fingerprint != fingerprint(&dir, &m) {
+        return Err(t("The tool changed while it was being reviewed."));
+    }
+    if review.verdict == "danger" {
+        m.enabled = false;
+        m.trust = false;
+    }
+    m.review = Some(review);
+    write_manifest(&dir, &m)?;
+    Ok(info(&dir, m))
+}
+
+/// A tool to review: its tool.json as the supervisor reads it, its files with
+/// what they hold, and the fingerprint of all that.
+pub fn for_review(id: &str) -> Option<(Manifest, Vec<(String, String)>, String)> {
+    let (dir, m) = find(id)?;
+    let mut files = read_files(id);
+    let entry = Path::new(&m.entry);
+    if entry.is_absolute() {
+        let text = std::fs::read(entry).ok().filter(|b| b.len() <= MAX_FILE_BYTES).and_then(|b| String::from_utf8(b).ok());
+        files.push((m.entry.clone(), text.unwrap_or_else(|| "(a program, not a script: its code can't be read)".into())));
+    }
+    let print = fingerprint(&dir, &m);
+    Some((m, files, print))
 }
 
 /// Deletes a tool's folder. A script it ran from elsewhere stays where it is.
@@ -447,15 +630,66 @@ pub fn fill_args(args: &[String], input: &Value) -> Vec<String> {
     out
 }
 
-/// How a file runs, by its extension: the program and the words before the file.
-fn runner(path: &Path) -> Result<(PathBuf, Vec<String>), String> {
-    let ext = path.extension().and_then(|e| e.to_str()).unwrap_or("").to_ascii_lowercase();
+/// Where a run of `id` may write (and TEMP points): its own folder, made if need be.
+fn work_dir(id: &str) -> PathBuf {
+    let dir = platform::local_dir().join(WORK_DIR).join(id);
+    let _ = std::fs::create_dir_all(&dir);
+    dir
+}
+
+/// tool_guard.py, where Python can run it: written again when it changed.
+fn guard_file() -> Result<PathBuf, String> {
+    let path = platform::local_dir().join(GUARD_FILE);
+    if std::fs::read_to_string(&path).ok().as_deref() != Some(GUARD) {
+        std::fs::create_dir_all(platform::local_dir()).map_err(|e| e.to_string())?;
+        std::fs::write(&path, GUARD).map_err(|e| e.to_string())?;
+    }
+    Ok(path)
+}
+
+/// Node's permission model for a tool that declared `allow`: files read in
+/// its own folders unless it reads, written in its work folder unless it
+/// writes, programs and workers only for the system. Before Node 20 there is none.
+fn node_flags(major: u32, allow: &[String], folders: &[&Path], work: &Path) -> Vec<String> {
+    if major < 20 {
+        return Vec::new();
+    }
+    let has = |p: &str| allow.iter().any(|a| a == p);
+    let mut flags = vec![if major >= 22 { "--permission" } else { "--experimental-permission" }.to_string()];
+    // Node 20 and 21 take a comma-separated list; later ones repeat the flag.
+    let mut grant = |flag: &str, paths: Vec<String>| {
+        if major >= 22 {
+            flags.extend(paths.iter().map(|p| format!("{flag}={p}")));
+        } else {
+            flags.push(format!("{flag}={}", paths.join(",")));
+        }
+    };
+    let own = |dirs: &[&Path]| dirs.iter().map(|d| d.to_string_lossy().to_string()).collect::<Vec<_>>();
+    let mut readable: Vec<&Path> = folders.to_vec();
+    readable.push(work);
+    grant("--allow-fs-read", if has("read") { vec!["*".into()] } else { own(&readable) });
+    grant("--allow-fs-write", if has("write") { vec!["*".into()] } else { own(&[work]) });
+    if has("system") {
+        flags.push("--allow-child-process".into());
+        flags.push("--allow-worker".into());
+        if major >= 22 {
+            flags.push("--allow-addons".into());
+        }
+    }
+    flags
+}
+
+/// How a file runs, by its extension: the program and the words before the
+/// file's own arguments, Python under the guard and Node under its permissions.
+fn runner(path: &Path, allow: &[String], dir: &Path, work: &Path) -> Result<(PathBuf, Vec<String>), String> {
+    let ext = extension(path);
     let on_path = |names: &[&str]| names.iter().find_map(|n| platform::find_on_path(n));
     let file = path.to_string_lossy().to_string();
     match ext.as_str() {
         "py" | "pyw" => {
             let exe = on_path(&["python", "py", "python3"]).ok_or_else(|| t("Python isn't installed, so this tool can't run."))?;
-            Ok((exe, vec!["-X".into(), "utf8".into(), file]))
+            let guard = guard_file()?.to_string_lossy().to_string();
+            Ok((exe, vec!["-X".into(), "utf8".into(), guard, file]))
         }
         "ps1" => {
             let exe = on_path(&["pwsh", "powershell"]).unwrap_or_else(|| PathBuf::from("powershell.exe"));
@@ -463,7 +697,10 @@ fn runner(path: &Path) -> Result<(PathBuf, Vec<String>), String> {
         }
         "js" | "mjs" | "cjs" => {
             let exe = on_path(&["node"]).ok_or_else(|| t("Node.js isn't installed, so this tool can't run."))?;
-            Ok((exe, vec![file]))
+            let script_dir = path.parent().unwrap_or(dir);
+            let mut words = node_flags(node_major(), allow, &[dir, script_dir], work);
+            words.push(file);
+            Ok((exe, words))
         }
         "exe" | "bat" | "cmd" => Ok((path.to_path_buf(), Vec::new())),
         _ => Err(tf("Lumo doesn't know how to run .{ext} files.", &[("ext", &ext)])),
@@ -490,7 +727,8 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value) -> RunResult {
     if !path.is_file() {
         return done(false, tf("The file that runs the tool, {name}, isn't there.", &[("name", &m.entry)]));
     }
-    let (exe, mut words) = match runner(&path) {
+    let work = work_dir(&m.id);
+    let (exe, mut words) = match runner(&path, &m.permissions, dir, &work) {
         Ok(r) => r,
         Err(e) => return done(false, e),
     };
@@ -501,10 +739,22 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value) -> RunResult {
         .current_dir(path.parent().unwrap_or(dir))
         .env("LUMO_TOOL_INPUT", &input_text)
         .env("LUMO_TOOL_DIR", dir)
+        .env("LUMO_TOOL_WORK", &work)
+        .env("LUMO_TOOL_ALLOW", m.permissions.join(","))
+        .env("TEMP", &work)
+        .env("TMP", &work)
         .env("PYTHONIOENCODING", "utf-8")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
+    // No internet declared: what honours a proxy (curl, .NET, Python, many
+    // others) is pointed at one that isn't there. Python is stopped anyway.
+    if !m.permissions.iter().any(|p| p == "network") {
+        for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"] {
+            cmd.env(var, "http://127.0.0.1:9");
+        }
+        cmd.env("NO_PROXY", "").env("no_proxy", "");
+    }
     platform::no_console(&mut cmd);
     let mut child = match cmd.spawn() {
         Ok(c) => c,
@@ -587,6 +837,8 @@ pub fn try_draft(draft: &Draft, input: &Value) -> Result<RunResult, String> {
         timeout: d.timeout,
         created: 0,
         updated: 0,
+        trust: false,
+        review: None,
     };
     Ok(run_in(&dir, &m, input))
 }
@@ -622,25 +874,110 @@ pub fn mcp_tool(m: &Manifest) -> Value {
     })
 }
 
+/// The tools agents may use: on, there, and reviewed as they are now.
+pub fn offered() -> Vec<ToolInfo> {
+    list().into_iter().filter(|t| t.manifest.enabled && !t.missing && t.reviewed).collect()
+}
+
+/// The tools agents may use, for the chat's API providers: id, the words the
+/// model reads, and the JSON schema of the input.
+pub fn api_tools() -> Vec<(String, String, Value)> {
+    offered()
+        .iter()
+        .map(|t| {
+            let v = mcp_tool(&t.manifest);
+            (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
+        })
+        .collect()
+}
+
+/// A call from the chat's API providers (claude.rs, openai_compat.rs): what
+/// goes back to the model, and whether it failed.
+pub async fn call_for_chat(app: &AppHandle, id: &str, input: Value) -> (String, bool) {
+    let answer = serve_call(app, &json!({ "tool": id, "input": input })).await;
+    match answer.get("error").and_then(Value::as_str) {
+        Some(e) => (e.to_string(), true),
+        None => (answer.get("text").and_then(Value::as_str).unwrap_or("Done.").to_string(), false),
+    }
+}
+
 /// `{"lumo_tools": …}`: the tools that are on, for `tools/list`.
 pub fn serve_list() -> Value {
-    let tools: Vec<Value> =
-        list().into_iter().filter(|t| t.manifest.enabled && !t.missing).map(|t| mcp_tool(&t.manifest)).collect();
+    let tools: Vec<Value> = offered().iter().map(|t| mcp_tool(&t.manifest)).collect();
     json!({ "tools": tools })
 }
 
-/// `{"lumo_tool": {"tool": …, "input": …}}`: runs a tool that is on, and
-/// tells the island it ran.
+/// Calls of a tool the user just allowed on Claude Code's own card (pipe.rs):
+/// that click covers the call that follows, once, for a short while.
+static ALLOWED: Mutex<Vec<(String, Instant)>> = Mutex::new(Vec::new());
+
+/// Claude Code's card for `tool` (`mcp__lumo_tools__<id>`) was allowed with a click.
+pub fn note_allowed(tool: &str) {
+    let Some(id) = tool.strip_prefix(&format!("mcp__{SERVER}__")) else { return };
+    let mut allowed = ALLOWED.lock().unwrap_or_else(|e| e.into_inner());
+    allowed.retain(|(_, at)| at.elapsed() < ALLOWED_FOR);
+    allowed.push((id.to_string(), Instant::now()));
+}
+
+fn take_allowed(id: &str) -> bool {
+    let mut allowed = ALLOWED.lock().unwrap_or_else(|e| e.into_inner());
+    allowed.retain(|(_, at)| at.elapsed() < ALLOWED_FOR);
+    match allowed.iter().position(|(a, _)| a == id) {
+        Some(i) => {
+            allowed.remove(i);
+            true
+        }
+        None => false,
+    }
+}
+
+/// The user's go-ahead for one call: none needed for a tool they trust (and
+/// Lumo can hold to what it declared), the click on Claude Code's own card
+/// when there was one, else an Allow / Deny card on the island.
+async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value) -> Result<(), String> {
+    let m = &tool.manifest;
+    if m.trust && tool.may_trust {
+        return Ok(());
+    }
+    if take_allowed(&m.id) {
+        return Ok(());
+    }
+    let summary = m.review.as_ref().map(|r| r.summary.clone()).unwrap_or_default();
+    let payload = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": format!("mcp__{SERVER}__{}", m.id),
+        "tool_input": input,
+        "lumo_user_tool": { "name": m.name, "summary": summary, "verdict": m.review.as_ref().map(|r| r.verdict.clone()) },
+    });
+    match crate::pipe::ask(app, payload).await.as_deref() {
+        Some("allow") => Ok(()),
+        Some(_) => Err(format!("The user said no to running {} this time.", m.name)),
+        None => Err("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment.".into()),
+    }
+}
+
+/// `{"lumo_tool": {"tool": …, "input": …}}`: runs a tool that is on and
+/// reviewed, once the user said yes, and tells the island it ran. The chat's
+/// API providers call it too.
 pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
     let id = request.get("tool").and_then(Value::as_str).unwrap_or("").to_string();
     let input = request.get("input").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
-    let Some((dir, m)) = find(&id) else {
+    let Some(tool) = find(&id).map(|(dir, m)| info(&dir, m)) else {
         return json!({ "error": format!("Lumo has no tool called {id}.") });
     };
+    let m = &tool.manifest;
     if !m.enabled {
         return json!({ "error": format!("The user turned the tool {} off in Lumo.", m.name) });
     }
+    if !tool.reviewed {
+        return json!({ "error": format!("The tool {} changed since it was reviewed. The user can review it again in Lumo's Tools tab.", m.name) });
+    }
+    if let Err(e) = approve(app, &tool, &input).await {
+        return json!({ "error": e });
+    }
     let name = m.name.clone();
+    let (dir, m) = (PathBuf::from(&tool.dir), tool.manifest.clone());
     let result = tauri::async_runtime::spawn_blocking(move || run_in(&dir, &m, &input))
         .await
         .unwrap_or_else(|e| RunResult { ok: false, output: e.to_string(), ms: 0 });
@@ -655,7 +992,7 @@ pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
 
 // ── Commands ──────────────────────────────────────────────────────────────────
 
-fn changed(app: &AppHandle) {
+pub(crate) fn changed(app: &AppHandle) {
     let _ = app.emit_to(WINDOW_LABEL, "tools-changed", list());
 }
 
@@ -669,12 +1006,23 @@ pub fn tools_save(app: AppHandle, draft: Draft) -> Result<ToolInfo, String> {
     let saved = save(&draft)?;
     crate::log::line(format!("[tools] saved {}", saved.manifest.id));
     changed(&app);
+    // A new tool, or a changed one: the supervisor reads it before any agent may.
+    if !saved.reviewed {
+        crate::tool_review::start(&app, &saved.manifest.id);
+    }
     Ok(saved)
 }
 
 #[tauri::command(async)]
 pub fn tools_set_enabled(app: AppHandle, id: String, enabled: bool) -> Result<(), String> {
     set_enabled(&id, enabled)?;
+    changed(&app);
+    Ok(())
+}
+
+#[tauri::command(async)]
+pub fn tools_set_trust(app: AppHandle, id: String, trust: bool) -> Result<(), String> {
+    set_trust(&id, trust)?;
     changed(&app);
     Ok(())
 }
@@ -697,6 +1045,65 @@ pub async fn tools_try(draft: Draft, input: Value) -> Result<RunResult, String> 
 #[tauri::command(async)]
 pub fn tools_files(id: String) -> Vec<(String, String)> {
     read_files(&id)
+}
+
+// ── Claude Code in the terminal ───────────────────────────────────────────────
+
+/// `claude <args>`, quietly, for its MCP settings. Claude Code edits its own
+/// file: Lumo never writes it.
+fn claude_cli(args: &[String]) -> Result<std::process::Output, String> {
+    let exe = platform::claude_candidates()
+        .into_iter()
+        .next()
+        .ok_or_else(|| t("Claude Code isn't installed. Install it, sign in once with `claude` in a terminal, then try again."))?;
+    let mut cmd = crate::claude_code::cli_command(&exe);
+    cmd.args(args).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::piped());
+    platform::no_console(&mut cmd);
+    cmd.output().map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))
+}
+
+/// Whether Claude Code in the terminal has the tools' server, for the user.
+pub fn terminal_has() -> bool {
+    claude_cli(&["mcp".into(), "get".into(), SERVER.into()]).is_ok_and(|o| o.status.success())
+}
+
+/// Adds the tools' server to Claude Code for every project of the user
+/// (`claude mcp add --scope user`), or takes it away. Each call there is a
+/// card on the island too, unless Claude Code's own card was allowed on it.
+pub fn terminal_set(on: bool) -> Result<(), String> {
+    let had = terminal_has();
+    if had {
+        let out = claude_cli(&["mcp", "remove", "--scope", "user", SERVER].map(String::from))?;
+        if !on && !out.status.success() {
+            return Err(String::from_utf8_lossy(&out.stderr).trim().to_string());
+        }
+    }
+    if !on {
+        return Ok(());
+    }
+    let hook = crate::settings::hook_exe_path().to_string_lossy().to_string();
+    if crate::claude_code::safe_dir(&hook).is_none() {
+        return Err(t("Lumo's folder has a name Claude Code's command line can't take."));
+    }
+    let args: Vec<String> = ["mcp", "add", "--scope", "user", SERVER, "--", &hook, "--mcp", "--tools=user"].map(String::from).to_vec();
+    let out = claude_cli(&args)?;
+    if out.status.success() {
+        Ok(())
+    } else {
+        Err(String::from_utf8_lossy(&out.stderr).trim().to_string())
+    }
+}
+
+#[tauri::command(async)]
+pub fn tools_terminal_has() -> bool {
+    terminal_has()
+}
+
+#[tauri::command(async)]
+pub fn tools_terminal_set(on: bool) -> Result<bool, String> {
+    terminal_set(on)?;
+    crate::log::line(format!("[tools] Claude Code in the terminal: {}", if on { "added" } else { "removed" }));
+    Ok(terminal_has())
 }
 
 /// Opens the folder of a tool, or of all of them.
@@ -758,6 +1165,8 @@ mod tests {
             timeout: 0,
             created: 0,
             updated: 0,
+            trust: false,
+            review: None,
         };
         let t = mcp_tool(&m);
         assert_eq!(t["name"], "bench");
@@ -792,5 +1201,72 @@ mod tests {
         assert_eq!(d.replaces, None);
         assert!(checked(&draft("other.py", file())).is_err(), "the entry must be there");
         assert!(checked(&draft("../x.py", vec![DraftFile { name: "../x.py".into(), content: String::new() }])).is_err());
+    }
+
+    fn manifest(entry: &str, permissions: &[&str]) -> Manifest {
+        Manifest {
+            id: "t".into(),
+            name: "T".into(),
+            description: String::new(),
+            entry: entry.into(),
+            args: vec![],
+            params: vec![],
+            permissions: permissions.iter().map(|p| p.to_string()).collect(),
+            enabled: true,
+            timeout: 0,
+            created: 0,
+            updated: 0,
+            trust: false,
+            review: None,
+        }
+    }
+
+    #[test]
+    fn any_change_to_a_tool_is_another_fingerprint_but_turning_it_off_is_not() {
+        let dir = std::env::temp_dir().join(format!("lumo-tool-fp-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("t.py"), "print(1)").unwrap();
+        let m = manifest("t.py", &["read"]);
+        let first = fingerprint(&dir, &m);
+        assert_eq!(first, fingerprint(&dir, &Manifest { enabled: false, trust: true, ..m.clone() }));
+        assert_ne!(first, fingerprint(&dir, &manifest("t.py", &["read", "network"])), "what it declares");
+        std::fs::write(dir.join("t.py"), "print(2)").unwrap();
+        assert_ne!(first, fingerprint(&dir, &m), "a file");
+        std::fs::write(dir.join("t.py"), "print(1)").unwrap();
+        assert_eq!(first, fingerprint(&dir, &m));
+        std::fs::write(dir.join("helper.py"), "x = 1").unwrap();
+        assert_ne!(first, fingerprint(&dir, &m), "a file added");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn python_is_held_to_what_it_declared_and_scripts_lumo_cant_guard_never_are() {
+        assert!(unguarded(Path::new("t.py"), &[]).is_empty());
+        assert_eq!(unguarded(Path::new("t.ps1"), &["read".into()]), ["network", "write", "system"]);
+        assert!(unguarded(Path::new("t.bat"), &PERMISSIONS.iter().map(|p| p.to_string()).collect::<Vec<_>>()).is_empty(), "declared all: nothing left to hold");
+    }
+
+    #[test]
+    fn node_runs_with_its_permissions_to_what_the_tool_declared() {
+        let (dir, work) = (Path::new("C:/t"), Path::new("C:/w"));
+        assert!(node_flags(18, &[], &[dir], work).is_empty(), "no permission model before Node 20");
+        let none = node_flags(22, &[], &[dir], work);
+        assert_eq!(none, ["--permission", "--allow-fs-read=C:/t", "--allow-fs-read=C:/w", "--allow-fs-write=C:/w"]);
+        let all: Vec<String> = ["read", "write", "system"].iter().map(|p| p.to_string()).collect();
+        let full = node_flags(22, &all, &[dir], work);
+        assert!(full.contains(&"--allow-fs-read=*".to_string()) && full.contains(&"--allow-fs-write=*".to_string()));
+        assert!(full.contains(&"--allow-child-process".to_string()) && full.contains(&"--allow-addons".to_string()));
+        let old = node_flags(20, &[], &[dir], work);
+        assert_eq!(old, ["--experimental-permission", "--allow-fs-read=C:/t,C:/w", "--allow-fs-write=C:/w"]);
+    }
+
+    #[test]
+    fn a_click_on_claude_codes_own_card_covers_one_call_of_that_tool() {
+        note_allowed("mcp__lumo_tools__bench_card");
+        note_allowed("mcp__other__bench_card");
+        assert!(take_allowed("bench_card"));
+        assert!(!take_allowed("bench_card"), "once");
+        assert!(!take_allowed("other_card"));
     }
 }

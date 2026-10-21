@@ -125,7 +125,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // A Gemini Live call (views/live.ts): the chat's room, Lumo where he is in it.
   live: { height: 240, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   // The Tools tab (views/tools.ts): the list, Lumo where he is in the chat.
-  tools: { height: 300, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
+  tools: { height: 340, botX: 52, botY: null, botDiameter: 44, agentMode: "none" },
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually

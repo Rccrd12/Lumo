@@ -10,6 +10,8 @@
 // and Tell Lumo puts how it went in the field; Save makes it a tool, on, in
 // the Tools tab. Nothing is saved or run otherwise. A chat that saved a tool
 // remembers it, so its next Save updates that tool instead of adding one.
+// Once saved, the supervisor reads it (tool_review.rs): its badge and words
+// show here too.
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
@@ -20,7 +22,7 @@ import {
   draftKey, isAbsolutePath, textBytes, toolId, tryInput, type ToolDraft, type ToolRun,
 } from "../core/tools";
 import { formatSize } from "../core/screen";
-import { NEED_TEXT, TOOLS_STRINGS, toolTile } from "./tools";
+import { NEED_TEXT, TOOLS_STRINGS, reviewBadge, reviewKey, toolTile } from "./tools";
 import { N_, t, tl } from "../i18n/i18n";
 
 export const FORGE_STRINGS = {
@@ -31,7 +33,7 @@ export const FORGE_STRINGS = {
   step1: N_("Tell Lumo what the tool should do, or give it your script"),
   step2: N_("Lumo writes it and shows it here"),
   step3: N_("Try it on your PC"),
-  step4: N_("Save it: it's on at once"),
+  step4: N_("Save it: once Lumo's supervisor has read it, your agents can use it"),
   draft: N_("Draft"),
   saved: N_("Saved"),
   changed: N_("Changed"),
@@ -272,12 +274,21 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
   function draw(d: ToolDraft) {
     const st = status(d);
     const statusText = { draft: FORGE_STRINGS.draft, saved: FORGE_STRINGS.saved, changed: FORGE_STRINGS.changed }[st];
+    const saved = st === "saved" ? State.tools.find((x) => x.id === savedLink(chatId)?.tool) : undefined;
     const top = h("div", { class: "forge-tool" },
       toolTile(savedLink(chatId)?.tool ?? toolId(d.name), 32),
       h("div", { class: "forge-tool-text" },
         h("div", { class: "forge-tool-name", text: d.name }),
-        h("span", { class: `forge-status ${st}`, text: t(statusText) })));
+        h("span", { class: "forge-tool-badges" },
+          h("span", { class: `forge-status ${st}`, text: t(statusText) }),
+          saved ? reviewBadge(saved) : null)));
     const desc = d.description ? h("div", { class: "forge-desc", text: d.description, title: d.description }) : null;
+    // The supervisor's words, once it read the tool as saved.
+    const verdict = saved?.reviewed && saved.review
+      ? h("div", { class: `forge-review ${saved.review.verdict}` },
+        h("span", { class: "forge-section-title", text: t(TOOLS_STRINGS.supervisor) }),
+        h("div", { class: "forge-review-text", text: saved.review.summary }))
+      : null;
 
     const params = d.params.length
       ? h("div", { class: "forge-params" }, ...d.params.map((p) =>
@@ -350,6 +361,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
 
     el.append(top);
     if (desc) el.append(desc);
+    if (verdict) el.append(verdict);
     el.append(
       section(TOOLS_STRINGS.params, params),
       section(FORGE_STRINGS.needs, needs),
@@ -358,7 +370,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
         d.params.length ? h("div", { class: "forge-fields" }, ...d.params.map(paramField)) : null,
         h("div", { class: "forge-buttons" }, tryBtn, saveBtn),
         saveError ? h("div", { class: "forge-error", text: saveError }) : null,
-        st === "saved" ? h("div", { class: "forge-ready" }, svg(ICONS.check, 9, { stroke: 2.4 }), h("span", { text: t(FORGE_STRINGS.ready) })) : null,
+        st === "saved" && saved?.reviewed && saved.enabled ? h("div", { class: "forge-ready" }, svg(ICONS.check, 9, { stroke: 2.4 }), h("span", { text: t(FORGE_STRINGS.ready) })) : null,
         result),
     );
   }
@@ -375,6 +387,7 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
     headName.textContent = draft ? `· ${draft.name}` : `· ${t(FORGE_STRINGS.newTool)}`;
     const key = JSON.stringify([
       id, draft ? draftKey(draft) : null, draft ? status(draft) : null, tried, saving, saveError, openFile, t(FORGE_STRINGS.draft),
+      reviewKey(savedLink(id)?.tool ?? ""), State.tools.find((x) => x.id === savedLink(id)?.tool)?.review?.summary ?? "",
     ]);
     if (key === drawn) return;
     drawn = key;

@@ -4894,14 +4894,14 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   overflow-wrap: anywhere;
 }
 
-.tool-actions {
+.tools-acts {
   display: flex;
   flex-wrap: wrap;
   gap: 6px;
   padding-top: 2px;
 }
 
-.tool-action {
+.tools-act {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -4914,22 +4914,22 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   cursor: default;
 }
 
-.tool-action:hover {
+.tools-act:hover {
   background: rgba(255, 255, 255, 0.13);
   color: var(--ink);
 }
 
-.tool-action.primary {
+.tools-act.primary {
   background: rgba(245, 165, 36, 0.16);
   color: #ffd27a;
 }
 
-.tool-action.primary:hover {
+.tools-act.primary:hover {
   background: rgba(245, 165, 36, 0.26);
 }
 
-.tool-action.danger:hover,
-.tool-action.danger.confirm {
+.tools-act.danger:hover,
+.tools-act.danger.confirm {
   background: rgba(244, 80, 94, 0.18);
   color: var(--red-text);
 }
@@ -5509,4 +5509,207 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   font: 700 10px var(--font);
   color: #1a1206;
   background: linear-gradient(135deg, #ffd27a, #f5a524);
+}
+
+/* ── The supervisor's review and the trust choice (views/tools.ts) ────────── */
+
+.review-badge {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 7px 1px 6px;
+  border-radius: 999px;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.02em;
+  color: var(--dim-2);
+  background: rgba(255, 255, 255, 0.05);
+  white-space: nowrap;
+}
+
+.review-badge i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.review-badge.ok {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.1);
+}
+
+.review-badge.caution {
+  color: #fcd34d;
+  background: rgba(252, 211, 77, 0.1);
+}
+
+.review-badge.danger {
+  color: var(--red-text);
+  background: rgba(244, 80, 94, 0.14);
+}
+
+.review-badge.reviewing i {
+  animation: review-pulse 1.1s ease-in-out infinite;
+}
+
+@keyframes review-pulse {
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.supervisor {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.supervisor.ok {
+  border-color: rgba(74, 222, 128, 0.18);
+}
+
+.supervisor.caution {
+  border-color: rgba(252, 211, 77, 0.22);
+}
+
+.supervisor.danger {
+  border-color: rgba(244, 80, 94, 0.3);
+  background: rgba(244, 80, 94, 0.06);
+}
+
+.supervisor-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--dim-3);
+}
+
+.supervisor-summary {
+  font: 400 11.5px var(--font);
+  color: #d4d7dc;
+  user-select: text;
+}
+
+.supervisor-points {
+  margin: 0;
+  padding-left: 16px;
+  font: 400 11px var(--font);
+  color: #b0b5be;
+  user-select: text;
+}
+
+.supervisor-points li + li {
+  margin-top: 2px;
+}
+
+.supervisor-warn {
+  font: 500 10.5px var(--font);
+  color: #fcd34d;
+}
+
+.supervisor.danger .supervisor-warn {
+  color: var(--red-text);
+}
+
+.trust {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.trust-opts {
+  display: inline-flex;
+  align-self: flex-start;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.trust-opt {
+  border: 0;
+  border-radius: 999px;
+  padding: 3px 10px;
+  background: transparent;
+  color: var(--dim-2);
+  font: 500 11px var(--font);
+  cursor: default;
+}
+
+.trust-opt.on {
+  background: rgba(245, 165, 36, 0.2);
+  color: #ffd27a;
+}
+
+.trust-opt:hover:not(.on):not(:disabled) {
+  color: var(--ink);
+}
+
+.trust-opt:disabled {
+  opacity: 0.4;
+}
+
+.tools-head .tools-term {
+  width: auto;
+  min-width: 24px;
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 0 6px;
+  border-radius: 12px;
+}
+
+.tools-term.open {
+  color: #ffd27a;
+  background: rgba(245, 165, 36, 0.14);
+}
+
+.tools-term.confirm {
+  color: var(--ink);
+  background: rgba(245, 165, 36, 0.24);
+}
+
+.tools-term-label {
+  font: 500 11px var(--font);
+  white-space: nowrap;
+}
+
+.tools-term-label:empty {
+  display: none;
+}
+
+.forge-tool-badges {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex-wrap: wrap;
+}
+
+.forge-review {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 7px 9px;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  border-left: 2px solid #4ade80;
+}
+
+.forge-review.caution {
+  border-left-color: #fcd34d;
+}
+
+.forge-review.danger {
+  border-left-color: var(--red-text);
+}
+
+.forge-review-text {
+  font: 400 11px var(--font);
+  color: #c9cdd4;
 }

@@ -221,6 +221,16 @@ export const Bridge = {
   toolsFiles: (id: string) => call<[string, string][]>("tools_files", { id }),
   /** Opens a tool's folder in File Explorer, or the folder of them all. */
   toolsReveal: (id: string | null) => call<void>("tools_reveal", { id }),
+  /** "Always ask" or "Trust" for one tool; refused for one Lumo can't hold to what it declared. */
+  toolsSetTrust: (id: string, trust: boolean) => callOrThrow<void>("tools_set_trust", { id, trust }),
+  /** Has the supervisor review a tool again (tool_review.rs); the answer comes as `tool-review`. */
+  toolsReview: (id: string) => call<void>("tools_review", { id }),
+  /** The tools being reviewed now. */
+  toolsReviewing: () => call<string[]>("tools_reviewing"),
+  /** Whether Claude Code in the terminal has the tools' MCP server. */
+  toolsTerminalHas: () => call<boolean>("tools_terminal_has"),
+  /** Adds the tools' server to Claude Code in the terminal (`claude mcp add`), or takes it away. */
+  toolsTerminalSet: (on: boolean) => callOrThrow<boolean>("tools_terminal_set", { on }),
   /** The Stop button of one chat: its `chatSend` then returns what was written so far, `stopped`. */
   chatStop: (chatId: string) => call<void>("chat_stop", { chatId }),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */

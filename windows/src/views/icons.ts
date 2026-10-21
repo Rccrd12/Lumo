@@ -103,4 +103,6 @@ export const ICONS = {
   envelope: "M3.5 6h17v12h-17zM3.8 6.4 12 13l8.2-6.6",
   // wrench (stroke): a tool of the user's own (the Tools tab).
   wrench: "M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.8-3.8a6 6 0 0 1-7.9 7.9l-6.9 6.9a2.1 2.1 0 0 1-3-3l6.9-6.9a6 6 0 0 1 7.9-7.9z",
+  // Claude Code in the terminal: a prompt and its cursor.
+  terminal: "M4.5 7l5 5-5 5M12 17.5h7.5",
 } as const;

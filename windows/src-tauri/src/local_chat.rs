@@ -294,6 +294,22 @@ pub async fn send(
     Ok(ChatReply::answer(answer, None))
 }
 
+/// One question with no conversation: the supervisor's review of a tool
+/// (tool_review.rs).
+pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) -> Result<String, String> {
+    let base = base_url(server)?;
+    if model.is_empty() {
+        return Err(t("Pick a model above the chat box first."));
+    }
+    let user = json!({ "role": "user", "content": prompt });
+    let body = request_body(model, system, &[], &user);
+    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}).await?;
+    if answer.is_empty() {
+        return Err(t("No response text."));
+    }
+    Ok(answer)
+}
+
 // ── Streaming ─────────────────────────────────────────────────────────────────
 
 /// One server-sent event line: `Some(Ok(text))` for a content delta,

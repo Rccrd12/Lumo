@@ -51,6 +51,7 @@ mod settings;
 mod share;
 mod shortcuts;
 mod system_control;
+mod tool_review;
 mod tools;
 mod tray;
 mod typing;
@@ -1197,6 +1198,11 @@ pub fn run() {
             tools::tools_try,
             tools::tools_files,
             tools::tools_reveal,
+            tools::tools_set_trust,
+            tools::tools_terminal_has,
+            tools::tools_terminal_set,
+            tool_review::tools_review,
+            tool_review::tools_reviewing,
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
