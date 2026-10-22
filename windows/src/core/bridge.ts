@@ -12,6 +12,9 @@ import type { ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 
+/** An answer to a permission card: `always` allows it for the rest of the session. */
+export type Decision = "allow" | "deny" | "always";
+
 /**
  * Settings open inside the island (an iframe of settings.html, see
  * views/settings-frame.ts) talk to Rust through the island page: Rust's
@@ -180,7 +183,8 @@ export const Bridge = {
   /** The Claude plan's usage from Anthropic, as the status line's `rate_limits` (plan_usage.rs). Throws why it could not. */
   planUsageFetch: () => callOrThrow<unknown>("plan_usage_fetch"),
 
-  approvalDecision: (requestId: string, decision: "allow" | "deny") =>
+  /** `always`: allowed, and allowed again without a card for the rest of the session (session_rules.rs). */
+  approvalDecision: (requestId: string, decision: Decision) =>
     call<void>("approval_decision", { requestId, decision }),
   /** "The card is up" — until this lands the relay only waits a moment. */
   approvalAck: (requestId: string) => call<void>("approval_ack", { requestId }),

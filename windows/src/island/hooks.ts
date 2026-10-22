@@ -164,6 +164,8 @@ interface HookPayload {
   rate_limits?: unknown;
   /** PostToolUse of TaskCreate: the id of the task made (the relay keeps it of the result). */
   lumo_task_id?: string;
+  /** The card may offer "Allow for this session" (session_rules.rs): the request has a session to keep it for. */
+  lumo_session_allow?: boolean;
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
 }
@@ -702,6 +704,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
+        ...(payload.lumo_session_allow === true && !questions ? { sessionAllow: true } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(!fromChat && !isExternalAgent ? { project: projectName } : {}),
       };

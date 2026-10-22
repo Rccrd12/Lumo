@@ -60,6 +60,8 @@ export interface ApprovalInfo {
   questions?: AskedQuestion[];
   /** Asked by the island's own chat (Claude Code provider): no session pill, and the chat comes back after. */
   fromChat?: boolean;
+  /** "Allow for this session" can be offered: the same request is then allowed without a card until the session ends (session_rules.rs). */
+  sessionAllow?: boolean;
   /** Simple (a read, a command that only looks): answered on the closed island (core/approvals.ts). */
   quick?: boolean;
   /** Simple enough for the closed island, for a request waiting in line: whether it goes there is decided when it comes up. */

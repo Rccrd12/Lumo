@@ -61,6 +61,30 @@
    "id": "AI untuk obrolan",
    "it": "IA per la chat"
   },
+  "Allow for this session": {
+   "zh-Hans": "本次会话允许",
+   "hi": "इस सत्र के लिए अनुमति दें",
+   "es": "Permitir en esta sesión",
+   "ar": "السماح لهذه الجلسة",
+   "fr": "Autoriser pour cette session",
+   "bn": "এই সেশনের জন্য অনুমতি দিন",
+   "pt-BR": "Permitir nesta sessão",
+   "ru": "Разрешить в этом сеансе",
+   "id": "Izinkan untuk sesi ini",
+   "it": "Consenti per questa sessione"
+  },
+  "Allowed again without asking until this session ends": {
+   "zh-Hans": "在本次会话结束前，再次出现时无需询问即允许",
+   "hi": "यह सत्र खत्म होने तक बिना पूछे फिर से अनुमति दी जाएगी",
+   "es": "Se vuelve a permitir sin preguntar hasta que termine esta sesión",
+   "ar": "يُسمح به مجددًا دون سؤال حتى تنتهي هذه الجلسة",
+   "fr": "Autorisé à nouveau sans demander jusqu'à la fin de cette session",
+   "bn": "এই সেশন শেষ না হওয়া পর্যন্ত আবার জিজ্ঞাসা না করেই অনুমতি দেওয়া হবে",
+   "pt-BR": "Permitido de novo sem perguntar até esta sessão terminar",
+   "ru": "Разрешается снова без вопросов до конца этого сеанса",
+   "id": "Diizinkan lagi tanpa bertanya sampai sesi ini berakhir",
+   "it": "Consentito di nuovo senza chiedere fino alla fine di questa sessione"
+  },
   "Always share the folder open in File Explorer": {
    "zh-Hans": "始终共享文件资源管理器中打开的文件夹",
    "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर हमेशा साझा करें",

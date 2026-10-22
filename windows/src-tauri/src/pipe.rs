@@ -14,7 +14,7 @@
 //   * whatever happens we drop the connection after the decision timeout, and
 //     the terminal takes over.
 //
-// What we write back is the bare word `allow` or `deny` — or, when the request
+// What we write back is the bare word `allow`, `always` or `deny` — or, when the request
 // was Claude Code asking a question, `{"answers":{…}}` with what was picked on
 // the island. Turning either into the documented hookSpecificOutput JSON is
 // lumo-hook's job, so the wire format Claude Code expects lives in exactly
@@ -198,6 +198,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     // Counts for the weekly recap — never the command, path or prompt itself.
     crate::recap::observe(&app, &payload);
 
+    if event == "SessionEnd" {
+        crate::session_rules::session_ended(&payload);
+    }
     if event != "PermissionRequest" {
         // The status line relay calls in with every Claude Code update: not log-worthy.
         if event != "StatusLine" {
@@ -210,6 +213,20 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
 
     let (id, mut rx) = pending_request(&app);
     crate::recap::note_request(&app, &id, &payload);
+    // Allowed for this session already ("Allow for this session"): no card.
+    if crate::session_rules::arrive(&id, &payload) {
+        app.state::<Pending>().0.lock().unwrap().remove(&id);
+        log::line(format!("hook PermissionRequest id={id} allowed for this session"));
+        crate::recap::record_decision(&app, &id, "always");
+        let _ = pipe.write_all(b"always\n").await;
+        let _ = pipe.flush().await;
+        pipe.finish();
+        return;
+    }
+    // The card offers "Allow for this session" only where it can be kept.
+    if crate::session_rules::can_remember(&id) {
+        payload["lumo_session_allow"] = json!(true);
+    }
     let island_agy = payload.get("lumo_island") == Some(&json!(true))
         && payload.get("lumo_agent").and_then(Value::as_str) == Some("antigravity");
     if island_agy {
@@ -226,10 +243,11 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     crate::computer::card_down(&app);
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
+    crate::session_rules::answered(&id, decision.as_deref().unwrap_or(""));
 
     // Allowed on the card for one of the user's tools: that click is the one
     // its call needs (tools.rs), not a second card.
-    if decision.as_deref() == Some("allow") {
+    if matches!(decision.as_deref(), Some("allow" | "always")) {
         if let Some(tool) = &tool_name {
             crate::tools::note_allowed(tool);
         }
@@ -261,7 +279,8 @@ pub async fn ask(app: &AppHandle, mut payload: Value) -> Option<String> {
     let _ = app.emit_to(WINDOW_LABEL, "hook", payload);
     let decision = wait_for_decision(&id, &mut rx).await;
     app.state::<Pending>().0.lock().unwrap().remove(&id);
-    decision
+    // A card of Lumo's own is never kept for a session.
+    decision.map(|d| if d == "always" { "allow".to_string() } else { d })
 }
 
 /// Finds, once per session, the window it runs in — see session_window.rs.
@@ -355,11 +374,14 @@ pub fn decline(app: &AppHandle, request_id: &str) {
     send(app, request_id, Reply::Decline, false);
 }
 
-/// Called by the island's Allow / Deny buttons. Only ever a bare word: turning
-/// it into Claude Code's JSON is lumo-hook's job.
+/// Called by the island's buttons. Only ever a bare word — `allow`, `always`
+/// (allowed for this session, session_rules.rs) or `deny`: turning it into the
+/// agent's JSON is lumo-hook's job, and every agent's reply there reads
+/// `always` as an allow.
 pub fn answer(app: &AppHandle, request_id: &str, decision: &str) {
     let word = match decision {
-        "allow" | "always" => "allow",
+        "allow" => "allow",
+        "always" => "always",
         _ => "deny",
     };
     log::line(format!("decision id={request_id} {word}"));

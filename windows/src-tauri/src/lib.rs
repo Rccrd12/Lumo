@@ -46,6 +46,7 @@ mod reminders;
 mod screen;
 mod secrets;
 mod selection;
+mod session_rules;
 mod session_window;
 mod settings;
 mod share;
