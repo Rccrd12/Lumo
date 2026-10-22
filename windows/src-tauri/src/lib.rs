@@ -141,7 +141,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     if let Err(err) = settings::save(&settings) {
         log::line(format!("could not save settings: {err}"));
     }
-    if autostart_changed {
+    if autostart_changed && autostart::writable() {
         let manager = app.autolaunch();
         let result = if settings.autostart { manager.enable() } else { manager.disable() };
         if let Err(err) = result {
