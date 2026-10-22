@@ -122,6 +122,11 @@ pub struct Manifest {
     /// The supervisor's last review, of the tool as it was then.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub review: Option<Review>,
+    /// Its command in the chat's "/" menu (`pdfcraft` for `/pdfcraft`), without
+    /// the slash; empty: none. Not part of what the supervisor reads: changing
+    /// it changes nothing the tool does.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub command: String,
 }
 
 /// What the supervisor said about a tool (tool_review.rs).
@@ -194,6 +199,9 @@ pub struct Draft {
     /// The tool this draft changes (the workshop opened from it), if any.
     #[serde(default)]
     pub replaces: Option<String>,
+    /// Its command in the chat ("" for none); left out, a changed tool keeps the one it had.
+    #[serde(default)]
+    pub command: Option<String>,
 }
 
 #[derive(Serialize, Clone, Debug, PartialEq)]
@@ -469,7 +477,53 @@ fn checked(draft: &Draft) -> Result<Draft, String> {
         timeout: draft.timeout.min(MAX_TIMEOUT_S),
         files,
         replaces: draft.replaces.clone().filter(|id| valid_id(id)),
+        command: draft.command.as_deref().map(|c| command_name(c).unwrap_or_default()),
     })
+}
+
+// ── Chat commands ─────────────────────────────────────────────────────────────
+
+/// The chat's own commands (src/core/slash.ts), and Claude Code's that every
+/// one has: a tool's command never takes their name.
+const RESERVED_COMMANDS: &[&str] = &["new", "history", "model", "attach", "screen", "permissions", "timer", "compact", "context", "clear"];
+
+/// The longest command.
+const MAX_COMMAND: usize = 32;
+
+/// A command as it may be typed: lower case letters, digits, `-` and `_`,
+/// starting with a letter or a digit ("/PDF Craft" → "pdf-craft"). None when
+/// nothing of it is left.
+pub fn command_name(raw: &str) -> Option<String> {
+    let mut out = String::new();
+    for c in raw.trim().trim_start_matches('/').chars().flat_map(|c| c.to_lowercase()) {
+        if c.is_ascii_alphanumeric() || c == '_' {
+            out.push(c);
+        } else if (c == '-' || c.is_whitespace()) && !out.is_empty() && !out.ends_with('-') {
+            out.push('-');
+        }
+        if out.chars().count() >= MAX_COMMAND {
+            break;
+        }
+    }
+    let out = out.trim_matches(|c: char| c == '-' || c == '_').to_string();
+    (!out.is_empty()).then_some(out)
+}
+
+/// `wanted`, or `wanted-2`, `wanted-3`…: a command neither Lumo nor another tool than `id` has.
+fn free_command(wanted: &str, id: &str) -> String {
+    let taken: Vec<String> = list().into_iter().filter(|t| t.manifest.id != id).map(|t| t.manifest.command).collect();
+    let free = |c: &str| !RESERVED_COMMANDS.contains(&c) && !taken.iter().any(|t| t == c);
+    if free(wanted) {
+        return wanted.to_string();
+    }
+    (2..100).map(|n| format!("{wanted}-{n}")).find(|c| free(c)).unwrap_or_default()
+}
+
+#[tauri::command(async)]
+pub fn tools_set_command(app: AppHandle, id: String, command: String) -> Result<String, String> {
+    let name = set_command(&id, &command)?;
+    changed(&app);
+    Ok(name)
 }
 
 /// An id no other tool has, from the name.
@@ -513,6 +567,12 @@ pub fn save(draft: &Draft) -> Result<ToolInfo, String> {
     // Trust outlives a change that asks for nothing more; the old review
     // stays, and no longer counts unless nothing changed (`fingerprint`).
     let trust = old.as_ref().is_some_and(|(_, m)| m.trust && d.permissions.iter().all(|p| m.permissions.contains(p)));
+    // The command the draft gives (made free if another tool has it), else the one it had.
+    let command = match &d.command {
+        Some(c) if c.is_empty() => String::new(),
+        Some(c) => free_command(c, &id),
+        None => old.as_ref().map(|(_, m)| m.command.clone()).unwrap_or_default(),
+    };
     let manifest = Manifest {
         id,
         name: d.name,
@@ -527,6 +587,7 @@ pub fn save(draft: &Draft) -> Result<ToolInfo, String> {
         updated: now,
         trust,
         review: old.and_then(|(_, m)| m.review),
+        command,
     };
     write_manifest(&dir, &manifest)?;
     Ok(info(&dir, manifest))
@@ -541,6 +602,28 @@ pub fn set_enabled(id: &str, on: bool) -> Result<(), String> {
     let (dir, mut m) = find(id).ok_or_else(|| t("That tool isn't there any more."))?;
     m.enabled = on;
     write_manifest(&dir, &m)
+}
+
+/// The tool's command in the chat, or none (`command` empty). Refused for a
+/// name another tool has, or one of Lumo's own.
+pub fn set_command(id: &str, command: &str) -> Result<String, String> {
+    let (dir, mut m) = find(id).ok_or_else(|| t("That tool isn't there any more."))?;
+    let wanted = command.trim().trim_start_matches('/');
+    let name = if wanted.is_empty() {
+        String::new()
+    } else {
+        let name = command_name(wanted).ok_or_else(|| t("A command is made of letters, digits and dashes."))?;
+        if RESERVED_COMMANDS.contains(&name.as_str()) {
+            return Err(tf("/{command} is one of Lumo's own commands.", &[("command", &name)]));
+        }
+        if let Some(other) = list().into_iter().find(|t| t.manifest.id != m.id && t.manifest.command == name) {
+            return Err(tf("/{command} already calls {name}.", &[("command", &name), ("name", &other.manifest.name)]));
+        }
+        name
+    };
+    m.command = name.clone();
+    write_manifest(&dir, &m)?;
+    Ok(name)
 }
 
 /// "Always ask" or "Trust": refused for a tool Lumo can't hold to what it declared.
@@ -856,6 +939,7 @@ pub fn try_draft(draft: &Draft, input: &Value) -> Result<RunResult, String> {
         updated: 0,
         trust: false,
         review: None,
+        command: String::new(),
     };
     Ok(run_in(&dir, &m, input))
 }
@@ -1188,6 +1272,7 @@ mod tests {
             updated: 0,
             trust: false,
             review: None,
+            command: String::new(),
         };
         let t = mcp_tool(&m);
         assert_eq!(t["name"], "bench");
@@ -1211,6 +1296,7 @@ mod tests {
             timeout: 9999,
             files,
             replaces: Some("../evil".into()),
+            command: Some("/PDF Craft!".into()),
         };
         let file = || vec![DraftFile { name: "bench.py".into(), content: "print(1)".into() }];
         let d = checked(&draft("bench.py", file())).unwrap();
@@ -1220,8 +1306,30 @@ mod tests {
         assert_eq!(d.permissions, ["network"]);
         assert_eq!(d.timeout, MAX_TIMEOUT_S);
         assert_eq!(d.replaces, None);
+        assert_eq!(d.command.as_deref(), Some("pdf-craft"));
         assert!(checked(&draft("other.py", file())).is_err(), "the entry must be there");
         assert!(checked(&draft("../x.py", vec![DraftFile { name: "../x.py".into(), content: String::new() }])).is_err());
+    }
+
+    #[test]
+    fn a_command_is_a_plain_lower_case_word() {
+        assert_eq!(command_name("pdfcraft").as_deref(), Some("pdfcraft"));
+        assert_eq!(command_name(" /PDF Craft! ").as_deref(), Some("pdf-craft"));
+        assert_eq!(command_name("bench_pc").as_deref(), Some("bench_pc"));
+        assert_eq!(command_name("--x--").as_deref(), Some("x"));
+        assert_eq!(command_name("/").as_deref(), None);
+        assert_eq!(command_name("../..").as_deref(), None);
+        assert_eq!(command_name(&"a".repeat(80)).map(|c| c.len()), Some(MAX_COMMAND));
+    }
+
+    #[test]
+    fn the_command_is_not_what_the_supervisor_reads() {
+        let dir = std::env::temp_dir().join(format!("lumo-tools-command-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let m = manifest("x.py", &[]);
+        let before = fingerprint(&dir, &m);
+        assert_eq!(before, fingerprint(&dir, &Manifest { command: "x".into(), ..m }));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     fn manifest(entry: &str, permissions: &[&str]) -> Manifest {
@@ -1239,6 +1347,7 @@ mod tests {
             updated: 0,
             trust: false,
             review: None,
+            command: String::new(),
         }
     }
 
@@ -1254,6 +1363,7 @@ mod tests {
             timeout: 0,
             files: files.iter().map(|(n, c)| DraftFile { name: n.to_string(), content: c.to_string() }).collect(),
             replaces: None,
+            command: None,
         };
         let old = manifest("pdfcraft_tool.py", &[]);
         assert_eq!(old_entry(&old, &draft("pdfcraft_mcp.py", &[("pdfcraft_mcp.py", "print(1)")])).as_deref(), Some("pdfcraft_tool.py"));

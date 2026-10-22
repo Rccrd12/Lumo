@@ -887,3 +887,24 @@ test("/new typed in full and sent is Lumo's too", async () => {
   await flush();
   assert.deepEqual(sent("chat_send"), []);
 });
+
+test("a tool's command is in the menu, and what follows it goes to the AI as a request to use that tool", async () => {
+  State.tools = [{ id: "pdfcraft_mcp", name: "pdfcraft_mcp", command: "pdfcraft", enabled: true, reviewed: true, params: [{ name: "path" }] }];
+  answers.chat_send = { text: "Done.", turns: 2 };
+  typeText("/pdf");
+  assert.deepEqual(slashNames(), ["pdfcraft"]);
+  type("Enter");
+  assert.equal($(".chat-input").value, "/pdfcraft ", "a tool with parameters waits for what to do");
+  $(".chat-input").value = "/pdfcraft merge the two PDFs";
+  type("Enter");
+  await flush();
+  await flush();
+  const sentQuery = sent("chat_send").at(-1).query;
+  assert.match(sentQuery, /^Use my Lumo tool "pdfcraft_mcp" \(tool id: pdfcraft_mcp\) for this\.\n\nmerge the two PDFs$/);
+  assert.equal(State.chatHistory[0].content, "/pdfcraft merge the two PDFs", "the chat shows what was typed");
+
+  State.settings = { ...State.settings, chatProvider: "ollama" };
+  typeText("/pdf");
+  assert.ok(!commanding(), "a provider that can't use the tools doesn't list them");
+  State.tools = [];
+});

@@ -3,7 +3,7 @@
 //
 // In the workshop (views/forge.ts) the AI hands a tool over at the end of an
 // answer (chat.rs workshop_note): a ```lumo-tool block with its JSON (name,
-// description, entry, params, permissions, args, timeout), then a
+// description, entry, params, permissions, command, args, timeout), then a
 // ```lumo-file <name> block for each of its files. parseDraft reads the newest
 // one back; stripDraft takes the blocks out of what the chat shows.
 
@@ -43,6 +43,8 @@ export interface ToolDraft {
   files: ToolFile[];
   /** The saved tool this draft changes. */
   replaces?: string | null;
+  /** Its command in the chat's "/" menu, without the slash; "" none; left out, a changed tool keeps its own. */
+  command?: string;
 }
 
 /** What the supervisor said about a tool (tools.rs Review, tool_review.rs). */
@@ -82,6 +84,8 @@ export interface ToolInfo {
   /** What it didn't declare and Lumo couldn't stop it doing anyway. */
   unguarded?: string[];
   mayTrust?: boolean;
+  /** Its command in the chat's "/" menu, without the slash (tools.rs set_command). */
+  command?: string;
 }
 
 /** Where a tool stands with the supervisor, for its badge. */
@@ -171,6 +175,23 @@ function permissions(v: unknown): ToolPermission[] {
   return TOOL_PERMISSIONS.filter((p) => list.includes(p));
 }
 
+/** The longest command (tools.rs MAX_COMMAND). */
+const MAX_COMMAND = 32;
+
+/**
+ * A command as it may be typed, as tools.rs command_name makes it: lower case
+ * letters, digits, `-` and `_` ("/PDF Craft" → "pdf-craft"); "" when nothing is left.
+ */
+export function commandName(raw: string): string {
+  let out = "";
+  for (const c of raw.trim().replace(/^\/+/, "").toLowerCase()) {
+    if (/[a-z0-9_]/.test(c)) out += c;
+    else if ((c === "-" || /\s/.test(c)) && out && !out.endsWith("-")) out += "-";
+    if (out.length >= MAX_COMMAND) break;
+  }
+  return out.replace(/^[-_]+|[-_]+$/g, "");
+}
+
 /** The draft in one answer, if it hands one over. */
 export function draftIn(text: string): ToolDraft | null {
   const { manifest, files } = blocks(text);
@@ -188,6 +209,7 @@ export function draftIn(text: string): ToolDraft | null {
     permissions: permissions(manifest.permissions),
     timeout,
     files,
+    ...(typeof manifest.command === "string" ? { command: commandName(manifest.command) } : {}),
   };
 }
 
@@ -254,7 +276,7 @@ export function stripDraft(text: string): { text: string; draft: boolean; writin
 
 /** The same draft, whatever the order of what it holds: to know a saved one from a changed one. */
 export function draftKey(d: ToolDraft): string {
-  return JSON.stringify([d.name, d.description, d.entry, d.args, d.params, d.permissions, d.timeout, d.files.map((f) => [f.name, f.content])]);
+  return JSON.stringify([d.name, d.description, d.entry, d.args, d.params, d.permissions, d.timeout, d.files.map((f) => [f.name, f.content]), ...(d.command !== undefined ? [d.command] : [])]);
 }
 
 /** A saved tool as a draft, for the workshop to change it. */
@@ -269,6 +291,7 @@ export function draftOf(tool: ToolInfo, files: ToolFile[]): ToolDraft {
     timeout: tool.timeout ?? 0,
     files,
     replaces: tool.id,
+    command: tool.command ?? "",
   };
 }
 
@@ -323,6 +346,7 @@ export function blocksOf(d: ToolDraft): string {
     params: d.params,
     permissions: d.permissions,
   };
+  if (d.command !== undefined) manifest.command = d.command;
   if (d.args.length) manifest.args = d.args;
   if (d.timeout) manifest.timeout = d.timeout;
   const out = ["```lumo-tool", JSON.stringify(manifest, null, 2), "```"];

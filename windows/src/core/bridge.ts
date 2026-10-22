@@ -227,6 +227,8 @@ export const Bridge = {
   toolsReveal: (id: string | null) => call<void>("tools_reveal", { id }),
   /** "Always ask" or "Trust" for one tool; refused for one Lumo can't hold to what it declared. */
   toolsSetTrust: (id: string, trust: boolean) => callOrThrow<void>("tools_set_trust", { id, trust }),
+  /** A tool's command in the chat's "/" menu ("" takes it away): the name as saved, or why not. */
+  toolsSetCommand: (id: string, command: string) => callOrThrow<string>("tools_set_command", { id, command }),
   /** Has the supervisor review a tool again (tool_review.rs); the answer comes as `tool-review`. */
   toolsReview: (id: string) => call<void>("tools_review", { id }),
   /** The tools being reviewed now. */

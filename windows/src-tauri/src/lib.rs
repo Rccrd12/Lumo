@@ -1210,6 +1210,7 @@ pub fn run() {
             tools::tools_files,
             tools::tools_reveal,
             tools::tools_set_trust,
+            tools::tools_set_command,
             tools::tools_terminal_has,
             tools::tools_terminal_set,
             tool_review::tools_review,

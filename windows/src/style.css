@@ -2596,10 +2596,6 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(255, 255, 255, 0.08);
 }
 
-.slash-row.off {
-  opacity: 0.4;
-}
-
 .slash-icon {
   flex: 0 0 16px;
   display: grid;
@@ -4999,6 +4995,46 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* A tool's command in the chat: "/" and the word, typed in place. */
+.tool-command-wrap {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tool-command-wrap:focus-within {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.tool-command-slash {
+  color: var(--dim-3);
+  font: 500 11.5px var(--font);
+}
+
+.tool-command {
+  width: 120px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 11.5px var(--font);
+  outline: none;
+  user-select: text;
+}
+
+.tool-command::placeholder {
+  color: var(--dim-3);
+}
+
+/* The draft's command, beside its status in the workshop. */
+.forge-command {
+  font: 500 10.5px var(--font);
+  color: #8b929e;
 }
 
 .tool-detail-label {

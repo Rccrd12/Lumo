@@ -246,6 +246,7 @@ mod tests {
             updated: 0,
             trust: false,
             review: None,
+            command: String::new(),
         };
         let q = prompt(&m, &[("bench.py".into(), "print(1)".into())]);
         assert!(q.contains("\"permissions\": [\n    \"system\"\n  ]") || q.contains("\"system\""));
