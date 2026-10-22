@@ -199,6 +199,12 @@ function claudeSection(status: HookStatus): HTMLElement {
       setting(h("span", { class: "with-dot" }, t("Relay"), statusDot(status.hookReady)), h("span", { class: "path", text: status.hookPath })),
     );
 
+    if (status.installed && status.current === false) {
+      body.append(h("div", {
+        class: "notice warn",
+        text: t("This version of Lumo installs the hooks a little differently: Claude Code no longer waits for Lumo, except to ask for a permission. Reinstall them to get it."),
+      }));
+    }
     if (!status.hookReady) {
       body.append(h("div", {
         class: "notice warn",
@@ -1939,7 +1945,7 @@ async function main() {
 /** Reads what the sections show and draws them all. */
 async function render() {
   const status = (await Bridge.hooksStatus()) ?? {
-    installed: false, planRelayInstalled: false, settingsPath: "", hookPath: "", hookReady: false,
+    installed: false, current: false, planRelayInstalled: false, settingsPath: "", hookPath: "", hookReady: false,
   };
   const agents = await Bridge.agentHooksList();
 

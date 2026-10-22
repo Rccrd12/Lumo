@@ -202,8 +202,8 @@ pub async fn send(
     }
     let turn = chat.begin(p.id);
     let user = with_images(user_message(turn.first, context.as_ref(), &query), images);
-    let mut body = request_body(p, model, &chat::system_prompt_in(chat, false), &turn.history, &user);
-    let tools = tauri::async_runtime::spawn_blocking(crate::tools::api_tools).await.unwrap_or_default();
+    let mut body = request_body(p, model, &chat::system_prompt_in(chat, false, true), &turn.history, &user);
+    let tools = tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default();
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }
@@ -235,7 +235,7 @@ pub async fn send(
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
-                let (text, _) = crate::tools::call_for_chat(app, name, input).await;
+                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }
             if let Some(messages) = body["messages"].as_array_mut() {
@@ -255,7 +255,7 @@ pub async fn send(
     Ok(ChatReply::answer(text, None))
 }
 
-/// The user's tools that are on and reviewed (tools.rs), as functions.
+/// The island's tools (island_tools.rs) and the user's that are on and reviewed (tools.rs), as functions.
 fn function_tools(tools: &[(String, String, Value)]) -> Value {
     Value::Array(
         tools

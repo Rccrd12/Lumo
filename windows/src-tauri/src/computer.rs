@@ -101,8 +101,9 @@ pub fn server_entry() -> Value {
 
 /// Antigravity CLI reads MCP servers from its workspace's
 /// `.agents/mcp_config.json`. Lumo's server goes in the one of Lumo's own
-/// folder with its plan tool (`--tools=plan`, for the Plan island) and its
-/// email tools while the Email pill is on (`--tools=plan,mail`, mail.rs);
+/// folder with its plan tool (`--tools=plan`, for the Plan island), the
+/// island's timer and GitHub tools (`island`, island_tools.rs) and its email
+/// tools while the Email pill is on (`mail`, mail.rs);
 /// computer use never goes to agy (Gemini Live's screen work is Claude
 /// Code's). An entry an earlier build put there is replaced. Whatever else
 /// the file holds is kept, and the user's global configuration is never
@@ -117,7 +118,7 @@ pub fn agy_workspace(work: &std::path::Path, mail: bool) {
         None => json!({}),
     };
     let mut entry = server_entry();
-    entry["args"] = json!(["--mcp", if mail { "--tools=plan,mail" } else { "--tools=plan" }]);
+    entry["args"] = json!(["--mcp", if mail { "--tools=plan,mail,island" } else { "--tools=plan,island" }]);
     let Some(root) = config.as_object_mut() else { return };
     let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
     let Some(servers) = servers.as_object_mut() else { return };
@@ -1578,21 +1579,21 @@ mod tests {
         let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
         agy_workspace(&dir, false);
-        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan"]), "the plan always");
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the plan always");
         agy_workspace(&dir, true);
-        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail"]));
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]));
 
         // An earlier build's computer use entry, next to the user's own.
         std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
         agy_workspace(&dir, true);
         let v = read();
-        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail"]), "never the computer");
+        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]), "never the computer");
         assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
         agy_workspace(&dir, false);
         let v = read();
-        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan"]), "the email goes with the pill");
+        assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the email goes with the pill");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
 
         std::fs::write(&file, "not json").unwrap();

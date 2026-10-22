@@ -484,6 +484,19 @@ fn free_id(name: &str) -> String {
 
 /// Saves a draft as a tool, on: a new one, or the one it `replaces` (whose
 /// other files stay). The user's click in the workshop is what calls this.
+/// The file a changed tool ran before, when the new version runs another one
+/// and has no use for it: no file of the draft named after it, and none
+/// mentions it. Left in the folder, the supervisor would read it as part of
+/// the tool, and the user would find it there.
+fn old_entry(old: &Manifest, d: &Draft) -> Option<String> {
+    let before = old.entry.as_str();
+    if before == d.entry || Path::new(before).is_absolute() || d.files.iter().any(|f| f.name.eq_ignore_ascii_case(before)) {
+        return None;
+    }
+    let stem = Path::new(before).file_stem()?.to_str()?;
+    (!d.files.iter().any(|f| f.content.contains(stem))).then(|| before.to_string())
+}
+
 pub fn save(draft: &Draft) -> Result<ToolInfo, String> {
     let d = checked(draft)?;
     let old = d.replaces.as_deref().and_then(find);
@@ -492,6 +505,9 @@ pub fn save(draft: &Draft) -> Result<ToolInfo, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     for f in &d.files {
         std::fs::write(dir.join(&f.name), f.content.as_bytes()).map_err(|e| e.to_string())?;
+    }
+    if let Some(gone) = old.as_ref().and_then(|(_, m)| old_entry(m, &d)) {
+        let _ = std::fs::remove_file(dir.join(gone));
     }
     let now = now_ms();
     // Trust outlives a change that asks for nothing more; the old review
@@ -818,7 +834,8 @@ pub fn try_draft(draft: &Draft, input: &Value) -> Result<RunResult, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
     // A tool being changed: its other files are there too.
     if let Some((old, m)) = d.replaces.as_deref().and_then(find) {
-        for name in info(&old, m).files {
+        let gone = old_entry(&m, &d);
+        for name in info(&old, m).files.into_iter().filter(|n| Some(n) != gone.as_ref()) {
             let _ = std::fs::copy(old.join(&name), dir.join(&name));
         }
     }
@@ -879,21 +896,25 @@ pub fn offered() -> Vec<ToolInfo> {
     list().into_iter().filter(|t| t.manifest.enabled && !t.missing && t.reviewed).collect()
 }
 
-/// The tools agents may use, for the chat's API providers: id, the words the
-/// model reads, and the JSON schema of the input.
-pub fn api_tools() -> Vec<(String, String, Value)> {
-    offered()
-        .iter()
-        .map(|t| {
-            let v = mcp_tool(&t.manifest);
-            (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
-        })
-        .collect()
+/// The tools agents may use, for the chat's API providers: the island's own
+/// (island_tools.rs, its GitHub ones with `listen`), then the user's that are
+/// on: id, the words the model reads, and the JSON schema of the input.
+pub fn api_tools(listen: bool) -> Vec<(String, String, Value)> {
+    let mut all = crate::island_tools::api_tools(listen);
+    // Never one of the user's with the name of the island's own.
+    all.extend(offered().iter().filter(|t| !crate::island_tools::NAMES.contains(&t.manifest.id.as_str())).map(|t| {
+        let v = mcp_tool(&t.manifest);
+        (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
+    }));
+    all
 }
 
-/// A call from the chat's API providers (claude.rs, openai_compat.rs): what
-/// goes back to the model, and whether it failed.
-pub async fn call_for_chat(app: &AppHandle, id: &str, input: Value) -> (String, bool) {
+/// A call from the chat `chat_id`'s API providers (claude.rs,
+/// openai_compat.rs): what goes back to the model, and whether it failed.
+pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value) -> (String, bool) {
+    if crate::island_tools::NAMES.contains(&id) {
+        return crate::island_tools::call(chat_id, id, &input);
+    }
     let answer = serve_call(app, &json!({ "tool": id, "input": input })).await;
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
@@ -1219,6 +1240,27 @@ mod tests {
             trust: false,
             review: None,
         }
+    }
+
+    #[test]
+    fn the_file_a_changed_tool_ran_before_goes_unless_the_new_one_uses_it() {
+        let draft = |entry: &str, files: &[(&str, &str)]| Draft {
+            name: "T".into(),
+            description: String::new(),
+            entry: entry.into(),
+            args: vec![],
+            params: vec![],
+            permissions: vec![],
+            timeout: 0,
+            files: files.iter().map(|(n, c)| DraftFile { name: n.to_string(), content: c.to_string() }).collect(),
+            replaces: None,
+        };
+        let old = manifest("pdfcraft_tool.py", &[]);
+        assert_eq!(old_entry(&old, &draft("pdfcraft_mcp.py", &[("pdfcraft_mcp.py", "print(1)")])).as_deref(), Some("pdfcraft_tool.py"));
+        assert_eq!(old_entry(&old, &draft("pdfcraft_mcp.py", &[("pdfcraft_mcp.py", "import pdfcraft_tool")])), None, "still imported");
+        assert_eq!(old_entry(&old, &draft("pdfcraft_tool.py", &[])), None, "the same entry");
+        assert_eq!(old_entry(&old, &draft("b.py", &[("b.py", ""), ("pdfcraft_tool.py", "")])), None, "still one of its files");
+        assert_eq!(old_entry(&manifest("C:\\Scripts\\x.py", &[]), &draft("b.py", &[("b.py", "")])), None, "the user's own script is never touched");
     }
 
     #[test]

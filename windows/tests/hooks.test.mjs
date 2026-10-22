@@ -151,6 +151,22 @@ test("a notification is a rate limit, a question, or nothing", () => {
   assert.equal(task().state, "ratelimit");
 });
 
+test("a notification that waits for an answer is a question, whatever its words", () => {
+  hook({ hook_event_name: "Notification", message: "Claude needs your input", notification_type: "agent_needs_input" });
+  assert.equal(task().state, "question");
+});
+
+test("compaction and auto-mode denials leave their own steps", () => {
+  hook({ hook_event_name: "UserPromptSubmit", prompt: "go" });
+  hook({ hook_event_name: "PreCompact", trigger: "auto" });
+  hook({ hook_event_name: "PostCompact", trigger: "auto" });
+  hook({ hook_event_name: "PermissionDenied", tool_name: "Bash", tool_input: { command: "rm -rf build" }, reason: "auto" });
+  const steps = task().steps.slice(-3);
+  assert.equal(steps[0], "Compacting the conversation…");
+  assert.equal(steps[1], "Conversation compacted");
+  assert.match(steps[2], /^Denied by auto mode: .*rm -rf build/);
+});
+
 test("an unknown event changes nothing", () => {
   hook({ hook_event_name: "SomethingNew", cwd: "/p" });
   assert.equal(task().state, "idle");

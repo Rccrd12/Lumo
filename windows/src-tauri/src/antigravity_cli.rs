@@ -84,8 +84,8 @@ When an action is denied or does not run, tell the user plainly what you could n
 The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read) read their mailbox, read or unread mail alike, and Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking. They only read: to answer an email, write a draft for the user to send themselves. \
 Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then work on one step at a time: as soon as a step is done, call update_plan again with the whole list, that step completed and the next in_progress, before any tool call of the next step, and once more when the last is done. Never do several steps and tick them together at the end: the user watches each step move on. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. ",
-    crate::chat::timer_note!(),
-    crate::chat::listen_note!(),
+    crate::chat::timer_tool_note!(),
+    crate::chat::listen_tool_note!(),
     crate::chat::math_note!()
 );
 
@@ -603,6 +603,7 @@ fn run(
     args: Vec<String>,
     input: String,
     dir: PathBuf,
+    chat_id: &str,
     stop: Arc<Stop>,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
@@ -617,6 +618,10 @@ fn run(
     // And that its commands run in agy's sandbox: lumo-hook tells the island.
     if args.iter().any(|a| a == SANDBOX_FLAG) {
         cmd.env("LUMO_AGY_SANDBOX", "1");
+    }
+    // Which chat the island's tools are called from (lumo-hook's MCP server, island_tools.rs).
+    if !chat_id.is_empty() {
+        cmd.env("LUMO_CHAT_ID", chat_id);
     }
     platform::no_console(&mut cmd);
     let mut child = cmd
@@ -833,6 +838,7 @@ pub async fn send(
     let app2 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
+    let chat_id = chat.id().to_string();
     let state = tauri::async_runtime::spawn_blocking(move || {
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -845,6 +851,7 @@ pub async fn send(
             args,
             input,
             work,
+            &chat_id,
             stop,
             |text| {
                 events.delta(&app2, text);
@@ -935,7 +942,7 @@ pub(crate) fn help(
         crate::computer::agy_workspace(&work, mail);
     }
     let _mail = crate::mail::agent_turn();
-    let state = run(exe, args, helper_input(task), work, stop, |_| {}, on_activity, |_| {})?;
+    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -944,6 +951,25 @@ pub(crate) fn help(
         Some(Ok(text)) => Ok(text),
         Some(Err(e)) => Err(result_error(&e)),
         None => unreachable!("run() returns an error without a result"),
+    }
+}
+
+// ── Lumo's supervisor ─────────────────────────────────────────────────────────
+
+/// One answer to `prompt` with `model`, for Lumo's supervisor (tool_review.rs):
+/// a fresh conversation in plan mode, in a folder of its own, so it reads and
+/// answers without running anything. Blocking.
+pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
+    let work = platform::local_dir().join("tool-review");
+    let dir = work.to_string_lossy().to_string();
+    let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
+    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {})?;
+    match state.result {
+        Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
+        Some(Ok(text)) => Ok(text),
+        Some(Err(e)) => Err(result_error(&e)),
+        None => Err(t("No response text.")),
     }
 }
 

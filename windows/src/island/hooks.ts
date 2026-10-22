@@ -136,12 +136,21 @@ function cancelStopTimer(id: string): boolean {
 /** Events after which a pending permission request of the same session is moot. */
 const TURN_OVER = new Set(["Stop", "StopFailure", "UserPromptSubmit", "SessionEnd", "Interrupt"]);
 
+/** Notifications that mean the agent waits for you (Claude Code's `notification_type`). */
+const NEEDS_YOU = new Set(["agent_needs_input", "elicitation_dialog", "elicitation_url_dialog"]);
+
 interface HookPayload {
   hook_event_name?: string;
   request_id?: string;
   session_id?: string;
   cwd?: string;
   message?: string;
+  /** Notification: what it is about (Claude Code: idle_prompt, agent_needs_input, elicitation_dialog…). */
+  notification_type?: string;
+  /** PermissionDenied: why auto mode refused the call. */
+  reason?: string;
+  /** PreCompact / PostCompact: `auto` when the context filled up, `manual` for /compact. */
+  trigger?: string;
   /** UserPromptSubmit carries `prompt`; `message` belongs to Notification/Stop. */
   prompt?: string;
   /** Stop: the turn's final answer (Markdown) — Claude Code's, Hermes's, Codex's. */
@@ -166,6 +175,8 @@ interface HookPayload {
   rate_limits?: unknown;
   /** PostToolUse of TaskCreate: the id of the task made (the relay keeps it of the result). */
   lumo_task_id?: string;
+  /** The card may offer "Allow for this session" (session_rules.rs): the request has a session to keep it for. */
+  lumo_session_allow?: boolean;
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
 }
@@ -537,7 +548,7 @@ function handleHook(island: Island, payload: HookPayload) {
         supersedeStop();
         State.updateTask(agentId, "ratelimit");
         Sound.play("rate");
-      } else if (message.endsWith("?")) {
+      } else if (message.endsWith("?") || NEEDS_YOU.has(payload.notification_type ?? "")) {
         supersedeStop();
         State.updateTask(agentId, "question");
         State.appendStep(agentId, message);
@@ -632,6 +643,27 @@ function handleHook(island: Island, payload: HookPayload) {
       State.appendStep(agentId, t("+ subagent"));
       break;
 
+    // The context filled up (or /compact): the agent is summing up the
+    // conversation so far, which takes a while with nothing else to show.
+    case "PreCompact":
+      if (!State.tasks.some((x) => x.id === agentId)) break;
+      State.appendStep(agentId, t("Compacting the conversation…"));
+      break;
+
+    case "PostCompact":
+      if (!State.tasks.some((x) => x.id === agentId)) break;
+      State.appendStep(agentId, t("Conversation compacted"));
+      break;
+
+    // Auto mode said no to a call, on its own: nothing to answer, but the
+    // session's steps say what was not done.
+    case "PermissionDenied": {
+      ensurePill();
+      const tool = payload.tool_name ?? "Tool";
+      State.appendStep(agentId, t("Denied by auto mode: {action}", { action: stepLabel(tool, payload.tool_input ?? {}) }));
+      break;
+    }
+
     case "SubagentStop":
       State.appendStep(agentId, t("• subagent done"));
       break;
@@ -704,6 +736,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
+        ...(payload.lumo_session_allow === true && !questions ? { sessionAllow: true } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(!fromChat && !isExternalAgent ? { project: projectName } : {}),
       };

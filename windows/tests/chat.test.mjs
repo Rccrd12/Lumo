@@ -310,6 +310,23 @@ test("Shift+Enter starts a new line instead of sending; Enter sends it all", asy
 const rows = () => view.el.find(".chat-row");
 const editOf = (i) => rows()[i].find(".msg-action")[1];
 
+test("a message typed while the answer is written goes as soon as it ends", async () => {
+  const pending = heldAnswers();
+  await ask("tell me a story");
+  const input = $(".chat-input");
+  input.value = "and another";
+  type("Enter");
+  await flush();
+  assert.equal(sent("chat_send").length, 1, "it waits");
+  assert.equal(input.title, "Sent as soon as this answer ends");
+  pending[0]({ text: "Once upon a time.", turns: 2 });
+  await flush();
+  await flush();
+  assert.equal(sent("chat_send").length, 2, "then it goes");
+  assert.equal(input.value, "");
+  assert.equal(input.title, "");
+});
+
 test("while an answer is written, the field stays open and send is a Stop button", async () => {
   const pending = heldAnswers();
   await ask("tell me a story");
@@ -318,7 +335,7 @@ test("while an answer is written, the field stays open and send is a Stop button
   assert.ok($(".send-btn").classList.contains("stop"));
   assert.equal($(".send-btn").title, "Stop");
 
-  // Enter waits for the answer: nothing is sent, the text stays.
+  // Enter waits for the answer: nothing is sent yet, the text stays (and Stop keeps it there).
   input.value = "and another";
   type("Enter");
   await flush();

@@ -12,6 +12,10 @@
 // unless they trust that tool and Lumo can hold it to what it declared.
 // The terminal button adds the tools to Claude Code in the terminal.
 //
+// A tool's own description is written for the agents, often in English: the
+// list shows the supervisor's summary, in Lumo's language, and the
+// description is folded under What it tells the agents.
+//
 // A tool the workshop is still making is listed first, marked In progress:
 // a click goes back to it.
 
@@ -72,6 +76,7 @@ export const TOOLS_STRINGS = {
   off: N_("Off"),
   ran: N_("{name} ran"),
   ranFailed: N_("{name} failed"),
+  forAgents: N_("What it tells the agents"),
   building: N_("In progress"),
   buildingText: N_("Lumo is making it with you in the workshop"),
 };
@@ -169,6 +174,8 @@ export function buildTools(actions: ViewActions): ViewHost {
   let open: string | null = null;
   let confirming: string | null = null;
   let confirmingOn: string | null = null;
+  /** The tool whose description for the agents is unfolded. */
+  let agentText: string | null = null;
   let drawn = "";
 
   async function terminal() {
@@ -329,6 +336,26 @@ export function buildTools(actions: ViewActions): ViewHost {
       !tool.mayTrust && !unguarded.length ? h("div", { class: "tool-detail-note", text: t(TOOLS_STRINGS.trustNo) }) : null);
   }
 
+  /**
+   * The description the agents read, folded under its label once the
+   * supervisor has said in Lumo's language what the tool does.
+   */
+  function forAgents(tool: ToolInfo): HTMLElement {
+    const text = h("div", { class: "tool-detail-text", text: tool.description });
+    if (!tool.review?.summary) return text;
+    const unfolded = agentText === tool.id;
+    const fold = h("button", { class: unfolded ? "tools-fold open" : "tools-fold", "aria-expanded": unfolded ? "true" : "false" },
+      svg(ICONS.chevronRight, 9, { stroke: 2 }), h("span", { text: t(TOOLS_STRINGS.forAgents) }));
+    fold.addEventListener("click", (e) => {
+      e.stopPropagation();
+      agentText = unfolded ? null : tool.id;
+      drawn = "";
+      actions.blip();
+      State.notify();
+    });
+    return h("div", { class: "tools-agents" }, fold, unfolded ? text : null);
+  }
+
   function detail(tool: ToolInfo): HTMLElement {
     const params = tool.params.length
       ? h("span", { class: "tool-params" }, ...tool.params.map((p) =>
@@ -354,7 +381,7 @@ export function buildTools(actions: ViewActions): ViewHost {
     });
     return h("div", { class: "tool-detail" },
       supervisor(tool),
-      tool.description ? h("div", { class: "tool-detail-text", text: tool.description }) : null,
+      tool.description ? forAgents(tool) : null,
       h("div", { class: "tool-detail-row" }, h("span", { class: "tool-detail-label", text: t(TOOLS_STRINGS.params) }), params),
       h("div", { class: "tool-detail-row" }, needs(tool, true)),
       abs ? h("div", { class: "tool-detail-note", text: t(TOOLS_STRINGS.external, { path: tool.entry }) }) : null,
@@ -378,7 +405,7 @@ export function buildTools(actions: ViewActions): ViewHost {
       ? h("span", { class: "tool-desc missing", text: t(TOOLS_STRINGS.missing) })
       : confirmingOn === tool.id
         ? h("span", { class: "tool-desc missing", text: t(TOOLS_STRINGS.onAnyway) })
-        : h("span", { class: "tool-desc", text: tool.description.split("\n")[0] });
+        : h("span", { class: "tool-desc", text: (tool.review?.summary || tool.description).split("\n")[0] });
     const isOpen = open === tool.id;
     const head = h("div", { class: "tool-row-head", role: "button", tabindex: "0" },
       toolTile(tool.id),
@@ -441,7 +468,7 @@ export function buildTools(actions: ViewActions): ViewHost {
   function draw() {
     const tools = State.tools;
     const building = inWorkshop();
-    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], open, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, t(TOOLS_STRINGS.on)]);
+    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], open, agentText, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, t(TOOLS_STRINGS.on)]);
     if (key === drawn) return;
     drawn = key;
     terminalBtn.classList.toggle("open", terminalHas);

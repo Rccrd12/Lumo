@@ -13,6 +13,7 @@ pub fn event(name: &str) -> &str {
         "AfterTool" | "AfterModel" => "PostToolUse",
         "BeforeAgent" => "UserPromptSubmit",
         "AfterAgent" => "Stop",
+        "PreCompress" => "PreCompact",
         "startup" => "SessionStart",
         "exit" => "SessionEnd",
         // Antigravity
@@ -31,6 +32,7 @@ pub fn event(name: &str) -> &str {
         "agentStop" => "Stop",
         "notification" => "Notification",
         "preToolUse" => "PreToolUse",
+        "preCompact" => "PreCompact",
         "postToolUse" => "PostToolUse",
         "permissionRequest" => "PermissionRequest",
         "sessionEnd" => "SessionEnd",
@@ -174,11 +176,13 @@ mod tests {
             ("postToolUseFailure", "PostToolUseFailure"),
             ("subagentStart", "SubagentStart"),
             ("subagentStop", "SubagentStop"),
+            ("PreCompress", "PreCompact"),
+            ("preCompact", "PreCompact"),
         ] {
             assert_eq!(event(raw), canonical, "{raw}");
         }
         // Claude Code's own names, and anything unknown, pass through.
-        for same in ["PreToolUse", "PermissionRequest", "Stop", "Interrupt", "somethingNew"] {
+        for same in ["PreToolUse", "PermissionRequest", "Stop", "Interrupt", "PreCompact", "PostCompact", "PermissionDenied", "somethingNew"] {
             assert_eq!(event(same), same);
         }
     }

@@ -119,6 +119,9 @@ struct Event {
     name: String,
     /// For Claude Code's AskUserQuestion, the question as it was asked.
     question: Option<Value>,
+    /// Claude Code's `permission_suggestions`, whole: what "Allow for this
+    /// session" hands back to it (reply::decision_json_with).
+    suggestions: Option<Value>,
     /// A shell command of the island's own Antigravity CLI chat, forwarded as
     /// a permission request (see `prepare`).
     island_card: bool,
@@ -190,7 +193,7 @@ fn main() {
     } else if event.island_card {
         print(Some(reply::antigravity_island(decision.as_deref())));
     } else {
-        print(reply::stdout(&args.agent, &event.name, decision.as_deref(), event.question.as_ref()));
+        print(reply::stdout_with(&args.agent, &event.name, decision.as_deref(), event.question.as_ref(), event.suggestions.as_ref()));
     }
     std::process::exit(0);
 }
@@ -288,6 +291,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let question = (map.get("tool_name").and_then(Value::as_str) == Some("AskUserQuestion"))
         .then(|| map.get("tool_input").cloned())
         .flatten();
+    let suggestions = (name == "PermissionRequest").then(|| map.get("permission_suggestions").cloned()).flatten();
 
     // Every string is capped, except the edit text of a finished Edit /
     // MultiEdit / Write, which the live diff needs whole (within its own limits).
@@ -295,7 +299,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some(Event { line, name, question, island_card })
+    Some(Event { line, name, question, suggestions, island_card })
 }
 
 /// Antigravity's `workspacePaths`: the folders its run may change.
