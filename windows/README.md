@@ -338,7 +338,7 @@ and they can't send, move, mark or delete anything.
 
 ## Claude Code
 
-<img src="screenshots/settings.png" width="640" alt="The settings window, on Updates: a newer version, Update now and the changelog">
+<img src="screenshots/settings.png" width="640" alt="The settings window, on Chat: Claude, Antigravity CLI and Codex">
 
 Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
