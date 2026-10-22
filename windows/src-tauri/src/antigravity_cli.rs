@@ -937,6 +937,25 @@ pub(crate) fn help(
     }
 }
 
+// ── Lumo's supervisor ─────────────────────────────────────────────────────────
+
+/// One answer to `prompt` with `model`, for Lumo's supervisor (tool_review.rs):
+/// a fresh conversation in plan mode, in a folder of its own, so it reads and
+/// answers without running anything. Blocking.
+pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
+    let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
+    let work = platform::local_dir().join("tool-review");
+    let dir = work.to_string_lossy().to_string();
+    let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
+    let state = run(exe, args, user_event(prompt), work, Arc::new(Stop::default()), |_| {}, |_| {}, |_| {})?;
+    match state.result {
+        Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
+        Some(Ok(text)) => Ok(text),
+        Some(Err(e)) => Err(result_error(&e)),
+        None => Err(t("No response text.")),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

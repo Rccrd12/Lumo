@@ -10011,18 +10011,6 @@
    "id": "Jawaban supervisor tidak bisa dibaca.",
    "it": "Non è stato possibile leggere la risposta del supervisore."
   },
-  "The supervisor can't use Antigravity CLI. Pick another model in the chat, then review again.": {
-   "zh-Hans": "监督员无法使用 Antigravity CLI。请在聊天中选择其他模型，然后重新审查。",
-   "hi": "सुपरवाइज़र Antigravity CLI इस्तेमाल नहीं कर सकता। चैट में कोई और मॉडल चुनें, फिर दोबारा समीक्षा करें।",
-   "es": "El supervisor no puede usar Antigravity CLI. Elige otro modelo en el chat y vuelve a revisar.",
-   "ar": "لا يستطيع المشرف استخدام Antigravity CLI. اختر نموذجًا آخر في الدردشة ثم راجِع مجددًا.",
-   "fr": "Le superviseur ne peut pas utiliser Antigravity CLI. Choisissez un autre modèle dans le chat, puis vérifiez à nouveau.",
-   "bn": "সুপারভাইজার Antigravity CLI ব্যবহার করতে পারে না। চ্যাটে অন্য মডেল বেছে নিয়ে আবার পর্যালোচনা করুন।",
-   "pt-BR": "O supervisor não pode usar o Antigravity CLI. Escolha outro modelo no chat e revise de novo.",
-   "ru": "Супервизор не может работать через Antigravity CLI. Выберите другую модель в чате и проверьте снова.",
-   "id": "Supervisor tidak bisa memakai Antigravity CLI. Pilih model lain di chat, lalu tinjau lagi.",
-   "it": "Il supervisore non può usare Antigravity CLI. Scegli un altro modello nella chat, poi rivedi di nuovo."
-  },
   "Lumo can't let this tool run without asking.": {
    "zh-Hans": "Lumo 不能让这个工具无需询问就运行。",
    "hi": "Lumo इस टूल को बिना पूछे चलने नहीं दे सकता।",
