@@ -1,6 +1,8 @@
 # Changelog
 
-## Windows 0.12.0 — October 21, 2026
+## Windows 0.12.0 — October 22, 2026
+
+> After updating, open Settings → Claude Code and click **Reinstall hooks…** once: Claude Code then waits for Lumo only to ask for a permission (see below). Hooks installed before keep working as they did.
 
 - **Tools tab**: a third tab, after the agents, lists your own tools, each with its switch (a new tool is on). A tool is a small program Lumo and its agents can use for you: a benchmark of your PC, a report from your app, anything you have a script for
 - **The tool workshop**: Add a tool opens a chat of its own where Lumo writes the tool with you, or brings in a script you already have, and shows it beside the conversation with what it needs, its files and its parameters. Try runs it on your PC, Save adds it. How it works shows over the workshop at first, and its "?" brings it back. A tool still being made is listed first on the Tools tab, In progress
@@ -8,6 +10,16 @@
 - **What a tool needs is enforced**: Python tools can't use the internet, read outside their folder, write outside their work folder or start programs unless they said so; Node.js tools run under Node's permission model
 - **Each call asks you**: when an agent uses one of your tools, Lumo shows its card with what it will do and the supervisor's words. A reviewed tool Lumo can hold to what it declared can be trusted to run without asking
 - **Your tools everywhere**: Claude Code and the API providers in the island chat get them, and a button on the Tools tab adds them to Claude Code in the terminal
+- **The supervisor speaks your language in the list**: under each tool's name, the Tools tab shows what the supervisor said it does; the description written for the agents is folded under What it tells the agents. The supervisor also works with Antigravity CLI, and a tool changed to run another file no longer keeps the old one in its folder
+- **Allow for this session**: a third button on the permission card lets the same command, file, URL or MCP tool through without a card until that agent's session ends. It works for Claude Code, Codex, Copilot CLI, Muse Code and the island chat; Lumo keeps the rule in memory only, and Claude Code stops asking too
+- **Claude Code no longer waits for Lumo** on every event: once the hooks are reinstalled, only a permission request waits for the island's click
+- **More on the island**: Claude Code's compaction and its auto-mode denials (and Gemini CLI's and Copilot's compaction) show as steps on the pill, and a notification that needs you shows as a question
+- **Timer and pull request listening as real tools**: the chat's Claude Code, Antigravity CLI and API models set timers and listen to a pull request through tools of their own, checked at once, instead of writing a special line
+- **One Claude Code per chat**: the island chat keeps each chat's Claude Code running between messages, so answers start sooner; Stop interrupts the answer, and a message typed while an answer is being written goes once it ends
+- **Email reconnects within seconds**: a connection that went quiet (back from sleep, a new network) is redone after 2 s, then 5 s, and the emails already read stay on screen instead of an error until three tries in a row have failed
+- **Auto with Antigravity CLI is really auto**: Auto now uses Antigravity's own Proceed in Sandbox. Commands run in Antigravity's terminal sandbox without asking; one that wants to leave the sandbox, an MCP tool or the browser still asks with a card. On Windows the sandbox is in preview and may not see some programs (npm, for example): Antigravity then asks to leave it
+- **Turbo for Antigravity CLI**: a fourth mode in the chat's shield, with Antigravity CLI only. Antigravity's own Turbo preset runs every command and changes any file without asking. With Claude Code it reads as Ask every time
+- **Fixed**: in the island chat, Antigravity CLI could change a file outside the chat's folders without asking, in every permission mode. Every such change is now a card
 
 ## Windows 0.11.1 — October 20, 2026
 
