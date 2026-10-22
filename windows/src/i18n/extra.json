@@ -8895,7 +8895,7 @@
    "id": "Alat Anda",
    "it": "I tuoi tool"
   },
-  "{on} on of {all}": {
+  "{on} of {all} on": {
    "zh-Hans": "{all} 个中 {on} 个已开启",
    "hi": "{all} में से {on} चालू",
    "es": "{on} activas de {all}",

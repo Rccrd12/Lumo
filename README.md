@@ -66,8 +66,8 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 <td><img src="windows/screenshots/supervisor.png" alt="Lumo's supervisor saying in plain words what a tool does, marked Looks safe"></td>
 </tr>
 <tr>
-<td align="center"><img src="windows/screenshots/commands.png" width="400" alt="The / menu in the chat: Lumo's commands and a tool of your own"></td>
-<td><img src="windows/screenshots/plan.png" alt="The Plan island following an agent's plan step by step, and a finished plan"></td>
+<td><img src="windows/screenshots/commands.png" alt="The / menu in the chat: Lumo's commands and a tool of your own"></td>
+<td align="center"><img src="windows/screenshots/plan.png" width="240" alt="The Plan island following Claude Code's plan step by step"></td>
 </tr>
 </table>
 
@@ -83,7 +83,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 <table>
 <tr>
-<td><img src="windows/screenshots/approval.png" alt="A Claude Code permission request, with Deny and Allow"></td>
+<td><img src="windows/screenshots/approval.png" alt="A Claude Code permission request, with Deny, Allow for this session and Allow"></td>
 <td><img src="windows/screenshots/chat.png" alt="Chatting with Claude from the island"></td>
 </tr>
 <tr>

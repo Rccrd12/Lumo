@@ -36,7 +36,7 @@ import { N_, t, tl } from "../i18n/i18n";
 export const TOOLS_STRINGS = {
   tab: N_("Tools"),
   title: N_("Your tools"),
-  count: N_("{on} on of {all}"),
+  count: N_("{on} of {all} on"),
   add: N_("Add a tool"),
   addHint: N_("Make one with Lumo, or bring in a script you already have"),
   emptyTitle: N_("No tools yet"),

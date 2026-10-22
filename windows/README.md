@@ -76,7 +76,7 @@ the exe it runs from.
 <img src="screenshots/compact-activities.png" width="480" alt="The closed island: the next meeting, a timer and the music playing, side by side">
 <img src="screenshots/mail.png" width="468" alt="A new email peeking out of the closed island, with Summarize and Draft a reply">
 <img src="screenshots/overview.png" width="640" alt="The overview: the focused integration on the left, the other pills on the right">
-<img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny and Allow">
+<img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny, Allow for this session and Allow">
 <img src="screenshots/chat.png" width="640" alt="Chatting with Claude from the island">
 <img src="screenshots/drop.png" width="640" alt="Lumo turned into a box, waiting for a file">
 
@@ -338,7 +338,7 @@ and they can't send, move, mark or delete anything.
 
 ## Claude Code
 
-<img src="screenshots/settings.png" width="562" alt="The settings window">
+<img src="screenshots/settings.png" width="640" alt="The settings window, on Updates: a newer version, Update now and the changelog">
 
 Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
