@@ -13,6 +13,7 @@ mod chat_usage;
 mod claude;
 mod claude_code;
 mod clipboard;
+mod codex_chat;
 mod codex_plan;
 mod computer;
 mod config_file;
@@ -31,6 +32,7 @@ mod island_tools;
 mod listen;
 mod live;
 mod local_chat;
+mod local_models;
 mod log;
 mod mail;
 mod media;
@@ -662,6 +664,25 @@ async fn local_connect(provider: String, url: String) -> Result<local_chat::Conn
     local_chat::connect(&provider, &url).await
 }
 
+/// Settings → Local models: the models Ollama or LM Studio holds in memory now.
+#[tauri::command]
+async fn local_loaded(provider: String) -> Result<Vec<local_models::Loaded>, String> {
+    local_models::loaded(&provider).await
+}
+
+/// Settings → Local models → Free memory: every model the server holds is unloaded.
+#[tauri::command]
+async fn local_unload(provider: String) -> Result<usize, String> {
+    local_models::unload_all(&provider).await
+}
+
+/// Settings → Local models → Download: the model is downloaded to the server,
+/// its progress told as `local-pull` events; returns once it is there.
+#[tauri::command]
+async fn local_pull(app: AppHandle, provider: String, model: String) -> Result<(), String> {
+    local_models::pull(&app, &provider, &model).await
+}
+
 /// Stores the custom server's key for the address typed next to it; it is only
 /// ever sent to that address.
 #[tauri::command(async)]
@@ -676,6 +697,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     chats.focus(&chat_id).reset();
     // Its Claude Code, waiting for a message of the conversation before, goes.
     claude_code::close(&chat_id);
+    codex_chat::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
@@ -860,7 +882,7 @@ async fn clipboard_text() -> Option<String> {
 /// The island may only ask whether a key exists — never read it.
 /// The chat providers that are set up, for the model picker: a key in the
 /// credential store, or the CLI on this computer with Lumo's hooks in place
-/// (Claude Code, Antigravity CLI). The model servers are the page's to judge
+/// (Claude Code, Antigravity CLI), or the CLI on this computer (Codex). The model servers are the page's to judge
 /// (their address in the settings). Async: the credential store and the disk
 /// may take a moment, and the main thread is not kept waiting.
 #[tauri::command]
@@ -883,6 +905,9 @@ async fn chat_providers() -> Vec<String> {
         let antigravity_hooks = agents::list().iter().any(|a| a.id == "antigravity" && a.installed);
         if !platform::agy_candidates().is_empty() && antigravity_hooks {
             ready.push("antigravity-cli".to_string());
+        }
+        if codex_chat::ready() {
+            ready.push("codex".to_string());
         }
         ready
     })
@@ -1114,6 +1139,9 @@ pub fn run() {
             chat_models,
             chat_usage,
             local_connect,
+            local_loaded,
+            local_unload,
+            local_pull,
             local_set_key,
             chat_reset,
             chat_restore,

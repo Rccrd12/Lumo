@@ -24,6 +24,7 @@ import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
 import { changelogSection, updatesSection } from "./updates";
+import { localModelsBlock } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
@@ -449,15 +450,16 @@ function apiSection(hasKey: boolean): HTMLElement {
   );
 }
 
-// ── Antigravity CLI section ───────────────────────────────────────────────────
+// ── Antigravity CLI and Codex sections ────────────────────────────────────────
 
 /**
- * Antigravity CLI needs no key either: it runs with the Google account signed
- * in to `agy` (antigravity_cli.rs). Its models come from `agy models`, asked
- * only once the list is opened.
+ * Antigravity CLI and Codex need no key either: each runs with the account
+ * signed in to it, Google's for `agy` (antigravity_cli.rs), ChatGPT's for
+ * `codex` (codex_chat.rs). Their models come from the CLI itself (`agy
+ * models`, Codex's `model/list`), asked only once the list is opened.
  */
-function agyCliSection(): HTMLElement {
-  const p = providerDef("antigravity-cli");
+function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement {
+  const p = providerDef(id);
   const model = h("select", {}) as HTMLSelectElement;
   const fill = (offered: { id: string; label: string }[]) => {
     const saved = settings.chatModels[p.id] || "default";
@@ -486,7 +488,7 @@ function agyCliSection(): HTMLElement {
     "section",
     {},
     ...sectionHead(p.name, null, accentDot(p.accent)),
-    setting(t("Model"), t("Uses your Google account. No key needed."), model),
+    setting(t("Model"), t(note), model),
   );
 }
 
@@ -1014,6 +1016,8 @@ function localSection(customKey: boolean): HTMLElement {
       );
       exposure.append(exposureNotice(settings[field], id === "custom" && customKey) ?? "");
       block.append(exposure);
+      // What Ollama and LM Studio hold in memory, and a model to download.
+      if (id !== "custom") block.append(localModelsBlock(id));
       return block;
     }
 
@@ -1993,7 +1997,7 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), agyCliSection(), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
+    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present)],

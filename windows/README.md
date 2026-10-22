@@ -448,6 +448,15 @@ images and PDFs by name only. Settings tells you whether the address is this
 PC — nothing leaves it then — and warns before a key would travel over plain
 `http://` to another machine.
 
+Under a connected Ollama or LM Studio, Settings shows the model it holds in
+memory now (name and size) and **Free memory** unloads it with one click
+(Ollama's `keep_alive: 0`, LM Studio's unload). **Download a model** takes a
+name as the server writes it (`llama3.2`, `qwen3:8b`; for LM Studio,
+`openai/gpt-oss-20b` or a Hugging Face link) and downloads it there, with a
+progress bar; it carries on while Settings is open on another page. Only the
+connected server is asked, and only while Settings shows it. LM Studio needs
+version 0.4 or later (its REST API).
+
 Answers from every provider are shown as **Markdown**: headings, lists, bold,
 inline code, quotes, and code blocks with a copy button. It is built from text
 nodes, never parsed as HTML, and only `http`/`https` links open. Lumo greets
@@ -485,10 +494,12 @@ and the usage counts against your plan's limits like any Claude Code session.
 
 Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
 from its path, reads and edits files and folders, runs commands and searches the
-web. Every action that needs a permission comes up in the island as the usual
-**Deny / Allow** card, through the hooks of **Settings… → Agents → Claude Code**. Without
-those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
-allowed on its own. The conversation continues the same Claude Code session
+web. An action comes up in the island as the usual **Deny / Allow** card exactly
+when Claude Code would ask for it: what your own Claude Code permission rules,
+the mode or an **Allow for this session** already allow goes through without
+one. The chat adds Lumo's PermissionRequest hook to its own run, so this works
+even before the hooks of **Settings… → Agents → Claude Code** are installed. If
+nobody clicks, Claude Code denies the action: nothing is ever allowed on its own. The conversation continues the same Claude Code session
 until **New chat**, in one Claude Code process kept for the chat between
 messages (so each answer starts faster); **Stop** interrupts the answer without
 ending it, and the process ends after 10 minutes without a message. A message
@@ -500,7 +511,7 @@ for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its
 permission requests do, as a card over the chat.
 
-**The shield** next to the screen button (Claude Code and Antigravity CLI only)
+**The shield** next to the screen button (Claude Code, Antigravity CLI and Codex only)
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
@@ -547,6 +558,33 @@ them only **Turbo** turns it off. Google replaced Gemini CLI with Antigravity
 CLI, so Settings no longer offers Gemini CLI: its pill is gone, and
 **Settings… → Agents** only lists its hooks when they were installed before,
 so they can be removed.
+
+### Chat with your ChatGPT account (Codex)
+
+Pick **Codex** above the chat box and the island talks to the Codex CLI
+(`codex`), signed in with your own ChatGPT account (or whatever you signed in
+to Codex with): no API key in Lumo. Lumo runs the unmodified CLI's own server,
+`codex app-server`, one per chat while it is in use (ended after 10 minutes
+idle, or by **New chat**), in the same folder as Claude Code; it never reads,
+stores or forwards any OpenAI credential. Install it with
+`npm install -g @openai/codex` and run `codex` once in a terminal to sign in.
+
+Like Claude Code, it reads the files you drop or attach and the folder you
+share, says what it is doing next to the typing dots (a command, a file it
+reads or changes, a search), shows its plan on the Plan island, stops on
+**Stop** (Codex's own interrupt) and continues the same Codex thread until
+**New chat**. Its models come from Codex itself (**Default** leaves Codex's own
+choice), in the picker and in **Settings… → Chat → Codex**, with Codex's
+efforts (low to extra high, **Auto** for its own). What Codex would ask you in
+a terminal (a command, a change to files) is Codex's own **Deny / Allow** card
+over the chat, sent to Lumo by Codex's server: no hooks are needed, and only a
+click allows it. The shield picks Codex's own policies: **Ask every time** is
+Codex's "untrusted" (only commands that just read run without a card),
+**Auto** is its Agent preset (in its workspace sandbox, Codex decides what to
+ask), **Plan only** runs in its read-only sandbox and declines whatever it
+would ask, without a card. Codex never gets full access from Lumo. Lumo's
+timer and GitHub tools reach it as an MCP server of the chat's thread only;
+your Codex configuration is never touched.
 
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are

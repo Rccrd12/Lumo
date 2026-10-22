@@ -51,6 +51,15 @@ pub fn runs_in_background(event: &str) -> bool {
     !matches!(event, "PermissionRequest" | "SessionEnd")
 }
 
+/// Lumo's PermissionRequest entry, exactly as installing writes it in
+/// settings.json. The island's Claude Code chat adds the same one for its own
+/// run (claude_code.rs): Claude Code runs a handler found in two settings
+/// files once, so the card comes up once whether the hooks are installed or not.
+pub fn permission_request_entry() -> Value {
+    let timeout = HOOK_EVENTS.iter().find(|(e, _)| *e == "PermissionRequest").map(|(_, t)| *t).unwrap_or(120);
+    our_entry("PermissionRequest", timeout)
+}
+
 /// Lumo's entry for `event` in settings.json, as installing writes it.
 fn our_entry(event: &str, timeout: u64) -> Value {
     our_entry_running(&hook_command(event), event, timeout)

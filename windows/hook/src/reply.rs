@@ -128,20 +128,6 @@ fn norm_path(path: &str) -> String {
     p.trim_end_matches('/').to_string()
 }
 
-/// The tools of the island's Claude Code chat (asking every time) that get a
-/// card from its PreToolUse hook: what runs a command, changes a file or goes
-/// to the network or an MCP server. Reading is left to Claude Code.
-pub fn claude_card_tool(tool: &str) -> bool {
-    // Lumo's tools that only look (a screenshot, a wait) or read email need no card.
-    let looking = tool.starts_with("mcp__") && crate::mcp::lumo_tool(tool).is_some_and(crate::mcp::only_reads);
-    // The user's own tools: Lumo asks for each call itself (tools.rs approve).
-    let users = tool.starts_with("mcp__lumo_tools__");
-    !looking
-        && !users
-        && (matches!(tool, "Bash" | "PowerShell" | "Edit" | "MultiEdit" | "Write" | "NotebookEdit" | "WebFetch")
-            || tool.starts_with("mcp__"))
-}
-
 /// Whether a shell command would sit waiting for something to happen: GitHub's
 /// own watchers (`gh pr checks --watch`, `gh run watch`), a long sleep, or a
 /// loop that sleeps. Such a command holds the island's chat with nothing to
@@ -198,26 +184,7 @@ pub fn claude_wait_denied() -> String {
     .to_string()
 }
 
-/// Claude Code's PreToolUse reply to such a card: allowed only after a click
-/// on Allow. Anything else is a deny, with a reason Claude reads: `-p` has
-/// nobody else to ask.
-pub fn claude_island(decision: Option<&str>) -> String {
-    let (verdict, reason) = match decision.map(str::trim) {
-        Some("allow" | "always") => ("allow", "Allowed in Lumo"),
-        Some("deny") => ("deny", "Denied in Lumo"),
-        _ => ("deny", "Nobody approved it in Lumo"),
-    };
-    serde_json::json!({
-        "hookSpecificOutput": {
-            "hookEventName": "PreToolUse",
-            "permissionDecision": verdict,
-            "permissionDecisionReason": reason,
-        }
-    })
-    .to_string()
-}
-
-/// Antigravity's PreToolUse reply to such a card: `allow` only after a click
+/// Antigravity's PreToolUse reply to its chat's card (main.rs): `allow` only after a click
 /// on Allow. Anything else — Deny, no click in time, an answer not understood
 /// — is a deny: with agy's own confirmation off, nothing else stops it.
 pub fn antigravity_island(decision: Option<&str>) -> String {
@@ -489,25 +456,6 @@ mod tests {
         assert!(!island_card_tool(""));
         assert!(!island_card_tool("mcp_lumo_mail_recent") && !island_card_tool("lumo/mail_read"), "Lumo's email only reads");
         assert!(island_card_tool("mcp_gmail_send_message"));
-    }
-
-    #[test]
-    fn the_claude_chats_card_answers_its_pre_tool_use() {
-        let allow: Value = serde_json::from_str(&claude_island(Some("allow"))).unwrap();
-        assert_eq!(allow["hookSpecificOutput"]["hookEventName"], "PreToolUse");
-        assert_eq!(allow["hookSpecificOutput"]["permissionDecision"], "allow");
-        for not_allowed in [Some("deny"), None, Some(""), Some("maybe")] {
-            let v: Value = serde_json::from_str(&claude_island(not_allowed)).unwrap();
-            assert_eq!(v["hookSpecificOutput"]["permissionDecision"], "deny", "{not_allowed:?}");
-        }
-        assert!(claude_card_tool("Bash") && claude_card_tool("PowerShell") && claude_card_tool("Write"));
-        assert!(claude_card_tool("mcp__github__create_issue"));
-        // Lumo's computer use: what acts gets a card, what only looks does not.
-        assert!(claude_card_tool("mcp__lumo__left_click") && claude_card_tool("mcp__lumo__type") && claude_card_tool("mcp__lumo__key"));
-        assert!(!claude_card_tool("mcp__lumo__screenshot") && !claude_card_tool("mcp__lumo__zoom") && !claude_card_tool("mcp__lumo__wait"));
-        assert!(claude_card_tool("mcp__lumo2__screenshot"), "another server's screenshot is its own");
-        assert!(!claude_card_tool("mcp__lumo_tools__benchmark"), "Lumo asks for the user's tools itself");
-        assert!(!claude_card_tool("Read") && !claude_card_tool("Grep") && !claude_card_tool("AskUserQuestion"));
     }
 
     #[test]

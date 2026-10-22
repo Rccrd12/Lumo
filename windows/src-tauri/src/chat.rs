@@ -2,8 +2,8 @@
 // provider a turn goes to. Each provider's own wire format lives in its module:
 // claude.rs (Anthropic), openai_compat.rs (OpenAI, Google AI, OpenRouter),
 // local_chat.rs (Ollama, LM Studio, any OpenAI-compatible server), and the
-// signed-in CLIs: claude_code.rs (Claude Code) and antigravity_cli.rs
-// (Antigravity CLI).
+// signed-in CLIs: claude_code.rs (Claude Code), antigravity_cli.rs
+// (Antigravity CLI) and codex_chat.rs (Codex).
 //
 // API keys never leave the credential store and file bytes never cross the IPC
 // boundary: the island sends the question and gets the answer's text back.
@@ -22,7 +22,7 @@ use crate::chat_usage::ChatUsage;
 use crate::island::WINDOW_LABEL;
 use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
-use crate::{antigravity_cli, claude, claude_code, local_chat, openai_compat, secrets};
+use crate::{antigravity_cli, claude, claude_code, codex_chat, local_chat, openai_compat, secrets};
 
 pub const ANTHROPIC: &str = "anthropic";
 
@@ -37,8 +37,8 @@ pub enum ChatContext {
 #[serde(rename_all = "camelCase")]
 pub struct ChatReply {
     pub text: String,
-    /// The Claude Code session or Antigravity CLI conversation that answered
-    /// (claude_code.rs, antigravity_cli.rs), so a chat from the history can be
+    /// The Claude Code session, Antigravity CLI conversation or Codex thread
+    /// that answered (claude_code.rs, antigravity_cli.rs, codex_chat.rs), so a chat from the history can be
     /// continued where it left off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
@@ -611,7 +611,7 @@ fn sees_images(provider: &str) -> bool {
 /// is Claude Code's.
 fn untag_session(saved: &str) -> (&str, &str) {
     match saved.split_once(':') {
-        Some((owner, id)) if owner == antigravity_cli::PROVIDER => (owner, id),
+        Some((owner, id)) if owner == antigravity_cli::PROVIDER || owner == codex_chat::PROVIDER => (owner, id),
         _ => (claude_code::PROVIDER, saved),
     }
 }
@@ -619,7 +619,7 @@ fn untag_session(saved: &str) -> (&str, &str) {
 /// The providers that run a signed-in CLI on this computer. Given paths, they
 /// read dropped files and screenshots themselves.
 fn is_cli(provider: &str) -> bool {
-    provider == claude_code::PROVIDER || provider == antigravity_cli::PROVIDER
+    provider == claude_code::PROVIDER || provider == antigravity_cli::PROVIDER || provider == codex_chat::PROVIDER
 }
 
 /// The question with the screen context in front of it, and the screenshots
@@ -753,6 +753,9 @@ async fn send_to(
         if provider == antigravity_cli::PROVIDER {
             return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
         }
+        if provider == codex_chat::PROVIDER {
+            return codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;
+        }
         let computer = settings.chat_computer_use;
         return claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)
             .await;
@@ -780,6 +783,9 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
     }
     if provider == antigravity_cli::PROVIDER {
         return antigravity_cli::models().await;
+    }
+    if provider == codex_chat::PROVIDER {
+        return codex_chat::models().await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         let key = secrets::get(p.key).ok_or_else(no_key)?;

@@ -306,6 +306,12 @@ export const Bridge = {
 
   localConnect: (provider: "ollama" | "lmstudio" | "custom", url: string) =>
     callOrThrow<LocalServer>("local_connect", { provider, url }),
+  /** Settings → Local models: the models Ollama or LM Studio holds in memory now. */
+  localLoaded: (provider: "ollama" | "lmstudio") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
+  /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
+  localUnload: (provider: "ollama" | "lmstudio") => callOrThrow<number>("local_unload", { provider }),
+  /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
+  localPull: (provider: "ollama" | "lmstudio", model: string) => callOrThrow<void>("local_pull", { provider, model }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
   /** An attached picture in the inbox as a data URL, for the chat's preview; null for any other file. */
@@ -693,6 +699,23 @@ export type SharedContext =
 export interface ModelInfo {
   id: string;
   label: string;
+}
+
+/** A model a local server holds in memory (local_models.rs). */
+export interface LocalLoaded {
+  name: string;
+  /** Bytes, 0 when the server does not say. */
+  size: number;
+  /** Bytes in the graphics card's memory (Ollama), else 0. */
+  vram: number;
+}
+
+/** How far a download to a local server is (`local-pull`): bytes so far and in all, 0 while unknown. */
+export interface LocalPull {
+  provider: string;
+  model: string;
+  completed: number;
+  total: number;
 }
 
 export interface LocalServer {

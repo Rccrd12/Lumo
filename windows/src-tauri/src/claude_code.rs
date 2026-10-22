@@ -7,9 +7,10 @@
 // Unlike the other providers, Claude Code can act: read a dropped PDF or image,
 // read and edit files, run commands, search the web. Every action that needs a
 // permission goes through Claude Code's own PermissionRequest hook — the one
-// Lumo already installs — so it shows up in the island as the usual
-// Allow / Deny card. Without the hooks, or with nobody clicking, Claude Code
-// denies the action: `-p` never allows anything on its own.
+// Lumo installs, which the chat's run also adds for itself (`chat_settings`) —
+// so it shows up in the island as the usual Allow / Deny card, only when Claude
+// Code would really ask. With nobody clicking, Claude Code denies the action:
+// `-p` never allows anything on its own.
 //
 // Each chat keeps its own Claude Code running between messages (`live_turn`,
 // `--input-format stream-json`): a message is a line on its stdin, Stop
@@ -244,51 +245,35 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
     }
 }
 
-/// The tools that get a card when the chat asks every time (lumo-hook
-/// reply::claude_card_tool says the same): commands, edits, the network, MCP.
-const CARD_MATCHER: &str = "Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch|mcp__.*";
-
-/// The settings a run asking every time adds for itself (`--settings`): a
-/// PreToolUse hook that puts the action on the island as an Allow / Deny card
-/// and answers with the click. `claude -p` denies what needs a permission
-/// unless a hook decides, and whether its PermissionRequest hook is asked
-/// depends on the version; this one always is. Only this run has it: the
-/// user's settings.json is not touched.
-fn card_settings(relay: &str) -> Value {
+/// The settings the chat's run adds for itself (`--settings`; the user's
+/// settings.json is not touched):
+///   * Lumo's PermissionRequest hook, the same entry installing writes
+///     (hooks::permission_request_entry), so a card comes up exactly when
+///     Claude Code would ask: what the user's own rules, the mode or an "Allow
+///     for this session" already allow goes through without one. `claude -p`
+///     denies what nobody decided.
+///   * a PreToolUse hook on shell commands that lets everything through as the
+///     mode says, but a command that would sit waiting on GitHub (`gh pr checks
+///     --watch`, a sleep loop): Claude is told to let Lumo listen instead
+///     (lumo-hook reply::blocking_wait).
+fn chat_settings(permission: Value, guard: &str) -> Value {
     json!({
         "hooks": {
-            "PreToolUse": [{
-                "matcher": CARD_MATCHER,
-                "hooks": [{ "type": "command", "command": relay, "timeout": 120 }],
-            }],
-        },
-    })
-}
-
-/// The settings a run in Auto or Plan adds for itself instead: a PreToolUse
-/// hook on shell commands that lets everything through as the mode says, but
-/// a command that would sit waiting on GitHub (`gh pr checks --watch`, a sleep
-/// loop): Claude is told to let Lumo listen instead (lumo-hook reply::blocking_wait).
-fn guard_settings(relay: &str) -> Value {
-    json!({
-        "hooks": {
+            "PermissionRequest": [permission],
             "PreToolUse": [{
                 "matcher": "Bash|PowerShell",
-                "hooks": [{ "type": "command", "command": relay, "timeout": 10 }],
+                "hooks": [{ "type": "command", "command": guard, "timeout": 10 }],
             }],
         },
     })
 }
 
-/// `args`, plus the card hook when the mode asks every time (the guard
-/// otherwise), when the file could be written where Claude Code can be
-/// pointed at it.
-fn with_cards(mut args: Vec<String>, mode: &str) -> Vec<String> {
-    let cards = permission_mode(mode) == "default";
-    let (flags, file) = if cards { ("--chat-card --wait 110 PreToolUse", "chat-cards.json") } else { ("--chat-guard PreToolUse", "chat-guard.json") };
-    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, flags);
-    let path = crate::platform::local_dir().join(file);
-    let text = if cards { card_settings(&relay) } else { guard_settings(&relay) }.to_string();
+/// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
+/// written where Claude Code can be pointed at it.
+fn with_cards(mut args: Vec<String>) -> Vec<String> {
+    let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
+    let path = crate::platform::local_dir().join("chat-hooks.json");
+    let text = chat_settings(crate::hooks::permission_request_entry(), &guard).to_string();
     let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -857,7 +842,7 @@ fn spawn(exe: &std::path::Path, args: &[String], dir: &std::path::Path, chat_id:
 }
 
 /// Reads `child`'s stderr in the background, its first 64 KB kept.
-fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
+pub(crate) fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
     let kept = Arc::new(std::sync::Mutex::new(String::new()));
     if let Some(mut e) = child.stderr.take() {
         let into = kept.clone();
@@ -873,7 +858,7 @@ fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>>
 }
 
 /// `child`'s stdout, line by line, on a channel; at most `max_total` bytes in all.
-fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
+pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
@@ -1271,7 +1256,7 @@ pub async fn send(
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     // The tool workshop: what a tool is and how to hand one over, too.
     let append = if chat.is_workshop() { format!("{base}{}{WORKSHOP_TRY}", crate::chat::workshop_note!()) } else { base.to_string() };
-    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
+    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)));
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
     args = with_mcp(args, computer, tools, true);
@@ -1397,7 +1382,7 @@ pub(crate) fn help(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
-    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
+    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders));
     // The user's own tools too, while one is on.
     let args = with_mcp(args, computer, crate::tools::any_enabled(), false);
     let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_, _| {})?;
@@ -1628,17 +1613,18 @@ mod tests {
     }
 
     #[test]
-    fn asking_every_time_adds_a_card_hook_for_this_run_only() {
-        let v = card_settings("'/x/lumo-hook' --chat-card --wait 110 PreToolUse");
-        let entry = &v["hooks"]["PreToolUse"][0];
-        assert_eq!(entry["matcher"], CARD_MATCHER);
-        assert_eq!(entry["hooks"][0]["timeout"], 120, "longer than the relay waits");
-        assert!(entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
-        // Auto and Plan only add the guard on shell commands: Claude Code decides.
-        let v = guard_settings("'/x/lumo-hook' --chat-guard PreToolUse");
-        let entry = &v["hooks"]["PreToolUse"][0];
-        assert_eq!(entry["matcher"], "Bash|PowerShell");
-        assert!(!entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
+    fn the_chat_asks_with_lumos_own_permission_hook_and_guards_shell_commands() {
+        let permission = crate::hooks::permission_request_entry();
+        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse");
+        // The very entry installing writes, so Claude Code runs it once when both are there.
+        assert_eq!(v["hooks"]["PermissionRequest"][0], permission);
+        let hook = &permission["hooks"][0];
+        assert_eq!(hook["timeout"], 120, "longer than the relay waits for a click");
+        assert!(hook.get("async").is_none(), "it waits for the click");
+        assert!(hook["command"].as_str().unwrap().ends_with("PermissionRequest"));
+        let guard = &v["hooks"]["PreToolUse"][0];
+        assert_eq!(guard["matcher"], "Bash|PowerShell");
+        assert!(guard["hooks"][0]["command"].as_str().unwrap().contains("--chat-guard"));
     }
 
     #[test]
