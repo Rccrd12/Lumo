@@ -947,7 +947,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
     let work = platform::local_dir().join("tool-review");
     let dir = work.to_string_lossy().to_string();
     let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
-    let state = run(exe, args, user_event(prompt), work, Arc::new(Stop::default()), |_| {}, |_| {}, |_| {})?;
+    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {})?;
     match state.result {
         Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
         Some(Ok(text)) => Ok(text),
