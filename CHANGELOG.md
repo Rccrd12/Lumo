@@ -1,5 +1,9 @@
 # Changelog
 
+## Windows 0.13.1 — October 22, 2026
+
+- **Attachments and Chat files stay put**: switching between the two lists no longer moves their buttons
+
 ## Windows 0.13.0 — October 22, 2026
 
 - **Commands in the chat**: type `/` as the first character in the chat box and a menu of commands opens above it, filtered as you type (arrows move, Enter runs, Tab writes the name, Escape closes it). Lumo's own work with every provider: `/new`, `/history`, `/model`, `/attach`, `/screen`, `/permissions` and `/timer 10m pasta`. With Claude Code, its own commands are listed too (`/compact`, `/context`, your commands and skills). The menu lists only what works with the provider picked
