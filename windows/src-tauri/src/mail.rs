@@ -39,8 +39,12 @@ pub const ADDRESS_KEY: &str = "mail-address";
 pub const SERVER_KEY: &str = "mail-imap-server";
 pub const PASSWORD_KEY: &str = "mail-app-password";
 
-/// One step with the server: connect and sign in, look, or end an IDLE.
+/// One step with the server: connect and sign in, or look.
 const TIMEOUT: Duration = Duration::from_secs(25);
+/// The server's answer to IDLE and to DONE, which comes at once on a live
+/// connection: a connection that went quiet (sleep, a new network) is told
+/// apart sooner.
+const IDLE_ANSWER: Duration = Duration::from_secs(10);
 /// What one check may read from the server, all answers together.
 const MAX_READ: usize = 4 * 1024 * 1024;
 /// The newest unread messages kept: the island shows three, and the next ones
@@ -98,36 +102,80 @@ pub fn keys_changed() {
 /// connection kept open while the pill is on. A server without IDLE is asked
 /// every 30 seconds instead. Nothing happens while the pill is off, Lumo is
 /// paused or the keys are missing.
+///
+/// A connection that fails (the network not back yet after sleep, a
+/// connection the server or a router dropped without a word, a passing
+/// refusal from the server) is redone within seconds, and the emails already
+/// read stay on screen: the error shows only after a few failures in a row
+/// (`shows_error`), or at the second when nothing was read yet.
 pub async fn run(app: AppHandle) {
     tokio::time::sleep(Duration::from_secs(4)).await;
-    let mut backoff = RETRY_FIRST;
+    let mut health = Health::default();
+    let mut generation = GENERATION.load(Ordering::Relaxed);
     loop {
         if !crate::integrations::enabled(&app, ID) || crate::integrations::PAUSED.load(Ordering::Relaxed) {
             *INBOX.lock().unwrap() = None;
+            health = Health::default();
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
         }
         let Some((address, password)) = secrets::get(ADDRESS_KEY).zip(secrets::get(PASSWORD_KEY)) else {
             *INBOX.lock().unwrap() = None;
+            health = Health::default();
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
         };
+        // New keys: what the old ones read says nothing about them.
+        let now = GENERATION.load(Ordering::Relaxed);
+        if now != generation {
+            generation = now;
+            health = Health::default();
+        }
         let server = secrets::get(SERVER_KEY).unwrap_or_default();
         let (host, port) = server_of(&server, &address);
-        match watch(&app, &host, port, &address, &password).await {
-            Ok(()) => backoff = RETRY_FIRST,
-            Err(error) => {
+        if let Err(error) = watch(&app, &host, port, &address, &password, &mut health).await {
+            health.failures += 1;
+            if shows_error(health.failures, health.has_read) {
                 fail(&app, error);
-                // Waits before trying again (longer each time), unless woken.
-                let _ = tokio::time::timeout(backoff, WAKE.notified()).await;
-                backoff = (backoff * 2).min(RETRY_MOST);
+            } else {
+                log::line(format!("[mail] {error} (trying again)"));
             }
+            // Waits before trying again (longer each time), unless woken.
+            let _ = tokio::time::timeout(retry_in(health.failures), WAKE.notified()).await;
         }
     }
 }
 
+/// How the connection has been going since the pill was turned on.
+#[derive(Default)]
+struct Health {
+    /// Connections in a row that failed before reading the inbox.
+    failures: u32,
+    /// The inbox was read at least once, with these keys.
+    has_read: bool,
+}
+
+/// The first failures are tried again at once; then 30 s, doubled each time.
+const RETRY_SOON: [Duration; 2] = [Duration::from_secs(2), Duration::from_secs(5)];
 const RETRY_FIRST: Duration = Duration::from_secs(30);
-const RETRY_MOST: Duration = Duration::from_secs(600);
+const RETRY_MOST: Duration = Duration::from_secs(300);
+/// Failures in a row before the error replaces the emails already read.
+const FAILURES_SHOWN: u32 = 3;
+
+/// After `failures` failures in a row, the wait before the next try.
+fn retry_in(failures: u32) -> Duration {
+    let soon = RETRY_SOON.len() as u32;
+    if failures <= soon {
+        return RETRY_SOON[failures.saturating_sub(1) as usize];
+    }
+    RETRY_FIRST.saturating_mul(1 << (failures - soon - 1).min(8)).min(RETRY_MOST)
+}
+
+/// Whether a failure is shown, or the emails already read are kept: with
+/// nothing read yet (a wrong password) it shows at the second.
+fn shows_error(failures: u32, has_read: bool) -> bool {
+    failures >= if has_read { FAILURES_SHOWN } else { 2 }
+}
 /// How long one IDLE lasts before Lumo looks again anyway. The server should
 /// say at once when an email arrives, but some (Gmail) can be slow to: looking
 /// every 20 seconds costs one tiny SEARCH, as only new emails are fetched.
@@ -143,7 +191,7 @@ fn poll_every() -> Duration {
 
 /// One connection: sign in, then look each time the server says something
 /// changed. Returns Ok when it should be redone (keys changed, pill off).
-async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: &str) -> Result<(), String> {
+async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: &str, health: &mut Health) -> Result<(), String> {
     let generation = GENERATION.load(Ordering::Relaxed);
     let mut imap = timed(host, sign_in(host, port, address, password)).await?;
     let idle = imap.capabilities.iter().any(|c| c == "IDLE");
@@ -160,6 +208,8 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
         }
         let (unread, messages) = timed(host, look(&mut imap, host, hide, &mut known)).await?;
         report(app, &account, host, unread, messages);
+        health.failures = 0;
+        health.has_read = true;
         let stop = || {
             GENERATION.load(Ordering::Relaxed) != generation
                 || !crate::integrations::enabled(app, ID)
@@ -183,7 +233,11 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
 
 /// A step that must not hang: the server has TIMEOUT to answer.
 async fn timed<T>(host: &str, step: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
-    tokio::time::timeout(TIMEOUT, step)
+    timed_for(TIMEOUT, host, step).await
+}
+
+async fn timed_for<T>(wait: Duration, host: &str, step: impl std::future::Future<Output = Result<T, String>>) -> Result<T, String> {
+    tokio::time::timeout(wait, step)
         .await
         .unwrap_or_else(|_| Err(tf("{server} did not answer in time.", &[("server", host)])))
 }
@@ -843,7 +897,7 @@ impl Imap {
         self.tag += 1;
         let tag = format!("L{}", self.tag);
         self.send(&format!("{tag} IDLE\r\n")).await?;
-        timed(host, self.idling(&tag)).await?;
+        timed_for(IDLE_ANSWER, host, self.idling(&tag)).await?;
         let deadline = tokio::time::Instant::now() + idle_for();
         loop {
             // The server speaks, or the time is up, or Lumo is woken.
@@ -861,7 +915,7 @@ impl Imap {
             }
         }
         self.send("DONE\r\n").await?;
-        timed(host, self.done(&tag)).await
+        timed_for(IDLE_ANSWER, host, self.done(&tag)).await
     }
 
     /// The server's "+ idling".
@@ -1680,6 +1734,23 @@ mod tests {
         assert_eq!(literal_size("* 1 FETCH (UID 4 BODY[TEXT]<0> {120}"), Some(120));
         assert_eq!(literal_size("* OK hello"), None);
         assert_eq!(literal_size("a {12+}"), Some(12));
+    }
+
+    #[test]
+    fn a_failed_connection_is_tried_again_soon() {
+        let secs: Vec<u64> = (1..=8).map(|f| retry_in(f).as_secs()).collect();
+        assert_eq!(secs, [2, 5, 30, 60, 120, 240, 300, 300]);
+        assert_eq!(retry_in(u32::MAX), RETRY_MOST);
+    }
+
+    #[test]
+    fn the_emails_read_stay_until_a_few_failures_in_a_row() {
+        assert!(!shows_error(1, true));
+        assert!(!shows_error(2, true));
+        assert!(shows_error(3, true));
+        // Nothing read yet (a wrong password): shown at the second.
+        assert!(!shows_error(1, false));
+        assert!(shows_error(2, false));
     }
 
     #[test]
