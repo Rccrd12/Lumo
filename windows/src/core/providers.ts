@@ -6,7 +6,7 @@ import type { Settings } from "./state";
 import { N_ } from "../i18n/i18n";
 
 export type ProviderId =
-  | "anthropic" | "claude-code" | "antigravity-cli" | "openai" | "google" | "openrouter"
+  | "anthropic" | "claude-code" | "antigravity-cli" | "codex" | "openai" | "google" | "openrouter"
   | "ollama" | "lmstudio" | "custom";
 
 export interface ProviderDef {
@@ -30,6 +30,9 @@ export const PROVIDERS: readonly ProviderDef[] = [
   // Antigravity CLI (`agy`), signed in with the user's Google account: no key
   // (antigravity_cli.rs). The Antigravity pill's colour.
   { id: "antigravity-cli", name: "Antigravity CLI", accent: "#E879F9", key: null, urlField: null, defaultModel: "default", prefer: null },
+  // Codex (`codex app-server`), signed in with the user's ChatGPT account: no
+  // key (codex_chat.rs). The Codex pill's colour.
+  { id: "codex", name: "Codex", accent: "#2DD4BF", key: null, urlField: null, defaultModel: "default", prefer: null },
   { id: "google", name: "Google", accent: "#4285F4", key: "google-api-key", urlField: null, defaultModel: "gemini-2.0-flash", prefer: "flash" },
   { id: "openai", name: "OpenAI", accent: "#10A37F", key: "openai-api-key", urlField: null, defaultModel: "gpt-4o", prefer: "mini" },
   { id: "openrouter", name: "OpenRouter", accent: "#6467F2", key: "openrouter-api-key", urlField: null, defaultModel: "openrouter/auto", prefer: null },
@@ -41,14 +44,17 @@ export const PROVIDERS: readonly ProviderDef[] = [
 /** Claude Code's effort levels (claude --effort), "" for its own default. */
 export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
 
+/** Codex's reasoning efforts (codex_chat.rs EFFORTS), "" for its own default. */
+export const CODEX_EFFORTS = ["", "low", "medium", "high", "xhigh"] as const;
+
 
 /**
  * The providers that run a signed-in CLI on this computer (claude_code.rs,
- * antigravity_cli.rs): they say what they are doing as they go, and read a
+ * antigravity_cli.rs, codex_chat.rs): they say what they are doing as they go, and read a
  * file added mid-conversation from its path.
  */
 export function isCliProvider(id: string): boolean {
-  return id === "claude-code" || id === "antigravity-cli";
+  return id === "claude-code" || id === "antigravity-cli" || id === "codex";
 }
 
 /**
@@ -84,6 +90,7 @@ export function parsePermissionMode(v: unknown, provider: string): PermissionMod
  */
 export function effortsFor(id: string): readonly string[] {
   if (id === "claude-code") return EFFORTS;
+  if (id === "codex") return CODEX_EFFORTS;
   return [];
 }
 

@@ -10130,6 +10130,126 @@
    "ru": "Выполняет любые команды и меняет любые файлы без вопросов.",
    "id": "Menjalankan semua perintah dan mengubah file apa pun tanpa bertanya.",
    "it": "Esegue ogni comando e modifica qualsiasi file senza chiedere."
+  },
+  "Codex isn't installed. Install it with {command}, sign in once with `codex` in a terminal, then try again.": {
+   "zh-Hans": "未安装 Codex。请用 {command} 安装，在终端中运行一次 `codex` 登录，然后重试。",
+   "hi": "Codex इंस्टॉल नहीं है। इसे {command} से इंस्टॉल करें, टर्मिनल में एक बार `codex` से साइन इन करें, फिर दोबारा कोशिश करें।",
+   "es": "Codex no está instalado. Instálalo con {command}, inicia sesión una vez con `codex` en una terminal y vuelve a intentarlo.",
+   "ar": "Codex غير مثبّت. ثبّته باستخدام {command}، وسجّل الدخول مرة واحدة باستخدام `codex` في الطرفية، ثم أعد المحاولة.",
+   "fr": "Codex n'est pas installé. Installez-le avec {command}, connectez-vous une fois avec `codex` dans un terminal, puis réessayez.",
+   "bn": "Codex ইনস্টল করা নেই। {command} দিয়ে ইনস্টল করুন, টার্মিনালে একবার `codex` দিয়ে সাইন ইন করুন, তারপর আবার চেষ্টা করুন।",
+   "pt-BR": "O Codex não está instalado. Instale com {command}, entre uma vez com `codex` em um terminal e tente de novo.",
+   "ru": "Codex не установлен. Установите его командой {command}, один раз войдите через `codex` в терминале и попробуйте снова.",
+   "id": "Codex belum terpasang. Pasang dengan {command}, masuk sekali dengan `codex` di terminal, lalu coba lagi.",
+   "it": "Codex non è installato. Installalo con {command}, accedi una volta con `codex` in un terminale, poi riprova."
+  },
+  "Codex isn't signed in. Run `codex` once in a terminal to sign in, then try again.": {
+   "zh-Hans": "Codex 尚未登录。请在终端中运行一次 `codex` 登录，然后重试。",
+   "hi": "Codex में साइन इन नहीं है। साइन इन करने के लिए टर्मिनल में एक बार `codex` चलाएँ, फिर दोबारा कोशिश करें।",
+   "es": "Codex no tiene la sesión iniciada. Ejecuta `codex` una vez en una terminal para iniciar sesión y vuelve a intentarlo.",
+   "ar": "لم يتم تسجيل الدخول إلى Codex. شغّل `codex` مرة واحدة في الطرفية لتسجيل الدخول، ثم أعد المحاولة.",
+   "fr": "Codex n'est pas connecté. Lancez `codex` une fois dans un terminal pour vous connecter, puis réessayez.",
+   "bn": "Codex-এ সাইন ইন করা নেই। সাইন ইন করতে টার্মিনালে একবার `codex` চালান, তারপর আবার চেষ্টা করুন।",
+   "pt-BR": "O Codex não está conectado. Execute `codex` uma vez em um terminal para entrar e tente de novo.",
+   "ru": "В Codex не выполнен вход. Один раз запустите `codex` в терминале, чтобы войти, и попробуйте снова.",
+   "id": "Codex belum masuk. Jalankan `codex` sekali di terminal untuk masuk, lalu coba lagi.",
+   "it": "Codex non ha fatto l'accesso. Esegui `codex` una volta in un terminale per accedere, poi riprova."
+  },
+  "Codex: {error}": {
+   "zh-Hans": "Codex：{error}",
+   "hi": "Codex: {error}",
+   "es": "Codex: {error}",
+   "ar": "Codex: {error}",
+   "fr": "Codex : {error}",
+   "bn": "Codex: {error}",
+   "pt-BR": "Codex: {error}",
+   "ru": "Codex: {error}",
+   "id": "Codex: {error}",
+   "it": "Codex: {error}"
+  },
+  "Cannot start Codex: {error}": {
+   "zh-Hans": "无法启动 Codex：{error}",
+   "hi": "Codex शुरू नहीं हो सका: {error}",
+   "es": "No se puede iniciar Codex: {error}",
+   "ar": "تعذّر تشغيل Codex: {error}",
+   "fr": "Impossible de démarrer Codex : {error}",
+   "bn": "Codex চালু করা যাচ্ছে না: {error}",
+   "pt-BR": "Não foi possível iniciar o Codex: {error}",
+   "ru": "Не удалось запустить Codex: {error}",
+   "id": "Tidak dapat memulai Codex: {error}",
+   "it": "Impossibile avviare Codex: {error}"
+  },
+  "Codex took too long to answer.": {
+   "zh-Hans": "Codex 回答超时。",
+   "hi": "Codex ने जवाब देने में बहुत देर लगाई।",
+   "es": "Codex tardó demasiado en responder.",
+   "ar": "استغرق Codex وقتًا طويلًا للرد.",
+   "fr": "Codex a mis trop de temps à répondre.",
+   "bn": "Codex উত্তর দিতে খুব বেশি সময় নিয়েছে।",
+   "pt-BR": "O Codex demorou demais para responder.",
+   "ru": "Codex слишком долго не отвечал.",
+   "id": "Codex terlalu lama menjawab.",
+   "it": "Codex ha impiegato troppo a rispondere."
+  },
+  "Codex stopped without an answer (exit {code}). Is it signed in? Run `codex` once in a terminal.": {
+   "zh-Hans": "Codex 未作回答就停止了（退出码 {code}）。是否已登录？请在终端中运行一次 `codex`。",
+   "hi": "Codex बिना जवाब दिए रुक गया (exit {code})। क्या इसमें साइन इन है? टर्मिनल में एक बार `codex` चलाएँ।",
+   "es": "Codex se detuvo sin responder (salida {code}). ¿Tiene la sesión iniciada? Ejecuta `codex` una vez en una terminal.",
+   "ar": "توقف Codex دون رد (رمز الخروج {code}). هل تم تسجيل الدخول؟ شغّل `codex` مرة واحدة في الطرفية.",
+   "fr": "Codex s'est arrêté sans répondre (code {code}). Est-il connecté ? Lancez `codex` une fois dans un terminal.",
+   "bn": "Codex উত্তর না দিয়েই থেমে গেছে (exit {code})। সাইন ইন করা আছে কি? টার্মিনালে একবার `codex` চালান।",
+   "pt-BR": "O Codex parou sem responder (saída {code}). Ele está conectado? Execute `codex` uma vez em um terminal.",
+   "ru": "Codex остановился без ответа (код {code}). Выполнен ли вход? Один раз запустите `codex` в терминале.",
+   "id": "Codex berhenti tanpa jawaban (exit {code}). Apakah sudah masuk? Jalankan `codex` sekali di terminal.",
+   "it": "Codex si è fermato senza rispondere (uscita {code}). Ha fatto l'accesso? Esegui `codex` una volta in un terminale."
+  },
+  "Codex gave no conversation to answer in.": {
+   "zh-Hans": "Codex 没有提供可以回答的对话。",
+   "hi": "Codex ने जवाब देने के लिए कोई बातचीत नहीं दी।",
+   "es": "Codex no dio ninguna conversación en la que responder.",
+   "ar": "لم يوفّر Codex محادثة للرد فيها.",
+   "fr": "Codex n'a fourni aucune conversation où répondre.",
+   "bn": "Codex উত্তর দেওয়ার জন্য কোনো কথোপকথন দেয়নি।",
+   "pt-BR": "O Codex não deu nenhuma conversa para responder.",
+   "ru": "Codex не открыл беседу для ответа.",
+   "id": "Codex tidak memberikan percakapan untuk menjawab.",
+   "it": "Codex non ha aperto nessuna conversazione in cui rispondere."
+  },
+  "Codex needed a permission that wasn't given.": {
+   "zh-Hans": "Codex 需要的权限未被授予。",
+   "hi": "Codex को एक अनुमति चाहिए थी जो नहीं दी गई।",
+   "es": "Codex necesitaba un permiso que no se concedió.",
+   "ar": "احتاج Codex إلى إذن لم يُمنح.",
+   "fr": "Codex avait besoin d'une autorisation qui n'a pas été accordée.",
+   "bn": "Codex-এর একটি অনুমতি দরকার ছিল যা দেওয়া হয়নি।",
+   "pt-BR": "O Codex precisava de uma permissão que não foi dada.",
+   "ru": "Codex требовалось разрешение, которое не было дано.",
+   "id": "Codex membutuhkan izin yang tidak diberikan.",
+   "it": "Codex aveva bisogno di un permesso che non è stato dato."
+  },
+  "Codex gave no answer.": {
+   "zh-Hans": "Codex 没有回答。",
+   "hi": "Codex ने कोई जवाब नहीं दिया।",
+   "es": "Codex no respondió.",
+   "ar": "لم يقدّم Codex أي رد.",
+   "fr": "Codex n'a pas répondu.",
+   "bn": "Codex কোনো উত্তর দেয়নি।",
+   "pt-BR": "O Codex não respondeu.",
+   "ru": "Codex не ответил.",
+   "id": "Codex tidak memberi jawaban.",
+   "it": "Codex non ha risposto."
+  },
+  "Uses your ChatGPT account. No key needed.": {
+   "zh-Hans": "使用你的 ChatGPT 账号。无需密钥。",
+   "hi": "आपके ChatGPT खाते का उपयोग करता है। कोई कुंजी नहीं चाहिए।",
+   "es": "Usa tu cuenta de ChatGPT. No hace falta clave.",
+   "ar": "يستخدم حساب ChatGPT الخاص بك. لا حاجة إلى مفتاح.",
+   "fr": "Utilise votre compte ChatGPT. Aucune clé nécessaire.",
+   "bn": "আপনার ChatGPT অ্যাকাউন্ট ব্যবহার করে। কোনো কী লাগবে না।",
+   "pt-BR": "Usa sua conta do ChatGPT. Não precisa de chave.",
+   "ru": "Использует ваш аккаунт ChatGPT. Ключ не нужен.",
+   "id": "Menggunakan akun ChatGPT Anda. Tidak perlu kunci.",
+   "it": "Usa il tuo account ChatGPT. Nessuna chiave necessaria."
   }
  }
 }

@@ -786,7 +786,7 @@ fn spawn(exe: &std::path::Path, args: &[String], dir: &std::path::Path, chat_id:
 }
 
 /// Reads `child`'s stderr in the background, its first 64 KB kept.
-fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
+pub(crate) fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
     let kept = Arc::new(std::sync::Mutex::new(String::new()));
     if let Some(mut e) = child.stderr.take() {
         let into = kept.clone();
@@ -802,7 +802,7 @@ fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>>
 }
 
 /// `child`'s stdout, line by line, on a channel; at most `max_total` bytes in all.
-fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
+pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {

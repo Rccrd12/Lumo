@@ -13,6 +13,7 @@ mod chat_usage;
 mod claude;
 mod claude_code;
 mod clipboard;
+mod codex_chat;
 mod codex_plan;
 mod computer;
 mod config_file;
@@ -676,6 +677,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     chats.focus(&chat_id).reset();
     // Its Claude Code, waiting for a message of the conversation before, goes.
     claude_code::close(&chat_id);
+    codex_chat::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
@@ -854,7 +856,7 @@ async fn clipboard_text() -> Option<String> {
 /// The island may only ask whether a key exists — never read it.
 /// The chat providers that are set up, for the model picker: a key in the
 /// credential store, or the CLI on this computer with Lumo's hooks in place
-/// (Claude Code, Antigravity CLI). The model servers are the page's to judge
+/// (Claude Code, Antigravity CLI), or the CLI on this computer (Codex). The model servers are the page's to judge
 /// (their address in the settings). Async: the credential store and the disk
 /// may take a moment, and the main thread is not kept waiting.
 #[tauri::command]
@@ -877,6 +879,9 @@ async fn chat_providers() -> Vec<String> {
         let antigravity_hooks = agents::list().iter().any(|a| a.id == "antigravity" && a.installed);
         if !platform::agy_candidates().is_empty() && antigravity_hooks {
             ready.push("antigravity-cli".to_string());
+        }
+        if codex_chat::ready() {
+            ready.push("codex".to_string());
         }
         ready
     })

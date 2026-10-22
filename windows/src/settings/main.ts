@@ -449,15 +449,16 @@ function apiSection(hasKey: boolean): HTMLElement {
   );
 }
 
-// ── Antigravity CLI section ───────────────────────────────────────────────────
+// ── Antigravity CLI and Codex sections ────────────────────────────────────────
 
 /**
- * Antigravity CLI needs no key either: it runs with the Google account signed
- * in to `agy` (antigravity_cli.rs). Its models come from `agy models`, asked
- * only once the list is opened.
+ * Antigravity CLI and Codex need no key either: each runs with the account
+ * signed in to it, Google's for `agy` (antigravity_cli.rs), ChatGPT's for
+ * `codex` (codex_chat.rs). Their models come from the CLI itself (`agy
+ * models`, Codex's `model/list`), asked only once the list is opened.
  */
-function agyCliSection(): HTMLElement {
-  const p = providerDef("antigravity-cli");
+function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement {
+  const p = providerDef(id);
   const model = h("select", {}) as HTMLSelectElement;
   const fill = (offered: { id: string; label: string }[]) => {
     const saved = settings.chatModels[p.id] || "default";
@@ -486,7 +487,7 @@ function agyCliSection(): HTMLElement {
     "section",
     {},
     ...sectionHead(p.name, null, accentDot(p.accent)),
-    setting(t("Model"), t("Uses your Google account. No key needed."), model),
+    setting(t("Model"), t(note), model),
   );
 }
 
@@ -1993,7 +1994,7 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), agyCliSection(), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
+    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present)],
