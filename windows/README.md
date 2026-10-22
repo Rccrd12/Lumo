@@ -520,7 +520,8 @@ pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
 refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
 `--mode plan`; **Auto** goes as `--sandbox`, agy's terminal sandbox (in preview
 on Windows). Headless agy never prompts: it reads and writes workspace files
-freely, and a shell command needs your approval. With the hooks of
+freely, and a shell command, or a file it would change outside the chat's
+folders, needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
 card over the chat (reinstall the hooks if they predate this version, or the
 card only waits 8 seconds); without them, or if nobody clicks, the command does

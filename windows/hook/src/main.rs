@@ -257,7 +257,8 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let tool = map.get("tool_name").and_then(Value::as_str).unwrap_or("");
     let island_card = is_island_run(env)
         && name == "PreToolUse"
-        && ((args.agent == "antigravity" && reply::island_card(tool, map.get("tool_input")))
+        && ((args.agent == "antigravity"
+            && (reply::island_card(tool, map.get("tool_input")) || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map))))
             || (args.agent.is_empty() && args.chat_card && reply::claude_card_tool(tool)));
     let name = if island_card { "PermissionRequest".to_string() } else { name };
     if island_card {
@@ -295,6 +296,14 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let mut line = payload.to_string();
     line.push('\n');
     Some(Event { line, name, question, island_card })
+}
+
+/// Antigravity's `workspacePaths`: the folders its run may change.
+fn workspaces(map: &serde_json::Map<String, Value>) -> Vec<String> {
+    map.get("workspacePaths")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
 }
 
 /// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for

@@ -75,6 +75,44 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     ["command", "shell", "terminal", "mcp", "browser"].iter().any(|w| tool.contains(w))
 }
 
+/// An Antigravity file tool that changes something (`write_to_file`,
+/// `replace_file_content`…) outside the run's workspace (`workspaces`, agy's
+/// `workspacePaths`). agy would ask about it, but its own confirmation is off
+/// in the island's chat, so it is a card. A path that cannot be placed for
+/// sure (`..`, no workspace known) is one too. Reading stays free: the chat
+/// reads the documents the user has open, wherever they are.
+pub fn writes_outside(tool: &str, input: Option<&Value>, workspaces: &[String]) -> bool {
+    let tool = tool.to_ascii_lowercase();
+    if !["write", "replace", "edit", "delete", "remove", "move", "rename", "create"].iter().any(|w| tool.contains(w)) {
+        return false;
+    }
+    let Some(input) = input.and_then(Value::as_object) else { return false };
+    let roots: Vec<String> = workspaces.iter().map(|w| norm_path(w)).filter(|w| !w.is_empty()).collect();
+    input
+        .iter()
+        .filter(|(key, _)| ["file", "path", "target", "dest"].iter().any(|w| key.to_ascii_lowercase().contains(w)))
+        .filter_map(|(_, value)| value.as_str())
+        .filter(|path| !path.trim().is_empty())
+        .any(|path| {
+            let p = norm_path(path);
+            if p.split('/').any(|part| part == "..") {
+                return true;
+            }
+            // A relative path is the workspace's own.
+            let absolute = p.starts_with('/') || p.as_bytes().get(1) == Some(&b':');
+            absolute && !roots.iter().any(|r| p == *r || p.starts_with(&format!("{r}/")))
+        })
+}
+
+/// A path to compare: forward slashes, lower case (Windows), no `file://`, no trailing slash.
+fn norm_path(path: &str) -> String {
+    let p = path.trim();
+    let p = p.strip_prefix("file:///").or_else(|| p.strip_prefix("file://")).unwrap_or(p);
+    let p = p.replace('\\', "/").to_lowercase();
+    let p = if p.as_bytes().get(2) == Some(&b':') && p.starts_with('/') { p[1..].to_string() } else { p };
+    p.trim_end_matches('/').to_string()
+}
+
 /// The tools of the island's Claude Code chat (asking every time) that get a
 /// card from its PreToolUse hook: what runs a command, changes a file or goes
 /// to the network or an MCP server. Reading is left to Claude Code.
@@ -376,6 +414,16 @@ mod tests {
         assert!(island_card_tool("mcp_github_create_issue"));
         assert!(island_card_tool("browser_click"));
         assert!(!island_card_tool("write_to_file"));
+        let ws = ["C:\\Users\\me\\Lumo".to_string(), "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox".to_string()];
+        let w = |tool: &str, input: Value| writes_outside(tool, Some(&input), &ws);
+        assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\Public\\lumo-test.txt"})), "outside: a card");
+        assert!(!w("write_to_file", json!({"TargetFile": "c:/users/me/lumo/src/a.rs"})), "its own folder");
+        assert!(!w("replace_file_content", json!({"TargetFile": "file:///C:/Users/me/Lumo/a.md"})));
+        assert!(!w("write_to_file", json!({"TargetFile": "notes/a.md"})), "relative: the workspace's");
+        assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\me\\Lumo\\..\\x.txt"})), "leaves it");
+        assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\me\\Lumo2\\x.txt"})), "a sibling is not inside");
+        assert!(!w("view_file", json!({"AbsolutePath": "C:\\Users\\Public\\a.pdf"})), "reading is free");
+        assert!(writes_outside("write_to_file", Some(&json!({"TargetFile": "/x/a"})), &[]), "no workspace known");
         assert!(!island_card_tool(""));
         assert!(!island_card_tool("mcp_lumo_mail_recent") && !island_card_tool("lumo/mail_read"), "Lumo's email only reads");
         assert!(island_card_tool("mcp_gmail_send_message"));
