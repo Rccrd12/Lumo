@@ -454,6 +454,17 @@ nodes, never parsed as HTML, and only `http`/`https` links open. Lumo greets
 you by your first name when your account has one (the Windows display name; a
 bare login name is not used).
 
+**Commands**: type `/` as the first character in the chat box and a menu of
+commands opens above it, filtered as you type (arrows move, Enter runs, Tab
+writes the name for what follows, Escape or a click anywhere closes it).
+Lumo's own work with every provider and never reach the AI: `/new`,
+`/history`, `/model`, `/attach`, `/screen`, `/permissions` (Claude Code and
+Antigravity CLI) and `/timer 10m pasta`. With **Claude Code**, its own
+commands are listed too and go to it exactly as typed: `/compact`, `/context`
+and whatever else its last answer said it has (your own commands and skills
+included). Antigravity CLI runs with its commands turned off, and the API and
+local providers have none, so there `/compact` shows greyed.
+
 To send the Claude chat through an Anthropic-compatible gateway, set
 `LUMO_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
 `/v1/messages` is added). It must be `https://`, or `http://` to this PC only.

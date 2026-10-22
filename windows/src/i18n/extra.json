@@ -10130,6 +10130,90 @@
    "ru": "Выполняет любые команды и меняет любые файлы без вопросов.",
    "id": "Menjalankan semua perintah dan mengubah file apa pun tanpa bertanya.",
    "it": "Esegue ogni comando e modifica qualsiasi file senza chiedere."
+  },
+  "Start a timer on the closed island": {
+   "zh-Hans": "在收起的岛上开始计时",
+   "hi": "बंद द्वीप पर टाइमर शुरू करें",
+   "es": "Inicia un temporizador en la isla cerrada",
+   "ar": "ابدأ مؤقتًا على الجزيرة المغلقة",
+   "fr": "Lancer un minuteur sur l'île fermée",
+   "bn": "বন্ধ দ্বীপে একটি টাইমার শুরু করুন",
+   "pt-BR": "Inicie um timer na ilha fechada",
+   "ru": "Запустить таймер на закрытом острове",
+   "id": "Mulai timer di pulau yang tertutup",
+   "it": "Avvia un timer sull'isola chiusa"
+  },
+  "Sum up the conversation so far": {
+   "zh-Hans": "总结到目前为止的对话",
+   "hi": "अब तक की बातचीत का सारांश बनाएं",
+   "es": "Resume la conversación hasta ahora",
+   "ar": "لخّص المحادثة حتى الآن",
+   "fr": "Résumer la conversation jusqu'ici",
+   "bn": "এখন পর্যন্ত কথোপকথনের সারাংশ করুন",
+   "pt-BR": "Resuma a conversa até agora",
+   "ru": "Кратко пересказать разговор",
+   "id": "Ringkas percakapan sejauh ini",
+   "it": "Riassume la conversazione finora"
+  },
+  "Show how full the context is": {
+   "zh-Hans": "显示上下文的占用情况",
+   "hi": "दिखाएं कि संदर्भ कितना भरा है",
+   "es": "Muestra cuánto contexto está ocupado",
+   "ar": "اعرض مدى امتلاء السياق",
+   "fr": "Afficher le remplissage du contexte",
+   "bn": "প্রসঙ্গ কতটা ভরা তা দেখান",
+   "pt-BR": "Mostra quanto do contexto está ocupado",
+   "ru": "Показать, насколько заполнен контекст",
+   "id": "Tampilkan seberapa penuh konteksnya",
+   "it": "Mostra quanto è pieno il contesto"
+  },
+  "Only with Claude Code": {
+   "zh-Hans": "仅限 Claude Code",
+   "hi": "केवल Claude Code के साथ",
+   "es": "Solo con Claude Code",
+   "ar": "مع Claude Code فقط",
+   "fr": "Uniquement avec Claude Code",
+   "bn": "শুধু Claude Code-এর সাথে",
+   "pt-BR": "Somente com o Claude Code",
+   "ru": "Только с Claude Code",
+   "id": "Hanya dengan Claude Code",
+   "it": "Solo con Claude Code"
+  },
+  "Send a message first: Claude Code hasn't seen this conversation yet.": {
+   "zh-Hans": "请先发送一条消息：Claude Code 还没有看到这段对话。",
+   "hi": "पहले एक संदेश भेजें: Claude Code ने अभी तक यह बातचीत नहीं देखी है।",
+   "es": "Envía primero un mensaje: Claude Code aún no ha visto esta conversación.",
+   "ar": "أرسل رسالة أولًا: لم يطّلع Claude Code على هذه المحادثة بعد.",
+   "fr": "Envoyez d'abord un message : Claude Code n'a pas encore vu cette conversation.",
+   "bn": "আগে একটি বার্তা পাঠান: Claude Code এখনও এই কথোপকথন দেখেনি।",
+   "pt-BR": "Envie uma mensagem primeiro: o Claude Code ainda não viu esta conversa.",
+   "ru": "Сначала отправьте сообщение: Claude Code ещё не видел этот разговор.",
+   "id": "Kirim pesan dulu: Claude Code belum melihat percakapan ini.",
+   "it": "Invia prima un messaggio: Claude Code non ha ancora visto questa conversazione."
+  },
+  "Claude Code compacted the conversation.": {
+   "zh-Hans": "Claude Code 已压缩对话。",
+   "hi": "Claude Code ने बातचीत को संक्षिप्त कर दिया।",
+   "es": "Claude Code ha compactado la conversación.",
+   "ar": "ضغط Claude Code المحادثة.",
+   "fr": "Claude Code a compacté la conversation.",
+   "bn": "Claude Code কথোপকথনটি সংক্ষিপ্ত করেছে।",
+   "pt-BR": "O Claude Code compactou a conversa.",
+   "ru": "Claude Code сжал разговор.",
+   "id": "Claude Code telah memadatkan percakapan.",
+   "it": "Claude Code ha compattato la conversazione."
+  },
+  "Claude Code ran /{command}.": {
+   "zh-Hans": "Claude Code 已运行 /{command}。",
+   "hi": "Claude Code ने /{command} चलाया।",
+   "es": "Claude Code ejecutó /{command}.",
+   "ar": "شغّل Claude Code الأمر /{command}.",
+   "fr": "Claude Code a exécuté /{command}.",
+   "bn": "Claude Code /{command} চালিয়েছে।",
+   "pt-BR": "O Claude Code executou /{command}.",
+   "ru": "Claude Code выполнил /{command}.",
+   "id": "Claude Code menjalankan /{command}.",
+   "it": "Claude Code ha eseguito /{command}."
   }
  }
 }

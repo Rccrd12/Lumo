@@ -237,6 +237,8 @@ export const Bridge = {
   toolsTerminalSet: (on: boolean) => callOrThrow<boolean>("tools_terminal_set", { on }),
   /** The Stop button of one chat: its `chatSend` then returns what was written so far, `stopped`. */
   chatStop: (chatId: string) => call<void>("chat_stop", { chatId }),
+  /** The commands Claude Code's last chat turn said it has (claude_code.rs); null before one. */
+  chatCommands: () => call<string[] | null>("chat_commands"),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
   chatRewind: (chatId: string, keep: number) => call<void>("chat_rewind", { chatId, keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */

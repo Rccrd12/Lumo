@@ -692,6 +692,12 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
 }
 
+/// The commands Claude Code's last chat turn said it has, for the "/" menu; None before one.
+#[tauri::command]
+fn chat_commands() -> Option<Vec<String>> {
+    claude_code::commands()
+}
+
 /// One turn of a chat from the history, as the island keeps it.
 #[derive(serde::Deserialize)]
 struct SavedTurn {
@@ -1111,6 +1117,7 @@ pub fn run() {
             local_set_key,
             chat_reset,
             chat_restore,
+            chat_commands,
             chat_stop,
             chat_rewind,
             island_drag,

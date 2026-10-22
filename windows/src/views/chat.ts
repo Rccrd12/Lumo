@@ -45,6 +45,13 @@
 // screen are two rows), with its picture or its kind's icon, what it is, and
 // a × that takes back that one only. A click shows what it sends.
 //
+// "/" as the field's first character opens the commands' menu above it
+// (core/slash.ts): Lumo's own (a new chat, the past chats, the model, a
+// timer…) and, with Claude Code, its own commands, sent as typed. It filters
+// as the name is typed; arrows move, Enter runs, Tab writes the name for
+// what follows. A press anywhere, the field included, closes it; a press on
+// the field brings it back only once the field had lost the focus.
+//
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
 //
@@ -86,6 +93,7 @@ import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration
 import { LISTEN_COLOR, LISTEN_STRINGS, listenMessage, listeningLine, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
+import { lumoCommand, slashCommands, slashMatches, slashQuery, type SlashAction, type SlashCommand } from "../core/slash";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -126,6 +134,9 @@ const STRINGS = {
   editing: N_("Editing a message"),
   editingHint: N_("Sending replaces this message and everything after it."),
 };
+
+/** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
+const FILLED_ICONS = new Set(["plus", "gear", "timer"]);
 
 /** The effort levels by name, "Auto" for the CLI's own default. */
 const EFFORT_NAMES: Record<string, string> = {
@@ -897,7 +908,7 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering"].some((c) => body.classList.contains(c));
+    const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding"].some((c) => body.classList.contains(c));
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
@@ -930,6 +941,9 @@ export function buildPrompt(
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
+  // The commands' menu, over the log just above the field.
+  const slashList = h("div", { class: "slash-list", role: "listbox" });
+  const slashEl = h("div", { class: "slash-menu" }, slashList);
   // The tool workshop's title row and, beside the conversation, its tool.
   const forge = buildForgePanel({
     tell: (text) => {
@@ -939,7 +953,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, modelRow, bar);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, slashEl, modelRow, bar);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -975,6 +989,8 @@ export function buildPrompt(
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
     if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
     if (body.classList.contains("metering") && !inside(usagePanel, usageEl)) closeUsage();
+    // The field too: a press on it closes the commands (see the field's mousedown).
+    if (slashOpen() && !inside(slashEl)) closeSlash();
   }
   document.addEventListener("mousedown", (e) => closeListsBut(e.target as Node | null), true);
   void onEvent<null>("outside-press", () => closeListsBut(null));
@@ -1274,6 +1290,10 @@ export function buildPrompt(
       closePermissions();
       return;
     }
+    openPermissions();
+  });
+
+  function openPermissions() {
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -1282,7 +1302,7 @@ export function buildPrompt(
     body.classList.add("authorizing");
     permBtn.classList.add("open");
     panelChanged();
-  });
+  }
 
   // ── New chat, past chats, attach ──────────────────────────────────────────
 
@@ -2115,6 +2135,10 @@ export function buildPrompt(
       closeHistory();
       return;
     }
+    openHistory();
+  });
+
+  function openHistory() {
     if (picker.isOpen) picker.close();
     closeFiles();
     closeScreen();
@@ -2126,7 +2150,7 @@ export function buildPrompt(
     historyBtn.classList.add("open");
     panelChanged();
     historySearch.focus();
-  });
+  }
 
   modelBtn.addEventListener("click", () => {
     if (picker.isOpen) picker.close();
@@ -2220,6 +2244,14 @@ export function buildPrompt(
       setInput("");
       compactTimer(timerMs, timer[2]);
       Sound.play("blip");
+      return;
+    }
+    // "/new", "/model"…: Lumo's own, run here like a pick in the menu.
+    const own = auto || editing != null ? null : lumoCommand(query, State.settings.chatProvider);
+    if (own) {
+      closeSlash();
+      setInput("");
+      runLumo(own);
       return;
     }
     // The chat on screen is being answered: the next question waits in the
@@ -2460,6 +2492,193 @@ export function buildPrompt(
     }
   }
 
+
+  // ── Commands ("/") ────────────────────────────────────────────────────────
+
+  /** What Claude Code's last turn said it has (`chat-commands`); null before one. */
+  let cliCommands: string[] | null = null;
+  void Bridge.chatCommands().then((list) => {
+    if (cliCommands == null && Array.isArray(list)) cliCommands = list;
+  });
+  void onEvent<string[]>("chat-commands", (list) => {
+    if (Array.isArray(list)) cliCommands = list;
+  });
+  /** The commands the menu shows now, and the one Enter would run. */
+  let slashItems: SlashCommand[] = [];
+  let slashAt = 0;
+  /** The field has the focus (a press on it reopens the menu only when it had not). */
+  let fieldFocused = false;
+  let reopenOnClick = false;
+
+  function slashOpen(): boolean {
+    return body.classList.contains("commanding");
+  }
+
+  /** Shows the menu for what is typed, if it starts with "/" and something matches; else closes it. */
+  function showSlash() {
+    const query = slashQuery(input.value);
+    const items = query == null ? [] : slashMatches(slashCommands(State.settings.chatProvider, cliCommands), query);
+    if (items.length === 0) {
+      closeSlash();
+      return;
+    }
+    slashItems = items;
+    // The best match is the one Enter runs: the first that can (none, when only greyed ones match).
+    slashAt = items.findIndex((c) => !c.off);
+    drawSlash();
+    if (!slashOpen()) {
+      // Over the log, its bottom just above the field.
+      const top = bar.offsetTop;
+      if (Number.isFinite(top) && top > 0) {
+        slashEl.style.bottom = `${body.clientHeight - top + 6}px`;
+        slashEl.style.left = `${bar.offsetLeft}px`;
+      }
+      body.classList.add("commanding");
+      panelChanged();
+    }
+  }
+
+  function closeSlash() {
+    if (!slashOpen()) return;
+    body.classList.remove("commanding");
+    panelChanged();
+  }
+
+  function drawSlash() {
+    clear(slashList);
+    slashItems.forEach((c, i) => {
+      const note = c.off ? t(c.off) : c.note ? t(c.note) : c.kind === "cli" ? "Claude Code" : "";
+      const row = h(
+        "button",
+        {
+          class: `slash-row${i === slashAt ? " on" : ""}${c.off ? " off" : ""}`,
+          role: "option",
+          "aria-selected": String(i === slashAt),
+          "aria-disabled": String(!!c.off),
+        },
+        h("span", { class: "slash-icon" }, slashIcon(c.icon)),
+        h("span", { class: "slash-name", text: c.name }),
+        h("span", { class: "slash-note", text: note }),
+      );
+      // The field keeps the focus: the press is the menu's, not a press elsewhere.
+      row.addEventListener("mousedown", (e) => e.preventDefault());
+      row.addEventListener("mousemove", () => {
+        if (slashAt === i || c.off) return;
+        slashAt = i;
+        drawSlash();
+      });
+      row.addEventListener("click", () => pickSlash(c, false));
+      slashList.append(row);
+    });
+    (slashList.children[slashAt] as HTMLElement | undefined)?.scrollIntoView?.({ block: "nearest" });
+  }
+
+  /**
+   * Runs a command from the menu. `complete` (Tab): only its name goes in the
+   * field, followed by a space, for what goes with it.
+   */
+  function pickSlash(c: SlashCommand | undefined, complete: boolean) {
+    if (!c || c.off) return;
+    closeSlash();
+    input.focus();
+    if (complete || c.args) {
+      setInput(`/${c.name} `);
+      input.setSelectionRange(input.value.length, input.value.length);
+      return;
+    }
+    if (c.kind === "cli") {
+      setInput(`/${c.name}`);
+      void submit();
+      return;
+    }
+    setInput("");
+    if (c.action) runLumo(c.action);
+  }
+
+  /** A command's icon, drawn as its button draws it: some are filled, the others stroked. */
+  function slashIcon(name: string): SVGSVGElement {
+    const path = ICONS[name as keyof typeof ICONS] ?? ICONS.terminal;
+    return FILLED_ICONS.has(name) ? svg(path, 12) : svg(path, 13, { stroke: 1.8 });
+  }
+
+  /** One of Lumo's own commands, as its button would. */
+  function runLumo(action: SlashAction) {
+    switch (action) {
+      case "new":
+        newChat();
+        break;
+      case "history":
+        openHistory();
+        break;
+      case "model":
+        if (!picker.isOpen) picker.open();
+        break;
+      case "attach":
+        void attach();
+        break;
+      case "screen":
+        openScreen();
+        break;
+      case "permissions":
+        openPermissions();
+        break;
+      case "timer":
+        setInput("/timer ");
+        input.focus();
+        break;
+    }
+  }
+
+  /** Arrows, Enter, Tab and Escape while the menu is open; true when the key was the menu's. */
+  function slashKey(ke: KeyboardEvent): boolean {
+    if (!slashOpen() || ke.isComposing) return false;
+    const n = slashItems.length;
+    const step = (d: number) => {
+      for (let k = 1; k <= n; k++) {
+        const i = (((Math.max(slashAt, d > 0 ? -1 : 0) + d * k) % n) + n) % n;
+        if (!slashItems[i].off) {
+          slashAt = i;
+          break;
+        }
+      }
+      drawSlash();
+    };
+    switch (ke.key) {
+      case "ArrowDown":
+        step(1);
+        return true;
+      case "ArrowUp":
+        step(-1);
+        return true;
+      case "Enter":
+        // Nothing that can run is highlighted: Enter sends what is typed.
+        if (ke.shiftKey || slashAt < 0) return false;
+        pickSlash(slashItems[slashAt], false);
+        return true;
+      case "Tab":
+        pickSlash(slashItems[slashAt], true);
+        return slashAt >= 0;
+      case "Escape":
+        closeSlash();
+        return true;
+    }
+    return false;
+  }
+
+  input.addEventListener("input", showSlash);
+  input.addEventListener("focus", () => (fieldFocused = true));
+  input.addEventListener("blur", () => {
+    fieldFocused = false;
+    closeSlash();
+  });
+  // A press on the field closes the menu (the document's press did) and,
+  // when the field had lost the focus, opens it again for what is typed.
+  input.addEventListener("mousedown", () => (reopenOnClick = !fieldFocused && !slashOpen()));
+  input.addEventListener("click", () => {
+    if (reopenOnClick) showSlash();
+    reopenOnClick = false;
+  });
+
   input.addEventListener("paste", (e) => {
     const data = (e as ClipboardEvent).clipboardData;
     if (pasteAction(data) === "text") return;
@@ -2477,6 +2696,11 @@ export function buildPrompt(
   input.addEventListener("keydown", (e) => {
     const ke = e as KeyboardEvent;
     const key = ke.key;
+    if (slashKey(ke)) {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     // Shift+Enter is a new line; Enter while an IME composes is the IME's.
     if (key === "Enter" && !ke.shiftKey && !ke.isComposing) {
       e.preventDefault();

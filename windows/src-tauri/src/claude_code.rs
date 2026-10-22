@@ -19,6 +19,11 @@
 // `claude.cmd`, and cmd.exe would interpret what the user typed. Every argument
 // is fixed or checked.
 //
+// A message that is one of Claude Code's commands ("/compact", "/context",
+// the user's own) goes in alone, exactly as typed, so Claude Code runs it as
+// in a terminal. The commands it has come with its first line (`init`), kept
+// for the island's "/" menu (`commands`, the `chat-commands` event).
+//
 // The answer is streamed like a local model's: `chat-delta` events carry the
 // text visible so far, the command's reply is the final answer. While no text
 // shows, `chat-activity` events say what Claude Code is doing (thinking,
@@ -392,6 +397,43 @@ pub(crate) fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[
     out
 }
 
+// ── Commands ──────────────────────────────────────────────────────────────────
+
+/// The commands Claude Code's last turn said it has, for the island's menu.
+static COMMANDS: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+
+/// The commands Claude Code has, as its last turn said; None before one.
+pub fn commands() -> Option<Vec<String>> {
+    COMMANDS.lock().unwrap().clone()
+}
+
+/// A command's name as it may be typed: letters, digits and `-_:.`, never a path.
+fn is_command_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric())
+        && name.len() <= 64
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
+}
+
+/// `init`'s `slash_commands`: the names, without a slash, once each.
+fn command_names(list: &[Value]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in list.iter().filter_map(Value::as_str) {
+        let name = name.trim_start_matches('/');
+        if is_command_name(name) && !out.iter().any(|n| n == name) && out.len() < 200 {
+            out.push(name.to_string());
+        }
+    }
+    out
+}
+
+/// The command `query` is, when it is one ("/compact", "/review 12"): its name.
+fn command_of(query: &str) -> Option<&str> {
+    let rest = query.trim().strip_prefix('/')?;
+    let name = rest.split_whitespace().next()?;
+    is_command_name(name).then_some(name)
+}
+
 // ── What Claude Code is doing ─────────────────────────────────────────────────
 
 /// What the answer is doing while no text shows: the line next to the island's
@@ -551,6 +593,10 @@ struct Run {
     /// The Claude plan's limits this turn reported (`rate_limit_event`), in the
     /// status line's shape: `five_hour` / `seven_day` → `used_percentage`, `resets_at`.
     rate_limits: serde_json::Map<String, Value>,
+    /// The commands Claude Code said it has (`init`'s `slash_commands`), names without the slash.
+    commands: Option<Vec<String>>,
+    /// The conversation was compacted (`/compact`, or Claude Code doing it by itself).
+    compacted: bool,
 }
 
 /// One `rate_limit_event` of the stream, in the status line's shape — the
@@ -720,6 +766,16 @@ impl Run {
             }
             Some("system") if v["subtype"] == "permission_denied" => {
                 self.denied += 1;
+                false
+            }
+            Some("system") if v["subtype"] == "init" => {
+                if let Some(list) = v["slash_commands"].as_array() {
+                    self.commands = Some(command_names(list));
+                }
+                false
+            }
+            Some("system") if v["subtype"] == "compact_boundary" => {
+                self.compacted = true;
                 false
             }
             Some("result") => {
@@ -1202,7 +1258,13 @@ pub async fn send(
     // Turns this session has not seen (another provider answered them, or a
     // message was edited) are carried over once, as text.
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
-    let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
+    // A command goes alone, as typed: anything in front of it and it is a question.
+    let command = command_of(&query).map(str::to_string);
+    if command.is_some() && !carried.is_empty() {
+        // A fresh session would run it on nothing, and then never be told the conversation.
+        return Ok(ChatReply::answer(t("Send a message first: Claude Code hasn't seen this conversation yet."), chat.cli_session()));
+    }
+    let input = if command.is_some() { query.trim().to_string() } else { prompt(context.as_ref(), &carried, &chat.files(), &query) };
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     // Computer use: the chat's own instructions, Lumo's MCP server, and the
     // computer only usable while this turn runs.
@@ -1247,6 +1309,11 @@ pub async fn send(
     }
     let state = state??;
 
+    // The commands it has, for the island's "/" menu.
+    if let Some(list) = &state.commands {
+        *COMMANDS.lock().unwrap() = Some(list.clone());
+        let _ = app.emit_to(WINDOW_LABEL, "chat-commands", list);
+    }
     // The plan's limits, when the turn said: the island's plan gauge (and the
     // chat's usage line) need not wait for a terminal session's status line.
     if !state.rate_limits.is_empty() {
@@ -1273,6 +1340,11 @@ pub async fn send(
     let answer = chat::keep_lumo_lines(answer, &state.said);
     let answer = if answer.trim().is_empty() && state.denied > 0 {
         t("Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island.")
+    } else if answer.trim().is_empty() && state.compacted {
+        t("Claude Code compacted the conversation.")
+    } else if let Some(name) = command.as_deref().filter(|_| answer.trim().is_empty()) {
+        // Some commands answer nothing: the chat still says it ran.
+        tf("Claude Code ran /{command}.", &[("command", name)])
     } else {
         answer
     };
@@ -1815,5 +1887,32 @@ mod tests {
         assert_eq!(safe_model("claude-opus-5-5[1m]"), Some("claude-opus-5-5[1m]"));
         assert_eq!(safe_model(""), None);
         assert_eq!(safe_model("default"), None, "no --model: Claude Code's own choice");
+    }
+
+    #[test]
+    fn the_commands_come_with_init_and_a_compaction_is_noticed() {
+        let mut run = Run::default();
+        let lines = [
+            format!(r#"{{"type":"system","subtype":"init","session_id":"{SID}","slash_commands":["compact","/context","compact","review","../etc","a b",""]}}"#),
+            r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual"}}"#.into(),
+            r#"{"type":"result","subtype":"success","is_error":false,"result":""}"#.into(),
+        ];
+        for l in &lines {
+            run.feed(l.as_bytes());
+        }
+        assert_eq!(run.commands.as_deref(), Some(&["compact".to_string(), "context".into(), "review".into()][..]));
+        assert!(run.compacted);
+        assert_eq!(run.result, Some(Ok(String::new())));
+    }
+
+    #[test]
+    fn only_a_slash_and_a_name_make_a_command() {
+        assert_eq!(command_of("/compact"), Some("compact"));
+        assert_eq!(command_of("  /review 12 please "), Some("review"));
+        assert_eq!(command_of("/my-plugin:do.it"), Some("my-plugin:do.it"));
+        assert_eq!(command_of("what does /compact do?"), None);
+        assert_eq!(command_of("/"), None);
+        assert_eq!(command_of("/usr/bin/env"), None, "a path is a question");
+        assert_eq!(command_of("/../x"), None);
     }
 }
