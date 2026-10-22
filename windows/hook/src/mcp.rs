@@ -783,7 +783,6 @@ mod tests {
         assert_eq!(v["result"]["content"], json!([{ "type": "text", "text": "The timer starts." }]));
         assert_eq!(lumo_tool("mcp__lumo__listen_pull_request"), Some("listen_pull_request"));
         assert!(only_reads("set_timer") && only_reads("stop_listening"));
-        assert!(!crate::reply::claude_card_tool("mcp__lumo__set_timer"));
         let call = json!({ "ServerName": "lumo", "ToolName": "listen_pull_request" });
         assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)));
     }

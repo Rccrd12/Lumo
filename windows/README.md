@@ -474,10 +474,12 @@ and the usage counts against your plan's limits like any Claude Code session.
 
 Unlike the other providers, Claude Code can act: it reads a dropped PDF or image
 from its path, reads and edits files and folders, runs commands and searches the
-web. Every action that needs a permission comes up in the island as the usual
-**Deny / Allow** card, through the hooks of **Settings… → Agents → Claude Code**. Without
-those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
-allowed on its own. The conversation continues the same Claude Code session
+web. An action comes up in the island as the usual **Deny / Allow** card exactly
+when Claude Code would ask for it: what your own Claude Code permission rules,
+the mode or an **Allow for this session** already allow goes through without
+one. The chat adds Lumo's PermissionRequest hook to its own run, so this works
+even before the hooks of **Settings… → Agents → Claude Code** are installed. If
+nobody clicks, Claude Code denies the action: nothing is ever allowed on its own. The conversation continues the same Claude Code session
 until **New chat**, in one Claude Code process kept for the chat between
 messages (so each answer starts faster); **Stop** interrupts the answer without
 ending it, and the process ends after 10 minutes without a message. A message
