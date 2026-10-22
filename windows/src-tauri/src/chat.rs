@@ -155,6 +155,11 @@ impl Chat {
         is_workshop(&self.id)
     }
 
+    /// The island's id for this chat.
+    pub fn id(&self) -> &str {
+        &self.id
+    }
+
     /// Where this chat's answer tells the island how it is going.
     pub fn events(&self) -> ChatEvents {
         ChatEvents { chat: self.id.clone() }
@@ -385,17 +390,27 @@ macro_rules! timer_note {
         "Lumo can show a timer on the island. When the user asks for a timer or to be reminded in some time, write on a line of its own [[timer 10m: what it is for]], with the length as 90s, 10m or 1h30m, and say in a few words that it is set; Lumo starts it and hides that line. Only when they ask for one."
     };
 }
-pub(crate) use timer_note;
-
-/// How the CLIs that can act (Claude Code, Antigravity) wait for GitHub
-/// without holding the turn open: Lumo keeps the watch (listen.rs) and hides
-/// that line (src/core/listen.ts). Plain words only: it goes on the command line.
-macro_rules! listen_note {
+/// `timer_note`, for the models that have Lumo's set_timer tool
+/// (island_tools.rs): the tool first, the line when it is missing. Plain words
+/// only: it also goes on the CLIs' command lines.
+macro_rules! timer_tool_note {
     () => {
-        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: write on a line of its own, as plain text (not in backticks or a code block), [[listen owner/repo#123 event: what to do then]] with the real owner, repository and number, with event one of checks (finished, passed or failed), green (checks passed), approved, ready (checks passed and it can be merged), merged or closed, and leave out the colon and what follows when they only want to be told. For example [[listen octocat/hello#42 checks]] to tell them when the checks finish, or [[listen octocat/hello#42 ready: merge it with gh pr merge --squash]]. Say in a few words that Lumo is listening, and end your answer; write that line in your last message, after any tool you run. Lumo watches GitHub, hides that line and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, write [[unlisten owner/repo#123]] on a line of its own."
+        "Lumo can show a timer on the island. When the user asks for a timer or to be reminded in some time, call Lumo's set_timer tool and say in a few words that it is set; only when they ask for one. If that tool is missing or fails, write instead on a line of its own [[timer 10m: what it is for]], with the length as 90s, 10m or 1h30m."
     };
 }
-pub(crate) use listen_note;
+pub(crate) use timer_tool_note;
+
+/// How the CLIs that can act (Claude Code, Antigravity) wait for GitHub
+/// without holding the turn open: Lumo's listen_pull_request and
+/// stop_listening tools (island_tools.rs), or the `[[listen …]]` line without
+/// them. Lumo keeps the watch (listen.rs) and hides that line
+/// (src/core/listen.ts). Plain words only: it goes on the command line.
+macro_rules! listen_tool_note {
+    () => {
+        " When the user wants something done or to be told once something happens to a pull request on GitHub (its checks finish, it is approved, ready to merge, merged or closed), never wait, sleep or poll for it yourself: call Lumo's listen_pull_request tool with the real owner/repository, number and event, and what to do then (left out when they only want to be told), say in a few words that Lumo is listening, and end your answer. Lumo watches GitHub and tells the user; with something to do, it then sends you a message in this chat starting with GitHub: that says what happened and what you meant to do, and you do it then, asking for permissions as usual. If what happened is not what you waited for (the checks failed, it was closed, it has conflicts), do not do it: tell the user what happened, and fix it only if they asked you to. To merge once it is ready, listen for ready with the merge as what to do then; a merge you start yourself is done at once, so tell the user right away. Never run a command that waits, such as gh pr checks --watch, gh run watch or a sleep loop: Lumo stops it. To stop listening, call stop_listening. If those tools are missing or fail, write instead, as plain text on a line of its own at the end of your answer, [[listen owner/repo#123 event: what to do then]] or [[unlisten owner/repo#123]]."
+    };
+}
+pub(crate) use listen_tool_note;
 
 /// `answer`, with the lines for Lumo (`[[timer …]]`, `[[listen …]]`,
 /// `[[unlisten …]]`) that were written earlier in the turn, in a message
@@ -462,9 +477,10 @@ macro_rules! workshop_note {
 }
 pub(crate) use workshop_note;
 
-/// The system prompt for `chat`: Mochi's, and the workshop's for a workshop chat.
-pub fn system_prompt_in(chat: &Chat, web_search: bool) -> String {
-    let base = system_prompt(web_search);
+/// The system prompt for `chat`: Mochi's, and the workshop's for a workshop
+/// chat. `timer_tool`: the provider gets Lumo's set_timer tool.
+pub fn system_prompt_in(chat: &Chat, web_search: bool, timer_tool: bool) -> String {
+    let base = system_prompt(web_search, timer_tool);
     if chat.is_workshop() {
         format!("{base}{}", workshop_note!())
     } else {
@@ -475,11 +491,11 @@ pub fn system_prompt_in(chat: &Chat, web_search: bool) -> String {
 /// Mochi's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the
 /// provider runs it (Claude).
-pub fn system_prompt(web_search: bool) -> String {
-    system_prompt_for(crate::identity::first_name(), web_search)
+pub fn system_prompt(web_search: bool, timer_tool: bool) -> String {
+    system_prompt_for(crate::identity::first_name(), web_search, timer_tool)
 }
 
-fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
+fn system_prompt_for(first_name: Option<&str>, web_search: bool, timer_tool: bool) -> String {
     let opening = match first_name {
         Some(name) => format!("You are Lumo, {name}'s personal AI assistant living at the top of their screen."),
         None => "You are Lumo, a personal AI assistant living at the top of the user's screen.".to_string(),
@@ -494,7 +510,7 @@ fn system_prompt_for(first_name: Option<&str>, web_search: bool) -> String {
 Respond in the user's language. Be thorough and complete — use as much detail as the task requires. \
 Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
 Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}{}",
-        timer_note!(),
+        if timer_tool { timer_tool_note!() } else { timer_note!() },
         math_note!()
     )
 }
@@ -687,7 +703,15 @@ async fn dispatch(
     chat.arm();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
-    let mut reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await?;
+    let reply = send_to(app, chat, settings, query, context.clone(), screen, usage).await;
+    // What the island's tools asked for during the turn (island_tools.rs), as
+    // the lines the island reads; a failed turn, or one stopped before it
+    // said anything, drops them.
+    let asked = crate::island_tools::take(chat.id());
+    let mut reply = reply?;
+    if !asked.is_empty() && !(reply.stopped && reply.text.is_empty()) {
+        reply.text = keep_lumo_lines(std::mem::take(&mut reply.text), &asked);
+    }
     // Remembered once it went, for a fresh Claude Code session after an edit.
     if let Some(ChatContext::File { name, path }) = &context {
         chat.note_file(name, path);
@@ -1007,14 +1031,17 @@ mod tests {
 
     #[test]
     fn the_prompt_greets_by_first_name_and_claims_web_search_only_for_claude() {
-        let p = system_prompt_for(Some("Louis"), true);
+        let p = system_prompt_for(Some("Louis"), true, true);
         assert!(p.starts_with("You are Lumo, Louis's personal AI assistant living at the top of their screen."));
         assert!(p.contains("web search access"));
         assert!(p.contains("light Markdown"));
-        let p = system_prompt_for(None, false);
+        let p = system_prompt_for(None, false, false);
         assert!(p.starts_with("You are Lumo, a personal AI assistant living at the top of the user's screen."));
         assert!(!p.contains("web search"));
         assert!(p.contains("no web access"));
+        // The timer: Lumo's tool where the provider has it, the line otherwise.
+        assert!(system_prompt_for(None, false, true).contains("set_timer tool"));
+        assert!(!p.contains("set_timer") && p.contains("[[timer 10m"));
     }
 
     #[test]

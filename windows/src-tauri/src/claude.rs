@@ -111,8 +111,8 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     })
 }
 
-/// The user's tools that are on and reviewed (tools.rs), as the Messages API
-/// takes them, after its web search.
+/// The island's tools (island_tools.rs) and the user's that are on and
+/// reviewed (tools.rs), as the Messages API takes them, after its web search.
 fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value {
     if let Some(list) = body["tools"].as_array_mut() {
         for (id, description, schema) in tools.iter().filter(|(id, _, _)| id != "web_search") {
@@ -122,14 +122,14 @@ fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value 
     body
 }
 
-/// The user's tool calls of an answer that stopped for them, as the next
-/// user turn's tool_result blocks: each call asks on the island (tools.rs).
-async fn run_user_tools(app: &AppHandle, blocks: &[Value]) -> Vec<Value> {
+/// The tool calls of an answer that stopped for them, as the next user turn's
+/// tool_result blocks: each call of the user's tools asks on the island (tools.rs).
+async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<Value> {
     let mut results = Vec::new();
     for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
         let id = b["id"].as_str().unwrap_or_default();
         let name = b["name"].as_str().unwrap_or_default();
-        let (text, failed) = crate::tools::call_for_chat(app, name, b["input"].clone()).await;
+        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone()).await;
         results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
     }
     results
@@ -188,8 +188,8 @@ pub async fn send(
     let mut content = image_blocks(images);
     content.extend(user_content(turn.first, context.as_ref(), &query));
     let user = json!({ "role": "user", "content": content });
-    let tools = tauri::async_runtime::spawn_blocking(crate::tools::api_tools).await.unwrap_or_default();
-    let mut body = with_user_tools(request_body(model, &chat::system_prompt_in(chat, true), &turn.history, &user), &tools);
+    let tools = tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default();
+    let mut body = with_user_tools(request_body(model, &chat::system_prompt_in(chat, true, true), &turn.history, &user), &tools);
 
     // Not streamed: Stop drops the request (or the tool's card), and nothing was written yet.
     let mut said: Vec<String> = Vec::new();
@@ -206,7 +206,7 @@ pub async fn send(
             if let Some(text) = response_text(&blocks) {
                 said.push(text);
             }
-            let results = run_user_tools(app, &blocks).await;
+            let results = run_user_tools(app, chat, &blocks).await;
             if let Some(messages) = body["messages"].as_array_mut() {
                 messages.push(json!({ "role": "assistant", "content": blocks }));
                 messages.push(json!({ "role": "user", "content": results }));

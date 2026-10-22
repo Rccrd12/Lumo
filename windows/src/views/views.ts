@@ -19,7 +19,7 @@ import {
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
 import { approvalKey } from "../core/approvals";
-import { Bridge } from "../core/bridge";
+import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
@@ -43,7 +43,7 @@ export interface ViewActions {
   openTarget(): void;
   openUrl(url: string): void;
   /** Answers `requestId` only if it is still the one waiting. */
-  decide(d: "allow" | "deny", requestId: string): void;
+  decide(d: Decision, requestId: string): void;
   /** The island takes the keyboard, so Y and N answer the card on screen. */
   takeKeyboard(): void;
   /** Answers the question Claude Code asked: question text → chosen label. */
@@ -540,6 +540,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   const about = h("div", { class: "approval-about" });
   const code = h("div", { class: "code" });
   const row = h("div", { class: "actions" });
+  const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
   const el = h("div", { class: "view" },
     card("amber", stack(116, 16, who, about, code, row), foldButton(actions)));
   let rowKey = "";
@@ -548,7 +549,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   // moments after a new request appears are ignored.
   let shownFor: string | null = null;
   let shownAt = 0;
-  const guarded = (d: "allow" | "deny") => () => {
+  const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS) return;
     // The request on screen: one that just took its place from the line is not drawn yet.
     if (shownFor != null) actions.decide(d, shownFor);
@@ -612,14 +613,18 @@ function buildApproval(actions: ViewActions): ViewHost {
       about.textContent = text;
       about.title = text;
       about.hidden = !text;
-      // Two buttons, built once. Rebuilding them between a mouse-down and a
-      // mouse-up would swallow the click, and there is nothing left to vary:
-      // "Always" is gone until the remembered-rules list exists to back it.
+      // "Allow for this session" only where the request has a session to be
+      // kept for (session_rules.rs): shown or hidden, never rebuilt.
+      sessionAllow.style.display = pending?.sessionAllow === true ? "" : "none";
+      sessionAllow.title = t("Allowed again without asking until this session ends");
+      // The buttons are built once. Rebuilding them between a mouse-down and a
+      // mouse-up would swallow the click.
       if (rowKey === "built") return;
       rowKey = "built";
       clear(row);
       row.append(
         btn(tl("Deny"), "secondary", guarded("deny"), "N"),
+        sessionAllow,
         btn(tl("Allow"), "primary", guarded("allow"), "Y"),
       );
     },

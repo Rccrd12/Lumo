@@ -546,6 +546,7 @@ const GEMINI_EVENTS: &[(&str, &str, u64)] = &[
     ("AfterTool", "PostToolUse", 5000),
     ("BeforeAgent", "UserPromptSubmit", 5000),
     ("AfterAgent", "Stop", 5000),
+    ("PreCompress", "PreCompact", 5000),
 ];
 
 fn gemini_install(root: &Value, commands: &[(String, String, u64)]) -> Result<Value, String> {
@@ -706,6 +707,7 @@ const COPILOT_EVENTS: &[(&str, u64)] = &[
     ("agentStop", 10),
     ("sessionEnd", 3),
     ("notification", 10),
+    ("preCompact", 10),
 ];
 
 fn copilot_entry(relay: &Relay, event: &str, timeout: u64) -> Value {

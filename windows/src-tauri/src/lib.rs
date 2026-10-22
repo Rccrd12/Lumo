@@ -27,6 +27,7 @@ mod i18n;
 mod identity;
 mod integrations;
 mod island;
+mod island_tools;
 mod listen;
 mod live;
 mod local_chat;
@@ -46,6 +47,7 @@ mod reminders;
 mod screen;
 mod secrets;
 mod selection;
+mod session_rules;
 mod session_window;
 mod settings;
 mod share;
@@ -672,6 +674,8 @@ fn local_set_key(url: String, key: String) -> Result<(), String> {
 #[tauri::command]
 fn chat_reset(chats: State<Chats>, chat_id: String) {
     chats.focus(&chat_id).reset();
+    // Its Claude Code, waiting for a message of the conversation before, goes.
+    claude_code::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then

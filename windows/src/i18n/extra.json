@@ -61,6 +61,30 @@
    "id": "AI untuk obrolan",
    "it": "IA per la chat"
   },
+  "Allow for this session": {
+   "zh-Hans": "本次会话允许",
+   "hi": "इस सत्र के लिए अनुमति दें",
+   "es": "Permitir en esta sesión",
+   "ar": "السماح لهذه الجلسة",
+   "fr": "Autoriser pour cette session",
+   "bn": "এই সেশনের জন্য অনুমতি দিন",
+   "pt-BR": "Permitir nesta sessão",
+   "ru": "Разрешить в этом сеансе",
+   "id": "Izinkan untuk sesi ini",
+   "it": "Consenti per questa sessione"
+  },
+  "Allowed again without asking until this session ends": {
+   "zh-Hans": "在本次会话结束前，再次出现时无需询问即允许",
+   "hi": "यह सत्र खत्म होने तक बिना पूछे फिर से अनुमति दी जाएगी",
+   "es": "Se vuelve a permitir sin preguntar hasta que termine esta sesión",
+   "ar": "يُسمح به مجددًا دون سؤال حتى تنتهي هذه الجلسة",
+   "fr": "Autorisé à nouveau sans demander jusqu'à la fin de cette session",
+   "bn": "এই সেশন শেষ না হওয়া পর্যন্ত আবার জিজ্ঞাসা না করেই অনুমতি দেওয়া হবে",
+   "pt-BR": "Permitido de novo sem perguntar até esta sessão terminar",
+   "ru": "Разрешается снова без вопросов до конца этого сеанса",
+   "id": "Diizinkan lagi tanpa bertanya sampai sesi ini berakhir",
+   "it": "Consentito di nuovo senza chiedere fino alla fine di questa sessione"
+  },
   "Always share the folder open in File Explorer": {
    "zh-Hans": "始终共享文件资源管理器中打开的文件夹",
    "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर हमेशा साझा करें",
@@ -480,6 +504,42 @@
    "ru": "Antigravity CLI не ответил",
    "id": "Antigravity CLI tidak menjawab",
    "it": "Antigravity CLI non ha risposto"
+  },
+  "Compacting the conversation…": {
+   "zh-Hans": "正在压缩对话…",
+   "hi": "बातचीत को संक्षिप्त किया जा रहा है…",
+   "es": "Compactando la conversación…",
+   "ar": "جارٍ ضغط المحادثة…",
+   "fr": "Compactage de la conversation…",
+   "bn": "কথোপকথন সংক্ষিপ্ত করা হচ্ছে…",
+   "pt-BR": "Compactando a conversa…",
+   "ru": "Сжатие разговора…",
+   "id": "Memadatkan percakapan…",
+   "it": "Compatto la conversazione…"
+  },
+  "Conversation compacted": {
+   "zh-Hans": "对话已压缩",
+   "hi": "बातचीत संक्षिप्त हो गई",
+   "es": "Conversación compactada",
+   "ar": "تم ضغط المحادثة",
+   "fr": "Conversation compactée",
+   "bn": "কথোপকথন সংক্ষিপ্ত হয়েছে",
+   "pt-BR": "Conversa compactada",
+   "ru": "Разговор сжат",
+   "id": "Percakapan dipadatkan",
+   "it": "Conversazione compattata"
+  },
+  "Denied by auto mode: {action}": {
+   "zh-Hans": "被自动模式拒绝：{action}",
+   "hi": "ऑटो मोड ने मना किया: {action}",
+   "es": "Denegado por el modo automático: {action}",
+   "ar": "رفضه الوضع التلقائي: {action}",
+   "fr": "Refusé par le mode auto : {action}",
+   "bn": "অটো মোড প্রত্যাখ্যান করেছে: {action}",
+   "pt-BR": "Negado pelo modo automático: {action}",
+   "ru": "Отклонено автоматическим режимом: {action}",
+   "id": "Ditolak oleh mode otomatis: {action}",
+   "it": "Negato dalla modalità automatica: {action}"
   },
   "Show Antigravity CLI usage in the island": {
    "zh-Hans": "在岛中显示 Antigravity CLI 用量",
@@ -2628,6 +2688,18 @@
    "ru": "Удаляются только записи Lumo. Ваши собственные хуки не затрагиваются.",
    "id": "Ini hanya menghapus entri Lumo. Hooks milik Anda tidak disentuh.",
    "it": "Questo rimuove solo le voci di Lumo. I tuoi hook restano intatti."
+  },
+  "This version of Lumo installs the hooks a little differently: Claude Code no longer waits for Lumo, except to ask for a permission. Reinstall them to get it.": {
+   "zh-Hans": "此版本的 Lumo 安装 hook 的方式略有不同：除了请求权限外，Claude Code 不再等待 Lumo。重新安装即可获得。",
+   "hi": "Lumo का यह संस्करण hooks को थोड़ा अलग तरीके से इंस्टॉल करता है: अनुमति माँगने के अलावा Claude Code अब Lumo का इंतज़ार नहीं करता। इसे पाने के लिए उन्हें फिर से इंस्टॉल करें।",
+   "es": "Esta versión de Lumo instala los hooks de forma algo distinta: Claude Code ya no espera a Lumo, salvo para pedir un permiso. Vuelve a instalarlos para tenerlo.",
+   "ar": "يثبّت هذا الإصدار من Lumo الـ hooks بطريقة مختلفة قليلًا: لم يعد Claude Code ينتظر Lumo إلا لطلب إذن. أعد تثبيتها للحصول على ذلك.",
+   "fr": "Cette version de Lumo installe les hooks un peu différemment : Claude Code n'attend plus Lumo, sauf pour demander une autorisation. Réinstallez-les pour en profiter.",
+   "bn": "Lumo-র এই সংস্করণ hooks একটু অন্যভাবে ইনস্টল করে: অনুমতি চাওয়া ছাড়া Claude Code আর Lumo-র জন্য অপেক্ষা করে না। এটি পেতে আবার ইনস্টল করুন।",
+   "pt-BR": "Esta versão do Lumo instala os hooks de um jeito um pouco diferente: o Claude Code não espera mais pelo Lumo, a não ser para pedir uma permissão. Reinstale-os para ter isso.",
+   "ru": "Эта версия Lumo устанавливает хуки немного иначе: Claude Code больше не ждёт Lumo, кроме как при запросе разрешения. Переустановите их, чтобы получить это.",
+   "id": "Versi Lumo ini memasang hook sedikit berbeda: Claude Code tidak lagi menunggu Lumo, kecuali untuk meminta izin. Pasang ulang untuk mendapatkannya.",
+   "it": "Questa versione di Lumo installa gli hook in modo un po' diverso: Claude Code non aspetta più Lumo, se non per chiedere un permesso. Reinstallali per averlo."
   },
   "Thursday": {
    "zh-Hans": "星期四",
@@ -10022,6 +10094,18 @@
    "ru": "Что он сообщает агентам",
    "id": "Yang dikatakannya kepada agen",
    "it": "Cosa dice agli agenti"
+  },
+  "Sent as soon as this answer ends": {
+   "zh-Hans": "此回答结束后立即发送",
+   "hi": "यह जवाब पूरा होते ही भेजा जाएगा",
+   "es": "Se envía en cuanto termine esta respuesta",
+   "ar": "يُرسل فور انتهاء هذه الإجابة",
+   "fr": "Envoyé dès que cette réponse se termine",
+   "bn": "এই উত্তর শেষ হলেই পাঠানো হবে",
+   "pt-BR": "Enviado assim que esta resposta terminar",
+   "ru": "Отправится, как только закончится этот ответ",
+   "id": "Dikirim begitu jawaban ini selesai",
+   "it": "Inviato appena finisce questa risposta"
   }
  }
 }

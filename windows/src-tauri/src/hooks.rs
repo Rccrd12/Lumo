@@ -23,6 +23,7 @@ use crate::{platform, settings};
 
 /// Every event the island reacts to, with the hook timeout written to settings.json.
 /// PermissionRequest waits for a human, so it gets the decision timeout + 10 s.
+/// All but two run in the background (`async`, see `runs_in_background`).
 pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("SessionStart", 10),
     ("SessionEnd", 10),
@@ -36,7 +37,37 @@ pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("StopFailure", 10),
     ("SubagentStart", 10),
     ("SubagentStop", 10),
+    ("PreCompact", 10),
+    ("PostCompact", 10),
+    ("PermissionDenied", 10),
 ];
+
+/// Whether Claude Code runs Lumo's hook for `event` in the background
+/// (`"async": true`): it starts the relay and goes on at once, never waiting
+/// for Lumo. Only two wait. PermissionRequest, whose answer is the island's
+/// click; and SessionEnd, so the relay is not cut off as Claude Code exits and
+/// the session's pill is told it is over.
+pub fn runs_in_background(event: &str) -> bool {
+    !matches!(event, "PermissionRequest" | "SessionEnd")
+}
+
+/// Lumo's entry for `event` in settings.json, as installing writes it.
+fn our_entry(event: &str, timeout: u64) -> Value {
+    our_entry_running(&hook_command(event), event, timeout)
+}
+
+/// `our_entry`, running `command`.
+fn our_entry_running(command: &str, event: &str, timeout: u64) -> Value {
+    let mut hook = json!({
+        "type": "command",
+        "command": command,
+        "timeout": timeout,
+    });
+    if runs_in_background(event) {
+        hook["async"] = json!(true);
+    }
+    json!({ "hooks": [hook] })
+}
 
 /// A command Lumo wrote: it runs the relay (lumo-hook), or the relay by the
 /// name hooks installed before still use (migrate.rs).
@@ -48,6 +79,9 @@ pub(crate) fn is_relay_command(command: &str) -> bool {
 #[serde(rename_all = "camelCase")]
 pub struct HookStatus {
     pub installed: bool,
+    /// Installed exactly as this version of Lumo writes them: false when they
+    /// were installed by an older one (Settings offers to reinstall them).
+    pub current: bool,
     /// Lumo's status line relay (plan usage) is the one in settings.json.
     pub plan_relay_installed: bool,
     pub settings_path: String,
@@ -125,13 +159,7 @@ fn merged(existing: &Value) -> Result<Value, String> {
             Some(_) => return Err(unexpected(&format!("\"hooks\".\"{event}\""))),
         };
         list.retain(|entry| !entry_is_ours(entry));
-        list.push(json!({
-            "hooks": [{
-                "type": "command",
-                "command": hook_command(event),
-                "timeout": timeout,
-            }]
-        }));
+        list.push(our_entry(event, *timeout));
         hooks.insert((*event).to_string(), Value::Array(list));
     }
 
@@ -201,11 +229,23 @@ pub fn status() -> HookStatus {
     let hook_path = settings::hook_exe_path();
     HookStatus {
         installed,
+        current: installed && hooks_current(&current),
         plan_relay_installed: plan_relay_installed(&current),
         settings_path: settings_path().to_string_lossy().to_string(),
         hook_ready: hook_path.exists(),
         hook_path: hook_path.to_string_lossy().to_string(),
     }
+}
+
+/// Every event has exactly one entry of Lumo's, shaped as installing writes
+/// it now. Where the relay is does not count: migrate.rs keeps that right.
+fn hooks_current(settings: &Value) -> bool {
+    HOOK_EVENTS.iter().all(|(event, timeout)| {
+        let ours: Vec<&Value> = settings["hooks"][*event].as_array().into_iter().flatten().filter(|e| entry_is_ours(e)).collect();
+        let [entry] = ours.as_slice() else { return false };
+        let command = entry["hooks"][0]["command"].as_str().unwrap_or("");
+        **entry == our_entry_running(command, event, *timeout)
+    })
 }
 
 pub fn preview(install: bool) -> Result<HookPreview, String> {
@@ -506,6 +546,28 @@ mod tests {
         // And removing ours puts it back exactly as it was.
         let cleaned = without_ours(&after).unwrap();
         assert_eq!(cleaned, existing);
+    }
+
+    #[test]
+    fn only_the_permission_request_and_the_session_end_keep_claude_code_waiting() {
+        let after = merged(&json!({})).unwrap();
+        for (event, _) in HOOK_EVENTS {
+            let hook = &after["hooks"][*event][0]["hooks"][0];
+            let waits = matches!(*event, "PermissionRequest" | "SessionEnd");
+            assert_eq!(hook.get("async").is_some(), !waits, "{event}");
+            if !waits {
+                assert_eq!(hook["async"], true, "{event}");
+            }
+        }
+        assert!(hooks_current(&after));
+        // Hooks an older Lumo wrote (no `async`) are installed, not current.
+        let mut older = after.clone();
+        for (event, _) in HOOK_EVENTS {
+            older["hooks"][*event][0]["hooks"][0].as_object_mut().unwrap().remove("async");
+        }
+        assert!(!hooks_current(&older));
+        assert!(hooks_current(&merged(&older).unwrap()), "reinstalling brings them up to date");
+        assert!(!hooks_current(&json!({})));
     }
 
     #[test]

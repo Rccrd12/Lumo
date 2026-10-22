@@ -478,7 +478,11 @@ web. Every action that needs a permission comes up in the island as the usual
 **Deny / Allow** card, through the hooks of **Settings… → Agents → Claude Code**. Without
 those hooks, or if nobody clicks, Claude Code denies the action: nothing is ever
 allowed on its own. The conversation continues the same Claude Code session
-until **New chat**. Install Claude Code and run `claude` once in a terminal to
+until **New chat**, in one Claude Code process kept for the chat between
+messages (so each answer starts faster); **Stop** interrupts the answer without
+ending it, and the process ends after 10 minutes without a message. A message
+sent while Claude is still answering waits in the field and goes as soon as the
+answer ends. Install Claude Code and run `claude` once in a terminal to
 sign in before using it. Its **Effort** is a slider under the models, from
 Faster to Smarter (low, medium, high, extra high, max), with **Auto** beside it
 for the level its model is made for; it goes to Claude Code as `--effort`.
