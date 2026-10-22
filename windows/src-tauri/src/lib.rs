@@ -9,6 +9,7 @@ mod antigravity_plan;
 mod autostart;
 mod calendar;
 mod chat;
+mod chat_files;
 mod chat_usage;
 mod claude;
 mod claude_code;
@@ -1206,6 +1207,10 @@ pub fn run() {
             media::media_control,
             ingest_file,
             file_preview,
+            chat_files::chat_file_open,
+            chat_files::chat_file_reveal,
+            chat_files::chat_file_preview,
+            chat_files::chat_files_present,
             paste_file,
             paste_copied_file,
             clipboard_text,

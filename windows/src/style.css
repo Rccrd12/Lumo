@@ -2189,6 +2189,57 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* The attachments' title and "Chat files" beside it: the list on show is a
+   title, the other a small button. */
+.files-tab {
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font);
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.files-tab:not(.on) {
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 500;
+  color: #b0b5be;
+}
+
+.files-tab:not(.on):hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+/* A chat's file has no ×: its name takes the room. */
+.attach-row.chat-file-row {
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.attach-row.chat-file-row.missing .attach-tile,
+.attach-row.chat-file-row.missing .attach-name {
+  opacity: 0.45;
+}
+
+.chat-file-attached {
+  --tile: #60a5fa;
+}
+
+.chat-file-read {
+  --tile: #2dd4a7;
+}
+
+.chat-file-edited {
+  --tile: #f7b32b;
+}
+
+.chat-file-created {
+  --tile: #a78bfa;
+}
+
 /* One row each, all as wide as the panel: the picture or the kind's icon,
    the name with what it is under it, and its own ×. */
 .picker-list.files-list {

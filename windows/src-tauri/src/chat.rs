@@ -343,6 +343,13 @@ impl ChatEvents {
     pub fn activity(&self, app: &AppHandle, activity: impl Serialize) {
         let _ = app.emit_to(WINDOW_LABEL, "chat-activity", json!({ "chat": self.chat, "activity": activity }));
     }
+
+    /// A file the answer read, edited or created (claude_code.rs FileTouch):
+    /// the chat lists it, and may open it from now on (chat_files.rs).
+    pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {
+        crate::chat_files::remember(&file.path);
+        let _ = app.emit_to(WINDOW_LABEL, "chat-file", json!({ "chat": self.chat, "kind": file.kind, "path": file.path }));
+    }
 }
 
 // ── Every chat ────────────────────────────────────────────────────────────────

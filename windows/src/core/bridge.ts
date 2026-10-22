@@ -319,6 +319,18 @@ export const Bridge = {
   /** An attached picture in the inbox as a data URL, for the chat's preview; null for any other file. */
   filePreview: (path: string) => call<string | null>("file_preview", { path }),
   /**
+   * A chat's file (core/chat-files.ts) opened by its type, or shown in File
+   * Explorer when it would run something: "opened", "shown", "missing" or
+   * "refused" (chat_files.rs).
+   */
+  chatFileOpen: (path: string) => call<string>("chat_file_open", { path }),
+  /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
+  chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
+  /** A chat's picture as a data URL, for its preview; null for any other file. */
+  chatFilePreview: (path: string) => call<string | null>("chat_file_preview", { path }),
+  /** Which of a chat's files are still where they were. */
+  chatFilesPresent: (paths: string[]) => call<boolean[]>("chat_files_present", { paths }),
+  /**
    * Ctrl+V in the chat: what the page got from the clipboard (an image, a
    * file), sent raw and written into the inbox like a drop.
    */
@@ -556,6 +568,13 @@ export interface IntegrationUpdate {
 export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
+
+/** A file an answer read, edited or created (`chat-file`, claude_code.rs FileTouch). */
+export interface ChatFileEvent {
+  chat: string;
+  kind: "read" | "edited" | "created";
+  path: string;
+}
 
 /**
  * The `chat-activity` event: what an answer is doing while no text shows

@@ -49,12 +49,23 @@ pub fn preview(path: &str) -> Option<String> {
     if real.parent() != Some(inbox.as_path()) {
         return None;
     }
-    let mime = image_mime(&real)?;
-    let meta = std::fs::metadata(&real).ok()?;
+    picture_data(&real)
+}
+
+/// Directly in the inbox: a file the user attached (dropped, pasted or picked).
+pub fn in_inbox(path: &Path) -> bool {
+    let (Ok(inbox), Ok(real)) = (inbox_dir().canonicalize(), path.canonicalize()) else { return false };
+    real.parent() == Some(inbox.as_path())
+}
+
+/// A picture at most MAX_PREVIEW_BYTES big, as a data URL; None for any other file.
+pub fn picture_data(real: &Path) -> Option<String> {
+    let mime = image_mime(real)?;
+    let meta = std::fs::metadata(real).ok()?;
     if !meta.is_file() || meta.len() > MAX_PREVIEW_BYTES {
         return None;
     }
-    let bytes = std::fs::read(&real).ok()?;
+    let bytes = std::fs::read(real).ok()?;
     Some(format!("data:{mime};base64,{}", crate::claude::base64_for(&bytes)))
 }
 

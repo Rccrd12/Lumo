@@ -44,7 +44,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
-use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity};
+use crate::claude_code::{self, file_name, host, is_screenshot, kill_tree, pretty_tool, safe_dir, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
 
@@ -294,6 +294,39 @@ fn activity_for(name: &str, params: &Value) -> Activity {
     }
 }
 
+/// What calling tool `name` with `params` does to a file, matched by name
+/// like `activity_for`; None for every other tool (a page, a folder, a
+/// deletion) and for a screenshot.
+fn touch_for(name: &str, params: &Value) -> Option<FileTouch> {
+    let parsed;
+    let params = match params {
+        Value::String(s) => {
+            parsed = serde_json::from_str::<Value>(s).unwrap_or(Value::Null);
+            &parsed
+        }
+        other => other,
+    };
+    let path = ["AbsolutePath", "FilePath", "TargetFile", "File", "Path", "file_path", "path"]
+        .iter()
+        .filter_map(|k| params.get(*k).and_then(Value::as_str))
+        .find(|s| !s.trim().is_empty())?;
+    let n = name.to_ascii_lowercase();
+    let has = |words: &[&str]| words.iter().any(|w| n.contains(w));
+    if has(&["screenshot", "url", "fetch", "browser", "list_dir", "list_directory", "delete"]) || is_screenshot(&file_name(path)) {
+        return None;
+    }
+    if has(&["write", "create_file"]) {
+        return FileTouch::written(path);
+    }
+    if has(&["replace", "edit"]) {
+        return FileTouch::new("edited", path);
+    }
+    if has(&["view", "read", "open"]) {
+        return FileTouch::new("read", path);
+    }
+    None
+}
+
 /// A tool error that says a permission was not given.
 fn is_denial(error: &Value) -> bool {
     let text = match error {
@@ -365,6 +398,11 @@ struct Run {
     plan: Option<Value>,
     /// The last plan passed on: the same call seen again is no news.
     plan_seen: Option<Value>,
+    /// Tool steps that read or write a file, still running: step index and
+    /// the file, as first seen (before the tool ran, so a write knows whether it creates).
+    touching: Vec<(u64, FileTouch)>,
+    /// Files used by steps that finished, not passed on yet (`take_files`).
+    touched: Vec<FileTouch>,
 }
 
 impl Run {
@@ -454,10 +492,22 @@ impl Run {
                     if is_denial(&info["error"]) {
                         self.denied += 1;
                     }
+                    if let Some(pos) = self.touching.iter().position(|(i, _)| *i == index) {
+                        let (_, touch) = self.touching.remove(pos);
+                        // A step that failed or was refused did nothing to the file.
+                        if v["state"] != "ERROR" && error_text(&info["error"]).is_none() {
+                            self.touched.push(touch);
+                        }
+                    }
                     self.finished_tool(index);
                 } else {
                     if is_plan_tool(name) {
                         self.saw_plan(&info["parameters"]);
+                    }
+                    if !self.touching.iter().any(|(i, _)| *i == index) {
+                        if let Some(touch) = touch_for(name, &info["parameters"]) {
+                            self.touching.push((index, touch));
+                        }
                     }
                     self.started_tool(index, activity_for(name, &info["parameters"]));
                 }
@@ -513,6 +563,11 @@ impl Run {
     /// The plan agy last gave, once.
     fn take_plan(&mut self) -> Option<Value> {
         self.plan.take()
+    }
+
+    /// The files used since the last time, oldest first.
+    fn take_files(&mut self) -> Vec<FileTouch> {
+        std::mem::take(&mut self.touched)
     }
 
     /// The activity, once each time it changes.
@@ -598,9 +653,11 @@ fn result_error(error: &str) -> String {
 }
 
 /// Runs agy headless once in `dir`, blocking. `on_text` gets the visible text as
-/// it grows, `on_activity` what agy is doing each time it changes, `on_plan`
-/// each plan it gives Lumo's update_plan tool. Stop ends the CLI and its
-/// children; the run so far is returned, `stopped`.
+/// it grows, `on_activity` what agy is doing each time it changes, `on_file`
+/// each file a tool step read or wrote once it finished, `on_plan` each plan
+/// it gives Lumo's update_plan tool. Stop ends the CLI and its children; the
+/// run so far is returned, `stopped`.
+#[allow(clippy::too_many_arguments)]
 fn run(
     exe: PathBuf,
     args: Vec<String>,
@@ -610,6 +667,7 @@ fn run(
     stop: Arc<Stop>,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
 ) -> Result<Run, String> {
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
@@ -701,6 +759,9 @@ fn run(
                 }
                 if let Some(activity) = activity {
                     on_activity(&activity);
+                }
+                for file in state.take_files() {
+                    on_file(&file);
                 }
                 if let Some(plan) = state.take_plan() {
                     on_plan(&plan);
@@ -866,6 +927,7 @@ pub async fn send(
                 }
             },
             |activity| events.activity(&app2, activity),
+            |file| events.file(&app2, file),
             |plan| {
                 by_tool.set(true);
                 emit("update_plan", plan.clone());
@@ -945,7 +1007,7 @@ pub(crate) fn help(
         crate::computer::agy_workspace(&work, mail);
     }
     let _mail = crate::mail::agent_turn();
-    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {})?;
+    let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -967,7 +1029,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
     let work = platform::local_dir().join("tool-review");
     let dir = work.to_string_lossy().to_string();
     let args = args_with_cards(model, "plan", None, &dir, &dir, &[], false);
-    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {})?;
+    let state = run(exe, args, user_event(prompt), work, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_| {})?;
     match state.result {
         Some(Ok(text)) if text.trim().is_empty() => Ok(state.visible.trim().to_string()),
         Some(Ok(text)) => Ok(text),
@@ -1313,5 +1375,30 @@ mod tests {
         assert_eq!(parse_models(r#"{"models":[{"slug":"gemini-3-pro"}]}"#), ["gemini-3-pro"]);
         assert_eq!(parse_models("--evil-1\ngemini-3 & calc\n"), Vec::<String>::new());
         assert!(parse_models("").is_empty());
+    }
+
+    #[test]
+    fn the_files_a_step_read_or_wrote_are_told_once_it_finished() {
+        let mut run = Run::default();
+        let step = |i: u64, state: &str, name: &str, params: &str| {
+            format!(r#"{{"event":"step_update","step_update":{{"step_index":{i},"state":"{state}","step_type":"tool","tool_info":{{"name":"{name}","parameters":{params}}}}}}}"#)
+        };
+        run.feed(step(1, "ACTIVE", "view_file", r#"{"AbsolutePath":"C:\\Docs\\report.pdf"}"#).as_bytes());
+        run.feed(step(2, "ACTIVE", "write_to_file", r#"{"TargetFile":"C:\\lumo-nowhere\\main.rs"}"#).as_bytes());
+        run.feed(step(3, "ACTIVE", "replace_file_content", r#"{"TargetFile":"D:\\nb\\notes.md"}"#).as_bytes());
+        run.feed(step(4, "ACTIVE", "read_url_content", r#"{"Url":"https://example.com/a.txt"}"#).as_bytes());
+        assert!(run.take_files().is_empty(), "not before they finished");
+        run.feed(step(1, "DONE", "view_file", "{}").as_bytes());
+        run.feed(step(2, "DONE", "write_to_file", "{}").as_bytes());
+        run.feed(step(3, "ERROR", "replace_file_content", "{}").as_bytes());
+        run.feed(step(4, "DONE", "read_url_content", "{}").as_bytes());
+        assert_eq!(
+            run.take_files(),
+            vec![
+                FileTouch { kind: "read", path: r"C:\Docs\report.pdf".into() },
+                FileTouch { kind: "created", path: r"C:\lumo-nowhere\main.rs".into() },
+            ]
+        );
+        assert!(run.take_files().is_empty(), "once");
     }
 }
