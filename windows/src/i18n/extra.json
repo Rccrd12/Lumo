@@ -4171,41 +4171,41 @@
    "id": "Perbarui sekarang",
    "it": "Aggiorna ora"
   },
-  "The installer opens and Lumo closes while it runs.": {
-   "zh-Hans": "安装程序会打开，运行期间 Lumo 会关闭。",
-   "hi": "इंस्टॉलर खुलता है और उसके चलते समय Lumo बंद रहता है।",
-   "es": "Se abre el instalador y Lumo se cierra mientras se ejecuta.",
-   "ar": "يفتح المثبّت ويُغلق Lumo أثناء عمله.",
-   "fr": "L'installateur s'ouvre et Lumo se ferme pendant qu'il travaille.",
-   "bn": "ইনস্টলার খুলবে এবং সেটি চলার সময় Lumo বন্ধ থাকবে।",
-   "pt-BR": "O instalador abre e o Lumo fecha enquanto ele é executado.",
-   "ru": "Откроется установщик, а Lumo закроется на время его работы.",
-   "id": "Penginstal terbuka dan Lumo ditutup selama penginstal berjalan.",
-   "it": "Il programma di installazione si apre e Lumo si chiude mentre è in esecuzione."
+  "Lumo downloads the update, installs it by itself and opens again.": {
+   "zh-Hans": "Lumo 会下载更新、自行安装，然后重新打开。",
+   "hi": "Lumo अपडेट डाउनलोड करता है, उसे खुद इंस्टॉल करता है और फिर से खुल जाता है।",
+   "es": "Lumo descarga la actualización, la instala por sí solo y se vuelve a abrir.",
+   "ar": "ينزّل Lumo التحديث ويثبّته بنفسه ثم يُفتح من جديد.",
+   "fr": "Lumo télécharge la mise à jour, l'installe tout seul et se rouvre.",
+   "bn": "Lumo আপডেট ডাউনলোড করে, নিজেই ইনস্টল করে এবং আবার খুলে যায়।",
+   "pt-BR": "O Lumo baixa a atualização, instala sozinho e abre de novo.",
+   "ru": "Lumo скачает обновление, сам установит его и откроется снова.",
+   "id": "Lumo mengunduh pembaruan, memasangnya sendiri, lalu terbuka lagi.",
+   "it": "Lumo scarica l'aggiornamento, lo installa da solo e si riapre."
   },
-  "Downloading the installer…": {
-   "zh-Hans": "正在下载安装程序…",
-   "hi": "इंस्टॉलर डाउनलोड हो रहा है…",
-   "es": "Descargando el instalador…",
-   "ar": "جارٍ تنزيل المثبّت…",
-   "fr": "Téléchargement de l'installateur…",
-   "bn": "ইনস্টলার ডাউনলোড হচ্ছে…",
-   "pt-BR": "Baixando o instalador…",
-   "ru": "Загрузка установщика…",
-   "id": "Mengunduh penginstal…",
-   "it": "Download del programma di installazione…"
+  "Downloading the update…": {
+   "zh-Hans": "正在下载更新…",
+   "hi": "अपडेट डाउनलोड हो रहा है…",
+   "es": "Descargando la actualización…",
+   "ar": "جارٍ تنزيل التحديث…",
+   "fr": "Téléchargement de la mise à jour…",
+   "bn": "আপডেট ডাউনলোড হচ্ছে…",
+   "pt-BR": "Baixando a atualização…",
+   "ru": "Загрузка обновления…",
+   "id": "Mengunduh pembaruan…",
+   "it": "Download dell'aggiornamento…"
   },
-  "The installer is starting. Lumo closes now so it can be updated.": {
-   "zh-Hans": "安装程序正在启动。Lumo 现在关闭以便完成更新。",
-   "hi": "इंस्टॉलर शुरू हो रहा है। अपडेट के लिए Lumo अब बंद हो रहा है।",
-   "es": "El instalador se está iniciando. Lumo se cierra ahora para poder actualizarse.",
-   "ar": "يبدأ المثبّت الآن. يُغلق Lumo حتى يمكن تحديثه.",
-   "fr": "L'installateur démarre. Lumo se ferme maintenant pour pouvoir être mis à jour.",
-   "bn": "ইনস্টলার চালু হচ্ছে। আপডেটের জন্য Lumo এখন বন্ধ হচ্ছে।",
-   "pt-BR": "O instalador está iniciando. O Lumo fecha agora para poder ser atualizado.",
-   "ru": "Запускается установщик. Lumo закрывается, чтобы его можно было обновить.",
-   "id": "Penginstal sedang dimulai. Lumo ditutup sekarang agar bisa diperbarui.",
-   "it": "Il programma di installazione si sta avviando. Lumo ora si chiude per poter essere aggiornato."
+  "Installing the update: Lumo closes and opens again by itself in a few seconds.": {
+   "zh-Hans": "正在安装更新：Lumo 会关闭，并在几秒后自行重新打开。",
+   "hi": "अपडेट इंस्टॉल हो रहा है: Lumo बंद होगा और कुछ सेकंड में खुद फिर से खुल जाएगा।",
+   "es": "Instalando la actualización: Lumo se cierra y se vuelve a abrir solo en unos segundos.",
+   "ar": "جارٍ تثبيت التحديث: سيُغلق Lumo ثم يُفتح من جديد تلقائيًا خلال ثوانٍ.",
+   "fr": "Installation de la mise à jour : Lumo se ferme et se rouvre tout seul dans quelques secondes.",
+   "bn": "আপডেট ইনস্টল হচ্ছে: Lumo বন্ধ হবে এবং কয়েক সেকেন্ডের মধ্যে নিজেই আবার খুলবে।",
+   "pt-BR": "Instalando a atualização: o Lumo fecha e abre de novo sozinho em alguns segundos.",
+   "ru": "Установка обновления: Lumo закроется и через несколько секунд сам откроется снова.",
+   "id": "Memasang pembaruan: Lumo ditutup dan terbuka lagi sendiri dalam beberapa detik.",
+   "it": "Installazione dell'aggiornamento: Lumo si chiude e si riapre da solo tra pochi secondi."
   },
   "Share your screen or open windows": {
    "zh-Hans": "分享你的屏幕或打开的窗口",

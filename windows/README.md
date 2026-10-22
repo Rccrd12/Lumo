@@ -48,9 +48,10 @@ GitHub for the newest `windows-v*` release of
 each time it opens, and when a newer version is out the island says so for a
 few seconds and Settings opens on Updates with it; **Check when Lumo opens**
 turns that off. When there is a newer one, **Update
-now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder,
-starts it with its usual window, and Lumo quits so the installer can replace
-it. Nothing is downloaded without that click. Only installers from that
+now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder
+with a progress bar in Settings, then runs it without any window (`/S /UPDATE
+/R`): Lumo quits so the installer can replace it, and the installer opens the
+new Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
 repository's GitHub releases are accepted.
 
 Under it, the **Changelog** lists what changed in every version, the installed
