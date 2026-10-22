@@ -3,6 +3,7 @@
 ## Windows 0.13.1 — October 22, 2026
 
 - **Attachments and Chat files stay put**: switching between the two lists no longer moves their buttons
+- **Chat files show where they are**: under each file, the folder it is in
 
 ## Windows 0.13.0 — October 22, 2026
 

@@ -504,6 +504,12 @@ const CHAT_FILE_KINDS: Record<ChatFileKind, { label: string; path: string; strok
   created: { label: N_("Created by the AI"), path: ICONS.plus },
 };
 
+/** The folder a file is in, as written in its path. */
+function folderOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return cut > 0 ? path.slice(0, cut) : path;
+}
+
 /**
  * One row of the chat's files: like an attachment's, without its ×. A click,
  * or Enter, opens it; the right click has what else can be done with it.
@@ -522,7 +528,9 @@ function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined
     tile,
     h("span", { class: "attach-text" },
       h("span", { class: "attach-name", text: file.name }),
-      h("span", { class: "attach-detail", text: detail })),
+      h("span", { class: "attach-detail", text: detail }),
+      // Where it is: its folder (the whole path is the row's tooltip).
+      h("span", { class: "attach-detail attach-path", text: folderOf(file.path) })),
   );
   row.addEventListener("click", () => onOpen());
   row.addEventListener("keydown", (e) => {

@@ -2218,6 +2218,10 @@ input[type="range"]::-webkit-slider-thumb {
   grid-template-columns: 34px minmax(0, 1fr);
 }
 
+.attach-path {
+  color: #6f7682;
+}
+
 .attach-row.chat-file-row.missing .attach-tile,
 .attach-row.chat-file-row.missing .attach-name {
   opacity: 0.45;
