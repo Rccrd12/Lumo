@@ -448,6 +448,15 @@ images and PDFs by name only. Settings tells you whether the address is this
 PC — nothing leaves it then — and warns before a key would travel over plain
 `http://` to another machine.
 
+Under a connected Ollama or LM Studio, Settings shows the model it holds in
+memory now (name and size) and **Free memory** unloads it with one click
+(Ollama's `keep_alive: 0`, LM Studio's unload). **Download a model** takes a
+name as the server writes it (`llama3.2`, `qwen3:8b`; for LM Studio,
+`openai/gpt-oss-20b` or a Hugging Face link) and downloads it there, with a
+progress bar; it carries on while Settings is open on another page. Only the
+connected server is asked, and only while Settings shows it. LM Studio needs
+version 0.4 or later (its REST API).
+
 Answers from every provider are shown as **Markdown**: headings, lists, bold,
 inline code, quotes, and code blocks with a copy button. It is built from text
 nodes, never parsed as HTML, and only `http`/`https` links open. Lumo greets

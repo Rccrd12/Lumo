@@ -32,6 +32,7 @@ mod island_tools;
 mod listen;
 mod live;
 mod local_chat;
+mod local_models;
 mod log;
 mod mail;
 mod media;
@@ -663,6 +664,25 @@ async fn local_connect(provider: String, url: String) -> Result<local_chat::Conn
     local_chat::connect(&provider, &url).await
 }
 
+/// Settings → Local models: the models Ollama or LM Studio holds in memory now.
+#[tauri::command]
+async fn local_loaded(provider: String) -> Result<Vec<local_models::Loaded>, String> {
+    local_models::loaded(&provider).await
+}
+
+/// Settings → Local models → Free memory: every model the server holds is unloaded.
+#[tauri::command]
+async fn local_unload(provider: String) -> Result<usize, String> {
+    local_models::unload_all(&provider).await
+}
+
+/// Settings → Local models → Download: the model is downloaded to the server,
+/// its progress told as `local-pull` events; returns once it is there.
+#[tauri::command]
+async fn local_pull(app: AppHandle, provider: String, model: String) -> Result<(), String> {
+    local_models::pull(&app, &provider, &model).await
+}
+
 /// Stores the custom server's key for the address typed next to it; it is only
 /// ever sent to that address.
 #[tauri::command(async)]
@@ -1113,6 +1133,9 @@ pub fn run() {
             chat_models,
             chat_usage,
             local_connect,
+            local_loaded,
+            local_unload,
+            local_pull,
             local_set_key,
             chat_reset,
             chat_restore,

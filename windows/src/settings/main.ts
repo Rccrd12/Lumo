@@ -24,6 +24,7 @@ import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
 import { changelogSection, updatesSection } from "./updates";
+import { localModelsBlock } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
@@ -1015,6 +1016,8 @@ function localSection(customKey: boolean): HTMLElement {
       );
       exposure.append(exposureNotice(settings[field], id === "custom" && customKey) ?? "");
       block.append(exposure);
+      // What Ollama and LM Studio hold in memory, and a model to download.
+      if (id !== "custom") block.append(localModelsBlock(id));
       return block;
     }
 
