@@ -2190,23 +2190,35 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 /* The attachments' title and "Chat files" beside it: the list on show is a
-   title, the other a small button. */
+   title, the other a small button. Both keep the same box, so switching
+   moves neither. */
 .files-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
-  padding: 0;
+  padding: 0 10px;
   border: 0;
-  background: none;
+  border-radius: 12px;
+  background: transparent;
   font-family: var(--font);
   cursor: default;
   transition: background 0.15s ease-out, color 0.15s ease-out;
 }
 
 .files-tab:not(.on) {
-  padding: 0 10px;
-  border-radius: 12px;
   background: rgba(255, 255, 255, 0.06);
-  font-weight: 500;
   color: #b0b5be;
+}
+
+/* Inside its button, the count sits a little lighter on the pill. */
+.files-tab .files-count {
+  height: 16px;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 16px;
 }
 
 .files-tab:not(.on):hover {
@@ -2217,6 +2229,10 @@ input[type="range"]::-webkit-slider-thumb {
 /* A chat's file has no ×: its name takes the room. */
 .attach-row.chat-file-row {
   grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.attach-path {
+  color: #6f7682;
 }
 
 .attach-row.chat-file-row.missing .attach-tile,

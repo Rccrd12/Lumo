@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.13.1 — October 22, 2026
+
+- **Attachments and Chat files stay put**: switching between the two lists no longer moves their buttons
+- **Chat files show where they are**: under each file, the folder it is in
+- **One row per file in Chat files**: a file you attached and the AI then read shows once, as "Attached · Read by the AI", where the file really is
+- **The attachments' number is in their button**, so it is clear it counts the attachments and not the chat's files
+
 ## Windows 0.13.0 — October 22, 2026
 
 - **Commands in the chat**: type `/` as the first character in the chat box and a menu of commands opens above it, filtered as you type (arrows move, Enter runs, Tab writes the name, Escape closes it). Lumo's own work with every provider: `/new`, `/history`, `/model`, `/attach`, `/screen`, `/permissions` and `/timer 10m pasta`. With Claude Code, its own commands are listed too (`/compact`, `/context`, your commands and skills). The menu lists only what works with the provider picked

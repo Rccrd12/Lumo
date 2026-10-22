@@ -84,7 +84,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
-import { addChatFile, chatFiles, dropChatFiles, type ChatFile, type ChatFileKind } from "../core/chat-files";
+import { addChatFile, aiKind, chatFiles, dropChatFiles, type ChatFile, type ChatFileKind } from "../core/chat-files";
 import { planColor } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
@@ -504,17 +504,27 @@ const CHAT_FILE_KINDS: Record<ChatFileKind, { label: string; path: string; strok
   created: { label: N_("Created by the AI"), path: ICONS.plus },
 };
 
+/** The folder a file is in, as written in its path. */
+function folderOf(path: string): string {
+  const cut = Math.max(path.lastIndexOf("\\"), path.lastIndexOf("/"));
+  return cut > 0 ? path.slice(0, cut) : path;
+}
+
 /**
  * One row of the chat's files: like an attachment's, without its ×. A click,
  * or Enter, opens it; the right click has what else can be done with it.
  */
 function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined, onOpen: () => void, menu: () => MenuItem[]): HTMLElement {
-  const kind = CHAT_FILE_KINDS[file.kind];
-  const tile = h("span", { class: `attach-tile chat-file-${file.kind}` },
+  // Attached and what the AI did, on one line: "Attached · Read by the AI".
+  const ai = aiKind(file);
+  const attached = file.kinds.includes("attached");
+  const kind = CHAT_FILE_KINDS[attached ? "attached" : ai ?? "read"];
+  const tile = h("span", { class: `attach-tile chat-file-${attached ? "attached" : ai}` },
     thumb
       ? h("img", { class: "attach-thumb", src: thumb, alt: "", draggable: "false" })
       : svg(kind.path, 15, kind.stroke ? { stroke: kind.stroke } : {}));
-  const detail = [t(kind.label), missing ? t(STRINGS.fileMissing) : fileDetail({ name: file.name }).split(" · ").slice(1).join(" · ")]
+  const what = [attached ? t(CHAT_FILE_KINDS.attached.label) : "", ai ? t(CHAT_FILE_KINDS[ai].label) : ""];
+  const detail = [...what, missing ? t(STRINGS.fileMissing) : fileDetail({ name: file.name }).split(" · ").slice(1).join(" · ")]
     .filter(Boolean).join(" · ");
   const row = h(
     "div",
@@ -522,7 +532,9 @@ function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined
     tile,
     h("span", { class: "attach-text" },
       h("span", { class: "attach-name", text: file.name }),
-      h("span", { class: "attach-detail", text: detail })),
+      h("span", { class: "attach-detail", text: detail }),
+      // Where it is: its folder (the whole path is the row's tooltip).
+      h("span", { class: "attach-detail attach-path", text: folderOf(file.path) })),
   );
   row.addEventListener("click", () => onOpen());
   row.addEventListener("keydown", (e) => {
@@ -990,12 +1002,13 @@ export function buildPrompt(
   const filesCount = h("span", { class: "files-count" });
   const removeAllBtn = h("button", { class: "files-clear", text: tl(STRINGS.removeAll) });
   const filesList = h("div", { class: "picker-list files-list" });
-  const attachTab = h("button", { class: "picker-title files-tab on", text: tl(STRINGS.attachments) });
+  // How many wait shows inside the attachments' own button.
+  const attachTab = h("button", { class: "picker-title files-tab on" }, h("span", { text: tl(STRINGS.attachments) }), filesCount);
   const chatFilesTab = h("button", { class: "picker-title files-tab", text: tl(STRINGS.chatFiles) });
   const chatFilesList = h("div", { class: "picker-list files-list chat-files-list" });
   chatFilesList.style.display = "none";
   const filesEl = h("div", { class: "picker files-panel" },
-    h("div", { class: "files-head" }, attachTab, filesCount, chatFilesTab, removeAllBtn),
+    h("div", { class: "files-head" }, attachTab, chatFilesTab, removeAllBtn),
     filesList, chatFilesList);
   // The screen button's menu, then the preview of a screenshot.
   const screenTitle = h("div", { class: "picker-title" });

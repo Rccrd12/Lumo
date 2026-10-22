@@ -4,7 +4,7 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { saveChat } from "../src/core/chats.ts";
-import { MAX_FILES, addChatFile, chatFiles, dropChatFiles, fileName, withFile } from "../src/core/chat-files.ts";
+import { MAX_FILES, addChatFile, aiKind, chatFiles, dropChatFiles, fileName, withFile } from "../src/core/chat-files.ts";
 
 const mem = new Map();
 globalThis.localStorage = {
@@ -17,23 +17,42 @@ const chat = (id) => ({ id, title: id, updatedAt: 1, provider: "claude-code", se
 
 beforeEach(() => mem.clear());
 
-test("a file is listed once, newest first, keeping what says most about it", () => {
+test("a file is listed once, newest first, with everything that happened to it", () => {
   addChatFile("a", "read", String.raw`C:\Docs\report.pdf`, undefined, 1);
   addChatFile("a", "created", String.raw`C:\Work\game.py`, undefined, 2);
   addChatFile("a", "edited", "c:/work/game.py", undefined, 3);
   const list = addChatFile("a", "edited", String.raw`C:\Docs\report.pdf`, undefined, 4);
-  assert.deepEqual(list.map((f) => [f.name, f.kind, f.at]), [["report.pdf", "edited", 4], ["game.py", "created", 3]]);
-  // Read again after it was changed: still changed.
-  const again = addChatFile("a", "read", String.raw`C:\Docs\report.pdf`, undefined, 5);
-  assert.equal(again[0].kind, "edited");
+  assert.deepEqual(list.map((f) => [f.name, f.kinds, f.at]), [["report.pdf", ["read", "edited"], 4], ["game.py", ["edited", "created"], 3]]);
+  assert.equal(aiKind(list[0]), "edited", "the most telling of what the AI did");
   assert.equal(chatFiles("b").length, 0, "each chat its own");
+});
+
+test("an attachment and the file the AI read where it is are one row, with the file's own path", () => {
+  addChatFile("a", "attached", String.raw`C:\Users\me\AppData\Local\com.rccrd12.lumo\inbox\Analisi2 (2).tex`, "Analisi2.tex", 1);
+  const list = addChatFile("a", "read", String.raw`C:\Users\me\OneDrive\LaTeX\Analisi2.tex`, undefined, 2);
+  assert.deepEqual(list.map((f) => [f.path, f.kinds]), [[String.raw`C:\Users\me\OneDrive\LaTeX\Analisi2.tex`, ["attached", "read"]]]);
+  // Attached again later: still one row, still where the file is.
+  const again = addChatFile("a", "attached", String.raw`C:\inbox\Analisi2.tex`, "Analisi2.tex", 3);
+  assert.equal(again.length, 1);
+  assert.equal(again[0].path, String.raw`C:\Users\me\OneDrive\LaTeX\Analisi2.tex`);
+  assert.equal(aiKind({ ...again[0], kinds: ["attached"] }), null);
+});
+
+test("rows saved apart by 0.13.0 come together when read", () => {
+  mem.set("lumo.chatFiles.v1", JSON.stringify({
+    a: [
+      { path: String.raw`C:\OneDrive\Analisi2.tex`, name: "Analisi2.tex", kind: "read", at: 2 },
+      { path: String.raw`C:\inbox\Analisi2.tex`, name: "Analisi2.tex", kind: "attached", at: 1 },
+    ],
+  }));
+  assert.deepEqual(chatFiles("a").map((f) => [f.path, f.kinds]), [[String.raw`C:\OneDrive\Analisi2.tex`, ["attached", "read"]]]);
 });
 
 test("an attached file keeps its own name, and a chat keeps only its newest files", () => {
   const list = addChatFile("a", "attached", String.raw`C:\inbox\report (2).pdf`, "report.pdf");
   assert.equal(list[0].name, "report.pdf");
   let many = [];
-  for (let i = 0; i < MAX_FILES + 5; i++) many = withFile(many, { path: `/f${i}`, name: `f${i}`, kind: "read", at: i });
+  for (let i = 0; i < MAX_FILES + 5; i++) many = withFile(many, { path: `/f${i}`, name: `f${i}`, kinds: ["read"], at: i });
   assert.equal(many.length, MAX_FILES);
   assert.equal(many[0].name, `f${MAX_FILES + 4}`);
   assert.equal(fileName(String.raw`C:\a\b\notes.md`), "notes.md");
