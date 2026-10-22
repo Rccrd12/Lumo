@@ -93,9 +93,11 @@ fn allowed(path: &str) -> bool {
 /// Opened by its type, it would run something.
 fn runs(path: &str) -> bool {
     let name = path.rsplit(['/', '\\']).next().unwrap_or("").to_lowercase();
+    // Windows drops the dots and spaces a name ends with: "a.cmd. " is a.cmd.
+    let name = name.trim_end_matches([' ', '.']);
     // A name with no dot has no type to open it with either.
     match name.rsplit_once('.') {
-        Some((_, ext)) => RUNS.contains(&ext.trim_end_matches([' ', '.'])),
+        Some((_, ext)) => RUNS.contains(&ext),
         None => true,
     }
 }
