@@ -227,6 +227,8 @@ export const Bridge = {
   toolsReveal: (id: string | null) => call<void>("tools_reveal", { id }),
   /** "Always ask" or "Trust" for one tool; refused for one Lumo can't hold to what it declared. */
   toolsSetTrust: (id: string, trust: boolean) => callOrThrow<void>("tools_set_trust", { id, trust }),
+  /** A tool's command in the chat's "/" menu ("" takes it away): the name as saved, or why not. */
+  toolsSetCommand: (id: string, command: string) => callOrThrow<string>("tools_set_command", { id, command }),
   /** Has the supervisor review a tool again (tool_review.rs); the answer comes as `tool-review`. */
   toolsReview: (id: string) => call<void>("tools_review", { id }),
   /** The tools being reviewed now. */
@@ -237,6 +239,8 @@ export const Bridge = {
   toolsTerminalSet: (on: boolean) => callOrThrow<boolean>("tools_terminal_set", { on }),
   /** The Stop button of one chat: its `chatSend` then returns what was written so far, `stopped`. */
   chatStop: (chatId: string) => call<void>("chat_stop", { chatId }),
+  /** The commands Claude Code's last chat turn said it has (claude_code.rs); null before one. */
+  chatCommands: () => call<string[] | null>("chat_commands"),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
   chatRewind: (chatId: string, keep: number) => call<void>("chat_rewind", { chatId, keep }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
@@ -304,10 +308,28 @@ export const Bridge = {
 
   localConnect: (provider: "ollama" | "lmstudio" | "custom", url: string) =>
     callOrThrow<LocalServer>("local_connect", { provider, url }),
+  /** Settings → Local models: the models Ollama or LM Studio holds in memory now. */
+  localLoaded: (provider: "ollama" | "lmstudio") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
+  /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
+  localUnload: (provider: "ollama" | "lmstudio") => callOrThrow<number>("local_unload", { provider }),
+  /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
+  localPull: (provider: "ollama" | "lmstudio", model: string) => callOrThrow<void>("local_pull", { provider, model }),
   /** Copies a dropped file into the inbox. */
   ingestFile: (path: string) => callOrThrow<DroppedFile>("ingest_file", { path }),
   /** An attached picture in the inbox as a data URL, for the chat's preview; null for any other file. */
   filePreview: (path: string) => call<string | null>("file_preview", { path }),
+  /**
+   * A chat's file (core/chat-files.ts) opened by its type, or shown in File
+   * Explorer when it would run something: "opened", "shown", "missing" or
+   * "refused" (chat_files.rs).
+   */
+  chatFileOpen: (path: string) => call<string>("chat_file_open", { path }),
+  /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
+  chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
+  /** A chat's picture as a data URL, for its preview; null for any other file. */
+  chatFilePreview: (path: string) => call<string | null>("chat_file_preview", { path }),
+  /** Which of a chat's files are still where they were. */
+  chatFilesPresent: (paths: string[]) => call<boolean[]>("chat_files_present", { paths }),
   /**
    * Ctrl+V in the chat: what the page got from the clipboard (an image, a
    * file), sent raw and written into the inbox like a drop.
@@ -547,6 +569,13 @@ export type ChatContext =
   | { kind: "file"; name: string; path: string }
   | { kind: "window"; appName: string; title: string; url?: string };
 
+/** A file an answer read, edited or created (`chat-file`, claude_code.rs FileTouch). */
+export interface ChatFileEvent {
+  chat: string;
+  kind: "read" | "edited" | "created";
+  path: string;
+}
+
 /**
  * The `chat-activity` event: what an answer is doing while no text shows
  * (claude_code.rs Activity). `kind`: thinking, read, search, command, edit,
@@ -691,6 +720,23 @@ export type SharedContext =
 export interface ModelInfo {
   id: string;
   label: string;
+}
+
+/** A model a local server holds in memory (local_models.rs). */
+export interface LocalLoaded {
+  name: string;
+  /** Bytes, 0 when the server does not say. */
+  size: number;
+  /** Bytes in the graphics card's memory (Ollama), else 0. */
+  vram: number;
+}
+
+/** How far a download to a local server is (`local-pull`): bytes so far and in all, 0 while unknown. */
+export interface LocalPull {
+  provider: string;
+  model: string;
+  completed: number;
+  total: number;
 }
 
 export interface LocalServer {

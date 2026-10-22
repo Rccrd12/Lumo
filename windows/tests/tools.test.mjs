@@ -5,7 +5,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  WORKSHOP_PREFIX, blocksOf, draftIn, draftKey, draftOf, isAbsolutePath, isWorkshopChat, latestDraft, reviewState, stripDraft,
+  WORKSHOP_PREFIX, blocksOf, commandName, draftIn, draftKey, draftOf, isAbsolutePath, isWorkshopChat, latestDraft, reviewState, stripDraft,
   toolId, tryInput, userToolTarget, workshopTool,
 } from "../src/core/tools.ts";
 import { State } from "../src/core/state.ts";
@@ -174,4 +174,29 @@ test("the tool the workshop is making: none asked, asked with no draft yet, a dr
   const key = draftKey(latestDraft([reply]));
   assert.equal(workshopTool([ask, reply], key), null, "saved as it is");
   assert.equal(workshopTool([ask, reply, { role: "user", content: "make it faster" }], key).draft.name, "Benchmark del PC");
+});
+
+// ── A tool's command in the chat ──────────────────────────────────────────────
+
+test("a command is a plain lower case word, as tools.rs makes it", () => {
+  assert.equal(commandName("pdfcraft"), "pdfcraft");
+  assert.equal(commandName(" /PDF Craft! "), "pdf-craft");
+  assert.equal(commandName("bench_pc"), "bench_pc");
+  assert.equal(commandName("--x--"), "x");
+  assert.equal(commandName("/"), "");
+  assert.equal(commandName("a".repeat(80)).length, 32);
+});
+
+test("the workshop's draft carries its command: given, emptied, or left to the tool", () => {
+  const block = (extra) => `${FENCE}lumo-tool\n${JSON.stringify({ name: "PDF", entry: "C:\\x.py", ...extra })}\n${FENCE}`;
+  assert.equal(draftIn(block({ command: "/PdfCraft" })).command, "pdfcraft");
+  assert.equal(draftIn(block({ command: "" })).command, "");
+  assert.equal("command" in draftIn(block({})), false, "left out: a changed tool keeps its own");
+  const tool = { id: "pdf", name: "PDF", description: "", entry: "x.py", args: [], params: [], permissions: [], timeout: 0, command: "pdfcraft" };
+  const d = draftOf(tool, [{ name: "x.py", content: "print(1)\n" }]);
+  assert.equal(d.command, "pdfcraft");
+  assert.equal(draftIn(blocksOf(d)).command, "pdfcraft", "written back for the AI as it is");
+  assert.notEqual(draftKey(d), draftKey({ ...d, command: "pdf" }));
+  const { command: _, ...without } = d;
+  assert.equal(draftKey(without), draftKey({ ...without }), "an older draft keeps its key");
 });

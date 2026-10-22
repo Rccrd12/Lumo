@@ -12,12 +12,13 @@ import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 const settings = (over = {}) => ({ ...DEFAULT_SETTINGS, ...over });
 
 test("the ids and key names match the Rust side and the Mac", () => {
-  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "ollama", "lmstudio", "custom"]);
+  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama", "lmstudio", "custom"]);
   assert.equal(providerDef("google").key, "google-api-key");
   assert.equal(providerDef("openai").key, "openai-api-key");
   assert.equal(providerDef("openrouter").key, "openrouter-api-key");
   assert.equal(providerDef("ollama").key, null);
   assert.equal(providerDef("claude-code").key, null);
+  assert.equal(providerDef("codex").key, null);
   // An unknown id (an older or newer settings.json) falls back to Claude.
   assert.equal(providerDef("nope").id, "anthropic");
 });
@@ -38,9 +39,9 @@ test("Claude's model is the existing setting; the others are kept per provider",
 
 test("model servers show in the picker once connected, or while in use", () => {
   const ids = (s) => visibleProviders(s).map((p) => p.id);
-  assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter"]);
-  assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "ollama"]);
-  assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "antigravity-cli", "google", "openai", "openrouter", "custom"]);
+  assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter"]);
+  assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama"]);
+  assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "custom"]);
 });
 
 test("once Rust says which are set up, only those show (and the active one)", () => {
@@ -91,6 +92,19 @@ test("Antigravity CLI is a keyless CLI whose models carry their effort", () => {
   assert.equal(effortFor("claude-code", "max"), "max");
   assert.equal(effortFor("openai", "high"), "");
   assert.equal(effortFor("claude-code", undefined), "");
+});
+
+test("Codex is a keyless CLI with its own efforts, and never Turbo", () => {
+  const codex = providerDef("codex");
+  assert.equal(codex.name, "Codex");
+  assert.equal(codex.key, null);
+  assert.equal(codex.accent, "#2DD4BF", "the Codex pill's colour");
+  assert.ok(isCliProvider("codex"));
+  assert.deepEqual(effortsFor("codex"), ["", "low", "medium", "high", "xhigh"]);
+  assert.equal(effortFor("codex", "max"), "", "Claude Code's Max is no Codex effort");
+  assert.equal(effortFor("codex", "xhigh"), "xhigh");
+  assert.deepEqual(permissionModesFor("codex"), ["default", "auto", "plan"]);
+  assert.equal(parsePermissionMode("turbo", "codex"), "default");
 });
 
 test("only Antigravity CLI gets Turbo; Claude Code never lets everything through", () => {

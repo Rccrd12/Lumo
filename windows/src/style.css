@@ -2189,6 +2189,57 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* The attachments' title and "Chat files" beside it: the list on show is a
+   title, the other a small button. */
+.files-tab {
+  height: 24px;
+  padding: 0;
+  border: 0;
+  background: none;
+  font-family: var(--font);
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.files-tab:not(.on) {
+  padding: 0 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font-weight: 500;
+  color: #b0b5be;
+}
+
+.files-tab:not(.on):hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+/* A chat's file has no ×: its name takes the room. */
+.attach-row.chat-file-row {
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.attach-row.chat-file-row.missing .attach-tile,
+.attach-row.chat-file-row.missing .attach-name {
+  opacity: 0.45;
+}
+
+.chat-file-attached {
+  --tile: #60a5fa;
+}
+
+.chat-file-read {
+  --tile: #2dd4a7;
+}
+
+.chat-file-edited {
+  --tile: #f7b32b;
+}
+
+.chat-file-created {
+  --tile: #a78bfa;
+}
+
 /* One row each, all as wide as the panel: the picture or the kind's icon,
    the name with what it is under it, and its own ×. */
 .picker-list.files-list {
@@ -2534,6 +2585,88 @@ input[type="range"]::-webkit-slider-thumb {
 .perm-note {
   font-size: 10.5px;
   color: #5c6370;
+}
+
+/* The commands' menu: "/" first in the field (views/chat.ts, core/slash.ts).
+   Over the log, just above the field, in the right-click menu's dark card. */
+.slash-menu {
+  position: absolute;
+  left: 84px;
+  bottom: 62px;
+  z-index: 5;
+  display: none;
+  flex-direction: column;
+  width: min(320px, calc(100% - 100px));
+  max-height: 220px;
+  padding: 5px;
+  border-radius: 12px;
+  background: #16171b;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+  animation: slash-in 0.12s ease-out;
+}
+
+.chat-body.commanding .slash-menu {
+  display: flex;
+}
+
+@keyframes slash-in {
+  from {
+    opacity: 0;
+    transform: translateY(3px) scale(0.98);
+  }
+}
+
+.slash-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.slash-row {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 10px 0 6px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: var(--ink);
+  font: 400 12.5px var(--font);
+  text-align: start;
+  cursor: default;
+}
+
+.slash-row.on {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.slash-icon {
+  flex: 0 0 16px;
+  display: grid;
+  place-items: center;
+  color: #8b929e;
+}
+
+.slash-name {
+  flex: none;
+}
+
+.slash-note {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: end;
+  color: #5c6370;
+  font-size: 11px;
 }
 
 .picker-title {
@@ -4913,6 +5046,46 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
+}
+
+/* A tool's command in the chat: "/" and the word, typed in place. */
+.tool-command-wrap {
+  display: inline-flex;
+  align-items: center;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tool-command-wrap:focus-within {
+  border-color: rgba(255, 255, 255, 0.24);
+}
+
+.tool-command-slash {
+  color: var(--dim-3);
+  font: 500 11.5px var(--font);
+}
+
+.tool-command {
+  width: 120px;
+  border: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 11.5px var(--font);
+  outline: none;
+  user-select: text;
+}
+
+.tool-command::placeholder {
+  color: var(--dim-3);
+}
+
+/* The draft's command, beside its status in the workshop. */
+.forge-command {
+  font: 500 10.5px var(--font);
+  color: #8b929e;
 }
 
 .tool-detail-label {

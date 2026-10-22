@@ -7,9 +7,10 @@
 // Unlike the other providers, Claude Code can act: read a dropped PDF or image,
 // read and edit files, run commands, search the web. Every action that needs a
 // permission goes through Claude Code's own PermissionRequest hook — the one
-// Lumo already installs — so it shows up in the island as the usual
-// Allow / Deny card. Without the hooks, or with nobody clicking, Claude Code
-// denies the action: `-p` never allows anything on its own.
+// Lumo installs, which the chat's run also adds for itself (`chat_settings`) —
+// so it shows up in the island as the usual Allow / Deny card, only when Claude
+// Code would really ask. With nobody clicking, Claude Code denies the action:
+// `-p` never allows anything on its own.
 //
 // Each chat keeps its own Claude Code running between messages (`live_turn`,
 // `--input-format stream-json`): a message is a line on its stdin, Stop
@@ -18,6 +19,11 @@
 // The prompt goes in on stdin, never on the command line: an npm install is a
 // `claude.cmd`, and cmd.exe would interpret what the user typed. Every argument
 // is fixed or checked.
+//
+// A message that is one of Claude Code's commands ("/compact", "/context",
+// the user's own) goes in alone, exactly as typed, so Claude Code runs it as
+// in a terminal. The commands it has come with its first line (`init`), kept
+// for the island's "/" menu (`commands`, the `chat-commands` event).
 //
 // The answer is streamed like a local model's: `chat-delta` events carry the
 // text visible so far, the command's reply is the final answer. While no text
@@ -239,51 +245,35 @@ pub(crate) fn permission_mode(raw: &str) -> &'static str {
     }
 }
 
-/// The tools that get a card when the chat asks every time (lumo-hook
-/// reply::claude_card_tool says the same): commands, edits, the network, MCP.
-const CARD_MATCHER: &str = "Bash|PowerShell|Edit|MultiEdit|Write|NotebookEdit|WebFetch|mcp__.*";
-
-/// The settings a run asking every time adds for itself (`--settings`): a
-/// PreToolUse hook that puts the action on the island as an Allow / Deny card
-/// and answers with the click. `claude -p` denies what needs a permission
-/// unless a hook decides, and whether its PermissionRequest hook is asked
-/// depends on the version; this one always is. Only this run has it: the
-/// user's settings.json is not touched.
-fn card_settings(relay: &str) -> Value {
+/// The settings the chat's run adds for itself (`--settings`; the user's
+/// settings.json is not touched):
+///   * Lumo's PermissionRequest hook, the same entry installing writes
+///     (hooks::permission_request_entry), so a card comes up exactly when
+///     Claude Code would ask: what the user's own rules, the mode or an "Allow
+///     for this session" already allow goes through without one. `claude -p`
+///     denies what nobody decided.
+///   * a PreToolUse hook on shell commands that lets everything through as the
+///     mode says, but a command that would sit waiting on GitHub (`gh pr checks
+///     --watch`, a sleep loop): Claude is told to let Lumo listen instead
+///     (lumo-hook reply::blocking_wait).
+fn chat_settings(permission: Value, guard: &str) -> Value {
     json!({
         "hooks": {
-            "PreToolUse": [{
-                "matcher": CARD_MATCHER,
-                "hooks": [{ "type": "command", "command": relay, "timeout": 120 }],
-            }],
-        },
-    })
-}
-
-/// The settings a run in Auto or Plan adds for itself instead: a PreToolUse
-/// hook on shell commands that lets everything through as the mode says, but
-/// a command that would sit waiting on GitHub (`gh pr checks --watch`, a sleep
-/// loop): Claude is told to let Lumo listen instead (lumo-hook reply::blocking_wait).
-fn guard_settings(relay: &str) -> Value {
-    json!({
-        "hooks": {
+            "PermissionRequest": [permission],
             "PreToolUse": [{
                 "matcher": "Bash|PowerShell",
-                "hooks": [{ "type": "command", "command": relay, "timeout": 10 }],
+                "hooks": [{ "type": "command", "command": guard, "timeout": 10 }],
             }],
         },
     })
 }
 
-/// `args`, plus the card hook when the mode asks every time (the guard
-/// otherwise), when the file could be written where Claude Code can be
-/// pointed at it.
-fn with_cards(mut args: Vec<String>, mode: &str) -> Vec<String> {
-    let cards = permission_mode(mode) == "default";
-    let (flags, file) = if cards { ("--chat-card --wait 110 PreToolUse", "chat-cards.json") } else { ("--chat-guard PreToolUse", "chat-guard.json") };
-    let relay = crate::agents::relay_command(crate::agents::Shell::Sh, flags);
-    let path = crate::platform::local_dir().join(file);
-    let text = if cards { card_settings(&relay) } else { guard_settings(&relay) }.to_string();
+/// `args`, plus the chat's own hooks (`chat_settings`), when the file could be
+/// written where Claude Code can be pointed at it.
+fn with_cards(mut args: Vec<String>) -> Vec<String> {
+    let guard = crate::agents::relay_command(crate::agents::Shell::Sh, "--chat-guard PreToolUse");
+    let path = crate::platform::local_dir().join("chat-hooks.json");
+    let text = chat_settings(crate::hooks::permission_request_entry(), &guard).to_string();
     let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
@@ -392,6 +382,43 @@ pub(crate) fn prompt(context: Option<&ChatContext>, carried: &[Value], files: &[
     out
 }
 
+// ── Commands ──────────────────────────────────────────────────────────────────
+
+/// The commands Claude Code's last turn said it has, for the island's menu.
+static COMMANDS: std::sync::Mutex<Option<Vec<String>>> = std::sync::Mutex::new(None);
+
+/// The commands Claude Code has, as its last turn said; None before one.
+pub fn commands() -> Option<Vec<String>> {
+    COMMANDS.lock().unwrap().clone()
+}
+
+/// A command's name as it may be typed: letters, digits and `-_:.`, never a path.
+fn is_command_name(name: &str) -> bool {
+    let mut chars = name.chars();
+    matches!(chars.next(), Some(c) if c.is_ascii_alphanumeric())
+        && name.len() <= 64
+        && chars.all(|c| c.is_ascii_alphanumeric() || matches!(c, '-' | '_' | ':' | '.'))
+}
+
+/// `init`'s `slash_commands`: the names, without a slash, once each.
+fn command_names(list: &[Value]) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    for name in list.iter().filter_map(Value::as_str) {
+        let name = name.trim_start_matches('/');
+        if is_command_name(name) && !out.iter().any(|n| n == name) && out.len() < 200 {
+            out.push(name.to_string());
+        }
+    }
+    out
+}
+
+/// The command `query` is, when it is one ("/compact", "/review 12"): its name.
+fn command_of(query: &str) -> Option<&str> {
+    let rest = query.trim().strip_prefix('/')?;
+    let name = rest.split_whitespace().next()?;
+    is_command_name(name).then_some(name)
+}
+
 // ── What Claude Code is doing ─────────────────────────────────────────────────
 
 /// What the answer is doing while no text shows: the line next to the island's
@@ -476,6 +503,51 @@ pub(crate) fn pretty_tool(name: &str) -> String {
     short(&pretty)
 }
 
+// ── The files a turn used ─────────────────────────────────────────────────────
+
+/// A file the answer read, changed or made, for the chat's files (`chat-file`
+/// events, src/core/chat-files.ts): `kind` is read, edited or created, `path`
+/// the full path the tool was given. Told once the tool ran without an error.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct FileTouch {
+    pub kind: &'static str,
+    pub path: String,
+}
+
+impl FileTouch {
+    pub(crate) fn new(kind: &'static str, path: &str) -> Option<Self> {
+        let path = path.trim();
+        is_full_path(path).then(|| FileTouch { kind, path: path.to_string() })
+    }
+
+    /// A file a tool writes whole: created when nothing was there before it ran.
+    pub(crate) fn written(path: &str) -> Option<Self> {
+        let existed = std::path::Path::new(path.trim()).exists();
+        FileTouch::new(if existed { "edited" } else { "created" }, path)
+    }
+}
+
+/// A full path: a drive (`C:\`), a share (`\\server\`) or a Unix root. A
+/// relative one names no file the island could open.
+pub(crate) fn is_full_path(path: &str) -> bool {
+    let b = path.as_bytes();
+    let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    drive || path.starts_with(r"\\") || path.starts_with('/')
+}
+
+/// What calling `name` with `input` does to a file; None for every other tool,
+/// and for a screenshot the chat itself took.
+fn touch_for(name: &str, input: &Value) -> Option<FileTouch> {
+    let field = |keys: &[&str]| keys.iter().filter_map(|k| input.get(*k).and_then(Value::as_str)).find(|s| !s.trim().is_empty());
+    match name {
+        "Read" => field(&["file_path"]).filter(|p| !is_screenshot(&file_name(p))).and_then(|p| FileTouch::new("read", p)),
+        "Edit" | "MultiEdit" => field(&["file_path"]).and_then(|p| FileTouch::new("edited", p)),
+        "NotebookEdit" => field(&["notebook_path"]).and_then(|p| FileTouch::new("edited", p)),
+        "Write" => field(&["file_path"]).and_then(FileTouch::written),
+        _ => None,
+    }
+}
+
 /// What calling tool `name` with `input` is doing, for the island.
 fn activity_for(name: &str, input: &Value) -> Activity {
     let field = |keys: &[&str]| {
@@ -544,6 +616,11 @@ struct Run {
     /// Plan tool calls of the main conversation not passed on yet (`take_plans`):
     /// name and whole input, for the Plan island (src/island/plan.ts).
     plans: Vec<(String, Value)>,
+    /// Calls that read or write a file, waiting for their result: tool call id
+    /// and the file. Seen before the tool runs, so Write knows whether it creates.
+    touching: Vec<(String, FileTouch)>,
+    /// Files used by calls that ran, not passed on yet (`take_files`).
+    touched: Vec<FileTouch>,
     /// TaskCreate calls waiting for their result, which says the task's id:
     /// tool call id and input. The ids go on over the session (and further),
     /// so TaskUpdate's can only be matched with the ones TaskCreate answered.
@@ -551,6 +628,10 @@ struct Run {
     /// The Claude plan's limits this turn reported (`rate_limit_event`), in the
     /// status line's shape: `five_hour` / `seven_day` → `used_percentage`, `resets_at`.
     rate_limits: serde_json::Map<String, Value>,
+    /// The commands Claude Code said it has (`init`'s `slash_commands`), names without the slash.
+    commands: Option<Vec<String>>,
+    /// The conversation was compacted (`/compact`, or Claude Code doing it by itself).
+    compacted: bool,
 }
 
 /// One `rate_limit_event` of the stream, in the status line's shape — the
@@ -602,6 +683,11 @@ impl Run {
     /// The plan tool calls seen since the last time, oldest first.
     fn take_plans(&mut self) -> Vec<(String, Value)> {
         std::mem::take(&mut self.plans)
+    }
+
+    /// The files used since the last time, oldest first.
+    fn take_files(&mut self) -> Vec<FileTouch> {
+        std::mem::take(&mut self.touched)
     }
 
     /// Takes one line; true when the visible text changed.
@@ -679,6 +765,11 @@ impl Run {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
                         self.started_tool(id.clone(), activity_for(name, &block["input"]));
+                        if let Some(touch) = touch_for(name, &block["input"]) {
+                            if !id.is_empty() && !self.touching.iter().any(|(t, _)| *t == id) {
+                                self.touching.push((id.clone(), touch));
+                            }
+                        }
                         if name == "TaskCreate" {
                             self.creating.push((id.clone(), block["input"].clone()));
                         } else if is_plan_tool(name) {
@@ -694,6 +785,20 @@ impl Run {
                 for block in v["message"]["content"].as_array().into_iter().flatten() {
                     if block["type"] == "tool_result" {
                         let id = block["tool_use_id"].as_str().unwrap_or("");
+                        if let Some(pos) = self.touching.iter().position(|(t, _)| t == id) {
+                            let (_, mut touch) = self.touching.remove(pos);
+                            if block["is_error"].as_bool() != Some(true) {
+                                // Claude Code says itself whether Write made the file.
+                                if touch.kind != "read" {
+                                    match v["tool_use_result"]["type"].as_str() {
+                                        Some("create") => touch.kind = "created",
+                                        Some("update") => touch.kind = "edited",
+                                        _ => {}
+                                    }
+                                }
+                                self.touched.push(touch);
+                            }
+                        }
                         if let Some(pos) = self.creating.iter().position(|(c, _)| c == id) {
                             let (_, mut input) = self.creating.remove(pos);
                             if let Some(task) = created_task_id(&v, block) {
@@ -720,6 +825,16 @@ impl Run {
             }
             Some("system") if v["subtype"] == "permission_denied" => {
                 self.denied += 1;
+                false
+            }
+            Some("system") if v["subtype"] == "init" => {
+                if let Some(list) = v["slash_commands"].as_array() {
+                    self.commands = Some(command_names(list));
+                }
+                false
+            }
+            Some("system") if v["subtype"] == "compact_boundary" => {
+                self.compacted = true;
                 false
             }
             Some("result") => {
@@ -801,7 +916,7 @@ fn spawn(exe: &std::path::Path, args: &[String], dir: &std::path::Path, chat_id:
 }
 
 /// Reads `child`'s stderr in the background, its first 64 KB kept.
-fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
+pub(crate) fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
     let kept = Arc::new(std::sync::Mutex::new(String::new()));
     if let Some(mut e) = child.stderr.take() {
         let into = kept.clone();
@@ -817,7 +932,7 @@ fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>>
 }
 
 /// `child`'s stdout, line by line, on a channel; at most `max_total` bytes in all.
-fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
+pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
     let stdout = child.stdout.take().ok_or("no stdout")?;
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
@@ -855,7 +970,8 @@ enum Ended {
 
 /// Reads one turn off `rx` until its `result`. `on_text` gets the visible
 /// text as it grows, `on_activity` what Claude Code is doing each time it
-/// changes, `on_plan` each plan tool call (name, whole input). On Stop,
+/// changes, `on_file` each file a tool read or wrote once it ran, `on_plan`
+/// each plan tool call (name, whole input). On Stop,
 /// `interrupt` asks the CLI to end the turn and says whether it could; the
 /// turn then goes on until its result, for INTERRUPT_GRACE at most.
 fn read_turn(
@@ -864,6 +980,7 @@ fn read_turn(
     mut interrupt: impl FnMut() -> bool,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&str, &Value),
 ) -> (Run, Ended) {
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
@@ -898,6 +1015,9 @@ fn read_turn(
                 if let Some(activity) = activity.filter(|_| !state.stopped) {
                     on_activity(&activity);
                 }
+                for file in state.take_files() {
+                    on_file(&file);
+                }
                 for (name, input) in state.take_plans() {
                     on_plan(&name, &input);
                 }
@@ -925,6 +1045,7 @@ fn ended_without_answer(stderr: &str, status: Option<std::process::ExitStatus>) 
 /// Runs `claude -p` once in `dir`, blocking, the prompt on stdin (`read_turn`
 /// says what the callbacks get). Stop ends the CLI and its children; the run
 /// so far is returned, `stopped`.
+#[allow(clippy::too_many_arguments)]
 fn run(
     exe: PathBuf,
     args: Vec<String>,
@@ -934,6 +1055,7 @@ fn run(
     stop: Arc<Stop>,
     on_text: impl FnMut(&str),
     on_activity: impl FnMut(&Activity),
+    on_file: impl FnMut(&FileTouch),
     on_plan: impl FnMut(&str, &Value),
 ) -> Result<Run, String> {
     let mut child = spawn(&exe, &args, &dir, chat_id)?;
@@ -943,7 +1065,7 @@ fn run(
     }
     let stderr = read_stderr(&mut child);
     let rx = read_lines(&mut child, MAX_TOTAL)?;
-    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_plan);
+    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_file, on_plan);
     if ended == Ended::Stopped {
         kill_tree(&mut child);
         return Ok(state);
@@ -1114,6 +1236,7 @@ fn live_turn(
     stop: Arc<Stop>,
     on_text: impl FnMut(&str),
     on_activity: impl FnMut(&Activity),
+    on_file: impl FnMut(&FileTouch),
     on_plan: impl FnMut(&str, &Value),
 ) -> Result<Run, String> {
     let key = live_key(&exe, &args);
@@ -1135,6 +1258,7 @@ fn live_turn(
         },
         on_text,
         on_activity,
+        on_file,
         on_plan,
     );
     match ended {
@@ -1202,14 +1326,20 @@ pub async fn send(
     // Turns this session has not seen (another provider answered them, or a
     // message was edited) are carried over once, as text.
     let carried: Vec<Value> = if session.is_none() { turn.history.clone() } else { Vec::new() };
-    let input = prompt(context.as_ref(), &carried, &chat.files(), &query);
+    // A command goes alone, as typed: anything in front of it and it is a question.
+    let command = command_of(&query).map(str::to_string);
+    if command.is_some() && !carried.is_empty() {
+        // A fresh session would run it on nothing, and then never be told the conversation.
+        return Ok(ChatReply::answer(t("Send a message first: Claude Code hasn't seen this conversation yet."), chat.cli_session()));
+    }
+    let input = if command.is_some() { query.trim().to_string() } else { prompt(context.as_ref(), &carried, &chat.files(), &query) };
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     // Computer use: the chat's own instructions, Lumo's MCP server, and the
     // computer only usable while this turn runs.
     let base = if computer { COMPUTER_PROMPT } else { APPEND_PROMPT };
     // The tool workshop: what a tool is and how to hand one over, too.
     let append = if chat.is_workshop() { format!("{base}{}{WORKSHOP_TRY}", crate::chat::workshop_note!()) } else { base.to_string() };
-    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
+    let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)));
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
     args = with_mcp(args, computer, tools, true);
@@ -1234,6 +1364,7 @@ pub async fn send(
             stop,
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
+            |file| events.file(&app2, file),
             // The plan Claude writes in the chat, for the Plan island.
             |tool, input| {
                 let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
@@ -1247,6 +1378,11 @@ pub async fn send(
     }
     let state = state??;
 
+    // The commands it has, for the island's "/" menu.
+    if let Some(list) = &state.commands {
+        *COMMANDS.lock().unwrap() = Some(list.clone());
+        let _ = app.emit_to(WINDOW_LABEL, "chat-commands", list);
+    }
     // The plan's limits, when the turn said: the island's plan gauge (and the
     // chat's usage line) need not wait for a terminal session's status line.
     if !state.rate_limits.is_empty() {
@@ -1273,6 +1409,11 @@ pub async fn send(
     let answer = chat::keep_lumo_lines(answer, &state.said);
     let answer = if answer.trim().is_empty() && state.denied > 0 {
         t("Claude Code needed a permission that wasn't given. Install Lumo's hooks to approve actions from the island.")
+    } else if answer.trim().is_empty() && state.compacted {
+        t("Claude Code compacted the conversation.")
+    } else if let Some(name) = command.as_deref().filter(|_| answer.trim().is_empty()) {
+        // Some commands answer nothing: the chat still says it ran.
+        tf("Claude Code ran /{command}.", &[("command", name)])
     } else {
         answer
     };
@@ -1325,10 +1466,10 @@ pub(crate) fn help(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let folders: Vec<String> = folder.map(|f| vec![f.to_string()]).unwrap_or_default();
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
-    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
+    let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders));
     // The user's own tools too, while one is on.
     let args = with_mcp(args, computer, crate::tools::any_enabled(), false);
-    let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_, _| {})?;
+    let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_| {}, |_, _| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -1358,7 +1499,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         args.push(m.into());
     }
     let dir = platform::local_dir().join("tool-review");
-    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_, _| {})?;
+    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_, _| {})?;
     match state.result {
         Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
         Some(Ok(_)) => Ok(state.visible.trim().to_string()),
@@ -1450,7 +1591,7 @@ mod tests {
         let next = r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Next turn"}}}"#;
         let (_tx, rx) = feed(&[text, result, next]);
         let mut shown = String::new();
-        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_| {}, |_, _| {});
         assert_eq!(ended, Ended::Result);
         assert_eq!(state.result, Some(Ok("Hello".to_string())));
         assert_eq!(state.session.as_deref(), Some(SID));
@@ -1463,18 +1604,18 @@ mod tests {
         let interrupted = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}"#;
         let (_tx, rx) = feed(&[text, interrupted]);
         let mut asked = 0;
-        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_| {}, |_, _| {});
         assert_eq!((ended, asked), (Ended::Result, 1));
         assert!(state.stopped);
         // A CLI that can't be interrupted (one prompt, no stdin) is ended.
         let (_tx, rx) = feed(&[text]);
-        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_| {}, |_, _| {});
         assert_eq!(ended, Ended::Stopped);
         assert!(state.stopped);
         // The CLI ended before its result.
         let (tx, rx) = feed(&[text]);
         drop(tx);
-        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_, _| {}).1, Ended::Closed);
+        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_| {}, |_, _| {}).1, Ended::Closed);
     }
 
     #[test]
@@ -1556,17 +1697,18 @@ mod tests {
     }
 
     #[test]
-    fn asking_every_time_adds_a_card_hook_for_this_run_only() {
-        let v = card_settings("'/x/lumo-hook' --chat-card --wait 110 PreToolUse");
-        let entry = &v["hooks"]["PreToolUse"][0];
-        assert_eq!(entry["matcher"], CARD_MATCHER);
-        assert_eq!(entry["hooks"][0]["timeout"], 120, "longer than the relay waits");
-        assert!(entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
-        // Auto and Plan only add the guard on shell commands: Claude Code decides.
-        let v = guard_settings("'/x/lumo-hook' --chat-guard PreToolUse");
-        let entry = &v["hooks"]["PreToolUse"][0];
-        assert_eq!(entry["matcher"], "Bash|PowerShell");
-        assert!(!entry["hooks"][0]["command"].as_str().unwrap().contains("--chat-card"));
+    fn the_chat_asks_with_lumos_own_permission_hook_and_guards_shell_commands() {
+        let permission = crate::hooks::permission_request_entry();
+        let v = chat_settings(permission.clone(), "'/x/lumo-hook' --chat-guard PreToolUse");
+        // The very entry installing writes, so Claude Code runs it once when both are there.
+        assert_eq!(v["hooks"]["PermissionRequest"][0], permission);
+        let hook = &permission["hooks"][0];
+        assert_eq!(hook["timeout"], 120, "longer than the relay waits for a click");
+        assert!(hook.get("async").is_none(), "it waits for the click");
+        assert!(hook["command"].as_str().unwrap().ends_with("PermissionRequest"));
+        let guard = &v["hooks"]["PreToolUse"][0];
+        assert_eq!(guard["matcher"], "Bash|PowerShell");
+        assert!(guard["hooks"][0]["command"].as_str().unwrap().contains("--chat-guard"));
     }
 
     #[test]
@@ -1815,5 +1957,64 @@ mod tests {
         assert_eq!(safe_model("claude-opus-5-5[1m]"), Some("claude-opus-5-5[1m]"));
         assert_eq!(safe_model(""), None);
         assert_eq!(safe_model("default"), None, "no --model: Claude Code's own choice");
+    }
+
+    #[test]
+    fn the_commands_come_with_init_and_a_compaction_is_noticed() {
+        let mut run = Run::default();
+        let lines = [
+            format!(r#"{{"type":"system","subtype":"init","session_id":"{SID}","slash_commands":["compact","/context","compact","review","../etc","a b",""]}}"#),
+            r#"{"type":"system","subtype":"compact_boundary","compact_metadata":{"trigger":"manual"}}"#.into(),
+            r#"{"type":"result","subtype":"success","is_error":false,"result":""}"#.into(),
+        ];
+        for l in &lines {
+            run.feed(l.as_bytes());
+        }
+        assert_eq!(run.commands.as_deref(), Some(&["compact".to_string(), "context".into(), "review".into()][..]));
+        assert!(run.compacted);
+        assert_eq!(run.result, Some(Ok(String::new())));
+    }
+
+    #[test]
+    fn only_a_slash_and_a_name_make_a_command() {
+        assert_eq!(command_of("/compact"), Some("compact"));
+        assert_eq!(command_of("  /review 12 please "), Some("review"));
+        assert_eq!(command_of("/my-plugin:do.it"), Some("my-plugin:do.it"));
+        assert_eq!(command_of("what does /compact do?"), None);
+        assert_eq!(command_of("/"), None);
+        assert_eq!(command_of("/usr/bin/env"), None, "a path is a question");
+        assert_eq!(command_of("/../x"), None);
+    }
+
+    #[test]
+    fn the_files_a_turn_read_or_wrote_are_told_once_they_ran() {
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"C:\\Users\\me\\Docs\\report.pdf"}},{"type":"tool_use","id":"w1","name":"Write","input":{"file_path":"C:\\lumo-nowhere\\game.py","content":"x"}},{"type":"tool_use","id":"e1","name":"Edit","input":{"file_path":"C:\\Users\\me\\notes.md"}},{"type":"tool_use","id":"g1","name":"Grep","input":{"pattern":"x"}}]}}"#);
+        assert!(run.take_files().is_empty(), "not before they ran");
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"r1","content":"..."}]},"tool_use_result":{"type":"text"}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"w1","content":"ok"}]}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"e1","is_error":true,"content":"String not found"}]}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"g1","content":"none"}]}}"#);
+        assert_eq!(
+            run.take_files(),
+            vec![
+                FileTouch { kind: "read", path: r"C:\Users\me\Docs\report.pdf".into() },
+                FileTouch { kind: "created", path: r"C:\lumo-nowhere\game.py".into() },
+            ],
+            "a failed edit changed nothing, a search is no file"
+        );
+        assert!(run.take_files().is_empty(), "once");
+
+        // Claude Code's own word on Write wins; a screenshot, a relative path and a subagent's call stay out.
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"w2","name":"Write","input":{"file_path":"C:\\lumo-nowhere\\a.txt"}},{"type":"tool_use","id":"s1","name":"Read","input":{"file_path":"C:\\inbox\\screenshot-1-screen1.png"}},{"type":"tool_use","id":"x1","name":"Read","input":{"file_path":"notes.md"}}]}}"#);
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":"t9","message":{"content":[{"type":"tool_use","id":"sub","name":"Read","input":{"file_path":"C:\\sub.txt"}}]}}"#);
+        for id in ["w2", "s1", "x1", "sub"] {
+            let line = format!(r#"{{"type":"user","parent_tool_use_id":null,"message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"ok"}}]}},"tool_use_result":{{"type":"update"}}}}"#);
+            run.feed(line.as_bytes());
+        }
+        assert_eq!(run.take_files(), vec![FileTouch { kind: "edited", path: r"C:\lumo-nowhere\a.txt".into() }]);
+        assert!(is_full_path(r"\\server\share\a.txt") && is_full_path("/home/me/a") && is_full_path("D:/x"));
+        assert!(!is_full_path("a.txt") && !is_full_path(r"..\a.txt") && !is_full_path("C:"));
     }
 }

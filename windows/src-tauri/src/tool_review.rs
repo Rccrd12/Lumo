@@ -135,6 +135,10 @@ async fn ask(prompt: String) -> Result<(String, String), String> {
         let question = format!("{SYSTEM}\n\n{prompt}");
         let m = model.clone();
         tauri::async_runtime::spawn_blocking(move || antigravity_cli::complete(&m, &question)).await.map_err(|e| e.to_string())??
+    } else if provider == crate::codex_chat::PROVIDER {
+        let question = format!("{SYSTEM}\n\n{prompt}");
+        let m = model.clone();
+        tauri::async_runtime::spawn_blocking(move || crate::codex_chat::complete(&m, &question)).await.map_err(|e| e.to_string())??
     } else if let Some(p) = openai_compat::provider(&provider) {
         openai_compat::complete(p, &model, SYSTEM, &prompt).await?
     } else if let Some(server) = local_chat::server(&settings, &provider) {
@@ -246,6 +250,7 @@ mod tests {
             updated: 0,
             trust: false,
             review: None,
+            command: String::new(),
         };
         let q = prompt(&m, &[("bench.py".into(), "print(1)".into())]);
         assert!(q.contains("\"permissions\": [\n    \"system\"\n  ]") || q.contains("\"system\""));

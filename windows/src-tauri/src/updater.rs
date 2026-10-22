@@ -4,10 +4,11 @@
 // The check runs when Settings → Updates → Check for updates is clicked, and once
 // when Lumo opens unless Settings turns that off (src/core/update-check.ts); no
 // telemetry, nothing about this computer is sent. The download only ever starts
-// from a click on Update now. The installer is the
-// same NSIS setup.exe the release workflow publishes (.github/workflows/windows.yml,
-// named by scripts/pack.mjs), run with its own window so the user sees every
-// step; Lumo quits right after starting it so its files can be replaced.
+// from a click on Update now, and Settings shows its progress. The installer is
+// the same NSIS setup.exe the release workflow publishes (.github/workflows/windows.yml,
+// named by scripts/pack.mjs), run without a window (INSTALLER_ARGS); Lumo quits
+// right after starting it so its files can be replaced, and the installer
+// opens the new Lumo when it is done.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -32,6 +33,12 @@ const DOWNLOAD_HOSTS: [&str; 3] = [
     "objects.githubusercontent.com",
     "release-assets.githubusercontent.com",
 ];
+
+/// How the downloaded installer runs. These are switches of Tauri's NSIS
+/// template: `/S` without any window, `/UPDATE` over the installed Lumo as it
+/// is (no question about reinstalling, the shortcuts and the WebView left
+/// alone), `/R` opens Lumo again once the files are replaced.
+const INSTALLER_ARGS: [&str; 3] = ["/S", "/UPDATE", "/R"];
 
 /// No installer is anywhere near this; a bigger answer is not one.
 const MAX_INSTALLER: u64 = 400 * 1024 * 1024;
@@ -261,8 +268,8 @@ struct Progress {
 }
 
 /// Settings → Updates → Update now. Downloads the installer `update_check`
-/// found into a temporary folder, starts it with its own window, then quits so
-/// it can replace Lumo's files. Only GitHub release downloads of this
+/// found into a temporary folder, starts it without a window, then quits so
+/// it can replace Lumo's files; the installer opens Lumo again. Only GitHub release downloads of this
 /// repository are accepted.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
@@ -378,13 +385,13 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     std::fs::rename(&partial, &path).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
     log::line(format!("update: downloaded {} ({} bytes)", file_name, bytes.len()));
 
-    // Its own window, as when the user double-clicks it: the NSIS installer
-    // (per-user, no admin prompt) asks before it does anything.
+    // The NSIS installer is per-user, so no admin prompt either.
     std::process::Command::new(&path)
+        .args(INSTALLER_ARGS)
         .current_dir(&dir)
         .spawn()
         .map_err(|e| tf("Could not start the installer: {error}", &[("error", &e.to_string())]))?;
-    log::line("update: installer started, quitting");
+    log::line("update: installer started without a window, quitting");
     Ok(())
 }
 

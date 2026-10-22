@@ -70,7 +70,7 @@ test("the Tools tab lists the tools with their switch, and Add a tool opens the 
   const rows = tools.el.find(".tool-row");
   assert.equal(rows.length, 2);
   assert.ok(rows[1].classList.contains("off"));
-  assert.match(tools.el.querySelector(".tools-count").textContent, /1 on of 2/);
+  assert.match(tools.el.querySelector(".tools-count").textContent, /1 of 2 on/);
 
   answers.tools_set_enabled = null;
   rows[0].find(".switch")[0].fire("click", { stopPropagation() {} });

@@ -323,13 +323,16 @@ export function buildForgePanel(hooks: ForgeHooks): ForgePanel {
     const st = status(d);
     const statusText = { draft: FORGE_STRINGS.draft, saved: FORGE_STRINGS.saved, changed: FORGE_STRINGS.changed }[st];
     const saved = st === "saved" ? State.tools.find((x) => x.id === savedLink(chatId)?.tool) : undefined;
+    // Its command in the chat: the draft's, else the one the tool it changes has.
+    const command = d.command ?? State.tools.find((x) => x.id === (d.replaces ?? savedLink(chatId)?.tool))?.command ?? "";
     const top = h("div", { class: "forge-tool" },
       toolTile(savedLink(chatId)?.tool ?? toolId(d.name), 32),
       h("div", { class: "forge-tool-text" },
         h("div", { class: "forge-tool-name", text: d.name }),
         h("span", { class: "forge-tool-badges" },
           h("span", { class: `forge-status ${st}`, text: t(statusText) }),
-          saved ? reviewBadge(saved) : null)));
+          saved ? reviewBadge(saved) : null,
+          command ? h("span", { class: "forge-command", text: `/${command}`, title: t(TOOLS_STRINGS.command) }) : null)));
     const desc = d.description ? h("div", { class: "forge-desc", text: d.description, title: d.description }) : null;
     // The supervisor's words, once it read the tool as saved.
     const verdict = saved?.reviewed && saved.review

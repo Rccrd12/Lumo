@@ -116,15 +116,15 @@ fn usual_address(id: &str) -> Option<String> {
     }
 }
 
-fn bearer(key: Option<&str>) -> String {
+pub(crate) fn bearer(key: Option<&str>) -> String {
     format!("Bearer {}", key.filter(|k| !k.is_empty()).unwrap_or(NO_KEY))
 }
 
-fn unreachable(url: &Url) -> String {
+pub(crate) fn unreachable(url: &Url) -> String {
     tf("Cannot reach {url}. Is the server running?", &[("url", url.as_str().trim_end_matches('/'))])
 }
 
-fn base_url(server: &Server) -> Result<Url, String> {
+pub(crate) fn base_url(server: &Server) -> Result<Url, String> {
     if server.url.trim().is_empty() {
         return Err(tf("Connect {name} in Settings → Local models first.", &[("name", &t(server.name))]));
     }

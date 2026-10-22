@@ -134,7 +134,7 @@ test("a provider without a key is never asked for its models", async () => {
   $(".model-btn").fire("click");
   await flush();
   assert.ok($(".chat-body").classList.contains("picking"));
-  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "Antigravity CLI", "Google", "OpenAI", "OpenRouter"]);
+  assert.deepEqual(chips(), ["Anthropic", "Claude Code", "Antigravity CLI", "Codex", "Google", "OpenAI", "OpenRouter"]);
   assert.deepEqual(sent("secret_present"), [{ key: "anthropic-api-key" }]);
   assert.deepEqual(sent("chat_models"), []);
   assert.match($(".picker-status").textContent, /No API key/);
@@ -184,7 +184,7 @@ test("switching provider saves it and asks the new provider only", async () => {
   $(".model-btn").fire("click");
   await flush();
   assert.deepEqual(sent("chat_models"), []);
-  view.el.find(".picker-chip")[3].fire("click");
+  view.el.find(".picker-chip")[4].fire("click");
   await flush();
   assert.equal(State.settings.chatProvider, "google");
   assert.deepEqual(sent("chat_models"), [{ provider: "google" }]);
@@ -792,4 +792,119 @@ test("Remove all empties the attachments, and a file that already went is not li
   assert.equal(badge.textContent, "");
   assert.equal($(".files-list").find(".attach-row").length, 0);
   State.droppedFile = null;
+});
+
+// ── The commands' menu ("/") ──────────────────────────────────────────────────
+
+const commanding = () => $(".chat-body").classList.contains("commanding");
+const slashNames = () => view.el.find(".slash-name").map((n) => n.textContent);
+
+/** Text typed in the field, as the browser tells the view. */
+function typeText(value) {
+  const input = $(".chat-input");
+  input.value = value;
+  input.fire("input");
+}
+
+test("the commands' menu opens as soon as / is typed first, and filters", () => {
+  typeText("hello /");
+  assert.ok(!commanding(), "only with / first");
+  typeText("/");
+  assert.ok(commanding());
+  assert.ok(slashNames().includes("new"));
+  typeText("/ti");
+  assert.deepEqual(slashNames(), ["timer"]);
+  typeText("/timer ");
+  assert.ok(!commanding(), "a space: what follows is the command's");
+  typeText("/zzz");
+  assert.ok(!commanding(), "nothing matches");
+});
+
+test("a press on the field reopens the menu only once the field had lost the focus", () => {
+  const input = $(".chat-input");
+  input.fire("focus");
+  typeText("/");
+  assert.ok(commanding());
+  input.fire("blur"); // a press elsewhere
+  assert.ok(!commanding());
+  input.fire("mousedown");
+  input.fire("focus");
+  input.fire("click");
+  assert.ok(commanding(), "back in the field: it reopens");
+  // Closed by a press on the field itself (the document's press), it stays closed.
+  view.el.find(".slash-row"); // still drawn
+  $(".chat-body").classList.remove("commanding");
+  input.fire("mousedown");
+  input.fire("click");
+  assert.ok(!commanding(), "the field still had the focus");
+});
+
+test("Enter runs the highlighted command: Lumo's here, Claude Code's sent as typed", async () => {
+  typeText("/new");
+  const before = State.chatId;
+  const enter = type("Enter");
+  assert.ok(enter.defaultPrevented);
+  assert.ok(!commanding());
+  assert.equal($(".chat-input").value, "");
+  assert.notEqual(State.chatId, before, "a new chat");
+  assert.deepEqual(sent("chat_send"), [], "nothing went to the AI");
+
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  answers.chat_send = { text: "Context: 12%", turns: 2 };
+  typeText("/cont");
+  assert.deepEqual(slashNames(), ["context"]);
+  type("Enter");
+  await flush();
+  await flush();
+  assert.equal(sent("chat_send").at(-1).query, "/context");
+});
+
+test("Tab writes the command's name for what follows; arrows move; Escape closes", () => {
+  State.settings = { ...State.settings, chatProvider: "claude-code" };
+  emit("chat-commands", ["compact", "review"]);
+  typeText("/rev");
+  assert.deepEqual(slashNames(), ["review"]);
+  type("Tab");
+  assert.equal($(".chat-input").value, "/review ");
+  assert.ok(!commanding());
+
+  typeText("/");
+  const on = () => view.el.find(".slash-row").findIndex((r) => r.classList.contains("on"));
+  assert.equal(on(), 0);
+  type("ArrowDown");
+  assert.equal(on(), 1);
+  type("ArrowUp");
+  type("ArrowUp");
+  assert.equal(on(), slashNames().length - 1, "it goes round");
+  const esc = type("Escape");
+  assert.ok(esc.defaultPrevented);
+  assert.ok(!commanding());
+});
+
+test("/new typed in full and sent is Lumo's too", async () => {
+  $(".chat-input").value = "/new";
+  type("Enter");
+  await flush();
+  assert.deepEqual(sent("chat_send"), []);
+});
+
+test("a tool's command is in the menu, and what follows it goes to the AI as a request to use that tool", async () => {
+  State.tools = [{ id: "pdfcraft_mcp", name: "pdfcraft_mcp", command: "pdfcraft", enabled: true, reviewed: true, params: [{ name: "path" }] }];
+  answers.chat_send = { text: "Done.", turns: 2 };
+  typeText("/pdf");
+  assert.deepEqual(slashNames(), ["pdfcraft"]);
+  type("Enter");
+  assert.equal($(".chat-input").value, "/pdfcraft ", "a tool with parameters waits for what to do");
+  $(".chat-input").value = "/pdfcraft merge the two PDFs";
+  type("Enter");
+  await flush();
+  await flush();
+  const sentQuery = sent("chat_send").at(-1).query;
+  assert.match(sentQuery, /^Use my Lumo tool "pdfcraft_mcp" \(tool id: pdfcraft_mcp\) for this\.\n\nmerge the two PDFs$/);
+  assert.equal(State.chatHistory[0].content, "/pdfcraft merge the two PDFs", "the chat shows what was typed");
+
+  State.settings = { ...State.settings, chatProvider: "ollama" };
+  typeText("/pdf");
+  assert.ok(!commanding(), "a provider that can't use the tools doesn't list them");
+  State.tools = [];
 });

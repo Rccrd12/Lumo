@@ -16,6 +16,9 @@
 // list shows the supervisor's summary, in Lumo's language, and the
 // description is folded under What it tells the agents.
 //
+// A tool's command in the chat ("/pdfcraft", core/slash.ts) is in its detail,
+// to change or clear: the workshop's AI gives one to a tool it makes.
+//
 // A tool the workshop is still making is listed first, marked In progress:
 // a click goes back to it.
 
@@ -25,7 +28,7 @@ import { Bridge, onEvent } from "../core/bridge";
 import { Sound } from "../core/sound";
 import { compactNotice } from "../core/compact";
 import { State } from "../core/state";
-import { reviewState, toolId, workshopTool, type ReviewState, type ToolDraft, type ToolInfo } from "../core/tools";
+import { commandName, reviewState, toolId, workshopTool, type ReviewState, type ToolDraft, type ToolInfo } from "../core/tools";
 import { FORGE_STRINGS, savedLink } from "./forge";
 import type { ViewActions, ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
@@ -33,7 +36,7 @@ import { N_, t, tl } from "../i18n/i18n";
 export const TOOLS_STRINGS = {
   tab: N_("Tools"),
   title: N_("Your tools"),
-  count: N_("{on} on of {all}"),
+  count: N_("{on} of {all} on"),
   add: N_("Add a tool"),
   addHint: N_("Make one with Lumo, or bring in a script you already have"),
   emptyTitle: N_("No tools yet"),
@@ -77,6 +80,8 @@ export const TOOLS_STRINGS = {
   ran: N_("{name} ran"),
   ranFailed: N_("{name} failed"),
   forAgents: N_("What it tells the agents"),
+  command: N_("Command in the chat"),
+  noCommand: N_("None"),
   building: N_("In progress"),
   buildingText: N_("Lumo is making it with you in the workshop"),
 };
@@ -356,6 +361,49 @@ export function buildTools(actions: ViewActions): ViewHost {
     return h("div", { class: "tools-agents" }, fold, unfolded ? text : null);
   }
 
+  /** Its command in the chat: typed here, kept on Enter or when the field is left; empty takes it away. */
+  function commandField(tool: ToolInfo): HTMLElement {
+    const field = h("input", {
+      class: "tool-command",
+      type: "text",
+      value: tool.command ?? "",
+      placeholder: t(TOOLS_STRINGS.noCommand),
+      spellcheck: "false",
+      maxlength: "32",
+      "aria-label": t(TOOLS_STRINGS.command),
+    }) as HTMLInputElement;
+    field.value = tool.command ?? "";
+    const keep = async () => {
+      const wanted = commandName(field.value);
+      if (wanted === (tool.command ?? "")) {
+        field.value = wanted;
+        return;
+      }
+      State.tools = State.tools.map((x) => (x.id === tool.id ? { ...x, command: wanted } : x));
+      Sound.play("blip");
+      State.notify();
+      try {
+        await Bridge.toolsSetCommand(tool.id, wanted);
+      } catch (err) {
+        failed(err);
+      }
+    };
+    field.addEventListener("click", (e) => e.stopPropagation());
+    field.addEventListener("keydown", (e) => {
+      e.stopPropagation();
+      const key = (e as KeyboardEvent).key;
+      if (key === "Enter") field.blur();
+      if (key === "Escape") {
+        field.value = tool.command ?? "";
+        field.blur();
+      }
+    });
+    field.addEventListener("change", () => void keep());
+    return h("div", { class: "tool-detail-row" },
+      h("span", { class: "tool-detail-label", text: t(TOOLS_STRINGS.command) }),
+      h("span", { class: "tool-command-wrap" }, h("span", { class: "tool-command-slash", text: "/" }), field));
+  }
+
   function detail(tool: ToolInfo): HTMLElement {
     const params = tool.params.length
       ? h("span", { class: "tool-params" }, ...tool.params.map((p) =>
@@ -384,6 +432,7 @@ export function buildTools(actions: ViewActions): ViewHost {
       tool.description ? forAgents(tool) : null,
       h("div", { class: "tool-detail-row" }, h("span", { class: "tool-detail-label", text: t(TOOLS_STRINGS.params) }), params),
       h("div", { class: "tool-detail-row" }, needs(tool, true)),
+      commandField(tool),
       abs ? h("div", { class: "tool-detail-note", text: t(TOOLS_STRINGS.external, { path: tool.entry }) }) : null,
       trustChoice(tool),
       h("div", { class: "tools-acts" }, changeBtn, revealBtn, deleteBtn));

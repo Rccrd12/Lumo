@@ -2,8 +2,8 @@
 // provider a turn goes to. Each provider's own wire format lives in its module:
 // claude.rs (Anthropic), openai_compat.rs (OpenAI, Google AI, OpenRouter),
 // local_chat.rs (Ollama, LM Studio, any OpenAI-compatible server), and the
-// signed-in CLIs: claude_code.rs (Claude Code) and antigravity_cli.rs
-// (Antigravity CLI).
+// signed-in CLIs: claude_code.rs (Claude Code), antigravity_cli.rs
+// (Antigravity CLI) and codex_chat.rs (Codex).
 //
 // API keys never leave the credential store and file bytes never cross the IPC
 // boundary: the island sends the question and gets the answer's text back.
@@ -22,7 +22,7 @@ use crate::chat_usage::ChatUsage;
 use crate::island::WINDOW_LABEL;
 use crate::screen::{self, ScreenContext};
 use crate::settings::Settings;
-use crate::{antigravity_cli, claude, claude_code, local_chat, openai_compat, secrets};
+use crate::{antigravity_cli, claude, claude_code, codex_chat, local_chat, openai_compat, secrets};
 
 pub const ANTHROPIC: &str = "anthropic";
 
@@ -37,8 +37,8 @@ pub enum ChatContext {
 #[serde(rename_all = "camelCase")]
 pub struct ChatReply {
     pub text: String,
-    /// The Claude Code session or Antigravity CLI conversation that answered
-    /// (claude_code.rs, antigravity_cli.rs), so a chat from the history can be
+    /// The Claude Code session, Antigravity CLI conversation or Codex thread
+    /// that answered (claude_code.rs, antigravity_cli.rs, codex_chat.rs), so a chat from the history can be
     /// continued where it left off.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub session: Option<String>,
@@ -343,6 +343,13 @@ impl ChatEvents {
     pub fn activity(&self, app: &AppHandle, activity: impl Serialize) {
         let _ = app.emit_to(WINDOW_LABEL, "chat-activity", json!({ "chat": self.chat, "activity": activity }));
     }
+
+    /// A file the answer read, edited or created (claude_code.rs FileTouch):
+    /// the chat lists it, and may open it from now on (chat_files.rs).
+    pub fn file(&self, app: &AppHandle, file: &claude_code::FileTouch) {
+        crate::chat_files::remember(&file.path);
+        let _ = app.emit_to(WINDOW_LABEL, "chat-file", json!({ "chat": self.chat, "kind": file.kind, "path": file.path }));
+    }
 }
 
 // ── Every chat ────────────────────────────────────────────────────────────────
@@ -472,7 +479,7 @@ pub fn is_workshop(chat_id: &str) -> bool {
 /// words only: it also goes on Claude Code's command line.
 macro_rules! workshop_note {
     () => {
-        " This chat is Lumo's tool workshop. Here you help the user make a tool, or bring in a script or program they already have, so that Lumo and its agents can use it. A tool is a small program that does one job, a description that tells an AI when to use it, and its parameters. The user may not read code: talk about what the tool does in plain words, ask at most one or two short questions when something important is unclear, and never ask them to edit code. On Windows prefer Python or PowerShell, with no extra packages unless they are needed, and say which ones. The script gets its parameters as a JSON object on standard input and in the LUMO_TOOL_INPUT environment variable, and prints its result as text on standard output; for a script that already exists and takes command line arguments, map the parameters with args instead, writing {name} for the value of a parameter. Each time the tool is ready or changes, end your answer with the whole tool: first a fenced code block whose language is lumo-tool, holding JSON with name, description, entry, params, permissions, and optionally args and timeout in seconds; then, after a blank line, for each file of the tool, a fenced code block whose language is lumo-file followed by a space and the file name, holding the whole file. params is a list of objects with name, type as string, number, integer or boolean, description and required. permissions lists what the tool needs, from network, read, write and system, and Lumo holds the tool to it: a Python or Node tool that does something it did not declare is stopped, so declare all it needs and no more. read means files outside its own folder, write means changing files anywhere but the folder named by the LUMO_TOOL_WORK environment variable, which is where the tool may write its own files and also its temporary folder. Before agents can use a saved tool, a second AI reviews it and explains it to the user, so keep the code plain and readable and never do anything the description does not say. entry is the file that runs: one of the files, or the full path of a script the user already has on their computer, which then runs where it is and needs no lumo-file block. Write the description for an AI: what the tool does, when to use it and what it returns. Lumo shows the draft to the user, who can try it and save it with a click: never save, install or register the tool yourself, and never say it is saved. Keep the words around the blocks short: what the tool does, what it needs and how to use it. When the user tells you how a try went, fix the tool and give it again whole."
+        " This chat is Lumo's tool workshop. Here you help the user make a tool, or bring in a script or program they already have, so that Lumo and its agents can use it. A tool is a small program that does one job, a description that tells an AI when to use it, and its parameters. The user may not read code: talk about what the tool does in plain words, ask at most one or two short questions when something important is unclear, and never ask them to edit code. On Windows prefer Python or PowerShell, with no extra packages unless they are needed, and say which ones. The script gets its parameters as a JSON object on standard input and in the LUMO_TOOL_INPUT environment variable, and prints its result as text on standard output; for a script that already exists and takes command line arguments, map the parameters with args instead, writing {name} for the value of a parameter. Each time the tool is ready or changes, end your answer with the whole tool: first a fenced code block whose language is lumo-tool, holding JSON with name, description, entry, params, permissions, command, and optionally args and timeout in seconds; then, after a blank line, for each file of the tool, a fenced code block whose language is lumo-file followed by a space and the file name, holding the whole file. params is a list of objects with name, type as string, number, integer or boolean, description and required. permissions lists what the tool needs, from network, read, write and system, and Lumo holds the tool to it: a Python or Node tool that does something it did not declare is stopped, so declare all it needs and no more. read means files outside its own folder, write means changing files anywhere but the folder named by the LUMO_TOOL_WORK environment variable, which is where the tool may write its own files and also its temporary folder. Before agents can use a saved tool, a second AI reviews it and explains it to the user, so keep the code plain and readable and never do anything the description does not say. entry is the file that runs: one of the files, or the full path of a script the user already has on their computer, which then runs where it is and needs no lumo-file block. Write the description for an AI: what the tool does, when to use it and what it returns. command is the word the user types after a slash in any of Lumo's chats to call the tool, such as pdfcraft for /pdfcraft: short, lower case letters, digits and dashes, easy to remember, and never new, history, model, attach, screen, permissions, timer, compact, context or clear. Give every tool one, unless calling it by hand makes no sense (a tool only an agent would use in the middle of a task): then write an empty string. Keep the command a tool already has unless the user asks to change it; when they ask to remove it, write an empty string. Lumo shows the draft to the user, who can try it and save it with a click: never save, install or register the tool yourself, and never say it is saved. Keep the words around the blocks short: what the tool does, what it needs and how to use it. When the user tells you how a try went, fix the tool and give it again whole."
     };
 }
 pub(crate) use workshop_note;
@@ -611,7 +618,7 @@ fn sees_images(provider: &str) -> bool {
 /// is Claude Code's.
 fn untag_session(saved: &str) -> (&str, &str) {
     match saved.split_once(':') {
-        Some((owner, id)) if owner == antigravity_cli::PROVIDER => (owner, id),
+        Some((owner, id)) if owner == antigravity_cli::PROVIDER || owner == codex_chat::PROVIDER => (owner, id),
         _ => (claude_code::PROVIDER, saved),
     }
 }
@@ -619,7 +626,7 @@ fn untag_session(saved: &str) -> (&str, &str) {
 /// The providers that run a signed-in CLI on this computer. Given paths, they
 /// read dropped files and screenshots themselves.
 fn is_cli(provider: &str) -> bool {
-    provider == claude_code::PROVIDER || provider == antigravity_cli::PROVIDER
+    provider == claude_code::PROVIDER || provider == antigravity_cli::PROVIDER || provider == codex_chat::PROVIDER
 }
 
 /// The question with the screen context in front of it, and the screenshots
@@ -753,6 +760,9 @@ async fn send_to(
         if provider == antigravity_cli::PROVIDER {
             return antigravity_cli::send(app, chat, &model, &settings.chat_permission_mode, query, context, folder).await;
         }
+        if provider == codex_chat::PROVIDER {
+            return codex_chat::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, query, context, folder).await;
+        }
         let computer = settings.chat_computer_use;
         return claude_code::send(app, chat, &model, &settings.chat_effort, &settings.chat_permission_mode, computer, query, context, folder)
             .await;
@@ -780,6 +790,9 @@ pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo
     }
     if provider == antigravity_cli::PROVIDER {
         return antigravity_cli::models().await;
+    }
+    if provider == codex_chat::PROVIDER {
+        return codex_chat::models().await;
     }
     if let Some(p) = openai_compat::provider(provider) {
         let key = secrets::get(p.key).ok_or_else(no_key)?;
