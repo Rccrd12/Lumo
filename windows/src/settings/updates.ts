@@ -2,7 +2,8 @@
 // there is one. GitHub is asked when the button is clicked, and once when
 // Lumo opens unless that is turned off (core/update-check.ts, which leaves
 // what it found here); only "Update now" downloads and runs the installer
-// (src-tauri/src/updater.rs), which then replaces Lumo. Under it, the
+// (src-tauri/src/updater.rs), which then replaces Lumo without a window and
+// opens it again. Under it, the
 // changelog built into the app (./changelog.ts).
 
 import CHANGELOG from "virtual:lumo-changelog";
@@ -24,9 +25,9 @@ const TEXT = {
     t("Version {version} is out, but its installer isn't there yet. Try again later.", { version }),
   get notes() { return t("What's new"); },
   get updateNow() { return t("Update now"); },
-  get updateHint() { return t("The installer opens and Lumo closes while it runs."); },
-  get downloading() { return t("Downloading the installer…"); },
-  get launching() { return t("The installer is starting. Lumo closes now so it can be updated."); },
+  get updateHint() { return t("Lumo downloads the update, installs it by itself and opens again."); },
+  get downloading() { return t("Downloading the update…"); },
+  get launching() { return t("Installing the update: Lumo closes and opens again by itself in a few seconds."); },
   get changelog() { return t("Changelog"); },
   get changelogIntro() { return t("What changed in each version of Lumo."); },
   get installed() { return t("Installed"); },
