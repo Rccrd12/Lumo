@@ -1,6 +1,6 @@
 // Listening: Claude waits for GitHub without holding the chat open. An answer
 // writes `[[listen owner/repo#12 ready: merge it]]` (chat.rs
-// listen_note); the chat takes those lines out and hands them to Rust
+// listen_tool_note); the chat takes those lines out and hands them to Rust
 // (listen.rs), which asks GitHub now and then and says `listen-fired` once the
 // pull request got there. Pure helpers, so they can be tested without a webview.
 

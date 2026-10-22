@@ -27,6 +27,7 @@ mod i18n;
 mod identity;
 mod integrations;
 mod island;
+mod island_tools;
 mod listen;
 mod live;
 mod local_chat;

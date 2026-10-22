@@ -23,6 +23,11 @@
 //! the agent lists them, and each call handed to Lumo
 //! (`{"lumo_tool": {"tool": …, "input": …}}`), which runs it.
 //!
+//! `--tools=island` offers the island's timer and GitHub tools (`set_timer`,
+//! `listen_pull_request`, `stop_listening`): each call is handed to Lumo
+//! (`{"lumo_island": {"tool": …, "input": …, "chat": …}}`, island_tools.rs),
+//! with the chat it came from, which the app puts in `LUMO_CHAT_ID`.
+//!
 //! `--tools=plan` offers `update_plan` (Codex's own tool, which the models
 //! know): the agent's plan, step by step, for the Plan island. The call is
 //! handed to Lumo (`{"lumo_plan": {"input": …}}`, antigravity_cli.rs), and
@@ -61,6 +66,10 @@ const USER_INSTRUCTIONS: &str = "Tools the user added to Lumo themselves: script
 computer, each doing the job its description says. Use one when it fits what the user asks; the user approves \
 each call on Lumo's island.";
 
+const ISLAND_INSTRUCTIONS: &str = "Lumo's island tools: set_timer starts a timer the user sees on the island; \
+listen_pull_request has Lumo watch a pull request on GitHub and tell the user (and you, with something to do \
+then) once it happens, instead of you waiting for it; stop_listening ends that.";
+
 const PLAN_INSTRUCTIONS: &str = "Lumo's update_plan tool shows the user your plan on Lumo's Plan island: \
 call it with every step of a job before starting it, then again each time a step starts or is done.";
 
@@ -72,18 +81,20 @@ pub struct Kit {
     pub plan: bool,
     /// The user's own tools, asked of Lumo.
     pub user: bool,
+    /// The island's timer and GitHub tools.
+    pub island: bool,
 }
 
 impl Kit {
     /// The computer only, as `lumo-hook --mcp` always gave.
-    pub const COMPUTER: Kit = Kit { computer: true, mail: false, plan: false, user: false };
+    pub const COMPUTER: Kit = Kit { computer: true, mail: false, plan: false, user: false, island: false };
 
     /// From the command line: `--tools=computer,mail`; the computer without it.
     pub fn from_args(args: impl Iterator<Item = String>) -> Kit {
         match args.filter_map(|a| a.strip_prefix("--tools=").map(str::to_string)).last() {
             Some(list) => {
                 let has = |name: &str| list.split(',').any(|t| t.trim().eq_ignore_ascii_case(name));
-                Kit { computer: has("computer"), mail: has("mail"), plan: has("plan"), user: has("user") }
+                Kit { computer: has("computer"), mail: has("mail"), plan: has("plan"), user: has("user"), island: has("island") }
             }
             None => Kit::COMPUTER,
         }
@@ -101,12 +112,15 @@ impl Kit {
         if self.plan {
             all.push(plan_tool());
         }
+        if self.island {
+            all.extend(island_tools());
+        }
         all
     }
 
     fn instructions(self) -> String {
         let mut parts = Vec::new();
-        if self.computer || !(self.mail || self.plan || self.user) {
+        if self.computer || !(self.mail || self.plan || self.user || self.island) {
             parts.push(INSTRUCTIONS);
         }
         if self.mail {
@@ -117,6 +131,9 @@ impl Kit {
         }
         if self.user {
             parts.push(USER_INSTRUCTIONS);
+        }
+        if self.island {
+            parts.push(ISLAND_INSTRUCTIONS);
         }
         parts.join(" ")
     }
@@ -300,6 +317,55 @@ time a step is done (completed) and the next one starts (in_progress). Keep step
     )
 }
 
+/// The island's tools' names, as `island_tools()` lists them (island_tools.rs in the app).
+pub const ISLAND_NAMES: &[&str] = &["set_timer", "listen_pull_request", "stop_listening"];
+
+/// The island's timer and GitHub tools. Lumo turns each call into the line
+/// for Lumo it stands for, for the chat the call came from (`LUMO_CHAT_ID`,
+/// set by the app on the agent it starts).
+pub fn island_tools() -> Vec<Value> {
+    let pr = || {
+        json!({
+            "repo": { "type": "string", "description": "owner/repository on GitHub, e.g. octocat/hello." },
+            "number": { "type": "integer", "minimum": 1, "description": "The pull request's number." },
+        })
+    };
+    let mut watch = pr();
+    watch["event"] = json!({
+        "type": "string",
+        "enum": ["checks", "green", "approved", "ready", "merged", "closed"],
+        "description": "checks: its checks finished, passed or failed. green: they passed. approved. ready: checks \
+passed and it can be merged. merged. closed.",
+    });
+    watch["then"] = json!({
+        "type": "string",
+        "maxLength": 500,
+        "description": "What you will do then, e.g. merge it with gh pr merge --squash. Leave it out when the user \
+only wants to be told.",
+    });
+    vec![
+        tool(
+            "set_timer",
+            "Starts a timer on Lumo's island. Use it only when the user asks for a timer or to be reminded in some \
+time, then say in a few words that it is set.",
+            json!({
+                "seconds": { "type": "integer", "minimum": 1, "maximum": 86400, "description": "How long: 600 for 10 minutes." },
+                "label": { "type": "string", "maxLength": 80, "description": "What it is for, in a few words, in the user's language." },
+            }),
+            &["seconds"],
+        ),
+        tool(
+            "listen_pull_request",
+            "Lumo watches a pull request on GitHub and tells the user once the event happens; with something to do \
+then, it sends you a message in this chat starting with GitHub: and you do it then. Use it instead of waiting, \
+sleeping or polling yourself, then say in a few words that Lumo is listening and end your answer.",
+            watch,
+            &["repo", "number", "event"],
+        ),
+        tool("stop_listening", "Stops listening to a pull request on GitHub.", pr(), &["repo", "number"]),
+    ]
+}
+
 /// The tools that only look: they never get a card (reply.rs) and Claude Code
 /// may run them without asking (claude_code.rs passes them as allowed).
 pub const LOOKING: &[&str] = &["screenshot", "zoom", "cursor_position", "wait"];
@@ -327,7 +393,7 @@ pub fn lumo_tool(name: &str) -> Option<&'static str> {
         }
         let rest = lower[from..].trim_start_matches(sep);
         if rest.len() < lower.len() - from {
-            if let Some(n) = NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).find(|n| **n == rest) {
+            if let Some(n) = NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| **n == rest) {
                 return Some(n);
             }
         }
@@ -370,14 +436,15 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
     if !words.iter().any(|w| w.trim().eq_ignore_ascii_case(SERVER)) {
         return None;
     }
-    words.iter().find_map(|w| NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).find(|n| w.trim().eq_ignore_ascii_case(n)).copied())
+    words.iter().find_map(|w| NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| w.trim().eq_ignore_ascii_case(n)).copied())
 }
 
 /// Whether Lumo's tool `name` (as `lumo_tool` gives it) only reads: what
-/// looks at the screen, the email tools and the plan, which only shows. None
-/// gets a card.
+/// looks at the screen, the email tools, the plan, which only shows, and the
+/// island's timer and GitHub tools, which only start what the user asked for
+/// and act on nothing themselves. None gets a card.
 pub fn only_reads(name: &str) -> bool {
-    LOOKING.contains(&name) || MAIL_NAMES.contains(&name) || name == PLAN_NAME
+    LOOKING.contains(&name) || MAIL_NAMES.contains(&name) || name == PLAN_NAME || ISLAND_NAMES.contains(&name)
 }
 
 /// Runs the server until the agent closes stdin.
@@ -466,6 +533,10 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         let _ = lumo(&json!({ "lumo_plan": { "input": input } }));
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
+    if ISLAND_NAMES.contains(&name) {
+        let chat = std::env::var("LUMO_CHAT_ID").unwrap_or_default();
+        return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat } })));
+    }
     let key = if MAIL_NAMES.contains(&name) { "lumo_mail" } else { "lumo_computer" };
     answer(lumo(&json!({ key: { "tool": name, "input": input } })))
 }
@@ -521,6 +592,8 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
         "Lumo isn't running. Ask the user to open Lumo, with the Email pill on."
     } else if request.get("lumo_tool").is_some() || request.get("lumo_tools").is_some() {
         "Lumo isn't running. Ask the user to open Lumo: the tools they made live there."
+    } else if request.get("lumo_island").is_some() {
+        "Lumo isn't running: write the line for Lumo in your answer instead."
     } else {
         "Lumo isn't running, or its computer use is off. Ask the user to open Lumo and turn on Let Claude use the computer in Settings, under Chat."
     };
@@ -614,10 +687,10 @@ mod tests {
     fn the_email_tools_come_with_tools_mail_and_go_to_lumo_as_mail() {
         let args = |a: &[&str]| Kit::from_args(a.iter().map(|s| s.to_string()));
         assert_eq!(args(&["--mcp"]), Kit::COMPUTER, "as before");
-        assert_eq!(args(&["--mcp", "--tools=mail"]), Kit { computer: false, mail: true, plan: false, user: false });
-        assert_eq!(args(&["--mcp", "--tools=computer,mail"]), Kit { computer: true, mail: true, plan: false, user: false });
+        assert_eq!(args(&["--mcp", "--tools=mail"]), Kit { computer: false, mail: true, plan: false, user: false, island: false });
+        assert_eq!(args(&["--mcp", "--tools=computer,mail"]), Kit { computer: true, mail: true, plan: false, user: false, island: false });
 
-        let mail = Kit { computer: false, mail: true, plan: false, user: false };
+        let mail = Kit { computer: false, mail: true, plan: false, user: false, island: false };
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, mail, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert_eq!(names, MAIL_NAMES, "the email only");
@@ -644,7 +717,7 @@ mod tests {
     #[test]
     fn the_plan_tool_answers_on_its_own() {
         let kit = Kit::from_args(["--mcp", "--tools=plan,mail"].iter().map(|s| s.to_string()));
-        assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false });
+        assert_eq!(kit, Kit { computer: false, mail: true, plan: true, user: false, island: false });
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
         assert_eq!(names, ["mail_recent", "mail_search", "mail_read", "update_plan"]);
@@ -693,6 +766,29 @@ mod tests {
     }
 
     #[test]
+    fn the_island_tools_go_to_lumo_with_their_chat_and_need_no_card() {
+        let kit = Kit::from_args(["--mcp", "--tools=plan,island"].iter().map(|s| s.to_string()));
+        assert_eq!(kit, Kit { computer: false, mail: false, plan: true, user: false, island: true });
+        let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
+        let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
+        assert_eq!(names, ["update_plan", "set_timer", "listen_pull_request", "stop_listening"]);
+        let lumo = |req: &Value| -> Result<Value, String> {
+            assert_eq!(req["lumo_island"]["tool"], "set_timer");
+            assert_eq!(req["lumo_island"]["input"]["seconds"], 600);
+            assert!(req["lumo_island"]["chat"].is_string());
+            Ok(json!({ "text": "The timer starts." }))
+        };
+        let line = r#"{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"set_timer","arguments":{"seconds":600}}}"#;
+        let v: Value = serde_json::from_str(&handle_with(line, kit, &lumo).unwrap()).unwrap();
+        assert_eq!(v["result"]["content"], json!([{ "type": "text", "text": "The timer starts." }]));
+        assert_eq!(lumo_tool("mcp__lumo__listen_pull_request"), Some("listen_pull_request"));
+        assert!(only_reads("set_timer") && only_reads("stop_listening"));
+        assert!(!crate::reply::claude_card_tool("mcp__lumo__set_timer"));
+        let call = json!({ "ServerName": "lumo", "ToolName": "listen_pull_request" });
+        assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)));
+    }
+
+    #[test]
     fn notifications_get_no_answer_and_unknown_methods_an_error() {
         assert!(handle(r#"{"jsonrpc":"2.0","method":"notifications/initialized"}"#, &never).is_none());
         let v = ask(r#"{"jsonrpc":"2.0","id":7,"method":"resources/list"}"#, &never);
@@ -727,7 +823,7 @@ mod tests {
     #[test]
     fn the_users_tools_are_asked_of_lumo_and_their_calls_go_to_it() {
         let kit = Kit::from_args(["--mcp".to_string(), "--tools=user".to_string()].into_iter());
-        assert_eq!(kit, Kit { computer: false, mail: false, plan: false, user: true });
+        assert_eq!(kit, Kit { computer: false, mail: false, plan: false, user: true, island: false });
         let lumo = |req: &Value| -> Result<Value, String> {
             if req.get("lumo_tools").is_some() {
                 return Ok(json!({ "tools": [

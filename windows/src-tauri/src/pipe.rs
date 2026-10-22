@@ -153,7 +153,8 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
     };
     let Ok(mut payload) = serde_json::from_slice::<Value>(line) else { return };
     // A tool call of the chat's computer use, of Lumo's email tools, of its
-    // plan tool or of the user's own tools (lumo-hook --mcp): one answer line.
+    // plan tool, of the island's timer and GitHub tools or of the user's own
+    // tools (lumo-hook --mcp): one answer line.
     let answer = if let Some(request) = payload.get("lumo_computer") {
         Some(crate::computer::serve(&app, request).await)
     } else if let Some(request) = payload.get("lumo_mail") {
@@ -162,6 +163,8 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         Some(crate::tools::serve_call(&app, request).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
+    } else if let Some(request) = payload.get("lumo_island") {
+        Some(crate::island_tools::serve(request))
     } else {
         payload.get("lumo_plan").map(|request| crate::antigravity_cli::serve_plan(&app, request))
     };

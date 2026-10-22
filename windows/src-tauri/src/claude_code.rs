@@ -56,8 +56,8 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
-    crate::chat::timer_note!(),
-    crate::chat::listen_note!(),
+    crate::chat::timer_tool_note!(),
+    crate::chat::listen_tool_note!(),
     crate::chat::math_note!()
 );
 
@@ -71,13 +71,17 @@ When the user shares the folder open in File Explorer, its path and listing are 
     crate::computer::computer_note!(),
     "Every action that needs a permission is approved by the user in the island, so ask for it normally. Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
-    crate::chat::timer_note!(),
-    crate::chat::listen_note!(),
+    crate::chat::timer_tool_note!(),
+    crate::chat::listen_tool_note!(),
     crate::chat::math_note!()
 );
 
 /// Lumo's computer use tools that only look: Claude Code runs them without asking.
 const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo__cursor_position mcp__lumo__wait";
+
+/// The island's timer and GitHub tools (island_tools.rs): they only start what
+/// the user asked for, so Claude Code runs them without asking.
+const ISLAND_ALLOWED: &str = "mcp__lumo__set_timer mcp__lumo__listen_pull_request mcp__lumo__stop_listening";
 
 /// The MCP server of the user's own tools (the Tools tab, tools.rs): its
 /// tools are `mcp__lumo_tools__<id>`. Claude Code may call them without
@@ -94,16 +98,19 @@ const WORKSHOP_TRY: &str = " In the workshop you may try the script before you g
 /// (its tools are `mcp__lumo__…`), marked as the island's own run.
 #[cfg(test)]
 fn computer_config() -> Value {
-    mcp_config(true, false)
+    mcp_config(true, false, false)
 }
 
-/// Lumo's MCP servers for a chat turn: computer use, and the user's tools
-/// while one of them is on.
-fn mcp_config(computer: bool, tools: bool) -> Value {
+/// Lumo's MCP servers for a chat turn: computer use and the island's tools
+/// (`lumo`), and the user's tools while one of them is on.
+fn mcp_config(computer: bool, tools: bool, island: bool) -> Value {
     let mut servers = serde_json::Map::new();
-    if computer {
+    if computer || island {
         let mut server = crate::computer::server_entry();
         server["type"] = json!("stdio");
+        if island {
+            server["args"] = json!(["--mcp", if computer { "--tools=computer,island" } else { "--tools=island" }]);
+        }
         servers.insert("lumo".into(), server);
     }
     if tools {
@@ -120,25 +127,34 @@ fn mcp_config(computer: bool, tools: bool) -> Value {
 /// pointed at it.
 #[cfg(test)]
 fn with_computer(args: Vec<String>) -> Vec<String> {
-    with_mcp(args, true, false)
+    with_mcp(args, true, false, false)
 }
 
-/// `args`, plus Lumo's MCP servers: computer use (its looking tools allowed)
-/// and the user's tools. Left out when the file can't be written where Claude
-/// Code can be pointed at it.
-fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool) -> Vec<String> {
-    if !computer && !tools {
+/// `args`, plus Lumo's MCP servers: computer use (its looking tools allowed),
+/// the user's tools, and the island's timer and GitHub tools (allowed). Left
+/// out when the file can't be written where Claude Code can be pointed at it.
+fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool) -> Vec<String> {
+    if !computer && !tools && !island {
         return args;
     }
-    let name = if computer { "chat-computer.json" } else { "chat-tools.json" };
+    let name = match (computer, island) {
+        (true, false) => "chat-computer.json",
+        (true, true) => "chat-computer-island.json",
+        (false, true) if tools => "chat-tools-island.json",
+        (false, true) => "chat-island.json",
+        (false, false) => "chat-tools.json",
+    };
     let path = crate::platform::local_dir().join(name);
-    let text = mcp_config(computer, tools).to_string();
+    let text = mcp_config(computer, tools, island).to_string();
     let written = path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, text).is_ok();
     let path = path.to_string_lossy().to_string();
     if written && safe_dir(&path).is_some() {
         args.push("--mcp-config".into());
         args.push(path);
-        let allowed: Vec<&str> = [computer.then_some(COMPUTER_LOOKING), tools.then_some(TOOLS_SERVER_ALLOWED)].into_iter().flatten().collect();
+        let allowed: Vec<&str> = [computer.then_some(COMPUTER_LOOKING), island.then_some(ISLAND_ALLOWED), tools.then_some(TOOLS_SERVER_ALLOWED)]
+            .into_iter()
+            .flatten()
+            .collect();
         if !allowed.is_empty() {
             args.push("--allowedTools".into());
             args.push(allowed.join(" "));
@@ -768,6 +784,7 @@ fn run(
     args: Vec<String>,
     input: String,
     dir: PathBuf,
+    chat_id: &str,
     stop: Arc<Stop>,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
@@ -779,6 +796,10 @@ fn run(
     cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
+    // Which chat the island's tools are called from (lumo-hook's MCP server, island_tools.rs).
+    if !chat_id.is_empty() {
+        cmd.env("LUMO_CHAT_ID", chat_id);
+    }
     // Claude Code only gives its newer models its to-do tools (TodoWrite, or
     // TaskCreate and TaskUpdate) when asked: without them the chat's plan is
     // only text, and the Plan island stays shut.
@@ -918,7 +939,7 @@ pub async fn send(
     let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)), mode);
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    args = with_mcp(args, computer, tools);
+    args = with_mcp(args, computer, tools, true);
     if computer {
         crate::computer::begin_turn();
     }
@@ -927,12 +948,14 @@ pub async fn send(
     let app3 = app.clone();
     let events = chat.events();
     let stop = chat.stopper();
+    let chat_id = chat.id().to_string();
     let state = tauri::async_runtime::spawn_blocking(move || {
         run(
             exe,
             args,
             input,
             work_dir(),
+            &chat_id,
             stop,
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
@@ -1029,8 +1052,8 @@ pub(crate) fn help(
     let prompt = if computer { HELPER_COMPUTER_PROMPT } else { HELPER_PROMPT };
     let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
     // The user's own tools too, while one is on.
-    let args = with_mcp(args, computer, crate::tools::any_enabled());
-    let state = run(exe, args, task.to_string(), dir, stop, |_| {}, on_activity, |_, _| {})?;
+    let args = with_mcp(args, computer, crate::tools::any_enabled(), false);
+    let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_, _| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -1060,7 +1083,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         args.push(m.into());
     }
     let dir = platform::local_dir().join("tool-review");
-    let state = run(exe, args, prompt.to_string(), dir, Arc::new(Stop::default()), |_| {}, |_| {}, |_, _| {})?;
+    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_, _| {})?;
     match state.result {
         Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
         Some(Ok(_)) => Ok(state.visible.trim().to_string()),
@@ -1099,24 +1122,40 @@ mod tests {
 
     #[test]
     fn the_users_tools_come_as_a_server_of_their_own_that_lumo_guards_itself() {
-        let config = mcp_config(false, true);
+        let config = mcp_config(false, true, false);
         let server = &config["mcpServers"][TOOLS_SERVER];
         assert_eq!(server["args"], json!(["--mcp", "--tools=user"]));
         assert!(config["mcpServers"].get("lumo").is_none());
-        let both = mcp_config(true, true);
+        let both = mcp_config(true, true, false);
         assert!(both["mcpServers"].get("lumo").is_some() && both["mcpServers"].get(TOOLS_SERVER).is_some());
-        let a = with_mcp(vec!["-p".into()], false, true);
+        let a = with_mcp(vec!["-p".into()], false, true, false);
         if a.iter().any(|s| s == "--mcp-config") {
             // Claude Code lets the calls through: Lumo's own card asks for each (tools.rs approve).
             assert_eq!(a[a.len() - 2], "--allowedTools");
             assert_eq!(a[a.len() - 1], TOOLS_SERVER_ALLOWED);
-            let b = with_mcp(vec!["-p".into()], true, true);
+            let b = with_mcp(vec!["-p".into()], true, true, false);
             assert_eq!(b[b.len() - 1], format!("{COMPUTER_LOOKING} {TOOLS_SERVER_ALLOWED}"));
         }
-        assert_eq!(with_mcp(vec!["-p".into()], false, false), ["-p"]);
+        assert_eq!(with_mcp(vec!["-p".into()], false, false, false), ["-p"]);
         let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
         assert!(!workshop.contains(['%', '"', '&', '|', '<', '>', '^', '`']), "plain words on the command line");
         assert!(workshop.contains("lumo-tool") && workshop.contains("lumo-file"));
+    }
+
+    #[test]
+    fn the_chat_always_gets_the_island_tools_and_may_run_them() {
+        let config = mcp_config(false, false, true);
+        assert_eq!(config["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=island"]));
+        assert_eq!(mcp_config(true, false, true)["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=computer,island"]));
+        let a = with_mcp(vec!["-p".into()], false, true, true);
+        if a.iter().any(|s| s == "--mcp-config") {
+            assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {TOOLS_SERVER_ALLOWED}"));
+        }
+        for tool in crate::island_tools::NAMES {
+            assert!(ISLAND_ALLOWED.split(' ').any(|t| t == format!("mcp__lumo__{tool}")), "{tool}");
+        }
+        assert!(APPEND_PROMPT.contains("set_timer") && APPEND_PROMPT.contains("listen_pull_request") && APPEND_PROMPT.contains("[[listen"));
+        assert!(COMPUTER_PROMPT.contains("set_timer"));
     }
 
     #[test]

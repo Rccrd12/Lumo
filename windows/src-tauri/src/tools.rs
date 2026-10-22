@@ -879,21 +879,25 @@ pub fn offered() -> Vec<ToolInfo> {
     list().into_iter().filter(|t| t.manifest.enabled && !t.missing && t.reviewed).collect()
 }
 
-/// The tools agents may use, for the chat's API providers: id, the words the
-/// model reads, and the JSON schema of the input.
-pub fn api_tools() -> Vec<(String, String, Value)> {
-    offered()
-        .iter()
-        .map(|t| {
-            let v = mcp_tool(&t.manifest);
-            (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
-        })
-        .collect()
+/// The tools agents may use, for the chat's API providers: the island's own
+/// (island_tools.rs, its GitHub ones with `listen`), then the user's that are
+/// on: id, the words the model reads, and the JSON schema of the input.
+pub fn api_tools(listen: bool) -> Vec<(String, String, Value)> {
+    let mut all = crate::island_tools::api_tools(listen);
+    // Never one of the user's with the name of the island's own.
+    all.extend(offered().iter().filter(|t| !crate::island_tools::NAMES.contains(&t.manifest.id.as_str())).map(|t| {
+        let v = mcp_tool(&t.manifest);
+        (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
+    }));
+    all
 }
 
-/// A call from the chat's API providers (claude.rs, openai_compat.rs): what
-/// goes back to the model, and whether it failed.
-pub async fn call_for_chat(app: &AppHandle, id: &str, input: Value) -> (String, bool) {
+/// A call from the chat `chat_id`'s API providers (claude.rs,
+/// openai_compat.rs): what goes back to the model, and whether it failed.
+pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value) -> (String, bool) {
+    if crate::island_tools::NAMES.contains(&id) {
+        return crate::island_tools::call(chat_id, id, &input);
+    }
     let answer = serve_call(app, &json!({ "tool": id, "input": input })).await;
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
