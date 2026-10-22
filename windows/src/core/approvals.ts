@@ -94,15 +94,23 @@ export function isSimpleRequest(tool: string, input: Record<string, unknown>): b
   return false;
 }
 
+/** A command that asks to run outside agy's sandbox (`bypassSandbox`, or any other sandbox field set). */
+function leavesSandbox(input: Record<string, unknown>): boolean {
+  return Object.entries(input).some(([key, value]) => /sandbox/i.test(key) && value !== false && value != null && value !== "");
+}
+
 /**
  * The chat's Antigravity CLI run in Auto (Settings → chat → the shield): a
- * request this lets through runs without a card. agy has no judgement of its
- * own that Lumo can use headless (antigravity_cli.rs), so this is Lumo's: a
- * command that only looks, as above, and never one agy itself marked as not
- * safe to run alone. Everything else, and anything uncertain, still asks.
+ * request this lets through runs without a card. Auto is agy's own "Proceed in
+ * Sandbox" (antigravity_cli.rs): when the run is in agy's terminal sandbox
+ * (`sandboxed`), a shell command that stays inside it runs; one that asks to
+ * leave it never does. A command that only looks, as above, runs either way,
+ * unless agy itself marked it as not safe to run alone. Everything else (MCP,
+ * the browser) and anything uncertain still asks.
  */
-export function autoAllows(tool: string, input: Record<string, unknown>): boolean {
+export function autoAllows(tool: string, input: Record<string, unknown>, sandboxed = false): boolean {
   if (input.SafeToAutoRun === false || input.safeToAutoRun === false) return false;
+  if (sandboxed && SHELL_TOOLS.has(tool.toLowerCase()) && !leavesSandbox(input)) return true;
   return isSimpleRequest(tool, input);
 }
 

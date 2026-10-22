@@ -489,11 +489,13 @@ permission requests do, as a card over the chat.
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
-(it reads and plans, and changes nothing). Headless Antigravity CLI has no
-judgement of its own that Lumo can use, so with it **Auto** is Lumo's: a command
-that only looks (`git status`, `ls`, `cat`, `rg`…, with no redirection or
-substitution) runs without a card, unless agy itself marked it as not safe to
-run alone, and everything else is the usual card. It
+(it reads and plans, and changes nothing). With Antigravity CLI, **Auto** is
+Antigravity's own **Proceed in Sandbox** (its Default preset): agy runs with
+`--sandbox`, a shell command that stays in its terminal sandbox runs without a
+card, and one that asks to leave the sandbox, an MCP tool or the browser is the
+usual card. A command that only looks (`git status`, `ls`, `cat`, `rg`…, with
+no redirection or substitution) never needs one, unless agy itself marked it as
+not safe to run alone. It
 lights up while it may do more than ask. There is no mode that lets every
 action through: Lumo never passes `bypassPermissions` or
 `--dangerously-skip-permissions`.
@@ -516,7 +518,8 @@ models come from `agy models` (**Default** leaves agy's own choice), in the
 picker and in **Settings… → Chat → Antigravity CLI**. There is no effort to
 pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
 refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
-`--mode plan`; **Auto** leaves agy to its own judgement, as it does without a mode. Headless agy never prompts: it reads and writes workspace files
+`--mode plan`; **Auto** goes as `--sandbox`, agy's terminal sandbox (in preview
+on Windows). Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
 card over the chat (reinstall the hooks if they predate this version, or the

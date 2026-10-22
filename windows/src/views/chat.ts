@@ -144,10 +144,10 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
 };
 
 /**
- * Auto with Antigravity CLI: headless agy has no judgement of its own to lean
- * on, so Lumo's stands in for it (core/approvals.ts autoAllows).
+ * Auto with Antigravity CLI: agy's own Proceed in Sandbox (antigravity_cli.rs,
+ * core/approvals.ts autoAllows).
  */
-const AGY_AUTO_NOTE = N_("Commands that only look run without asking; Lumo asks for the rest.");
+const AGY_AUTO_NOTE = N_("Commands run in Antigravity's sandbox without asking; Lumo asks for the rest.");
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {

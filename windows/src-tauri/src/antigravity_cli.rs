@@ -27,6 +27,12 @@
 // is an Allow / Deny card in the island (lumo-hook, `LUMO_ISLAND_RUN`), and
 // without a click it is denied. Without the hooks the flag is never passed,
 // and Plan only keeps agy's own confirmation too.
+//
+// Auto is agy's own "Proceed in Sandbox" (its Default preset): the run gets
+// `--sandbox`, and a shell command that runs inside agy's terminal sandbox
+// needs no card (core/approvals.ts autoAllows, told by `LUMO_AGY_SANDBOX`).
+// One that asks to leave the sandbox is a card all the same: the skip flag
+// would otherwise approve that too (google-antigravity/antigravity-cli#36).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -49,6 +55,8 @@ pub const PROVIDER: &str = "antigravity-cli";
 const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// agy's own limit on a print run (5 minutes by default), set to the same.
 const PRINT_TIMEOUT: &str = "15m";
+/// agy's terminal sandbox, for this run only (Auto).
+const SANDBOX_FLAG: &str = "--sandbox";
 /// `agy models` answers at once, or not at all.
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 /// The island is told about new text at most this often.
@@ -162,11 +170,16 @@ fn args_with_cards(
         a.push("--model".into());
         a.push(m.to_string());
     }
-    // Auto is agy's own judgement, which is what it does without `--mode`:
-    // what it may not do alone is soft-denied, or a card with Lumo's hooks.
-    if crate::claude_code::permission_mode(mode) == "plan" {
+    // Auto runs agy's commands in its terminal sandbox, where they need no
+    // card; what may not run there alone is soft-denied, or a card with
+    // Lumo's hooks. Ask every time runs them as they are, each one a card.
+    let mode = crate::claude_code::permission_mode(mode);
+    if mode == "plan" {
         a.extend(["--mode".to_string(), "plan".to_string()]);
-    } else if cards {
+    } else if mode == "auto" {
+        a.push(SANDBOX_FLAG.into());
+    }
+    if mode != "plan" && cards {
         // Lumo's cards take the place of agy's own confirmation, which in
         // headless mode can only say no.
         a.push("--dangerously-skip-permissions".into());
@@ -601,6 +614,10 @@ fn run(
     cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
+    // And that its commands run in agy's sandbox: lumo-hook tells the island.
+    if args.iter().any(|a| a == SANDBOX_FLAG) {
+        cmd.env("LUMO_AGY_SANDBOX", "1");
+    }
     platform::no_console(&mut cmd);
     let mut child = cmd
         .spawn()
@@ -1027,10 +1044,23 @@ mod tests {
             let a = args("default", m, None, "/w", "/inbox", &[]);
             a.iter().position(|s| s == "--mode").map(|i| a[i + 1].clone())
         };
-        assert_eq!(mode("auto"), None, "agy's own judgement");
+        assert_eq!(mode("auto"), None, "its sandbox, not a mode");
         assert_eq!(mode("acceptEdits"), None);
         assert_eq!(mode("plan").as_deref(), Some("plan"));
         assert_eq!(mode("default"), None);
+    }
+
+    #[test]
+    fn auto_runs_agys_commands_in_its_sandbox() {
+        let sandboxed = |mode: &str, cards: bool| {
+            args_with_cards("default", mode, None, "/w", "/inbox", &[], cards).contains(&"--sandbox".to_string())
+        };
+        assert!(sandboxed("auto", true));
+        assert!(sandboxed("auto", false), "agy's own Proceed in Sandbox, hooks or not");
+        assert!(sandboxed("acceptEdits", true));
+        assert!(!sandboxed("default", true), "Ask every time: each command is a card");
+        assert!(!sandboxed("plan", true));
+        assert!(!sandboxed("", true));
     }
 
     #[test]
