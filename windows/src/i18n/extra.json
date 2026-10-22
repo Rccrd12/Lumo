@@ -10167,18 +10167,6 @@
    "id": "Tampilkan seberapa penuh konteksnya",
    "it": "Mostra quanto è pieno il contesto"
   },
-  "Only with Claude Code": {
-   "zh-Hans": "仅限 Claude Code",
-   "hi": "केवल Claude Code के साथ",
-   "es": "Solo con Claude Code",
-   "ar": "مع Claude Code فقط",
-   "fr": "Uniquement avec Claude Code",
-   "bn": "শুধু Claude Code-এর সাথে",
-   "pt-BR": "Somente com o Claude Code",
-   "ru": "Только с Claude Code",
-   "id": "Hanya dengan Claude Code",
-   "it": "Solo con Claude Code"
-  },
   "Send a message first: Claude Code hasn't seen this conversation yet.": {
    "zh-Hans": "请先发送一条消息：Claude Code 还没有看到这段对话。",
    "hi": "पहले एक संदेश भेजें: Claude Code ने अभी तक यह बातचीत नहीं देखी है।",
@@ -10214,6 +10202,54 @@
    "ru": "Claude Code выполнил /{command}.",
    "id": "Claude Code menjalankan /{command}.",
    "it": "Claude Code ha eseguito /{command}."
+  },
+  "Command in the chat": {
+   "zh-Hans": "聊天中的命令",
+   "hi": "चैट में कमांड",
+   "es": "Comando en el chat",
+   "ar": "الأمر في الدردشة",
+   "fr": "Commande dans le chat",
+   "bn": "চ্যাটে কমান্ড",
+   "pt-BR": "Comando no chat",
+   "ru": "Команда в чате",
+   "id": "Perintah di chat",
+   "it": "Comando in chat"
+  },
+  "A command is made of letters, digits and dashes.": {
+   "zh-Hans": "命令由字母、数字和连字符组成。",
+   "hi": "कमांड अक्षरों, अंकों और डैश से बनता है।",
+   "es": "Un comando se compone de letras, números y guiones.",
+   "ar": "يتكوّن الأمر من حروف وأرقام وشرطات.",
+   "fr": "Une commande se compose de lettres, de chiffres et de tirets.",
+   "bn": "একটি কমান্ড অক্ষর, সংখ্যা ও ড্যাশ দিয়ে তৈরি।",
+   "pt-BR": "Um comando é feito de letras, números e hífens.",
+   "ru": "Команда состоит из букв, цифр и дефисов.",
+   "id": "Perintah terdiri dari huruf, angka, dan tanda hubung.",
+   "it": "Un comando è fatto di lettere, numeri e trattini."
+  },
+  "/{command} is one of Lumo's own commands.": {
+   "zh-Hans": "/{command} 是 Lumo 自己的命令。",
+   "hi": "/{command} Lumo का अपना कमांड है।",
+   "es": "/{command} es uno de los comandos propios de Lumo.",
+   "ar": "/{command} أحد أوامر Lumo الخاصة.",
+   "fr": "/{command} est une commande propre à Lumo.",
+   "bn": "/{command} Lumo-র নিজস্ব কমান্ড।",
+   "pt-BR": "/{command} é um dos comandos do próprio Lumo.",
+   "ru": "/{command} — собственная команда Lumo.",
+   "id": "/{command} adalah salah satu perintah milik Lumo.",
+   "it": "/{command} è uno dei comandi di Lumo."
+  },
+  "/{command} already calls {name}.": {
+   "zh-Hans": "/{command} 已用于调用 {name}。",
+   "hi": "/{command} पहले से {name} को चलाता है।",
+   "es": "/{command} ya llama a {name}.",
+   "ar": "/{command} يستدعي {name} بالفعل.",
+   "fr": "/{command} appelle déjà {name}.",
+   "bn": "/{command} ইতিমধ্যে {name} চালায়।",
+   "pt-BR": "/{command} já chama {name}.",
+   "ru": "/{command} уже вызывает {name}.",
+   "id": "/{command} sudah memanggil {name}.",
+   "it": "/{command} richiama già {name}."
   },
   "Codex isn't installed. Install it with {command}, sign in once with `codex` in a terminal, then try again.": {
    "zh-Hans": "未安装 Codex。请用 {command} 安装，在终端中运行一次 `codex` 登录，然后重试。",

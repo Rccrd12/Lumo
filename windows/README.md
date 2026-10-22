@@ -471,8 +471,13 @@ Lumo's own work with every provider and never reach the AI: `/new`,
 Antigravity CLI) and `/timer 10m pasta`. With **Claude Code**, its own
 commands are listed too and go to it exactly as typed: `/compact`, `/context`
 and whatever else its last answer said it has (your own commands and skills
-included). Antigravity CLI runs with its commands turned off, and the API and
-local providers have none, so there `/compact` shows greyed.
+included). Antigravity CLI runs with its commands turned off and the API and
+local providers have none: the menu lists only what works with the provider
+picked. Your tools have a command too (`/pdfcraft`): the workshop's AI gives
+one to each tool it makes, and the tool's detail in the Tools tab changes or
+clears it. `/pdfcraft merge the PDF in the open folder with the one in X`
+asks the AI to use that tool for the rest of the message, with every provider
+that can use your tools (Claude, OpenAI, Google AI, OpenRouter, Claude Code).
 
 To send the Claude chat through an Anthropic-compatible gateway, set
 `LUMO_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;

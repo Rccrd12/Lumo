@@ -47,7 +47,9 @@
 //
 // "/" as the field's first character opens the commands' menu above it
 // (core/slash.ts): Lumo's own (a new chat, the past chats, the model, a
-// timer…) and, with Claude Code, its own commands, sent as typed. It filters
+// timer…), the user's tools that have a command (`/pdfcraft merge them` asks
+// the AI to use that tool for what follows) and, with Claude Code, its own
+// commands, sent as typed; only what the provider can use. It filters
 // as the name is typed; arrows move, Enter runs, Tab writes the name for
 // what follows. A press anywhere, the field included, closes it; a press on
 // the field brings it back only once the field had lost the focus.
@@ -93,7 +95,9 @@ import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration
 import { LISTEN_COLOR, LISTEN_STRINGS, listenMessage, listeningLine, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
-import { lumoCommand, slashCommands, slashMatches, slashQuery, type SlashAction, type SlashCommand } from "../core/slash";
+import {
+  lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
+} from "../core/slash";
 
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
@@ -2246,6 +2250,10 @@ export function buildPrompt(
       Sound.play("blip");
       return;
     }
+    // "/pdfcraft merge them": the AI is asked to use that tool for what follows;
+    // the chat shows what was typed.
+    const called = auto ? null : toolCommand(query, State.settings.chatProvider, State.tools);
+    const asked = called ? toolAsk(called.tool, called.rest) : query;
     // "/new", "/model"…: Lumo's own, run here like a pick in the menu.
     const own = auto || editing != null ? null : lumoCommand(query, State.settings.chatProvider);
     if (own) {
@@ -2358,7 +2366,7 @@ export function buildPrompt(
 
     let outcome: "finished" | "error" | null = null;
     try {
-      const reply = await Bridge.chatSend(run.chatId, query, context, screenContext);
+      const reply = await Bridge.chatSend(run.chatId, asked, context, screenContext);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
@@ -2517,14 +2525,14 @@ export function buildPrompt(
   /** Shows the menu for what is typed, if it starts with "/" and something matches; else closes it. */
   function showSlash() {
     const query = slashQuery(input.value);
-    const items = query == null ? [] : slashMatches(slashCommands(State.settings.chatProvider, cliCommands), query);
+    const items = query == null ? [] : slashMatches(slashCommands(State.settings.chatProvider, cliCommands, State.tools), query);
     if (items.length === 0) {
       closeSlash();
       return;
     }
     slashItems = items;
-    // The best match is the one Enter runs: the first that can (none, when only greyed ones match).
-    slashAt = items.findIndex((c) => !c.off);
+    // The best match is the one Enter runs.
+    slashAt = 0;
     drawSlash();
     if (!slashOpen()) {
       // Over the log, its bottom just above the field.
@@ -2547,14 +2555,13 @@ export function buildPrompt(
   function drawSlash() {
     clear(slashList);
     slashItems.forEach((c, i) => {
-      const note = c.off ? t(c.off) : c.note ? t(c.note) : c.kind === "cli" ? "Claude Code" : "";
+      const note = c.text ?? (c.note ? t(c.note) : c.kind === "cli" ? "Claude Code" : "");
       const row = h(
         "button",
         {
-          class: `slash-row${i === slashAt ? " on" : ""}${c.off ? " off" : ""}`,
+          class: `slash-row${i === slashAt ? " on" : ""}`,
           role: "option",
           "aria-selected": String(i === slashAt),
-          "aria-disabled": String(!!c.off),
         },
         h("span", { class: "slash-icon" }, slashIcon(c.icon)),
         h("span", { class: "slash-name", text: c.name }),
@@ -2563,7 +2570,7 @@ export function buildPrompt(
       // The field keeps the focus: the press is the menu's, not a press elsewhere.
       row.addEventListener("mousedown", (e) => e.preventDefault());
       row.addEventListener("mousemove", () => {
-        if (slashAt === i || c.off) return;
+        if (slashAt === i) return;
         slashAt = i;
         drawSlash();
       });
@@ -2578,7 +2585,7 @@ export function buildPrompt(
    * field, followed by a space, for what goes with it.
    */
   function pickSlash(c: SlashCommand | undefined, complete: boolean) {
-    if (!c || c.off) return;
+    if (!c) return;
     closeSlash();
     input.focus();
     if (complete || c.args) {
@@ -2586,7 +2593,7 @@ export function buildPrompt(
       input.setSelectionRange(input.value.length, input.value.length);
       return;
     }
-    if (c.kind === "cli") {
+    if (c.kind !== "lumo") {
       setInput(`/${c.name}`);
       void submit();
       return;
@@ -2634,13 +2641,7 @@ export function buildPrompt(
     if (!slashOpen() || ke.isComposing) return false;
     const n = slashItems.length;
     const step = (d: number) => {
-      for (let k = 1; k <= n; k++) {
-        const i = (((Math.max(slashAt, d > 0 ? -1 : 0) + d * k) % n) + n) % n;
-        if (!slashItems[i].off) {
-          slashAt = i;
-          break;
-        }
-      }
+      slashAt = (((slashAt + d) % n) + n) % n;
       drawSlash();
     };
     switch (ke.key) {
@@ -2651,13 +2652,12 @@ export function buildPrompt(
         step(-1);
         return true;
       case "Enter":
-        // Nothing that can run is highlighted: Enter sends what is typed.
-        if (ke.shiftKey || slashAt < 0) return false;
+        if (ke.shiftKey) return false;
         pickSlash(slashItems[slashAt], false);
         return true;
       case "Tab":
         pickSlash(slashItems[slashAt], true);
-        return slashAt >= 0;
+        return true;
       case "Escape":
         closeSlash();
         return true;

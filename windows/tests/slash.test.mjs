@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { CLAUDE_CODE_DEFAULT, lumoCommand, slashCommands, slashMatches, slashQuery } from "../src/core/slash.ts";
+import { CLAUDE_CODE_DEFAULT, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand } from "../src/core/slash.ts";
 
 const names = (list) => list.map((c) => c.name);
 
@@ -25,13 +25,50 @@ test("Lumo's commands are there with every provider, the shield only with the CL
   }
 });
 
-test("without Claude Code, /compact shows greyed and says why", () => {
+test("only what the provider can use is listed: Claude Code's own only with Claude Code", () => {
   for (const provider of ["anthropic", "ollama", "antigravity-cli"]) {
-    const compact = slashCommands(provider, ["compact", "review"]).filter((c) => c.name === "compact");
-    assert.equal(compact.length, 1);
-    assert.ok(compact[0].off, provider);
-    assert.ok(!names(slashCommands(provider, ["review"])).includes("review"), "Claude Code's own stay Claude Code's");
+    const list = names(slashCommands(provider, ["compact", "review"]));
+    assert.ok(!list.includes("compact"), provider);
+    assert.ok(!list.includes("review"), provider);
   }
+});
+
+const pdf = { id: "pdfcraft_mcp", name: "pdfcraft_mcp", command: "pdfcraft", enabled: true, reviewed: true, params: [{ name: "path" }] };
+
+test("a tool's command is listed with the providers that can use the user's tools", () => {
+  for (const provider of ["anthropic", "openai", "google", "openrouter", "claude-code"]) {
+    const c = slashCommands(provider, null, [pdf]).find((c) => c.name === "pdfcraft");
+    assert.ok(c, provider);
+    assert.equal(c.kind, "tool");
+    assert.equal(c.text, "pdfcraft_mcp");
+    assert.ok(c.args, "a tool with parameters waits for what to do");
+  }
+  for (const provider of ["ollama", "lmstudio", "custom", "antigravity-cli"]) {
+    assert.ok(!names(slashCommands(provider, null, [pdf])).includes("pdfcraft"), provider);
+  }
+});
+
+test("a tool that is off, unreviewed, missing or without a command has none in the menu", () => {
+  const listed = (tool) => names(slashCommands("anthropic", null, [tool])).includes("pdfcraft");
+  assert.ok(listed(pdf));
+  assert.ok(!listed({ ...pdf, enabled: false }));
+  assert.ok(!listed({ ...pdf, reviewed: false }));
+  assert.ok(!listed({ ...pdf, missing: true }));
+  assert.ok(!names(slashCommands("anthropic", null, [{ ...pdf, command: "" }])).some((n) => n === ""));
+  // Lumo's own names are never a tool's; a tool's beats Claude Code's.
+  assert.equal(slashCommands("anthropic", null, [{ ...pdf, command: "new" }]).filter((c) => c.name === "new").length, 1);
+  const cc = slashCommands("claude-code", ["review"], [{ ...pdf, command: "review" }]).filter((c) => c.name === "review");
+  assert.deepEqual(cc.map((c) => c.kind), ["tool"]);
+});
+
+test("/pdfcraft and what follows asks the AI to use that tool for it", () => {
+  const called = toolCommand("/pdfcraft merge the PDF in the open folder with the one in X", "anthropic", [pdf]);
+  assert.deepEqual(called, { tool: { id: "pdfcraft_mcp", name: "pdfcraft_mcp" }, rest: "merge the PDF in the open folder with the one in X" });
+  const ask = toolAsk(called.tool, called.rest);
+  assert.match(ask, /^Use my Lumo tool "pdfcraft_mcp" \(tool id: pdfcraft_mcp\) for this\.\n\nmerge the PDF/);
+  assert.equal(toolAsk(called.tool, ""), 'Use my Lumo tool "pdfcraft_mcp" (tool id: pdfcraft_mcp) for this.');
+  assert.equal(toolCommand("/pdfcraft x", "ollama", [pdf]), null, "a provider without the tools gets the text as typed");
+  assert.equal(toolCommand("use /pdfcraft", "anthropic", [pdf]), null);
 });
 
 test("Claude Code's commands are the ones its last turn listed, else the usual few", () => {
@@ -40,7 +77,6 @@ test("Claude Code's commands are the ones its last turn listed, else the usual f
   assert.deepEqual(names(cli([])), CLAUDE_CODE_DEFAULT);
   // /clear is Lumo's /new; a name Lumo has is Lumo's; odd names and repeats are dropped.
   assert.deepEqual(names(cli(["compact", "clear", "model", "review", "review", "my-plugin:go", "../x", "a b"])), ["compact", "review", "my-plugin:go"]);
-  assert.ok(cli(["compact"]).every((c) => !c.off));
 });
 
 test("typing filters: names starting with it first, then those containing it", () => {
