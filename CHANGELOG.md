@@ -1,5 +1,16 @@
 # Changelog
 
+## Windows 0.13.0 — October 22, 2026
+
+- **Commands in the chat**: type `/` as the first character in the chat box and a menu of commands opens above it, filtered as you type (arrows move, Enter runs, Tab writes the name, Escape closes it). Lumo's own work with every provider: `/new`, `/history`, `/model`, `/attach`, `/screen`, `/permissions` and `/timer 10m pasta`. With Claude Code, its own commands are listed too (`/compact`, `/context`, your commands and skills). The menu lists only what works with the provider picked
+- **Your tools as commands**: the workshop's AI gives each tool it makes a command (`/pdfcraft`), which the tool's detail in the Tools tab changes or clears. `/pdfcraft merge the PDF in the open folder with the one in X` asks the AI to use that tool for the rest of the message
+- **Chat with your ChatGPT account (Codex)**: pick Codex above the chat box and the island talks to the Codex CLI you are signed in to, no API key in Lumo. It shows what it is doing, follows its plan on the Plan island, stops on Stop and keeps the conversation until New chat. The shield works with Codex too, and what Codex would ask you comes up as its Deny / Allow card. Your Codex configuration is never touched
+- **Claude Code's cards only when needed**: in the island chat, an action comes up as a Deny / Allow card exactly when Claude Code would ask for it. What your own Claude Code rules, the mode or Allow for this session already allow goes through without one, even before the hooks are installed
+- **Local models' memory**: under a connected Ollama or LM Studio, Settings shows the model held in memory now, **Free memory** unloads it, and **Download a model** downloads one there with a progress bar
+- **Chat files**: beside the attachments' title, the files of the chat you are in, kept with it: what you attached, and what Claude Code or Antigravity CLI read, edited or created while answering. A click opens one, a right click offers Open, Open file location and Copy path
+- **Update now without a window**: the update installs silently and Lumo opens again by itself a few seconds later, with a progress bar in Settings while it downloads
+- **Fixed**: a development build of Lumo no longer takes over the start with Windows entry, so the installed Lumo starts again at login instead of an error page
+
 ## Windows 0.12.0 — October 22, 2026
 
 > After updating, open Settings → Claude Code and click **Reinstall hooks…** once: Claude Code then waits for Lumo only to ask for a permission (see below). Hooks installed before keep working as they did.

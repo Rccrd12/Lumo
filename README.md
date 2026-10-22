@@ -6,7 +6,7 @@
 
 **A tiny friend that lives at the top of your screen on Windows and keeps an eye on your AI coding agent sessions.**
 
-Approve permissions, watch your agents work, drop a file, chat with Claude, keep an eye on your timers, music, calendar and email — all without leaving what you're doing.
+Approve permissions, watch your agents work, drop a file, chat with Claude, Codex or Gemini, give your agents tools of your own, keep an eye on your timers, music, calendar and email — all without leaving what you're doing.
 
 [![Version](https://img.shields.io/github/v/release/Rccrd12/Lumo?filter=windows-v*&label=version&color=0A84FF)](https://github.com/Rccrd12/Lumo/releases)
 ![Windows 10/11](https://img.shields.io/badge/Windows-10%2F11-0078D4?logo=windows&logoColor=white)
@@ -27,10 +27,15 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 
 - 🤖 **Claude Code, Codex, Copilot CLI, Muse Code, Antigravity (IDE and CLI), Cursor, OpenCode, Amp, Hermes, Claude Desktop and other agents, live** — see every session in the island: what it reads, edits and runs, step by step. Tag a hook payload with `lumo_agent` to give any agent its own pill (see [`docs/AGENTS.md`](docs/AGENTS.md)). Finished? Lumo does a happy little jump.
 - See what Claude is editing, live: each file modification shows the file name and +N −M counts in the ticker, click it to read the full diff.
-- ✅ **Approve and answer from the island** — permission requests show up with **Allow / Deny** for Claude Code (from any terminal), Codex, Copilot CLI and Muse Code; `AskUserQuestion` prompts show the choices right in the island. Nothing is ever allowed without your click.
+- ✅ **Approve and answer from the island** — permission requests show up with **Allow / Deny** for Claude Code (from any terminal), Codex, Copilot CLI and Muse Code, plus **Allow for this session** to let the same command, file or URL through until that session ends; `AskUserQuestion` prompts show the choices right in the island. Nothing is ever allowed without your click.
 - 🧑‍💻 **Open terminal** — brings the window a session runs in to the front.
-- 💬 **Chat with Claude, Google AI (Gemini), OpenAI, OpenRouter, or a local model (Ollama, LM Studio, any OpenAI-compatible server)** — click the model name above the chat box to switch provider and model. Cloud providers use your own API key.
-- 🧠 **Chat with your Claude plan** — pick **Claude Code** above the chat box and the island talks to the Claude Code CLI you already use, no API key; every action it wants to take comes up as an Allow / Deny card.
+- 💬 **Chat with Claude, Google AI (Gemini), OpenAI, OpenRouter, or a local model (Ollama, LM Studio, any OpenAI-compatible server)** — click the model name above the chat box to switch provider and model. Cloud providers use your own API key. For Ollama and LM Studio, Settings shows the model in memory, frees it with one click and downloads new ones.
+- 🧠 **Chat with your Claude plan or your ChatGPT account** — pick **Claude Code** or **Codex** above the chat box and the island talks to the CLI you already use, no API key. An action comes up as an Allow / Deny card exactly when the CLI would ask for it, and **the shield** says how much it may do on its own (Ask every time, Auto, Plan only). Antigravity CLI works the same way.
+- 🛠️ **Your own tools** — the **Tools** tab lists small programs Lumo and its agents can use for you: a benchmark of your PC, a report from your app, anything you have a script for. **Add a tool** opens the **tool workshop**, a chat where Lumo writes the tool with you (or brings in a script you already have), shows its files and parameters, tries it on your PC and saves it. Claude Code, the island chat and the API providers get them, and a button adds them to Claude Code in the terminal.
+- 🛡️ **Lumo's supervisor** — every saved or changed tool is read by a second model, which says in plain words what it really does and whether it looks safe, needs reading first or is dangerous (a dangerous tool is turned off). What a tool declared it needs is enforced: no internet, no files outside its folder, no programs unless it said so. Each call shows its card first.
+- ⌨️ **Commands in the chat** — type `/` and a menu opens: `/new`, `/history`, `/model`, `/attach`, `/screen`, `/permissions`, `/timer`, Claude Code's own commands (`/compact`, `/context`, your skills) and **your tools**, each with its own command: `/pdfcraft merge these two PDFs` tells the AI to use that tool. Only what works with the chosen provider is listed.
+- 📂 **Chat files** — each chat keeps the files that went with it: what you attached and what Claude Code or Antigravity CLI read, edited or created, to open again with a click.
+- 🗺️ **The Plan island** — when an agent (in a terminal or in the island chat) works through a plan, a panel beside the island follows it step by step, with a progress ring; finished plans are kept to look back at.
 - 🎙️ **Talk with Gemini Live** — the microphone in the chat box or `Ctrl+Alt+L`: a spoken call with Gemini 3.8 Live (or Extended Thinking) that looks at your screen when it needs to, reads your files and PDFs, opens files and apps, and asks Claude Code or Antigravity CLI for anything else. Uses your Google AI key.
 - ⏱️ **Live activities** — the closed island says what's going on: what the AI is doing, your timers, the song playing, the next meeting, a new email; several side by side, centred, with their controls right there. Open the island and a second panel beside it holds **Timer**, **Music**, **Calendar** and **Email**; fold it with **–**, drag it off the island to keep it anywhere (Windows), resize it. Any model in the chat or Gemini Live can set a timer.
 - ✉️ **Email** — the Email pill reads your inbox over IMAP (Gmail, Outlook, iCloud, any server, with an app password), read only: a new email peeks out of the closed island within seconds, with **Summarize** and **Draft a reply**. Nothing is ever sent, moved or marked as read.
@@ -48,7 +53,23 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the top edge of the screen.
 - 📅 **Weekly recap** — every Monday Lumo sums up the past week: time coding, sessions, files, lines changed, commands, permissions, top agent and project. Share it as a 1080 × 1920 image with Lumo — project names optional. All local.
 - 🌍 **11 languages** — English, 中文, हिन्दी, Español, العربية, Français, বাংলা, Português, Русский, Bahasa Indonesia, Italiano. Pick one in Settings → General → Language.
+- 🔄 **Updates inside the app** — Lumo says when a newer version is out; **Update now** in Settings downloads it, installs it without any window and opens the new Lumo by itself. The changelog of every version is right there.
 - 🔒 **Private by design** — no telemetry, no account. Keys live in Windows Credential Manager. The app only talks to the services you plug in.
+
+<p align="center">
+<img src="windows/screenshots/tools.png" width="640" alt="The Tools tab: your own tools, each with its switch, and Add tool">
+</p>
+
+<table>
+<tr>
+<td><img src="windows/screenshots/workshop.png" alt="The tool workshop: a chat where Lumo writes the tool, with its draft, parameters and files beside it, Try and Save tool"></td>
+<td><img src="windows/screenshots/supervisor.png" alt="Lumo's supervisor saying in plain words what a tool does, marked Looks safe"></td>
+</tr>
+<tr>
+<td align="center"><img src="windows/screenshots/commands.png" width="400" alt="The / menu in the chat: Lumo's commands and a tool of your own"></td>
+<td><img src="windows/screenshots/plan.png" alt="The Plan island following an agent's plan step by step, and a finished plan"></td>
+</tr>
+</table>
 
 <p align="center">
 <img src="windows/screenshots/activities.png" width="640" alt="The open island with the live activities beside it: a timer, the music playing, the next events and the newest emails">
@@ -77,6 +98,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.13.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.13.0) | Oct 22, 2026 | Commands in the chat with a "/" menu, your tools included; Codex as a chat provider with your ChatGPT account; Chat files; local models' memory; Update now installs without a window |
 | [0.12.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.12.0) | Oct 22, 2026 | Tools tab: your own tools for Lumo and its agents, made in the tool workshop and read by Lumo's supervisor; Allow for this session on permission cards; email reconnects within seconds |
 | [0.11.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.11.1) | Oct 20, 2026 | The island opens on the chat at startup again; deleting a chat drops its plans |
 | [0.11.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.11.0) | Oct 16, 2026 | The Plan island behaves as the live activities; Antigravity CLI moves its plan on step by step |
