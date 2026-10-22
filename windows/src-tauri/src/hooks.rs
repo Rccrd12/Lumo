@@ -37,6 +37,9 @@ pub const HOOK_EVENTS: &[(&str, u64)] = &[
     ("StopFailure", 10),
     ("SubagentStart", 10),
     ("SubagentStop", 10),
+    ("PreCompact", 10),
+    ("PostCompact", 10),
+    ("PermissionDenied", 10),
 ];
 
 /// Whether Claude Code runs Lumo's hook for `event` in the background

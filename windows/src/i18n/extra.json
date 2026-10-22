@@ -505,6 +505,42 @@
    "id": "Antigravity CLI tidak menjawab",
    "it": "Antigravity CLI non ha risposto"
   },
+  "Compacting the conversation…": {
+   "zh-Hans": "正在压缩对话…",
+   "hi": "बातचीत को संक्षिप्त किया जा रहा है…",
+   "es": "Compactando la conversación…",
+   "ar": "جارٍ ضغط المحادثة…",
+   "fr": "Compactage de la conversation…",
+   "bn": "কথোপকথন সংক্ষিপ্ত করা হচ্ছে…",
+   "pt-BR": "Compactando a conversa…",
+   "ru": "Сжатие разговора…",
+   "id": "Memadatkan percakapan…",
+   "it": "Compatto la conversazione…"
+  },
+  "Conversation compacted": {
+   "zh-Hans": "对话已压缩",
+   "hi": "बातचीत संक्षिप्त हो गई",
+   "es": "Conversación compactada",
+   "ar": "تم ضغط المحادثة",
+   "fr": "Conversation compactée",
+   "bn": "কথোপকথন সংক্ষিপ্ত হয়েছে",
+   "pt-BR": "Conversa compactada",
+   "ru": "Разговор сжат",
+   "id": "Percakapan dipadatkan",
+   "it": "Conversazione compattata"
+  },
+  "Denied by auto mode: {action}": {
+   "zh-Hans": "被自动模式拒绝：{action}",
+   "hi": "ऑटो मोड ने मना किया: {action}",
+   "es": "Denegado por el modo automático: {action}",
+   "ar": "رفضه الوضع التلقائي: {action}",
+   "fr": "Refusé par le mode auto : {action}",
+   "bn": "অটো মোড প্রত্যাখ্যান করেছে: {action}",
+   "pt-BR": "Negado pelo modo automático: {action}",
+   "ru": "Отклонено автоматическим режимом: {action}",
+   "id": "Ditolak oleh mode otomatis: {action}",
+   "it": "Negato dalla modalità automatica: {action}"
+  },
   "Show Antigravity CLI usage in the island": {
    "zh-Hans": "在岛中显示 Antigravity CLI 用量",
    "hi": "द्वीप में Antigravity CLI का उपयोग दिखाएँ",
