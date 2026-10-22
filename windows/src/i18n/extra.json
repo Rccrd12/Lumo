@@ -2653,6 +2653,18 @@
    "id": "Ini hanya menghapus entri Lumo. Hooks milik Anda tidak disentuh.",
    "it": "Questo rimuove solo le voci di Lumo. I tuoi hook restano intatti."
   },
+  "This version of Lumo installs the hooks a little differently: Claude Code no longer waits for Lumo, except to ask for a permission. Reinstall them to get it.": {
+   "zh-Hans": "此版本的 Lumo 安装 hook 的方式略有不同：除了请求权限外，Claude Code 不再等待 Lumo。重新安装即可获得。",
+   "hi": "Lumo का यह संस्करण hooks को थोड़ा अलग तरीके से इंस्टॉल करता है: अनुमति माँगने के अलावा Claude Code अब Lumo का इंतज़ार नहीं करता। इसे पाने के लिए उन्हें फिर से इंस्टॉल करें।",
+   "es": "Esta versión de Lumo instala los hooks de forma algo distinta: Claude Code ya no espera a Lumo, salvo para pedir un permiso. Vuelve a instalarlos para tenerlo.",
+   "ar": "يثبّت هذا الإصدار من Lumo الـ hooks بطريقة مختلفة قليلًا: لم يعد Claude Code ينتظر Lumo إلا لطلب إذن. أعد تثبيتها للحصول على ذلك.",
+   "fr": "Cette version de Lumo installe les hooks un peu différemment : Claude Code n'attend plus Lumo, sauf pour demander une autorisation. Réinstallez-les pour en profiter.",
+   "bn": "Lumo-র এই সংস্করণ hooks একটু অন্যভাবে ইনস্টল করে: অনুমতি চাওয়া ছাড়া Claude Code আর Lumo-র জন্য অপেক্ষা করে না। এটি পেতে আবার ইনস্টল করুন।",
+   "pt-BR": "Esta versão do Lumo instala os hooks de um jeito um pouco diferente: o Claude Code não espera mais pelo Lumo, a não ser para pedir uma permissão. Reinstale-os para ter isso.",
+   "ru": "Эта версия Lumo устанавливает хуки немного иначе: Claude Code больше не ждёт Lumo, кроме как при запросе разрешения. Переустановите их, чтобы получить это.",
+   "id": "Versi Lumo ini memasang hook sedikit berbeda: Claude Code tidak lagi menunggu Lumo, kecuali untuk meminta izin. Pasang ulang untuk mendapatkannya.",
+   "it": "Questa versione di Lumo installa gli hook in modo un po' diverso: Claude Code non aspetta più Lumo, se non per chiedere un permesso. Reinstallali per averlo."
+  },
   "Thursday": {
    "zh-Hans": "星期四",
    "hi": "गुरुवार",

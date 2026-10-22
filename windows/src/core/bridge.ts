@@ -709,6 +709,8 @@ export interface DroppedFile {
 
 export interface HookStatus {
   installed: boolean;
+  /** Installed as this version writes them; false when an older Lumo did (Settings offers to reinstall). */
+  current: boolean;
   /** Lumo's status line relay (plan usage) is the status line in settings.json. */
   planRelayInstalled: boolean;
   settingsPath: string;
