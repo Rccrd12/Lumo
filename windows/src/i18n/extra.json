@@ -10130,6 +10130,126 @@
    "ru": "Выполняет любые команды и меняет любые файлы без вопросов.",
    "id": "Menjalankan semua perintah dan mengubah file apa pun tanpa bertanya.",
    "it": "Esegue ogni comando e modifica qualsiasi file senza chiedere."
+  },
+  "Chat files": {
+   "zh-Hans": "聊天文件",
+   "hi": "चैट की फ़ाइलें",
+   "es": "Archivos del chat",
+   "ar": "ملفات الدردشة",
+   "fr": "Fichiers du chat",
+   "bn": "চ্যাটের ফাইল",
+   "pt-BR": "Arquivos do chat",
+   "ru": "Файлы чата",
+   "id": "File obrolan",
+   "it": "File della chat"
+  },
+  "No files in this chat yet.": {
+   "zh-Hans": "此聊天中还没有文件。",
+   "hi": "इस चैट में अभी कोई फ़ाइल नहीं है।",
+   "es": "Aún no hay archivos en este chat.",
+   "ar": "لا توجد ملفات في هذه الدردشة بعد.",
+   "fr": "Aucun fichier dans ce chat pour l'instant.",
+   "bn": "এই চ্যাটে এখনও কোনো ফাইল নেই।",
+   "pt-BR": "Ainda não há arquivos neste chat.",
+   "ru": "В этом чате пока нет файлов.",
+   "id": "Belum ada file di obrolan ini.",
+   "it": "Ancora nessun file in questa chat."
+  },
+  "The files attached here, and the ones the AI reads, edits or creates, stay here to open again.": {
+   "zh-Hans": "在这里附加的文件，以及 AI 读取、编辑或创建的文件，都会留在这里，方便再次打开。",
+   "hi": "यहाँ संलग्न की गई फ़ाइलें, और AI जिन फ़ाइलों को पढ़ता, संपादित करता या बनाता है, वे यहाँ रहती हैं ताकि आप उन्हें फिर से खोल सकें।",
+   "es": "Los archivos adjuntados aquí, y los que la IA lee, edita o crea, se quedan aquí para volver a abrirlos.",
+   "ar": "تبقى هنا الملفات المرفقة، والملفات التي يقرؤها الذكاء الاصطناعي أو يعدّلها أو ينشئها، لتفتحها مرة أخرى.",
+   "fr": "Les fichiers joints ici, et ceux que l'IA lit, modifie ou crée, restent ici pour être rouverts.",
+   "bn": "এখানে সংযুক্ত ফাইলগুলো, আর AI যেসব ফাইল পড়ে, সম্পাদনা করে বা তৈরি করে, সেগুলো আবার খোলার জন্য এখানে থাকে।",
+   "pt-BR": "Os arquivos anexados aqui, e os que a IA lê, edita ou cria, ficam aqui para abrir de novo.",
+   "ru": "Прикреплённые здесь файлы, а также те, что ИИ читает, изменяет или создаёт, остаются здесь, чтобы открыть их снова.",
+   "id": "File yang dilampirkan di sini, serta yang dibaca, diedit, atau dibuat AI, tetap ada di sini untuk dibuka lagi.",
+   "it": "I file allegati qui, e quelli che l'AI legge, modifica o crea, restano qui per riaprirli quando vuoi."
+  },
+  "No longer found": {
+   "zh-Hans": "已找不到",
+   "hi": "अब नहीं मिली",
+   "es": "Ya no se encuentra",
+   "ar": "لم يعد موجودًا",
+   "fr": "Introuvable",
+   "bn": "আর পাওয়া যাচ্ছে না",
+   "pt-BR": "Não encontrado",
+   "ru": "Больше не найден",
+   "id": "Tidak ditemukan lagi",
+   "it": "Non più trovato"
+  },
+  "Open file location": {
+   "zh-Hans": "打开文件所在位置",
+   "hi": "फ़ाइल का स्थान खोलें",
+   "es": "Abrir ubicación del archivo",
+   "ar": "فتح موقع الملف",
+   "fr": "Ouvrir l'emplacement du fichier",
+   "bn": "ফাইলের অবস্থান খুলুন",
+   "pt-BR": "Abrir local do arquivo",
+   "ru": "Открыть расположение файла",
+   "id": "Buka lokasi file",
+   "it": "Apri percorso file"
+  },
+  "Copy path": {
+   "zh-Hans": "复制路径",
+   "hi": "पथ कॉपी करें",
+   "es": "Copiar ruta",
+   "ar": "نسخ المسار",
+   "fr": "Copier le chemin",
+   "bn": "পাথ কপি করুন",
+   "pt-BR": "Copiar caminho",
+   "ru": "Копировать путь",
+   "id": "Salin jalur",
+   "it": "Copia percorso"
+  },
+  "Attached": {
+   "zh-Hans": "已附加",
+   "hi": "संलग्न",
+   "es": "Adjuntado",
+   "ar": "مرفق",
+   "fr": "Joint",
+   "bn": "সংযুক্ত",
+   "pt-BR": "Anexado",
+   "ru": "Прикреплён",
+   "id": "Dilampirkan",
+   "it": "Allegato"
+  },
+  "Read by the AI": {
+   "zh-Hans": "AI 已读取",
+   "hi": "AI ने पढ़ी",
+   "es": "Leído por la IA",
+   "ar": "قرأه الذكاء الاصطناعي",
+   "fr": "Lu par l'IA",
+   "bn": "AI পড়েছে",
+   "pt-BR": "Lido pela IA",
+   "ru": "Прочитан ИИ",
+   "id": "Dibaca AI",
+   "it": "Letto dall'AI"
+  },
+  "Edited by the AI": {
+   "zh-Hans": "AI 已编辑",
+   "hi": "AI ने संपादित की",
+   "es": "Editado por la IA",
+   "ar": "عدّله الذكاء الاصطناعي",
+   "fr": "Modifié par l'IA",
+   "bn": "AI সম্পাদনা করেছে",
+   "pt-BR": "Editado pela IA",
+   "ru": "Изменён ИИ",
+   "id": "Diedit AI",
+   "it": "Modificato dall'AI"
+  },
+  "Created by the AI": {
+   "zh-Hans": "AI 已创建",
+   "hi": "AI ने बनाई",
+   "es": "Creado por la IA",
+   "ar": "أنشأه الذكاء الاصطناعي",
+   "fr": "Créé par l'IA",
+   "bn": "AI তৈরি করেছে",
+   "pt-BR": "Criado pela IA",
+   "ru": "Создан ИИ",
+   "id": "Dibuat AI",
+   "it": "Creato dall'AI"
   }
  }
 }

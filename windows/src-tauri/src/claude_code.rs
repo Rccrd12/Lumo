@@ -476,6 +476,51 @@ pub(crate) fn pretty_tool(name: &str) -> String {
     short(&pretty)
 }
 
+// ── The files a turn used ─────────────────────────────────────────────────────
+
+/// A file the answer read, changed or made, for the chat's files (`chat-file`
+/// events, src/core/chat-files.ts): `kind` is read, edited or created, `path`
+/// the full path the tool was given. Told once the tool ran without an error.
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct FileTouch {
+    pub kind: &'static str,
+    pub path: String,
+}
+
+impl FileTouch {
+    pub(crate) fn new(kind: &'static str, path: &str) -> Option<Self> {
+        let path = path.trim();
+        is_full_path(path).then(|| FileTouch { kind, path: path.to_string() })
+    }
+
+    /// A file a tool writes whole: created when nothing was there before it ran.
+    pub(crate) fn written(path: &str) -> Option<Self> {
+        let existed = std::path::Path::new(path.trim()).exists();
+        FileTouch::new(if existed { "edited" } else { "created" }, path)
+    }
+}
+
+/// A full path: a drive (`C:\`), a share (`\\server\`) or a Unix root. A
+/// relative one names no file the island could open.
+pub(crate) fn is_full_path(path: &str) -> bool {
+    let b = path.as_bytes();
+    let drive = b.len() >= 3 && b[0].is_ascii_alphabetic() && b[1] == b':' && (b[2] == b'\\' || b[2] == b'/');
+    drive || path.starts_with(r"\\") || path.starts_with('/')
+}
+
+/// What calling `name` with `input` does to a file; None for every other tool,
+/// and for a screenshot the chat itself took.
+fn touch_for(name: &str, input: &Value) -> Option<FileTouch> {
+    let field = |keys: &[&str]| keys.iter().filter_map(|k| input.get(*k).and_then(Value::as_str)).find(|s| !s.trim().is_empty());
+    match name {
+        "Read" => field(&["file_path"]).filter(|p| !is_screenshot(&file_name(p))).and_then(|p| FileTouch::new("read", p)),
+        "Edit" | "MultiEdit" => field(&["file_path"]).and_then(|p| FileTouch::new("edited", p)),
+        "NotebookEdit" => field(&["notebook_path"]).and_then(|p| FileTouch::new("edited", p)),
+        "Write" => field(&["file_path"]).and_then(FileTouch::written),
+        _ => None,
+    }
+}
+
 /// What calling tool `name` with `input` is doing, for the island.
 fn activity_for(name: &str, input: &Value) -> Activity {
     let field = |keys: &[&str]| {
@@ -544,6 +589,11 @@ struct Run {
     /// Plan tool calls of the main conversation not passed on yet (`take_plans`):
     /// name and whole input, for the Plan island (src/island/plan.ts).
     plans: Vec<(String, Value)>,
+    /// Calls that read or write a file, waiting for their result: tool call id
+    /// and the file. Seen before the tool runs, so Write knows whether it creates.
+    touching: Vec<(String, FileTouch)>,
+    /// Files used by calls that ran, not passed on yet (`take_files`).
+    touched: Vec<FileTouch>,
     /// TaskCreate calls waiting for their result, which says the task's id:
     /// tool call id and input. The ids go on over the session (and further),
     /// so TaskUpdate's can only be matched with the ones TaskCreate answered.
@@ -602,6 +652,11 @@ impl Run {
     /// The plan tool calls seen since the last time, oldest first.
     fn take_plans(&mut self) -> Vec<(String, Value)> {
         std::mem::take(&mut self.plans)
+    }
+
+    /// The files used since the last time, oldest first.
+    fn take_files(&mut self) -> Vec<FileTouch> {
+        std::mem::take(&mut self.touched)
     }
 
     /// Takes one line; true when the visible text changed.
@@ -679,6 +734,11 @@ impl Run {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
                         self.started_tool(id.clone(), activity_for(name, &block["input"]));
+                        if let Some(touch) = touch_for(name, &block["input"]) {
+                            if !id.is_empty() && !self.touching.iter().any(|(t, _)| *t == id) {
+                                self.touching.push((id.clone(), touch));
+                            }
+                        }
                         if name == "TaskCreate" {
                             self.creating.push((id.clone(), block["input"].clone()));
                         } else if is_plan_tool(name) {
@@ -694,6 +754,20 @@ impl Run {
                 for block in v["message"]["content"].as_array().into_iter().flatten() {
                     if block["type"] == "tool_result" {
                         let id = block["tool_use_id"].as_str().unwrap_or("");
+                        if let Some(pos) = self.touching.iter().position(|(t, _)| t == id) {
+                            let (_, mut touch) = self.touching.remove(pos);
+                            if block["is_error"].as_bool() != Some(true) {
+                                // Claude Code says itself whether Write made the file.
+                                if touch.kind != "read" {
+                                    match v["tool_use_result"]["type"].as_str() {
+                                        Some("create") => touch.kind = "created",
+                                        Some("update") => touch.kind = "edited",
+                                        _ => {}
+                                    }
+                                }
+                                self.touched.push(touch);
+                            }
+                        }
                         if let Some(pos) = self.creating.iter().position(|(c, _)| c == id) {
                             let (_, mut input) = self.creating.remove(pos);
                             if let Some(task) = created_task_id(&v, block) {
@@ -855,7 +929,8 @@ enum Ended {
 
 /// Reads one turn off `rx` until its `result`. `on_text` gets the visible
 /// text as it grows, `on_activity` what Claude Code is doing each time it
-/// changes, `on_plan` each plan tool call (name, whole input). On Stop,
+/// changes, `on_file` each file a tool read or wrote once it ran, `on_plan`
+/// each plan tool call (name, whole input). On Stop,
 /// `interrupt` asks the CLI to end the turn and says whether it could; the
 /// turn then goes on until its result, for INTERRUPT_GRACE at most.
 fn read_turn(
@@ -864,6 +939,7 @@ fn read_turn(
     mut interrupt: impl FnMut() -> bool,
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&str, &Value),
 ) -> (Run, Ended) {
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
@@ -898,6 +974,9 @@ fn read_turn(
                 if let Some(activity) = activity.filter(|_| !state.stopped) {
                     on_activity(&activity);
                 }
+                for file in state.take_files() {
+                    on_file(&file);
+                }
                 for (name, input) in state.take_plans() {
                     on_plan(&name, &input);
                 }
@@ -925,6 +1004,7 @@ fn ended_without_answer(stderr: &str, status: Option<std::process::ExitStatus>) 
 /// Runs `claude -p` once in `dir`, blocking, the prompt on stdin (`read_turn`
 /// says what the callbacks get). Stop ends the CLI and its children; the run
 /// so far is returned, `stopped`.
+#[allow(clippy::too_many_arguments)]
 fn run(
     exe: PathBuf,
     args: Vec<String>,
@@ -934,6 +1014,7 @@ fn run(
     stop: Arc<Stop>,
     on_text: impl FnMut(&str),
     on_activity: impl FnMut(&Activity),
+    on_file: impl FnMut(&FileTouch),
     on_plan: impl FnMut(&str, &Value),
 ) -> Result<Run, String> {
     let mut child = spawn(&exe, &args, &dir, chat_id)?;
@@ -943,7 +1024,7 @@ fn run(
     }
     let stderr = read_stderr(&mut child);
     let rx = read_lines(&mut child, MAX_TOTAL)?;
-    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_plan);
+    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_file, on_plan);
     if ended == Ended::Stopped {
         kill_tree(&mut child);
         return Ok(state);
@@ -1114,6 +1195,7 @@ fn live_turn(
     stop: Arc<Stop>,
     on_text: impl FnMut(&str),
     on_activity: impl FnMut(&Activity),
+    on_file: impl FnMut(&FileTouch),
     on_plan: impl FnMut(&str, &Value),
 ) -> Result<Run, String> {
     let key = live_key(&exe, &args);
@@ -1135,6 +1217,7 @@ fn live_turn(
         },
         on_text,
         on_activity,
+        on_file,
         on_plan,
     );
     match ended {
@@ -1234,6 +1317,7 @@ pub async fn send(
             stop,
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
+            |file| events.file(&app2, file),
             // The plan Claude writes in the chat, for the Plan island.
             |tool, input| {
                 let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
@@ -1328,7 +1412,7 @@ pub(crate) fn help(
     let args = with_cards(args_with(prompt, model, effort, mode, None, &inbox, &folders), mode);
     // The user's own tools too, while one is on.
     let args = with_mcp(args, computer, crate::tools::any_enabled(), false);
-    let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_, _| {})?;
+    let state = run(exe, args, task.to_string(), dir, "", stop, |_| {}, on_activity, |_| {}, |_, _| {})?;
     if state.stopped {
         return Err(t("The task was stopped."));
     }
@@ -1358,7 +1442,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         args.push(m.into());
     }
     let dir = platform::local_dir().join("tool-review");
-    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_, _| {})?;
+    let state = run(exe, args, prompt.to_string(), dir, "", Arc::new(Stop::default()), |_| {}, |_| {}, |_| {}, |_, _| {})?;
     match state.result {
         Some(Ok(text)) if !text.trim().is_empty() => Ok(text),
         Some(Ok(_)) => Ok(state.visible.trim().to_string()),
@@ -1450,7 +1534,7 @@ mod tests {
         let next = r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Next turn"}}}"#;
         let (_tx, rx) = feed(&[text, result, next]);
         let mut shown = String::new();
-        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_| {}, |_, _| {});
         assert_eq!(ended, Ended::Result);
         assert_eq!(state.result, Some(Ok("Hello".to_string())));
         assert_eq!(state.session.as_deref(), Some(SID));
@@ -1463,18 +1547,18 @@ mod tests {
         let interrupted = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}"#;
         let (_tx, rx) = feed(&[text, interrupted]);
         let mut asked = 0;
-        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_| {}, |_, _| {});
         assert_eq!((ended, asked), (Ended::Result, 1));
         assert!(state.stopped);
         // A CLI that can't be interrupted (one prompt, no stdin) is ended.
         let (_tx, rx) = feed(&[text]);
-        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_, _| {});
+        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_| {}, |_, _| {});
         assert_eq!(ended, Ended::Stopped);
         assert!(state.stopped);
         // The CLI ended before its result.
         let (tx, rx) = feed(&[text]);
         drop(tx);
-        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_, _| {}).1, Ended::Closed);
+        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_| {}, |_, _| {}).1, Ended::Closed);
     }
 
     #[test]
@@ -1815,5 +1899,37 @@ mod tests {
         assert_eq!(safe_model("claude-opus-5-5[1m]"), Some("claude-opus-5-5[1m]"));
         assert_eq!(safe_model(""), None);
         assert_eq!(safe_model("default"), None, "no --model: Claude Code's own choice");
+    }
+
+    #[test]
+    fn the_files_a_turn_read_or_wrote_are_told_once_they_ran() {
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"file_path":"C:\\Users\\me\\Docs\\report.pdf"}},{"type":"tool_use","id":"w1","name":"Write","input":{"file_path":"C:\\lumo-nowhere\\game.py","content":"x"}},{"type":"tool_use","id":"e1","name":"Edit","input":{"file_path":"C:\\Users\\me\\notes.md"}},{"type":"tool_use","id":"g1","name":"Grep","input":{"pattern":"x"}}]}}"#);
+        assert!(run.take_files().is_empty(), "not before they ran");
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"r1","content":"..."}]},"tool_use_result":{"type":"text"}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"w1","content":"ok"}]}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"e1","is_error":true,"content":"String not found"}]}}"#);
+        run.feed(br#"{"type":"user","parent_tool_use_id":null,"message":{"content":[{"type":"tool_result","tool_use_id":"g1","content":"none"}]}}"#);
+        assert_eq!(
+            run.take_files(),
+            vec![
+                FileTouch { kind: "read", path: r"C:\Users\me\Docs\report.pdf".into() },
+                FileTouch { kind: "created", path: r"C:\lumo-nowhere\game.py".into() },
+            ],
+            "a failed edit changed nothing, a search is no file"
+        );
+        assert!(run.take_files().is_empty(), "once");
+
+        // Claude Code's own word on Write wins; a screenshot, a relative path and a subagent's call stay out.
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"w2","name":"Write","input":{"file_path":"C:\\lumo-nowhere\\a.txt"}},{"type":"tool_use","id":"s1","name":"Read","input":{"file_path":"C:\\inbox\\screenshot-1-screen1.png"}},{"type":"tool_use","id":"x1","name":"Read","input":{"file_path":"notes.md"}}]}}"#);
+        run.feed(br#"{"type":"assistant","parent_tool_use_id":"t9","message":{"content":[{"type":"tool_use","id":"sub","name":"Read","input":{"file_path":"C:\\sub.txt"}}]}}"#);
+        for id in ["w2", "s1", "x1", "sub"] {
+            let line = format!(r#"{{"type":"user","parent_tool_use_id":null,"message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"ok"}}]}},"tool_use_result":{{"type":"update"}}}}"#);
+            run.feed(line.as_bytes());
+        }
+        assert_eq!(run.take_files(), vec![FileTouch { kind: "edited", path: r"C:\lumo-nowhere\a.txt".into() }]);
+        assert!(is_full_path(r"\\server\share\a.txt") && is_full_path("/home/me/a") && is_full_path("D:/x"));
+        assert!(!is_full_path("a.txt") && !is_full_path(r"..\a.txt") && !is_full_path("C:"));
     }
 }

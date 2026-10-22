@@ -118,6 +118,25 @@ pub fn reveal_folder(path: &str) {
     let _ = Command::new("explorer").arg(path).spawn();
 }
 
+/// A file opened by its type, in the app File Explorer would open it with.
+/// Quoted raw, so a comma in its name is not read as Explorer's separator.
+pub fn open_file(path: &str) {
+    if path.contains('"') {
+        return;
+    }
+    let _ = Command::new("explorer").raw_arg(format!("\"{path}\"")).spawn();
+}
+
+/// File Explorer on the folder that holds `path`, with the file selected.
+/// `/select,` must reach Explorer with the path quoted right after it, as one
+/// piece: written raw (a Windows path cannot hold a quote).
+pub fn reveal_file(path: &str) {
+    if path.contains('"') {
+        return;
+    }
+    let _ = Command::new("explorer").raw_arg(format!("/select,\"{path}\"")).spawn();
+}
+
 /// Our own `where`: walks %PATH% against %PATHEXT%, no shell involved.
 /// Rust quotes arguments correctly for `.cmd`/`.bat` targets since 1.77, so
 /// spawning `code.cmd` directly is safe.

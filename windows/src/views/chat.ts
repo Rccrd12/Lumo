@@ -45,6 +45,12 @@
 // screen are two rows), with its picture or its kind's icon, what it is, and
 // a × that takes back that one only. A click shows what it sends.
 //
+// Beside the attachments' title, "Chat files": the files that went with a
+// question of this chat, and those Claude Code or Antigravity CLI read, edited
+// or created while answering it (core/chat-files.ts), kept with the chat. They
+// cannot be taken back: a click opens one (a picture in its preview), a right
+// click offers Open, Open file location and Copy path.
+//
 // Ctrl+V in the text field attaches an image or a file copied in File
 // Explorer the same way as the paperclip; text pastes as usual (core/paste.ts).
 //
@@ -55,9 +61,11 @@
 
 import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
-import { copyButton, renderMarkdown } from "./markdown";
+import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
+import type { MenuEntry as MenuItem } from "./context-menu";
+import { ownMenu } from "./own-menu";
 import {
-  Bridge, onEvent, type BrowserTab, type ChatActivity, type ChatContext, type ExplorerFolder, type ModelInfo,
+  Bridge, onEvent, type BrowserTab, type ChatActivity, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
@@ -67,6 +75,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
+import { addChatFile, chatFiles, dropChatFiles, type ChatFile, type ChatFileKind } from "../core/chat-files";
 import { planColor } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
@@ -103,6 +112,13 @@ const STRINGS = {
   noAttachments: N_("Nothing is attached yet."),
   attachHint: N_("Files, screenshots, windows, pages and selected text wait here for your next question."),
   removeAll: N_("Remove all"),
+  chatFiles: N_("Chat files"),
+  noChatFiles: N_("No files in this chat yet."),
+  chatFilesHint: N_("The files attached here, and the ones the AI reads, edits or creates, stay here to open again."),
+  fileMissing: N_("No longer found"),
+  openFile: N_("Open"),
+  openLocation: N_("Open file location"),
+  copyPath: N_("Copy path"),
   noPastChats: N_("No past chats yet."),
   searchChats: N_("Search the past chats"),
   noMatch: N_("No chat says that."),
@@ -462,6 +478,46 @@ function attachRow(item: AttachInfo, onRemove: () => void, onOpen: () => void): 
       onRemove();
     }
   });
+  return row;
+}
+
+/** Where a chat's file comes from, under its name, with its icon and colour. */
+const CHAT_FILE_KINDS: Record<ChatFileKind, { label: string; path: string; stroke?: number }> = {
+  attached: { label: N_("Attached"), path: ICONS.paperclip, stroke: 1.8 },
+  read: { label: N_("Read by the AI"), path: ICONS.doc },
+  edited: { label: N_("Edited by the AI"), path: ICONS.pencil, stroke: 1.8 },
+  created: { label: N_("Created by the AI"), path: ICONS.plus },
+};
+
+/**
+ * One row of the chat's files: like an attachment's, without its ×. A click,
+ * or Enter, opens it; the right click has what else can be done with it.
+ */
+function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined, onOpen: () => void, menu: () => MenuItem[]): HTMLElement {
+  const kind = CHAT_FILE_KINDS[file.kind];
+  const tile = h("span", { class: `attach-tile chat-file-${file.kind}` },
+    thumb
+      ? h("img", { class: "attach-thumb", src: thumb, alt: "", draggable: "false" })
+      : svg(kind.path, 15, kind.stroke ? { stroke: kind.stroke } : {}));
+  const detail = [t(kind.label), missing ? t(STRINGS.fileMissing) : fileDetail({ name: file.name }).split(" · ").slice(1).join(" · ")]
+    .filter(Boolean).join(" · ");
+  const row = h(
+    "div",
+    { class: missing ? "attach-row chat-file-row missing" : "attach-row chat-file-row", title: file.path, role: "button", tabindex: "0" },
+    tile,
+    h("span", { class: "attach-text" },
+      h("span", { class: "attach-name", text: file.name }),
+      h("span", { class: "attach-detail", text: detail })),
+  );
+  row.addEventListener("click", () => onOpen());
+  row.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    if (key === "Enter" || key === " ") {
+      e.preventDefault();
+      onOpen();
+    }
+  });
+  ownMenu(row, menu);
   return row;
 }
 
@@ -914,13 +970,18 @@ export function buildPrompt(
   const historyEl = h("div", { class: "picker history" },
     h("div", { class: "history-head" }, h("div", { class: "picker-title", text: tl(STRINGS.pastChats) }), historySearch),
     historyList);
-  // The attachments: what goes with the next question, one row each.
+  // The attachments: what goes with the next question, one row each. Their
+  // title and "Chat files" beside it switch between the two lists.
   const filesCount = h("span", { class: "files-count" });
   const removeAllBtn = h("button", { class: "files-clear", text: tl(STRINGS.removeAll) });
   const filesList = h("div", { class: "picker-list files-list" });
+  const attachTab = h("button", { class: "picker-title files-tab on", text: tl(STRINGS.attachments) });
+  const chatFilesTab = h("button", { class: "picker-title files-tab", text: tl(STRINGS.chatFiles) });
+  const chatFilesList = h("div", { class: "picker-list files-list chat-files-list" });
+  chatFilesList.style.display = "none";
   const filesEl = h("div", { class: "picker files-panel" },
-    h("div", { class: "files-head" }, h("div", { class: "picker-title", text: tl(STRINGS.attachments) }), filesCount, removeAllBtn),
-    filesList);
+    h("div", { class: "files-head" }, attachTab, filesCount, chatFilesTab, removeAllBtn),
+    filesList, chatFilesList);
   // The screen button's menu, then the preview of a screenshot.
   const screenTitle = h("div", { class: "picker-title" });
   const screenList = h("div", { class: "picker-list" });
@@ -968,6 +1029,8 @@ export function buildPrompt(
     // The big picture covers the island, over the preview it came from: a
     // press on it closes the picture only, and the preview stays open.
     if (State.picture && target != null) return;
+    // The right-click menu of a row: what it does may keep the list open.
+    if (target instanceof Element && target.closest(".ctx-menu")) return;
     const inside = (...els: Element[]) => target != null && els.some((el) => el.contains(target));
     if (picker.isOpen && !inside(picker.el, modelBtn)) picker.close();
     if (body.classList.contains("browsing") && !inside(historyEl, historyBtn)) closeHistory();
@@ -1301,6 +1364,101 @@ export function buildPrompt(
     body.classList.add("filing");
     filesBtn.classList.add("open");
     panelChanged();
+    if (filesTab === "chat") drawChatFiles();
+  }
+
+  // ── The chat's files ──────────────────────────────────────────────────────
+
+  /** Which list the panel shows: what waits, or the chat's files. */
+  let filesTab: "attached" | "chat" = "attached";
+  /** The chat's files known to be gone, by path, and the list they were asked for. */
+  let missingFiles = new Set<string>();
+  let presenceAsked = "";
+  /** The chat's pictures, small on their rows and big in their previews. */
+  const chatPictures = new Map<string, Promise<string | null>>();
+  const chatPicturesHere = new Map<string, string>();
+
+  function showFilesTab(tab: "attached" | "chat") {
+    filesTab = tab;
+    attachTab.classList.toggle("on", tab === "attached");
+    chatFilesTab.classList.toggle("on", tab === "chat");
+    filesList.style.display = tab === "attached" ? "" : "none";
+    chatFilesList.style.display = tab === "chat" ? "" : "none";
+    removeAllBtn.style.display = tab === "attached" ? "" : "none";
+    if (tab === "chat") drawChatFiles();
+  }
+
+  function chatPicture(path: string): Promise<string | null> {
+    let asked = chatPictures.get(path);
+    if (!asked) {
+      asked = Bridge.chatFilePreview(path).catch(() => null);
+      chatPictures.set(path, asked);
+      void asked.then((src) => {
+        if (!src || chatPictures.get(path) !== asked) return;
+        chatPicturesHere.set(path, src);
+        drawChatFiles();
+      });
+    }
+    return asked;
+  }
+
+  /** The chat's files, newest first; asked again each time, so a new one shows at once. */
+  function drawChatFiles() {
+    if (filesTab !== "chat" || !body.classList.contains("filing")) return;
+    const files = chatFiles(State.chatId);
+    // Which are still there: asked once each time the list or the chat changes.
+    const asking = `${State.chatId}\n${files.map((f) => f.path).join("\n")}`;
+    if (asking !== presenceAsked) {
+      presenceAsked = asking;
+      const paths = files.map((f) => f.path);
+      void Bridge.chatFilesPresent(paths).then((present) => {
+        if (presenceAsked !== asking || !present) return;
+        missingFiles = new Set(paths.filter((_, i) => present[i] === false));
+        drawChatFiles();
+      });
+    }
+    clear(chatFilesList);
+    for (const file of files) {
+      const missing = missingFiles.has(file.path);
+      if (!missing && PICTURE_FILE.test(file.name)) void chatPicture(file.path);
+      chatFilesList.append(chatFileRow(file, missing, chatPicturesHere.get(file.path), () => void openChatFile(file), () => [
+        { kind: "item", label: t(STRINGS.openFile), run: () => void openChatFile(file) },
+        { kind: "item", label: t(STRINGS.openLocation), run: () => void revealChatFile(file) },
+        { kind: "sep" },
+        { kind: "item", label: t(STRINGS.copyPath), run: () => void writeClipboard(file.path) },
+      ]));
+    }
+    if (files.length === 0) {
+      chatFilesList.append(h("div", { class: "files-empty" },
+        h("span", { class: "files-empty-icon" }, svg(ICONS.folder, 16, { stroke: 1.6 })),
+        h("div", { class: "files-empty-title", text: t(STRINGS.noChatFiles) }),
+        h("div", { class: "files-empty-hint", text: t(STRINGS.chatFilesHint) })));
+    }
+  }
+
+  /** Gone since: the row says so. */
+  function lostChatFile(file: ChatFile) {
+    missingFiles.add(file.path);
+    Sound.play("error");
+    drawChatFiles();
+  }
+
+  /** A picture shows in its preview; any other file opens in its app (a program only in File Explorer). */
+  async function openChatFile(file: ChatFile) {
+    if (PICTURE_FILE.test(file.name) && !missingFiles.has(file.path)) {
+      const image = await chatPicture(file.path);
+      if (image) {
+        openPreview(filePreview(file, image), null);
+        return;
+      }
+    }
+    const done = await Bridge.chatFileOpen(file.path);
+    if (done === "missing") lostChatFile(file);
+  }
+
+  async function revealChatFile(file: ChatFile) {
+    const done = await Bridge.chatFileReveal(file.path);
+    if (done === "missing") lostChatFile(file);
   }
 
   function closeFiles() {
@@ -1692,8 +1850,9 @@ export function buildPrompt(
   /**
    * The screen panel, showing what an attachment sends: Remove takes it back,
    * Close keeps it; either way the attachments it was opened from come back.
+   * A chat's file has no Remove (`onRemove` null).
    */
-  function openPreview(blocks: PreviewBlock[], onRemove: () => void) {
+  function openPreview(blocks: PreviewBlock[], onRemove: (() => void) | null) {
     if (picker.isOpen) picker.close();
     closeHistory();
     closeFiles();
@@ -1719,11 +1878,11 @@ export function buildPrompt(
         b.text ? h("pre", { class: "screen-preview-text", text: b.text }) : null,
       ));
     }
-    const remove = h("button", { class: "btn secondary", text: t(SCREEN_STRINGS.remove) });
+    const remove = onRemove ? h("button", { class: "btn secondary", text: t(SCREEN_STRINGS.remove) }) : null;
     const close = h("button", { class: "btn primary", text: t(PREVIEW_STRINGS.close) });
-    remove.addEventListener("click", () => {
+    remove?.addEventListener("click", () => {
       closeScreen();
-      onRemove();
+      onRemove?.();
       openFiles();
       input.focus();
     });
@@ -1800,6 +1959,7 @@ export function buildPrompt(
         deleteChat(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
+        dropChatFiles(c.id);
         // Being answered in the background: that answer ends with it.
         const run = runs.get(c.id);
         if (run) {
@@ -2110,6 +2270,8 @@ export function buildPrompt(
     else openFiles();
   });
   removeAllBtn.addEventListener("click", () => removeAll());
+  attachTab.addEventListener("click", () => showFilesTab("attached"));
+  chatFilesTab.addEventListener("click", () => showFilesTab("chat"));
   historyBtn.addEventListener("click", () => {
     if (body.classList.contains("browsing")) {
       closeHistory();
@@ -2179,6 +2341,12 @@ export function buildPrompt(
     else if (again && live) log.append(typingDots(activityLabel(next)));
   }
 
+  // A file the answer read, edited or created: the chat's files list it.
+  void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
+    addChatFile(chat, kind, path);
+    if (chat === State.chatId) drawChatFiles();
+  });
+
   void onEvent<{ chat: string; activity: ChatActivity }>("chat-activity", ({ chat, activity }) => {
     const run = runs.get(chat);
     if (!run || !activity) return;
@@ -2245,6 +2413,8 @@ export function buildPrompt(
     let finish = () => {};
     // What went with the question, given back to the field if it did not go.
     let giveBack = (_all: boolean) => {};
+    /** The files that went with the question: the chat's files once it is answered. */
+    let sent: { name: string; path: string }[] = [];
     let question: ChatMessage;
     let context: ChatContext | null;
     let screenContext: ScreenContext | null;
@@ -2269,6 +2439,7 @@ export function buildPrompt(
       context = file && !file.sent ? { kind: "file", name: file.name, path: file.path } : null;
       const more = auto ? [] : State.moreFiles;
       screenContext = auto ? null : screenPayload(shared, more);
+      sent = [...(file && context ? [file] : []), ...more];
 
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = State.chatId;
@@ -2344,6 +2515,7 @@ export function buildPrompt(
         ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
         : answered.text;
       if (recorded) {
+        for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name);
         run.history.push({
           id: nextId++,
           role: "assistant",
@@ -2529,6 +2701,7 @@ export function buildPrompt(
         renderedCount = -1;
         openedChat = true;
         drawIslandActivity();
+        drawChatFiles();
       }
       const run = answering();
       // An email's button asked something: it goes at once (after this draw).

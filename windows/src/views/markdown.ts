@@ -249,7 +249,7 @@ function inline(text: string, into: HTMLElement) {
 
 // ── Blocks ────────────────────────────────────────────────────────────────────
 
-async function writeClipboard(text: string) {
+export async function writeClipboard(text: string) {
   try {
     await navigator.clipboard.writeText(text);
   } catch {

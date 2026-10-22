@@ -31,6 +31,7 @@ import { ACTIVITIES_GAP, IslandActivities } from "./activities";
 import type { MailMessage } from "../core/bridge";
 import { refreshConfigured, refreshHookPills } from "./integrations";
 import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
+import { ownEntries } from "../views/own-menu";
 import { MENU_TEXT, pickedItems } from "../core/context-menu";
 import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
 import { agentPlanWanted, refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
@@ -673,6 +674,9 @@ export class Island {
 
   /** Opens Lumo's menu at (x, y): the text actions, Refresh, the items picked in Settings. */
   openMenu(x: number, y: number, target: EventTarget | null) {
+    // A chat's file: what can be done with it, alone (views/chat.ts).
+    const own = ownEntries(target);
+    if (own) return this.menu.open(x, y, own);
     const entries: MenuEntry[] = [...textEntries(target), { kind: "sep" }];
     entries.push({ kind: "item", label: t(MENU_TEXT.refresh), title: t(MENU_TEXT.refreshHint), shortcut: "Ctrl+R", run: () => void this.refreshAll() });
     entries.push({ kind: "sep" });
