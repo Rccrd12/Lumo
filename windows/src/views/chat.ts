@@ -2185,6 +2185,25 @@ export function buildPrompt(
     showActivity(run, activity, true);
   });
 
+  /** The answer a message typed meanwhile waits for (`sendAfter`). */
+  let waitingFor: Run | null = null;
+
+  /**
+   * What is typed while `run` is written goes as soon as it ends, if it is
+   * still in the field and its chat on screen. After Stop it stays there.
+   */
+  function sendAfter(run: Run) {
+    if (waitingFor === run) return;
+    waitingFor = run;
+    input.title = t("Sent as soon as this answer ends");
+    void run.done.then(() => {
+      if (waitingFor !== run) return;
+      waitingFor = null;
+      input.title = "";
+      if (!run.stopping && State.chatId === run.chatId && input.value.trim() && !answering()) void submit();
+    });
+  }
+
   /**
    * Sends what is typed, or `auto`: a message Lumo writes itself (a GitHub
    * event the chat listened for), which leaves the field, the files waiting
@@ -2202,10 +2221,11 @@ export function buildPrompt(
       Sound.play("blip");
       return;
     }
-    // The chat on screen is being answered: the next question waits for it
-    // (Enter again once it is done), but an edited one stops it and replaces it.
+    // The chat on screen is being answered: the next question waits in the
+    // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
     if (current) {
+      if (!auto && editing == null) sendAfter(current);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;

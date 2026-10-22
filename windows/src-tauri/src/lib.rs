@@ -674,6 +674,8 @@ fn local_set_key(url: String, key: String) -> Result<(), String> {
 #[tauri::command]
 fn chat_reset(chats: State<Chats>, chat_id: String) {
     chats.focus(&chat_id).reset();
+    // Its Claude Code, waiting for a message of the conversation before, goes.
+    claude_code::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then

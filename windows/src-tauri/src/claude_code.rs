@@ -11,6 +11,10 @@
 // Allow / Deny card. Without the hooks, or with nobody clicking, Claude Code
 // denies the action: `-p` never allows anything on its own.
 //
+// Each chat keeps its own Claude Code running between messages (`live_turn`,
+// `--input-format stream-json`): a message is a line on its stdin, Stop
+// interrupts the turn, and the process ends after a while without messages.
+//
 // The prompt goes in on stdin, never on the command line: an npm install is a
 // `claude.cmd`, and cmd.exe would interpret what the user typed. Every argument
 // is fixed or checked.
@@ -776,24 +780,12 @@ pub(crate) fn cli_command(exe: &std::path::Path) -> Command {
     cmd
 }
 
-/// Runs `claude -p` once in `dir`, blocking. `on_text` gets the visible text as
-/// it grows, `on_activity` what Claude Code is doing each time it changes,
-/// `on_plan` each plan tool call (name, whole input). Stop ends the CLI and its children; the run so far is returned, `stopped`.
-fn run(
-    exe: PathBuf,
-    args: Vec<String>,
-    input: String,
-    dir: PathBuf,
-    chat_id: &str,
-    stop: Arc<Stop>,
-    mut on_text: impl FnMut(&str),
-    mut on_activity: impl FnMut(&Activity),
-    mut on_plan: impl FnMut(&str, &Value),
-) -> Result<Run, String> {
-    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
-
-    let mut cmd = cli_command(&exe);
-    cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+/// Starts Claude Code's `exe` in `dir` with `args`, stdin, stdout and stderr
+/// piped, marked as the island's own run (for chat `chat_id`).
+fn spawn(exe: &std::path::Path, args: &[String], dir: &std::path::Path, chat_id: &str) -> Result<std::process::Child, String> {
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let mut cmd = cli_command(exe);
+    cmd.args(args).current_dir(dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
     // Which chat the island's tools are called from (lumo-hook's MCP server, island_tools.rs).
@@ -805,27 +797,28 @@ fn run(
     // only text, and the Plan island stays shut.
     cmd.env("CLAUDE_CODE_ENABLE_TODO_TOOLS", "1");
     platform::no_console(&mut cmd);
-    let mut child = cmd
-        .spawn()
-        .map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))?;
+    cmd.spawn().map_err(|e| tf("Cannot start Claude Code: {error}", &[("error", &e.to_string())]))
+}
 
-    if let Some(mut stdin) = child.stdin.take() {
-        let _ = stdin.write_all(input.as_bytes());
-        // Dropping stdin ends the prompt.
-    }
-    let stdout = child.stdout.take().ok_or("no stdout")?;
-    let stderr = child.stderr.take();
-    let err_text = std::thread::spawn(move || {
-        let mut s = String::new();
-        if let Some(e) = stderr {
-            let mut e = e;
+/// Reads `child`'s stderr in the background, its first 64 KB kept.
+fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mutex<String>> {
+    let kept = Arc::new(std::sync::Mutex::new(String::new()));
+    if let Some(mut e) = child.stderr.take() {
+        let into = kept.clone();
+        std::thread::spawn(move || {
+            let mut s = String::new();
             let _ = (&mut e).take(64 * 1024).read_to_string(&mut s);
+            *into.lock().unwrap_or_else(|p| p.into_inner()) = s;
             // Past the cap, keep the pipe flowing: a full one would stall claude.
             let _ = std::io::copy(&mut e, &mut std::io::sink());
-        }
-        s
-    });
+        });
+    }
+    kept
+}
 
+/// `child`'s stdout, line by line, on a channel; at most `max_total` bytes in all.
+fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
+    let stdout = child.stdout.take().ok_or("no stdout")?;
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
@@ -835,8 +828,8 @@ fn run(
             match (&mut reader).take(MAX_LINE as u64 + 1).read_until(b'\n', &mut line) {
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
-                    total += n;
-                    if total > MAX_TOTAL || tx.send(line).is_err() {
+                    total = total.saturating_add(n);
+                    if total > max_total || tx.send(line).is_err() {
                         break;
                     }
                 }
@@ -846,18 +839,50 @@ fn run(
         // full pipe while the turn winds down.
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
     });
+    Ok(rx)
+}
 
+/// How a turn read off the stream ended.
+#[derive(Debug, PartialEq)]
+enum Ended {
+    /// Its `result` line came.
+    Result,
+    /// The output closed first: the CLI ended.
+    Closed,
+    /// Stop was pressed, and the CLI could not be interrupted (or not in time): it must be ended.
+    Stopped,
+}
+
+/// Reads one turn off `rx` until its `result`. `on_text` gets the visible
+/// text as it grows, `on_activity` what Claude Code is doing each time it
+/// changes, `on_plan` each plan tool call (name, whole input). On Stop,
+/// `interrupt` asks the CLI to end the turn and says whether it could; the
+/// turn then goes on until its result, for INTERRUPT_GRACE at most.
+fn read_turn(
+    rx: &mpsc::Receiver<Vec<u8>>,
+    stop: &Stop,
+    mut interrupt: impl FnMut() -> bool,
+    mut on_text: impl FnMut(&str),
+    mut on_activity: impl FnMut(&Activity),
+    mut on_plan: impl FnMut(&str, &Value),
+) -> (Run, Ended) {
     let mut last_emit = Instant::now() - DELTA_INTERVAL;
     // Text the island was not shown yet (it is told at most every DELTA_INTERVAL).
     let mut unsent = false;
     let mut state = Run::default();
+    let mut interrupted: Option<Instant> = None;
     // No time limit: a long piece of work, or a card nobody clicked yet, goes
     // on until it ends or the user presses Stop.
     loop {
-        if stop.is_stopped() && state.result.is_none() {
-            kill_tree(&mut child);
+        if stop.is_stopped() && !state.stopped {
             state.stopped = true;
-            return Ok(state);
+            if !interrupt() {
+                return (state, Ended::Stopped);
+            }
+            interrupted = Some(Instant::now());
+        }
+        if interrupted.is_some_and(|at| at.elapsed() > INTERRUPT_GRACE) {
+            return (state, Ended::Stopped);
         }
         // Short waits, so Stop is felt at once (only while a turn runs).
         match rx.recv_timeout(STOP_POLL) {
@@ -865,34 +890,282 @@ fn run(
                 unsent |= state.feed(&line);
                 let activity = state.take_activity();
                 // What was written goes before what is done next, in order.
-                if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) {
+                if unsent && (activity.is_some() || last_emit.elapsed() >= DELTA_INTERVAL) && !state.stopped {
                     unsent = false;
                     last_emit = Instant::now();
                     on_text(&state.visible);
                 }
-                if let Some(activity) = activity {
+                if let Some(activity) = activity.filter(|_| !state.stopped) {
                     on_activity(&activity);
                 }
                 for (name, input) in state.take_plans() {
                     on_plan(&name, &input);
                 }
+                if state.result.is_some() {
+                    return (state, Ended::Result);
+                }
             }
             Err(mpsc::RecvTimeoutError::Timeout) => continue,
-            Err(mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(mpsc::RecvTimeoutError::Disconnected) => return (state, Ended::Closed),
         }
     }
+}
+
+/// Why the CLI ended without a result, from what it wrote on stderr.
+fn ended_without_answer(stderr: &str, status: Option<std::process::ExitStatus>) -> String {
+    let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
+    let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_default();
+    if detail.is_empty() {
+        tf("Claude Code stopped without an answer (exit {code}). Is it signed in? Run `claude` once in a terminal.", &[("code", &code)])
+    } else {
+        tf("Claude Code: {error}", &[("error", &detail)])
+    }
+}
+
+/// Runs `claude -p` once in `dir`, blocking, the prompt on stdin (`read_turn`
+/// says what the callbacks get). Stop ends the CLI and its children; the run
+/// so far is returned, `stopped`.
+fn run(
+    exe: PathBuf,
+    args: Vec<String>,
+    input: String,
+    dir: PathBuf,
+    chat_id: &str,
+    stop: Arc<Stop>,
+    on_text: impl FnMut(&str),
+    on_activity: impl FnMut(&Activity),
+    on_plan: impl FnMut(&str, &Value),
+) -> Result<Run, String> {
+    let mut child = spawn(&exe, &args, &dir, chat_id)?;
+    if let Some(mut stdin) = child.stdin.take() {
+        let _ = stdin.write_all(input.as_bytes());
+        // Dropping stdin ends the prompt.
+    }
+    let stderr = read_stderr(&mut child);
+    let rx = read_lines(&mut child, MAX_TOTAL)?;
+    let (state, ended) = read_turn(&rx, &stop, || false, on_text, on_activity, on_plan);
+    if ended == Ended::Stopped {
+        kill_tree(&mut child);
+        return Ok(state);
+    }
     let status = child.wait().ok();
-    let stderr = err_text.join().unwrap_or_default();
     if state.result.is_none() {
-        let detail = stderr.lines().rev().find(|l| !l.trim().is_empty()).unwrap_or("").trim().to_string();
-        let code = status.and_then(|s| s.code()).map(|c| c.to_string()).unwrap_or_default();
-        return Err(if detail.is_empty() {
-            tf("Claude Code stopped without an answer (exit {code}). Is it signed in? Run `claude` once in a terminal.", &[("code", &code)])
-        } else {
-            tf("Claude Code: {error}", &[("error", &detail)])
-        });
+        // The reader is done with stderr once the CLI ended.
+        std::thread::sleep(Duration::from_millis(50));
+        let stderr = stderr.lock().unwrap_or_else(|p| p.into_inner()).clone();
+        return Err(ended_without_answer(&stderr, status));
     }
     Ok(state)
+}
+
+// ── One Claude Code per chat ──────────────────────────────────────────────────
+//
+// The island's chat keeps one Claude Code running for each chat
+// (`--input-format stream-json`): each message goes in on its stdin as a
+// stream-json user message, and the turn ends with its `result` line, the
+// process still there for the next one. MCP servers, plugins and the session
+// load once per chat, not once per message, and Stop interrupts the turn
+// (a `control_request` of subtype `interrupt`, as the Agent SDK sends) instead
+// of ending the process. A Claude Code idle for LIVE_IDLE is ended; one whose
+// settings changed (model, effort, mode, tools, folders) or whose session is not
+// the chat's any more (a new chat, an edited message) is ended and started
+// again, resuming the chat's session.
+
+/// How long a chat's Claude Code waits for the next message before it is ended.
+const LIVE_IDLE: Duration = Duration::from_secs(10 * 60);
+/// How long an interrupted turn may take to end before its Claude Code is ended.
+const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
+
+/// A chat's Claude Code, between two turns.
+struct Live {
+    child: std::process::Child,
+    stdin: std::process::ChildStdin,
+    rx: mpsc::Receiver<Vec<u8>>,
+    stderr: Arc<std::sync::Mutex<String>>,
+    /// What it was started with (`live_key`).
+    key: String,
+    /// The session it is in, once its stream said.
+    session: Option<String>,
+    used: Instant,
+}
+
+impl Drop for Live {
+    fn drop(&mut self) {
+        if matches!(self.child.try_wait(), Ok(None)) {
+            kill_tree(&mut self.child);
+        }
+    }
+}
+
+/// Every chat's Claude Code, by chat id, while it waits for a message.
+static LIVES: std::sync::Mutex<Option<std::collections::HashMap<String, Live>>> = std::sync::Mutex::new(None);
+/// Whether the thread that ends idle ones runs.
+static REAPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+fn lives<T>(f: impl FnOnce(&mut std::collections::HashMap<String, Live>) -> T) -> T {
+    f(LIVES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default))
+}
+
+/// What a chat's Claude Code is started with, but the session it resumes:
+/// the same key, the same process can answer.
+fn live_key(exe: &std::path::Path, args: &[String]) -> String {
+    let mut parts = vec![exe.to_string_lossy().to_string()];
+    let mut skip = false;
+    for a in args {
+        if std::mem::take(&mut skip) {
+            continue;
+        }
+        if a == "--resume" {
+            skip = true;
+            continue;
+        }
+        parts.push(a.clone());
+    }
+    parts.join("\n")
+}
+
+/// The arguments of a chat's Claude Code: `args`, taking its messages as stream-json.
+fn live_args(mut args: Vec<String>) -> Vec<String> {
+    args.push("--input-format".into());
+    args.push("stream-json".into());
+    args
+}
+
+/// One message as Claude Code takes it on stdin (`--input-format stream-json`).
+fn user_line(text: &str) -> String {
+    format!("{}\n", json!({ "type": "user", "message": { "role": "user", "content": [{ "type": "text", "text": text }] } }))
+}
+
+/// Asks Claude Code to end the turn it is on, keeping the process and the session.
+fn interrupt_line(n: u64) -> String {
+    format!("{}\n", json!({ "type": "control_request", "request_id": format!("lumo-interrupt-{n}"), "request": { "subtype": "interrupt" } }))
+}
+
+/// Ends the chats' Claude Codes idle for LIVE_IDLE, or ended already, once a
+/// minute while there is one; the thread goes when none is left.
+fn reap_idle() {
+    if REAPING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+        return;
+    }
+    std::thread::spawn(|| loop {
+        std::thread::sleep(Duration::from_secs(60));
+        let gone: Vec<Live> = lives(|all| {
+            let ids: Vec<String> = all
+                .iter_mut()
+                .filter_map(|(id, l)| (l.used.elapsed() > LIVE_IDLE || !matches!(l.child.try_wait(), Ok(None))).then(|| id.clone()))
+                .collect();
+            ids.iter().filter_map(|id| all.remove(id)).collect()
+        });
+        // Ended here, out of the lock (Drop ends each).
+        drop(gone);
+        let empty = lives(|all| {
+            let empty = all.is_empty();
+            if empty {
+                REAPING.store(false, std::sync::atomic::Ordering::SeqCst);
+            }
+            empty
+        });
+        if empty {
+            return;
+        }
+    });
+}
+
+/// The chat's Claude Code that can answer with `key` in `session`, or a new one.
+fn live_for(chat_id: &str, key: &str, session: Option<&str>, exe: &std::path::Path, args: &[String], dir: &std::path::Path) -> Result<Live, String> {
+    if let Some(mut live) = lives(|all| all.remove(chat_id)) {
+        let alive = matches!(live.child.try_wait(), Ok(None));
+        // Lines left from the turn before (after an interrupt) are not this turn's.
+        let mut open = true;
+        loop {
+            match live.rx.try_recv() {
+                Ok(_) => continue,
+                Err(mpsc::TryRecvError::Empty) => break,
+                Err(mpsc::TryRecvError::Disconnected) => {
+                    open = false;
+                    break;
+                }
+            }
+        }
+        if alive && open && live.key == key && live.session.as_deref() == session {
+            return Ok(live);
+        }
+        // Another model, mode or session: this one goes (Drop ends it).
+    }
+    std::fs::create_dir_all(dir).map_err(|e| e.to_string())?;
+    let mut child = spawn(exe, &live_args(args.to_vec()), dir, chat_id)?;
+    let stdin = child.stdin.take().ok_or("no stdin")?;
+    let stderr = read_stderr(&mut child);
+    let rx = read_lines(&mut child, usize::MAX)?;
+    Ok(Live { child, stdin, rx, stderr, key: key.to_string(), session: session.map(str::to_string), used: Instant::now() })
+}
+
+/// One turn of the chat `chat_id` through its own Claude Code (started, or
+/// started again, as needed), blocking. `session`: the chat's Claude Code
+/// session, resumed by `args` when a new process starts. As `run` otherwise.
+#[allow(clippy::too_many_arguments)]
+fn live_turn(
+    exe: PathBuf,
+    args: Vec<String>,
+    input: String,
+    dir: PathBuf,
+    chat_id: &str,
+    session: Option<String>,
+    stop: Arc<Stop>,
+    on_text: impl FnMut(&str),
+    on_activity: impl FnMut(&Activity),
+    on_plan: impl FnMut(&str, &Value),
+) -> Result<Run, String> {
+    let key = live_key(&exe, &args);
+    let mut live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
+    if live.stdin.write_all(user_line(&input).as_bytes()).and_then(|_| live.stdin.flush()).is_err() {
+        // It ended between two messages: once more, with a new one.
+        drop(live);
+        live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
+        live.stdin.write_all(user_line(&input).as_bytes()).and_then(|_| live.stdin.flush()).map_err(|e| e.to_string())?;
+    }
+    let mut asked = 0u64;
+    let stdin = &mut live.stdin;
+    let (state, ended) = read_turn(
+        &live.rx,
+        &stop,
+        || {
+            asked += 1;
+            stdin.write_all(interrupt_line(asked).as_bytes()).and_then(|_| stdin.flush()).is_ok()
+        },
+        on_text,
+        on_activity,
+        on_plan,
+    );
+    match ended {
+        Ended::Result => {
+            if state.session.is_some() {
+                live.session = state.session.clone();
+            }
+            live.used = Instant::now();
+            let old = lives(|all| all.insert(chat_id.to_string(), live));
+            drop(old);
+            reap_idle();
+            Ok(state)
+        }
+        // Not interrupted in time: ended, the run so far kept.
+        Ended::Stopped => Ok(state),
+        Ended::Closed => {
+            let status = live.child.wait().ok();
+            if state.stopped {
+                return Ok(state);
+            }
+            std::thread::sleep(Duration::from_millis(50));
+            let stderr = live.stderr.lock().unwrap_or_else(|p| p.into_inner()).clone();
+            Err(ended_without_answer(&stderr, status))
+        }
+    }
+}
+
+/// Ends the chat's Claude Code, if one waits between two turns (the chat starts afresh).
+pub fn close(chat_id: &str) {
+    let gone = lives(|all| all.remove(chat_id));
+    drop(gone);
 }
 
 /// An npm install runs `claude.cmd`: killing cmd.exe alone would leave node running.
@@ -949,13 +1222,15 @@ pub async fn send(
     let events = chat.events();
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
+    let resumed = session.clone();
     let state = tauri::async_runtime::spawn_blocking(move || {
-        run(
+        live_turn(
             exe,
             args,
             input,
             work_dir(),
             &chat_id,
+            resumed,
             stop,
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
@@ -993,7 +1268,7 @@ pub async fn send(
     let answer = match state.result {
         Some(Ok(text)) => text,
         Some(Err(e)) => return Err(tf("Claude Code: {error}", &[("error", &e)])),
-        None => unreachable!("run() returns an error without a result"),
+        None => unreachable!("live_turn() returns an error without a result"),
     };
     let answer = chat::keep_lumo_lines(answer, &state.said);
     let answer = if answer.trim().is_empty() && state.denied > 0 {
@@ -1140,6 +1415,66 @@ mod tests {
         let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
         assert!(!workshop.contains(['%', '"', '&', '|', '<', '>', '^', '`']), "plain words on the command line");
         assert!(workshop.contains("lumo-tool") && workshop.contains("lumo-file"));
+    }
+
+    #[test]
+    fn a_chats_claude_code_is_kept_for_the_same_settings_whatever_session_it_resumes() {
+        let exe = std::path::Path::new("C:/claude.cmd");
+        let a = args("opus", "high", "default", None, "/inbox", &[]);
+        let b = args("opus", "high", "default", Some(SID), "/inbox", &[]);
+        assert_eq!(live_key(exe, &a), live_key(exe, &b));
+        assert_ne!(live_key(exe, &a), live_key(exe, &args("sonnet", "high", "default", None, "/inbox", &[])));
+        assert_ne!(live_key(exe, &a), live_key(exe, &args("opus", "high", "plan", None, "/inbox", &[])));
+        let l = live_args(a);
+        assert_eq!(&l[l.len() - 2..], ["--input-format", "stream-json"]);
+        let v: Value = serde_json::from_str(user_line("hi \"you\"\nthere").trim_end()).unwrap();
+        assert_eq!(v["type"], "user");
+        assert_eq!(v["message"]["content"][0]["text"], "hi \"you\"\nthere");
+        assert!(user_line("a\nb").ends_with('\n') && user_line("a\nb").matches('\n').count() == 1, "one line");
+        let v: Value = serde_json::from_str(interrupt_line(3).trim_end()).unwrap();
+        assert_eq!(v["request"]["subtype"], "interrupt");
+        assert_eq!(v["type"], "control_request");
+    }
+
+    #[test]
+    fn a_turn_ends_with_its_result_and_stop_interrupts_it_without_ending_the_process() {
+        let feed = |lines: &[&str]| {
+            let (tx, rx) = mpsc::channel::<Vec<u8>>();
+            for l in lines {
+                tx.send(l.as_bytes().to_vec()).unwrap();
+            }
+            (tx, rx)
+        };
+        let text = r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Hello"}}}"#;
+        let result = r#"{"type":"result","subtype":"success","result":"Hello","session_id":"0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"}"#;
+        let next = r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Next turn"}}}"#;
+        let (_tx, rx) = feed(&[text, result, next]);
+        let mut shown = String::new();
+        let (state, ended) = read_turn(&rx, &Stop::default(), || unreachable!(), |t| shown = t.to_string(), |_| {}, |_, _| {});
+        assert_eq!(ended, Ended::Result);
+        assert_eq!(state.result, Some(Ok("Hello".to_string())));
+        assert_eq!(state.session.as_deref(), Some(SID));
+        // The next turn's lines stay for the next turn.
+        assert!(rx.try_recv().unwrap().ends_with(b"}"));
+
+        // Stop: interrupted, and the turn ends with the result the CLI gives then.
+        let stop = Stop::default();
+        stop.stop();
+        let interrupted = r#"{"type":"result","subtype":"error_during_execution","is_error":true,"result":""}"#;
+        let (_tx, rx) = feed(&[text, interrupted]);
+        let mut asked = 0;
+        let (state, ended) = read_turn(&rx, &stop, || { asked += 1; true }, |_| {}, |_| {}, |_, _| {});
+        assert_eq!((ended, asked), (Ended::Result, 1));
+        assert!(state.stopped);
+        // A CLI that can't be interrupted (one prompt, no stdin) is ended.
+        let (_tx, rx) = feed(&[text]);
+        let (state, ended) = read_turn(&rx, &stop, || false, |_| {}, |_| {}, |_, _| {});
+        assert_eq!(ended, Ended::Stopped);
+        assert!(state.stopped);
+        // The CLI ended before its result.
+        let (tx, rx) = feed(&[text]);
+        drop(tx);
+        assert_eq!(read_turn(&rx, &Stop::default(), || false, |_| {}, |_| {}, |_, _| {}).1, Ended::Closed);
     }
 
     #[test]

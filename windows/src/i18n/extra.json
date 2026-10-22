@@ -10106,6 +10106,18 @@
    "ru": "Что он сообщает агентам",
    "id": "Yang dikatakannya kepada agen",
    "it": "Cosa dice agli agenti"
+  },
+  "Sent as soon as this answer ends": {
+   "zh-Hans": "此回答结束后立即发送",
+   "hi": "यह जवाब पूरा होते ही भेजा जाएगा",
+   "es": "Se envía en cuanto termine esta respuesta",
+   "ar": "يُرسل فور انتهاء هذه الإجابة",
+   "fr": "Envoyé dès que cette réponse se termine",
+   "bn": "এই উত্তর শেষ হলেই পাঠানো হবে",
+   "pt-BR": "Enviado assim que esta resposta terminar",
+   "ru": "Отправится, как только закончится этот ответ",
+   "id": "Dikirim begitu jawaban ini selesai",
+   "it": "Inviato appena finisce questa risposta"
   }
  }
 }
