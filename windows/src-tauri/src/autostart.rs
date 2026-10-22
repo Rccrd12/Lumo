@@ -5,11 +5,21 @@
 // At every launch the entry left under the app's old name (migrate.rs) is
 // removed, so the app never starts twice, and with autostart on the current
 // entry is written again, so it points at this exe wherever it now lives.
+// A dev build (`npm run tauri dev`) never touches the entry: its exe loads the
+// dev server on localhost, which isn't running when Windows starts.
 
 use tauri::{AppHandle, Runtime};
 use tauri_plugin_autostart::ManagerExt;
 
+/// False in a dev build, which leaves the installed app's entry alone.
+pub fn writable() -> bool {
+    !cfg!(debug_assertions)
+}
+
 pub fn refresh<R: Runtime>(app: &AppHandle<R>, on: bool) {
+    if !writable() {
+        return;
+    }
     if app.package_info().name != crate::migrate::OLD_AUTOSTART {
         remove_legacy();
     }
