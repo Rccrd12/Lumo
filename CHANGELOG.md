@@ -4,6 +4,8 @@
 
 - **Attachments and Chat files stay put**: switching between the two lists no longer moves their buttons
 - **Chat files show where they are**: under each file, the folder it is in
+- **One row per file in Chat files**: a file you attached and the AI then read shows once, as "Attached · Read by the AI", where the file really is
+- **The attachments' number is in their button**, so it is clear it counts the attachments and not the chat's files
 
 ## Windows 0.13.0 — October 22, 2026
 

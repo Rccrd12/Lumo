@@ -2193,6 +2193,9 @@ input[type="range"]::-webkit-slider-thumb {
    title, the other a small button. Both keep the same box, so switching
    moves neither. */
 .files-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   height: 24px;
   padding: 0 10px;
   border: 0;
@@ -2206,6 +2209,16 @@ input[type="range"]::-webkit-slider-thumb {
 .files-tab:not(.on) {
   background: rgba(255, 255, 255, 0.06);
   color: #b0b5be;
+}
+
+/* Inside its button, the count sits a little lighter on the pill. */
+.files-tab .files-count {
+  height: 16px;
+  min-width: 16px;
+  padding: 0 5px;
+  border-radius: 8px;
+  font-size: 10px;
+  line-height: 16px;
 }
 
 .files-tab:not(.on):hover {
