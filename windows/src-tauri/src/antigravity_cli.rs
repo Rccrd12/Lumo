@@ -173,13 +173,16 @@ fn args_with_cards(
     // Auto runs agy's commands in its terminal sandbox, where they need no
     // card; what may not run there alone is soft-denied, or a card with
     // Lumo's hooks. Ask every time runs them as they are, each one a card.
+    // Turbo, Antigravity's own preset picked for Antigravity CLI only, lets
+    // everything run (the island lets its cards through, src/island/hooks.ts).
+    let turbo = mode.trim() == "turbo";
     let mode = crate::claude_code::permission_mode(mode);
     if mode == "plan" {
         a.extend(["--mode".to_string(), "plan".to_string()]);
     } else if mode == "auto" {
         a.push(SANDBOX_FLAG.into());
     }
-    if mode != "plan" && cards {
+    if turbo || (mode != "plan" && cards) {
         // Lumo's cards take the place of agy's own confirmation, which in
         // headless mode can only say no.
         a.push("--dangerously-skip-permissions".into());
@@ -1087,6 +1090,18 @@ mod tests {
         assert!(!sandboxed("default", true), "Ask every time: each command is a card");
         assert!(!sandboxed("plan", true));
         assert!(!sandboxed("", true));
+    }
+
+    #[test]
+    fn turbo_lets_agy_run_everything() {
+        for cards in [true, false] {
+            let a = args_with_cards("default", "turbo", None, "/w", "/inbox", &[], cards);
+            assert!(a.contains(&"--dangerously-skip-permissions".to_string()), "{a:?}");
+            assert!(!a.contains(&"--sandbox".to_string()) && !a.contains(&"--mode".to_string()), "{a:?}");
+        }
+        // Only that word: Claude Code's own words for it never do.
+        let a = args_with_cards("default", "bypassPermissions", None, "/w", "/inbox", &[], false);
+        assert!(!a.iter().any(|s| s.contains("dangerously")), "{a:?}");
     }
 
     #[test]

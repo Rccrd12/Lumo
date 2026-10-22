@@ -684,12 +684,15 @@ function handleHook(island: Island, payload: HookPayload) {
       // The chat's Antigravity CLI run in Auto: agy's own Proceed in Sandbox.
       // A command that stays in its sandbox, or only looks (core/approvals.ts),
       // runs without a card; anything else, and anything uncertain, is the
-      // usual card.
+      // usual card. In Turbo, which the user picked for Antigravity CLI,
+      // everything runs.
+      const agyMode = chatAgy ? parsePermissionMode(State.settings.chatPermissionMode, "antigravity-cli") : "default";
       if (
-        chatAgy && requestId && parsePermissionMode(State.settings.chatPermissionMode) === "auto"
-        && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {}, payload.lumo_sandbox === true)
+        chatAgy && requestId
+        && (agyMode === "turbo"
+          || (agyMode === "auto" && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {}, payload.lumo_sandbox === true)))
       ) {
-        void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by Auto)`);
+        void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by ${agyMode})`);
         void Bridge.approvalAutoAllow(requestId);
         break;
       }

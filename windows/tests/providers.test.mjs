@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, isLoopbackHost, pickModel, providerDef, urlExposure,
+  PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, permissionModesFor, isLoopbackHost, pickModel, providerDef, urlExposure,
   visibleProviders, withModel, anyProviderReady,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
@@ -93,11 +93,17 @@ test("Antigravity CLI is a keyless CLI whose models carry their effort", () => {
   assert.equal(effortFor("claude-code", undefined), "");
 });
 
-test("the permission modes never include one that lets everything through", () => {
-  assert.deepEqual([...PERMISSION_MODES], ["default", "auto", "plan"]);
-  for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m), m);
-  assert.equal(parsePermissionMode("acceptEdits"), "auto", "picked before Auto replaced it");
-  for (const m of ["bypassPermissions", "dontAsk", "", undefined, 3]) assert.equal(parsePermissionMode(m), "default", String(m));
+test("only Antigravity CLI gets Turbo; Claude Code never lets everything through", () => {
+  assert.deepEqual(permissionModesFor("claude-code"), ["default", "auto", "plan"]);
+  assert.deepEqual(permissionModesFor("antigravity-cli"), ["default", "auto", "plan", "turbo"]);
+  for (const m of ["default", "auto", "plan"]) assert.equal(parsePermissionMode(m, "claude-code"), m);
+  for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, "antigravity-cli"), m);
+  assert.equal(parsePermissionMode("turbo", "claude-code"), "default", "Turbo asks with Claude Code");
+  assert.equal(parsePermissionMode("turbo", "openai"), "default");
+  assert.equal(parsePermissionMode("acceptEdits", "claude-code"), "auto", "picked before Auto replaced it");
+  for (const m of ["bypassPermissions", "dontAsk", "", undefined, 3]) {
+    assert.equal(parsePermissionMode(m, "antigravity-cli"), "default", String(m));
+  }
 });
 
 test("loopback hosts match net.rs", () => {

@@ -499,10 +499,11 @@ Antigravity's own **Proceed in Sandbox** (its Default preset): agy runs with
 card, and one that asks to leave the sandbox, an MCP tool or the browser is the
 usual card. A command that only looks (`git status`, `ls`, `cat`, `rg`…, with
 no redirection or substitution) never needs one, unless agy itself marked it as
-not safe to run alone. It
-lights up while it may do more than ask. There is no mode that lets every
-action through: Lumo never passes `bypassPermissions` or
-`--dangerously-skip-permissions`.
+not safe to run alone. With Antigravity CLI only, the shield also offers
+**Turbo**, Antigravity's own preset: every command runs and any file changes
+without a card. It lights up while it may do more than ask. Claude Code never
+gets a mode that lets every action through: Lumo never passes it
+`bypassPermissions`.
 
 ### Chat with your Google account (Antigravity CLI)
 
@@ -523,14 +524,15 @@ picker and in **Settings… → Chat → Antigravity CLI**. There is no effort t
 pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
 refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
 `--mode plan`; **Auto** goes as `--sandbox`, agy's terminal sandbox (in preview
-on Windows). Headless agy never prompts: it reads and writes workspace files
+on Windows); **Turbo** as `--dangerously-skip-permissions`, with no card. Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command, or a file it would change outside the chat's
 folders, needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
 card over the chat (reinstall the hooks if they predate this version, or the
 card only waits 8 seconds); without them, or if nobody clicks, the command does
-not run and the answer says so. Lumo never passes
-`--dangerously-skip-permissions`. Google replaced Gemini CLI with Antigravity
+not run and the answer says so. With the hooks, agy's own confirmation is
+off (`--dangerously-skip-permissions`) and Lumo's cards take its place; without
+them only **Turbo** turns it off. Google replaced Gemini CLI with Antigravity
 CLI, so Settings no longer offers Gemini CLI: its pill is gone, and
 **Settings… → Agents** only lists its hooks when they were installed before,
 so they can be removed.

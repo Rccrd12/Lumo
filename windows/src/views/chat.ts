@@ -61,7 +61,7 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
-  PERMISSION_MODES, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, pickModel, providerDef,
+  activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, permissionModesFor, pickModel, providerDef,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -141,6 +141,7 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
   default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
   auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
+  turbo: { name: N_("Turbo"), note: N_("Runs every command and changes any file without asking.") },
 };
 
 /**
@@ -1220,8 +1221,8 @@ export function buildPrompt(
   function drawPermissions() {
     clear(permList);
     const p = providerDef(State.settings.chatProvider);
-    const current = parsePermissionMode(State.settings.chatPermissionMode);
-    for (const mode of PERMISSION_MODES) {
+    const current = parsePermissionMode(State.settings.chatPermissionMode, p.id);
+    for (const mode of permissionModesFor(p.id)) {
       const on = mode === current;
       const row = h(
         "button",
@@ -1262,7 +1263,7 @@ export function buildPrompt(
     const cli = isCliProvider(State.settings.chatProvider);
     permBtn.hidden = !cli;
     if (!cli) closePermissions();
-    const mode = parsePermissionMode(State.settings.chatPermissionMode);
+    const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);
     permBtn.classList.toggle("lit", mode !== "default");
     permBtn.title = `${t(STRINGS.permissions)} · ${t(PERMISSION_TEXT[mode].name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);
