@@ -10022,6 +10022,18 @@
    "ru": "Lumo делает его вместе с вами в мастерской",
    "id": "Lumo sedang membuatnya bersama Anda di bengkel",
    "it": "Lumo lo sta costruendo con te nell'officina"
+  },
+  "What it tells the agents": {
+   "zh-Hans": "它告诉代理的内容",
+   "hi": "यह एजेंटों को क्या बताता है",
+   "es": "Lo que les dice a los agentes",
+   "ar": "ما يقوله للوكلاء",
+   "fr": "Ce qu'il dit aux agents",
+   "bn": "এটি এজেন্টদের কী বলে",
+   "pt-BR": "O que ele diz aos agentes",
+   "ru": "Что он сообщает агентам",
+   "id": "Yang dikatakannya kepada agen",
+   "it": "Cosa dice agli agenti"
   }
  }
 }

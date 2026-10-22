@@ -141,6 +141,11 @@ test("the supervisor's words, Always ask or Trust, and a dangerous tool turned o
   tools.sync();
   assert.equal(tools.el.querySelector(".supervisor-summary").textContent, review.summary);
   assert.equal(tools.el.querySelector(".supervisor-points").find("LI")[0].textContent, "Takes 30 s");
+  assert.equal(tools.el.querySelector(".tool-desc").textContent, review.summary, "the list says it in Lumo's language");
+  assert.equal(tools.el.querySelector(".tool-detail-text"), null, "the agents' description is folded");
+  tools.el.querySelector(".tools-fold").fire("click", { stopPropagation() {} });
+  tools.sync();
+  assert.equal(tools.el.querySelector(".tool-detail-text").textContent, TOOL.description);
 
   answers.tools_set_trust = null;
   const opts = () => tools.el.find(".trust-opt");
