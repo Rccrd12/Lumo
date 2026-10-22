@@ -230,6 +230,10 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     }
     if is_island_run(env) {
         map.insert("lumo_island".into(), Value::Bool(true));
+        // The chat's Antigravity CLI run in Auto: its commands run in agy's sandbox.
+        if env(SANDBOX_VAR).as_deref() == Some("1") {
+            map.insert("lumo_sandbox".into(), Value::Bool(true));
+        }
     }
     // Claude Code in Cursor's terminal goes on the Cursor pill (Mac #120).
     if !map.contains_key("term_editor") {
@@ -256,7 +260,8 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     let tool = map.get("tool_name").and_then(Value::as_str).unwrap_or("");
     let island_card = is_island_run(env)
         && name == "PreToolUse"
-        && ((args.agent == "antigravity" && reply::island_card(tool, map.get("tool_input")))
+        && ((args.agent == "antigravity"
+            && (reply::island_card(tool, map.get("tool_input")) || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map))))
             || (args.agent.is_empty() && args.chat_card && reply::claude_card_tool(tool)));
     let name = if island_card { "PermissionRequest".to_string() } else { name };
     if island_card {
@@ -297,6 +302,14 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     Some(Event { line, name, question, suggestions, island_card })
 }
 
+/// Antigravity's `workspacePaths`: the folders its run may change.
+fn workspaces(map: &serde_json::Map<String, Value>) -> Vec<String> {
+    map.get("workspacePaths")
+        .and_then(Value::as_array)
+        .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+        .unwrap_or_default()
+}
+
 /// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
 /// a Claude Code session started from the Claude desktop app, which says so in
 /// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
@@ -308,6 +321,9 @@ fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
 
 /// Set by the app on the `claude -p` and headless `agy` runs of its chat; hooks inherit it.
 const ISLAND_RUN_VAR: &str = "LUMO_ISLAND_RUN";
+
+/// Set by the app on a headless `agy` run of its chat started with `--sandbox` (antigravity_cli.rs).
+const SANDBOX_VAR: &str = "LUMO_AGY_SANDBOX";
 
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     if !arg.is_empty() {
@@ -473,6 +489,11 @@ mod tests {
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
         assert!(!ev.line.contains("lumo_island"));
         assert!(!is_island_run(&|_| None));
+        // A sandboxed run of the chat says so; nothing else can.
+        let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1"), ("LUMO_AGY_SANDBOX", "1")]), "/p").unwrap();
+        assert!(ev.line.contains(r#""lumo_sandbox":true"#));
+        assert!(!prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap().line.contains("lumo_sandbox"));
+        assert!(!prepare(raw, &args, &env_of(&[("LUMO_AGY_SANDBOX", "1")]), "/p").unwrap().line.contains("lumo_sandbox"));
     }
 
     #[test]

@@ -8379,17 +8379,17 @@
    "id": "Memakai alat dari {server} (MCP).",
    "it": "Usa uno strumento di {server} (MCP)."
   },
-  "Commands that only look run without asking; Lumo asks for the rest.": {
-   "zh-Hans": "只做查看的命令无需询问即可运行；其余的 Lumo 会先询问。",
-   "hi": "सिर्फ़ देखने वाले कमांड बिना पूछे चलते हैं; बाकी के लिए Lumo पूछता है।",
-   "es": "Los comandos que solo miran se ejecutan sin preguntar; para el resto, Lumo pregunta.",
-   "ar": "تعمل الأوامر التي تطّلع فقط دون سؤال؛ ويسأل Lumo عن الباقي.",
-   "fr": "Les commandes qui regardent seulement s'exécutent sans demander ; Lumo demande pour le reste.",
-   "bn": "শুধু দেখার কমান্ড জিজ্ঞেস না করেই চলে; বাকিগুলোর জন্য Lumo জিজ্ঞেস করে।",
-   "pt-BR": "Comandos que só consultam rodam sem perguntar; para o resto, o Lumo pergunta.",
-   "ru": "Команды, которые только смотрят, выполняются без вопросов; об остальном Lumo спрашивает.",
-   "id": "Perintah yang hanya melihat berjalan tanpa bertanya; untuk sisanya Lumo bertanya.",
-   "it": "I comandi che guardano soltanto partono senza chiedere; per il resto Lumo chiede."
+  "Commands run in Antigravity's sandbox without asking; Lumo asks for the rest.": {
+   "zh-Hans": "命令在 Antigravity 的沙盒中运行，无需询问；其余的 Lumo 会先询问。",
+   "hi": "कमांड Antigravity के सैंडबॉक्स में बिना पूछे चलते हैं; बाकी के लिए Lumo पूछता है।",
+   "es": "Los comandos se ejecutan en el sandbox de Antigravity sin preguntar; para el resto, Lumo pregunta.",
+   "ar": "تعمل الأوامر داخل صندوق الحماية في Antigravity دون سؤال؛ ويسأل Lumo عن الباقي.",
+   "fr": "Les commandes s'exécutent dans le bac à sable d'Antigravity sans demander ; Lumo demande pour le reste.",
+   "bn": "কমান্ড Antigravity-র স্যান্ডবক্সে জিজ্ঞেস না করেই চলে; বাকিগুলোর জন্য Lumo জিজ্ঞেস করে।",
+   "pt-BR": "Os comandos rodam na sandbox do Antigravity sem perguntar; para o resto, o Lumo pergunta.",
+   "ru": "Команды выполняются в песочнице Antigravity без вопросов; об остальном Lumo спрашивает.",
+   "id": "Perintah berjalan di sandbox Antigravity tanpa bertanya; untuk sisanya Lumo bertanya.",
+   "it": "I comandi partono senza chiedere nella sandbox di Antigravity; per il resto Lumo chiede."
   },
   "A ring next to the past chats shows how much the provider in use has used; a click shows each limit and when it resets. For Claude Code it needs the relay from {path}. Nothing is shown for Google or the local models.": {
    "zh-Hans": "过往聊天旁的圆环显示当前提供商的用量；点击可查看每项限额及其重置时间。Claude Code 需要 {path} 中的中继。Google 和本地模型不显示。",

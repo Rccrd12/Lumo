@@ -163,7 +163,9 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         Some(crate::tools::serve_call(&app, request).await)
     } else if payload.get("lumo_tools").is_some() {
         Some(crate::tools::serve_list())
-    } else if let Some(request) = payload.get("lumo_island") {
+    } else if let Some(request) = payload.get("lumo_island").filter(|r| r.is_object()) {
+        // An object: a hook event of the island's own chat carries
+        // `"lumo_island": true` instead, and goes on below as an event.
         Some(crate::island_tools::serve(request))
     } else {
         payload.get("lumo_plan").map(|request| crate::antigravity_cli::serve_plan(&app, request))

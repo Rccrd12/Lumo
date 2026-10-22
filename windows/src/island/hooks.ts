@@ -167,6 +167,8 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   lumo_island?: boolean;
+  /** The chat's Antigravity CLI run in Auto: its commands run in agy's sandbox. */
+  lumo_sandbox?: boolean;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
@@ -679,13 +681,13 @@ function handleHook(island: Island, payload: HookPayload) {
       }
 
       const requestId = payload.request_id ?? "";
-      // The chat's Antigravity CLI run in Auto: agy has no judgement of its own
-      // to lean on headless, so Lumo's stands in for it. A command that only
-      // looks (core/approvals.ts) runs without a card; anything else, and
-      // anything uncertain, is the usual card.
+      // The chat's Antigravity CLI run in Auto: agy's own Proceed in Sandbox.
+      // A command that stays in its sandbox, or only looks (core/approvals.ts),
+      // runs without a card; anything else, and anything uncertain, is the
+      // usual card.
       if (
         chatAgy && requestId && parsePermissionMode(State.settings.chatPermissionMode) === "auto"
-        && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {})
+        && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {}, payload.lumo_sandbox === true)
       ) {
         void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by Auto)`);
         void Bridge.approvalAutoAllow(requestId);

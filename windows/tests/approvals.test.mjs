@@ -55,6 +55,18 @@ test("Auto lets through only what only looks, and never what agy itself marks un
   assert.equal(autoAllows("browser_click", {}), false);
 });
 
+test("in agy's sandbox, Auto lets commands through, but never one that leaves it", () => {
+  assert.ok(autoAllows("run_command", { CommandLine: "npm test", command: "npm test" }, true));
+  assert.ok(autoAllows("run_command", { command: "rm -rf build", bypassSandbox: false }, true));
+  assert.equal(autoAllows("run_command", { command: "npm test" }, false), false, "not without the sandbox");
+  for (const leave of [{ bypassSandbox: true }, { BypassSandbox: true }, { bypass_sandbox: "true" }, { RunOutsideSandbox: 1 }]) {
+    assert.equal(autoAllows("run_command", { command: "npm test", ...leave }, true), false, JSON.stringify(leave));
+  }
+  assert.equal(autoAllows("run_command", { command: "npm test", SafeToAutoRun: false }, true), false);
+  assert.equal(autoAllows("mcp__github__create_issue", {}, true), false, "the sandbox is for commands only");
+  assert.equal(autoAllows("browser_click", {}, true), false);
+});
+
 // ── What the card says the request is for ─────────────────────────────────────
 
 test("the agent's own words come first, on one line, never the command again", () => {
