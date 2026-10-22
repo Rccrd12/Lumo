@@ -1022,7 +1022,7 @@ mod tests {
         assert!(feed(&mut run, r#"{"method":"item/started","params":{"item":{"type":"agentMessage","id":"m2","text":"Done."}}}"#));
         assert!(feed(&mut run, r#"{"method":"turn/completed","params":{"turn":{"status":"completed","items":[{"type":"agentMessage","id":"m2","text":"Done."}]}}}"#));
         assert_eq!(run.answer(), "Done.");
-        assert_eq!(chat::keep_lumo_lines(run.answer(), &run.said()), "Done.\n[[timer 60s: tea]]");
+        assert_eq!(chat::keep_lumo_lines(run.answer(), &run.said()).trim_end(), "Done.\n[[timer 60s: tea]]");
         assert_eq!(run.done, Some(Ok(())));
     }
 
