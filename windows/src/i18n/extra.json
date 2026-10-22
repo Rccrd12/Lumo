@@ -10106,6 +10106,30 @@
    "ru": "Отправится, как только закончится этот ответ",
    "id": "Dikirim begitu jawaban ini selesai",
    "it": "Inviato appena finisce questa risposta"
+  },
+  "Turbo": {
+   "zh-Hans": "Turbo",
+   "hi": "Turbo",
+   "es": "Turbo",
+   "ar": "Turbo",
+   "fr": "Turbo",
+   "bn": "Turbo",
+   "pt-BR": "Turbo",
+   "ru": "Turbo",
+   "id": "Turbo",
+   "it": "Turbo"
+  },
+  "Runs every command and changes any file without asking.": {
+   "zh-Hans": "无需询问即可运行所有命令并修改任何文件。",
+   "hi": "बिना पूछे हर कमांड चलाता है और कोई भी फ़ाइल बदलता है।",
+   "es": "Ejecuta cualquier comando y cambia cualquier archivo sin preguntar.",
+   "ar": "يشغّل أي أمر ويغيّر أي ملف دون سؤال.",
+   "fr": "Exécute toutes les commandes et modifie n'importe quel fichier sans demander.",
+   "bn": "জিজ্ঞেস না করেই সব কমান্ড চালায় এবং যেকোনো ফাইল বদলায়।",
+   "pt-BR": "Executa qualquer comando e altera qualquer arquivo sem perguntar.",
+   "ru": "Выполняет любые команды и меняет любые файлы без вопросов.",
+   "id": "Menjalankan semua perintah dan mengubah file apa pun tanpa bertanya.",
+   "it": "Esegue ogni comando e modifica qualsiasi file senza chiedere."
   }
  }
 }

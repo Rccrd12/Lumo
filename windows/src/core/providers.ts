@@ -54,16 +54,27 @@ export function isCliProvider(id: string): boolean {
 /**
  * What the chat's CLIs may do without asking (Settings.chatPermissionMode,
  * claude_code::permission_mode): ask for everything, let the AI decide what
- * is safe to do without asking (Claude Code's auto mode), or only plan.
- * Nothing that lets every action through.
+ * is safe to do without asking (Claude Code's auto mode), or only plan. And
+ * Turbo, Antigravity's own preset, for Antigravity CLI only: everything runs
+ * without asking (antigravity_cli.rs). Claude Code never gets a mode that
+ * lets every action through.
  */
-export const PERMISSION_MODES = ["default", "auto", "plan"] as const;
+export const PERMISSION_MODES = ["default", "auto", "plan", "turbo"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-/** "acceptEdits", picked before Auto took its place, reads as Auto. */
-export function parsePermissionMode(v: unknown): PermissionMode {
+/** The modes the chat offers with `provider`: Turbo with Antigravity CLI only. */
+export function permissionModesFor(provider: string): PermissionMode[] {
+  return PERMISSION_MODES.filter((m) => m !== "turbo" || provider === "antigravity-cli");
+}
+
+/**
+ * The mode `v` is with `provider`. "acceptEdits", picked before Auto took its
+ * place, reads as Auto; Turbo with any provider but Antigravity CLI asks every time.
+ */
+export function parsePermissionMode(v: unknown, provider: string): PermissionMode {
   if (v === "acceptEdits") return "auto";
-  return PERMISSION_MODES.includes(v as PermissionMode) ? (v as PermissionMode) : "default";
+  const mode = PERMISSION_MODES.includes(v as PermissionMode) ? (v as PermissionMode) : "default";
+  return permissionModesFor(provider).includes(mode) ? mode : "default";
 }
 
 /**

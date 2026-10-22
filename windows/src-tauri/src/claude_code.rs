@@ -229,7 +229,7 @@ pub(crate) fn safe_dir(dir: &str) -> Option<&str> {
 /// (Settings::chat_permission_mode): "default" asks for everything, "auto"
 /// lets the CLI decide what is safe to do without asking (Claude Code's own
 /// auto mode; "acceptEdits", picked before, reads as it), "plan" changes
-/// nothing. Anything else — `bypassPermissions`, `dontAsk`, a typo — is
+/// nothing. Anything else — `bypassPermissions`, `dontAsk`, Antigravity's `turbo`, a typo — is
 /// "default": nothing is ever allowed wholesale.
 pub(crate) fn permission_mode(raw: &str) -> &'static str {
     match raw.trim() {
@@ -1580,7 +1580,7 @@ mod tests {
         assert_eq!(mode("acceptEdits"), "auto", "picked before Auto replaced it");
         assert_eq!(mode("plan"), "plan");
         assert_eq!(mode("default"), "default");
-        for wholesale in ["bypassPermissions", "dontAsk", "", "plan & calc"] {
+        for wholesale in ["bypassPermissions", "dontAsk", "turbo", "", "plan & calc"] {
             assert_eq!(mode(wholesale), "default", "{wholesale}");
         }
     }
