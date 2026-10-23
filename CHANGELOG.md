@@ -4,6 +4,7 @@
 
 - **Formulas in the chat look right**: matrices get brackets as tall as their rows, `\left( … \right)` stretches around what it holds, and `aligned`, `cases`, `array` and the other environments line their columns up. Vectors written as `\vect{v}`, `\vv{v}` or `\overrightarrow{v}` show their arrow, and a command Lumo doesn't know shows what it holds instead of its name. `=` and `+` get their spacing, a formula on its own line puts the limits of ∑ and lim above and below, and `\boxed`, `\overset`, `\underbrace`, `\xrightarrow` and `\color` work too
 - **Fixed**: with Claude Code in the chat, a command such as `/context` or `/compact` was answered by the model as a question when Lumo shared what's open, a folder or the screen. Claude Code's commands now reach it exactly as typed
+- **Fixed**: an old file dropped on the island could disappear from the chat right after being added, if the inbox was being cleaned at the same moment
 
 ## Windows 0.13.1 — October 22, 2026
 
