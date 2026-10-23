@@ -407,7 +407,7 @@ impl View {
     }
 
     /// A point of the screen in the screenshot's pixels (outside it when off this screen).
-    pub fn from_screen(self, px: i32, py: i32) -> (i64, i64) {
+    pub fn point_in_shot(self, px: i32, py: i32) -> (i64, i64) {
         let (sw, sh) = self.src();
         let x = ((px - self.rect.0) as f64 * self.w as f64 / sw).floor() as i64;
         let y = ((py - self.rect.1) as f64 * self.h as f64 / sh).floor() as i64;
@@ -982,7 +982,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
         Action::Cursor => {
             let view = view()?;
             let (px, py) = imp::cursor().ok_or("The mouse can't be found.")?;
-            let (x, y) = view.from_screen(px, py);
+            let (x, y) = view.point_in_shot(px, py);
             let off = x < 0 || y < 0 || x >= view.w as i64 || y >= view.h as i64;
             Ok(json!({ "text": if off { format!("[{x}, {y}] — outside this screen.") } else { format!("[{x}, {y}]") } }))
         }
@@ -1473,7 +1473,7 @@ mod tests {
         assert!(v.to_screen(v.w as i64, 0).is_err(), "outside the screenshot");
         assert!(v.to_screen(-1, 5).is_err());
         let (sx, sy) = v.to_screen(500, 300).unwrap();
-        assert_eq!(v.from_screen(sx, sy), (500, 300));
+        assert_eq!(v.point_in_shot(sx, sy), (500, 300));
         // Same size: one to one.
         let v = View::new(0, (0, 0, 1280, 720));
         assert_eq!(v.to_screen(100, 200).unwrap(), (100, 200));

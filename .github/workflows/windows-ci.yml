@@ -65,5 +65,9 @@ jobs:
       - name: Build the relay
         run: cargo build --release -p lumo-hook
 
+      # Dead code and the like fail the build here rather than piling up.
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
+
       - name: Rust tests
         run: cargo test --workspace --locked

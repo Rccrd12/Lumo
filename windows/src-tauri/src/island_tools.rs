@@ -210,7 +210,7 @@ mod tests {
         // Without a chat, the model is told to write the line itself.
         let (said, failed) = call("", SET_TIMER, &json!({ "seconds": 60 }));
         assert!(failed && said.contains("line"));
-        assert_eq!(serve(&json!({ "tool": SET_TIMER, "input": { "seconds": 0 }, "chat": "chat-c" }))["error"].is_string(), true);
+        assert!(serve(&json!({ "tool": SET_TIMER, "input": { "seconds": 0 }, "chat": "chat-c" }))["error"].is_string());
         assert_eq!(take("chat-c"), "");
     }
 

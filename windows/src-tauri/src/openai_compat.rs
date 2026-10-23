@@ -186,6 +186,7 @@ fn status_error(p: &Provider, status: u16, detail: &str) -> String {
 
 /// One chat turn with a cloud provider. For OpenAI, `usage` gets the rate
 /// limits the answer came back with (chat_usage.rs).
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,

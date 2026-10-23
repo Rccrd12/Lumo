@@ -26,6 +26,7 @@ const MARKER: &str = "lumo-hook";
 
 /// The shell an agent runs its hook commands through.
 #[derive(Clone, Copy, Debug, PartialEq)]
+#[allow(clippy::enum_variant_names)]
 pub enum Shell {
     /// Git Bash (Claude Code).
     Sh,
