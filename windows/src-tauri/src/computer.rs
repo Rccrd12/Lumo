@@ -143,7 +143,7 @@ pub fn begin_turn() {
 /// The turn is over: nothing more is done, and Esc and the mouse are the user's again.
 pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
     // Two chats can be answered at once: the computer is let go after the last one.
-    if TURN.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
+    if TURN.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))) != Ok(1) {
         return;
     }
     ACTING.store(false, Ordering::SeqCst);
@@ -208,7 +208,7 @@ pub fn card_up<R: Runtime>(app: &AppHandle<R>) {
 
 /// The card was answered: Claude has the mouse again.
 pub fn card_down<R: Runtime>(app: &AppHandle<R>) {
-    let before = CARDS.fetch_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))).unwrap_or(0);
+    let before = CARDS.try_update(Ordering::SeqCst, Ordering::SeqCst, |n| Some(n.saturating_sub(1))).unwrap_or(0);
     if before == 1 && ENGAGED.load(Ordering::SeqCst) && !STOPPED.load(Ordering::SeqCst) {
         imp::take_mouse(true);
         fx(app, json!({ "kind": "resume" }));
@@ -1325,8 +1325,8 @@ mod imp {
             }
             // BGRA, straight alpha, as a 32-bit cursor takes it.
             let dst = std::slice::from_raw_parts_mut(bits as *mut u8, rgba.len());
-            for (d, s) in dst.chunks_exact_mut(4).zip(rgba.chunks_exact(4)) {
-                d.copy_from_slice(&[s[2], s[1], s[0], s[3]]);
+            for (d, s) in dst.as_chunks_mut::<4>().0.iter_mut().zip(rgba.as_chunks::<4>().0) {
+                *d = [s[2], s[1], s[0], s[3]];
             }
             let mask = CreateBitmap(size as i32, size as i32, 1, 1, None);
             let icon = CreateIconIndirect(&ICONINFO { fIcon: false.into(), xHotspot: hot.0, yHotspot: hot.1, hbmMask: mask, hbmColor: color });
@@ -1567,8 +1567,8 @@ mod tests {
             // The tip is the hot spot, near the top left.
             assert!(hot.0 <= 3 * size / 32 && hot.1 <= 3 * size / 32, "{hot:?}");
             // Some white edge and some soft shadow.
-            assert!(px.chunks_exact(4).any(|p| p == [255, 255, 255, 255]));
-            assert!(px.chunks_exact(4).any(|p| p[0] == 0 && p[3] > 0 && p[3] < 128));
+            assert!(px.as_chunks::<4>().0.contains(&[255, 255, 255, 255]));
+            assert!(px.as_chunks::<4>().0.iter().any(|p| p[0] == 0 && p[3] > 0 && p[3] < 128));
         }
     }
 
