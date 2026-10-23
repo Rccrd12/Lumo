@@ -135,3 +135,20 @@ test("a web link opens through Rust; anything else is plain text", () => {
   assert.deepEqual(sent("open_url"), [{ url: "https://example.com/docs" }]);
   assert.match(root.textContent, /or this\.$/);
 });
+
+test("a table: header, rows and pipes escaped in cells; a lone pipe line stays text", () => {
+  assert.deepEqual(parseMarkdown("Intro\n| A | B |\n|---|:-:|\n| 1 | `x` \\| y |\n| 2 |\nafter"), [
+    { kind: "paragraph", text: "Intro" },
+    { kind: "table", head: ["A", "B"], rows: [["1", "`x` | y"], ["2"]] },
+    { kind: "paragraph", text: "after" },
+  ]);
+  assert.deepEqual(parseMarkdown("| not a table"), [{ kind: "paragraph", text: "| not a table" }]);
+  const root = document.createElement("div");
+  renderMarkdown(root, "| A | B |\n|---|---|\n| **1** | 2 |\n| 3 |");
+  const table = root.querySelector(".md-table");
+  assert.ok(table);
+  assert.equal(table.find("TH").length, 2);
+  // Short rows are filled out to the table's width.
+  assert.equal(table.find("TD").length, 4);
+  assert.equal(table.find("STRONG").length, 1);
+});

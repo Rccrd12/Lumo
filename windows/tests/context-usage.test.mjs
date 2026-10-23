@@ -129,5 +129,5 @@ test("a /context answer is drawn as a card, not tables; anything else stays Mark
   const plain = document.createElement("div");
   renderAnswer(plain, "| a | b |\n|---|---|\n| 1 | 2 |");
   assert.equal(plain.querySelector(".ctx-card"), null);
-  assert.ok(plain.find(".md-p").length > 0);
+  assert.ok(plain.querySelector(".md-table"));
 });

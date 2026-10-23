@@ -97,3 +97,19 @@ test("Lumo's own commands typed in full run in Lumo; the rest goes to the AI", (
   assert.equal(lumoCommand("/compact", "claude-code"), null);
   assert.equal(lumoCommand("new", "anthropic"), null);
 });
+
+test("/effort opens Lumo's picker where there is an effort, in place of Claude Code's", () => {
+  for (const provider of ["claude-code", "codex"]) {
+    const c = slashCommands(provider, ["effort", "compact"]).filter((c) => c.name === "effort");
+    assert.equal(c.length, 1, provider);
+    assert.equal(c[0].kind, "lumo");
+    assert.equal(lumoCommand("/effort", provider), "effort");
+  }
+  assert.ok(!names(slashCommands("anthropic", null)).includes("effort"));
+});
+
+test("Claude Code's commands that do nothing in the chat are left out", () => {
+  const list = names(slashCommands("claude-code", ["design", "design-sync", "design-consent", "color", "heapdump", "doctor", "recap", "usage"]));
+  for (const gone of ["design", "design-sync", "color", "heapdump", "usage"]) assert.ok(!list.includes(gone), gone);
+  for (const kept of ["design-consent", "doctor", "recap"]) assert.ok(list.includes(kept), kept);
+});

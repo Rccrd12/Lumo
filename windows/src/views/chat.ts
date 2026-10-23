@@ -2804,6 +2804,7 @@ export function buildPrompt(
         openHistory();
         break;
       case "model":
+      case "effort":
         if (!picker.isOpen) picker.open();
         break;
       case "attach":
