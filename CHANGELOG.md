@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows 0.14.0 — October 23, 2026
+
+- **`/context` as a card**: with Claude Code, `/context` no longer fills the chat with tables. It answers with a small card: how much of the context is used, a bar of what fills it with a short legend, and under Details the MCP servers, skills, memory files and the tools loaded only when needed. Copy still copies Claude Code's own text
+- **Tables in the answers**: a Markdown table (`/doctor` writes them, and so do the models) shows as a table instead of rows of `|`. One too wide for the chat shows row by row, each value beside its column's name
+- **A tidier "/" menu**: Claude Code's commands that do nothing in the chat (`/design`, `/color`, `/config`, `/rename`, `/usage`, `/loop` and the like) are no longer listed. `/effort` opens the picker where the effort is set, as `/model` does, with Claude Code and Codex
+- **Update now with the .msi**: a Lumo installed from the .msi is updated with the .msi, in place, instead of getting a second Lumo installed beside it
+- **Fixed**: after uninstalling Lumo, every Claude Code hook failed with an error. The relay now stays behind and exits at once, as it does when Lumo is closed
+- **Fixed**: after a failure, the relay to the island could stop delivering approval cards until Lumo restarted; it now reconnects. A question answered in the terminal no longer keeps the relay waiting, and the chat's guard reads what some shells send with a BOM
+- **Saving the settings no longer reconnects the email** unless a mail setting changed
+
 ## Windows 0.13.2 — October 23, 2026
 
 - **Formulas in the chat look right**: matrices get brackets as tall as their rows, `\left( … \right)` stretches around what it holds, and `aligned`, `cases`, `array` and the other environments line their columns up. Vectors written as `\vect{v}`, `\vv{v}` or `\overrightarrow{v}` show their arrow, and a command Lumo doesn't know shows what it holds instead of its name. `=` and `+` get their spacing, a formula on its own line puts the limits of ∑ and lim above and below, and `\boxed`, `\overset`, `\underbrace`, `\xrightarrow` and `\color` work too
