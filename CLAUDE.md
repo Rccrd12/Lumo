@@ -5,7 +5,7 @@ Lumo for Windows is a Tauri app (`windows/`), a fork of a macOS app by Louis Rai
 ## Where things are
 - `windows/` — the Tauri app for Windows: Rust in `src-tauri/`, TypeScript in `src/`, the `lumo-hook` relay in `hook/`. `windows/README.md` documents the app and lists what differs from the Mac.
 - `windows/src/core/pills.ts` — single source of truth for all declared pills (workspace tools, agents, AI providers, services). Every pill ID, color, category and subtitle lives here.
-- `windows/assets/sounds/` — the 29 WAV sounds (served and bundled by `windows/vite.config.ts`).
+- `windows/assets/sounds/` — the 22 WAV sounds (served and bundled by `windows/vite.config.ts`).
 - `windows/i18n-source/Localizable.xcstrings` — the string catalog; `node windows/scripts/gen-strings.mjs` turns it into `windows/src/i18n/strings.json` (never edit by hand). Windows-only strings live in `windows/src/i18n/extra.json`.
 - `windows/screenshots/` — reference screenshots of the shipped views.
 - `docs/AGENTS.md` — the hook payload protocol for agents.

@@ -48,10 +48,13 @@ GitHub for the newest `windows-v*` release of
 each time it opens, and when a newer version is out the island says so for a
 few seconds and Settings opens on Updates with it; **Check when Lumo opens**
 turns that off. When there is a newer one, **Update
-now** downloads its `Lumo-Windows-X.Y.Z-setup.exe` into a temporary folder
-with a progress bar in Settings, then runs it without any window (`/S /UPDATE
-/R`): Lumo quits so the installer can replace it, and the installer opens the
-new Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
+now** downloads the installer you installed Lumo with into a temporary folder,
+with a progress bar in Settings. A `Lumo-Windows-X.Y.Z-setup.exe` runs without
+any window (`/S /UPDATE /R`). A `Lumo-Windows-X.Y.Z.msi` runs through `msiexec`
+with its own progress bar (`/passive`), after Windows asks for an
+administrator's consent, since the .msi installs for every user. Either way
+Lumo quits so the installer can replace it, and the installer opens the new
+Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
 repository's GitHub releases are accepted.
 
 Under it, the **Changelog** lists what changed in every version, the installed
@@ -963,7 +966,7 @@ names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`). There
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
-The 29 sounds live in `assets/sounds/`. They are synthesised from code by
+The 22 sounds live in `assets/sounds/`. They are synthesised from code by
 `scripts/gen-sounds.mjs` (`npm run sounds` rewrites them, byte for byte the
 same). The path is declared once, in `SOUNDS_DIR` at the top of
 `vite.config.ts`, which serves them in development and copies them into

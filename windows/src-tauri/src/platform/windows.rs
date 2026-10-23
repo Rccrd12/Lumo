@@ -8,10 +8,11 @@ use std::process::Command;
 
 use tauri::{AppHandle, Manager, WebviewWindow};
 
-use ::windows::core::{BOOL, PWSTR};
+use ::windows::core::{BOOL, PCWSTR, PWSTR};
 use ::windows::Win32::Foundation::{CloseHandle, HANDLE, HLOCAL, HWND, LPARAM, LocalFree, POINT};
 use ::windows::Win32::Security::Authorization::ConvertSidToStringSidW;
 use ::windows::Win32::Security::{GetTokenInformation, TokenUser, TOKEN_QUERY, TOKEN_USER};
+use ::windows::Win32::System::ApplicationInstallationAndServicing::MsiEnumRelatedProductsW;
 use ::windows::Win32::System::Diagnostics::ToolHelp::{
     CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
 };
@@ -309,6 +310,17 @@ fn local_full_name() -> Option<String> {
         NetApiBufferFree(info.cast());
         text
     }
+}
+
+// ── Installation ──────────────────────────────────────────────────────────────
+
+/// True when Windows Installer has a product installed with this upgrade code
+/// ("{…}"): Lumo installed from its .msi (updater.rs).
+pub fn msi_installed(upgrade_code: &str) -> bool {
+    let code: Vec<u16> = upgrade_code.encode_utf16().chain(std::iter::once(0)).collect();
+    // A product code: a GUID in braces, 38 characters and the null.
+    let mut product = [0u16; 39];
+    unsafe { MsiEnumRelatedProductsW(PCWSTR(code.as_ptr()), None, 0, PWSTR(product.as_mut_ptr())) == 0 }
 }
 
 // ── Cursor ────────────────────────────────────────────────────────────────────

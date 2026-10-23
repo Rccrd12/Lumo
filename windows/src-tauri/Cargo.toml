@@ -40,6 +40,8 @@ webview2-com = "0.39"
 wv2_core = { package = "windows-core", version = "0.62" }
 windows = { version = "0.61", features = [
   "Win32_Foundation",
+  # Update now: whether this Lumo came from the .msi (updater.rs).
+  "Win32_System_ApplicationInstallationAndServicing",
   # Gemini Live's read_notifications (notifications.rs): the notification
   # centre, the app that sent each one.
   "ApplicationModel",

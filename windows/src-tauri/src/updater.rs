@@ -5,10 +5,13 @@
 // when Lumo opens unless Settings turns that off (src/core/update-check.ts); no
 // telemetry, nothing about this computer is sent. The download only ever starts
 // from a click on Update now, and Settings shows its progress. The installer is
-// the same NSIS setup.exe the release workflow publishes (.github/workflows/windows.yml,
-// named by scripts/pack.mjs), run without a window (INSTALLER_ARGS); Lumo quits
-// right after starting it so its files can be replaced, and the installer
-// opens the new Lumo when it is done.
+// the one this copy of Lumo came from, as the release workflow publishes it
+// (.github/workflows/windows.yml, named by scripts/pack.mjs): the NSIS
+// setup.exe, run without a window (INSTALLER_ARGS), or the .msi, through
+// msiexec with its progress bar (MSI_ARGS). Running the setup.exe over an .msi
+// install would leave a second Lumo beside the first. Lumo quits right after
+// starting the installer so its files can be replaced, and the installer opens
+// the new Lumo when it is done.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -40,6 +43,50 @@ const DOWNLOAD_HOSTS: [&str; 3] = [
 /// alone), `/R` opens Lumo again once the files are replaced.
 const INSTALLER_ARGS: [&str; 3] = ["/S", "/UPDATE", "/R"];
 
+/// How msiexec runs a downloaded .msi, after `/i <file>`: a progress bar and
+/// no question (`/passive`), never a restart of the computer, and Tauri's WiX
+/// template opens Lumo again when it is done (AUTOLAUNCHAPP). The .msi
+/// installs for every user, so Windows asks for an administrator's consent.
+const MSI_ARGS: [&str; 3] = ["/passive", "/norestart", "AUTOLAUNCHAPP=True"];
+
+/// The .msi's upgrade code (bundle.windows.wix.upgradeCode in tauri.conf.json):
+/// Windows Installer knows Lumo by it.
+const MSI_UPGRADE_CODE: &str = "{664695E2-338F-541B-8D41-6266D176533C}";
+
+/// The two installers a release carries.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Kind {
+    /// `Lumo-Windows-<v>-setup.exe`, NSIS, for the current user.
+    Setup,
+    /// `Lumo-Windows-<v>.msi`, Windows Installer, for every user.
+    Msi,
+}
+
+impl Kind {
+    fn suffix(self) -> &'static str {
+        match self {
+            Kind::Setup => "-setup.exe",
+            Kind::Msi => ".msi",
+        }
+    }
+}
+
+/// Which installer this copy of Lumo came from. The setup.exe leaves its
+/// uninstall.exe beside lumo.exe; without one, a Lumo that Windows Installer
+/// knows came from the .msi. Anything else (a build run from its folder) takes
+/// the setup.exe, which needs no administrator.
+fn installed_kind() -> Kind {
+    let setup = std::env::current_exe()
+        .ok()
+        .and_then(|exe| exe.parent().map(|dir| dir.join("uninstall.exe").is_file()))
+        .unwrap_or(false);
+    if !setup && crate::platform::msi_installed(MSI_UPGRADE_CODE) {
+        Kind::Msi
+    } else {
+        Kind::Setup
+    }
+}
+
 /// No installer is anywhere near this; a bigger answer is not one.
 const MAX_INSTALLER: u64 = 400 * 1024 * 1024;
 
@@ -55,8 +102,8 @@ pub struct UpdateInfo {
     newer: bool,
     /// The release's notes, cut to a readable length.
     notes: String,
-    /// `Lumo-Windows-<latest>-setup.exe` of that release, or the same
-    /// installer, `Lumo-Windows-<latest>-setup.exe`.
+    /// The release's installer of the kind this copy came from:
+    /// `Lumo-Windows-<latest>-setup.exe` or `Lumo-Windows-<latest>.msi`.
     asset_url: Option<String>,
 }
 
@@ -125,18 +172,21 @@ fn newest_windows_release(releases: Vec<Release>) -> Option<(Version, String, Re
         .max_by(|a, b| a.0.cmp(&b.0))
 }
 
-/// What an installer's file name starts and ends with, as scripts/pack.mjs writes it.
+/// What an installer's file name starts with, as scripts/pack.mjs writes it;
+/// it ends with its kind's suffix.
 const INSTALLER_PREFIX: &str = "Lumo-Windows-";
-const INSTALLER_SUFFIX: &str = "-setup.exe";
 
 /// The installer's name for `version`.
-fn installer_name(version: &str) -> String {
-    format!("{INSTALLER_PREFIX}{version}{INSTALLER_SUFFIX}")
+fn installer_name(version: &str, kind: Kind) -> String {
+    format!("{INSTALLER_PREFIX}{version}{}", kind.suffix())
 }
 
-/// The version in the middle of an installer's file name.
-fn installer_middle(name: &str) -> Option<&str> {
-    name.strip_prefix(INSTALLER_PREFIX)?.strip_suffix(INSTALLER_SUFFIX)
+/// The version in the middle of an installer's file name, and its kind.
+fn installer_middle(name: &str) -> Option<(&str, Kind)> {
+    let rest = name.strip_prefix(INSTALLER_PREFIX)?;
+    [Kind::Setup, Kind::Msi]
+        .into_iter()
+        .find_map(|kind| rest.strip_suffix(kind.suffix()).map(|middle| (middle, kind)))
 }
 
 /// Release notes, without trailing blank space and cut to a length that fits.
@@ -151,12 +201,12 @@ fn short_notes(body: Option<&str>) -> String {
     format!("{}…", cut.trim_end())
 }
 
-fn compare(current: &str, releases: Vec<Release>) -> Result<UpdateInfo, String> {
+fn compare(current: &str, releases: Vec<Release>, kind: Kind) -> Result<UpdateInfo, String> {
     let Some((latest, raw, release)) = newest_windows_release(releases) else {
         return Err(t("No Windows release has been published yet."));
     };
     let newer = parse_version(current).is_none_or(|mine| latest > mine);
-    let name = installer_name(&raw);
+    let name = installer_name(&raw, kind);
     let asset_url = release
         .assets
         .iter()
@@ -172,8 +222,8 @@ fn compare(current: &str, releases: Vec<Release>) -> Result<UpdateInfo, String> 
     })
 }
 
-/// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Lumo-Windows-<v>-setup.exe`:
-/// the only address `update_install` starts a download from.
+/// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Lumo-Windows-<v>-setup.exe`
+/// (or `….msi`): the only addresses `update_install` starts a download from.
 fn is_release_download(url: &Url) -> bool {
     if url.scheme() != "https" || url.host_str() != Some("github.com") || url.port().is_some() {
         return false;
@@ -192,25 +242,24 @@ fn is_release_download(url: &Url) -> bool {
         return false;
     };
     // The file carries the tag's own version: windows-v1.2.3 → Lumo-Windows-1.2.3-setup.exe.
-    tag.starts_with(TAG_PREFIX)
-        && is_installer_file(file)
-        && installer_name(&tag[TAG_PREFIX.len()..]) == file
+    let Some(kind) = installer_kind(file) else {
+        return false;
+    };
+    tag.starts_with(TAG_PREFIX) && installer_name(&tag[TAG_PREFIX.len()..], kind) == file
 }
 
 /// The version an accepted installer address carries.
 fn installer_version(url: &Url) -> Option<Version> {
     let file = url.path_segments()?.next_back()?;
-    parse_version(installer_middle(file)?)
+    parse_version(installer_middle(file)?.0)
 }
 
-/// `Lumo-Windows-<version>-setup.exe`, with nothing but a version in the middle.
-fn is_installer_file(name: &str) -> bool {
-    let Some(middle) = installer_middle(name) else {
-        return false;
-    };
-    !middle.is_empty()
-        && middle.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-')
-        && parse_version(middle).is_some()
+/// The kind of `Lumo-Windows-<version>-setup.exe` or `Lumo-Windows-<version>.msi`,
+/// with nothing but a version in the middle; None for any other name.
+fn installer_kind(name: &str) -> Option<Kind> {
+    let (middle, kind) = installer_middle(name)?;
+    let plain = !middle.is_empty() && middle.chars().all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '-');
+    (plain && parse_version(middle).is_some()).then_some(kind)
 }
 
 /// Where a redirect may lead while downloading: GitHub and its release CDN, over https.
@@ -252,8 +301,9 @@ pub async fn update_check(app: AppHandle) -> Result<UpdateInfo, String> {
     let body = net::read_capped(response, net::MAX_BODY).await?;
     let releases: Vec<Release> = serde_json::from_slice(&body)
         .map_err(|_| t("GitHub's answer could not be read."))?;
-    let info = compare(&current, releases)?;
-    log::line(format!("update check: current {} latest {} newer {}", info.current, info.latest, info.newer));
+    let kind = installed_kind();
+    let info = compare(&current, releases, kind)?;
+    log::line(format!("update check: current {} latest {} newer {} ({kind:?})", info.current, info.latest, info.newer));
     Ok(info)
 }
 
@@ -268,9 +318,9 @@ struct Progress {
 }
 
 /// Settings → Updates → Update now. Downloads the installer `update_check`
-/// found into a temporary folder, starts it without a window, then quits so
-/// it can replace Lumo's files; the installer opens Lumo again. Only GitHub release downloads of this
-/// repository are accepted.
+/// found into a temporary folder, starts it, then quits so it can replace
+/// Lumo's files; the installer opens Lumo again. Only GitHub release downloads
+/// of this repository are accepted.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
     let url = Url::parse(url.trim()).map_err(|_| t("Only installers from Lumo's GitHub releases can be installed."))?;
@@ -310,9 +360,10 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     let file_name = url
         .path_segments()
         .and_then(|mut s| s.next_back())
-        .filter(|n| is_installer_file(n))
         .ok_or_else(|| t("Only installers from Lumo's GitHub releases can be installed."))?
         .to_string();
+    let kind = installer_kind(&file_name)
+        .ok_or_else(|| t("Only installers from Lumo's GitHub releases can be installed."))?;
 
     // Redirects stay on GitHub and its download CDN.
     let policy = reqwest::redirect::Policy::custom(|attempt| {
@@ -368,14 +419,19 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     if total > 0 && bytes.len() as u64 != total {
         return Err(tf("The download failed: {error}", &[("error", "incomplete")]));
     }
-    // An NSIS installer is a Windows program: it starts with "MZ".
-    if !bytes.starts_with(b"MZ") {
+    // An NSIS installer is a Windows program, which starts with "MZ"; an .msi
+    // is a compound file, which starts with its own signature.
+    let signature: &[u8] = match kind {
+        Kind::Setup => b"MZ",
+        Kind::Msi => &[0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1],
+    };
+    if !bytes.starts_with(signature) {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
     let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
-    // %TEMP%\Lumo-update\Lumo-Windows-<v>-setup.exe; installers from earlier
-    // updates are cleared first.
+    // %TEMP%\Lumo-update\Lumo-Windows-<v>-setup.exe (or .msi); installers from
+    // earlier updates are cleared first.
     let dir = std::env::temp_dir().join("Lumo-update");
     let _ = std::fs::remove_dir_all(&dir);
     std::fs::create_dir_all(&dir).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
@@ -385,13 +441,25 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     std::fs::rename(&partial, &path).map_err(|e| tf("Could not save the installer: {error}", &[("error", &e.to_string())]))?;
     log::line(format!("update: downloaded {} ({} bytes)", file_name, bytes.len()));
 
-    // The NSIS installer is per-user, so no admin prompt either.
-    std::process::Command::new(&path)
-        .args(INSTALLER_ARGS)
+    let mut command = match kind {
+        // The NSIS installer is per-user, so no admin prompt either.
+        Kind::Setup => {
+            let mut c = std::process::Command::new(&path);
+            c.args(INSTALLER_ARGS);
+            c
+        }
+        Kind::Msi => {
+            let system = std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into());
+            let mut c = std::process::Command::new(std::path::Path::new(&system).join("System32").join("msiexec.exe"));
+            c.arg("/i").arg(&path).args(MSI_ARGS);
+            c
+        }
+    };
+    command
         .current_dir(&dir)
         .spawn()
         .map_err(|e| tf("Could not start the installer: {error}", &[("error", &e.to_string())]))?;
-    log::line("update: installer started without a window, quitting");
+    log::line(format!("update: {kind:?} installer started, quitting"));
     Ok(())
 }
 
@@ -442,7 +510,7 @@ mod tests {
             release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"]),
             beta,
         ];
-        let info = compare("0.2.0", releases).unwrap();
+        let info = compare("0.2.0", releases, Kind::Setup).unwrap();
         assert_eq!(info.latest, "0.3.1");
         assert!(info.newer);
         assert_eq!(info.notes, "Notes");
@@ -453,14 +521,35 @@ mod tests {
     }
 
     #[test]
+    fn an_msi_install_is_offered_the_msi() {
+        let releases = vec![release("windows-v0.3.1", &["Lumo-Windows-0.3.1-setup.exe", "Lumo-Windows-0.3.1.msi"])];
+        let info = compare("0.2.0", releases, Kind::Msi).unwrap();
+        assert_eq!(
+            info.asset_url.as_deref(),
+            Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi").as_str())
+        );
+        // A release without its .msi offers nothing rather than the setup.exe.
+        let info = compare("0.2.0", vec![release("windows-v0.3.1", &["Lumo-Windows-0.3.1-setup.exe"])], Kind::Msi).unwrap();
+        assert!(info.newer);
+        assert_eq!(info.asset_url, None);
+    }
+
+    #[test]
+    fn the_upgrade_code_is_the_msi_s() {
+        let conf: serde_json::Value = serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let code = conf["bundle"]["windows"]["wix"]["upgradeCode"].as_str().unwrap();
+        assert_eq!(MSI_UPGRADE_CODE, format!("{{{}}}", code.to_ascii_uppercase()));
+    }
+
+    #[test]
     fn the_same_or_an_older_release_is_not_newer() {
-        let info = compare("0.3.0", vec![release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"])]).unwrap();
+        let info = compare("0.3.0", vec![release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"])], Kind::Setup).unwrap();
         assert!(!info.newer);
-        let info = compare("0.4.0", vec![release("windows-v0.3.0", &[])]).unwrap();
+        let info = compare("0.4.0", vec![release("windows-v0.3.0", &[])], Kind::Setup).unwrap();
         assert!(!info.newer);
         assert_eq!(info.asset_url, None);
-        assert!(compare("0.2.0", vec![release("windows-latest", &[])]).is_err());
-        assert!(compare("0.2.0", vec![]).is_err());
+        assert!(compare("0.2.0", vec![release("windows-latest", &[])], Kind::Setup).is_err());
+        assert!(compare("0.2.0", vec![], Kind::Setup).is_err());
     }
 
     #[test]
@@ -472,7 +561,9 @@ mod tests {
         assert!(!ok("https://github.com/someone/else/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe"));
         assert!(!ok(&format!("https://evil.example/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
         assert!(!ok(&format!("http://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
-        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi")));
+        assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows.msi")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Lumo-Windows-0.3.1.msi")));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/payload.exe")));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/v0.3.1/Lumo-Windows-0.3.1-setup.exe")));
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/x/Lumo-Windows-0.3.1-setup.exe")));
@@ -484,9 +575,13 @@ mod tests {
         assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.0/Lumo-Windows-0.3.1-setup.exe")));
         let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Lumo-Windows-0.4.1-setup.exe")).unwrap();
         assert_eq!(installer_version(&url), parse_version("0.4.1"));
-        assert!(is_installer_file("Lumo-Windows-0.4.1-setup.exe"));
-        assert!(!is_installer_file("Other-Windows-0.4.1-setup.exe"));
-        assert!(!is_installer_file("Lumo-Windows-setup.exe"));
+        let url = Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.4.1/Lumo-Windows-0.4.1.msi")).unwrap();
+        assert_eq!(installer_version(&url), parse_version("0.4.1"));
+        assert_eq!(installer_kind("Lumo-Windows-0.4.1-setup.exe"), Some(Kind::Setup));
+        assert_eq!(installer_kind("Lumo-Windows-0.4.1.msi"), Some(Kind::Msi));
+        assert_eq!(installer_kind("Other-Windows-0.4.1-setup.exe"), None);
+        assert_eq!(installer_kind("Lumo-Windows-setup.exe"), None);
+        assert_eq!(installer_kind("Lumo-Windows.msi"), None);
     }
 
     #[test]

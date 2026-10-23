@@ -31,25 +31,13 @@ export const LANGUAGES = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR"
  * key: the n-th specifier becomes `{names[n]}` instead of `{n}`.
  */
 const RENAMES = {
-  "Auto-close · %llds": ["seconds"],
-  "Chat with %@": ["name"],
-  "Claude is reading %@…": ["name"],
-  "Connected · %@": ["detail"],
   "Key configured · %@": ["model"],
   "Open %@": ["name"],
-  "Playing · %@": ["title"],
   "Uploading %@": ["name"],
-  "Watching %lld of %lld": ["count", "total"],
-  "file.ready %@": ["name"],
-  "mail.with %@": ["name"],
   "plan.hours-ago %lld": ["n"],
   "plan.mins-ago %lld": ["n"],
   "plan.reset-in-hm %lld %lld": ["h", "m"],
   "plan.reset-in-m %lld": ["m"],
-  "settings.slots-used %lld": ["count"],
-  "status.local.connected %lld": ["count"],
-  "status.local.no-models %@": ["name"],
-  "status.local.unreachable %1$@ %2$@": ["name", "url"],
 };
 
 /** "%@ at %lld" → "{0} at {1}"; "%2$@" → "{1}"; "%%" → "%". */
