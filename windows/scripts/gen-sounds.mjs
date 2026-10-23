@@ -1,4 +1,4 @@
-// Synthesises Lumo's 29 sounds from code and writes them to assets/sounds/.
+// Synthesises Lumo's 22 sounds from code and writes them to assets/sounds/.
 // No dependencies, no samples: every sound is built here out of oscillators,
 // FM, Karplus-Strong plucks and filtered noise, with envelopes, an echo and a
 // small reverb written by hand. The noise comes from a seeded PRNG, so running
@@ -75,7 +75,7 @@ const CHIME = [[1, 1], [1.0018, 0.5], [2.76, 0.16, 2.2], [5.4, 0.05, 3.6]];
 const MALLET = [[1, 1], [3.93, 0.1, 3], [9.8, 0.015, 6]];
 /** Mellow, almost a hum. */
 const SOFT = [[1, 1], [2, 0.18, 1.5], [3, 0.05, 2]];
-/** Fuller, voice-like; lowpassed after, for grumbles and yawns. */
+/** Fuller, voice-like; lowpassed after, for grumbles. */
 const HUM = [[1, 1], [2, 0.35], [3, 0.12], [4, 0.05]];
 
 // ── Building blocks ───────────────────────────────────────────────────────────
@@ -402,19 +402,6 @@ const SOUNDS = {
     reverb(tr, { mix: 0.12, size: 0.7 });
   }],
 
-  // Poked too much: a wobbly falling swirl with stars twinkling around it.
-  dizzy: [0.982, -9, (tr) => {
-    const fall = glide(820, 360, 0.85);
-    tone(tr, {
-      at: 0.003, len: 0.95, partials: SOFT, amp: 0.6, attack: 0.03, decay: 0.45,
-      freq: (t) => fall(t) * (1 + 0.05 * Math.sin(TAU * 6.5 * t)),
-    });
-    for (const [at, n, a] of [[0.08, "C7", 0.22], [0.26, "A6", 0.2], [0.44, "E7", 0.15], [0.62, "G6", 0.16], [0.78, "D7", 0.12]]) {
-      chime(tr, at, hz(n), a, 0.06);
-    }
-    reverb(tr, { mix: 0.25, size: 1 });
-  }],
-
   // Clicked hello: a bright rising "hi!".
   greet: [0.751, -6, (tr) => {
     bubble(tr, 0.003, 400, 800, 0.04, 0.5, 0.04);
@@ -479,15 +466,6 @@ const SOUNDS = {
     reverb(tr, { mix: 0.22, size: 0.9 });
   }],
 
-  // A file swallowed: "gul-p", then Lumo glows a little.
-  gulp: [0.749, -8, (tr) => {
-    tone(tr, { at: 0.003, len: 0.2, freq: glide(720, 210, 0.11), partials: [[1, 1], [2, 0.2, 2]], amp: 1, attack: 0.004, decay: 0.07 });
-    bubble(tr, 0.15, 260, 620, 0.035, 0.6, 0.04);
-    bell(tr, 0.3, hz("G6"), 0.35, 0.18, { attack: 0.02 });
-    bell(tr, 0.36, hz("D7"), 0.2, 0.15, { attack: 0.015 });
-    reverb(tr, { mix: 0.2, size: 0.9 });
-  }],
-
   // A toggle flipped: a tiny wooden tick.
   tick: [0.072, -26, (tr) => {
     tone(tr, { at: 0.001, len: 0.068, freq: hz("A6"), partials: MALLET, attack: 0.001, decay: 0.014 });
@@ -528,26 +506,6 @@ const SOUNDS = {
     reverb(tr, { mix: 0.26, size: 1 });
   }],
 
-  // Wink: a quick double sparkle, "ti-ting".
-  wink: [0.213, -18, (tr) => {
-    chime(tr, 0.003, hz("G6"), 0.7, 0.04);
-    chime(tr, 0.055, hz("D7"), 0.55, 0.05);
-    reverb(tr, { mix: 0.15, size: 0.5 });
-  }],
-
-  // Yawn: a soft hummed rise and long fall, with a breath through it.
-  yawn: [0.73, -16, (tr) => {
-    const up = glide(480, 680, 0.25);
-    const down = glide(680, 380, 0.4, 0.25);
-    const env = (t) => (t < 0.12 ? Math.sin((Math.PI / 2) * (t / 0.12)) ** 2
-      : t < 0.45 ? 1 - (0.25 * (t - 0.12)) / 0.33
-      : t < 0.7 ? 0.75 * Math.cos((Math.PI / 2) * ((t - 0.45) / 0.25)) ** 2 : 0);
-    tone(tr, { at: 0.003, len: 0.72, freq: (t) => (t < 0.25 ? up(t) : down(t)), partials: HUM, amp: 0.6, env });
-    noise(tr, { at: 0.003, len: 0.72, type: "bp", f: 1100, q: 0.8, amp: 0.25, env });
-    lowpass(tr, 1600);
-    reverb(tr, { mix: 0.15, size: 0.8 });
-  }],
-
   // A file attached: two warm plucks and a glint.
   attach: [0.903, -8, (tr) => {
     pluck(tr, { at: 0.003, freq: hz("A5"), amp: 0.8, decay: 0.25, bright: 0.3 });
@@ -556,34 +514,12 @@ const SOUNDS = {
     reverb(tr, { mix: 0.26, size: 1 });
   }],
 
-  // Thinking: three soft wandering dots.
-  think: [0.44, -14, (tr) => {
-    [["E5", 0.003, 0.6], ["D5", 0.11, 0.7], ["G5", 0.22, 0.85]]
-      .forEach(([n, at, a]) => tone(tr, { at, len: 0.2, freq: hz(n), partials: MALLET, amp: a, fm: 0.5, fmDecay: 0.02, attack: 0.002, decay: 0.05 }));
-    reverb(tr, { mix: 0.18, size: 0.6 });
-  }],
-
-  // Searching: a soft sonar ping and its echoes.
-  search: [0.457, -14, (tr) => {
-    tone(tr, { at: 0.003, len: 0.15, freq: glide(1240, 1320, 0.03), partials: [[1, 1], [2, 0.08, 2]], amp: 1, attack: 0.004, decay: 0.05 });
-    echo(tr, { time: 0.11, fb: 0.38, mix: 0.55, tone: 0.35 });
-    reverb(tr, { mix: 0.12, size: 0.7 });
-  }],
-
   // Rate limit: three wooden notes stepping down and slowing, "take a breather".
   rate: [0.674, -10, (tr) => {
     tone(tr, { at: 0.003, len: 0.2, freq: hz("G5"), partials: MALLET, amp: 1, attack: 0.002, decay: 0.09 });
     tone(tr, { at: 0.16, len: 0.24, freq: hz("E5"), partials: MALLET, amp: 0.85, attack: 0.002, decay: 0.09 });
     tone(tr, { at: 0.37, len: 0.3, freq: glide(hz("C5"), hz("C5") * 0.97, 0.2), partials: MALLET, amp: 0.8, attack: 0.002, decay: 0.1 });
     reverb(tr, { mix: 0.2, size: 0.8 });
-  }],
-
-  // Falling asleep: two mellow notes drifting down.
-  sleep: [0.453, -18, (tr) => {
-    tone(tr, { at: 0.003, len: 0.2, freq: hz("E5"), partials: SOFT, amp: 0.8, attack: 0.02, decay: 0.12 });
-    tone(tr, { at: 0.15, len: 0.3, freq: glide(hz("C5"), hz("C5") * 0.985, 0.25), partials: SOFT, amp: 0.75, attack: 0.03, decay: 0.16 });
-    lowpass(tr, 2500);
-    reverb(tr, { mix: 0.2, size: 0.9 });
   }],
 
   // The launch greeting. Lined up with the animation in src/mochi/greeting.ts:
