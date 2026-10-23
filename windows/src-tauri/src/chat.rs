@@ -673,10 +673,14 @@ async fn dispatch(
     usage: &mut Option<ChatUsage>,
 ) -> Result<ChatReply, String> {
     let mut context = context.map(checked_context).transpose()?;
-    let mut screen = screen.map(checked_screen).transpose()?;
+    // One of Claude Code's commands ("/context") goes alone, exactly as typed:
+    // nothing of the screen, the windows or the email in front of it, or
+    // Claude Code takes it for a question (claude_code.rs).
+    let command = settings.chat_provider == claude_code::PROVIDER && claude_code::is_command(&query);
+    let mut screen = if command { None } else { screen.map(checked_screen).transpose()? };
     // Settings → Chat → "Tell the AI what's open": the windows and their
     // documents go with every question (desk.rs).
-    if settings.chat_share_open {
+    if settings.chat_share_open && !command {
         let (windows, documents) = tauri::async_runtime::spawn_blocking(crate::desk::now).await.unwrap_or_default();
         let s = screen.get_or_insert_with(ScreenContext::default);
         if s.windows.is_empty() {
@@ -702,7 +706,7 @@ async fn dispatch(
     // The Email pill: a question about email gets the newest emails, read or
     // not, so every provider can answer it, not only those with a mail tool of
     // their own.
-    if crate::mail::asks_about(&query) && crate::integrations::enabled(app, crate::mail::ID) {
+    if !command && crate::mail::asks_about(&query) && crate::integrations::enabled(app, crate::mail::ID) {
         if let Some(text) = crate::mail::for_chat(app).await {
             screen.get_or_insert_with(ScreenContext::default).mail = text;
         }

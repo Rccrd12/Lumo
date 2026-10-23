@@ -412,6 +412,11 @@ fn command_names(list: &[Value]) -> Vec<String> {
     out
 }
 
+/// Whether `query` is one of Claude Code's commands, to go to it alone (chat.rs).
+pub(crate) fn is_command(query: &str) -> bool {
+    command_of(query).is_some()
+}
+
 /// The command `query` is, when it is one ("/compact", "/review 12"): its name.
 fn command_of(query: &str) -> Option<&str> {
     let rest = query.trim().strip_prefix('/')?;
