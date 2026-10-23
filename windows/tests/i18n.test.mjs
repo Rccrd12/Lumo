@@ -83,10 +83,10 @@ test("plurals follow each language's rules", () => {
     assert.equal(files(21), "21 репозиторий");
   });
   inLanguage("zh-Hans", () => assert.equal(files(7), "7 个仓库"));
-  // The Mac's plural entry: Spanish one/other.
+  // Spanish one/other.
   inLanguage("es", () => {
-    assert.equal(tn("✓ Connected · {count} model", "✓ Connected · {count} models", 1), "✓ Conectado · 1 modelo");
-    assert.equal(tn("✓ Connected · {count} model", "✓ Connected · {count} models", 2), "✓ Conectado · 2 modelos");
+    assert.equal(tn("{count} model", "{count} models", 1), "1 modelo");
+    assert.equal(tn("{count} model", "{count} models", 2), "2 modelos");
   });
 });
 
@@ -156,6 +156,14 @@ test("a language change relabels what was built, in place, and says so once", ()
 test("strings.json is what the generator makes of the Mac's catalog", () => {
   const catalog = JSON.parse(readFileSync(join(WINDOWS, "i18n-source/Localizable.xcstrings"), "utf8"));
   assert.deepEqual(generate(catalog), MAC);
+});
+
+test("the generator keeps a plural entry's categories, keyed by its English other form", () => {
+  const forms = (one, other) => ({ variations: { plural: { one: { stringUnit: { value: one } }, other: { stringUnit: { value: other } } } } });
+  const catalog = { strings: { "%lld models": { localizations: { en: forms("%lld model", "%lld models"), es: forms("%lld modelo", "%lld modelos") } } } };
+  assert.deepEqual(generate(catalog).strings, {
+    "{0} models": { es: { one: "{0} modelo", other: "{0} modelos" }, en: { one: "{0} model", other: "{0} models" } },
+  });
 });
 
 test("the generator turns format specifiers into placeholders", () => {
