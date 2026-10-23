@@ -1,5 +1,5 @@
 // Interface language (src/i18n): lookup, fallback, interpolation and plurals,
-// the generated table against the Mac's catalog, every key the code uses being
+// the generated table against the catalog, every key the code uses being
 // translated, and no known user-facing English left outside t() in the views.
 
 import { test } from "node:test";
@@ -20,12 +20,12 @@ const { generate, convertFormat } = await import("../scripts/gen-strings.mjs");
 
 const here = dirname(fileURLToPath(import.meta.url));
 const WINDOWS = join(here, "..");
-const MAC = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/strings.json"), "utf8"));
+const CATALOG = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/strings.json"), "utf8"));
 const EXTRA = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/extra.json"), "utf8"));
 const ITALIAN = JSON.parse(readFileSync(join(WINDOWS, "src/i18n/strings-it.json"), "utf8"));
-/** The Mac's strings with their Italian, as the app reads them. */
-const MAC_ALL = Object.fromEntries(
-  Object.entries(MAC.strings).map(([k, v]) => [k, ITALIAN.strings[k] !== undefined ? { ...v, it: ITALIAN.strings[k] } : v]),
+/** The catalog's strings with their Italian, as the app reads them. */
+const CATALOG_ALL = Object.fromEntries(
+  Object.entries(CATALOG.strings).map(([k, v]) => [k, ITALIAN.strings[k] !== undefined ? { ...v, it: ITALIAN.strings[k] } : v]),
 );
 const OTHERS = LANGUAGE_CODES.filter((l) => l !== "en");
 
@@ -45,7 +45,7 @@ test("English is the key itself, other languages come from either table", () => 
   assert.equal(language(), "en");
   assert.equal(t("Allow"), "Allow");
   inLanguage("fr", () => {
-    assert.equal(t("Allow"), "Autoriser"); // the Mac's catalog
+    assert.equal(t("Allow"), "Autoriser"); // the catalog
     assert.equal(t("Open the chat"), "Ouvrir le chat"); // extra.json
   });
   inLanguage("zh-Hans", () => assert.equal(t("Cancel"), "取消"));
@@ -54,7 +54,7 @@ test("English is the key itself, other languages come from either table", () => 
 test("a string nobody translated falls back to its English text", () => {
   inLanguage("ru", () => {
     assert.equal(t("Some brand new sentence."), "Some brand new sentence.");
-    assert.equal(t("Hello {name}", { name: "Mochi" }), "Hello Mochi");
+    assert.equal(t("Hello {name}", { name: "Lumo" }), "Hello Lumo");
   });
 });
 
@@ -119,7 +119,7 @@ test("System follows the system's language when Lumo has it, else English", () =
   assert.equal(resolveLanguage("xx", ["bn-IN"]), "bn");
 });
 
-test("the picker offers the Mac's ten languages and Italian, Arabic reads right to left", () => {
+test("the picker offers eleven languages, Arabic reads right to left", () => {
   assert.deepEqual(LANGUAGES.map((l) => l.code), ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id", "it"]);
   assert.equal(resolveLanguage("", ["it-IT", "en-US"]), "it");
   assert.equal(isRtl("ar"), true);
@@ -153,9 +153,9 @@ test("a language change relabels what was built, in place, and says so once", ()
 
 // ── The tables ────────────────────────────────────────────────────────────────
 
-test("strings.json is what the generator makes of the Mac's catalog", () => {
+test("strings.json is what the generator makes of the catalog", () => {
   const catalog = JSON.parse(readFileSync(join(WINDOWS, "i18n-source/Localizable.xcstrings"), "utf8"));
-  assert.deepEqual(generate(catalog), MAC);
+  assert.deepEqual(generate(catalog), CATALOG);
 });
 
 test("the generator keeps a plural entry's categories, keyed by its English other form", () => {
@@ -175,7 +175,7 @@ test("the generator turns format specifiers into placeholders", () => {
 
 const placeholders = (s) => [...new Set(s.match(/\{\w+\}/g) ?? [])].sort();
 
-for (const [name, table] of [["strings.json", MAC_ALL], ["extra.json", EXTRA.strings]]) {
+for (const [name, table] of [["strings.json", CATALOG_ALL], ["extra.json", EXTRA.strings]]) {
   test(`${name}: every string in every language, with the key's placeholders`, () => {
     for (const [key, entry] of Object.entries(table)) {
       for (const lang of OTHERS) {
@@ -195,8 +195,8 @@ for (const [name, table] of [["strings.json", MAC_ALL], ["extra.json", EXTRA.str
   });
 }
 
-test("extra.json never shadows a string of the Mac's", () => {
-  for (const key of Object.keys(EXTRA.strings)) assert.ok(!(key in MAC.strings), key);
+test("extra.json never shadows a string of the catalog's", () => {
+  for (const key of Object.keys(EXTRA.strings)) assert.ok(!(key in CATALOG.strings), key);
 });
 
 // ── Every key the code uses is translated ─────────────────────────────────────
@@ -262,19 +262,19 @@ test("lookup() answers from the merged tables", () => {
 // upload canvas or the recap that is exactly a translated string, and is not
 // the argument of t() / tl() / tn() / N_(), is English that would stay English.
 
-const CHECKED = ["src/views", "src/settings", "src/island", "src/upload", "src/recap", "src/mochi/wardrobe.ts", "src/main.ts"];
+const CHECKED = ["src/views", "src/settings", "src/island", "src/upload", "src/recap", "src/character/wardrobe.ts", "src/main.ts"];
 /** Literals that are a translated word but are values in the code, not text on screen. */
 const NOT_TEXT = new Set([
   "file", // the kind of a chat context: { kind: "file" }
   "finished", // a task state and a pill badge
   "unknown", // a CI state
-  "Resend", // the service's name (the Mac's "Resend" is a button: send again)
+  "Resend", // the email service's name (the catalog's "Resend" is a button: send again)
   "Stop", // a Claude Code hook event (island/hooks.ts); the chat's Stop button is t()
 ]);
 
 test("no known user-facing English literal outside t() in the views and settings", () => {
   const translated = new Set(
-    [...Object.entries(MAC_ALL), ...Object.entries(EXTRA.strings)]
+    [...Object.entries(CATALOG_ALL), ...Object.entries(EXTRA.strings)]
       .filter(([key, entry]) => OTHERS.some((l) => typeof entry[l] !== "string" || entry[l] !== key))
       .map(([key]) => key),
   );

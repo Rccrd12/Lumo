@@ -1,4 +1,4 @@
-// Island open/close FSM — port of IslandStateMachine.swift.
+// Island open/close FSM.
 // No DOM, no Tauri: it only reports transitions.
 
 export type FsmState = "hidden" | "petit" | "home" | "greeting";
@@ -19,7 +19,7 @@ export class IslandStateMachine {
   /**
    * home → petit delay, seconds: the auto-close preference. Changing it while a
    * countdown runs starts that countdown again with the new delay, so an edit in
-   * Settings applies at once (IslandStateMachine.homeToPetitDelay on macOS).
+   * Settings applies at once.
    */
   get homeToPetitDelay(): number {
     return this.homeDelay;
@@ -213,7 +213,7 @@ export class IslandStateMachine {
   private schedulePetitHide() {
     this.clear("petitHide");
     // A card folded away while it waits for an answer keeps the compact island
-    // on screen, so it can be reopened (isHeldOpen on macOS).
+    // on screen, so it can be reopened.
     if (this.pinned || !this.hides || this.holding) return;
     this.petitHide = window.setTimeout(() => {
       this.petitHide = null;

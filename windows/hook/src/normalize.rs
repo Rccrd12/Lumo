@@ -1,7 +1,5 @@
 //! Every agent's hook payload, mapped onto the events and fields the island
-//! knows (Claude Code's). Same table as `normalize_event` /
-//! `normalize_tool_fields` in the Mac relay (HookServer.swift), plus Cursor's
-//! events.
+//! knows (Claude Code's), Cursor's events included.
 
 use serde_json::{Map, Value};
 

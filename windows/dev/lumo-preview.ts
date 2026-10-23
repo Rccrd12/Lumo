@@ -3,8 +3,8 @@
 // `?size=40` draws them small, as in the island; `?look=punto` (goccia,
 // lucciola) another of his looks than Filo. Not shipped in the app.
 
-import { BotEngine } from "../src/mochi/engine";
-import { OUTFIT_SELECTIONS, parseLook, type Outfit } from "../src/mochi/wardrobe";
+import { BotEngine } from "../src/character/engine";
+import { OUTFIT_SELECTIONS, parseLook, type Outfit } from "../src/character/wardrobe";
 const OUTFITS = OUTFIT_SELECTIONS.filter((o): o is Outfit => o !== "auto" && o !== "none");
 import type { BotEmoteName, BotStateName } from "../src/core/layout";
 

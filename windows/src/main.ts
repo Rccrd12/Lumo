@@ -119,7 +119,7 @@ async function main() {
     applyLanguage();
     island.applySettings();
     State.loadIntegrationTasks();
-    // A new main tool comes to the front, as on macOS.
+    // A new main tool comes to the front.
     if (State.mainPillId !== previousMain) State.setFocus(State.mainPillId);
     void refreshConfigured();
   });

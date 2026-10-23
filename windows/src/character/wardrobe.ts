@@ -1,8 +1,7 @@
 // Lumo's wardrobe — the pure logic. What Lumo wears is picked in the wardrobe
 // view (right-click on Lumo, or the tray menu) and stored in the preferences as
-// `mochiOutfit` (the key keeps its old name so saved settings carry over); his
-// look is picked there too and stored as `lumoCharacter`. The drawing lives in
-// ./outfits.ts and ./looks.ts.
+// `lumoOutfit`; his look is picked there too and stored as `lumoCharacter`.
+// The drawing lives in ./outfits.ts and ./looks.ts.
 
 import { N_, labels, t } from "../i18n/i18n";
 
@@ -70,7 +69,7 @@ const SELECTION_SET: ReadonlySet<string> = new Set(OUTFIT_SELECTIONS);
 
 /**
  * A stored preference → a selection. Anything unknown (a value from a newer or
- * older build, such as Mochi's old "witchHat", or garbage) means "auto".
+ * older build, such as an old "witchHat", or garbage) means "auto".
  */
 export function parseOutfit(raw: unknown): OutfitSelection {
   return typeof raw === "string" && SELECTION_SET.has(raw) ? (raw as OutfitSelection) : DEFAULT_OUTFIT;
@@ -107,7 +106,7 @@ export interface LookHover {
 
 /**
  * The grey text at the right of the wardrobe header: the hovered outfit,
- * otherwise the current choice — WardrobeView.headerRight on macOS.
+ * otherwise the current choice.
  */
 export function wardrobeHeader(
   hovered: OutfitSelection | LookHover | null,

@@ -492,7 +492,7 @@ let scratch: HTMLCanvasElement | null = null;
 
 /**
  * Draws `fn` at `alpha` as one layer, so overlapping parts don't show through
- * each other while an outfit fades (SwiftUI's drawLayer on macOS).
+ * each other while an outfit fades.
  */
 function withLayer(ctx: Ctx, alpha: number, fn: (c: Ctx) => void) {
   if (alpha >= 0.999) {
@@ -673,7 +673,7 @@ function iconLumo(ctx: Ctx, size: number, outfit: Outfit) {
 }
 
 /**
- * One wardrobe button's picture — drawOutfitIcon on macOS. "auto" shows the
+ * One wardrobe button's picture. "auto" shows the
  * season's outfit with an AUTO tag, "none" a crossed-out circle.
  */
 export function drawWardrobeIcon(

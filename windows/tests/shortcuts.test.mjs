@@ -1,5 +1,5 @@
-// Keyboard shortcuts: the pure logic (src/core/shortcuts.ts, mirroring the
-// Mac's tests/ShortcutTests.swift) and what the island does with them
+// Keyboard shortcuts: the pure logic (src/core/shortcuts.ts) and what the
+// island does with them
 // (src/island/shortcuts.ts), driven through the real bridge.
 
 import { beforeEach, test } from "node:test";
@@ -14,15 +14,15 @@ import {
 import { registerShortcutHandlers, runGlobalShortcut, runIslandKey } from "../src/island/shortcuts.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
-const MAC_IDS = [
+const FIRST_IDS = [
   "toggleIsland", "openChat", "goToAlert", "jumpToTerminal",
   "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
 ];
 
-// ── Defaults (testDefaultsExhaustive, testAllDefaultsHaveModifier, testNoDefaultDuplicates) ──
+// ── Defaults ──────────────────────────────────────────────────────────────────
 
-test("every Mac action has a default, in the Mac's order, with its Mac id, then this version's own", () => {
-  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...MAC_IDS, "askScreen", "askSelection", "talkToGemini", "askPage"]);
+test("every action has a default, in order, with its stored id", () => {
+  assert.deepEqual(SHORTCUTS.map((d) => d.id), [...FIRST_IDS, "askScreen", "askSelection", "talkToGemini", "askPage"]);
   for (const d of SHORTCUTS) assert.ok(SHORTCUT_TEXT[d.id], `${d.id} has no label`);
 });
 
@@ -46,7 +46,7 @@ test("no default types a character with AltGr on the checked European layouts", 
   for (const d of SHORTCUTS) {
     assert.deepEqual(altGrClashes(d.defaultKeys), [], `${d.id} = ${d.defaultKeys}`);
   }
-  // The Mac's own letters would not have been safe.
+  // The letters left out would not have been safe.
   assert.deepEqual(altGrClashes("Ctrl+Alt+M"), ["German (QWERTZ)"]);
   assert.ok(altGrClashes("Ctrl+Alt+E").length >= 5);
   assert.ok(altGrClashes("Ctrl+Alt+0").includes("French (AZERTY)"));
@@ -64,7 +64,6 @@ test("the defaults are the same on both sides of the bridge", () => {
   );
 });
 
-// testEnabledByDefault
 test("only the island toggle is off by default", () => {
   for (const d of SHORTCUTS) {
     assert.equal(d.enabledByDefault, d.id !== "toggleIsland", d.id);
@@ -75,7 +74,7 @@ test("only the island toggle is off by default", () => {
   ]);
 });
 
-// ── Parsing and formatting (testCarbonModifiers, testDisplayString, testKeyCodeToString) ──
+// ── Parsing and formatting ────────────────────────────────────────────────────
 
 test("modifiers parse one by one and all together", () => {
   assert.deepEqual(parseKeys("Ctrl+Shift+N"), { ctrl: true, alt: false, shift: true, meta: false, key: "N" });
@@ -112,7 +111,7 @@ test("every key name survives a round trip", () => {
   }
 });
 
-// ── Conflicts (testDuplicateDetection) ───────────────────────────────────────
+// ── Conflicts ─────────────────────────────────────────────────────────────────
 
 test("duplicates flag both actions, and only the same modifiers and key", () => {
   assert.deepEqual(duplicates([]), new Set());
@@ -125,7 +124,7 @@ test("duplicates flag both actions, and only the same modifiers and key", () => 
   assert.deepEqual(duplicates([["goToAlert", "Ctrl+Alt+A"], ["jumpToTerminal", "Ctrl+Shift+A"]]), new Set());
 });
 
-// ── Stored bindings (testLoadSaveRoundTrip) ───────────────────────────────────
+// ── Stored bindings ───────────────────────────────────────────────────────────
 
 test("a stored binding wins, the rest keep their default, and off ones hold no keys", () => {
   const stored = {
@@ -358,7 +357,7 @@ test("the island toggle opens on the chat with the keyboard, and closes an open 
   assert.deepEqual(did, ["collapse"]);
 });
 
-test("go to alert: the permission first, then a question, else Mochi is annoyed", () => {
+test("go to alert: the permission first, then a question, else Lumo is annoyed", () => {
   runGlobalShortcut(host, "goToAlert", resume);
   assert.deepEqual(did, ["emote:annoyed"]);
 
@@ -434,7 +433,7 @@ test("next and previous pill wrap around and open the overview", () => {
   assert.deepEqual(did, ["resume", "alert:overview", "hold", "resume", "alert:overview", "hold"]);
 });
 
-test("mute flips the sound, saves it, and Mochi reacts", () => {
+test("mute flips the sound, saves it, and Lumo reacts", () => {
   runGlobalShortcut(host, "muteToggle", resume);
   assert.equal(State.settings.soundEnabled, false);
   assert.equal(sent("save_settings").at(-1).settings.soundEnabled, false);

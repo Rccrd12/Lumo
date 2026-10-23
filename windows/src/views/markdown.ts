@@ -1,5 +1,4 @@
-// Markdown in the chat's answers, as on the Mac (ChatMarkdown.swift and
-// ChatMarkdownView.swift): headings, paragraphs, fenced code with a copy button,
+// Markdown in the chat's answers: headings, paragraphs, fenced code with a copy button,
 // bullet and numbered lists, quotes and rules, with bold, italic, `code` and
 // links inside the text, and — on Windows only — tables (Claude Code's
 // commands, /doctor among them, answer with them) — and TeX math ($…$, $$…$$, \(…\), \[…\]), drawn
@@ -63,7 +62,7 @@ function tableCells(line: string): string[] {
   return cells;
 }
 
-/** Same rules as the Mac's parser, line by line. */
+/** Parses the blocks, line by line. */
 export function parseMarkdown(input: string): Block[] {
   const blocks: Block[] = [];
   const lines = input.replace(/\r\n?/g, "\n").split("\n");

@@ -1,5 +1,5 @@
 // Weekly recap aggregation (src/recap/summary.ts) — the numbers the card and
-// the shared image show. Mirrors the fake week of scripts/test-weekly-recap.swift.
+// the shared image show, on the sample week of src/recap/summary.ts.
 // Dates are built with local constructors, so the tests hold in any time zone.
 
 import { test } from "node:test";
@@ -58,9 +58,9 @@ test("a week with nothing in it has no summary", () => {
   assert.equal(summarize(history([lastMonth]), LAST_MONDAY), null);
 });
 
-// ── The Mac's fake week ───────────────────────────────────────────────────────
+// ── The sample week ───────────────────────────────────────────────────────────
 
-test("the sample week adds up like the Mac's", () => {
+test("the sample week adds up", () => {
   const s = summarize(sampleHistory(LAST_MONDAY), LAST_MONDAY);
   assert.equal(s.totalMinutes, 150 + 105 + 60 + 150 + 60 + 300);
   assert.equal(formatDuration(s.totalMinutes), "13h 45m");

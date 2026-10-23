@@ -531,7 +531,7 @@ fn status_line_apply(
     let updated = {
         let mut current = shared.settings.lock().unwrap();
         current.plan_relay_installed = install;
-        // As on the Mac: taking the relay out turns the pill off with it.
+        // Taking the relay out turns the pill off with it.
         if !install {
             current.show_plan_in_notch = false;
         }

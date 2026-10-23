@@ -1,5 +1,5 @@
 // The weekly recap card in a real island, and the shared image with and
-// without project names, on the sample week of scripts/test-weekly-recap.swift.
+// without project names, on the sample week (recap/summary.ts sampleHistory).
 // `npm run dev`, then open /dev/recap-preview.html. Not shipped in the app.
 
 import "../src/style.css";

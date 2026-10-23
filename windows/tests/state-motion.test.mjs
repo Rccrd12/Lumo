@@ -1,13 +1,13 @@
 // How Lumo moves and shines in each state — the "Punto" concept's poses ported
-// to the app (src/mochi/motion.ts), and the engine reading them for every look.
+// to the app (src/character/motion.ts), and the engine reading them for every look.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   BLEND_S, blendMotion, blendTips, finishedSmiles, flashOf, heartbeat, hop, motionKind, poolOfLight,
   ripplePhase, settleTime, stateGaze, stateMotion, tipLights,
-} from "../src/mochi/motion.ts";
-import { BotEngine } from "../src/mochi/engine.ts";
+} from "../src/character/motion.ts";
+import { BotEngine } from "../src/character/engine.ts";
 
 const near = (a, b, eps = 1e-6, msg = "") => assert.ok(Math.abs(a - b) <= eps, `${msg} ${a} ≈ ${b}`);
 const zero = (v, msg = "") => near(v, 0, 1e-12, msg);

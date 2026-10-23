@@ -295,7 +295,7 @@ test("Codex, Copilot CLI and Muse Code get the card on their own pill", () => {
     assert.deepEqual(sent("approval_ack"), [{ requestId: `r-${agent}` }]);
     assert.deepEqual(sent("approval_decline"), []);
     // The same card as Claude Code's: it comes up and its pill comes to the
-    // front, even from behind Claude Code's pill (unified with Mac #120).
+    // front, even from behind Claude Code's pill.
     assert.equal(task(id).state, "approval");
     assert.equal(State.focusId, id);
     assert.deepEqual(asked, ["alert:approval"]);
@@ -374,13 +374,13 @@ test("an agent's last words show when it stops", () => {
   assert.deepEqual(task("agent_hermes").steps, ["All done, tests pass."]);
 });
 
-test("a Claude Desktop session gets the Claude Desktop pill, in its colour (Mac #191)", () => {
+test("a Claude Desktop session gets the Claude Desktop pill, in its colour", () => {
   hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\proj", session_id: "d1", lumo_agent: "claude-desktop" });
   const desktop = task("agent_claude-desktop");
   assert.equal(desktop.color, "#D97757");
   assert.equal(desktop.sessionId, "d1");
   assert.equal(task().state, "idle");
-  // Its permission requests are answered in the app, as on macOS.
+  // Its permission requests are answered in the app.
   hook({ hook_event_name: "PermissionRequest", request_id: "r1", lumo_agent: "claude-desktop", tool_name: "Bash" });
   assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }]);
 });
@@ -497,7 +497,7 @@ test("anything else, or an island that cannot show it, gets the full card", () =
   assert.deepEqual(card(ls, () => { quickFits = false; }), { quick: false, asked: ["quick", "alert:approval"] });
 });
 
-test("a request behind another pill comes to the front, and that pill comes back after (Mac #120)", () => {
+test("a request behind another pill comes to the front, and that pill comes back after", () => {
   State.setFocus("integration_n8n");
   ask("r1");
   assert.deepEqual(asked, ["alert:approval"]);
@@ -882,7 +882,7 @@ test("the card says what the request is for: the agent's words, else what it doe
   assert.equal(State.pendingApproval?.kind?.text, "Runs a command that can change things.");
 });
 
-// ── Requests in line (the Mac's ApprovalQueue) ───────────────────────────────
+// ── Requests in line ──────────────────────────────────────────────────────────
 
 /** A request of another session, in another project. */
 test("a question answered in the terminal takes its card down and releases the relay", () => {

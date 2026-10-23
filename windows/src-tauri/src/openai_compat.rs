@@ -1,5 +1,5 @@
 // Cloud providers that speak the OpenAI chat completions API: OpenAI, Google AI
-// (Gemini's OpenAI-compatible endpoint, as ClaudeService.swift uses it) and
+// (Gemini's OpenAI-compatible endpoint) and
 // OpenRouter. One table describes them; one client talks to all three.
 //
 // Same contract as claude.rs: the key never leaves the credential store and
@@ -346,7 +346,7 @@ fn parse_models(p: &Provider, json: &Value) -> Vec<ModelInfo> {
         })
         .collect();
     match p.id {
-        // Newest first, as on the Mac.
+        // Newest first.
         "openai" => models.sort_by_key(|m| std::cmp::Reverse(m.1)),
         // Free models first, then by name.
         "openrouter" => models.sort_by(|a, b| {

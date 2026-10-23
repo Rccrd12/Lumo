@@ -24,7 +24,7 @@ pub struct Settings {
     pub main_pill: String,
     /// "primary" = the main display, "cursor" = whichever display the mouse is on.
     pub screen: String,
-    /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
+    /// How big the island is drawn: 1 is its design size, up to 1.6.
     pub island_zoom: f64,
     /// How far the island sits from the edge of the screen it is docked to:
     /// "none", "light" (the usual 10 px), "medium" or "wide" (island.rs edge_gap_of).
@@ -41,7 +41,7 @@ pub struct Settings {
     /// page pixels. Dragged from the island's grips, so owned by Rust too.
     pub island_width: f64,
     pub island_height: f64,
-    /// How big the icons are drawn, against the Mac's size.
+    /// How big the icons are drawn, against their design size.
     pub icon_scale: f64,
     /// When the open island closes on its own: "timer" (`auto_close_interval`
     /// seconds after the mouse leaves), "leave" (as soon as it leaves),
@@ -179,24 +179,25 @@ pub struct Settings {
     /// Global shortcuts the user changed, by action id; the others keep their
     /// default (see shortcuts.rs).
     pub shortcuts: crate::shortcuts::Bindings,
-    /// Mochi's outfit, picked in the wardrobe: "auto" (dresses for the
-    /// season), "none" or an outfit id — the Mac's raw values. The island reads
-    /// anything it doesn't know as "auto", so the value is stored as it comes.
-    pub mochi_outfit: String,
+    /// Lumo's outfit, picked in the wardrobe: "auto" (dresses for the
+    /// season), "none" or an outfit id. The island reads anything it doesn't
+    /// know as "auto", so the value is stored as it comes. Before 0.14.0 it
+    /// had another key, which migrate.rs reads.
+    pub lumo_outfit: String,
     /// How much Lumo moves on his own: "still", "calm" or "lively". Kept as
     /// it comes; src/core/state.ts reads anything else as "calm".
     pub lumo_motion: String,
     /// Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a
     /// ring of light), "punto", "goccia" or "lucciola" (the firefly). Kept as
-    /// it comes; src/mochi/wardrobe.ts reads anything else as "filo".
+    /// it comes; src/character/wardrobe.ts reads anything else as "filo".
     pub lumo_character: String,
-    /// A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB"),
+    /// A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB"),
     /// picked in Settings → Active pills. Empty means the catalog's colours.
-    /// Kept as it comes, like `mochi_outfit`: src/core/pill-colors.ts reads
+    /// Kept as it comes, like `lumo_outfit`: src/core/pill-colors.ts reads
     /// whatever is not a colour as "no choice".
     pub pill_colors: BTreeMap<String, String>,
     /// Interface language: "" follows the system, else one of i18n::LANGUAGES
-    /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `mochi_outfit`: a
+    /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `lumo_outfit`: a
     /// code this build doesn't know reads as "".
     pub language: String,
     /// When Lumo opens, ask GitHub once whether a newer Windows release is out
@@ -204,7 +205,7 @@ pub struct Settings {
     pub update_check_on_open: bool,
 }
 
-/// A little bigger than the Mac's icons, which sit closer to the eye.
+/// A little bigger than their design size, since a PC's screen sits further away.
 pub const DEFAULT_ICON_SCALE: f64 = 1.25;
 
 fn default_model() -> String {
@@ -285,7 +286,7 @@ impl Default for Settings {
             lmstudio_url: String::new(),
             custom_url: String::new(),
             shortcuts: Default::default(),
-            mochi_outfit: "auto".into(),
+            lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
             lumo_character: "filo".into(),
             pill_colors: BTreeMap::new(),
@@ -345,9 +346,10 @@ fn parse(bytes: &[u8]) -> Option<Settings> {
     if text.iter().all(u8::is_ascii_whitespace) {
         return Some(Settings::default());
     }
-    let Value::Object(fields) = serde_json::from_slice(text).ok()? else {
+    let Value::Object(mut fields) = serde_json::from_slice(text).ok()? else {
         return None;
     };
+    crate::migrate::settings_fields(&mut fields);
     let whole = serde_json::from_value(Value::Object(fields.clone()));
     Some(whole.unwrap_or_else(|_| salvage(fields)))
 }
@@ -608,7 +610,7 @@ mod tests {
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
-  "mochiOutfit": "witchHat",
+  "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
   "lumoCharacter": "goccia",
   "pillColors": { "integration_claude": "#2DD4BF" },
@@ -704,9 +706,9 @@ mod tests {
     }
 
     #[test]
-    fn a_file_from_before_the_wardrobe_dresses_mochi_for_the_seasons() {
-        let loaded = parse(&custom_with("mochiOutfit", None)).unwrap();
-        assert_eq!(loaded.mochi_outfit, "auto");
+    fn a_file_from_before_the_wardrobe_dresses_lumo_for_the_seasons() {
+        let loaded = parse(&custom_with("lumoOutfit", None)).unwrap();
+        assert_eq!(loaded.lumo_outfit, "auto");
         assert_eq!(loaded.model, "some-model");
         assert!(!loaded.sound_enabled);
     }
@@ -723,7 +725,7 @@ mod tests {
     fn a_file_from_before_the_colours_paints_every_pill_as_the_catalog_says() {
         let loaded = parse(&custom_with("pillColors", None)).unwrap();
         assert!(loaded.pill_colors.is_empty());
-        assert_eq!(loaded.mochi_outfit, "witchHat");
+        assert_eq!(loaded.lumo_outfit, "witchHat");
     }
 
     #[test]
@@ -751,15 +753,15 @@ mod tests {
         // going back to that build must find the choice still there.
         let loaded = parse(&custom_with("lumoCharacter", Some(json!("perla")))).unwrap();
         assert_eq!(loaded.lumo_character, "perla");
-        assert_eq!(loaded.mochi_outfit, "witchHat");
+        assert_eq!(loaded.lumo_outfit, "witchHat");
     }
 
     #[test]
     fn an_outfit_this_build_does_not_know_is_kept_as_written() {
         // A newer build may add outfits: the island shows "auto" for it, but
         // the choice must survive a save made by this one.
-        let loaded = parse(&custom_with("mochiOutfit", Some(json!("topHat")))).unwrap();
-        assert_eq!(loaded.mochi_outfit, "topHat");
+        let loaded = parse(&custom_with("lumoOutfit", Some(json!("topHat")))).unwrap();
+        assert_eq!(loaded.lumo_outfit, "topHat");
         // The language too: "" (follow the system) when absent, as it comes otherwise.
         assert_eq!(parse(&custom_with("language", None)).unwrap().language, "");
         assert_eq!(parse(&custom_with("language", Some(json!("xx")))).unwrap().language, "xx");
@@ -1048,7 +1050,7 @@ mod tests {
                 "lmstudioUrl",
                 "customUrl",
                 "shortcuts",
-                "mochiOutfit",
+                "lumoOutfit",
                 "lumoMotion",
                 "lumoCharacter",
                 "pillColors",

@@ -208,7 +208,7 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 - A [Tauri 2](https://tauri.app) app (Rust + TypeScript): the island is a transparent, always-on-top window that never steals focus; Lumo is drawn in Canvas 2D, with no images.
 - Claude Code and the other agents' hooks go through a tiny `lumo-hook` relay over a named pipe. For approvals it waits for your click, and gives up within moments if the app doesn't answer.
 - Integrations are lightweight pollers, paused when nothing is watching.
-- Details and differences from the original Mac app in [`windows/README.md`](windows/README.md).
+- Details in [`windows/README.md`](windows/README.md).
 
 ## Privacy
 

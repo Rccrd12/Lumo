@@ -1,5 +1,4 @@
-// Chat view — DOM port of PromptView / ChatBubble / TypingDotsView /
-// ModelPickerView from IslandViewContent.swift.
+// Chat view: the prompt box, the bubbles, the typing dots and the model picker.
 //
 // Answers are rendered as Markdown (markdown.ts). A local model streams its
 // answer: Rust sends `chat-delta` events with the text visible so far. The

@@ -1,12 +1,13 @@
-// Interface language — the Mac's ten languages (0.2.0), and Italian.
+// Interface language — eleven languages.
 //
-// Strings are looked up by their English text, like the Mac's catalog:
-// `t("Allow")`, `t("Uploading {name}", { name })`. Two tables, both keyed by
+// Strings are looked up by their English text:
+// `t("Allow")`, `t("Uploading {name}", { name })`. The tables, all keyed by
 // the English text:
-// - strings.json, generated from the Mac's Localizable.xcstrings by
-//   scripts/gen-strings.mjs (never edited by hand);
-// - extra.json, the strings only Windows has, written by hand;
-// - strings-it.json, Italian for the Mac's strings, which its catalog has not
+// - strings.json, generated from the string catalog
+//   (i18n-source/Localizable.xcstrings) by scripts/gen-strings.mjs (never
+//   edited by hand);
+// - extra.json, the strings written by hand;
+// - strings-it.json, Italian for the catalog's strings, which it has not
 //   (Italian for extra.json's is in extra.json, as for every language).
 // A string missing from both, or from one language, shows in English.
 //
@@ -17,14 +18,14 @@
 // listens (`onLanguageChange`), views/dom.ts relabels the text it was given
 // as `tl(…)`, and the views redraw the rest on their next sync.
 
-import MAC from "./strings.json";
+import CATALOG from "./strings.json";
 import EXTRA from "./extra.json";
 import ITALIAN from "./strings-it.json";
 
 export const LANGUAGE_CODES = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id", "it"] as const;
 export type Language = (typeof LANGUAGE_CODES)[number];
 
-/** The picker's entries, each in its own language, in the Mac's order. */
+/** The picker's entries, each in its own language. */
 export const LANGUAGES: readonly { code: Language; name: string }[] = [
   { code: "en", name: "English" },
   { code: "zh-Hans", name: "简体中文" },
@@ -44,9 +45,9 @@ type Plural = Partial<Record<Intl.LDMLPluralRule, string>>;
 type Entry = Partial<Record<Language, string | Plural>>;
 type Table = Record<string, Entry>;
 
-/** The Mac's table with its Italian added, then extra.json, which wins where both have a string. */
+/** The catalog's table with its Italian added, then extra.json, which wins where both have a string. */
 const TABLE: Table = {
-  ...withItalian((MAC as { strings: Table }).strings, (ITALIAN as { strings: Record<string, string | Plural> }).strings),
+  ...withItalian((CATALOG as { strings: Table }).strings, (ITALIAN as { strings: Record<string, string | Plural> }).strings),
   ...((EXTRA as { strings: Table }).strings),
 };
 
@@ -122,7 +123,7 @@ export function onLanguageChange(listener: (lang: Language) => void): () => void
 /**
  * <html lang> follows the language, so the webview picks fitting fonts, and
  * <html data-dir> says which way it reads: the island's CSS turns its text
- * containers right to left with it, leaving Mochi, the pills and the header
+ * containers right to left with it, leaving Lumo, the pills and the header
  * where they are. (The settings window sets `dir` on the whole page.)
  */
 export function applyDocumentLanguage() {
@@ -234,7 +235,7 @@ export function tl(key: string, vars?: Vars): Msg {
 }
 
 // ── Dates ─────────────────────────────────────────────────────────────────────
-// English keeps the Mac's fixed abbreviations; the other languages ask Intl.
+// English keeps fixed abbreviations; the other languages ask Intl.
 
 const EN_MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 const EN_WEEKDAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];

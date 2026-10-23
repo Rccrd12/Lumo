@@ -11,10 +11,10 @@ import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
 // ── The catalog itself ────────────────────────────────────────────────────────
 
-test("the catalog holds the Mac's pills, in the Mac's order, with the Mac's values", () => {
-  // Copied from NotchBuddy/Sources/LumoKit/PillCatalog.swift: an ID is a
-  // contract value, and a colour or subtitle that drifts is a visible bug.
-  const mac = [
+test("the catalog holds every pill, in order, with its values", () => {
+  // An ID is a contract value, and a colour or subtitle that drifts is a
+  // visible bug.
+  const pills = [
     ["integration_claude", "VS Code", "#F5F6F8", "workspace", "Integration"],
     ["agent_cursor", "Cursor", "#C0C4CC", "workspace", "Integration"],
     ["agent_antigravity", "Antigravity", "#E879F9", "workspace", "Integration"],
@@ -39,12 +39,11 @@ test("the catalog holds the Mac's pills, in the Mac's order, with the Mac's valu
     ["integration_calcom", "Cal.com", "#C9956A", "service", "Integration"],
     ["integration_stripe", "Stripe", "#0570DE", "service", "Integration"],
     ["integration_music", "Apple Music", "#FA2D48", "service", "Integration"],
-    // Windows only, after the Mac's.
     ["integration_mail", "Email", "#EA4335", "service", "Integration"],
   ];
   assert.deepEqual(
     PILL_CATALOG.map((p) => [p.id, p.name, p.color, p.category, p.subtitle]),
-    mac,
+    pills,
   );
   assert.deepEqual(PILL_CATEGORIES.map((c) => c.title), [
     "Where you code", "Agents", "AI for the chat", "Services",
@@ -74,7 +73,7 @@ test("IDs are unique", () => {
   assert.equal(new Set(ids).size, ids.length);
 });
 
-test("this build leaves out what only macOS has", () => {
+test("this build leaves out the pills with nothing behind them", () => {
   const offered = availablePills().map((p) => p.id);
   for (const id of ["integration_music"]) {
     assert.ok(!offered.includes(id), id);

@@ -163,9 +163,9 @@ test("a transition to the current state is not reported", () => {
   assert.deepEqual(transitions, ["hidden>home"]);
 });
 
-// ── Auto-close delay from Settings (IslandAutoCloseTests.swift) ──────────────
+// ── Auto-close delay from Settings ────────────────────────────────────────────
 
-/** Opened by a click, the way the Mac tests open theirs. */
+/** Opened by a click. */
 function opened(delay) {
   fsm.homeToPetitDelay = delay;
   fsm.mouseEntered();
@@ -278,7 +278,7 @@ test("the deadline the countdown bar reads follows the delay and clears with the
   assert.equal(fsm.homeCollapseDueAt, null);
 });
 
-// ── A card folded away while it waits (Mac #290) ─────────────────────────────
+// ── A card folded away while it waits ─────────────────────────────────────────
 
 test("a folded card keeps the compact island on screen until it is answered", () => {
   fsm.forceHome();

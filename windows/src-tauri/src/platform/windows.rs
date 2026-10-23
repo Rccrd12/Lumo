@@ -252,7 +252,7 @@ pub fn current_user_sid() -> Option<String> {
     }
 }
 
-// The display name only feeds Mochi's greeting (identity.rs). The calls are
+// The display name only feeds Lumo's greeting (identity.rs). The calls are
 // declared here by hand, with their documented C signatures, so they need no
 // extra `windows` crate features.
 #[link(name = "secur32")]
@@ -269,7 +269,7 @@ extern "system" {
 /// EXTENDED_NAME_FORMAT::NameDisplay.
 const NAME_DISPLAY: i32 = 3;
 
-/// The account's display name ("Louis Raille"): the directory's for a domain
+/// The account's display name ("Ada Lovelace"): the directory's for a domain
 /// or Entra account, else the local account's "Full name", else nothing.
 pub fn user_full_name() -> Option<String> {
     directory_display_name().or_else(local_full_name).filter(|n| !n.trim().is_empty())

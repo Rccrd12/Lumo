@@ -1,5 +1,5 @@
 // Agents other than Claude Code (src/island/agents.ts): the pill names and
-// colours of PillCatalog.swift, and who may get an approval card.
+// colours of the catalog, and who may get an approval card.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -7,7 +7,7 @@ import {
   APPROVAL_AGENTS, KNOWN_AGENTS, agentColor, agentName, validateAgent,
 } from "../src/island/agents.ts";
 
-test("known agents carry the Mac's names and colours", () => {
+test("known agents carry the catalog's names and colours", () => {
   assert.equal(agentName("gemini"), "Gemini CLI");
   assert.equal(agentColor("gemini"), "#8AB4F8");
   assert.equal(agentName("copilot"), "Copilot CLI");
@@ -25,7 +25,7 @@ test("an unknown agent keeps its id and gets a stable colour", () => {
   assert.match(agentColor("my-tool"), /^#[0-9A-F]{6}$/);
 });
 
-test("the agent tag is checked the Mac's way, and claude is reserved", () => {
+test("the agent tag is checked, and claude is reserved", () => {
   for (const bad of ["claude", "Gemini", "has space", "a".repeat(25), "", undefined, "x_y"]) {
     assert.equal(validateAgent(bad), null, String(bad));
   }

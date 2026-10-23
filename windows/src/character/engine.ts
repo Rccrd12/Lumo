@@ -1,8 +1,4 @@
-// Mochi — direct port of NotchBuddy/Sources/App/BotEngine.swift to Canvas 2D.
-// Same constants, same tweens, same easings, same particles. The only intentional
-// difference is the `happy`/`wink` eye arc, which follows the prototype
-// (design/prototype/notch-buddy.html, the visual source of truth) — the Swift
-// arc angles produce a different shape.
+// Lumo's engine, in Canvas 2D: his states, tweens, easings and particles.
 
 import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
@@ -72,7 +68,7 @@ interface Particle {
   age: number; life: number; rot: number; size: number;
 }
 
-// ── Constants (MochiConst / PISTES.mochi) ─────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const EYE_W = LUMO_EYE.w;
 const EYE_H = LUMO_EYE.h;
@@ -153,7 +149,7 @@ const FONT = `system-ui, "Segoe UI Variable Text", "Segoe UI", sans-serif`;
 
 export class BotEngine {
   isMini = false;
-  /** Solid body colour for mini bots / integration pills (null = Mochi gradient). */
+  /** Solid body colour for mini bots / integration pills (null = Lumo gradient). */
   bodyColor: RGB | null = null;
 
   // Animated state (BotEngine `s`)
@@ -173,7 +169,7 @@ export class BotEngine {
   private prevState: BotStateName = "idle";
   private prevStateAt = now();
 
-  // Outfit (the main Mochi only — minis never wear one). `outfit` is what is
+  // Outfit (the main Lumo only — minis never wear one). `outfit` is what is
   // drawn; it changes only once the previous one has left.
   outfit: Outfit = "none";
   /** 0 = gone, 1 = fully on. */
@@ -534,8 +530,8 @@ export class BotEngine {
   }
 
   /**
-   * Dresses Mochi. Animated: the old outfit leaves (180 ms), the new one drops
-   * in (350 ms) and Mochi does a little squash — BotEngine.setOutfit on macOS.
+   * Dresses Lumo. Animated: the old outfit leaves (180 ms), the new one drops
+   * in (350 ms) and Lumo does a little squash.
    */
   setOutfit(next: Outfit, animated = true) {
     if (next === this.outfitTarget) return;
@@ -833,7 +829,7 @@ export class BotEngine {
     const cy = H / 2 + this.particleOverhang / 2 + this.oy * R + R * 0.06;
 
     // With an outfit on, a roll turns the whole character — hat included — as
-    // one piece instead of rolling the eyes over the body (BotCanvasView, macOS).
+    // one piece instead of rolling the eyes over the body.
     x.save();
     if (this.rigidRoll && Math.abs(this.roll) > 0.001) {
       x.translate(cx, cy);

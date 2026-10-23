@@ -11,7 +11,7 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, parseCloseMode, parseMotion, type Settings } from "../core/state";
-import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../mochi/wardrobe";
+import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../character/wardrobe";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -50,7 +50,7 @@ async function save() {
   await Bridge.saveSettings(settings);
 }
 
-/** A colour was picked for a pill's Mochi (see ./colors.ts): the island follows. */
+/** A colour was picked for a pill's Lumo (see ./colors.ts): the island follows. */
 function pickColor(next: Record<string, string>) {
   settings.pillColors = next;
   void save();
@@ -495,7 +495,7 @@ function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement 
 // ── Active pills section ──────────────────────────────────────────────────────
 
 /**
- * The tools you use (Mac 0.1.1–0.1.2): pick the main workspace tool, which is
+ * The tools you use: pick the main workspace tool, which is
  * always on and takes no slot, and declare the agents and chat providers you
  * want as pills. Services are declared in Integrations below, next to their keys.
  */
@@ -512,7 +512,7 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
   });
   const groups = h("div", { style: "display:flex;flex-direction:column;gap:12px" });
 
-  /** Why a pill would show nothing yet, as on the Mac's row. */
+  /** Why a pill would show nothing yet. */
   function hint(def: PillDefinition): string | null {
     if (def.connect.kind === "hooks" && !connected[def.id]) return t("Hooks not installed");
     if (def.connect.kind === "key" && !connected[def.id]) return t("Key not configured");
@@ -1400,7 +1400,7 @@ function islandSection(): HTMLElement {
     settings.islandEdgeGap = v;
     void save();
   });
-  // The island's icons, against the Mac's size.
+  // The island's icons, against their usual size.
   const icons = h("select", {}) as HTMLSelectElement;
   for (const pct of [100, 125, 150]) {
     icons.append(h("option", { value: String(pct / 100), text: `${pct} %` }));
@@ -1558,7 +1558,7 @@ function calendarRow(): HTMLElement {
 }
 
 /**
- * Settings → General → Language, as on the Mac: "System" follows the
+ * Settings → General → Language: "System" follows the
  * system's language when Lumo has it (else English), or one of the ten.
  * Both windows and the tray switch in place, without a restart.
  */

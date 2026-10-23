@@ -1,6 +1,5 @@
 // Chat with a model server the user runs: Ollama, LM Studio, or any other
-// server that speaks the OpenAI API (vLLM, llama.cpp, Unsloth…) — the same
-// integration as LocalChat.swift, plus that last one.
+// server that speaks the OpenAI API (vLLM, llama.cpp, Unsloth…).
 //
 // The answer is streamed token by token. Each step goes to the island as a
 // `chat-delta` event carrying the text visible so far, and the island shows it

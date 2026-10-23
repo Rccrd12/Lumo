@@ -1,4 +1,4 @@
-// The sessions behind each pill (the Mac's PillSessionRegistry, from #245).
+// The sessions behind each pill.
 //
 // Two Claude Code sessions under the same editor (two VS Code projects, two
 // terminals) share one pill. Without this, one session's SessionEnd took down

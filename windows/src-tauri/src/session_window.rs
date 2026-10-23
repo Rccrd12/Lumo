@@ -1,5 +1,5 @@
 // "Open terminal" brings the window a Claude Code session runs in to the front,
-// instead of opening its folder in VS Code (Mac 0.1.0: jump to the terminal).
+// instead of opening its folder in VS Code.
 //
 // The relay is a grandchild of Claude Code, which runs in a shell, which runs
 // in the terminal or editor whose window we want. When the relay connects, its

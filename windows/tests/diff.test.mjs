@@ -1,5 +1,4 @@
-// Live diff engine (src/core/diff.ts) — port of tests/DiffEngineTests.swift,
-// plus the tool-input glue (buildFileDiff) HookServer.swift does on macOS.
+// Live diff engine (src/core/diff.ts), plus the tool-input glue (buildFileDiff).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
@@ -11,12 +10,12 @@ import {
 const allLines = (d) => d.hunks.flatMap((h) => h.lines);
 
 test("fromEdit — additions", () => {
-  const d = fromEdit("", "hello\nworld\n", "/a/b.swift");
+  const d = fromEdit("", "hello\nworld\n", "/a/b.ts");
   assert.equal(d.added, 2);
   assert.equal(d.removed, 0);
   assert.equal(d.tooLarge, false);
   assert.equal(d.hunks.length, 1);
-  assert.equal(fileName(d.path), "b.swift");
+  assert.equal(fileName(d.path), "b.ts");
 });
 
 test("fromEdit — removals", () => {
@@ -57,7 +56,7 @@ test("fromEdit — two separate edits of a MultiEdit", () => {
 });
 
 test("tooLarge past 200 KB: counts only, no hunks", () => {
-  const d = fromEdit("x".repeat(150 * 1024), "y".repeat(60 * 1024), "/big.swift");
+  const d = fromEdit("x".repeat(150 * 1024), "y".repeat(60 * 1024), "/big.ts");
   assert.equal(d.tooLarge, true);
   assert.deepEqual(d.hunks, []);
   assert.equal(d.added, 1);
@@ -84,7 +83,7 @@ test("no trailing newline", () => {
 test("3 lines of context around a change", () => {
   const lines = Array.from({ length: 10 }, (_, i) => `line${i + 1}`);
   const changed = lines.map((l, i) => (i === 4 ? "changed" : l));
-  const d = fromEdit(`${lines.join("\n")}\n`, `${changed.join("\n")}\n`, "/ctx.swift");
+  const d = fromEdit(`${lines.join("\n")}\n`, `${changed.join("\n")}\n`, "/ctx.ts");
   assert.equal(d.added, 1);
   assert.equal(d.removed, 1);
   assert.equal(d.hunks.length, 1);
@@ -105,13 +104,13 @@ test("distant changes make separate hunks", () => {
 
 test("m·n > 1 000 000 → tooLarge before the quadratic table", () => {
   const many = Array.from({ length: 1001 }, (_, i) => `line${i}`).join("\n");
-  const d = fromEdit(many, `${many}\nextra`, "/big.swift");
+  const d = fromEdit(many, `${many}\nextra`, "/big.ts");
   assert.equal(d.tooLarge, true);
   assert.deepEqual(d.hunks, []);
 });
 
 test("fromNew — too large keeps the line count", () => {
-  const d = fromNew("x\n".repeat(DIFF_MAX_LINES + 1), "/new.swift");
+  const d = fromNew("x\n".repeat(DIFF_MAX_LINES + 1), "/new.ts");
   assert.equal(d.tooLarge, true);
   assert.equal(d.isNewFile, true);
   assert.deepEqual(d.hunks, []);
@@ -119,12 +118,12 @@ test("fromNew — too large keeps the line count", () => {
 });
 
 test("makeDiffStep / parseDiffStep round-trip", () => {
-  const s = makeDiffStep("foo.swift", 3, 1, 7);
+  const s = makeDiffStep("foo.ts", 3, 1, 7);
   assert.ok(isDiffStep(s));
-  assert.deepEqual(parseDiffStep(s), { filename: "foo.swift", added: 3, removed: 1, diffId: 7 });
+  assert.deepEqual(parseDiffStep(s), { filename: "foo.ts", added: 3, removed: 1, diffId: 7 });
   assert.equal(parseDiffStep(makeDiffStep("bar.ts", 0, 2, 42))?.diffId, 42);
-  assert.equal(isDiffStep("Edit foo.swift"), false);
-  assert.equal(parseDiffStep("Edit foo.swift"), null);
+  assert.equal(isDiffStep("Edit foo.ts"), false);
+  assert.equal(parseDiffStep("Edit foo.ts"), null);
   assert.equal(parseDiffStep("\uE001no-tab"), null);
   assert.equal(parseDiffStep("\uE001f\t1:2"), null);
   assert.equal(parseDiffStep("\uE001f\t1:2:x"), null);

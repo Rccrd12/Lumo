@@ -1,7 +1,5 @@
 // GitHub pulse and contribution grid — the pure half of the GitHub card.
-// Port of the helpers around GitHubPulseCardView, GitHubDetailView and
-// GitHubActivityDetailContent (IslandViewContent.swift), GitHubActivity.swift and
-// AppState.handleGitHubEvents. No DOM here, so all of it is tested in Node.
+// No DOM here, so all of it is tested in Node.
 //
 // Parsing and alert detection happen in Rust (src-tauri/src/github.rs); this
 // reads what Rust sends and turns it into what the card shows.
@@ -191,7 +189,7 @@ export function sectionTitle(section: GitHubSection): string {
   return GH_STRINGS[section];
 }
 
-/** "1.2k" above a thousand, like the Mac's formatCount. */
+/** "1.2k" above a thousand. */
 export function formatCount(n: number): string {
   return n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n);
 }
@@ -203,7 +201,7 @@ export function shortRepo(repo: string): string {
 
 // ── Links ─────────────────────────────────────────────────────────────────────
 
-/** Only http(s) links to github.com open, like safeWebURL + the host check on macOS. */
+/** Only http(s) links to github.com open. */
 export function safeGitHubUrl(raw: string): string | null {
   let url: URL;
   try {

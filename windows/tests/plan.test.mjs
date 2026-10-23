@@ -1,6 +1,6 @@
-// Plan usage gauges (src/core/plan.ts, src/views/usage.ts): a port of the Mac's
-// tests/ClaudePlanGaugeTests.swift, the Codex parsing of CodexPlanGauge.swift,
-// and the pills' rules (where they show, what a click opens, what closes it).
+// Plan usage gauges (src/core/plan.ts, src/views/usage.ts): the gauges, the
+// Codex parsing, and the pills' rules (where they show, what a click opens,
+// what closes it).
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -98,7 +98,7 @@ test("colours: grey, then green below 50, orange below 80, red", () => {
   assert.equal(planColor(100), "#F4505E");
 });
 
-test("pill labels read like the Mac's header pill", () => {
+test("pill labels read like the header pill", () => {
   const both = { fiveHour: win(30, future), sevenDay: win(70, future), updatedAt: NOW };
   assert.equal(pillLabel("Claude", null, NOW), "Claude —");
   assert.equal(pillLabel("Claude", { updatedAt: NOW }, NOW), "Claude —");
@@ -311,7 +311,7 @@ test("the Codex pill needs only its switch, on the overview", () => {
   assert.equal(codexPillVisible(), false);
 });
 
-test("an open card follows its pill, and Mochi wears that plan's colour", () => {
+test("an open card follows its pill, and Lumo wears that plan's colour", () => {
   State.settings.showPlanInNotch = true;
   State.settings.planRelayInstalled = true;
   State.showingPlanDetail = true;

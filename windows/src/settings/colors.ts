@@ -1,6 +1,5 @@
-// The colour dot at the start of a pill's row, and the palette it opens — the
-// Mac's dot in Settings → Active pills does the same. The dot looks exactly as
-// it always did; what is new is that it can be clicked.
+// The colour dot at the start of a pill's row in Settings → Active pills, and
+// the palette it opens when it is clicked.
 
 import { PILL_PALETTE, pillColor, withPillColor } from "../core/pill-colors";
 import { h } from "../views/dom";

@@ -1,6 +1,6 @@
-// Integration events → island state. Port of the `handle…` methods in the Swift
-// pollers: a genuinely new item flips the pill to finished/error, badges it when
-// the pill isn't focused, plays a sound, and clears itself after 60 s.
+// Integration events → island state: a genuinely new item flips the pill to
+// finished/error, badges it when the pill isn't focused, plays a sound, and
+// clears itself after 60 s.
 
 import { onEvent, Bridge, type IntegrationUpdate } from "../core/bridge";
 import { compactNotice } from "../core/compact";
@@ -24,8 +24,8 @@ export function registerIntegrationHandlers(island: Island) {
 /**
  * AppState.handleGitHubEvents: the loudest event sets the badge — only while the
  * GitHub pill isn't the one on screen — and plays its sound. Unlike the other
- * integrations it leaves Mochi's state alone and the badge stays until the pill
- * is focused, as on macOS.
+ * integrations it leaves Lumo's state alone and the badge stays until the pill
+ * is focused.
  */
 export function handleGitHubAlerts(events: GitHubEvent[]) {
   if (State.paused) return;
@@ -54,7 +54,7 @@ function refreshGitHubWhenShown() {
 /**
  * Whether each pill is connected, so its idle card can say so: a key in the
  * credential store for a service or a chat provider, the hooks in place for a
- * pill fed by hook events (Mac #183), nothing at all for Claude Desktop.
+ * pill fed by hook events, nothing at all for Claude Desktop.
  */
 export async function refreshConfigured() {
   const hooks = (await Bridge.agentHooksStatus()) ?? null;
@@ -117,7 +117,7 @@ function handle(island: Island, update: IntegrationUpdate) {
         task.pillBadge = event.success ? "finished" : "error";
       }
       Sound.play(event.success ? "finish" : "error");
-      // Same as the Swift pollers: show the compact island so the badge is seen,
+      // Show the compact island so the badge is seen,
       // but never steal the screen for a successful deploy.
       island.reveal();
       if (State.mode !== "expanded") compactNotice(`${task.name} · ${event.label}`, task.color);

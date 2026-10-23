@@ -1,9 +1,8 @@
-// The 1080 × 1920 image of the week, drawn once into an offscreen canvas —
-// port of RecapShareImageView in WeeklyRecapView.swift. Same colours, sizes
-// and order; Mochi comes from the island's own engine.
+// The 1080 × 1920 image of the week, drawn once into an offscreen canvas.
+// Lumo comes from the island's own engine.
 
-import { BotEngine } from "../mochi/engine";
-import { parseLook } from "../mochi/wardrobe";
+import { BotEngine } from "../character/engine";
+import { parseLook } from "../character/wardrobe";
 import { State } from "../core/state";
 import { formatCount, formatDuration, weekRangeLabel, type WeeklySummary } from "./summary";
 import { t } from "../i18n/i18n";
@@ -133,8 +132,8 @@ function badge(x: Ctx, left: number, top: number, w: number, label: string, valu
   x.fillText(ellipsize(x, value, w - 64 - labelW - 16), left + w - 32, mid);
 }
 
-/** A still Mochi, drawn by the same engine as the island's. */
-function drawMochi(x: Ctx, cx: number, top: number, size: number) {
+/** A still Lumo, drawn by the same engine as the island's. */
+function drawLumo(x: Ctx, cx: number, top: number, size: number) {
   const engine = new BotEngine();
   engine.ambient = 0; // a still picture
   engine.look = parseLook(State.settings.lumoCharacter);
@@ -175,11 +174,11 @@ export function renderShareImage(s: WeeklySummary, hideProjects: boolean): HTMLC
   const hasLines = s.linesAdded + s.linesRemoved > 0;
 
   // Heights of each block, so the whole stack can be centred like the VStack.
-  // Mochi's body fills ~60 % of the square the engine draws into.
-  const MOCHI = 220;
-  const MOCHI_DRAW = 320;
+  // Lumo's body fills ~60 % of the square the engine draws into.
+  const LUMO_SIZE = 220;
+  const LUMO_DRAW = 320;
   const blockH =
-    MOCHI + 20 + 62 + 6 + 36 + 14 + 29 + 80 + // Lumo, its name, title, range
+    LUMO_SIZE + 20 + 62 + 6 + 36 + 14 + 29 + 80 + // Lumo, its name, title, range
     110 + 6 + 26 + // time + caption
     56 + 94 + // stat row
     (hasLines ? 24 + 34 : 0) +
@@ -189,8 +188,8 @@ export function renderShareImage(s: WeeklySummary, hideProjects: boolean): HTMLC
 
   x.textBaseline = "top";
 
-  drawMochi(x, cx, y + MOCHI / 2 - MOCHI_DRAW / 2 - MOCHI_DRAW * 0.02, MOCHI_DRAW);
-  y += MOCHI + 20;
+  drawLumo(x, cx, y + LUMO_SIZE / 2 - LUMO_DRAW / 2 - LUMO_DRAW * 0.02, LUMO_DRAW);
+  y += LUMO_SIZE + 20;
 
   x.fillStyle = INK;
   x.textAlign = "center";

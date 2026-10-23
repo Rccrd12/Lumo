@@ -6,8 +6,8 @@
 // lives here is only *what* changes in each agent's config, and the command
 // line that starts the relay in the shell that agent uses.
 //
-// Formats and paths follow the Mac app (NotchBuddy/Sources/App/HookServer.swift)
-// so a config shared between machines (dotfiles) looks the same everywhere.
+// Formats and paths are the same on every machine, so a config shared between
+// machines (dotfiles) looks the same everywhere.
 
 use std::path::{Path, PathBuf};
 
@@ -105,7 +105,7 @@ impl Agent {
         Agent::Hermes,
     ];
 
-    /// The `--agent` name; the pill is `agent_<id>` (PillCatalog.swift).
+    /// The `--agent` name; the pill is `agent_<id>` (src/core/pills.ts).
     pub fn id(self) -> &'static str {
         match self {
             Agent::Gemini => "gemini",
@@ -795,12 +795,11 @@ fn muse_install(root: &Value, commands: &[(String, String, u64)]) -> Result<Valu
 
 // ── Plugins: OpenCode, Amp, Hermes ────────────────────────────────────────────
 //
-// These agents load code rather than run hook commands. The Mac's plugins
-// start `/bin/sh` on a script at a macOS path; these start the relay itself,
-// at this machine's path, with no shell in between. Every one is
+// These agents load code rather than run hook commands. The plugins start the
+// relay itself, at this machine's path, with no shell in between. Every one is
 // fire-and-forget: the agent never waits on Lumo, and if Lumo is closed
 // nothing happens. None of them ever answers a permission: Hermes keeps its
-// approvals (as on the Mac), and Amp's steps come from `tool.result` so the
+// approvals, and Amp's steps come from `tool.result` so the
 // plugin never has to return a verdict from `tool.call`.
 
 /// Every plugin file Lumo writes says so; only such a file is replaced or removed.
@@ -1290,7 +1289,7 @@ mod tests {
             assert!(agent.installed(&home), "{agent:?}");
             let main = std::fs::read_to_string(&agent.files(&home)[0]).unwrap();
             // The relay itself, at this machine's path, as a string literal: no
-            // shell, no macOS path.
+            // shell.
             assert!(main.contains(&serde_json::to_string(WIN).unwrap()), "{agent:?}");
             assert!(!main.contains("/bin/sh") && !main.contains("nb-hook"), "{agent:?}");
             assert!(main.contains(&format!("'--agent', '{}'", agent.id())), "{agent:?}");

@@ -1,10 +1,8 @@
-// Integration pollers — the Rust side of StripePoller / GithubPoller /
-// VercelPoller / N8nPoller / ResendPoller / NotionPoller / CalcomPoller, and
-// the Email pill's inbox (mail.rs).
+// Integration pollers: Stripe, GitHub, Vercel, n8n, Resend, Notion, Cal.com,
+// and the Email pill's inbox (mail.rs).
 //
-// Same endpoints, same first-run delays and intervals as the Swift pollers. Each
-// one emits an `integration` event; the island owns the badge, the sound and the
-// 60 s auto-clear, exactly as the Swift handlers do.
+// Each one emits an `integration` event; the island owns the badge, the sound
+// and the 60 s auto-clear.
 //
 // Nothing is polled until its key exists in the Credential Manager, and no
 // request goes anywhere the user has not configured.
@@ -68,7 +66,7 @@ pub fn set_paused(on: bool) {
     PAUSED.store(on, Ordering::Relaxed);
 }
 
-/// Spawns every poller with the macOS delays and intervals.
+/// Spawns every poller with its first-run delay and interval.
 pub fn start(app: AppHandle) {
     spawn(app.clone(), "integration_n8n", 3, 15, poll_n8n);
     spawn(app.clone(), "integration_vercel", 5, 30, poll_vercel);
@@ -150,7 +148,7 @@ fn is_new(key: &'static str, id: &str) -> bool {
     let mut map = SEEN.0.lock().unwrap();
     match map.insert(key, id.to_string()) {
         Some(previous) => previous != id,
-        None => false, // first poll: populate silently, like the Swift pollers
+        None => false, // first poll: populate silently
     }
 }
 
@@ -342,7 +340,7 @@ async fn poll_github(app: AppHandle) {
     emit_github(&app);
 }
 
-// ── GitHub pulse and activity (GithubPoller.swift) ────────────────────────────
+// ── GitHub pulse and activity ─────────────────────────────────────────────────
 //
 // Two more loops next to the stats above: the pulse (my pull requests and
 // their CI, reviews waiting for me, default-branch CI) 10 s after launch, then
@@ -524,8 +522,8 @@ pub fn wake_github_pulse() {
     }
 }
 
-/// The card was opened: fetch now if what it shows is older than the Mac's
-/// limits (1 min for the pulse, 5 min for the activity grid). No-op while a
+/// The card was opened: fetch now if what it shows is older than its limits
+/// (1 min for the pulse, 5 min for the activity grid). No-op while a
 /// request is already in flight.
 pub fn github_refresh_if_stale(section: &str) {
     let now = now_ms();
@@ -877,7 +875,7 @@ async fn poll_n8n(app: AppHandle) {
     let base = raw_base.trim_end_matches('/').to_string();
     let http = client();
 
-    // Same two shapes as the Swift poller: the public API first, then /rest.
+    // Two shapes: the public API first, then /rest.
     let list_urls = [
         format!("{base}/api/v1/executions?limit=1&includeData=false"),
         format!("{base}/rest/executions?limit=1&includeData=false"),

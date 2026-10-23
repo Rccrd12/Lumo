@@ -1,4 +1,4 @@
-// Global keyboard shortcuts — port of HotKeyCenter.swift + ShortcutLogic.swift.
+// Global keyboard shortcuts.
 //
 // The shortcuts are registered from Rust through tauri-plugin-global-shortcut
 // (RegisterHotKey). A press is handed to the island
@@ -6,7 +6,7 @@
 // same way it handles the tray menu. The wardrobe is the exception: it goes out
 // as its own `open-wardrobe` event, which the wardrobe view listens to.
 //
-// Default keys. The Mac uses ⌃⌥ + a letter. On Windows Ctrl+Alt *is* AltGr on
+// Default keys. On Windows Ctrl+Alt *is* AltGr on
 // most European layouts, so a global Ctrl+Alt+E would swallow every € typed on
 // a French or German keyboard. The defaults below were checked against the
 // AltGr layer of the French (AZERTY), German (QWERTZ), Spanish, Italian,
@@ -14,20 +14,20 @@
 // on E, Q, M, W, C and on every digit and most punctuation keys:
 //
 //   Ctrl+Alt+Space   open the chat           Ctrl+Alt+→ / ←  next / previous pill
-//   Ctrl+Alt+A       waiting permission      Ctrl+Alt+S      mute Mochi
+//   Ctrl+Alt+A       waiting permission      Ctrl+Alt+S      mute Lumo
 //   Ctrl+Alt+T       open the terminal       Ctrl+Alt+G      wardrobe
-//   Ctrl+Alt+N       open / close the island (off by default, as on the Mac)
+//   Ctrl+Alt+N       open / close the island (off by default)
 //   Ctrl+Alt+P       ask about my screen     Ctrl+Alt+X      ask about the selected text
 //   Ctrl+Alt+L       talk with Gemini Live (start, then pause or resume the conversation)
 //   Ctrl+Alt+B       ask about the page open in the browser
 //
-// The last two are this version's own (the Mac has no such action yet): they
-// open the chat with a screenshot of the display under the cursor, or with
-// the text selected in the app in front (selection.rs), ready for a question.
+// Ctrl+Alt+P and Ctrl+Alt+X open the chat with a screenshot of the display
+// under the cursor, or with the text selected in the app in front
+// (selection.rs), ready for a question.
 // Each is done on the key press only, and nothing is sent before Enter.
 //
-// ⌃⌥[ and ⌃⌥] became the arrows (brackets are AltGr characters almost
-// everywhere) and ⌃⌥M became S (AltGr+M is µ in German). Layouts outside that
+// So the pills go by the arrows (brackets are AltGr characters almost
+// everywhere) and mute is S (AltGr+M is µ in German). Layouts outside that
 // list can still clash — Polish puts ą on AltGr+A and ś on AltGr+S — so on
 // Windows every Ctrl+Alt combination is also checked against the keyboard
 // layouts actually installed (platform::ctrl_alt_types) and left unregistered,
@@ -47,8 +47,7 @@ use crate::island::WINDOW_LABEL;
 use crate::screen::{self, Shot};
 use crate::selection::{self, Selected};
 
-/// One global action, as on the Mac (`ShortcutAction`). The ids are the Mac's
-/// raw values and are stored in settings.json: never rename one.
+/// One global action. The ids are stored in settings.json: never rename one.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ActionDef {
     pub id: &'static str,
@@ -60,8 +59,7 @@ const fn action(id: &'static str, keys: &'static str, on: bool) -> ActionDef {
     ActionDef { id, default_keys: keys, enabled_by_default: on }
 }
 
-/// Same order as `ShortcutAction.allCases`, less the two the Mac has and this
-/// version doesn't (attachFrontWindow, desktopToggle).
+/// Every action, with its default keys and whether it is on by default.
 pub const ACTIONS: &[ActionDef] = &[
     action("toggleIsland", "Ctrl+Alt+N", false),
     action("openChat", "Ctrl+Alt+Space", true),
@@ -71,7 +69,7 @@ pub const ACTIONS: &[ActionDef] = &[
     action("prevPill", "Ctrl+Alt+Left", true),
     action("muteToggle", "Ctrl+Alt+S", true),
     action("wardrobeToggle", "Ctrl+Alt+G", true),
-    // Not on the Mac: see the top of this file.
+    // Ask about the screen, the selection, Gemini Live, the page: see the top of this file.
     action("askScreen", "Ctrl+Alt+P", true),
     action("askSelection", "Ctrl+Alt+X", true),
     // Starts a spoken conversation with Gemini Live (live.rs), then pauses or resumes it.
@@ -418,26 +416,24 @@ fn typed_character(shortcut: &Shortcut) -> Option<String> {
 mod tests {
     use super::*;
 
-    const MAC_IDS: [&str; 8] = [
+    const FIRST_IDS: [&str; 8] = [
         "toggleIsland", "openChat", "goToAlert", "jumpToTerminal",
         "nextPill", "prevPill", "muteToggle", "wardrobeToggle",
     ];
-    /// This version's own, after the Mac's.
-    const OWN_IDS: [&str; 4] = ["askScreen", "askSelection", "talkToGemini", "askPage"];
+    /// The ones that ask about something, after them.
+    const ASK_IDS: [&str; 4] = ["askScreen", "askSelection", "talkToGemini", "askPage"];
 
     fn never(_: &Shortcut) -> Option<String> {
         None
     }
 
-    // testDefaultsExhaustive
     #[test]
-    fn every_mac_action_has_a_default_and_keeps_its_id() {
+    fn every_action_has_a_default_and_keeps_its_id() {
         let ids: Vec<_> = ACTIONS.iter().map(|a| a.id).collect();
-        assert_eq!(ids[..MAC_IDS.len()], MAC_IDS);
-        assert_eq!(ids[MAC_IDS.len()..], OWN_IDS);
+        assert_eq!(ids[..FIRST_IDS.len()], FIRST_IDS);
+        assert_eq!(ids[FIRST_IDS.len()..], ASK_IDS);
     }
 
-    // testAllDefaultsHaveModifier
     #[test]
     fn every_default_parses_and_has_a_modifier() {
         for def in ACTIONS {
@@ -447,7 +443,6 @@ mod tests {
         }
     }
 
-    // testNoDefaultDuplicates
     #[test]
     fn no_two_defaults_share_a_combination() {
         let mut seen = HashSet::new();
@@ -456,7 +451,6 @@ mod tests {
         }
     }
 
-    // testEnabledByDefault
     #[test]
     fn only_the_island_toggle_is_off_by_default() {
         for def in ACTIONS {
@@ -513,7 +507,6 @@ mod tests {
         assert_eq!(character_vk(Code::F5), None);
     }
 
-    // testDuplicateDetection
     #[test]
     fn a_combination_used_twice_is_registered_once() {
         let mut stored = Bindings::new();
@@ -564,7 +557,6 @@ mod tests {
         assert_eq!(mute.1.as_ref().unwrap_err().status, Status::Off);
     }
 
-    // testLoadSaveRoundTrip
     #[test]
     fn bindings_round_trip_through_json() {
         let mut stored = Bindings::new();

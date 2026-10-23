@@ -1,14 +1,12 @@
-// The drop choreography — port of UploadSequenceEngine.swift, itself a port of
-// design/prototype/upload-sequence.html.
+// The drop choreography.
 //
 // The engine is pure arithmetic: it owns no DOM and draws nothing. It takes the
 // cursor and a drop time, and hands `frame()` back everything the canvas needs
-// for one frame. All coordinates are island points (the island is 640 × 176),
-// so every constant below is the macOS constant unchanged.
+// for one frame. All coordinates are island points (the island is 640 × 176).
 
 import { Ease, lerp, seg } from "../core/anim";
 
-/** Constants — exact mirror of USC in UploadSequenceEngine.swift. */
+/** Constants of the choreography, in island points. */
 export const USC = {
   W: 640,
   ISL_H: 176,
@@ -17,9 +15,8 @@ export const USC = {
   CARD_W: 620,
   CARD_H: 124,
   CARD_R: 20,
-  // Mochi waits in the card's top-left corner, his wings inside it, and
-  // watches the file from there (the Mac's 140 × 104 left him mid-card, where
-  // he chased the cursor).
+  // Lumo waits in the card's top-left corner, his wings inside it, and
+  // watches the file from there.
   REST_X: 70,
   REST_Y: 90,
   D_BOX: 62,
@@ -27,8 +24,7 @@ export const USC = {
   TEXT_CX: 320, // CARD_X + CARD_W / 2
   TEXT_Y: 94,
   BAR_X0: 46,
-  // As far from the card's right edge as BAR_X0 is from its left (the Mac's
-  // 520 left the bar off centre, short of the right side).
+  // As far from the card's right edge as BAR_X0 is from its left.
   BAR_X1: 594,
   BAR_Y: 118,
   MOUTH_OPEN: 0.42,
@@ -198,7 +194,7 @@ class UploadSequence {
 
   /**
    * How much farther than the 640 × 176 scene the card reaches on each side
-   * (a resized island, upload/canvas.ts uploadStage): Mochi's corner is that
+   * (a resized island, upload/canvas.ts uploadStage): Lumo's corner is that
    * much farther left and up.
    */
   reachX = 0;
@@ -227,7 +223,7 @@ class UploadSequence {
 
   // ── Session lifecycle ─────────────────────────────────────────────────────
 
-  /** Mochi's corner of the card, in scene points. */
+  /** Lumo's corner of the card, in scene points. */
   private get restX() {
     return USC.REST_X - this.reachX;
   }
@@ -327,7 +323,7 @@ class UploadSequence {
   private stepOnce(dt: number) {
     const isDragging = this.dropWall == null;
 
-    // Mochi stays in his corner; it only moves when the island is resized.
+    // Lumo stays in his corner; it only moves when the island is resized.
     if (isDragging) {
       this.bx.step(this.restX, 0.35, 0.8, dt);
       this.by.step(this.restY, 0.35, 0.8, dt);
@@ -336,7 +332,7 @@ class UploadSequence {
     // Into a box while the file is over the island, back to himself off it.
     this.morph.step(this.over || !isDragging ? 1 : 0, 0.38, 0.55, dt);
 
-    // Tilt follows how fast Mochi is sliding.
+    // Tilt follows how fast Lumo is sliding.
     const tiltTarget = isDragging ? Math.max(-0.18, Math.min(0.18, this.bx.vel * 0.0015)) : 0;
     this.tilt = lerp(this.tilt, tiltTarget, 1 - Math.pow(0.0005, dt));
 

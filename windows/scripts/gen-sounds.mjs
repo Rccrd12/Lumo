@@ -522,7 +522,7 @@ const SOUNDS = {
     reverb(tr, { mix: 0.2, size: 0.8 });
   }],
 
-  // The launch greeting. Lined up with the animation in src/mochi/greeting.ts:
+  // The launch greeting. Lined up with the animation in src/character/greeting.ts:
   // the light flies in (0–0.32), blooms into Lumo (0.32–0.6), "lu-mo" while he
   // smiles (0.62, 0.78), a blink 0.95, the badge pops 1.0, the blue glow from
   // 0.95 to 1.3, then a short ring-out.

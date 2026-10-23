@@ -1,6 +1,6 @@
 // GitHub pulse, alerts and contribution grid (src/core/github.ts and the alert
 // handling in src/island/integrations.ts). The Rust half — parsing and alert
-// detection — is tested in src-tauri/src/github.rs, like GitHubPulseTests.swift.
+// detection — is tested in src-tauri/src/github.rs.
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -16,7 +16,7 @@ import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
 const GITHUB = "integration_github";
 
-// ── Fixtures (GitHubActivityTests.swift) ──────────────────────────────────────
+// ── Fixtures ──────────────────────────────────────────────────────────────────
 
 const day = (date, count, level, weekday) => ({ date, count, level, weekday });
 const activity = {
@@ -208,7 +208,7 @@ beforeEach(() => {
 test("an alert badges the GitHub pill when another pill is on screen", () => {
   emit("github-alerts", [{ kind: "mainFailed", repo: "a/b" }]);
   assert.equal(github().pillBadge, "error");
-  assert.equal(github().state, "idle", "Mochi's state is left alone, as on macOS");
+  assert.equal(github().state, "idle", "Lumo's state is left alone");
 });
 
 test("an alert is said on the closed island, each in its turn, not while the island is open", () => {

@@ -1,5 +1,4 @@
-// The island: DOM shell, sizing animation, Mochi placement, mouse handling.
-// Mirrors IslandRootView.swift + IslandWindowController.swift.
+// The island: DOM shell, sizing animation, Lumo placement, mouse handling.
 
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
@@ -14,10 +13,10 @@ import {
 import { Sound } from "../core/sound";
 import { NEUTRAL_PILL } from "../core/pill-colors";
 import { State, motionAmount, parseCloseMode } from "../core/state";
-import { BotEngine, hexToRGB } from "../mochi/engine";
-import { Greeting } from "../mochi/greeting";
-import { syncMiniBotStates, tickMiniBots } from "../mochi/minibots";
-import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../mochi/wardrobe";
+import { BotEngine, hexToRGB } from "../character/engine";
+import { Greeting } from "../character/greeting";
+import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
+import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
@@ -81,7 +80,7 @@ function isControl(target: EventTarget | null): boolean {
 
 const BOT_OVERHANG = 40;
 const CLAUDE_DESKTOP_ID = "agent_claude-desktop";
-/** Extra canvas on each side of Mochi, for the witch hat's brim and the Santa hat's tip. */
+/** Extra canvas on each side of Lumo, for the witch hat's brim and the Santa hat's tip. */
 const BOT_SIDE = 24;
 /** Same margin as the Rust hit test (src-tauri/src/island.rs). */
 const HIT_MARGIN = 14;
@@ -269,7 +268,7 @@ export class Island {
 
   /**
    * Folds a card that is waiting for an answer down to the compact island,
-   * without answering it (Mac #290). Nothing is decided: the request keeps
+   * without answering it. Nothing is decided: the request keeps
    * waiting, the island stays on screen, and opening it shows the card again.
    */
   foldApproval() {
@@ -335,7 +334,7 @@ export class Island {
         if (task?.id === CLAUDE_DESKTOP_ID) void Bridge.openClaudeDesktop();
         else void Bridge.openSession(task?.sessionId ?? null, task?.sessionCwd ?? null);
       },
-      // The ↗ button — same targets as openAgentTarget() on macOS.
+      // The ↗ button: the session's window, its folder or its app.
       openTarget: () => {
         const task = State.focusTask;
         if (!task) return;
@@ -397,8 +396,8 @@ export class Island {
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
       blip: () => Sound.play("blip"),
       chooseOutfit: (selection) => {
-        if (parseOutfit(State.settings.mochiOutfit) === selection) return;
-        State.settings.mochiOutfit = selection;
+        if (parseOutfit(State.settings.lumoOutfit) === selection) return;
+        State.settings.lumoOutfit = selection;
         void Bridge.saveSettings(State.settings);
         Sound.play("pop");
         this.engine.triggerEmote("proud");
@@ -447,8 +446,8 @@ export class Island {
     for (const v of this.views.values()) this.viewsEl.append(v.el);
     this.contentEl = h("div", { id: "content" }, this.header.el, this.viewsEl);
 
-    // The drop sequence draws the card, the bar and its own Mochi. It sits under
-    // the header, which stays visible on top of it exactly as on macOS.
+    // The drop sequence draws the card, the bar and its own Lumo. It sits under
+    // the header, which stays visible on top of it.
     this.uploadCanvas = new UploadCanvas();
 
     this.clipEl = h(
@@ -598,7 +597,7 @@ export class Island {
     return State.mode === "expanded" && UploadSeq.isActive && UPLOAD_VIEWS.has(State.view);
   }
 
-  /** Navigating out of the drop flow ends the sequence, as on macOS. */
+  /** Navigating out of the drop flow ends the sequence. */
   private stopSequenceIfLeaving(view: IslandViewName) {
     if (UploadSeq.isActive && !UPLOAD_VIEWS.has(view)) UploadSeq.deactivate();
   }
@@ -794,10 +793,10 @@ export class Island {
     State.notify();
   }
 
-  /** Right-click on Mochi: wardrobe open ↔ back to the usual view. */
+  /** Right-click on Lumo: wardrobe open ↔ back to the usual view. */
   toggleWardrobe() {
     if (State.paused || State.mode === "hidden") return;
-    // The greeting and the drop sequence draw a Mochi of their own.
+    // The greeting and the drop sequence draw a Lumo of their own.
     if (State.mode === "expanded" && (State.view === "greeting" || this.uploadActive)) return;
     if (State.mode === "expanded" && State.view === "wardrobe") this.setView(State.defaultView());
     else this.setView("wardrobe");
@@ -915,7 +914,7 @@ export class Island {
     State.notify();
   }
 
-  /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
+  /** The island takes the keyboard, so its own shortcuts work.
    *  It gives it back when it closes, or when the chat is left. */
   /** A shortcut opened the island: it waits for the user, the mouse being elsewhere (SHARE_GRACE). */
   holdOpen() {
@@ -948,13 +947,13 @@ export class Island {
           State.mouseInIsland = { x: e.client.x - rect.x, y: e.client.y - rect.y };
         }
         const at = this.uploadCanvas.toScene(State.mouseInIsland.x, State.mouseInIsland.y);
-        // Already following this drag: Mochi just watches the file.
+        // Already following this drag: Lumo just watches the file.
         if (State.fileDragOver && UploadSeq.isActive && !UploadSeq.dropped) {
           UploadSeq.updateCursor(at.x, at.y);
           return;
         }
         // Back on the island after going off it: the same scene carries on,
-        // Mochi opens up again where he is instead of starting over.
+        // Lumo opens up again where he is instead of starting over.
         if (UploadSeq.isActive && !UploadSeq.dropped && this.uploadActive) {
           State.fileDragOver = true;
           this.engine.animateMorph(1);
@@ -1058,9 +1057,9 @@ export class Island {
   }
 
   /**
-   * Mochi eats the file. Nothing here waits on the file system: the copy into
+   * Lumo eats the file. Nothing here waits on the file system: the copy into
    * the inbox runs in the background and swaps the path in when it lands, so a
-   * slow disk can never stall the animation — same as FileDropHandler on macOS.
+   * slow disk can never stall the animation.
    */
   private swallow(path: string) {
     const name = path.split(/[\\/]/).pop() || "file";
@@ -1459,7 +1458,7 @@ export class Island {
         return;
       }
       if (movable) this.pendingMove = { x: e.clientX, y: e.clientY, click: false };
-      // Right-click on Mochi opens the wardrobe, and closes it again.
+      // Right-click on Lumo opens the wardrobe, and closes it again.
       if (e.button === 2 && this.isBotHit(e.clientX, e.clientY)) {
         this.cancelBotHover();
         this.toggleWardrobe();
@@ -1477,7 +1476,7 @@ export class Island {
     });
 
     // Never the webview's menu: Lumo's own (Refresh, the text actions, the
-    // items picked in Settings). Over Mochi the right click is the wardrobe.
+    // items picked in Settings). Over Lumo the right click is the wardrobe.
     this.menu = new ContextMenu();
     this.menu.onChange = () => {
       this.dirty = true;
@@ -1496,8 +1495,7 @@ export class Island {
     }, true);
 
     // Only keys typed into the island itself land here, never Escape typed in
-    // a terminal — so it may fold a waiting card away, as Escape in the notch
-    // does on macOS.
+    // a terminal — so it may fold a waiting card away.
     window.addEventListener("keydown", (e) => {
       // Ctrl + / Ctrl − / Ctrl 0: a bigger or smaller island, or the usual size.
       const zoom = e.ctrlKey && !e.altKey ? zoomStep(e.key, State.settings.islandZoom) : null;
@@ -1699,7 +1697,7 @@ export class Island {
         this.greeting.draw(gctx);
       }
     } else {
-      // Kept running even while the drop canvas is up, so the island's own Mochi
+      // Kept running even while the drop canvas is up, so the island's own Lumo
       // is already in the right place the moment the canvas fades out.
       this.applyEnergy(nowMs);
       this.drawBot(dt);
@@ -1753,7 +1751,7 @@ export class Island {
 
   private updateBotTargets() {
     const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value);
-    // Upright on a side, the closed island has Mochi at its top end.
+    // Upright on a side, the closed island has Lumo at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;
     this.botCy.target = turned ? p.cx : p.cy;
@@ -1766,7 +1764,7 @@ export class Island {
     }
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
-    // The drop canvas draws its own Mochi; two of them would overlap.
+    // The drop canvas draws its own Lumo; two of them would overlap.
     // The big picture fills the island: Lumo steps out of its way meanwhile.
     const picture = State.picture != null;
     const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture;
@@ -1825,14 +1823,14 @@ export class Island {
         this.engine.slotHVel = 0;
       }
     }
-    // Only the main Mochi is dressed — the one of the main tool's pill (Settings →
+    // Only the main Lumo is dressed — the one of the main tool's pill (Settings →
     // Active pills): a focused integration pill shows its own colours, unless
-    // the wardrobe is open (BotCanvasView.showOutfit, macOS).
+    // the wardrobe is open.
     // In the wardrobe the hovered outfit swaps in at once, without the drop-in.
     const inWardrobe = State.mode === "expanded" && State.view === "wardrobe";
     const mainFocused = State.focusId == null || State.focusId === State.mainPillId;
     const showOutfit = mainFocused || State.mode !== "expanded" || inWardrobe;
-    const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.mochiOutfit));
+    const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.lumoOutfit));
     this.engine.setOutfit(showOutfit ? outfit : "none", !inWardrobe);
     this.engine.look = this.look();
 
@@ -1997,7 +1995,7 @@ export class Island {
     this.ensureRunning();
   }
 
-  /** Picked up: Rust carries the window; the island lifts and Mochi notices. */
+  /** Picked up: Rust carries the window; the island lifts and Lumo notices. */
   private startMove() {
     if (this.moving || !this.canResize) return;
     this.clearSettleTimer();

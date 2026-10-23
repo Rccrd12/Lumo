@@ -1,6 +1,6 @@
-// GitHub pulse and contribution calendar — the pure half of GithubPoller.swift,
-// GitHubPulse.swift and GitHubActivity.swift. Parsing, alert detection and the
-// staleness rule live here, away from the network, so they can be tested.
+// GitHub pulse and contribution calendar — the pure half of the GitHub poller.
+// Parsing, alert detection and the staleness rule live here, away from the
+// network, so they can be tested.
 //
 // The pollers that use them are in integrations.rs.
 
@@ -121,7 +121,7 @@ fn str_at<'a>(v: &'a Value, key: &str) -> Option<&'a str> {
 }
 
 /// Pull request fields shared by "my PRs" and "to review"; None when a required
-/// field is missing (that node is skipped, as on macOS).
+/// field is missing (that node is skipped).
 fn pr_basics(node: &Value) -> Option<(String, String, String, String, i64, bool)> {
     let number = node.get("number")?.as_i64()?;
     let title = str_at(node, "title")?.to_string();
@@ -362,7 +362,7 @@ impl GitHubActivity {
 
 // ── GraphQL ───────────────────────────────────────────────────────────────────
 
-/// Same query as GithubPoller.swift.
+/// The GraphQL query behind the pulse.
 pub const PULSE_QUERY: &str = r#"
 query {
   viewer {
@@ -423,7 +423,7 @@ pub fn graphql_error_count(root: &Value) -> usize {
     root.get("errors").and_then(Value::as_array).map(Vec::len).unwrap_or(0)
 }
 
-// ── Tests (GitHubPulseTests.swift, GitHubActivityTests.swift) ────────────────
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

@@ -1,13 +1,11 @@
 // Plan usage in the island: the Claude, Codex and Antigravity CLI pills in the
-// header and the card behind each. Same behaviour as ClaudePlanHeaderPill,
-// ClaudePlanCardView and CodexPlanCardView on the Mac (Antigravity CLI, which
-// the Mac does not have, works as Codex does); the numbers and labels come
-// from core/plan.ts.
+// header and the card behind each (Antigravity CLI works as Codex does); the
+// numbers and labels come from core/plan.ts.
 //
 // The pills sit in the header's right side, before the gear, on the overview
 // only, Claude first. Clicking one puts its card in place of the overview's
 // left card (clicking it again, or the other pill, closes or swaps it), and
-// Mochi wears the plan's colour while it is open. It closes when the view, the
+// Lumo wears the plan's colour while it is open. It closes when the view, the
 // mode or the focused pill changes.
 
 import { Bridge } from "../core/bridge";
@@ -61,7 +59,7 @@ const usageOf = (kind: PlanKind): PlanUsage | null =>
 
 const colorOf = (kind: PlanKind, now = Date.now()) => planColor(dominantPct(usageOf(kind), now));
 
-/** The colour of the open card's plan, which Mochi wears while it is open. */
+/** The colour of the open card's plan, which Lumo wears while it is open. */
 export function openPlanColor(): string {
   return colorOf(State.planDetail);
 }
@@ -75,7 +73,7 @@ export function closePlanCard(): void {
 
 const STORE_KEY = "lumo.claudePlanUsage";
 
-/** New numbers from the status line; kept so they survive a restart, as on the Mac. */
+/** New numbers from the status line; kept so they survive a restart. */
 export function setClaudePlanUsage(usage: PlanUsage): void {
   const prev = State.planUsage;
   const same = JSON.stringify([prev?.fiveHour, prev?.sevenDay]) === JSON.stringify([usage.fiveHour, usage.sevenDay]);
@@ -380,7 +378,7 @@ export class PlanCard {
 
   private drawCodex(u: CodexPlanUsage | null, now: number) {
     const rows = h("div", { class: "plan-rows" });
-    // Codex plans without a 5-hour window show the week alone, as on the Mac.
+    // Codex plans without a 5-hour window show the week alone.
     if (u?.fiveHour) rows.append(gaugeRow(PLAN_TEXT.fiveHours, u.fiveHour, false, now));
     rows.append(
       gaugeRow(PLAN_TEXT.week, u?.sevenDay, true, now),

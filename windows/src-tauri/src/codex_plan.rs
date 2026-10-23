@@ -1,4 +1,4 @@
-// Codex plan usage — the same source as CodexPlanGauge.swift on the Mac.
+// Codex plan usage.
 //
 // Lumo asks the Codex CLI itself: `codex app-server` (the JSON-RPC server
 // behind Codex's /status) is started, asked `account/rateLimits/read`, and
@@ -17,14 +17,14 @@ use serde_json::{json, Value};
 
 use crate::platform;
 
-/// The Mac gives Codex the same 15 s.
+/// How long Codex has to answer.
 const TIMEOUT: Duration = Duration::from_secs(15);
 /// One JSON-RPC line we are willing to read; the answer is a few hundred bytes.
 const MAX_LINE: usize = 256 * 1024;
 /// Everything we are willing to read before the answer shows up.
 const MAX_TOTAL: usize = 2 * 1024 * 1024;
 
-/// What the Mac sends: initialize, initialized, then the one question.
+/// What Lumo sends: initialize, initialized, then the one question.
 const REQUESTS: &str = concat!(
     r#"{"id":1,"method":"initialize","params":{"clientInfo":{"name":"lumo","version":"1"}}}"#,
     "\n",
@@ -59,7 +59,7 @@ pub fn read() -> Option<Value> {
     let mut cmd = Command::new(&exe);
     cmd.arg("app-server").stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
     // An npm install is a `#!/usr/bin/env node` script (or a .cmd calling node):
-    // its own folder first on PATH, as the Mac does, so it finds its Node.
+    // its own folder first on PATH, so it finds its Node.
     if let Some(dir) = exe.parent() {
         let mut dirs = vec![dir.to_path_buf()];
         if let Some(path) = std::env::var_os("PATH") {
