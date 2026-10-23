@@ -7,7 +7,8 @@
 - **A tidier "/" menu**: Claude Code's commands that do nothing in the chat (`/design`, `/color`, `/config`, `/rename`, `/usage`, `/loop` and the like) are no longer listed. `/effort` opens the picker where the effort is set, as `/model` does, with Claude Code and Codex
 - **Update now with the .msi**: a Lumo installed from the .msi is updated with the .msi, in place, instead of getting a second Lumo installed beside it
 - **Fixed**: after uninstalling Lumo, every Claude Code hook failed with an error. The relay now stays behind and exits at once, as it does when Lumo is closed
-- **Fixed**: after a failure, the relay to the island could stop delivering approval cards until Lumo restarted; it now reconnects. A question answered in the terminal no longer keeps the relay waiting
+- **Fixed**: after a failure, the relay to the island could stop delivering approval cards until Lumo restarted; it now reconnects. A question answered in the terminal no longer keeps the relay waiting, and the chat's guard reads what some shells send with a BOM
+- **Saving the settings no longer reconnects the email** unless a mail setting changed
 
 ## Windows 0.13.2 — October 23, 2026
 
