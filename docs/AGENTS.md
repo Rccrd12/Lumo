@@ -1,6 +1,6 @@
 # Lumo — third-party agent integration
 
-Any tool that can write to a Unix domain socket (macOS) or a named pipe (Windows) can send events to Lumo and have its own pill next to Claude Code.
+Any tool that can run a command on its hook events, or write to a named pipe, can send events to Lumo for Windows and have its own pill next to Claude Code.
 
 ## The `lumo_agent` field
 
@@ -8,25 +8,9 @@ Add the optional field `lumo_agent` to any hook JSON payload. Lumo will create a
 
 **Validation:** the name must match `^[a-z0-9-]{1,24}$` (lowercase letters, digits and hyphens, 1–24 characters). An absent or invalid name routes the event to the Claude Code pill instead.
 
-## Hook command (macOS)
+## Hook command
 
-Configure your tool to call the Lumo relay with `--agent <your-name>` after the hook executable:
-
-```json
-{
-  "hooks": {
-    "UserPromptSubmit": [
-      { "type": "command", "command": "/path/to/nb-hook --agent my-tool" }
-    ]
-  }
-}
-```
-
-The shell wrapper passes `"$@"` to the Python relay, which extracts the agent name and injects it into the payload before forwarding to Lumo.
-
-## Hook command (Windows)
-
-Same pattern with the Windows relay:
+Configure your tool to call the Lumo relay, `lumo-hook.exe`, with `--agent <your-name>`. Lumo keeps it in `%LOCALAPPDATA%\com.rccrd12.lumo\bin\`:
 
 ```json
 {
@@ -40,7 +24,7 @@ Same pattern with the Windows relay:
 
 ## Payload format
 
-The relay adds `lumo_agent` to the JSON it forwards. You can also add it yourself if you talk to the socket directly:
+The relay adds `lumo_agent` to the JSON it forwards. You can also add it yourself if you talk to the pipe directly:
 
 ```json
 {
@@ -51,17 +35,15 @@ The relay adds `lumo_agent` to the JSON it forwards. You can also add it yoursel
 }
 ```
 
-Send newline-terminated JSON to the socket:
-- **macOS (GitHub build):** `~/Library/Application Support/NotchBuddy/nb.sock`
-- **Windows:** `\\.\pipe\lumo-<user-SID>`
+Send newline-terminated JSON to the named pipe `\\.\pipe\lumo-<user-SID>`. The pipe name carries your Windows account's SID, so each user has their own.
 
 ## Supported events
 
-All standard Claude Code hook events are supported, **except `PermissionRequest`**:
-approval cards are not yet implemented for third-party agents (only Claude Code gets
-one). A `PermissionRequest` from an external agent is answered immediately with no
-decision, so the relay writes nothing and the agent re-asks in its terminal.
-Approval support for other agents will be added with Codex support.
+All standard Claude Code hook events are supported. `PermissionRequest` gets an Allow / Deny
+card for Claude Code, Codex (`codex`), GitHub Copilot CLI (`copilot`) and Muse Code (`muse`),
+and for the shell commands of the island's own Antigravity CLI chat. A `PermissionRequest`
+from any other agent is answered immediately with no decision, so the relay writes nothing
+and the agent asks in its own terminal.
 
 The pill lifecycle:
 
@@ -79,26 +61,25 @@ The pill lifecycle:
 
 ## Declared pills
 
-A **declared pill** is a catalog entry (`PillCatalog.swift`) that has been enabled in **Settings → Active pills**. When a session ends for a declared pill, the pill stays visible and resets to idle instead of disappearing.
+A **declared pill** is a catalog entry (`windows/src/core/pills.ts`) that has been enabled in **Settings → Active pills**. When a session ends for a declared pill, the pill stays visible and resets to idle instead of disappearing.
 
 A catalog pill that is not checked in Settings behaves like any other agent: it gets an automatic pill when a session starts, and that pill is removed when the session ends.
 
-The GitHub build exposes Gemini CLI (`agent_gemini`), Antigravity (`agent_antigravity`),
-GitHub Copilot CLI (`agent_copilot`), Muse Code (`agent_muse`), OpenCode (`agent_opencode`),
-Amp (`agent_amp`) and Hermes (`agent_hermes`) in Settings → Active pills. Cursor (`agent_cursor`) and Codex
-(`agent_codex`, GitHub build only) are there too — their pills can be declared and set as
-the main pill; session support is coming in a future version.
+Settings → Active pills offers Cursor (`agent_cursor`), Antigravity (`agent_antigravity`),
+Codex (`agent_codex`), GitHub Copilot CLI (`agent_copilot`), Muse Code (`agent_muse`),
+OpenCode (`agent_opencode`), Amp (`agent_amp`) and Hermes (`agent_hermes`); their hooks or
+plugins are installed from **Settings → Agents**. Gemini CLI (`agent_gemini`) is retired,
+replaced by Antigravity CLI: its ID stays reserved.
 
-Claude Desktop (`agent_claude-desktop`, every build) is there as well. Claude Code sessions started from the Claude desktop app's Code tab carry `CLAUDE_CODE_ENTRYPOINT=claude-desktop`; the relay tags them `lumo_agent: claude-desktop` on its own (an explicit `--agent` still wins), so nothing extra is installed. Declare the pill to keep it after the session ends; the ↗ button opens the Claude app.
+Claude Desktop (`agent_claude-desktop`) is there as well. Claude Code sessions started from the Claude desktop app's Code tab carry `CLAUDE_CODE_ENTRYPOINT=claude-desktop`; the relay tags them `lumo_agent: claude-desktop` on its own (an explicit `--agent` still wins), so nothing extra is installed. Declare the pill to keep it after the session ends; the ↗ button opens the Claude app.
 
 ## Real-world examples
 
-### Gemini CLI (macOS)
+### Gemini CLI
 
-Lumo supports Gemini CLI out of the box via **Settings → Gemini CLI → Install hooks**.
-The installer writes to `~/.gemini/settings.json` and uses `--agent gemini` so
-Gemini sessions get their own pill. The relay translates Gemini event names to canonical
-Lumo events automatically.
+Retired: Google replaced Gemini CLI with Antigravity CLI, so Lumo no longer offers it.
+Hooks installed before still work: they wrote to `~/.gemini/settings.json` with
+`--agent gemini`, and the relay translates Gemini event names to canonical Lumo events.
 
 | Gemini CLI event | Canonical event |
 |---|---|
@@ -109,9 +90,9 @@ Lumo events automatically.
 
 `AfterModel` is not installed — it fires on every response chunk and would flood the island.
 
-### Antigravity — `agy` (macOS)
+### Antigravity — `agy`
 
-Lumo supports Antigravity out of the box via **Settings → Antigravity → Install hooks**.
+Lumo supports Antigravity out of the box via **Settings → Agents → Antigravity**.
 The installer writes to `~/.gemini/config/hooks.json` (timeouts in seconds) and uses
 `--agent antigravity`. The relay translates `toolCall.name` / `conversationId` to the
 island's `tool_name` / `session_id`.
@@ -125,7 +106,7 @@ island's `tool_name` / `session_id`.
 | `Stop` | `Stop` |
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
-rules decide. One exception, on Windows: the island's own chat with **Antigravity
+rules decide. One exception: the island's own chat with **Antigravity
 CLI** runs `agy` headless (stream-json on stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that
 run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
 `terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
@@ -134,9 +115,9 @@ chat, and answered `{"decision":"allow"}` or `{"decision":"deny"}` after a click
 `--agent antigravity PreToolUse --wait 100` with a 110 s `timeout`, so the relay knows how long
 it may wait; hooks installed without `--wait` (10 s timeout) give the card 8 s.
 
-### GitHub Copilot CLI (macOS)
+### GitHub Copilot CLI
 
-Lumo supports Copilot CLI out of the box via **Settings → GitHub Copilot CLI Hooks → Install hooks**.
+Lumo supports Copilot CLI out of the box via **Settings → Agents → GitHub Copilot CLI**.
 The installer writes to `~/.copilot/hooks/lumo.json` and uses `--agent copilot`.
 Copilot CLI uses camelCase event names and `{"bash":"…","timeoutSec":N}` entries.
 Copilot CLI is fail-closed on `permissionRequest`: the relay always outputs valid JSON
@@ -154,9 +135,9 @@ Lumo shows a real Allow / Deny card for Copilot approval requests.
 | `sessionEnd` | `SessionEnd` |
 | `notification` | `Notification` |
 
-### Muse Code (macOS)
+### Muse Code
 
-Lumo supports Muse Code out of the box via **Settings → Muse Code Hooks → Install hooks**.
+Lumo supports Muse Code out of the box via **Settings → Agents → Muse Code**.
 The installer merges into `~/.config/muse/settings.json` and uses `--agent muse`.
 Muse uses PascalCase event names. Lumo shows a real Allow / Deny card for Muse approval requests.
 
@@ -170,10 +151,10 @@ Muse uses PascalCase event names. Lumo shows a real Allow / Deny card for Muse a
 | `Stop` | `Stop` |
 | `SessionEnd` | `SessionEnd` |
 
-### OpenCode (macOS)
+### OpenCode
 
-Lumo supports OpenCode via **Settings → OpenCode Plugin → Install plugin**.
-The installer writes a JS plugin to `~/.config/opencode/plugins/lumo.js`.
+Lumo supports OpenCode via **Settings → Agents → OpenCode**.
+The installer writes a JS plugin to `~/.config/opencode/plugins/lumo.js`, which starts the relay directly.
 The plugin maps OpenCode event types to canonical Lumo names and forwards them fire-and-forget; OpenCode is never blocked.
 
 | OpenCode event | Canonical event |
@@ -186,10 +167,10 @@ The plugin maps OpenCode event types to canonical Lumo names and forwards them f
 | `tool.execute.after` | `PostToolUse` |
 | `permission.asked` | `PermissionRequest` |
 
-### Amp (macOS)
+### Amp
 
-Lumo supports Amp via **Settings → Amp Plugin → Install plugin**.
-The installer writes a TypeScript plugin to `~/.config/amp/plugins/lumo.ts`.
+Lumo supports Amp via **Settings → Agents → Amp**.
+The installer writes a TypeScript plugin to `~/.config/amp/plugins/lumo.ts`, which starts the relay directly.
 The `tool.call` handler returns `{ action: 'allow' }` so Amp always proceeds; all events are forwarded display-only.
 
 | Amp event | Canonical event |
@@ -200,14 +181,14 @@ The `tool.call` handler returns `{ action: 'allow' }` so Amp always proceeds; al
 | `tool.result` | `PostToolUse` |
 | `agent.end` | `Stop` |
 
-### Hermes Agent (macOS)
+### Hermes Agent
 
 Lumo supports Hermes via **Settings → Agents → Hermes → Install plugin**.
 The installer writes a Python plugin to `~/.hermes/plugins/lumo/` and enables it in
 `~/.hermes/config.yaml`. The plugin uses `on_session_start` (sends the platform when running
 via the gateway), `post_llm_call` (sends the final response), and a `pre_approval_request`
-observer hook that fires a `⏳ Approval pending in Hermes` step in the notch.
-Approving from the notch requires `register_approval_transport`, which is not yet available
+observer hook that fires a `⏳ Approval pending in Hermes` step on the island.
+Approving from the island requires `register_approval_transport`, which is not yet available
 in Hermes 0.15.x; the Approvals toggle activates automatically once Hermes exposes it.
 Every event is fire-and-forget: if the app is closed or unreachable, nothing is sent and Hermes carries on, handling approvals itself.
 
@@ -219,28 +200,16 @@ Every event is fire-and-forget: if the app is closed or unreachable, nothing is 
 
 ### Any other tool
 
-Follow the generic pattern: call `nb-hook --agent <your-name> <EventName>` (macOS)
-or `lumo-hook.exe --agent <your-name> <EventName>` (Windows)
+Follow the generic pattern: call `lumo-hook.exe --agent <your-name> <EventName>`
 and let the relay forward the event.
 
-## Quick test (Windows)
+## Quick test
 
 With Lumo running, in PowerShell:
 
 ```powershell
 '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","lumo_agent":"demo"}' |
   & "$env:LOCALAPPDATA\com.rccrd12.lumo\bin\lumo-hook.exe" --agent demo
-```
-
-A "demo" pill should appear in the island.
-
-## Quick test (macOS)
-
-With Lumo running:
-
-```sh
-echo '{"hook_event_name":"UserPromptSubmit","session_id":"t1","prompt":"hello","lumo_agent":"demo"}' \
-  | /bin/sh ~/Library/Application\ Support/NotchBuddy/nb-hook --agent demo
 ```
 
 A "demo" pill should appear in the island.
