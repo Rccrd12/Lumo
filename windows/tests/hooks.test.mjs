@@ -86,9 +86,9 @@ test("a session names the pill after its folder and reveals the island", () => {
   assert.deepEqual(asked, ["reveal"]);
 });
 
-test("known project folders get their display name, and no folder is a Session", () => {
-  hook({ hook_event_name: "SessionStart", cwd: "/home/me/notch-buddy" });
-  assert.equal(task().name, "Notch Buddy");
+test("a project folder names the pill as it is, and no folder is a Session", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "/home/me/my-app" });
+  assert.equal(task().name, "my-app");
   hook({ hook_event_name: "SessionStart" });
   assert.equal(task().name, "Session");
 });
@@ -885,6 +885,22 @@ test("the card says what the request is for: the agent's words, else what it doe
 // ── Requests in line (the Mac's ApprovalQueue) ───────────────────────────────
 
 /** A request of another session, in another project. */
+test("a question answered in the terminal takes its card down and releases the relay", () => {
+  const question = {
+    tool_name: "AskUserQuestion",
+    tool_input: { questions: [{ question: "Which?", options: [{ label: "A" }, { label: "B" }] }] },
+  };
+  ask("r1", question);
+  assert.ok(State.pendingApproval.questions);
+  calls.length = 0;
+  // The same question from another pill's session changes nothing.
+  hook({ hook_event_name: "PostToolUse", session_id: "s1", lumo_agent: "codex", tool_name: "AskUserQuestion" });
+  assert.equal(State.pendingApproval?.requestId, "r1");
+  hook({ hook_event_name: "PostToolUse", session_id: "s1", cwd: "C:\\Users\\me\\proj", tool_name: "AskUserQuestion" });
+  assert.equal(State.pendingApproval, null);
+  assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }]);
+});
+
 const askOther = (request_id, extra = {}) =>
   ask(request_id, { session_id: "s2", cwd: "C:\\Users\\me\\other", tool_name: "Bash", tool_input: { command: "npm test" }, ...extra });
 

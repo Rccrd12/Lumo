@@ -283,7 +283,7 @@ fn read_manifest(dir: &Path) -> Option<Manifest> {
     let m: Manifest = serde_json::from_str(&text).ok()?;
     // The folder's name is the id: a tool.json copied elsewhere says the old one.
     let id = dir.file_name()?.to_str()?.to_string();
-    valid_id(&id).then(|| Manifest { id, ..m })
+    valid_id(&id).then_some(Manifest { id, ..m })
 }
 
 fn entry_path(dir: &Path, entry: &str) -> PathBuf {
@@ -652,9 +652,12 @@ pub fn set_review(id: &str, review: Review) -> Result<ToolInfo, String> {
     Ok(info(&dir, m))
 }
 
-/// A tool to review: its tool.json as the supervisor reads it, its files with
-/// what they hold, and the fingerprint of all that.
-pub fn for_review(id: &str) -> Option<(Manifest, Vec<(String, String)>, String)> {
+/// A tool to review: its tool.json as the supervisor reads it, its files (name,
+/// what it holds), and the fingerprint of all that.
+pub type ForReview = (Manifest, Vec<(String, String)>, String);
+
+/// The tool `id`, as the supervisor reviews it (`ForReview`).
+pub fn for_review(id: &str) -> Option<ForReview> {
     let (dir, m) = find(id)?;
     let mut files = read_files(id);
     let entry = Path::new(&m.entry);

@@ -113,7 +113,7 @@ fn boot(app: AppHandle, shared: State<Shared>) -> BootInfo {
 
 #[tauri::command]
 fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
-    let (screen_changed, autostart_changed, shortcuts_changed) = {
+    let (screen_changed, autostart_changed, shortcuts_changed, mail_changed) = {
         let mut current = shared.settings.lock().unwrap();
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
@@ -121,8 +121,9 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
             || activities::side_room(&current) != activities::side_room(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;
+        let mail_changed = mail::concerned(&current, &settings);
         // Where the island was dragged is island.rs's to say, not a webview's.
-        let mut settings = settings.clone();
+        let mut settings = settings;
         settings.island_dock = current.island_dock.clone();
         settings.island_offset = current.island_offset;
         settings.island_float = current.island_float;
@@ -142,7 +143,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         settings.agent_plan_width = current.agent_plan_width;
         settings.agent_plan_height = current.agent_plan_height;
         *current = settings;
-        (screen_changed, autostart_changed, shortcuts_changed)
+        (screen_changed, autostart_changed, shortcuts_changed, mail_changed)
     };
     let settings = shared.settings.lock().unwrap().clone();
     if let Err(err) = settings::save(&settings) {
@@ -158,6 +159,9 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
     if screen_changed {
         let collapsed = shared.gate.collapsed.load(Ordering::Relaxed);
         island::apply_geometry(&app, &settings.screen, island::Placement::of(&settings), collapsed);
+    }
+    if mail_changed {
+        mail::wake();
     }
     integrations::settings_saved(&app, &settings.active_integrations);
     energy::refresh(&app);
@@ -880,12 +884,12 @@ async fn clipboard_text() -> Option<String> {
     tauri::async_runtime::spawn_blocking(clipboard::text).await.ok().flatten()
 }
 
-/// The island may only ask whether a key exists — never read it.
 /// The chat providers that are set up, for the model picker: a key in the
 /// credential store, or the CLI on this computer with Lumo's hooks in place
-/// (Claude Code, Antigravity CLI), or the CLI on this computer (Codex). The model servers are the page's to judge
-/// (their address in the settings). Async: the credential store and the disk
-/// may take a moment, and the main thread is not kept waiting.
+/// (Claude Code, Antigravity CLI), or the CLI on this computer (Codex). The
+/// model servers are the page's to judge (their address in the settings).
+/// Async: the credential store and the disk may take a moment, and the main
+/// thread is not kept waiting.
 #[tauri::command]
 async fn chat_providers() -> Vec<String> {
     tauri::async_runtime::spawn_blocking(|| {
@@ -916,6 +920,7 @@ async fn chat_providers() -> Vec<String> {
     .unwrap_or_default()
 }
 
+/// The island may only ask whether a key exists — never read it.
 #[tauri::command(async)]
 fn secret_present(key: String) -> bool {
     secrets::present(&key)

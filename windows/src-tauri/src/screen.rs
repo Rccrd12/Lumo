@@ -689,7 +689,7 @@ mod imp {
             if !copied || lines != dst_h {
                 return Err("The screen could not be copied".into());
             }
-            Ok(bgra.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect())
+            Ok(bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect())
         }
     }
 
@@ -760,7 +760,7 @@ mod imp {
             if !copied || lines != dst_h {
                 return Err("The window could not be copied".into());
             }
-            Ok(bgra.chunks_exact(4).flat_map(|p| [p[0], p[1], p[2]]).collect())
+            Ok(bgra.as_chunks::<4>().0.iter().flat_map(|p| [p[0], p[1], p[2]]).collect())
         }
     }
 

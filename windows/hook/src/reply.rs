@@ -71,13 +71,8 @@ pub fn stdout_with(
 /// The Antigravity tools the island's own chat (antigravity_cli.rs) shows a
 /// card for: shell commands, MCP tools and the browser — what agy would ask
 /// about, and what runs on nobody's say once agy's own confirmation is off.
-/// Reading and writing workspace files needs none.
-pub fn island_card_tool(tool: &str) -> bool {
-    island_card(tool, None)
-}
-
-/// `island_card_tool`, knowing the call's input: a call of Lumo's own email
-/// or plan tool through agy's `call_mcp_tool` gets no card either.
+/// Reading and writing workspace files needs none, and neither does a call
+/// of Lumo's own email or plan tool, even through agy's `call_mcp_tool`.
 pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     // Lumo's email tools only read the user's mailbox, its plan tool only
     // shows, its island tools only start a timer or a watch (mcp.rs).
@@ -436,13 +431,13 @@ mod tests {
             let out = antigravity_island(not_a_decision);
             assert_eq!(out, r#"{"decision":"deny","reason":"Nobody approved it in Lumo"}"#, "{not_a_decision:?}");
         }
-        assert!(island_card_tool("run_command"));
-        assert!(island_card_tool("send_command_input"));
-        assert!(island_card_tool("Shell"));
-        assert!(!island_card_tool("view_file"));
-        assert!(island_card_tool("mcp_github_create_issue"));
-        assert!(island_card_tool("browser_click"));
-        assert!(!island_card_tool("write_to_file"));
+        assert!(island_card("run_command", None));
+        assert!(island_card("send_command_input", None));
+        assert!(island_card("Shell", None));
+        assert!(!island_card("view_file", None));
+        assert!(island_card("mcp_github_create_issue", None));
+        assert!(island_card("browser_click", None));
+        assert!(!island_card("write_to_file", None));
         let ws = ["C:\\Users\\me\\Lumo".to_string(), "C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox".to_string()];
         let w = |tool: &str, input: Value| writes_outside(tool, Some(&input), &ws);
         assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\Public\\lumo-test.txt"})), "outside: a card");
@@ -453,9 +448,9 @@ mod tests {
         assert!(w("write_to_file", json!({"TargetFile": "C:\\Users\\me\\Lumo2\\x.txt"})), "a sibling is not inside");
         assert!(!w("view_file", json!({"AbsolutePath": "C:\\Users\\Public\\a.pdf"})), "reading is free");
         assert!(writes_outside("write_to_file", Some(&json!({"TargetFile": "/x/a"})), &[]), "no workspace known");
-        assert!(!island_card_tool(""));
-        assert!(!island_card_tool("mcp_lumo_mail_recent") && !island_card_tool("lumo/mail_read"), "Lumo's email only reads");
-        assert!(island_card_tool("mcp_gmail_send_message"));
+        assert!(!island_card("", None));
+        assert!(!island_card("mcp_lumo_mail_recent", None) && !island_card("lumo/mail_read", None), "Lumo's email only reads");
+        assert!(island_card("mcp_gmail_send_message", None));
     }
 
     #[test]

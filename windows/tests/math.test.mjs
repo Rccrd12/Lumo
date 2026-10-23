@@ -6,7 +6,10 @@ import assert from "node:assert/strict";
 import { installFakeDom } from "./fakedom.mjs";
 
 installFakeDom();
-const { mathText, renderMath } = await import("../src/views/math.ts");
+const { renderMath } = await import("../src/views/math.ts");
+
+/** The text a formula reads as, without its layout. */
+const mathText = (tex, display = false) => renderMath(tex, display).textContent ?? "";
 const { parseInline, parseMarkdown } = await import("../src/views/markdown.ts");
 
 test("formulas are found among the text, and money is not one", () => {
