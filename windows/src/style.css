@@ -1733,24 +1733,163 @@ input[type="range"]::-webkit-slider-thumb {
   line-height: 1;
 }
 
+.mx-bold .mx-var {
+  font-style: normal;
+}
+
+.mx-boldit .mx-var,
+.mx-it {
+  font-style: italic;
+}
+
+/* A bracket pair (\left…\right, matrices): lines as tall as what they hold. */
+.mx-fence {
+  display: inline-flex;
+  align-items: center;
+  vertical-align: middle;
+}
+
+.mx-fenced {
+  padding: 0 0.08em;
+}
+
+.mx-delim {
+  position: relative;
+  align-self: stretch;
+  flex: 0 0 auto;
+  width: 0.42em;
+  min-height: 1.15em;
+}
+
+.mx-delim-wide {
+  width: 0.55em;
+}
+
+.mx-delim-thin {
+  width: 0.3em;
+}
+
+.mx-delim svg {
+  position: absolute;
+  inset: 0.08em 0;
+  width: 100%;
+  height: calc(100% - 0.16em);
+  overflow: visible;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.15px;
+  vector-effect: non-scaling-stroke;
+}
+
+.mx-delim svg path {
+  vector-effect: non-scaling-stroke;
+}
+
+/* The bracket's character, for copying and screen readers, not seen. */
+.mx-delim-char {
+  position: absolute;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.mx-big {
+  display: inline-block;
+  line-height: 1;
+  vertical-align: middle;
+  font-weight: 300;
+}
+
 .mx-matrix {
   display: inline-flex;
   align-items: center;
   vertical-align: middle;
-  gap: 0.15em;
-}
-
-.mx-delim {
-  font-size: 1.8em;
-  font-weight: 200;
-  line-height: 1;
 }
 
 .mx-grid {
   display: inline-grid;
-  column-gap: 0.8em;
-  row-gap: 0.1em;
+  column-gap: 0.9em;
+  row-gap: 0.25em;
+  align-items: baseline;
   text-align: center;
+  padding: 0.15em 0.2em;
+}
+
+.mx-grid-aligned {
+  column-gap: 0;
+}
+
+.mx-grid-aligned .mx-cell-pair {
+  padding-left: 1.5em;
+}
+
+.mx-grid-cases {
+  column-gap: 1.1em;
+  padding-left: 0.35em;
+}
+
+.mx-cell {
+  white-space: nowrap;
+}
+
+/* Sums and limits in a formula of its own line, and \overset, \underbrace… */
+.mx-limits,
+.mx-stack {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  vertical-align: middle;
+  margin: 0 0.1em;
+  line-height: 1.05;
+}
+
+.mx-limit {
+  font-size: 0.7em;
+}
+
+.mx-bigop {
+  font-size: 1.45em;
+  line-height: 1;
+}
+
+.mx-rel {
+  margin: 0 0.28em;
+}
+
+.mx-bin {
+  margin: 0 0.22em;
+}
+
+.mx-sup .mx-rel,
+.mx-sub .mx-rel,
+.mx-limit .mx-rel,
+.mx-sup .mx-bin,
+.mx-sub .mx-bin,
+.mx-limit .mx-bin {
+  margin: 0 0.08em;
+}
+
+.mx-display .mx-frac {
+  font-size: 1em;
+}
+
+.mx-display .mx-frac .mx-frac,
+.mx-display .mx-sup .mx-frac,
+.mx-display .mx-sub .mx-frac {
+  font-size: 0.85em;
+}
+
+.mx-int {
+  display: inline-block;
+  font-size: 1.5em;
+  line-height: 1;
+  vertical-align: middle;
+  margin-right: 0.08em;
+}
+
+.mx-box {
+  display: inline-block;
+  padding: 0.1em 0.3em;
+  border: 1px solid currentColor;
 }
 
 .md-code {
