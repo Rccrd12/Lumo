@@ -190,7 +190,7 @@ fn main() {
 
 /// A PreToolUse of a shell command that would wait (reply::blocking_wait).
 fn waits_on_github(raw: &[u8]) -> bool {
-    let Ok(v) = serde_json::from_slice::<Value>(raw) else { return false };
+    let Ok(v) = serde_json::from_slice::<Value>(without_bom(raw)) else { return false };
     matches!(v["tool_name"].as_str(), Some("Bash" | "PowerShell"))
         && v["tool_input"]["command"].as_str().is_some_and(reply::blocking_wait)
 }
@@ -203,12 +203,15 @@ fn print(line: Option<String>) {
     }
 }
 
+/// Some shells hand us a UTF-8 BOM; serde_json would choke on it.
+fn without_bom(raw: &[u8]) -> &[u8] {
+    raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw)
+}
+
 /// The payload to forward, from the raw stdin bytes. `env` reads an environment
 /// variable and `cwd` is the working directory, so tests stay pure.
 fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &str) -> Option<Event> {
-    // Some shells hand us a UTF-8 BOM; serde_json would choke on it.
-    let raw = raw.strip_prefix(&[0xEF, 0xBB, 0xBF]).unwrap_or(raw);
-    let mut payload = serde_json::from_slice::<Value>(raw).ok()?;
+    let mut payload = serde_json::from_slice::<Value>(without_bom(raw)).ok()?;
     let map = payload.as_object_mut()?;
 
     // Which agent this hook was installed for, so the app routes it to the right
@@ -297,10 +300,6 @@ fn workspaces(map: &serde_json::Map<String, Value>) -> Vec<String> {
         .unwrap_or_default()
 }
 
-/// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
-/// a Claude Code session started from the Claude desktop app, which says so in
-/// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
-/// for a plain Claude Code session.
 /// The island's chat started this run (claude_code.rs and antigravity_cli.rs set the variable).
 fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
     env(ISLAND_RUN_VAR).as_deref() == Some("1")
@@ -312,6 +311,10 @@ const ISLAND_RUN_VAR: &str = "LUMO_ISLAND_RUN";
 /// Set by the app on a headless `agy` run of its chat started with `--sandbox` (antigravity_cli.rs).
 const SANDBOX_VAR: &str = "LUMO_AGY_SANDBOX";
 
+/// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
+/// a Claude Code session started from the Claude desktop app, which says so in
+/// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
+/// for a plain Claude Code session.
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     if !arg.is_empty() {
         return Some(arg.to_string());
@@ -464,6 +467,15 @@ mod tests {
 
     fn env_of(vars: &'static [(&'static str, &'static str)]) -> impl Fn(&str) -> Option<String> {
         move |name| vars.iter().find(|(k, _)| *k == name).map(|(_, v)| v.to_string())
+    }
+
+    #[test]
+    fn a_bom_does_not_hide_a_command_that_waits_on_github() {
+        let command = br#"{"tool_name":"Bash","tool_input":{"command":"gh pr checks 12 --watch"}}"#;
+        let mut bom = vec![0xEF, 0xBB, 0xBF];
+        bom.extend_from_slice(command);
+        assert!(waits_on_github(command));
+        assert!(waits_on_github(&bom));
     }
 
     #[test]
