@@ -136,13 +136,20 @@ pub fn copy_in(src: &Path) -> Result<DroppedFile, String> {
 
     let dest = unique_in(&dir, &name);
 
-    std::fs::copy(src, &dest).map_err(|e| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]))?;
-    // CopyFileEx carries the source's timestamps across, so a file last edited
-    // three years ago would arrive already older than the sweep window and be
-    // deleted on the spot. The inbox ages from when *we* copied it.
-    if let Ok(file) = std::fs::File::options().write(true).open(&dest) {
-        let _ = file.set_modified(SystemTime::now());
+    // Written by hand rather than with `std::fs::copy`: CopyFileEx carries the
+    // source's timestamps across, so a file last edited three years ago would
+    // sit in the inbox looking older than the sweep window until restamped, and
+    // a sweep running meanwhile (another drop, a screenshot) deleted it. A new
+    // file is born with the time *we* copied it.
+    let cannot_copy = |e: std::io::Error| crate::i18n::tf("Cannot copy: {error}", &[("error", &e.to_string())]);
+    let mut from = std::fs::File::open(src).map_err(cannot_copy)?;
+    let mut to = std::fs::File::options().write(true).create_new(true).open(&dest).map_err(cannot_copy)?;
+    if let Err(e) = std::io::copy(&mut from, &mut to) {
+        drop(to);
+        let _ = std::fs::remove_file(&dest);
+        return Err(cannot_copy(e));
     }
+    drop(to);
     sweep(&dir);
 
     Ok(DroppedFile {
