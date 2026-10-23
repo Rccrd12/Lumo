@@ -366,10 +366,6 @@ sleeping or polling yourself, then say in a few words that Lumo is listening and
     ]
 }
 
-/// The tools that only look: they never get a card (reply.rs) and Claude Code
-/// may run them without asking (claude_code.rs passes them as allowed).
-pub const LOOKING: &[&str] = &["screenshot", "zoom", "cursor_position", "wait"];
-
 /// The name the server has in the island's `--mcp-config`: its tools are `mcp__lumo__<tool>`.
 pub const SERVER: &str = "lumo";
 
@@ -437,14 +433,6 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
         return None;
     }
     words.iter().find_map(|w| NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| w.trim().eq_ignore_ascii_case(n)).copied())
-}
-
-/// Whether Lumo's tool `name` (as `lumo_tool` gives it) only reads: what
-/// looks at the screen, the email tools, the plan, which only shows, and the
-/// island's timer and GitHub tools, which only start what the user asked for
-/// and act on nothing themselves. None gets a card.
-pub fn only_reads(name: &str) -> bool {
-    LOOKING.contains(&name) || MAIL_NAMES.contains(&name) || name == PLAN_NAME || ISLAND_NAMES.contains(&name)
 }
 
 /// Runs the server until the agent closes stdin.
@@ -571,8 +559,8 @@ pub fn plan_answer(input: &Value) -> String {
     }
     let now = steps
         .iter()
-        .find(|s| status(*s) == "in_progress")
-        .or_else(|| steps.iter().find(|s| status(*s) != "completed"))
+        .find(|s| status(s) == "in_progress")
+        .or_else(|| steps.iter().find(|s| status(s) != "completed"))
         .and_then(|s| s["step"].as_str())
         .unwrap_or("");
     format!(
@@ -664,9 +652,6 @@ mod tests {
         for t in v["result"]["tools"].as_array().unwrap() {
             assert_eq!(t["inputSchema"]["type"], "object", "{}", t["name"]);
         }
-        for n in LOOKING {
-            assert!(names.contains(n), "{n}");
-        }
         assert_eq!(names, NAMES, "one list of names");
     }
 
@@ -711,7 +696,7 @@ mod tests {
         assert_eq!(ask(line, &never)["result"]["isError"], true);
 
         assert_eq!(lumo_tool("mcp_lumo_mail_read"), Some("mail_read"));
-        assert!(only_reads("mail_search") && only_reads("screenshot") && !only_reads("left_click"));
+        assert!(!crate::reply::island_card("mcp_lumo_mail_search", None) && crate::reply::island_card("mcp_lumo_left_click", None));
     }
 
     #[test]
@@ -744,8 +729,7 @@ mod tests {
         assert_eq!(v["result"]["isError"], true);
 
         assert_eq!(lumo_tool("mcp_lumo_update_plan"), Some("update_plan"));
-        assert!(only_reads("update_plan"));
-        assert!(!crate::reply::island_card_tool("mcp_lumo_update_plan"), "no card to show a plan");
+        assert!(!crate::reply::island_card("mcp_lumo_update_plan", None), "no card to show a plan");
         // Antigravity calls every MCP tool through call_mcp_tool.
         let call = json!({ "ServerName": "lumo", "ToolName": "update_plan", "Arguments": "{}", "toolSummary": "Update plan on Lumo island" });
         assert_eq!(lumo_call("call_mcp_tool", Some(&call)), Some("update_plan"));
@@ -782,7 +766,7 @@ mod tests {
         let v: Value = serde_json::from_str(&handle_with(line, kit, &lumo).unwrap()).unwrap();
         assert_eq!(v["result"]["content"], json!([{ "type": "text", "text": "The timer starts." }]));
         assert_eq!(lumo_tool("mcp__lumo__listen_pull_request"), Some("listen_pull_request"));
-        assert!(only_reads("set_timer") && only_reads("stop_listening"));
+        assert!(!crate::reply::island_card("mcp_lumo_set_timer", None) && !crate::reply::island_card("mcp_lumo_stop_listening", None));
         let call = json!({ "ServerName": "lumo", "ToolName": "listen_pull_request" });
         assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)));
     }

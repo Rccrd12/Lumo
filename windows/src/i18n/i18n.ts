@@ -247,12 +247,6 @@ function intl(options: Intl.DateTimeFormatOptions, date: Date): string | null {
   }
 }
 
-/** "Oct" for 9 (months from 0). */
-export function monthShort(month: number): string {
-  if (current === "en") return EN_MONTHS[month] ?? "";
-  return intl({ month: "short" }, new Date(Date.UTC(2024, month, 15))) ?? EN_MONTHS[month] ?? "";
-}
-
 /** "Mon" for 1 (Sunday is 0). */
 export function weekdayShort(day: number): string {
   if (current === "en") return EN_WEEKDAYS[day] ?? "";

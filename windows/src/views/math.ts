@@ -751,8 +751,3 @@ export function renderMath(tex: string, display = false): HTMLElement {
   el.className = display ? "mx mx-display" : "mx";
   return el;
 }
-
-/** For the tests: the text a formula reads as, without its layout. */
-export function mathText(tex: string, display = false): string {
-  return renderMath(tex, display).textContent ?? "";
-}
