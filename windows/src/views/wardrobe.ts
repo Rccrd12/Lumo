@@ -1,17 +1,17 @@
 // Wardrobe view — port of WardrobeView (IslandViewContent.swift). Opened with a
-// right-click on Mochi or from the tray menu. Resting the pointer on a button
-// tries the outfit on Mochi; a click keeps it. Two parts side by side, each
+// right-click on Lumo or from the tray menu. Resting the pointer on a button
+// tries the outfit on Lumo; a click keeps it. Two parts side by side, each
 // with its title: the outfits, and Lumo's style — his look, picked the same
 // way: Filo, Punto, Goccia or Lucciola (Windows only).
 
 import { h } from "./dom";
 import { State } from "../core/state";
-import { drawLookIcon, drawWardrobeIcon } from "../mochi/outfits";
+import { drawLookIcon, drawWardrobeIcon } from "../character/outfits";
 import {
   LOOK_KEYS, LUMO_LOOKS, OUTFIT_KEYS, OUTFIT_SELECTIONS, WARDROBE_STRINGS, parseLook, parseOutfit,
   resolveOutfit, seasonalOutfit, wardrobeHeader, type LookHover, type LumoLook, type Outfit,
   type OutfitSelection,
-} from "../mochi/wardrobe";
+} from "../character/wardrobe";
 import type { ViewActions, ViewHost } from "./views";
 import { language, tl, type Msg } from "../i18n/i18n";
 
@@ -59,7 +59,7 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   const items = new Map<OutfitSelection, { button: HTMLButtonElement; canvas: HTMLCanvasElement }>();
 
   const updateNote = () => {
-    note.textContent = wardrobeHeader(hovered, parseOutfit(State.settings.mochiOutfit), new Date());
+    note.textContent = wardrobeHeader(hovered, parseOutfit(State.settings.lumoOutfit), new Date());
   };
 
   for (const sel of OUTFIT_SELECTIONS) {
@@ -154,7 +154,7 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
       drawIcons();
       // The island drops the preview when the view closes: so does the hover.
       if (State.wardrobePreview == null && State.lookPreview == null) hovered = null;
-      const current = parseOutfit(State.settings.mochiOutfit);
+      const current = parseOutfit(State.settings.lumoOutfit);
       for (const [sel, { button }] of items) button.classList.toggle("on", sel === current);
       const look = parseLook(State.settings.lumoCharacter);
       for (const [l, button] of lookItems) button.classList.toggle("on", l === look);

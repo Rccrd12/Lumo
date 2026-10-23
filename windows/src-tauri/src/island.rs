@@ -146,7 +146,7 @@ const MAX_WIDTH: f64 = 1200.0;
 /// A height the user picked; 0 means each view keeps its own.
 const MIN_HEIGHT: f64 = 160.0;
 const MAX_HEIGHT: f64 = 640.0;
-/// Room the window keeps around the island, for the hit margin and Mochi's glow.
+/// Room the window keeps around the island, for the hit margin and Lumo's glow.
 const SIDE_ROOM: f64 = PANEL_W - DEFAULT_WIDTH;
 const BOTTOM_ROOM: f64 = 20.0;
 

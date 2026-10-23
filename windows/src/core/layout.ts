@@ -113,7 +113,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   prompt: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   note: { height: 160, botX: 60, botY: null, botDiameter: 50, agentMode: "column" },
   // The whole Settings page in a frame (views/settings-frame.ts): room for it
-  // (the list of sections and the search above it, whole), and Mochi steps
+  // (the list of sections and the search above it, whole), and Lumo steps
   // aside to leave it the full width. Within island.rs PANEL_H with the widest gap.
   settings: { height: 450, botX: 54, botY: 64, botDiameter: 0, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
@@ -129,7 +129,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
 };
 
 // The upload views above are only the fallback geometry. Once a file is actually
-// dropped the whole sequence — Mochi included — is drawn by src/upload, which
+// dropped the whole sequence — Lumo included — is drawn by src/upload, which
 // owns its own constants (USC) straight from UploadSequenceEngine.swift.
 
 /** The question view with options to pick from: room for two rows of them. */
@@ -238,7 +238,7 @@ export function islandSize(
       return peek ? { w: Math.max(COMPACT_W, peek.w), h: Math.max(NOTCH_H, peek.h) } : { w: COMPACT_W, h: NOTCH_H };
     case "expanded": {
       // The launch greeting is drawn in a fixed 640 × 150 space
-      // (mochi/greeting.ts): a size dragged for the other views would leave it
+      // (character/greeting.ts): a size dragged for the other views would leave it
       // off-centre in a box too big for it.
       if (view === "greeting") return { w: EXPANDED_W, h: VIEW_LAYOUTS.greeting.height };
       const h = view === "prompt"

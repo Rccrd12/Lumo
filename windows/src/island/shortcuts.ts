@@ -89,7 +89,7 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
         host.takeKeyboard();
         host.holdOpen();
       } else {
-        // Nothing is waiting: Mochi says so.
+        // Nothing is waiting: Lumo says so.
         host.emote("annoyed");
         Sound.play("error");
       }
@@ -225,7 +225,7 @@ export function registerShortcutHandlers(host: ShortcutHost, resume: () => void)
   void onEvent<string>("shortcut", (action) => runGlobalShortcut(host, action, resume));
   void onEvent<SharedContext>("ask-context", (shared) => runShared(host, shared, resume));
   // The wardrobe shortcut comes as its own event (shortcuts.rs): it opens the
-  // wardrobe (mochi/wardrobe.ts, views/wardrobe.ts), or closes it again.
+  // wardrobe (character/wardrobe.ts, views/wardrobe.ts), or closes it again.
   void onEvent<null>("open-wardrobe", () => {
     resume();
     host.wardrobeAnywhere();

@@ -7,7 +7,7 @@ import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
-import { createMiniBot, pruneMiniBots } from "../mochi/minibots";
+import { createMiniBot, pruneMiniBots } from "../character/minibots";
 import { buildPrompt } from "./chat";
 import { buildUpload, buildUploading } from "./upload";
 import { idleCardKey, renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
@@ -26,7 +26,7 @@ import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
 import { TOOLS_STRINGS, buildTools } from "./tools";
 import { Live } from "../live/session";
-import type { LumoLook, Outfit, OutfitSelection } from "../mochi/wardrobe";
+import type { LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
 import { language, t, tl, type Msg } from "../i18n/i18n";
 
 export interface ViewActions {
@@ -57,7 +57,7 @@ export interface ViewActions {
   blip(): void;
   /** Wardrobe click: keeps the outfit ("auto" and "none" included). */
   chooseOutfit(selection: OutfitSelection): void;
-  /** Wardrobe hover: shows an outfit on Mochi without keeping it; null ends it. */
+  /** Wardrobe hover: shows an outfit on Lumo without keeping it; null ends it. */
   previewOutfit(outfit: Outfit | null): void;
   /** Wardrobe click on a look: keeps it. */
   chooseLook(look: LumoLook): void;

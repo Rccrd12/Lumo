@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   byEffort, distanceTo, effectiveEffort, parseEnergyMode, parseOnPower,
 } from "../src/core/energy.ts";
-import { BotEngine } from "../src/mochi/engine.ts";
+import { BotEngine } from "../src/character/engine.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
 
 test("the choice and the power source make the effort", () => {

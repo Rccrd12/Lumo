@@ -1,8 +1,8 @@
 // The upload canvas — port of UploadCanvasView.swift.
 //
 // While the sequence engine is active this canvas draws the whole island body:
-// card, dashed drop frame, drop text, progress bar, Mochi and the file being
-// sucked in. The island's own Mochi is hidden for the duration,
+// card, dashed drop frame, drop text, progress bar, Lumo and the file being
+// sucked in. The island's own Lumo is hidden for the duration,
 // exactly as on macOS, because this canvas draws its own.
 
 import { lerp } from "../core/anim";
@@ -11,9 +11,9 @@ import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
 import {
   LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose, type RGB,
-} from "../mochi/lumo";
-import { drawLookDropping, isRoundLook } from "../mochi/looks";
-import { parseLook } from "../mochi/wardrobe";
+} from "../character/lumo";
+import { drawLookDropping, isRoundLook } from "../character/looks";
+import { parseLook } from "../character/wardrobe";
 import {
   USC, eIn, eInOut, eOut, progressAt,
   type UploadEyeShape, type UploadFrame,
@@ -22,7 +22,7 @@ import {
 const FONT = `system-ui, "Segoe UI Variable Text", "Segoe UI", ${SCRIPT_FONTS}, sans-serif`;
 
 /**
- * How wide the drop text may run, centred on the card: clear of Mochi and his
+ * How wide the drop text may run, centred on the card: clear of Lumo and his
  * wings in the top-left corner, and as far from the right edge.
  */
 const TEXT_MAX_W = 2 * (USC.TEXT_CX - (USC.REST_X + USC.D_BOX * 0.9));
@@ -118,7 +118,7 @@ function fitted(ctx: CanvasRenderingContext2D, s: string, maxW: number, weight: 
 
 /**
  * Where the 640 × 176 scene sits in the island. The card always reaches the
- * island's edges, whatever size it was given; the text, the bar and Mochi sit
+ * island's edges, whatever size it was given; the text, the bar and Lumo sit
  * in its middle, at their own size on a bigger island and scaled down by `s`
  * on one smaller than the scene (the smallest island is 560 × 160), so the
  * dashed frame and the bar never run past the card. `ox`/`oy` is where the
@@ -270,7 +270,7 @@ export class UploadCanvas {
     if (f.zoneAlpha > 0 && f.textAlpha > 0) this.drawDropText(ctx, f);
     if (f.barAlpha > 0 || f.barReveal > 0) this.drawProgressBar(ctx, f);
 
-    this.drawMochi(ctx, f);
+    this.drawLumo(ctx, f);
     if (f.fileVisible) this.drawFile(ctx, f);
     ctx.restore();
   }
@@ -390,7 +390,7 @@ export class UploadCanvas {
 
   // ── Lumo ──────────────────────────────────────────────────────────────────
 
-  private drawMochi(ctx: CanvasRenderingContext2D, f: UploadFrame) {
+  private drawLumo(ctx: CanvasRenderingContext2D, f: UploadFrame) {
     const look = State.lookPreview ?? parseLook(State.settings.lumoCharacter);
     if (isRoundLook(look)) {
       drawLookDropping(ctx, look, f);
@@ -441,7 +441,7 @@ export class UploadCanvas {
     bodyPath(ctx, f.morph, R);
     ctx.clip();
 
-    // Top rim, once Mochi is box-shaped enough to have one.
+    // Top rim, once Lumo is box-shaped enough to have one.
     if (mc > 0.3) {
       const a = Math.max(0, Math.min(1, (mc - 0.3) / 0.7));
       ctx.beginPath();
@@ -514,7 +514,7 @@ export class UploadCanvas {
     const W0 = 34;
     const H0 = 42;
     const p = eIn(f.suck);
-    // Mochi waits in his corner, so the file is usually beside him or below
+    // Lumo waits in his corner, so the file is usually beside him or below
     // his mouth: it rises first, over him, then drops in from above.
     const lift = Math.min(36, Math.max(0, cy - m.y) * 0.6);
     const topY = lerp(cy - H0 / 2, m.y - 2, eOut(f.suck)) - lift * Math.sin(Math.PI * f.suck);

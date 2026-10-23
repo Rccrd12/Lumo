@@ -1,10 +1,10 @@
-// The launch greeting (src/mochi/greeting.ts): Lumo must never be cut off by
+// The launch greeting (src/character/greeting.ts): Lumo must never be cut off by
 // the island while it grows, while he blooms and hovers, or while it shrinks
 // back to the compact island.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GREETING_END, GREETING_W, greetingPose, lumoBounds } from "../src/mochi/greeting.ts";
+import { GREETING_END, GREETING_W, greetingPose, lumoBounds } from "../src/character/greeting.ts";
 import { Tracked } from "../src/core/anim.ts";
 import { COMPACT_BOT_X, COMPACT_W, NOTCH_H, NOTCH_W, VIEW_LAYOUTS } from "../src/core/layout.ts";
 

@@ -17,7 +17,7 @@ export const USC = {
   CARD_W: 620,
   CARD_H: 124,
   CARD_R: 20,
-  // Mochi waits in the card's top-left corner, his wings inside it, and
+  // Lumo waits in the card's top-left corner, his wings inside it, and
   // watches the file from there (the Mac's 140 × 104 left him mid-card, where
   // he chased the cursor).
   REST_X: 70,
@@ -198,7 +198,7 @@ class UploadSequence {
 
   /**
    * How much farther than the 640 × 176 scene the card reaches on each side
-   * (a resized island, upload/canvas.ts uploadStage): Mochi's corner is that
+   * (a resized island, upload/canvas.ts uploadStage): Lumo's corner is that
    * much farther left and up.
    */
   reachX = 0;
@@ -227,7 +227,7 @@ class UploadSequence {
 
   // ── Session lifecycle ─────────────────────────────────────────────────────
 
-  /** Mochi's corner of the card, in scene points. */
+  /** Lumo's corner of the card, in scene points. */
   private get restX() {
     return USC.REST_X - this.reachX;
   }
@@ -327,7 +327,7 @@ class UploadSequence {
   private stepOnce(dt: number) {
     const isDragging = this.dropWall == null;
 
-    // Mochi stays in his corner; it only moves when the island is resized.
+    // Lumo stays in his corner; it only moves when the island is resized.
     if (isDragging) {
       this.bx.step(this.restX, 0.35, 0.8, dt);
       this.by.step(this.restY, 0.35, 0.8, dt);
@@ -336,7 +336,7 @@ class UploadSequence {
     // Into a box while the file is over the island, back to himself off it.
     this.morph.step(this.over || !isDragging ? 1 : 0, 0.38, 0.55, dt);
 
-    // Tilt follows how fast Mochi is sliding.
+    // Tilt follows how fast Lumo is sliding.
     const tiltTarget = isDragging ? Math.max(-0.18, Math.min(0.18, this.bx.vel * 0.0015)) : 0;
     this.tilt = lerp(this.tilt, tiltTarget, 1 - Math.pow(0.0005, dt));
 

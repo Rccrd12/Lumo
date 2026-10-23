@@ -1,18 +1,18 @@
 // Lumo's looks: Filo (a ring of light, the default), Punto, Goccia and Lucciola
 // (the firefly). The setting, the renderer it picks, and every state, emote
-// and outfit drawn in every look without throwing (src/mochi/looks.ts, engine.ts).
+// and outfit drawn in every look without throwing (src/character/looks.ts, engine.ts).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   DEFAULT_LOOK, LOOK_LABELS, LUMO_LOOKS, OUTFIT_SELECTIONS, parseLook, wardrobeHeader,
-} from "../src/mochi/wardrobe.ts";
+} from "../src/character/wardrobe.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
-import { BOT_STATES, BotEngine } from "../src/mochi/engine.ts";
-import { isRoundLook } from "../src/mochi/looks.ts";
-import { drawLookIcon, drawWardrobeIcon } from "../src/mochi/outfits.ts";
-import { Greeting, GREETING_END, greetingPose, lumoBounds } from "../src/mochi/greeting.ts";
-import { drawLookDropping } from "../src/mochi/looks.ts";
+import { BOT_STATES, BotEngine } from "../src/character/engine.ts";
+import { isRoundLook } from "../src/character/looks.ts";
+import { drawLookIcon, drawWardrobeIcon } from "../src/character/outfits.ts";
+import { Greeting, GREETING_END, greetingPose, lumoBounds } from "../src/character/greeting.ts";
+import { drawLookDropping } from "../src/character/looks.ts";
 
 // ── A canvas that only records ────────────────────────────────────────────────
 

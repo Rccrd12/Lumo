@@ -1,4 +1,4 @@
-// Mochi — direct port of NotchBuddy/Sources/App/BotEngine.swift to Canvas 2D.
+// Lumo — direct port of NotchBuddy/Sources/App/BotEngine.swift to Canvas 2D.
 // Same constants, same tweens, same easings, same particles. The only intentional
 // difference is the `happy`/`wink` eye arc, which follows the prototype
 // (design/prototype/notch-buddy.html, the visual source of truth) — the Swift
@@ -72,7 +72,7 @@ interface Particle {
   age: number; life: number; rot: number; size: number;
 }
 
-// ── Constants (MochiConst / PISTES.mochi) ─────────────────────────────────────
+// ── Constants ─────────────────────────────────────────────────────────────────
 
 const EYE_W = LUMO_EYE.w;
 const EYE_H = LUMO_EYE.h;
@@ -153,7 +153,7 @@ const FONT = `system-ui, "Segoe UI Variable Text", "Segoe UI", sans-serif`;
 
 export class BotEngine {
   isMini = false;
-  /** Solid body colour for mini bots / integration pills (null = Mochi gradient). */
+  /** Solid body colour for mini bots / integration pills (null = Lumo gradient). */
   bodyColor: RGB | null = null;
 
   // Animated state (BotEngine `s`)
@@ -173,7 +173,7 @@ export class BotEngine {
   private prevState: BotStateName = "idle";
   private prevStateAt = now();
 
-  // Outfit (the main Mochi only — minis never wear one). `outfit` is what is
+  // Outfit (the main Lumo only — minis never wear one). `outfit` is what is
   // drawn; it changes only once the previous one has left.
   outfit: Outfit = "none";
   /** 0 = gone, 1 = fully on. */
@@ -534,8 +534,8 @@ export class BotEngine {
   }
 
   /**
-   * Dresses Mochi. Animated: the old outfit leaves (180 ms), the new one drops
-   * in (350 ms) and Mochi does a little squash — BotEngine.setOutfit on macOS.
+   * Dresses Lumo. Animated: the old outfit leaves (180 ms), the new one drops
+   * in (350 ms) and Lumo does a little squash — BotEngine.setOutfit on macOS.
    */
   setOutfit(next: Outfit, animated = true) {
     if (next === this.outfitTarget) return;

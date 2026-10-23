@@ -16,7 +16,7 @@ document.createElement = (tag) => {
 };
 const { buildWardrobe } = await import("../src/views/wardrobe.ts");
 const { State } = await import("../src/core/state.ts");
-const { LUMO_LOOKS, OUTFIT_SELECTIONS } = await import("../src/mochi/wardrobe.ts");
+const { LUMO_LOOKS, OUTFIT_SELECTIONS } = await import("../src/character/wardrobe.ts");
 
 function build() {
   const log = [];
@@ -74,7 +74,7 @@ test("a look is tried on under the pointer and kept with a click, as an outfit i
 test("the chosen outfit and the chosen look are highlighted, one in each part", () => {
   const { host, parts } = build();
   const [outfits, looks] = parts;
-  State.settings.mochiOutfit = "bowTie";
+  State.settings.lumoOutfit = "bowTie";
   State.settings.lumoCharacter = "lucciola";
   host.sync();
   const on = (part) => buttons(part).filter((b) => b.classList.contains("on"));

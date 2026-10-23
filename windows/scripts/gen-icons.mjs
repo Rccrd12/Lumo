@@ -1,7 +1,7 @@
 // Draws Lumo, a ring of light (Filo), into the PNG/ICO set Tauri needs. No
 // dependencies: the icons are rasterised here (painted back to front, sample by
 // sample) and encoded with node:zlib, so the app icon stays "drawn in code"
-// like the character itself. Same shapes as src/mochi/looks.ts.
+// like the character itself. Same shapes as src/character/looks.ts.
 //
 //   node scripts/gen-icons.mjs
 
@@ -14,7 +14,7 @@ const OUT = join(dirname(fileURLToPath(import.meta.url)), "..", "src-tauri", "ic
 
 // ── Lumo ──────────────────────────────────────────────────────────────────────
 // Filo, his look by default: a ring of light with two lit eyes, as drawn by
-// src/mochi/looks.ts, on a dark disc so it reads on light taskbars too.
+// src/character/looks.ts, on a dark disc so it reads on light taskbars too.
 
 const LIGHT = [255, 224, 158]; // #FFE09E, LOOK_IDLE
 const RING = [255, 241, 214]; // the light, whitened as the ring draws it

@@ -3,7 +3,7 @@
 import type { ListenWatch } from "./listen";
 import { newChatId } from "./chats";
 import type { BotEmoteName, BotStateName, IslandMode, IslandViewName } from "./layout";
-import type { EyeShape } from "../mochi/engine";
+import type { EyeShape } from "../character/engine";
 import {
   DEFAULT_MAIN_PILL, availablePills, orderPills, pillDefinition, sanitizeDeclared,
   toggleDeclared, type PillDefinition,
@@ -13,7 +13,7 @@ import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
-import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../mochi/wardrobe";
+import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
 import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
@@ -252,20 +252,20 @@ export interface Settings {
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
   /**
-   * Mochi's outfit: "auto" (dresses for the season), "none" or an outfit id.
-   * Same raw values as the Mac's "mochiOutfit"; read it through parseOutfit.
+   * Lumo's outfit: "auto" (dresses for the season), "none" or an outfit id.
+   * Read it through parseOutfit.
    */
-  mochiOutfit: string;
+  lumoOutfit: string;
   /** How much Lumo moves on his own; read it through parseMotion. */
   lumoMotion: string;
   /**
    * Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a ring
    * of light), "punto", "goccia" or "lucciola" (the firefly). Read it through
-   * parseLook (mochi/wardrobe.ts).
+   * parseLook (character/wardrobe.ts).
    */
   lumoCharacter: string;
   /**
-   * A colour of the user's own for a pill's Mochi, by pill ID ("#RRGGBB").
+   * A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
    * Same key and values as the Mac's "pillColors".
    */
@@ -355,7 +355,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lmstudioUrl: "",
   customUrl: "",
   shortcuts: {},
-  mochiOutfit: DEFAULT_OUTFIT,
+  lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
   lumoCharacter: DEFAULT_LOOK,
   pillColors: {},
@@ -502,7 +502,7 @@ class AppState {
   /** Never reset, so an id can never point at a newer diff than the one tapped. */
   private nextDiffId = 0;
 
-  /** Outfit shown on Mochi while the pointer rests on a wardrobe button. */
+  /** Outfit shown on Lumo while the pointer rests on a wardrobe button. */
   wardrobePreview: Outfit | null = null;
   /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
   lookPreview: LumoLook | null = null;

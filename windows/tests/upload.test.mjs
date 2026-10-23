@@ -37,7 +37,7 @@ test("the smallest island: the card, its dashes and the bar stay inside it", () 
   // The dashed frame is the island's card, inset from every edge.
   assert.ok(card.x > 0 && card.x + card.w < st.w);
   assert.ok(card.y > 0 && card.y + card.h < st.h);
-  // The scene (the text, the bar, Mochi) fits in that card.
+  // The scene (the text, the bar, Lumo) fits in that card.
   const sc = sceneCard(st);
   assert.ok(sc.left >= card.x - 0.01 && sc.right <= card.x + card.w + 0.01);
   assert.ok(sc.top >= card.y - 0.01 && sc.bottom <= card.y + card.h + 0.01);

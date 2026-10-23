@@ -484,7 +484,7 @@ macro_rules! workshop_note {
 }
 pub(crate) use workshop_note;
 
-/// The system prompt for `chat`: Mochi's, and the workshop's for a workshop
+/// The system prompt for `chat`: Lumo's, and the workshop's for a workshop
 /// chat. `timer_tool`: the provider gets Lumo's set_timer tool.
 pub fn system_prompt_in(chat: &Chat, web_search: bool, timer_tool: bool) -> String {
     let base = system_prompt(web_search, timer_tool);
@@ -495,7 +495,7 @@ pub fn system_prompt_in(chat: &Chat, web_search: bool, timer_tool: bool) -> Stri
     }
 }
 
-/// Mochi's instructions. Greets the user by their first name when the account
+/// Lumo's instructions. Greets the user by their first name when the account
 /// has one worth using (identity.rs), and only claims web search where the
 /// provider runs it (Claude).
 pub fn system_prompt(web_search: bool, timer_tool: bool) -> String {

@@ -17,11 +17,12 @@
 // at it, that folder goes. Events from such a relay, or from an agent that
 // tags its own events the old way, are read as Lumo's (`payload`). Settings →
 // Agents recognises and replaces the old files and groups (`agent_files`,
-// `OLD_GROUP`, `OLD_MARKER`).
+// `OLD_GROUP`, `OLD_MARKER`). The outfit picked in the wardrobe is read from
+// the settings key it had before 0.14.0 (`settings_fields`).
 
 use std::path::{Path, PathBuf};
 
-use serde_json::Value;
+use serde_json::{Map, Value};
 
 use crate::{platform, settings};
 
@@ -183,6 +184,20 @@ pub fn payload(payload: &mut Value) {
     }
 }
 
+// ── Settings ──────────────────────────────────────────────────────────────────
+
+/// The settings key the wardrobe's outfit had before 0.14.0.
+const OLD_OUTFIT: &str = "mochiOutfit";
+
+/// The fields of a settings.json as Lumo reads them: the outfit under its old
+/// key moves to `lumoOutfit`, unless the file has both. The next save writes
+/// the new key only.
+pub fn settings_fields(fields: &mut Map<String, Value>) {
+    if let Some(value) = fields.remove(OLD_OUTFIT) {
+        fields.entry("lumoOutfit").or_insert(value);
+    }
+}
+
 // ── Other agents' files ───────────────────────────────────────────────────────
 
 /// The files Lumo wrote for an agent under the old name, which Settings →
@@ -213,6 +228,16 @@ mod tests {
         let mut both = json!({ "coucou_agent": "old", "lumo_agent": "new" });
         payload(&mut both);
         assert_eq!(both, json!({ "lumo_agent": "new" }));
+    }
+
+    #[test]
+    fn the_outfit_under_its_old_key_is_kept_and_never_wins() {
+        let mut fields = json!({ "mochiOutfit": "bowTie", "model": "m" }).as_object().unwrap().clone();
+        settings_fields(&mut fields);
+        assert_eq!(Value::Object(fields), json!({ "lumoOutfit": "bowTie", "model": "m" }));
+        let mut both = json!({ "mochiOutfit": "old", "lumoOutfit": "new" }).as_object().unwrap().clone();
+        settings_fields(&mut both);
+        assert_eq!(Value::Object(both), json!({ "lumoOutfit": "new" }));
     }
 
     #[test]
