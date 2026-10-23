@@ -181,16 +181,6 @@ interface HookPayload {
   lumo_user_tool?: { name?: string; summary?: string };
 }
 
-const PROJECT_ALIASES: Record<string, string> = {
-  "notch-buddy": "Notch Buddy",
-  notchbuddy: "Notch Buddy",
-  notch_buddy: "Notch Buddy",
-};
-
-function aliasProjectName(name: string): string {
-  return PROJECT_ALIASES[name.toLowerCase()] ?? name;
-}
-
 function lastPathComponent(p: string): string {
   const cleaned = p.replace(/[\\/]+$/, "");
   const idx = Math.max(cleaned.lastIndexOf("\\"), cleaned.lastIndexOf("/"));
@@ -383,8 +373,7 @@ function handleHook(island: Island, payload: HookPayload) {
   // requests through, and anything else that slips by is ignored here too.
   if (payload.lumo_island === true && name !== "PermissionRequest") return;
   const cwd = payload.cwd ?? "";
-  const raw = lastPathComponent(cwd);
-  const projectName = aliasProjectName(raw || "Session");
+  const projectName = lastPathComponent(cwd) || "Session";
 
   // Route to the right pill. Valid lumo_agent → dynamic "agent_<name>" pill.
   // "claude" is reserved; absent or invalid → Claude Code's own pill: Cursor's
@@ -463,7 +452,6 @@ function handleHook(island: Island, payload: HookPayload) {
   // back to the pill you were on.
   const focused = State.focusId === agentId;
 
-  /** The plan this tool call carries, if any, to the Plan island (island/plan.ts). */
   /**
    * The plan the tool call carries. Claude Code's TaskCreate only counts once
    * done (`post`): its result says the task's id, which TaskUpdate then names.
@@ -522,11 +510,15 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "PostToolUse":
       supersedeStop();
-      // The question was answered in the terminal: the card would be lying.
+      // The question was answered in the terminal: the card would be lying,
+      // and the relay is released without a decision.
       if (payload.tool_name === "AskUserQuestion") {
-        withdrawQueued((q) => q.questions != null && q.sessionId === sessionId);
-        if (State.pendingApproval?.questions && State.pendingApproval.sessionId === sessionId) {
-          clearCardTimer(State.pendingApproval.requestId);
+        const asks = (q: ApprovalInfo) => q.questions != null && q.pillId === agentId && q.sessionId === sessionId;
+        withdrawQueued(asks);
+        const card = State.pendingApproval;
+        if (card && asks(card)) {
+          clearCardTimer(card.requestId);
+          if (card.requestId) void Bridge.approvalDecline(card.requestId);
           dropPendingCard(island);
         }
       }
