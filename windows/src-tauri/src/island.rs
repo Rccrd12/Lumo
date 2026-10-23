@@ -48,8 +48,8 @@ pub const STRIP_H: f64 = 6.0;
 
 pub const WINDOW_LABEL: &str = "island";
 
-/// How big the island is drawn, as a zoom of the whole page: 1 is the Mac's
-/// size. A little bigger by default on a PC, where screens sit further away.
+/// How big the island is drawn, as a zoom of the whole page: 1 is its design
+/// size. A little bigger by default, since a PC's screen sits further away.
 pub const DEFAULT_ZOOM: f64 = 1.15;
 const MIN_ZOOM: f64 = 0.8;
 const MAX_ZOOM: f64 = 1.6;
@@ -139,7 +139,7 @@ impl Placement {
     }
 }
 
-/// How wide the open island is by default: the Mac's 640.
+/// How wide the open island is by default.
 pub const DEFAULT_WIDTH: f64 = 640.0;
 const MIN_WIDTH: f64 = 560.0;
 const MAX_WIDTH: f64 = 1200.0;
@@ -356,7 +356,7 @@ pub fn open_rect(app: &AppHandle, fallback_h: f64) -> Option<(f64, f64, f64, f64
 }
 
 /// Margin around the island that still counts as "on the island", in logical px.
-/// Wider than the macOS 6 pt because a click must never be swallowed.
+/// Generous, because a click must never be swallowed.
 const HIT_MARGIN: f64 = 14.0;
 
 #[derive(Serialize, Clone)]
@@ -513,8 +513,7 @@ fn display_labels(ids: &[DisplayId], main: Option<usize>) -> Vec<String> {
 
 /// What a display is remembered by: its logical origin, plus its name and
 /// logical size, so it is still found after the layout is rearranged or the
-/// resolution changes (the Mac keeps the display's UUID for the same reason;
-/// Tauri has no stable ID).
+/// resolution changes (Tauri has no stable ID for a display).
 #[derive(Debug, Clone, PartialEq)]
 struct DisplayId {
     name: String,
@@ -1294,10 +1293,9 @@ pub fn spawn_cursor_poll(app: AppHandle, gate: Arc<PollGate>) {
                 // A file being dragged has to be able to find us. WS_EX_TRANSPARENT
                 // — what click-through is on Windows — hides the window from
                 // WindowFromPoint, so OLE finds no drop target and shows the "no
-                // drop" cursor. macOS has no such problem: AppKit delivers drags to
-                // registered destinations whatever ignoresMouseEvents says. So while
-                // a button is held anywhere over the panel, the whole panel takes
-                // the mouse, which also makes the drop zone as forgiving as the Mac's.
+                // drop" cursor. So while a button is held anywhere over the panel,
+                // the whole panel takes the mouse, which also makes the drop zone
+                // forgiving.
                 let dragging = down
                     && x >= 0.0
                     && x <= size.0

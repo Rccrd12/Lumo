@@ -1,5 +1,5 @@
 //! What the relay prints back to the agent — the only place that knows each
-//! agent's stdout contract. Same replies as the Mac relay (HookServer.swift).
+//! agent's stdout contract.
 //!
 //! The one rule that matters: **nothing that allows anything is ever printed
 //! without a decision a human clicked.** With no decision the reply is silence,
@@ -280,8 +280,7 @@ fn session_rules(suggestions: Option<&Value>) -> Vec<Value> {
 /// True when `answers` answers exactly the questions Claude Code asked: one entry
 /// per question, keyed by its text; a single-select answer is one of its option
 /// labels (a string), a multi-select answer a non-empty list of distinct labels
-/// (Claude Code 2.1.136+ takes the list, as the Mac sends it). Same rule as
-/// `QuestionPayload.accepts` on macOS.
+/// (Claude Code 2.1.136+ takes the list).
 fn answers_fit(question: &Value, answers: &Map<String, Value>) -> bool {
     let Some(items) = question.get("questions").and_then(|q| q.as_array()) else { return false };
     if items.is_empty() || items.len() != answers.len() {

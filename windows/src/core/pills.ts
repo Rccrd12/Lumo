@@ -1,10 +1,10 @@
-// Every pill the island can show — port of PillCatalog.swift, the single source
-// of truth on macOS. IDs, names, colours, categories and subtitles are the Mac's,
-// in the Mac's order: they are contract values (settings, hook routing), so an
-// ID here never changes once shipped.
+// Every pill the island can show, the single source of truth for their IDs,
+// names, colours, categories and subtitles, in the catalog's order. IDs are
+// contract values (settings, hook routing), so an ID here never changes once
+// shipped.
 //
-// What is added for Windows is `support` — not every Mac pill has
-// something behind it here — and `connect`, which says what makes the pill
+// Each pill also has a `support` — not every ID has something behind it —
+// and a `connect`, which says what makes the pill
 // "connected": its hooks being installed, a key in the OS credential store, or
 // nothing at all.
 
@@ -24,14 +24,14 @@ export const PILL_CATEGORIES: { id: PillCategory; title: string }[] = [
 /**
  * Whether the pill does anything on this build:
  * - `yes`: works on Windows;
- * - `no`: never offered here (macOS only, or retired: Gemini CLI, replaced by
- *   Antigravity CLI). The ID stays reserved.
+ * - `no`: never offered (nothing behind it on Windows, or retired: Gemini
+ *   CLI, replaced by Antigravity CLI). The ID stays reserved.
  */
 export type PillSupport = "yes" | "no";
 
 /** What makes the pill connected. */
 export type PillConnect =
-  /** Hook events: connected once the hooks are installed (Mac #183). */
+  /** Hook events: connected once the hooks are installed. */
   | { kind: "hooks" }
   /** A key in the credential store. */
   | { kind: "key"; key: string }
@@ -57,7 +57,7 @@ const key = (k: string): PillConnect => ({ kind: "key", key: k });
 const none: PillConnect = { kind: "none" };
 const server = (field: "ollamaUrl" | "lmstudioUrl"): PillConnect => ({ kind: "server", field });
 
-/** ChatProvider.accentHex on macOS. */
+/** Each chat provider's accent colour. */
 const ACCENT = {
   anthropic: "#E07950",
   google: "#4285F4",
@@ -127,7 +127,7 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("stripe-api-key") },
   { id: "integration_music", name: "Apple Music", color: "#FA2D48", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "no", connect: none },
-  // Windows only, after the Mac's: new emails over IMAP, for the
+  // New emails over IMAP, for the
   // closed island's preview (mail.rs).
   { id: "integration_mail", name: "Email", color: "#EA4335", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("mail-app-password") },
@@ -148,7 +148,7 @@ export function availablePills(): PillDefinition[] {
   return PILL_CATALOG.filter((p) => p.support === "yes");
 }
 
-/** True for pills whose sessions arrive as hook events (Mac #183). */
+/** True for pills whose sessions arrive as hook events. */
 export function isHookPill(id: string): boolean {
   return pillDefinition(id)?.connect.kind === "hooks";
 }
@@ -178,8 +178,7 @@ export interface Declared {
 /**
  * The declaration as it may be used: a main pill this build can run (else the
  * default), and declared pills this build offers, without duplicates and
- * without the main pill, which never takes a slot. Same rules as
- * AppState.loadIntegrationTasks on macOS.
+ * without the main pill, which never takes a slot.
  */
 export function sanitizeDeclared(d: Declared): Declared {
   const mains = new Set(mainPillChoices().map((p) => p.id));
@@ -219,8 +218,7 @@ export function chooseMainPill(d: Declared, id: string): Declared | null {
 /**
  * Pill order: the main pill first, then pills from outside the catalog (any
  * other tagged agent), then the catalog's pills in catalog order. Pills of equal
- * rank keep their order. Mirrors sortTasksByCatalog on macOS, with the main
- * pill (not always VS Code here) leading.
+ * rank keep their order, with the main pill leading.
  */
 export function orderPills<T extends { id: string }>(tasks: T[], mainPill: string): T[] {
   const index = new Map(PILL_CATALOG.map((p, i) => [p.id, i]));

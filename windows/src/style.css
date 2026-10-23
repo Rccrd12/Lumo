@@ -1,5 +1,4 @@
-/* Lumo for Windows — same palette, sizes and type scale as the macOS island.
-   Every colour below is copied from the Swift views. */
+/* Lumo for Windows: the island's palette, sizes and type scale. */
 
 :root {
   color-scheme: dark;
@@ -4344,7 +4343,6 @@ img.zoomable {
 }
 
 /* ── Plan usage: the pills in the header and the card behind them ────────────
-   ClaudePlanHeaderPill / ClaudePlanCardView / CodexPlanCardView on the Mac.
    Nothing here applies until a pill is turned on in Settings. */
 
 /* Off: takes no room, so the header is exactly as it shipped. */
@@ -4352,8 +4350,8 @@ img.zoomable {
   display: none;
   align-items: center;
   gap: 5px;
-  /* .header-actions spaces its items 14px apart; the Mac puts 8px between
-     the pills and the gear. */
+  /* .header-actions spaces its items 14px apart; the pills sit 8px from
+     the gear. */
   margin-right: -6px;
 }
 
@@ -4361,7 +4359,7 @@ img.zoomable {
   display: flex;
 }
 
-/* Both pills: the Mac tightens the right side (icons 10px apart, pills 5px
+/* Both pills: the right side tightens (icons 10px apart, pills 5px
    from the gear, 8px from the edge). */
 .header-actions.both-plans {
   gap: 10px;
@@ -4797,7 +4795,7 @@ img.zoomable {
   padding: 0;
 }
 
-/* ── Wardrobe (right-click on Lumo) — WardrobeView on macOS ─────────────── */
+/* ── Wardrobe (right-click on Lumo) ──────────────────────────────────────── */
 
 .wardrobe-stack {
   padding: 12px 16px 12px 104px;

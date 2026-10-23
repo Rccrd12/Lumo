@@ -1,5 +1,4 @@
-// Wardrobe view — port of WardrobeView (IslandViewContent.swift). Opened with a
-// right-click on Lumo or from the tray menu. Resting the pointer on a button
+// Wardrobe view, opened with a right-click on Lumo or from the tray menu. Resting the pointer on a button
 // tries the outfit on Lumo; a click keeps it. Two parts side by side, each
 // with its title: the outfits, and Lumo's style — his look, picked the same
 // way: Filo, Punto, Goccia or Lucciola (Windows only).

@@ -6,7 +6,7 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import { DEFAULT_SHAPE, chatHeight, gripFactors, islandSize, parseDock } from "../src/core/layout.ts";
 
-test("by default the island is the Mac's", () => {
+test("the default shape gives the island its usual sizes", () => {
   assert.deepEqual(islandSize("expanded", "overview", 0, DEFAULT_SHAPE), { w: 640, h: 160 });
   assert.equal(chatHeight(DEFAULT_SHAPE, 0), 240);
   assert.deepEqual(islandSize("compact", "overview", 0, DEFAULT_SHAPE), { w: 288, h: 32 });

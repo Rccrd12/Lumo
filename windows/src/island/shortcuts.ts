@@ -1,5 +1,4 @@
-// Keyboard shortcuts → island. Port of IslandWindowController.handleHotKey and
-// handleIslandKey from the macOS app.
+// Keyboard shortcuts → island.
 //
 // Global shortcuts are caught by Rust and arrive as a `shortcut` event with
 // the action id (the wardrobe goes out as `open-wardrobe` instead, for the
@@ -28,7 +27,7 @@ export interface ShortcutHost {
   collapse(): void;
   emote(name: BotEmoteName): void;
   setPinned(on: boolean): void;
-  /** Gives the island the keyboard, so the in-island keys work (Mac: makeKey). */
+  /** Gives the island the keyboard, so the in-island keys work. */
   takeKeyboard(): void;
   /** The wardrobe from any state, or back if it is open (Island.wardrobeAnywhere). */
   wardrobeAnywhere(): void;
@@ -96,9 +95,9 @@ export function runGlobalShortcut(host: ShortcutHost, action: string, resume: ()
       break;
     }
 
-    // The Mac brings the terminal app forward; here it is the existing "Open
-    // terminal": the session's own window when it was found, else its folder
-    // in VS Code; the Claude app for a Claude Desktop session.
+    // The existing "Open terminal": the session's own window when it was
+    // found, else its folder in VS Code; the Claude app for a Claude Desktop
+    // session.
     case "jumpToTerminal": {
       const task = State.focusTask;
       if (task?.id === CLAUDE_DESKTOP_ID) void Bridge.openClaudeDesktop();

@@ -228,7 +228,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
             map.insert("lumo_sandbox".into(), Value::Bool(true));
         }
     }
-    // Claude Code in Cursor's terminal goes on the Cursor pill (Mac #120).
+    // Claude Code in Cursor's terminal goes on the Cursor pill.
     if !map.contains_key("term_editor") {
         if let Some(editor) = term_editor(env) {
             map.insert("term_editor".into(), Value::String(editor.into()));
@@ -313,7 +313,7 @@ const SANDBOX_VAR: &str = "LUMO_AGY_SANDBOX";
 
 /// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
 /// a Claude Code session started from the Claude desktop app, which says so in
-/// CLAUDE_CODE_ENTRYPOINT — the same rule as the Mac's relay (#191). Nothing
+/// CLAUDE_CODE_ENTRYPOINT. Nothing
 /// for a plain Claude Code session.
 fn agent_tag(arg: &str, env: &dyn Fn(&str) -> Option<String>) -> Option<String> {
     if !arg.is_empty() {

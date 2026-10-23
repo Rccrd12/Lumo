@@ -27,7 +27,7 @@ use crate::{log, net};
 pub const UPDATE_REPO: &str = "Rccrd12/Lumo";
 
 /// Windows releases are tagged `windows-v0.2.1` (the `windows-latest` rolling
-/// release does not match, and neither does any other tag, like the Mac's `v*`).
+/// release does not match, and neither does any other tag, like a plain `v*`).
 const TAG_PREFIX: &str = "windows-v";
 
 /// Hosts a release download may come from: github.com, then the CDN it redirects to.

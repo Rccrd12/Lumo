@@ -1,5 +1,5 @@
-// Plan usage gauges — the logic of ClaudePlanGauge.swift and CodexPlanGauge.swift
-// on the Mac, with no DOM so it can be tested on its own. The pills and cards
+// Plan usage gauges for Claude and Codex, with no DOM so it can be tested on
+// its own. The pills and cards
 // that show it are in views/usage.ts.
 //
 // Claude: the numbers come from Claude Code's own status line (`rate_limits` in
@@ -298,7 +298,7 @@ export function agentPlanOn(
   return (kind === "codex" ? s.showCodexPlanInNotch : s.showAntigravityPlanInNotch) || hooked;
 }
 
-/** How long a Codex answer stays good before the pill asks again (as on the Mac). */
+/** How long a Codex answer stays good before the pill asks again. */
 export const CODEX_STALE_MS = 60_000;
 
 /** True when the Codex (or Antigravity CLI) numbers are missing or older than a minute. */

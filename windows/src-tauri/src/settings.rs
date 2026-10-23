@@ -24,7 +24,7 @@ pub struct Settings {
     pub main_pill: String,
     /// "primary" = the main display, "cursor" = whichever display the mouse is on.
     pub screen: String,
-    /// How big the island is drawn: 1 is the Mac's size, up to 1.6.
+    /// How big the island is drawn: 1 is its design size, up to 1.6.
     pub island_zoom: f64,
     /// How far the island sits from the edge of the screen it is docked to:
     /// "none", "light" (the usual 10 px), "medium" or "wide" (island.rs edge_gap_of).
@@ -41,7 +41,7 @@ pub struct Settings {
     /// page pixels. Dragged from the island's grips, so owned by Rust too.
     pub island_width: f64,
     pub island_height: f64,
-    /// How big the icons are drawn, against the Mac's size.
+    /// How big the icons are drawn, against their design size.
     pub icon_scale: f64,
     /// When the open island closes on its own: "timer" (`auto_close_interval`
     /// seconds after the mouse leaves), "leave" (as soon as it leaves),
@@ -205,7 +205,7 @@ pub struct Settings {
     pub update_check_on_open: bool,
 }
 
-/// A little bigger than the Mac's icons, which sit closer to the eye.
+/// A little bigger than their design size, since a PC's screen sits further away.
 pub const DEFAULT_ICON_SCALE: f64 = 1.25;
 
 fn default_model() -> String {

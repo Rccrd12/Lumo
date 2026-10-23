@@ -1,19 +1,18 @@
-// Generates src/i18n/strings.json from the Mac app's string catalog
-// (i18n-source/Localizable.xcstrings), so Windows shows the Mac's own
-// translations.
+// Generates src/i18n/strings.json from the string catalog
+// (i18n-source/Localizable.xcstrings).
 //
 //   node scripts/gen-strings.mjs           writes src/i18n/strings.json
 //   node scripts/gen-strings.mjs --check   fails if the file is out of date
 //
-// Every entry is keyed by its English text, as the Mac's are (a Mac key such as
+// Every entry is keyed by its English text (a catalog key such as
 // "step.reads" is replaced by its English value, "Reads"). Format specifiers
 // become named or numbered placeholders: "%@" and "%lld" → "{0}", "{1}"…
 // ("%1$@" keeps its number), renamed where RENAMES says so. Plural entries keep
 // their categories ({ "one": …, "other": … }) and are keyed by the English
 // "other" form. English is the key itself, so it is not stored.
 //
-// Strings the Mac does not have (Windows only) live in
-// src/i18n/extra.json, written by hand; see src/i18n/i18n.ts.
+// Strings the catalog does not have live in src/i18n/extra.json, written by
+// hand; see src/i18n/i18n.ts.
 
 import { readFileSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
@@ -23,11 +22,11 @@ const here = dirname(fileURLToPath(import.meta.url));
 const SOURCE = resolve(here, "../i18n-source/Localizable.xcstrings");
 const OUTPUT = resolve(here, "../src/i18n/strings.json");
 
-/** The languages Lumo ships, in the Mac's picker order. English is the source. */
+/** The catalog's languages, in the picker's order. English is the source. */
 export const LANGUAGES = ["en", "zh-Hans", "hi", "es", "ar", "fr", "bn", "pt-BR", "ru", "id"];
 
 /**
- * Names for the placeholders of the Mac strings the Windows code uses, by Mac
+ * Names for the placeholders of the catalog strings the code uses, by catalog
  * key: the n-th specifier becomes `{names[n]}` instead of `{n}`.
  */
 const RENAMES = {
@@ -71,11 +70,11 @@ function readLocalization(loc, names) {
 
 export function generate(catalog) {
   const strings = {};
-  for (const [macKey, entry] of Object.entries(catalog.strings ?? {})) {
-    const names = RENAMES[macKey] ?? [];
+  for (const [catalogKey, entry] of Object.entries(catalog.strings ?? {})) {
+    const names = RENAMES[catalogKey] ?? [];
     const locs = entry.localizations ?? {};
-    // A Mac key with no English localization is its own English text.
-    const en = readLocalization(locs.en, names) ?? convertFormat(macKey, names);
+    // A catalog key with no English localization is its own English text.
+    const en = readLocalization(locs.en, names) ?? convertFormat(catalogKey, names);
     const key = typeof en === "string" ? en : en.other ?? Object.values(en)[0];
     const out = {};
     for (const lang of LANGUAGES) {

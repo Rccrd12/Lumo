@@ -1,5 +1,5 @@
-// Small append-only log at %LOCALAPPDATA%\com.rccrd12.lumo\lumo.log — the
-// equivalent of nbLog() in HookServer.swift. Nothing leaves the machine.
+// Small append-only log at %LOCALAPPDATA%\com.rccrd12.lumo\lumo.log. Nothing
+// leaves the machine.
 
 use std::io::Write;
 

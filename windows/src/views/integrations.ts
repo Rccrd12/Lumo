@@ -1,8 +1,5 @@
-// Integration cards shown in the overview's left card — DOM ports of
-// IntegrationCardView and friends from IslandViewContent.swift.
-//
-// Cal.com is the one simplification: macOS shows a three-level calendar
-// (month → day → booking); here it is the list of upcoming bookings.
+// Integration cards shown in the overview's left card. Cal.com shows the list
+// of upcoming bookings.
 
 import { h, svg, dot } from "./dom";
 import { ICONS } from "./icons";
@@ -19,7 +16,7 @@ import { PLAN_TEXT, dominantPct, planColor } from "../core/plan";
 import { formatDuration, mergedSeconds, mondayOf, type RecapHistory } from "../recap/summary";
 import { folderOf, groupSessions, type CodeSession } from "../core/sessions";
 
-/** Same shape as the Swift `timeAgo` computed properties. */
+/** "just now", "5m", "3h", "2d": how long ago a date or a timestamp was. */
 export function timeAgo(value: unknown): string {
   const date = typeof value === "number" ? new Date(value) : new Date(String(value));
   const diff = (Date.now() - date.getTime()) / 1000;
@@ -63,7 +60,7 @@ const OPEN_URLS: Record<string, string> = {
   integration_calcom: "https://app.cal.com/bookings",
 };
 
-/** IntegrationCardView.statusLabel on macOS. */
+/** The status line of a pill's card before it has anything to show. */
 export function idleStatus(
   id: string,
   info: { configured: boolean; error: string | null } | undefined,
@@ -75,7 +72,7 @@ export function idleStatus(
   const ok = (label: string) => ({ label, color: "#22C55E" });
   const missing = (label: string) => ({ label, color: "#F4505E" });
   // Pills driven by hooks never have a key: they are connected once the hooks
-  // are in place (Mac #183). A session replaces this card; nothing is loading.
+  // are in place. A session replaces this card; nothing is loading.
   if (def?.connect.kind === "hooks") return configured ? ok(t("Hooks installed")) : missing(t("Hooks not installed"));
   if (def?.connect.kind === "none") return ok(t("Ready · no setup needed"));
   if (def?.connect.kind === "server") return configured ? ok(t("Connected")) : missing(t("Not connected"));
@@ -759,7 +756,7 @@ export function renderIntegrationCard(task: AgentTask, hooks: IntegrationCardHoo
   }
   if (!hasIntegrationData(task.id)) return idleCard(task, hooks.openSettings);
 
-  // With the pulse in, GitHub gets the Mac's richer card and its lists.
+  // With the pulse in, GitHub gets its richer card and its lists.
   if (task.id === "integration_github") {
     const d = get(task.id);
     const pulse = readPulse(d);

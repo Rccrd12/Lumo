@@ -1,6 +1,6 @@
 // Dropped files are copied into %LOCALAPPDATA%\com.rccrd12.lumo\inbox so the original is
 // never touched and the copy survives the drag source going away.
-// The inbox is swept of anything older than a week, as on macOS.
+// The inbox is swept of anything older than a week.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};

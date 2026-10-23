@@ -1,5 +1,4 @@
-// Drop zone and upload progress — ports of UploadView / UploadingView from
-// IslandViewContent.swift. Once the bar is full the file goes straight into
+// Drop zone and upload progress. Once the bar is full the file goes straight into
 // the chat (island.ts uploadFinished): there is no card asking what to do.
 
 import { h } from "./dom";
@@ -7,7 +6,7 @@ import { State } from "../core/state";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 
-/** Dashed rounded rect drawn as SVG so the dashes can march like on macOS. */
+/** Dashed rounded rect drawn as SVG so the dashes can march. */
 function dashedFrame(): SVGSVGElement {
   const ns = "http://www.w3.org/2000/svg";
   const el = document.createElementNS(ns, "svg");

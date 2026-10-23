@@ -1,5 +1,4 @@
 // The island: DOM shell, sizing animation, Lumo placement, mouse handling.
-// Mirrors IslandRootView.swift + IslandWindowController.swift.
 
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
@@ -269,7 +268,7 @@ export class Island {
 
   /**
    * Folds a card that is waiting for an answer down to the compact island,
-   * without answering it (Mac #290). Nothing is decided: the request keeps
+   * without answering it. Nothing is decided: the request keeps
    * waiting, the island stays on screen, and opening it shows the card again.
    */
   foldApproval() {
@@ -335,7 +334,7 @@ export class Island {
         if (task?.id === CLAUDE_DESKTOP_ID) void Bridge.openClaudeDesktop();
         else void Bridge.openSession(task?.sessionId ?? null, task?.sessionCwd ?? null);
       },
-      // The ↗ button — same targets as openAgentTarget() on macOS.
+      // The ↗ button: the session's window, its folder or its app.
       openTarget: () => {
         const task = State.focusTask;
         if (!task) return;
@@ -448,7 +447,7 @@ export class Island {
     this.contentEl = h("div", { id: "content" }, this.header.el, this.viewsEl);
 
     // The drop sequence draws the card, the bar and its own Lumo. It sits under
-    // the header, which stays visible on top of it exactly as on macOS.
+    // the header, which stays visible on top of it.
     this.uploadCanvas = new UploadCanvas();
 
     this.clipEl = h(
@@ -598,7 +597,7 @@ export class Island {
     return State.mode === "expanded" && UploadSeq.isActive && UPLOAD_VIEWS.has(State.view);
   }
 
-  /** Navigating out of the drop flow ends the sequence, as on macOS. */
+  /** Navigating out of the drop flow ends the sequence. */
   private stopSequenceIfLeaving(view: IslandViewName) {
     if (UploadSeq.isActive && !UPLOAD_VIEWS.has(view)) UploadSeq.deactivate();
   }
@@ -915,7 +914,7 @@ export class Island {
     State.notify();
   }
 
-  /** The island takes the keyboard, so its own shortcuts work (Mac: makeKey).
+  /** The island takes the keyboard, so its own shortcuts work.
    *  It gives it back when it closes, or when the chat is left. */
   /** A shortcut opened the island: it waits for the user, the mouse being elsewhere (SHARE_GRACE). */
   holdOpen() {
@@ -1060,7 +1059,7 @@ export class Island {
   /**
    * Lumo eats the file. Nothing here waits on the file system: the copy into
    * the inbox runs in the background and swaps the path in when it lands, so a
-   * slow disk can never stall the animation — same as FileDropHandler on macOS.
+   * slow disk can never stall the animation.
    */
   private swallow(path: string) {
     const name = path.split(/[\\/]/).pop() || "file";
@@ -1496,8 +1495,7 @@ export class Island {
     }, true);
 
     // Only keys typed into the island itself land here, never Escape typed in
-    // a terminal — so it may fold a waiting card away, as Escape in the notch
-    // does on macOS.
+    // a terminal — so it may fold a waiting card away.
     window.addEventListener("keydown", (e) => {
       // Ctrl + / Ctrl − / Ctrl 0: a bigger or smaller island, or the usual size.
       const zoom = e.ctrlKey && !e.altKey ? zoomStep(e.key, State.settings.islandZoom) : null;
@@ -1827,7 +1825,7 @@ export class Island {
     }
     // Only the main Lumo is dressed — the one of the main tool's pill (Settings →
     // Active pills): a focused integration pill shows its own colours, unless
-    // the wardrobe is open (BotCanvasView.showOutfit, macOS).
+    // the wardrobe is open.
     // In the wardrobe the hovered outfit swaps in at once, without the drop-in.
     const inWardrobe = State.mode === "expanded" && State.view === "wardrobe";
     const mainFocused = State.focusId == null || State.focusId === State.mainPillId;

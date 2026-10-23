@@ -1,7 +1,6 @@
 // Hook events from Claude Code and every other agent → island state.
-// Port of HookServer.processEvent / processPermissionRequest from the macOS app.
-// Difference from macOS: no terminal filter. On Windows the hook fires from any
-// terminal (Windows Terminal, VS Code, PowerShell…) and all of them are handled.
+// There is no terminal filter: the hook fires from any terminal (Windows
+// Terminal, VS Code, PowerShell…) and all of them are handled.
 // The relay has already mapped every agent's events and fields onto Claude
 // Code's (hook/src/normalize.rs), so one handler serves them all.
 
@@ -188,7 +187,7 @@ function lastPathComponent(p: string): string {
 }
 
 /**
- * localizedStep() — same labels as the macOS app, in English and shown in the
+ * The step each tool shows in the ticker, in English and shown in the
  * interface language (src/i18n) when the step is recorded.
  */
 const TOOL_LABELS: Record<string, string> = {
@@ -341,7 +340,7 @@ function recordDiff(agentId: string, payload: HookPayload) {
 }
 
 export function registerHookHandlers(island: Island) {
-  // The last plan numbers seen survive a restart, as on the Mac.
+  // The last plan numbers seen survive a restart.
   State.planUsage ??= restorePlanUsage(storedClaudePlanUsage());
   void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
   // The same numbers from a chat answer of Claude Code (claude_code.rs), which
@@ -377,7 +376,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
   // Route to the right pill. Valid lumo_agent → dynamic "agent_<name>" pill.
   // "claude" is reserved; absent or invalid → Claude Code's own pill: Cursor's
-  // when it runs in Cursor's terminal (Mac #120), VS Code's otherwise.
+  // when it runs in Cursor's terminal, VS Code's otherwise.
   const validAgent = validateAgent(payload.lumo_agent);
   const workspaceId = payload.term_editor === "cursor" ? CURSOR_ID : CLAUDE_ID;
   const agentId = validAgent ? `agent_${validAgent}` : workspaceId;
@@ -433,7 +432,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
   // The turn that asked for a permission is over — answered in the terminal,
   // interrupted, or a new prompt — so the card would be lying. It goes, and the
-  // relay is released without a decision. Same rule as the Mac.
+  // relay is released without a decision.
   // Requests of that turn waiting in line go first, so none of them takes the card.
   if (TURN_OVER.has(name)) withdrawQueued((q) => q.pillId === agentId && q.sessionId === sessionId);
   const pending = State.pendingApproval;
@@ -662,7 +661,7 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "PermissionRequest": {
       // Only Claude Code and the agents the relay can answer for (Codex, Copilot
-      // CLI, Muse Code — same as the Mac) get a card. Anyone else's request is
+      // CLI, Muse Code) get a card. Anyone else's request is
       // declined at once, so the agent asks in its own terminal. And a shell
       // command of the chat's own Antigravity CLI run (antigravity_cli.rs), which
       // the relay turns into a request: headless agy has no terminal to ask in.
@@ -690,7 +689,7 @@ function handleHook(island: Island, payload: HookPayload) {
       }
       // One card, one request. A second one never replaces the first — that
       // would leave a human staring at request B while request A waits for a
-      // decision nobody can give. It waits in line (the Mac's ApprovalQueue),
+      // decision nobody can give. It waits in line (State.approvalQueue),
       // and comes up once the one before is answered.
       const inLine = State.pendingApproval != null && State.pendingApproval.requestId !== requestId;
       if (inLine) {
@@ -757,7 +756,7 @@ function handleHook(island: Island, payload: HookPayload) {
       void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is
       // already open: its pill comes to the front, and the one you were on
-      // comes back once you answer (Mac #117, #120).
+      // comes back once you answer.
       State.beginApproval({ ...info, ...(quick ? { quick } : {}) });
       // The relay's short ack window closes in 800 ms; everything below this
       // line is synchronous, so the card really is up by the time it lands.

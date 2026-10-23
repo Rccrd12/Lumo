@@ -1,13 +1,12 @@
-// A colour of your own for each pill's Lumo — the pure half, port of
-// the Mac app's PillColors.swift. The catalog (./pills.ts) keeps
-// every default; the `pillColors` preference holds only what the user changed,
-// by pill ID, so an empty one paints the island exactly as the catalog says.
+// A colour of your own for each pill's Lumo — the pure half. The catalog
+// (./pills.ts) keeps every default; the `pillColors` preference holds only
+// what the user changed, by pill ID, so an empty one paints the island exactly
+// as the catalog says.
 
 /**
  * What the palette offers, in the order it is shown. Every colour is one the
  * catalog already uses, and all of them stay readable on the island's black
  * with Lumo's dark eyes — which a free colour picker could not promise.
- * Same list as PillColors.palette on macOS.
  */
 export const PILL_PALETTE: readonly string[] = [
   "#F5F6F8", "#F4505E", "#F29B38", "#FACC15", "#4ADE80",

@@ -17,9 +17,8 @@ const live = new Map<HTMLCanvasElement, MiniBot>();
  * Creates a mini Lumo whose **body** is `bodySize` CSS pixels across.
  *
  * The engine draws the body at 60 % of its canvas, so the canvas is
- * `bodySize / 0.6` and is centred in a `bodySize` slot, overflowing it — the
- * same thing SwiftUI does with a `.frame(width: 22/0.6)` inside a
- * `.frame(width: 22)`. Sizing the canvas itself to `bodySize` would shrink the
+ * `bodySize / 0.6` and is centred in a `bodySize` slot, overflowing it.
+ * Sizing the canvas itself to `bodySize` would shrink the
  * whole drawing to 60 %, which is what used to happen.
  */
 export function createMiniBot(task: AgentTask, bodySize: number): HTMLElement {

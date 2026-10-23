@@ -24,7 +24,7 @@ export interface RecapHost {
 /** Views the Monday card may replace; anything else is the user busy with something. */
 const QUIET_VIEWS: ReadonlySet<IslandViewName> = new Set(["overview", "empty", "settings", "greeting"]);
 
-/** Same 1.5 s as the Mac, so it never lands on top of the event that triggered it. */
+/** 1.5 s, so it never lands on top of the event that triggered it. */
 const SHOW_DELAY_MS = 1500;
 
 class RecapController {

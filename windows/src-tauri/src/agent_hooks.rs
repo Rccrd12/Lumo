@@ -1,10 +1,10 @@
 // Whether each hook-driven pill is connected.
 //
 // A pill fed by hook events has no key: it is connected once the agent's config
-// routes its events to lumo-hook (Mac #183 — the idle card used to say "Key
-// not configured" for these). Only reads; nothing here ever writes.
+// routes its events to lumo-hook (the idle card must not say "Key not
+// configured" for these). Only reads; nothing here ever writes.
 //
-// Claude Code is read here, with the Mac's own rule. Every other agent is read
+// Claude Code is read here. Every other agent is read
 // by agents.rs — the code that writes their configs is the one source of truth
 // for where those files are and what Lumo's entries look like, so the pill
 // and Settings → Agents always agree.
@@ -15,7 +15,7 @@ use std::path::PathBuf;
 use serde_json::Value;
 
 
-/// Port of the Mac app's ClaudeHookDetection.swift: true when a parsed
+/// True when a parsed
 /// `~/.claude/settings.json` routes Claude Code's SessionStart events to Lumo.
 /// The command text is what tells: it runs Lumo's relay (hooks.rs).
 pub fn claude_hooks_present(settings: &Value) -> bool {
@@ -68,7 +68,7 @@ mod tests {
         serde_json::from_str(json).unwrap_or(Value::Null)
     }
 
-    // The cases of the Mac app's ClaudeHookDetectionTests.swift, for this build's relay.
+    // Claude Code's settings.json as Lumo may find it, for this build's relay.
 
     #[test]
     fn the_hook_lumo_writes_is_installed() {
@@ -93,7 +93,7 @@ mod tests {
 
     #[test]
     fn other_tools_only_is_not_installed() {
-        // The case that showed "Key not configured" on macOS.
+        // Only other tools' hooks: not Lumo's.
         assert!(!claude_hooks_present(&settings(
             r#"{"hooks":{"SessionStart":[{"hooks":[
               {"type":"command","command":"$HOME/.vibe-island/bin/vibe-island-bridge"},

@@ -1,8 +1,4 @@
-// Lumo — direct port of NotchBuddy/Sources/App/BotEngine.swift to Canvas 2D.
-// Same constants, same tweens, same easings, same particles. The only intentional
-// difference is the `happy`/`wink` eye arc, which follows the prototype
-// (design/prototype/notch-buddy.html, the visual source of truth) — the Swift
-// arc angles produce a different shape.
+// Lumo's engine, in Canvas 2D: his states, tweens, easings and particles.
 
 import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
@@ -535,7 +531,7 @@ export class BotEngine {
 
   /**
    * Dresses Lumo. Animated: the old outfit leaves (180 ms), the new one drops
-   * in (350 ms) and Lumo does a little squash — BotEngine.setOutfit on macOS.
+   * in (350 ms) and Lumo does a little squash.
    */
   setOutfit(next: Outfit, animated = true) {
     if (next === this.outfitTarget) return;
@@ -833,7 +829,7 @@ export class BotEngine {
     const cy = H / 2 + this.particleOverhang / 2 + this.oy * R + R * 0.06;
 
     // With an outfit on, a roll turns the whole character — hat included — as
-    // one piece instead of rolling the eyes over the body (BotCanvasView, macOS).
+    // one piece instead of rolling the eyes over the body.
     x.save();
     if (this.rigidRoll && Math.abs(this.roll) > 0.001) {
       x.translate(cx, cy);

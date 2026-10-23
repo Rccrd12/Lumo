@@ -1,14 +1,12 @@
-// The drop choreography — port of UploadSequenceEngine.swift, itself a port of
-// design/prototype/upload-sequence.html.
+// The drop choreography.
 //
 // The engine is pure arithmetic: it owns no DOM and draws nothing. It takes the
 // cursor and a drop time, and hands `frame()` back everything the canvas needs
-// for one frame. All coordinates are island points (the island is 640 × 176),
-// so every constant below is the macOS constant unchanged.
+// for one frame. All coordinates are island points (the island is 640 × 176).
 
 import { Ease, lerp, seg } from "../core/anim";
 
-/** Constants — exact mirror of USC in UploadSequenceEngine.swift. */
+/** Constants of the choreography, in island points. */
 export const USC = {
   W: 640,
   ISL_H: 176,
@@ -18,8 +16,7 @@ export const USC = {
   CARD_H: 124,
   CARD_R: 20,
   // Lumo waits in the card's top-left corner, his wings inside it, and
-  // watches the file from there (the Mac's 140 × 104 left him mid-card, where
-  // he chased the cursor).
+  // watches the file from there.
   REST_X: 70,
   REST_Y: 90,
   D_BOX: 62,
@@ -27,8 +24,7 @@ export const USC = {
   TEXT_CX: 320, // CARD_X + CARD_W / 2
   TEXT_Y: 94,
   BAR_X0: 46,
-  // As far from the card's right edge as BAR_X0 is from its left (the Mac's
-  // 520 left the bar off centre, short of the right side).
+  // As far from the card's right edge as BAR_X0 is from its left.
   BAR_X1: 594,
   BAR_Y: 118,
   MOUTH_OPEN: 0.42,

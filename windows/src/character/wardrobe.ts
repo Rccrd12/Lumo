@@ -106,7 +106,7 @@ export interface LookHover {
 
 /**
  * The grey text at the right of the wardrobe header: the hovered outfit,
- * otherwise the current choice — WardrobeView.headerRight on macOS.
+ * otherwise the current choice.
  */
 export function wardrobeHeader(
   hovered: OutfitSelection | LookHover | null,

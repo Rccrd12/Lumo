@@ -1,4 +1,4 @@
-// Weekly recap history — port of RecapStore.swift.
+// Weekly recap history.
 //
 // Every hook event the relay forwards also passes through here. A "turn" runs
 // from a prompt (or the first tool call) to Stop, and only its counts and two
@@ -28,7 +28,7 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
 
-/// 12 weeks, like the Mac.
+/// 12 weeks.
 pub const WINDOW_SECS: i64 = 12 * 7 * 86_400;
 /// A turn with no event for two hours is closed at its last event (agent
 /// crashed, or never sent Stop) — RecapStore.pruneStale.
@@ -44,7 +44,7 @@ const MAX_FILE_BYTES: u64 = 16 << 20;
 /// A 1080 × 1920 PNG is ~1 MB; anything far larger is not our image.
 const MAX_PNG_BYTES: usize = 24 << 20;
 
-/// Same limits as DiffEngine.swift: beyond them, lines are counted, not diffed.
+/// Same limits as the live diff (src/core/diff.ts): beyond them, lines are counted, not diffed.
 const DIFF_MAX_BYTES: usize = 200 * 1024;
 const DIFF_MAX_LINES: usize = 4000;
 const DIFF_MAX_CELLS: usize = 1_000_000;
@@ -94,7 +94,7 @@ pub struct Decision {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", default)]
 pub struct Prefs {
-    /// "Keep a history of my coding sessions" — on by default, like the Mac.
+    /// "Keep a history of my coding sessions" — on by default.
     pub enabled: bool,
     /// Leave the project name out of the shared image.
     pub hide_projects: bool,
@@ -225,7 +225,7 @@ impl Recap {
                     draft.lines_removed = draft.lines_removed.saturating_add(removed);
                 }
             }
-            // Unlike the Mac, SessionEnd closes the turn instead of dropping it:
+            // SessionEnd closes the turn instead of dropping it:
             // a session quit mid-turn still worked.
             "Stop" | "StopFailure" | "Interrupt" | "SessionEnd" => {
                 if let Some(draft) = self.drafts.remove(&key) {
@@ -416,7 +416,7 @@ fn read_history(path: &Path) -> History {
     if let Some(history) = bytes.and_then(|b| serde_json::from_slice::<History>(&b).ok()) {
         return history;
     }
-    // Keep the file as recap.json.corrupt-YYYYMMDD-HHMMSS, like the Mac.
+    // Keep the file as recap.json.corrupt-YYYYMMDD-HHMMSS.
     let t = platform::local_time();
     let aside = path.with_extension(format!(
         "json.corrupt-{:04}{:02}{:02}-{:02}{:02}{:02}",
@@ -486,7 +486,7 @@ fn agent_id(payload: &Value) -> String {
 }
 
 /// Concurrent sessions are tracked apart; one without an ID is keyed by its
-/// agent and folder, as HookServer.swift does.
+/// agent and folder.
 fn session_key(payload: &Value, agent: &str) -> String {
     let id = text(payload, "session_id");
     if id.is_empty() || id == "unknown" {

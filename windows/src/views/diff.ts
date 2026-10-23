@@ -1,4 +1,4 @@
-// Diff card — port of DiffCardView / DiffLineRowView (IslandViewContent.swift).
+// Diff card: a file's live diff, line by line.
 // Opens in the overview's left card when a diff step of the ticker is clicked.
 
 import { h, svg } from "./dom";

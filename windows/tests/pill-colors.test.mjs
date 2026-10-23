@@ -1,6 +1,5 @@
 // A colour of the user's own for each pill's Lumo (src/core/pill-colors.ts),
-// and how the app state paints with it. Mirrors tests/PillColorsTests.swift so
-// every platform reads the same preference the same way.
+// and how the app state paints with it.
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
@@ -23,7 +22,6 @@ test("a colour is six hex digits, written #RRGGBB in upper case", () => {
 });
 
 test("the palette is ten different colours the catalog already uses", () => {
-  // The same list as PillColors.palette on macOS (tests/PillColorsTests.swift).
   assert.deepEqual(PILL_PALETTE, [
     "#F5F6F8", "#F4505E", "#F29B38", "#FACC15", "#4ADE80",
     "#2DD4BF", "#38BDF8", "#818CF8", "#C084FC", "#E879F9",

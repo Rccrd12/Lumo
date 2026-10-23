@@ -1,9 +1,9 @@
-// The upload canvas — port of UploadCanvasView.swift.
+// The upload canvas.
 //
 // While the sequence engine is active this canvas draws the whole island body:
 // card, dashed drop frame, drop text, progress bar, Lumo and the file being
-// sucked in. The island's own Lumo is hidden for the duration,
-// exactly as on macOS, because this canvas draws its own.
+// sucked in. The island's own Lumo is hidden for the duration, because this
+// canvas draws its own.
 
 import { lerp } from "../core/anim";
 import { State } from "../core/state";
@@ -74,7 +74,7 @@ function text(
   ctx.textAlign = align;
   // Arabic orders its words right to left; the anchor (left, centre, right) stays put.
   ctx.direction = isRtl() ? "rtl" : "ltr";
-  // SwiftUI's .leading / .center / .trailing anchors are vertically centred.
+  // Every text is anchored on its vertical centre.
   ctx.textBaseline = "middle";
   ctx.fillText(s, x, y);
 }
@@ -199,7 +199,7 @@ export class UploadCanvas {
     return { x: (x - st.ox) / st.s, y: (y - st.oy) / st.s };
   }
 
-  /** `wallTime` in seconds drives the marching dashes, like the macOS timeline. */
+  /** `wallTime` in seconds drives the marching dashes. */
   draw(f: UploadFrame, wallTime: number) {
     const dpr = Math.min(2, window.devicePixelRatio || 1);
     const st = this.stage;
@@ -283,8 +283,8 @@ export class UploadCanvas {
     const title = fitted(ctx, t("Drop your files here"), TEXT_MAX_W, 500, 13);
     text(ctx, title.s, USC.TEXT_CX, USC.TEXT_Y - 4, title.font, "#D5D7DB", "center");
 
-    // The macOS port measures chips the same rough way, so the row lines up; a
-    // translation wider than that estimate gets the room it needs.
+    // Chips are measured roughly, so the row lines up; a translation wider
+    // than that estimate gets the room it needs.
     const labels = CHIPS.map((chip) => t(chip));
     let chipPx = 11;
     const widths = () => {
@@ -616,9 +616,8 @@ function drawEye(ctx: CanvasRenderingContext2D, shape: UploadEyeShape, w: number
 // ── Document icon ───────────────────────────────────────────────────────────
 
 /**
- * The generic sheet with a folded corner. macOS swaps in the real file icon from
- * NSWorkspace; Windows has no equivalent reachable from the webview, so this is
- * the shape in every case — it is the same fallback the Swift draws.
+ * The generic sheet with a folded corner. The file's real icon is not reachable
+ * from the webview, so this is the shape in every case.
  */
 function drawDoc(ctx: CanvasRenderingContext2D, cx: number, cy: number, wsc: number, hsc: number) {
   const w = 34 * wsc;

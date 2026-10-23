@@ -96,7 +96,7 @@ export function shouldAutoShow(now: Date, lastShownWeek: string): boolean {
 /** English names, kept in the summary; shown with `t()` (src/i18n). */
 const DAY_NAMES = [N_("Sunday"), N_("Monday"), N_("Tuesday"), N_("Wednesday"), N_("Thursday"), N_("Friday"), N_("Saturday")];
 
-/** Pill IDs → names, from PillCatalog.swift. Claude Code hooks come from any
+/** Pill IDs → names, as the catalog has them. Claude Code hooks come from any
  *  terminal here, so its pill reads "Claude Code" rather than "VS Code". */
 const AGENT_NAMES: Record<string, string> = {
   integration_claude: "Claude Code",
@@ -220,7 +220,7 @@ export function weekRangeLabel(s: Pick<WeeklySummary, "weekStart" | "weekEnd">):
 // ── Sample week ───────────────────────────────────────────────────────────────
 
 /**
- * The fake week of scripts/test-weekly-recap.swift, starting on `monday`.
+ * A fake week, starting on `monday`.
  * Used by the tests and by `npm run dev` in a plain browser, where there is
  * no Rust side to read a history from.
  */

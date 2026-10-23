@@ -1,5 +1,5 @@
 {
- "_about": "Italian for the Mac's strings (strings.json, generated from a catalog that has no Italian), keyed by their English text. Written by hand; see src/i18n/i18n.ts.",
+ "_about": "Italian for the catalog's strings (strings.json, generated from a catalog that has no Italian), keyed by their English text. Written by hand; see src/i18n/i18n.ts.",
  "strings": {
   "5 hours": "5 ore",
   "AUTO": "AUTO",

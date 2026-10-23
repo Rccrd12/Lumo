@@ -1,4 +1,4 @@
-// App state — mirror of AppState.swift (the parts the island needs).
+// App state: what the island shows and remembers.
 
 import type { ListenWatch } from "./listen";
 import { newChatId } from "./chats";
@@ -117,7 +117,7 @@ export interface IntegrationInfo {
 
 /**
  * When the open island closes on its own: some seconds after the mouse
- * leaves ("timer", the Mac's way), as soon as it leaves, on a click
+ * leaves ("timer"), as soon as it leaves, on a click
  * elsewhere, or never (Esc, a shortcut or the tray).
  */
 export type IslandCloseMode = "timer" | "leave" | "click" | "never";
@@ -152,7 +152,7 @@ export interface Settings {
   mainPill: string;
   /** "primary", "cursor", or `at:<x>,<y>` for one display (logical origin). */
   screen: string;
-  /** How big the island is drawn (1 = the Mac's size). */
+  /** How big the island is drawn (1 = its usual size). */
   islandZoom: number;
   /** How far the island sits from its edge of the screen: "none", "light", "medium" or "wide". */
   islandEdgeGap: string;
@@ -164,7 +164,7 @@ export interface Settings {
   /** Width of the open island and its height (0 = each view's own); owned by Rust. */
   islandWidth: number;
   islandHeight: number;
-  /** How big the icons are drawn (1 = the Mac's size). */
+  /** How big the icons are drawn (1 = their usual size). */
   iconScale: number;
   /** When the open island closes on its own (settings.rs island_close). */
   islandClose: IslandCloseMode;
@@ -267,7 +267,6 @@ export interface Settings {
   /**
    * A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
-   * Same key and values as the Mac's "pillColors".
    */
   pillColors: Record<string, string>;
   /**
@@ -372,9 +371,9 @@ export const DEFAULT_SETTINGS: Settings = {
 
 type Listener = () => void;
 
-/** Live diffs kept per pill (oldest dropped first) — same cap as macOS. */
+/** Live diffs kept per pill (oldest dropped first). */
 export const MAX_DIFFS_PER_PILL = 50;
-/** A pill's diffs are forgotten after an hour without a new one, as on macOS. */
+/** A pill's diffs are forgotten after an hour without a new one. */
 export const DIFF_TTL_MS = 3_600_000;
 
 /** A chat put aside while the other slot is on screen (AppState.useSlot). */
@@ -475,8 +474,8 @@ class AppState {
   chatSession: string | null = null;
   pendingApproval: ApprovalInfo | null = null;
   /**
-   * Requests that came while the card was up, oldest first (the Mac's
-   * ApprovalQueue): each comes up in turn once the one before is answered.
+   * Requests that came while the card was up, oldest first: each comes up
+   * in turn once the one before is answered.
    */
   approvalQueue: ApprovalInfo[] = [];
   /** The pill that was in front when the card came up; it comes back after. */
@@ -699,7 +698,7 @@ class AppState {
   /**
    * Loads the catalog pills: the main pill always, the declared ones, and none
    * of the others — a pill that is mid-session stays until its session ends.
-   * Safe to call any number of times. AppState.loadIntegrationTasks on macOS.
+   * Safe to call any number of times.
    */
   loadIntegrationTasks() {
     const d = sanitizeDeclared(this.settings);
@@ -724,7 +723,7 @@ class AppState {
 
   /**
    * A session is over. The main and declared pills are put back as they were;
-   * any other pill goes away (AppState.removeTask on macOS).
+   * any other pill goes away.
    */
   removeTask(id: string) {
     const idx = this.tasks.findIndex((t) => t.id === id);
@@ -752,7 +751,7 @@ class AppState {
   /**
    * Creates the pill of a tagged agent on its first event; no-op if it exists.
    * Inserted right after the main pill so it is in the visible slice(0,4). A
-   * catalog agent wears its catalog colour, as on macOS.
+   * catalog agent wears its catalog colour.
    */
   upsertExternalAgent(id: string, name: string, color: string) {
     if (this.tasks.some((t) => t.id === id)) return;
@@ -766,8 +765,7 @@ class AppState {
 
   /**
    * The pill a Claude Code session belongs to (VS Code or Cursor). It is made
-   * for the session when it is neither the main pill nor declared, as
-   * upsertWorkspaceTask does on macOS.
+   * for the session when it is neither the main pill nor declared.
    */
   upsertWorkspacePill(id: string, name: string, cwd: string): AgentTask | null {
     let t = this.tasks.find((x) => x.id === id);
@@ -822,7 +820,7 @@ class AppState {
 
   /**
    * What the island opens on. A card waiting for an answer comes first, so
-   * reopening a folded island shows it again (Mac #117, #290); otherwise the
+   * reopening a folded island shows it again; otherwise the
    * tab it was left on, Chat or Agents.
    */
   defaultView(): IslandViewName {

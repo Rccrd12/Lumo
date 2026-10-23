@@ -1,6 +1,6 @@
-// Who the chat can talk to — the island's side of chat.rs. The Mac's
-// ChatProvider (IslandTypes.swift) plus OpenRouter and any OpenAI-compatible
-// server. Pure data and helpers, so they can be tested without a webview.
+// Who the chat can talk to — the island's side of chat.rs, OpenRouter and any
+// OpenAI-compatible server included. Pure data and helpers, so they can be
+// tested without a webview.
 
 import type { Settings } from "./state";
 import { N_ } from "../i18n/i18n";

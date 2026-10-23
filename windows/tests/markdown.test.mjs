@@ -1,5 +1,5 @@
-// Markdown in the chat's answers (src/views/markdown.ts): the block parser
-// follows ChatMarkdown.swift, inline syntax is parsed to a tree, and rendering
+// Markdown in the chat's answers (src/views/markdown.ts): blocks are parsed
+// line by line, inline syntax is parsed to a tree, and rendering
 // builds DOM nodes from text only — never HTML — with http(s)-only links.
 
 import { beforeEach, test } from "node:test";

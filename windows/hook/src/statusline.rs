@@ -23,8 +23,7 @@ use crate::{talk, truncate_strings, CONNECT_TIMEOUT};
 
 /// How long the app may take to take the limits. Same 300 ms as a hook connect.
 const APP_BUDGET: Duration = CONNECT_TIMEOUT;
-/// How long the user's own status line may take before we give up on it (the
-/// Mac's relay allows the same).
+/// How long the user's own status line may take before we give up on it.
 const PREVIOUS_BUDGET: Duration = Duration::from_secs(10);
 /// What is kept of the user's status line output. A status line is a line or
 /// two; anything past this is drained and dropped so the command never stalls

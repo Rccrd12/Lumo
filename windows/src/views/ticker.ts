@@ -1,4 +1,4 @@
-// Overview task ticker — port of TickerView (V2) from IslandViewContent.swift.
+// Overview task ticker.
 //
 // Three rows: completed (A), current → completed (B), incoming (C). Every row
 // position is recomputed from a single clock in `tick()`, driven by the island's
@@ -10,8 +10,7 @@
 //
 // Diff steps (see core/diff.ts) render as the file name followed by +N −M, and
 // a click on one opens its diff. After Stop the card holds Claude's final
-// message: no shimmer, no chevron, the ✓ on every row (TickerRowView isActive
-// = false on macOS).
+// message: no shimmer, no chevron, the ✓ on every row.
 
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
@@ -98,7 +97,7 @@ function setText(row: Row, text: string) {
 
 /**
  * Places a row. `phase` 0 = current (shimmering, full size), 1 = completed
- * (dim, shifted up-left and scaled down) — same crossfades as the Swift view.
+ * (dim, shifted up-left and scaled down), with a crossfade between the two.
  * `still` is the finished look: static text, ✓ only, nothing animating.
  */
 function place(row: Row, y: number, phase: number, opacity: number, still: boolean) {
@@ -136,7 +135,7 @@ export class Ticker {
   /** `onDiffTap` receives the diff id of a clicked diff row. */
   constructor(onDiffTap?: (diffId: number) => void) {
     this.el = h("div", { class: "ticker" }, this.a.el, this.b.el, this.c.el);
-    // The completed and the current row answer a click, as on macOS; the
+    // The completed and the current row answer a click; the
     // incoming row is only ever seen mid-slide.
     for (const row of [this.a, this.b]) {
       row.el.addEventListener("click", () => {
@@ -203,7 +202,7 @@ export class Ticker {
     const p = clamp((nowMs - this.startMs) / DURATION, 0, 1);
     const e = EASE(p);
 
-    // A leaves upwards and fades a little faster than it moves, as on macOS.
+    // A leaves upwards and fades a little faster than it moves.
     place(this.a, lerp(0, -ROW_H, e), 1, clamp(1 - p * 1.35, 0, 1), this.still);
     place(this.b, lerp(ROW_H, 0, e), e, 1, this.still);
     place(this.c, lerp(ROW_H * 2, ROW_H, e), 0, e, this.still);

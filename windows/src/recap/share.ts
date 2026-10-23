@@ -1,6 +1,5 @@
-// The 1080 × 1920 image of the week, drawn once into an offscreen canvas —
-// port of RecapShareImageView in WeeklyRecapView.swift. Same colours, sizes
-// and order; Lumo comes from the island's own engine.
+// The 1080 × 1920 image of the week, drawn once into an offscreen canvas.
+// Lumo comes from the island's own engine.
 
 import { BotEngine } from "../character/engine";
 import { parseLook } from "../character/wardrobe";

@@ -1,6 +1,4 @@
-// Island views — DOM ports of IslandViewContent.swift. Paddings, font sizes,
-// colours and wording are copied from the Swift views so both platforms read
-// identically.
+// Island views: the header, the overview and the cards, built in the DOM.
 
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
@@ -169,7 +167,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   // Closes Lumo altogether; it opens again from the Start menu.
   const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
     svg(ICONS.power, 13, { stroke: 2 }));
-  // Plan usage pills (off by default): before the gear, Claude first, as on the Mac.
+  // Plan usage pills (off by default): before the gear, Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
   const antigravityPill = buildPlanPill("antigravity");
@@ -245,7 +243,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
 // ── Overview ──────────────────────────────────────────────────────────────────
 
 function buildOverview(actions: ViewActions): ViewHost {
-  /** The diff open in the left card (a FileDiff id), as activeDiffId on macOS. */
+  /** The diff open in the left card (a FileDiff id). */
   let activeDiffId: number | null = null;
   const closeDiff = () => {
     if (activeDiffId == null) return;
@@ -283,7 +281,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   let mode: "ticker" | "card" | "plan" | "diff" | null = null;
   let cardKey = "";
 
-  // Leaving the overview or folding the island closes the diff, as on macOS.
+  // Leaving the overview or folding the island closes the diff.
   State.subscribe(() => {
     if (activeDiffId != null && (State.view !== "overview" || State.mode !== "expanded")) {
       activeDiffId = null;
@@ -394,7 +392,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         }
         clear(who);
         // The agent's name is already the pill's: the label says what kind of
-        // pill it is, as on the Mac (PillDefinition.sessionSubtitle).
+        // pill it is (the catalog's sessionSubtitle).
         who.append(
           dot(task.color, 7),
           h("span", { class: "name", text: task.name }),
@@ -524,7 +522,7 @@ const KEY_QUIET_MS = 800;
 
 /**
  * The ⌃ in the corner of a waiting card: folds the island to its compact size
- * and leaves the request waiting — nothing is answered (Mac #290). Opening the
+ * and leaves the request waiting — nothing is answered. Opening the
  * island again brings the card back.
  */
 function foldButton(actions: ViewActions): HTMLElement {

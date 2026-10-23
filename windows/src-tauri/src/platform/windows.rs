@@ -269,7 +269,7 @@ extern "system" {
 /// EXTENDED_NAME_FORMAT::NameDisplay.
 const NAME_DISPLAY: i32 = 3;
 
-/// The account's display name ("Louis Raille"): the directory's for a domain
+/// The account's display name ("Ada Lovelace"): the directory's for a domain
 /// or Entra account, else the local account's "Full name", else nothing.
 pub fn user_full_name() -> Option<String> {
     directory_display_name().or_else(local_full_name).filter(|n| !n.trim().is_empty())

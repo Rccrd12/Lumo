@@ -1,6 +1,5 @@
-// Island geometry — ported from IslandTypes.swift + IslandWindowController.islandSize
-// + IslandRootView.botPosition. All values are logical pixels, identical to the
-// macOS app's points.
+// Island geometry: the size of each view and where Lumo sits in it. All values
+// are logical pixels.
 
 export type IslandMode = "hidden" | "compact" | "expanded";
 
@@ -58,8 +57,7 @@ export const NOTCH_H = 32;
 export const COMPACT_W = 288; // NOTCH_W + 104
 /**
  * Lumo's centre from the compact island's left end: close to it, about as
- * far as he is from its top and bottom (the Mac's 40 left room for the
- * notch's ear).
+ * far as he is from its top and bottom.
  */
 export const COMPACT_BOT_X = 18;
 /**
@@ -107,8 +105,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   finished: { height: 160, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
   // Lumo in the card's top-left corner, where the drop sequence keeps him (upload/sequence.ts USC.REST_X/Y).
   upload: { height: 176, botX: 70, botY: 90, botDiameter: 62, agentMode: "column" },
-  // botY 103 = bar top (42 + 58) + 3, so the dot really rides the bar. The Swift
-  // layout says 118 while its own comment says 103; the comment matches the spec.
+  // botY 103 = bar top (42 + 58) + 3, so the dot really rides the bar.
   uploading: { height: 176, botX: 46, botY: 103, botDiameter: 20, agentMode: "none" },
   prompt: { height: 160, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   note: { height: 160, botX: 60, botY: null, botDiameter: 50, agentMode: "column" },
@@ -117,9 +114,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // aside to leave it the full width. Within island.rs PANEL_H with the widest gap.
   settings: { height: 450, botX: 54, botY: 64, botDiameter: 0, agentMode: "none" },
   greeting: { height: 150, botX: 320, botY: 90, botDiameter: 0, agentMode: "none" },
-  // Mac: 160. The extra 24 hold the two lines with top agent, project, busiest
-  // day, longest session, permissions and questions, which the Mac card leaves
-  // to the shared image.
+  // 24 more than the other cards, for the two lines with top agent, project,
+  // busiest day, longest session, permissions and questions.
   recap: { height: 184, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
   wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   // A Gemini Live call (views/live.ts): the chat's room, Lumo where he is in it.
@@ -130,7 +126,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
 
 // The upload views above are only the fallback geometry. Once a file is actually
 // dropped the whole sequence — Lumo included — is drawn by src/upload, which
-// owns its own constants (USC) straight from UploadSequenceEngine.swift.
+// owns its own constants (USC, upload/sequence.ts).
 
 /** The question view with options to pick from: room for two rows of them. */
 export const QUESTION_PICKER_H = 200;
