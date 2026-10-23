@@ -10682,6 +10682,220 @@
    "ru": "Создан ИИ",
    "id": "Dibuat AI",
    "it": "Creato dall'AI"
+  },
+  "System prompt": {
+   "zh-Hans": "系统提示词",
+   "hi": "सिस्टम प्रॉम्प्ट",
+   "es": "Prompt del sistema",
+   "ar": "موجّه النظام",
+   "fr": "Prompt système",
+   "bn": "সিস্টেম প্রম্পট",
+   "pt-BR": "Prompt do sistema",
+   "ru": "Системный промпт",
+   "id": "Prompt sistem",
+   "it": "Prompt di sistema"
+  },
+  "System tools": {
+   "zh-Hans": "系统工具",
+   "hi": "सिस्टम टूल",
+   "es": "Herramientas del sistema",
+   "ar": "أدوات النظام",
+   "fr": "Outils système",
+   "bn": "সিস্টেম টুল",
+   "pt-BR": "Ferramentas do sistema",
+   "ru": "Системные инструменты",
+   "id": "Alat sistem",
+   "it": "Strumenti di sistema"
+  },
+  "MCP tools": {
+   "zh-Hans": "MCP 工具",
+   "hi": "MCP टूल",
+   "es": "Herramientas MCP",
+   "ar": "أدوات MCP",
+   "fr": "Outils MCP",
+   "bn": "MCP টুল",
+   "pt-BR": "Ferramentas MCP",
+   "ru": "Инструменты MCP",
+   "id": "Alat MCP",
+   "it": "Strumenti MCP"
+  },
+  "MCP server instructions": {
+   "zh-Hans": "MCP 服务器说明",
+   "hi": "MCP सर्वर निर्देश",
+   "es": "Instrucciones de servidores MCP",
+   "ar": "تعليمات خوادم MCP",
+   "fr": "Instructions des serveurs MCP",
+   "bn": "MCP সার্ভারের নির্দেশনা",
+   "pt-BR": "Instruções dos servidores MCP",
+   "ru": "Инструкции серверов MCP",
+   "id": "Instruksi server MCP",
+   "it": "Istruzioni dei server MCP"
+  },
+  "Custom agents": {
+   "zh-Hans": "自定义代理",
+   "hi": "कस्टम एजेंट",
+   "es": "Agentes personalizados",
+   "ar": "وكلاء مخصّصون",
+   "fr": "Agents personnalisés",
+   "bn": "কাস্টম এজেন্ট",
+   "pt-BR": "Agentes personalizados",
+   "ru": "Свои агенты",
+   "id": "Agen kustom",
+   "it": "Agenti personalizzati"
+  },
+  "Memory files": {
+   "zh-Hans": "记忆文件",
+   "hi": "मेमोरी फ़ाइलें",
+   "es": "Archivos de memoria",
+   "ar": "ملفات الذاكرة",
+   "fr": "Fichiers de mémoire",
+   "bn": "মেমরি ফাইল",
+   "pt-BR": "Arquivos de memória",
+   "ru": "Файлы памяти",
+   "id": "File memori",
+   "it": "File di memoria"
+  },
+  "Skills": {
+   "zh-Hans": "技能",
+   "hi": "स्किल",
+   "es": "Habilidades",
+   "ar": "المهارات",
+   "fr": "Compétences",
+   "bn": "স্কিল",
+   "pt-BR": "Habilidades",
+   "ru": "Навыки",
+   "id": "Skill",
+   "it": "Skill"
+  },
+  "Messages": {
+   "zh-Hans": "消息",
+   "hi": "संदेश",
+   "es": "Mensajes",
+   "ar": "الرسائل",
+   "fr": "Messages",
+   "bn": "বার্তা",
+   "pt-BR": "Mensagens",
+   "ru": "Сообщения",
+   "id": "Pesan",
+   "it": "Messaggi"
+  },
+  "Kept free for compacting": {
+   "zh-Hans": "为压缩预留",
+   "hi": "कॉम्पैक्ट करने के लिए खाली रखा",
+   "es": "Reservado para compactar",
+   "ar": "محجوز للضغط",
+   "fr": "Réservé à la compaction",
+   "bn": "কমপ্যাক্ট করার জন্য খালি রাখা",
+   "pt-BR": "Reservado para compactar",
+   "ru": "Оставлено для сжатия",
+   "id": "Disisakan untuk pemadatan",
+   "it": "Riservato per compattare"
+  },
+  "Context": {
+   "zh-Hans": "上下文",
+   "hi": "संदर्भ",
+   "es": "Contexto",
+   "ar": "السياق",
+   "fr": "Contexte",
+   "bn": "প্রসঙ্গ",
+   "pt-BR": "Contexto",
+   "ru": "Контекст",
+   "id": "Konteks",
+   "it": "Contesto"
+  },
+  "{used} of {total}": {
+   "zh-Hans": "{used} / {total}",
+   "hi": "{total} में से {used}",
+   "es": "{used} de {total}",
+   "ar": "{used} من {total}",
+   "fr": "{used} sur {total}",
+   "bn": "{total}-এর মধ্যে {used}",
+   "pt-BR": "{used} de {total}",
+   "ru": "{used} из {total}",
+   "id": "{used} dari {total}",
+   "it": "{used} su {total}"
+  },
+  "{free} free": {
+   "zh-Hans": "剩余 {free}",
+   "hi": "{free} खाली",
+   "es": "{free} libres",
+   "ar": "{free} متاحة",
+   "fr": "{free} libres",
+   "bn": "{free} খালি",
+   "pt-BR": "{free} livres",
+   "ru": "Свободно {free}",
+   "id": "{free} kosong",
+   "it": "{free} liberi"
+  },
+  "{count} tools": {
+   "zh-Hans": {
+    "other": "{count} 个工具"
+   },
+   "hi": {
+    "one": "{count} टूल",
+    "other": "{count} टूल"
+   },
+   "es": {
+    "one": "{count} herramienta",
+    "other": "{count} herramientas"
+   },
+   "ar": {
+    "zero": "{count} أداة",
+    "one": "أداة واحدة",
+    "two": "أداتان",
+    "few": "{count} أدوات",
+    "many": "{count} أداة",
+    "other": "{count} أداة"
+   },
+   "fr": {
+    "one": "{count} outil",
+    "other": "{count} outils"
+   },
+   "bn": {
+    "one": "{count}টি টুল",
+    "other": "{count}টি টুল"
+   },
+   "pt-BR": {
+    "one": "{count} ferramenta",
+    "other": "{count} ferramentas"
+   },
+   "ru": {
+    "one": "{count} инструмент",
+    "few": "{count} инструмента",
+    "many": "{count} инструментов",
+    "other": "{count} инструмента"
+   },
+   "id": {
+    "other": "{count} alat"
+   },
+   "it": {
+    "one": "{count} strumento",
+    "other": "{count} strumenti"
+   }
+  },
+  "Loaded when needed": {
+   "zh-Hans": "按需加载",
+   "hi": "ज़रूरत पड़ने पर लोड",
+   "es": "Se cargan cuando hacen falta",
+   "ar": "تُحمَّل عند الحاجة",
+   "fr": "Chargés au besoin",
+   "bn": "দরকার হলে লোড হয়",
+   "pt-BR": "Carregados quando necessário",
+   "ru": "Загружаются по мере надобности",
+   "id": "Dimuat saat diperlukan",
+   "it": "Caricati quando servono"
+  },
+  "and {count} more": {
+   "zh-Hans": "另外 {count} 项",
+   "hi": "और {count}",
+   "es": "y {count} más",
+   "ar": "و{count} أخرى",
+   "fr": "et {count} autres",
+   "bn": "আরও {count}টি",
+   "pt-BR": "e mais {count}",
+   "ru": "и ещё {count}",
+   "id": "dan {count} lainnya",
+   "it": "e altri {count}"
   }
  }
 }

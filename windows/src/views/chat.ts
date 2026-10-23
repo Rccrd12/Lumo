@@ -73,6 +73,7 @@ import { ICONS } from "./icons";
 import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
+import { renderAnswer } from "./context-card";
 import {
   Bridge, onEvent, type BrowserTab, type ChatActivity, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
@@ -237,7 +238,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     const draft = shown.draft ? draftIn(message.content) : null;
     if (draft) reply.append(draftChip(draft.name));
   } else {
-    renderMarkdown(reply, message.content);
+    renderAnswer(reply, message.content);
   }
   // A stopped answer says so on a line of its own, Copy beside it; otherwise
   // Copy floats over the answer's bottom right corner and takes no room.
@@ -390,7 +391,7 @@ function typingDots(label: string): HTMLElement {
 function drawAnswer(into: HTMLElement, text: string, workshop: boolean) {
   const shown = takeListens(takeTimers(text).text).text;
   if (!workshop) {
-    renderMarkdown(into, shown);
+    renderAnswer(into, shown);
     return;
   }
   const words = stripDraft(shown);
