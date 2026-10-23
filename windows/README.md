@@ -241,7 +241,7 @@ flagged *In use*, and two Lumo shortcuts on the same keys are flagged *Used
 twice*. While you record a new one, Lumo lets go of its own so the keys reach
 the recorder.
 
-The defaults are not the Mac's `⌃⌥` letters. On Windows, `Ctrl+Alt` is `AltGr`,
+On Windows, `Ctrl+Alt` is `AltGr`,
 so a global `Ctrl+Alt+E` would swallow every `€` typed on a French or German
 keyboard. The defaults were checked against the AltGr layer of the French,
 German, Spanish, Italian, Portuguese and Brazilian (ABNT2) layouts — that is why
@@ -280,16 +280,15 @@ Lumo always stays in the island: he can't be dragged out onto the desktop
 (earlier versions let him; one left there comes home).
 
 **Live diff.** Every file Claude edits (Edit, MultiEdit, Write) shows up in the
-session ticker with its **+N −M** lines; click it for the diff. Same limits as the
-Mac: past 200 KB or 4 000 lines only the counts are kept, at most 50 diffs per
+session ticker with its **+N −M** lines; click it for the diff. Past 200 KB or
+4 000 lines only the counts are kept, at most 50 diffs per
 session, and they are forgotten an hour after the last edit or when the session
 ends. When Claude finishes, the card keeps the first paragraph of its final
 answer on one line, still, until the next prompt.
 
 ## Your pills
 
-**Settings… → Pills & integrations** lists the tools you use, from the same catalog as
-the Mac app. Pick your **main tool** — VS Code, Cursor, Codex or Antigravity —
+**Settings… → Pills & integrations** lists the tools you use. Pick your **main tool** — VS Code, Cursor, Codex or Antigravity —
 which is always there and doesn't take a slot, then declare up to four more:
 agents (Copilot CLI, Muse Code, OpenCode, Amp, Hermes, Claude
 Desktop), the chat providers (Anthropic, Google AI, OpenAI, Ollama, LM Studio),
@@ -358,7 +357,7 @@ It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
 ### Plan usage
 
-As on the Mac, the island's header can show your plan limits: a small pill
+The island's header can show your plan limits: a small pill
 ("Claude 73%", green below 50 %, orange up to 80 %, red above) for the 5-hour and
 weekly Claude limits, another for Codex and one for Antigravity CLI. Click one for
 the details and the reset times. All are off by default; turn them on in
@@ -379,7 +378,7 @@ the details and the reset times. All are off by default; turn them on in
   once a minute) Lumo starts `codex app-server` and asks it
   `account/rateLimits/read`, as Codex's `/status` does, then stops it (15 s at
   most, never while paused). Codex must be signed in with ChatGPT.
-- **Antigravity CLI** (not on the Mac): nothing is installed either. When the
+- **Antigravity CLI**: nothing is installed either. When the
   pill shows (or is clicked, at most once a minute) Lumo runs
   `agy -p /usage --output-format json --log-file NUL`, agy's own `/usage` printed
   once, with agy's own sign-in (20 s at most, never while paused). The pill shows
@@ -410,22 +409,22 @@ Weekly recap** turns it off or clears it.
 
 ## Languages
 
-Lumo speaks the Mac app's ten languages — English, 简体中文, हिन्दी, Español,
-العربية, Français, বাংলা, Português (Brasil), Русский and Bahasa Indonesia —
-and Italiano, which only Windows has (the Mac's strings in Italian
-are in `src/i18n/strings-it.json`). **Settings… → General → Language** picks one; **System** (the
+Lumo speaks eleven languages — English, 简体中文, हिन्दी, Español,
+العربية, Français, বাংলা, Português (Brasil), Русский, Bahasa Indonesia
+and Italiano (Italian for the catalog's strings is in
+`src/i18n/strings-it.json`). **Settings… → General → Language** picks one; **System** (the
 default) follows your system's language when it is one of these, English
 otherwise. The island, the settings window and the tray menu switch at once —
 nothing restarts, and the island keeps its sessions, steps and chat.
 
 In Arabic the island's cards read right to left; Lumo, the pills and the
 header stay where they are, and commands, code and file paths stay left to
-right. Steps already in a session's ticker keep the language they were written
-in, as on the Mac.
+right. Steps already in a session's ticker keep the language they were
+written in.
 
-The translations are the Mac's own (`i18n-source/Localizable.xcstrings`,
+The translations come from the string catalog (`i18n-source/Localizable.xcstrings`,
 turned into `src/i18n/strings.json` by `node scripts/gen-strings.mjs`), plus
-`src/i18n/extra.json` for what only Windows shows. Both are keyed by
+`src/i18n/extra.json`, written by hand. Both are keyed by
 the English text; a string missing in a language shows in English. The Rust
 side (tray, errors) embeds the same two files.
 
@@ -437,7 +436,7 @@ only ask whether a key exists. Same for every integration key.
 
 The chat also talks to **Google AI (Gemini)**, **OpenAI** and **OpenRouter**:
 add their keys in **Settings… → Chat → Chat providers**, then click the model name
-above the chat box to switch provider and model, as on the Mac. The model list
+above the chat box to switch provider and model. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
 provider's format is ever sent to another. These providers get no web search
@@ -1004,8 +1003,8 @@ Every agent below is installed from **Settings → Agents** with the same steps 
 Claude Code: the exact diff, the path of the dated backup, nothing written until
 you click, and uninstalling removes only Lumo's entries. A config Lumo cannot
 read, or where it finds something it does not expect, is left alone and the
-reason is shown. Each agent gets its own pill (`agent_<name>`, the Mac's ids and
-colours). The files are the Mac's, under `%USERPROFILE%`.
+reason is shown. Each agent gets its own pill (`agent_<name>`). The files are
+the agents' own, under `%USERPROFILE%`.
 
 | Agent | Installs | Permissions |
 |---|---|---|
@@ -1049,41 +1048,35 @@ get the island's card for Claude Code (in any terminal, and in Cursor's),
 Codex, Copilot CLI and Muse Code; other agents and Claude Desktop ask in their
 own window.
 
-## What's different from the Mac version
+## Limits and notes
 
-- No notch, so the island lives at the top centre of the screen and retracts into
-  the top edge instead of hiding in a notch.
+- The island lives at the top centre of the screen and retracts into the top
+  edge when it hides.
 - The closed island says what is going on (the AI at work, notes, a new
   email, timers, the music playing), and the **Email** pill reads an inbox
-  over IMAP: neither is in the Mac app.
-- Permission approval works from **any** terminal; the Mac build only listens to
-  VS Code sessions.
+  over IMAP.
+- Permission approval works from **any** terminal.
 - "Open terminal" finds the session's window by walking up from the relay's
   process to the terminal or editor that runs it. A session in a classic
   console window (`cmd.exe` or PowerShell without Windows Terminal) has no such
   ancestor — conhost owns that window — so its folder opens in VS Code instead,
   as it does when `code` is on your `PATH` and nothing was found.
-- No global keyboard shortcuts yet: a waiting card is folded with its **⌃** or
-  `Esc` in the island, and reopened by clicking the island or Open in the tray.
-- Apple Music, the one pill from the Mac catalog with nothing behind it here,
-  is left out.
-- Not in this version: sending a dropped file by email and dragging Lumo onto
-  a window to attach it as context. On the Mac, email goes through Resend or
-  Apple Mail's scripting; neither has a safe equivalent that attaches a file
-  here, and the drop card would need a third button it doesn't have.
-- Cal.com shows the next bookings as a list rather than the Mac's calendar.
+- A waiting card is folded with its **⌃** or `Esc` in the island, and reopened
+  by clicking the island or Open in the tray.
+- Apple Music has nothing behind it on Windows, so its pill is left out.
+- Not in this version: sending a dropped file by email, and dragging Lumo onto
+  a window to attach it as context.
+- Cal.com shows the next bookings as a list.
 - The Cursor pill carries both Cursor Agent's own hooks and Claude Code running
   in Cursor's terminal.
 - Hermes: Lumo writes the plugin but does not run the `hermes` CLI, so it is
   turned on once by hand. Hermes is untested on Windows.
-- Plan usage: the user's previous status line runs through Git Bash (`/bin/sh`
-  on the Mac); without Git Bash it is not run, rather than
-  guessed at with `cmd`. The Codex CLI is looked for on `PATH` and in npm's,
-  Volta's, Bun's and pnpm's folders.
-- The chat's model picker opens inside the chat card instead of a popover, and
-  it also offers OpenRouter and any OpenAI-compatible server, which the Mac
-  does not. Google AI, OpenAI and OpenRouter can see an image you dropped (sent
-  inline), where the Mac sends its name only.
+- Plan usage: the user's previous status line runs through Git Bash; without
+  Git Bash it is not run, rather than guessed at with `cmd`. The Codex CLI is
+  looked for on `PATH` and in npm's, Volta's, Bun's and pnpm's folders.
+- The chat's model picker opens inside the chat card, and offers OpenRouter
+  and any OpenAI-compatible server too. Google AI, OpenAI and OpenRouter can
+  see an image you dropped (sent inline).
 - Live diff: the relay forwards an edit's text whole only once the edit is done
   (PostToolUse), up to 256 KB per string and 512 KB per event. A bigger edit
   shows its "Edits · file" step without counts rather than wrong ones. The
@@ -1091,39 +1084,34 @@ own window.
   never the file itself. Counts and diffs come from Claude Code's Edit,
   MultiEdit and Write, on whichever pill its session is on (VS Code, Cursor,
   Claude Desktop); other agents' edits show as plain steps.
-- The GitHub lists are clicked, not walked with the arrow keys, and there is no
-  iPhone to keep fetching them while the pill is off.
-- Keyboard shortcuts use `Ctrl+Alt` where the Mac uses `⌃⌥`, with different
-  keys (see [Keyboard shortcuts](#keyboard-shortcuts)), and `Ctrl` where the
-  Mac uses `⌘` inside the island. "Bring the terminal forward" is "Open
-  terminal" here. Not in this version: sending Lumo to the desktop (he stays
-  in the island) and attaching the front window (their ids are kept for later), moving through a card's
-  list (`⌘↑` `⌘↓` `⌘O`) and the diff (`⌘E`). The island only reads its own
-  shortcuts while it has the keyboard: in the chat, or after a global shortcut
-  opened it. **Go to alert** brings up any agent's waiting card on its own pill;
-  **Toggle the island** folds a waiting card rather than dropping it, like `Esc`
-  in the island.
+- The GitHub lists are clicked, not walked with the arrow keys.
+- Keyboard shortcuts: the global ones use `Ctrl+Alt` (see
+  [Keyboard shortcuts](#keyboard-shortcuts)), the island's own use `Ctrl`.
+  Moving through a card's list or the diff with the keyboard is not in this
+  version. The island only reads its own shortcuts while it has the keyboard:
+  in the chat, or after a global shortcut opened it. **Go to alert** brings up
+  any agent's waiting card on its own pill; **Toggle the island** folds a
+  waiting card rather than dropping it, like `Esc` in the island.
 - Weekly recap:
-  - Sharing happens inside the island instead of a separate panel, and Save
-    writes straight into Pictures (or Downloads) instead of asking where. There
-    is no system Share sheet; Copy uses the web clipboard.
+  - Sharing happens inside the island, and Save writes straight into Pictures
+    (or Downloads) without asking where. There is no system Share sheet; Copy
+    uses the web clipboard.
   - Questions are counted when an agent asks one (`AskUserQuestion`), whether
     it is then answered in the island or in the terminal. Permissions count the
     Allow and Deny clicks on the island's card, for every agent that gets one.
   - There is no sleep/wake notification to listen to without a background
     loop, so after the machine wakes the Monday card waits for the first agent
     to start or for you to hover the island.
-  - The card is 24 px taller than the Mac's: it also lists top agent, project,
-    busiest day, longest session, permissions and questions, which the Mac
-    leaves to the image. A turn cut short by the session ending still counts.
+  - The card lists top agent, project, busiest day, longest session,
+    permissions and questions too. A turn cut short by the session ending
+    still counts.
   - Tray → Pause doesn't stop the history (it stays on the machine anyway);
     switch it off in Settings → General.
 - The wardrobe opens with a right-click on Lumo, from the tray menu, or with
   its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
-  is cut by the top edge of the screen, as it is by the notch on a Mac.
+  is cut by the top edge of the screen.
 - Languages: chosen in Settings, independently of the system, and applied
   without a restart. Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep
   their sides.
-- Lumo doesn't go out onto the desktop: he stays in the island, and the Mac's
-  ⌃⌥D shortcut isn't there.
+- Lumo stays in the island: he doesn't go out onto the desktop.
