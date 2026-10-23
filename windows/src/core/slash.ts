@@ -13,10 +13,10 @@
 // helpers, so they can be tested without a webview.
 
 import { N_ } from "../i18n/i18n";
-import { isCliProvider } from "./providers";
+import { effortsFor, isCliProvider } from "./providers";
 
 /** What one of Lumo's own commands does in the chat. */
-export type SlashAction = "new" | "history" | "model" | "attach" | "screen" | "permissions" | "timer";
+export type SlashAction = "new" | "history" | "model" | "effort" | "attach" | "screen" | "permissions" | "timer";
 
 export interface SlashCommand {
   /** Without the slash. */
@@ -62,6 +62,7 @@ const LUMO: readonly SlashCommand[] = [
   { name: "new", note: N_("New chat"), icon: "plus", kind: "lumo", action: "new" },
   { name: "history", note: N_("Past chats"), icon: "clock", kind: "lumo", action: "history" },
   { name: "model", note: N_("Switch provider or model"), icon: "gear", kind: "lumo", action: "model" },
+  { name: "effort", note: N_("Effort"), icon: "lightbulb", kind: "lumo", action: "effort" },
   { name: "attach", note: N_("Attach a file"), icon: "paperclip", kind: "lumo", action: "attach" },
   { name: "screen", note: N_("Share your screen or open windows"), icon: "display", kind: "lumo", action: "screen" },
   { name: "permissions", note: N_("Permissions"), icon: "shield", kind: "lumo", action: "permissions" },
@@ -71,8 +72,20 @@ const LUMO: readonly SlashCommand[] = [
 /** What every Claude Code answers to, before a turn says what this one has. */
 export const CLAUDE_CODE_DEFAULT = ["compact", "context"];
 
-/** Claude Code's commands Lumo leaves out: a new chat is Lumo's /new. */
-const CLAUDE_CODE_HIDDEN = new Set(["clear"]);
+/**
+ * Claude Code's commands Lumo leaves out, each tried from the chat: a new chat
+ * is Lumo's /new; the rest are the terminal's own (its colours, settings,
+ * session names, reloads, memory dumps…), need a terminal or a project folder
+ * the chat doesn't have, keep running after the turn ends, or answer only
+ * that they aren't available here.
+ */
+const CLAUDE_CODE_HIDDEN = new Set([
+  "clear",
+  "design", "design-sync",
+  "advisor", "agents", "autocompact", "color", "config", "fast", "focus", "goal", "heapdump",
+  "import", "init", "insights", "list-agents", "loop", "output-style", "reload-plugins", "reload-skills",
+  "rename", "skill-doctor", "team-onboarding", "usage", "workflow-launch-exec",
+]);
 
 const CLI_NOTES: Record<string, string> = {
   compact: SLASH_STRINGS.compact,
@@ -86,10 +99,13 @@ export function isCommandName(name: string): boolean {
 
 /**
  * The menu's commands with `provider`: Lumo's (the shield's only for the
- * CLIs), then Claude Code's (`reported`, as its last turn listed them).
+ * CLIs, the effort's only where there is one to pick), then Claude Code's (`reported`, as its last turn listed them).
  */
 export function slashCommands(provider: string, reported: readonly string[] | null, tools: readonly CommandTool[] = []): SlashCommand[] {
-  const lumo = [...LUMO.filter((c) => c.action !== "permissions" || isCliProvider(provider)), ...toolCommands(provider, tools)];
+  const own = LUMO.filter((c) =>
+    c.action === "permissions" ? isCliProvider(provider) : c.action === "effort" ? effortsFor(provider).some((e) => e !== "") : true,
+  );
+  const lumo = [...own, ...toolCommands(provider, tools)];
   if (provider !== "claude-code") return lumo;
   const taken = new Set(lumo.map((c) => c.name));
   const seen = new Set<string>();

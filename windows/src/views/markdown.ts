@@ -1,7 +1,8 @@
 // Markdown in the chat's answers, as on the Mac (ChatMarkdown.swift and
 // ChatMarkdownView.swift): headings, paragraphs, fenced code with a copy button,
 // bullet and numbered lists, quotes and rules, with bold, italic, `code` and
-// links inside the text — and TeX math ($…$, $$…$$, \(…\), \[…\]), drawn
+// links inside the text, and — on Windows only — tables (Claude Code's
+// commands, /doctor among them, answer with them) — and TeX math ($…$, $$…$$, \(…\), \[…\]), drawn
 // by math.ts.
 //
 // Everything is built as DOM nodes with textContent, never as HTML, so nothing
@@ -27,12 +28,40 @@ export type Block =
   | { kind: "item"; prefix: string; text: string; indent: number }
   | { kind: "quote"; text: string }
   | { kind: "math"; tex: string }
+  /** The header row, then the rows, as cells of inline text. */
+  | { kind: "table"; head: string[]; rows: string[][] }
   | { kind: "rule" };
 
 const isRule = (s: string) => s === "---" || s === "***" || s === "___";
 const isBullet = (s: string) => /^[-*+] /.test(s);
 const ordered = (s: string) => /^(\d+)\.\s+/.exec(s);
 const isQuote = (s: string) => s.startsWith("> ") || s === ">";
+const isTableRow = (s: string) => s.startsWith("|") && s.length > 1;
+/** The line under a table's header: `|---|:--:|`. */
+const isTableRule = (s: string | undefined) => s != null && /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(s.trim()) && s.includes("-");
+/** A table starts at `i`: a row, and the rule right under it. */
+const tableAt = (lines: string[], i: number) => isTableRow(lines[i].trim()) && isTableRule(lines[i + 1]);
+
+/** A row's cells, without the outer pipes; `\|` stays a pipe inside a cell. */
+function tableCells(line: string): string[] {
+  const cells: string[] = [];
+  let cell = "";
+  const s = line.trim();
+  for (let i = 0; i < s.length; i++) {
+    if (s[i] === "\\" && s[i + 1] === "|") {
+      cell += "|";
+      i++;
+    } else if (s[i] === "|") {
+      cells.push(cell.trim());
+      cell = "";
+    } else cell += s[i];
+  }
+  cells.push(cell.trim());
+  // The outer pipes leave an empty cell at each end.
+  if (s.startsWith("|")) cells.shift();
+  if (cells.length > 1 && s.endsWith("|") && !s.endsWith("\\|")) cells.pop();
+  return cells;
+}
 
 /** Same rules as the Mac's parser, line by line. */
 export function parseMarkdown(input: string): Block[] {
@@ -89,6 +118,14 @@ export function parseMarkdown(input: string): Block[] {
       continue;
     }
 
+    if (tableAt(lines, i)) {
+      const head = tableCells(line);
+      const rows: string[][] = [];
+      for (i += 2; i < lines.length && isTableRow(lines[i].trim()); i++) rows.push(tableCells(lines[i]));
+      blocks.push({ kind: "table", head, rows });
+      continue;
+    }
+
     const stripped = line.trim();
     if (isRule(stripped)) {
       blocks.push({ kind: "rule" });
@@ -124,7 +161,7 @@ export function parseMarkdown(input: string): Block[] {
       const next = lines[i];
       const s = next.trim();
       if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || isBullet(s) || isRule(s) || ordered(s)) break;
-      if (s.startsWith("$$") || s.startsWith("\\[")) break;
+      if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i)) break;
       para.push(next);
     }
     blocks.push({ kind: "paragraph", text: para.join("\n") });
@@ -284,6 +321,9 @@ export function copyButton(text: string, cls = "md-copy"): HTMLElement {
   return btn;
 }
 
+/** More columns than this and a table is drawn row by row instead. */
+const WIDE_TABLE = 3;
+
 function render(block: Block): HTMLElement {
   switch (block.kind) {
     case "heading": {
@@ -309,6 +349,43 @@ function render(block: Block): HTMLElement {
       const text = h("span", { class: "md-p" });
       inline(block.text, text);
       return h("div", { class: "md-quote" }, h("i"), text);
+    }
+    case "table": {
+      const cell = (tag: "th" | "td" | "div", text: string) => {
+        const el = h(tag);
+        inline(text, el);
+        return el;
+      };
+      const width = Math.max(block.head.length, ...block.rows.map((r) => r.length));
+      // Too wide for the chat: each row on its own, its first cell as a title,
+      // the others under it with their column's name.
+      if (width > WIDE_TABLE) {
+        return h(
+          "div",
+          { class: "md-rows" },
+          ...block.rows.map((r) => {
+            const fields = block.head.slice(1).map((name, n) => [name, r[n + 1] ?? ""]).filter(([, v]) => v);
+            return h(
+              "div",
+              { class: "md-row" },
+              cell("div", r[0] ?? ""),
+              ...fields.map(([name, value]) => {
+                const field = cell("div", value);
+                field.className = "md-field";
+                field.prepend(h("span", { class: "md-field-name", text: name }));
+                return field;
+              }),
+            );
+          }),
+        );
+      }
+      const row = (tag: "th" | "td", cells: string[]) =>
+        h("tr", {}, ...Array.from({ length: width }, (_, n) => cell(tag, cells[n] ?? "")));
+      return h(
+        "div",
+        { class: "md-table" },
+        h("table", {}, h("thead", {}, row("th", block.head)), h("tbody", {}, ...block.rows.map((r) => row("td", r)))),
+      );
     }
     case "rule":
       return h("hr", { class: "md-rule" });

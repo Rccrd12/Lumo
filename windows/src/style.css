@@ -1983,6 +1983,77 @@ input[type="range"]::-webkit-slider-thumb {
   opacity: 0.3;
 }
 
+/* Tables (Windows only): wider than the chat, they scroll on their own. */
+.md-table {
+  max-width: 100%;
+  overflow-x: auto;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  white-space: normal;
+}
+
+.md-table table {
+  border-collapse: collapse;
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+}
+
+.md-table th,
+.md-table td {
+  padding: 5px 9px;
+  text-align: start;
+  vertical-align: top;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  overflow-wrap: break-word;
+  min-width: 56px;
+  max-width: 240px;
+}
+
+.md-table th {
+  font-weight: 600;
+  color: var(--dim);
+  background: rgba(255, 255, 255, 0.03);
+  white-space: nowrap;
+}
+
+.md-table tbody tr:last-child td {
+  border-bottom: 0;
+}
+
+/* A table too wide for the chat, row by row: the first cell as a title. */
+.md-rows {
+  display: flex;
+  flex-direction: column;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  white-space: normal;
+}
+
+.md-row {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 7px 10px;
+  font: 500 12px var(--font);
+  color: var(--ink);
+  overflow-wrap: break-word;
+  min-width: 0;
+}
+
+.md-row + .md-row {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.md-field {
+  font: 400 11.5px var(--font);
+  color: #b0b5be;
+}
+
+.md-field-name {
+  color: var(--dim-3);
+  margin-inline-end: 6px;
+}
+
 .typing {
   display: flex;
   gap: 4px;
