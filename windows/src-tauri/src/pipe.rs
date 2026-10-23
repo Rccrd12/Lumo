@@ -43,6 +43,8 @@ const DECISION_TIMEOUT: Duration = Duration::from_secs(108);
 /// see for nearly two minutes.
 const ACK_TIMEOUT: Duration = Duration::from_millis(800);
 const MAX_PAYLOAD: usize = 1 << 20;
+/// How long to wait before making a fresh pipe instance again after a failure.
+const REOPEN_RETRY: Duration = Duration::from_secs(1);
 
 /// What the island can say about a permission request.
 pub enum Reply {
@@ -98,11 +100,18 @@ pub fn start(app: AppHandle) {
                 continue;
             }
             // Hand the connected instance to a task and listen on a fresh one.
-            let next = match ServerOptions::new().create(&name) {
-                Ok(s) => s,
-                Err(err) => {
-                    log::line(format!("cannot reopen the relay pipe: {err}"));
-                    return;
+            // A fresh instance that cannot be made now is tried again: giving
+            // up would leave every hook unheard until Lumo restarts.
+            let mut failed = false;
+            let next = loop {
+                match ServerOptions::new().create(&name) {
+                    Ok(s) => break s,
+                    Err(err) => {
+                        if !std::mem::replace(&mut failed, true) {
+                            log::line(format!("cannot reopen the relay pipe: {err} (trying again)"));
+                        }
+                        tokio::time::sleep(REOPEN_RETRY).await;
+                    }
                 }
             };
             let connected = std::mem::replace(&mut server, next);
