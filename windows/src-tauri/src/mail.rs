@@ -32,6 +32,7 @@ use tokio_rustls::{client::TlsStream, TlsConnector};
 use crate::i18n::{t, tf};
 use crate::integrations::{emit, IntegrationUpdate};
 use crate::island::WINDOW_LABEL;
+use crate::settings::Settings;
 use crate::{log, secrets};
 
 pub const ID: &str = "integration_mail";
@@ -90,6 +91,14 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 pub fn wake() {
     *LAST_SENT.lock().unwrap() = None;
     WAKE.notify_one();
+}
+
+/// Whether a change of settings concerns the Email pill: turned on or off (its
+/// connection opens or closes now), its promotions filter, or the language its
+/// errors are written in. Any other change leaves the inbox alone.
+pub fn concerned(before: &Settings, after: &Settings) -> bool {
+    let on = |s: &Settings| s.active_integrations.iter().any(|id| id == ID);
+    on(before) != on(after) || before.mail_hide_promotions != after.mail_hide_promotions || before.language != after.language
 }
 
 /// The keys changed: sign in again with the new ones.
@@ -1643,6 +1652,22 @@ fn preview(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_change_that_concerns_the_email_pill_wakes_it() {
+        let before = Settings { active_integrations: vec![ID.to_string()], ..Settings::default() };
+        assert!(!concerned(&before, &before.clone()));
+        let mut other = before.clone();
+        other.island_zoom += 0.1;
+        other.autostart = !other.autostart;
+        assert!(!concerned(&before, &other), "nothing of the pill's");
+        let off = Settings { active_integrations: Vec::new(), ..before.clone() };
+        assert!(concerned(&before, &off), "turned off");
+        let filtered = Settings { mail_hide_promotions: !before.mail_hide_promotions, ..before.clone() };
+        assert!(concerned(&before, &filtered), "its filter");
+        let italian = Settings { language: "it".into(), ..before.clone() };
+        assert!(concerned(&before, &italian), "its errors' language");
+    }
 
     #[test]
     fn questions_about_email_bring_the_inbox() {

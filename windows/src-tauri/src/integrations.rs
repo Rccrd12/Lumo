@@ -571,8 +571,6 @@ pub fn github_token_changed(app: &AppHandle) {
 /// Switching the pill off forgets the pulse, so switching it back on starts
 /// silent instead of alerting on everything that changed in between.
 pub fn settings_saved(app: &AppHandle, active_integrations: &[String]) {
-    // The Email pill turned on or off: its connection opens or closes now.
-    crate::mail::wake();
     if active_integrations.iter().any(|id| id == GITHUB_ID) {
         return;
     }
