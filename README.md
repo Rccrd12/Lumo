@@ -98,6 +98,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.15.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.15.0) | Oct 25, 2026 | The session's steps fill the overview card and open up; your tools with Antigravity CLI and Codex; Antigravity CLI's `/usage`, `/credits`, `/skills` and `/compact` |
 | [0.14.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.14.0) | Oct 23, 2026 | `/context` as a compact card; tables in the answers; a tidier "/" menu with `/effort`; Update now with the .msi |
 | [0.13.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.13.2) | Oct 23, 2026 | Formulas in the chat: tall brackets around matrices, aligned columns, vector arrows; Claude Code's commands run even with what's open shared |
 | [0.13.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.13.1) | Oct 22, 2026 | Attachments and Chat files keep their place when switching; Chat files show their folder |
