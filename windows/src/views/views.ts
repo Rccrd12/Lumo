@@ -3,6 +3,7 @@
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
+import { StepsCard } from "./steps";
 import { State, type AgentTask } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../character/minibots";
@@ -250,9 +251,34 @@ function buildOverview(actions: ViewActions): ViewHost {
     activeDiffId = null;
     State.notify();
   };
-  const ticker = new Ticker((diffId) => {
+  /** The list of the session's steps stands in for the ticker. */
+  let stepsOpen = false;
+  const closeSteps = () => {
+    if (!stepsOpen) return;
+    stepsOpen = false;
+    State.notify();
+  };
+  const steps = new StepsCard({
+    dismiss: () => {
+      actions.blip();
+      closeSteps();
+    },
+    openDiff: (diffId) => {
+      actions.blip();
+      activeDiffId = diffId;
+      State.notify();
+    },
+  });
+  const ticker = new Ticker(({ seq, diffId }) => {
     actions.blip();
-    activeDiffId = diffId;
+    if (diffId != null) {
+      activeDiffId = diffId;
+    } else {
+      const task = State.focusTask;
+      if (!task) return;
+      stepsOpen = true;
+      steps.show(task, seq);
+    }
     State.notify();
   });
   const who = h("div", { class: "who" });
@@ -278,22 +304,24 @@ function buildOverview(actions: ViewActions): ViewHost {
   let pillIds = "";
   let detailOpen = false;
   let lastFocus: string | null = null;
-  let mode: "ticker" | "card" | "plan" | "diff" | null = null;
+  let mode: "ticker" | "steps" | "card" | "plan" | "diff" | null = null;
   let cardKey = "";
 
   // Leaving the overview or folding the island closes the diff.
   State.subscribe(() => {
-    if (activeDiffId != null && (State.view !== "overview" || State.mode !== "expanded")) {
+    if (State.view !== "overview" || State.mode !== "expanded") {
       activeDiffId = null;
+      stepsOpen = false;
     }
   });
-  // Escape steps back out of the diff before it closes the island.
+  // Escape steps back out of the diff, then the list of steps, before it closes the island.
   window.addEventListener(
     "keydown",
     (e) => {
-      if (e.key !== "Escape" || activeDiffId == null || State.view !== "overview") return;
+      if (e.key !== "Escape" || (activeDiffId == null && !stepsOpen) || State.view !== "overview") return;
       e.stopImmediatePropagation();
-      closeDiff();
+      if (activeDiffId != null) closeDiff();
+      else closeSteps();
     },
     true,
   );
@@ -343,6 +371,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         lastFocus = task?.id ?? null;
         detailOpen = false;
         activeDiffId = null;
+        stepsOpen = false;
         cardKey = "";
         mode = null;
       }
@@ -383,7 +412,16 @@ function buildOverview(actions: ViewActions): ViewHost {
             open: (path) => void Bridge.openFileInVSCode(path),
           }));
         }
+      } else if (task && sessionActive && stepsOpen && task.steps.length > 0) {
+        if (mode !== "steps") {
+          clear(leftBody);
+          leftBody.append(steps.el);
+          mode = "steps";
+          cardKey = "";
+        }
+        steps.sync(task);
       } else if (task && sessionActive) {
+        stepsOpen = false;
         if (mode !== "ticker") {
           clear(leftBody);
           leftBody.append(tickerBody);

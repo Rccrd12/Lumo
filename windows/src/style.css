@@ -934,6 +934,9 @@ body {
 .card-body {
   position: relative;
   z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
   padding-top: 10px;
 }
 
@@ -983,31 +986,30 @@ body {
 
 /* Ticker */
 
+/* As many lines as the card holds (views/ticker.ts counts them); no fade at
+   the edges, which made the newest step hard to read: the oldest lines dim
+   instead, and the one leaving fades on its own. */
 .ticker {
   position: relative;
-  height: 44px;
-  margin: 6px 12px 0 108px;
+  flex: 1 1 auto;
+  min-height: 44px;
+  margin: 6px 12px 12px 108px;
   overflow: hidden;
-  -webkit-mask-image: linear-gradient(
-    to bottom,
-    transparent 0%,
-    #000 12%,
-    #000 85%,
-    transparent 100%
-  );
-  mask-image: linear-gradient(to bottom, transparent 0%, #000 12%, #000 85%, transparent 100%);
 }
 
 .ticker-row {
   position: absolute;
   left: 0;
-  right: 0;
   height: 22px;
   display: flex;
   align-items: center;
   gap: 6px;
   transform-origin: left center;
   will-change: transform, opacity;
+}
+
+.ticker-row:not(.empty):hover .tick-text {
+  filter: brightness(1.3);
 }
 
 .ticker-row .tick-icon {
@@ -1039,6 +1041,126 @@ body {
 
 .ticker-row .tick-count .minus {
   color: var(--red);
+}
+
+/* ── Steps card (overview, left card): the session's steps, whole ──────── */
+
+.steps-card {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  padding: 4px 10px 6px 108px;
+}
+
+.steps-card .diff-head {
+  padding-right: 22px; /* clear of the ↗ in the corner */
+}
+
+.steps-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding-top: 2px;
+}
+
+.steps-list::-webkit-scrollbar {
+  display: none;
+}
+
+.step-line {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 3px 4px;
+  margin: 0 -4px;
+  border-radius: 6px;
+}
+
+.step.more .step-line:hover,
+.step.diff .step-line:hover {
+  background: rgba(255, 255, 255, 0.045);
+}
+
+.step-icon {
+  flex: 0 0 12px;
+  height: 16px;
+  display: grid;
+  place-items: center;
+  color: #454850;
+}
+
+.step.more .step-icon,
+.step.current .step-icon {
+  color: var(--dim-2);
+}
+
+.step-icon svg {
+  transition: transform 0.15s ease;
+}
+
+.step.open .step-icon svg {
+  transform: rotate(90deg);
+}
+
+.step-text {
+  flex: 0 1 auto;
+  min-width: 0;
+  font: 500 12px/16px var(--font);
+  color: var(--dim);
+  overflow-wrap: anywhere;
+}
+
+.step.current .step-text {
+  color: var(--ink);
+}
+
+.step.diff .step-text {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.step .tick-count {
+  flex: 0 0 auto;
+  margin-left: -6px; /* the counts sit right after the name */
+  font: 500 10px/16px var(--mono);
+  white-space: pre;
+}
+
+.step .plus {
+  color: var(--green);
+}
+
+.step .minus {
+  color: var(--red);
+}
+
+.step-detail {
+  margin: 2px 0 6px 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  user-select: text;
+}
+
+.step-detail-text {
+  font: 400 11.5px/1.4 var(--font);
+  color: var(--dim);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.step-detail-code {
+  font: 400 10.5px/1.4 var(--mono);
+  color: #c9cdd4;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  background: rgba(255, 255, 255, 0.04);
+  border-radius: 6px;
+  padding: 5px 7px;
 }
 
 /* ── Diff card (overview, left card) — DiffCardView ─────────────────────── */
