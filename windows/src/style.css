@@ -2694,6 +2694,13 @@ input[type="range"]::-webkit-slider-thumb {
   background: color-mix(in srgb, var(--accent) 18%, transparent);
 }
 
+/* A narrow picker (the tool workshop's) drops "Recommended", then Auto
+   itself, rather than push them past its edge (chat.ts fitEfforts). */
+.effort-auto.no-note .effort-auto-note,
+.effort-auto.no-room {
+  display: none;
+}
+
 .effort-auto-note {
   font-size: 10px;
   font-weight: 400;
@@ -2707,8 +2714,7 @@ input[type="range"]::-webkit-slider-thumb {
   --edge: 11px;
   position: relative;
   flex: 0 1 220px;
-  /* Shrinks before Auto is pushed out of a narrow picker (the workshop's). */
-  min-width: 48px;
+  min-width: 120px;
   height: 24px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.07);

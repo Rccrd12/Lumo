@@ -694,7 +694,24 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     // it is on, and Auto at the end.
     efforts.append(h("div", { class: "effort-row" }, track, value, auto));
     show();
+    fitEfforts();
   }
+
+  /**
+   * In a narrow picker Auto first comes up to the slider (its margin), then
+   * loses "Recommended", then goes: the slider and its level never give way.
+   */
+  function fitEfforts() {
+    const row = efforts.firstElementChild as HTMLElement | null;
+    const auto = row?.querySelector<HTMLElement>(".effort-auto");
+    if (!row || !auto) return;
+    auto.classList.remove("no-note", "no-room");
+    const over = () => row.scrollWidth > row.clientWidth;
+    if (over()) auto.classList.add("no-note");
+    if (over()) auto.classList.add("no-room");
+  }
+  // Only when the picker's width changes (opened, or the island resized).
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => fitEfforts()).observe(efforts);
 
   /** Models already asked for, by provider; a model server is asked again each time. */
   const cache = new Map<string, ModelInfo[]>();
