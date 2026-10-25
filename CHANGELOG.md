@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows 0.15.0 — October 25, 2026
+
+- **The session's steps fill the card**: on the overview, an agent at work shows as many of its steps as the card holds, the newest last and readable, without the fade that hid it. A click opens all its steps; where a step has more to show (the whole command, the full path, a failed command's error, the whole prompt or answer) its arrow opens it in place
+- **Your tools for every CLI**: Antigravity CLI now gets your tools too, each call asking with Lumo's card as with Claude Code, and the "/" menu lists your tools' commands with Codex as well
+- **Antigravity CLI's own commands in the chat**: with Antigravity CLI the "/" menu offers `/compact`, `/usage`, `/credits` and `/skills`. `/usage` answers with a card of your limits, with the bar, the percentage used and when it resets
+- **Fixed**: an Antigravity session that stopped without saying so stayed on the island as working for good. After 10 minutes without news it goes away, unless one of its cards is waiting for you
+- **Fixed**: in the tool workshop, Claude Code installed with npm never started and the island asked whether it was signed in. It starts again
+- **Change with Lumo** goes back to the tool's workshop chat instead of starting a new one each time, and **Add to Claude Code** says it is working while it adds the tools
+- **Fixed**: in a narrow window, the effort's Auto no longer runs past the edge of the picker, and the chat's buttons keep their spacing
+
 ## Windows 0.14.0 — October 23, 2026
 
 - **`/context` as a card**: with Claude Code, `/context` no longer fills the chat with tables. It answers with a small card: how much of the context is used, a bar of what fills it with a short legend, and under Details the MCP servers, skills, memory files and the tools loaded only when needed. Copy still copies Claude Code's own text
