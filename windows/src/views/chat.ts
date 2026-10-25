@@ -2210,7 +2210,7 @@ export function buildPrompt(
   /**
    * The Tools tab opened the workshop. Add a tool goes on with the tool being
    * made, unless it is saved as it is (then a new one starts); Change with
-   * Lumo opens a new workshop chat on that tool.
+   * Lumo goes back to the workshop chat already on that tool, or opens one.
    */
   function takeForgeAsk() {
     const ask = State.forgeAsk;
@@ -2230,6 +2230,14 @@ export function buildPrompt(
    * which the AI sees as its own answer, and saving updates that tool.
    */
   async function openOnTool(tool: ToolInfo) {
+    // The newest workshop chat that opened on (or saved) this tool, as it was left.
+    const onTool = (id: string) => isWorkshopChat(id) && savedLink(id)?.tool === tool.id;
+    if (onTool(State.chatId) && State.chatHistory.length > 0) return;
+    const last = loadChats().filter((c) => onTool(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (last) {
+      openChat(last);
+      return;
+    }
     const files = (await Bridge.toolsFiles(tool.id)) ?? [];
     newChat();
     const seed = draftOf(tool, files.map(([name, content]) => ({ name, content })));
