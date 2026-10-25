@@ -33,6 +33,12 @@ export interface AgentTask {
    * `stepIndex` stops moving once it is full; this keeps counting.
    */
   stepSeq?: number;
+  /**
+   * What each step can show once opened (views/steps.ts), aligned with
+   * `steps`. Only trusted while both have the same length: a place that
+   * resets `steps` on its own simply leaves no detail.
+   */
+  stepDetails?: (StepDetail | null)[];
   source: AgentSource;
   isIntegration: boolean;
   emote?: BotEmoteName | null;
@@ -43,6 +49,24 @@ export interface AgentTask {
   sessionId?: string | null;
   /** Claude's final message after Stop, one line; cleared when a new turn starts. */
   finalLine?: string | null;
+}
+
+/**
+ * The whole of what a step's one line cuts short: the command, the path, the
+ * prompt, the error. Kept only when the event carried it.
+ */
+export interface StepDetail {
+  /** Plain text: the tool's description, a whole prompt or answer, an error. */
+  text?: string;
+  /** Monospace: a command, a path, a URL, a pattern. */
+  code?: string;
+}
+
+/** The detail of `task.steps[index]`, when one was kept. */
+export function stepDetailAt(task: AgentTask, index: number): StepDetail | null {
+  const details = task.stepDetails;
+  if (!details || details.length !== task.steps.length) return null;
+  return details[index] ?? null;
 }
 
 export interface ApprovalInfo {
@@ -635,12 +659,18 @@ class AppState {
     this.notify();
   }
 
-  appendStep(id: string, step: string) {
+  appendStep(id: string, step: string, detail: StepDetail | null = null) {
     const t = this.tasks.find((x) => x.id === id);
     if (!t) return;
     const newest = t.stepSeq ?? t.steps.length - 1;
+    const details = t.stepDetails?.length === t.steps.length ? t.stepDetails : t.steps.map(() => null);
     t.steps.push(step);
-    if (t.steps.length > 20) t.steps.shift();
+    details.push(detail);
+    if (t.steps.length > 20) {
+      t.steps.shift();
+      details.shift();
+    }
+    t.stepDetails = details;
     t.stepIndex = t.steps.length - 1;
     t.stepSeq = newest + 1;
     this.notify();

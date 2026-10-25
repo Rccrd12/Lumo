@@ -9,6 +9,7 @@ import { userToolTarget } from "../core/tools";
 import { COMPACT_TEXT, compactNotice } from "../core/compact";
 import { Bridge, onEvent } from "../core/bridge";
 import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
+import { failureDetail, fullTextDetail, toolStepDetail } from "../core/step-detail";
 import { Sound } from "../core/sound";
 import { PillSessions } from "../core/pill-sessions";
 import { State, type ApprovalInfo, type AskedQuestion } from "../core/state";
@@ -197,6 +198,8 @@ interface HookPayload {
   last_assistant_message?: string;
   tool_name?: string;
   tool_input?: Record<string, unknown>;
+  /** PostToolUseFailure: what went wrong. */
+  error?: string;
   /** Set by the relay when an edit was too big to forward whole (> 256 KB). */
   lumo_diff_truncated?: boolean;
   /** Optional agent tag: lowercase, digits and hyphens, ≤ 24 chars. */
@@ -531,7 +534,7 @@ function handleHook(island: Island, payload: HookPayload) {
       State.updateTask(agentId, "thinking");
       // The field is `prompt`; reading `message` meant this step was always blank.
       const asked = payload.prompt ?? payload.message;
-      if (asked) State.appendStep(agentId, asked.slice(0, 60));
+      if (asked) State.appendStep(agentId, asked.slice(0, 60), fullTextDetail(asked, asked.slice(0, 60)));
       surface("overview", false);
       break;
     }
@@ -542,7 +545,7 @@ function handleHook(island: Island, payload: HookPayload) {
       clearFinalLine(agentId);
       State.updateTask(agentId, "working");
       const tool = payload.tool_name ?? "Tool";
-      State.appendStep(agentId, stepLabel(tool, payload.tool_input ?? {}));
+      State.appendStep(agentId, stepLabel(tool, payload.tool_input ?? {}), toolStepDetail(tool, payload.tool_input ?? {}));
       followPlan(false);
       surface("overview", false);
       break;
@@ -570,7 +573,11 @@ function handleHook(island: Island, payload: HookPayload) {
     case "PostToolUseFailure":
       supersedeStop();
       State.updateTask(agentId, "working");
-      State.appendStep(agentId, t("⚠ failed"));
+      State.appendStep(
+        agentId,
+        t("⚠ failed"),
+        failureDetail(payload.tool_name ?? "", payload.tool_input ?? {}, payload.error),
+      );
       break;
 
     case "Notification": {
@@ -592,8 +599,9 @@ function handleHook(island: Island, payload: HookPayload) {
       // Another session of the pill is still at work: this one's last words
       // and its sound, but the pill goes on working for the other.
       if (liveSessions.othersBusy(agentId, sessionId)) {
-        const finalText = toOneLine(payload.last_assistant_message ?? payload.message ?? "");
-        if (finalText) State.appendStep(agentId, finalText);
+        const said = payload.last_assistant_message ?? payload.message ?? "";
+        const finalText = toOneLine(said);
+        if (finalText) State.appendStep(agentId, finalText, fullTextDetail(said, finalText));
         Sound.play("finish");
         break;
       }
@@ -602,9 +610,10 @@ function handleHook(island: Island, payload: HookPayload) {
       // no transcript to read (the relay does not even forward its path). Other
       // agents report their last words the same way (Hermes, Codex) or as
       // `message`.
-      const finalText = toOneLine(payload.last_assistant_message ?? payload.message ?? "");
+      const said = payload.last_assistant_message ?? payload.message ?? "";
+      const finalText = toOneLine(said);
       if (finalText) {
-        State.appendStep(agentId, finalText);
+        State.appendStep(agentId, finalText, fullTextDetail(said, finalText));
         const t = State.tasks.find((x) => x.id === agentId);
         if (t) t.finalLine = finalText;
       }
@@ -692,7 +701,11 @@ function handleHook(island: Island, payload: HookPayload) {
     case "PermissionDenied": {
       ensurePill();
       const tool = payload.tool_name ?? "Tool";
-      State.appendStep(agentId, t("Denied by auto mode: {action}", { action: stepLabel(tool, payload.tool_input ?? {}) }));
+      State.appendStep(
+        agentId,
+        t("Denied by auto mode: {action}", { action: stepLabel(tool, payload.tool_input ?? {}) }),
+        toolStepDetail(tool, payload.tool_input ?? {}),
+      );
       break;
     }
 
