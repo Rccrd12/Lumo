@@ -2673,6 +2673,7 @@ input[type="range"]::-webkit-slider-thumb {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  flex: 0 0 auto;
   margin-left: auto;
   padding: 2px 9px;
   border-radius: 999px;
@@ -2706,7 +2707,8 @@ input[type="range"]::-webkit-slider-thumb {
   --edge: 11px;
   position: relative;
   flex: 0 1 220px;
-  min-width: 120px;
+  /* Shrinks before Auto is pushed out of a narrow picker (the workshop's). */
+  min-width: 48px;
   height: 24px;
   border-radius: 8px;
   background: rgba(255, 255, 255, 0.07);
