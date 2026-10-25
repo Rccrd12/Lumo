@@ -267,6 +267,32 @@ test("an agent's pill goes away when its session ends, or 5.2 s after it stops",
   assert.equal(task("agent_codex"), undefined);
 });
 
+test("an Antigravity run that never says Stop leaves after 10 minutes of silence", () => {
+  hook({ hook_event_name: "UserPromptSubmit", lumo_agent: "antigravity", session_id: "a1" });
+  hook({ hook_event_name: "PreToolUse", lumo_agent: "antigravity", session_id: "a1", tool_name: "call_mcp_tool" });
+  seconds(9 * 60);
+  // Any event of the pill starts the 10 minutes over.
+  hook({ hook_event_name: "PreToolUse", lumo_agent: "antigravity", session_id: "a1", tool_name: "run_command" });
+  seconds(9 * 60);
+  assert.equal(task("agent_antigravity").state, "working");
+  seconds(60);
+  assert.equal(task("agent_antigravity"), undefined);
+  assert.deepEqual(liveSessions.live("agent_antigravity"), []);
+});
+
+test("silence ends neither another agent's run nor an Antigravity run that stopped", () => {
+  hook({ hook_event_name: "PreToolUse", lumo_agent: "codex", tool_name: "Bash" });
+  seconds(10 * 60);
+  assert.equal(task("agent_codex").state, "working");
+
+  hook({ hook_event_name: "PreToolUse", lumo_agent: "antigravity", tool_name: "run_command" });
+  hook({ hook_event_name: "Stop", lumo_agent: "antigravity" });
+  hook({ hook_event_name: "UserPromptSubmit", lumo_agent: "antigravity" });
+  hook({ hook_event_name: "Notification", lumo_agent: "antigravity", message: "Which file?" });
+  seconds(10 * 60);
+  assert.equal(task("agent_antigravity").state, "question");
+});
+
 test("an agent's permission request is declined, never shown as Claude Code's", () => {
   for (const agent of ["gemini", "antigravity", "cursor", "opencode", "amp", "hermes", "my-tool"]) {
     calls.length = 0;

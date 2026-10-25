@@ -6493,3 +6493,8 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
 .ctx-item.ctx-rest {
   color: var(--dim-3);
 }
+
+/* Antigravity's /usage in the chat: the usage menu's rows, in a card. */
+.ctx-usage {
+  gap: 10px;
+}

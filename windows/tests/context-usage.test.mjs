@@ -131,3 +131,12 @@ test("a /context answer is drawn as a card, not tables; anything else stays Mark
   assert.equal(plain.querySelector(".ctx-card"), null);
   assert.ok(plain.querySelector(".md-table"));
 });
+
+test("Antigravity's /usage answer is drawn as the usage menu's rows in a card", () => {
+  const root = document.createElement("div");
+  renderAnswer(root, "- **Gemini Models** · Weekly Limit Remaining · 96% · 2099-10-28T22:06:14Z\n- **Gemini Models** · Five Hour Limit Remaining · 97% · 2099-10-25T17:10:21Z");
+  const card = root.querySelector(".ctx-usage");
+  assert.ok(card);
+  assert.equal(card.find(".usage-row").length, 2);
+  assert.equal(root.find(".md-item").length, 0);
+});
