@@ -2098,6 +2098,8 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* Narrowed, the two groups keep the space their buttons keep between them. */
+  gap: 4px;
   padding: 0 10px;
 }
 
