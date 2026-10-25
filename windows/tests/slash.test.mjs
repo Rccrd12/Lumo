@@ -36,14 +36,14 @@ test("only what the provider can use is listed: Claude Code's own only with Clau
 const pdf = { id: "pdfcraft_mcp", name: "pdfcraft_mcp", command: "pdfcraft", enabled: true, reviewed: true, params: [{ name: "path" }] };
 
 test("a tool's command is listed with the providers that can use the user's tools", () => {
-  for (const provider of ["anthropic", "openai", "google", "openrouter", "claude-code"]) {
+  for (const provider of ["anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli"]) {
     const c = slashCommands(provider, null, [pdf]).find((c) => c.name === "pdfcraft");
     assert.ok(c, provider);
     assert.equal(c.kind, "tool");
     assert.equal(c.text, "pdfcraft_mcp");
     assert.ok(c.args, "a tool with parameters waits for what to do");
   }
-  for (const provider of ["ollama", "lmstudio", "custom", "antigravity-cli"]) {
+  for (const provider of ["ollama", "lmstudio", "custom"]) {
     assert.ok(!names(slashCommands(provider, null, [pdf])).includes("pdfcraft"), provider);
   }
 });

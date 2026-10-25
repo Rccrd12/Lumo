@@ -290,6 +290,27 @@ fn args(model: &str, effort: &str, mode: &str, session: Option<&str>, inbox: &st
     args_with(APPEND_PROMPT, model, effort, mode, session, inbox, folders)
 }
 
+/// `append`, added to Claude Code's instructions: from a file when it can be
+/// written where Claude Code can be pointed at it. cmd.exe takes at most 8191
+/// characters on a line, and the tool workshop's instructions alone fill most
+/// of them: on the command line they made an npm install's `claude.cmd` fail
+/// before Claude Code started. One file for each text, so chats running side
+/// by side never read each other's.
+fn instructions(append: &str) -> Vec<String> {
+    use std::hash::{Hash, Hasher};
+    let mut hash = std::collections::hash_map::DefaultHasher::new();
+    append.hash(&mut hash);
+    let path = crate::platform::local_dir().join(format!("chat-prompt-{:016x}.txt", hash.finish()));
+    let written = std::fs::read_to_string(&path).is_ok_and(|t| t == append)
+        || (path.parent().is_some_and(|d| std::fs::create_dir_all(d).is_ok()) && std::fs::write(&path, append).is_ok());
+    let path = path.to_string_lossy().to_string();
+    if written && safe_dir(&path).is_some() {
+        vec!["--append-system-prompt-file".into(), path]
+    } else {
+        vec!["--append-system-prompt".into(), append.to_string()]
+    }
+}
+
 /// `args`, with `append` added to Claude Code's instructions instead of the chat's.
 fn args_with(
     append: &str,
@@ -310,12 +331,11 @@ fn args_with(
         // to: what it does not let through is a card in the island.
         "--permission-mode",
         permission_mode(mode),
-        "--append-system-prompt",
-        append,
     ]
     .iter()
     .map(|s| s.to_string())
     .collect();
+    a.extend(instructions(append));
     a.push("--add-dir".into());
     a.push(inbox.to_string());
     for dir in folders.iter().filter_map(|d| safe_dir(d)) {
@@ -926,9 +946,11 @@ pub(crate) fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mut
     if let Some(mut e) = child.stderr.take() {
         let into = kept.clone();
         std::thread::spawn(move || {
-            let mut s = String::new();
-            let _ = (&mut e).take(64 * 1024).read_to_string(&mut s);
-            *into.lock().unwrap_or_else(|p| p.into_inner()) = s;
+            // Not always UTF-8: cmd.exe says what went wrong in the console's
+            // code page ("La riga di comando è troppo lunga."), kept all the same.
+            let mut bytes = Vec::new();
+            let _ = (&mut e).take(64 * 1024).read_to_end(&mut bytes);
+            *into.lock().unwrap_or_else(|p| p.into_inner()) = String::from_utf8_lossy(&bytes).into_owned();
             // Past the cap, keep the pipe flowing: a full one would stall claude.
             let _ = std::io::copy(&mut e, &mut std::io::sink());
         });
@@ -1522,7 +1544,10 @@ mod tests {
     #[test]
     fn a_task_from_gemini_gets_the_helper_instructions_and_no_session() {
         let a = args_with(HELPER_PROMPT, DEFAULT_MODEL, "", "auto", None, "/home/me/.local/share/lumo/inbox", &["/home/me/docs".into()]);
-        assert!(a.windows(2).any(|w| w == ["--append-system-prompt", HELPER_PROMPT]));
+        assert!(
+            a.windows(2).any(|w| w == ["--append-system-prompt", HELPER_PROMPT])
+                || a.windows(2).any(|w| w[0] == "--append-system-prompt-file" && std::fs::read_to_string(&w[1]).unwrap() == HELPER_PROMPT)
+        );
         assert!(!a.iter().any(|s| s == APPEND_PROMPT || s == "--resume" || s == "--model" || s == "--effort"));
         assert!(a.windows(2).any(|w| w == ["--permission-mode", "auto"]));
         assert!(a.windows(2).any(|w| w == ["--add-dir", "/home/me/docs"]));
@@ -1561,6 +1586,22 @@ mod tests {
         let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
         assert!(!workshop.contains(['%', '"', '&', '|', '<', '>', '^', '`']), "plain words on the command line");
         assert!(workshop.contains("lumo-tool") && workshop.contains("lumo-file"));
+    }
+
+    #[test]
+    fn the_workshops_long_instructions_go_in_a_file_of_their_own() {
+        let workshop = format!("{APPEND_PROMPT}{}{WORKSHOP_TRY}", crate::chat::workshop_note!());
+        let a = instructions(&workshop);
+        if a[0] == "--append-system-prompt-file" {
+            assert_eq!(std::fs::read_to_string(&a[1]).unwrap(), workshop);
+            // The chat's own text is another file: a chat and the workshop can run together.
+            let b = instructions(APPEND_PROMPT);
+            assert_ne!(a[1], b[1]);
+            assert_eq!(std::fs::read_to_string(&b[1]).unwrap(), APPEND_PROMPT);
+            assert_eq!(instructions(&workshop), a, "the same text, the same file");
+        } else {
+            assert_eq!(a, ["--append-system-prompt", workshop.as_str()]);
+        }
     }
 
     #[test]

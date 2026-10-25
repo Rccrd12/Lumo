@@ -895,8 +895,10 @@ pub async fn send(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
-    // Lumo's plan tool, and its email tools while the Email pill is on (only during this turn).
-    crate::computer::agy_workspace(&work, crate::integrations::enabled(app, crate::mail::ID));
+    // Lumo's plan tool, its email tools while the Email pill is on (only during
+    // this turn), and the user's tools that are on (each call asks on the island).
+    let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
+    crate::computer::agy_workspace(&work, crate::integrations::enabled(app, crate::mail::ID), tools);
     let _mail = crate::mail::agent_turn();
 
     let app2 = app.clone();
@@ -1004,7 +1006,7 @@ pub(crate) fn help(
     let args = args(model, mode, None, &work.to_string_lossy(), &inbox, &[]);
     // Lumo's MCP configuration is only Lumo's folder's to write.
     if folder.is_none() {
-        crate::computer::agy_workspace(&work, mail);
+        crate::computer::agy_workspace(&work, mail, crate::tools::any_enabled());
     }
     let _mail = crate::mail::agent_turn();
     let state = run(exe, args, helper_input(task), work, "", stop, |_| {}, on_activity, |_| {}, |_| {})?;

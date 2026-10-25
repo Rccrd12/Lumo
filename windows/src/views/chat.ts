@@ -694,7 +694,24 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     // it is on, and Auto at the end.
     efforts.append(h("div", { class: "effort-row" }, track, value, auto));
     show();
+    fitEfforts();
   }
+
+  /**
+   * In a narrow picker Auto first comes up to the slider (its margin), then
+   * loses "Recommended", then goes: the slider and its level never give way.
+   */
+  function fitEfforts() {
+    const row = efforts.firstElementChild as HTMLElement | null;
+    const auto = row?.querySelector<HTMLElement>(".effort-auto");
+    if (!row || !auto) return;
+    auto.classList.remove("no-note", "no-room");
+    const over = () => row.scrollWidth > row.clientWidth;
+    if (over()) auto.classList.add("no-note");
+    if (over()) auto.classList.add("no-room");
+  }
+  // Only when the picker's width changes (opened, or the island resized).
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => fitEfforts()).observe(efforts);
 
   /** Models already asked for, by provider; a model server is asked again each time. */
   const cache = new Map<string, ModelInfo[]>();
@@ -2193,7 +2210,7 @@ export function buildPrompt(
   /**
    * The Tools tab opened the workshop. Add a tool goes on with the tool being
    * made, unless it is saved as it is (then a new one starts); Change with
-   * Lumo opens a new workshop chat on that tool.
+   * Lumo goes back to the workshop chat already on that tool, or opens one.
    */
   function takeForgeAsk() {
     const ask = State.forgeAsk;
@@ -2213,6 +2230,14 @@ export function buildPrompt(
    * which the AI sees as its own answer, and saving updates that tool.
    */
   async function openOnTool(tool: ToolInfo) {
+    // The newest workshop chat that opened on (or saved) this tool, as it was left.
+    const onTool = (id: string) => isWorkshopChat(id) && savedLink(id)?.tool === tool.id;
+    if (onTool(State.chatId) && State.chatHistory.length > 0) return;
+    const last = loadChats().filter((c) => onTool(c.id)).sort((a, b) => b.updatedAt - a.updatedAt)[0];
+    if (last) {
+      openChat(last);
+      return;
+    }
     const files = (await Bridge.toolsFiles(tool.id)) ?? [];
     newChat();
     const seed = draftOf(tool, files.map(([name, content]) => ({ name, content })));

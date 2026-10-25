@@ -53,9 +53,13 @@ export interface CommandTool {
   params?: readonly unknown[];
 }
 
-/** The providers the user's tools go to (claude.rs, openai_compat.rs, claude_code.rs). */
+/**
+ * The providers the user's tools go to (claude.rs, openai_compat.rs,
+ * claude_code.rs, codex_chat.rs, antigravity_cli.rs): every one but the model
+ * servers (local_chat.rs), which are given no tools.
+ */
 export function usesYourTools(provider: string): boolean {
-  return ["", "anthropic", "openai", "google", "openrouter", "claude-code"].includes(provider);
+  return ["", "anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli"].includes(provider);
 }
 
 const LUMO: readonly SlashCommand[] = [

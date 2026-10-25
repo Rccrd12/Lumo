@@ -270,6 +270,8 @@ test("the workshop is a chat of its own: the AI's draft shows beside it, Try and
 });
 
 test("Change with Lumo opens the workshop on the tool, and Save updates it", async () => {
+  // No workshop chat on the tool yet (the one before saved a tool of the same id).
+  localStorage.removeItem("lumo.forge.saved.v1");
   answers.tools_files = [["bench.py", "print(1)\n"]];
   State.forgeAsk = { edit: TOOL };
   State.useSlot("forge");
@@ -296,4 +298,20 @@ test("Change with Lumo opens the workshop on the tool, and Save updates it", asy
   const saved = sent("tools_save")[0].draft;
   assert.equal(saved.replaces, "bench");
   assert.equal(saved.files[0].content, "print(1)\n", "the file it left out comes from before");
+  const forgeId = State.chatId;
+
+  // A new tool, then Change with Lumo again: back to the chat on this tool, as it was left.
+  State.useSlot("chat");
+  State.forgeAsk = { edit: null };
+  State.useSlot("forge");
+  chat.sync();
+  assert.notEqual(State.chatId, forgeId);
+  State.useSlot("chat");
+  State.forgeAsk = { edit: TOOL };
+  State.useSlot("forge");
+  chat.sync();
+  await flush();
+  chat.sync();
+  assert.equal(State.chatId, forgeId);
+  assert.equal(State.chatHistory.length, 4, "its whole conversation, not a new one");
 });

@@ -2098,6 +2098,8 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   justify-content: space-between;
   align-items: center;
+  /* Narrowed, the two groups keep the space their buttons keep between them. */
+  gap: 4px;
   padding: 0 10px;
 }
 
@@ -2673,6 +2675,7 @@ input[type="range"]::-webkit-slider-thumb {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  flex: 0 0 auto;
   margin-left: auto;
   padding: 2px 9px;
   border-radius: 999px;
@@ -2691,6 +2694,13 @@ input[type="range"]::-webkit-slider-thumb {
   background: rgba(255, 255, 255, 0.12);
   border-color: color-mix(in srgb, var(--accent) 50%, transparent);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
+}
+
+/* A narrow picker (the tool workshop's) drops "Recommended", then Auto
+   itself, rather than push them past its edge (chat.ts fitEfforts). */
+.effort-auto.no-note .effort-auto-note,
+.effort-auto.no-room {
+  display: none;
 }
 
 .effort-auto-note {
@@ -6241,6 +6251,15 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 .tools-term.confirm {
   color: var(--ink);
   background: rgba(245, 165, 36, 0.24);
+}
+
+/* Claude Code is being asked: the label says what is happening, softly breathing. */
+.tools-term.busy .tools-term-label {
+  animation: tools-term-busy 1.2s ease-in-out infinite;
+}
+
+@keyframes tools-term-busy {
+  50% { opacity: 0.55; }
 }
 
 .tools-term-label {
