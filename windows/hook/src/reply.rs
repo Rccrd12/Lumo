@@ -72,8 +72,13 @@ pub fn stdout_with(
 /// card for: shell commands, MCP tools and the browser — what agy would ask
 /// about, and what runs on nobody's say once agy's own confirmation is off.
 /// Reading and writing workspace files needs none, and neither does a call
-/// of Lumo's own email or plan tool, even through agy's `call_mcp_tool`.
+/// of Lumo's own email or plan tool, even through agy's `call_mcp_tool`, nor
+/// one of the user's own tools, which Lumo asks for itself.
 pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
+    // The user's own tools: Lumo asks for each call itself (tools.rs in the app).
+    if crate::mcp::user_tool_call(tool, input) {
+        return false;
+    }
     // Lumo's email tools only read the user's mailbox, its plan tool only
     // shows, its island tools only start a timer or a watch (mcp.rs).
     if crate::mcp::lumo_call(tool, input).is_some_and(|name| {

@@ -481,7 +481,8 @@ picked. Your tools have a command too (`/pdfcraft`): the workshop's AI gives
 one to each tool it makes, and the tool's detail in the Tools tab changes or
 clears it. `/pdfcraft merge the PDF in the open folder with the one in X`
 asks the AI to use that tool for the rest of the message, with every provider
-that can use your tools (Claude, OpenAI, Google AI, OpenRouter, Claude Code).
+that can use your tools (Claude, OpenAI, Google AI, OpenRouter, Claude Code,
+Codex, Antigravity CLI: every one but the local model servers).
 
 To send the Claude chat through an Anthropic-compatible gateway, set
 `LUMO_ANTHROPIC_BASE_URL` (for example `https://gateway.example.com`;
