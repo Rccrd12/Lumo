@@ -878,6 +878,9 @@ pub async fn send(
     folder: Option<String>,
 ) -> Result<ChatReply, String> {
     let exe = platform::agy_candidates().into_iter().next().ok_or_else(not_installed)?;
+    if let Some(name) = command_of(&query) {
+        return command(app, chat, exe, name, model, mode, folder).await;
+    }
 
     let turn = chat.begin(PROVIDER);
     // Only an Antigravity conversation: never a Claude Code session.
@@ -969,6 +972,170 @@ pub async fn send(
     Ok(ChatReply::answer(answer, chat.cli_session()))
 }
 
+// ── Commands ──────────────────────────────────────────────────────────────────
+
+/// agy's own commands that answer without a terminal, each tried from the
+/// chat (agy 1.4.7): in the conversation, its commands are refused ("answered
+/// by the CLI itself"), all but /compact, which compacts a conversation that
+/// has turns. These others answer as a run of their own (`agy --print /usage`),
+/// at once and without a model. The rest open agy's terminal views, or reach
+/// the model as a question, so the chat keeps them off (`--disable-slash-commands`).
+const COMPACT: &str = "compact";
+const ON_THEIR_OWN: [&str; 3] = ["usage", "credits", "skills"];
+/// A command run of its own answers in a few seconds.
+const COMMAND_TIMEOUT: Duration = Duration::from_secs(60);
+/// What a command run of its own may print.
+const MAX_COMMAND_OUTPUT: u64 = 1024 * 1024;
+
+/// The command `query` is ("/usage", typed alone): its name.
+fn command_of(query: &str) -> Option<&'static str> {
+    let name = query.trim().strip_prefix('/')?;
+    [COMPACT].into_iter().chain(ON_THEIR_OWN).find(|c| c.eq_ignore_ascii_case(name))
+}
+
+/// Whether `query` is one of the commands Lumo runs for agy (chat.rs).
+pub(crate) fn is_command(query: &str) -> bool {
+    command_of(query).is_some()
+}
+
+/// A command's answer: agy's tab-separated table as Markdown, a row a line:
+/// its first cell in bold, the others after it ("- **Remaining credits** · 0").
+/// A link is a link, and a skill's description stops after its first sentence.
+/// views/context-card.ts draws /usage's rows as a card.
+fn command_text(response: &str) -> String {
+    response
+        .lines()
+        .map(|l| l.split('\t').map(str::trim).filter(|c| !c.is_empty()).collect::<Vec<_>>())
+        .filter_map(|r| match r.as_slice() {
+            [] => None,
+            [one] => Some(format!("- {one}")),
+            [name, url] if url.starts_with("https://") && !url.contains(char::is_whitespace) => Some(format!("- [{name}]({url})")),
+            [first, rest @ ..] => Some(format!("- **{first}** · {}", rest.iter().map(|c| first_sentence(c)).collect::<Vec<_>>().join(" · "))),
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// A long text up to the end of its first sentence, or cut at a word.
+fn first_sentence(text: &str) -> String {
+    const MAX: usize = 140;
+    if text.chars().count() <= MAX {
+        return text.to_string();
+    }
+    let head: String = text.chars().take(MAX).collect();
+    if let Some(end) = head.find(". ") {
+        return head[..=end].to_string();
+    }
+    let cut = head.rfind(' ').unwrap_or(head.len());
+    format!("{}…", head[..cut].trim_end())
+}
+
+/// The answer of a command run of its own: its `result`'s response, or the
+/// error agy gave. Every other line of stdout is skipped.
+fn command_answer(stdout: &str) -> Result<String, String> {
+    let result = stdout
+        .lines()
+        .filter_map(|l| serde_json::from_str::<Value>(l.trim()).ok())
+        .find(|v| v["event"] == "result")
+        .map(|v| v["result"].clone())
+        .ok_or_else(|| t("Antigravity CLI didn't answer."))?;
+    if result["status"].as_str().is_some_and(|s| s.eq_ignore_ascii_case("error")) {
+        return Err(result_error(result["error"].as_str().unwrap_or_default()));
+    }
+    Ok(command_text(result["response"].as_str().unwrap_or_default()))
+}
+
+/// Runs `agy --print /<name>` in `dir`, for at most COMMAND_TIMEOUT. Blocking.
+fn run_on_its_own(exe: PathBuf, name: &str, dir: PathBuf) -> Result<String, String> {
+    std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;
+    let slash = format!("/{name}");
+    let mut cmd = Command::new(&exe);
+    cmd.args(["--print", slash.as_str(), "--output-format", "stream-json"])
+        .current_dir(&dir)
+        .stdin(Stdio::null())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::null());
+    cmd.env("LUMO_ISLAND_RUN", "1");
+    platform::no_console(&mut cmd);
+    let mut child = cmd
+        .spawn()
+        .map_err(|e| tf("Cannot start Antigravity CLI: {error}", &[("error", &e.to_string())]))?;
+    let stdout = child.stdout.take();
+    let reader = std::thread::spawn(move || {
+        let mut s = String::new();
+        if let Some(out) = stdout {
+            let mut out = out;
+            let _ = (&mut out).take(MAX_COMMAND_OUTPUT).read_to_string(&mut s);
+            let _ = std::io::copy(&mut out, &mut std::io::sink());
+        }
+        s
+    });
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => break,
+            Ok(None) if started.elapsed() < COMMAND_TIMEOUT => std::thread::sleep(Duration::from_millis(50)),
+            _ => {
+                kill_tree(&mut child);
+                return Err(t("Antigravity CLI took too long and was stopped."));
+            }
+        }
+    }
+    command_answer(&reader.join().unwrap_or_default())
+}
+
+/// One of agy's commands typed in the chat: /compact in the conversation, the
+/// others as a run of their own. The chat keeps the command and its answer.
+async fn command(
+    app: &AppHandle,
+    chat: &Chat,
+    exe: PathBuf,
+    name: &'static str,
+    model: &str,
+    mode: &str,
+    folder: Option<String>,
+) -> Result<ChatReply, String> {
+    let turn = chat.begin(PROVIDER);
+    let query = format!("/{name}");
+    let work = claude_code::work_dir();
+    let answer = if name == COMPACT {
+        let Some(conversation) = chat.cli_session_for(PROVIDER) else {
+            // A new conversation would take it for a question.
+            return Ok(ChatReply::answer(t("Send a message first: Antigravity CLI hasn't seen this conversation yet."), chat.cli_session()));
+        };
+        let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
+        let mut args = args(model, mode, Some(conversation.as_str()), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
+        args.retain(|a| a != "--disable-slash-commands");
+        let events = chat.events();
+        let app2 = app.clone();
+        let stop = chat.stopper();
+        let chat_id = chat.id().to_string();
+        let input = user_event(&query);
+        let state = tauri::async_runtime::spawn_blocking(move || {
+            run(exe, args, input, work, &chat_id, stop, |_| {}, |a| events.activity(&app2, a), |_| {}, |_| {})
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        if let Some(id) = &state.conversation {
+            chat.set_cli_session(&turn, id);
+        }
+        if state.stopped {
+            return Ok(ChatReply::stopped(String::new(), chat.cli_session()));
+        }
+        match state.result {
+            // It answers nothing: the chat still says it ran.
+            Some(Ok(text)) if text.trim().is_empty() => t("Antigravity CLI compacted the conversation."),
+            Some(Ok(text)) => text,
+            Some(Err(e)) => return Err(result_error(&e)),
+            None => unreachable!("run() returns an error without a result"),
+        }
+    } else {
+        tauri::async_runtime::spawn_blocking(move || run_on_its_own(exe, name, work)).await.map_err(|e| e.to_string())??
+    };
+    chat.commit(&turn, json!({ "role": "user", "content": query }), json!({ "role": "assistant", "content": answer }), &query, &answer);
+    Ok(ChatReply::answer(answer, chat.cli_session()))
+}
+
 // ── Helping Gemini Live ───────────────────────────────────────────────────────
 
 /// In front of a task Gemini Live hands over (live.rs), instead of the chat's instructions.
@@ -1043,6 +1210,40 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_the_commands_agy_answers_headless_are_taken_alone() {
+        assert_eq!(command_of("/usage"), Some("usage"));
+        assert_eq!(command_of("  /Compact \n"), Some("compact"));
+        assert_eq!(command_of("/credits"), Some("credits"));
+        assert_eq!(command_of("/skills"), Some("skills"));
+        assert_eq!(command_of("/context"), None, "it opens agy's terminal view");
+        assert_eq!(command_of("/usage please"), None);
+        assert_eq!(command_of("what is /usage?"), None);
+        assert!(is_command("/usage") && !is_command("/model"));
+    }
+
+    #[test]
+    fn a_command_run_of_its_own_answers_with_its_table_as_markdown() {
+        let usage = concat!(
+            r#"{"event":"command_result","command":{"name":"usage","data":{}}}"#,
+            "\n",
+            r#"{"event":"result","result":{"conversation_id":"","status":"SUCCESS","response":"Gemini Models\tWeekly Limit Remaining\t96%\t2026-10-28T22:06:14Z\nGemini Models\tFive Hour Limit Remaining\t97%\t2026-10-25T17:10:21Z\n"}}"#,
+            "\n"
+        );
+        assert_eq!(
+            command_answer(usage).unwrap(),
+            "- **Gemini Models** · Weekly Limit Remaining · 96% · 2026-10-28T22:06:14Z\n- **Gemini Models** · Five Hour Limit Remaining · 97% · 2026-10-25T17:10:21Z"
+        );
+        let credits = r#"{"event":"result","result":{"status":"SUCCESS","response":"Remaining credits\t0\nUpgrade\thttps://antigravity.google/g1-upgrade\n"}}"#;
+        assert_eq!(command_answer(credits).unwrap(), "- **Remaining credits** · 0\n- [Upgrade](https://antigravity.google/g1-upgrade)");
+        let long = "Interactive guide to design and create a scheduled background automation. Use this skill when the user wants to create an automated or recurring scheduled task.";
+        let skills = json!({ "event": "result", "result": { "status": "SUCCESS", "response": format!("automation\t{long}\n") } }).to_string();
+        assert_eq!(command_answer(&skills).unwrap(), "- **automation** · Interactive guide to design and create a scheduled background automation.");
+        let refused = r#"{"event":"result","result":{"status":"ERROR","response":"","error":"/usage is answered by the CLI itself"}}"#;
+        assert!(command_answer(refused).is_err());
+        assert!(command_answer("not json").is_err());
+    }
 
     const CID: &str = "7c9e6679-7425-40de-944b-e07fc1f90ae7";
 

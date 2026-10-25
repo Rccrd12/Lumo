@@ -172,8 +172,11 @@ function planLine(settings: Settings, plan: PlanUsage | null, now: number): Usag
   };
 }
 
-/** agy's quotas: one row per bucket, Gemini first, the group named when there are several. */
-function antigravityLine(plan: AntigravityPlanUsage | null, now: number): UsageLine {
+/**
+ * agy's quotas: one row per bucket, Gemini first, the group named when there
+ * are several. Also the chat's answer to /usage (views/context-card.ts).
+ */
+export function antigravityLine(plan: AntigravityPlanUsage | null, now: number): UsageLine {
   if (!plan || plan.buckets.length === 0) {
     return { text: PLAN_TEXT.askingAntigravity, title: PLAN_TEXT.antigravityTitle, color: planColor(null), pct: null, rows: [] };
   }

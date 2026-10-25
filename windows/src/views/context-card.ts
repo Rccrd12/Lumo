@@ -11,13 +11,41 @@ import {
   BUFFER, CONTEXT_CATEGORIES, CONTEXT_STRINGS, formatTokens, isDeferred, parseContextReport, serverName, usedPercent,
   type ContextCategory, type ContextReport,
 } from "../core/context-usage";
+import { antigravityLine, USAGE_TEXT } from "../core/chat-usage";
+import { PLAN_TEXT, antigravityUsageOfText, planColor } from "../core/plan";
 import { t, tn } from "../i18n/i18n";
 
-/** An answer: the card for a /context report, Markdown for anything else. */
+/** An answer: a card for /context or Antigravity's /usage, Markdown for anything else. */
 export function renderAnswer(into: HTMLElement, text: string) {
   const report = parseContextReport(text);
+  const usage = report ? null : antigravityUsageOfText(text);
   if (report) into.append(contextCard(report));
+  else if (usage) into.append(usageCard(antigravityLine(usage, Date.now()).rows));
   else renderMarkdown(into, text);
+}
+
+/** Antigravity CLI's limits as the usage menu shows them: each with its bar and its reset. */
+function usageCard(rows: ReturnType<typeof antigravityLine>["rows"]): HTMLElement {
+  const card = h(
+    "div",
+    { class: "ctx-card ctx-usage" },
+    h("div", { class: "ctx-head" }, h("span", { class: "ctx-title", text: USAGE_TEXT.title }), h("span", { class: "ctx-model", text: PLAN_TEXT.antigravityTitle })),
+  );
+  for (const row of rows) {
+    const fill = h("i", { class: "usage-fill" });
+    fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
+    fill.style.background = row.pct == null ? "" : planColor(row.pct);
+    card.append(
+      h(
+        "div",
+        { class: "usage-row" },
+        h("div", { class: "usage-row-head" }, h("span", { class: "usage-label", text: row.label }), h("span", { class: "usage-value", text: row.value })),
+        h("span", { class: "usage-bar" }, fill),
+        row.reset ? h("span", { class: "usage-reset", text: row.reset }) : null,
+      ),
+    );
+  }
+  return card;
 }
 
 const OTHER = "#6b7079";

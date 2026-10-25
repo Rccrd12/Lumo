@@ -485,7 +485,7 @@ fn checked(draft: &Draft) -> Result<Draft, String> {
 
 /// The chat's own commands (src/core/slash.ts), and Claude Code's that every
 /// one has: a tool's command never takes their name.
-const RESERVED_COMMANDS: &[&str] = &["new", "history", "model", "attach", "screen", "permissions", "timer", "compact", "context", "clear"];
+const RESERVED_COMMANDS: &[&str] = &["new", "history", "model", "attach", "screen", "permissions", "timer", "effort", "compact", "context", "clear", "usage", "credits", "skills"];
 
 /// The longest command.
 const MAX_COMMAND: usize = 32;

@@ -28,9 +28,19 @@ test("Lumo's commands are there with every provider, the shield only with the CL
 test("only what the provider can use is listed: Claude Code's own only with Claude Code", () => {
   for (const provider of ["anthropic", "ollama", "antigravity-cli"]) {
     const list = names(slashCommands(provider, ["compact", "review"]));
-    assert.ok(!list.includes("compact"), provider);
+    assert.equal(list.includes("compact"), provider === "antigravity-cli", provider);
     assert.ok(!list.includes("review"), provider);
   }
+});
+
+test("Antigravity CLI lists the commands it answers without a terminal, each with what it does", () => {
+  const agy = slashCommands("antigravity-cli", null).filter((c) => c.kind === "cli");
+  assert.deepEqual(names(agy), ["compact", "usage", "credits", "skills"]);
+  assert.ok(agy.every((c) => c.note));
+  // A tool of the user's with the same command wins.
+  const tool = { id: "u", name: "Usage tool", command: "usage", enabled: true, reviewed: true };
+  const list = slashCommands("antigravity-cli", null, [tool]).filter((c) => c.name === "usage");
+  assert.deepEqual(list.map((c) => c.kind), ["tool"]);
 });
 
 const pdf = { id: "pdfcraft_mcp", name: "pdfcraft_mcp", command: "pdfcraft", enabled: true, reviewed: true, params: [{ name: "path" }] };

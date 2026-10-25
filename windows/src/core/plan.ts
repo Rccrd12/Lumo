@@ -195,6 +195,27 @@ export function parseAntigravityPlan(result: unknown, now = Date.now()): Antigra
   return usage;
 }
 
+/**
+ * The limits in the chat's answer to /usage with Antigravity CLI
+ * (antigravity_cli.rs writes agy's table a row a line: "- **Gemini Models** ·
+ * Weekly Limit Remaining · 96% · 2026-10-28T22:06:14Z"); null for any other text.
+ */
+export function antigravityUsageOfText(text: string, now = Date.now()): AntigravityPlanUsage | null {
+  const lines = text.trim().split(/\r?\n/);
+  const groups: { name: string; buckets: object[] }[] = [];
+  for (const line of lines) {
+    const m = /^- \*\*(.+?)\*\* · (.+?) · (\d{1,3})% · (\d{4}-\d\d-\d\dT[\d:.]+Z)$/.exec(line.trim());
+    if (!m) return null;
+    const resetsAt = Date.parse(m[4]) / 1000;
+    if (!Number.isFinite(resetsAt)) return null;
+    const window = /week/i.test(m[2]) ? "weekly" : /five|5\s*h/i.test(m[2]) ? "5h" : m[2];
+    let group = groups.find((g) => g.name === m[1]);
+    if (!group) groups.push((group = { name: m[1], buckets: [] }));
+    group.buckets.push({ id: "", window, remainingFraction: Number(m[3]) / 100, resetsAt });
+  }
+  return groups.length ? parseAntigravityPlan({ groups }, now) : null;
+}
+
 /** "Gemini Models" → "Gemini", "Claude and GPT models" → "Claude and GPT". */
 export const antigravityGroupName = (group: string): string => group.replace(/\s+models?$/i, "").trim() || group;
 
