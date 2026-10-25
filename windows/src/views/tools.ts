@@ -74,6 +74,8 @@ export const TOOLS_STRINGS = {
   terminalHas: N_("Claude Code in the terminal can use your tools. Click to take them away."),
   terminalAddConfirm: N_("Add to Claude Code?"),
   terminalRemoveConfirm: N_("Take away?"),
+  terminalAdding: N_("Adding to Claude Code…"),
+  terminalRemoving: N_("Taking away from Claude Code…"),
   terminalAdded: N_("Claude Code in the terminal can use your tools"),
   on: N_("On"),
   off: N_("Off"),
@@ -153,6 +155,8 @@ export function buildTools(actions: ViewActions): ViewHost {
   // Claude Code in the terminal: lit while it has the tools; a second click confirms.
   let terminalHas = false;
   let terminalConfirm = false;
+  // Claude Code is being asked (claude mcp add / remove takes a few seconds): the button says so.
+  let terminalBusy = false;
   const terminalLabel = h("span", { class: "tools-term-label" });
   const terminalBtn = h("button", { class: "tool-btn tools-term" }, svg(ICONS.terminal, 13, { stroke: 1.9 }), terminalLabel);
   terminalBtn.addEventListener("click", () => void terminal());
@@ -184,6 +188,7 @@ export function buildTools(actions: ViewActions): ViewHost {
   let drawn = "";
 
   async function terminal() {
+    if (terminalBusy) return;
     if (!terminalConfirm) {
       terminalConfirm = true;
       drawn = "";
@@ -192,6 +197,9 @@ export function buildTools(actions: ViewActions): ViewHost {
       return;
     }
     terminalConfirm = false;
+    terminalBusy = true;
+    drawn = "";
+    State.notify();
     try {
       terminalHas = await Bridge.toolsTerminalSet(!terminalHas);
       Sound.play(terminalHas ? "blip" : "pop");
@@ -199,6 +207,7 @@ export function buildTools(actions: ViewActions): ViewHost {
     } catch (err) {
       failed(err);
     }
+    terminalBusy = false;
     drawn = "";
     State.notify();
   }
@@ -517,12 +526,15 @@ export function buildTools(actions: ViewActions): ViewHost {
   function draw() {
     const tools = State.tools;
     const building = inWorkshop();
-    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], open, agentText, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, t(TOOLS_STRINGS.on)]);
+    const key = JSON.stringify([tools, building && [building.draft?.name, building.draft?.description], open, agentText, confirming, confirmingOn, [...reviewing], [...reviewErrors], terminalHas, terminalConfirm, terminalBusy, t(TOOLS_STRINGS.on)]);
     if (key === drawn) return;
     drawn = key;
     terminalBtn.classList.toggle("open", terminalHas);
-    terminalBtn.classList.toggle("confirm", terminalConfirm);
-    terminalLabel.textContent = terminalConfirm ? t(terminalHas ? TOOLS_STRINGS.terminalRemoveConfirm : TOOLS_STRINGS.terminalAddConfirm) : "";
+    terminalBtn.classList.toggle("confirm", terminalConfirm || terminalBusy);
+    terminalBtn.classList.toggle("busy", terminalBusy);
+    terminalLabel.textContent = terminalBusy
+      ? t(terminalHas ? TOOLS_STRINGS.terminalRemoving : TOOLS_STRINGS.terminalAdding)
+      : terminalConfirm ? t(terminalHas ? TOOLS_STRINGS.terminalRemoveConfirm : TOOLS_STRINGS.terminalAddConfirm) : "";
     const termTitle = t(terminalHas ? TOOLS_STRINGS.terminalHas : TOOLS_STRINGS.terminalAdd);
     terminalBtn.setAttribute("title", termTitle);
     terminalBtn.setAttribute("aria-label", termTitle);

@@ -435,6 +435,41 @@ pub fn lumo_call(tool: &str, input: Option<&Value>) -> Option<&'static str> {
     words.iter().find_map(|w| NAMES.iter().chain(MAIL_NAMES).chain(PLAN_NAMES).chain(ISLAND_NAMES).find(|n| w.trim().eq_ignore_ascii_case(n)).copied())
 }
 
+/// The server of the user's own tools (`--tools=user`), as agents name it.
+pub const USER_SERVER: &str = "lumo_tools";
+
+/// A call of one of the user's own tools: by the tool's name
+/// ("mcp__lumo_tools__bench", "mcp_lumo_tools_bench"…) or, through
+/// Antigravity's `call_mcp_tool`, by the server its input names. Lumo asks
+/// for each of these calls itself before it runs (tools.rs in the app), so
+/// the hook needs no card of its own.
+pub fn user_tool_call(tool: &str, input: Option<&Value>) -> bool {
+    let lower = tool.to_ascii_lowercase();
+    if ["mcp__", "mcp_", ""].iter().any(|p| ["__", "_", "/", "."].iter().any(|s| lower.starts_with(&format!("{p}{USER_SERVER}{s}")))) {
+        return true;
+    }
+    if !lower.contains("mcp") {
+        return false;
+    }
+    let parsed;
+    let input = match input {
+        Some(Value::String(s)) => match serde_json::from_str::<Value>(s) {
+            Ok(v) => {
+                parsed = v;
+                &parsed
+            }
+            Err(_) => return false,
+        },
+        Some(v) => v,
+        None => return false,
+    };
+    // Only what names the server: never the arguments, which the model writes.
+    let names_server = |key: &str, v: &Value| key.to_ascii_lowercase().contains("server") && v.as_str().is_some_and(|s| s.trim().eq_ignore_ascii_case(USER_SERVER));
+    input.as_object().is_some_and(|o| {
+        o.iter().any(|(k, v)| names_server(k, v) || v.as_object().is_some_and(|inner| inner.iter().any(|(k, v)| names_server(k, v))))
+    })
+}
+
 /// Runs the server until the agent closes stdin.
 pub fn run() -> ! {
     let kit = Kit::from_args(std::env::args().skip(1));
@@ -747,6 +782,23 @@ mod tests {
         let click = json!({ "ServerName": "lumo", "ToolName": "left_click" });
         assert!(crate::reply::island_card("call_mcp_tool", Some(&click)));
         assert_eq!(lumo_call("view_file", Some(&call)), None, "only an MCP call");
+    }
+
+    #[test]
+    fn the_users_own_tools_are_asked_for_by_lumo_not_by_the_hook() {
+        assert!(user_tool_call("mcp__lumo_tools__pdfcraft", None));
+        assert!(user_tool_call("mcp_lumo_tools_pdfcraft", None));
+        let call = json!({ "ServerName": "lumo_tools", "ToolName": "pdfcraft", "Arguments": "{}" });
+        assert!(user_tool_call("call_mcp_tool", Some(&call)));
+        assert!(user_tool_call("call_mcp_tool", Some(&json!(call.to_string()))), "its input as JSON text");
+        assert!(!crate::reply::island_card("call_mcp_tool", Some(&call)), "Lumo's own card asks for it");
+        // Another server, even with the name in what the model wrote, still asks.
+        let other = json!({ "ServerName": "github", "ToolName": "lumo_tools", "Arguments": "{\"server\":\"lumo_tools\"}" });
+        assert!(!user_tool_call("call_mcp_tool", Some(&other)));
+        assert!(crate::reply::island_card("call_mcp_tool", Some(&other)));
+        assert!(!user_tool_call("mcp__lumo__screenshot", None));
+        assert!(!user_tool_call("mcp__lumo_toolsmith__x", None));
+        assert!(!user_tool_call("run_command", Some(&call)), "only an MCP call");
     }
 
     #[test]

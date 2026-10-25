@@ -3,8 +3,9 @@
 // provider and never reach the AI; Claude Code's go to the CLI as they are
 // typed (claude_code.rs), and the list is the one its last turn reported
 // (`chat-commands`), else the few every Claude Code has. Antigravity CLI runs
-// with its commands turned off (antigravity_cli.rs) and the other providers
-// have none. Only what can be used with the provider picked is listed.
+// with its commands turned off; the few it answers without a terminal are
+// listed and run apart (antigravity_cli.rs). The other providers have none.
+// Only what can be used with the provider picked is listed.
 //
 // The user's tools (the Tools tab) that have a command come between the two:
 // `/pdfcraft merge these two files` asks the AI to use that tool for what
@@ -40,7 +41,16 @@ export const SLASH_STRINGS = {
   timer: N_("Start a timer on the closed island"),
   compact: N_("Sum up the conversation so far"),
   context: N_("Show how full the context is"),
+  usage: N_("Show your plan's limits"),
+  credits: N_("Show your remaining credits"),
+  skills: N_("List your skills"),
 };
+
+/**
+ * What Antigravity CLI answers without a terminal, each tried from the chat:
+ * /compact in the conversation, the others as a run of their own.
+ */
+export const ANTIGRAVITY_COMMANDS = ["compact", "usage", "credits", "skills"];
 
 /** A tool as the menu needs it (core/tools.ts ToolInfo). */
 export interface CommandTool {
@@ -53,9 +63,13 @@ export interface CommandTool {
   params?: readonly unknown[];
 }
 
-/** The providers the user's tools go to (claude.rs, openai_compat.rs, claude_code.rs). */
+/**
+ * The providers the user's tools go to (claude.rs, openai_compat.rs,
+ * claude_code.rs, codex_chat.rs, antigravity_cli.rs): every one but the model
+ * servers (local_chat.rs), which are given no tools.
+ */
 export function usesYourTools(provider: string): boolean {
-  return ["", "anthropic", "openai", "google", "openrouter", "claude-code"].includes(provider);
+  return ["", "anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli"].includes(provider);
 }
 
 const LUMO: readonly SlashCommand[] = [
@@ -90,6 +104,9 @@ const CLAUDE_CODE_HIDDEN = new Set([
 const CLI_NOTES: Record<string, string> = {
   compact: SLASH_STRINGS.compact,
   context: SLASH_STRINGS.context,
+  usage: SLASH_STRINGS.usage,
+  credits: SLASH_STRINGS.credits,
+  skills: SLASH_STRINGS.skills,
 };
 
 /** A command's name as a CLI may report it: letters, digits and `-_:.`. */
@@ -99,15 +116,20 @@ export function isCommandName(name: string): boolean {
 
 /**
  * The menu's commands with `provider`: Lumo's (the shield's only for the
- * CLIs, the effort's only where there is one to pick), then Claude Code's (`reported`, as its last turn listed them).
+ * CLIs, the effort's only where there is one to pick), then the CLI's own:
+ * Claude Code's (`reported`, as its last turn listed them) or Antigravity's.
  */
 export function slashCommands(provider: string, reported: readonly string[] | null, tools: readonly CommandTool[] = []): SlashCommand[] {
   const own = LUMO.filter((c) =>
     c.action === "permissions" ? isCliProvider(provider) : c.action === "effort" ? effortsFor(provider).some((e) => e !== "") : true,
   );
   const lumo = [...own, ...toolCommands(provider, tools)];
-  if (provider !== "claude-code") return lumo;
   const taken = new Set(lumo.map((c) => c.name));
+  if (provider === "antigravity-cli") {
+    const agy = ANTIGRAVITY_COMMANDS.filter((name) => !taken.has(name));
+    return [...lumo, ...agy.map((name): SlashCommand => ({ name, note: CLI_NOTES[name], icon: "terminal", kind: "cli" }))];
+  }
+  if (provider !== "claude-code") return lumo;
   const seen = new Set<string>();
   const cli: SlashCommand[] = [];
   for (const name of reported && reported.length > 0 ? reported : CLAUDE_CODE_DEFAULT) {

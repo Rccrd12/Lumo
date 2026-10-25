@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import {
   claudeSubtitle, codexIsStale, codexResetsLabel, codexSubtitle, dominantPct, effectivePct,
   mergeWindow, parseClaudePlan, parseCodexPlan, pillLabel, planColor, resetLabel, restorePlanUsage,
-  parseAntigravityPlan, antigravityGroupName, antigravitySubtitle,
+  parseAntigravityPlan, antigravityUsageOfText, antigravityGroupName, antigravitySubtitle,
 } from "../src/core/plan.ts";
 import { emit } from "./tauri.mjs";
 import { registerHookHandlers } from "../src/island/hooks.ts";
@@ -369,4 +369,23 @@ test("a status line with the week alone keeps the 5 hours a chat answer brought"
   });
   assert.equal(State.planUsage.fiveHour.usedPct, 30, "not dropped");
   assert.equal(State.planUsage.sevenDay.usedPct, 75);
+});
+
+test("Antigravity's /usage answer in the chat reads back as its limits", () => {
+  const now = Date.parse("2026-10-25T14:20:00Z");
+  const text = [
+    "- **Gemini Models** · Weekly Limit Remaining · 96% · 2026-10-28T22:06:14Z",
+    "- **Gemini Models** · Five Hour Limit Remaining · 97% · 2026-10-25T17:10:21Z",
+    "- **Claude and GPT models** · Five Hour Limit Remaining · 100% · 2026-10-25T19:21:35Z",
+  ].join("\n");
+  const u = antigravityUsageOfText(text, now);
+  assert.equal(u.buckets.length, 3);
+  // Gemini first, its 5 hours before its week.
+  assert.deepEqual(u.buckets.map((b) => [b.group, b.window]), [
+    ["Gemini Models", "5h"], ["Gemini Models", "weekly"], ["Claude and GPT models", "5h"],
+  ]);
+  assert.equal(Math.round(u.buckets[1].w.usedPct), 4);
+  assert.equal(u.buckets[0].w.resetsAt, Date.parse("2026-10-25T17:10:21Z"));
+  assert.equal(antigravityUsageOfText("- **Remaining credits** · 0", now), null);
+  assert.equal(antigravityUsageOfText(text + "\nand a sentence", now), null);
 });

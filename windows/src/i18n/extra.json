@@ -9975,6 +9975,30 @@
    "id": "Tambahkan ke Claude Code?",
    "it": "Aggiungere a Claude Code?"
   },
+  "Adding to Claude Code…": {
+   "zh-Hans": "正在添加到 Claude Code…",
+   "hi": "Claude Code में जोड़ा जा रहा है…",
+   "es": "Añadiendo a Claude Code…",
+   "ar": "جارٍ الإضافة إلى Claude Code…",
+   "fr": "Ajout à Claude Code…",
+   "bn": "Claude Code-এ যোগ করা হচ্ছে…",
+   "pt-BR": "Adicionando ao Claude Code…",
+   "ru": "Добавляю в Claude Code…",
+   "id": "Menambahkan ke Claude Code…",
+   "it": "Aggiungo a Claude Code…"
+  },
+  "Taking away from Claude Code…": {
+   "zh-Hans": "正在从 Claude Code 移除…",
+   "hi": "Claude Code से हटाया जा रहा है…",
+   "es": "Quitando de Claude Code…",
+   "ar": "جارٍ الإزالة من Claude Code…",
+   "fr": "Retrait de Claude Code…",
+   "bn": "Claude Code থেকে সরানো হচ্ছে…",
+   "pt-BR": "Removendo do Claude Code…",
+   "ru": "Убираю из Claude Code…",
+   "id": "Mencabut dari Claude Code…",
+   "it": "Tolgo da Claude Code…"
+  },
   "Take away?": {
    "zh-Hans": "取消？",
    "hi": "हटाएँ?",
@@ -10896,6 +10920,78 @@
    "ru": "и ещё {count}",
    "id": "dan {count} lainnya",
    "it": "e altri {count}"
+  },
+  "Antigravity CLI didn't answer.": {
+   "zh-Hans": "Antigravity CLI 没有回复。",
+   "hi": "Antigravity CLI ने जवाब नहीं दिया।",
+   "es": "Antigravity CLI no respondió.",
+   "ar": "لم يردّ Antigravity CLI.",
+   "fr": "Antigravity CLI n'a pas répondu.",
+   "bn": "Antigravity CLI উত্তর দেয়নি।",
+   "pt-BR": "O Antigravity CLI não respondeu.",
+   "ru": "Antigravity CLI не ответил.",
+   "id": "Antigravity CLI tidak menjawab.",
+   "it": "Antigravity CLI non ha risposto."
+  },
+  "Send a message first: Antigravity CLI hasn't seen this conversation yet.": {
+   "zh-Hans": "请先发送一条消息：Antigravity CLI 还没有看到这段对话。",
+   "hi": "पहले एक संदेश भेजें: Antigravity CLI ने अभी यह बातचीत नहीं देखी है।",
+   "es": "Envía primero un mensaje: Antigravity CLI aún no ha visto esta conversación.",
+   "ar": "أرسل رسالة أولاً: لم يرَ Antigravity CLI هذه المحادثة بعد.",
+   "fr": "Envoyez d'abord un message : Antigravity CLI n'a pas encore vu cette conversation.",
+   "bn": "আগে একটি বার্তা পাঠান: Antigravity CLI এখনও এই কথোপকথন দেখেনি।",
+   "pt-BR": "Envie uma mensagem primeiro: o Antigravity CLI ainda não viu esta conversa.",
+   "ru": "Сначала отправьте сообщение: Antigravity CLI ещё не видел этот разговор.",
+   "id": "Kirim pesan dulu: Antigravity CLI belum melihat percakapan ini.",
+   "it": "Prima invia un messaggio: Antigravity CLI non ha ancora visto questa conversazione."
+  },
+  "Antigravity CLI compacted the conversation.": {
+   "zh-Hans": "Antigravity CLI 已压缩对话。",
+   "hi": "Antigravity CLI ने बातचीत को संक्षिप्त कर दिया।",
+   "es": "Antigravity CLI compactó la conversación.",
+   "ar": "ضغط Antigravity CLI المحادثة.",
+   "fr": "Antigravity CLI a compacté la conversation.",
+   "bn": "Antigravity CLI কথোপকথনটি সংক্ষিপ্ত করেছে।",
+   "pt-BR": "O Antigravity CLI compactou a conversa.",
+   "ru": "Antigravity CLI сжал разговор.",
+   "id": "Antigravity CLI memadatkan percakapan.",
+   "it": "Antigravity CLI ha compattato la conversazione."
+  },
+  "Show your plan's limits": {
+   "zh-Hans": "显示你的套餐限额",
+   "hi": "अपने प्लान की सीमाएँ दिखाएँ",
+   "es": "Muestra los límites de tu plan",
+   "ar": "اعرض حدود خطتك",
+   "fr": "Afficher les limites de votre forfait",
+   "bn": "আপনার প্ল্যানের সীমা দেখান",
+   "pt-BR": "Mostra os limites do seu plano",
+   "ru": "Показать лимиты тарифа",
+   "id": "Tampilkan batas paket Anda",
+   "it": "Mostra i limiti del tuo piano"
+  },
+  "Show your remaining credits": {
+   "zh-Hans": "显示剩余额度",
+   "hi": "अपने बचे हुए क्रेडिट दिखाएँ",
+   "es": "Muestra tus créditos restantes",
+   "ar": "اعرض أرصدتك المتبقية",
+   "fr": "Afficher vos crédits restants",
+   "bn": "আপনার বাকি ক্রেডিট দেখান",
+   "pt-BR": "Mostra seus créditos restantes",
+   "ru": "Показать оставшиеся кредиты",
+   "id": "Tampilkan kredit Anda yang tersisa",
+   "it": "Mostra i crediti rimasti"
+  },
+  "List your skills": {
+   "zh-Hans": "列出你的技能",
+   "hi": "अपनी स्किल की सूची दिखाएँ",
+   "es": "Lista tus habilidades",
+   "ar": "اعرض مهاراتك",
+   "fr": "Lister vos compétences",
+   "bn": "আপনার স্কিলের তালিকা দেখান",
+   "pt-BR": "Lista suas habilidades",
+   "ru": "Список ваших навыков",
+   "id": "Daftar skill Anda",
+   "it": "Elenca le tue skill"
   }
  }
 }

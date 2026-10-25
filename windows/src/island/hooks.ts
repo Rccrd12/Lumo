@@ -133,6 +133,47 @@ function cancelStopTimer(id: string): boolean {
   return true;
 }
 
+/**
+ * Antigravity can end a run without its Stop: run headless, a call it refused
+ * on its own closes the run with no word after the PreToolUse, and the pill
+ * would say "working" for good. Heard from by none of its sessions for this
+ * long, mid-turn, the pill goes. Re-armed on every event, per pill.
+ */
+export const AGY_SILENT_MS = 10 * 60_000;
+const silenceTimers = new Map<string, number>();
+
+function cancelSilenceTimer(id: string): void {
+  const timer = silenceTimers.get(id);
+  if (timer == null) return;
+  window.clearTimeout(timer);
+  silenceTimers.delete(id);
+}
+
+/** Events after which the pill is no longer mid-turn: nothing to watch. */
+const TURN_DONE = new Set(["Stop", "StopFailure", "Interrupt", "SessionEnd"]);
+
+function watchSilence(island: Island, id: string, event: string): void {
+  cancelSilenceTimer(id);
+  if (TURN_DONE.has(event)) return;
+  silenceTimers.set(id, window.setTimeout(() => {
+    silenceTimers.delete(id);
+    const t = State.tasks.find((x) => x.id === id);
+    if (!t) return;
+    // A card still up for it has its own timer: wait for that one to go.
+    if (State.pendingApproval?.pillId === id || State.approvalQueue.some((q) => q.pillId === id)) {
+      watchSilence(island, id, "");
+      return;
+    }
+    if (t.state !== "working" && t.state !== "thinking") return;
+    liveSessions.end(id, "");
+    island.plan?.endSession(id, t.sessionId ?? "");
+    cancelStopTimer(id);
+    State.clearSessionDiffs(id);
+    State.removeTask(id);
+    State.notify();
+  }, AGY_SILENT_MS));
+}
+
 /** Events after which a pending permission request of the same session is moot. */
 const TURN_OVER = new Set(["Stop", "StopFailure", "UserPromptSubmit", "SessionEnd", "Interrupt"]);
 
@@ -790,5 +831,6 @@ function handleHook(island: Island, payload: HookPayload) {
     default:
       break;
   }
+  if (validAgent === "antigravity" && payload.lumo_island !== true && name) watchSilence(island, agentId, name);
   State.notify();
 }
