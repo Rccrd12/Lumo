@@ -9975,6 +9975,30 @@
    "id": "Tambahkan ke Claude Code?",
    "it": "Aggiungere a Claude Code?"
   },
+  "Adding to Claude Code…": {
+   "zh-Hans": "正在添加到 Claude Code…",
+   "hi": "Claude Code में जोड़ा जा रहा है…",
+   "es": "Añadiendo a Claude Code…",
+   "ar": "جارٍ الإضافة إلى Claude Code…",
+   "fr": "Ajout à Claude Code…",
+   "bn": "Claude Code-এ যোগ করা হচ্ছে…",
+   "pt-BR": "Adicionando ao Claude Code…",
+   "ru": "Добавляю в Claude Code…",
+   "id": "Menambahkan ke Claude Code…",
+   "it": "Aggiungo a Claude Code…"
+  },
+  "Taking away from Claude Code…": {
+   "zh-Hans": "正在从 Claude Code 移除…",
+   "hi": "Claude Code से हटाया जा रहा है…",
+   "es": "Quitando de Claude Code…",
+   "ar": "جارٍ الإزالة من Claude Code…",
+   "fr": "Retrait de Claude Code…",
+   "bn": "Claude Code থেকে সরানো হচ্ছে…",
+   "pt-BR": "Removendo do Claude Code…",
+   "ru": "Убираю из Claude Code…",
+   "id": "Mencabut dari Claude Code…",
+   "it": "Tolgo da Claude Code…"
+  },
   "Take away?": {
    "zh-Hans": "取消？",
    "hi": "हटाएँ?",

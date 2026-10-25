@@ -6253,6 +6253,15 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
   background: rgba(245, 165, 36, 0.24);
 }
 
+/* Claude Code is being asked: the label says what is happening, softly breathing. */
+.tools-term.busy .tools-term-label {
+  animation: tools-term-busy 1.2s ease-in-out infinite;
+}
+
+@keyframes tools-term-busy {
+  50% { opacity: 0.55; }
+}
+
 .tools-term-label {
   font: 500 11px var(--font);
   white-space: nowrap;
