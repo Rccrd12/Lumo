@@ -4,7 +4,7 @@ import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
 import { StepsCard } from "./steps";
-import { State, type AgentTask } from "../core/state";
+import { State, type AgentTask, type OutgoingEmail } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../character/minibots";
 import { buildPrompt } from "./chat";
@@ -26,7 +26,7 @@ import { buildLive, openVoiceSettings } from "./live";
 import { TOOLS_STRINGS, buildTools } from "./tools";
 import { Live } from "../live/session";
 import type { LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
-import { language, t, tl, type Msg } from "../i18n/i18n";
+import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
@@ -571,14 +571,45 @@ function foldButton(actions: ViewActions): HTMLElement {
   );
 }
 
+/** The card of an email the AI wants to send (mail.rs send). */
+const EMAIL_TEXT = {
+  wants: N_("wants to send an email"),
+  from: N_("From"),
+  to: N_("To"),
+  cc: N_("Cc"),
+  subject: N_("Subject"),
+  noSubject: N_("(no subject)"),
+  send: N_("Send"),
+  discard: N_("Discard"),
+};
+
+/** The email on its card: who it is from and for, its subject, its whole text. */
+function emailBlock(email: OutgoingEmail): HTMLElement {
+  const line = (label: string, value: string) =>
+    h("div", { class: "mail-line" }, h("span", { class: "mail-label", text: t(label) }), h("span", { class: "mail-value", text: value, title: value }));
+  return h(
+    "div",
+    { class: "mail-card" },
+    email.from ? line(EMAIL_TEXT.from, email.from) : null,
+    line(EMAIL_TEXT.to, email.to.join(", ")),
+    email.cc.length ? line(EMAIL_TEXT.cc, email.cc.join(", ")) : null,
+    line(EMAIL_TEXT.subject, email.subject || t(EMAIL_TEXT.noSubject)),
+    h("div", { class: "mail-body", text: email.body }),
+  );
+}
+
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const about = h("div", { class: "approval-about" });
   const code = h("div", { class: "code" });
+  const mail = h("div", { class: "mail-slot" });
   const row = h("div", { class: "actions" });
+  // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
+  const mailRow = h("div", { class: "actions" });
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
   const el = h("div", { class: "view" },
-    card("amber", stack(116, 16, who, about, code, row), foldButton(actions)));
+    card("amber", stack(116, 16, who, about, code, mail, row, mailRow), foldButton(actions)));
+  let mailFor: string | null = null;
   let rowKey = "";
   // The card pops up under a cursor that was busy with something else: a click
   // meant for the window underneath must not land on Allow. Clicks in the first
@@ -602,7 +633,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   let lastKeyAt = -Infinity;
   const cardOnScreen = () => {
     const req = State.pendingApproval;
-    return State.mode === "expanded" && State.view === "approval" && req != null && !req.questions;
+    return State.mode === "expanded" && State.view === "approval" && req != null && !req.questions && !req.email;
   };
   const answerKey = (d: "allow" | "deny") => {
     const previous = lastKeyAt;
@@ -636,16 +667,27 @@ function buildApproval(actions: ViewActions): ViewHost {
         shownFor = req;
         shownAt = performance.now();
       }
+      const pending = State.pendingApproval;
+      const email = pending?.email ?? null;
       clear(who);
-      who.append(requestWho(t("needs permission")));
+      who.append(requestWho(email ? t(EMAIL_TEXT.wants) : t("needs permission")));
+      // An email to send: the whole email, and Send or Discard.
+      if ((email ? req : null) !== mailFor) {
+        mailFor = email ? req : null;
+        clear(mail);
+        if (email) mail.append(emailBlock(email));
+      }
+      mail.hidden = !email;
+      code.hidden = !!email;
+      row.hidden = !!email;
+      mailRow.hidden = !email;
       // The whole point of approving here rather than in the terminal: this line
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
-      code.textContent = State.pendingApproval?.command || State.pendingApproval?.tool || "…";
+      code.textContent = pending?.command || pending?.tool || "…";
       code.title = code.textContent;
       // What it is for: the agent's own words, else what the request does.
-      const pending = State.pendingApproval;
-      const text = pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
+      const text = email ? "" : pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
       about.textContent = text;
       about.title = text;
       about.hidden = !text;
@@ -662,6 +704,11 @@ function buildApproval(actions: ViewActions): ViewHost {
         btn(tl("Deny"), "secondary", guarded("deny"), "N"),
         sessionAllow,
         btn(tl("Allow"), "primary", guarded("allow"), "Y"),
+      );
+      clear(mailRow);
+      mailRow.append(
+        btn(tl(EMAIL_TEXT.discard), "secondary", guarded("deny")),
+        btn(tl(EMAIL_TEXT.send), "primary", guarded("allow")),
       );
     },
   };

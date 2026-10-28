@@ -96,15 +96,35 @@ pub fn wake() {
 /// Whether a change of settings concerns the Email pill: turned on or off (its
 /// connection opens or closes now), its promotions filter, or the language its
 /// errors are written in. Any other change leaves the inbox alone.
-/// The AI may read the email (Settings → General → Security): anything but "none".
-pub fn ai_reads(settings: &Settings) -> bool {
-    settings.ai_mail_access != "none"
+/// What the AI may do with the email (Settings → General → Security): "none",
+/// "read", or "send" (read, and send what the user approves on a card).
+/// Anything else reads as "read", as before the setting.
+pub fn access(settings: &Settings) -> &'static str {
+    match settings.ai_mail_access.as_str() {
+        "none" => "none",
+        "send" => "send",
+        _ => "read",
+    }
+}
+
+/// The `--tools=` of lumo-hook's email tools the agents get: "" (none: the
+/// Email pill is off, or Security keeps it from the AI), "mail" (reading),
+/// "mail,mailsend" (and `mail_send`, each email sent only with the user's click).
+pub fn ai_tools(app: &AppHandle) -> &'static str {
+    if !crate::integrations::enabled(app, ID) {
+        return "";
+    }
+    match access(&app.state::<crate::Shared>().settings.lock().unwrap()) {
+        "none" => "",
+        "send" => "mail,mailsend",
+        _ => "mail",
+    }
 }
 
 /// The Email pill is on and the AI may read what it reads: the chat, Gemini
 /// Live's helper and Lumo's email tools go by it.
 pub fn for_ai(app: &AppHandle) -> bool {
-    crate::integrations::enabled(app, ID) && ai_reads(&app.state::<crate::Shared>().settings.lock().unwrap())
+    !ai_tools(app).is_empty()
 }
 
 pub fn concerned(before: &Settings, after: &Settings) -> bool {
@@ -326,7 +346,7 @@ pub fn asks_about(query: &str) -> bool {
 /// The newest unread emails, as the chat's provider reads them.
 pub fn context_text(unread: usize, messages: &[Message]) -> String {
     let mut out = String::from(
-        "Lumo reads the user's inbox (the Email pill, read only: Lumo cannot send, move or delete email). ",
+        "Lumo reads the user's inbox (the Email pill: Lumo cannot move or delete email, and sends one only through the mail_send tool, when it is offered, once the user clicks Send). ",
     );
     if messages.is_empty() {
         out.push_str("Right now there is no unread email.\n");
@@ -353,7 +373,7 @@ pub fn context_text(unread: usize, messages: &[Message]) -> String {
             out.push_str(&format!("  {cut}{more}\n"));
         }
     }
-    out.push_str("Answer questions about the user's email from this list. To reply, write a draft for them to send themselves.\n");
+    out.push_str("Answer questions about the user's email from this list. To reply, use mail_send if you have it, else write a draft for them to send themselves.\n");
     out
 }
 
@@ -633,7 +653,7 @@ pub fn list_text(found: &[Found], text_chars: usize) -> String {
 /// The newest emails, read or not, as the chat's provider reads them.
 pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
     let mut out = String::from(
-        "Lumo reads the user's inbox (the Email pill, read only: Lumo cannot send, move or delete email). ",
+        "Lumo reads the user's inbox (the Email pill: Lumo cannot move or delete email, and sends one only through the mail_send tool, when it is offered, once the user clicks Send). ",
     );
     if found.is_empty() {
         out.push_str("The inbox is empty.\n");
@@ -645,7 +665,7 @@ pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
     }
     out.push_str(":\n");
     out.push_str(&list_text(found, CHAT_BODY_CHARS));
-    out.push_str("Answer questions about the user's email from this list. To reply, write a draft for them to send themselves.\n");
+    out.push_str("Answer questions about the user's email from this list. To reply, use mail_send if you have it, else write a draft for them to send themselves.\n");
     out
 }
 
@@ -669,11 +689,21 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     if AGENT_TURNS.load(Ordering::SeqCst) == 0 {
         return refuse("Lumo gives its email tools only to the agent answering in the island.".into());
     }
-    if !ai_reads(&app.state::<crate::Shared>().settings.lock().unwrap()) {
+    let level = access(&app.state::<crate::Shared>().settings.lock().unwrap());
+    if level == "none" {
         return refuse("The user turned off the AI's access to their email in Lumo (Settings → General → Security).".into());
     }
     let tool = request.get("tool").and_then(|v| v.as_str()).unwrap_or("");
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
+    if tool == "mail_send" {
+        if level != "send" {
+            return refuse("The user lets the AI only read their email (Lumo's Settings → General → Security): write a draft for them to send instead.".into());
+        }
+        return match send(app, &input).await {
+            Ok(text) => json!({ "text": text }),
+            Err(e) => refuse(e),
+        };
+    }
     let count = input.get("count").and_then(|v| v.as_u64()).map_or(DEFAULT_COUNT, |n| n as usize);
     let answer = match tool {
         "mail_recent" => {
@@ -716,6 +746,67 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         Ok(text) => json!({ "text": text }),
         Err(e) => refuse(e),
     }
+}
+
+/// The addresses of `mail_send`'s `to` or `cc`: a list or one string, each checked.
+fn addresses(v: Option<&serde_json::Value>, field: &str) -> Result<Vec<String>, String> {
+    let list: Vec<String> = match v {
+        None | Some(serde_json::Value::Null) => Vec::new(),
+        Some(serde_json::Value::String(s)) => s.split(',').map(|a| a.trim().to_string()).filter(|a| !a.is_empty()).collect(),
+        Some(serde_json::Value::Array(a)) => a.iter().filter_map(|x| x.as_str()).map(|a| a.trim().to_string()).collect(),
+        Some(_) => return Err(format!("{field} must be a list of email addresses.")),
+    };
+    match list.iter().find(|a| !crate::smtp::valid_address(a)) {
+        Some(bad) => Err(format!("{bad} is not an email address Lumo can send to (give plain addresses, like name@example.com).")),
+        None => Ok(list),
+    }
+}
+
+/// `mail_send`'s input, checked: who, the subject, the text.
+pub fn outgoing(input: &serde_json::Value) -> Result<crate::smtp::Outgoing, String> {
+    let to = addresses(input.get("to"), "to")?;
+    let cc = addresses(input.get("cc"), "cc")?;
+    if to.is_empty() {
+        return Err("Say who the email is for (to).".into());
+    }
+    if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
+        return Err(format!("At most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
+    }
+    let subject = input.get("subject").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if subject.chars().count() > crate::smtp::MAX_SUBJECT {
+        return Err("The subject is too long.".into());
+    }
+    if body.trim().is_empty() {
+        return Err("The email has no text (body).".into());
+    }
+    if body.len() > crate::smtp::MAX_BODY {
+        return Err("The email's text is too long.".into());
+    }
+    Ok(crate::smtp::Outgoing { to, cc, subject, body })
+}
+
+/// `mail_send`: the email on a card of its own on the island, sent only when
+/// the user clicks Send. Nothing (Auto, Turbo, a trusted tool) skips the card.
+async fn send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let mail = outgoing(input)?;
+    let from = secrets::get(ADDRESS_KEY)
+        .ok_or_else(|| "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.".to_string())?;
+    let card = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": "mcp__lumo__mail_send",
+        "tool_input": { "to": mail.to, "cc": mail.cc, "subject": mail.subject },
+        "lumo_mail_send": { "from": from, "to": mail.to, "cc": mail.cc, "subject": mail.subject, "body": mail.body },
+    });
+    match crate::pipe::ask(app, card).await.as_deref() {
+        Some("allow") => {}
+        Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
+        None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
+    }
+    let host = crate::smtp::send(&mail).await.inspect_err(|e| log::line(format!("[mail] send: {e}")))?;
+    log::line(format!("[mail] sent through {host} to {} people", mail.to.len() + mail.cc.len()));
+    Ok(format!("Sent to {}.", mail.to.iter().chain(&mail.cc).cloned().collect::<Vec<_>>().join(", ")))
 }
 
 fn uid_of(id: &str) -> Option<u32> {
@@ -794,7 +885,7 @@ struct Imap {
     capabilities: Vec<String>,
 }
 
-fn tls() -> Result<Arc<ClientConfig>, String> {
+pub(crate) fn tls() -> Result<Arc<ClientConfig>, String> {
     let roots = RootCertStore { roots: webpki_roots::TLS_SERVER_ROOTS.to_vec() };
     let provider = Arc::new(rustls::crypto::ring::default_provider());
     let config = ClientConfig::builder_with_provider(provider)
@@ -1671,9 +1762,24 @@ mod tests {
 
     #[test]
     fn the_ai_reads_the_email_unless_security_says_none() {
-        assert!(ai_reads(&Settings::default()), "as before the setting");
-        assert!(!ai_reads(&Settings { ai_mail_access: "none".into(), ..Settings::default() }));
-        assert!(ai_reads(&Settings { ai_mail_access: "something new".into(), ..Settings::default() }));
+        assert_eq!(access(&Settings::default()), "read", "as before the setting");
+        assert_eq!(access(&Settings { ai_mail_access: "none".into(), ..Settings::default() }), "none");
+        assert_eq!(access(&Settings { ai_mail_access: "send".into(), ..Settings::default() }), "send");
+        assert_eq!(access(&Settings { ai_mail_access: "anything".into(), ..Settings::default() }), "read");
+    }
+
+    #[test]
+    fn mail_send_takes_plain_addresses_a_subject_and_a_text() {
+        let ok = outgoing(&json!({ "to": "ada@example.com, bob@example.com", "subject": "Hi", "body": "Ciao" })).unwrap();
+        assert_eq!(ok.to, ["ada@example.com", "bob@example.com"]);
+        assert!(ok.cc.is_empty());
+        let list = outgoing(&json!({ "to": ["ada@example.com"], "cc": ["c@example.com"], "body": "x" })).unwrap();
+        assert_eq!((list.cc.len(), list.subject.as_str()), (1, ""));
+        assert!(outgoing(&json!({ "to": [], "body": "x" })).is_err(), "nobody");
+        assert!(outgoing(&json!({ "to": "ada@example.com", "body": "  " })).is_err(), "no text");
+        assert!(outgoing(&json!({ "to": "ada@example.com>\r\nRCPT TO:<eve@example.com", "body": "x" })).is_err());
+        let many: Vec<String> = (0..21).map(|i| format!("p{i}@example.com")).collect();
+        assert!(outgoing(&json!({ "to": many, "body": "x" })).is_err(), "too many");
     }
 
     #[test]

@@ -307,8 +307,8 @@ slow to say, fetching only new emails. A server without IDLE is asked every
 30 seconds. Its card lists the newest unread emails, and a new one
 shows on the closed island (see [The closed island](#the-closed-island)).
 Lumo only reads: the inbox is opened read only, emails stay unread, and
-nothing is ever sent, moved or deleted. The address, the server and the app
-password are in the system keychain.
+nothing is ever moved or deleted. An email is sent only as below, with your
+click. The address, the server and the app password are in the system keychain.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -336,7 +336,20 @@ email in full. Lumo adds them to the MCP configuration of its own folder
 (`~/Lumo/.agents/mcp_config.json`, your other entries kept, taken out when
 the pill is off), and they answer only while Antigravity answers in the
 island, in the chat or for Gemini Live. They only read, so they need no card,
-and they can't send, move, mark or delete anything.
+and they can't move, mark or delete anything.
+
+**Settings… → General → Security → Email** says what the AI may do with
+it: **Read only** (the default, as above), **No access** (nothing of the
+mailbox reaches any AI: no emails with the question, no email tools, nothing
+for Gemini Live) or **Read and send**. With Read and send, the chat's Claude
+Code, Codex and Antigravity CLI also get the email tools and `mail_send`:
+the email they want to send comes up on a card on the island, whole (from,
+to, cc, subject, text), and goes only when you click **Send**; **Discard**
+sends nothing. No permission mode (Auto, Turbo) and no key skips that card.
+It goes from your account over SMTP (Gmail, Outlook, iCloud, Yahoo, or the
+`smtp.` server next to your IMAP one), with the same app password, over TLS.
+The calendar, read from its address, stays read only: **Calendar** has Read
+only and No access.
 
 ## Claude Code
 

@@ -1451,6 +1451,58 @@ body {
   display: none;
 }
 
+/* The card of an email the AI wants to send: the whole email, read before Send. */
+.mail-slot[hidden],
+.actions[hidden],
+.code[hidden] {
+  display: none;
+}
+
+.mail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.mail-line {
+  display: flex;
+  gap: 8px;
+  font: 400 12px var(--font);
+  min-width: 0;
+}
+
+.mail-label {
+  color: var(--dim);
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+.mail-value {
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.mail-body {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 12px/1.45 var(--font);
+  color: #e8e9ec;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 120px;
+  overflow-y: auto;
+  user-select: text;
+}
+
 .stack {
   position: relative;
   z-index: 1;

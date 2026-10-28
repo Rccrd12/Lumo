@@ -4351,17 +4351,77 @@
    "id": "Email dan kalender",
    "it": "Email e calendario"
   },
-  "What the AI may do with the Email pill's mailbox: read it when you ask about it (the chat, Gemini Live, Antigravity CLI's email tools), or nothing at all.": {
-   "zh-Hans": "AI 可以对“电子邮件”胶囊的邮箱做什么：在你询问时读取它（聊天、Gemini Live、Antigravity CLI 的邮件工具），或者什么都不做。",
-   "hi": "Email पिल के मेलबॉक्स के साथ AI क्या कर सकता है: जब आप उसके बारे में पूछें तब उसे पढ़ना (चैट, Gemini Live, Antigravity CLI के ईमेल टूल), या कुछ भी नहीं।",
-   "es": "Lo que la IA puede hacer con el buzón de la píldora Correo: leerlo cuando preguntas por él (el chat, Gemini Live, las herramientas de correo de Antigravity CLI) o nada en absoluto.",
-   "ar": "ما يمكن للذكاء الاصطناعي فعله بصندوق بريد حبة البريد: قراءته عندما تسأل عنه (الدردشة وGemini Live وأدوات البريد في Antigravity CLI)، أو لا شيء على الإطلاق.",
-   "fr": "Ce que l'IA peut faire de la boîte de la pastille E-mail : la lire quand vous lui en parlez (le chat, Gemini Live, les outils e-mail d'Antigravity CLI), ou rien du tout.",
-   "bn": "Email পিলের মেইলবক্স নিয়ে AI কী করতে পারে: আপনি জিজ্ঞাসা করলে সেটি পড়া (চ্যাট, Gemini Live, Antigravity CLI-এর ইমেল টুল), অথবা কিছুই না।",
-   "pt-BR": "O que a IA pode fazer com a caixa de correio da pílula E-mail: lê-la quando você pergunta sobre ela (o chat, o Gemini Live, as ferramentas de e-mail do Antigravity CLI) ou nada.",
-   "ru": "Что ИИ может делать с почтовым ящиком пилюли «Почта»: читать его, когда вы спрашиваете о нём (чат, Gemini Live, почтовые инструменты Antigravity CLI), или ничего.",
-   "id": "Apa yang boleh dilakukan AI dengan kotak surat pil Email: membacanya saat Anda menanyakannya (chat, Gemini Live, alat email Antigravity CLI), atau tidak sama sekali.",
-   "it": "Cosa può fare l'IA con la casella della pillola Email: leggerla quando glielo chiedi (la chat, Gemini Live, gli strumenti email di Antigravity CLI), oppure niente."
+  "What the AI may do with the Email pill's mailbox: read it when you ask about it, also send emails, or nothing at all. An email is sent only when you click Send on its card, which shows it whole.": {
+   "zh-Hans": "AI 可以对“电子邮件”胶囊的邮箱做什么：在你询问时读取它，也可以发送邮件，或者什么都不做。只有当你在卡片上点击“发送”时邮件才会发出，卡片会完整显示邮件。",
+   "hi": "Email पिल के मेलबॉक्स के साथ AI क्या कर सकता है: जब आप पूछें तब उसे पढ़ना, ईमेल भेजना भी, या कुछ भी नहीं। ईमेल तभी भेजा जाता है जब आप उसके कार्ड पर भेजें पर क्लिक करते हैं, जो उसे पूरा दिखाता है।",
+   "es": "Lo que la IA puede hacer con el buzón de la píldora Correo: leerlo cuando preguntas por él, también enviar correos, o nada en absoluto. Un correo solo se envía cuando haces clic en Enviar en su tarjeta, que lo muestra entero.",
+   "ar": "ما يمكن للذكاء الاصطناعي فعله بصندوق بريد حبة البريد: قراءته عندما تسأل عنه، وإرسال الرسائل أيضًا، أو لا شيء على الإطلاق. لا تُرسل الرسالة إلا عندما تنقر على إرسال في بطاقتها التي تعرضها كاملة.",
+   "fr": "Ce que l'IA peut faire de la boîte de la pastille E-mail : la lire quand vous lui en parlez, envoyer aussi des e-mails, ou rien du tout. Un e-mail ne part que lorsque vous cliquez sur Envoyer sur sa carte, qui l'affiche en entier.",
+   "bn": "Email পিলের মেইলবক্স নিয়ে AI কী করতে পারে: আপনি জিজ্ঞাসা করলে সেটি পড়া, ইমেল পাঠানোও, অথবা কিছুই না। একটি ইমেল কেবল তখনই যায় যখন আপনি তার কার্ডে পাঠান-এ ক্লিক করেন, যা পুরো ইমেলটি দেখায়।",
+   "pt-BR": "O que a IA pode fazer com a caixa de correio da pílula E-mail: lê-la quando você pergunta sobre ela, também enviar e-mails, ou nada. Um e-mail só é enviado quando você clica em Enviar no cartão dele, que o mostra inteiro.",
+   "ru": "Что ИИ может делать с почтовым ящиком пилюли «Почта»: читать его, когда вы спрашиваете о нём, ещё и отправлять письма, или ничего. Письмо уходит, только когда вы нажимаете «Отправить» на его карточке, где оно показано целиком.",
+   "id": "Apa yang boleh dilakukan AI dengan kotak surat pil Email: membacanya saat Anda menanyakannya, juga mengirim email, atau tidak sama sekali. Email hanya terkirim saat Anda mengklik Kirim di kartunya, yang menampilkannya secara utuh.",
+   "it": "Cosa può fare l'IA con la casella della pillola Email: leggerla quando glielo chiedi, anche inviare email, oppure niente. Un'email parte solo quando fai clic su Invia nella sua scheda, che la mostra per intero."
+  },
+  "Read and send": {
+   "zh-Hans": "读取和发送",
+   "hi": "पढ़ना और भेजना",
+   "es": "Leer y enviar",
+   "ar": "القراءة والإرسال",
+   "fr": "Lire et envoyer",
+   "bn": "পড়া ও পাঠানো",
+   "pt-BR": "Ler e enviar",
+   "ru": "Чтение и отправка",
+   "id": "Baca dan kirim",
+   "it": "Lettura e invio"
+  },
+  "wants to send an email": {
+   "zh-Hans": "想要发送一封邮件",
+   "hi": "एक ईमेल भेजना चाहता है",
+   "es": "quiere enviar un correo",
+   "ar": "يريد إرسال رسالة بريد إلكتروني",
+   "fr": "veut envoyer un e-mail",
+   "bn": "একটি ইমেল পাঠাতে চায়",
+   "pt-BR": "quer enviar um e-mail",
+   "ru": "хочет отправить письмо",
+   "id": "ingin mengirim email",
+   "it": "vuole inviare un'email"
+  },
+  "From": {
+   "zh-Hans": "发件人",
+   "hi": "प्रेषक",
+   "es": "De",
+   "ar": "من",
+   "fr": "De",
+   "bn": "প্রেরক",
+   "pt-BR": "De",
+   "ru": "От",
+   "id": "Dari",
+   "it": "Da"
+  },
+  "Cc": {
+   "zh-Hans": "抄送",
+   "hi": "Cc",
+   "es": "CC",
+   "ar": "نسخة",
+   "fr": "Cc",
+   "bn": "Cc",
+   "pt-BR": "Cc",
+   "ru": "Копия",
+   "id": "Cc",
+   "it": "Cc"
+  },
+  "Discard": {
+   "zh-Hans": "舍弃",
+   "hi": "रद्द करें",
+   "es": "Descartar",
+   "ar": "تجاهل",
+   "fr": "Abandonner",
+   "bn": "বাতিল করুন",
+   "pt-BR": "Descartar",
+   "ru": "Отменить",
+   "id": "Buang",
+   "it": "Scarta"
   },
   "What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all.": {
    "zh-Hans": "AI 可以对 Lumo 中设置的日历做什么：读取即将到来的日程（Gemini Live），或者什么都不做。",

@@ -706,7 +706,8 @@ const SECURITY = {
   get tabs() { return t("Share the open browser tabs"); },
   get tabsHint() { return t("Every message carries the tabs open in your browsers, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
   get mailAndCalendar() { return t("Email and calendar"); },
-  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it (the chat, Gemini Live, Antigravity CLI's email tools), or nothing at all."); },
+  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it, also send emails, or nothing at all. An email is sent only when you click Send on its card, which shows it whole."); },
+  get readAndSend() { return t("Read and send"); },
   get calendarHint() { return t("What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all."); },
   get readOnly() { return t("Read only"); },
   get noAccess() { return t("No access"); },
@@ -739,9 +740,9 @@ function securitySection(): HTMLElement {
     mode,
     (v) => { settings.chatPermissionMode = v; void save(); },
   );
-  const access = (value: string, onChange: (v: string) => void) => select(
-    [["read", SECURITY.readOnly], ["none", SECURITY.noAccess]],
-    aiReads(value) ? "read" : "none",
+  const access = (value: string, onChange: (v: string) => void, send = false) => select(
+    [...(send ? [["send", SECURITY.readAndSend] as [string, string]] : []), ["read", SECURITY.readOnly], ["none", SECURITY.noAccess]],
+    send && value === "send" ? "send" : aiReads(value) ? "read" : "none",
     onChange,
   );
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
@@ -767,7 +768,7 @@ function securitySection(): HTMLElement {
     ),
     group(SECURITY.mailAndCalendar),
     setting(t("Email"), SECURITY.mailHint,
-      access(settings.aiMailAccess, (v) => { settings.aiMailAccess = v; void save(); })),
+      access(settings.aiMailAccess, (v) => { settings.aiMailAccess = v; void save(); }, true)),
     setting(t("Calendar"), SECURITY.calendarHint,
       access(settings.aiCalendarAccess, (v) => { settings.aiCalendarAccess = v; void save(); })),
     group(t("Computer use")),

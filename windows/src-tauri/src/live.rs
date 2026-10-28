@@ -667,7 +667,7 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
     let agy = helper.id == crate::antigravity_cli::PROVIDER;
     let mode = mode.to_string();
     let (model, effort) = (helper.model.clone(), helper.effort.clone());
-    let mail = crate::mail::for_ai(app);
+    let mail = crate::mail::ai_tools(app);
     let app2 = app.clone();
     let stop2 = stop.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {
@@ -721,7 +721,7 @@ pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, Strin
     .await
     .unwrap_or(false);
     if !ready {
-        return Err("Using the screen needs Claude Code set up in Lumo, with its hooks, and Let Claude use the computer on in Settings, under Chat.".into());
+        return Err("Using the screen needs Claude Code set up in Lumo, with its hooks, and Let Claude use the computer on in Settings, under General → Security.".into());
     }
     let stop = Arc::new(Stop::default());
     if let Some(old) = HELPING.lock().unwrap_or_else(|e| e.into_inner()).replace(stop.clone()) {

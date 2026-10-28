@@ -92,6 +92,17 @@ export interface ApprovalInfo {
   simple?: boolean;
   /** The project of the session asking, when the pill is named after one (two sessions can share a pill). */
   project?: string;
+  /** An email the AI wants to send (mail.rs, `mail_send`): shown whole, sent only with a click on Send. */
+  email?: OutgoingEmail;
+}
+
+/** An email on its card: from the Email pill's account, to whom, what. */
+export interface OutgoingEmail {
+  from: string;
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
 }
 
 /** One question of an AskUserQuestion call. */
@@ -276,7 +287,7 @@ export interface Settings {
   chatShareTabs: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
-  /** What the AI may do with the email, from Settings → General → Security: "read" or "none" (read it through aiReads). */
+  /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;

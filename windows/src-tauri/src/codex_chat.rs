@@ -126,8 +126,10 @@ fn policy(mode: &str) -> (&'static str, Value) {
 /// Lumo's MCP servers for the chat's thread, as Codex configuration: the
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
 /// tools while one of them is on (`lumo_tools`, which ask on the island
-/// themselves, tools.rs). Codex calls Lumo's own tools without asking.
-fn mcp_config(chat_id: &str, tools: bool) -> Value {
+/// themselves, tools.rs), with the email's tools as Security lets the AI have
+/// them (`mail`, mail.rs ai_tools; `mail_send` asks on its own card). Codex
+/// calls Lumo's own tools without asking.
+fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
     let server = |args: &[&str]| {
         let mut entry = crate::computer::server_entry();
         entry["args"] = json!(args);
@@ -138,7 +140,8 @@ fn mcp_config(chat_id: &str, tools: bool) -> Value {
         entry
     };
     let mut servers = serde_json::Map::new();
-    servers.insert("lumo".into(), server(&["--mcp", "--tools=island"]));
+    let kit = if mail.is_empty() { "--tools=island".to_string() } else { format!("--tools={mail},island") };
+    servers.insert("lumo".into(), server(&["--mcp", &kit]));
     if tools {
         servers.insert(crate::tools::SERVER.into(), server(&["--mcp", "--tools=user"]));
     }
@@ -883,12 +886,15 @@ pub async fn send(
     let files = chat.files();
     let workshop = chat.is_workshop();
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
+    // Lumo's email tools, usable only while this turn runs.
+    let mail = crate::mail::ai_tools(app);
+    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     let spec = TurnSpec {
         exe,
         dir: claude_code::work_dir(),
         chat_id: chat.id().to_string(),
         thread,
-        config: mcp_config(chat.id(), tools),
+        config: mcp_config(chat.id(), tools, mail),
         model: model.to_string(),
         effort: effort.to_string(),
         mode: mode.to_string(),
@@ -1117,15 +1123,17 @@ mod tests {
 
     #[test]
     fn lumos_tools_go_to_codex_as_its_mcp_servers() {
-        let config = mcp_config("chat-1", false);
+        let config = mcp_config("chat-1", false, "");
         let lumo = &config["mcp_servers"]["lumo"];
         assert_eq!(lumo["args"], json!(["--mcp", "--tools=island"]));
         assert_eq!(lumo["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(lumo["env"]["LUMO_CHAT_ID"], "chat-1");
         assert_eq!(lumo["default_tools_approval_mode"], "approve");
         assert!(config["mcp_servers"].get(crate::tools::SERVER).is_none());
-        let both = mcp_config("chat-1", true);
+        let both = mcp_config("chat-1", true, "");
         assert_eq!(both["mcp_servers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
+        let mail = mcp_config("chat-1", false, "mail,mailsend");
+        assert_eq!(mail["mcp_servers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,mailsend,island"]));
     }
 
     #[test]

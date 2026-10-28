@@ -7,6 +7,7 @@ import {
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
+  EMAIL_CARD_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
   zoomStep,
 } from "../core/layout";
@@ -1176,6 +1177,9 @@ export class Island {
     let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size);
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
+    }
+    if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
+      h = Math.max(h, EMAIL_CARD_H);
     }
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
     return { w, h, r };

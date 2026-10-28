@@ -1067,3 +1067,23 @@ test("the chat's own Claude Code runs are not sessions of the pill", () => {
   hook({ hook_event_name: "Stop", session_id: "a", cwd: "/p/alpha" });
   assert.equal(task().state, "finished");
 });
+
+// ── An email the AI wants to send (mail.rs send) ─────────────────────────────
+
+test("an email to send is its own card, whole, and never answered by itself", () => {
+  const email = { from: "me@example.com", to: ["ada@example.com"], cc: [], subject: "Ciao", body: "A domani" };
+  const card = (request_id, extra = {}) => hook({
+    hook_event_name: "PermissionRequest", request_id, lumo_island: true,
+    tool_name: "mcp__lumo__mail_send", tool_input: { to: email.to, cc: [], subject: "Ciao" },
+    lumo_mail_send: email, ...extra,
+  });
+  // Turbo for Antigravity CLI and simple requests on the closed island: neither skips it.
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "turbo", quickApprovals: true };
+  card("m1", { lumo_agent: "antigravity" });
+  assert.deepEqual(sent("approval_auto_allow"), []);
+  assert.deepEqual(State.pendingApproval.email, email);
+  assert.equal(State.pendingApproval.command, "ada@example.com");
+  assert.equal(State.pendingApproval.quick, undefined);
+  assert.ok(!asked.includes("quick"));
+  assert.ok(asked.includes("alert:approval"));
+});

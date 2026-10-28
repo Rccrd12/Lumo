@@ -109,7 +109,7 @@ pub fn server_entry() -> Value {
 /// screen work is Claude Code's). An entry an earlier build put there is
 /// replaced. Whatever else the file holds is kept, and the user's global
 /// configuration is never touched.
-pub fn agy_workspace(work: &std::path::Path, mail: bool, tools: bool) {
+pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
     let path = work.join(".agents").join("mcp_config.json");
     let read = std::fs::read_to_string(&path).ok();
     let mut config = match read.as_deref().map(serde_json::from_str::<Value>) {
@@ -119,7 +119,7 @@ pub fn agy_workspace(work: &std::path::Path, mail: bool, tools: bool) {
         None => json!({}),
     };
     let mut entry = server_entry();
-    entry["args"] = json!(["--mcp", if mail { "--tools=plan,mail,island" } else { "--tools=plan,island" }]);
+    entry["args"] = json!(["--mcp", if mail.is_empty() { "--tools=plan,island".to_string() } else { format!("--tools=plan,{mail},island") }]);
     let Some(root) = config.as_object_mut() else { return };
     let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
     let Some(servers) = servers.as_object_mut() else { return };
@@ -772,7 +772,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
     let on = app.state::<crate::Shared>().settings.lock().unwrap().chat_computer_use;
     if !on {
-        return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under Chat: Let Claude use the computer.");
+        return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under General → Security: Let Claude use the computer.");
     }
     if !(TURN.load(Ordering::SeqCst) > 0) {
         return refuse("Lumo lets Claude use the computer only while it answers in the island's chat.");
@@ -1586,20 +1586,22 @@ mod tests {
         let file = dir.join(".agents").join("mcp_config.json");
         let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        agy_workspace(&dir, false, false);
+        agy_workspace(&dir, "", false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the plan always");
-        agy_workspace(&dir, true, false);
+        agy_workspace(&dir, "mail", false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]));
+        agy_workspace(&dir, "mail,mailsend", false);
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,mailsend,island"]), "sending too");
 
         // An earlier build's computer use entry, next to the user's own.
         std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
-        agy_workspace(&dir, true, false);
+        agy_workspace(&dir, "mail", false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]), "never the computer");
         assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
-        agy_workspace(&dir, false, false);
+        agy_workspace(&dir, "", false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the email goes with the pill");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
@@ -1607,17 +1609,17 @@ mod tests {
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none());
 
         // The user's tools, as a server of their own while any is on.
-        agy_workspace(&dir, false, true);
+        agy_workspace(&dir, "", true);
         let v = read();
         assert_eq!(v["mcpServers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]));
-        agy_workspace(&dir, false, false);
+        agy_workspace(&dir, "", false);
         let v = read();
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none(), "gone once none is on");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
 
         std::fs::write(&file, "not json").unwrap();
-        agy_workspace(&dir, true, false);
+        agy_workspace(&dir, "mail", false);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }

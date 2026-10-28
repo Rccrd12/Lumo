@@ -55,6 +55,7 @@ mod session_window;
 mod settings;
 mod share;
 mod shortcuts;
+mod smtp;
 mod system_control;
 mod tool_review;
 mod tools;
@@ -1278,7 +1279,7 @@ pub fn run() {
             computer::recover();
             // Antigravity CLI's plan tool, its email tools following the Email pill
             // and the user's tools while any is on (set again before each run).
-            computer::agy_workspace(&claude_code::work_dir(), integrations::enabled(&handle, mail::ID), crate::tools::any_enabled());
+            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled());
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());
