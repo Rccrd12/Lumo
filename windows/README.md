@@ -680,7 +680,7 @@ can open its other files, each with its usual permission card. Folders whose
 path has characters such as `&` or `%` are left out of that, and Claude Code
 asks before reading there.
 
-**Settings… → General → Security → Share the folders open in File Explorer** (off by
+**Settings… → Chat → Always share the folder open in File Explorer** (off by
 default) does this for every message: while you type, the folder's name shows
 in the attachments, and when you send, its path and listing go with the message, as if
 you had picked the entry each time. Its × leaves it out of that one
