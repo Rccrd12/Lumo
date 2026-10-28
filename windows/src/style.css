@@ -2476,6 +2476,197 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* The waves beside the folder: grey like the others while nothing listens;
+   lit, with a slow ring and how many, while something does. */
+.listen-btn {
+  position: relative;
+}
+
+.listen-btn.listening {
+  color: #7dd3fc;
+  background: rgba(125, 211, 252, 0.14);
+}
+
+.listen-btn.listening:hover:not(:disabled),
+.listen-btn.listening.open {
+  color: #bae6fd;
+  background: rgba(125, 211, 252, 0.24);
+}
+
+.listen-btn.listening::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid #7dd3fc;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  animation: listen-ping 2.4s ease-out infinite;
+}
+
+@keyframes listen-ping {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listen-btn.listening::after {
+    animation: none;
+    opacity: 0.35;
+    transform: none;
+  }
+}
+
+.tool-badge.listen-badge {
+  background: #7dd3fc;
+  color: #04121b;
+}
+
+/* The Listening panel: like the folder's, what listens now and what it heard. */
+.chat-body .listen-panel,
+.chat-body.picking .listen-panel {
+  display: none;
+}
+
+.chat-body.hearing .listen-panel {
+  display: flex;
+}
+
+.chat-body.hearing .chat-log,
+.chat-body.hearing .chip-row {
+  display: none;
+}
+
+.listen-head-gap {
+  flex: 1 1 auto;
+}
+
+.listen-head-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 11px var(--font);
+  color: #b0b5be;
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.listen-head-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.listen-head-btn[hidden] {
+  display: none;
+}
+
+.listen-head-btn.listen-add {
+  background: rgba(125, 211, 252, 0.14);
+  color: #7dd3fc;
+}
+
+.listen-head-btn.listen-add:hover {
+  background: rgba(125, 211, 252, 0.24);
+  color: #bae6fd;
+}
+
+.listen-list[hidden],
+.listen-form[hidden] {
+  display: none;
+}
+
+/* A row has Pause and Stop where an attachment has its ×. */
+.attach-row.listen-row {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  cursor: default;
+}
+
+.attach-row.listen-row.past {
+  grid-template-columns: 34px minmax(0, 1fr);
+}
+
+.attach-row.listen-row.elsewhere {
+  cursor: pointer;
+}
+
+.attach-row.listen-row.paused .attach-tile,
+.attach-row.listen-row.paused .attach-name {
+  opacity: 0.5;
+}
+
+.listen-acts {
+  display: flex;
+  gap: 2px;
+}
+
+.listen-met {
+  color: #86efac;
+}
+
+.listen-not-met {
+  color: #fda4af;
+}
+
+/* Listen for something: a pull request, when, how often, and what then. */
+.listen-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 2px 2px 0;
+}
+
+.listen-label {
+  margin-top: 4px;
+  font: 600 10.5px var(--font);
+  letter-spacing: 0.04em;
+  color: #8b929e;
+}
+
+.history-search.listen-input {
+  flex: 0 0 auto;
+}
+
+.listen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.listen-chips .picker-chip {
+  --accent: #7dd3fc;
+}
+
+.listen-error {
+  font: 400 11px/1.4 var(--font);
+  color: #ff8d97;
+}
+
+.listen-error:empty {
+  display: none;
+}
+
+.listen-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 /* Its title, how many, and Remove all when there are several. */
 .files-head {
   display: flex;

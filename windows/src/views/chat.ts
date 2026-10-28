@@ -101,7 +101,8 @@ import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_COLOR, LISTEN_STRINGS, listenMessage, listeningLine, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, listenMessage, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
+import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 import {
@@ -964,6 +965,11 @@ export function buildPrompt(
   const filesBadge = h("span", { class: "tool-badge" });
   const filesBtn = h("button", { class: "tool-btn files-btn", title: tl(STRINGS.attachments), "aria-label": tl(STRINGS.attachments) },
     svg(ICONS.folder, 13, { stroke: 1.8 }), filesBadge);
+  // What Lumo is listening to (views/listening.ts): always there, grey while
+  // nothing listens; lit, with how many, while something does.
+  const listenBadge = h("span", { class: "tool-badge listen-badge" });
+  const listenBtn = h("button", { class: "tool-btn listen-btn", title: tl("Listening"), "aria-label": tl("Listening") },
+    svg(ICONS.waves, 13, { stroke: 1.8 }), listenBadge);
   // What the provider has used, when the option is on and it is known: a ring
   // that fills, and its menu.
   const usageRing = usageRingSvg();
@@ -977,7 +983,7 @@ export function buildPrompt(
   planBtn.style.display = "none";
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
-    h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn),
+    h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn, listenBtn),
     h("div", { class: "model-side" }, planBtn, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
@@ -989,6 +995,7 @@ export function buildPrompt(
       closeScreen();
       closePermissions();
       closeUsage();
+      closeListening();
     }
     panelChanged();
     drawModelButton();
@@ -997,7 +1004,7 @@ export function buildPrompt(
 
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
-    const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding"].some((c) => body.classList.contains(c));
+    const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     if (open === State.chatPanelOpen) return;
     State.chatPanelOpen = open;
     onHeightChange();
@@ -1036,6 +1043,15 @@ export function buildPrompt(
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
   const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
+  // What Lumo is listening to, and what it heard; a row of another chat opens it.
+  const listening = buildListeningPanel({
+    goToChat: (chatId) => {
+      const saved = loadChats().find((c) => c.id === chatId);
+      if (!saved) return;
+      closeListening();
+      openChat(saved);
+    },
+  });
   // The commands' menu, over the log just above the field.
   const slashList = h("div", { class: "slash-list", role: "listbox" });
   const slashEl = h("div", { class: "slash-menu" }, slashList);
@@ -1048,7 +1064,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, screenEl, permEl, usagePanel, slashEl, modelRow, bar);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, modelRow, bar);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -1086,6 +1102,7 @@ export function buildPrompt(
     if (body.classList.contains("screening") && !inside(screenEl, screenBtn)) closeScreen();
     if (body.classList.contains("authorizing") && !inside(permEl, permBtn)) closePermissions();
     if (body.classList.contains("metering") && !inside(usagePanel, usageEl)) closeUsage();
+    if (body.classList.contains("hearing") && !inside(listening.el, listenBtn)) closeListening();
     // The field too: a press on it closes the commands (see the field's mousedown).
     if (slashOpen() && !inside(slashEl)) closeSlash();
   }
@@ -1185,6 +1202,7 @@ export function buildPrompt(
     closeHistory();
     closeScreen();
     closePermissions();
+    closeListening();
     drawUsageMenu();
     body.classList.add("metering");
     usageEl.classList.add("open");
@@ -1395,6 +1413,7 @@ export function buildPrompt(
     closeHistory();
     closeScreen();
     closeUsage();
+    closeListening();
     drawPermissions();
     body.classList.add("authorizing");
     permBtn.classList.add("open");
@@ -1415,6 +1434,7 @@ export function buildPrompt(
     closeScreen();
     closePermissions();
     closeUsage();
+    closeListening();
     body.classList.add("filing");
     filesBtn.classList.add("open");
     panelChanged();
@@ -1519,6 +1539,42 @@ export function buildPrompt(
     body.classList.remove("filing");
     filesBtn.classList.remove("open");
     panelChanged();
+  }
+
+  // ── Listening ─────────────────────────────────────────────────────────────
+
+  function openListening() {
+    if (picker.isOpen) picker.close();
+    closeHistory();
+    closeFiles();
+    closeScreen();
+    closePermissions();
+    closeUsage();
+    body.classList.add("hearing");
+    listenBtn.classList.add("open");
+    listening.opened();
+    panelChanged();
+  }
+
+  function closeListening() {
+    if (!body.classList.contains("hearing")) return;
+    body.classList.remove("hearing");
+    listenBtn.classList.remove("open");
+    panelChanged();
+  }
+
+  /** What the waves were last drawn for. */
+  let listenKey = "";
+
+  /** The waves: lit, with how many, while something listens; the panel redrawn. */
+  function drawListening() {
+    const on = activeWatches(State.listening).length;
+    listenBtn.classList.toggle("listening", on > 0);
+    listenBadge.textContent = on > 0 ? String(on) : "";
+    const title = listeningButtonTitle(State.listening);
+    listenBtn.title = title;
+    listenBtn.setAttribute("aria-label", title);
+    if (body.classList.contains("hearing")) listening.draw();
   }
 
   // ── Screen button ─────────────────────────────────────────────────────────
@@ -1649,6 +1705,7 @@ export function buildPrompt(
     closeFiles();
     closePermissions();
     closeUsage();
+    closeListening();
     body.classList.add("screening");
     screenBtn.classList.add("open");
     panelChanged();
@@ -1912,6 +1969,7 @@ export function buildPrompt(
     closeFiles();
     closePermissions();
     closeUsage();
+    closeListening();
     if (body.classList.contains("screening")) closeScreen();
     screenTicket++;
     body.classList.add("screening");
@@ -2188,6 +2246,7 @@ export function buildPrompt(
     closeScreen();
     closePermissions();
     closeUsage();
+    closeListening();
     editing = null;
     const back = parkedUi[State.chatSlot];
     delete parkedUi[State.chatSlot];
@@ -2331,6 +2390,10 @@ export function buildPrompt(
     if (body.classList.contains("filing")) closeFiles();
     else openFiles();
   });
+  listenBtn.addEventListener("click", () => {
+    if (body.classList.contains("hearing")) closeListening();
+    else openListening();
+  });
   removeAllBtn.addEventListener("click", () => removeAll());
   attachTab.addEventListener("click", () => showFilesTab("attached"));
   chatFilesTab.addEventListener("click", () => showFilesTab("chat"));
@@ -2348,6 +2411,7 @@ export function buildPrompt(
     closeScreen();
     closePermissions();
     closeUsage();
+    closeListening();
     historySearch.value = "";
     drawHistory();
     body.classList.add("browsing");
@@ -2586,7 +2650,7 @@ export function buildPrompt(
       // What it asked Lumo to listen for on GitHub, and to stop listening to.
       const answered = takeListens(timed.text);
       for (const stop of answered.stops) void Bridge.listenCancel(stop.repo, stop.number);
-      const added = await Promise.all(answered.listens.map((ask) => Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId)));
+      const added = await Promise.all(answered.listens.map((ask) => Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId, ask.mode)));
       // A line Lumo could not read or start is said, never just dropped.
       const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map((a) => `${a.repo}#${a.number} ${a.until}`)];
       const content = unheard.length
@@ -2673,17 +2737,21 @@ export function buildPrompt(
     if (!fired) return;
     Sound.play(fired.met ? "finish" : "error");
     compactNotice(`GitHub · ${fired.summary}`, LISTEN_COLOR, 10_000);
+    // What it heard joins the panel's history.
+    if (body.classList.contains("hearing")) listening.opened();
     if (!fired.watch.task) return;
     heard.push(fired);
     runHeard();
   });
   void onEvent<ListenWatch[]>("listen-changed", (list) => {
     State.listening = list ?? [];
+    drawListening();
     State.notify();
   });
   void Bridge.listenList().then((list) => {
     if (!list) return;
     State.listening = list;
+    drawListening();
     State.notify();
   });
 
@@ -3051,19 +3119,18 @@ export function buildPrompt(
       // A dropped file just came in: a word that it did, for a moment.
       const uploaded = State.uploadedNote && State.uploadedNote.until > Date.now() ? State.uploadedNote : null;
       if (!uploaded) State.uploadedNote = null;
-      const listened = listeningLine(State.listening.filter((w) => w.chatId === State.chatId));
-      const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : listened ? `listen\t${listened}` : "";
+      // The waves and the Listening panel follow the watches and the chat on screen.
+      const heardKey = `${State.chatId}\n${JSON.stringify(State.listening)}`;
+      if (heardKey !== listenKey) {
+        listenKey = heardKey;
+        drawListening();
+      }
+      const editKey = editing != null ? String(editing) : uploaded ? `uploaded\t${uploaded.name}\t${uploaded.until}` : "";
       if (chipRow.dataset.label !== editKey) {
         chipRow.dataset.label = editKey;
         clear(chipRow);
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
         else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
-        else if (listened) {
-          // What this chat listens for on GitHub; × stops it.
-          chipRow.append(noteChip(listened, t(LISTEN_STRINGS.hint), () => {
-            for (const w of State.listening.filter((w) => w.chatId === State.chatId)) void Bridge.listenCancel(w.repo, w.number, w.until);
-          }));
-        }
       }
 
       const count = State.chatHistory.length + (run ? 0.5 : 0);

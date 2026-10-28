@@ -23,8 +23,9 @@
 //! the agent lists them, and each call handed to Lumo
 //! (`{"lumo_tool": {"tool": …, "input": …}}`), which runs it.
 //!
-//! `--tools=island` offers the island's timer and GitHub tools (`set_timer`,
-//! `listen_pull_request`, `stop_listening`): each call is handed to Lumo
+//! `--tools=island` offers the island's timer and listening tools (`set_timer`,
+//! `listen`, `stop_listening`, `list_listening`; `listen_pull_request`, the
+//! name `listen` had before, is still handed on): each call is handed to Lumo
 //! (`{"lumo_island": {"tool": …, "input": …, "chat": …}}`, island_tools.rs),
 //! with the chat it came from, which the app puts in `LUMO_CHAT_ID`.
 //!
@@ -67,8 +68,9 @@ computer, each doing the job its description says. Use one when it fits what the
 each call on Lumo's island.";
 
 const ISLAND_INSTRUCTIONS: &str = "Lumo's island tools: set_timer starts a timer the user sees on the island; \
-listen_pull_request has Lumo watch a pull request on GitHub and tell the user (and you, with something to do \
-then) once it happens, instead of you waiting for it; stop_listening ends that.";
+listen has Lumo listen for an event, such as a pull request on GitHub being ready, and tell the user (and you, \
+with something to do then) once it happens, instead of you waiting for it; stop_listening ends that and \
+list_listening says what Lumo listens to.";
 
 const PLAN_INSTRUCTIONS: &str = "Lumo's update_plan tool shows the user your plan on Lumo's Plan island: \
 call it with every step of a job before starting it, then again each time a step starts or is done.";
@@ -317,25 +319,35 @@ time a step is done (completed) and the next one starts (in_progress). Keep step
     )
 }
 
-/// The island's tools' names, as `island_tools()` lists them (island_tools.rs in the app).
-pub const ISLAND_NAMES: &[&str] = &["set_timer", "listen_pull_request", "stop_listening"];
+/// The island's tools' names: the ones `island_tools()` lists, then
+/// `listen_pull_request`, `listen`'s name before, still handed on to Lumo.
+pub const ISLAND_NAMES: &[&str] = &["set_timer", "listen", "stop_listening", "list_listening", "listen_pull_request"];
 
-/// The island's timer and GitHub tools. Lumo turns each call into the line
-/// for Lumo it stands for, for the chat the call came from (`LUMO_CHAT_ID`,
-/// set by the app on the agent it starts).
+/// The island's timer and listening tools (island_tools.rs in the app). Lumo
+/// turns each call into the line for Lumo it stands for, for the chat the call
+/// came from (`LUMO_CHAT_ID`, set by the app on the agent it starts).
 pub fn island_tools() -> Vec<Value> {
-    let pr = || {
+    let target = || {
         json!({
-            "repo": { "type": "string", "description": "owner/repository on GitHub, e.g. octocat/hello." },
-            "number": { "type": "integer", "minimum": 1, "description": "The pull request's number." },
+            "source": { "type": "string", "enum": ["github.pr"], "description": "Where to listen. github.pr: a pull request on GitHub." },
+            "target": {
+                "type": "string",
+                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link.",
+            },
         })
     };
-    let mut watch = pr();
+    let mut watch = target();
     watch["event"] = json!({
         "type": "string",
         "enum": ["checks", "green", "approved", "ready", "merged", "closed"],
         "description": "checks: its checks finished, passed or failed. green: they passed. approved. ready: checks \
 passed and it can be merged. merged. closed.",
+    });
+    watch["mode"] = json!({
+        "type": "string",
+        "enum": ["once", "every"],
+        "description": "once (the default): it ends when the event happens. every: for checks or green only, it \
+fires again for each new commit pushed, until the pull request is merged or closed.",
     });
     watch["then"] = json!({
         "type": "string",
@@ -355,14 +367,15 @@ time, then say in a few words that it is set.",
             &["seconds"],
         ),
         tool(
-            "listen_pull_request",
-            "Lumo watches a pull request on GitHub and tells the user once the event happens; with something to do \
-then, it sends you a message in this chat starting with GitHub: and you do it then. Use it instead of waiting, \
-sleeping or polling yourself, then say in a few words that Lumo is listening and end your answer.",
+            "listen",
+            "Lumo listens for an event and tells the user once it happens; with something to do then, it sends you a \
+message in this chat that says what happened, and you do it then. Use it instead of waiting, sleeping or polling \
+yourself, then say in a few words that Lumo is listening and end your answer.",
             watch,
-            &["repo", "number", "event"],
+            &["source", "target", "event"],
         ),
-        tool("stop_listening", "Stops listening to a pull request on GitHub.", pr(), &["repo", "number"]),
+        tool("stop_listening", "Stops listening to something Lumo listens to.", target(), &["target"]),
+        tool("list_listening", "Lists what Lumo is listening to, in every chat.", json!({}), &[]),
     ]
 }
 
@@ -807,7 +820,7 @@ mod tests {
         assert_eq!(kit, Kit { computer: false, mail: false, plan: true, user: false, island: true });
         let v: Value = serde_json::from_str(&handle_with(r#"{"jsonrpc":"2.0","id":1,"method":"tools/list"}"#, kit, &never).unwrap()).unwrap();
         let names: Vec<&str> = v["result"]["tools"].as_array().unwrap().iter().map(|t| t["name"].as_str().unwrap()).collect();
-        assert_eq!(names, ["update_plan", "set_timer", "listen_pull_request", "stop_listening"]);
+        assert_eq!(names, ["update_plan", "set_timer", "listen", "stop_listening", "list_listening"]);
         let lumo = |req: &Value| -> Result<Value, String> {
             assert_eq!(req["lumo_island"]["tool"], "set_timer");
             assert_eq!(req["lumo_island"]["input"]["seconds"], 600);

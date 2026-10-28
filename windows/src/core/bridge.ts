@@ -8,7 +8,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
 import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
-import type { ListenWatch } from "./listen";
+import type { ListenPast, ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 
@@ -206,13 +206,20 @@ export const Bridge = {
     callOrThrow<ChatReply>("chat_send", screen ? { chatId, query, context, screen } : { chatId, query, context }),
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
-  /** Listens to a pull request for the chat `chatId` (listen.rs). */
-  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string) =>
-    call<ListenWatch>("listen_add", { repo, number, until, task, chatId }),
+  /** Listens to a pull request for the chat `chatId` (listen.rs); `mode` "every": once for each new commit. */
+  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string, mode = "once") =>
+    call<ListenWatch>("listen_add", { repo, number, until, mode, task, chatId }),
   /** Stops listening to a pull request (`until` null: to everything on it). */
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
   listenList: () => call<ListenWatch[]>("listen_list"),
+  /** Stops one watch, by its id. */
+  listenStop: (id: number) => call<boolean>("listen_stop", { id }),
+  /** Pauses or resumes one watch (`id` null: every one). */
+  listenPause: (id: number | null, paused: boolean) => call<number>("listen_pause", { id, paused }),
+  /** What fired, oldest first. */
+  listenHistory: () => call<ListenPast[]>("listen_history"),
+  listenHistoryClear: () => call<void>("listen_history_clear"),
   // The user's own tools (the Tools tab, tools.rs).
   toolsList: () => call<ToolInfo[]>("tools_list"),
   /** The user's click on Save in the workshop: the draft becomes a tool, on. */
