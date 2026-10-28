@@ -1281,8 +1281,8 @@ mod tests {
         assert!(skips("auto", true));
         assert!(skips("default", true));
         assert!(!skips("plan", true), "Plan only keeps agy's own confirmation");
-        assert!(!skips("auto", false), "never without the cards");
-        assert!(!skips("default", false));
+        assert!(skips("auto", false), "Auto is Antigravity's Turbo, cards or not");
+        assert!(!skips("default", false), "Ask every time: never without the cards");
     }
 
     #[test]
