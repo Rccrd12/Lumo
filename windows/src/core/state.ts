@@ -161,6 +161,11 @@ export function parseMotion(v: unknown): LumoMotion {
 }
 
 /** The engine's ambient amount for a motion setting. */
+/** Settings → General → Security lets the AI read the email or the calendar: anything but "none". */
+export function aiReads(v: unknown): boolean {
+  return v !== "none";
+}
+
 export function motionAmount(v: unknown): number {
   const m = parseMotion(v);
   return m === "still" ? 0 : m === "lively" ? 1.8 : 1;
@@ -267,8 +272,14 @@ export interface Settings {
   chatShareExplorer: boolean;
   /** Every message carries the open windows and their documents (desk.rs). */
   chatShareOpen: boolean;
+  /** Every message carries the browsers' open tabs (core/screen.ts autoShare). Off by default. */
+  chatShareTabs: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
+  /** What the AI may do with the email, from Settings → General → Security: "read" or "none" (read it through aiReads). */
+  aiMailAccess: string;
+  /** The same for the calendar's events. */
+  aiCalendarAccess: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -373,7 +384,10 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShowUsage: false,
   chatShareExplorer: false,
   chatShareOpen: true,
+  chatShareTabs: false,
   chatComputerUse: false,
+  aiMailAccess: "read",
+  aiCalendarAccess: "read",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

@@ -667,7 +667,7 @@ pub async fn help(app: &AppHandle, helper: &Helper, mode: &str, task: String, fo
     let agy = helper.id == crate::antigravity_cli::PROVIDER;
     let mode = mode.to_string();
     let (model, effort) = (helper.model.clone(), helper.effort.clone());
-    let mail = crate::integrations::enabled(app, crate::mail::ID);
+    let mail = crate::mail::for_ai(app);
     let app2 = app.clone();
     let stop2 = stop.clone();
     let result = tauri::async_runtime::spawn_blocking(move || {

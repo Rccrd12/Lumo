@@ -5,12 +5,14 @@
 import "../core/legacy";
 import "./settings.css";
 import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
-import { CUSTOM_SERVER_KEY, effortFor, effortsFor, providerDef, urlExposure } from "../core/providers";
+import {
+  CUSTOM_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, providerDef, urlExposure,
+} from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
   recordPress, type Binding,
 } from "../core/shortcuts";
-import { DEFAULT_SETTINGS, parseCloseMode, parseMotion, type Settings } from "../core/state";
+import { DEFAULT_SETTINGS, aiReads, parseCloseMode, parseMotion, type Settings } from "../core/state";
 import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../character/wardrobe";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
@@ -690,47 +692,58 @@ function chatUsageSection(): HTMLElement {
   );
 }
 
-// ── What goes with every message ─────────────────────────────────────────────
+// ── Security ─────────────────────────────────────────────────────────────────
 
-const SHARING_TEXT = {
-  get title() { return t("Share with the chat"); },
-  get hint() { return t("Every message carries the folder open in File Explorer and the list of its files, as if you shared it from the screen button. The × on its chip leaves it out of one message."); },
-  get explorer() { return t("Always share the folder open in File Explorer"); },
+const SECURITY = {
+  get title() { return t("Security"); },
+  get intro() { return t("What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click."); },
+  get permissions() { return t("Default permissions"); },
+  get permissionsHint() { return t("What Claude Code, Codex and Antigravity CLI may do without asking, in the chat and for Gemini Live's helper. The shield in the chat changes it too."); },
+  get turbo() { return t("Turbo (Antigravity CLI only)"); },
+  get everyMessage() { return t("With every message"); },
+  get folders() { return t("Share the folders open in File Explorer"); },
+  get foldersHint() { return t("Every message carries the folders open in File Explorer and the list of their files, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
+  get tabs() { return t("Share the open browser tabs"); },
+  get tabsHint() { return t("Every message carries the tabs open in your browsers, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
+  get mailAndCalendar() { return t("Email and calendar"); },
+  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it (the chat, Gemini Live, Antigravity CLI's email tools), or nothing at all."); },
+  get calendarHint() { return t("What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all."); },
+  get readOnly() { return t("Read only"); },
+  get noAccess() { return t("No access"); },
+  get other() { return t("Other"); },
+  get keys() { return t("Keys and passwords"); },
+  get keysHint() { return t("API keys and passwords stay in Windows Credential Manager, never in a file. Lumo talks only to the services you set up, and sends no usage data."); },
 };
 
-function chatSharingSection(): HTMLElement {
-  return h(
-    "section",
-    {},
-    ...sectionHead(SHARING_TEXT.title),
-    setting(t("Tell the AI what's open"),
-      t("With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them."),
-      toggle(settings.chatShareOpen !== false, (on) => {
-        settings.chatShareOpen = on;
-        void save();
-      }),
-    ),
-    setting(SHARING_TEXT.explorer, SHARING_TEXT.hint,
-      toggle(settings.chatShareExplorer, (on) => {
-        settings.chatShareExplorer = on;
-        void save();
-      }),
-    ),
-  );
-}
-
-// ── Computer use ─────────────────────────────────────────────────────────────
+/** The chat's permission modes, by the names its shield gives them (views/chat.ts). */
+const PERMISSION_NAMES: Record<string, string> = {
+  default: N_("Ask every time"), auto: N_("Auto"), plan: N_("Plan only"),
+};
 
 const COMPUTER_SETTINGS = {
-  get title() { return t("Computer use"); },
-  get intro() { return t("Claude Code can see your screen and use it (click, type, scroll) when a command isn't enough, in the chat and for Gemini Live. It works on your real desktop, not in a sandbox."); },
   get label() { return t("Let Claude use the computer"); },
   get hint() { return t("Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back."); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
 };
 
-/** Settings → Chat → Computer use: off until the user turns it on. */
-function computerSection(): HTMLElement {
+/**
+ * Settings → General → Security: what the chat's agents may do without
+ * asking, what goes with every message, what the AI may read of the email
+ * and the calendar, and computer use.
+ */
+function securitySection(): HTMLElement {
+  // The one mode every CLI starts from; Turbo is Antigravity CLI's alone, the others read it as asking.
+  const mode = parsePermissionMode(settings.chatPermissionMode, "antigravity-cli");
+  const permissions = select(
+    [...permissionModesFor("claude-code").map((m): [string, string] => [m, t(PERMISSION_NAMES[m])]), ["turbo", SECURITY.turbo]],
+    mode,
+    (v) => { settings.chatPermissionMode = v; void save(); },
+  );
+  const access = (value: string, onChange: (v: string) => void) => select(
+    [["read", SECURITY.readOnly], ["none", SECURITY.noAccess]],
+    aiReads(value) ? "read" : "none",
+    onChange,
+  );
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
     note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
@@ -739,9 +752,26 @@ function computerSection(): HTMLElement {
   return h(
     "section",
     {},
-    ...sectionHead(COMPUTER_SETTINGS.title, COMPUTER_SETTINGS.intro),
-    setting(COMPUTER_SETTINGS.label,
-      COMPUTER_SETTINGS.hint,
+    ...sectionHead(SECURITY.title, SECURITY.intro),
+    setting(SECURITY.permissions, SECURITY.permissionsHint, permissions),
+    group(SECURITY.everyMessage),
+    setting(t("Tell the AI what's open"),
+      t("With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them."),
+      toggle(settings.chatShareOpen !== false, (on) => { settings.chatShareOpen = on; void save(); }),
+    ),
+    setting(SECURITY.folders, SECURITY.foldersHint,
+      toggle(settings.chatShareExplorer, (on) => { settings.chatShareExplorer = on; void save(); }),
+    ),
+    setting(SECURITY.tabs, SECURITY.tabsHint,
+      toggle(settings.chatShareTabs === true, (on) => { settings.chatShareTabs = on; void save(); }),
+    ),
+    group(SECURITY.mailAndCalendar),
+    setting(t("Email"), SECURITY.mailHint,
+      access(settings.aiMailAccess, (v) => { settings.aiMailAccess = v; void save(); })),
+    setting(t("Calendar"), SECURITY.calendarHint,
+      access(settings.aiCalendarAccess, (v) => { settings.aiCalendarAccess = v; void save(); })),
+    group(t("Computer use")),
+    setting(COMPUTER_SETTINGS.label, COMPUTER_SETTINGS.hint,
       toggle(settings.chatComputerUse === true, (on) => {
         settings.chatComputerUse = on;
         showNote();
@@ -749,6 +779,8 @@ function computerSection(): HTMLElement {
       }),
     ),
     note,
+    group(SECURITY.other),
+    setting(SECURITY.keys, SECURITY.keysHint),
   );
 }
 
@@ -1995,7 +2027,7 @@ async function render() {
   // Every section is built, so what one redraws (declaredViews, the local
   // models, the shortcuts) works as before; only the selected one shows.
   const pages: Record<PageId, HTMLElement[]> = {
-    general: [generalSection()],
+    general: [generalSection(), securitySection()],
     island: [islandSection()],
     chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
@@ -2010,8 +2042,6 @@ async function render() {
       changelogSection(version),
     ],
   };
-  // The chat page ends on what goes with every message.
-  pages.chat.push(chatSharingSection(), computerSection());
 
   const nav = h("nav", { class: "nav", "aria-label": t("Settings") });
   const content = h("main", { class: "content" });

@@ -707,8 +707,8 @@ async fn dispatch(
     }
     // The Email pill: a question about email gets the newest emails, read or
     // not, so every provider can answer it, not only those with a mail tool of
-    // their own.
-    if !command && crate::mail::asks_about(&query) && crate::integrations::enabled(app, crate::mail::ID) {
+    // their own. Not when Settings → General → Security keeps the email from the AI.
+    if !command && crate::mail::asks_about(&query) && crate::mail::for_ai(app) {
         if let Some(text) = crate::mail::for_chat(app).await {
             screen.get_or_insert_with(ScreenContext::default).mail = text;
         }

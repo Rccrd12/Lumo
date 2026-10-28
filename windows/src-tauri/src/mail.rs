@@ -96,6 +96,17 @@ pub fn wake() {
 /// Whether a change of settings concerns the Email pill: turned on or off (its
 /// connection opens or closes now), its promotions filter, or the language its
 /// errors are written in. Any other change leaves the inbox alone.
+/// The AI may read the email (Settings → General → Security): anything but "none".
+pub fn ai_reads(settings: &Settings) -> bool {
+    settings.ai_mail_access != "none"
+}
+
+/// The Email pill is on and the AI may read what it reads: the chat, Gemini
+/// Live's helper and Lumo's email tools go by it.
+pub fn for_ai(app: &AppHandle) -> bool {
+    crate::integrations::enabled(app, ID) && ai_reads(&app.state::<crate::Shared>().settings.lock().unwrap())
+}
+
 pub fn concerned(before: &Settings, after: &Settings) -> bool {
     let on = |s: &Settings| s.active_integrations.iter().any(|id| id == ID);
     on(before) != on(after) || before.mail_hide_promotions != after.mail_hide_promotions || before.language != after.language
@@ -657,6 +668,9 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     let refuse = |why: String| json!({ "error": why });
     if AGENT_TURNS.load(Ordering::SeqCst) == 0 {
         return refuse("Lumo gives its email tools only to the agent answering in the island.".into());
+    }
+    if !ai_reads(&app.state::<crate::Shared>().settings.lock().unwrap()) {
+        return refuse("The user turned off the AI's access to their email in Lumo (Settings → General → Security).".into());
     }
     let tool = request.get("tool").and_then(|v| v.as_str()).unwrap_or("");
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
@@ -1654,6 +1668,13 @@ fn preview(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_ai_reads_the_email_unless_security_says_none() {
+        assert!(ai_reads(&Settings::default()), "as before the setting");
+        assert!(!ai_reads(&Settings { ai_mail_access: "none".into(), ..Settings::default() }));
+        assert!(ai_reads(&Settings { ai_mail_access: "something new".into(), ..Settings::default() }));
+    }
 
     #[test]
     fn only_a_change_that_concerns_the_email_pill_wakes_it() {

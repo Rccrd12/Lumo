@@ -243,3 +243,17 @@ test("lumo_status reads the island's state, and asks Rust only for the music and
     internals.invoke = before;
   }
 });
+
+test("Settings → Security keeps the email and the calendar from Gemini when the user says so", () => {
+  const mail = { configured: true, loaded: true, error: null, data: { unread: 2, messages: [{ from: "Ada", subject: "Invoice", body: "Pay me" }] } };
+  const events = [{ title: "Dentist", start: NOW + 60 * MIN, end: NOW + 90 * MIN, allDay: false }];
+  const open = L.lumoStatus(facts({ integrations: { integration_mail: mail }, events }), "all");
+  assert.equal(open.email.unread, 2);
+  assert.equal(open.calendar.events[0].title, "Dentist");
+  const shut = facts({ integrations: { integration_mail: mail }, events, mailOff: true, calendarOff: true });
+  for (const topic of ["all", "email", "calendar"]) {
+    const out = JSON.stringify(L.lumoStatus(shut, topic));
+    assert.doesNotMatch(out, /Invoice|Dentist|Ada/, topic);
+    assert.match(out, /Settings → General → Security/, topic);
+  }
+});

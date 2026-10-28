@@ -145,9 +145,20 @@ pub struct Settings {
     /// Every chat message carries the open windows and the documents they
     /// show, found on disk (desk.rs). On until the user turns it off.
     pub chat_share_open: bool,
+    /// Every chat message carries the browsers' open tabs (Settings → General →
+    /// Security; the chat view reads it, src/core/screen.ts autoShare). Off
+    /// until the user turns it on.
+    pub chat_share_tabs: bool,
     /// The chat's Claude Code may see the screen, click and type (computer.rs,
     /// lumo-hook --mcp), Windows only. Off until the user turns it on.
     pub chat_computer_use: bool,
+    /// What the AI may do with the user's email (Settings → General →
+    /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
+    /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
+    /// Kept as it comes; mail.rs reads anything but "none" as "read".
+    pub ai_mail_access: String,
+    /// The same for the calendar's events: "read" or "none".
+    pub ai_calendar_access: String,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
     /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
@@ -274,7 +285,10 @@ impl Default for Settings {
             chat_show_usage: false,
             chat_share_explorer: false,
             chat_share_open: true,
+            chat_share_tabs: false,
             chat_computer_use: false,
+            ai_mail_access: "read".into(),
+            ai_calendar_access: "read".into(),
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -598,7 +612,10 @@ mod tests {
   "chatShowUsage": true,
   "chatShareExplorer": true,
   "chatShareOpen": false,
+  "chatShareTabs": true,
   "chatComputerUse": true,
+  "aiMailAccess": "none",
+  "aiCalendarAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -1038,7 +1055,10 @@ mod tests {
                 "chatShowUsage",
                 "chatShareExplorer",
                 "chatShareOpen",
+                "chatShareTabs",
                 "chatComputerUse",
+                "aiMailAccess",
+                "aiCalendarAccess",
                 "liveModel",
                 "liveThinking",
                 "liveVoice",
