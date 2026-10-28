@@ -172,14 +172,10 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
   default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
   auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
-  turbo: { name: N_("Turbo"), note: N_("Runs every command and changes any file without asking.") },
 };
 
-/**
- * Auto with Antigravity CLI: agy's own Proceed in Sandbox (antigravity_cli.rs,
- * core/approvals.ts autoAllows).
- */
-const AGY_AUTO_NOTE = N_("Commands run in Antigravity's sandbox without asking; Lumo asks for the rest.");
+/** Auto with Antigravity CLI: agy's own Turbo preset (antigravity_cli.rs). */
+const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {

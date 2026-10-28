@@ -3,7 +3,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { approvalKey, autoAllows, isLookingCommand, isSimpleRequest, requestKind, requestReason } from "../src/core/approvals.ts";
+import { approvalKey, isLookingCommand, isSimpleRequest, requestKind, requestReason } from "../src/core/approvals.ts";
 
 test("tools that only read are simple; edits and writes are not", () => {
   for (const tool of ["Read", "Glob", "Grep", "LS", "WebSearch"]) assert.ok(isSimpleRequest(tool, {}), tool);
@@ -40,31 +40,6 @@ test("commands that change something, or that cannot be read for sure, are not",
     assert.ok(isLookingCommand(c), c);
   }
   assert.equal(isSimpleRequest("Bash", {}), false);
-});
-
-// ── Auto in the chat's Antigravity CLI run ────────────────────────────────────
-
-test("Auto lets through only what only looks, and never what agy itself marks unsafe", () => {
-  assert.ok(autoAllows("run_command", { CommandLine: "git status --short", command: "git status --short" }));
-  assert.ok(autoAllows("run_command", { command: "ls", SafeToAutoRun: true }));
-  assert.equal(autoAllows("run_command", { command: "ls", SafeToAutoRun: false }), false);
-  for (const c of ["npm test", "git push", "rm -rf build", "echo x > y", ""]) {
-    assert.equal(autoAllows("run_command", { command: c }), false, c);
-  }
-  assert.equal(autoAllows("mcp__github__create_issue", {}), false);
-  assert.equal(autoAllows("browser_click", {}), false);
-});
-
-test("in agy's sandbox, Auto lets commands through, but never one that leaves it", () => {
-  assert.ok(autoAllows("run_command", { CommandLine: "npm test", command: "npm test" }, true));
-  assert.ok(autoAllows("run_command", { command: "rm -rf build", bypassSandbox: false }, true));
-  assert.equal(autoAllows("run_command", { command: "npm test" }, false), false, "not without the sandbox");
-  for (const leave of [{ bypassSandbox: true }, { BypassSandbox: true }, { bypass_sandbox: "true" }, { RunOutsideSandbox: 1 }]) {
-    assert.equal(autoAllows("run_command", { command: "npm test", ...leave }, true), false, JSON.stringify(leave));
-  }
-  assert.equal(autoAllows("run_command", { command: "npm test", SafeToAutoRun: false }, true), false);
-  assert.equal(autoAllows("mcp__github__create_issue", {}, true), false, "the sandbox is for commands only");
-  assert.equal(autoAllows("browser_click", {}, true), false);
 });
 
 // ── What the card says the request is for ─────────────────────────────────────

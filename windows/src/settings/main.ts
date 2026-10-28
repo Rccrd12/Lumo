@@ -699,7 +699,6 @@ const SECURITY = {
   get intro() { return t("What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click."); },
   get permissions() { return t("Default permissions"); },
   get permissionsHint() { return t("What Claude Code, Codex and Antigravity CLI may do without asking, in the chat and for Gemini Live's helper. The shield in the chat changes it too."); },
-  get turbo() { return t("Turbo (Antigravity CLI only)"); },
   get everyMessage() { return t("With every message"); },
   get folders() { return t("Share the folders open in File Explorer"); },
   get foldersHint() { return t("Every message carries the folders open in File Explorer and the list of their files, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
@@ -733,10 +732,10 @@ const COMPUTER_SETTINGS = {
  * and the calendar, and computer use.
  */
 function securitySection(): HTMLElement {
-  // The one mode every CLI starts from; Turbo is Antigravity CLI's alone, the others read it as asking.
+  // The one mode every CLI starts from.
   const mode = parsePermissionMode(settings.chatPermissionMode, "antigravity-cli");
   const permissions = select(
-    [...permissionModesFor("claude-code").map((m): [string, string] => [m, t(PERMISSION_NAMES[m])]), ["turbo", SECURITY.turbo]],
+    permissionModesFor("claude-code").map((m): [string, string] => [m, t(PERMISSION_NAMES[m])]),
     mode,
     (v) => { settings.chatPermissionMode = v; void save(); },
   );

@@ -862,24 +862,19 @@ test("an Antigravity session outside the chat still keeps its approvals in the a
   assert.equal(task("agent_antigravity"), undefined);
 });
 
-test("in Auto, a command of the chat's Antigravity CLI run that only looks runs with no card", () => {
+test("in Auto, every request of the chat's Antigravity CLI run goes through with no card", () => {
   State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
-  hook({
-    hook_event_name: "PermissionRequest", request_id: "a4", lumo_island: true, lumo_agent: "antigravity",
-    tool_name: "run_command", tool_input: { command: "git status --short" },
-  });
-  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }]);
+  for (const [id, command] of [["a4", "git status --short"], ["a5", "npm install"]]) {
+    hook({
+      hook_event_name: "PermissionRequest", request_id: id, lumo_island: true, lumo_agent: "antigravity",
+      tool_name: "run_command", tool_input: { command },
+    });
+  }
+  hook({ hook_event_name: "PermissionRequest", request_id: "a8", lumo_island: true, lumo_agent: "antigravity", tool_name: "browser_click" });
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }, { requestId: "a5" }, { requestId: "a8" }]);
   assert.deepEqual(sent("approval_decision"), [], "not a click: nothing for the recap");
   assert.equal(State.pendingApproval, null);
   assert.deepEqual(asked, []);
-
-  // Anything else is the usual card, Auto or not.
-  hook({
-    hook_event_name: "PermissionRequest", request_id: "a5", lumo_island: true, lumo_agent: "antigravity",
-    tool_name: "run_command", tool_input: { command: "npm install" },
-  });
-  assert.equal(State.pendingApproval?.requestId, "a5");
-  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }]);
 });
 
 test("Auto lets nothing through when asking every time, nor for a session outside the chat", () => {
@@ -1077,8 +1072,8 @@ test("an email to send is its own card, whole, and never answered by itself", ()
     tool_name: "mcp__lumo__mail_send", tool_input: { to: email.to, cc: [], subject: "Ciao" },
     lumo_mail_send: email, ...extra,
   });
-  // Turbo for Antigravity CLI and simple requests on the closed island: neither skips it.
-  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "turbo", quickApprovals: true };
+  // Auto for Antigravity CLI and simple requests on the closed island: neither skips it.
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto", quickApprovals: true };
   card("m1", { lumo_agent: "antigravity" });
   assert.deepEqual(sent("approval_auto_allow"), []);
   assert.deepEqual(State.pendingApproval.email, email);

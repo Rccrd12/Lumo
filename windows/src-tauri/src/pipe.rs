@@ -63,7 +63,7 @@ pub struct Pending(pub Mutex<HashMap<String, mpsc::Sender<Reply>>>);
 static COUNTER: AtomicU64 = AtomicU64::new(1);
 
 /// Requests of the island chat's own Antigravity CLI run: the only ones Auto
-/// may allow without a click (core/approvals.ts autoAllows). Kept here so a
+/// may allow without a click (src/island/hooks.ts). Kept here so a
 /// mistake in the page can never allow a Claude Code or Codex request.
 static AUTO_ALLOWABLE: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 

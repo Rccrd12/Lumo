@@ -4267,18 +4267,6 @@
    "id": "Apa yang boleh dilakukan Claude Code, Codex, dan Antigravity CLI tanpa bertanya, di chat dan sebagai pembantu Gemini Live. Perisai di chat juga mengubahnya.",
    "it": "Cosa possono fare Claude Code, Codex e Antigravity CLI senza chiedere, nella chat e come aiutante di Gemini Live. Lo cambia anche lo scudo nella chat."
   },
-  "Turbo (Antigravity CLI only)": {
-   "zh-Hans": "Turbo（仅限 Antigravity CLI）",
-   "hi": "Turbo (केवल Antigravity CLI)",
-   "es": "Turbo (solo Antigravity CLI)",
-   "ar": "Turbo (Antigravity CLI فقط)",
-   "fr": "Turbo (Antigravity CLI uniquement)",
-   "bn": "Turbo (শুধু Antigravity CLI)",
-   "pt-BR": "Turbo (só Antigravity CLI)",
-   "ru": "Turbo (только Antigravity CLI)",
-   "id": "Turbo (hanya Antigravity CLI)",
-   "it": "Turbo (solo Antigravity CLI)"
-  },
   "With every message": {
    "zh-Hans": "随每条消息",
    "hi": "हर संदेश के साथ",
@@ -8643,18 +8631,6 @@
    "id": "Memakai alat dari {server} (MCP).",
    "it": "Usa uno strumento di {server} (MCP)."
   },
-  "Commands run in Antigravity's sandbox without asking; Lumo asks for the rest.": {
-   "zh-Hans": "命令在 Antigravity 的沙盒中运行，无需询问；其余的 Lumo 会先询问。",
-   "hi": "कमांड Antigravity के सैंडबॉक्स में बिना पूछे चलते हैं; बाकी के लिए Lumo पूछता है।",
-   "es": "Los comandos se ejecutan en el sandbox de Antigravity sin preguntar; para el resto, Lumo pregunta.",
-   "ar": "تعمل الأوامر داخل صندوق الحماية في Antigravity دون سؤال؛ ويسأل Lumo عن الباقي.",
-   "fr": "Les commandes s'exécutent dans le bac à sable d'Antigravity sans demander ; Lumo demande pour le reste.",
-   "bn": "কমান্ড Antigravity-র স্যান্ডবক্সে জিজ্ঞেস না করেই চলে; বাকিগুলোর জন্য Lumo জিজ্ঞেস করে।",
-   "pt-BR": "Os comandos rodam na sandbox do Antigravity sem perguntar; para o resto, o Lumo pergunta.",
-   "ru": "Команды выполняются в песочнице Antigravity без вопросов; об остальном Lumo спрашивает.",
-   "id": "Perintah berjalan di sandbox Antigravity tanpa bertanya; untuk sisanya Lumo bertanya.",
-   "it": "I comandi partono senza chiedere nella sandbox di Antigravity; per il resto Lumo chiede."
-  },
   "A ring next to the past chats shows how much the provider in use has used; a click shows each limit and when it resets. For Claude Code it needs the relay from {path}. Nothing is shown for Google or the local models.": {
    "zh-Hans": "过往聊天旁的圆环显示当前提供商的用量；点击可查看每项限额及其重置时间。Claude Code 需要 {path} 中的中继。Google 和本地模型不显示。",
    "hi": "पिछली चैट के पास एक रिंग दिखाती है कि मौजूदा प्रोवाइडर कितना इस्तेमाल हुआ; क्लिक करने पर हर सीमा और उसके रीसेट का समय दिखता है। Claude Code के लिए {path} का रिले चाहिए। Google और लोकल मॉडल के लिए कुछ नहीं दिखता।",
@@ -10370,18 +10346,6 @@
    "ru": "Отправится, как только закончится этот ответ",
    "id": "Dikirim begitu jawaban ini selesai",
    "it": "Inviato appena finisce questa risposta"
-  },
-  "Turbo": {
-   "zh-Hans": "Turbo",
-   "hi": "Turbo",
-   "es": "Turbo",
-   "ar": "Turbo",
-   "fr": "Turbo",
-   "bn": "Turbo",
-   "pt-BR": "Turbo",
-   "ru": "Turbo",
-   "id": "Turbo",
-   "it": "Turbo"
   },
   "Runs every command and changes any file without asking.": {
    "zh-Hans": "无需询问即可运行所有命令并修改任何文件。",

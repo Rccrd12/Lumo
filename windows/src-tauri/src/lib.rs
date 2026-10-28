@@ -595,8 +595,8 @@ fn approval_ack(app: AppHandle, request_id: String) {
     pipe::acknowledge(&app, &request_id);
 }
 
-/// The chat's Antigravity CLI run in Auto: a command that only looks
-/// (core/approvals.ts autoAllows) goes through without a card. Nobody clicked,
+/// The chat's Antigravity CLI run in Auto, agy's own Turbo preset: its
+/// requests go through without a card (src/island/hooks.ts). Nobody clicked,
 /// so it is not a decision for the recap.
 #[tauri::command]
 fn approval_auto_allow(app: AppHandle, request_id: String) {

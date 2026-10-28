@@ -17,7 +17,7 @@ import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
-import { autoAllows, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
@@ -210,8 +210,6 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   lumo_island?: boolean;
-  /** The chat's Antigravity CLI run in Auto: its commands run in agy's sandbox. */
-  lumo_sandbox?: boolean;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
@@ -740,17 +738,9 @@ function handleHook(island: Island, payload: HookPayload) {
       const requestId = payload.request_id ?? "";
       // An email the AI wants to send: always its own card, always a click.
       const email = outgoingEmail(payload.lumo_mail_send);
-      // The chat's Antigravity CLI run in Auto: agy's own Proceed in Sandbox.
-      // A command that stays in its sandbox, or only looks (core/approvals.ts),
-      // runs without a card; anything else, and anything uncertain, is the
-      // usual card. In Turbo, which the user picked for Antigravity CLI,
-      // everything runs.
+      // The chat's Antigravity CLI run in Auto, agy's own Turbo preset: everything runs.
       const agyMode = chatAgy ? parsePermissionMode(State.settings.chatPermissionMode, "antigravity-cli") : "default";
-      if (
-        chatAgy && requestId && !email
-        && (agyMode === "turbo"
-          || (agyMode === "auto" && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {}, payload.lumo_sandbox === true)))
-      ) {
+      if (chatAgy && requestId && !email && agyMode === "auto") {
         void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by ${agyMode})`);
         void Bridge.approvalAutoAllow(requestId);
         break;

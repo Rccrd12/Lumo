@@ -107,11 +107,12 @@ test("Codex is a keyless CLI with its own efforts, and never Turbo", () => {
   assert.equal(parsePermissionMode("turbo", "codex"), "default");
 });
 
-test("only Antigravity CLI gets Turbo; Claude Code never lets everything through", () => {
+test("every CLI has the same three modes; Turbo, picked before, is Auto with Antigravity CLI only", () => {
   assert.deepEqual(permissionModesFor("claude-code"), ["default", "auto", "plan"]);
-  assert.deepEqual(permissionModesFor("antigravity-cli"), ["default", "auto", "plan", "turbo"]);
-  for (const m of ["default", "auto", "plan"]) assert.equal(parsePermissionMode(m, "claude-code"), m);
+  assert.deepEqual(permissionModesFor("antigravity-cli"), ["default", "auto", "plan"]);
+  for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, "claude-code"), m);
   for (const m of PERMISSION_MODES) assert.equal(parsePermissionMode(m, "antigravity-cli"), m);
+  assert.equal(parsePermissionMode("turbo", "antigravity-cli"), "auto", "Turbo became Auto");
   assert.equal(parsePermissionMode("turbo", "claude-code"), "default", "Turbo asks with Claude Code");
   assert.equal(parsePermissionMode("turbo", "openai"), "default");
   assert.equal(parsePermissionMode("acceptEdits", "claude-code"), "auto", "picked before Auto replaced it");
