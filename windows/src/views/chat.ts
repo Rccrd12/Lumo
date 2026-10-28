@@ -84,15 +84,17 @@ import {
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
-import { addChatFile, aiKind, chatFiles, dropChatFiles, type ChatFile, type ChatFileKind } from "../core/chat-files";
+import {
+  addChatFile, aiKind, chatFiles, dropChatFiles, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
+} from "../core/chat-files";
 import { planColor } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  afterSent, menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, sharesFolderByItself, short, shotPaths, tabPicks,
-  windowPicks, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
-  type PreviewBlock, type ScreenItem,
+  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, short,
+  shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
+  type PendingScreen, type PreviewBlock, type ScreenItem,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import { COMPUTER_TEXT } from "../core/computer";
@@ -127,6 +129,9 @@ const STRINGS = {
   chatFiles: N_("Chat files"),
   noChatFiles: N_("No files in this chat yet."),
   chatFilesHint: N_("The files attached here, and the ones the AI reads, edits or creates, stay here to open again."),
+  computer: N_("Computer"),
+  computerHint: N_("Folders, windows, pages, screenshots and text from your computer"),
+  removeFromContext: N_("Remove from the chat's context"),
   fileMissing: N_("No longer found"),
   openFile: N_("Open"),
   openLocation: N_("Open file location"),
@@ -279,6 +284,8 @@ interface Run {
   /** The CLI session the chat continues (State.chatSession while on screen). */
   session: string | null;
   provider: string;
+  /** The turn the question is in Rust's conversation (chat.rs), for the files it uses. */
+  turn: number;
   /** The answer's text so far: "" until it shows. */
   text: string;
   /** What the answer is doing, shown next to the dots until its text does. */
@@ -511,10 +518,13 @@ function folderOf(path: string): string {
 }
 
 /**
- * One row of the chat's files: like an attachment's, without its ×. A click,
- * or Enter, opens it; the right click has what else can be done with it.
+ * One row of the chat's files: like an attachment's. A click, or Enter, opens
+ * it; the right click has what else can be done with it; its ×, or Delete,
+ * takes it out of the chat's context.
  */
-function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined, onOpen: () => void, menu: () => MenuItem[]): HTMLElement {
+function chatFileRow(
+  file: ChatFile, missing: boolean, thumb: string | undefined, onOpen: () => void, menu: () => MenuItem[], onRemove: () => void,
+): HTMLElement {
   // Attached and what the AI did, on one line: "Attached · Read by the AI".
   const ai = aiKind(file);
   const attached = file.kinds.includes("attached");
@@ -535,6 +545,7 @@ function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined
       h("span", { class: "attach-detail", text: detail }),
       // Where it is: its folder (the whole path is the row's tooltip).
       h("span", { class: "attach-detail attach-path", text: folderOf(file.path) })),
+    removeButton(t(STRINGS.removeFromContext), onRemove),
   );
   row.addEventListener("click", () => onOpen());
   row.addEventListener("keydown", (e) => {
@@ -542,11 +553,66 @@ function chatFileRow(file: ChatFile, missing: boolean, thumb: string | undefined
     if (key === "Enter" || key === " ") {
       e.preventDefault();
       onOpen();
+    } else if (key === "Delete" || key === "Backspace") {
+      e.preventDefault();
+      onRemove();
     }
   });
   ownMenu(row, menu);
   return row;
 }
+
+/** A row's ×. */
+function removeButton(label: string, onRemove: () => void): HTMLElement {
+  const remove = h("button", { class: "attach-remove", title: label, "aria-label": label }, svg(ICONS.xmark, 9));
+  remove.addEventListener("click", (e) => {
+    e.stopPropagation();
+    onRemove();
+  });
+  return remove;
+}
+
+/**
+ * A folder of the attachments ("Computer") or of the chat's files (one per
+ * kind): its icon, its name, how many it holds on the right and a chevron. A
+ * click, or Enter, opens or closes it; its rows stay in the list, hidden
+ * while it is closed.
+ */
+function attachGroup(
+  group: { label: string; detail: string; tile: string; icon: { path: string; stroke?: number }; rows: HTMLElement[] },
+  open: boolean,
+  onToggle: (open: boolean) => void,
+): HTMLElement {
+  const head = h(
+    "div",
+    { class: "attach-group-head", title: group.detail, role: "button", tabindex: "0", "aria-expanded": String(open) },
+    h("span", { class: `attach-tile ${group.tile}` }, svg(group.icon.path, 15, group.icon.stroke ? { stroke: group.icon.stroke } : {})),
+    h("span", { class: "attach-text" },
+      h("span", { class: "attach-name", text: group.label }),
+      group.detail ? h("span", { class: "attach-detail", text: group.detail }) : null),
+    h("span", { class: "files-count attach-group-count", text: String(group.rows.length) }),
+    h("span", { class: "attach-group-chevron" }, svg(ICONS.chevronRight, 9, { stroke: 2 })),
+  );
+  const el = h("div", { class: open ? "attach-group open" : "attach-group" }, head, h("div", { class: "attach-group-items" }, ...group.rows));
+  const toggle = () => {
+    const now = !el.classList.contains("open");
+    el.classList.toggle("open", now);
+    head.setAttribute("aria-expanded", String(now));
+    onToggle(now);
+  };
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    if (key === "Enter" || key === " ") {
+      e.preventDefault();
+      toggle();
+    }
+  });
+  return el;
+}
+
+/** The icon of the attachments' "Computer" folder. */
+const COMPUTER_ICON = { path: ICONS.display, stroke: 1.8 };
 
 function saveSettings() {
   void Bridge.saveSettings(State.settings);
@@ -1318,11 +1384,16 @@ export function buildPrompt(
     const kept = State.chatHistory.slice(0, at);
     const keep = kept.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
     const file = State.droppedFile;
-    // The file went with a question that is dropped now: it goes again.
-    if (file?.sent && file.sentWith != null && file.sentWith >= id) file.sent = false;
+    // The file went with the edited question: it goes again with it. One that
+    // went with a later question leaves the context with it.
+    if (file?.sent && file.sentWith === id) file.sent = false;
     State.chatHistory = kept;
     State.chatSession = null;
     renderedCount = -1;
+    // The files of the dropped turns leave the chat's files, and Rust forgets them too.
+    rewindChatFiles(State.chatId, keep);
+    presenceAsked = "";
+    drawChatFiles();
     await Bridge.chatRewind(State.chatId, keep);
   }
 
@@ -1425,6 +1496,8 @@ export function buildPrompt(
 
   /** Which list the panel shows: what waits, or the chat's files. */
   let filesTab: "attached" | "chat" = "attached";
+  /** The folders of both lists the user opened ("Computer", a kind of the chat's files), kept open across redraws. */
+  const openGroups = new Set<string>();
   /** The chat's files known to be gone, by path, and the list they were asked for. */
   let missingFiles = new Set<string>();
   let presenceAsked = "";
@@ -1473,14 +1546,25 @@ export function buildPrompt(
     }
     clear(chatFilesList);
     for (const file of files) {
-      const missing = missingFiles.has(file.path);
-      if (!missing && PICTURE_FILE.test(file.name)) void chatPicture(file.path);
-      chatFilesList.append(chatFileRow(file, missing, chatPicturesHere.get(file.path), () => void openChatFile(file), () => [
+      if (!missingFiles.has(file.path) && PICTURE_FILE.test(file.name)) void chatPicture(file.path);
+    }
+    // A folder for each of what happened to them: a file attached and read is in both.
+    for (const { kind, files: inKind } of filesByKind(files)) {
+      const rows = inKind.map((file) => chatFileRow(file, missingFiles.has(file.path), chatPicturesHere.get(file.path), () => void openChatFile(file), () => [
         { kind: "item", label: t(STRINGS.openFile), run: () => void openChatFile(file) },
         { kind: "item", label: t(STRINGS.openLocation), run: () => void revealChatFile(file) },
         { kind: "sep" },
         { kind: "item", label: t(STRINGS.copyPath), run: () => void writeClipboard(file.path) },
-      ]));
+        { kind: "sep" },
+        { kind: "item", label: t(STRINGS.removeFromContext), run: () => forgetChatFile(file) },
+      ], () => forgetChatFile(file)));
+      const def = CHAT_FILE_KINDS[kind];
+      const key = `chat\t${kind}`;
+      chatFilesList.append(attachGroup(
+        { label: t(def.label), detail: "", tile: `chat-file-${kind}`, icon: def, rows },
+        openGroups.has(key),
+        (open) => (open ? openGroups.add(key) : openGroups.delete(key)),
+      ));
     }
     if (files.length === 0) {
       chatFilesList.append(h("div", { class: "files-empty" },
@@ -1488,6 +1572,15 @@ export function buildPrompt(
         h("div", { class: "files-empty-title", text: t(STRINGS.noChatFiles) }),
         h("div", { class: "files-empty-hint", text: t(STRINGS.chatFilesHint) })));
     }
+  }
+
+  /** Its ×: out of the chat's list and context; the AI is told with the next question. */
+  function forgetChatFile(file: ChatFile) {
+    removeChatFile(State.chatId, file);
+    void Bridge.chatForgetFile(State.chatId, file.name, file.path);
+    presenceAsked = "";
+    Sound.play("pop");
+    drawChatFiles();
   }
 
   /** Gone since: the row says so. */
@@ -1557,8 +1650,9 @@ export function buildPrompt(
     }
     State.moreFiles = [];
     dropShots(shotPaths(screen));
-    // The folder that rides along by itself stays out of this message too.
-    screen = { ...nextScreen(screen), autoOff: true };
+    // What rides along by itself stays out of this message too.
+    const skip = screenItems(screen).filter((it) => it.kind === "folder" || it.kind === "tab").map((it) => it.key);
+    screen = { ...nextScreen(screen), autoSkip: skip };
     Sound.play("pop");
     State.notify();
     input.focus();
@@ -1578,45 +1672,76 @@ export function buildPrompt(
     screen = withoutItem(screen, item);
   }
 
-  // ── The folder that goes with every message (Settings → Chat) ─────────────
+  // ── What goes with every message by itself (autoShare) ────────────────────
   //
   // Only while the setting is on, and only when the text field takes focus or
-  // a message went: the folder's name, for the chip. Its listing is taken when
-  // the message goes. Nothing found or an error: no chip, nothing sent.
+  // a message went: the folders' names and the tabs' titles, for the
+  // attachments. Their listings and pages are read when the message goes.
+  // Nothing found or an error: nothing shown, nothing sent.
 
   let peeking = false;
   let peekedAt = -Infinity;
-  /** The setting as the view last saw it, to notice it being turned on or off. */
-  let sharesExplorer = false;
+  /** The settings as the view last saw them, to notice one being turned on or off. */
+  let sharesAuto = "";
 
   async function peekExplorer(force: boolean) {
-    if (!State.settings.chatShareExplorer) return;
+    const every = autoShare(State.settings);
+    if (!every.folders && !every.tabs) return;
     const now = performance.now();
     if (peeking || (!force && now - peekedAt < PEEK_EVERY_MS)) return;
     peeking = true;
     peekedAt = now;
-    let folder: ExplorerFolder | null = null;
+    let folders: ExplorerFolder[] = [];
+    let tabs: BrowserTab[] = [];
     try {
-      folder = await Bridge.screenExplorerPeek();
-    } catch {
-      folder = null;
+      [folders, tabs] = await Promise.all([
+        every.folders ? Bridge.screenExplorerPeekAll().catch(() => []) : Promise.resolve([]),
+        every.tabs ? Bridge.screenTabs().catch(() => []) : Promise.resolve([]),
+      ]);
     } finally {
       peeking = false;
     }
-    if (!State.settings.chatShareExplorer) return;
-    const before = screen.autoFolder?.path ?? "";
-    screen = { ...screen, autoFolder: folder };
-    if ((folder?.path ?? "") !== before) State.notify();
+    const still = autoShare(State.settings);
+    const before = autoKey(screen);
+    screen = { ...screen, autoFolders: still.folders ? folders ?? [] : [], autoTabs: still.tabs ? tabs ?? [] : [] };
+    if (autoKey(screen) !== before) State.notify();
   }
 
-  /** The folder open in File Explorer with its listing, as the menu's entry shares it; null if none. */
-  async function explorerNow(): Promise<ExplorerFolder | null> {
+  /** What goes by itself, as a key: a change redraws the attachments. */
+  function autoKey(p: PendingScreen): string {
+    return [...(p.autoFolders ?? []).map((f) => f.path), ...(p.autoTabs ?? []).map((tab) => `${tab.id}\t${tab.title}`)].join("\n");
+  }
+
+  /** The folders open in File Explorer with their listings; none on an error. */
+  async function explorerAll(paths: string[] = []): Promise<ExplorerFolder[]> {
     try {
-      return await Bridge.screenExplorer();
+      return (await Bridge.screenExplorerShare(paths)) ?? [];
     } catch (err) {
       void Bridge.log(`[explorer] ${String(err)}`);
-      return null;
+      return [];
     }
+  }
+
+  /** What goes by itself with this message, read now, added to what the user shared. */
+  async function withAuto(waiting: PendingScreen): Promise<PendingScreen> {
+    const every = autoShare(State.settings);
+    let shared = waiting;
+    if (every.folders) {
+      const extra = foldersByThemselves(waiting, await explorerAll());
+      if (extra.length > 0) shared = { ...shared, folders: withFolders(shared.folders ?? [], extra) };
+    }
+    if (every.tabs) {
+      const open = await Bridge.screenTabs().catch(() => [] as BrowserTab[]);
+      const pick = tabsByThemselves(waiting, open ?? []);
+      if (pick.length > 0) {
+        try {
+          shared = { ...shared, tabs: withTabs(shared.tabs, (await Bridge.screenTabShare(pick.map((tab) => tab.id))) ?? []) };
+        } catch (err) {
+          void Bridge.log(`[share] tabs: ${String(err)}`);
+        }
+      }
+    }
+    return shared;
   }
 
   /** What a sharing shortcut just took (island/shortcuts.ts runShared). */
@@ -1661,10 +1786,10 @@ export function buildPrompt(
     clear(screenList);
     let displays: ScreenDisplay[] = [];
     let problem = "";
-    // Only the folder's name, for the label: nothing is listed before a click.
-    const peek: Promise<ExplorerPeek> = Bridge.screenExplorerPeek().then(
-      (folder) => ({ folder, problem: "" }),
-      (err) => ({ folder: null, problem: String(err).replace(/^Error:\s*/, "") }),
+    // Only the folders' names, for the labels: nothing is listed before a click.
+    const peek: Promise<ExplorerPeek> = Bridge.screenExplorerPeekAll().then(
+      (folders) => ({ folders: folders ?? [], problem: "" }),
+      (err) => ({ folders: [], problem: String(err).replace(/^Error:\s*/, "") }),
     );
     // The browsers' tabs, titles only: the entry shows when there are some.
     const tabs: Promise<BrowserTab[]> = Bridge.screenTabs().catch(() => []);
@@ -1697,9 +1822,10 @@ export function buildPrompt(
       const detail =
         entry.kind === "display" ? `${entry.width} × ${entry.height}`
         : entry.kind === "explorer" ? entry.folder.name
+        : entry.kind === "explorers" ? String(entry.folders.length)
         : entry.kind === "tabs" ? String(entry.count)
         : "";
-      const opens = entry.kind === "windows" || entry.kind === "tabs";
+      const opens = entry.kind === "windows" || entry.kind === "tabs" || entry.kind === "explorers";
       const row = h(
         "button",
         { class: "picker-model screen-entry", disabled: off },
@@ -1827,26 +1953,35 @@ export function buildPrompt(
     }
   }
 
+  /** One folder open in File Explorer, or all of them (`[]`), with what is in them. */
+  async function shareFolders(paths: string[]) {
+    const ticket = ++screenTicket;
+    clear(screenList);
+    try {
+      const folders = (await Bridge.screenExplorerShare(paths)) ?? [];
+      if (ticket !== screenTicket) return;
+      if (folders.length === 0) {
+        screenStatus(t(SCREEN_STRINGS.noExplorer));
+        return;
+      }
+      screen = { ...screen, folders: withFolders(screen.folders ?? [], folders) };
+      added();
+    } catch (err) {
+      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
+    }
+  }
+
   async function pickEntry(entry: MenuEntry) {
     if (entry.kind === "windows") return openWindows();
     if (entry.kind === "tabs") return openTabs();
-    const ticket = ++screenTicket;
-    clear(screenList);
-    if (entry.kind === "explorer") {
-      try {
-        const folder = await Bridge.screenExplorer();
-        if (ticket !== screenTicket) return;
-        if (!folder) {
-          screenStatus(t(SCREEN_STRINGS.noExplorer));
-          return;
-        }
-        screen = { ...screen, folder };
-        added();
-      } catch (err) {
-        if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
-      }
+    if (entry.kind === "explorer") return shareFolders([entry.folder.path]);
+    if (entry.kind === "explorers") {
+      ++screenTicket;
+      drawPicks(t(SCREEN_STRINGS.explorers), folderPicks(entry.folders), (pick) => void shareFolders(typeof pick.id === "string" ? [pick.id] : []));
       return;
     }
+    const ticket = ++screenTicket;
+    clear(screenList);
     screenStatus(t(SCREEN_STRINGS.capturing));
     let shots: ScreenShot[];
     try {
@@ -2311,13 +2446,15 @@ export function buildPrompt(
    * A question sent with a shared folder: the file of it the question names
    * goes with it, unless a file the user added is still waiting.
    */
-  async function attachNamed(folder: ExplorerFolder, query: string) {
+  async function attachNamed(folders: readonly ExplorerFolder[], query: string) {
     if (State.droppedFile && !State.droppedFile.sent) return;
-    try {
-      const file = await Bridge.explorerAttach(folder.path, query);
-      if (file) await useFile(file);
-    } catch (err) {
-      void Bridge.log(`[explorer] ${String(err)}`);
+    for (const folder of folders) {
+      try {
+        const file = await Bridge.explorerAttach(folder.path, query);
+        if (file) await useFile(file);
+      } catch (err) {
+        void Bridge.log(`[explorer] ${String(err)}`);
+      }
     }
   }
 
@@ -2409,7 +2546,7 @@ export function buildPrompt(
 
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
-    addChatFile(chat, kind, path);
+    addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
     if (chat === State.chatId) drawChatFiles();
   });
 
@@ -2505,12 +2642,8 @@ export function buildPrompt(
 
       // What the screen button added goes once, then the chip goes.
       const waiting = screen;
-      let shared = waiting;
-      if (!auto && sharesFolderByItself(waiting, State.settings.chatShareExplorer)) {
-        const folder = await explorerNow();
-        if (folder) shared = { ...waiting, folder };
-      }
-      if (!auto && shared.folder) await attachNamed(shared.folder, query);
+      const shared = auto ? waiting : await withAuto(waiting);
+      if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
 
       // The file goes with the first question asked after it was added, once.
       const file = auto ? null : State.droppedFile;
@@ -2522,6 +2655,8 @@ export function buildPrompt(
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = State.chatId;
       const history = State.chatHistory;
+      // Where the question goes in Rust's conversation: after every turn recorded.
+      const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: nextId++, role: "user", content: query };
       history.push(question);
 
@@ -2553,6 +2688,7 @@ export function buildPrompt(
         history,
         session: State.chatSession,
         provider: State.settings.chatProvider,
+        turn,
         text: "",
         activity,
         dots: false,
@@ -2593,7 +2729,7 @@ export function buildPrompt(
         ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
         : answered.text;
       if (recorded) {
-        for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name);
+        for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name, Date.now(), question.turn ?? run.turn);
         run.history.push({
           id: nextId++,
           role: "assistant",
@@ -2974,10 +3110,17 @@ export function buildPrompt(
         setInput(ask);
         window.setTimeout(() => void submit(), 0);
       }
-      if (State.settings.chatShareExplorer !== sharesExplorer) {
-        sharesExplorer = State.settings.chatShareExplorer;
-        if (sharesExplorer) void peekExplorer(true);
-        else screen = { ...screen, autoFolder: null, autoOff: false };
+      const every = autoShare(State.settings);
+      const everyKey = `${every.folders}\t${every.tabs}`;
+      if (everyKey !== sharesAuto) {
+        sharesAuto = everyKey;
+        screen = {
+          ...screen,
+          autoFolders: every.folders ? screen.autoFolders : [],
+          autoTabs: every.tabs ? screen.autoTabs : [],
+          autoSkip: [],
+        };
+        if (every.folders || every.tabs) void peekExplorer(true);
       }
       // The edited question left the chat another way (a new chat, a file): nothing to replace.
       if (editing != null && !State.chatHistory.some((m) => m.id === editing)) editing = null;
@@ -3029,14 +3172,22 @@ export function buildPrompt(
             () => void openFilePreview(more, removeMore),
           ));
         });
-        // Every screenshot, window, tab and selection on its own: its × takes back that one only.
-        for (const item of items) {
+        // Every screenshot, window, tab, selection and folder on its own, in
+        // the "Computer" folder: its × takes back that one only.
+        const computerRows = items.map((item) => {
           const removeIt = () => {
             removeItem(item);
             Sound.play("pop");
             State.notify();
           };
-          filesList.append(attachRow(item, removeIt, () => openPreview(itemPreview(screen, item), removeIt)));
+          return attachRow(item, removeIt, () => openPreview(itemPreview(screen, item), removeIt));
+        });
+        if (computerRows.length > 0) {
+          filesList.append(attachGroup(
+            { label: t(STRINGS.computer), detail: t(STRINGS.computerHint), tile: "attach-computer", icon: COMPUTER_ICON, rows: computerRows },
+            openGroups.has("computer"),
+            (open) => (open ? openGroups.add("computer") : openGroups.delete("computer")),
+          ));
         }
         if (attached === 0) filesList.append(noAttachments());
         filesBadge.textContent = attached > 0 ? String(attached) : "";

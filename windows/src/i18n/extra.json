@@ -10992,6 +10992,78 @@
    "ru": "Список ваших навыков",
    "id": "Daftar skill Anda",
    "it": "Elenca le tue skill"
+  },
+  "Folders open in File Explorer": {
+   "zh-Hans": "文件资源管理器中打开的文件夹",
+   "hi": "फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर",
+   "es": "Carpetas abiertas en el Explorador de archivos",
+   "ar": "المجلدات المفتوحة في مستكشف الملفات",
+   "fr": "Dossiers ouverts dans l'Explorateur de fichiers",
+   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার",
+   "pt-BR": "Pastas abertas no Explorador de Arquivos",
+   "ru": "Папки, открытые в проводнике",
+   "id": "Folder yang terbuka di File Explorer",
+   "it": "Cartelle aperte in Esplora file"
+  },
+  "All folders": {
+   "zh-Hans": "所有文件夹",
+   "hi": "सभी फ़ोल्डर",
+   "es": "Todas las carpetas",
+   "ar": "كل المجلدات",
+   "fr": "Tous les dossiers",
+   "bn": "সব ফোল্ডার",
+   "pt-BR": "Todas as pastas",
+   "ru": "Все папки",
+   "id": "Semua folder",
+   "it": "Tutte le cartelle"
+  },
+  "Its page is read when you send.": {
+   "zh-Hans": "发送时才读取其页面。",
+   "hi": "भेजते समय इसका पेज पढ़ा जाता है।",
+   "es": "Su página se lee al enviar.",
+   "ar": "تُقرأ صفحته عند الإرسال.",
+   "fr": "Sa page est lue à l'envoi.",
+   "bn": "পাঠানোর সময় এর পেজ পড়া হয়।",
+   "pt-BR": "A página é lida quando você envia.",
+   "ru": "Страница читается при отправке.",
+   "id": "Halamannya dibaca saat Anda mengirim.",
+   "it": "La pagina viene letta all'invio."
+  },
+  "Computer": {
+   "zh-Hans": "电脑",
+   "hi": "कंप्यूटर",
+   "es": "Ordenador",
+   "ar": "الكمبيوتر",
+   "fr": "Ordinateur",
+   "bn": "কম্পিউটার",
+   "pt-BR": "Computador",
+   "ru": "Компьютер",
+   "id": "Komputer",
+   "it": "Computer"
+  },
+  "Folders, windows, pages, screenshots and text from your computer": {
+   "zh-Hans": "来自你电脑的文件夹、窗口、网页、截图和文字",
+   "hi": "आपके कंप्यूटर से फ़ोल्डर, विंडो, पेज, स्क्रीनशॉट और टेक्स्ट",
+   "es": "Carpetas, ventanas, páginas, capturas y texto de tu ordenador",
+   "ar": "مجلدات ونوافذ وصفحات ولقطات شاشة ونصوص من جهازك",
+   "fr": "Dossiers, fenêtres, pages, captures et texte de votre ordinateur",
+   "bn": "আপনার কম্পিউটার থেকে ফোল্ডার, উইন্ডো, পেজ, স্ক্রিনশট ও লেখা",
+   "pt-BR": "Pastas, janelas, páginas, capturas e texto do seu computador",
+   "ru": "Папки, окна, страницы, снимки экрана и текст с вашего компьютера",
+   "id": "Folder, jendela, halaman, tangkapan layar, dan teks dari komputer Anda",
+   "it": "Cartelle, finestre, pagine, screenshot e testo dal tuo computer"
+  },
+  "Remove from the chat's context": {
+   "zh-Hans": "从聊天上下文中移除",
+   "hi": "चैट के संदर्भ से हटाएँ",
+   "es": "Quitar del contexto del chat",
+   "ar": "إزالة من سياق المحادثة",
+   "fr": "Retirer du contexte du chat",
+   "bn": "চ্যাটের প্রসঙ্গ থেকে সরান",
+   "pt-BR": "Remover do contexto do chat",
+   "ru": "Убрать из контекста чата",
+   "id": "Hapus dari konteks chat",
+   "it": "Rimuovi dal contesto della chat"
   }
  }
 }

@@ -16,7 +16,8 @@ const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { providerDef } = await import("../src/core/providers.ts");
 const {
   afterSent, emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
-  seesImages, sharesFolderByItself, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows, withoutFolder, withoutItem,
+  seesImages, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows, withoutFolder, withoutItem, folderPicks, foldersByThemselves,
+  tabsByThemselves, withFolders, autoShare,
 } = await import("../src/core/screen.ts");
 
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
@@ -75,12 +76,27 @@ test("the menu: open windows, one entry per screen, all screens only when there 
   assert.deepEqual(menuEntries(DISPLAYS).map(entryLabel), ["Open windows", "Screen 1", "Screen 2", "All screens"]);
 });
 
+const MUSIC = { path: "C:\\Users\\me\\Music", name: "Music", entries: [], omitted: 0 };
+
 test("the File Explorer entry comes last, and only when a folder is open", () => {
-  const [, found] = menuEntries([], { folder: PEEKED, problem: "" });
+  const [, found] = menuEntries([], { folders: [PEEKED], problem: "" });
   assert.deepEqual(found, { kind: "explorer", folder: PEEKED });
   assert.equal(entryLabel(found), "Folder open in File Explorer");
-  assert.deepEqual(menuEntries([], { folder: null, problem: "" }).map(entryLabel), ["Open windows"], "none open: no entry");
-  assert.deepEqual(menuEntries([], { folder: PEEKED, problem: "The screen couldn't be read." }).map(entryLabel), ["Open windows"]);
+  assert.deepEqual(menuEntries([], { folders: [], problem: "" }).map(entryLabel), ["Open windows"], "none open: no entry");
+  assert.deepEqual(menuEntries([], { folders: [PEEKED], problem: "The screen couldn't be read." }).map(entryLabel), ["Open windows"]);
+});
+
+test("several folders open: one entry opens a second list, all of them or one", () => {
+  const [, found] = menuEntries([], { folders: [PEEKED, MUSIC], problem: "" });
+  assert.deepEqual(found, { kind: "explorers", folders: [PEEKED, MUSIC] });
+  assert.equal(entryLabel(found), "Folders open in File Explorer");
+  assert.deepEqual(folderPicks([PEEKED, MUSIC]).map((p) => [p.id, p.label, p.detail]), [
+    [null, "All folders", "2"],
+    [PEEKED.path, "PDFs", PEEKED.path],
+    [MUSIC.path, "Music", MUSIC.path],
+  ]);
+  assert.deepEqual(folderPicks([]), []);
+  assert.deepEqual(withFolders([FOLDER, MUSIC], [{ ...MUSIC, omitted: 2 }]).map((f) => [f.name, f.omitted]), [["PDFs", 0], ["Music", 2]]);
 });
 
 test("the browser tabs come after the windows, only when a browser has some open", () => {
@@ -132,11 +148,16 @@ test("picking again adds to what is waiting, the same window or tab replaced", (
 });
 
 test("a shared folder is something to send, with an attachment naming it", () => {
-  const p = { ...emptyScreen(), folder: FOLDER };
+  const p = { ...emptyScreen(), folders: [FOLDER] };
   assert.ok(hasScreen(p));
   assert.deepEqual(screenPayload(p), { windows: [], shots: [], folder: FOLDER });
   assert.deepEqual(screenItems(p), [{ kind: "folder", key: FOLDER.path, label: "PDFs", detail: `Folder · ${FOLDER.path}`, title: FOLDER.path }]);
-  assert.equal(screenPayload({ ...p, folder: null }), null);
+  assert.equal(screenPayload({ ...p, folders: [] }), null);
+  // Several: the first as before, the others after it, each its own row.
+  const two = { ...p, folders: [FOLDER, MUSIC] };
+  assert.deepEqual(screenPayload(two), { windows: [], shots: [], folder: FOLDER, folders: [MUSIC] });
+  assert.deepEqual(screenItems(two).map((i) => i.label), ["PDFs", "Music"]);
+  assert.deepEqual(screenItems(withoutFolder(two, MUSIC.path)).map((i) => i.label), ["PDFs"], "a × takes back that one only");
 });
 
 test("only the local model servers can't look at a screenshot", () => {
@@ -225,8 +246,8 @@ beforeEach(() => {
       : [read(TABS.find((t) => t.id === args.ids[0]), "README", "page")]),
     screen_capture: (args) => (args.display === null ? [shot(0), shot(1)] : [shot(args.display)]),
     chat_send: { text: "I see VS Code." },
-    screen_explorer_peek: PEEKED,
-    screen_explorer: FOLDER,
+    screen_explorer_peek_all: [PEEKED],
+    screen_explorer_share: [FOLDER],
     explorer_attach: (args) => (/file\.pdf/i.test(args.query) ? COPIED : null),
   };
   State.settings = { ...DEFAULT_SETTINGS, chatModels: {}, chatProvider: "claude-code" };
@@ -245,7 +266,7 @@ const rows = () => view.el.find(".attach-row");
 const names = () => rows().map((r) => r.find(".attach-name")[0].textContent);
 const entries = () => view.el.find(".screen-entry");
 const nothingCaptured = () =>
-  sent("screen_capture").length === 0 && sent("screen_windows").length === 0 && sent("screen_explorer").length === 0 &&
+  sent("screen_capture").length === 0 && sent("screen_windows").length === 0 && sent("screen_explorer_share").length === 0 &&
   sent("screen_window_share").length === 0 && sent("screen_tab_share").length === 0;
 const label = (row) => row.find(".picker-model-name")[0].textContent;
 const explorerEntry = () => entries().find((e) => e.find(".picker-model-name")[0].textContent === "Folder open in File Explorer");
@@ -263,7 +284,7 @@ test("opening the menu only asks which screens there are", async () => {
     ["Open windows", "Browser tabs", "Screen 1", "Screen 2", "All screens", "Folder open in File Explorer"],
   );
   assert.equal(sent("screen_displays").length, 1);
-  assert.equal(sent("screen_explorer_peek").length, 1, "the folder's name, for the label");
+  assert.equal(sent("screen_explorer_peek_all").length, 1, "the folders' names, for the label");
   assert.equal(sent("screen_tabs").length, 1, "the tabs' titles, for the entry");
   assert.ok(nothingCaptured(), "nothing until an entry is clicked");
   $(".screen-btn").fire("click");
@@ -630,12 +651,12 @@ test("the File Explorer entry names the folder, and only a click lists it", asyn
   const row = explorerEntry();
   assert.equal(row.getAttribute("disabled"), null);
   assert.equal(row.find(".history-date")[0].textContent, "PDFs");
-  assert.equal(sent("screen_explorer").length, 0, "nothing listed yet");
+  assert.equal(sent("screen_explorer_share").length, 0, "nothing listed yet");
 
   row.fire("click");
   await flush();
   view.sync();
-  assert.equal(sent("screen_explorer").length, 1);
+  assert.deepEqual(sent("screen_explorer_share"), [{ paths: [FOLDER.path] }]);
   assert.ok(!$(".chat-body").classList.contains("screening"));
   const chip = rows()[0];
   assert.equal(chip.find(".attach-name")[0].textContent, "PDFs");
@@ -652,13 +673,13 @@ test("the File Explorer entry names the folder, and only a click lists it", asyn
 });
 
 test("no File Explorer window, or it can't be read: no entry for it", async () => {
-  answers.screen_explorer_peek = null;
+  answers.screen_explorer_peek_all = [];
   await openMenu();
   assert.equal(explorerEntry(), undefined);
-  assert.equal(sent("screen_explorer").length, 0);
+  assert.equal(sent("screen_explorer_share").length, 0);
 
   $(".screen-btn").fire("click");
-  answers.screen_explorer_peek = () => Promise.reject(new Error("The screen couldn't be read."));
+  answers.screen_explorer_peek_all = () => Promise.reject(new Error("The screen couldn't be read."));
   await openMenu();
   assert.equal(explorerEntry(), undefined);
 });
@@ -668,6 +689,61 @@ async function shareFolder() {
   explorerEntry().fire("click");
   await flush();
 }
+
+test("several folders open: all of them, or one, go with the question, and the file each names is attached", async () => {
+  answers.screen_explorer_peek_all = [PEEKED, MUSIC];
+  answers.screen_explorer_share = (args) => [FOLDER, MUSIC].filter((f) => args.paths.length === 0 || args.paths.includes(f.path));
+  answers.explorer_attach = (args) => (args.folder === MUSIC.path && /song/.test(args.query) ? { name: "song.mp3", path: "C:\\Lumo\\inbox\\song.mp3" }
+    : args.folder === FOLDER.path && /file\.pdf/.test(args.query) ? COPIED : null);
+  await openMenu();
+  const several = entries().find((e) => e.find(".picker-model-name")[0].textContent === "Folders open in File Explorer");
+  assert.equal(several.find(".history-date")[0].textContent, "2");
+  several.fire("click");
+  await flush();
+  assert.deepEqual(entries().slice(1).map(label), ["All folders", "PDFs", "Music"], "Back, then the folders");
+  assert.equal(sent("screen_explorer_share").length, 0, "nothing listed before a pick");
+  entries()[1].fire("click"); // All folders
+  await flush();
+  view.sync();
+  assert.deepEqual(sent("screen_explorer_share"), [{ paths: [] }]);
+  assert.deepEqual(names(), ["PDFs", "Music"]);
+
+  $(".chat-input").value = "file.pdf and the song";
+  $(".send-btn").fire("click");
+  for (let i = 0; i < 4; i++) await flush();
+  assert.deepEqual(sent("explorer_attach").map((a) => a.folder), [FOLDER.path, MUSIC.path], "each folder is asked");
+  const turn = sent("chat_send")[0];
+  assert.deepEqual(turn.screen.folder, FOLDER);
+  assert.deepEqual(turn.screen.folders, [MUSIC]);
+  assert.deepEqual(turn.context, { kind: "file", name: "file.pdf", path: COPIED.path });
+  assert.deepEqual(turn.screen.files, [{ name: "song.mp3", path: "C:\\Lumo\\inbox\\song.mp3" }], "the second goes with the first");
+});
+
+test("the attachments keep what comes from the computer in a folder of its own, with how many it holds", async () => {
+  State.droppedFile = { name: "contract.docx", path: "C:\\Lumo\\inbox\\contract.docx" };
+  await shareFolder();
+  await openMenu();
+  entries()[1].fire("click"); // Browser tabs
+  await flush();
+  entries()[1].fire("click"); // All tabs
+  await flush();
+  view.sync();
+  const groups = view.el.find(".attach-group");
+  assert.equal(groups.length, 1, "one folder: Computer");
+  const head = groups[0].find(".attach-group-head")[0];
+  assert.equal(head.find(".attach-name")[0].textContent, "Computer");
+  assert.equal(head.find(".attach-group-count")[0].textContent, "3", "the folder and both tabs");
+  assert.ok(!groups[0].classList.contains("open"), "closed until clicked");
+  assert.deepEqual(groups[0].find(".attach-row").map((r) => r.find(".attach-name")[0].textContent), ["Rccrd12/Lumo", "Luce – Wikipedia", "PDFs"]);
+  // The file the user added stays outside it.
+  const loose = $(".files-list").children.filter((c) => c.classList.contains("attach-row"));
+  assert.deepEqual(loose.map((r) => r.find(".attach-name")[0].textContent), ["contract.docx"]);
+  head.fire("click");
+  assert.ok(groups[0].classList.contains("open"));
+  view.sync();
+  assert.ok(view.el.find(".attach-group")[0].classList.contains("open"), "still open once drawn again");
+  State.droppedFile = null;
+});
 
 test("the folder goes with the question, and the file it names is attached like a picked one", async () => {
   await shareFolder();
@@ -729,24 +805,37 @@ test("another provider takes the named file in the chat open now, as with the pa
 
 // ── "Always share the folder open in File Explorer" (Settings → Chat) ─────────
 
-test("the folder that goes by itself shows as a chip, but is nothing to send until the message goes", () => {
-  const p = { ...emptyScreen(), autoFolder: PEEKED };
-  assert.equal(hasScreen(p), false, "its listing is taken when the message goes");
+test("the folders that go by themselves show as chips, but are nothing to send until the message goes", () => {
+  const p = { ...emptyScreen(), autoFolders: [PEEKED, MUSIC] };
+  assert.equal(hasScreen(p), false, "their listings are taken when the message goes");
   assert.equal(screenPayload(p), null);
-  assert.deepEqual(screenItems(p).map((i) => [i.kind, i.label, i.title]), [["folder", "PDFs", FOLDER.path]]);
-  assert.ok(sharesFolderByItself(p, true));
-  assert.ok(!sharesFolderByItself(p, false), "the setting is off");
+  assert.deepEqual(screenItems(p).map((i) => [i.kind, i.label, i.title]), [["folder", "PDFs", FOLDER.path], ["folder", "Music", MUSIC.path]]);
+  assert.deepEqual(foldersByThemselves(p, [FOLDER, MUSIC]), [FOLDER, MUSIC]);
 
-  const off = withoutFolder(p);
-  assert.deepEqual(screenItems(off), [], "its × leaves it out");
-  assert.ok(!sharesFolderByItself(off, true));
-  assert.deepEqual(nextScreen(off), { ...emptyScreen(), autoFolder: PEEKED }, "back for the next message");
+  const off = withoutFolder(p, PEEKED.path);
+  assert.deepEqual(screenItems(off).map((i) => i.label), ["Music"], "its × leaves that one out");
+  assert.deepEqual(foldersByThemselves(off, [FOLDER, MUSIC]), [MUSIC]);
+  assert.deepEqual(nextScreen(off), { ...emptyScreen(), autoFolders: [PEEKED, MUSIC] }, "back for the next message");
 
-  const picked = { ...p, folder: FOLDER };
-  assert.deepEqual(screenItems(picked).length, 1, "one row, the shared folder's");
-  assert.ok(!sharesFolderByItself(picked, true), "the menu already shared one");
-  assert.deepEqual(screenItems(withoutFolder(picked)), []);
-  assert.deepEqual(screenItems(withoutItem(picked, screenItems(picked)[0])), [], "its × as an item, the same");
+  const picked = { ...p, folders: [FOLDER] };
+  assert.deepEqual(screenItems(picked).length, 2, "one row each, the shared folder's once");
+  assert.deepEqual(foldersByThemselves(picked, [FOLDER, MUSIC]), [MUSIC], "the menu already shared one");
+  assert.deepEqual(screenItems(withoutFolder(picked, FOLDER.path)).map((i) => i.label), ["Music"]);
+  assert.deepEqual(screenItems(withoutItem(picked, screenItems(picked)[0])).map((i) => i.label), ["Music"], "its × as an item, the same");
+});
+
+test("what goes by itself is read from the settings in one place", () => {
+  assert.deepEqual(autoShare(DEFAULT_SETTINGS), { folders: false, windows: DEFAULT_SETTINGS.chatShareOpen, tabs: false });
+  assert.deepEqual(autoShare({ ...DEFAULT_SETTINGS, chatShareExplorer: true, chatShareTabs: true }).folders, true);
+  assert.equal(autoShare({ ...DEFAULT_SETTINGS, chatShareTabs: true }).tabs, true);
+  // The open tabs: titles shown, read when the message goes, each × for this message.
+  const p = { ...emptyScreen(), autoTabs: TABS };
+  assert.deepEqual(screenItems(p).map((i) => i.label), ["Rccrd12/Lumo", "Luce – Wikipedia"]);
+  assert.equal(screenPayload(p), null);
+  assert.deepEqual(itemPreview(p, { kind: "tab", key: TABS[0].id })[0].note, "Its page is read when you send.");
+  const off = withoutItem(p, { kind: "tab", key: TABS[0].id });
+  assert.deepEqual(tabsByThemselves(off, TABS), [TABS[1]]);
+  assert.deepEqual(tabsByThemselves({ ...p, tabs: [TABS[1]] }, TABS), [TABS[0]], "a tab shared from the menu goes once");
 });
 
 const folderChips = () => rows().filter((c) => c.getAttribute("title") === FOLDER.path);
@@ -770,25 +859,25 @@ test("off (the default), nothing is asked of File Explorer and nothing rides alo
   $(".chat-input").fire("focus");
   await flush();
   await ask("hi");
-  assert.equal(sent("screen_explorer_peek").length, 0);
-  assert.equal(sent("screen_explorer").length, 0);
+  assert.equal(sent("screen_explorer_peek_all").length, 0);
+  assert.equal(sent("screen_explorer_share").length, 0);
   assert.equal(sent("chat_send")[0].screen, undefined);
 });
 
 test("on, every message carries the folder open in File Explorer, its chip showing first", async () => {
   await turnOnSharing();
-  assert.equal(sent("screen_explorer_peek").length, 1, "its name, for the chip");
-  assert.equal(sent("screen_explorer").length, 0, "nothing listed before the message goes");
+  assert.equal(sent("screen_explorer_peek_all").length, 1, "their names, for the chips");
+  assert.equal(sent("screen_explorer_share").length, 0, "nothing listed before the message goes");
   assert.equal(folderChips().length, 1);
   assert.equal(folderChips()[0].find(".attach-name")[0].textContent, "PDFs");
 
   await ask("what's in here?");
-  assert.equal(sent("screen_explorer").length, 1);
+  assert.deepEqual(sent("screen_explorer_share"), [{ paths: [] }], "every folder open now");
   assert.deepEqual(sent("chat_send")[0].screen, { windows: [], shots: [], folder: FOLDER });
   assert.equal(folderChips().length, 1, "still there for the next message");
 
   await ask("mi leggi il file 'file.pdf'?");
-  assert.equal(sent("screen_explorer").length, 2, "listed again: the folder may have changed");
+  assert.equal(sent("screen_explorer_share").length, 2, "listed again: the folders may have changed");
   assert.deepEqual(sent("chat_send")[1].screen.folder, FOLDER);
   assert.deepEqual(sent("chat_send")[1].context, { kind: "file", name: "file.pdf", path: COPIED.path }, "a named file is attached as from the menu");
 });
@@ -799,7 +888,6 @@ test("its chip's × leaves the folder out of that message only", async () => {
   view.sync();
   assert.equal(folderChips().length, 0);
   await ask("hi");
-  assert.equal(sent("screen_explorer").length, 0);
   assert.equal(sent("chat_send")[0].screen, undefined);
   assert.equal(folderChips().length, 1, "back for the next one");
   await ask("and now?");
@@ -812,35 +900,36 @@ test("a folder picked from the menu is sent once, not twice", async () => {
   view.sync();
   assert.equal(folderChips().length, 1);
   await ask("hi");
-  assert.equal(sent("screen_explorer").length, 1, "the menu's click only");
+  assert.equal(sent("screen_explorer_share").length, 2, "the menu's click, then the others open now");
   assert.deepEqual(sent("chat_send")[0].screen.folder, FOLDER);
+  assert.equal(sent("chat_send")[0].screen.folders, undefined, "once");
 });
 
 test("no File Explorer window, or it can't be read: no chip, nothing sent, no error", async () => {
-  answers.screen_explorer_peek = () => Promise.reject(new Error("The screen couldn't be read."));
-  answers.screen_explorer = () => Promise.reject(new Error("The screen couldn't be read."));
+  answers.screen_explorer_peek_all = () => Promise.reject(new Error("The screen couldn't be read."));
+  answers.screen_explorer_share = () => Promise.reject(new Error("The screen couldn't be read."));
   await turnOnSharing();
   assert.equal(folderChips().length, 0);
   await ask("hi");
   assert.equal(sent("chat_send")[0].screen, undefined);
   assert.notEqual(State.view, "note");
 
-  answers.screen_explorer = null;
+  answers.screen_explorer_share = [];
   await ask("again");
   assert.equal(sent("chat_send")[1].screen, undefined);
 });
 
 test("the field taking focus asks for the folder again, not more than once in a while", async () => {
   await turnOnSharing();
-  answers.screen_explorer_peek = { ...PEEKED, path: "C:\\Users\\me\\Music", name: "Music" };
+  answers.screen_explorer_peek_all = [MUSIC];
   $(".chat-input").fire("focus");
   await flush();
-  assert.equal(sent("screen_explorer_peek").length, 1, "just asked");
+  assert.equal(sent("screen_explorer_peek_all").length, 1, "just asked");
   await new Promise((resolve) => setTimeout(resolve, 1600));
   $(".chat-input").fire("focus");
   await flush();
   view.sync();
-  assert.equal(sent("screen_explorer_peek").length, 2);
+  assert.equal(sent("screen_explorer_peek_all").length, 2);
   assert.deepEqual(names(), ["Music"]);
 });
 
@@ -850,7 +939,7 @@ test("turned off, the chip goes and nothing more is sent", async () => {
   view.sync();
   assert.equal(folderChips().length, 0);
   await ask("hi");
-  assert.equal(sent("screen_explorer").length, 0);
+  assert.equal(sent("screen_explorer_share").length, 0);
   assert.equal(sent("chat_send")[0].screen, undefined);
 });
 
@@ -865,7 +954,7 @@ test("an attachment's preview is exactly what goes: the picture, text read, the 
     selection: { text: "hello world", app: "chrome", title: "News" },
     windows: [SHARED[0], { ...SHARED[1], text: "" }],
     tabs: [read(TABS[0], "README", "page"), { ...read(TABS[1], "La luce", "web"), cut: true }, { ...TABS[1], id: "x", url: "", text: "" }],
-    folder: { ...FOLDER, omitted: 3 },
+    folders: [{ ...FOLDER, omitted: 3 }],
   };
   const items = screenItems(p);
   const preview = (kind, i = 0) => itemPreview(p, items.filter((it) => it.kind === kind)[i]);
@@ -886,9 +975,9 @@ test("an attachment's preview is exactly what goes: the picture, text read, the 
   assert.equal(folder.text, "Old/\nfile.pdf — 1.5 KB");
   assert.equal(folder.note, "Items not listed: 3");
   // The folder that rides along by itself is listed only when the message goes.
-  const auto = itemPreview({ ...emptyScreen(), autoFolder: PEEKED }, { kind: "folder", key: PEEKED.path });
+  const auto = itemPreview({ ...emptyScreen(), autoFolders: [PEEKED] }, { kind: "folder", key: PEEKED.path });
   assert.deepEqual(auto.map((b) => [b.heading, b.note, b.text]), [["PDFs", "Its listing is read when you send.", ""]]);
-  assert.deepEqual(itemPreview({ ...emptyScreen(), autoFolder: PEEKED, autoOff: true }, { kind: "folder", key: PEEKED.path }), []);
+  assert.deepEqual(itemPreview({ ...emptyScreen(), autoFolders: [PEEKED], autoSkip: [PEEKED.path] }, { kind: "folder", key: PEEKED.path }), []);
   assert.deepEqual(itemPreview(withoutItem(p, items[0]), items[0]), [], "taken back: nothing to show");
   assert.deepEqual(filePreview({ name: "a.png", path: "C:\\in\\a.png", size: 2048 }, "data:x")[0], {
     heading: "a.png", detail: "C:\\in\\a.png", note: "2.0 KB", text: "", image: "data:x",
@@ -950,8 +1039,8 @@ test("after a message, what went no longer waits, even if the attachments change
   // Untouched: the next message starts empty, the folder that rides along stays.
   assert.deepEqual(afterSent(sent, sent), nextScreen(sent));
   // The folder in File Explorer asked again while the answer came: a new object, same items.
-  const peeked = { ...sent, autoFolder: PEEKED };
-  assert.deepEqual(afterSent(peeked, sent), { ...emptyScreen(), autoFolder: PEEKED });
+  const peeked = { ...sent, autoFolders: [PEEKED] };
+  assert.deepEqual(afterSent(peeked, sent), { ...emptyScreen(), autoFolders: [PEEKED] });
   // A screenshot added while the answer came waits for the next message, alone.
   const added = { ...sent, shots: [one, two] };
   assert.deepEqual(afterSent(added, sent).shots, [two]);

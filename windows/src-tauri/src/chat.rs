@@ -820,7 +820,7 @@ async fn send_to(
         let mut shared = screen
             .as_ref()
             .map(|s| s.folder.iter().chain(s.folders.iter()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p)).collect::<Vec<String>>())
-            .unwrap_or_else(Vec::new)
+            .unwrap_or_default()
             .into_iter();
         let folder = shared.next();
         for other in shared {

@@ -446,6 +446,56 @@ test("Edit puts a question back; sending it replaces it and drops what followed"
   assert.deepEqual(State.chatHistory.map((m) => m.content), ["one", "answer 1"]);
 });
 
+test("editing a message takes the files of the questions after it out of the chat's files, and a × takes one out of the context", async (t) => {
+  const { chatFiles } = await import("../src/core/chat-files.ts");
+  const mem = new Map();
+  const before = globalThis.localStorage;
+  globalThis.localStorage = { getItem: (k) => mem.get(k) ?? null, setItem: (k, v) => mem.set(k, String(v)), removeItem: (k) => mem.delete(k) };
+  t.after(() => {
+    globalThis.localStorage = before;
+  });
+  let n = 0;
+  answers.chat_send = () => {
+    n += 1;
+    // The AI reads a file while answering the second question.
+    if (n === 2) emit("chat-file", { chat: State.chatId, kind: "read", path: String.raw`C:\Docs\later.md` });
+    return { text: `answer ${n}`, turns: 2 * n };
+  };
+  State.droppedFile = { name: "first.pdf", path: String.raw`C:\inbox\first.pdf` };
+  view.sync();
+  await ask("one");
+  State.droppedFile = { name: "second.pdf", path: String.raw`C:\inbox\second.pdf` };
+  view.sync();
+  await ask("two");
+  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name).sort(), ["first.pdf", "later.md", "second.pdf"]);
+
+  // The chat's files: a folder per kind, each with how many it holds.
+  $(".files-btn").fire("click");
+  view.el.find(".files-tab")[1].fire("click");
+  const groups = () => view.el.find(".chat-files-list")[0].find(".attach-group");
+  assert.deepEqual(groups().map((g) => [g.find(".attach-name")[0].textContent, g.find(".attach-group-count")[0].textContent]),
+    [["Attached", "2"], ["Read by the AI", "1"]]);
+
+  // Editing the first question: the second question's file and what the AI read for it go too.
+  editOf(0).fire("click");
+  view.sync();
+  answers.chat_send = () => {
+    emit("chat-file", { chat: State.chatId, kind: "read", path: String.raw`C:\Docs\new.md` });
+    return { text: "answer 1", turns: 2 };
+  };
+  await ask("one, again");
+  assert.deepEqual(sent("chat_rewind").at(-1), { chatId: State.chatId, keep: 0 });
+  assert.equal(sent("chat_send").at(-1).context, null, "the later question's file doesn't go again");
+  assert.deepEqual(chatFiles(State.chatId).map((f) => f.name), ["new.md"]);
+
+  // Its ×: out of the list, and Rust tells the AI with the next question.
+  const row = view.el.find(".chat-files-list")[0].find(".attach-row")[0];
+  row.find(".attach-remove")[0].fire("click");
+  assert.deepEqual(sent("chat_forget_file").at(-1), { chatId: State.chatId, name: "new.md", path: String.raw`C:\Docs\new.md` });
+  assert.deepEqual(chatFiles(State.chatId), []);
+  assert.equal(view.el.find(".chat-files-list")[0].find(".attach-group").length, 0, "an empty kind shows no folder");
+});
+
 test("Escape or the chip's × leaves an edit", async () => {
   answers.chat_send = { text: "hi", turns: 2 };
   await ask("hello");

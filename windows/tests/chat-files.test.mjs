@@ -4,7 +4,9 @@
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { saveChat } from "../src/core/chats.ts";
-import { MAX_FILES, addChatFile, aiKind, chatFiles, dropChatFiles, fileName, withFile } from "../src/core/chat-files.ts";
+import {
+  MAX_FILES, addChatFile, aiKind, chatFiles, dropChatFiles, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile,
+} from "../src/core/chat-files.ts";
 
 const mem = new Map();
 globalThis.localStorage = {
@@ -76,4 +78,41 @@ test("storage that is broken or of another shape leaves an empty list", () => {
   assert.deepEqual(chatFiles("a"), []);
   mem.set("lumo.chatFiles.v1", JSON.stringify({ a: [{ path: 1 }, { path: "/x", name: "x", kind: "weird", at: 1 }] }));
   assert.deepEqual(chatFiles("a"), []);
+});
+
+test("the chat's files are shown in a folder per kind, a file in each of its kinds, empty kinds left out", () => {
+  addChatFile("a", "attached", String.raw`C:\inbox\notes.md`, "notes.md", 1);
+  addChatFile("a", "read", String.raw`C:\Docs\notes.md`, undefined, 2);
+  addChatFile("a", "created", String.raw`C:\Work\game.py`, undefined, 3);
+  const groups = filesByKind(chatFiles("a"));
+  assert.deepEqual(groups.map((g) => [g.kind, g.files.map((f) => f.name)]), [
+    ["attached", ["notes.md"]],
+    ["read", ["notes.md"]],
+    ["created", ["game.py"]],
+  ]);
+  assert.deepEqual(filesByKind([]), []);
+});
+
+test("an edited message takes back what happened in the turns it drops", () => {
+  // Turn 0: notes.md attached; turn 2: it is read, and b.pdf attached; turn 4: game.py created.
+  addChatFile("a", "attached", String.raw`C:\inbox\notes.md`, "notes.md", 1, 0);
+  addChatFile("a", "read", String.raw`C:\inbox\notes.md`, undefined, 2, 2);
+  addChatFile("a", "attached", String.raw`C:\inbox\b.pdf`, "b.pdf", 3, 2);
+  addChatFile("a", "created", String.raw`C:\Work\game.py`, undefined, 4, 4);
+  // A file saved before turns were kept stays.
+  addChatFile("a", "read", String.raw`C:\Old\old.txt`, undefined, 0);
+  const kept = rewindChatFiles("a", 2);
+  assert.deepEqual(kept.map((f) => [f.name, f.kinds]), [["old.txt", ["read"]], ["notes.md", ["attached"]]]);
+  assert.deepEqual(chatFiles("a").map((f) => f.name), ["old.txt", "notes.md"], "kept in storage");
+  assert.deepEqual(rewindChatFiles("a", 0).map((f) => f.name), ["old.txt"]);
+  assert.deepEqual(rewindChatFiles("nobody", 0), []);
+});
+
+test("a file's × takes it out of the list, with the inbox's copy of it", () => {
+  addChatFile("a", "attached", String.raw`C:\inbox\notes (2).md`, "notes.md", 1);
+  addChatFile("a", "read", String.raw`C:\Docs\notes.md`, undefined, 2);
+  addChatFile("a", "edited", String.raw`C:\Work\game.py`, undefined, 3);
+  const [notes] = chatFiles("a").filter((f) => f.name === "notes.md");
+  assert.deepEqual(removeChatFile("a", notes).map((f) => f.name), ["game.py"]);
+  assert.deepEqual(chatFiles("a").map((f) => f.name), ["game.py"]);
 });

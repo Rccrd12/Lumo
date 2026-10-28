@@ -714,6 +714,7 @@ enum Ended {
 /// needed), blocking. `text(fresh)` is the question: `fresh` when the thread
 /// is new and has not seen the chat's turns. `ask` puts a card up and calls
 /// back with the click (true: allowed). The thread is returned with the run.
+#[allow(clippy::too_many_arguments)]
 fn live_turn(
     spec: TurnSpec,
     text: impl FnOnce(bool) -> String,
@@ -1052,7 +1053,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {});
+    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {});
     close(REVIEW);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {

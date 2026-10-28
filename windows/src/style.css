@@ -2559,11 +2559,6 @@ input[type="range"]::-webkit-slider-thumb {
   color: var(--ink);
 }
 
-/* A chat's file has no ×: its name takes the room. */
-.attach-row.chat-file-row {
-  grid-template-columns: 34px minmax(0, 1fr);
-}
-
 .attach-path {
   color: #6f7682;
 }
@@ -2656,6 +2651,66 @@ input[type="range"]::-webkit-slider-thumb {
 
 .attach-folder {
   --tile: #ff8a5b;
+}
+
+.attach-computer {
+  --tile: #94a3b8;
+}
+
+/* A folder of the list ("Computer", a kind of the chat's files): a row like
+   the others, with how many it holds and a chevron; its rows show, a little
+   in, once it is open. */
+.attach-group {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attach-group-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 46px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.attach-group-head:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.attach-group-head:focus-visible {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.attach-group-chevron {
+  display: grid;
+  place-items: center;
+  color: #8b929e;
+  transition: transform 0.15s ease-out;
+}
+
+.attach-group.open .attach-group-chevron {
+  transform: rotate(90deg);
+}
+
+.attach-group-items {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+}
+
+.attach-group.open .attach-group-items {
+  display: flex;
 }
 
 .attach-thumb {

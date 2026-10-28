@@ -104,10 +104,10 @@ the exe it runs from.
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: starts a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)) without opening the island when it is closed; pressed again, pauses the call (the microphone goes off) or picks it up again. End is in the call view |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted |
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
-| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab and selected text on its own, even two of the same screen — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
-| **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code or Antigravity CLI read, edited or created while answering, each marked Attached, Read, Edited or Created by the AI, with the folder it is in. They have no ×. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
+| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
+| **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
-| In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
+| In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last; with several folders open (windows or tabs), **Folders open in File Explorer** lists them, to share one or all. Their files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
 | `Ctrl+Alt+→` / `Ctrl+Alt+←` | Next / previous pill |
@@ -667,9 +667,11 @@ list only. Claude Code is told to ask you to press the screen button when it
 needs to see something, never to capture the screen itself.
 
 **Folder open in File Explorer**, at the bottom of the same menu, shows the name
-of the folder in the File Explorer window you used last (the tab in front, on
-Windows 11); it is not offered when no File Explorer window shows a folder on
-disk (This PC, Quick access, a library). Opening the menu only reads that name. Clicking the
+of the folder open in File Explorer; it is not offered when no File Explorer
+window shows a folder on disk (This PC, Quick access, a library). With several
+open, in windows or in tabs, it becomes **Folders open in File Explorer**, with
+how many, and opens a second list: **All folders**, then each one, the window you
+used last first. Opening the menu only reads their names. Clicking the
 entry lists the folder — names, sizes and dates of its files and subfolders, up
 to 300, never their contents — and adds it to the attachments, where you can remove it. With your
 next question, a file of that folder you name, with or without its extension
@@ -681,9 +683,9 @@ path has characters such as `&` or `%` are left out of that, and Claude Code
 asks before reading there.
 
 **Settings… → Chat → Always share the folder open in File Explorer** (off by
-default) does this for every message: while you type, the folder's name shows
-in the attachments, and when you send, its path and listing go with the message, as if
-you had picked the entry each time. Its × leaves it out of that one
+default) does this for every message, with every folder open in File Explorer:
+while you type, their names show in the attachments, and when you send, their paths and
+listings go with the message, as if you had picked **All folders** each time. Each one's × leaves it out of that one
 message. Lumo asks File Explorer only when the text field takes focus and when
 you send, never in the background. With it off, the chat sees no folder unless
 you pick it from the menu; Claude Code says so, and points you to the button and
