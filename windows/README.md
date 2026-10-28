@@ -608,7 +608,7 @@ several). Text pastes as usual.
 
 ### The chat knows what's open
 
-With **Settings → Chat → Tell the AI what's open** (on by default), every
+With **Settings → General → Security → Tell the AI what's open** (on by default), every
 message carries the titles of the open windows and the documents they show:
 Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
 "Budget - Excel") and finds them on disk, from Windows' recent files or a
@@ -680,7 +680,7 @@ can open its other files, each with its usual permission card. Folders whose
 path has characters such as `&` or `%` are left out of that, and Claude Code
 asks before reading there.
 
-**Settings… → Chat → Always share the folder open in File Explorer** (off by
+**Settings… → General → Security → Share the folders open in File Explorer** (off by
 default) does this for every message: while you type, the folder's name shows
 in the attachments, and when you send, its path and listing go with the message, as if
 you had picked the entry each time. Its × leaves it out of that one
@@ -691,7 +691,7 @@ to this setting.
 
 ### Let Claude use the computer
 
-**Settings… → Chat → Computer use → Let Claude use the computer** (off by
+**Settings… → General → Security → Let Claude use the computer** (off by
 default, Windows only) lets Claude Code, as the chat's provider or for Gemini
 Live, see your screen and use it — click, type, press keys, scroll and drag — for what a
 command or a file can't do: an app with no command line, a website, a form.

@@ -39,7 +39,7 @@ Meet **Lumo**: a small ring of light that peeks out of the top edge of your scre
 - 🎙️ **Talk with Gemini Live** — the microphone in the chat box or `Ctrl+Alt+L`: a spoken call with Gemini 3.8 Live (or Extended Thinking) that looks at your screen when it needs to, reads your files and PDFs, opens files and apps, and asks Claude Code or Antigravity CLI for anything else. Uses your Google AI key.
 - ⏱️ **Live activities** — the closed island says what's going on: what the AI is doing, your timers, the song playing, the next meeting, a new email; several side by side, centred, with their controls right there. Open the island and a second panel beside it holds **Timer**, **Music**, **Calendar** and **Email**; fold it with **–**, drag it off the island to keep it anywhere (Windows), resize it. Any model in the chat or Gemini Live can set a timer.
 - ✉️ **Email** — the Email pill reads your inbox over IMAP (Gmail, Outlook, iCloud, any server, with an app password), read only: a new email peeks out of the closed island within seconds, with **Summarize** and **Draft a reply**. Nothing is ever sent, moved or marked as read.
-- 🖥️ **The chat knows what's open on your PC** — the windows and documents you have open (a PDF, a Word file, a spreadsheet…) go with your question, so "what's this PDF about?" just works. Settings → Chat turns it off.
+- 🖥️ **The chat knows what's open on your PC** — the windows and documents you have open (a PDF, a Word file, a spreadsheet…) go with your question, so "what's this PDF about?" just works. Settings → General → Security turns it off.
 - ➗ **Math in answers** — formulas in LaTeX (`$…$`, `$$…$$`, `\(…\)`, `\[…\]`) are drawn as math: fractions, roots, matrices, sums, vectors.
 - 🖼️ **Show the chat your screen** — your open windows or a screenshot, only when you ask; `Ctrl+Alt+P` asks about the screen, `Ctrl+Alt+X` about the selected text, from any app.
 - 📊 **Plan usage** — small pills in the island's header show your 5-hour and weekly Claude plan limits, your Codex limits and your Antigravity CLI quotas. Off by default; Settings → Agents → Plan usage.
@@ -217,7 +217,7 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 - No telemetry, no account. The only update check is one request to GitHub when Lumo opens (off in Settings → Updates), and nothing is downloaded without your click.
 - Keys live in Windows Credential Manager, never on disk and never in the interface.
 - The only network requests Lumo makes are to the services you configure yourself.
-- Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → Chat.
+- Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → General → Security, where you also choose whether the AI may read your email and calendar.
 - Email and the calendar are only read: emails stay unread, and nothing is ever sent, moved or deleted.
 - The log and the weekly recap history stay on your machine.
 
