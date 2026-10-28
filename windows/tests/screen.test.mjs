@@ -735,7 +735,8 @@ test("the attachments keep what comes from the computer in a folder of its own, 
   assert.equal(head.find(".attach-group-count")[0].textContent, "3", "the folder and both tabs");
   assert.ok(!groups[0].classList.contains("open"), "closed until clicked");
   assert.deepEqual(groups[0].find(".attach-row").map((r) => r.find(".attach-name")[0].textContent), ["Rccrd12/Lumo", "Luce – Wikipedia", "PDFs"]);
-  // The file the user added stays outside it.
+  // Always first; the file the user added stays outside it, under it.
+  assert.ok($(".files-list").children[0].classList.contains("attach-group"));
   const loose = $(".files-list").children.filter((c) => c.classList.contains("attach-row"));
   assert.deepEqual(loose.map((r) => r.find(".attach-name")[0].textContent), ["contract.docx"]);
   head.fire("click");

@@ -3139,6 +3139,23 @@ export function buildPrompt(
         filesList.dataset.key = filesKey;
         clear(filesList);
         forgetFilePictures(new Set(files.map((f) => f.path)));
+        // Every screenshot, window, tab, selection and folder on its own, in
+        // the "Computer" folder, always first: its × takes back that one only.
+        const computerRows = items.map((item) => {
+          const removeIt = () => {
+            removeItem(item);
+            Sound.play("pop");
+            State.notify();
+          };
+          return attachRow(item, removeIt, () => openPreview(itemPreview(screen, item), removeIt));
+        });
+        if (computerRows.length > 0) {
+          filesList.append(attachGroup(
+            { label: t(STRINGS.computer), detail: t(STRINGS.computerHint), tile: "attach-computer", icon: COMPUTER_ICON, rows: computerRows },
+            openGroups.has("computer"),
+            (open) => (open ? openGroups.add("computer") : openGroups.delete("computer")),
+          ));
+        }
         // A dropped, pasted or picked file: its × takes it out before it is sent.
         if (file) {
           const removeFile = () => {
@@ -3172,23 +3189,6 @@ export function buildPrompt(
             () => void openFilePreview(more, removeMore),
           ));
         });
-        // Every screenshot, window, tab, selection and folder on its own, in
-        // the "Computer" folder: its × takes back that one only.
-        const computerRows = items.map((item) => {
-          const removeIt = () => {
-            removeItem(item);
-            Sound.play("pop");
-            State.notify();
-          };
-          return attachRow(item, removeIt, () => openPreview(itemPreview(screen, item), removeIt));
-        });
-        if (computerRows.length > 0) {
-          filesList.append(attachGroup(
-            { label: t(STRINGS.computer), detail: t(STRINGS.computerHint), tile: "attach-computer", icon: COMPUTER_ICON, rows: computerRows },
-            openGroups.has("computer"),
-            (open) => (open ? openGroups.add("computer") : openGroups.delete("computer")),
-          ));
-        }
         if (attached === 0) filesList.append(noAttachments());
         filesBadge.textContent = attached > 0 ? String(attached) : "";
         filesCount.textContent = attached > 0 ? String(attached) : "";
