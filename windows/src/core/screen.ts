@@ -14,12 +14,16 @@
 //
 // "Folder open in File Explorer" shares that folder's listing (explorer.rs);
 // the menu only asks its name, and shows it only when a folder is open. A file the question names is then attached
-// from it, as with the paperclip (views/chat.ts).
+// from it, as with the paperclip (views/chat.ts). With several folders open
+// (windows or tabs), "Folders open in File Explorer" opens a second list: one
+// folder, or all of them.
 //
-// "Always share the folder open in File Explorer" (Settings → Chat, off by
-// default) does the same for every message: the folder's name shows in the
-// attachments while the user types, its listing is taken when the message
-// goes, and its × leaves it out of that one message.
+// "Always share the folder open in File Explorer" (off by default) does the
+// same for every message, with every folder open: their names show in the
+// attachments while the user types, their listings are taken when the message
+// goes, and each one's × leaves it out of that one message. The open browser
+// tabs can go the same way (autoShare: what goes by itself, read from the
+// settings in one place).
 //
 // What waits is listed one item each (screenItems): two screenshots of the
 // same screen, two windows or two selections are two rows, each with its own
@@ -30,6 +34,7 @@ import type {
   SharedWindow,
 } from "./bridge";
 import type { ProviderDef } from "./providers";
+import type { Settings } from "./state";
 import { N_, t } from "../i18n/i18n";
 
 export const SCREEN_STRINGS = {
@@ -53,8 +58,29 @@ export const SCREEN_STRINGS = {
   selected: N_("Selected text"),
   selectedIn: N_("Text from {app}"),
   explorer: N_("Folder open in File Explorer"),
+  explorers: N_("Folders open in File Explorer"),
+  allFolders: N_("All folders"),
   noExplorer: N_("No folder is open in File Explorer."),
 };
+
+/** What goes with every message by itself, from the computer. */
+export interface AutoShare {
+  /** Every folder open in File Explorer, listed when the message goes. */
+  folders: boolean;
+  /** The open windows and their documents (Rust reads them, desk.rs). */
+  windows: boolean;
+  /** Every tab open in Edge and Chrome, with its page's text. */
+  tabs: boolean;
+}
+
+/** What the settings say goes with every message by itself. */
+export function autoShare(settings: Settings): AutoShare {
+  return {
+    folders: settings.chatShareExplorer,
+    windows: settings.chatShareOpen,
+    tabs: (settings as { chatShareTabs?: boolean }).chatShareTabs === true,
+  };
+}
 
 /** How much of the selected text the item's tooltip shows. */
 const SELECTION_PREVIEW = 400;
@@ -69,9 +95,9 @@ export function short(text: string, max = CHIP_TITLE): string {
   return chars.length <= max ? chars.join("") : `${chars.slice(0, max - 1).join("").trimEnd()}…`;
 }
 
-/** What the menu learned about File Explorer: the folder's name, or why there is none. */
+/** What the menu learned about File Explorer: the open folders' names, or why there are none. */
 export interface ExplorerPeek {
-  folder: ExplorerFolder | null;
+  folders: ExplorerFolder[];
   /** The error, if any; "" otherwise. */
   problem: string;
 }
@@ -81,19 +107,22 @@ export type MenuEntry =
   | { kind: "tabs"; count: number }
   | { kind: "display"; index: number; width: number; height: number }
   | { kind: "all" }
-  | { kind: "explorer"; folder: ExplorerFolder };
+  | { kind: "explorer"; folder: ExplorerFolder }
+  | { kind: "explorers"; folders: ExplorerFolder[] };
 
 /**
  * "Open windows", "Browser tabs" when a browser has some open, one entry per
  * display, "All screens" when there are several, then the folder open in File
- * Explorer — only when one is.
+ * Explorer — only when one is; the folders, when there are several.
  */
 export function menuEntries(displays: ScreenDisplay[], explorer?: ExplorerPeek, tabs?: BrowserTab[]): MenuEntry[] {
   const out: MenuEntry[] = [{ kind: "windows" }];
   if (tabs && tabs.length > 0) out.push({ kind: "tabs", count: tabs.length });
   for (const d of displays) out.push({ kind: "display", index: d.index, width: d.width, height: d.height });
   if (displays.length > 1) out.push({ kind: "all" });
-  if (explorer && !explorer.problem && explorer.folder) out.push({ kind: "explorer", folder: explorer.folder });
+  const folders = explorer && !explorer.problem ? explorer.folders : [];
+  if (folders.length === 1) out.push({ kind: "explorer", folder: folders[0] });
+  else if (folders.length > 1) out.push({ kind: "explorers", folders });
   return out;
 }
 
@@ -135,6 +164,13 @@ export function tabPicks(list: BrowserTab[]): PickEntry[] {
   })];
 }
 
+/** "All folders", then each folder open in File Explorer, the front window's first. */
+export function folderPicks(list: ExplorerFolder[]): PickEntry[] {
+  if (list.length === 0) return [];
+  const all: PickEntry = { id: null, label: t(SCREEN_STRINGS.allFolders), detail: String(list.length), title: "" };
+  return [all, ...list.map((f) => ({ id: f.path, label: f.name, detail: f.path, title: f.path }))];
+}
+
 /** A tab's title and, when known, its address. */
 function tabTooltip(tab: BrowserTab, between: string): string {
   return tab.url ? `${tab.title}${between}${tab.url}` : tab.title;
@@ -154,6 +190,12 @@ export function hostOf(url: string): string {
 export function withWindows(list: SharedWindow[], next: SharedWindow[]): SharedWindow[] {
   const fresh = new Set(next.map(windowKey));
   return [...list.filter((w) => !fresh.has(windowKey(w))), ...next];
+}
+
+/** `next` added to `list`: the same folder is replaced. */
+export function withFolders(list: readonly ExplorerFolder[], next: readonly ExplorerFolder[]): ExplorerFolder[] {
+  const fresh = new Set(next.map((f) => f.path));
+  return [...list.filter((f) => !fresh.has(f.path)), ...next];
 }
 
 /** `next` added to `list`: the same tab is replaced. */
@@ -179,6 +221,8 @@ export function entryLabel(entry: MenuEntry): string {
       return t(SCREEN_STRINGS.allScreens);
     case "explorer":
       return t(SCREEN_STRINGS.explorer);
+    case "explorers":
+      return t(SCREEN_STRINGS.explorers);
   }
 }
 
@@ -209,24 +253,26 @@ export interface PendingScreen {
   selection?: SelectedText | null;
   /** More text selected and shared after `selection`, in order. */
   selections?: SelectedText[];
-  /** The folder open in File Explorer, with what is in it. */
-  folder?: ExplorerFolder | null;
+  /** Folders open in File Explorer, picked in the menu, with what is in them. */
+  folders?: ExplorerFolder[];
   /**
-   * "Always share the folder open in File Explorer": the folder found there
-   * (its name only), shown in the attachments until the message goes with its listing.
+   * What goes with every message by itself (autoShare): the folders open in
+   * File Explorer (their names only) and the browser tabs (titles only),
+   * shown in the attachments until the message goes with what they hold.
    */
-  autoFolder?: ExplorerFolder | null;
-  /** Its × was pressed: this message goes without the folder. */
-  autoOff?: boolean;
+  autoFolders?: ExplorerFolder[];
+  autoTabs?: BrowserTab[];
+  /** The ones whose × was pressed (a folder's path, a tab's id): this message goes without them. */
+  autoSkip?: string[];
 }
 
 export function emptyScreen(): PendingScreen {
-  return { windows: [], tabs: [], shots: [], selection: null, selections: [], folder: null, autoFolder: null, autoOff: false };
+  return { windows: [], tabs: [], shots: [], selection: null, selections: [], folders: [], autoFolders: [], autoTabs: [], autoSkip: [] };
 }
 
-/** After a message (or a new chat): nothing waits, the folder that rides along by itself stays. */
+/** After a message (or a new chat): nothing waits, what rides along by itself stays. */
 export function nextScreen(p: PendingScreen): PendingScreen {
-  return { ...emptyScreen(), autoFolder: p.autoFolder ?? null };
+  return { ...emptyScreen(), autoFolders: p.autoFolders ?? [], autoTabs: p.autoTabs ?? [] };
 }
 
 /**
@@ -238,28 +284,51 @@ export function nextScreen(p: PendingScreen): PendingScreen {
  */
 export function afterSent(now: PendingScreen, sent: PendingScreen): PendingScreen {
   if (now === sent) return nextScreen(now);
-  let rest: PendingScreen = { ...now, autoOff: false };
-  for (const item of screenItems(sent)) if (item.kind !== "folder") rest = withoutItem(rest, item);
-  if (sent.folder && rest.folder?.path === sent.folder.path) rest = { ...rest, folder: null };
-  return rest;
+  const shots = new Set(sent.shots.map((s) => s.path));
+  const windows = new Set(sent.windows.map(windowKey));
+  const tabs = new Set(sent.tabs.map((tab) => tab.id));
+  const folders = new Set((sent.folders ?? []).map((f) => f.path));
+  const texts = new Set(allSelections(sent).map((sel) => sel.text));
+  const selections = allSelections(now).filter((sel) => !texts.has(sel.text));
+  return {
+    ...now,
+    shots: now.shots.filter((s) => !shots.has(s.path)),
+    windows: now.windows.filter((w) => !windows.has(windowKey(w))),
+    tabs: now.tabs.filter((tab) => !tabs.has(tab.id)),
+    folders: (now.folders ?? []).filter((f) => !folders.has(f.path)),
+    selection: selections[0] ?? null,
+    selections: selections.slice(1),
+    autoSkip: [],
+  };
 }
 
-/** The folder's ×: the shared folder goes, and so does the automatic one, for this message. */
-export function withoutFolder(p: PendingScreen): PendingScreen {
-  return { ...p, folder: null, autoOff: true };
+/** `key` (a folder's path, a tab's id) left out of this message, if it would go by itself. */
+function skipping(p: PendingScreen, key: string): string[] {
+  const skip = p.autoSkip ?? [];
+  return skip.includes(key) ? skip : [...skip, key];
 }
 
-/**
- * True when this message should take the folder open in File Explorer by
- * itself: the setting is on, the menu did not already share one, and its ×
- * was not pressed.
- */
-export function sharesFolderByItself(p: PendingScreen, settingOn: boolean): boolean {
-  return settingOn && !p.folder && !p.autoOff;
+/** A folder's ×: shared from the menu or going by itself, it stays out of this message. */
+export function withoutFolder(p: PendingScreen, path: string): PendingScreen {
+  return { ...p, folders: (p.folders ?? []).filter((f) => f.path !== path), autoSkip: skipping(p, path) };
+}
+
+/** The folders that go by themselves with this message: open now, not shared already, not left out. */
+export function foldersByThemselves(p: PendingScreen, open: readonly ExplorerFolder[]): ExplorerFolder[] {
+  const skip = new Set(p.autoSkip ?? []);
+  const shared = new Set((p.folders ?? []).map((f) => f.path));
+  return open.filter((f) => !skip.has(f.path) && !shared.has(f.path));
+}
+
+/** The tabs that go by themselves with this message: open now, not shared already, not left out. */
+export function tabsByThemselves(p: PendingScreen, open: readonly BrowserTab[]): BrowserTab[] {
+  const skip = new Set(p.autoSkip ?? []);
+  const shared = new Set(p.tabs.map((tab) => tab.id));
+  return open.filter((tab) => !skip.has(tab.id) && !shared.has(tab.id));
 }
 
 export function hasScreen(p: PendingScreen, files: readonly { name: string; path: string }[] = []): boolean {
-  return p.windows.length > 0 || p.tabs.length > 0 || p.shots.length > 0 || !!p.selection || !!p.folder ||
+  return p.windows.length > 0 || p.tabs.length > 0 || p.shots.length > 0 || !!p.selection || (p.folders?.length ?? 0) > 0 ||
     (p.selections?.length ?? 0) > 0 || files.length > 0;
 }
 
@@ -301,7 +370,10 @@ export function screenPayload(p: PendingScreen, files: readonly { name: string; 
   if (p.selection) out.selection = p.selection;
   if (p.selections?.length) out.selections = p.selections;
   if (files.length) out.files = files.map((f) => ({ name: f.name, path: f.path }));
-  if (p.folder) out.folder = p.folder;
+  // One folder as before; more go after it.
+  const [folder, ...folders] = p.folders ?? [];
+  if (folder) out.folder = folder;
+  if (folders.length > 0) out.folders = folders;
   if (p.windows.length > 0) out.sharedWindows = p.windows;
   if (p.tabs.length > 0) out.tabs = p.tabs;
   return out;
@@ -371,7 +443,7 @@ export function screenItems(p: PendingScreen): ScreenItem[] {
       title: windowTooltip(w),
     });
   }
-  for (const tab of p.tabs) {
+  for (const tab of [...p.tabs, ...tabsByThemselves(p, p.autoTabs ?? [])]) {
     out.push({
       kind: "tab",
       key: tab.id,
@@ -383,8 +455,9 @@ export function screenItems(p: PendingScreen): ScreenItem[] {
   for (const s of p.shots) {
     out.push({ kind: "shot", key: s.path, label: s.name, detail: t(ITEM_STRINGS.shot), title: s.name, thumb: s.preview });
   }
-  const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
-  if (folder) out.push({ kind: "folder", key: folder.path, label: folder.name, detail: kindLine(ITEM_STRINGS.folder, folder.path), title: folder.path });
+  for (const folder of [...(p.folders ?? []), ...foldersByThemselves(p, p.autoFolders ?? [])]) {
+    out.push({ kind: "folder", key: folder.path, label: folder.name, detail: kindLine(ITEM_STRINGS.folder, folder.path), title: folder.path });
+  }
   return out;
 }
 
@@ -399,13 +472,13 @@ export function withoutItem(p: PendingScreen, item: Pick<ScreenItem, "kind" | "k
     case "window":
       return { ...p, windows: p.windows.filter((w) => windowKey(w) !== item.key) };
     case "tab":
-      return { ...p, tabs: p.tabs.filter((tab) => tab.id !== item.key) };
+      return { ...p, tabs: p.tabs.filter((tab) => tab.id !== item.key), autoSkip: skipping(p, item.key) };
     case "selection": {
       const rest = allSelections(p).filter((sel) => sel.text !== item.key);
       return { ...p, selection: rest[0] ?? null, selections: rest.slice(1) };
     }
     case "folder":
-      return withoutFolder(p);
+      return withoutFolder(p, item.key);
   }
 }
 
@@ -430,6 +503,7 @@ export const PREVIEW_STRINGS = {
   cut: N_("Cut to fit: it shows more than this."),
   document: N_("Document on disk: {path}"),
   folderLater: N_("Its listing is read when you send."),
+  tabLater: N_("Its page is read when you send."),
   omitted: N_("Items not listed: {count}"),
 };
 
@@ -480,7 +554,12 @@ export function itemPreview(p: PendingScreen, item: Pick<ScreenItem, "kind" | "k
         note: !w.text.trim() ? t(PREVIEW_STRINGS.windowUnread) : w.cut ? t(PREVIEW_STRINGS.cut) : "",
         text: w.text,
       }));
-    case "tab":
+    case "tab": {
+      // A tab that goes by itself is read only when the message goes.
+      const later = p.tabs.some((tab) => tab.id === item.key) ? [] : tabsByThemselves(p, p.autoTabs ?? []).filter((tab) => tab.id === item.key);
+      if (later.length > 0) {
+        return later.map((tab) => block({ heading: tab.title || tab.url, detail: [tab.url, tab.browser].filter(Boolean).join(" · "), note: t(PREVIEW_STRINGS.tabLater) }));
+      }
       return p.tabs.filter((tab) => tab.id === item.key).map((tab) => {
         const how = !tab.text.trim() ? t(PREVIEW_STRINGS.tabUnread)
           : tab.source === "web" ? t(PREVIEW_STRINGS.downloaded)
@@ -492,11 +571,14 @@ export function itemPreview(p: PendingScreen, item: Pick<ScreenItem, "kind" | "k
           text: tab.text,
         });
       });
+    }
     case "folder": {
-      const folder = p.folder ?? (p.autoOff ? null : p.autoFolder);
+      const shared = (p.folders ?? []).find((f) => f.path === item.key);
+      const later = shared ? undefined : foldersByThemselves(p, p.autoFolders ?? []).find((f) => f.path === item.key);
+      const folder = shared ?? later;
       if (!folder) return [];
-      // The folder that rides along by itself is listed only when the message goes.
-      if (!p.folder) return [block({ heading: folder.name, detail: folder.path, note: t(PREVIEW_STRINGS.folderLater) })];
+      // A folder that rides along by itself is listed only when the message goes.
+      if (!shared) return [block({ heading: folder.name, detail: folder.path, note: t(PREVIEW_STRINGS.folderLater) })];
       const lines = folder.entries.map((e) => (e.dir ? `${e.name}/` : `${e.name} — ${formatSize(e.size)}`));
       return [block({
         heading: folder.name,

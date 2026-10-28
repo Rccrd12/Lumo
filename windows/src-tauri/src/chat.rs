@@ -126,12 +126,16 @@ struct Conversation {
     /// The provider `cli_session` belongs to: one CLI never resumes the other's.
     cli_owner: Option<String>,
     /// Folders the user shared from File Explorer in this chat: Claude Code
-    /// keeps reading them on the turns after (explorer.rs).
-    cli_dirs: Vec<String>,
-    /// Files the user added in this chat (name, path in the inbox). Claude Code
-    /// is told about them again when it starts a fresh session on turns carried
-    /// as text, after a message was edited.
-    files: Vec<(String, String)>,
+    /// keeps reading them on the turns after (explorer.rs). Each with the turn
+    /// it came with, so an edit before that turn takes it back.
+    cli_dirs: Vec<(String, usize)>,
+    /// Files the user added in this chat (name, path in the inbox, the turn
+    /// they went with). Claude Code is told about them again when it starts a
+    /// fresh session on turns carried as text, after a message was edited.
+    files: Vec<(String, String, usize)>,
+    /// Files the user took out of the chat's context (its files' ×), as the
+    /// next question tells the AI: name and path.
+    forgotten: Vec<(String, String)>,
 }
 
 /// What a provider needs to build one turn.
@@ -207,11 +211,13 @@ impl Chat {
     /// An edited message: the conversation goes back to its first `keep` turns
     /// and continues from there. What came after is forgotten, and so is the
     /// Claude Code session, which remembers every turn: the next one starts
-    /// afresh with the kept turns carried as text. Shared folders and files
-    /// stay readable.
+    /// afresh with the kept turns carried as text. The folders and files that
+    /// came with the dropped turns go with them; those of the kept ones stay.
     pub fn rewind(&self, keep: usize) {
         let mut c = self.inner.lock().unwrap();
         c.epoch += 1;
+        c.files.retain(|(_, _, turn)| *turn < keep);
+        c.cli_dirs.retain(|(_, turn)| *turn < keep);
         c.plain.truncate(keep);
         c.native.truncate(keep);
         if c.native.len() != c.plain.len() {
@@ -226,19 +232,48 @@ impl Chat {
         self.inner.lock().unwrap().plain.len()
     }
 
-    /// Remembers a file the user added to this chat.
-    pub fn note_file(&self, name: &str, path: &str) {
+    /// Remembers a file the user added to this chat, with the turn it went with.
+    pub fn note_file(&self, name: &str, path: &str, turn: usize) {
         let mut c = self.inner.lock().unwrap();
-        if !c.files.iter().any(|(_, p)| p == path) {
-            c.files.push((name.to_string(), path.to_string()));
+        if !c.files.iter().any(|(_, p, _)| p == path) {
+            c.files.push((name.to_string(), path.to_string(), turn));
             let excess = c.files.len().saturating_sub(8);
             c.files.drain(..excess);
         }
+        // Added again: the AI may use it again.
+        c.forgotten.retain(|(_, p)| p != path);
     }
 
     /// The files added in this chat, oldest first.
     pub fn files(&self) -> Vec<(String, String)> {
-        self.inner.lock().unwrap().files.clone()
+        self.inner.lock().unwrap().files.iter().map(|(name, path, _)| (name.clone(), path.clone())).collect()
+    }
+
+    /// The × of one of the chat's files: it is no longer told to a fresh
+    /// session, and the next question asks the AI to leave it alone. `name`
+    /// matches the inbox's copy of a file the AI read where it is.
+    pub fn forget_file(&self, name: &str, path: &str) {
+        let mut c = self.inner.lock().unwrap();
+        let same = |n: &str, p: &str| p.eq_ignore_ascii_case(path) || (!name.is_empty() && n.eq_ignore_ascii_case(name));
+        c.files.retain(|(n, p, _)| !same(n, p));
+        if !c.forgotten.iter().any(|(n, p)| same(n, p)) {
+            c.forgotten.push((name.to_string(), path.to_string()));
+            let excess = c.forgotten.len().saturating_sub(32);
+            c.forgotten.drain(..excess);
+        }
+    }
+
+    /// What the next question says about the files taken out of the context; "" for none.
+    pub fn forgotten_note(&self) -> String {
+        forgotten_text(&self.inner.lock().unwrap().forgotten)
+    }
+
+    /// The question that carried `forgotten_note` went: it is not said again.
+    pub fn told_forgotten(&self, note: &str) {
+        let mut c = self.inner.lock().unwrap();
+        if !note.is_empty() && forgotten_text(&c.forgotten) == note {
+            c.forgotten.clear();
+        }
     }
 
     /// A new Stop for the turn that starts now.
@@ -294,12 +329,13 @@ impl Chat {
     /// The folders Claude Code may read in this chat, with `shared` added.
     pub fn cli_dirs(&self, shared: Option<String>) -> Vec<String> {
         let mut c = self.inner.lock().unwrap();
-        if let Some(dir) = shared.filter(|d| !c.cli_dirs.contains(d)) {
-            c.cli_dirs.push(dir);
+        if let Some(dir) = shared.filter(|d| !c.cli_dirs.iter().any(|(have, _)| have == d)) {
+            let turn = c.plain.len();
+            c.cli_dirs.push((dir, turn));
             let excess = c.cli_dirs.len().saturating_sub(8);
             c.cli_dirs.drain(..excess);
         }
-        c.cli_dirs.clone()
+        c.cli_dirs.iter().map(|(dir, _)| dir.clone()).collect()
     }
 
     /// Remembers the CLI session of `turn`, unless the chat was reset since.
@@ -324,6 +360,25 @@ impl Chat {
         c.plain.push(json!({ "role": "user", "content": user_text }));
         c.plain.push(json!({ "role": "assistant", "content": answer }));
     }
+}
+
+/// The line in front of a question about the files the user took out of the
+/// chat's context; "" for none.
+fn forgotten_text(files: &[(String, String)]) -> String {
+    if files.is_empty() {
+        return String::new();
+    }
+    let mut out = String::from("The user removed these files from this chat's context. Don't read, use or mention them any more unless they attach them again:\n");
+    for (name, path) in files {
+        let name = crate::screen::clip_title(name);
+        if path.is_empty() || path == &name {
+            out.push_str(&format!("- {name}\n"));
+        } else {
+            out.push_str(&format!("- {name}: {path}\n"));
+        }
+    }
+    out.push('\n');
+    out
 }
 
 /// The events of one chat's answer, tagged with its id: the island shows them
@@ -713,6 +768,11 @@ async fn dispatch(
             screen.get_or_insert_with(ScreenContext::default).mail = text;
         }
     }
+    // The files the user took out of the context: the AI is told before the question.
+    let forgotten = if command { String::new() } else { chat.forgotten_note() };
+    let query = if forgotten.is_empty() { query } else { format!("{forgotten}{query}") };
+    // The turn the files of this question go with (an edit before it takes them back).
+    let at = chat.turns();
     chat.arm();
     let more: Vec<(String, String)> =
         screen.as_ref().map(|s| s.files.iter().map(|f| (f.name.clone(), f.path.clone())).collect()).unwrap_or_default();
@@ -722,15 +782,18 @@ async fn dispatch(
     // said anything, drops them.
     let asked = crate::island_tools::take(chat.id());
     let mut reply = reply?;
+    if !(reply.stopped && reply.text.is_empty()) {
+        chat.told_forgotten(&forgotten);
+    }
     if !asked.is_empty() && !(reply.stopped && reply.text.is_empty()) {
         reply.text = keep_lumo_lines(std::mem::take(&mut reply.text), &asked);
     }
     // Remembered once it went, for a fresh Claude Code session after an edit.
     if let Some(ChatContext::File { name, path }) = &context {
-        chat.note_file(name, path);
+        chat.note_file(name, path, at);
     }
     for (name, path) in &more {
-        chat.note_file(name, path);
+        chat.note_file(name, path, at);
     }
     reply.turns = chat.turns();
     Ok(reply)
@@ -753,7 +816,16 @@ async fn send_to(
     }
     if is_cli(provider) {
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
-        let folder = screen.as_ref().and_then(|s| s.folder.as_ref()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p));
+        // Several shared at once: the first goes as the turn's, the others join the chat's folders.
+        let mut shared = screen
+            .as_ref()
+            .map(|s| s.folder.iter().chain(s.folders.iter()).map(|f| f.path.clone()).filter(|p| crate::explorer::was_shared(p)).collect::<Vec<String>>())
+            .unwrap_or_else(Vec::new)
+            .into_iter();
+        let folder = shared.next();
+        for other in shared {
+            chat.cli_dirs(Some(other));
+        }
         // So may it the folders of the documents open (found by Rust, desk.rs),
         // and of those the shared windows show (share.rs).
         let shown = screen.as_ref().map(|s| s.shared_windows.as_slice()).unwrap_or_default().iter().map(|w| w.document.as_str());
@@ -885,14 +957,21 @@ mod tests {
     #[test]
     fn an_edited_message_rewinds_the_conversation_and_forgets_the_cli_session() {
         let chat = Chat::default();
+        // A folder and a file that came with the first question, then with the third.
+        chat.cli_dirs(Some("C:\\PDFs".into()));
+        chat.note_file("a.pdf", "/inbox/a.pdf", 0);
         for (q, a) in [("one", "1"), ("two", "2"), ("three", "3")] {
+            if q == "three" {
+                chat.cli_dirs(Some("C:\\Later".into()));
+                chat.note_file("b.pdf", "/inbox/b.pdf", chat.turns());
+            }
             let t = chat.begin("anthropic");
             let (u, r) = qa(q, a);
             chat.commit(&t, u, r, q, a);
         }
         chat.set_cli_session(&chat.begin("anthropic"), "s");
-        chat.cli_dirs(Some("C:\\PDFs".into()));
-        chat.note_file("a.pdf", "/inbox/a.pdf");
+        assert_eq!(chat.cli_dirs(None), ["C:\\PDFs", "C:\\Later"]);
+        assert_eq!(chat.files().len(), 2);
         assert_eq!(chat.turns(), 6);
 
         // An answer still on its way when the edit lands is dropped.
@@ -903,7 +982,7 @@ mod tests {
         assert_eq!(chat.turns(), 2);
 
         assert_eq!(chat.cli_session(), None, "Claude Code starts afresh on the kept turns");
-        assert_eq!(chat.cli_dirs(None), ["C:\\PDFs"]);
+        assert_eq!(chat.cli_dirs(None), ["C:\\PDFs"], "the third question's folder went with it");
         assert_eq!(chat.files(), vec![("a.pdf".to_string(), "/inbox/a.pdf".to_string())]);
         let t = chat.begin("anthropic");
         assert!(!t.first);
@@ -914,6 +993,27 @@ mod tests {
         chat.rewind(99); // nothing to cut: no harm
         chat.reset();
         assert!(chat.files().is_empty());
+    }
+
+    #[test]
+    fn a_file_taken_out_of_the_context_is_told_once_and_not_carried_again() {
+        let chat = Chat::default();
+        chat.note_file("a.pdf", "/inbox/a.pdf", 0);
+        chat.note_file("b.pdf", "/inbox/b.pdf", 0);
+        assert_eq!(chat.forgotten_note(), "");
+        // The AI read a.pdf where it is: its name finds the inbox's copy.
+        chat.forget_file("a.pdf", "C:\\Docs\\a.pdf");
+        assert_eq!(chat.files(), vec![("b.pdf".to_string(), "/inbox/b.pdf".to_string())]);
+        let note = chat.forgotten_note();
+        assert!(note.contains("removed these files") && note.contains("- a.pdf: C:\\Docs\\a.pdf"), "{note}");
+        chat.forget_file("a.pdf", "C:\\Docs\\a.pdf");
+        assert_eq!(chat.forgotten_note(), note, "once");
+        chat.told_forgotten(&note);
+        assert_eq!(chat.forgotten_note(), "");
+        // Attached again: nothing to say about it.
+        chat.forget_file("b.pdf", "/inbox/b.pdf");
+        chat.note_file("b.pdf", "/inbox/b.pdf", 2);
+        assert_eq!(chat.forgotten_note(), "");
     }
 
     #[test]
@@ -1099,6 +1199,7 @@ mod tests {
             selections: Vec::new(),
             files: Vec::new(),
             folder: None,
+            folders: Vec::new(),
             shared_windows: Vec::new(),
             tabs: Vec::new(),
             documents: Vec::new(),

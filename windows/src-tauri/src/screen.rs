@@ -105,6 +105,9 @@ pub struct ScreenContext {
     /// The folder open in File Explorer, with what is in it (explorer.rs).
     #[serde(default)]
     pub folder: Option<crate::explorer::ExplorerFolder>,
+    /// More folders open in File Explorer, shared at once with `folder` or alone.
+    #[serde(default)]
+    pub folders: Vec<crate::explorer::ExplorerFolder>,
     /// Windows the user picked, with what each one shows (share.rs).
     #[serde(default)]
     pub shared_windows: Vec<crate::share::SharedWindow>,
@@ -129,6 +132,7 @@ impl ScreenContext {
             && self.selections.iter().all(|s| s.text.trim().is_empty())
             && self.files.is_empty()
             && self.folder.is_none()
+            && self.folders.is_empty()
             && self.shared_windows.is_empty()
             && self.tabs.is_empty()
             && self.documents.is_empty()
@@ -281,7 +285,7 @@ pub fn context_text(screen: &ScreenContext, with_paths: bool) -> String {
         out.push_str(&crate::share::tabs_text(&screen.tabs));
         out.push('\n');
     }
-    if let Some(folder) = &screen.folder {
+    for folder in screen.folder.iter().chain(screen.folders.iter()) {
         out.push_str(&crate::explorer::context_text(folder, with_paths));
         out.push('\n');
     }
@@ -988,6 +992,7 @@ mod tests {
             selections: Vec::new(),
             files: Vec::new(),
             folder: None,
+            folders: Vec::new(),
             shared_windows: Vec::new(),
             tabs: Vec::new(),
             documents: Vec::new(),
@@ -1018,6 +1023,15 @@ mod tests {
         let windows = text.find("Windows open").unwrap();
         let block = text.find("<explorer_folder path=\"C:\\Users\\me\\PDFs\">\n- file.pdf — 2.0 KB, 2026-10-08 09:05\n</explorer_folder>").unwrap();
         assert!(windows < block, "{text}");
+
+        // Several folders: each its own block, in order.
+        let other = ExplorerFolder { path: "C:\\Users\\me\\Music".into(), name: "Music".into(), entries: Vec::new(), omitted: 0 };
+        let both = ScreenContext { folders: vec![other.clone()], ..screen.clone() };
+        let text = context_text(&both, true);
+        let first = text.find("<explorer_folder path=\"C:\\Users\\me\\PDFs\">").unwrap();
+        let second = text.find("<explorer_folder path=\"C:\\Users\\me\\Music\">\n(empty)\n").unwrap();
+        assert!(first < second, "{text}");
+        assert!(!ScreenContext { folders: vec![other], ..Default::default() }.is_empty());
     }
 
     #[test]
