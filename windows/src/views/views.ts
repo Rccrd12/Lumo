@@ -607,8 +607,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
   const mailRow = h("div", { class: "actions" });
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
-  const el = h("div", { class: "view" },
-    card("amber", stack(116, 16, who, about, code, mail, row, mailRow), foldButton(actions)));
+  const body = stack(116, 16, who, about, code, mail, row, mailRow);
+  const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
   let rowKey = "";
   // The card pops up under a cursor that was busy with something else: a click
@@ -678,6 +678,8 @@ function buildApproval(actions: ViewActions): ViewHost {
         if (email) mail.append(emailBlock(email));
       }
       mail.hidden = !email;
+      // The email fills the card from the top, clear of the fold button and of its edges.
+      body.classList.toggle("mail-on", !!email);
       code.hidden = !!email;
       row.hidden = !!email;
       mailRow.hidden = !email;

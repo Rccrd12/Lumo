@@ -1458,10 +1458,29 @@ body {
   display: none;
 }
 
+.stack.mail-on {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 12px 44px 14px 116px !important;
+}
+
+.stack.mail-on > :not(.mail-slot) {
+  flex-shrink: 0;
+}
+
+.mail-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
 .mail-card {
   display: flex;
   flex-direction: column;
   gap: 3px;
+  flex: 1 1 auto;
+  min-height: 0;
   max-width: 100%;
   background: rgba(255, 255, 255, 0.05);
   border: 1px solid rgba(255, 255, 255, 0.06);
@@ -1498,7 +1517,8 @@ body {
   color: #e8e9ec;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  max-height: 120px;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   user-select: text;
 }
