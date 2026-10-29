@@ -15,7 +15,7 @@ import { gitHubRunning, readPulse } from "../core/github";
 import { LISTEN_COLOR, listeningLine } from "../core/listen";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
-import { activeModel, providerDef } from "../core/providers";
+import { activeModel, isCliProvider, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, isSessionTask, type AgentTask } from "../core/state";
 import { COMPACT_SIZES } from "../core/layout";
@@ -44,6 +44,7 @@ const MAIL_TEXT = {
   more: N_("+{count} more"),
   askSummary: N_("Summarize this email in a few lines, and say if it needs an answer or anything from me."),
   askReply: N_("Write a reply to this email, ready to paste. Only the draft: I will read it and send it myself."),
+  askSend: N_("Reply to this email: write the answer and send it to {address} with mail_send. I will read it on the card and click Send myself."),
   from: N_("From: {from}"),
   subject: N_("Subject: {subject}"),
   email: N_("Email"),
@@ -352,8 +353,8 @@ export class CompactStrip {
       }, "cp-close"),
     );
     const actions = h("div", { class: "cp-mail-actions" },
-      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, MAIL_TEXT.askSummary) }, t(MAIL_TEXT.summarize)),
-      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, MAIL_TEXT.askReply) }, t(MAIL_TEXT.reply)),
+      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, t(MAIL_TEXT.askSummary)) }, t(MAIL_TEXT.summarize)),
+      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, replyQuestion(m)) }, t(MAIL_TEXT.reply)),
       m.link
         ? h("button", {
           class: "cp-action quiet",
@@ -403,7 +404,7 @@ export class CompactStrip {
   /** An email's button: the chat opens with the email attached and asks. */
   private ask(e: Event, m: MailPeek, question: string) {
     e.stopPropagation();
-    openMailInChat(m, t(question));
+    openMailInChat(m, question);
     Feed.dismissMail();
     this.extraMail = 0;
     this.host.openChat();
@@ -473,9 +474,19 @@ export class CompactStrip {
   }
 }
 
-/** The chat summarizes the email, or drafts a reply to it (the pill's card, the closed island). */
+/**
+ * What the reply button asks: with Security → Email on Read and send and a CLI
+ * in the chat (which has mail_send), the reply itself, on its card before it
+ * goes; otherwise a draft to paste.
+ */
+export function replyQuestion(m: MailPeek): string {
+  const send = State.settings.aiMailAccess === "send" && isCliProvider(State.settings.chatProvider) && !!m.address;
+  return send ? t(MAIL_TEXT.askSend, { address: m.address }) : t(MAIL_TEXT.askReply);
+}
+
+/** The chat summarizes the email, or replies to it (the pill's card, the closed island). */
 export function askAboutMail(m: MailPeek & { body?: string }, what: "summary" | "reply") {
-  openMailInChat(m, t(what === "summary" ? MAIL_TEXT.askSummary : MAIL_TEXT.askReply));
+  openMailInChat(m, what === "summary" ? t(MAIL_TEXT.askSummary) : replyQuestion(m));
 }
 
 /** The chat, with the email attached as text, asks `question` at once. */
