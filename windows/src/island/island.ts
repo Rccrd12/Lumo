@@ -1805,10 +1805,10 @@ export class Island {
     const ctx = this.botCanvas.getContext("2d");
     if (!ctx) return;
 
-    const focus = State.focusTask;
     // While a plan card is open Lumo wears the plan's colour, like its pill. A
-    // white pill leaves him in his own butter yellow.
-    const wear = planCardOpen() ? openPlanColor() : focus?.isIntegration ? focus.color : null;
+    // white pill leaves him in his own butter yellow. An integration in front
+    // keeps its own colours on its pill and card, and Lumo stays his own.
+    const wear = planCardOpen() ? openPlanColor() : null;
     // Dozing, he is his sleeping grey whatever pill is in front.
     this.engine.bodyColor = wear && !this.dozing && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
     this.engine.particleOverhang = BOT_OVERHANG;
@@ -1824,11 +1824,12 @@ export class Island {
       }
     }
     // Only the main Lumo is dressed — the one of the main tool's pill (Settings →
-    // Active pills): a focused integration pill shows its own colours, unless
-    // the wardrobe is open.
+    // Active pills) or an integration's, where he stays himself — unless the
+    // wardrobe is open.
     // In the wardrobe the hovered outfit swaps in at once, without the drop-in.
     const inWardrobe = State.mode === "expanded" && State.view === "wardrobe";
-    const mainFocused = State.focusId == null || State.focusId === State.mainPillId;
+    const mainFocused =
+      State.focusId == null || State.focusId === State.mainPillId || State.focusTask?.isIntegration === true;
     const showOutfit = mainFocused || State.mode !== "expanded" || inWardrobe;
     const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.lumoOutfit));
     this.engine.setOutfit(showOutfit ? outfit : "none", !inWardrobe);
