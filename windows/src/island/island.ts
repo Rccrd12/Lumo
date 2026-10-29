@@ -1767,10 +1767,12 @@ export class Island {
     // The drop canvas draws its own Lumo; two of them would overlap.
     // The big picture fills the island: Lumo steps out of its way meanwhile.
     const picture = State.picture != null;
-    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture;
+    // The Listening panel takes the whole chat, Lumo's place too.
+    const listening = State.listeningOpen && State.view === "prompt" && State.chatSlot === "chat";
+    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture && !listening;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
-    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture) {
+    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening) {
       const d = p.diameter;
       const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";

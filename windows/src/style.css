@@ -2547,6 +2547,11 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* Lumo steps aside (island.ts): the panel has the chat's whole width. */
+.chat-body.hearing {
+  padding-left: 16px;
+}
+
 .listen-close {
   width: 26px;
   height: 26px;
