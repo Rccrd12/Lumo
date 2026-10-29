@@ -147,7 +147,7 @@ async function main() {
       void checkOnOpen({
         enabled: State.settings.updateCheckOnOpen !== false,
         check: Bridge.updateCheck,
-        notify: (latest) => compactNotice(t("Lumo {version} is available: Settings → Updates", { version: latest }), "#22c55e", UPDATE_NOTICE_MS),
+        notify: (latest) => compactNotice(t("Lumo {version} available", { version: latest }), "#22c55e", UPDATE_NOTICE_MS),
         log: (line) => void Bridge.log(line),
       });
     }, CHECK_DELAY_MS);
