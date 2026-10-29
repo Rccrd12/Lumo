@@ -14028,6 +14028,78 @@
    "ru": "Ваш инструмент",
    "id": "Alatmu",
    "it": "Il tuo strumento"
+  },
+  "Closed island width": {
+   "zh-Hans": "收起时岛的宽度",
+   "hi": "बंद आइलैंड की चौड़ाई",
+   "es": "Ancho de la isla cerrada",
+   "ar": "عرض الجزيرة المغلقة",
+   "fr": "Largeur de l'île fermée",
+   "bn": "বন্ধ আইল্যান্ডের প্রস্থ",
+   "pt-BR": "Largura da ilha fechada",
+   "ru": "Ширина закрытого острова",
+   "id": "Lebar pulau tertutup",
+   "it": "Larghezza dell'isola chiusa"
+  },
+  "only the closed island: the text, the icons and the open island keep their size. What it has to say still widens it": {
+   "zh-Hans": "仅限收起的岛：文字、图标和展开的岛保持原样。需要显示内容时它仍会变宽",
+   "hi": "केवल बंद आइलैंड: टेक्स्ट, आइकन और खुला आइलैंड अपने आकार में रहते हैं। कुछ बताना हो तो यह अब भी चौड़ा होता है",
+   "es": "solo la isla cerrada: el texto, los iconos y la isla abierta mantienen su tamaño. Cuando tiene algo que decir, se sigue ensanchando",
+   "ar": "الجزيرة المغلقة فقط: يبقى النص والأيقونات والجزيرة المفتوحة بحجمها. وتتسع كلما كان لديها ما تعرضه",
+   "fr": "seulement l'île fermée : le texte, les icônes et l'île ouverte gardent leur taille. Quand elle a quelque chose à dire, elle s'élargit toujours",
+   "bn": "শুধু বন্ধ আইল্যান্ড: লেখা, আইকন আর খোলা আইল্যান্ড একই মাপে থাকে। কিছু বলার থাকলে এটি এখনও চওড়া হয়",
+   "pt-BR": "só a ilha fechada: o texto, os ícones e a ilha aberta mantêm o tamanho. Quando tem algo a dizer, ela ainda se alarga",
+   "ru": "только закрытый остров: текст, значки и открытый остров не меняются. Когда ему есть что показать, он по-прежнему расширяется",
+   "id": "hanya pulau tertutup: teks, ikon, dan pulau terbuka tetap ukurannya. Saat ada yang perlu ditampilkan, pulau tetap melebar",
+   "it": "solo l'isola chiusa: testo, icone e isola aperta restano come sono. Quando ha qualcosa da dire si allarga comunque"
+  },
+  "Normal (default)": {
+   "zh-Hans": "正常（默认）",
+   "hi": "सामान्य (डिफ़ॉल्ट)",
+   "es": "Normal (predeterminado)",
+   "ar": "عادي (افتراضي)",
+   "fr": "Normale (par défaut)",
+   "bn": "স্বাভাবিক (ডিফল্ট)",
+   "pt-BR": "Normal (padrão)",
+   "ru": "Обычная (по умолчанию)",
+   "id": "Normal (bawaan)",
+   "it": "Normale (predefinita)"
+  },
+  "Narrower": {
+   "zh-Hans": "较窄",
+   "hi": "थोड़ी संकरी",
+   "es": "Más estrecha",
+   "ar": "أضيق",
+   "fr": "Plus étroite",
+   "bn": "একটু সরু",
+   "pt-BR": "Mais estreita",
+   "ru": "Уже",
+   "id": "Lebih sempit",
+   "it": "Più stretta"
+  },
+  "Narrow": {
+   "zh-Hans": "窄",
+   "hi": "संकरी",
+   "es": "Estrecha",
+   "ar": "ضيقة",
+   "fr": "Étroite",
+   "bn": "সরু",
+   "pt-BR": "Estreita",
+   "ru": "Узкая",
+   "id": "Sempit",
+   "it": "Stretta"
+  },
+  "Just Lumo": {
+   "zh-Hans": "只有 Lumo",
+   "hi": "केवल Lumo",
+   "es": "Solo Lumo",
+   "ar": "Lumo فقط",
+   "fr": "Juste Lumo",
+   "bn": "শুধু Lumo",
+   "pt-BR": "Só o Lumo",
+   "ru": "Только Lumo",
+   "id": "Hanya Lumo",
+   "it": "Solo Lumo"
   }
  }
 }

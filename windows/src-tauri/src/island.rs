@@ -42,8 +42,20 @@ pub fn edge_gap() -> f64 {
     f64::from_bits(GAP_BITS.load(Ordering::Relaxed))
 }
 /// Logical size of the invisible strip that wakes the island when it is hidden:
-/// as long as the closed island (src/core/layout.ts COMPACT_W).
+/// as long as the closed island at its usual width (src/core/layout.ts COMPACT_W).
 pub const STRIP_W: f64 = 288.0;
+
+/// The closed island's width Settings → Island → Closed island width asks
+/// for, in page pixels (src/core/layout.ts compactWidth): the wake strip is as
+/// long.
+pub fn compact_width_of(name: &str) -> f64 {
+    match name {
+        "narrower" => 216.0,
+        "narrow" => 144.0,
+        "lumo" => 72.0,
+        _ => STRIP_W,
+    }
+}
 pub const STRIP_H: f64 = 6.0;
 
 pub const WINDOW_LABEL: &str = "island";
@@ -122,6 +134,8 @@ pub struct Placement {
     pub activities: (f64, f64),
     /// Between the island and its edge of the screen, in page pixels (edge_gap_of).
     pub gap: f64,
+    /// The closed island's width, so the wake strip's length, in page pixels (compact_width_of).
+    pub strip: f64,
 }
 
 impl Placement {
@@ -135,6 +149,7 @@ impl Placement {
             height: s.island_height,
             activities: crate::activities::side_room(s),
             gap: edge_gap_of(&s.island_edge_gap),
+            strip: compact_width_of(&s.island_compact_width),
         }
     }
 }
@@ -203,7 +218,8 @@ fn frame(area: (i32, i32, u32, u32), scale: f64, p: Placement, collapsed: bool) 
         Dock::Right => (ax + aw - pw, along_y),
     };
     if collapsed {
-        let long = (STRIP_W * z * scale).round().max(1.0);
+        let strip = if p.strip.is_finite() && p.strip > 0.0 { p.strip } else { STRIP_W };
+        let long = (strip * z * scale).round().max(1.0);
         let thin = (STRIP_H * z * scale).round().max(1.0);
         // The strip is the piece of the edge right where the island was, as
         // long as the closed island: moved along its edge or floating, the
@@ -962,7 +978,7 @@ mod placement_tests {
     use super::*;
 
     const FHD: (i32, i32, u32, u32) = (0, 0, 1920, 1080);
-    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: (0.0, 0.0), gap: EDGE_GAP };
+    const HOME: Placement = Placement { zoom: 1.0, dock: Dock::Top, offset: 0.0, float: 0.0, width: DEFAULT_WIDTH, height: 0.0, activities: (0.0, 0.0), gap: EDGE_GAP, strip: STRIP_W };
 
     #[test]
     fn the_distance_from_the_edge_is_none_medium_or_wide() {
@@ -974,6 +990,17 @@ mod placement_tests {
         // A wider gap leaves the island its room: the window is never shorter.
         let tall = Placement { height: 600.0, ..HOME };
         assert!(panel_size(Placement { gap: 28.0, ..tall }).1 >= panel_size(tall).1);
+    }
+
+    #[test]
+    fn a_narrower_closed_island_has_a_shorter_wake_strip() {
+        assert_eq!(compact_width_of("normal"), STRIP_W);
+        assert_eq!(compact_width_of("anything else"), STRIP_W);
+        let narrow = Placement { strip: compact_width_of("narrow"), ..HOME };
+        assert_eq!(frame(FHD, 1.0, narrow, true), (888, 0, 144, 6));
+        // Only the strip: the window the open island is drawn in stays as it was.
+        assert_eq!(frame(FHD, 1.0, narrow, false), frame(FHD, 1.0, HOME, false));
+        assert_eq!(frame(FHD, 1.0, Placement { strip: compact_width_of("lumo"), ..HOME }, true), (924, 0, 72, 6));
     }
 
     #[test]

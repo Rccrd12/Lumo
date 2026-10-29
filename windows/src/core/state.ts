@@ -203,6 +203,8 @@ export interface Settings {
   islandZoom: number;
   /** How far the island sits from its edge of the screen: "none", "light", "medium" or "wide". */
   islandEdgeGap: string;
+  /** How wide the closed island is: "normal", "narrower", "narrow" or "lumo" (layout.ts compactWidth). */
+  islandCompactWidth: string;
   /** The edge the island hangs from, and how far from its middle (owned by Rust). */
   islandDock: string;
   islandOffset: number;
@@ -364,6 +366,7 @@ export const DEFAULT_SETTINGS: Settings = {
   screen: "primary",
   islandZoom: 1.15,
   islandEdgeGap: "light",
+  islandCompactWidth: "normal",
   islandDock: "top",
   islandOffset: 0,
   islandFloat: 0,

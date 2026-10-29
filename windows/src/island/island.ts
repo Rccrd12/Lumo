@@ -3,7 +3,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_FORGE, CHAT_LISTENING, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_LISTENING, CHAT_PANEL_OPEN, compactWidth, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -153,6 +153,8 @@ export class Island {
   private gap = new Tracked(edgeGap(undefined));
   /** The gap Settings asked for last; null before the first settings arrived. */
   private gapTarget: number | null = null;
+  /** The closed island width last applied (Settings → Island). */
+  private lastCompactW = compactWidth(undefined);
   /** Puts a moved island down should Rust never say where it went. */
   private settleTimer: number | null = null;
   /** Opens the closed island once the mouse has rested on it (Settings → Island). */
@@ -1221,7 +1223,8 @@ export class Island {
   // ── Geometry ────────────────────────────────────────────────────────────────
 
   private targetSize(): { w: number; h: number; r: number } {
-    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size);
+    let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size,
+      compactWidth(State.settings.islandCompactWidth));
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
@@ -1753,6 +1756,7 @@ export class Island {
       if (gctx) {
         gctx.setTransform(dpr, 0, 0, dpr, 0, 0);
         this.greeting.look = this.look();
+        this.greeting.compactWidth = compactWidth(State.settings.islandCompactWidth);
         this.greeting.draw(gctx);
       }
     } else {
@@ -2037,11 +2041,14 @@ export class Island {
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
-    // the top (Settings, tray): grow, shrink or turn to it.
+    // the top (Settings, tray), or a new closed island width: grow, shrink or
+    // turn to it.
     const shape = JSON.stringify(this.shape);
-    if (shape !== this.lastShape || this.dock !== this.lastDock) {
+    const compactW = compactWidth(State.settings.islandCompactWidth);
+    if (shape !== this.lastShape || this.dock !== this.lastDock || compactW !== this.lastCompactW) {
       this.lastShape = shape;
       this.lastDock = this.dock;
+      this.lastCompactW = compactW;
       this.animateGeometry(false);
     }
     State.notify();

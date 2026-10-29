@@ -29,6 +29,9 @@ pub struct Settings {
     /// How far the island sits from the edge of the screen it is docked to:
     /// "none", "light" (the usual 10 px), "medium" or "wide" (island.rs edge_gap_of).
     pub island_edge_gap: String,
+    /// How wide the closed island is: "normal", "narrower", "narrow" or
+    /// "lumo" (island.rs compact_width_of). The rest of the island keeps its size.
+    pub island_compact_width: String,
     /// The display edge the island hangs from ("top", "bottom", "left",
     /// "right") and how far from its middle, in logical pixels. Owned by the
     /// Rust side (island.rs) — what a webview sends back is ignored.
@@ -247,6 +250,7 @@ impl Default for Settings {
             screen: "primary".into(),
             island_zoom: crate::island::DEFAULT_ZOOM,
             island_edge_gap: "light".into(),
+            island_compact_width: "normal".into(),
             island_dock: "top".into(),
             island_offset: 0.0,
             island_float: 0.0,
@@ -576,6 +580,7 @@ mod tests {
   "screen": "cursor",
   "islandZoom": 1.3,
   "islandEdgeGap": "wide",
+  "islandCompactWidth": "narrow",
   "islandDock": "left",
   "islandOffset": -200.5,
   "islandFloat": 240.0,
@@ -1031,6 +1036,7 @@ mod tests {
                 "screen",
                 "islandZoom",
                 "islandEdgeGap",
+                "islandCompactWidth",
                 "islandDock",
                 "islandOffset",
                 "islandFloat",
