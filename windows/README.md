@@ -104,10 +104,10 @@ the exe it runs from.
 | `Ctrl+Alt+L` | **Talk with Gemini Live**: starts a spoken call with Gemini (see [Talk with Gemini](#talk-with-gemini-gemini-live)) without opening the island when it is closed; pressed again, pauses the call (the microphone goes off) or picks it up again. End is in the call view |
 | `Ctrl+Alt+X` | **Ask about the selected text**: opens the chat with the text selected in the app in front, from a PDF, a web page or anything else. Lumo copies it for you and puts your clipboard back as it was; in terminals and code editors it copies with `Ctrl+Insert`, so a running command is never interrupted |
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
-| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab and selected text on its own, even two of the same screen — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
-| **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code or Antigravity CLI read, edited or created while answering, each marked Attached, Read, Edited or Created by the AI, with the folder it is in. They have no ×. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
+| The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
+| **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
-| In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last: its files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
+| In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last; with several folders open (windows or tabs), **Folders open in File Explorer** lists them, to share one or all. Their files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
 | `Ctrl+Alt+T` | Brings the session's window forward ("Open terminal") |
 | `Ctrl+Alt+→` / `Ctrl+Alt+←` | Next / previous pill |
@@ -306,9 +306,9 @@ arrives (IMAP IDLE); Lumo also looks every 20 seconds in case the server is
 slow to say, fetching only new emails. A server without IDLE is asked every
 30 seconds. Its card lists the newest unread emails, and a new one
 shows on the closed island (see [The closed island](#the-closed-island)).
-Lumo only reads: the inbox is opened read only, emails stay unread, and
-nothing is ever sent, moved or deleted. The address, the server and the app
-password are in the system keychain.
+The pill only reads: the inbox is opened read only, emails stay unread, and
+nothing is ever deleted for good. An email is sent, or one changed, only as
+below, each time with your click. The address, the server and the app password are in the system keychain.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -330,13 +330,46 @@ local model. Other questions go without them. Summarize and Draft a reply
 send the whole email with their question, like a selected text.
 
 Antigravity CLI, which has no email of its own as Claude Code has its Gmail
-tools, also gets Lumo's email tools while the Email pill is on: the newest
-emails, a search of the whole mailbox (Gmail's own search on Gmail) and one
-email in full. Lumo adds them to the MCP configuration of its own folder
-(`~/Lumo/.agents/mcp_config.json`, your other entries kept, taken out when
-the pill is off), and they answer only while Antigravity answers in the
-island, in the chat or for Gemini Live. They only read, so they need no card,
-and they can't send, move, mark or delete anything.
+tools, also gets Lumo's email tools while the Email pill is on, and so do the
+chat's Claude Code and Codex: the newest emails of the inbox or of another
+folder, a search of every folder (Gmail's own search of all the mail on
+Gmail; elsewhere every folder but the trash and spam), one email in full with
+the list of its files, the list of folders (`mail_folders`), and
+`mail_attachment`, which saves one file of an email with the files attached to
+the chat, so the AI reads it (a PDF that came by email). Lumo adds them to the
+MCP configuration of its own folder (`~/Lumo/.agents/mcp_config.json`, your
+other entries kept, taken out when the pill is off), and they answer only
+while an agent answers in the island, in the chat or for Gemini Live. They
+only read, so they need no card.
+
+**Settings… → General → Security → Email** says what the AI may do with
+it: **Read only** (the default, as above), **No access** (nothing of the
+mailbox reaches any AI: no emails with the question, no email tools, nothing
+for Gemini Live), **Read and send** or **Read, send and manage**. With Read
+and send, the chat's Claude Code, Codex and Antigravity CLI also get
+`mail_send`, `mail_reply` (an answer in the email's own conversation, with
+`In-Reply-To` and `References`, to the sender or everyone, the email quoted
+under it) and `mail_forward` (with the email's files, or without): the email
+they want to send comes up on a card on the island, whole (from, to, cc,
+subject, the files attached with their size, text), and goes only when you
+click **Send**; **Discard** sends nothing. No permission mode (Auto included)
+and no key skips that card. `mail_draft` saves an email in your mailbox's
+Drafts instead (IMAP `APPEND`), to finish and send yourself: nothing is sent.
+With Read, send and manage, they also get `mail_mark` (read or unread,
+starred or not), `mail_move`, `mail_archive` and `mail_trash`, one email at a
+time and each on a card of its own (what it does, the sender and subject),
+done only when you click Allow. The trash is a folder like the others: Lumo
+never deletes an email for good, nor renames or deletes folders. The AI attaches a file by its full path:
+one you attached to the chat, or another one you ask for, never one in app
+data (`%APPDATA%`, `%LOCALAPPDATA%`) or in a hidden folder; at most 10 files,
+18 MB together.
+It goes from your account over SMTP (Gmail, Outlook, iCloud, Yahoo, or the
+`smtp.` server next to your IMAP one), with the same app password, over TLS.
+Gmail keeps a copy in Sent by itself; with another provider, Lumo looks in
+Sent ten seconds later and puts a copy there (IMAP `APPEND`) when the server
+didn't.
+The calendar, read from its address, stays read only: **Calendar** has Read
+only and No access.
 
 ## Claude Code
 
@@ -526,13 +559,7 @@ says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
 (it reads and plans, and changes nothing). With Antigravity CLI, **Auto** is
-Antigravity's own **Proceed in Sandbox** (its Default preset): agy runs with
-`--sandbox`, a shell command that stays in its terminal sandbox runs without a
-card, and one that asks to leave the sandbox, an MCP tool or the browser is the
-usual card. A command that only looks (`git status`, `ls`, `cat`, `rg`…, with
-no redirection or substitution) never needs one, unless agy itself marked it as
-not safe to run alone. With Antigravity CLI only, the shield also offers
-**Turbo**, Antigravity's own preset: every command runs and any file changes
+Antigravity's own **Turbo** preset: every command runs and any file changes
 without a card. It lights up while it may do more than ask. Claude Code never
 gets a mode that lets every action through: Lumo never passes it
 `bypassPermissions`.
@@ -555,8 +582,7 @@ models come from `agy models` (**Default** leaves agy's own choice), in the
 picker and in **Settings… → Chat → Antigravity CLI**. There is no effort to
 pick: each model carries its own in its name (`gemini-3.8-flash-low`), and agy
 refuses a mismatched `--effort`. The shield's **Plan only** goes to agy as
-`--mode plan`; **Auto** goes as `--sandbox`, agy's terminal sandbox (in preview
-on Windows); **Turbo** as `--dangerously-skip-permissions`, with no card. Headless agy never prompts: it reads and writes workspace files
+`--mode plan`; **Auto** as `--dangerously-skip-permissions`, with no card. Headless agy never prompts: it reads and writes workspace files
 freely, and a shell command, or a file it would change outside the chat's
 folders, needs your approval. With the hooks of
 **Settings… → Agents → Antigravity** installed, each one is a **Deny / Allow**
@@ -564,7 +590,7 @@ card over the chat (reinstall the hooks if they predate this version, or the
 card only waits 8 seconds); without them, or if nobody clicks, the command does
 not run and the answer says so. With the hooks, agy's own confirmation is
 off (`--dangerously-skip-permissions`) and Lumo's cards take its place; without
-them only **Turbo** turns it off. Google replaced Gemini CLI with Antigravity
+them only **Auto** turns it off. Google replaced Gemini CLI with Antigravity
 CLI, so Settings no longer offers Gemini CLI: its pill is gone, and
 **Settings… → Agents** only lists its hooks when they were installed before,
 so they can be removed.
@@ -608,7 +634,7 @@ several). Text pastes as usual.
 
 ### The chat knows what's open
 
-With **Settings → Chat → Tell the AI what's open** (on by default), every
+With **Settings → General → Security → Tell the AI what's open** (on by default), every
 message carries the titles of the open windows and the documents they show:
 Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
 "Budget - Excel") and finds them on disk, from Windows' recent files or a
@@ -667,9 +693,11 @@ list only. Claude Code is told to ask you to press the screen button when it
 needs to see something, never to capture the screen itself.
 
 **Folder open in File Explorer**, at the bottom of the same menu, shows the name
-of the folder in the File Explorer window you used last (the tab in front, on
-Windows 11); it is not offered when no File Explorer window shows a folder on
-disk (This PC, Quick access, a library). Opening the menu only reads that name. Clicking the
+of the folder open in File Explorer; it is not offered when no File Explorer
+window shows a folder on disk (This PC, Quick access, a library). With several
+open, in windows or in tabs, it becomes **Folders open in File Explorer**, with
+how many, and opens a second list: **All folders**, then each one, the window you
+used last first. Opening the menu only reads their names. Clicking the
 entry lists the folder — names, sizes and dates of its files and subfolders, up
 to 300, never their contents — and adds it to the attachments, where you can remove it. With your
 next question, a file of that folder you name, with or without its extension
@@ -681,9 +709,9 @@ path has characters such as `&` or `%` are left out of that, and Claude Code
 asks before reading there.
 
 **Settings… → Chat → Always share the folder open in File Explorer** (off by
-default) does this for every message: while you type, the folder's name shows
-in the attachments, and when you send, its path and listing go with the message, as if
-you had picked the entry each time. Its × leaves it out of that one
+default) does this for every message, with every folder open in File Explorer:
+while you type, their names show in the attachments, and when you send, their paths and
+listings go with the message, as if you had picked **All folders** each time. Each one's × leaves it out of that one
 message. Lumo asks File Explorer only when the text field takes focus and when
 you send, never in the background. With it off, the chat sees no folder unless
 you pick it from the menu; Claude Code says so, and points you to the button and
@@ -691,7 +719,7 @@ to this setting.
 
 ### Let Claude use the computer
 
-**Settings… → Chat → Computer use → Let Claude use the computer** (off by
+**Settings… → General → Security → Let Claude use the computer** (off by
 default, Windows only) lets Claude Code, as the chat's provider or for Gemini
 Live, see your screen and use it — click, type, press keys, scroll and drag — for what a
 command or a file can't do: an app with no command line, a website, a form.

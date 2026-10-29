@@ -1,15 +1,18 @@
 // The computer use overlay: a window over the screen Claude works on
 // (computer.rs), click-through and left out of every screenshot. It draws a
-// glow around the screen while Claude uses the computer, a halo that follows
-// Claude's mouse as it glides, and what each action does: rings for clicks, a
-// trail for drags, chevrons for scrolling, a bubble for typed text and keys.
+// light along the screen's edge, brightest by Claude's mouse, while Claude uses
+// the computer; a halo that follows the mouse as it glides and settles with a
+// small bounce where it lands; corners that close in on where it is about to
+// click (Aim, switched off in the wardrobe); and what each action does: a ring
+// and sparks for clicks, a trail for drags, chevrons for scrolling, a bubble
+// for typed text and keys.
 //
 // Rust moves the real mouse on the same curve and over the same time as the
 // halo here (fx.ts ease), so the two land together.
 
 import "./computer.css";
 import { onEvent } from "../core/bridge";
-import { along, keyCaps, toCss, typedTail, type Fx } from "./fx";
+import { aimSide, along, keyCaps, sparks, toCss, typedTail, type Fx } from "./fx";
 
 const root = document.createElement("div");
 root.id = "fx";
@@ -30,6 +33,12 @@ let glide: number | null = null;
 let bubble: HTMLElement | null = null;
 let bubbleText = "";
 let bubbleTimer: number | null = null;
+let aimEl: HTMLElement | null = null;
+let aimTimer: number | null = null;
+let aimFrame: number | null = null;
+let clicks = 0;
+/** The wardrobe's Lucciola: the light sits in the arrow's tail and leaves a trail. */
+let lucciola = false;
 
 const css = (p: [number, number]) => toCss(p, window.devicePixelRatio || 1);
 
@@ -41,6 +50,9 @@ function place(el: HTMLElement | SVGElement, p: { x: number; y: number }) {
 function setHalo(p: { x: number; y: number }, moving: boolean) {
   at = p;
   halo.style.transform = `translate(${p.x}px, ${p.y}px)`;
+  // The edge lights up nearest the mouse.
+  root.style.setProperty("--x", `${p.x}px`);
+  root.style.setProperty("--y", `${p.y}px`);
   halo.classList.add("on");
   halo.classList.toggle("idle", !moving);
 }
@@ -51,16 +63,81 @@ function flash(el: Element, ms: number) {
   window.setTimeout(() => el.remove(), ms);
 }
 
-function glideTo(from: { x: number; y: number }, to: { x: number; y: number }, ms: number, onEnd?: () => void) {
-  if (glide != null) cancelAnimationFrame(glide);
+/** The halo settles where the mouse lands, with a small bounce. */
+function land() {
+  halo.classList.remove("land");
+  void halo.offsetWidth;
+  halo.classList.add("land");
+}
+
+/** The Aim corners around `p`, `side` CSS pixels wide; null takes them away. */
+function aimAt(p: { x: number; y: number } | null, side = 0) {
+  if (aimTimer != null) window.clearTimeout(aimTimer);
+  aimTimer = null;
+  if (aimFrame != null) cancelAnimationFrame(aimFrame);
+  aimFrame = null;
+  if (!p) {
+    const el = aimEl;
+    aimEl = null;
+    if (el) {
+      el.classList.add("out");
+      window.setTimeout(() => el.remove(), 250);
+    }
+    return;
+  }
+  if (!aimEl) {
+    aimEl = document.createElement("div");
+    aimEl.className = "aim";
+    for (let i = 0; i < 4; i++) aimEl.append(document.createElement("i"));
+    root.append(aimEl);
+  }
+  place(aimEl, p);
+  aimEl.style.width = aimEl.style.height = `${side}px`;
+  aimEl.style.margin = `${-side / 2}px 0 0 ${-side / 2}px`;
+}
+
+/** The Aim corners close in on `p` over `ms`, before the mouse sets off for it. */
+function aimIn(p: { x: number; y: number }, ms: number) {
   const start = performance.now();
   const step = (now: number) => {
     const elapsed = now - start;
-    setHalo(along(from, to, elapsed, ms), elapsed < ms);
+    aimAt(p, aimSide(elapsed, ms));
+    if (elapsed < ms) aimFrame = requestAnimationFrame(step);
+  };
+  step(start);
+}
+
+function glideTo(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+  ms: number,
+  onEnd?: () => void,
+  aim = false,
+) {
+  if (glide != null) cancelAnimationFrame(glide);
+  // The corners already on the spot (an "aim" just before) wait for the mouse there.
+  if (aimEl && !aim) aimAt(null);
+  const start = performance.now();
+  let mote = start;
+  const step = (now: number) => {
+    const elapsed = now - start;
+    const p = along(from, to, elapsed, ms);
+    setHalo(p, elapsed < ms);
+    // Lucciola: a short firefly trail behind the tail as it glides.
+    if (lucciola && elapsed < ms && now - mote >= 45) {
+      mote = now;
+      const dot = document.createElement("div");
+      dot.className = "mote";
+      place(dot, p);
+      flash(dot, 500);
+    }
     if (elapsed < ms) {
       glide = requestAnimationFrame(step);
     } else {
       glide = null;
+      land();
+      // The corners stay on the spot for the click, then go.
+      if (aim && aimEl) aimTimer = window.setTimeout(() => aimAt(null), 450);
       onEnd?.();
     }
   };
@@ -76,10 +153,16 @@ function rings(p: { x: number; y: number }, button: string, count: number) {
       flash(ring, 600);
     }, i * 110);
   }
-  const dot = document.createElement("div");
-  dot.className = "dot";
-  place(dot, p);
-  flash(dot, 500);
+  // Lumo's sparks fly out of the click.
+  clicks++;
+  for (const { dx, dy } of sparks(7, (clicks * 0.37) % 1)) {
+    const spark = document.createElement("div");
+    spark.className = "spark";
+    place(spark, p);
+    spark.style.setProperty("--dx", `${dx}px`);
+    spark.style.setProperty("--dy", `${dy}px`);
+    flash(spark, 700);
+  }
 }
 
 function trail(from: { x: number; y: number }, to: { x: number; y: number }, ms: number) {
@@ -200,7 +283,8 @@ function handle(fx: Fx) {
   switch (fx.kind) {
     case "show":
       root.style.display = "";
-      root.className = "on";
+      lucciola = fx.cursor === "lucciola";
+      root.className = lucciola ? "on lucciola" : "on";
       break;
     case "resume":
       root.classList.remove("paused");
@@ -213,6 +297,7 @@ function handle(fx: Fx) {
       if (glide != null) cancelAnimationFrame(glide);
       if (typing != null) window.clearInterval(typing);
       glide = typing = null;
+      aimAt(null);
       root.className = "";
       halo.classList.remove("on", "idle");
       at = null;
@@ -229,8 +314,12 @@ function handle(fx: Fx) {
       void glow.offsetWidth;
       glow.classList.add("flash");
       break;
+    case "aim":
+      // Rust sends it only with Aim on in the wardrobe.
+      aimIn(css(fx.at), fx.ms);
+      break;
     case "move":
-      glideTo(at ?? css(fx.from), css(fx.to), fx.ms);
+      glideTo(at ?? css(fx.from), css(fx.to), fx.ms, undefined, fx.aim === true);
       break;
     case "drag": {
       const from = css(fx.from);
@@ -245,6 +334,8 @@ function handle(fx: Fx) {
       const p = css(fx.at);
       setHalo(p, false);
       rings(p, fx.button, fx.count);
+      // Already on the spot, no glide: the corners go once it is clicked.
+      if (aimEl && glide == null && aimTimer == null) aimTimer = window.setTimeout(() => aimAt(null), 450);
       break;
     }
     case "scroll":

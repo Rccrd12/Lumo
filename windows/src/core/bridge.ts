@@ -8,7 +8,7 @@ import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
 import type { MailPeek, MediaActivity } from "./compact";
 import type { ChatUsage } from "./chat-usage";
-import type { ListenWatch } from "./listen";
+import type { ListenPast, ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 
@@ -206,13 +206,25 @@ export const Bridge = {
     callOrThrow<ChatReply>("chat_send", screen ? { chatId, query, context, screen } : { chatId, query, context }),
   /** A new chat on screen; an answer still written in another one goes on. */
   chatReset: (chatId: string) => call<void>("chat_reset", { chatId }),
-  /** Listens to a pull request for the chat `chatId` (listen.rs). */
-  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string) =>
-    call<ListenWatch>("listen_add", { repo, number, until, task, chatId }),
+  /** Listens to a pull request for the chat `chatId` (listen.rs); `mode` "every": once for each new commit. */
+  listenAdd: (repo: string, number: number, until: string, task: string, chatId: string, mode = "once") =>
+    call<ListenWatch>("listen_add", { repo, number, until, mode, task, chatId }),
   /** Stops listening to a pull request (`until` null: to everything on it). */
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
+  /** Listens on this PC (listen_local.rs): a file or a folder, a program or a port, a web page. */
+  listenAddLocal: (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once") =>
+    call<ListenWatch>("listen_add_local", { source, target, until, mode, text, task, chatId }),
+  /** Stops listening to a target on this PC, for every event. */
+  listenCancelLocal: (source: string, target: string) => call<number>("listen_cancel_local", { source, target }),
   listenList: () => call<ListenWatch[]>("listen_list"),
+  /** Stops one watch, by its id. */
+  listenStop: (id: number) => call<boolean>("listen_stop", { id }),
+  /** Pauses or resumes one watch (`id` null: every one). */
+  listenPause: (id: number | null, paused: boolean) => call<number>("listen_pause", { id, paused }),
+  /** What fired, oldest first. */
+  listenHistory: () => call<ListenPast[]>("listen_history"),
+  listenHistoryClear: () => call<void>("listen_history_clear"),
   // The user's own tools (the Tools tab, tools.rs).
   toolsList: () => call<ToolInfo[]>("tools_list"),
   /** The user's click on Save in the workshop: the draft becomes a tool, on. */
@@ -243,6 +255,8 @@ export const Bridge = {
   chatCommands: () => call<string[] | null>("chat_commands"),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
   chatRewind: (chatId: string, keep: number) => call<void>("chat_rewind", { chatId, keep }),
+  /** One of the chat's files taken out of its context (its ×): the AI is told with the next question. */
+  chatForgetFile: (chatId: string, name: string, path: string) => call<void>("chat_forget_file", { chatId, name, path }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
   /** `island`: the island as drawn (x, y, width, height, page pixels), without what sits beside it. */
   islandDrag: (island?: [number, number, number, number]) => call<void>("island_drag", { island: island ?? null }),
@@ -260,6 +274,15 @@ export const Bridge = {
     dialogs++;
     try {
       return await callOrThrow<DroppedFile | null>("pick_file");
+    } finally {
+      dialogs--;
+    }
+  },
+  /** The system's folder picker, for the Listening panel: the path, or null. */
+  pickFolder: async () => {
+    dialogs++;
+    try {
+      return await call<string | null>("pick_folder");
     } finally {
       dialogs--;
     }
@@ -285,6 +308,10 @@ export const Bridge = {
   screenExplorerPeek: () => callOrThrow<ExplorerFolder | null>("screen_explorer_peek"),
   /** That folder and what is in it, shared with the chat (explorer.rs). */
   screenExplorer: () => callOrThrow<ExplorerFolder | null>("screen_explorer"),
+  /** Every folder open in File Explorer, names only, the front window's first. Lists nothing. */
+  screenExplorerPeekAll: () => callOrThrow<ExplorerFolder[]>("screen_explorer_peek_all"),
+  /** The open folders picked by path (every open one for `[]`), with what is in them, shared with the chat. */
+  screenExplorerShare: (paths: string[]) => callOrThrow<ExplorerFolder[]>("screen_explorer_share", { paths }),
   /**
    * The file of a shared folder that `query` names, copied into the inbox
    * like a picked one; null when it names none.
@@ -692,6 +719,8 @@ export interface ScreenContext {
   /** More files added after the first (the chat's file context), in the inbox. */
   files?: { name: string; path: string }[];
   folder?: ExplorerFolder;
+  /** More folders, shared with `folder`. */
+  folders?: ExplorerFolder[];
   /** Windows picked in the menu, with what they show. */
   sharedWindows?: SharedWindow[];
   /** Browser tabs picked in the menu, with their pages' text. */
@@ -828,13 +857,15 @@ interface WebView2Bridge {
  * as a `file-drag` event.
  *
  * During a drag the whole window takes the mouse (island.rs), not just the
- * island: `accepts` says whether a page point is on the island, and only there
- * is the drag said to be over and the file taken. Elsewhere the cursor shows
- * "no drop" and the island hears a `leave`.
+ * island: `near` says whether a page point is close enough to the island for
+ * the drag to open it (`enter`/`over`, and a `leave` once it is carried away),
+ * and `accepts` whether it is on the island itself, the only place the file
+ * is taken. Elsewhere the cursor shows "no drop".
  */
 export async function onDragDrop(
   handler: (e: DragDropPayload) => void,
   accepts: (x: number, y: number) => boolean = () => true,
+  near: (x: number, y: number) => boolean = accepts,
 ) {
   if (!IS_TAURI) return () => {};
   const webview = (window as unknown as { chrome?: { webview?: WebView2Bridge } }).chrome?.webview;
@@ -846,8 +877,10 @@ export async function onDragDrop(
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
-  // The cursor is on the island itself (`accepts`), not just in the window.
+  // The cursor is near the island (`near`), not just in the window.
   let over = false;
+  // The cursor is on the island itself (`accepts`), where the file is taken.
+  let onIsland = false;
   // A picture dragged from the island itself (a screenshot's preview) says it
   // carries a file too: it is not one coming in, so it never opens the drop.
   let inside = false;
@@ -861,6 +894,7 @@ export async function onDragDrop(
     inside = false;
     depth = 0;
     over = false;
+    onIsland = false;
   };
   const onEnter = (e: DragEvent) => {
     if (inside || !hasFiles(e)) return;
@@ -868,9 +902,10 @@ export async function onDragDrop(
     depth++;
     track(e);
   };
-  /** Enter and leave follow the island's edge, not the window's. */
+  /** Enter and leave follow the zone around the island, not the window's edge. */
   const track = (e: DragEvent) => {
-    const on = accepts(e.clientX, e.clientY);
+    onIsland = accepts(e.clientX, e.clientY);
+    const on = onIsland || near(e.clientX, e.clientY);
     if (on && !over) {
       over = true;
       handler({ type: "enter", client: at(e) });
@@ -886,13 +921,14 @@ export async function onDragDrop(
     // Off the island it is refused: "none" shows the no-drop cursor.
     e.preventDefault();
     const on = track(e);
-    if (e.dataTransfer) e.dataTransfer.dropEffect = on ? "copy" : "none";
+    if (e.dataTransfer) e.dataTransfer.dropEffect = onIsland ? "copy" : "none";
     if (on) handler({ type: "over", client: at(e) });
   };
   const onLeave = (e: DragEvent) => {
     if (inside || !hasFiles(e) || depth === 0) return;
     if (--depth === 0 && over) {
       over = false;
+      onIsland = false;
       handler({ type: "leave" });
     }
   };
@@ -902,8 +938,9 @@ export async function onDragDrop(
     if (inside) return;
     depth = 0;
     // Let go beside the island: not ours (the drop zone closes on the release).
-    const on = over || accepts(e.clientX, e.clientY);
+    const on = onIsland || accepts(e.clientX, e.clientY);
     over = false;
+    onIsland = false;
     if (!on) {
       handler({ type: "leave" });
       return;

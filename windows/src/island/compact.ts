@@ -12,12 +12,12 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
-import { LISTEN_COLOR, listeningLine } from "../core/listen";
+import { LISTEN_COLOR, activeWatches, listeningLine, onGitHub, watchColor } from "../core/listen";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
-import { activeModel, providerDef } from "../core/providers";
+import { activeModel, isCliProvider, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, isSessionTask, type AgentTask } from "../core/state";
+import { State, aiSends, isSessionTask, type AgentTask } from "../core/state";
 import { COMPACT_SIZES } from "../core/layout";
 import { Live } from "../live/session";
 import { clear, h, svg } from "../views/dom";
@@ -44,6 +44,8 @@ const MAIL_TEXT = {
   more: N_("+{count} more"),
   askSummary: N_("Summarize this email in a few lines, and say if it needs an answer or anything from me."),
   askReply: N_("Write a reply to this email, ready to paste. Only the draft: I will read it and send it myself."),
+  askSend: N_("Reply to this email: write the answer and send it to {address} with mail_send. I will read it on the card and click Send myself."),
+  askReplyInThread: N_("Reply to this email with mail_reply (its id is {id}): write the answer. I will read it on the card and click Send myself."),
   from: N_("From: {from}"),
   subject: N_("Subject: {subject}"),
   email: N_("Email"),
@@ -108,7 +110,7 @@ function agentInputs(): AgentActivityInput[] {
 
 /**
  * What the services are doing: GitHub's CI running on a PR or a default
- * branch, and the pull requests the chat listens to (core/listen.ts).
+ * branch, and what the chat listens to (core/listen.ts).
  */
 function serviceLines(): CompactLine[] {
   const gitHub = State.tasks.find((x) => x.id === "integration_github");
@@ -116,7 +118,10 @@ function serviceLines(): CompactLine[] {
   const running = gitHub && info ? gitHubRunning(readPulse(info.data)) : null;
   const lines: CompactLine[] = running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
   const listening = listeningLine(State.listening);
-  if (listening) lines.push({ text: `GitHub · ${listening}`, color: gitHub?.color ?? LISTEN_COLOR });
+  // On GitHub only: GitHub's line; on this PC too, Lumo's, in the one source's colour.
+  const on = activeWatches(State.listening);
+  if (listening && on.every(onGitHub)) lines.push({ text: `GitHub · ${listening}`, color: gitHub?.color ?? LISTEN_COLOR });
+  else if (listening) lines.push({ text: `Lumo · ${listening}`, color: on.length === 1 ? watchColor(on[0]) : LISTEN_COLOR });
   return lines;
 }
 
@@ -352,8 +357,8 @@ export class CompactStrip {
       }, "cp-close"),
     );
     const actions = h("div", { class: "cp-mail-actions" },
-      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, MAIL_TEXT.askSummary) }, t(MAIL_TEXT.summarize)),
-      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, MAIL_TEXT.askReply) }, t(MAIL_TEXT.reply)),
+      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, t(MAIL_TEXT.askSummary)) }, t(MAIL_TEXT.summarize)),
+      h("button", { class: "cp-action", onclick: (e: Event) => this.ask(e, m, replyQuestion(m)) }, t(MAIL_TEXT.reply)),
       m.link
         ? h("button", {
           class: "cp-action quiet",
@@ -403,7 +408,7 @@ export class CompactStrip {
   /** An email's button: the chat opens with the email attached and asks. */
   private ask(e: Event, m: MailPeek, question: string) {
     e.stopPropagation();
-    openMailInChat(m, t(question));
+    openMailInChat(m, question);
     Feed.dismissMail();
     this.extraMail = 0;
     this.host.openChat();
@@ -473,9 +478,22 @@ export class CompactStrip {
   }
 }
 
-/** The chat summarizes the email, or drafts a reply to it (the pill's card, the closed island). */
+/**
+ * What the reply button asks: with Security → Email letting the AI send and a
+ * CLI in the chat (which has mail_reply), the reply itself, in the email's
+ * conversation, on its card before it goes; otherwise a draft to paste.
+ */
+export function replyQuestion(m: MailPeek): string {
+  const send = aiSends(State.settings.aiMailAccess) && isCliProvider(State.settings.chatProvider) && !!m.address;
+  if (!send) return t(MAIL_TEXT.askReply);
+  // The inbox's emails come as "server:uid" (mail.rs): mail_reply takes "inbox:uid".
+  const uid = m.id.split(":").pop() ?? "";
+  return /^\d+$/.test(uid) ? t(MAIL_TEXT.askReplyInThread, { id: `inbox:${uid}` }) : t(MAIL_TEXT.askSend, { address: m.address });
+}
+
+/** The chat summarizes the email, or replies to it (the pill's card, the closed island). */
 export function askAboutMail(m: MailPeek & { body?: string }, what: "summary" | "reply") {
-  openMailInChat(m, t(what === "summary" ? MAIL_TEXT.askSummary : MAIL_TEXT.askReply));
+  openMailInChat(m, what === "summary" ? t(MAIL_TEXT.askSummary) : replyQuestion(m));
 }
 
 /** The chat, with the email attached as text, asks `question` at once. */

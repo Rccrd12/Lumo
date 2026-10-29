@@ -19,7 +19,8 @@
 //
 // While Claude uses the computer, the screen it works on glows (an overlay
 // window, computer.html, click-through and left out of screenshots), its
-// mouse is an orange arrow drawn here, gliding from point to point, and the
+// mouse is an arrow drawn here (the one picked in the wardrobe), gliding from
+// point to point, and the
 // user's own mouse is held still (a low-level hook drops what the hand does;
 // what Claude sends goes through). When a card waits on the island, the hand
 // gets the mouse back to answer it.
@@ -63,8 +64,10 @@ static STOP_KEY: AtomicBool = AtomicBool::new(false);
 static VIEW: Mutex<Option<View>> = Mutex::new(None);
 /// One action at a time.
 static ONE_AT_A_TIME: Mutex<()> = Mutex::new(());
-/// Claude is using the computer in this turn: the glow, the orange mouse, the hand held still.
+/// Claude is using the computer in this turn: the glow, Claude's mouse, the hand held still.
 static ENGAGED: AtomicBool = AtomicBool::new(false);
+/// Claude's mouse is the Lucciola one (the wardrobe's `computerCursor`), read when it engages.
+static LUCCIOLA: AtomicBool = AtomicBool::new(false);
 /// Cards waiting on the island meanwhile: the hand has the mouse to answer them.
 static CARDS: AtomicUsize = AtomicUsize::new(0);
 
@@ -109,7 +112,7 @@ pub fn server_entry() -> Value {
 /// screen work is Claude Code's). An entry an earlier build put there is
 /// replaced. Whatever else the file holds is kept, and the user's global
 /// configuration is never touched.
-pub fn agy_workspace(work: &std::path::Path, mail: bool, tools: bool) {
+pub fn agy_workspace(work: &std::path::Path, mail: &str, tools: bool) {
     let path = work.join(".agents").join("mcp_config.json");
     let read = std::fs::read_to_string(&path).ok();
     let mut config = match read.as_deref().map(serde_json::from_str::<Value>) {
@@ -119,7 +122,7 @@ pub fn agy_workspace(work: &std::path::Path, mail: bool, tools: bool) {
         None => json!({}),
     };
     let mut entry = server_entry();
-    entry["args"] = json!(["--mcp", if mail { "--tools=plan,mail,island" } else { "--tools=plan,island" }]);
+    entry["args"] = json!(["--mcp", if mail.is_empty() { "--tools=plan,island".to_string() } else { format!("--tools=plan,{mail},island") }]);
     let Some(root) = config.as_object_mut() else { return };
     let servers = root.entry("mcpServers").or_insert_with(|| json!({}));
     let Some(servers) = servers.as_object_mut() else { return };
@@ -160,11 +163,13 @@ pub fn end_turn<R: Runtime>(app: &AppHandle<R>) {
 }
 
 /// Claude starts using the computer in this turn: the screen glows, the
-/// mouse turns orange and the hand lets go of it.
+/// mouse wears Claude's arrow and the hand lets go of it.
 fn engage(app: &AppHandle) {
     if ENGAGED.swap(true, Ordering::SeqCst) {
         return;
     }
+    let look = CursorLook::parse(&app.state::<crate::Shared>().settings.lock().unwrap().computer_cursor);
+    LUCCIOLA.store(look == CursorLook::Lucciola, Ordering::SeqCst);
     let rect = VIEW
         .lock()
         .unwrap_or_else(|e| e.into_inner())
@@ -176,6 +181,8 @@ fn engage(app: &AppHandle) {
     if let Some(rect) = rect {
         overlay_show(app, rect);
     }
+    // The island closes to its compact form, Lumo's ring, while Claude works.
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-engaged", true);
     // A card already waiting on the island keeps the mouse the user's until it is answered.
     if CARDS.load(Ordering::SeqCst) == 0 {
         imp::take_mouse(true);
@@ -191,6 +198,7 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
     }
     imp::take_mouse(false);
     fx(app, json!({ "kind": "hide" }));
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-engaged", false);
     let app = app.clone();
     std::thread::spawn(move || {
         // The glow fades before the window goes.
@@ -282,7 +290,13 @@ fn overlay_show(app: &AppHandle, rect: (i32, i32, i32, i32)) {
     overlay_place(&win, rect);
     let _ = win.show();
     let _ = win.set_ignore_cursor_events(true);
-    fx(app, json!({ "kind": "show" }));
+    let shared = app.state::<crate::Shared>();
+    let (aim, cursor) = {
+        let settings = shared.settings.lock().unwrap();
+        (settings.computer_aim, CursorLook::parse(&settings.computer_cursor))
+    };
+    let look = if cursor == CursorLook::Lucciola { "lucciola" } else { "direct" };
+    fx(app, json!({ "kind": "show", "aim": aim, "cursor": look }));
 }
 
 fn overlay_place<R: Runtime>(win: &WebviewWindow<R>, rect: (i32, i32, i32, i32)) {
@@ -461,28 +475,53 @@ pub fn glide_ms(a: (i32, i32), b: (i32, i32)) -> u64 {
     (240.0 + 16.0 * d.sqrt()).clamp(220.0, 850.0) as u64
 }
 
-/// The orange arrow Claude's mouse wears, `size` × `size` straight RGBA, and
-/// its tip (the hot spot). Drawn here: an arrow in Lumo's orange with a white
-/// edge and a soft shadow.
-pub fn arrow_pixels(size: u32) -> (Vec<u8>, (u32, u32)) {
-    // The classic arrow, on a 32-pixel grid.
-    const SHAPE: [(f64, f64); 7] = [(1.5, 1.5), (1.5, 23.5), (6.8, 18.6), (10.2, 26.4), (14.4, 24.6), (11.0, 17.2), (17.6, 17.2)];
+/// The mouse Claude wears, picked in the wardrobe (`computerCursor`).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CursorLook {
+    /// A dark arrow with a white edge, under a warm halo (the overlay's).
+    Direct,
+    /// Lumo's butter colour with a dark edge, and a light in its tail.
+    Lucciola,
+}
+
+impl CursorLook {
+    /// A stored choice: anything this build does not know is the dark arrow.
+    pub fn parse(raw: &str) -> Self {
+        if raw == "lucciola" { CursorLook::Lucciola } else { CursorLook::Direct }
+    }
+}
+
+/// The arrow Claude's mouse wears, `size` × `size` straight RGBA, and its tip
+/// (the hot spot). A rounded kite, the same shape in both looks; the overlay
+/// adds the halo, the rings and the light around it.
+pub fn arrow_pixels(size: u32, look: CursorLook) -> (Vec<u8>, (u32, u32)) {
+    // The kite, on a 32-pixel grid: the tip, the right wing, the notch, the bottom wing.
+    const SHAPE: [(f64, f64); 4] = [(4.2, 4.2), (22.6, 11.4), (15.05, 15.05), (11.4, 22.6)];
+    const INK: (f64, f64, f64) = (26.0, 20.0, 18.0);
+    const WHITE: (f64, f64, f64) = (255.0, 255.0, 255.0);
+    // Lumo's body, lighter at the top (character/lumo.ts LUMO_TOP, LUMO_BOTTOM), and his warm light.
+    const TOP: (f64, f64, f64) = (255.0, 246.0, 216.0);
+    const BOTTOM: (f64, f64, f64) = (243.0, 217.0, 138.0);
+    const LIGHT: (f64, f64, f64) = (255.0, 224.0, 158.0);
     let k = size as f64 / 32.0;
     let pts: Vec<(f64, f64)> = SHAPE.iter().map(|(x, y)| (x * k, y * k)).collect();
-    let edge = 1.15 * k.max(0.85);
-    let inside = |x: f64, y: f64, dx: f64, dy: f64| -> bool {
+    let inside = |x: f64, y: f64| -> bool {
         let mut c = false;
         let n = pts.len();
         for i in 0..n {
-            let (xi, yi) = (pts[i].0 + dx, pts[i].1 + dy);
-            let (xj, yj) = (pts[(i + n - 1) % n].0 + dx, pts[(i + n - 1) % n].1 + dy);
+            let (xi, yi) = pts[i];
+            let (xj, yj) = pts[(i + n - 1) % n];
             if (yi > y) != (yj > y) && x < (xj - xi) * (y - yi) / (yj - yi) + xi {
                 c = !c;
             }
         }
         c
     };
-    let dist = |x: f64, y: f64| -> f64 {
+    // How far outside the kite (0 inside): the rounded edges are what lies within a reach of it.
+    let out = |x: f64, y: f64| -> f64 {
+        if inside(x, y) {
+            return 0.0;
+        }
         let n = pts.len();
         (0..n)
             .map(|i| {
@@ -493,9 +532,43 @@ pub fn arrow_pixels(size: u32) -> (Vec<u8>, (u32, u32)) {
             })
             .fold(f64::MAX, f64::min)
     };
-    const ORANGE: (f64, f64, f64) = (255.0, 138.0, 31.0);
+    let mix = |a: (f64, f64, f64), b: (f64, f64, f64), t: f64| (a.0 + (b.0 - a.0) * t, a.1 + (b.1 - a.1) * t, a.2 + (b.2 - a.2) * t);
+    let pixel = |x: f64, y: f64| -> (f64, f64, f64, f64) {
+        let d = out(x, y);
+        match look {
+            CursorLook::Direct => {
+                if d <= 1.28 * k {
+                    (INK.0, INK.1, INK.2, 1.0)
+                } else if d <= 2.68 * k {
+                    (WHITE.0, WHITE.1, WHITE.2, 1.0)
+                } else if out(x - 0.6 * k, y - 0.9 * k) <= 2.68 * k {
+                    (0.0, 0.0, 0.0, 0.24)
+                } else {
+                    (0.0, 0.0, 0.0, 0.0)
+                }
+            }
+            CursorLook::Lucciola => {
+                // The light in the tail, by the notch.
+                let tail = ((x - 15.4 * k).powi(2) + (y - 15.4 * k).powi(2)).sqrt();
+                if d <= 0.82 * k {
+                    if tail <= 1.8 * k {
+                        (255.0, 248.0, 222.0, 1.0)
+                    } else {
+                        let c = mix(TOP, BOTTOM, (((x + y) / (2.0 * k) - 4.2) / 14.0).clamp(0.0, 1.0));
+                        (c.0, c.1, c.2, 1.0)
+                    }
+                } else if d <= 2.33 * k {
+                    (INK.0, INK.1, INK.2, 1.0)
+                } else {
+                    // A soft glow behind the tail.
+                    let glow = ((x - 17.0 * k).powi(2) + (y - 17.0 * k).powi(2)).sqrt() / (6.0 * k);
+                    if glow < 1.0 { (LIGHT.0, LIGHT.1, LIGHT.2, 0.8 * (1.0 - glow).powi(2)) } else { (0.0, 0.0, 0.0, 0.0) }
+                }
+            }
+        }
+    };
     const SS: usize = 4;
-    let mut out = vec![0u8; (size * size * 4) as usize];
+    let mut out_px = vec![0u8; (size * size * 4) as usize];
     for py in 0..size {
         for px in 0..size {
             let (mut r, mut g, mut b, mut a) = (0.0, 0.0, 0.0, 0.0);
@@ -503,17 +576,7 @@ pub fn arrow_pixels(size: u32) -> (Vec<u8>, (u32, u32)) {
                 for sx in 0..SS {
                     let x = px as f64 + (sx as f64 + 0.5) / SS as f64;
                     let y = py as f64 + (sy as f64 + 0.5) / SS as f64;
-                    let (cr, cg, cb, ca) = if inside(x, y, 0.0, 0.0) {
-                        if dist(x, y) <= edge {
-                            (255.0, 255.0, 255.0, 1.0)
-                        } else {
-                            (ORANGE.0, ORANGE.1, ORANGE.2, 1.0)
-                        }
-                    } else if inside(x, y, 0.9 * k, 1.4 * k) {
-                        (0.0, 0.0, 0.0, 0.24)
-                    } else {
-                        (0.0, 0.0, 0.0, 0.0)
-                    };
+                    let (cr, cg, cb, ca) = pixel(x, y);
                     r += cr * ca;
                     g += cg * ca;
                     b += cb * ca;
@@ -523,15 +586,41 @@ pub fn arrow_pixels(size: u32) -> (Vec<u8>, (u32, u32)) {
             let n = (SS * SS) as f64;
             let i = ((py * size + px) * 4) as usize;
             if a > 0.0 {
-                out[i] = (r / a).round() as u8;
-                out[i + 1] = (g / a).round() as u8;
-                out[i + 2] = (b / a).round() as u8;
+                out_px[i] = (r / a).round() as u8;
+                out_px[i + 1] = (g / a).round() as u8;
+                out_px[i + 2] = (b / a).round() as u8;
             }
-            out[i + 3] = (a / n * 255.0).round() as u8;
+            out_px[i + 3] = (a / n * 255.0).round() as u8;
         }
     }
-    let hot = ((1.5 * k).round() as u32, (1.5 * k).round() as u32);
-    (out, hot)
+    let hot = ((4.2 * k).round() as u32, (4.2 * k).round() as u32);
+    (out_px, hot)
+}
+
+/// How long a single click waits (ms) so Windows doesn't merge it with the
+/// one before into a double click: that one came `since_ms` ago, `moved`
+/// pixels away, and the system's double-click time is `limit_ms`.
+pub fn double_click_wait(since_ms: u64, moved: (i32, i32), limit_ms: u64) -> u64 {
+    if moved.0.abs() <= 4 && moved.1.abs() <= 4 && since_ms < limit_ms {
+        limit_ms - since_ms + 30
+    } else {
+        0
+    }
+}
+
+/// What Claude reads after a click: where it landed, in the screenshot's
+/// pixels, so a click that went somewhere else than meant shows at once.
+fn click_text(asked: Option<(i64, i64)>, landed: (i64, i64)) -> String {
+    let (x, y) = landed;
+    match asked {
+        None => format!(
+            "Clicked where the mouse already was, [{x}, {y}]: no coordinate was given. To click somewhere else, pass coordinate: [x, y]. Take a screenshot to see what changed."
+        ),
+        Some((ax, ay)) if (ax - x).abs() > 3 || (ay - y).abs() > 3 => format!(
+            "Clicked at [{x}, {y}], not at [{ax}, {ay}] as asked: the mouse did not get there. Take a screenshot before trying again."
+        ),
+        Some(_) => format!("Clicked at [{x}, {y}]. Take a screenshot to see what changed."),
+    }
 }
 
 /// A key as the keyboard has it: a Windows virtual-key code, or a character
@@ -675,14 +764,33 @@ impl Action {
     }
 }
 
+/// A point of the screenshot, `[x, y]`. Models don't always write it that way:
+/// `{"x": …, "y": …}`, `"[x, y]"` as a string, or (for `coordinate`) `x` and
+/// `y` side by side are read too, rather than clicking where the mouse already
+/// is as if no point had been given.
 fn point(input: &Value, key: &str) -> Result<Option<(i64, i64)>, String> {
+    let wrong = || format!("{key} must be two numbers, [x, y].");
+    let pair = |x: Option<f64>, y: Option<f64>| match (x, y) {
+        (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Ok(Some((x.round() as i64, y.round() as i64))),
+        _ => Err(wrong()),
+    };
+    let number = |v: Option<&Value>| v.and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())));
     match input.get(key) {
+        None | Some(Value::Null) if key == "coordinate" && (input.get("x").is_some() || input.get("y").is_some()) => {
+            pair(number(input.get("x")), number(input.get("y")))
+        }
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(a)) if a.len() == 2 => match (a[0].as_f64(), a[1].as_f64()) {
-            (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Ok(Some((x.round() as i64, y.round() as i64))),
-            _ => Err(format!("{key} must be two numbers, [x, y].")),
-        },
-        Some(_) => Err(format!("{key} must be two numbers, [x, y].")),
+        Some(Value::Array(a)) if a.len() == 2 => pair(number(a.first()), number(a.get(1))),
+        Some(Value::Object(o)) => pair(number(o.get("x")), number(o.get("y"))),
+        Some(Value::String(text)) => {
+            let parts: Vec<f64> = text
+                .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+                .filter(|p| !p.is_empty())
+                .filter_map(|p| p.parse().ok())
+                .collect();
+            if parts.len() == 2 { pair(Some(parts[0]), Some(parts[1])) } else { Err(wrong()) }
+        }
+        Some(_) => Err(wrong()),
     }
 }
 
@@ -772,7 +880,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
     let on = app.state::<crate::Shared>().settings.lock().unwrap().chat_computer_use;
     if !on {
-        return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under Chat: Let Claude use the computer.");
+        return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under General → Security: Let Claude use the computer.");
     }
     if !(TURN.load(Ordering::SeqCst) > 0) {
         return refuse("Lumo lets Claude use the computer only while it answers in the island's chat.");
@@ -784,7 +892,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
         Ok(a) => a,
         Err(e) => return refuse(e),
     };
-    // The glow, the orange mouse and the hand held still, from Claude's first call on.
+    // The glow, Claude's mouse and the hand held still, from Claude's first call on.
     engage(app);
     if !action.looks() {
         hold_stop_key(app);
@@ -850,12 +958,24 @@ fn mouse_rel(view: &View, fallback: (i32, i32)) -> [i32; 2] {
     rel(view, imp::cursor().unwrap_or(fallback))
 }
 
-/// The mouse glides to `to`, and the overlay's glow with it.
-fn glide_to(app: &AppHandle, view: &View, to: (i32, i32)) -> Result<(), String> {
+/// The mouse glides to `to`, and the overlay's halo with it; `aim`: it goes
+/// there to click (the overlay may close corners in on the spot).
+/// How long the Aim corners close in on a spot before the mouse sets off for it (ms).
+pub const AIM_LEAD_MS: u64 = 320;
+
+fn glide_to(app: &AppHandle, view: &View, to: (i32, i32), aim: bool) -> Result<(), String> {
+    // Aim (wardrobe): the corners show where Claude will click first, then the mouse goes.
+    if aim && app.state::<crate::Shared>().settings.lock().unwrap().computer_aim {
+        fx(app, json!({ "kind": "aim", "at": rel(view, to), "ms": AIM_LEAD_MS }));
+        let until = std::time::Instant::now() + Duration::from_millis(AIM_LEAD_MS);
+        while std::time::Instant::now() < until && !stopped() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     let from = imp::cursor().unwrap_or(to);
     let ms = glide_ms(from, to);
     if ms > 0 {
-        fx(app, json!({ "kind": "move", "from": rel(view, from), "to": rel(view, to), "ms": ms }));
+        fx(app, json!({ "kind": "move", "from": rel(view, from), "to": rel(view, to), "ms": ms, "aim": aim }));
     }
     imp::glide(from, to, ms, &stopped)
 }
@@ -904,9 +1024,9 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
         Action::Click { at, button, count, hold } => {
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
-            hands_off(app, || {
+            let here = hands_off(app, || {
                 if let Some(t) = target {
-                    glide_to(app, &view, t)?;
+                    glide_to(app, &view, t, true)?;
                 }
                 if stopped() {
                     return Err("Stopped before the click.".to_string());
@@ -918,21 +1038,23 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
                     Button::Middle => "middle",
                 };
                 fx(app, json!({ "kind": "click", "at": rel(&view, here), "button": name, "count": count }));
-                imp::click(button, count, &hold)
+                imp::click(button, count, &hold)?;
+                Ok(here)
             })?;
-            Ok(json!({ "text": "Done. Take a screenshot to see what changed." }))
+            let (x, y) = view.point_in_shot(here.0, here.1);
+            Ok(json!({ "text": click_text(at, (x, y)) }))
         }
         Action::Move { at } => {
             let view = view()?;
             let to = view.to_screen(at.0, at.1)?;
-            hands_off(app, || glide_to(app, &view, to))?;
+            hands_off(app, || glide_to(app, &view, to, false))?;
             Ok(json!({ "text": "Done." }))
         }
         Action::Drag { from, to } => {
             let view = view()?;
             let (a, b) = (view.to_screen(from.0, from.1)?, view.to_screen(to.0, to.1)?);
             hands_off(app, || {
-                glide_to(app, &view, a)?;
+                glide_to(app, &view, a, true)?;
                 let ms = glide_ms(a, b).max(300) + 150;
                 fx(app, json!({ "kind": "drag", "from": rel(&view, a), "to": rel(&view, b), "ms": ms }));
                 imp::drag(a, b, ms)
@@ -944,7 +1066,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
             hands_off(app, || {
                 if let Some(t) = target {
-                    glide_to(app, &view, t)?;
+                    glide_to(app, &view, t, false)?;
                 }
                 fx(app, json!({ "kind": "scroll", "at": mouse_rel(&view, (view.rect.0, view.rect.1)), "dx": dx, "dy": dy }));
                 imp::scroll(dx, dy, &hold, &stopped)
@@ -1180,9 +1302,24 @@ mod imp {
         }
     }
 
+    /// When, where and with which button the last click was.
+    type LastClick = (std::time::Instant, (i32, i32), Button);
+
     pub fn click(button: Button, count: u32, hold: &[Key]) -> Result<(), String> {
+        // A click on the spot of the one just before, within the double-click
+        // time, would be read as a double click: it waits that time out.
+        static LAST: Mutex<Option<LastClick>> = Mutex::new(None);
+        let here = cursor().unwrap_or((0, 0));
+        let last = *LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((when, at, _)) = last.filter(|l| l.2 == button) {
+            let limit = u64::from(unsafe { ::windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() });
+            let wait = super::double_click_wait(when.elapsed().as_millis() as u64, (here.0 - at.0, here.1 - at.1), limit);
+            if wait > 0 {
+                std::thread::sleep(Duration::from_millis(wait));
+            }
+        }
         let (down, up) = flags(button);
-        holding(hold, || {
+        let out = holding(hold, || {
             for i in 0..count {
                 if i > 0 {
                     std::thread::sleep(Duration::from_millis(40));
@@ -1192,7 +1329,9 @@ mod imp {
                 }
             }
             Ok(())
-        })?;
+        });
+        *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some((std::time::Instant::now(), here, button));
+        out?;
         note_target();
         Ok(())
     }
@@ -1225,7 +1364,7 @@ mod imp {
         })
     }
 
-    // ── Claude's mouse: the orange arrow, and the hand held still ────────────
+    // ── Claude's mouse: its arrow, and the hand held still ───────────────────
 
     use ::windows::Win32::Foundation::{LPARAM, LRESULT, WPARAM};
     use ::windows::Win32::Graphics::Gdi::{
@@ -1242,7 +1381,7 @@ mod imp {
     use std::sync::atomic::AtomicU32;
 
     /// The system's cursors Claude's arrow stands in for: the arrow, the text
-    /// beam, the hand, the busy ones, the resize ones… so it stays orange
+    /// beam, the hand, the busy ones, the resize ones… so it stays Claude's
     /// whatever it is over.
     const CURSORS: &[u32] = &[32512, 32513, 32514, 32515, 32516, 32642, 32643, 32644, 32645, 32646, 32648, 32649, 32650, 32651];
 
@@ -1250,15 +1389,15 @@ mod imp {
     static HELD: AtomicBool = AtomicBool::new(false);
     /// The thread that runs the hook, while there is one.
     static HOOK_THREAD: AtomicU32 = AtomicU32::new(0);
-    /// The arrow is orange now.
-    static ORANGE: AtomicBool = AtomicBool::new(false);
+    /// The system's cursors are Claude's arrow now.
+    static WORN: AtomicBool = AtomicBool::new(false);
 
     /// Marks that the system's cursors were swapped, for `recover` after a crash.
     fn marker() -> std::path::PathBuf {
         crate::settings::local_dir().join("computer-cursor")
     }
 
-    /// Claude takes the mouse (the orange arrow, the hand held still), or gives it back.
+    /// Claude takes the mouse (its arrow, the hand held still), or gives it back.
     pub fn take_mouse(on: bool) {
         // From the turn, the cards and Esc at once: one change at a time.
         static ONE: Mutex<()> = Mutex::new(());
@@ -1269,7 +1408,7 @@ mod imp {
         } else {
             stop_hook();
         }
-        orange(on);
+        wear(on);
     }
 
     pub fn recover() {
@@ -1286,8 +1425,8 @@ mod imp {
         let _ = std::fs::remove_file(marker());
     }
 
-    fn orange(on: bool) {
-        if ORANGE.swap(on, Ordering::SeqCst) == on {
+    fn wear(on: bool) {
+        if WORN.swap(on, Ordering::SeqCst) == on {
             return;
         }
         if !on {
@@ -1295,7 +1434,7 @@ mod imp {
             return;
         }
         let Some(arrow) = make_arrow() else {
-            ORANGE.store(false, Ordering::SeqCst);
+            WORN.store(false, Ordering::SeqCst);
             return;
         };
         let _ = std::fs::write(marker(), b"1");
@@ -1308,10 +1447,11 @@ mod imp {
         let _ = unsafe { DestroyIcon(arrow) };
     }
 
-    /// The orange arrow (super::arrow_pixels) as a cursor of the system's size.
+    /// Claude's arrow (super::arrow_pixels, the look picked in the wardrobe) as a cursor of the system's size.
     fn make_arrow() -> Option<HICON> {
         let size = unsafe { GetSystemMetrics(SM_CXCURSOR) }.clamp(32, 256) as u32;
-        let (rgba, hot) = super::arrow_pixels(size);
+        let look = if LUCCIOLA.load(Ordering::SeqCst) { CursorLook::Lucciola } else { CursorLook::Direct };
+        let (rgba, hot) = super::arrow_pixels(size, look);
         unsafe {
             let info = BITMAPINFO {
                 bmiHeader: BITMAPINFOHEADER {
@@ -1523,7 +1663,8 @@ mod tests {
             Action::Click { at: Some((10, 20)), button: Button::Left, count: 2, hold: vec![Key::Vk(VK_SHIFT)] }
         );
         assert_eq!(parse("left_click", &json!({})).unwrap(), Action::Click { at: None, button: Button::Left, count: 1, hold: vec![] });
-        assert!(parse("left_click", &json!({ "coordinate": "10,20" })).is_err());
+        // A point written as text is read too (a_point_is_read_however_the_model_writes_it); one number is not a point.
+        assert!(parse("left_click", &json!({ "coordinate": "10" })).is_err());
         assert!(parse("mouse_move", &json!({})).is_err());
         assert_eq!(
             parse("scroll", &json!({ "scroll_direction": "down", "scroll_amount": 5 })).unwrap(),
@@ -1558,26 +1699,76 @@ mod tests {
     }
 
     #[test]
-    fn claudes_arrow_is_orange_with_a_white_edge_and_its_tip_is_the_hot_spot() {
+    fn a_point_is_read_however_the_model_writes_it() {
+        let at = |v: Value| parse("left_click", &v).map(|a| match a {
+            Action::Click { at, .. } => at,
+            _ => unreachable!(),
+        });
+        assert_eq!(at(json!({ "coordinate": [10, 20] })), Ok(Some((10, 20))));
+        assert_eq!(at(json!({ "x": 562, "y": 790 })), Ok(Some((562, 790))), "x and y side by side");
+        assert_eq!(at(json!({ "x": "562", "y": "790.4" })), Ok(Some((562, 790))));
+        assert_eq!(at(json!({ "coordinate": { "x": 5, "y": 6 } })), Ok(Some((5, 6))));
+        assert_eq!(at(json!({ "coordinate": "[562, 790]" })), Ok(Some((562, 790))));
+        assert_eq!(at(json!({ "coordinate": "562,790" })), Ok(Some((562, 790))));
+        assert_eq!(at(json!({})), Ok(None), "no point: where the mouse is");
+        assert!(at(json!({ "x": 562 })).is_err(), "half a point is not where the mouse is");
+        assert!(at(json!({ "coordinate": "somewhere" })).is_err());
+        assert!(at(json!({ "coordinate": [1, 2, 3] })).is_err());
+        assert!(matches!(parse("mouse_move", &json!({ "x": 1, "y": 2 })), Ok(Action::Move { at: (1, 2) })));
+    }
+
+    #[test]
+    fn a_click_on_the_same_spot_soon_after_another_is_not_a_double_click() {
+        assert_eq!(double_click_wait(100, (0, 0), 500), 430);
+        assert_eq!(double_click_wait(100, (3, -2), 500), 430, "a few pixels away is the same spot to Windows");
+        assert_eq!(double_click_wait(600, (0, 0), 500), 0, "long enough after");
+        assert_eq!(double_click_wait(100, (40, 0), 500), 0, "somewhere else");
+    }
+
+    #[test]
+    fn a_click_says_where_it_landed() {
+        assert!(click_text(None, (562, 790)).contains("no coordinate was given"));
+        assert!(click_text(Some((562, 790)), (563, 789)).starts_with("Clicked at [563, 789]."));
+        assert!(click_text(Some((562, 790)), (100, 100)).contains("not at [562, 790]"));
+    }
+
+    #[test]
+    fn claudes_arrow_is_dark_with_a_white_edge_and_its_tip_is_the_hot_spot() {
         for size in [32u32, 48, 64] {
-            let (px, hot) = arrow_pixels(size);
+            let (px, hot) = arrow_pixels(size, CursorLook::Direct);
             assert_eq!(px.len(), (size * size * 4) as usize);
             let at = |x: u32, y: u32| {
                 let i = ((y * size + x) * 4) as usize;
                 (px[i], px[i + 1], px[i + 2], px[i + 3])
             };
             let k = size as f64 / 32.0;
-            // Inside the body: Lumo's orange, opaque.
-            let (r, g, b, a) = at((5.0 * k) as u32, (14.0 * k) as u32);
-            assert_eq!((r, g, b, a), (255, 138, 31, 255), "size {size}");
+            // Inside the body: Lumo's ink, opaque.
+            assert_eq!(at((11.0 * k) as u32, (11.0 * k) as u32), (26, 20, 18, 255), "size {size}");
             // Far corner: nothing.
             assert_eq!(at(size - 1, 0).3, 0);
             // The tip is the hot spot, near the top left.
-            assert!(hot.0 <= 3 * size / 32 && hot.1 <= 3 * size / 32, "{hot:?}");
+            assert_eq!(hot, ((4.2 * k).round() as u32, (4.2 * k).round() as u32));
             // Some white edge and some soft shadow.
             assert!(px.as_chunks::<4>().0.contains(&[255, 255, 255, 255]));
             assert!(px.as_chunks::<4>().0.iter().any(|p| p[0] == 0 && p[3] > 0 && p[3] < 128));
         }
+    }
+
+    #[test]
+    fn the_lucciola_arrow_is_butter_with_a_dark_edge_and_a_glow_in_its_tail() {
+        for size in [32u32, 64] {
+            let (px, hot) = arrow_pixels(size, CursorLook::Lucciola);
+            let k = size as f64 / 32.0;
+            let i = (((11.0 * k) as u32 * size + (11.0 * k) as u32) * 4) as usize;
+            let body = &px[i..i + 4];
+            assert!(body[0] > 240 && body[1] > 220 && body[2] > 160 && body[3] == 255, "{body:?}");
+            assert!(px.as_chunks::<4>().0.contains(&[26, 20, 18, 255]), "the dark edge");
+            assert!(px.as_chunks::<4>().0.iter().any(|p| p[..3] == [255, 224, 158] && p[3] > 0 && p[3] < 200), "the glow");
+            assert_eq!(hot, arrow_pixels(size, CursorLook::Direct).1, "same tip in both looks");
+        }
+        assert_eq!(CursorLook::parse("lucciola"), CursorLook::Lucciola);
+        assert_eq!(CursorLook::parse("direct"), CursorLook::Direct);
+        assert_eq!(CursorLook::parse("a newer one"), CursorLook::Direct);
     }
 
     #[test]
@@ -1586,20 +1777,22 @@ mod tests {
         let file = dir.join(".agents").join("mcp_config.json");
         let read = || serde_json::from_str::<Value>(&std::fs::read_to_string(&file).unwrap()).unwrap();
         let _ = std::fs::remove_dir_all(&dir);
-        agy_workspace(&dir, false, false);
+        agy_workspace(&dir, "", false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the plan always");
-        agy_workspace(&dir, true, false);
+        agy_workspace(&dir, "mail", false);
         assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]));
+        agy_workspace(&dir, "mail,mailsend", false);
+        assert_eq!(read()["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,mailsend,island"]), "sending too");
 
         // An earlier build's computer use entry, next to the user's own.
         std::fs::write(&file, r#"{"mcpServers":{"mine":{"command":"x"},"lumo":{"command":"lumo-hook","args":["--mcp"]}},"other":1}"#).unwrap();
-        agy_workspace(&dir, true, false);
+        agy_workspace(&dir, "mail", false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,mail,island"]), "never the computer");
         assert_eq!(v["mcpServers"]["lumo"]["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x", "the user's own server stays");
         assert_eq!(v["other"], 1);
-        agy_workspace(&dir, false, false);
+        agy_workspace(&dir, "", false);
         let v = read();
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]), "the email goes with the pill");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
@@ -1607,17 +1800,17 @@ mod tests {
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none());
 
         // The user's tools, as a server of their own while any is on.
-        agy_workspace(&dir, false, true);
+        agy_workspace(&dir, "", true);
         let v = read();
         assert_eq!(v["mcpServers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
         assert_eq!(v["mcpServers"]["lumo"]["args"], json!(["--mcp", "--tools=plan,island"]));
-        agy_workspace(&dir, false, false);
+        agy_workspace(&dir, "", false);
         let v = read();
         assert!(v["mcpServers"].get(crate::tools::SERVER).is_none(), "gone once none is on");
         assert_eq!(v["mcpServers"]["mine"]["command"], "x");
 
         std::fs::write(&file, "not json").unwrap();
-        agy_workspace(&dir, true, false);
+        agy_workspace(&dir, "mail", false);
         assert_eq!(std::fs::read_to_string(&file).unwrap(), "not json", "what Lumo can't read is left alone");
         let _ = std::fs::remove_dir_all(&dir);
     }

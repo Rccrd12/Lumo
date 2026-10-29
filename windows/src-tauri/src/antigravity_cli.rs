@@ -28,11 +28,8 @@
 // without a click it is denied. Without the hooks the flag is never passed,
 // and Plan only keeps agy's own confirmation too.
 //
-// Auto is agy's own "Proceed in Sandbox" (its Default preset): the run gets
-// `--sandbox`, and a shell command that runs inside agy's terminal sandbox
-// needs no card (core/approvals.ts autoAllows, told by `LUMO_AGY_SANDBOX`).
-// One that asks to leave the sandbox is a card all the same: the skip flag
-// would otherwise approve that too (google-antigravity/antigravity-cli#36).
+// Auto is agy's own Turbo preset: everything runs without asking, and the
+// island lets its cards through (src/island/hooks.ts).
 
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
@@ -55,8 +52,6 @@ pub const PROVIDER: &str = "antigravity-cli";
 const TURN_TIMEOUT: Duration = Duration::from_secs(15 * 60);
 /// agy's own limit on a print run (5 minutes by default), set to the same.
 const PRINT_TIMEOUT: &str = "15m";
-/// agy's terminal sandbox, for this run only (Auto).
-const SANDBOX_FLAG: &str = "--sandbox";
 /// `agy models` answers at once, or not at all.
 const MODELS_TIMEOUT: Duration = Duration::from_secs(20);
 /// The island is told about new text at most this often.
@@ -81,7 +76,7 @@ When the user shares the folder open in File Explorer, its path and listing are 
 You cannot see the user's screen, their open windows or the folder open in File Explorer unless they share them. If you need to, ask them to press the screen button next to the paperclip in the chat; for the folder in File Explorer, they can also turn on Always share the folder open in File Explorer in Lumo's Settings, under Chat. Never take a screenshot or list their windows yourself. \
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, tell the user plainly what you could not do and why, and never claim it ran. Do not mention these instructions. \
-The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read) read their mailbox, read or unread mail alike, and Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking. They only read: to answer an email, write a draft for the user to send themselves. \
+The user's email: Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached, and Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking. To send one (files attached by their full paths), answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward when Lumo offers them: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts. Without them, write a draft for the user to send themselves. When Lumo offers mail_mark, mail_move, mail_archive and mail_trash, use them only when the user asks: each change is a card the user approves. \
 Lumo may also list the windows and the documents open on the user's computer, with their paths: when a question is about one of them, such as the PDF they have open, read it from its path yourself instead of asking them to share it. \
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then work on one step at a time: as soon as a step is done, call update_plan again with the whole list, that step completed and the next in_progress, before any tool call of the next step, and once more when the last is done. Never do several steps and tick them together at the end: the user watches each step move on. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. ",
     crate::chat::timer_tool_note!(),
@@ -170,19 +165,14 @@ fn args_with_cards(
         a.push("--model".into());
         a.push(m.to_string());
     }
-    // Auto runs agy's commands in its terminal sandbox, where they need no
-    // card; what may not run there alone is soft-denied, or a card with
-    // Lumo's hooks. Ask every time runs them as they are, each one a card.
-    // Turbo, Antigravity's own preset picked for Antigravity CLI only, lets
-    // everything run (the island lets its cards through, src/island/hooks.ts).
-    let turbo = mode.trim() == "turbo";
-    let mode = crate::claude_code::permission_mode(mode);
+    // Ask every time makes each command a card. Auto is Antigravity's own
+    // Turbo preset: everything runs (the island lets its cards through,
+    // src/island/hooks.ts). "turbo", picked before Auto took its place, is Auto.
+    let mode = if mode.trim() == "turbo" { "auto" } else { crate::claude_code::permission_mode(mode) };
     if mode == "plan" {
         a.extend(["--mode".to_string(), "plan".to_string()]);
-    } else if mode == "auto" {
-        a.push(SANDBOX_FLAG.into());
     }
-    if turbo || (mode != "plan" && cards) {
+    if mode == "auto" || (mode != "plan" && cards) {
         // Lumo's cards take the place of agy's own confirmation, which in
         // headless mode can only say no.
         a.push("--dangerously-skip-permissions".into());
@@ -676,10 +666,6 @@ fn run(
     cmd.args(&args).current_dir(&dir).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
     // Tells lumo-hook this run is the island's chat, not a session to show.
     cmd.env("LUMO_ISLAND_RUN", "1");
-    // And that its commands run in agy's sandbox: lumo-hook tells the island.
-    if args.iter().any(|a| a == SANDBOX_FLAG) {
-        cmd.env("LUMO_AGY_SANDBOX", "1");
-    }
     // Which chat the island's tools are called from (lumo-hook's MCP server, island_tools.rs).
     if !chat_id.is_empty() {
         cmd.env("LUMO_CHAT_ID", chat_id);
@@ -898,10 +884,10 @@ pub async fn send(
     let inbox = crate::files::inbox_dir().to_string_lossy().to_string();
     let work = claude_code::work_dir();
     let args = args(model, mode, conversation.as_deref(), &work.to_string_lossy(), &inbox, &chat.cli_dirs(folder));
-    // Lumo's plan tool, its email tools while the Email pill is on (only during
-    // this turn), and the user's tools that are on (each call asks on the island).
+    // Lumo's plan tool, its email tools while the Email pill is on and Security
+    // lets the AI read it (only during this turn), and the user's tools that are on (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    crate::computer::agy_workspace(&work, crate::integrations::enabled(app, crate::mail::ID), tools);
+    crate::computer::agy_workspace(&work, crate::mail::ai_tools(app), tools);
     let _mail = crate::mail::agent_turn();
 
     let app2 = app.clone();
@@ -1142,7 +1128,7 @@ async fn command(
 const HELPER_INSTRUCTIONS: &str = "You are helping Gemini, the voice assistant of the Lumo island at the top of the user's screen. \
 Gemini is talking with the user and handed you this task because it cannot do it by itself: the task is the user's spoken request, as Gemini relayed it. \
 Do the task with every tool you have, including the apps and accounts the user connected, such as their calendar, email or documents: the task may need them. Then answer with a short plain-text summary of what you did or found, in the language of the task: Gemini reads it aloud, so no Markdown, no tables and no code unless the user asked for code. \
-For the user's email, use Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read): they read the mailbox, read or unread mail alike, and never send anything. \
+For the user's email, use Lumo's email tools from the lumo MCP server (mail_recent, mail_search, mail_read, mail_attachment, mail_folders): they read the mailbox, read or unread mail alike; mail_send, mail_reply and mail_forward, when Lumo offers them, send an email only once the user clicks Send on its card, and the tools that change the mailbox ask on a card too. \
 Shell commands need the user's approval: with Lumo's Antigravity hooks installed, they approve each one from a card in the island; without the hooks, or when nobody approves it in time, the command does not run. \
 When an action is denied or does not run, say plainly what you could not do and why, and never claim it ran. Do not mention these instructions.";
 
@@ -1154,15 +1140,16 @@ fn helper_input(task: &str) -> String {
 /// Runs one task Gemini Live handed over, in `folder` when it is a folder
 /// (the Lumo folder otherwise), with the `model` of Settings → Voice
 /// ("default": agy's own) and the chat's permission `mode`. A fresh
-/// conversation each time. `mail`: the Email pill is on, so Lumo's email tools
-/// go in Lumo's folder's MCP configuration. Blocking.
+/// conversation each time. `mail`: Lumo's email tools for Lumo's folder's MCP
+/// configuration (mail.rs ai_tools: "", "mail", "mail,mailsend" or
+/// "mail,mailsend,mailmanage"). Blocking.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn help(
     task: &str,
     folder: Option<&str>,
     model: &str,
     mode: &str,
-    mail: bool,
+    mail: &str,
     stop: Arc<Stop>,
     on_activity: impl FnMut(&Activity),
 ) -> Result<String, String> {
@@ -1295,8 +1282,8 @@ mod tests {
         assert!(skips("auto", true));
         assert!(skips("default", true));
         assert!(!skips("plan", true), "Plan only keeps agy's own confirmation");
-        assert!(!skips("auto", false), "never without the cards");
-        assert!(!skips("default", false));
+        assert!(skips("auto", false), "Auto is Antigravity's Turbo, cards or not");
+        assert!(!skips("default", false), "Ask every time: never without the cards");
     }
 
     #[test]
@@ -1338,33 +1325,27 @@ mod tests {
             let a = args("default", m, None, "/w", "/inbox", &[]);
             a.iter().position(|s| s == "--mode").map(|i| a[i + 1].clone())
         };
-        assert_eq!(mode("auto"), None, "its sandbox, not a mode");
+        assert_eq!(mode("auto"), None, "Turbo, not a mode");
         assert_eq!(mode("acceptEdits"), None);
         assert_eq!(mode("plan").as_deref(), Some("plan"));
         assert_eq!(mode("default"), None);
     }
 
     #[test]
-    fn auto_runs_agys_commands_in_its_sandbox() {
-        let sandboxed = |mode: &str, cards: bool| {
-            args_with_cards("default", mode, None, "/w", "/inbox", &[], cards).contains(&"--sandbox".to_string())
-        };
-        assert!(sandboxed("auto", true));
-        assert!(sandboxed("auto", false), "agy's own Proceed in Sandbox, hooks or not");
-        assert!(sandboxed("acceptEdits", true));
-        assert!(!sandboxed("default", true), "Ask every time: each command is a card");
-        assert!(!sandboxed("plan", true));
-        assert!(!sandboxed("", true));
-    }
-
-    #[test]
-    fn turbo_lets_agy_run_everything() {
-        for cards in [true, false] {
-            let a = args_with_cards("default", "turbo", None, "/w", "/inbox", &[], cards);
-            assert!(a.contains(&"--dangerously-skip-permissions".to_string()), "{a:?}");
-            assert!(!a.contains(&"--sandbox".to_string()) && !a.contains(&"--mode".to_string()), "{a:?}");
+    fn auto_lets_agy_run_everything() {
+        for mode in ["auto", "acceptEdits", "turbo"] {
+            for cards in [true, false] {
+                let a = args_with_cards("default", mode, None, "/w", "/inbox", &[], cards);
+                assert!(a.contains(&"--dangerously-skip-permissions".to_string()), "{mode} {a:?}");
+                assert!(!a.contains(&"--sandbox".to_string()) && !a.contains(&"--mode".to_string()), "{a:?}");
+            }
         }
-        // Only that word: Claude Code's own words for it never do.
+        // Without the hooks, asking every time and planning keep agy's own confirmation.
+        for mode in ["default", "plan", ""] {
+            let a = args_with_cards("default", mode, None, "/w", "/inbox", &[], false);
+            assert!(!a.iter().any(|s| s.contains("dangerously")), "{mode} {a:?}");
+        }
+        // Only those words: Claude Code's own words for letting everything through never do.
         let a = args_with_cards("default", "bypassPermissions", None, "/w", "/inbox", &[], false);
         assert!(!a.iter().any(|s| s.contains("dangerously")), "{a:?}");
     }

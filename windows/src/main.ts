@@ -53,6 +53,8 @@ async function main() {
   await onEvent<null>("left-up", () => island.onLeftUp());
   // Esc stopped the chat's computer use (computer.rs).
   await onEvent<null>("computer-stopped", () => compactNotice(t(COMPUTER_TEXT.stopped), "#F5A524"));
+  // Claude starts or stops using the computer (computer.rs): the island closes to Lumo's ring.
+  await onEvent<boolean>("computer-engaged", (on) => island.onComputer(on === true));
   await onEvent<MailMessage[]>("mail-new", (messages) => island.newMail(messages));
   // Unplugged or plugged in: Settings → General → Energy on "Automatic" follows.
   await onEvent<boolean>("energy-power", (onBattery) => {

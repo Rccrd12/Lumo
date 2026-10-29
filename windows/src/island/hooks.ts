@@ -12,12 +12,12 @@ import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
 import { failureDetail, fullTextDetail, toolStepDetail } from "../core/step-detail";
 import { Sound } from "../core/sound";
 import { PillSessions } from "../core/pill-sessions";
-import { State, type ApprovalInfo, type AskedQuestion } from "../core/state";
+import { State, type ApprovalInfo, type AskedQuestion, type OutgoingEmail } from "../core/state";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
 import { restorePlanUsage } from "../core/plan";
-import { autoAllows, isSimpleRequest, requestKind, requestReason } from "../core/approvals";
+import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
@@ -210,8 +210,6 @@ interface HookPayload {
   term_editor?: string;
   /** The island's own chat started this Claude Code run (only its permission requests arrive). */
   lumo_island?: boolean;
-  /** The chat's Antigravity CLI run in Auto: its commands run in agy's sandbox. */
-  lumo_sandbox?: boolean;
   /** A card of the chat's Antigravity CLI run: how long the relay waits for a click, in seconds. */
   lumo_card_secs?: number;
   /** StatusLine (the plan usage relay): Claude Code's 5-hour and weekly limits. */
@@ -222,6 +220,49 @@ interface HookPayload {
   lumo_session_allow?: boolean;
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
+  /** An email the AI wants to send, on a card of its own (mail.rs send). */
+  lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; attachments?: unknown };
+  /** A change the AI wants to make to one email (read, star, move, archive, trash), on a card of its own (mail.rs manage). */
+  lumo_mail_action?: { actions?: unknown; folder?: unknown; from?: unknown; subject?: unknown; date?: unknown };
+}
+
+/** What each change of mail.rs manage does, as its card says it. */
+const MAIL_ACTIONS: Record<string, string> = {
+  read: N_("Mark as read"),
+  unread: N_("Mark as unread"),
+  star: N_("Add a star"),
+  unstar: N_("Remove the star"),
+  move: N_("Move to {folder}"),
+  archive: N_("Archive the email"),
+  trash: N_("Move to the trash"),
+};
+
+/** A change to one email, as its card shows it: what it does, and to which email; null when there is none to show. */
+export function mailChange(raw: HookPayload["lumo_mail_action"]): { command: string; reason: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const text = (v: unknown) => (typeof v === "string" ? v.trim() : "");
+  const words = Array.isArray(raw.actions) ? raw.actions.filter((a): a is string => typeof a === "string" && a in MAIL_ACTIONS) : [];
+  if (!words.length) return null;
+  const folder = text(raw.folder);
+  const command = words.map((w) => t(MAIL_ACTIONS[w], { folder })).join(" · ");
+  const subject = text(raw.subject) || t("(no subject)");
+  const from = text(raw.from);
+  return { command, reason: from ? `${from}: ${subject}` : subject };
+}
+
+/** The email of a `mail_send` card, as the island shows it; null when there is none to show. */
+export function outgoingEmail(raw: HookPayload["lumo_mail_send"]): OutgoingEmail | null {
+  if (!raw || typeof raw !== "object") return null;
+  const text = (v: unknown) => (typeof v === "string" ? v : "");
+  const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
+  const to = list(raw.to);
+  if (!to.length) return null;
+  const files = Array.isArray(raw.attachments) ? raw.attachments : [];
+  const attachments = files
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f) => ({ name: text(f.name), size: typeof f.size === "number" ? f.size : 0, path: text(f.path) }))
+    .filter((f) => f.name);
+  return { from: text(raw.from), to, cc: list(raw.cc), subject: text(raw.subject), body: text(raw.body), attachments };
 }
 
 function lastPathComponent(p: string): string {
@@ -726,17 +767,13 @@ function handleHook(island: Island, payload: HookPayload) {
       }
 
       const requestId = payload.request_id ?? "";
-      // The chat's Antigravity CLI run in Auto: agy's own Proceed in Sandbox.
-      // A command that stays in its sandbox, or only looks (core/approvals.ts),
-      // runs without a card; anything else, and anything uncertain, is the
-      // usual card. In Turbo, which the user picked for Antigravity CLI,
-      // everything runs.
+      // An email the AI wants to send: always its own card, always a click.
+      const email = outgoingEmail(payload.lumo_mail_send);
+      // A change to an email the AI wants to make: always a card too, never the closed island's.
+      const change = email ? null : mailChange(payload.lumo_mail_action);
+      // The chat's Antigravity CLI run in Auto, agy's own Turbo preset: everything runs.
       const agyMode = chatAgy ? parsePermissionMode(State.settings.chatPermissionMode, "antigravity-cli") : "default";
-      if (
-        chatAgy && requestId
-        && (agyMode === "turbo"
-          || (agyMode === "auto" && autoAllows(payload.tool_name ?? "", payload.tool_input ?? {}, payload.lumo_sandbox === true)))
-      ) {
+      if (chatAgy && requestId && !email && !change && agyMode === "auto") {
         void Bridge.log(`permission ${payload.tool_name} req=${requestId} (chat, allowed by ${agyMode})`);
         void Bridge.approvalAutoAllow(requestId);
         break;
@@ -780,8 +817,8 @@ function handleHook(island: Island, payload: HookPayload) {
         tool,
         // One of the user's tools: its name and what it is given, and the
         // supervisor's words for what it does.
-        command: userTool ? userToolTarget(userTool.name ?? tool, input) : approvalTarget(tool, input),
-        ...(userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
+        command: email ? email.to.join(", ") : change ? change.command : userTool ? userToolTarget(userTool.name ?? tool, input) : approvalTarget(tool, input),
+        ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
         ...(payload.lumo_session_allow === true && !questions ? { sessionAllow: true } : {}),
@@ -793,7 +830,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // long it waits. Either way the card goes just before.
       const cardMs = chatAgy || typeof payload.lumo_card_secs === "number" ? agyCardMs(payload.lumo_card_secs) : 107_000;
       if (inLine) {
-        State.approvalQueue.push({ ...info, ...(!questions && isSimpleRequest(tool, input) ? { simple: true } : {}) });
+        State.approvalQueue.push({ ...info, ...(!questions && !email && !change && isSimpleRequest(tool, input) ? { simple: true } : {}) });
         void Bridge.log(`permission ${tool} req=${requestId}${fromChat ? " (chat)" : ""} (waiting, ${State.approvalQueue.length + 1} in line)`);
         // A human will see it: the relay waits for the decision.
         void Bridge.approvalAck(requestId);
@@ -805,7 +842,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // A request that only reads or looks, while the island is closed, is
       // answered right there: Deny and Allow next to Lumo (Settings → Island).
       // Still a click, never automatic; anything else opens the full card.
-      const quick = !questions && State.settings.quickApprovals !== false
+      const quick = !questions && !email && !change && State.settings.quickApprovals !== false
         && State.mode !== "expanded" && isSimpleRequest(tool, input);
       void Bridge.log(`permission ${tool} req=${requestId || "none"}${fromChat ? " (chat)" : ""}${quick ? " (closed island)" : ""}`);
       // The card always comes up, even over another pill or an island that is

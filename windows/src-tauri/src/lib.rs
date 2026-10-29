@@ -31,6 +31,7 @@ mod integrations;
 mod island;
 mod island_tools;
 mod listen;
+mod listen_local;
 mod live;
 mod local_chat;
 mod local_models;
@@ -55,6 +56,7 @@ mod session_window;
 mod settings;
 mod share;
 mod shortcuts;
+mod smtp;
 mod system_control;
 mod tool_review;
 mod tools;
@@ -594,8 +596,8 @@ fn approval_ack(app: AppHandle, request_id: String) {
     pipe::acknowledge(&app, &request_id);
 }
 
-/// The chat's Antigravity CLI run in Auto: a command that only looks
-/// (core/approvals.ts autoAllows) goes through without a card. Nobody clicked,
+/// The chat's Antigravity CLI run in Auto, agy's own Turbo preset: its
+/// requests go through without a card (src/island/hooks.ts). Nobody clicked,
 /// so it is not a decision for the recap.
 #[tauri::command]
 fn approval_auto_allow(app: AppHandle, request_id: String) {
@@ -719,6 +721,13 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
 }
 
+/// The × of one of the chat's files: out of the chat's context from the next
+/// question on (chat.rs `forget_file`).
+#[tauri::command]
+fn chat_forget_file(chats: State<Chats>, chat_id: String, name: String, path: String) {
+    chats.get(&chat_id).forget_file(&name, &path);
+}
+
 /// The commands Claude Code's last chat turn said it has, for the "/" menu; None before one.
 #[tauri::command]
 fn chat_commands() -> Option<Vec<String>> {
@@ -752,6 +761,18 @@ async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
     let path = picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string();
     files::allow_dropped([path.clone()]);
     files::ingest(&path).map(Some)
+}
+
+/// "Choose…" in the Listening panel's form: the system's folder picker. Only
+/// the path is handed back; nothing is read until the user starts listening.
+#[tauri::command]
+async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    Ok(Some(picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string()))
 }
 
 // ── The chat's screen button ──────────────────────────────────────────────────
@@ -827,6 +848,20 @@ async fn screen_explorer_peek() -> Result<Option<explorer::ExplorerFolder>, Stri
 #[tauri::command]
 async fn screen_explorer() -> Result<Option<explorer::ExplorerFolder>, String> {
     tauri::async_runtime::spawn_blocking(explorer::share).await.map_err(|e| e.to_string())?
+}
+
+/// Every folder open in File Explorer, names only, the front window's first:
+/// the menu's list. Lists nothing; remembers nothing.
+#[tauri::command]
+async fn screen_explorer_peek_all() -> Result<Vec<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(explorer::peek_all).await.map_err(|e| e.to_string())?
+}
+
+/// The folders open in File Explorer that the user picked (every open one
+/// for none), each with what is in it, now shared with the chat.
+#[tauri::command]
+async fn screen_explorer_share(paths: Vec<String>) -> Result<Vec<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(move || explorer::share_all(&paths)).await.map_err(|e| e.to_string())?
 }
 
 /// A question sent with a shared folder: the file of it that the question
@@ -1154,11 +1189,13 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_rewind,
+            chat_forget_file,
             island_drag,
             island_resize,
             island_reset_size,
             island_recenter,
             pick_file,
+            pick_folder,
             screen_displays,
             screen_windows,
             screen_window_share,
@@ -1169,10 +1206,18 @@ pub fn run() {
             screen_discard,
             screen_explorer_peek,
             screen_explorer,
+            screen_explorer_peek_all,
+            screen_explorer_share,
             explorer_attach,
             listen::listen_add,
             listen::listen_cancel,
+            listen::listen_add_local,
+            listen::listen_cancel_local,
             listen::listen_list,
+            listen::listen_stop,
+            listen::listen_pause,
+            listen::listen_history,
+            listen::listen_history_clear,
             live::live_token,
             live::live_read,
             live::live_find,
@@ -1278,7 +1323,7 @@ pub fn run() {
             computer::recover();
             // Antigravity CLI's plan tool, its email tools following the Email pill
             // and the user's tools while any is on (set again before each run).
-            computer::agy_workspace(&claude_code::work_dir(), integrations::enabled(&handle, mail::ID), crate::tools::any_enabled());
+            computer::agy_workspace(&claude_code::work_dir(), mail::ai_tools(&handle), crate::tools::any_enabled());
             autostart::refresh(&handle, loaded.autostart);
             pipe::start(handle.clone());
             energy::start(handle.clone());

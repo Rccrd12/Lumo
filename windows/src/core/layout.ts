@@ -117,7 +117,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // 24 more than the other cards, for the two lines with top agent, project,
   // busiest day, longest session, permissions and questions.
   recap: { height: 184, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
-  wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
+  // 44 more than the other cards, for computer use on a line under the outfits and looks.
+  wardrobe: { height: 204, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   // A Gemini Live call (views/live.ts): the chat's room, Lumo where he is in it.
   live: { height: 240, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   // The Tools tab (views/tools.ts): the list, Lumo where he is in the chat.
@@ -130,6 +131,9 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
 
 /** The question view with options to pick from: room for two rows of them. */
 export const QUESTION_PICKER_H = 200;
+
+/** The permission card with an email the AI wants to send: room to read it before Send. */
+export const EMAIL_CARD_H = 344;
 
 /** Chat view grows with the conversation — IslandContainer.chatPromptHeight. */
 export function chatPromptHeight(messageCount: number): number {
@@ -147,6 +151,9 @@ const MIN_CHAT_H = 200;
 export const CHAT_PANEL_OPEN = 99;
 /** A list open in the chat needs room for its rows and the text field below it. */
 const MIN_PANEL_H = 340;
+/** The chat's message count while the Listening panel fills it: its rows want more room than a list. */
+export const CHAT_LISTENING = 149;
+const MIN_LISTENING_H = 440;
 /** The chat's message count in the tool workshop, whose panel needs room for its draft and buttons. */
 export const CHAT_FORGE = 199;
 const MIN_FORGE_H = 440;
@@ -185,7 +192,9 @@ export function pickedHeight(shape: IslandShape): number {
 /** The chat's height: the one picked, or one that grows with the messages. */
 export function chatHeight(shape: IslandShape, messageCount: number): number {
   const picked = pickedHeight(shape);
-  const floor = messageCount >= CHAT_FORGE ? MIN_FORGE_H : messageCount >= CHAT_PANEL_OPEN ? MIN_PANEL_H : MIN_CHAT_H;
+  const floor = messageCount >= CHAT_FORGE
+    ? MIN_FORGE_H
+    : messageCount >= CHAT_LISTENING ? MIN_LISTENING_H : messageCount >= CHAT_PANEL_OPEN ? MIN_PANEL_H : MIN_CHAT_H;
   return Math.max(floor, picked > 0 ? picked : chatPromptHeight(messageCount));
 }
 

@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { along, ease, keyCaps, toCss, typedTail } = await import("../src/computer/fx.ts");
+const { aimSide, along, ease, keyCaps, sparks, toCss, typedTail } = await import("../src/computer/fx.ts");
 
 test("the glow follows the mouse on the same eased curve", () => {
   assert.equal(ease(0), 0);
@@ -41,4 +41,30 @@ test("the typing bubble shows the end of the text, on one line", () => {
   const long = typedTail("x".repeat(100), 10);
   assert.equal([...long].length, 10);
   assert.ok(long.startsWith("…"));
+});
+
+test("the Aim corners start wide and close in on the spot before the mouse sets off", () => {
+  assert.equal(aimSide(0, 600), 46);
+  assert.equal(aimSide(600, 600), 24);
+  assert.equal(aimSide(9999, 600), 24, "never tighter than the spot");
+  assert.equal(aimSide(0, 0), 24, "no glide: already there");
+  let last = Infinity;
+  for (let e = 0; e <= 600; e += 50) {
+    const side = aimSide(e, 600);
+    assert.ok(side <= last, `${e}: ${side}`);
+    last = side;
+  }
+});
+
+test("a click's sparks fly all round, a little turned each time", () => {
+  const a = sparks(7, 0);
+  assert.equal(a.length, 7);
+  for (const { dx, dy } of a) {
+    const r = Math.hypot(dx, dy);
+    assert.ok(r > 16 && r <= 22.01, String(r));
+  }
+  // All round: some go each way.
+  assert.ok(a.some((s) => s.dx > 0) && a.some((s) => s.dx < 0));
+  assert.ok(a.some((s) => s.dy > 0) && a.some((s) => s.dy < 0));
+  assert.notDeepEqual(sparks(7, 0.37), a);
 });

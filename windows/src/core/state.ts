@@ -13,7 +13,7 @@ import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
-import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
+import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
 import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
@@ -92,6 +92,19 @@ export interface ApprovalInfo {
   simple?: boolean;
   /** The project of the session asking, when the pill is named after one (two sessions can share a pill). */
   project?: string;
+  /** An email the AI wants to send (mail.rs, `mail_send`): shown whole, sent only with a click on Send. */
+  email?: OutgoingEmail;
+}
+
+/** An email on its card: from the Email pill's account, to whom, what. */
+export interface OutgoingEmail {
+  from: string;
+  to: string[];
+  cc: string[];
+  subject: string;
+  body: string;
+  /** The files attached: each one's name, size in bytes and full path. */
+  attachments: { name: string; size: number; path: string }[];
 }
 
 /** One question of an AskUserQuestion call. */
@@ -161,6 +174,16 @@ export function parseMotion(v: unknown): LumoMotion {
 }
 
 /** The engine's ambient amount for a motion setting. */
+/** Settings → General → Security lets the AI read the email or the calendar: anything but "none". */
+export function aiReads(v: unknown): boolean {
+  return v !== "none";
+}
+
+/** Settings → General → Security → Email lets the AI send email: "Read and send", or "Read, send and manage". */
+export function aiSends(v: unknown): boolean {
+  return v === "send" || v === "manage";
+}
+
 export function motionAmount(v: unknown): number {
   const m = parseMotion(v);
   return m === "still" ? 0 : m === "lively" ? 1.8 : 1;
@@ -267,8 +290,14 @@ export interface Settings {
   chatShareExplorer: boolean;
   /** Every message carries the open windows and their documents (desk.rs). */
   chatShareOpen: boolean;
+  /** Every message carries the browsers' open tabs (core/screen.ts autoShare). Off by default. */
+  chatShareTabs: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
+  /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
+  aiMailAccess: string;
+  /** The same for the calendar's events. */
+  aiCalendarAccess: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -288,6 +317,14 @@ export interface Settings {
    * parseLook (character/wardrobe.ts).
    */
   lumoCharacter: string;
+  /**
+   * The mouse Claude wears while it uses the computer, picked in the wardrobe:
+   * "direct" (a dark arrow) or "lucciola" (a butter one). Read it through
+   * parseComputerCursor (character/wardrobe.ts).
+   */
+  computerCursor: string;
+  /** Corners close in on where Claude is about to click (the wardrobe's Aim). */
+  computerAim: boolean;
   /**
    * A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
@@ -373,7 +410,10 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShowUsage: false,
   chatShareExplorer: false,
   chatShareOpen: true,
+  chatShareTabs: false,
   chatComputerUse: false,
+  aiMailAccess: "read",
+  aiCalendarAccess: "read",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
@@ -381,6 +421,8 @@ export const DEFAULT_SETTINGS: Settings = {
   lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
   lumoCharacter: DEFAULT_LOOK,
+  computerCursor: DEFAULT_COMPUTER_CURSOR,
+  computerAim: true,
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
@@ -422,6 +464,8 @@ class AppState {
   liveState: BotStateName | null = null;
   /** A Gemini Live call is on: the island opens on it, and the compact island stays. */
   liveActive = false;
+  /** Claude is using the computer for the chat: the island stays compact and on screen. */
+  computerActive = false;
   /**
    * The chat is answering: what it is doing, in words ("Reading main.ts"), or
    * null once the answer is being written. For the closed island (core/compact.ts).
@@ -473,6 +517,8 @@ class AppState {
   chatHistory: ChatMessage[] = [];
   /** The model picker or the past chats are open: the chat takes its full height. */
   chatPanelOpen = false;
+  /** The open list is the Listening panel, which wants more room (core/layout.ts CHAT_LISTENING). */
+  listeningOpen = false;
   /**
    * A picture of the chat's previews, opened big: it fills the whole open
    * island, and Lumo steps out of its way (views/picture.ts, island.ts).

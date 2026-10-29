@@ -3,10 +3,11 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_FORGE, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_LISTENING, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
+  EMAIL_CARD_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
   zoomStep,
 } from "../core/layout";
@@ -16,7 +17,7 @@ import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../character/engine";
 import { Greeting } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
-import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
+import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
@@ -69,6 +70,8 @@ const STRAY_DRAG_MS = 300;
  * key typed in it gives it this long again.
  */
 const SHARE_GRACE = 10;
+/** How close a dragged file comes to the island before it opens for the drop (page px). */
+const DRAG_NEAR = 120;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
 
@@ -242,7 +245,7 @@ export class Island {
       State.notify();
     });
     State.subscribe(() => {
-      this.fsm.held = State.liveActive;
+      this.fsm.held = State.liveActive || State.computerActive;
       this.fsm.holdChanged();
       this.dirty = true;
       this.ensureRunning();
@@ -259,6 +262,11 @@ export class Island {
     this.fsm.pinned = State.isPinned;
     if (State.pendingApproval) {
       presentApproval(this);
+      return;
+    }
+    // Claude is using the computer: back to Lumo's ring, out of its way.
+    if (fromChat && State.computerActive) {
+      this.collapse();
       return;
     }
     // The chat asked: back to the chat, where the answer is still coming.
@@ -413,6 +421,19 @@ export class Island {
         void Bridge.saveSettings(State.settings);
         Sound.play("pop");
         this.engine.triggerEmote("happy");
+        State.notify();
+      },
+      chooseComputerCursor: (cursor) => {
+        if (parseComputerCursor(State.settings.computerCursor) === cursor) return;
+        State.settings.computerCursor = cursor;
+        void Bridge.saveSettings(State.settings);
+        Sound.play("pop");
+        State.notify();
+      },
+      setComputerAim: (on) => {
+        State.settings.computerAim = on;
+        void Bridge.saveSettings(State.settings);
+        Sound.play("pop");
         State.notify();
       },
       showActivities: () => this.activities.unfold(),
@@ -667,6 +688,33 @@ export class Island {
 
   reveal() {
     this.fsm.reveal();
+  }
+
+  /** The chat closed the island for computer use: it reopens on the chat afterwards. */
+  private foldedForComputer = false;
+
+  /**
+   * Claude starts using the computer (computer.rs): the island closes to its
+   * compact form, Lumo's ring, and stays on screen until Claude is done; a card
+   * waiting for an answer is left as it is. Afterwards the chat it closed
+   * comes back, with Claude's answer.
+   */
+  onComputer(on: boolean) {
+    if (State.computerActive === on) return;
+    State.computerActive = on;
+    if (on) {
+      this.foldedForComputer = false;
+      if (!State.pendingApproval && State.mode === "expanded") {
+        this.foldedForComputer = State.view === "prompt";
+        this.collapse();
+      } else if (State.mode === "hidden" && !State.paused) {
+        this.reveal();
+      }
+    } else if (this.foldedForComputer) {
+      this.foldedForComputer = false;
+      if (this.fsm.state === "petit" && !State.pendingApproval) this.setView("prompt");
+    }
+    State.notify();
   }
 
   // ── The right-click menu ────────────────────────────────────────────────────
@@ -1177,6 +1225,9 @@ export class Island {
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
       h = QUESTION_PICKER_H;
     }
+    if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
+      h = Math.max(h, EMAIL_CARD_H);
+    }
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
     return { w, h, r };
   }
@@ -1328,10 +1379,10 @@ export class Island {
     return { x, y, w, h: hh };
   }
 
-  /** A page point on the island itself (where a file can be dropped). */
-  private overIsland(x: number, y: number): boolean {
+  /** A page point on the island itself (where a file can be dropped), or within `margin` of it. */
+  private overIsland(x: number, y: number, margin = 0): boolean {
     const r = this.islandRect();
-    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    return x >= r.x - margin && x <= r.x + r.w + margin && y >= r.y - margin && y <= r.y + r.h + margin;
   }
 
   /** The edge the island hangs from: always the top where it cannot be moved. */
@@ -1517,8 +1568,13 @@ export class Island {
       }
     });
 
-    // A file is taken only with the cursor on the island, not just near it.
-    void onDragDrop((e) => this.onDragDrop(e), (x, y) => this.overIsland(x, y));
+    // A file dragged near the island opens it; it is taken only with the
+    // cursor on the island itself.
+    void onDragDrop(
+      (e) => this.onDragDrop(e),
+      (x, y) => this.overIsland(x, y),
+      (x, y) => this.overIsland(x, y, DRAG_NEAR),
+    );
 
     // Outside Tauri (plain browser) drive the cursor from DOM events so the
     // island can be inspected with `npm run dev`.
@@ -1567,9 +1623,12 @@ export class Island {
     // never opens it. Only while they are dragged or resized off the open
     // island do they count as it.
     const hit = this.hitRect();
-    const inIsland = (overPanel && State.mode === "expanded") || (
+    // While Claude uses the computer the mouse is Claude's (computer.rs): passing
+    // over the island never opens it. A card hands it back to the user.
+    const claudes = State.computerActive && !State.pendingApproval;
+    const inIsland = !claudes && ((overPanel && State.mode === "expanded") || (
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
-      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
+      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN));
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1595,7 +1654,7 @@ export class Island {
     }
 
     // Bot hover → love
-    const overBot = State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
+    const overBot = !claudes && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
     if (overBot && !this.botHovering) this.botHoverIn(x, y);
     if (!overBot && this.botHovering) this.cancelBotHover();
     this.botHovering = overBot;
@@ -1767,10 +1826,12 @@ export class Island {
     // The drop canvas draws its own Lumo; two of them would overlap.
     // The big picture fills the island: Lumo steps out of its way meanwhile.
     const picture = State.picture != null;
-    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture;
+    // The Listening panel takes the whole chat, Lumo's place too.
+    const listening = State.listeningOpen && State.view === "prompt" && State.chatSlot === "chat";
+    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture && !listening;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
-    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture) {
+    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening) {
       const d = p.diameter;
       const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";
@@ -1805,10 +1866,10 @@ export class Island {
     const ctx = this.botCanvas.getContext("2d");
     if (!ctx) return;
 
-    const focus = State.focusTask;
     // While a plan card is open Lumo wears the plan's colour, like its pill. A
-    // white pill leaves him in his own butter yellow.
-    const wear = planCardOpen() ? openPlanColor() : focus?.isIntegration ? focus.color : null;
+    // white pill leaves him in his own butter yellow. An integration in front
+    // keeps its own colours on its pill and card, and Lumo stays his own.
+    const wear = planCardOpen() ? openPlanColor() : null;
     // Dozing, he is his sleeping grey whatever pill is in front.
     this.engine.bodyColor = wear && !this.dozing && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
     this.engine.particleOverhang = BOT_OVERHANG;
@@ -1824,11 +1885,12 @@ export class Island {
       }
     }
     // Only the main Lumo is dressed — the one of the main tool's pill (Settings →
-    // Active pills): a focused integration pill shows its own colours, unless
-    // the wardrobe is open.
+    // Active pills) or an integration's, where he stays himself — unless the
+    // wardrobe is open.
     // In the wardrobe the hovered outfit swaps in at once, without the drop-in.
     const inWardrobe = State.mode === "expanded" && State.view === "wardrobe";
-    const mainFocused = State.focusId == null || State.focusId === State.mainPillId;
+    const mainFocused =
+      State.focusId == null || State.focusId === State.mainPillId || State.focusTask?.isIntegration === true;
     const showOutfit = mainFocused || State.mode !== "expanded" || inWardrobe;
     const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.lumoOutfit));
     this.engine.setOutfit(showOutfit ? outfit : "none", !inWardrobe);
@@ -2079,7 +2141,8 @@ export class Island {
   /** What the chat's height follows: its messages, or the most room while a list (or the tool workshop) is open. */
   private get chatCount(): number {
     if (State.chatSlot === "forge") return CHAT_FORGE;
-    return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
+    if (State.chatPanelOpen) return State.listeningOpen ? CHAT_LISTENING : CHAT_PANEL_OPEN;
+    return State.chatHistory.length;
   }
 }
 

@@ -862,24 +862,19 @@ test("an Antigravity session outside the chat still keeps its approvals in the a
   assert.equal(task("agent_antigravity"), undefined);
 });
 
-test("in Auto, a command of the chat's Antigravity CLI run that only looks runs with no card", () => {
+test("in Auto, every request of the chat's Antigravity CLI run goes through with no card", () => {
   State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto" };
-  hook({
-    hook_event_name: "PermissionRequest", request_id: "a4", lumo_island: true, lumo_agent: "antigravity",
-    tool_name: "run_command", tool_input: { command: "git status --short" },
-  });
-  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }]);
+  for (const [id, command] of [["a4", "git status --short"], ["a5", "npm install"]]) {
+    hook({
+      hook_event_name: "PermissionRequest", request_id: id, lumo_island: true, lumo_agent: "antigravity",
+      tool_name: "run_command", tool_input: { command },
+    });
+  }
+  hook({ hook_event_name: "PermissionRequest", request_id: "a8", lumo_island: true, lumo_agent: "antigravity", tool_name: "browser_click" });
+  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }, { requestId: "a5" }, { requestId: "a8" }]);
   assert.deepEqual(sent("approval_decision"), [], "not a click: nothing for the recap");
   assert.equal(State.pendingApproval, null);
   assert.deepEqual(asked, []);
-
-  // Anything else is the usual card, Auto or not.
-  hook({
-    hook_event_name: "PermissionRequest", request_id: "a5", lumo_island: true, lumo_agent: "antigravity",
-    tool_name: "run_command", tool_input: { command: "npm install" },
-  });
-  assert.equal(State.pendingApproval?.requestId, "a5");
-  assert.deepEqual(sent("approval_auto_allow"), [{ requestId: "a4" }]);
 });
 
 test("Auto lets nothing through when asking every time, nor for a session outside the chat", () => {
@@ -1066,4 +1061,67 @@ test("the chat's own Claude Code runs are not sessions of the pill", () => {
   hook({ hook_event_name: "PermissionRequest", request_id: "c1", session_id: "chat", lumo_island: true, tool_name: "Bash" });
   hook({ hook_event_name: "Stop", session_id: "a", cwd: "/p/alpha" });
   assert.equal(task().state, "finished");
+});
+
+// ── An email the AI wants to send (mail.rs send) ─────────────────────────────
+
+test("an email to send is its own card, whole, and never answered by itself", () => {
+  const email = {
+    from: "me@example.com", to: ["ada@example.com"], cc: [], subject: "Ciao", body: "A domani",
+    attachments: [{ name: "Analisi2.pdf", size: 1200, path: "C:\\Users\\me\\Documents\\Analisi2.pdf" }],
+  };
+  const card = (request_id, extra = {}) => hook({
+    hook_event_name: "PermissionRequest", request_id, lumo_island: true,
+    tool_name: "mcp__lumo__mail_send", tool_input: { to: email.to, cc: [], subject: "Ciao" },
+    lumo_mail_send: email, ...extra,
+  });
+  // Auto for Antigravity CLI and simple requests on the closed island: neither skips it.
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto", quickApprovals: true };
+  card("m1", { lumo_agent: "antigravity" });
+  assert.deepEqual(sent("approval_auto_allow"), []);
+  assert.deepEqual(State.pendingApproval.email, email);
+  assert.equal(State.pendingApproval.command, "ada@example.com");
+  assert.equal(State.pendingApproval.quick, undefined);
+  assert.ok(!asked.includes("quick"));
+  assert.ok(asked.includes("alert:approval"));
+});
+
+test("an email's files come with it, and anything that is not one is left out", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "m2", lumo_island: true, tool_name: "mcp__lumo__mail_send",
+    lumo_mail_send: { to: ["ada@example.com"], body: "x", attachments: [{ name: "a.pdf", size: 3, path: "C:\\a.pdf" }, null, { size: 2 }, "b.pdf"] },
+  });
+  assert.deepEqual(State.pendingApproval.email.attachments, [{ name: "a.pdf", size: 3, path: "C:\\a.pdf" }]);
+  State.pendingApproval = null;
+  hook({ hook_event_name: "PermissionRequest", request_id: "m3", lumo_island: true, tool_name: "mcp__lumo__mail_send", lumo_mail_send: { to: ["ada@example.com"], body: "x" } });
+  assert.deepEqual(State.pendingApproval.email.attachments, [], "none");
+});
+
+// ── A change the AI wants to make to an email (mail.rs manage) ───────────────
+
+test("a change to an email is a card of its own, saying what and to which email, never answered by itself", () => {
+  State.settings = { ...DEFAULT_SETTINGS, chatPermissionMode: "auto", quickApprovals: true };
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "x1", lumo_island: true, lumo_agent: "antigravity",
+    tool_name: "mcp__lumo__mail_trash", tool_input: { id: "inbox:4" },
+    lumo_mail_action: { actions: ["trash"], folder: "Trash", from: "Ada <ada@example.com>", subject: "Pranzo", date: "x" },
+  });
+  assert.deepEqual(sent("approval_auto_allow"), []);
+  assert.equal(State.pendingApproval.command, "Move to the trash");
+  assert.equal(State.pendingApproval.reason, "Ada <ada@example.com>: Pranzo");
+  assert.equal(State.pendingApproval.quick, undefined);
+  assert.ok(asked.includes("alert:approval"));
+  State.pendingApproval = null;
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "x2", lumo_island: true, tool_name: "mcp__lumo__mail_mark",
+    lumo_mail_action: { actions: ["read", "unstar", "anything"], subject: "" },
+  });
+  assert.equal(State.pendingApproval.command, "Mark as read · Remove the star");
+  assert.equal(State.pendingApproval.reason, "(no subject)");
+  State.pendingApproval = null;
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "x3", lumo_island: true, tool_name: "mcp__lumo__mail_move",
+    lumo_mail_action: { actions: ["move"], folder: "Clienti", from: "bob@example.com", subject: "Offerta" },
+  });
+  assert.equal(State.pendingApproval.command, "Move to Clienti");
 });

@@ -145,9 +145,20 @@ pub struct Settings {
     /// Every chat message carries the open windows and the documents they
     /// show, found on disk (desk.rs). On until the user turns it off.
     pub chat_share_open: bool,
+    /// Every chat message carries the browsers' open tabs (Settings → General →
+    /// Security; the chat view reads it, src/core/screen.ts autoShare). Off
+    /// until the user turns it on.
+    pub chat_share_tabs: bool,
     /// The chat's Claude Code may see the screen, click and type (computer.rs,
     /// lumo-hook --mcp), Windows only. Off until the user turns it on.
     pub chat_computer_use: bool,
+    /// What the AI may do with the user's email (Settings → General →
+    /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
+    /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
+    /// Kept as it comes; mail.rs reads anything but "none" as "read".
+    pub ai_mail_access: String,
+    /// The same for the calendar's events: "read" or "none".
+    pub ai_calendar_access: String,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
     /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
@@ -191,6 +202,14 @@ pub struct Settings {
     /// ring of light), "punto", "goccia" or "lucciola" (the firefly). Kept as
     /// it comes; src/character/wardrobe.ts reads anything else as "filo".
     pub lumo_character: String,
+    /// The mouse Claude wears while it uses the computer, picked in the
+    /// wardrobe: "direct" (a dark arrow with a white edge) or "lucciola" (a
+    /// butter one with a light in its tail). Kept as it comes; computer.rs
+    /// reads anything else as "direct".
+    pub computer_cursor: String,
+    /// Corners close in on where Claude is about to click (the overlay,
+    /// src/computer). Turned off in the wardrobe; on by default.
+    pub computer_aim: bool,
     /// A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB"),
     /// picked in Settings → Active pills. Empty means the catalog's colours.
     /// Kept as it comes, like `lumo_outfit`: src/core/pill-colors.ts reads
@@ -274,7 +293,10 @@ impl Default for Settings {
             chat_show_usage: false,
             chat_share_explorer: false,
             chat_share_open: true,
+            chat_share_tabs: false,
             chat_computer_use: false,
+            ai_mail_access: "read".into(),
+            ai_calendar_access: "read".into(),
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -289,6 +311,8 @@ impl Default for Settings {
             lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
             lumo_character: "filo".into(),
+            computer_cursor: "direct".into(),
+            computer_aim: true,
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
@@ -598,7 +622,10 @@ mod tests {
   "chatShowUsage": true,
   "chatShareExplorer": true,
   "chatShareOpen": false,
+  "chatShareTabs": true,
   "chatComputerUse": true,
+  "aiMailAccess": "none",
+  "aiCalendarAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -613,6 +640,8 @@ mod tests {
   "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
   "lumoCharacter": "goccia",
+  "computerCursor": "lucciola",
+  "computerAim": false,
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "updateCheckOnOpen": false
@@ -745,6 +774,16 @@ mod tests {
         assert_eq!(loaded.lumo_character, "filo");
         assert_eq!(loaded.lumo_motion, "lively");
         assert_eq!(Settings::default().lumo_character, "filo");
+    }
+
+    #[test]
+    fn a_file_from_before_the_computer_cursors_wears_the_dark_arrow_and_aims() {
+        let s: Settings = serde_json::from_str(r#"{"chatComputerUse":true}"#).unwrap();
+        assert_eq!(s.computer_cursor, "direct");
+        assert!(s.computer_aim);
+        let loaded = parse(CUSTOM.as_bytes()).unwrap();
+        assert_eq!(loaded.computer_cursor, "lucciola");
+        assert!(!loaded.computer_aim);
     }
 
     #[test]
@@ -1038,7 +1077,10 @@ mod tests {
                 "chatShowUsage",
                 "chatShareExplorer",
                 "chatShareOpen",
+                "chatShareTabs",
                 "chatComputerUse",
+                "aiMailAccess",
+                "aiCalendarAccess",
                 "liveModel",
                 "liveThinking",
                 "liveVoice",
@@ -1053,6 +1095,8 @@ mod tests {
                 "lumoOutfit",
                 "lumoMotion",
                 "lumoCharacter",
+                "computerCursor",
+                "computerAim",
                 "pillColors",
                 "language",
                 "updateCheckOnOpen",

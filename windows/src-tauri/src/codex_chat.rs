@@ -43,7 +43,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
-use crate::claude_code::{self, cli_command, file_name, is_screenshot, kill_tree, pretty_tool, safe_session, short, Activity};
+use crate::claude_code::{self, cli_command, file_name, is_screenshot, kill_tree, pretty_tool, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
 
@@ -126,8 +126,10 @@ fn policy(mode: &str) -> (&'static str, Value) {
 /// Lumo's MCP servers for the chat's thread, as Codex configuration: the
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
 /// tools while one of them is on (`lumo_tools`, which ask on the island
-/// themselves, tools.rs). Codex calls Lumo's own tools without asking.
-fn mcp_config(chat_id: &str, tools: bool) -> Value {
+/// themselves, tools.rs), with the email's tools as Security lets the AI have
+/// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card). Codex
+/// calls Lumo's own tools without asking.
+fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
     let server = |args: &[&str]| {
         let mut entry = crate::computer::server_entry();
         entry["args"] = json!(args);
@@ -135,10 +137,14 @@ fn mcp_config(chat_id: &str, tools: bool) -> Value {
             entry["env"]["LUMO_CHAT_ID"] = json!(chat_id);
         }
         entry["default_tools_approval_mode"] = json!("approve");
+        // An email waits for the user's click on its card (108 s at most) and
+        // then for the mail server: longer than Codex's own minute.
+        entry["tool_timeout_sec"] = json!(300);
         entry
     };
     let mut servers = serde_json::Map::new();
-    servers.insert("lumo".into(), server(&["--mcp", "--tools=island"]));
+    let kit = if mail.is_empty() { "--tools=island".to_string() } else { format!("--tools={mail},island") };
+    servers.insert("lumo".into(), server(&["--mcp", &kit]));
     if tools {
         servers.insert(crate::tools::SERVER.into(), server(&["--mcp", "--tools=user"]));
     }
@@ -183,6 +189,50 @@ fn activity_for(item: &Value) -> Option<Activity> {
         },
         _ => return None,
     })
+}
+
+/// The files an item reads, changes or makes, for the chat's files (claude_code.rs
+/// FileTouch): what a command reads, as Codex parsed it, a picture it looks
+/// at, and each change of a file change (a deletion is none). A path may be
+/// relative to the chat's folder (`in_dir`). Never a screenshot of the chat's.
+fn touches_for(item: &Value) -> Vec<FileTouch> {
+    let raw = |kind: &'static str, path: &str| {
+        let path = path.trim();
+        (!path.is_empty() && !is_screenshot(&file_name(path))).then(|| FileTouch { kind, path: path.to_string() })
+    };
+    match item["type"].as_str() {
+        Some("commandExecution") => item["commandActions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|a| a["type"].as_str() == Some("read"))
+            .filter_map(|a| a["path"].as_str().and_then(|p| raw("read", p)))
+            .collect(),
+        Some("imageView") => item["path"].as_str().and_then(|p| raw("read", p)).into_iter().collect(),
+        Some("fileChange") => item["changes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| {
+                let kind = c["kind"].as_str().or_else(|| c["kind"]["type"].as_str()).unwrap_or("update");
+                let kind = match kind {
+                    "add" => "created",
+                    "delete" => return None,
+                    _ => "edited",
+                };
+                c["path"].as_str().and_then(|p| raw(kind, p))
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `touch` with its path made whole: a relative one is in `dir`, the chat's folder.
+fn in_dir(mut touch: FileTouch, dir: &Path) -> Option<FileTouch> {
+    if !claude_code::is_full_path(&touch.path) {
+        touch.path = dir.join(&touch.path).to_string_lossy().to_string();
+    }
+    claude_code::is_full_path(&touch.path).then_some(touch)
 }
 
 /// The command a card shows: what Codex parsed it into (`touch made.txt`),
@@ -271,6 +321,10 @@ struct Run {
     pending: Vec<(String, Activity)>,
     /// The paths of each file change, by item, for its card.
     files: HashMap<String, Vec<String>>,
+    /// The files each running item reads or changes, by item: told once it ran.
+    touching: HashMap<String, Vec<FileTouch>>,
+    /// Files used by items that ran, not passed on yet (`take_files`).
+    touched: Vec<FileTouch>,
     /// The plan Codex gave last, not yet passed on (`take_plan`).
     plan: Option<Value>,
     plan_seen: Option<Value>,
@@ -326,9 +380,20 @@ impl Run {
                             let paths = item["changes"].as_array().into_iter().flatten().filter_map(|c| c["path"].as_str()).map(str::to_string).collect();
                             self.files.insert(id.to_string(), paths);
                         }
+                        if !done {
+                            let touches = touches_for(item);
+                            if !touches.is_empty() {
+                                self.touching.insert(id.to_string(), touches);
+                            }
+                        }
                         if done {
                             if item["status"].as_str() == Some("declined") {
                                 self.denied += 1;
+                            }
+                            // Only an item that ran used its files.
+                            let touches = self.touching.remove(id).unwrap_or_else(|| touches_for(item));
+                            if !matches!(item["status"].as_str(), Some("declined" | "failed")) {
+                                self.touched.extend(touches);
                             }
                             self.finished(id);
                         } else if let Some(activity) = activity_for(item) {
@@ -412,6 +477,11 @@ impl Run {
 
     fn take_plan(&mut self) -> Option<Value> {
         self.plan.take()
+    }
+
+    /// The files used since the last time, oldest first.
+    fn take_files(&mut self) -> Vec<FileTouch> {
+        std::mem::take(&mut self.touched)
     }
 }
 
@@ -650,6 +720,7 @@ enum Ended {
 /// needed), blocking. `text(fresh)` is the question: `fresh` when the thread
 /// is new and has not seen the chat's turns. `ask` puts a card up and calls
 /// back with the click (true: allowed). The thread is returned with the run.
+#[allow(clippy::too_many_arguments)]
 fn live_turn(
     spec: TurnSpec,
     text: impl FnOnce(bool) -> String,
@@ -657,6 +728,7 @@ fn live_turn(
     ask: impl Fn(Value, Box<dyn FnOnce(bool) + Send>),
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
 ) -> Result<(Run, Option<String>), String> {
     let key = format!("{}\n{}", spec.exe.to_string_lossy(), spec.config);
@@ -788,6 +860,9 @@ fn live_turn(
         if let Some(activity) = activity.filter(|_| !state.stopped) {
             on_activity(&activity);
         }
+        for touch in state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)) {
+            on_file(&touch);
+        }
         if let Some(plan) = state.take_plan() {
             on_plan(&plan);
         }
@@ -883,12 +958,15 @@ pub async fn send(
     let files = chat.files();
     let workshop = chat.is_workshop();
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
+    // Lumo's email tools, usable only while this turn runs.
+    let mail = crate::mail::ai_tools(app);
+    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     let spec = TurnSpec {
         exe,
         dir: claude_code::work_dir(),
         chat_id: chat.id().to_string(),
         thread,
-        config: mcp_config(chat.id(), tools),
+        config: mcp_config(chat.id(), tools, mail),
         model: model.to_string(),
         effort: effort.to_string(),
         mode: mode.to_string(),
@@ -926,6 +1004,7 @@ pub async fn send(
             },
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
+            |file| events.file(&app2, file),
             |plan| {
                 let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": "update_plan", "input": plan, "agent": "Codex", "color": COLOR }));
             },
@@ -983,7 +1062,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {});
+    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {});
     close(REVIEW);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
@@ -1063,6 +1142,28 @@ mod tests {
     }
 
     #[test]
+    fn the_files_codex_reads_and_changes_are_told_once_they_ran() {
+        let mut run = Run::default();
+        feed(&mut run, r#"{"method":"item/started","params":{"item":{"type":"commandExecution","id":"c1","commandActions":[{"type":"read","name":"main.rs","path":"C:\\p\\main.rs","command":"cat main.rs"}],"status":"inProgress"}}}"#);
+        assert!(run.take_files().is_empty(), "not before it ran");
+        feed(&mut run, r#"{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"c1","status":"completed"}}}"#);
+        assert_eq!(run.take_files(), vec![FileTouch { kind: "read", path: r"C:\p\main.rs".into() }]);
+
+        let change = r#"{"method":"item/started","params":{"item":{"type":"fileChange","id":"f1","changes":[{"path":"C:\\p\\new.rs","kind":{"type":"add"}},{"path":"lib.rs","kind":"update"},{"path":"C:\\p\\old.rs","kind":"delete"}],"status":"inProgress"}}}"#;
+        feed(&mut run, change);
+        feed(&mut run, r#"{"method":"item/completed","params":{"item":{"type":"fileChange","id":"f1","status":"completed"}}}"#);
+        let files = run.take_files();
+        assert_eq!(files, vec![FileTouch { kind: "created", path: r"C:\p\new.rs".into() }, FileTouch { kind: "edited", path: "lib.rs".into() }]);
+        let whole = in_dir(files[1].clone(), Path::new(r"C:\p")).unwrap();
+        assert!(claude_code::is_full_path(&whole.path) && whole.path.ends_with("lib.rs"), "{}", whole.path);
+
+        // Declined: nothing was changed.
+        feed(&mut run, &change.replace("f1", "f2"));
+        feed(&mut run, r#"{"method":"item/completed","params":{"item":{"type":"fileChange","id":"f2","status":"declined"}}}"#);
+        assert!(run.take_files().is_empty());
+    }
+
+    #[test]
     fn codexs_plan_goes_on_once_each_time_it_changes() {
         let mut run = Run::default();
         let line = r#"{"method":"turn/plan/updated","params":{"plan":[{"step":"Read","status":"completed"},{"step":"Write","status":"inProgress"}],"explanation":null}}"#;
@@ -1117,15 +1218,17 @@ mod tests {
 
     #[test]
     fn lumos_tools_go_to_codex_as_its_mcp_servers() {
-        let config = mcp_config("chat-1", false);
+        let config = mcp_config("chat-1", false, "");
         let lumo = &config["mcp_servers"]["lumo"];
         assert_eq!(lumo["args"], json!(["--mcp", "--tools=island"]));
         assert_eq!(lumo["env"]["LUMO_ISLAND_RUN"], "1");
         assert_eq!(lumo["env"]["LUMO_CHAT_ID"], "chat-1");
         assert_eq!(lumo["default_tools_approval_mode"], "approve");
         assert!(config["mcp_servers"].get(crate::tools::SERVER).is_none());
-        let both = mcp_config("chat-1", true);
+        let both = mcp_config("chat-1", true, "");
         assert_eq!(both["mcp_servers"][crate::tools::SERVER]["args"], json!(["--mcp", "--tools=user"]));
+        let mail = mcp_config("chat-1", false, "mail,mailsend");
+        assert_eq!(mail["mcp_servers"]["lumo"]["args"], json!(["--mcp", "--tools=mail,mailsend,island"]));
     }
 
     #[test]

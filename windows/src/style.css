@@ -1451,6 +1451,78 @@ body {
   display: none;
 }
 
+/* The card of an email the AI wants to send: the whole email, read before Send. */
+.mail-slot[hidden],
+.actions[hidden],
+.code[hidden] {
+  display: none;
+}
+
+.stack.mail-on {
+  justify-content: flex-start;
+  gap: 8px;
+  padding: 12px 44px 14px 116px !important;
+}
+
+.stack.mail-on > :not(.mail-slot) {
+  flex-shrink: 0;
+}
+
+.mail-slot {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.mail-card {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex: 1 1 auto;
+  min-height: 0;
+  max-width: 100%;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.mail-line {
+  display: flex;
+  gap: 8px;
+  font: 400 12px var(--font);
+  min-width: 0;
+}
+
+.mail-label {
+  color: var(--dim);
+  flex: 0 0 auto;
+  min-width: 52px;
+}
+
+.mail-value {
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: text;
+}
+
+.mail-body {
+  margin-top: 4px;
+  padding-top: 6px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  font: 400 12px/1.45 var(--font);
+  color: #e8e9ec;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  user-select: text;
+}
+
 .stack {
   position: relative;
   z-index: 1;
@@ -2476,6 +2548,512 @@ input[type="range"]::-webkit-slider-thumb {
   display: none;
 }
 
+/* The waves beside the folder: grey like the others while nothing listens;
+   lit, with a slow ring and how many, while something does. */
+.listen-btn {
+  position: relative;
+  transition: margin-left 0.2s ease-out;
+}
+
+/* The folder's count sticks out on its right: the waves keep their gap. */
+.files-btn.has-files + .listen-btn {
+  margin-left: 6px;
+}
+
+.listen-btn.listening {
+  color: #7dd3fc;
+  background: rgba(125, 211, 252, 0.14);
+}
+
+.listen-btn.listening:hover:not(:disabled),
+.listen-btn.listening.open {
+  color: #bae6fd;
+  background: rgba(125, 211, 252, 0.24);
+}
+
+.listen-btn.listening::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1.5px solid #7dd3fc;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  animation: listen-ping 2.4s ease-out infinite;
+}
+
+@keyframes listen-ping {
+  0% {
+    opacity: 0.55;
+    transform: scale(0.85);
+  }
+  70%,
+  100% {
+    opacity: 0;
+    transform: scale(1.35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .listen-btn.listening::after {
+    animation: none;
+    opacity: 0.35;
+    transform: none;
+  }
+}
+
+.tool-badge.listen-badge {
+  background: #7dd3fc;
+  color: #04121b;
+}
+
+/* The Listening panel: like the folder's, what listens now and what it heard. */
+.chat-body .listen-panel,
+.chat-body.picking .listen-panel {
+  display: none;
+}
+
+.chat-body.hearing .listen-panel {
+  display: flex;
+}
+
+/* It takes the whole chat, the buttons and the field too: its × closes it. */
+.chat-body.hearing .chat-log,
+.chat-body.hearing .chip-row,
+.chat-body.hearing .model-row,
+.chat-body.hearing .chat-bar {
+  display: none;
+}
+
+/* Lumo steps aside (island.ts): the panel has the chat's whole width. */
+.chat-body.hearing {
+  padding-left: 16px;
+}
+
+.listen-close {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 26px;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.06);
+  color: #8b929e;
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.listen-close:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.listen-head-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 24px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 11px var(--font);
+  color: #b0b5be;
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.listen-head-btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--ink);
+}
+
+.listen-head-btn[hidden] {
+  display: none;
+}
+
+.listen-head-btn.listen-add {
+  background: rgba(125, 211, 252, 0.14);
+  color: #7dd3fc;
+}
+
+.listen-head-btn.listen-add:hover {
+  background: rgba(125, 211, 252, 0.24);
+  color: #bae6fd;
+}
+
+.listen-list[hidden],
+.listen-form[hidden] {
+  display: none;
+}
+
+/* Its title and how many, Active and History on the right. */
+.listen-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  padding: 0 2px;
+}
+
+.listen-title {
+  font: 600 13px var(--font);
+  color: var(--ink);
+}
+
+.listen-seg {
+  margin-left: auto;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.listen-seg-btn {
+  height: 22px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  font: 500 11.5px var(--font);
+  color: #8b929e;
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.listen-seg-btn:hover {
+  color: var(--ink);
+}
+
+.listen-seg-btn.on {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.picker-list.listen-list {
+  gap: 6px;
+  padding-right: 2px;
+}
+
+/* One row each: the source's tile, what it waits for and what then, and on
+   the right once or every time and how it stands; Pause and Stop on hover. */
+.listen-row {
+  flex: 0 0 auto;
+  display: grid;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 52px;
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.035);
+  outline: none;
+  transition: background 0.15s ease-out;
+}
+
+.listen-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.listen-row.elsewhere {
+  cursor: pointer;
+}
+
+.listen-row:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+.listen-row.paused {
+  opacity: 0.55;
+}
+
+.listen-tile {
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  color: var(--tile);
+  background: color-mix(in srgb, var(--tile) 18%, transparent);
+}
+
+.listen-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.listen-name,
+.listen-detail {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.listen-name {
+  font: 600 12.5px var(--font);
+  color: var(--ink-2);
+}
+
+.listen-detail {
+  font: 400 11.5px var(--font);
+  color: #8b929e;
+}
+
+.listen-task {
+  color: #cfd2d7;
+}
+
+.listen-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  white-space: nowrap;
+}
+
+.listen-pill {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 600 10.5px/1.2 var(--font);
+  color: #c8cdd4;
+}
+
+.listen-pill.every {
+  background: rgba(167, 139, 250, 0.18);
+  color: #c4b5fd;
+}
+
+.listen-pill.met {
+  background: rgba(34, 197, 94, 0.18);
+  color: #86efac;
+}
+
+.listen-pill.not-met {
+  background: rgba(244, 80, 94, 0.18);
+  color: #fda4af;
+}
+
+.listen-status {
+  font: 400 11px var(--font);
+  font-variant-numeric: tabular-nums;
+  color: #6f7682;
+}
+
+.listen-row[role="button"] {
+  cursor: pointer;
+}
+
+/* An open row and its buttons: Pause, Edit, Go to the chat, Stop. */
+.listen-row-wrap {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.listen-row-wrap .listen-row {
+  background: transparent;
+}
+
+.listen-row-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 10px 48px;
+}
+
+.listen-act-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 500 11.5px var(--font);
+  color: #c8cdd4;
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.listen-act-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: var(--ink);
+}
+
+.listen-act-btn.stop:hover {
+  background: rgba(244, 80, 94, 0.16);
+  color: #f87171;
+}
+
+/* "Listen for something": every source, the ones still to come greyed. */
+.listen-catalog {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.listen-catalog[hidden] {
+  display: none;
+}
+
+.listen-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.listen-source {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.listen-source:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.listen-source.soon {
+  cursor: default;
+}
+
+.listen-source.soon .listen-tile,
+.listen-source.soon .listen-source-name,
+.listen-source.soon .listen-source-hint {
+  opacity: 0.45;
+}
+
+.listen-source-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+}
+
+.listen-soon {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 600 9.5px/1.2 var(--font);
+  color: #8b929e;
+}
+
+.listen-source-name {
+  font: 600 12.5px var(--font);
+  color: var(--ink-2);
+}
+
+.listen-source-hint {
+  font: 400 11px/1.35 var(--font);
+  color: #8b929e;
+}
+
+/* New listening and Pause all, under the list. */
+.listen-foot {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding-top: 2px;
+}
+
+.listen-foot[hidden] {
+  display: none;
+}
+
+.listen-foot .listen-head-btn {
+  height: 28px;
+  padding: 0 14px;
+  border-radius: 14px;
+  font-size: 12px;
+}
+
+/* Listen for something: a pull request, when, how often, and what then. */
+.listen-form {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+  padding: 2px 2px 0;
+}
+
+.listen-label {
+  margin-top: 4px;
+  font: 600 10.5px var(--font);
+  letter-spacing: 0.04em;
+  color: #8b929e;
+}
+
+.history-search.listen-input {
+  flex: 0 0 auto;
+}
+
+/* The path and, for files and folders, Choose… beside it. */
+.listen-target-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.listen-target-row .history-search.listen-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.listen-target-row .listen-head-btn[hidden],
+.listen-form .listen-input[hidden],
+.listen-form .listen-label[hidden] {
+  display: none;
+}
+
+.listen-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.listen-chips .picker-chip {
+  --accent: #7dd3fc;
+}
+
+.listen-error {
+  font: 400 11px/1.4 var(--font);
+  color: #ff8d97;
+}
+
+.listen-error:empty {
+  display: none;
+}
+
+.listen-form-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 /* Its title, how many, and Remove all when there are several. */
 .files-head {
   display: flex;
@@ -2557,11 +3135,6 @@ input[type="range"]::-webkit-slider-thumb {
 .files-tab:not(.on):hover {
   background: rgba(255, 255, 255, 0.12);
   color: var(--ink);
-}
-
-/* A chat's file has no ×: its name takes the room. */
-.attach-row.chat-file-row {
-  grid-template-columns: 34px minmax(0, 1fr);
 }
 
 .attach-path {
@@ -2656,6 +3229,66 @@ input[type="range"]::-webkit-slider-thumb {
 
 .attach-folder {
   --tile: #ff8a5b;
+}
+
+.attach-computer {
+  --tile: #94a3b8;
+}
+
+/* A folder of the list ("Computer", a kind of the chat's files): a row like
+   the others, with how many it holds and a chevron; its rows show, a little
+   in, once it is open. */
+.attach-group {
+  flex: 0 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.attach-group-head {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) auto 16px;
+  align-items: center;
+  column-gap: 10px;
+  min-height: 46px;
+  padding: 6px 8px 6px 6px;
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.035);
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.attach-group-head:hover {
+  background: rgba(255, 255, 255, 0.07);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.attach-group-head:focus-visible {
+  border-color: rgba(255, 255, 255, 0.35);
+}
+
+.attach-group-chevron {
+  display: grid;
+  place-items: center;
+  color: #8b929e;
+  transition: transform 0.15s ease-out;
+}
+
+.attach-group.open .attach-group-chevron {
+  transform: rotate(90deg);
+}
+
+.attach-group-items {
+  display: none;
+  flex-direction: column;
+  gap: 4px;
+  padding-left: 14px;
+}
+
+.attach-group.open .attach-group-items {
+  display: flex;
 }
 
 .attach-thumb {
@@ -5015,6 +5648,18 @@ img.zoomable {
   width: 28px;
   height: 28px;
   pointer-events: none;
+}
+
+/* Computer use, under the two parts: its title beside its buttons. */
+.wardrobe-extra {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.wardrobe-extra .wardrobe-part {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
 }
 
 /* ── Arabic: right to left ─────────────────────────────────────────────────────

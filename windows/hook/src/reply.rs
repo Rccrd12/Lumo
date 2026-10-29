@@ -79,10 +79,15 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     if crate::mcp::user_tool_call(tool, input) {
         return false;
     }
-    // Lumo's email tools only read the user's mailbox, its plan tool only
-    // shows, its island tools only start a timer or a watch (mcp.rs).
+    // Lumo's email tools only read the user's mailbox, or have Lumo's own
+    // card (an email to send, a change), its plan tool only shows, its island
+    // tools only start a timer or a watch (mcp.rs).
     if crate::mcp::lumo_call(tool, input).is_some_and(|name| {
-        crate::mcp::MAIL_NAMES.contains(&name) || name == crate::mcp::PLAN_NAME || crate::mcp::ISLAND_NAMES.contains(&name)
+        crate::mcp::MAIL_NAMES.contains(&name)
+            || crate::mcp::MAIL_SEND_NAMES.contains(&name)
+            || crate::mcp::MAIL_MANAGE_NAMES.contains(&name)
+            || name == crate::mcp::PLAN_NAME
+            || crate::mcp::ISLAND_NAMES.contains(&name)
     }) {
         return false;
     }
@@ -178,7 +183,7 @@ pub fn claude_wait_denied() -> String {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": "Lumo: do not wait for GitHub (or anything else) in a command, it holds the user's chat. Call Lumo's listen_pull_request tool instead (or, without it, write [[listen owner/repo#123 event: what to do then]] on a line of its own in your answer), say Lumo is listening, and end your answer: Lumo watches GitHub and messages you when it happens.",
+            "permissionDecisionReason": "Lumo: do not wait for GitHub (or anything else) in a command, it holds the user's chat. Call Lumo's listen tool instead (or, without it, write [[listen owner/repo#123 event: what to do then]] on a line of its own in your answer), say Lumo is listening, and end your answer: Lumo watches GitHub and messages you when it happens.",
         }
     })
     .to_string()

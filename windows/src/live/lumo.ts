@@ -22,7 +22,7 @@ import {
   effectivePct, type AntigravityPlanUsage, type CodexPlanUsage, type PlanUsage, type PlanWindow,
 } from "../core/plan";
 import { activeModel, providerDef } from "../core/providers";
-import { State, isSessionTask, type AgentTask, type ApprovalInfo, type ChatMessage, type IntegrationInfo } from "../core/state";
+import { State, aiReads, isSessionTask, type AgentTask, type ApprovalInfo, type ChatMessage, type IntegrationInfo } from "../core/state";
 import { mondayOf, summarize, type WeeklySummary } from "../recap/summary";
 import { LUMO_TOPICS, type LumoTopic } from "./protocol";
 
@@ -35,6 +35,9 @@ export function parseTopic(v: unknown): LumoTopic {
 /** Everything `lumoStatus` reads, collected at one moment. */
 export interface LumoFacts {
   now: number;
+  /** Settings → General → Security keeps the email, or the calendar, from the AI. */
+  mailOff?: boolean;
+  calendarOff?: boolean;
   tasks: AgentTask[];
   /** The sessions behind each pill (island/hooks.ts liveSessions), by pill id. */
   sessions: Record<string, LiveSession[]>;
@@ -79,6 +82,8 @@ export async function gatherLumo(topic: LumoTopic): Promise<LumoFacts> {
   ]);
   return {
     now,
+    mailOff: !aiReads(s.aiMailAccess),
+    calendarOff: !aiReads(s.aiCalendarAccess),
     tasks: State.tasks,
     sessions,
     diffs: State.sessionDiffs,
@@ -284,7 +289,11 @@ function github(f: LumoFacts, full: boolean): Json {
   return out;
 }
 
+/** What a section says when the user keeps it from the AI. */
+const KEPT_FROM_AI = "The user doesn't let the AI read this in Lumo (Settings → General → Security). Say so if asked.";
+
 function email(f: LumoFacts, full: boolean): Json {
+  if (f.mailOff) return { off: KEPT_FROM_AI };
   const i = info(f, "integration_mail");
   const missing = notReady(i, "Email");
   if (missing || !i) return missing ?? {};
@@ -303,6 +312,7 @@ function email(f: LumoFacts, full: boolean): Json {
 }
 
 function calendar(f: LumoFacts, full: boolean): Json {
+  if (f.calendarOff) return { off: KEPT_FROM_AI };
   const coming = f.events.filter((e) => e.end > f.now).slice(0, full ? 25 : 6);
   if (!coming.length) return { none: "No event in the next days, or no calendar is set in Lumo (Settings → Island)." };
   return {
