@@ -1663,7 +1663,8 @@ mod tests {
             Action::Click { at: Some((10, 20)), button: Button::Left, count: 2, hold: vec![Key::Vk(VK_SHIFT)] }
         );
         assert_eq!(parse("left_click", &json!({})).unwrap(), Action::Click { at: None, button: Button::Left, count: 1, hold: vec![] });
-        assert!(parse("left_click", &json!({ "coordinate": "10,20" })).is_err());
+        // A point written as text is read too (a_point_is_read_however_the_model_writes_it); one number is not a point.
+        assert!(parse("left_click", &json!({ "coordinate": "10" })).is_err());
         assert!(parse("mouse_move", &json!({})).is_err());
         assert_eq!(
             parse("scroll", &json!({ "scroll_direction": "down", "scroll_amount": 5 })).unwrap(),
