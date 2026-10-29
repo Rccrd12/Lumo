@@ -5017,6 +5017,18 @@ img.zoomable {
   pointer-events: none;
 }
 
+/* Computer use, under the two parts: its title beside its buttons. */
+.wardrobe-extra {
+  padding-top: 10px;
+  border-top: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.wardrobe-extra .wardrobe-part {
+  flex-direction: row;
+  align-items: center;
+  gap: 10px;
+}
+
 /* ── Arabic: right to left ─────────────────────────────────────────────────────
    i18n.ts sets <html data-dir="rtl">. The text of the cards reads and aligns
    right to left; Lumo, the pills, the header and the cards themselves keep

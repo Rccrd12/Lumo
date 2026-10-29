@@ -191,6 +191,14 @@ pub struct Settings {
     /// ring of light), "punto", "goccia" or "lucciola" (the firefly). Kept as
     /// it comes; src/character/wardrobe.ts reads anything else as "filo".
     pub lumo_character: String,
+    /// The mouse Claude wears while it uses the computer, picked in the
+    /// wardrobe: "direct" (a dark arrow with a white edge) or "lucciola" (a
+    /// butter one with a light in its tail). Kept as it comes; computer.rs
+    /// reads anything else as "direct".
+    pub computer_cursor: String,
+    /// Corners close in on where Claude is about to click (the overlay,
+    /// src/computer). Turned off in the wardrobe; on by default.
+    pub computer_aim: bool,
     /// A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB"),
     /// picked in Settings → Active pills. Empty means the catalog's colours.
     /// Kept as it comes, like `lumo_outfit`: src/core/pill-colors.ts reads
@@ -289,6 +297,8 @@ impl Default for Settings {
             lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
             lumo_character: "filo".into(),
+            computer_cursor: "direct".into(),
+            computer_aim: true,
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
@@ -613,6 +623,8 @@ mod tests {
   "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
   "lumoCharacter": "goccia",
+  "computerCursor": "lucciola",
+  "computerAim": false,
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "updateCheckOnOpen": false
@@ -745,6 +757,16 @@ mod tests {
         assert_eq!(loaded.lumo_character, "filo");
         assert_eq!(loaded.lumo_motion, "lively");
         assert_eq!(Settings::default().lumo_character, "filo");
+    }
+
+    #[test]
+    fn a_file_from_before_the_computer_cursors_wears_the_dark_arrow_and_aims() {
+        let s: Settings = serde_json::from_str(r#"{"chatComputerUse":true}"#).unwrap();
+        assert_eq!(s.computer_cursor, "direct");
+        assert!(s.computer_aim);
+        let loaded = parse(CUSTOM.as_bytes()).unwrap();
+        assert_eq!(loaded.computer_cursor, "lucciola");
+        assert!(!loaded.computer_aim);
     }
 
     #[test]
@@ -1053,6 +1075,8 @@ mod tests {
                 "lumoOutfit",
                 "lumoMotion",
                 "lumoCharacter",
+                "computerCursor",
+                "computerAim",
                 "pillColors",
                 "language",
                 "updateCheckOnOpen",

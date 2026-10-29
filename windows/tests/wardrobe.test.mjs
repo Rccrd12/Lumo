@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  OUTFIT_SELECTIONS, OUTFIT_LABELS, SeasonCache, parseOutfit, resolveOutfit,
+  OUTFIT_SELECTIONS, OUTFIT_LABELS, SeasonCache, parseComputerCursor, parseOutfit, resolveOutfit,
   seasonalOutfit, wardrobeHeader,
 } from "../src/character/wardrobe.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
@@ -88,4 +88,14 @@ test("the per-frame season lookup follows the calendar day", () => {
   assert.equal(cache.get("auto", new Date(2026, 11, 1, 0, 0, 1)), "scarf");
   assert.equal(cache.get("headphones", day(2026, 12, 1)), "headphones");
   assert.equal(cache.get("auto", day(2027, 4, 2)), "leaf");
+});
+
+test("Claude's mouse: the dark arrow unless Lucciola was picked, as computer.rs reads it", () => {
+  assert.equal(parseComputerCursor("lucciola"), "lucciola");
+  assert.equal(parseComputerCursor("direct"), "direct");
+  for (const raw of [undefined, null, "", "orange", 3]) assert.equal(parseComputerCursor(raw), "direct");
+  assert.equal(DEFAULT_SETTINGS.computerCursor, "direct");
+  assert.equal(DEFAULT_SETTINGS.computerAim, true);
+  assert.equal(wardrobeHeader({ cursor: "direct" }, "auto", day(2026, 7, 1)), "Direct · the dark arrow");
+  assert.equal(wardrobeHeader({ cursor: "aim" }, "auto", day(2026, 7, 1)), "Aim · corners close in before a click");
 });

@@ -117,7 +117,8 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   // 24 more than the other cards, for the two lines with top agent, project,
   // busiest day, longest session, permissions and questions.
   recap: { height: 184, botX: 62, botY: null, botDiameter: 58, agentMode: "column" },
-  wardrobe: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
+  // 44 more than the other cards, for computer use on a line under the outfits and looks.
+  wardrobe: { height: 204, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   // A Gemini Live call (views/live.ts): the chat's room, Lumo where he is in it.
   live: { height: 240, botX: 52, botY: null, botDiameter: 44, agentMode: "column" },
   // The Tools tab (views/tools.ts): the list, Lumo where he is in the chat.
