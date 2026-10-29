@@ -749,6 +749,10 @@ function securitySection(): HTMLElement {
     send && (value === "send" || value === "manage") ? value : aiReads(value) ? "read" : "none",
     onChange,
   );
+  const mailAccess = access(settings.aiMailAccess, (v) => { settings.aiMailAccess = v; void save(); }, true);
+  const calendarAccess = access(settings.aiCalendarAccess, (v) => { settings.aiCalendarAccess = v; void save(); });
+  // The section's three menus, one width, one under the other.
+  for (const menu of [permissions, mailAccess, calendarAccess]) menu.classList.add("security-select");
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
     note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
@@ -771,10 +775,8 @@ function securitySection(): HTMLElement {
       toggle(settings.chatShareTabs === true, (on) => { settings.chatShareTabs = on; void save(); }),
     ),
     group(SECURITY.mailAndCalendar),
-    setting(t("Email"), SECURITY.mailHint,
-      access(settings.aiMailAccess, (v) => { settings.aiMailAccess = v; void save(); }, true)),
-    setting(t("Calendar"), SECURITY.calendarHint,
-      access(settings.aiCalendarAccess, (v) => { settings.aiCalendarAccess = v; void save(); })),
+    setting(t("Email"), SECURITY.mailHint, mailAccess),
+    setting(t("Calendar"), SECURITY.calendarHint, calendarAccess),
     group(t("Computer use")),
     setting(COMPUTER_SETTINGS.label, COMPUTER_SETTINGS.hint,
       toggle(settings.chatComputerUse === true, (on) => {

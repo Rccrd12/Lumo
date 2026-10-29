@@ -921,3 +921,20 @@ class AppState {
 }
 
 export const State = new AppState();
+
+/**
+ * The pills beside the card, at most `max`, each kept where it already was:
+ * the pill clicked goes to the card and the one that leaves the card takes
+ * its place, so no other pill moves under the mouse. `before` is the ids shown
+ * last time, in their order; a pill no longer there leaves a gap the next one
+ * fills, and only gaps nothing fills close up.
+ */
+export function keepPillPlaces<T extends { id: string }>(before: string[], tasks: T[], max = 4): T[] {
+  const byId = new Map(tasks.map((t) => [t.id, t]));
+  const slots: (T | null)[] = before.slice(0, max).map((id) => byId.get(id) ?? null);
+  const placed = new Set(slots.filter((t): t is T => t != null).map((t) => t.id));
+  const waiting = tasks.filter((t) => !placed.has(t.id));
+  for (let i = 0; i < slots.length && waiting.length; i++) if (!slots[i]) slots[i] = waiting.shift()!;
+  while (slots.length < max && waiting.length) slots.push(waiting.shift()!);
+  return slots.filter((t): t is T => t != null);
+}

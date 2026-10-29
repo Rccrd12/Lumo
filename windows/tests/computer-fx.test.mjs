@@ -3,7 +3,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 
-const { aimSide, along, ease, keyCaps, sparks, toCss, typedTail } = await import("../src/computer/fx.ts");
+const { aimBox, aimSide, along, ease, keyCaps, sparks, toCss, typedTail } = await import("../src/computer/fx.ts");
 
 test("the glow follows the mouse on the same eased curve", () => {
   assert.equal(ease(0), 0);
@@ -67,4 +67,13 @@ test("a click's sparks fly all round, a little turned each time", () => {
   assert.ok(a.some((s) => s.dx > 0) && a.some((s) => s.dx < 0));
   assert.ok(a.some((s) => s.dy > 0) && a.some((s) => s.dy < 0));
   assert.notDeepEqual(sparks(7, 0.37), a);
+});
+
+test("the Aim square stays whole on the screen, with the spot inside it", () => {
+  assert.deepEqual(aimBox({ x: 500, y: 300 }, 24, 1000, 620), { left: 488, top: 288 }, "centred away from the edges");
+  for (const p of [{ x: 0, y: 0 }, { x: 999, y: 619 }, { x: 995, y: 5 }, { x: 3, y: 610 }]) {
+    const { left, top } = aimBox(p, 24, 1000, 620);
+    assert.ok(left >= 0 && top >= 0 && left + 24 <= 1000 && top + 24 <= 620, `whole for ${JSON.stringify(p)}`);
+    assert.ok(p.x >= left - 2 && p.x <= left + 26 && p.y >= top - 2 && p.y <= top + 26, `spot inside for ${JSON.stringify(p)}`);
+  }
 });

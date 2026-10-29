@@ -147,6 +147,16 @@ body.embedded .search-none {
   display: none;
 }
 
+/* Searching, the sections found stand one under the other as on a page of
+   their own, as close as two sections of one page. */
+.searching .page {
+  padding-bottom: 0;
+}
+
+.searching .content {
+  padding-bottom: 32px;
+}
+
 /* A window too narrow for the list and a section side by side: the list goes on top. */
 @media (max-width: 400px) {
   #settings-root {
@@ -346,6 +356,10 @@ section > h2 + div > .setting:first-child {
 .setting-control select {
   min-width: 150px;
   max-width: 220px;
+}
+
+.setting-control select.security-select {
+  width: 200px;
 }
 
 .setting-list {

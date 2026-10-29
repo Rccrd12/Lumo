@@ -256,6 +256,12 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     h("div", { class: "listen-label listen-catalog-title", text: tl(LISTENING_STRINGS.pick) }),
     catalogGrid,
     h("div", { class: "listen-form-buttons" }, catalogCancel));
+  // The tiles scroll between the title and Cancel, which stay; while more
+  // tiles wait below, the last row fades out.
+  const catalogMore = () =>
+    catalogGrid.classList.toggle("more", catalogGrid.scrollTop + catalogGrid.clientHeight < catalogGrid.scrollHeight - 2);
+  catalogGrid.addEventListener("scroll", catalogMore);
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(catalogMore).observe(catalogGrid);
 
   function drawCatalog() {
     clear(catalogGrid);
@@ -483,7 +489,8 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   function draw() {
     const watches = State.listening;
     const on = activeWatches(watches).length;
-    count.textContent = watches.length > 0 ? String(watches.length) : "";
+    // The same number as the waves' badge: what listens now, the paused ones left out.
+    count.textContent = on > 0 ? String(on) : "";
     activeTab.classList.toggle("on", tab === "active");
     historyTab.classList.toggle("on", tab === "history");
     pauseAllBtn.textContent = t(on > 0 ? LISTENING_STRINGS.pauseAll : LISTENING_STRINGS.resumeAll);

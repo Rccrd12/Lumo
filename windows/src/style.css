@@ -1509,6 +1509,16 @@ body {
   user-select: text;
 }
 
+.mail-value.wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.mail-body.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+}
+
 .mail-body {
   margin-top: 4px;
   padding-top: 6px;
@@ -2901,7 +2911,7 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 2px;
 }
 
@@ -2913,6 +2923,20 @@ input[type="range"]::-webkit-slider-thumb {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 8px;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+.listen-catalog-grid.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+
+.listen-catalog-title,
+.listen-catalog > .listen-form-buttons {
+  flex-shrink: 0;
 }
 
 .listen-source {
@@ -3117,9 +3141,14 @@ input[type="range"]::-webkit-slider-thumb {
   transition: background 0.15s ease-out, color 0.15s ease-out;
 }
 
+/* The tab on screen wears the pill, as in the Listening panel's Active and History. */
+.files-tab.on {
+  background: rgba(255, 255, 255, 0.1);
+  color: var(--ink);
+}
+
 .files-tab:not(.on) {
-  background: rgba(255, 255, 255, 0.06);
-  color: #b0b5be;
+  color: #8b929e;
 }
 
 /* Inside its button, the count sits a little lighter on the pill. */
@@ -3133,7 +3162,7 @@ input[type="range"]::-webkit-slider-thumb {
 }
 
 .files-tab:not(.on):hover {
-  background: rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.05);
   color: var(--ink);
 }
 
