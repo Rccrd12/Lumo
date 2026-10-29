@@ -74,6 +74,17 @@ export const COMPACT_SIZES = {
   approval: { w: 452, h: 92 },
 } as const;
 export const EXPANDED_W = 640;
+/**
+ * While Claude uses the computer the closed island is Lumo alone, round and
+ * yellow in the middle of a short pill: nothing else is said beside him.
+ */
+export const COMPUTER_COMPACT_W = 88;
+
+/** The closed island while Claude uses the computer, and Lumo in its middle (cy from its top edge). */
+export function computerCompact(dock: Dock): { w: number; h: number; bot: BotPlacement } {
+  const bot = { cx: COMPUTER_COMPACT_W / 2, cy: NOTCH_H / 2, diameter: 20, opacity: 1 };
+  return isUpright(dock) ? { w: NOTCH_H, h: COMPUTER_COMPACT_W, bot } : { w: COMPUTER_COMPACT_W, h: NOTCH_H, bot };
+}
 /** The uploading view's track: 36 pt in from either side of the island (views/upload.ts). */
 export const UPLOAD_TRACK_INSET = 36;
 
