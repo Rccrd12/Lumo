@@ -230,13 +230,20 @@ pub fn prune(watches: &[Watch]) {
     });
 }
 
+/// Where the webhooks' port is kept from one start to the next.
+fn port_file() -> std::path::PathBuf {
+    crate::platform::local_dir().join("webhook-port.txt")
+}
+
 /// The webhooks' server, started the first time: its port, None when none was free.
 pub fn ensure_server(app: &AppHandle) -> Option<u16> {
     let mut port = PORT.lock().unwrap();
     if port.is_some() {
         return *port;
     }
-    for p in PORTS {
+    // The port it had before first, so the addresses programs were given keep working.
+    let kept = std::fs::read_to_string(port_file()).ok().and_then(|t| t.trim().parse::<u16>().ok()).filter(|p| PORTS.contains(p));
+    for p in kept.into_iter().chain(PORTS) {
         let Ok(listener) = std::net::TcpListener::bind(("127.0.0.1", p)) else { continue };
         if listener.set_nonblocking(true).is_err() {
             continue;
@@ -244,6 +251,9 @@ pub fn ensure_server(app: &AppHandle) -> Option<u16> {
         let app = app.clone();
         tauri::async_runtime::spawn(async move { serve(app, listener).await });
         log::line(format!("listen: webhooks on 127.0.0.1:{p}"));
+        if kept != Some(p) {
+            let _ = std::fs::write(port_file(), p.to_string());
+        }
         *port = Some(p);
         break;
     }

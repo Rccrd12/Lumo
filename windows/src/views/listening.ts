@@ -296,15 +296,24 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   let tools: ToolInfo[] = [];
   const startBtn = h("button", { class: "listen-head-btn listen-add" });
   const cancelBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.cancel) });
-  const form = h("div", { class: "listen-form" },
+  const fields = h("div", { class: "listen-form-fields" },
     targetLabel, targetRow, targetChips, noTools, noToolsRow,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.when) }), untilChips,
     textLabel, textInput,
     amountLabelEl, amountInput,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.how) }), modeChips,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.task) }), taskInput,
-    formError,
-    h("div", { class: "listen-form-buttons" }, cancelBtn, startBtn));
+    formError);
+  // The fields scroll, Cancel and Start stay; while more fields wait below, the last ones fade.
+  const form = h("div", { class: "listen-form" }, fields, h("div", { class: "listen-form-buttons" }, cancelBtn, startBtn));
+  const fieldsMore = () => fields.classList.toggle("more", fields.scrollTop + fields.clientHeight < fields.scrollHeight - 2);
+  fields.addEventListener("scroll", fieldsMore);
+  if (typeof ResizeObserver !== "undefined") {
+    const resized = new ResizeObserver(fieldsMore);
+    resized.observe(fields);
+    // A field shown or hidden changes what is below without resizing the box.
+    new MutationObserver(fieldsMore).observe(fields, { subtree: true, childList: true, attributes: true, attributeFilter: ["hidden"] });
+  }
 
   function chip(label: string, on: boolean, onClick: () => void, title?: string): HTMLElement {
     return h("button", { class: on ? "picker-chip on" : "picker-chip", title, onclick: onClick }, label);
@@ -610,15 +619,20 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
 
   /** A webhook's address, copied; the button says so for a moment. */
   function copyAddress(w: ListenWatch): HTMLElement {
-    const label = h("span", { text: t(LISTENING_STRINGS.copyAddress) });
-    const btn = h("button", { class: "listen-act-btn", onclick: async (e: Event) => {
+    // Only its icon (its name in the tooltip), so the row's buttons stay on one line.
+    const label = h("span", { text: "" });
+    label.hidden = true;
+    const btn = h("button", { class: "listen-act-btn", title: t(LISTENING_STRINGS.copyAddress), "aria-label": t(LISTENING_STRINGS.copyAddress), onclick: async (e: Event) => {
       e.stopPropagation();
       const url = await Bridge.listenWebhookUrl(w.id);
       if (!url) return;
       await writeClipboard(url);
-      btn.title = url;
       label.textContent = t(LISTENING_STRINGS.copied);
-      window.setTimeout(() => (label.textContent = t(LISTENING_STRINGS.copyAddress)), 1500);
+      label.hidden = false;
+      window.setTimeout(() => {
+        label.textContent = "";
+        label.hidden = true;
+      }, 1500);
     } }, svg(ICONS.copy, 10), label);
     return btn;
   }
