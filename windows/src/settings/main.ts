@@ -1441,9 +1441,9 @@ function islandSection(): HTMLElement {
   });
   // How wide the closed island is, the rest of the island as it is.
   const compactW = select([
-    ["normal", t("Normal (default)")],
-    ["narrower", t("Narrower")],
-    ["narrow", t("Narrow")],
+    ["normal", t("Wide (default)")],
+    ["narrower", t("Mid-width")],
+    ["narrow", t("Short")],
     ["lumo", t("Just Lumo")],
   ], ["narrower", "narrow", "lumo"].includes(settings.islandCompactWidth) ? settings.islandCompactWidth : "normal", (v) => {
     settings.islandCompactWidth = v;

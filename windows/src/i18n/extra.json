@@ -14053,41 +14053,41 @@
    "id": "hanya pulau tertutup: teks, ikon, dan pulau terbuka tetap ukurannya. Saat ada yang perlu ditampilkan, pulau tetap melebar",
    "it": "solo l'isola chiusa: testo, icone e isola aperta restano come sono. Quando ha qualcosa da dire si allarga comunque"
   },
-  "Normal (default)": {
-   "zh-Hans": "正常（默认）",
-   "hi": "सामान्य (डिफ़ॉल्ट)",
-   "es": "Normal (predeterminado)",
-   "ar": "عادي (افتراضي)",
-   "fr": "Normale (par défaut)",
-   "bn": "স্বাভাবিক (ডিফল্ট)",
-   "pt-BR": "Normal (padrão)",
-   "ru": "Обычная (по умолчанию)",
-   "id": "Normal (bawaan)",
-   "it": "Normale (predefinita)"
+  "Wide (default)": {
+   "zh-Hans": "宽（默认）",
+   "hi": "चौड़ी (डिफ़ॉल्ट)",
+   "es": "Ancha (predeterminado)",
+   "ar": "عريضة (افتراضي)",
+   "fr": "Large (par défaut)",
+   "bn": "চওড়া (ডিফল্ট)",
+   "pt-BR": "Larga (padrão)",
+   "ru": "Широкая (по умолчанию)",
+   "id": "Lebar (bawaan)",
+   "it": "Ampia (predefinita)"
   },
-  "Narrower": {
-   "zh-Hans": "较窄",
-   "hi": "थोड़ी संकरी",
-   "es": "Más estrecha",
-   "ar": "أضيق",
-   "fr": "Plus étroite",
-   "bn": "একটু সরু",
-   "pt-BR": "Mais estreita",
-   "ru": "Уже",
-   "id": "Lebih sempit",
-   "it": "Più stretta"
+  "Mid-width": {
+   "zh-Hans": "中等",
+   "hi": "मध्यम",
+   "es": "Media",
+   "ar": "متوسطة",
+   "fr": "Moyenne",
+   "bn": "মাঝারি",
+   "pt-BR": "Média",
+   "ru": "Средняя",
+   "id": "Sedang",
+   "it": "Media"
   },
-  "Narrow": {
-   "zh-Hans": "窄",
-   "hi": "संकरी",
-   "es": "Estrecha",
-   "ar": "ضيقة",
-   "fr": "Étroite",
-   "bn": "সরু",
-   "pt-BR": "Estreita",
-   "ru": "Узкая",
-   "id": "Sempit",
-   "it": "Stretta"
+  "Short": {
+   "zh-Hans": "短",
+   "hi": "छोटी",
+   "es": "Corta",
+   "ar": "قصيرة",
+   "fr": "Courte",
+   "bn": "ছোট",
+   "pt-BR": "Curta",
+   "ru": "Короткая",
+   "id": "Pendek",
+   "it": "Corta"
   },
   "Just Lumo": {
    "zh-Hans": "只有 Lumo",
