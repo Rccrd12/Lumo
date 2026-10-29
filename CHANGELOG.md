@@ -1,5 +1,17 @@
 # Changelog
 
+## Windows 0.16.0 — October 29, 2026
+
+- **Listening**: the waves beside the chat's folder open the Listening panel, with what Lumo is listening to (each with Pause, Edit, Go to the chat and Stop) and the history of what it heard. "Listen for something" starts a watch by hand, and Claude's `listen` tool can start one from any chat. Lumo can listen to a GitHub pull request, a file or a folder, a program or a port, a web page, an email, the calendar and the services of your pills (Vercel, Stripe, n8n, Resend, Notion, Cal.com), Windows (an app's notification, the battery, the charger, the network, a USB drive, when you're back), your agents (finished, asking for you, failed), a webhook on this PC, or one of your own tools. Each one listens once or every time, and can tell you or have the chat do something
+- **A Security section** in Settings → General: what Claude Code, Codex and Antigravity CLI may do without asking, what goes with every message (what's open, the folders open in File Explorer, the browser tabs), what the AI may do with the email and the calendar, and computer use, in one place
+- **More the AI can do with the email**, each step on a card: send an email (attachments included), reply in the conversation, forward with its files, read the files attached, search every folder, save drafts and, with Read, send and manage, mark, star, move, archive and trash. An email leaves only with a click on Send, after the card shows it whole, recipients included
+- **Attachments and chat files in folders**: what comes from the computer waits in its own folder, the chat's files are grouped by what happened to them (attached, read, edited, created), and the × on one takes it out of the chat's context. The screen menu lists every folder open in File Explorer, and Codex's and Claude Code subagents' files join the list
+- **A new look for computer use**: Claude's arrow, a light along the screen's edge that is brightest by the mouse, corners that close in where it is about to click (Aim, which stays whole even in a corner) and, in the wardrobe, Lucciola with a light in its tail. Clicks land exactly where asked
+- **The island opens when a dragged file comes near it**, not only once it is over it; the file is still taken only on the island
+- **Lumo keeps his own colour** when an integration's pill is in front
+- **Antigravity CLI's Auto is its own Turbo**: Turbo is no longer a mode of its own, and a Turbo picked before reads as Auto
+- **Small fixes**: clicking a pill on the overview no longer moves the others under the mouse; the files panel highlights the tab you are on; the Security menus share one width; searching the settings leaves no gap between the sections found
+
 ## Windows 0.15.0 — October 25, 2026
 
 - **The session's steps fill the card**: on the overview, an agent at work shows as many of its steps as the card holds, the newest last and readable, without the fade that hid it. A click opens all its steps; where a step has more to show (the whole command, the full path, a failed command's error, the whole prompt or answer) its arrow opens it in place

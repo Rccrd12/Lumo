@@ -935,6 +935,54 @@ takes them away): a click on Claude Code's own card for a tool is the one
 that call needs. Local models (Ollama, LM Studio, a custom server) don't get
 the tools. The closed island says when a tool ran.
 
+## Listening
+
+Lumo can wait for something for you without holding a chat turn open. The
+waves beside the chat's folder button open the **Listening** panel: they stay
+grey while nothing listens, and light up with how many watches are on while
+something does.
+
+- **Active** lists each watch with what it waits for, whether it listens once
+  or every time, and what Lumo should do then. A click on a row gives Pause,
+  Edit, Go to the chat and Stop listening; **Pause all** pauses every watch.
+- **History** keeps what Lumo heard, and whether it happened or no longer can.
+- **Listen for something** picks a source, then what to listen to, the event,
+  once or every time, and what Lumo should do then. Left empty, Lumo only tells
+  you; otherwise the chat that asked gets a message saying what happened and
+  what it meant to do.
+
+Claude can start the same watches from any chat: ask "tell me when pull
+request #12 is ready and merge it", or "let me know when the download in
+Downloads finishes".
+
+| Source | What it hears |
+|--------|---------------|
+| GitHub | A pull request's checks finishing or turning green, an approval, ready to merge, merged or closed |
+| Files and folders | A new, changed or deleted file, a download that finishes |
+| Programs and ports | A program that starts or ends, a port that opens or closes |
+| Web pages | A page or an API that changes, a site that goes up or down, a page that shows a text |
+| Email | Any new email, one from someone, one with words in its subject (the Email pill must be on) |
+| Calendar and services | An event about to start (with the calendar set in Settings), or news, a success or a failure from Vercel, Stripe, n8n, Resend, Notion or Cal.com (their pill must be on) |
+| Windows | An app's notification, the battery running low, plugged in or unplugged, the network going or coming back, a USB drive, you being back at the computer |
+| Agents | Claude Code, Codex or any other agent finishing, asking for you, or failing |
+| Webhook | A call to an address on this PC (Copy address on its row) |
+| Your tools | One of your tools, run every few minutes, saying something new or showing a text |
+
+How it is kept light and safe:
+
+- Nothing is checked while no watch is on, or while Lumo is paused. GitHub is
+  asked every 30 seconds with a token (or your own `gh`), more slowly without;
+  files, programs and Windows every 5 seconds; a web page every minute.
+- A watch that listens every time and fires more than 12 times in an hour is
+  paused, saying so. At most 20 watches are on at once.
+- A webhook listens on `127.0.0.1` only, on a port between 47621 and 47630 that
+  it keeps across restarts; its address ends with a secret kept in Windows
+  Credential Manager, removed when the webhook stops.
+- Only a tool that is on, reviewed, trusted and asks for no required parameter
+  can be a source, so nothing runs that you hadn't already allowed to run
+  without a card.
+- The watches are kept in a file, so Lumo goes on listening after a restart.
+
 ## GitHub
 
 With a token in **Settings… → Pills & integrations → GitHub** — a classic token with
