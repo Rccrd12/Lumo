@@ -8871,18 +8871,6 @@
    "id": "Menjalankan perintah: {what}",
    "it": "Esegue un comando: {what}"
   },
-  "Lumo is listening to GitHub and will tell you. × stops listening.": {
-   "zh-Hans": "Lumo 正在监听 GitHub，有消息会告诉你。× 停止监听。",
-   "hi": "Lumo GitHub को सुन रहा है और आपको बताएगा। × सुनना बंद करता है।",
-   "es": "Lumo está escuchando GitHub y te avisará. × deja de escuchar.",
-   "ar": "يستمع Lumo إلى GitHub وسيخبرك. × يوقف الاستماع.",
-   "fr": "Lumo écoute GitHub et vous préviendra. × arrête l'écoute.",
-   "bn": "Lumo GitHub শুনছে এবং আপনাকে জানাবে। × শোনা বন্ধ করে।",
-   "pt-BR": "O Lumo está acompanhando o GitHub e vai te avisar. × para de acompanhar.",
-   "ru": "Lumo следит за GitHub и сообщит вам. × останавливает отслеживание.",
-   "id": "Lumo sedang mendengarkan GitHub dan akan memberi tahu Anda. × berhenti mendengarkan.",
-   "it": "Lumo è in ascolto su GitHub e ti avviserà. × smette di ascoltare."
-  },
   "Lumo couldn't start listening to: {what}": {
    "zh-Hans": "Lumo 无法开始监听：{what}",
    "hi": "Lumo इसे सुनना शुरू नहीं कर सका: {what}",
@@ -11268,66 +11256,6 @@
    "ru": "Убрать из контекста чата",
    "id": "Hapus dari konteks chat",
    "it": "Rimuovi dal contesto della chat"
-  },
-  "Always share the folder open in File Explorer": {
-   "zh-Hans": "始终共享文件资源管理器中打开的文件夹",
-   "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर हमेशा साझा करें",
-   "es": "Compartir siempre la carpeta abierta en el Explorador de archivos",
-   "ar": "مشاركة المجلد المفتوح في مستكشف الملفات دائمًا",
-   "fr": "Toujours partager le dossier ouvert dans l'Explorateur de fichiers",
-   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার সবসময় শেয়ার করুন",
-   "pt-BR": "Sempre compartilhar a pasta aberta no Explorador de Arquivos",
-   "ru": "Всегда передавать папку, открытую в Проводнике",
-   "id": "Selalu bagikan folder yang terbuka di File Explorer",
-   "it": "Condividi sempre la cartella aperta in Esplora file"
-  },
-  "Commands run in Antigravity's sandbox without asking; Lumo asks for the rest.": {
-   "zh-Hans": "命令在 Antigravity 的沙盒中运行，无需询问；其余的 Lumo 会先询问。",
-   "hi": "कमांड Antigravity के सैंडबॉक्स में बिना पूछे चलते हैं; बाकी के लिए Lumo पूछता है।",
-   "es": "Los comandos se ejecutan en el sandbox de Antigravity sin preguntar; para el resto, Lumo pregunta.",
-   "ar": "تعمل الأوامر داخل صندوق الحماية في Antigravity دون سؤال؛ ويسأل Lumo عن الباقي.",
-   "fr": "Les commandes s'exécutent dans le bac à sable d'Antigravity sans demander ; Lumo demande pour le reste.",
-   "bn": "কমান্ড Antigravity-র স্যান্ডবক্সে জিজ্ঞেস না করেই চলে; বাকিগুলোর জন্য Lumo জিজ্ঞেস করে।",
-   "pt-BR": "Os comandos rodam na sandbox do Antigravity sem perguntar; para o resto, o Lumo pergunta.",
-   "ru": "Команды выполняются в песочнице Antigravity без вопросов; об остальном Lumo спрашивает.",
-   "id": "Perintah berjalan di sandbox Antigravity tanpa bertanya; untuk sisanya Lumo bertanya.",
-   "it": "I comandi partono senza chiedere nella sandbox di Antigravity; per il resto Lumo chiede."
-  },
-  "Claude Code can see your screen and use it (click, type, scroll) when a command isn't enough, in the chat and for Gemini Live. It works on your real desktop, not in a sandbox.": {
-   "zh-Hans": "当命令不够用时，Claude Code 可以查看并操作你的屏幕（点击、输入、滚动），适用于聊天和 Gemini Live。它在你真实的桌面上工作，而不是沙盒中。",
-   "hi": "जब कोई कमांड काफ़ी न हो, Claude Code आपकी स्क्रीन देख और इस्तेमाल कर सकता है (क्लिक, टाइप, स्क्रॉल), चैट में और Gemini Live के लिए। यह आपके असली डेस्कटॉप पर काम करता है, सैंडबॉक्स में नहीं।",
-   "es": "Claude Code puede ver tu pantalla y usarla (hacer clic, escribir, desplazarse) cuando un comando no basta, en el chat y para Gemini Live. Trabaja en tu escritorio real, no en un entorno aislado.",
-   "ar": "يمكن لـ Claude Code رؤية شاشتك واستخدامها (النقر والكتابة والتمرير) عندما لا يكفي أمر، في المحادثة ولـ Gemini Live. يعمل على سطح مكتبك الحقيقي، لا في بيئة معزولة.",
-   "fr": "Claude Code peut voir votre écran et s'en servir (cliquer, taper, faire défiler) quand une commande ne suffit pas, dans le chat et pour Gemini Live. Il travaille sur votre vrai bureau, pas dans un bac à sable.",
-   "bn": "কোনো কমান্ড যথেষ্ট না হলে Claude Code আপনার স্ক্রিন দেখতে ও ব্যবহার করতে পারে (ক্লিক, টাইপ, স্ক্রল), চ্যাটে ও Gemini Live-এর জন্য। এটি আপনার আসল ডেস্কটপে কাজ করে, স্যান্ডবক্সে নয়।",
-   "pt-BR": "O Claude Code pode ver sua tela e usá-la (clicar, digitar, rolar) quando um comando não basta, no chat e para o Gemini Live. Ele trabalha na sua área de trabalho real, não em uma sandbox.",
-   "ru": "Claude Code может видеть ваш экран и пользоваться им (щёлкать, печатать, прокручивать), когда команды недостаточно, — в чате и для Gemini Live. Он работает на вашем настоящем рабочем столе, а не в песочнице.",
-   "id": "Claude Code dapat melihat dan memakai layar Anda (klik, ketik, gulir) saat perintah saja tidak cukup, di obrolan dan untuk Gemini Live. Ia bekerja di desktop Anda yang sebenarnya, bukan di sandbox.",
-   "it": "Claude Code può vedere lo schermo e usarlo (cliccare, scrivere, scorrere) quando un comando non basta, nella chat e per Gemini Live. Lavora sul tuo vero desktop, non in un ambiente isolato."
-  },
-  "Every message carries the folder open in File Explorer and the list of its files, as if you shared it from the screen button. The × on its chip leaves it out of one message.": {
-   "zh-Hans": "每条消息都会附带文件资源管理器中打开的文件夹及其文件列表，就像你通过屏幕按钮共享一样。点击其标签上的 × 可在某条消息中排除它。",
-   "hi": "हर संदेश के साथ फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर और उसकी फ़ाइलों की सूची जाती है, जैसे आपने उसे स्क्रीन बटन से साझा किया हो। उसकी चिप पर × उसे किसी एक संदेश से हटा देता है।",
-   "es": "Cada mensaje lleva la carpeta abierta en el Explorador de archivos y la lista de sus archivos, como si la compartieras con el botón de pantalla. La × de su etiqueta la deja fuera de un mensaje.",
-   "ar": "تحمل كل رسالة المجلد المفتوح في مستكشف الملفات وقائمة ملفاته، كأنك شاركته من زر الشاشة. علامة × على شارته تستبعده من رسالة واحدة.",
-   "fr": "Chaque message emporte le dossier ouvert dans l'Explorateur de fichiers et la liste de ses fichiers, comme si vous le partagiez avec le bouton d'écran. Le × de son étiquette l'exclut d'un message.",
-   "bn": "প্রতিটি বার্তার সঙ্গে ফাইল এক্সপ্লোরারে খোলা ফোল্ডার ও তার ফাইলের তালিকা যায়, যেন আপনি স্ক্রিন বোতাম থেকে শেয়ার করেছেন। এর চিপের × একটি বার্তা থেকে এটি বাদ দেয়।",
-   "pt-BR": "Cada mensagem leva a pasta aberta no Explorador de Arquivos e a lista dos seus arquivos, como se você a compartilhasse pelo botão de tela. O × na etiqueta dela a deixa de fora de uma mensagem.",
-   "ru": "Каждое сообщение несёт папку, открытую в Проводнике, и список её файлов, как если бы вы поделились ею кнопкой экрана. Крестик на её метке исключает её из одного сообщения.",
-   "id": "Setiap pesan membawa folder yang terbuka di File Explorer dan daftar filenya, seolah Anda membagikannya dari tombol layar. Tanda × pada labelnya mengecualikannya dari satu pesan.",
-   "it": "Ogni messaggio porta con sé la cartella aperta in Esplora file e l'elenco dei suoi file, come se la condividessi dal pulsante dello schermo. La × sulla sua etichetta la esclude da un messaggio."
-  },
-  "Turbo": {
-   "zh-Hans": "Turbo",
-   "hi": "Turbo",
-   "es": "Turbo",
-   "ar": "Turbo",
-   "fr": "Turbo",
-   "bn": "Turbo",
-   "pt-BR": "Turbo",
-   "ru": "Turbo",
-   "id": "Turbo",
-   "it": "Turbo"
   },
   "Listen for something": {
    "zh-Hans": "新建监听",
