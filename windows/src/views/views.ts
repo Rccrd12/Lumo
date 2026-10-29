@@ -4,7 +4,7 @@ import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
 import { Ticker } from "./ticker";
 import { StepsCard } from "./steps";
-import { State, type AgentTask, type OutgoingEmail } from "../core/state";
+import { State, keepPillPlaces, type AgentTask, type OutgoingEmail } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../character/minibots";
 import { buildPrompt } from "./chat";
@@ -307,6 +307,8 @@ function buildOverview(actions: ViewActions): ViewHost {
   );
 
   let pillIds = "";
+  /** The pills beside the card, as last laid out. */
+  let pillOrder: string[] = [];
   let detailOpen = false;
   let lastFocus: string | null = null;
   let mode: "ticker" | "steps" | "card" | "plan" | "diff" | null = null;
@@ -465,7 +467,9 @@ function buildOverview(actions: ViewActions): ViewHost {
 
       jump.style.display = detailOpen || mode === "plan" || mode === "diff" ? "none" : "";
 
-      const others = State.otherTasks.slice(0, 4);
+      // Each pill stays in its place when another goes to the card.
+      const others = keepPillPlaces(pillOrder, State.otherTasks);
+      pillOrder = others.map((t) => t.id);
       const pillKey = others.map((t) => `${t.id}:${t.color}:${t.pillBadge ?? ""}`).join("|");
       if (pillKey !== pillIds) {
         pillIds = pillKey;
@@ -591,19 +595,25 @@ const EMAIL_TEXT = {
 
 /** The email on its card: who it is from and for, its subject, its files, its whole text. */
 function emailBlock(email: OutgoingEmail): HTMLElement {
-  const line = (label: string, value: string, title = value) =>
-    h("div", { class: "mail-line" }, h("span", { class: "mail-label", text: t(label) }), h("span", { class: "mail-value", text: value, title }));
+  // Who it goes to wraps onto more lines: every address is on the card, none behind an ellipsis.
+  const line = (label: string, value: string, title = value, wrap = false) =>
+    h("div", { class: "mail-line" }, h("span", { class: "mail-label", text: t(label) }), h("span", { class: wrap ? "mail-value wrap" : "mail-value", text: value, title }));
   // Each file by its name and size; the full path of each one in the tooltip.
   const files = email.attachments.map((f) => `${f.name} (${formatSize(f.size)})`).join(", ");
+  // A text longer than the card fades at its foot until it is scrolled to the end.
+  const body = h("div", { class: "mail-body", text: email.body });
+  const more = () => body.classList.toggle("more", body.scrollTop + body.clientHeight < body.scrollHeight - 2);
+  body.addEventListener("scroll", more);
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(more).observe(body);
   return h(
     "div",
     { class: "mail-card" },
     email.from ? line(EMAIL_TEXT.from, email.from) : null,
-    line(EMAIL_TEXT.to, email.to.join(", ")),
-    email.cc.length ? line(EMAIL_TEXT.cc, email.cc.join(", ")) : null,
+    line(EMAIL_TEXT.to, email.to.join(", "), undefined, true),
+    email.cc.length ? line(EMAIL_TEXT.cc, email.cc.join(", "), undefined, true) : null,
     line(EMAIL_TEXT.subject, email.subject || t(EMAIL_TEXT.noSubject)),
     email.attachments.length ? line(EMAIL_TEXT.attachments, files, email.attachments.map((f) => f.path).join("\n")) : null,
-    h("div", { class: "mail-body", text: email.body }),
+    body,
   );
 }
 

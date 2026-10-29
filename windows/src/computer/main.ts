@@ -12,7 +12,7 @@
 
 import "./computer.css";
 import { onEvent } from "../core/bridge";
-import { aimSide, along, keyCaps, sparks, toCss, typedTail, type Fx } from "./fx";
+import { aimBox, aimSide, along, keyCaps, sparks, toCss, typedTail, type Fx } from "./fx";
 
 const root = document.createElement("div");
 root.id = "fx";
@@ -91,9 +91,14 @@ function aimAt(p: { x: number; y: number } | null, side = 0) {
     for (let i = 0; i < 4; i++) aimEl.append(document.createElement("i"));
     root.append(aimEl);
   }
-  place(aimEl, p);
+  place(aimEl, aimBoxAt(p, side));
   aimEl.style.width = aimEl.style.height = `${side}px`;
-  aimEl.style.margin = `${-side / 2}px 0 0 ${-side / 2}px`;
+}
+
+/** The Aim square's place: whole on the screen, even for a click in a corner. */
+function aimBoxAt(p: { x: number; y: number }, side: number) {
+  const box = aimBox(p, side, window.innerWidth, window.innerHeight);
+  return { x: box.left, y: box.top };
 }
 
 /** The Aim corners close in on `p` over `ms`, before the mouse sets off for it. */

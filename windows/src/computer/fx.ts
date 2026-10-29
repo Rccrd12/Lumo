@@ -56,6 +56,17 @@ export function aimSide(elapsed: number, ms: number): number {
 }
 
 /**
+ * Where the Aim corners' square goes (its top-left corner, CSS pixels): around
+ * `p`, moved just enough to stay whole on a `w`×`h` screen, so a click in a
+ * corner or on an edge still shows all four corners, with the spot inside them.
+ */
+export function aimBox(p: { x: number; y: number }, side: number, w: number, h: number): { left: number; top: number } {
+  const MARGIN = 2;
+  const fit = (c: number, size: number) => Math.min(Math.max(c - side / 2, MARGIN), Math.max(MARGIN, size - side - MARGIN));
+  return { left: fit(p.x, w), top: fit(p.y, h) };
+}
+
+/**
  * The sparks a click sends out around its ring: `n` directions spread evenly
  * round the circle, turned by `turn` (0…1 of a step, so two clicks differ),
  * each with how far it flies (CSS pixels).
