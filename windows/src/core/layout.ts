@@ -55,6 +55,21 @@ export const MAX_ISLAND_ZOOM = 1.6;
 export const NOTCH_W = 184;
 export const NOTCH_H = 32;
 export const COMPACT_W = 288; // NOTCH_W + 104
+
+/**
+ * Settings → Island → Closed island width (island.rs compact_width_of): the
+ * closed island alone, the rest keeps its size. "normal" is COMPACT_W; "lumo"
+ * keeps just Lumo's room and, mirrored, the energy leaf's (style.css #energy-leaf).
+ * What the closed island says still widens it as much as it needs.
+ */
+export function compactWidth(name: string | undefined): number {
+  switch (name) {
+    case "narrower": return 216;
+    case "narrow": return 144;
+    case "lumo": return 72;
+    default: return COMPACT_W;
+  }
+}
 /**
  * Lumo's centre from the compact island's left end: close to it, about as
  * far as he is from its top and bottom.
@@ -74,6 +89,17 @@ export const COMPACT_SIZES = {
   approval: { w: 452, h: 92 },
 } as const;
 export const EXPANDED_W = 640;
+/**
+ * While Claude uses the computer the closed island is Lumo alone, round and
+ * yellow in the middle of a short pill: nothing else is said beside him.
+ */
+export const COMPUTER_COMPACT_W = 144;
+
+/** The closed island while Claude uses the computer, and Lumo in its middle (cy from its top edge). */
+export function computerCompact(dock: Dock): { w: number; h: number; bot: BotPlacement } {
+  const bot = { cx: COMPUTER_COMPACT_W / 2, cy: NOTCH_H / 2, diameter: 20, opacity: 1 };
+  return isUpright(dock) ? { w: NOTCH_H, h: COMPUTER_COMPACT_W, bot } : { w: COMPUTER_COMPACT_W, h: NOTCH_H, bot };
+}
 /** The uploading view's track: 36 pt in from either side of the island (views/upload.ts). */
 export const UPLOAD_TRACK_INSET = 36;
 
@@ -231,16 +257,20 @@ export function islandSize(
   shape: IslandShape = DEFAULT_SHAPE,
   dock: Dock = "top",
   peek: { w: number; h: number } | null = null,
+  compactW = COMPACT_W,
 ): { w: number; h: number } {
   const upright = isUpright(dock);
   switch (mode) {
-    case "hidden":
+    case "hidden": {
       // No notch to hide inside on a PC: the island retracts into the edge of
-      // the screen instead of sitting there as a bar.
-      return upright ? { w: 0, h: NOTCH_W } : { w: NOTCH_W, h: 0 };
+      // the screen instead of sitting there as a bar. Never wider than the
+      // closed island, so a narrow one does not widen as it goes.
+      const hiddenW = Math.min(NOTCH_W, compactW);
+      return upright ? { w: 0, h: hiddenW } : { w: hiddenW, h: 0 };
+    }
     case "compact":
-      if (upright) return { w: NOTCH_H, h: COMPACT_W };
-      return peek ? { w: Math.max(COMPACT_W, peek.w), h: Math.max(NOTCH_H, peek.h) } : { w: COMPACT_W, h: NOTCH_H };
+      if (upright) return { w: NOTCH_H, h: compactW };
+      return peek ? { w: Math.max(compactW, peek.w), h: Math.max(NOTCH_H, peek.h) } : { w: compactW, h: NOTCH_H };
     case "expanded": {
       // The launch greeting is drawn in a fixed 640 × 150 space
       // (character/greeting.ts): a size dragged for the other views would leave it

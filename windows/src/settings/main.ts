@@ -1180,7 +1180,10 @@ function declaredChanged() {
   void save();
 }
 
-function integrationsSection(present: Record<string, boolean>): HTMLElement {
+function integrationsSection(
+  present: Record<string, boolean>,
+  keyChanged: (key: string, on: boolean) => void,
+): HTMLElement {
   const note = h("p", { class: "section-intro" });
   const list = h("div", { class: "setting-list" });
 
@@ -1231,6 +1234,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
           present[field.key] = true;
           input.value = "";
           refresh();
+          keyChanged(field.key, true);
         } catch {
           dotEl.style.background = "#f5a524";
         }
@@ -1240,6 +1244,7 @@ function integrationsSection(present: Record<string, boolean>): HTMLElement {
           await Bridge.secretClear(field.key);
           present[field.key] = false;
           refresh();
+          keyChanged(field.key, false);
         } catch {
           dotEl.style.background = "#f5a524";
         }
@@ -1439,6 +1444,16 @@ function islandSection(): HTMLElement {
     settings.islandEdgeGap = v;
     void save();
   });
+  // How wide the closed island is, the rest of the island as it is.
+  const compactW = select([
+    ["normal", t("Wide (default)")],
+    ["narrower", t("Mid-width")],
+    ["narrow", t("Short")],
+    ["lumo", t("Just Lumo")],
+  ], ["narrower", "narrow", "lumo"].includes(settings.islandCompactWidth) ? settings.islandCompactWidth : "normal", (v) => {
+    settings.islandCompactWidth = v;
+    void save();
+  });
   // The island's icons, against their usual size.
   const icons = h("select", {}) as HTMLSelectElement;
   for (const pct of [100, 125, 150]) {
@@ -1484,6 +1499,7 @@ function islandSection(): HTMLElement {
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
+    setting(t("Closed island width"), t("only the closed island: the text, the icons and the open island keep their size. What it has to say still widens it"), compactW),
     setting(t("Distance from the edge"), t("between the island and the edge of the screen it is docked to. With Medium the mouse can cross the top of the screen above the island without opening it"), gap),
     setting(t("Icon size"), null, icons),
     setting(t("Put the island back in the centre"), null,
@@ -2011,7 +2027,7 @@ async function render() {
       connected[def.id] = present[def.connect.key] ?? (await Bridge.secretPresent(def.connect.key)) ?? false;
     }
   }
-  /** A chat provider's key was saved or removed: its pill's row says so at once. */
+  /** A chat provider's or an integration's key was saved or removed: its pill's row says so at once. */
   const keyChanged = (key: string, on: boolean) => {
     for (const def of availablePills()) {
       if (def.connect.kind === "key" && def.connect.key === key) connected[def.id] = on;
@@ -2039,7 +2055,7 @@ async function render() {
     chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
-    pills: [activePillsSection(connected), integrationsSection(present)],
+    pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],
     shortcuts: [shortcutsSection(shortcutReport)],
     updates: [
       updatesSection(version, setting(t("Check when Lumo opens"),

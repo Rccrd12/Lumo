@@ -121,6 +121,7 @@ fn save_settings(app: AppHandle, shared: State<Shared>, settings: Settings) {
         let screen_changed = current.screen != settings.screen
             || current.island_zoom != settings.island_zoom
             || current.island_edge_gap != settings.island_edge_gap
+            || current.island_compact_width != settings.island_compact_width
             || activities::side_room(&current) != activities::side_room(&settings);
         let autostart_changed = current.autostart != settings.autostart;
         let shortcuts_changed = current.shortcuts != settings.shortcuts;

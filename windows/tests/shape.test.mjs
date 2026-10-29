@@ -81,3 +81,20 @@ test("the Listening panel gets more room than a list, and a taller picked height
   assert.equal(chatHeight(DEFAULT_SHAPE, CHAT_LISTENING), 440);
   assert.equal(chatHeight({ width: 640, height: 600 }, CHAT_LISTENING), 600);
 });
+
+test("the closed island width narrows the closed island alone, and what it says still widens it", async () => {
+  const { compactWidth, COMPACT_W, NOTCH_W } = await import("../src/core/layout.ts");
+  assert.equal(compactWidth(undefined), COMPACT_W);
+  assert.equal(compactWidth("normal"), COMPACT_W);
+  assert.ok(compactWidth("narrower") < COMPACT_W && compactWidth("narrow") < compactWidth("narrower"));
+  // Lumo's 36 px room at one end, the energy leaf's at the other.
+  assert.equal(compactWidth("lumo"), 72);
+  const narrow = compactWidth("narrow");
+  assert.deepEqual(islandSize("compact", "overview", 0, DEFAULT_SHAPE, "top", null, narrow), { w: narrow, h: 32 });
+  assert.deepEqual(islandSize("compact", "overview", 0, DEFAULT_SHAPE, "left", null, narrow), { w: 32, h: narrow });
+  assert.equal(islandSize("compact", "overview", 0, DEFAULT_SHAPE, "top", { w: 400, h: 32 }, narrow).w, 400);
+  // Hidden, it never widens on its way into the edge; open, it is as it was.
+  assert.equal(islandSize("hidden", "overview", 0, DEFAULT_SHAPE, "top", null, 72).w, 72);
+  assert.equal(islandSize("hidden", "overview", 0, DEFAULT_SHAPE, "top", null, COMPACT_W).w, NOTCH_W);
+  assert.deepEqual(islandSize("expanded", "overview", 0, DEFAULT_SHAPE, "top", null, 72), { w: 640, h: 160 });
+});
