@@ -98,6 +98,11 @@ test("a line can listen on this PC: a folder, a program, a port, a page", () => 
   const page = takeListens('[[listen web "https://shop.example/p?a=1" contains "Price: 10": buy it]]');
   assert.deepEqual(page.listens, [{ source: "web", repo: "", number: 0, target: "https://shop.example/p?a=1", text: "Price: 10", until: "contains", mode: "once", task: "buy it" }]);
   assert.deepEqual(takeListens('[[listen program "3000" port_open]]').listens[0].source, "process");
+  // Without quotes, a target without spaces (as the prompt on the command line writes it).
+  assert.deepEqual(takeListens("[[listen process node.exe exited: tell me]]").listens,
+    [{ source: "process", repo: "", number: 0, target: "node.exe", text: "", until: "exited", mode: "once", task: "tell me" }]);
+  assert.equal(takeListens("[[listen web https://x.y/a:b every changed]]").listens[0].target, "https://x.y/a:b");
+  assert.deepEqual(takeListens("[[unlisten web https://x.y]]").stops, [{ source: "web", repo: "", number: 0, target: "https://x.y" }]);
   // An event its source hasn't, or contains without the text, is said.
   assert.equal(takeListens('[[listen fs "C:\\x" merged]]').unread.length, 1);
   assert.equal(takeListens('[[listen web "https://x.y" contains]]').unread.length, 1);

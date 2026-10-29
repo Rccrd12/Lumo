@@ -284,16 +284,19 @@ const SOURCE_WORDS: Record<string, LocalSource> = {
   web: "web", page: "web", url: "web", site: "web",
 };
 
+/** The source and its target: in quotes, or one word without spaces (`process node.exe`). */
+const TARGET_RE = /^\s*([a-z]+)\s+(?:["“]([^"”]+)["”]|([^\s"“”]+))/i;
+
 /**
  * A watch on this PC: `fs "C:\path" every download: task`,
  * `web "https://…" contains "In stock": task`. Null when it isn't one, or
  * names an event its source hasn't.
  */
 function readLocal(body: string): { source: LocalSource; target: string; text: string; until: LocalUntil; mode: ListenMode; task: string } | null {
-  const m = /^\s*([a-z]+)\s+["“]([^"”]+)["”]\s*(.*)$/is.exec(body);
+  const m = TARGET_RE.exec(body);
   const source = m ? SOURCE_WORDS[m[1].toLowerCase()] : undefined;
   if (!m || !source) return null;
-  let rest = m[3];
+  let rest = body.slice(m[0].length);
   // The text a page is waited to show, in quotes: before the colon, which it may hold.
   let text = "";
   const quoted = /["“]([^"”]*)["”]/.exec(rest);
@@ -313,14 +316,14 @@ function readLocal(body: string): { source: LocalSource; target: string; text: s
   if (!(LOCAL_UNTILS[source] as readonly string[]).includes(until)) return null;
   if (until === "contains" && !text) return null;
   const more = words.slice(1).join(" ");
-  return { source, target: m[2].trim(), text, until, mode, task: task || more };
+  return { source, target: (m[2] ?? m[3]).trim(), text, until, mode, task: task || more };
 }
 
 /** `fs "C:\path"`: what `[[unlisten …]]` stops on this PC. */
 function readLocalTarget(body: string): { source: LocalSource; target: string } | null {
-  const m = /^\s*([a-z]+)\s+["“]([^"”]+)["”]/i.exec(body);
+  const m = TARGET_RE.exec(body);
   const source = m ? SOURCE_WORDS[m[1].toLowerCase()] : undefined;
-  return m && source ? { source, target: m[2].trim() } : null;
+  return m && source ? { source, target: (m[2] ?? m[3]).trim() } : null;
 }
 
 /** The pull request a person typed (`owner/repo#12`, a link…), for the Listening panel. */
