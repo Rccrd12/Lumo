@@ -6,7 +6,7 @@ import assert from "node:assert/strict";
 import {
   CompactFeed, MAIL_PEEK_MS, NOTICE_MS, activityLine, activityLines, parseDuration, speakerName, takeTimers, timerLeft,
 } from "../src/core/compact.ts";
-import { COMPACT_SIZES, islandSize } from "../src/core/layout.ts";
+import { COMPACT_SIZES, COMPACT_W, NOTCH_H, computerCompact, islandSize } from "../src/core/layout.ts";
 
 const first = (shown) => shown.items[0];
 const kinds = (shown) => (shown?.kind === "items" ? shown.items.map((i) => i.kind) : []);
@@ -164,4 +164,14 @@ test("a note stands in for the first line only; the others stay", () => {
   const items = feed.shown([a, b], 10).items;
   assert.deepEqual(items.map((i) => [i.line.text, i.notice]), [["Cursor finished", true], [b.text, false]]);
   assert.equal(feed.shown([a, b], 0, { notes: false, media: true }), null, "no activity when notes are off");
+});
+
+test("while Claude uses the computer the closed island is a short pill with Lumo in its middle", () => {
+  const top = computerCompact("top");
+  assert.ok(top.w < COMPACT_W, `${top.w} is narrower than the usual closed island`);
+  assert.equal(top.h, NOTCH_H);
+  assert.equal(top.bot.cx, top.w / 2, "Lumo in the middle");
+  assert.equal(top.bot.cy, NOTCH_H / 2);
+  const side = computerCompact("left");
+  assert.deepEqual([side.w, side.h], [top.h, top.w], "upright on a side, turned");
 });
