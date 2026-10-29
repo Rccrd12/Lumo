@@ -34,7 +34,7 @@ export const DEFAULT_MENU = ["newChat", "pin", "sound", "activities", "center", 
 export const MENU_TEXT = {
   refresh: N_("Refresh"),
   refreshHint: N_("Calendar, emails, integrations, plan usage and agents, all asked again"),
-  refreshed: N_("Everything is up to date"),
+  refreshed: N_("Up to date"),
   cut: N_("Cut"),
   copy: N_("Copy"),
   paste: N_("Paste"),

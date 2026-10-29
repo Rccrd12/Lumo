@@ -27,15 +27,15 @@ test("the chat comes first, then the call, then the agents", () => {
   assert.deepEqual(activityLine(null, live, agent), { text: "Gemini Live · Speaking", color: "#4285F4" });
   assert.deepEqual(activityLine(null, null, agent), { text: "Claude Code · Editing app.ts", color: "#D97757" });
   // Once the answer streams in, it is writing.
-  assert.equal(activityLine({ ...chat, label: null }, null, null).text, "Haiku · Writing…");
+  assert.equal(activityLine({ ...chat, label: null }, null, null).text, "Haiku · Writes…");
   // What a tool does says more than the phase.
   assert.equal(activityLine(null, { ...live, phase: "thinking", doing: "Looking at the screen" }, null).text,
     "Gemini Live · Looking at the screen");
   // A paused call (the shortcut) says its microphone is off.
   assert.equal(activityLine(null, { ...live, phase: "listening", muted: true }, null).text, "Gemini Live · Microphone off");
   assert.equal(activityLine(null, { ...live, phase: "listening", muted: false }, null).text, "Gemini Live · Listening");
-  assert.equal(activityLine(null, null, { ...agent, state: "approval" }).text, "Claude Code · Waiting for your OK");
-  assert.equal(activityLine(null, null, { ...agent, state: "thinking", step: null }).text, "Claude Code · Thinking…");
+  assert.equal(activityLine(null, null, { ...agent, state: "approval" }).text, "Claude Code · Waits for your OK");
+  assert.equal(activityLine(null, null, { ...agent, state: "thinking", step: null }).text, "Claude Code · Thinks…");
 });
 
 test("who answers is said by the model's family when there is one", () => {
@@ -151,7 +151,7 @@ test("every agent at work has its line, the chat first, then the services, two a
   assert.deepEqual(texts(activityLines(null, null, [agent("VS Code", "working", "Editing app.ts"), agent("Codex", "idle")], [ci])),
     ["VS Code · Editing app.ts", "GitHub · CI running on b#1"]);
   assert.deepEqual(texts(activityLines(chat, null, [agent("VS Code", "approval"), agent("Codex", "thinking")], [ci])),
-    ["Haiku · Reading main.ts", "VS Code · Waiting for your OK"]);
+    ["Haiku · Reading main.ts", "VS Code · Waits for your OK"]);
   assert.deepEqual(texts(activityLines(null, null, [], [ci])), ["GitHub · CI running on b#1"]);
 });
 
@@ -164,4 +164,17 @@ test("a note stands in for the first line only; the others stay", () => {
   const items = feed.shown([a, b], 10).items;
   assert.deepEqual(items.map((i) => [i.line.text, i.notice]), [["Cursor finished", true], [b.text, false]]);
   assert.equal(feed.shown([a, b], 0, { notes: false, media: true }), null, "no activity when notes are off");
+});
+
+test("an agent's step is said in fewer words: a file's name stays, a command or a search goes", async () => {
+  const { shortStep } = await import("../src/core/compact.ts");
+  assert.equal(shortStep("Runs · npm run build && npm test -- --watch"), "Runs a command");
+  assert.equal(shortStep("Searches · listeningLine("), "Searches the files");
+  assert.equal(shortStep("Edits · island.ts"), "Edits island.ts");
+  assert.equal(shortStep("Reads · main.ts"), "Reads main.ts");
+  assert.equal(shortStep("Searches the web · tauri zoom"), "Searches the web");
+  assert.equal(shortStep("mcp__github__create_pr · Lumo"), "mcp__github__create_pr");
+  assert.equal(shortStep("Tasks"), "Tasks");
+  assert.equal(activityLine(null, null, { name: "Claude Code", state: "working", step: "Runs · npm test", color: "#fff" }).text,
+    "Claude Code · Runs a command");
 });

@@ -39,7 +39,7 @@ export const COMPUTER_TEXT = {
   wait: N_("Wait"),
   cursor: N_("Find the mouse"),
   here: N_("where the mouse is"),
-  stopped: N_("Stopped: Claude no longer uses the computer"),
+  stopped: N_("Computer use over"),
   using: N_("Using the computer"),
 };
 
