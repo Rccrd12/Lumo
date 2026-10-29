@@ -53,6 +53,7 @@ export const LISTENING_STRINGS = {
   taskHint: N_("e.g. merge it. Leave it empty to only be told."),
   start: N_("Start listening"),
   cancel: N_("Cancel"),
+  close: N_("Close"),
   notPr: N_("That isn't a pull request on GitHub: write owner/repository#number or paste its link."),
   failed: N_("Lumo couldn't start listening to it."),
   button: N_("Listening · {count}"),
@@ -93,7 +94,7 @@ function empty(title: string, hint: string): HTMLElement {
     h("div", { class: "files-empty-hint", text: hint }));
 }
 
-export function buildListeningPanel(opts: { goToChat: (chatId: string) => void }): ListeningPanel {
+export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; close: () => void }): ListeningPanel {
   let tab: "active" | "history" = "active";
   let adding = false;
   let past: ListenPast[] = [];
@@ -326,10 +327,15 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void }
   }
 
   const foot = h("div", { class: "listen-foot" }, addBtn, pauseAllBtn, clearBtn);
+  // The panel covers the whole chat, its waves too: × closes it.
+  const closeBtn = h("button", { class: "listen-close", title: tl(LISTENING_STRINGS.close), "aria-label": tl(LISTENING_STRINGS.close) },
+    svg(ICONS.xmark, 10));
+  closeBtn.addEventListener("click", () => opts.close());
   const el = h("div", { class: "picker listen-panel" },
     h("div", { class: "listen-head" },
       h("span", { class: "listen-title", text: tl(LISTENING_STRINGS.title) }), count,
-      h("span", { class: "listen-seg" }, activeTab, historyTab)),
+      h("span", { class: "listen-seg" }, activeTab, historyTab),
+      closeBtn),
     activeList, historyList, form, foot);
 
   return {

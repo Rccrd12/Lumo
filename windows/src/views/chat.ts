@@ -1053,6 +1053,7 @@ export function buildPrompt(
       closeListening();
       openChat(saved);
     },
+    close: () => closeListening(),
   });
   // The commands' menu, over the log just above the field.
   const slashList = h("div", { class: "slash-list", role: "listbox" });
