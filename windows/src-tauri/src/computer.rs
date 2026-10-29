@@ -290,8 +290,12 @@ fn overlay_show(app: &AppHandle, rect: (i32, i32, i32, i32)) {
     overlay_place(&win, rect);
     let _ = win.show();
     let _ = win.set_ignore_cursor_events(true);
-    let aim = app.state::<crate::Shared>().settings.lock().unwrap().computer_aim;
-    fx(app, json!({ "kind": "show", "aim": aim }));
+    let (aim, cursor) = {
+        let settings = app.state::<crate::Shared>().settings.lock().unwrap();
+        (settings.computer_aim, CursorLook::parse(&settings.computer_cursor))
+    };
+    let look = if cursor == CursorLook::Lucciola { "lucciola" } else { "direct" };
+    fx(app, json!({ "kind": "show", "aim": aim, "cursor": look }));
 }
 
 fn overlay_place<R: Runtime>(win: &WebviewWindow<R>, rect: (i32, i32, i32, i32)) {
@@ -955,7 +959,18 @@ fn mouse_rel(view: &View, fallback: (i32, i32)) -> [i32; 2] {
 
 /// The mouse glides to `to`, and the overlay's halo with it; `aim`: it goes
 /// there to click (the overlay may close corners in on the spot).
+/// How long the Aim corners close in on a spot before the mouse sets off for it (ms).
+pub const AIM_LEAD_MS: u64 = 320;
+
 fn glide_to(app: &AppHandle, view: &View, to: (i32, i32), aim: bool) -> Result<(), String> {
+    // Aim (wardrobe): the corners show where Claude will click first, then the mouse goes.
+    if aim && app.state::<crate::Shared>().settings.lock().unwrap().computer_aim {
+        fx(app, json!({ "kind": "aim", "at": rel(view, to), "ms": AIM_LEAD_MS }));
+        let until = std::time::Instant::now() + Duration::from_millis(AIM_LEAD_MS);
+        while std::time::Instant::now() < until && !stopped() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     let from = imp::cursor().unwrap_or(to);
     let ms = glide_ms(from, to);
     if ms > 0 {

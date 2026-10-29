@@ -1612,9 +1612,12 @@ export class Island {
     // never opens it. Only while they are dragged or resized off the open
     // island do they count as it.
     const hit = this.hitRect();
-    const inIsland = (overPanel && State.mode === "expanded") || (
+    // While Claude uses the computer the mouse is Claude's (computer.rs): passing
+    // over the island never opens it. A card hands it back to the user.
+    const claudes = State.computerActive && !State.pendingApproval;
+    const inIsland = !claudes && ((overPanel && State.mode === "expanded") || (
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
-      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
+      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN));
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1640,7 +1643,7 @@ export class Island {
     }
 
     // Bot hover → love
-    const overBot = State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
+    const overBot = !claudes && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
     if (overBot && !this.botHovering) this.botHoverIn(x, y);
     if (!overBot && this.botHovering) this.cancelBotHover();
     this.botHovering = overBot;

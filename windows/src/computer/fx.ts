@@ -7,12 +7,13 @@
 
 /** One effect, as computer.rs sends it. Points are [x, y], physical pixels of the screen. */
 export type Fx =
-  | { kind: "show"; aim?: boolean }
+  | { kind: "show"; aim?: boolean; cursor?: "direct" | "lucciola" }
   | { kind: "hide" }
   | { kind: "pause" }
   | { kind: "resume" }
   | { kind: "stopped" }
   | { kind: "look" }
+  | { kind: "aim"; at: [number, number]; ms: number }
   | { kind: "move"; from: [number, number]; to: [number, number]; ms: number; aim?: boolean }
   | { kind: "drag"; from: [number, number]; to: [number, number]; ms: number }
   | { kind: "click"; at: [number, number]; button: "left" | "right" | "middle"; count: number }
@@ -44,15 +45,14 @@ export function along(from: { x: number; y: number }, to: { x: number; y: number
 
 /**
  * The Aim corners around where Claude is about to click: from wide to tight
- * over the glide (CSS pixels, the side of their square). They close in during
- * the last part of the way, so they read as "here" rather than following along.
+ * (CSS pixels, the side of their square) over the `ms` before the mouse sets
+ * off, so they say "here" before it moves.
  */
 export function aimSide(elapsed: number, ms: number): number {
   const WIDE = 46;
   const TIGHT = 24;
   const t = ms > 0 ? Math.min(1, Math.max(0, elapsed / ms)) : 1;
-  const close = Math.min(1, Math.max(0, (t - 0.35) / 0.65));
-  return WIDE + (TIGHT - WIDE) * ease(close);
+  return WIDE + (TIGHT - WIDE) * ease(t);
 }
 
 /**

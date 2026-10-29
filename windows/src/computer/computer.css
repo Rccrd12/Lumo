@@ -110,6 +110,31 @@ body {
   animation: lumo-halo 1.8s ease-in-out infinite;
 }
 
+/* Lucciola: the light lives in the arrow's tail, a little below and right of its tip. */
+#fx.lucciola .halo {
+  width: 30px;
+  height: 30px;
+  margin: -4px 0 0 -4px;
+  background: radial-gradient(circle, rgba(255, 224, 158, 0.75) 0%, rgba(255, 224, 158, 0.25) 45%, transparent 70%);
+}
+
+/* Lucciola gliding: a short trail of motes behind the tail. */
+.mote {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  margin: 8px 0 0 8px;
+  border-radius: 50%;
+  background: var(--warm);
+  box-shadow: 0 0 6px var(--warm-soft);
+  animation: lumo-fade 0.5s ease-out forwards;
+}
+
+/* Esc: the light by the mouse goes red too. */
+#fx.stopped .halo {
+  background: radial-gradient(circle, rgba(244, 80, 94, 0.75) 0%, rgba(244, 80, 94, 0.25) 45%, transparent 70%);
+}
+
 /* Where the mouse lands: the halo settles with a small bounce. */
 .halo.land::after {
   content: "";
