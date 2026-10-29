@@ -6247,6 +6247,18 @@
    "id": "Ringkas email ini dalam beberapa baris, dan katakan apakah perlu dibalas atau ada yang perlu kulakukan.",
    "it": "Riassumi questa email in poche righe e dimmi se richiede una risposta o qualcosa da parte mia."
   },
+  "Reply to this email: write the answer and send it to {address} with mail_send. I will read it on the card and click Send myself.": {
+   "zh-Hans": "回复这封邮件：写好回复，并用 mail_send 发送给 {address}。我会在卡片上阅读，并亲自点击发送。",
+   "hi": "इस ईमेल का जवाब दो: जवाब लिखो और उसे mail_send से {address} को भेजो। मैं इसे कार्ड पर पढ़ूँगा और खुद भेजें पर क्लिक करूँगा।",
+   "es": "Responde a este correo: escribe la respuesta y envíala a {address} con mail_send. La leeré en la tarjeta y haré clic en Enviar yo mismo.",
+   "ar": "رُدّ على هذا البريد: اكتب الرد وأرسله إلى {address} باستخدام mail_send. سأقرؤه على البطاقة وأنقر إرسال بنفسي.",
+   "fr": "Réponds à cet e-mail : écris la réponse et envoie-la à {address} avec mail_send. Je la lirai sur la carte et cliquerai moi-même sur Envoyer.",
+   "bn": "এই ইমেলের উত্তর দাও: উত্তর লেখো এবং mail_send দিয়ে {address}-এ পাঠাও। আমি কার্ডে পড়ে নিজেই পাঠান-এ ক্লিক করব।",
+   "pt-BR": "Responda a este e-mail: escreva a resposta e envie para {address} com mail_send. Vou ler no cartão e clicar em Enviar eu mesmo.",
+   "ru": "Ответь на это письмо: напиши ответ и отправь его на {address} через mail_send. Я прочитаю его на карточке и сам нажму «Отправить».",
+   "id": "Balas email ini: tulis balasannya dan kirim ke {address} dengan mail_send. Aku akan membacanya di kartu dan mengklik Kirim sendiri.",
+   "it": "Rispondi a questa email: scrivi la risposta e inviala a {address} con mail_send. La leggerò nella card e cliccherò Invia io."
+  },
   "Write a reply to this email, ready to paste. Only the draft: I will read it and send it myself.": {
    "zh-Hans": "为这封邮件写一封回复，可直接粘贴。只要草稿：我会自己阅读并发送。",
    "hi": "इस ईमेल का जवाब लिखो, पेस्ट करने लायक। सिर्फ़ मसौदा: मैं इसे पढ़कर खुद भेजूँगा।",
