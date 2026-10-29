@@ -132,7 +132,7 @@ export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
 export const QUESTION_PICKER_H = 200;
 
 /** The permission card with an email the AI wants to send: room to read it before Send. */
-export const EMAIL_CARD_H = 320;
+export const EMAIL_CARD_H = 344;
 
 /** Chat view grows with the conversation — IslandContainer.chatPromptHeight. */
 export function chatPromptHeight(messageCount: number): number {
