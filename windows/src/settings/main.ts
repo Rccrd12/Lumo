@@ -705,8 +705,9 @@ const SECURITY = {
   get tabs() { return t("Share the open browser tabs"); },
   get tabsHint() { return t("Every message carries the tabs open in your browsers, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
   get mailAndCalendar() { return t("Email and calendar"); },
-  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it, also send emails, or nothing at all. An email is sent only when you click Send on its card, which shows it whole."); },
+  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it, also send, answer and forward emails, also manage them (read or unread, star, move, archive, trash), or nothing at all. Each email is sent only when you click Send on its card, which shows it whole, and each change is a card too. Nothing is ever deleted for good."); },
   get readAndSend() { return t("Read and send"); },
+  get readSendManage() { return t("Read, send and manage"); },
   get calendarHint() { return t("What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all."); },
   get readOnly() { return t("Read only"); },
   get noAccess() { return t("No access"); },
@@ -740,8 +741,12 @@ function securitySection(): HTMLElement {
     (v) => { settings.chatPermissionMode = v; void save(); },
   );
   const access = (value: string, onChange: (v: string) => void, send = false) => select(
-    [...(send ? [["send", SECURITY.readAndSend] as [string, string]] : []), ["read", SECURITY.readOnly], ["none", SECURITY.noAccess]],
-    send && value === "send" ? "send" : aiReads(value) ? "read" : "none",
+    [
+      ...(send ? [["manage", SECURITY.readSendManage], ["send", SECURITY.readAndSend]] as [string, string][] : []),
+      ["read", SECURITY.readOnly],
+      ["none", SECURITY.noAccess],
+    ],
+    send && (value === "send" || value === "manage") ? value : aiReads(value) ? "read" : "none",
     onChange,
   );
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });

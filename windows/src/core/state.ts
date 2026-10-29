@@ -179,6 +179,11 @@ export function aiReads(v: unknown): boolean {
   return v !== "none";
 }
 
+/** Settings → General → Security → Email lets the AI send email: "Read and send", or "Read, send and manage". */
+export function aiSends(v: unknown): boolean {
+  return v === "send" || v === "manage";
+}
+
 export function motionAmount(v: unknown): number {
   const m = parseMotion(v);
   return m === "still" ? 0 : m === "lively" ? 1.8 : 1;

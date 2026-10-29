@@ -4339,18 +4339,6 @@
    "id": "Email dan kalender",
    "it": "Email e calendario"
   },
-  "What the AI may do with the Email pill's mailbox: read it when you ask about it, also send emails, or nothing at all. An email is sent only when you click Send on its card, which shows it whole.": {
-   "zh-Hans": "AI 可以对“电子邮件”胶囊的邮箱做什么：在你询问时读取它，也可以发送邮件，或者什么都不做。只有当你在卡片上点击“发送”时邮件才会发出，卡片会完整显示邮件。",
-   "hi": "Email पिल के मेलबॉक्स के साथ AI क्या कर सकता है: जब आप पूछें तब उसे पढ़ना, ईमेल भेजना भी, या कुछ भी नहीं। ईमेल तभी भेजा जाता है जब आप उसके कार्ड पर भेजें पर क्लिक करते हैं, जो उसे पूरा दिखाता है।",
-   "es": "Lo que la IA puede hacer con el buzón de la píldora Correo: leerlo cuando preguntas por él, también enviar correos, o nada en absoluto. Un correo solo se envía cuando haces clic en Enviar en su tarjeta, que lo muestra entero.",
-   "ar": "ما يمكن للذكاء الاصطناعي فعله بصندوق بريد حبة البريد: قراءته عندما تسأل عنه، وإرسال الرسائل أيضًا، أو لا شيء على الإطلاق. لا تُرسل الرسالة إلا عندما تنقر على إرسال في بطاقتها التي تعرضها كاملة.",
-   "fr": "Ce que l'IA peut faire de la boîte de la pastille E-mail : la lire quand vous lui en parlez, envoyer aussi des e-mails, ou rien du tout. Un e-mail ne part que lorsque vous cliquez sur Envoyer sur sa carte, qui l'affiche en entier.",
-   "bn": "Email পিলের মেইলবক্স নিয়ে AI কী করতে পারে: আপনি জিজ্ঞাসা করলে সেটি পড়া, ইমেল পাঠানোও, অথবা কিছুই না। একটি ইমেল কেবল তখনই যায় যখন আপনি তার কার্ডে পাঠান-এ ক্লিক করেন, যা পুরো ইমেলটি দেখায়।",
-   "pt-BR": "O que a IA pode fazer com a caixa de correio da pílula E-mail: lê-la quando você pergunta sobre ela, também enviar e-mails, ou nada. Um e-mail só é enviado quando você clica em Enviar no cartão dele, que o mostra inteiro.",
-   "ru": "Что ИИ может делать с почтовым ящиком пилюли «Почта»: читать его, когда вы спрашиваете о нём, ещё и отправлять письма, или ничего. Письмо уходит, только когда вы нажимаете «Отправить» на его карточке, где оно показано целиком.",
-   "id": "Apa yang boleh dilakukan AI dengan kotak surat pil Email: membacanya saat Anda menanyakannya, juga mengirim email, atau tidak sama sekali. Email hanya terkirim saat Anda mengklik Kirim di kartunya, yang menampilkannya secara utuh.",
-   "it": "Cosa può fare l'IA con la casella della pillola Email: leggerla quando glielo chiedi, anche inviare email, oppure niente. Un'email parte solo quando fai clic su Invia nella sua scheda, che la mostra per intero."
-  },
   "Read and send": {
    "zh-Hans": "读取和发送",
    "hi": "पढ़ना और भेजना",
@@ -11208,6 +11196,138 @@
    "ru": "Список ваших навыков",
    "id": "Daftar skill Anda",
    "it": "Elenca le tue skill"
+  },
+  "What the AI may do with the Email pill's mailbox: read it when you ask about it, also send, answer and forward emails, also manage them (read or unread, star, move, archive, trash), or nothing at all. Each email is sent only when you click Send on its card, which shows it whole, and each change is a card too. Nothing is ever deleted for good.": {
+   "zh-Hans": "AI 可以对“邮件”胶囊的邮箱做什么：在你询问时读取，也可以发送、回复和转发邮件，还可以管理邮件（已读或未读、加星标、移动、归档、移到废纸篓），或者什么都不做。每封邮件只有在你点击其卡片上的“发送”后才会发出，卡片会完整显示邮件，每项更改也都有一张卡片。任何内容都不会被永久删除。",
+   "hi": "Email पिल के मेलबॉक्स के साथ AI क्या कर सकता है: आपके पूछने पर उसे पढ़ना, ईमेल भेजना, जवाब देना और फ़ॉरवर्ड करना भी, उन्हें प्रबंधित करना भी (पढ़ा या अनपढ़ा, स्टार, ले जाना, संग्रहित करना, ट्रैश), या कुछ भी नहीं। हर ईमेल तभी जाता है जब आप उसके कार्ड पर भेजें पर क्लिक करते हैं, जो उसे पूरा दिखाता है, और हर बदलाव का भी एक कार्ड होता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
+   "es": "Lo que la IA puede hacer con el buzón de la píldora Correo: leerlo cuando se lo pidas, también enviar, responder y reenviar correos, también gestionarlos (leído o no leído, estrella, mover, archivar, papelera), o nada. Cada correo se envía solo cuando haces clic en Enviar en su tarjeta, que lo muestra entero, y cada cambio también es una tarjeta. Nunca se borra nada definitivamente.",
+   "ar": "ما يمكن للذكاء الاصطناعي فعله بصندوق بريد كبسولة البريد: قراءته عندما تسأل عنه، وأيضًا إرسال الرسائل والرد عليها وإعادة توجيهها، وأيضًا إدارتها (مقروءة أو غير مقروءة، نجمة، نقل، أرشفة، سلة المهملات)، أو لا شيء على الإطلاق. لا تُرسل أي رسالة إلا عند النقر على إرسال في بطاقتها التي تعرضها كاملة، ولكل تغيير بطاقة أيضًا. لا يُحذف أي شيء نهائيًا أبدًا.",
+   "fr": "Ce que l'IA peut faire avec la boîte de la pastille E-mail : la lire quand vous le demandez, aussi envoyer, répondre et transférer des e-mails, aussi les gérer (lu ou non lu, étoile, déplacer, archiver, corbeille), ou rien du tout. Chaque e-mail ne part que lorsque vous cliquez sur Envoyer sur sa carte, qui l'affiche en entier, et chaque modification est aussi une carte. Rien n'est jamais supprimé définitivement.",
+   "bn": "ইমেল পিলের মেইলবক্স দিয়ে AI কী করতে পারবে: আপনি জিজ্ঞেস করলে সেটি পড়া, ইমেল পাঠানো, উত্তর দেওয়া ও ফরোয়ার্ড করাও, সেগুলি পরিচালনাও (পঠিত বা অপঠিত, তারা, সরানো, আর্কাইভ, ট্র্যাশ), অথবা কিছুই না। প্রতিটি ইমেল কেবল তখনই যায় যখন আপনি তার কার্ডে পাঠান-এ ক্লিক করেন, যা সেটি পুরোটা দেখায়, আর প্রতিটি পরিবর্তনেরও একটি কার্ড থাকে। কিছুই কখনো চিরতরে মোছা হয় না।",
+   "pt-BR": "O que a IA pode fazer com a caixa da pílula E-mail: ler quando você pedir, também enviar, responder e encaminhar e-mails, também gerenciá-los (lido ou não lido, estrela, mover, arquivar, lixeira), ou nada. Cada e-mail só é enviado quando você clica em Enviar no cartão dele, que o mostra inteiro, e cada alteração também é um cartão. Nada é excluído para sempre.",
+   "ru": "Что ИИ может делать с почтовым ящиком пилюли «Почта»: читать его, когда вы спрашиваете, а также отправлять письма, отвечать на них и пересылать, а также управлять ими (прочитано или нет, звёздочка, перемещение, архив, корзина), или ничего. Каждое письмо уходит, только когда вы нажмёте «Отправить» на его карточке, где оно показано целиком, и для каждого изменения тоже есть карточка. Ничего не удаляется навсегда.",
+   "id": "Apa yang boleh dilakukan AI dengan kotak surat pil Email: membacanya saat Anda bertanya, juga mengirim, membalas, dan meneruskan email, juga mengelolanya (dibaca atau belum, bintang, pindahkan, arsipkan, sampah), atau tidak sama sekali. Setiap email hanya terkirim saat Anda mengklik Kirim di kartunya, yang menampilkannya utuh, dan setiap perubahan juga berupa kartu. Tidak ada yang dihapus permanen.",
+   "it": "Cosa può fare l'IA con la casella della pillola Email: leggerla quando glielo chiedi, anche inviare, rispondere e inoltrare email, anche gestirle (letta o non letta, stella, sposta, archivia, cestino), oppure niente. Ogni email parte solo quando fai clic su Invia nella sua scheda, che la mostra per intero, e anche ogni modifica è una scheda. Niente viene mai eliminato definitivamente."
+  },
+  "Read, send and manage": {
+   "zh-Hans": "读取、发送和管理",
+   "hi": "पढ़ना, भेजना और प्रबंधित करना",
+   "es": "Leer, enviar y gestionar",
+   "ar": "القراءة والإرسال والإدارة",
+   "fr": "Lire, envoyer et gérer",
+   "bn": "পড়া, পাঠানো ও পরিচালনা",
+   "pt-BR": "Ler, enviar e gerenciar",
+   "ru": "Читать, отправлять и управлять",
+   "id": "Baca, kirim, dan kelola",
+   "it": "Lettura, invio e gestione"
+  },
+  "Reply to this email with mail_reply (its id is {id}): write the answer. I will read it on the card and click Send myself.": {
+   "zh-Hans": "用 mail_reply 回复这封邮件（它的 id 是 {id}）：写好回复。我会在卡片上阅读，并亲自点击发送。",
+   "hi": "इस ईमेल का जवाब mail_reply से दो (इसकी id {id} है): जवाब लिखो। मैं इसे कार्ड पर पढ़ूँगा और खुद भेजें पर क्लिक करूँगा।",
+   "es": "Responde a este correo con mail_reply (su id es {id}): escribe la respuesta. La leeré en la tarjeta y haré clic en Enviar yo mismo.",
+   "ar": "رُدّ على هذا البريد باستخدام mail_reply (معرّفه {id}): اكتب الرد. سأقرؤه على البطاقة وأنقر إرسال بنفسي.",
+   "fr": "Réponds à cet e-mail avec mail_reply (son id est {id}) : écris la réponse. Je la lirai sur la carte et cliquerai moi-même sur Envoyer.",
+   "bn": "mail_reply দিয়ে এই ইমেলের উত্তর দাও (এর id {id}): উত্তর লেখো। আমি কার্ডে পড়ে নিজেই পাঠান-এ ক্লিক করব।",
+   "pt-BR": "Responda a este e-mail com mail_reply (o id dele é {id}): escreva a resposta. Vou ler no cartão e clicar em Enviar eu mesmo.",
+   "ru": "Ответь на это письмо через mail_reply (его id — {id}): напиши ответ. Я прочитаю его на карточке и сам нажму «Отправить».",
+   "id": "Balas email ini dengan mail_reply (id-nya {id}): tulis balasannya. Aku akan membacanya di kartu dan mengklik Kirim sendiri.",
+   "it": "Rispondi a questa email con mail_reply (il suo id è {id}): scrivi la risposta. La leggerò nella card e cliccherò Invia io."
+  },
+  "Mark as read": {
+   "zh-Hans": "标为已读",
+   "hi": "पढ़ा हुआ चिह्नित करें",
+   "es": "Marcar como leído",
+   "ar": "تعليم كمقروء",
+   "fr": "Marquer comme lu",
+   "bn": "পঠিত হিসেবে চিহ্নিত করুন",
+   "pt-BR": "Marcar como lido",
+   "ru": "Отметить как прочитанное",
+   "id": "Tandai sudah dibaca",
+   "it": "Segna come letta"
+  },
+  "Mark as unread": {
+   "zh-Hans": "标为未读",
+   "hi": "अनपढ़ा चिह्नित करें",
+   "es": "Marcar como no leído",
+   "ar": "تعليم كغير مقروء",
+   "fr": "Marquer comme non lu",
+   "bn": "অপঠিত হিসেবে চিহ্নিত করুন",
+   "pt-BR": "Marcar como não lido",
+   "ru": "Отметить как непрочитанное",
+   "id": "Tandai belum dibaca",
+   "it": "Segna come non letta"
+  },
+  "Add a star": {
+   "zh-Hans": "加星标",
+   "hi": "स्टार लगाएँ",
+   "es": "Añadir una estrella",
+   "ar": "إضافة نجمة",
+   "fr": "Ajouter une étoile",
+   "bn": "তারা যোগ করুন",
+   "pt-BR": "Adicionar estrela",
+   "ru": "Отметить звёздочкой",
+   "id": "Beri bintang",
+   "it": "Aggiungi la stella"
+  },
+  "Remove the star": {
+   "zh-Hans": "取消星标",
+   "hi": "स्टार हटाएँ",
+   "es": "Quitar la estrella",
+   "ar": "إزالة النجمة",
+   "fr": "Retirer l'étoile",
+   "bn": "তারা সরান",
+   "pt-BR": "Remover estrela",
+   "ru": "Снять звёздочку",
+   "id": "Hapus bintang",
+   "it": "Togli la stella"
+  },
+  "Move to {folder}": {
+   "zh-Hans": "移到 {folder}",
+   "hi": "{folder} में ले जाएँ",
+   "es": "Mover a {folder}",
+   "ar": "نقل إلى {folder}",
+   "fr": "Déplacer vers {folder}",
+   "bn": "{folder}-এ সরান",
+   "pt-BR": "Mover para {folder}",
+   "ru": "Переместить в {folder}",
+   "id": "Pindahkan ke {folder}",
+   "it": "Sposta in {folder}"
+  },
+  "Archive the email": {
+   "zh-Hans": "归档邮件",
+   "hi": "ईमेल संग्रहित करें",
+   "es": "Archivar el correo",
+   "ar": "أرشفة الرسالة",
+   "fr": "Archiver l'e-mail",
+   "bn": "ইমেল আর্কাইভ করুন",
+   "pt-BR": "Arquivar o e-mail",
+   "ru": "Архивировать письмо",
+   "id": "Arsipkan email",
+   "it": "Archivia l'email"
+  },
+  "Move to the trash": {
+   "zh-Hans": "移到废纸篓",
+   "hi": "ट्रैश में ले जाएँ",
+   "es": "Mover a la papelera",
+   "ar": "نقل إلى سلة المهملات",
+   "fr": "Mettre à la corbeille",
+   "bn": "ট্র্যাশে সরান",
+   "pt-BR": "Mover para a lixeira",
+   "ru": "Переместить в корзину",
+   "id": "Pindahkan ke sampah",
+   "it": "Sposta nel cestino"
+  },
+  "Forwarded message": {
+   "zh-Hans": "转发的邮件",
+   "hi": "फ़ॉरवर्ड किया गया संदेश",
+   "es": "Mensaje reenviado",
+   "ar": "رسالة مُعاد توجيهها",
+   "fr": "Message transféré",
+   "bn": "ফরোয়ার্ড করা বার্তা",
+   "pt-BR": "Mensagem encaminhada",
+   "ru": "Пересланное сообщение",
+   "id": "Pesan yang diteruskan",
+   "it": "Messaggio inoltrato"
   }
  }
 }

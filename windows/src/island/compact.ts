@@ -17,7 +17,7 @@ import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { activeModel, isCliProvider, providerDef } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, isSessionTask, type AgentTask } from "../core/state";
+import { State, aiSends, isSessionTask, type AgentTask } from "../core/state";
 import { COMPACT_SIZES } from "../core/layout";
 import { Live } from "../live/session";
 import { clear, h, svg } from "../views/dom";
@@ -45,6 +45,7 @@ const MAIL_TEXT = {
   askSummary: N_("Summarize this email in a few lines, and say if it needs an answer or anything from me."),
   askReply: N_("Write a reply to this email, ready to paste. Only the draft: I will read it and send it myself."),
   askSend: N_("Reply to this email: write the answer and send it to {address} with mail_send. I will read it on the card and click Send myself."),
+  askReplyInThread: N_("Reply to this email with mail_reply (its id is {id}): write the answer. I will read it on the card and click Send myself."),
   from: N_("From: {from}"),
   subject: N_("Subject: {subject}"),
   email: N_("Email"),
@@ -475,13 +476,16 @@ export class CompactStrip {
 }
 
 /**
- * What the reply button asks: with Security → Email on Read and send and a CLI
- * in the chat (which has mail_send), the reply itself, on its card before it
- * goes; otherwise a draft to paste.
+ * What the reply button asks: with Security → Email letting the AI send and a
+ * CLI in the chat (which has mail_reply), the reply itself, in the email's
+ * conversation, on its card before it goes; otherwise a draft to paste.
  */
 export function replyQuestion(m: MailPeek): string {
-  const send = State.settings.aiMailAccess === "send" && isCliProvider(State.settings.chatProvider) && !!m.address;
-  return send ? t(MAIL_TEXT.askSend, { address: m.address }) : t(MAIL_TEXT.askReply);
+  const send = aiSends(State.settings.aiMailAccess) && isCliProvider(State.settings.chatProvider) && !!m.address;
+  if (!send) return t(MAIL_TEXT.askReply);
+  // The inbox's emails come as "server:uid" (mail.rs): mail_reply takes "inbox:uid".
+  const uid = m.id.split(":").pop() ?? "";
+  return /^\d+$/.test(uid) ? t(MAIL_TEXT.askReplyInThread, { id: `inbox:${uid}` }) : t(MAIL_TEXT.askSend, { address: m.address });
 }
 
 /** The chat summarizes the email, or replies to it (the pill's card, the closed island). */
