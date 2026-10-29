@@ -356,6 +356,8 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     for (const u of untils) {
       const label = kind === "github.pr" ? UNTIL_TEXT[u as PrUntil] : LOCAL_UNTIL_TEXT[kind as LocalSource][u];
       untilChips.append(chip(t(label), u === until, () => {
+        // Each event's number starts from its own default.
+        if (u !== until) amountInput.value = "";
         until = u;
         if (!canRepeat()) mode = "once";
         drawChoices();
