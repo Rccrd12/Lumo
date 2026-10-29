@@ -1302,10 +1302,13 @@ mod imp {
         }
     }
 
+    /// When, where and with which button the last click was.
+    type LastClick = (std::time::Instant, (i32, i32), Button);
+
     pub fn click(button: Button, count: u32, hold: &[Key]) -> Result<(), String> {
         // A click on the spot of the one just before, within the double-click
         // time, would be read as a double click: it waits that time out.
-        static LAST: Mutex<Option<(std::time::Instant, (i32, i32), Button)>> = Mutex::new(None);
+        static LAST: Mutex<Option<LastClick>> = Mutex::new(None);
         let here = cursor().unwrap_or((0, 0));
         let last = *LAST.lock().unwrap_or_else(|e| e.into_inner());
         if let Some((when, at, _)) = last.filter(|l| l.2 == button) {
