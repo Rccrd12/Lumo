@@ -168,7 +168,7 @@ test("a note stands in for the first line only; the others stay", () => {
 
 test("while Claude uses the computer the closed island is a short pill with Lumo in its middle", () => {
   const top = computerCompact("top");
-  assert.ok(top.w < COMPACT_W / 2, `${top.w} is short`);
+  assert.ok(top.w < COMPACT_W, `${top.w} is narrower than the usual closed island`);
   assert.equal(top.h, NOTCH_H);
   assert.equal(top.bot.cx, top.w / 2, "Lumo in the middle");
   assert.equal(top.bot.cy, NOTCH_H / 2);

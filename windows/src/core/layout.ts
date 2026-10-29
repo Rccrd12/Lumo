@@ -78,7 +78,7 @@ export const EXPANDED_W = 640;
  * While Claude uses the computer the closed island is Lumo alone, round and
  * yellow in the middle of a short pill: nothing else is said beside him.
  */
-export const COMPUTER_COMPACT_W = 88;
+export const COMPUTER_COMPACT_W = 144;
 
 /** The closed island while Claude uses the computer, and Lumo in its middle (cy from its top edge). */
 export function computerCompact(dock: Dock): { w: number; h: number; bot: BotPlacement } {
