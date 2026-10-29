@@ -843,13 +843,15 @@ interface WebView2Bridge {
  * as a `file-drag` event.
  *
  * During a drag the whole window takes the mouse (island.rs), not just the
- * island: `accepts` says whether a page point is on the island, and only there
- * is the drag said to be over and the file taken. Elsewhere the cursor shows
- * "no drop" and the island hears a `leave`.
+ * island: `near` says whether a page point is close enough to the island for
+ * the drag to open it (`enter`/`over`, and a `leave` once it is carried away),
+ * and `accepts` whether it is on the island itself, the only place the file
+ * is taken. Elsewhere the cursor shows "no drop".
  */
 export async function onDragDrop(
   handler: (e: DragDropPayload) => void,
   accepts: (x: number, y: number) => boolean = () => true,
+  near: (x: number, y: number) => boolean = accepts,
 ) {
   if (!IS_TAURI) return () => {};
   const webview = (window as unknown as { chrome?: { webview?: WebView2Bridge } }).chrome?.webview;
@@ -861,8 +863,10 @@ export async function onDragDrop(
   const hasFiles = (e: DragEvent) => e.dataTransfer?.types.includes("Files") ?? false;
   // dragenter/dragleave fire for every element crossed; only the outermost pair counts.
   let depth = 0;
-  // The cursor is on the island itself (`accepts`), not just in the window.
+  // The cursor is near the island (`near`), not just in the window.
   let over = false;
+  // The cursor is on the island itself (`accepts`), where the file is taken.
+  let onIsland = false;
   // A picture dragged from the island itself (a screenshot's preview) says it
   // carries a file too: it is not one coming in, so it never opens the drop.
   let inside = false;
@@ -876,6 +880,7 @@ export async function onDragDrop(
     inside = false;
     depth = 0;
     over = false;
+    onIsland = false;
   };
   const onEnter = (e: DragEvent) => {
     if (inside || !hasFiles(e)) return;
@@ -883,9 +888,10 @@ export async function onDragDrop(
     depth++;
     track(e);
   };
-  /** Enter and leave follow the island's edge, not the window's. */
+  /** Enter and leave follow the zone around the island, not the window's edge. */
   const track = (e: DragEvent) => {
-    const on = accepts(e.clientX, e.clientY);
+    onIsland = accepts(e.clientX, e.clientY);
+    const on = onIsland || near(e.clientX, e.clientY);
     if (on && !over) {
       over = true;
       handler({ type: "enter", client: at(e) });
@@ -901,13 +907,14 @@ export async function onDragDrop(
     // Off the island it is refused: "none" shows the no-drop cursor.
     e.preventDefault();
     const on = track(e);
-    if (e.dataTransfer) e.dataTransfer.dropEffect = on ? "copy" : "none";
+    if (e.dataTransfer) e.dataTransfer.dropEffect = onIsland ? "copy" : "none";
     if (on) handler({ type: "over", client: at(e) });
   };
   const onLeave = (e: DragEvent) => {
     if (inside || !hasFiles(e) || depth === 0) return;
     if (--depth === 0 && over) {
       over = false;
+      onIsland = false;
       handler({ type: "leave" });
     }
   };
@@ -917,8 +924,9 @@ export async function onDragDrop(
     if (inside) return;
     depth = 0;
     // Let go beside the island: not ours (the drop zone closes on the release).
-    const on = over || accepts(e.clientX, e.clientY);
+    const on = onIsland || accepts(e.clientX, e.clientY);
     over = false;
+    onIsland = false;
     if (!on) {
       handler({ type: "leave" });
       return;

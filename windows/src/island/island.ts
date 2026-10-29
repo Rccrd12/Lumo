@@ -70,6 +70,8 @@ const STRAY_DRAG_MS = 300;
  * key typed in it gives it this long again.
  */
 const SHARE_GRACE = 10;
+/** How close a dragged file comes to the island before it opens for the drop (page px). */
+const DRAG_NEAR = 120;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
 const HOVER_OPEN_DELAY = 350;
 
@@ -1345,10 +1347,10 @@ export class Island {
     return { x, y, w, h: hh };
   }
 
-  /** A page point on the island itself (where a file can be dropped). */
-  private overIsland(x: number, y: number): boolean {
+  /** A page point on the island itself (where a file can be dropped), or within `margin` of it. */
+  private overIsland(x: number, y: number, margin = 0): boolean {
     const r = this.islandRect();
-    return x >= r.x && x <= r.x + r.w && y >= r.y && y <= r.y + r.h;
+    return x >= r.x - margin && x <= r.x + r.w + margin && y >= r.y - margin && y <= r.y + r.h + margin;
   }
 
   /** The edge the island hangs from: always the top where it cannot be moved. */
@@ -1534,8 +1536,13 @@ export class Island {
       }
     });
 
-    // A file is taken only with the cursor on the island, not just near it.
-    void onDragDrop((e) => this.onDragDrop(e), (x, y) => this.overIsland(x, y));
+    // A file dragged near the island opens it; it is taken only with the
+    // cursor on the island itself.
+    void onDragDrop(
+      (e) => this.onDragDrop(e),
+      (x, y) => this.overIsland(x, y),
+      (x, y) => this.overIsland(x, y, DRAG_NEAR),
+    );
 
     // Outside Tauri (plain browser) drive the cursor from DOM events so the
     // island can be inspected with `npm run dev`.
