@@ -243,6 +243,8 @@ export const Bridge = {
   chatCommands: () => call<string[] | null>("chat_commands"),
   /** An edited message: the conversation goes back to its first `keep` turns (`ChatReply.turns`). */
   chatRewind: (chatId: string, keep: number) => call<void>("chat_rewind", { chatId, keep }),
+  /** One of the chat's files taken out of its context (its ×): the AI is told with the next question. */
+  chatForgetFile: (chatId: string, name: string, path: string) => call<void>("chat_forget_file", { chatId, name, path }),
   /** Alt + drag: Rust moves the island with the mouse until the button is let go. */
   /** `island`: the island as drawn (x, y, width, height, page pixels), without what sits beside it. */
   islandDrag: (island?: [number, number, number, number]) => call<void>("island_drag", { island: island ?? null }),
@@ -285,6 +287,10 @@ export const Bridge = {
   screenExplorerPeek: () => callOrThrow<ExplorerFolder | null>("screen_explorer_peek"),
   /** That folder and what is in it, shared with the chat (explorer.rs). */
   screenExplorer: () => callOrThrow<ExplorerFolder | null>("screen_explorer"),
+  /** Every folder open in File Explorer, names only, the front window's first. Lists nothing. */
+  screenExplorerPeekAll: () => callOrThrow<ExplorerFolder[]>("screen_explorer_peek_all"),
+  /** The open folders picked by path (every open one for `[]`), with what is in them, shared with the chat. */
+  screenExplorerShare: (paths: string[]) => callOrThrow<ExplorerFolder[]>("screen_explorer_share", { paths }),
   /**
    * The file of a shared folder that `query` names, copied into the inbox
    * like a picked one; null when it names none.
@@ -692,6 +698,8 @@ export interface ScreenContext {
   /** More files added after the first (the chat's file context), in the inbox. */
   files?: { name: string; path: string }[];
   folder?: ExplorerFolder;
+  /** More folders, shared with `folder`. */
+  folders?: ExplorerFolder[];
   /** Windows picked in the menu, with what they show. */
   sharedWindows?: SharedWindow[];
   /** Browser tabs picked in the menu, with their pages' text. */

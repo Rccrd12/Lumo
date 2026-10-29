@@ -43,7 +43,7 @@ use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
-use crate::claude_code::{self, cli_command, file_name, is_screenshot, kill_tree, pretty_tool, safe_session, short, Activity};
+use crate::claude_code::{self, cli_command, file_name, is_screenshot, kill_tree, pretty_tool, safe_session, short, Activity, FileTouch};
 use crate::i18n::{t, tf};
 use crate::platform;
 
@@ -188,6 +188,50 @@ fn activity_for(item: &Value) -> Option<Activity> {
     })
 }
 
+/// The files an item reads, changes or makes, for the chat's files (claude_code.rs
+/// FileTouch): what a command reads, as Codex parsed it, a picture it looks
+/// at, and each change of a file change (a deletion is none). A path may be
+/// relative to the chat's folder (`in_dir`). Never a screenshot of the chat's.
+fn touches_for(item: &Value) -> Vec<FileTouch> {
+    let raw = |kind: &'static str, path: &str| {
+        let path = path.trim();
+        (!path.is_empty() && !is_screenshot(&file_name(path))).then(|| FileTouch { kind, path: path.to_string() })
+    };
+    match item["type"].as_str() {
+        Some("commandExecution") => item["commandActions"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter(|a| a["type"].as_str() == Some("read"))
+            .filter_map(|a| a["path"].as_str().and_then(|p| raw("read", p)))
+            .collect(),
+        Some("imageView") => item["path"].as_str().and_then(|p| raw("read", p)).into_iter().collect(),
+        Some("fileChange") => item["changes"]
+            .as_array()
+            .into_iter()
+            .flatten()
+            .filter_map(|c| {
+                let kind = c["kind"].as_str().or_else(|| c["kind"]["type"].as_str()).unwrap_or("update");
+                let kind = match kind {
+                    "add" => "created",
+                    "delete" => return None,
+                    _ => "edited",
+                };
+                c["path"].as_str().and_then(|p| raw(kind, p))
+            })
+            .collect(),
+        _ => Vec::new(),
+    }
+}
+
+/// `touch` with its path made whole: a relative one is in `dir`, the chat's folder.
+fn in_dir(mut touch: FileTouch, dir: &Path) -> Option<FileTouch> {
+    if !claude_code::is_full_path(&touch.path) {
+        touch.path = dir.join(&touch.path).to_string_lossy().to_string();
+    }
+    claude_code::is_full_path(&touch.path).then_some(touch)
+}
+
 /// The command a card shows: what Codex parsed it into (`touch made.txt`),
 /// not the shell it wraps it in (`bash -lc '…'`, `powershell.exe -Command …`).
 fn card_command(params: &Value) -> String {
@@ -274,6 +318,10 @@ struct Run {
     pending: Vec<(String, Activity)>,
     /// The paths of each file change, by item, for its card.
     files: HashMap<String, Vec<String>>,
+    /// The files each running item reads or changes, by item: told once it ran.
+    touching: HashMap<String, Vec<FileTouch>>,
+    /// Files used by items that ran, not passed on yet (`take_files`).
+    touched: Vec<FileTouch>,
     /// The plan Codex gave last, not yet passed on (`take_plan`).
     plan: Option<Value>,
     plan_seen: Option<Value>,
@@ -329,9 +377,20 @@ impl Run {
                             let paths = item["changes"].as_array().into_iter().flatten().filter_map(|c| c["path"].as_str()).map(str::to_string).collect();
                             self.files.insert(id.to_string(), paths);
                         }
+                        if !done {
+                            let touches = touches_for(item);
+                            if !touches.is_empty() {
+                                self.touching.insert(id.to_string(), touches);
+                            }
+                        }
                         if done {
                             if item["status"].as_str() == Some("declined") {
                                 self.denied += 1;
+                            }
+                            // Only an item that ran used its files.
+                            let touches = self.touching.remove(id).unwrap_or_else(|| touches_for(item));
+                            if !matches!(item["status"].as_str(), Some("declined" | "failed")) {
+                                self.touched.extend(touches);
                             }
                             self.finished(id);
                         } else if let Some(activity) = activity_for(item) {
@@ -415,6 +474,11 @@ impl Run {
 
     fn take_plan(&mut self) -> Option<Value> {
         self.plan.take()
+    }
+
+    /// The files used since the last time, oldest first.
+    fn take_files(&mut self) -> Vec<FileTouch> {
+        std::mem::take(&mut self.touched)
     }
 }
 
@@ -653,6 +717,7 @@ enum Ended {
 /// needed), blocking. `text(fresh)` is the question: `fresh` when the thread
 /// is new and has not seen the chat's turns. `ask` puts a card up and calls
 /// back with the click (true: allowed). The thread is returned with the run.
+#[allow(clippy::too_many_arguments)]
 fn live_turn(
     spec: TurnSpec,
     text: impl FnOnce(bool) -> String,
@@ -660,6 +725,7 @@ fn live_turn(
     ask: impl Fn(Value, Box<dyn FnOnce(bool) + Send>),
     mut on_text: impl FnMut(&str),
     mut on_activity: impl FnMut(&Activity),
+    mut on_file: impl FnMut(&FileTouch),
     mut on_plan: impl FnMut(&Value),
 ) -> Result<(Run, Option<String>), String> {
     let key = format!("{}\n{}", spec.exe.to_string_lossy(), spec.config);
@@ -790,6 +856,9 @@ fn live_turn(
         }
         if let Some(activity) = activity.filter(|_| !state.stopped) {
             on_activity(&activity);
+        }
+        for touch in state.take_files().into_iter().filter_map(|t| in_dir(t, &spec.dir)) {
+            on_file(&touch);
         }
         if let Some(plan) = state.take_plan() {
             on_plan(&plan);
@@ -932,6 +1001,7 @@ pub async fn send(
             },
             |text| events.delta(&app2, text),
             |activity| events.activity(&app2, activity),
+            |file| events.file(&app2, file),
             |plan| {
                 let _ = app2.emit_to(crate::island::WINDOW_LABEL, "chat-plan", json!({ "tool": "update_plan", "input": plan, "agent": "Codex", "color": COLOR }));
             },
@@ -989,7 +1059,7 @@ pub(crate) fn complete(model: &str, prompt: &str) -> Result<String, String> {
         mode: "plan".into(),
     };
     let prompt = prompt.to_string();
-    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {});
+    let result = live_turn(spec, move |_| prompt, Arc::new(Stop::default()), |_, answer| answer(false), |_| {}, |_| {}, |_| {}, |_| {});
     close(REVIEW);
     let (state, _) = result?;
     if let Some(Err(e)) = &state.done {
@@ -1066,6 +1136,28 @@ mod tests {
         assert_eq!(activity_for(&json!({ "type": "webSearch", "query": "x" })), Some(Activity::new("web", "")));
         assert_eq!(activity_for(&json!({ "type": "reasoning" })), Some(Activity::thinking()));
         assert_eq!(activity_for(&json!({ "type": "agentMessage", "text": "x" })), None);
+    }
+
+    #[test]
+    fn the_files_codex_reads_and_changes_are_told_once_they_ran() {
+        let mut run = Run::default();
+        feed(&mut run, r#"{"method":"item/started","params":{"item":{"type":"commandExecution","id":"c1","commandActions":[{"type":"read","name":"main.rs","path":"C:\\p\\main.rs","command":"cat main.rs"}],"status":"inProgress"}}}"#);
+        assert!(run.take_files().is_empty(), "not before it ran");
+        feed(&mut run, r#"{"method":"item/completed","params":{"item":{"type":"commandExecution","id":"c1","status":"completed"}}}"#);
+        assert_eq!(run.take_files(), vec![FileTouch { kind: "read", path: r"C:\p\main.rs".into() }]);
+
+        let change = r#"{"method":"item/started","params":{"item":{"type":"fileChange","id":"f1","changes":[{"path":"C:\\p\\new.rs","kind":{"type":"add"}},{"path":"lib.rs","kind":"update"},{"path":"C:\\p\\old.rs","kind":"delete"}],"status":"inProgress"}}}"#;
+        feed(&mut run, change);
+        feed(&mut run, r#"{"method":"item/completed","params":{"item":{"type":"fileChange","id":"f1","status":"completed"}}}"#);
+        let files = run.take_files();
+        assert_eq!(files, vec![FileTouch { kind: "created", path: r"C:\p\new.rs".into() }, FileTouch { kind: "edited", path: "lib.rs".into() }]);
+        let whole = in_dir(files[1].clone(), Path::new(r"C:\p")).unwrap();
+        assert!(claude_code::is_full_path(&whole.path) && whole.path.ends_with("lib.rs"), "{}", whole.path);
+
+        // Declined: nothing was changed.
+        feed(&mut run, &change.replace("f1", "f2"));
+        feed(&mut run, r#"{"method":"item/completed","params":{"item":{"type":"fileChange","id":"f2","status":"declined"}}}"#);
+        assert!(run.take_files().is_empty());
     }
 
     #[test]

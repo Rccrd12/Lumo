@@ -720,6 +720,13 @@ fn chat_rewind(chats: State<Chats>, chat_id: String, keep: usize) {
     chats.get(&chat_id).rewind(keep);
 }
 
+/// The × of one of the chat's files: out of the chat's context from the next
+/// question on (chat.rs `forget_file`).
+#[tauri::command]
+fn chat_forget_file(chats: State<Chats>, chat_id: String, name: String, path: String) {
+    chats.get(&chat_id).forget_file(&name, &path);
+}
+
 /// The commands Claude Code's last chat turn said it has, for the "/" menu; None before one.
 #[tauri::command]
 fn chat_commands() -> Option<Vec<String>> {
@@ -828,6 +835,20 @@ async fn screen_explorer_peek() -> Result<Option<explorer::ExplorerFolder>, Stri
 #[tauri::command]
 async fn screen_explorer() -> Result<Option<explorer::ExplorerFolder>, String> {
     tauri::async_runtime::spawn_blocking(explorer::share).await.map_err(|e| e.to_string())?
+}
+
+/// Every folder open in File Explorer, names only, the front window's first:
+/// the menu's list. Lists nothing; remembers nothing.
+#[tauri::command]
+async fn screen_explorer_peek_all() -> Result<Vec<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(explorer::peek_all).await.map_err(|e| e.to_string())?
+}
+
+/// The folders open in File Explorer that the user picked (every open one
+/// for none), each with what is in it, now shared with the chat.
+#[tauri::command]
+async fn screen_explorer_share(paths: Vec<String>) -> Result<Vec<explorer::ExplorerFolder>, String> {
+    tauri::async_runtime::spawn_blocking(move || explorer::share_all(&paths)).await.map_err(|e| e.to_string())?
 }
 
 /// A question sent with a shared folder: the file of it that the question
@@ -1155,6 +1176,7 @@ pub fn run() {
             chat_commands,
             chat_stop,
             chat_rewind,
+            chat_forget_file,
             island_drag,
             island_resize,
             island_reset_size,
@@ -1170,6 +1192,8 @@ pub fn run() {
             screen_discard,
             screen_explorer_peek,
             screen_explorer,
+            screen_explorer_peek_all,
+            screen_explorer_share,
             explorer_attach,
             listen::listen_add,
             listen::listen_cancel,

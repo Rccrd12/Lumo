@@ -736,6 +736,39 @@ impl Run {
         std::mem::take(&mut self.touched)
     }
 
+    /// The files the tools of a whole message use, the main conversation's or
+    /// a subagent's: a call is noted with its file, and told once it ran
+    /// without an error.
+    fn files_of(&mut self, v: &Value) {
+        let user = v["type"] == "user";
+        for block in v["message"]["content"].as_array().into_iter().flatten() {
+            if !user && matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
+                let id = block["id"].as_str().unwrap_or("").to_string();
+                if let Some(touch) = touch_for(block["name"].as_str().unwrap_or(""), &block["input"]) {
+                    if !id.is_empty() && !self.touching.iter().any(|(t, _)| *t == id) {
+                        self.touching.push((id, touch));
+                    }
+                }
+            } else if user && block["type"] == "tool_result" {
+                let id = block["tool_use_id"].as_str().unwrap_or("");
+                let Some(pos) = self.touching.iter().position(|(t, _)| t == id) else { continue };
+                let (_, mut touch) = self.touching.remove(pos);
+                if block["is_error"].as_bool() == Some(true) {
+                    continue;
+                }
+                // Claude Code says itself whether Write made the file.
+                if touch.kind != "read" {
+                    match v["tool_use_result"]["type"].as_str() {
+                        Some("create") => touch.kind = "created",
+                        Some("update") => touch.kind = "edited",
+                        _ => {}
+                    }
+                }
+                self.touched.push(touch);
+            }
+        }
+    }
+
     /// Takes one line; true when the visible text changed.
     fn feed(&mut self, line: &[u8]) -> bool {
         let Ok(v) = serde_json::from_slice::<Value>(line) else { return false };
@@ -804,18 +837,19 @@ impl Run {
                     _ => false,
                 }
             }
+            // A subagent's message: only the files its tools use, for the chat's files.
+            Some("assistant" | "user") if !top_level(&v) => {
+                self.files_of(&v);
+                false
+            }
             // The whole message, with the tool inputs complete.
             Some("assistant") if top_level(&v) => {
+                self.files_of(&v);
                 for block in v["message"]["content"].as_array().into_iter().flatten() {
                     if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                         let name = block["name"].as_str().unwrap_or("");
                         let id = block["id"].as_str().unwrap_or("").to_string();
                         self.started_tool(id.clone(), activity_for(name, &block["input"]));
-                        if let Some(touch) = touch_for(name, &block["input"]) {
-                            if !id.is_empty() && !self.touching.iter().any(|(t, _)| *t == id) {
-                                self.touching.push((id.clone(), touch));
-                            }
-                        }
                         if name == "TaskCreate" {
                             self.creating.push((id.clone(), block["input"].clone()));
                         } else if is_plan_tool(name) {
@@ -827,24 +861,11 @@ impl Run {
             }
             // Tool results: once every call is answered, Claude thinks again.
             Some("user") if top_level(&v) => {
+                self.files_of(&v);
                 let mut answered = false;
                 for block in v["message"]["content"].as_array().into_iter().flatten() {
                     if block["type"] == "tool_result" {
                         let id = block["tool_use_id"].as_str().unwrap_or("");
-                        if let Some(pos) = self.touching.iter().position(|(t, _)| t == id) {
-                            let (_, mut touch) = self.touching.remove(pos);
-                            if block["is_error"].as_bool() != Some(true) {
-                                // Claude Code says itself whether Write made the file.
-                                if touch.kind != "read" {
-                                    match v["tool_use_result"]["type"].as_str() {
-                                        Some("create") => touch.kind = "created",
-                                        Some("update") => touch.kind = "edited",
-                                        _ => {}
-                                    }
-                                }
-                                self.touched.push(touch);
-                            }
-                        }
                         if let Some(pos) = self.creating.iter().position(|(c, _)| c == id) {
                             let (_, mut input) = self.creating.remove(pos);
                             if let Some(task) = created_task_id(&v, block) {
@@ -2093,7 +2114,7 @@ mod tests {
         );
         assert!(run.take_files().is_empty(), "once");
 
-        // Claude Code's own word on Write wins; a screenshot, a relative path and a subagent's call stay out.
+        // Claude Code's own word on Write wins; a screenshot and a relative path stay out; a subagent's file counts.
         let mut run = Run::default();
         run.feed(br#"{"type":"assistant","parent_tool_use_id":null,"message":{"content":[{"type":"tool_use","id":"w2","name":"Write","input":{"file_path":"C:\\lumo-nowhere\\a.txt"}},{"type":"tool_use","id":"s1","name":"Read","input":{"file_path":"C:\\inbox\\screenshot-1-screen1.png"}},{"type":"tool_use","id":"x1","name":"Read","input":{"file_path":"notes.md"}}]}}"#);
         run.feed(br#"{"type":"assistant","parent_tool_use_id":"t9","message":{"content":[{"type":"tool_use","id":"sub","name":"Read","input":{"file_path":"C:\\sub.txt"}}]}}"#);
@@ -2101,7 +2122,10 @@ mod tests {
             let line = format!(r#"{{"type":"user","parent_tool_use_id":null,"message":{{"content":[{{"type":"tool_result","tool_use_id":"{id}","content":"ok"}}]}},"tool_use_result":{{"type":"update"}}}}"#);
             run.feed(line.as_bytes());
         }
-        assert_eq!(run.take_files(), vec![FileTouch { kind: "edited", path: r"C:\lumo-nowhere\a.txt".into() }]);
+        assert_eq!(
+            run.take_files(),
+            vec![FileTouch { kind: "edited", path: r"C:\lumo-nowhere\a.txt".into() }, FileTouch { kind: "read", path: r"C:\sub.txt".into() }]
+        );
         assert!(is_full_path(r"\\server\share\a.txt") && is_full_path("/home/me/a") && is_full_path("D:/x"));
         assert!(!is_full_path("a.txt") && !is_full_path(r"..\a.txt") && !is_full_path("C:"));
     }

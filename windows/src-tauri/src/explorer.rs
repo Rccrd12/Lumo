@@ -9,9 +9,14 @@
 // Nothing runs in the background and only folders the user shared this session
 // can be read from.
 //
-// Windows: the front-most File Explorer window (EnumWindows, which goes front
-// to back) and its folder through the Shell's COM objects (IShellWindows), on
-// a thread of their own.
+// Several folders open (windows, or tabs of one window): the menu lists every
+// one of them, the front window's first, and the user shares one or all
+// (`peek_all`, `share_all`). "Always share the folder open in File Explorer"
+// takes every open folder.
+//
+// Windows: the File Explorer windows (EnumWindows, which goes front to back)
+// and their folders through the Shell's COM objects (IShellWindows), on a
+// thread of their own.
 
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
@@ -344,6 +349,52 @@ pub fn share() -> Result<Option<ExplorerFolder>, String> {
     }))
 }
 
+/// The same folder whatever its case or a slash at its end (Windows paths).
+pub fn same_folder(a: &str, b: &str) -> bool {
+    let norm = |p: &str| p.trim().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    norm(a) == norm(b)
+}
+
+/// Every folder open in File Explorer, path and name only, the front window's
+/// first: the menu's list. Lists nothing; remembers nothing.
+pub fn peek_all() -> Result<Vec<ExplorerFolder>, String> {
+    Ok(imp::open_folders()?
+        .into_iter()
+        .map(|path| ExplorerFolder {
+            name: folder_name(&path.to_string_lossy()),
+            path: path.to_string_lossy().to_string(),
+            entries: Vec::new(),
+            omitted: 0,
+        })
+        .collect())
+}
+
+/// The folders of `paths` still open in File Explorer (every open one when
+/// `paths` is empty), each with what is in it and remembered as shared. A path
+/// that isn't open there now is left out: the page names them.
+pub fn share_all(paths: &[String]) -> Result<Vec<ExplorerFolder>, String> {
+    let open = imp::open_folders()?;
+    let mut out = Vec::new();
+    let mut problem = None;
+    for path in open {
+        let text = path.to_string_lossy().to_string();
+        if !paths.is_empty() && !paths.iter().any(|p| same_folder(p, &text)) {
+            continue;
+        }
+        match list_folder(&path) {
+            Ok((entries, omitted)) => {
+                remember(&path);
+                out.push(ExplorerFolder { name: folder_name(&text), path: text, entries, omitted });
+            }
+            Err(e) => problem = Some(e),
+        }
+    }
+    match problem {
+        Some(e) if out.is_empty() => Err(e),
+        _ => Ok(out),
+    }
+}
+
 /// The file of shared folder `folder` that `query` names first, copied into
 /// the inbox like a picked file; `None` when it names none (or only folders,
 /// or a file too big to send).
@@ -415,6 +466,24 @@ mod imp {
         found
     }
 
+    /// Every File Explorer window, front to back.
+    fn explorer_windows() -> Vec<isize> {
+        unsafe extern "system" fn each(hwnd: HWND, lparam: LPARAM) -> BOOL {
+            let found = unsafe { &mut *(lparam.0 as *mut Vec<isize>) };
+            let mut buf = [0u16; 64];
+            let len = unsafe { GetClassNameW(hwnd, &mut buf) };
+            if unsafe { IsWindowVisible(hwnd) }.as_bool() && String::from_utf16_lossy(&buf[..len.max(0) as usize]) == "CabinetWClass" {
+                found.push(hwnd.0 as isize);
+            }
+            true.into()
+        }
+        let mut found: Vec<isize> = Vec::new();
+        unsafe {
+            let _ = EnumWindows(Some(each), LPARAM(&mut found as *mut _ as isize));
+        }
+        found
+    }
+
     /// The folder `browser` shows, or None for a virtual place.
     unsafe fn folder_of(browser: &IWebBrowser2) -> Option<String> {
         unsafe {
@@ -470,6 +539,62 @@ mod imp {
         }
     }
 
+    /// The folders of windows `tops`, in their order, each window's tab in
+    /// front first; each folder once. COM is set up on the calling thread.
+    unsafe fn folders_in(tops: &[isize]) -> Vec<String> {
+        unsafe {
+            let windows: IShellWindows = match CoCreateInstance(&ShellWindows, None, CLSCTX_ALL) {
+                Ok(windows) => windows,
+                Err(_) => return Vec::new(),
+            };
+            let Ok(count) = windows.Count() else { return Vec::new() };
+            let mut browsers: Vec<(isize, IWebBrowser2)> = Vec::new();
+            for i in 0..count {
+                let Ok(item) = windows.Item(&VARIANT::from(i)) else { continue };
+                let Ok(browser) = item.cast::<IWebBrowser2>() else { continue };
+                if let Ok(top) = browser.HWND().map(|h| h.0) {
+                    browsers.push((top, browser));
+                }
+            }
+            let mut out: Vec<String> = Vec::new();
+            for &top in tops {
+                let mut tabs: Vec<&IWebBrowser2> = browsers.iter().filter(|(h, _)| *h == top).map(|(_, b)| b).collect();
+                let active = FindWindowExW(Some(HWND(top as *mut _)), None, w!("ShellTabWindowClass"), PCWSTR::null()).ok();
+                if let Some(at) = active.and_then(|tab| tabs.iter().position(|b| tab_window(b) == Some(tab.0 as isize))) {
+                    let front = tabs.remove(at);
+                    tabs.insert(0, front);
+                }
+                for browser in tabs {
+                    if let Some(path) = folder_of(browser) {
+                        if !out.iter().any(|o| same_folder(o, &path)) {
+                            out.push(path);
+                        }
+                    }
+                }
+            }
+            out
+        }
+    }
+
+    /// Every folder open in File Explorer, the front window's first.
+    pub fn open_folders() -> Result<Vec<PathBuf>, String> {
+        let tops = explorer_windows();
+        if tops.is_empty() {
+            return Ok(Vec::new());
+        }
+        let (tx, rx) = mpsc::channel();
+        std::thread::spawn(move || {
+            let com = unsafe { CoInitializeEx(None, COINIT_APARTMENTTHREADED) };
+            let found = unsafe { folders_in(&tops) };
+            if com.is_ok() {
+                unsafe { CoUninitialize() };
+            }
+            let _ = tx.send(found);
+        });
+        let found = rx.recv_timeout(COM_TIMEOUT).unwrap_or_default();
+        Ok(found.into_iter().map(PathBuf::from).filter(|p| p.is_dir()).collect())
+    }
+
     pub fn front_folder() -> Result<Option<PathBuf>, String> {
         let Some(top) = front_explorer() else { return Ok(None) };
         let (tx, rx) = mpsc::channel();
@@ -512,6 +637,13 @@ mod tests {
         assert!(looks_like_folder("\\\\nas\\photos"));
         assert_eq!(percent_decode_text("Screenshot%202026-10-08%20%C3%A9.png").as_deref(), Some("Screenshot 2026-10-08 é.png"));
         assert_eq!(percent_decode_text("bad%ff"), None);
+    }
+
+    #[test]
+    fn a_folder_is_the_same_whatever_its_case_and_last_slash() {
+        assert!(same_folder("C:\\Users\\Me\\PDFs", "c:\\users\\me\\pdfs\\"));
+        assert!(same_folder("C:/Users/me/PDFs", "C:\\Users\\me\\PDFs"));
+        assert!(!same_folder("C:\\Users\\me\\PDFs", "C:\\Users\\me\\PDFs 2"));
     }
 
     #[test]
