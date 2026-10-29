@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.16.1 — October 29, 2026
+
+- **A width for the closed island alone**: Settings → Island → Closed island width makes the closed island Wide (as before), Mid-width, Short or Just Lumo, without zooming the text, the icons or the open island. When it has something to say (an activity, a timer, an email, a request) it still widens as much as it needs
+- **Fewer words on the closed island**: it says a verb and, at most, a file's name or a pull request's number ("Runs a command", "Edits island.ts", "CI failed #125", "Waits for the merge #125"). The details are still in the open island. With one activity it stops at 380 px instead of 460
+- **Computer use**: while Claude uses the computer, the closed island is a short pill with Lumo alone in the middle, in his own yellow
+- **Fixed**: saving or removing an integration's key in Settings → Pills left its pill's row saying "Key not configured" until Settings was opened again. The row now updates at once
+
 ## Windows 0.16.0 — October 29, 2026
 
 - **Listening**: the waves beside the chat's folder open the Listening panel, with what Lumo is listening to (each with Pause, Edit, Go to the chat and Stop) and the history of what it heard. "Listen for something" starts a watch by hand, and Claude's `listen` tool can start one from any chat. Lumo can listen to a GitHub pull request, a file or a folder, a program or a port, a web page, an email, the calendar and the services of your pills (Vercel, Stripe, n8n, Resend, Notion, Cal.com), Windows (an app's notification, the battery, the charger, the network, a USB drive, when you're back), your agents (finished, asking for you, failed), a webhook on this PC, or one of your own tools. Each one listens once or every time, and can tell you or have the chat do something
