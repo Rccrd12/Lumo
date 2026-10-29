@@ -127,7 +127,7 @@ fn policy(mode: &str) -> (&'static str, Value) {
 /// island's timer and GitHub tools (`lumo`, island_tools.rs), and the user's
 /// tools while one of them is on (`lumo_tools`, which ask on the island
 /// themselves, tools.rs), with the email's tools as Security lets the AI have
-/// them (`mail`, mail.rs ai_tools; `mail_send` asks on its own card). Codex
+/// them (`mail`, mail.rs ai_tools; sending and changing an email ask on Lumo's own card). Codex
 /// calls Lumo's own tools without asking.
 fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
     let server = |args: &[&str]| {
@@ -137,6 +137,9 @@ fn mcp_config(chat_id: &str, tools: bool, mail: &str) -> Value {
             entry["env"]["LUMO_CHAT_ID"] = json!(chat_id);
         }
         entry["default_tools_approval_mode"] = json!("approve");
+        // An email waits for the user's click on its card (108 s at most) and
+        // then for the mail server: longer than Codex's own minute.
+        entry["tool_timeout_sec"] = json!(300);
         entry
     };
     let mut servers = serde_json::Map::new();

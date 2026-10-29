@@ -3,18 +3,25 @@
 // email preview and the pill's card. The server says when one arrives (IDLE),
 // so it shows within seconds.
 //
-// Read only, by construction: the inbox is opened with EXAMINE (the server
-// refuses any change to it), message bodies are fetched with BODY.PEEK (they
-// stay unread), and there is no command here that sends, moves or deletes
-// anything. The address, the server and the app password are in the credential
-// store (secrets.rs); the connection is TLS only, to the server the user typed.
+// The pill itself only reads: the inbox is opened with EXAMINE (the server
+// refuses any change to it) and message bodies are fetched with BODY.PEEK
+// (they stay unread). The address, the server and the app password are in the
+// credential store (secrets.rs); the connection is TLS only, to the server the
+// user typed.
 //
-// The agents read it too, the same way: a question about email in the chat
-// brings the newest emails, read or not, and Antigravity CLI, which has no
-// email of its own as Claude Code has Gmail, gets Lumo's email tools
-// (`lumo-hook --mcp --tools=mail`): the newest emails, a search of the whole
-// mailbox, one email in full. They answer only while an agent of the island
-// is at work (`agent_turn`), each on a short connection of its own.
+// The agents read it too: a question about email in the chat brings the
+// newest emails, read or not, and the CLIs get Lumo's email tools
+// (`lumo-hook --mcp --tools=mail`): the newest emails of a folder, a search
+// of every folder, one email in full with its files (one saved with the chat's
+// files, to read), the list of folders. They answer only while an agent of
+// the island is at work (`agent_turn`), each on a short connection of its own.
+//
+// What more they may do is Settings → General → Security → Email's: with
+// "Read and send", send, reply in the conversation and forward with the files
+// (each email on its card, gone only when the user clicks Send; smtp.rs),
+// and save drafts in the mailbox's Drafts; with "Read, send and manage",
+// also mark read or unread, star, move, archive and trash one email, each on
+// a card of its own. Nothing here ever deletes an email for good.
 
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -97,19 +104,22 @@ pub fn wake() {
 /// connection opens or closes now), its promotions filter, or the language its
 /// errors are written in. Any other change leaves the inbox alone.
 /// What the AI may do with the email (Settings → General → Security): "none",
-/// "read", or "send" (read, and send what the user approves on a card).
+/// "read", "send" (read, and send what the user approves on a card), or
+/// "manage" (and mark, move, archive and trash, each on a card).
 /// Anything else reads as "read", as before the setting.
 pub fn access(settings: &Settings) -> &'static str {
     match settings.ai_mail_access.as_str() {
         "none" => "none",
         "send" => "send",
+        "manage" => "manage",
         _ => "read",
     }
 }
 
 /// The `--tools=` of lumo-hook's email tools the agents get: "" (none: the
 /// Email pill is off, or Security keeps it from the AI), "mail" (reading),
-/// "mail,mailsend" (and `mail_send`, each email sent only with the user's click).
+/// "mail,mailsend" (and sending, each email only with the user's click),
+/// "mail,mailsend,mailmanage" (and changing the mailbox, each change on a card).
 pub fn ai_tools(app: &AppHandle) -> &'static str {
     if !crate::integrations::enabled(app, ID) {
         return "";
@@ -117,6 +127,7 @@ pub fn ai_tools(app: &AppHandle) -> &'static str {
     match access(&app.state::<crate::Shared>().settings.lock().unwrap()) {
         "none" => "",
         "send" => "mail,mailsend",
+        "manage" => "mail,mailsend,mailmanage",
         _ => "mail",
     }
 }
@@ -345,9 +356,7 @@ pub fn asks_about(query: &str) -> bool {
 
 /// The newest unread emails, as the chat's provider reads them.
 pub fn context_text(unread: usize, messages: &[Message]) -> String {
-    let mut out = String::from(
-        "Lumo reads the user's inbox (the Email pill: Lumo cannot move or delete email, and sends one only through the mail_send tool, when it is offered, once the user clicks Send). ",
-    );
+    let mut out = String::from(CAN);
     if messages.is_empty() {
         out.push_str("Right now there is no unread email.\n");
         return out;
@@ -373,7 +382,7 @@ pub fn context_text(unread: usize, messages: &[Message]) -> String {
             out.push_str(&format!("  {cut}{more}\n"));
         }
     }
-    out.push_str("Answer questions about the user's email from this list. To reply, use mail_send if you have it, else write a draft for them to send themselves.\n");
+    out.push_str("Answer questions about the user's email from this list. To reply, use mail_reply (or mail_send) if you have it, else write a draft for them to send themselves.\n");
     out
 }
 
@@ -387,6 +396,14 @@ const FULL_BYTES: usize = 256 * 1024;
 const FULL_CHARS: usize = 20_000;
 /// Of each email in a list: the start of its text.
 const LIST_CHARS: usize = 400;
+/// Of the email answered, what is quoted under a reply.
+const QUOTED_CHARS: usize = 4000;
+/// At most this many folders searched, or counted in mail_folders.
+const MOST_FOLDERS: usize = 60;
+/// A step that may take longer: every folder searched, files fetched.
+const SLOW_TIMEOUT: Duration = Duration::from_secs(55);
+/// The most a file attached to an email may weigh as it comes (in base64).
+const MAX_ATTACHMENT_READ: usize = 32 * 1024 * 1024;
 /// How long the chat waits for the newest emails before it makes do with the unread ones.
 const CHAT_WAIT: Duration = Duration::from_secs(12);
 
@@ -408,18 +425,21 @@ pub fn agent_turn() -> AgentTurn {
     AgentTurn(())
 }
 
-/// Where an email was found: the inbox, or (a search on Gmail) all the mail.
-#[derive(Clone, Copy, Debug, PartialEq)]
+/// Where an email is: the inbox, (on Gmail) all the mail, or another folder,
+/// by its name as `mail_folders` gives it.
+#[derive(Clone, Debug, PartialEq)]
 enum Folder {
     Inbox,
     All,
+    Named(String),
 }
 
 impl Folder {
-    fn tag(self) -> &'static str {
+    fn tag(&self) -> &str {
         match self {
             Folder::Inbox => "inbox",
             Folder::All => "all",
+            Folder::Named(name) => name,
         }
     }
 }
@@ -427,19 +447,20 @@ impl Folder {
 /// An email as the agents get it.
 #[derive(Clone, Debug, PartialEq)]
 pub struct Found {
-    /// What `mail_read` takes: "inbox:123", "all:4567".
+    /// What `mail_read` takes: "inbox:123", "all:4567", "Sent:12".
     pub id: String,
     pub message: Message,
     pub unread: bool,
 }
 
-/// "inbox:123" → the folder and the UID.
+/// "inbox:123", "Archivio/2025:7" → the folder and the UID.
 fn parse_id(id: &str) -> Option<(Folder, u32)> {
-    let (folder, uid) = id.trim().split_once(':')?;
-    let folder = match folder {
-        "inbox" => Folder::Inbox,
+    let (folder, uid) = id.trim().rsplit_once(':')?;
+    let folder = match folder.trim() {
+        "" => return None,
+        f if f.eq_ignore_ascii_case("inbox") => Folder::Inbox,
         "all" => Folder::All,
-        _ => return None,
+        f => Folder::Named(f.to_string()),
     };
     Some((folder, uid.parse::<u32>().ok().filter(|u| *u > 0)?))
 }
@@ -462,29 +483,135 @@ async fn open(app: &AppHandle) -> Result<(Imap, String), String> {
     }
     let (address, password) = secrets::get(ADDRESS_KEY)
         .zip(secrets::get(PASSWORD_KEY))
-        .ok_or_else(|| "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.".to_string())?;
+        .ok_or_else(|| NO_ACCOUNT.to_string())?;
     let server = secrets::get(SERVER_KEY).unwrap_or_default();
     let (host, port) = server_of(&server, &address);
     let imap = timed(&host, sign_in(&host, port, &address, &password)).await?;
     Ok((imap, host))
 }
 
+const NO_ACCOUNT: &str = "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.";
+
+/// Ends a short connection, without waiting long for the server's goodbye.
+async fn close(mut imap: Imap) {
+    let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
+}
+
+// ── Folders ───────────────────────────────────────────────────────────────────
+
+/// A folder of the mailbox, as LIST gives it.
+#[derive(Clone, Debug, PartialEq)]
+struct Mailbox {
+    /// As the server names it (modified UTF-7), for its commands.
+    wire: String,
+    /// As people read it.
+    name: String,
+    flags: Vec<String>,
+}
+
+impl Mailbox {
+    fn has(&self, flag: &str) -> bool {
+        self.flags.iter().any(|f| f.eq_ignore_ascii_case(flag))
+    }
+
+    /// A folder that holds emails, not only other folders ("[Gmail]").
+    fn selectable(&self) -> bool {
+        !self.has("\\Noselect") && !self.has("\\NonExistent")
+    }
+
+    fn is_inbox(&self) -> bool {
+        self.wire.eq_ignore_ascii_case("INBOX")
+    }
+}
+
+/// What a folder is for: the server marks it (RFC 6154), or its usual name says so.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Role {
+    Sent,
+    Drafts,
+    Trash,
+    Junk,
+    Archive,
+    All,
+}
+
+const ROLES: [Role; 6] = [Role::Sent, Role::Drafts, Role::Trash, Role::Junk, Role::Archive, Role::All];
+
+impl Role {
+    fn flag(self) -> &'static str {
+        match self {
+            Role::Sent => "\\Sent",
+            Role::Drafts => "\\Drafts",
+            Role::Trash => "\\Trash",
+            Role::Junk => "\\Junk",
+            Role::Archive => "\\Archive",
+            Role::All => "\\All",
+        }
+    }
+
+    /// The word the agents read and may give for it.
+    fn word(self) -> &'static str {
+        match self {
+            Role::Sent => "sent",
+            Role::Drafts => "drafts",
+            Role::Trash => "trash",
+            Role::Junk => "spam",
+            Role::Archive => "archive",
+            Role::All => "all mail",
+        }
+    }
+
+    /// The folder's usual names, lowercase, for a server that doesn't mark it.
+    fn names(self) -> &'static [&'static str] {
+        match self {
+            Role::Sent => &["sent", "sent items", "sent mail", "sent messages", "posta inviata", "inviata", "inviati", "elementi inviati", "enviados", "envoyés", "gesendet"],
+            Role::Drafts => &["drafts", "draft", "bozze", "borradores", "brouillons", "entwürfe"],
+            Role::Trash => &["trash", "bin", "deleted", "deleted items", "deleted messages", "cestino", "posta eliminata", "elementi eliminati", "papelera", "corbeille", "papierkorb"],
+            Role::Junk => &["junk", "spam", "junk e-mail", "junk email", "posta indesiderata", "indesiderata", "correo no deseado", "indésirables"],
+            Role::Archive => &["archive", "archives", "archivio", "archivo", "archiv"],
+            Role::All => &["all mail"],
+        }
+    }
+}
+
+fn role_of(b: &Mailbox) -> Option<Role> {
+    if b.is_inbox() {
+        return None;
+    }
+    ROLES.iter().copied().find(|r| b.has(r.flag())).or_else(|| {
+        let last = b.name.rsplit(['/', '.']).next().unwrap_or(&b.name).trim().to_lowercase();
+        ROLES.iter().copied().find(|r| r.names().contains(&last.as_str()))
+    })
+}
+
+/// The folder for `role`: the one the server marks, else the one named so.
+fn find_role(boxes: &[Mailbox], role: Role) -> Option<&Mailbox> {
+    let open = || boxes.iter().filter(|b| b.selectable() && !b.is_inbox());
+    open().find(|b| b.has(role.flag())).or_else(|| open().find(|b| role_of(b) == Some(role)))
+}
+
+/// One line of a LIST answer: `* LIST (\HasNoChildren \Sent) "/" "Sent"`.
+fn parse_list(unit: &[Part]) -> Option<Mailbox> {
+    let Some(Part::Text(line)) = unit.first() else { return None };
+    let rest = line.strip_prefix("* LIST (")?;
+    let (flags, rest) = rest.split_once(')')?;
+    let wire = match unit.get(1) {
+        Some(Part::Literal(name)) => String::from_utf8_lossy(name).to_string(),
+        _ => list_name(rest.trim())?,
+    };
+    Some(Mailbox { name: utf7_decode(&wire), wire, flags: flags.split_whitespace().map(str::to_string).collect() })
+}
+
+async fn mailboxes(imap: &mut Imap) -> Result<Vec<Mailbox>, String> {
+    let units = imap.run("LIST \"\" \"*\"").await?;
+    Ok(units.iter().filter_map(|u| parse_list(u)).collect())
+}
+
 /// Gmail keeps every email in a folder of its own ("[Gmail]/All Mail", named
 /// in the account's language), which IMAP marks `\All`.
 async fn all_mail(imap: &mut Imap) -> Option<String> {
-    let units = imap.run("LIST \"\" \"*\"").await.ok()?;
-    units.iter().find_map(|unit| {
-        let Some(Part::Text(line)) = unit.first() else { return None };
-        let rest = line.strip_prefix("* LIST (")?;
-        let (flags, rest) = rest.split_once(')')?;
-        if !flags.split_whitespace().any(|f| f.eq_ignore_ascii_case("\\All")) {
-            return None;
-        }
-        if let Some(Part::Literal(name)) = unit.get(1) {
-            return Some(String::from_utf8_lossy(name).to_string());
-        }
-        list_name(rest.trim())
-    })
+    let boxes = mailboxes(imap).await.ok()?;
+    boxes.into_iter().find(|b| b.has("\\All")).map(|b| b.wire)
 }
 
 /// The mailbox name at the end of a LIST line, after its delimiter: `"/" "[Gmail]/All Mail"`.
@@ -508,8 +635,120 @@ fn list_name(rest: &str) -> Option<String> {
     (!name.is_empty()).then_some(name)
 }
 
+/// A folder's name as IMAP sends it (modified UTF-7, RFC 3501 5.1.3:
+/// "Posta eliminata", "&AMk-l&AOk-ments supprim&AOk-s"), as people read it.
+fn utf7_decode(wire: &str) -> String {
+    let mut out = String::new();
+    let mut rest = wire;
+    while let Some(start) = rest.find('&') {
+        out.push_str(&rest[..start]);
+        let after = &rest[start + 1..];
+        let Some(end) = after.find('-') else {
+            out.push_str(&rest[start..]);
+            return out;
+        };
+        let encoded = &after[..end];
+        if encoded.is_empty() {
+            out.push('&');
+        } else {
+            let bytes = base64(encoded.replace(',', "/").as_bytes());
+            let units: Vec<u16> = bytes.as_chunks::<2>().0.iter().map(|&c| u16::from_be_bytes(c)).collect();
+            out.push_str(&String::from_utf16_lossy(&units));
+        }
+        rest = &after[end + 1..];
+    }
+    out.push_str(rest);
+    out
+}
+
+/// The folder an agent named: "inbox", "all" (Gmail), a name mail_folders
+/// gave, or what it is for ("sent", "trash", "archive"…).
+async fn folder_named(imap: &mut Imap, host: &str, asked: &str) -> Result<Folder, String> {
+    let asked = asked.trim();
+    if asked.eq_ignore_ascii_case("inbox") {
+        return Ok(Folder::Inbox);
+    }
+    if asked == "all" && is_gmail(host) {
+        return Ok(Folder::All);
+    }
+    let boxes = mailboxes(imap).await?;
+    let open: Vec<&Mailbox> = boxes.iter().filter(|b| b.selectable()).collect();
+    let named = open.iter().find(|b| b.name == asked).or_else(|| open.iter().find(|b| b.name.eq_ignore_ascii_case(asked)));
+    if let Some(b) = named {
+        return Ok(if b.is_inbox() { Folder::Inbox } else { Folder::Named(b.name.clone()) });
+    }
+    let word = asked.to_lowercase();
+    if let Some(b) = ROLES.iter().find(|r| r.word() == word || r.names().contains(&word.as_str())).and_then(|r| find_role(&boxes, *r)) {
+        return Ok(Folder::Named(b.name.clone()));
+    }
+    Err(format!("The mailbox has no folder called {asked}: mail_folders lists them."))
+}
+
+/// Opens `folder`, to look (EXAMINE) or to change (SELECT). Its name as the server has it.
+async fn enter(imap: &mut Imap, folder: &Folder, change: bool) -> Result<String, String> {
+    let wire = match folder {
+        Folder::Inbox => "INBOX".to_string(),
+        Folder::All => all_mail(imap).await.ok_or_else(|| "This mailbox has no folder with all the mail.".to_string())?,
+        Folder::Named(name) => {
+            let boxes = mailboxes(imap).await?;
+            let found = boxes.into_iter().find(|b| b.name == *name && b.selectable());
+            found.map(|b| b.wire).ok_or_else(|| format!("The mailbox has no folder called {name}: mail_folders lists them."))?
+        }
+    };
+    let verb = if change { "SELECT" } else { "EXAMINE" };
+    imap.run(&format!("{verb} {}", quoted(&wire)))
+        .await
+        .map_err(|why| format!("Lumo couldn't open the folder {}: {why}", folder.tag()))?;
+    Ok(wire)
+}
+
+/// `mail_folders`: every folder, what it is for, and how many emails it holds.
+async fn folders(app: &AppHandle) -> Result<String, String> {
+    let (mut imap, host) = open(app).await?;
+    let listed = timed_for(SLOW_TIMEOUT, &host, async {
+        let boxes = mailboxes(&mut imap).await?;
+        let mut out = String::from("The mailbox's folders (give the name as mail_recent's or mail_search's folder, or mail_move's):\n");
+        for (n, b) in boxes.iter().filter(|b| b.selectable()).enumerate() {
+            let name = if b.is_inbox() { "inbox" } else { b.name.as_str() };
+            out.push_str(&format!("- {name}"));
+            if let Some(role) = role_of(b) {
+                out.push_str(&format!(" ({})", role.word()));
+            }
+            if n < MOST_FOLDERS {
+                imap.read = 0;
+                if let Ok(units) = imap.run(&format!("STATUS {} (MESSAGES UNSEEN)", quoted(&b.wire))).await {
+                    if let Some((all, unseen)) = units.iter().find_map(|u| status_counts(u)) {
+                        out.push_str(&format!(": {all} emails, {unseen} unread"));
+                    }
+                }
+            }
+            out.push('\n');
+        }
+        Ok(out)
+    })
+    .await;
+    close(imap).await;
+    listed
+}
+
+/// A STATUS answer's counts: `* STATUS "Sent" (MESSAGES 12 UNSEEN 0)`.
+fn status_counts(unit: &[Part]) -> Option<(u32, u32)> {
+    let Some(Part::Text(first)) = unit.first() else { return None };
+    if !first.starts_with("* STATUS") {
+        return None;
+    }
+    let text = match unit.last() {
+        Some(Part::Text(last)) => last.as_str(),
+        _ => first.as_str(),
+    };
+    let count = |key: &str| text.split(key).nth(1).and_then(|r| r.split(|c: char| !c.is_ascii_digit()).find(|n| !n.is_empty())).and_then(|n| n.parse().ok());
+    Some((count("MESSAGES ")?, count("UNSEEN ")?))
+}
+
+// ── Reading ───────────────────────────────────────────────────────────────────
+
 /// The emails `uids` (newest first), with the first `body_bytes` of their text.
-async fn fetch(imap: &mut Imap, host: &str, folder: Folder, uids: &[u32], body_bytes: usize, body_chars: usize) -> Result<Vec<Found>, String> {
+async fn fetch(imap: &mut Imap, host: &str, folder: &Folder, uids: &[u32], body_bytes: usize, body_chars: usize) -> Result<Vec<Found>, String> {
     if uids.is_empty() {
         return Ok(Vec::new());
     }
@@ -537,6 +776,14 @@ async fn fetch(imap: &mut Imap, host: &str, folder: Folder, uids: &[u32], body_b
 
 /// The text of a FETCH answer's body, without parse_fetch's cut.
 fn full_text(unit: &[Part]) -> String {
+    let (header, body) = header_and_body(unit);
+    let headers = parse_headers(header);
+    let field = |name: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str()).unwrap_or("");
+    tidy(&extract_text(field("Content-Type"), field("Content-Transfer-Encoding"), body))
+}
+
+/// A FETCH answer's header and body literals.
+fn header_and_body(unit: &[Part]) -> (&[u8], &[u8]) {
     let mut header: &[u8] = &[];
     let mut body: &[u8] = &[];
     let mut before = "";
@@ -547,23 +794,28 @@ fn full_text(unit: &[Part]) -> String {
             Part::Literal(bytes) => body = bytes,
         }
     }
-    let headers = parse_headers(header);
-    let field = |name: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str()).unwrap_or("");
-    tidy(&extract_text(field("Content-Type"), field("Content-Transfer-Encoding"), body))
+    (header, body)
 }
 
-/// The newest `count` emails of the inbox, read or not (or only the unread ones).
-pub async fn newest(app: &AppHandle, count: usize, unread_only: bool) -> Result<Vec<Found>, String> {
+/// The newest `count` emails of the inbox (or of `folder`), read or not (or only the unread ones).
+pub async fn newest(app: &AppHandle, count: usize, unread_only: bool, folder: Option<&str>) -> Result<Vec<Found>, String> {
     let (mut imap, host) = open(app).await?;
     let found = timed(&host, async {
+        let folder = match folder {
+            Some(asked) => folder_named(&mut imap, &host, asked).await?,
+            None => Folder::Inbox,
+        };
+        if folder != Folder::Inbox {
+            enter(&mut imap, &folder, false).await?;
+        }
         let units = imap.run(if unread_only { "UID SEARCH UNSEEN" } else { "UID SEARCH ALL" }).await?;
         let mut uids = search_uids(&units);
         uids.sort_unstable();
         let newest: Vec<u32> = uids.iter().rev().take(count.clamp(1, MOST)).copied().collect();
-        fetch(&mut imap, &host, Folder::Inbox, &newest, BODY_BYTES, BODY_CHARS).await
+        fetch(&mut imap, &host, &folder, &newest, BODY_BYTES, BODY_CHARS).await
     })
     .await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
+    close(imap).await;
     found
 }
 
@@ -582,48 +834,447 @@ fn search_command(host: &str, query: &str) -> (String, Option<String>) {
     }
 }
 
-/// The newest `count` emails that match `query`: on Gmail in all the mail, elsewhere in the inbox.
-pub async fn search(app: &AppHandle, query: &str, count: usize) -> Result<Vec<Found>, String> {
+/// The newest `count` UIDs of the open folder that match `query`.
+async fn search_here(imap: &mut Imap, host: &str, query: &str, count: usize) -> Result<Vec<u32>, String> {
+    let units = match search_command(host, query) {
+        (command, None) => imap.run(&command).await?,
+        (command, Some(literal)) => imap.run_literal(&command, &literal).await?,
+    };
+    let mut uids = search_uids(&units);
+    uids.sort_unstable();
+    Ok(uids.iter().rev().take(count).copied().collect())
+}
+
+/// The newest `count` emails that match `query`: in `folder` when given; else
+/// on Gmail in all the mail, elsewhere in every folder but the trash and spam.
+pub async fn search(app: &AppHandle, query: &str, count: usize, folder: Option<&str>) -> Result<Vec<Found>, String> {
     if query.trim().is_empty() {
         return Err("Say what to search for.".into());
     }
+    let count = count.clamp(1, MOST);
     let (mut imap, host) = open(app).await?;
-    let found = timed(&host, async {
-        let mut folder = Folder::Inbox;
-        if is_gmail(&host) {
-            if let Some(all) = all_mail(&mut imap).await {
-                imap.run(&format!("EXAMINE {}", quoted(&all))).await?;
-                folder = Folder::All;
-            }
-        }
-        let units = match search_command(&host, query) {
-            (command, None) => imap.run(&command).await?,
-            (command, Some(literal)) => imap.run_literal(&command, &literal).await?,
+    let found = timed_for(SLOW_TIMEOUT, &host, async {
+        let one = match folder {
+            Some(asked) => Some(folder_named(&mut imap, &host, asked).await?),
+            None if is_gmail(&host) => Some(if all_mail(&mut imap).await.is_some() { Folder::All } else { Folder::Inbox }),
+            None => None,
         };
-        let mut uids = search_uids(&units);
-        uids.sort_unstable();
-        let newest: Vec<u32> = uids.iter().rev().take(count.clamp(1, MOST)).copied().collect();
-        fetch(&mut imap, &host, folder, &newest, BODY_BYTES, BODY_CHARS).await
+        if let Some(folder) = one {
+            if folder != Folder::Inbox {
+                enter(&mut imap, &folder, false).await?;
+            }
+            let uids = search_here(&mut imap, &host, query, count).await?;
+            return fetch(&mut imap, &host, &folder, &uids, BODY_BYTES, BODY_CHARS).await;
+        }
+        // Every folder, one after the other; the newest of them all.
+        let boxes = mailboxes(&mut imap).await?;
+        let mut all = Vec::new();
+        let searched = boxes
+            .iter()
+            .filter(|b| b.selectable() && !matches!(role_of(b), Some(Role::Trash | Role::Junk)))
+            .take(MOST_FOLDERS);
+        for b in searched {
+            imap.read = 0;
+            let folder = if b.is_inbox() { Folder::Inbox } else { Folder::Named(b.name.clone()) };
+            if imap.run(&format!("EXAMINE {}", quoted(&b.wire))).await.is_err() {
+                continue;
+            }
+            let Ok(uids) = search_here(&mut imap, &host, query, count).await else { continue };
+            all.extend(fetch(&mut imap, &host, &folder, &uids, BODY_BYTES, BODY_CHARS).await?);
+        }
+        all.sort_by_key(|f| std::cmp::Reverse(date_key(&f.message.date)));
+        all.truncate(count);
+        Ok(all)
     })
     .await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
+    close(imap).await;
     found
 }
 
-/// One email in full, by the id `newest` or `search` gave.
-pub async fn read(app: &AppHandle, id: &str) -> Result<Found, String> {
-    let (folder, uid) = parse_id(id).ok_or_else(|| format!("{id} is not an email id: use one mail_recent or mail_search gave."))?;
+/// One email in full, by the id `newest` or `search` gave, with its attachments.
+pub async fn read(app: &AppHandle, id: &str) -> Result<(Found, Vec<Attached>), String> {
+    let (folder, uid) = parse_id(id).ok_or_else(|| bad_id(id))?;
     let (mut imap, host) = open(app).await?;
     let found = timed(&host, async {
-        if folder == Folder::All {
-            let all = all_mail(&mut imap).await.ok_or_else(|| "This mailbox has no folder with all the mail.".to_string())?;
-            imap.run(&format!("EXAMINE {}", quoted(&all))).await?;
+        if folder != Folder::Inbox {
+            enter(&mut imap, &folder, false).await?;
         }
-        fetch(&mut imap, &host, folder, &[uid], FULL_BYTES, FULL_CHARS).await
+        let found = fetch(&mut imap, &host, &folder, &[uid], FULL_BYTES, FULL_CHARS).await?;
+        let files = structure(&mut imap, uid).await.unwrap_or_default();
+        Ok((found, files))
     })
     .await;
-    let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
-    found?.into_iter().next().ok_or_else(|| format!("No email {id}: it may have been moved or deleted."))
+    close(imap).await;
+    let (found, files) = found?;
+    let found = found.into_iter().next().ok_or_else(|| gone(id))?;
+    Ok((found, files))
+}
+
+fn bad_id(id: &str) -> String {
+    format!("{id} is not an email id: use one mail_recent or mail_search gave.")
+}
+
+fn gone(id: &str) -> String {
+    format!("No email {id}: it may have been moved or deleted.")
+}
+
+/// An email's Date header as seconds since 1970 (UTC), to put the emails of
+/// several folders in order; 0 when it can't be read.
+fn date_key(date: &str) -> i64 {
+    const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
+    let words: Vec<&str> = date.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).collect();
+    let month = |w: &str| MONTHS.iter().position(|m| w.get(..3).is_some_and(|p| p.eq_ignore_ascii_case(m)));
+    let Some((at, m)) = words.iter().enumerate().find_map(|(i, w)| month(w).map(|m| (i, m))) else { return 0 };
+    let number = |j: Option<usize>| j.and_then(|j| words.get(j)).and_then(|w| w.parse::<i64>().ok());
+    let (Some(d), Some(mut y)) = (number(at.checked_sub(1)), number(Some(at + 1))) else { return 0 };
+    if y < 100 {
+        y += if y < 50 { 2000 } else { 1900 };
+    }
+    let time: Vec<i64> = words.get(at + 2).map(|t| t.split(':').filter_map(|n| n.parse().ok()).collect()).unwrap_or_default();
+    let zone = words.get(at + 3).copied().unwrap_or("");
+    let offset = match zone.as_bytes() {
+        [sign @ (b'+' | b'-'), ..] if zone.len() == 5 => {
+            let hhmm: i64 = zone[1..].parse().unwrap_or(0);
+            let secs = (hhmm / 100) * 3600 + (hhmm % 100) * 60;
+            if *sign == b'-' { -secs } else { secs }
+        }
+        _ => match zone.to_ascii_uppercase().as_str() {
+            "EST" | "CDT" => -5 * 3600,
+            "EDT" => -4 * 3600,
+            "CST" | "MDT" => -6 * 3600,
+            "MST" | "PDT" => -7 * 3600,
+            "PST" => -8 * 3600,
+            _ => 0,
+        },
+    };
+    // Days since 1970-01-01 of a date in the Gregorian calendar (H. Hinnant's days_from_civil).
+    let (y, m) = if m < 2 { (y - 1, m as i64 + 10) } else { (y, m as i64 - 2) };
+    let era = y.div_euclid(400);
+    let yoe = y - era * 400;
+    let doy = (153 * m + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    let at = |i: usize| time.get(i).copied().unwrap_or(0);
+    days * 86_400 + at(0) * 3600 + at(1) * 60 + at(2) - offset
+}
+
+// ── Attachments ───────────────────────────────────────────────────────────────
+
+/// A file attached to an email received, as its BODYSTRUCTURE says.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Attached {
+    /// The part's number, for `BODY[…]`: "2", "1.3".
+    section: String,
+    pub name: String,
+    pub mime: String,
+    encoding: String,
+    /// Its size as sent (in base64, a third more than the file).
+    size: usize,
+}
+
+impl Attached {
+    /// About how much the file weighs.
+    fn file_size(&self) -> usize {
+        if self.encoding.eq_ignore_ascii_case("base64") { self.size / 4 * 3 } else { self.size }
+    }
+}
+
+/// A piece of a FETCH answer, for its BODYSTRUCTURE: a parenthesis, a string
+/// (an atom, a quoted string, a literal) or NIL.
+#[derive(Clone, Debug, PartialEq)]
+enum Tok {
+    Open,
+    Close,
+    Word(String),
+    Nil,
+}
+
+fn tokens(unit: &[Part]) -> Vec<Tok> {
+    let mut out = Vec::new();
+    for part in unit {
+        let text = match part {
+            Part::Literal(bytes) => {
+                out.push(Tok::Word(String::from_utf8_lossy(bytes).to_string()));
+                continue;
+            }
+            Part::Text(text) => text,
+        };
+        // The "{123}" that ends a line is the literal next to it.
+        let text = if literal_size(text).is_some() { &text[..text.rfind('{').unwrap_or(text.len())] } else { text.as_str() };
+        let mut chars = text.chars().peekable();
+        while let Some(&c) = chars.peek() {
+            match c {
+                '(' => {
+                    chars.next();
+                    out.push(Tok::Open);
+                }
+                ')' => {
+                    chars.next();
+                    out.push(Tok::Close);
+                }
+                '"' => {
+                    chars.next();
+                    let mut s = String::new();
+                    while let Some(c) = chars.next() {
+                        match c {
+                            '\\' => s.extend(chars.next()),
+                            '"' => break,
+                            c => s.push(c),
+                        }
+                    }
+                    out.push(Tok::Word(s));
+                }
+                c if c.is_whitespace() => {
+                    chars.next();
+                }
+                _ => {
+                    let mut s = String::new();
+                    while let Some(&c) = chars.peek() {
+                        if c.is_whitespace() || c == '(' || c == ')' {
+                            break;
+                        }
+                        s.push(c);
+                        chars.next();
+                    }
+                    out.push(if s.eq_ignore_ascii_case("NIL") { Tok::Nil } else { Tok::Word(s) });
+                }
+            }
+        }
+    }
+    out
+}
+
+/// A BODYSTRUCTURE as a tree: lists of strings and lists.
+#[derive(Clone, Debug, PartialEq)]
+enum Node {
+    List(Vec<Node>),
+    Str(String),
+    Nil,
+}
+
+fn node(toks: &[Tok], i: &mut usize, depth: usize) -> Option<Node> {
+    if depth > 32 {
+        return None;
+    }
+    match toks.get(*i)? {
+        Tok::Open => {
+            *i += 1;
+            let mut list = Vec::new();
+            loop {
+                if toks.get(*i)? == &Tok::Close {
+                    *i += 1;
+                    return Some(Node::List(list));
+                }
+                list.push(node(toks, i, depth + 1)?);
+            }
+        }
+        Tok::Close => None,
+        Tok::Word(w) => {
+            *i += 1;
+            Some(Node::Str(w.clone()))
+        }
+        Tok::Nil => {
+            *i += 1;
+            Some(Node::Nil)
+        }
+    }
+}
+
+/// The files attached to an email, from a FETCH answer with its BODYSTRUCTURE.
+fn attached_files(unit: &[Part]) -> Vec<Attached> {
+    let toks = tokens(unit);
+    let Some(at) = toks.iter().position(|t| matches!(t, Tok::Word(w) if w.eq_ignore_ascii_case("BODYSTRUCTURE"))) else {
+        return Vec::new();
+    };
+    let mut i = at + 1;
+    let mut out = Vec::new();
+    if let Some(tree) = node(&toks, &mut i, 0) {
+        walk(&tree, "", &mut out, 0);
+    }
+    out
+}
+
+/// The attachments in a part (RFC 3501's body): each part of a multipart in turn, else the part itself.
+fn walk(part: &Node, section: &str, out: &mut Vec<Attached>, depth: usize) {
+    let Node::List(items) = part else { return };
+    if depth > 12 {
+        return;
+    }
+    if matches!(items.first(), Some(Node::List(_))) {
+        for (n, child) in items.iter().take_while(|c| matches!(c, Node::List(_))).enumerate() {
+            let at = if section.is_empty() { (n + 1).to_string() } else { format!("{section}.{}", n + 1) };
+            walk(child, &at, out, depth + 1);
+        }
+        return;
+    }
+    let word = |i: usize| match items.get(i) {
+        Some(Node::Str(s)) => s.clone(),
+        _ => String::new(),
+    };
+    let (kind, sub) = (word(0).to_ascii_lowercase(), word(1).to_ascii_lowercase());
+    // After the size: a text part has its lines, an email its envelope, body and lines; then MD5, then the disposition.
+    let ext = match (kind.as_str(), sub.as_str()) {
+        ("text", _) => 8,
+        ("message", "rfc822") => 10,
+        _ => 7,
+    };
+    let (disposition, disposition_params) = match items.get(ext + 1) {
+        Some(Node::List(d)) => (
+            match d.first() {
+                Some(Node::Str(s)) => s.to_ascii_lowercase(),
+                _ => String::new(),
+            },
+            d.get(1),
+        ),
+        _ => (String::new(), None),
+    };
+    let name = param_of(disposition_params, "filename").or_else(|| param_of(items.get(2), "name"));
+    // An attachment, or a named file not shown inside the text (an inline
+    // PDF, as Apple Mail sends it); not the pictures of an HTML email.
+    let attached = disposition == "attachment"
+        || (disposition.is_empty() && name.is_some() && kind != "text")
+        || (disposition == "inline" && name.is_some() && kind != "image" && kind != "text");
+    if !attached {
+        return;
+    }
+    let name = name.unwrap_or_else(|| if sub == "rfc822" { "email.eml".to_string() } else { format!("attachment-{}", out.len() + 1) });
+    out.push(Attached {
+        section: if section.is_empty() { "1".into() } else { section.to_string() },
+        name,
+        mime: format!("{kind}/{sub}"),
+        encoding: word(5),
+        size: word(6).parse().unwrap_or(0),
+    });
+}
+
+/// A parameter of a part (`("name" "a.pdf" …)`): plain, RFC 2047 words, or
+/// RFC 2231 (`filename*=UTF-8''…`, in pieces `filename*0*`, `filename*1`…).
+fn param_of(params: Option<&Node>, key: &str) -> Option<String> {
+    let Some(Node::List(items)) = params else { return None };
+    let pairs: Vec<(String, &str)> = items
+        .chunks(2)
+        .filter_map(|p| match p {
+            [Node::Str(k), Node::Str(v)] => Some((k.to_ascii_lowercase(), v.as_str())),
+            _ => None,
+        })
+        .collect();
+    let get = |k: &str| pairs.iter().find(|(name, _)| name == k).map(|(_, v)| *v);
+    let text = if let Some(v) = get(key) {
+        decode_words(v)
+    } else if let Some(v) = get(&format!("{key}*")) {
+        utf8_or_1252(&percent_decode(v.splitn(3, '\'').nth(2).unwrap_or(v)))
+    } else {
+        let mut bytes = Vec::new();
+        for n in 0..64 {
+            let (v, encoded) = match (get(&format!("{key}*{n}*")), get(&format!("{key}*{n}"))) {
+                (Some(v), _) => (v, true),
+                (None, Some(v)) => (v, false),
+                _ => break,
+            };
+            // Only the first piece says its charset (`UTF-8''`).
+            let v = if n == 0 && encoded { v.splitn(3, '\'').nth(2).unwrap_or(v) } else { v };
+            bytes.extend(if encoded { percent_decode(v) } else { v.as_bytes().to_vec() });
+        }
+        if bytes.is_empty() {
+            return None;
+        }
+        utf8_or_1252(&bytes)
+    };
+    let name = clean_header(&text);
+    (!name.is_empty()).then_some(name)
+}
+
+/// `%E2%80%99` and the like, as bytes.
+fn percent_decode(s: &str) -> Vec<u8> {
+    let bytes = s.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'%' {
+            if let Some(b) = s.get(i + 1..i + 3).and_then(|h| u8::from_str_radix(h, 16).ok()) {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+        }
+        out.push(bytes[i]);
+        i += 1;
+    }
+    out
+}
+
+/// The files attached to email `uid` of the open folder.
+async fn structure(imap: &mut Imap, uid: u32) -> Result<Vec<Attached>, String> {
+    let units = imap.run(&format!("UID FETCH {uid} (UID BODYSTRUCTURE)")).await?;
+    Ok(units.iter().find(|u| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH "))).map(|u| attached_files(u)).unwrap_or_default())
+}
+
+/// One attached file of email `uid` of the open folder, its bytes decoded.
+async fn attached_bytes(imap: &mut Imap, uid: u32, file: &Attached) -> Result<Vec<u8>, String> {
+    if file.size > MAX_ATTACHMENT_READ {
+        return Err(format!("{} is too big for Lumo to fetch ({} MB at most).", file.name, MAX_ATTACHMENT_READ / (1024 * 1024) * 3 / 4));
+    }
+    imap.read = 0;
+    imap.limit = MAX_ATTACHMENT_READ + 64 * 1024;
+    let units = imap.run(&format!("UID FETCH {uid} (UID BODY.PEEK[{}])", file.section)).await;
+    imap.limit = MAX_READ;
+    imap.read = 0;
+    let units = units?;
+    let bytes = units
+        .iter()
+        .find_map(|u| u.iter().find_map(|p| if let Part::Literal(b) = p { Some(b) } else { None }))
+        .ok_or_else(|| format!("The mail server didn't give {}.", file.name))?;
+    Ok(decode_body(&file.encoding, bytes))
+}
+
+/// Which of the email's files the agent asked for: its number in mail_read's list, or its name.
+fn pick<'a>(files: &'a [Attached], which: Option<&serde_json::Value>) -> Result<&'a Attached, String> {
+    if files.is_empty() {
+        return Err("This email has no files attached.".into());
+    }
+    let nth = |n: u64| (n as usize).checked_sub(1).and_then(|i| files.get(i));
+    let found = match which {
+        None | Some(serde_json::Value::Null) if files.len() == 1 => files.first(),
+        Some(serde_json::Value::Number(n)) => n.as_u64().and_then(nth),
+        Some(serde_json::Value::String(s)) => match s.trim().parse::<u64>() {
+            Ok(n) => nth(n),
+            Err(_) => files.iter().find(|f| f.name.eq_ignore_ascii_case(s.trim())),
+        },
+        _ => None,
+    };
+    found.ok_or_else(|| format!("Say which file: its number in mail_read's list (1 to {}) or its name.", files.len()))
+}
+
+/// `mail_attachment`: a file attached to an email, saved with the files
+/// attached to the chat, where the agent can read it.
+async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("");
+    let (folder, uid) = parse_id(id).ok_or_else(|| bad_id(id))?;
+    let (mut imap, host) = open(app).await?;
+    let got = timed_for(SLOW_TIMEOUT, &host, async {
+        if folder != Folder::Inbox {
+            enter(&mut imap, &folder, false).await?;
+        }
+        let files = structure(&mut imap, uid).await?;
+        let file = pick(&files, input.get("attachment"))?.clone();
+        let bytes = attached_bytes(&mut imap, uid, &file).await?;
+        Ok((file, bytes))
+    })
+    .await;
+    close(imap).await;
+    let (file, bytes) = got?;
+    let saved = crate::files::write_in(&file.name, &bytes)?;
+    log::line(format!("[mail] a file of an email saved for the chat ({} bytes)", saved.size));
+    Ok(format!("Saved {} ({}) with the files attached to the chat: {}. Read it from there.", saved.name, size_text(saved.size as usize), saved.path))
+}
+
+/// "120 KB", "3.4 MB".
+fn size_text(bytes: usize) -> String {
+    if bytes >= 1024 * 1024 {
+        format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
+    } else {
+        format!("{} KB", bytes.div_ceil(1024))
+    }
 }
 
 /// A list of emails as an agent reads it.
@@ -650,11 +1301,12 @@ pub fn list_text(found: &[Found], text_chars: usize) -> String {
     out
 }
 
+/// What the AI is told of what Lumo lets it do with the email.
+const CAN: &str = "Lumo reads the user's mailbox (the Email pill). It sends, moves, marks or trashes an email only through its email tools, when they are offered, and only once the user clicks on the email's card in Lumo; it never deletes one for good. ";
+
 /// The newest emails, read or not, as the chat's provider reads them.
 pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
-    let mut out = String::from(
-        "Lumo reads the user's inbox (the Email pill: Lumo cannot move or delete email, and sends one only through the mail_send tool, when it is offered, once the user clicks Send). ",
-    );
+    let mut out = String::from(CAN);
     if found.is_empty() {
         out.push_str("The inbox is empty.\n");
         return out;
@@ -665,7 +1317,7 @@ pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
     }
     out.push_str(":\n");
     out.push_str(&list_text(found, CHAT_BODY_CHARS));
-    out.push_str("Answer questions about the user's email from this list. To reply, use mail_send if you have it, else write a draft for them to send themselves.\n");
+    out.push_str("Answer questions about the user's email from this list. To reply, use mail_reply (or mail_send) if you have it, else write a draft for them to send themselves.\n");
     out
 }
 
@@ -673,7 +1325,7 @@ pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
 /// not, or, when the server is slow or says no, the unread ones last read.
 pub async fn for_chat(app: &AppHandle) -> Option<String> {
     let cached = inbox();
-    match tokio::time::timeout(CHAT_WAIT, newest(app, DEFAULT_COUNT, false)).await {
+    match tokio::time::timeout(CHAT_WAIT, newest(app, DEFAULT_COUNT, false, None)).await {
         Ok(Ok(found)) => Some(recent_text(&found, cached.map(|(n, _)| n))),
         Ok(Err(e)) => {
             log::line(format!("[mail] for the chat: {e}"));
@@ -682,6 +1334,11 @@ pub async fn for_chat(app: &AppHandle) -> Option<String> {
         Err(_) => cached.map(|(n, m)| context_text(n, &m)),
     }
 }
+
+/// The tools that send or write an email: Security's "Read and send" and up.
+const SEND_TOOLS: &[&str] = &["mail_send", "mail_reply", "mail_forward", "mail_draft"];
+/// The tools that change the mailbox, each on a card: "Read, send and manage".
+const MANAGE_TOOLS: &[&str] = &["mail_mark", "mail_move", "mail_archive", "mail_trash"];
 
 /// One call of Lumo's email tools (`{"lumo_mail": …}` from lumo-hook, pipe.rs), answered.
 pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::Value {
@@ -695,30 +1352,47 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     }
     let tool = request.get("tool").and_then(|v| v.as_str()).unwrap_or("");
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
-    if tool == "mail_send" {
-        if level != "send" {
+    if SEND_TOOLS.contains(&tool) {
+        if level == "read" {
             return refuse("The user lets the AI only read their email (Lumo's Settings → General → Security): write a draft for them to send instead.".into());
         }
-        return match send(app, &input).await {
+        let done = match tool {
+            "mail_send" => send(app, &input).await,
+            "mail_reply" => reply(app, &input).await,
+            "mail_forward" => forward(app, &input).await,
+            _ => draft(app, &input).await,
+        };
+        return match done {
+            Ok(text) => json!({ "text": text }),
+            Err(e) => refuse(e),
+        };
+    }
+    if MANAGE_TOOLS.contains(&tool) {
+        if level != "manage" {
+            return refuse("The user doesn't let the AI change their mailbox (Lumo's Settings → General → Security → Email): tell them what you would do instead.".into());
+        }
+        return match manage(app, tool, &input).await {
             Ok(text) => json!({ "text": text }),
             Err(e) => refuse(e),
         };
     }
     let count = input.get("count").and_then(|v| v.as_u64()).map_or(DEFAULT_COUNT, |n| n as usize);
+    let folder = input.get("folder").and_then(|v| v.as_str()).map(str::trim).filter(|f| !f.is_empty());
     let answer = match tool {
         "mail_recent" => {
             let unread_only = input.get("unread_only").and_then(|v| v.as_bool()).unwrap_or(false);
-            newest(app, count, unread_only).await.map(|found| {
+            let place = folder.unwrap_or("inbox");
+            newest(app, count, unread_only, folder).await.map(|found| {
                 if found.is_empty() {
-                    if unread_only { "No unread email.".to_string() } else { "The inbox is empty.".to_string() }
+                    if unread_only { format!("No unread email in {place}.") } else { format!("No email in {place}.") }
                 } else {
-                    format!("{} newest emails in the inbox, newest first:\n{}", found.len(), list_text(&found, LIST_CHARS))
+                    format!("{} newest emails in {place}, newest first:\n{}", found.len(), list_text(&found, LIST_CHARS))
                 }
             })
         }
         "mail_search" => {
             let query = input.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            search(app, &query, count).await.map(|found| {
+            search(app, &query, count, folder).await.map(|found| {
                 if found.is_empty() {
                     format!("No email matches {query}.")
                 } else {
@@ -728,18 +1402,26 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         }
         "mail_read" => {
             let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            read(app, &id).await.map(|f| {
+            read(app, &id).await.map(|(f, files)| {
                 let m = &f.message;
                 let state = if f.unread { "unread" } else { "read" };
                 let mut text = format!("From: {} <{}>\nDate: {}\nSubject: {}\nState: {state}\n", m.from, m.address, m.date, m.subject);
                 if let Some(link) = &m.link {
                     text.push_str(&format!("Link: {link}\n"));
                 }
+                if !files.is_empty() {
+                    text.push_str("Files attached (mail_attachment saves one where you can read it):\n");
+                    for (n, file) in files.iter().enumerate() {
+                        text.push_str(&format!("  {}. {} ({}, {})\n", n + 1, file.name, file.mime, size_text(file.file_size())));
+                    }
+                }
                 text.push('\n');
                 text.push_str(if m.body.trim().is_empty() { &m.preview } else { &m.body });
                 text
             })
         }
+        "mail_folders" => folders(app).await,
+        "mail_attachment" => save_attachment(app, &input).await,
         _ => Err(format!("Lumo has no email tool called {tool}.")),
     };
     match answer {
@@ -806,7 +1488,7 @@ fn attachments(v: Option<&serde_json::Value>) -> Result<Vec<(crate::smtp::Attach
         }
         total += std::fs::metadata(&real).map(|m| m.len()).unwrap_or(0);
         if total > crate::smtp::MAX_ATTACHED_BYTES {
-            return Err(format!("The files attached weigh more than {} MB together.", crate::smtp::MAX_ATTACHED_BYTES / (1024 * 1024)));
+            return Err(too_heavy());
         }
         let bytes = std::fs::read(&real).map_err(|e| format!("Lumo couldn't read {raw}: {e}"))?;
         let name = real.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
@@ -816,16 +1498,12 @@ fn attachments(v: Option<&serde_json::Value>) -> Result<Vec<(crate::smtp::Attach
     Ok(out)
 }
 
-/// `mail_send`'s input, checked: who, the subject, the text, the files.
-pub fn outgoing(input: &serde_json::Value) -> Result<(crate::smtp::Outgoing, Vec<String>), String> {
-    let to = addresses(input.get("to"), "to")?;
-    let cc = addresses(input.get("cc"), "cc")?;
-    if to.is_empty() {
-        return Err("Say who the email is for (to).".into());
-    }
-    if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
-        return Err(format!("At most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
-    }
+fn too_heavy() -> String {
+    format!("The files attached weigh more than {} MB together.", crate::smtp::MAX_ATTACHED_BYTES / (1024 * 1024))
+}
+
+/// The subject and the text, checked.
+fn subject_and_body(input: &serde_json::Value) -> Result<(String, String), String> {
     let subject = input.get("subject").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
     let body = input.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
     if subject.chars().count() > crate::smtp::MAX_SUBJECT {
@@ -837,27 +1515,56 @@ pub fn outgoing(input: &serde_json::Value) -> Result<(crate::smtp::Outgoing, Vec
     if body.len() > crate::smtp::MAX_BODY {
         return Err("The email's text is too long.".into());
     }
+    Ok((subject, body))
+}
+
+/// `mail_send`'s input, checked: who, the subject, the text, the files.
+pub fn outgoing(input: &serde_json::Value) -> Result<(crate::smtp::Outgoing, Vec<String>), String> {
+    outgoing_for(input, true)
+}
+
+/// As `outgoing`; a draft (`needs_to` false) may have nobody yet.
+fn outgoing_for(input: &serde_json::Value, needs_to: bool) -> Result<(crate::smtp::Outgoing, Vec<String>), String> {
+    let to = addresses(input.get("to"), "to")?;
+    let cc = addresses(input.get("cc"), "cc")?;
+    if needs_to && to.is_empty() {
+        return Err("Say who the email is for (to).".into());
+    }
+    if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
+        return Err(format!("At most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
+    }
+    let (subject, body) = subject_and_body(input)?;
     let (attachments, paths): (Vec<_>, Vec<_>) = attachments(input.get("attachments"))?.into_iter().unzip();
-    Ok((crate::smtp::Outgoing { to, cc, subject, body, attachments }, paths))
+    Ok((crate::smtp::Outgoing { to, cc, subject, body, attachments, ..Default::default() }, paths))
 }
 
 /// `mail_send`: the email on a card of its own on the island, sent only when
 /// the user clicks Send. Nothing (Auto, Turbo, a trusted tool) skips the card.
 async fn send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
     let (mail, paths) = outgoing(input)?;
-    let files: Vec<serde_json::Value> = mail
-        .attachments
+    let files = card_files(&mail, &paths);
+    deliver(app, "mail_send", mail, files).await
+}
+
+/// The files of an email as its card lists them: name, size, and the path it came from (none for an email's own).
+fn card_files(mail: &crate::smtp::Outgoing, paths: &[String]) -> Vec<serde_json::Value> {
+    mail.attachments
         .iter()
-        .zip(&paths)
-        .map(|(f, path)| json!({ "name": f.name, "size": f.bytes.len(), "path": path }))
-        .collect();
+        .enumerate()
+        .map(|(i, f)| json!({ "name": f.name, "size": f.bytes.len(), "path": paths.get(i).cloned().unwrap_or_default() }))
+        .collect()
+}
+
+/// Any email the AI sends (a new one, a reply, a forward): on its card, whole,
+/// and sent only once the user clicks Send. Then a copy in Sent, where the
+/// server keeps none itself.
+async fn deliver(app: &AppHandle, tool: &str, mail: crate::smtp::Outgoing, files: Vec<serde_json::Value>) -> Result<String, String> {
     let names: Vec<&str> = mail.attachments.iter().map(|f| f.name.as_str()).collect();
-    let from = secrets::get(ADDRESS_KEY)
-        .ok_or_else(|| "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.".to_string())?;
+    let from = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
     let card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
-        "tool_name": "mcp__lumo__mail_send",
+        "tool_name": format!("mcp__lumo__{tool}"),
         "tool_input": { "to": mail.to, "cc": mail.cc, "subject": mail.subject, "attachments": names },
         "lumo_mail_send": { "from": from, "to": mail.to, "cc": mail.cc, "subject": mail.subject, "body": mail.body, "attachments": files },
     });
@@ -866,9 +1573,508 @@ async fn send(app: &AppHandle, input: &serde_json::Value) -> Result<String, Stri
         Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
         None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
     }
-    let host = crate::smtp::send(&mail).await.inspect_err(|e| log::line(format!("[mail] send: {e}")))?;
-    log::line(format!("[mail] sent through {host} to {} people", mail.to.len() + mail.cc.len()));
+    let sent = crate::smtp::send(&mail).await.inspect_err(|e| log::line(format!("[mail] send: {e}")))?;
+    log::line(format!("[mail] sent through {} to {} people", sent.host, mail.to.len() + mail.cc.len()));
+    keep_copy(app, sent);
     Ok(format!("Sent to {}.", mail.to.iter().chain(&mail.cc).cloned().collect::<Vec<_>>().join(", ")))
+}
+
+/// How long after sending Lumo looks in Sent for the server's own copy.
+const SENT_COPY_AFTER: Duration = Duration::from_secs(10);
+
+/// Gmail keeps in Sent what it sends, and so do most servers; for one that
+/// didn't, a copy goes there over IMAP, a little later, once.
+fn keep_copy(app: &AppHandle, sent: crate::smtp::Sent) {
+    let address = secrets::get(ADDRESS_KEY).unwrap_or_default();
+    let (host, _) = server_of(&secrets::get(SERVER_KEY).unwrap_or_default(), &address);
+    if is_gmail(&host) {
+        return;
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        tokio::time::sleep(SENT_COPY_AFTER).await;
+        match sent_copy(&app, &sent).await {
+            Ok(true) => log::line("[mail] a copy of the email sent put in Sent"),
+            Ok(false) => {}
+            Err(e) => log::line(format!("[mail] no copy in Sent: {e}")),
+        }
+    });
+}
+
+/// Puts the email sent in Sent, unless the server already did. Whether it did.
+async fn sent_copy(app: &AppHandle, sent: &crate::smtp::Sent) -> Result<bool, String> {
+    let (mut imap, host) = open(app).await?;
+    let done = timed_for(SLOW_TIMEOUT, &host, async {
+        let boxes = mailboxes(&mut imap).await?;
+        let place = find_role(&boxes, Role::Sent).ok_or_else(|| "the mailbox has no Sent folder".to_string())?.wire.clone();
+        imap.run(&format!("EXAMINE {}", quoted(&place))).await?;
+        let units = imap.run(&format!("UID SEARCH HEADER Message-ID {}", quoted(&sent.message_id))).await?;
+        if !search_uids(&units).is_empty() {
+            return Ok(false);
+        }
+        imap.run_literal(&format!("APPEND {} (\\Seen)", quoted(&place)), &sent.data).await?;
+        Ok(true)
+    })
+    .await;
+    close(imap).await;
+    done
+}
+
+/// What a reply or a forward needs of the email it is about.
+#[derive(Clone, Debug, Default, PartialEq)]
+struct Original {
+    from: String,
+    address: String,
+    reply_to: Vec<String>,
+    to: Vec<String>,
+    cc: Vec<String>,
+    subject: String,
+    date: String,
+    message_id: String,
+    references: String,
+    /// Its whole text.
+    text: String,
+}
+
+/// The addresses of a To or Cc header (`"Rossi, Ada" <ada@x.it>, bob@y.it`), plain.
+fn address_list(raw: &str) -> Vec<String> {
+    let mut pieces = Vec::new();
+    let mut piece = String::new();
+    let (mut quoted, mut angle) = (false, false);
+    for c in decode_words(raw).chars() {
+        match c {
+            '"' => quoted = !quoted,
+            '<' => angle = true,
+            '>' => angle = false,
+            ',' | ';' if !quoted && !angle => {
+                pieces.push(std::mem::take(&mut piece));
+                continue;
+            }
+            _ => {}
+        }
+        piece.push(c);
+    }
+    pieces.push(piece);
+    let mut out: Vec<String> = Vec::new();
+    for address in pieces.iter().map(|p| parse_from(p).1.trim().to_string()) {
+        if crate::smtp::valid_address(&address) && !out.iter().any(|a| a.eq_ignore_ascii_case(&address)) {
+            out.push(address);
+        }
+    }
+    out
+}
+
+/// The email from a FETCH of its whole header and its text.
+fn original_of(unit: &[Part]) -> Original {
+    let (header, _) = header_and_body(unit);
+    let headers = parse_headers(header);
+    let field = |name: &str| headers.iter().find(|(k, _)| k.eq_ignore_ascii_case(name)).map(|(_, v)| v.as_str()).unwrap_or("");
+    let (from, address) = parse_from(&decode_words(field("From")));
+    Original {
+        from: clean_header(&from),
+        address: address.trim().to_string(),
+        reply_to: address_list(field("Reply-To")),
+        to: address_list(field("To")),
+        cc: address_list(field("Cc")),
+        subject: clean_header(&decode_words(field("Subject"))),
+        date: field("Date").trim().to_string(),
+        message_id: crate::smtp::message_ids(field("Message-ID")),
+        references: crate::smtp::message_ids(field("References")),
+        text: full_text(unit),
+    }
+}
+
+/// Email `id`, with its files when `with_files` (a forward).
+async fn fetch_original(app: &AppHandle, id: &str, with_files: bool) -> Result<(Original, Vec<crate::smtp::Attachment>), String> {
+    let (folder, uid) = parse_id(id).ok_or_else(|| bad_id(id))?;
+    let (mut imap, host) = open(app).await?;
+    let got = timed_for(SLOW_TIMEOUT, &host, async {
+        if folder != Folder::Inbox {
+            enter(&mut imap, &folder, false).await?;
+        }
+        let units = imap.run(&format!("UID FETCH {uid} (UID BODY.PEEK[HEADER] BODY.PEEK[TEXT]<0.{FULL_BYTES}>)")).await?;
+        let unit = units.iter().find(|u| matches!(u.first(), Some(Part::Text(l)) if l.contains(" FETCH "))).ok_or_else(|| gone(id))?;
+        let original = original_of(unit);
+        let mut files = Vec::new();
+        if with_files {
+            let mut total = 0usize;
+            for file in structure(&mut imap, uid).await?.iter().take(crate::smtp::MAX_ATTACHMENTS) {
+                total += file.file_size();
+                if total as u64 > crate::smtp::MAX_ATTACHED_BYTES {
+                    return Err(format!("{} The email can still be forwarded without them (with_files false).", too_heavy()));
+                }
+                let bytes = attached_bytes(&mut imap, uid, file).await?;
+                files.push(crate::smtp::Attachment { mime: crate::smtp::mime_of(&file.name), name: file.name.clone(), bytes });
+            }
+        }
+        Ok((original, files))
+    })
+    .await;
+    close(imap).await;
+    got
+}
+
+/// "Re: Lunch", once.
+fn re_subject(subject: &str) -> String {
+    let s = subject.trim();
+    if s.get(..3).is_some_and(|p| p.eq_ignore_ascii_case("re:")) { s.to_string() } else { format!("Re: {s}") }
+}
+
+/// "Fwd: Lunch", once.
+fn fwd_subject(subject: &str) -> String {
+    let s = subject.trim();
+    let done = ["fwd:", "fw:", "i:", "tr:", "rv:"].iter().any(|p| s.get(..p.len()).is_some_and(|h| h.eq_ignore_ascii_case(p)));
+    if done { s.to_string() } else { format!("Fwd: {s}") }
+}
+
+/// Who a reply goes to: the sender (or their Reply-To); with `all`, everyone
+/// else who had it in copy, the user's own address left out.
+fn reply_people(original: &Original, me: &str, all: bool) -> (Vec<String>, Vec<String>) {
+    let to: Vec<String> = if original.reply_to.is_empty() { vec![original.address.clone()] } else { original.reply_to.clone() };
+    let to: Vec<String> = to.into_iter().filter(|a| crate::smtp::valid_address(a)).collect();
+    let mut cc = Vec::new();
+    if all {
+        for a in original.to.iter().chain(&original.cc) {
+            let known = a.eq_ignore_ascii_case(me) || to.iter().chain(&cc).any(|b: &String| b.eq_ignore_ascii_case(a));
+            if !known {
+                cc.push(a.clone());
+            }
+        }
+    }
+    (to, cc)
+}
+
+/// The conversation's References, with the email answered last: the newest 20 ids.
+fn thread_of(original: &Original) -> String {
+    let mut ids: Vec<&str> = original.references.split_whitespace().collect();
+    ids.extend(original.message_id.split_whitespace());
+    let keep = ids.len().saturating_sub(20);
+    ids[keep..].join(" ")
+}
+
+/// Of the email answered, what goes under the reply, each line quoted.
+fn quoted_text(original: &Original) -> String {
+    let text: String = original.text.chars().take(QUOTED_CHARS).collect();
+    if text.trim().is_empty() {
+        return String::new();
+    }
+    let who = if original.from.is_empty() || original.from == original.address { original.address.clone() } else { format!("{} <{}>", original.from, original.address) };
+    let mut out = format!("\n\n{}, {who}:\n", original.date);
+    for line in text.lines() {
+        out.push_str(if line.is_empty() { ">" } else { "> " });
+        out.push_str(line);
+        out.push('\n');
+    }
+    out
+}
+
+/// `mail_reply`: an answer to email `id`, in its conversation (In-Reply-To,
+/// References), to its sender or with `reply_all` everyone, on its card first.
+async fn reply(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let (_, body) = subject_and_body(input)?;
+    let all = input.get("reply_all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let more_cc = addresses(input.get("cc"), "cc")?;
+    let (files, paths): (Vec<_>, Vec<_>) = attachments(input.get("attachments"))?.into_iter().unzip();
+    let me = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
+    let (original, _) = fetch_original(app, &id, false).await?;
+    let (to, mut cc) = reply_people(&original, &me, all);
+    if to.is_empty() {
+        return Err("Lumo can't tell who sent this email: use mail_send with their address.".into());
+    }
+    for a in more_cc {
+        if !to.iter().chain(&cc).any(|b| b.eq_ignore_ascii_case(&a)) {
+            cc.push(a);
+        }
+    }
+    if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
+        return Err(format!("At most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
+    }
+    let mail = crate::smtp::Outgoing {
+        to,
+        cc,
+        subject: re_subject(&original.subject),
+        body: format!("{}{}", body.trim_end(), quoted_text(&original)),
+        attachments: files,
+        in_reply_to: Some(original.message_id.clone()).filter(|m| !m.is_empty()),
+        references: Some(thread_of(&original)).filter(|r| !r.is_empty()),
+    };
+    let files = card_files(&mail, &paths);
+    deliver(app, "mail_reply", mail, files).await
+}
+
+/// The email forwarded, under the user's words: its header lines, then its text.
+fn forwarded_text(note: &str, original: &Original) -> String {
+    let who = if original.from.is_empty() || original.from == original.address { original.address.clone() } else { format!("{} <{}>", original.from, original.address) };
+    let mut out = String::new();
+    if !note.trim().is_empty() {
+        out.push_str(note.trim_end());
+        out.push_str("\n\n");
+    }
+    out.push_str(&format!("---------- {} ----------\n", t("Forwarded message")));
+    out.push_str(&format!("From: {who}\nDate: {}\nSubject: {}\n", original.date, original.subject));
+    if !original.to.is_empty() {
+        out.push_str(&format!("To: {}\n", original.to.join(", ")));
+    }
+    out.push('\n');
+    let room = crate::smtp::MAX_BODY.saturating_sub(out.len() + 16);
+    let mut text = original.text.clone();
+    if text.len() > room {
+        let mut cut = room;
+        while !text.is_char_boundary(cut) {
+            cut -= 1;
+        }
+        text.truncate(cut);
+        text.push('…');
+    }
+    out.push_str(&text);
+    out
+}
+
+/// `mail_forward`: email `id` to someone else, with its files unless
+/// `with_files` is false, on its card first.
+async fn forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let to = addresses(input.get("to"), "to")?;
+    let cc = addresses(input.get("cc"), "cc")?;
+    if to.is_empty() {
+        return Err("Say who to forward the email to (to).".into());
+    }
+    if to.len() + cc.len() > crate::smtp::MAX_RECIPIENTS {
+        return Err(format!("At most {} people, to and cc together.", crate::smtp::MAX_RECIPIENTS));
+    }
+    let note = input.get("body").and_then(|v| v.as_str()).unwrap_or("");
+    if note.len() > crate::smtp::MAX_BODY / 2 {
+        return Err("The email's text is too long.".into());
+    }
+    let with_files = input.get("with_files").and_then(|v| v.as_bool()).unwrap_or(true);
+    let (original, files) = fetch_original(app, &id, with_files).await?;
+    let mail = crate::smtp::Outgoing {
+        to,
+        cc,
+        subject: fwd_subject(&original.subject),
+        body: forwarded_text(note, &original),
+        attachments: files,
+        ..Default::default()
+    };
+    let files = card_files(&mail, &[]);
+    deliver(app, "mail_forward", mail, files).await
+}
+
+/// `mail_draft`: an email saved in the mailbox's Drafts (IMAP APPEND), for the
+/// user to finish and send themselves. Nothing is sent. With `reply_to`, a
+/// reply to that email, in its conversation.
+async fn draft(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let (mut mail, _) = outgoing_for(input, false)?;
+    if let Some(id) = input.get("reply_to").and_then(|v| v.as_str()).filter(|i| !i.trim().is_empty()) {
+        let me = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
+        let (original, _) = fetch_original(app, id, false).await?;
+        if mail.to.is_empty() {
+            mail.to = reply_people(&original, &me, false).0;
+        }
+        if mail.subject.is_empty() {
+            mail.subject = re_subject(&original.subject);
+        }
+        mail.body = format!("{}{}", mail.body.trim_end(), quoted_text(&original));
+        mail.in_reply_to = Some(original.message_id.clone()).filter(|m| !m.is_empty());
+        mail.references = Some(thread_of(&original)).filter(|r| !r.is_empty());
+    }
+    let from = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
+    let (left, secs) = crate::smtp::new_id();
+    let data = crate::smtp::message(&from, &mail, secs, &left);
+    let (mut imap, host) = open(app).await?;
+    let saved = timed_for(SLOW_TIMEOUT, &host, async {
+        let boxes = mailboxes(&mut imap).await?;
+        let place = find_role(&boxes, Role::Drafts).ok_or_else(|| "The mailbox has no Drafts folder: write the draft in the answer instead.".to_string())?.clone();
+        imap.run_literal(&format!("APPEND {} (\\Draft \\Seen)", quoted(&place.wire)), &data).await?;
+        Ok(place.name)
+    })
+    .await;
+    close(imap).await;
+    let place = saved?;
+    log::line("[mail] a draft saved");
+    Ok(format!("Saved in {place}: the user finds it among their drafts, to read, finish and send themselves. It was not sent."))
+}
+
+// ── Managing ──────────────────────────────────────────────────────────────────
+
+/// What a managing tool does to one email.
+#[derive(Clone, Debug, PartialEq)]
+enum Change {
+    /// Flags put and taken off: `\Seen` (read), `\Flagged` (starred).
+    Flags { add: Vec<&'static str>, remove: Vec<&'static str> },
+    /// To another folder (its name as the server has it, and as people read it).
+    Move { wire: String, name: String },
+    /// Gmail, an email of All Mail: out of the inbox, where it stays in All Mail.
+    Unlabel,
+}
+
+/// The card's words for a mail_mark: "read", "unread", "star", "unstar".
+fn marks(input: &serde_json::Value) -> Result<(Change, Vec<&'static str>), String> {
+    let mut add = Vec::new();
+    let mut remove = Vec::new();
+    let mut said = Vec::new();
+    match input.get("read").and_then(|v| v.as_bool()) {
+        Some(true) => {
+            add.push("\\Seen");
+            said.push("read");
+        }
+        Some(false) => {
+            remove.push("\\Seen");
+            said.push("unread");
+        }
+        None => {}
+    }
+    match input.get("starred").and_then(|v| v.as_bool()) {
+        Some(true) => {
+            add.push("\\Flagged");
+            said.push("star");
+        }
+        Some(false) => {
+            remove.push("\\Flagged");
+            said.push("unstar");
+        }
+        None => {}
+    }
+    if said.is_empty() {
+        return Err("Say what to mark: read (true or false), starred (true or false).".into());
+    }
+    Ok((Change::Flags { add, remove }, said))
+}
+
+/// Where an email goes: the folder named, unless it is there already.
+fn moving(to: &Mailbox, from: &Folder) -> Result<Change, String> {
+    let here = match from {
+        Folder::Inbox => to.is_inbox(),
+        Folder::All => to.has("\\All"),
+        Folder::Named(name) => to.name == *name,
+    };
+    if here {
+        return Err(format!("The email is already in {}.", to.name));
+    }
+    Ok(Change::Move { wire: to.wire.clone(), name: if to.is_inbox() { "inbox".into() } else { to.name.clone() } })
+}
+
+/// `mail_mark`, `mail_move`, `mail_archive`, `mail_trash`: one email changed,
+/// on a card of its own first, and only on the user's click. Nothing is ever
+/// deleted for good: the trash is a folder like the others.
+async fn manage(app: &AppHandle, tool: &str, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    let (folder, uid) = parse_id(&id).ok_or_else(|| bad_id(&id))?;
+    let (mut imap, host) = open(app).await?;
+    // The email, for its card, and what to do to it.
+    let planned = timed(&host, async {
+        if folder != Folder::Inbox {
+            enter(&mut imap, &folder, false).await?;
+        }
+        let found = fetch(&mut imap, &host, &folder, &[uid], 1024, BODY_CHARS).await?.into_iter().next().ok_or_else(|| gone(&id))?;
+        let boxes = mailboxes(&mut imap).await?;
+        let (change, words) = match tool {
+            "mail_mark" => marks(input)?,
+            "mail_move" => {
+                let asked = input.get("folder").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+                if asked.is_empty() {
+                    return Err("Say which folder to move it to (mail_folders lists them).".into());
+                }
+                let to = match folder_named(&mut imap, &host, &asked).await? {
+                    Folder::Inbox => boxes.iter().find(|b| b.is_inbox()),
+                    Folder::All => boxes.iter().find(|b| b.has("\\All")),
+                    Folder::Named(name) => boxes.iter().find(|b| b.name == name),
+                }
+                .ok_or_else(|| format!("The mailbox has no folder called {asked}: mail_folders lists them."))?;
+                (moving(to, &folder)?, vec!["move"])
+            }
+            "mail_archive" => {
+                let change = if is_gmail(&host) {
+                    match &folder {
+                        Folder::Inbox => {
+                            let all = boxes.iter().find(|b| b.has("\\All")).ok_or_else(|| "This mailbox has no folder with all the mail.".to_string())?;
+                            Change::Move { wire: all.wire.clone(), name: all.name.clone() }
+                        }
+                        Folder::All => Change::Unlabel,
+                        Folder::Named(_) => return Err("On Gmail only an email of the inbox is archived: use mail_move for one in a label.".into()),
+                    }
+                } else {
+                    let archive = find_role(&boxes, Role::Archive).ok_or_else(|| "This mailbox has no Archive folder: use mail_move with one mail_folders lists.".to_string())?;
+                    moving(archive, &folder)?
+                };
+                (change, vec!["archive"])
+            }
+            _ => {
+                let trash = find_role(&boxes, Role::Trash).ok_or_else(|| "This mailbox has no Trash folder: Lumo never deletes an email for good.".to_string())?;
+                if matches!(&folder, Folder::Named(name) if *name == trash.name) {
+                    return Err("The email is already in the trash: Lumo never deletes an email for good.".into());
+                }
+                (moving(trash, &folder)?, vec!["trash"])
+            }
+        };
+        Ok((found, change, words))
+    })
+    .await;
+    close(imap).await;
+    let (found, change, words) = planned?;
+    let m = &found.message;
+    let from = if m.from.is_empty() || m.from == m.address { m.address.clone() } else { format!("{} <{}>", m.from, m.address) };
+    let target = match &change {
+        Change::Move { name, .. } => name.clone(),
+        _ => String::new(),
+    };
+    let card = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": format!("mcp__lumo__{tool}"),
+        "tool_input": { "id": id },
+        "lumo_mail_action": { "actions": words, "folder": target, "from": from, "subject": m.subject, "date": m.date },
+    });
+    match crate::pipe::ask(app, card).await.as_deref() {
+        Some("allow") => {}
+        Some(_) => return Err("The user said no: the email was left as it is.".into()),
+        None => return Err("Lumo couldn't show the card to the user (the island is paused or busy): nothing was changed.".into()),
+    }
+    let (mut imap, host) = open(app).await?;
+    let done = timed(&host, async {
+        enter(&mut imap, &folder, true).await?;
+        apply(&mut imap, uid, &change).await
+    })
+    .await;
+    close(imap).await;
+    done.inspect_err(|e| log::line(format!("[mail] {tool}: {e}")))?;
+    log::line(format!("[mail] {tool} done"));
+    wake();
+    Ok(match change {
+        Change::Flags { .. } => format!("Done: the email is marked {}.", words.join(", ")),
+        Change::Move { name, .. } => format!("Done: the email is in {name} now."),
+        Change::Unlabel => "Done: the email is archived (out of the inbox, still in All Mail).".into(),
+    })
+}
+
+/// Does `change` to email `uid` of the folder open to change (SELECT).
+async fn apply(imap: &mut Imap, uid: u32, change: &Change) -> Result<(), String> {
+    match change {
+        Change::Flags { add, remove } => {
+            if !add.is_empty() {
+                imap.run(&format!("UID STORE {uid} +FLAGS.SILENT ({})", add.join(" "))).await?;
+            }
+            if !remove.is_empty() {
+                imap.run(&format!("UID STORE {uid} -FLAGS.SILENT ({})", remove.join(" "))).await?;
+            }
+            Ok(())
+        }
+        Change::Unlabel => imap.run(&format!("UID STORE {uid} -X-GM-LABELS (\\Inbox)")).await.map(|_| ()),
+        Change::Move { wire, .. } => {
+            let can = |c: &str| imap.capabilities.iter().any(|x| x == c);
+            if can("MOVE") {
+                imap.run(&format!("UID MOVE {uid} {}", quoted(wire))).await.map(|_| ())
+            } else if can("UIDPLUS") {
+                // A copy, then this one email only taken out of here (UID EXPUNGE): never any other.
+                imap.run(&format!("UID COPY {uid} {}", quoted(wire))).await?;
+                imap.run(&format!("UID STORE {uid} +FLAGS.SILENT (\\Deleted)")).await?;
+                imap.run(&format!("UID EXPUNGE {uid}")).await.map(|_| ())
+            } else {
+                Err("This mail server can't move one email without touching others, so Lumo leaves it where it is.".into())
+            }
+        }
+    }
 }
 
 fn uid_of(id: &str) -> Option<u32> {
@@ -944,6 +2150,8 @@ struct Imap {
     stream: BufReader<TlsStream<TcpStream>>,
     tag: u32,
     read: usize,
+    /// What may be read before `read` is reset: MAX_READ, more for a file attached.
+    limit: usize,
     capabilities: Vec<String>,
 }
 
@@ -967,7 +2175,7 @@ impl Imap {
             .connect(name, tcp)
             .await
             .map_err(|e| tf("No secure connection to {server}: {error}", &[("server", host), ("error", &e.to_string())]))?;
-        let mut imap = Imap { stream: BufReader::new(stream), tag: 0, read: 0, capabilities: Vec::new() };
+        let mut imap = Imap { stream: BufReader::new(stream), tag: 0, read: 0, limit: MAX_READ, capabilities: Vec::new() };
         // The greeting.
         let greeting = imap.read_unit().await?;
         match greeting.first() {
@@ -999,7 +2207,7 @@ impl Imap {
 
     fn count(&mut self, n: usize) -> Result<(), String> {
         self.read += n;
-        if self.read > MAX_READ {
+        if self.read > self.limit {
             return Err(t("The mail server sent too much."));
         }
         Ok(())
@@ -1827,6 +3035,7 @@ mod tests {
         assert_eq!(access(&Settings::default()), "read", "as before the setting");
         assert_eq!(access(&Settings { ai_mail_access: "none".into(), ..Settings::default() }), "none");
         assert_eq!(access(&Settings { ai_mail_access: "send".into(), ..Settings::default() }), "send");
+        assert_eq!(access(&Settings { ai_mail_access: "manage".into(), ..Settings::default() }), "manage");
         assert_eq!(access(&Settings { ai_mail_access: "anything".into(), ..Settings::default() }), "read");
     }
 
@@ -1945,14 +3154,155 @@ mod tests {
     #[test]
     fn email_ids_and_folders_are_read_back() {
         assert_eq!(parse_id("inbox:42"), Some((Folder::Inbox, 42)));
+        assert_eq!(parse_id("INBOX:42"), Some((Folder::Inbox, 42)));
         assert_eq!(parse_id(" all:7 "), Some((Folder::All, 7)));
-        assert_eq!(parse_id("imap.gmail.com:42"), None);
+        assert_eq!(parse_id("[Gmail]/Posta inviata:7"), Some((Folder::Named("[Gmail]/Posta inviata".into()), 7)));
+        assert_eq!(parse_id("Clienti: 2025:9"), Some((Folder::Named("Clienti: 2025".into()), 9)), "a colon in the name");
+        assert_eq!(parse_id(":42"), None);
         assert_eq!(parse_id("inbox:0"), None);
         assert_eq!(parse_id("inbox:x"), None);
+        assert_eq!(parse_id("42"), None);
         assert_eq!(list_name(r#""/" "[Gmail]/All Mail""#).as_deref(), Some("[Gmail]/All Mail"));
         assert_eq!(list_name(r#""/" "[Gmail]/Tutti i messaggi""#).as_deref(), Some("[Gmail]/Tutti i messaggi"));
         assert_eq!(list_name("NIL Archive").as_deref(), Some("Archive"));
         assert_eq!(list_name(r#""\\" "A \"b\"""#).as_deref(), Some("A \"b\""));
+    }
+
+    #[test]
+    fn folder_names_read_as_people_write_them() {
+        assert_eq!(utf7_decode("&AMk-l&AOk-ments supprim&AOk-s"), "Éléments supprimés");
+        assert_eq!(utf7_decode("Posta inviata"), "Posta inviata");
+        assert_eq!(utf7_decode("Tom &- Jerry"), "Tom & Jerry");
+        assert_eq!(utf7_decode("&ZeVnLIqe-"), "日本語");
+        assert_eq!(utf7_decode("Ciao &2D3cSw-"), "Ciao 👋");
+        assert_eq!(utf7_decode("Rotto &AMk"), "Rotto &AMk", "never closed: as it came");
+    }
+
+    #[test]
+    fn folders_say_what_they_are_for() {
+        let unit = |line: &str| vec![Part::Text(line.into())];
+        let boxes: Vec<Mailbox> = [
+            r#"* LIST (\HasNoChildren) "/" "INBOX""#,
+            r#"* LIST (\HasChildren \Noselect) "/" "[Gmail]""#,
+            r#"* LIST (\HasNoChildren \Sent) "/" "[Gmail]/Posta inviata""#,
+            r#"* LIST (\HasNoChildren \Trash) "/" "[Gmail]/Cestino""#,
+            r#"* LIST (\HasNoChildren) "." "INBOX.Drafts""#,
+            r#"* LIST (\HasNoChildren) "/" "Archivio""#,
+            r#"* LIST (\HasNoChildren) "/" "&AMk-l&AOk-ments supprim&AOk-s""#,
+        ]
+        .iter()
+        .filter_map(|l| parse_list(&unit(l)))
+        .collect();
+        assert_eq!(boxes.len(), 7);
+        assert!(!boxes[1].selectable());
+        assert_eq!(boxes[6].name, "Éléments supprimés");
+        assert_eq!(boxes[6].wire, "&AMk-l&AOk-ments supprim&AOk-s");
+        assert_eq!(find_role(&boxes, Role::Sent).map(|b| b.name.as_str()), Some("[Gmail]/Posta inviata"));
+        assert_eq!(find_role(&boxes, Role::Trash).map(|b| b.name.as_str()), Some("[Gmail]/Cestino"), "marked first");
+        assert_eq!(find_role(&boxes, Role::Drafts).map(|b| b.name.as_str()), Some("INBOX.Drafts"), "by its name");
+        assert_eq!(find_role(&boxes, Role::Archive).map(|b| b.name.as_str()), Some("Archivio"));
+        assert_eq!(find_role(&boxes, Role::Junk), None);
+        assert_eq!(role_of(&boxes[0]), None, "the inbox is the inbox");
+        let literal = vec![Part::Text(r#"* LIST (\HasNoChildren) "/" {9}"#.into()), Part::Literal(b"Bozze \"x".to_vec()), Part::Text(String::new())];
+        assert_eq!(parse_list(&literal).map(|b| b.name), Some("Bozze \"x".to_string()));
+        let status = vec![Part::Text(r#"* STATUS "Sent" (MESSAGES 12 UNSEEN 3)"#.into())];
+        assert_eq!(status_counts(&status), Some((12, 3)));
+        assert_eq!(status_counts(&[Part::Text("* OK".into())]), None);
+    }
+
+    #[test]
+    fn dates_of_several_folders_are_put_in_order() {
+        assert_eq!(date_key("Thu, 1 Jan 1970 00:00:00 +0000"), 0);
+        assert_eq!(date_key("Wed, 28 Oct 2026 21:51:05 +0000"), 1_793_224_265);
+        assert_eq!(date_key("Wed, 28 Oct 2026 23:51:05 +0200"), 1_793_224_265);
+        assert_eq!(date_key("28 Oct 2026 16:51:05 EST (Eastern)"), 1_793_224_265);
+        assert!(date_key("Tue, 3 Mar 2026 10:00:00 +0100") < date_key("Mon, 2 Nov 2026 09:00:00 +0100"));
+        assert_eq!(date_key("nonsense"), 0);
+    }
+
+    #[test]
+    fn the_files_attached_come_from_the_bodystructure() {
+        // A text with its HTML, a PDF and a picture named in UTF-8 (RFC 2231), a picture inside the HTML.
+        let line = concat!(
+            r#"* 1 FETCH (UID 9 BODYSTRUCTURE ((("TEXT" "PLAIN" ("CHARSET" "utf-8") NIL NIL "7BIT" 12 1 NIL NIL NIL)"#,
+            r#"("TEXT" "HTML" ("CHARSET" "utf-8") NIL NIL "QUOTED-PRINTABLE" 40 2 NIL NIL NIL) "ALTERNATIVE" ("BOUNDARY" "b2") NIL NIL)"#,
+            r#"("IMAGE" "PNG" ("NAME" "logo.png") "<logo>" NIL "BASE64" 400 NIL ("INLINE" ("FILENAME" "logo.png")) NIL)"#,
+            r#"("APPLICATION" "PDF" ("NAME" "=?UTF-8?Q?Fattura_n=C2=B0_7.pdf?=") NIL NIL "BASE64" 1336 NIL ("ATTACHMENT" ("FILENAME" "=?UTF-8?Q?Fattura_n=C2=B0_7.pdf?=")) NIL)"#,
+            r#"("IMAGE" "JPEG" NIL NIL NIL "BASE64" 800 NIL ("attachment" ("filename*" "UTF-8''foto%20citt%C3%A0.jpg")) NIL) "MIXED" ("BOUNDARY" "b1") NIL NIL))"#,
+        );
+        let files = attached_files(&[Part::Text(line.into())]);
+        let names: Vec<(&str, &str, &str)> = files.iter().map(|f| (f.section.as_str(), f.name.as_str(), f.mime.as_str())).collect();
+        assert_eq!(names, [("3", "Fattura n° 7.pdf", "application/pdf"), ("4", "foto città.jpg", "image/jpeg")]);
+        assert_eq!(files[0].file_size(), 1002);
+        // One part only, the whole email a PDF; a name that came as a literal.
+        let single = [
+            Part::Text(r#"* 2 FETCH (UID 3 BODYSTRUCTURE ("APPLICATION" "PDF" ("NAME" {5}"#.into()),
+            Part::Literal(b"a.pdf".to_vec()),
+            Part::Text(r#") NIL NIL "BASE64" 100 NIL NIL NIL))"#.into()),
+        ];
+        let one = attached_files(&single);
+        assert_eq!((one[0].section.as_str(), one[0].name.as_str()), ("1", "a.pdf"));
+        // RFC 2231 in pieces.
+        let pieces = Node::List(["filename*0*", "UTF-8''Analisi%20", "filename*1", "2.pdf"].iter().map(|s| Node::Str(s.to_string())).collect());
+        assert_eq!(param_of(Some(&pieces), "filename").as_deref(), Some("Analisi 2.pdf"));
+        assert!(attached_files(&[Part::Text("* 1 FETCH (UID 9 BODYSTRUCTURE (\"TEXT\" \"PLAIN\" NIL NIL NIL \"7BIT\" 1 1))".into())]).is_empty());
+    }
+
+    #[test]
+    fn the_file_asked_for_is_its_number_or_its_name() {
+        let file = |n: &str| Attached { section: "2".into(), name: n.into(), mime: "application/pdf".into(), encoding: "base64".into(), size: 4 };
+        let files = [file("a.pdf"), file("B.pdf")];
+        assert_eq!(pick(&files, Some(&json!(2))).unwrap().name, "B.pdf");
+        assert_eq!(pick(&files, Some(&json!("1"))).unwrap().name, "a.pdf");
+        assert_eq!(pick(&files, Some(&json!("b.PDF"))).unwrap().name, "B.pdf");
+        assert!(pick(&files, Some(&json!(3))).is_err());
+        assert!(pick(&files, None).is_err(), "two files: say which");
+        assert_eq!(pick(&files[..1], None).unwrap().name, "a.pdf");
+        assert!(pick(&[], Some(&json!(1))).is_err());
+    }
+
+    #[test]
+    fn a_reply_goes_to_the_sender_and_with_all_to_the_others_but_me() {
+        let header = b"From: \"Rossi, Ada\" <ada@example.com>\r\nTo: me@example.it, \"Bob\" <bob@example.com>\r\nCc: =?UTF-8?Q?Caf=C3=A8?= <cafe@example.com>; me@example.it\r\nSubject: Pranzo\r\nDate: Wed, 28 Oct 2026 12:00:00 +0100\r\nMessage-ID: <a2@example.com>\r\nReferences: <a0@example.com>\r\n <a1@example.com>\r\nContent-Type: text/plain\r\n\r\n".to_vec();
+        let unit = vec![
+            Part::Text("* 1 FETCH (UID 4 BODY[HEADER] {300}".into()),
+            Part::Literal(header),
+            Part::Text(" BODY[TEXT]<0> {20}".into()),
+            Part::Literal(b"Ci vediamo?\nA dopo".to_vec()),
+            Part::Text(")".into()),
+        ];
+        let original = original_of(&unit);
+        assert_eq!((original.from.as_str(), original.address.as_str()), ("Rossi, Ada", "ada@example.com"));
+        assert_eq!(original.to, ["me@example.it", "bob@example.com"]);
+        assert_eq!(original.cc, ["cafe@example.com", "me@example.it"]);
+        assert_eq!(reply_people(&original, "ME@example.it", false), (vec!["ada@example.com".to_string()], vec![]));
+        assert_eq!(reply_people(&original, "ME@example.it", true).1, ["bob@example.com", "cafe@example.com"]);
+        let with_reply_to = Original { reply_to: vec!["list@example.com".into()], ..original.clone() };
+        assert_eq!(reply_people(&with_reply_to, "me@example.it", false).0, ["list@example.com"]);
+        assert_eq!(thread_of(&original), "<a0@example.com> <a1@example.com> <a2@example.com>");
+        assert_eq!(re_subject("Pranzo"), "Re: Pranzo");
+        assert_eq!(re_subject("RE: Pranzo"), "RE: Pranzo");
+        assert_eq!(fwd_subject("Pranzo"), "Fwd: Pranzo");
+        assert_eq!(fwd_subject("I: Pranzo"), "I: Pranzo");
+        let quote = quoted_text(&original);
+        assert!(quote.starts_with("\n\nWed, 28 Oct 2026 12:00:00 +0100, Rossi, Ada <ada@example.com>:\n> Ci vediamo?\n> A dopo\n"), "{quote:?}");
+        let forwarded = forwarded_text("Guarda qui", &original);
+        assert!(forwarded.starts_with("Guarda qui\n\n---------- Forwarded message ----------\nFrom: Rossi, Ada <ada@example.com>\n"), "{forwarded}");
+        assert!(forwarded.ends_with("To: me@example.it, bob@example.com\n\nCi vediamo?\nA dopo"), "{forwarded}");
+        let many: String = (0..40).map(|i| format!("<m{i}@x> ")).collect();
+        assert_eq!(thread_of(&Original { references: many, ..original }).split(' ').count(), 20, "the newest ids");
+    }
+
+    #[test]
+    fn marking_says_what_it_does() {
+        let (change, words) = marks(&json!({ "read": true, "starred": false })).unwrap();
+        assert_eq!(change, Change::Flags { add: vec!["\\Seen"], remove: vec!["\\Flagged"] });
+        assert_eq!(words, ["read", "unstar"]);
+        assert_eq!(marks(&json!({ "read": false })).unwrap().1, ["unread"]);
+        assert!(marks(&json!({})).is_err());
+        let trash = Mailbox { wire: "Trash".into(), name: "Trash".into(), flags: vec!["\\Trash".into()] };
+        assert_eq!(moving(&trash, &Folder::Inbox), Ok(Change::Move { wire: "Trash".into(), name: "Trash".into() }));
+        assert!(moving(&trash, &Folder::Named("Trash".into())).is_err(), "already there");
     }
 
     #[test]

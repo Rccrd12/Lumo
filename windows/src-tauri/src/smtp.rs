@@ -7,8 +7,10 @@
 // from the first byte (port 465) or after STARTTLS (587), with the same
 // rustls and root certificates as the IMAP side. The email is plain text,
 // UTF-8, its body in base64; with files attached it is multipart/mixed, the
-// text first, then each file in base64. Gmail keeps a copy in Sent by itself; other
-// servers may not.
+// text first, then each file in base64. A reply carries In-Reply-To and
+// References, so it lands in the conversation. Gmail keeps a copy in Sent by
+// itself; for the others mail.rs puts one there over IMAP when the server
+// didn't (`sent_copy`).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -42,13 +44,33 @@ pub struct Attachment {
 }
 
 /// One email to send.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 pub struct Outgoing {
     pub to: Vec<String>,
     pub cc: Vec<String>,
     pub subject: String,
     pub body: String,
     pub attachments: Vec<Attachment>,
+    /// A reply: the Message-ID it answers (`<…>`), and the conversation's References.
+    pub in_reply_to: Option<String>,
+    pub references: Option<String>,
+}
+
+/// An email that went: the server it went through, the email as it went
+/// (for the copy in Sent) and its Message-ID.
+pub struct Sent {
+    pub host: String,
+    pub data: String,
+    pub message_id: String,
+}
+
+/// Message-IDs as a header takes them: only `<…>` with nothing in them that
+/// could end the header or start another one.
+pub fn message_ids(raw: &str) -> String {
+    raw.split_whitespace()
+        .filter(|id| id.len() > 2 && id.starts_with('<') && id.ends_with('>') && id[1..id.len() - 1].chars().all(|c| c.is_ascii_graphic() && c != '<' && c != '>'))
+        .collect::<Vec<_>>()
+        .join(" ")
 }
 
 /// The MIME type of a file attached, by its extension.
@@ -173,7 +195,10 @@ fn header_text(text: &str) -> String {
 pub fn message(from: &str, mail: &Outgoing, secs: u64, id: &str) -> String {
     let mut out = String::new();
     out.push_str(&format!("From: {from}\r\n"));
-    out.push_str(&format!("To: {}\r\n", mail.to.join(", ")));
+    // A draft may have nobody yet.
+    if !mail.to.is_empty() {
+        out.push_str(&format!("To: {}\r\n", mail.to.join(", ")));
+    }
     if !mail.cc.is_empty() {
         out.push_str(&format!("Cc: {}\r\n", mail.cc.join(", ")));
     }
@@ -182,6 +207,13 @@ pub fn message(from: &str, mail: &Outgoing, secs: u64, id: &str) -> String {
     out.push_str(&format!("Date: {}\r\n", date(secs)));
     let domain = from.rsplit('@').next().unwrap_or("lumo.local");
     out.push_str(&format!("Message-ID: <{id}@{domain}>\r\n"));
+    if let Some(answered) = mail.in_reply_to.as_deref().map(message_ids).filter(|i| !i.is_empty()) {
+        out.push_str(&format!("In-Reply-To: {answered}\r\n"));
+    }
+    if let Some(thread) = mail.references.as_deref().map(message_ids).filter(|r| !r.is_empty()) {
+        // Folded, one id a line: a long conversation never makes a line too long.
+        out.push_str(&format!("References: {}\r\n", thread.split(' ').collect::<Vec<_>>().join("\r\n ")));
+    }
     out.push_str("MIME-Version: 1.0\r\n");
     let body = mail.body.replace("\r\n", "\n").replace('\n', "\r\n");
     const TEXT: &str = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
@@ -317,19 +349,25 @@ async fn exchange(host: &str, port: u16, address: &str, password: &str, recipien
     session(&mut stream, host, address, password, recipients, data).await
 }
 
-/// Sends `mail` from the Email pill's account. Ok with the server it went through.
-pub async fn send(mail: &Outgoing) -> Result<String, String> {
+/// A new Message-ID's left part, and the time it is from.
+pub fn new_id() -> (String, u64) {
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
+    (format!("{}.{}.lumo", now.as_nanos(), std::process::id()), now.as_secs())
+}
+
+/// Sends `mail` from the Email pill's account.
+pub async fn send(mail: &Outgoing) -> Result<Sent, String> {
     let (address, password) = crate::secrets::get(crate::mail::ADDRESS_KEY)
         .zip(crate::secrets::get(crate::mail::PASSWORD_KEY))
         .ok_or_else(|| "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.".to_string())?;
     let typed = crate::secrets::get(crate::mail::SERVER_KEY).unwrap_or_default();
     let (host, port) = server_of(&typed, &address);
-    let now = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default();
-    let id = format!("{}.{}.lumo", now.as_nanos(), std::process::id());
-    let data = message(&address, mail, now.as_secs(), &id);
+    let (id, secs) = new_id();
+    let data = message(&address, mail, secs, &id);
     let recipients: Vec<String> = mail.to.iter().chain(&mail.cc).cloned().collect();
+    let message_id = format!("<{id}@{}>", address.rsplit('@').next().unwrap_or("lumo.local"));
     match tokio::time::timeout(TIMEOUT, exchange(&host, port, &address, &password, &recipients, &data)).await {
-        Ok(Ok(())) => Ok(host),
+        Ok(Ok(())) => Ok(Sent { host, data, message_id }),
         Ok(Err(e)) => Err(e),
         Err(_) => Err(format!("The mail server {host} took too long to answer.")),
     }
@@ -374,7 +412,7 @@ mod tests {
             cc: vec!["bob@example.com".into()],
             subject: "Città\r\nBcc: eve@example.com".into(),
             body: "Ciao Ada,\n.\nA presto".into(),
-            attachments: Vec::new(),
+            ..Outgoing::default()
         };
         let text = message("me@example.it", &mail, 0, "1.2.lumo");
         let (head, body) = text.split_once("\r\n\r\n").unwrap();
@@ -397,6 +435,7 @@ mod tests {
             subject: "Report".into(),
             body: "Eccolo".into(),
             attachments: vec![pdf.clone(), Attachment { name: "a\"b\r\n.txt".into(), mime: "text/plain", bytes: b"x".to_vec() }],
+            ..Outgoing::default()
         };
         let text = message("me@example.it", &mail, 0, "1.2.lumo");
         let (head, rest) = text.split_once("\r\n\r\n").unwrap();
@@ -414,6 +453,26 @@ mod tests {
         assert_eq!(mime_of("x.DOCX"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
         assert_eq!(mime_of("photo.JPG"), "image/jpeg");
         assert_eq!(mime_of("noext"), "application/octet-stream");
+    }
+
+    #[test]
+    fn a_reply_names_the_email_it_answers_and_a_draft_may_have_nobody() {
+        let reply = Outgoing {
+            to: vec!["ada@example.com".into()],
+            subject: "Re: Lunch".into(),
+            body: "Yes".into(),
+            in_reply_to: Some("<a1@example.com>".into()),
+            references: Some("<a0@example.com> <a1@example.com>\r\nBcc: eve@example.com".into()),
+            ..Outgoing::default()
+        };
+        let text = message("me@example.it", &reply, 0, "1.2.lumo");
+        let (head, _) = text.split_once("\r\n\r\n").unwrap();
+        assert!(head.contains("\r\nIn-Reply-To: <a1@example.com>\r\n"), "{head}");
+        assert!(head.contains("\r\nReferences: <a0@example.com>\r\n <a1@example.com>\r\n"), "{head}");
+        assert!(!head.contains("Bcc"), "only ids get into the header");
+        let draft = Outgoing { body: "x".into(), ..Outgoing::default() };
+        assert!(!message("me@example.it", &draft, 0, "1").contains("\r\nTo:"));
+        assert_eq!(message_ids("<a@b> junk <c d> <e@f>"), "<a@b> <e@f>");
     }
 
     #[test]

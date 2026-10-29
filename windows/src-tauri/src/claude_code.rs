@@ -96,10 +96,12 @@ const ISLAND_ALLOWED: &str =
 
 /// Lumo's email tools that only read (mail.rs): Claude Code runs them without
 /// asking, as Security lets the AI read the email.
-const MAIL_ALLOWED: &str = "mcp__lumo__mail_recent mcp__lumo__mail_search mcp__lumo__mail_read";
-/// `mail_send` has Lumo's own card, with the email on it (mail.rs send): no
-/// card of Claude Code's before it.
-const MAIL_SEND_ALLOWED: &str = "mcp__lumo__mail_send";
+const MAIL_ALLOWED: &str = "mcp__lumo__mail_recent mcp__lumo__mail_search mcp__lumo__mail_read mcp__lumo__mail_attachment mcp__lumo__mail_folders";
+/// The tools that send have Lumo's own card, with the email on it (mail.rs
+/// deliver), and a draft is only saved: no card of Claude Code's before them.
+const MAIL_SEND_ALLOWED: &str = "mcp__lumo__mail_send mcp__lumo__mail_reply mcp__lumo__mail_forward mcp__lumo__mail_draft";
+/// The tools that change the mailbox have Lumo's own card too (mail.rs manage).
+const MAIL_MANAGE_ALLOWED: &str = "mcp__lumo__mail_mark mcp__lumo__mail_move mcp__lumo__mail_archive mcp__lumo__mail_trash";
 
 /// The MCP server of the user's own tools (the Tools tab, tools.rs): its
 /// tools are `mcp__lumo_tools__<id>`. Claude Code may call them without
@@ -121,7 +123,7 @@ fn computer_config() -> Value {
 
 /// Lumo's MCP servers for a chat turn: computer use, the island's tools and
 /// the email's (`lumo`; `mail` is mail.rs ai_tools: "", "mail" or
-/// "mail,mailsend"), and the user's tools while one of them is on.
+/// "mail,mailsend" or "mail,mailsend,mailmanage"), and the user's tools while one of them is on.
 fn mcp_config(computer: bool, tools: bool, island: bool, mail: &str) -> Value {
     let mut servers = serde_json::Map::new();
     if computer || island || !mail.is_empty() {
@@ -177,11 +179,13 @@ fn with_mcp(mut args: Vec<String>, computer: bool, tools: bool, island: bool, ma
         args.push("--mcp-config".into());
         args.push(path);
         let sends = mail.split(',').any(|k| k == "mailsend");
+        let manages = mail.split(',').any(|k| k == "mailmanage");
         let allowed: Vec<&str> = [
             computer.then_some(COMPUTER_LOOKING),
             island.then_some(ISLAND_ALLOWED),
             (!mail.is_empty()).then_some(MAIL_ALLOWED),
             sends.then_some(MAIL_SEND_ALLOWED),
+            manages.then_some(MAIL_MANAGE_ALLOWED),
             tools.then_some(TOOLS_SERVER_ALLOWED),
         ]
             .into_iter()
@@ -1741,6 +1745,11 @@ mod tests {
         let a = with_mcp(vec!["-p".into()], false, false, true, "mail");
         if a.iter().any(|s| s == "--mcp-config") {
             assert!(!a[a.len() - 1].contains("mail_send"), "reading only");
+        }
+        let a = with_mcp(vec!["-p".into()], false, false, true, "mail,mailsend,mailmanage");
+        if let Some(i) = a.iter().position(|s| s == "--mcp-config") {
+            assert!(a[i + 1].ends_with("chat-island-mail-mailsend-mailmanage.json"));
+            assert_eq!(a[a.len() - 1], format!("{ISLAND_ALLOWED} {MAIL_ALLOWED} {MAIL_SEND_ALLOWED} {MAIL_MANAGE_ALLOWED}"));
         }
     }
 

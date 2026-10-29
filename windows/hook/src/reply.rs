@@ -79,12 +79,13 @@ pub fn island_card(tool: &str, input: Option<&serde_json::Value>) -> bool {
     if crate::mcp::user_tool_call(tool, input) {
         return false;
     }
-    // Lumo's email tools only read the user's mailbox (mail_send has Lumo's
-    // own card, with the email on it), its plan tool only shows, its island
+    // Lumo's email tools only read the user's mailbox, or have Lumo's own
+    // card (an email to send, a change), its plan tool only shows, its island
     // tools only start a timer or a watch (mcp.rs).
     if crate::mcp::lumo_call(tool, input).is_some_and(|name| {
         crate::mcp::MAIL_NAMES.contains(&name)
-            || name == crate::mcp::MAIL_SEND
+            || crate::mcp::MAIL_SEND_NAMES.contains(&name)
+            || crate::mcp::MAIL_MANAGE_NAMES.contains(&name)
             || name == crate::mcp::PLAN_NAME
             || crate::mcp::ISLAND_NAMES.contains(&name)
     }) {

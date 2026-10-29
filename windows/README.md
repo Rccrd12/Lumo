@@ -306,9 +306,9 @@ arrives (IMAP IDLE); Lumo also looks every 20 seconds in case the server is
 slow to say, fetching only new emails. A server without IDLE is asked every
 30 seconds. Its card lists the newest unread emails, and a new one
 shows on the closed island (see [The closed island](#the-closed-island)).
-Lumo only reads: the inbox is opened read only, emails stay unread, and
-nothing is ever moved or deleted. An email is sent only as below, with your
-click. The address, the server and the app password are in the system keychain.
+The pill only reads: the inbox is opened read only, emails stay unread, and
+nothing is ever deleted for good. An email is sent, or one changed, only as
+below, each time with your click. The address, the server and the app password are in the system keychain.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -330,28 +330,44 @@ local model. Other questions go without them. Summarize and Draft a reply
 send the whole email with their question, like a selected text.
 
 Antigravity CLI, which has no email of its own as Claude Code has its Gmail
-tools, also gets Lumo's email tools while the Email pill is on: the newest
-emails, a search of the whole mailbox (Gmail's own search on Gmail) and one
-email in full. Lumo adds them to the MCP configuration of its own folder
-(`~/Lumo/.agents/mcp_config.json`, your other entries kept, taken out when
-the pill is off), and they answer only while Antigravity answers in the
-island, in the chat or for Gemini Live. They only read, so they need no card,
-and they can't move, mark or delete anything.
+tools, also gets Lumo's email tools while the Email pill is on, and so do the
+chat's Claude Code and Codex: the newest emails of the inbox or of another
+folder, a search of every folder (Gmail's own search of all the mail on
+Gmail; elsewhere every folder but the trash and spam), one email in full with
+the list of its files, the list of folders (`mail_folders`), and
+`mail_attachment`, which saves one file of an email with the files attached to
+the chat, so the AI reads it (a PDF that came by email). Lumo adds them to the
+MCP configuration of its own folder (`~/Lumo/.agents/mcp_config.json`, your
+other entries kept, taken out when the pill is off), and they answer only
+while an agent answers in the island, in the chat or for Gemini Live. They
+only read, so they need no card.
 
 **Settings… → General → Security → Email** says what the AI may do with
 it: **Read only** (the default, as above), **No access** (nothing of the
 mailbox reaches any AI: no emails with the question, no email tools, nothing
-for Gemini Live) or **Read and send**. With Read and send, the chat's Claude
-Code, Codex and Antigravity CLI also get the email tools and `mail_send`:
-the email they want to send comes up on a card on the island, whole (from,
-to, cc, subject, the files attached with their size, text), and goes only when
-you click **Send**; **Discard** sends nothing. No permission mode (Auto
-included) and no key skips that card. The AI attaches a file by its full path:
+for Gemini Live), **Read and send** or **Read, send and manage**. With Read
+and send, the chat's Claude Code, Codex and Antigravity CLI also get
+`mail_send`, `mail_reply` (an answer in the email's own conversation, with
+`In-Reply-To` and `References`, to the sender or everyone, the email quoted
+under it) and `mail_forward` (with the email's files, or without): the email
+they want to send comes up on a card on the island, whole (from, to, cc,
+subject, the files attached with their size, text), and goes only when you
+click **Send**; **Discard** sends nothing. No permission mode (Auto included)
+and no key skips that card. `mail_draft` saves an email in your mailbox's
+Drafts instead (IMAP `APPEND`), to finish and send yourself: nothing is sent.
+With Read, send and manage, they also get `mail_mark` (read or unread,
+starred or not), `mail_move`, `mail_archive` and `mail_trash`, one email at a
+time and each on a card of its own (what it does, the sender and subject),
+done only when you click Allow. The trash is a folder like the others: Lumo
+never deletes an email for good, nor renames or deletes folders. The AI attaches a file by its full path:
 one you attached to the chat, or another one you ask for, never one in app
 data (`%APPDATA%`, `%LOCALAPPDATA%`) or in a hidden folder; at most 10 files,
 18 MB together.
 It goes from your account over SMTP (Gmail, Outlook, iCloud, Yahoo, or the
 `smtp.` server next to your IMAP one), with the same app password, over TLS.
+Gmail keeps a copy in Sent by itself; with another provider, Lumo looks in
+Sent ten seconds later and puts a copy there (IMAP `APPEND`) when the server
+didn't.
 The calendar, read from its address, stays read only: **Calendar** has Read
 only and No access.
 
