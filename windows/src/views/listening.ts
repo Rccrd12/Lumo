@@ -57,7 +57,37 @@ export const LISTENING_STRINGS = {
   notPr: N_("That isn't a pull request on GitHub: write owner/repository#number or paste its link."),
   failed: N_("Lumo couldn't start listening to it."),
   button: N_("Listening · {count}"),
+  pick: N_("What should Lumo listen to?"),
+  soon: N_("Coming soon"),
+  edit: N_("Edit"),
+  goToChat: N_("Go to the chat"),
+  save: N_("Save"),
 };
+
+/** A source in the "Listen for something" menu: what it is and what it hears. */
+interface Source {
+  id: string;
+  name: string;
+  hint: string;
+  icon: string;
+  color: string;
+  /** Lumo can listen to it already; the others say "Coming soon". */
+  ready: boolean;
+}
+
+/** Every source the concept names, in its order: GitHub works, the rest come with the next versions. */
+const SOURCES: Source[] = [
+  { id: "github", name: N_("GitHub"), hint: N_("Pull requests: checks, approval, ready, merged"), icon: ICONS.pull, color: "#F4505E", ready: true },
+  { id: "fs", name: N_("Files and folders"), hint: N_("New, changed or deleted files, downloads done"), icon: ICONS.folder, color: "#F5A524", ready: false },
+  { id: "programs", name: N_("Programs and commands"), hint: N_("A program that ends, a command, a port that opens"), icon: ICONS.terminal, color: "#2DD4A7", ready: false },
+  { id: "web", name: N_("Web pages"), hint: N_("A page or an API that changes, a site that goes down"), icon: ICONS.globe, color: "#60A5FA", ready: false },
+  { id: "email", name: N_("Email"), hint: N_("Email from someone, with a subject, with attachments"), icon: ICONS.envelope, color: "#EA4335", ready: false },
+  { id: "services", name: N_("Calendar and services"), hint: N_("Vercel, Stripe, n8n, Notion, Cal.com, events coming up"), icon: ICONS.calendar, color: "#C9956A", ready: false },
+  { id: "windows", name: N_("Windows"), hint: N_("An app's notifications, battery, network, USB, when you're back"), icon: ICONS.display, color: "#F5F6F8", ready: false },
+  { id: "agents", name: N_("Agents"), hint: N_("Claude Code or Codex finish, ask for a permission, fail"), icon: ICONS.code, color: "#D97757", ready: false },
+  { id: "webhook", name: N_("Webhook"), hint: N_("A local address other programs can write to"), icon: ICONS.waves, color: "#7DD3FC", ready: false },
+  { id: "custom", name: N_("Make a source"), hint: N_("In the tool workshop, for a listening of your own"), icon: ICONS.wrench, color: "#A78BFA", ready: false },
+];
 
 export interface ListeningPanel {
   el: HTMLElement;
@@ -96,7 +126,12 @@ function empty(title: string, hint: string): HTMLElement {
 
 export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; close: () => void }): ListeningPanel {
   let tab: "active" | "history" = "active";
-  let adding = false;
+  /** The lists, the sources' menu, or the form for a pull request. */
+  let view: "list" | "catalog" | "form" = "list";
+  /** The watch the form changes; null: a new one. */
+  let editing: ListenWatch | null = null;
+  /** The row whose Pause, Edit, Go to the chat and Stop are open. */
+  let openRow: number | null = null;
   let past: ListenPast[] = [];
 
   const count = h("span", { class: "files-count" });
@@ -123,7 +158,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   const formError = h("div", { class: "listen-error" });
   let until: ListenUntil = "ready";
   let mode: ListenMode = "once";
-  const startBtn = h("button", { class: "listen-head-btn listen-add", text: tl(LISTENING_STRINGS.start) });
+  const startBtn = h("button", { class: "listen-head-btn listen-add" });
   const cancelBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.cancel) });
   const form = h("div", { class: "listen-form" },
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.target) }), targetInput,
@@ -158,19 +193,56 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     }
   }
 
-  function showForm(on: boolean) {
-    adding = on;
-    formError.textContent = "";
-    if (on) {
-      targetInput.value = "";
-      taskInput.value = "";
-      until = "ready";
-      mode = "once";
-      drawChoices();
-      tab = "active";
+  // ── Listen for something: the sources' menu ────────────────────────────
+  const catalogGrid = h("div", { class: "listen-catalog-grid" });
+  const catalogCancel = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.cancel) });
+  const catalog = h("div", { class: "listen-catalog" },
+    h("div", { class: "listen-label listen-catalog-title", text: tl(LISTENING_STRINGS.pick) }),
+    catalogGrid,
+    h("div", { class: "listen-form-buttons" }, catalogCancel));
+
+  function drawCatalog() {
+    clear(catalogGrid);
+    for (const source of SOURCES) {
+      const icon = h("span", { class: "listen-tile" }, svg(source.icon, 14, { stroke: 1.8 }));
+      icon.style.setProperty("--tile", source.color);
+      const tileEl = h("button", { class: source.ready ? "listen-source" : "listen-source soon", disabled: !source.ready },
+        h("span", { class: "listen-source-top" }, icon, source.ready ? null : h("span", { class: "listen-soon", text: t(LISTENING_STRINGS.soon) })),
+        h("span", { class: "listen-source-name", text: t(source.name) }),
+        h("span", { class: "listen-source-hint", text: t(source.hint) }));
+      if (source.ready) tileEl.addEventListener("click", () => showForm(null));
+      catalogGrid.append(tileEl);
     }
+  }
+
+  function showCatalog() {
+    view = "catalog";
+    tab = "active";
+    openRow = null;
+    drawCatalog();
     draw();
-    if (on) targetInput.focus();
+  }
+
+  function showList() {
+    view = "list";
+    editing = null;
+    draw();
+  }
+
+  /** The form, empty or with the watch it changes. */
+  function showForm(watch: ListenWatch | null) {
+    view = "form";
+    editing = watch;
+    tab = "active";
+    formError.textContent = "";
+    targetInput.value = watch ? `${watch.repo}#${watch.number}` : "";
+    taskInput.value = watch?.task ?? "";
+    until = watch?.until ?? "ready";
+    mode = watch?.mode ?? "once";
+    startBtn.textContent = t(watch ? LISTENING_STRINGS.save : LISTENING_STRINGS.start);
+    drawChoices();
+    draw();
+    targetInput.focus();
   }
 
   async function start() {
@@ -180,30 +252,35 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
       targetInput.focus();
       return;
     }
-    const watch = await Bridge.listenAdd(pr.repo, pr.number, until, taskInput.value.trim(), State.chatId, mode);
+    // A change keeps the chat the watch answers to, and takes the old one's place.
+    const chatId = editing?.chatId ?? State.chatId;
+    const watch = await Bridge.listenAdd(pr.repo, pr.number, until, taskInput.value.trim(), chatId, mode);
     if (!watch) {
       formError.textContent = t(LISTENING_STRINGS.failed);
       return;
     }
-    showForm(false);
+    if (editing && editing.id !== watch.id) void Bridge.listenStop(editing.id);
+    showList();
   }
 
-  addBtn.addEventListener("click", () => showForm(!adding));
-  cancelBtn.addEventListener("click", () => showForm(false));
+  addBtn.addEventListener("click", () => showCatalog());
+  catalogCancel.addEventListener("click", () => showList());
+  cancelBtn.addEventListener("click", () => showList());
   startBtn.addEventListener("click", () => void start());
   for (const input of [targetInput, taskInput]) {
     input.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Enter") void start();
-      if ((e as KeyboardEvent).key === "Escape") showForm(false);
+      if ((e as KeyboardEvent).key === "Escape") showList();
     });
   }
   activeTab.addEventListener("click", () => {
     tab = "active";
+    view = "list";
     draw();
   });
   historyTab.addEventListener("click", () => {
     tab = "history";
-    adding = false;
+    view = "list";
     void loadHistory();
     draw();
   });
@@ -226,39 +303,48 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
 
   // ── The rows ────────────────────────────────────────────────────────────
 
-  function rowButton(icon: string, size: number, title: string, onClick: () => void): HTMLElement {
-    const b = h("button", { class: "attach-remove listen-act", title, "aria-label": title }, svg(icon, size));
-    b.addEventListener("click", (e) => {
-      e.stopPropagation();
-      onClick();
-    });
-    return b;
-  }
-
-  function opensChat(row: HTMLElement, chatId: string) {
-    if (chatId === State.chatId) return;
-    row.classList.add("elsewhere");
+  /** A click, or Enter, on the row. */
+  function onPress(row: HTMLElement, run: () => void) {
     row.setAttribute("role", "button");
     row.setAttribute("tabindex", "0");
-    row.addEventListener("click", () => opts.goToChat(chatId));
+    row.addEventListener("click", run);
     row.addEventListener("keydown", (e) => {
       const key = (e as KeyboardEvent).key;
       if (key === "Enter" || key === " ") {
         e.preventDefault();
-        opts.goToChat(chatId);
+        run();
       }
     });
   }
 
   /** A row: the source's tile, what it waits for and what then, its labels on the right. */
-  function row(cls: string, title: string, name: string, detail: Node[], meta: Node[], acts: Node[] = []): HTMLElement {
+  function row(cls: string, title: string, name: string, detail: Node[], meta: Node[]): HTMLElement {
     return h("div", { class: `listen-row ${cls}`.trim(), title },
       tile(),
       h("span", { class: "listen-text" },
         h("span", { class: "listen-name", text: name }),
         h("span", { class: "listen-detail" }, ...detail)),
-      h("span", { class: "listen-meta" }, ...meta),
-      acts.length ? h("span", { class: "listen-acts" }, ...acts) : null);
+      h("span", { class: "listen-meta" }, ...meta));
+  }
+
+  /** Under an open row: Pause, Edit, Go to the chat, Stop. */
+  function rowActions(w: ListenWatch): HTMLElement {
+    // Pause, play, the bubble and × are filled; the pencil is a stroke.
+    const act = (label: string, icon: SVGSVGElement, run: () => void, kind = "") =>
+      h("button", { class: kind ? `listen-act-btn ${kind}` : "listen-act-btn", onclick: (e: Event) => {
+        e.stopPropagation();
+        run();
+      } }, icon, h("span", { text: label }));
+    return h("div", { class: "listen-row-acts" },
+      w.paused
+        ? act(t(LISTENING_STRINGS.resume), svg(ICONS.play, 9), () => void Bridge.listenPause(w.id, false))
+        : act(t(LISTENING_STRINGS.pause), svg(ICONS.pause, 9), () => void Bridge.listenPause(w.id, true)),
+      act(t(LISTENING_STRINGS.edit), svg(ICONS.pencil, 10, { stroke: 1.8 }), () => showForm(w)),
+      w.chatId === State.chatId ? null : act(t(LISTENING_STRINGS.goToChat), svg(ICONS.bubble, 10), () => opts.goToChat(w.chatId)),
+      act(t(LISTENING_STRINGS.stop), svg(ICONS.xmark, 9), () => {
+        openRow = null;
+        void Bridge.listenStop(w.id);
+      }, "stop"));
   }
 
   /** "Then: merge it · This chat": what Lumo does then, in which chat. */
@@ -276,17 +362,16 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const status = w.paused
       ? t(LISTENING_STRINGS.paused)
       : every && (w.fired ?? 0) > 0 ? t(LISTENING_STRINGS.fired, { count: w.fired ?? 0 }) : listenedFor(w.startedAt);
-    const el = row(w.paused ? "paused" : "", `${w.repo}#${w.number}`, `${w.repo}#${w.number} · ${event}`,
+    const open = openRow === w.id;
+    const el = row(`${w.paused ? "paused" : ""}${open ? " open" : ""}`, `${w.repo}#${w.number}`, `${w.repo}#${w.number} · ${event}`,
       thenAndChat(w.task, w.chatId),
-      [pill(t(every ? LISTENING_STRINGS.every : LISTENING_STRINGS.once), every ? "every" : ""), h("span", { class: "listen-status", text: status })],
-      [
-        w.paused
-          ? rowButton(ICONS.play, 10, t(LISTENING_STRINGS.resume), () => void Bridge.listenPause(w.id, false))
-          : rowButton(ICONS.pause, 10, t(LISTENING_STRINGS.pause), () => void Bridge.listenPause(w.id, true)),
-        rowButton(ICONS.xmark, 10, t(LISTENING_STRINGS.stop), () => void Bridge.listenStop(w.id)),
-      ]);
-    opensChat(el, w.chatId);
-    return el;
+      [pill(t(every ? LISTENING_STRINGS.every : LISTENING_STRINGS.once), every ? "every" : ""), h("span", { class: "listen-status", text: status })]);
+    onPress(el, () => {
+      openRow = open ? null : w.id;
+      draw();
+    });
+    // The row and its buttons stay one block.
+    return open ? h("div", { class: "listen-row-wrap open" }, el, rowActions(w)) : el;
   }
 
   function pastRow(p: ListenPast): HTMLElement {
@@ -294,7 +379,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const el = row("past", p.summary, p.summary, thenAndChat(w.task, w.chatId),
       [pill(t(p.met ? LISTENING_STRINGS.met : LISTENING_STRINGS.notMet), p.met ? "met" : "not-met"),
         h("span", { class: "listen-status", text: Date.now() - p.at < 60_000 ? t("just now") : t("{time} ago", { time: timeAgo(p.at) }) })]);
-    opensChat(el, w.chatId);
+    if (w.chatId !== State.chatId) onPress(el, () => opts.goToChat(w.chatId));
     return el;
   }
 
@@ -305,16 +390,19 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     activeTab.classList.toggle("on", tab === "active");
     historyTab.classList.toggle("on", tab === "history");
     pauseAllBtn.textContent = t(on > 0 ? LISTENING_STRINGS.pauseAll : LISTENING_STRINGS.resumeAll);
+    const adding = view !== "list";
     pauseAllBtn.hidden = tab !== "active" || adding || watches.length === 0;
     clearBtn.hidden = tab !== "history" || past.length === 0;
     addBtn.hidden = tab !== "active" || adding;
     foot.hidden = adding || (tab === "history" && past.length === 0);
-    form.hidden = !adding;
+    form.hidden = view !== "form";
+    catalog.hidden = view !== "catalog";
     activeList.hidden = tab !== "active" || adding;
     historyList.hidden = tab !== "history";
 
     if (tab === "active" && !adding) {
       clear(activeList);
+      if (openRow != null && !watches.some((w) => w.id === openRow)) openRow = null;
       for (const w of watches) activeList.append(watchRow(w));
       if (watches.length === 0) activeList.append(empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint)));
     }
@@ -336,7 +424,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
       h("span", { class: "listen-title", text: tl(LISTENING_STRINGS.title) }), count,
       h("span", { class: "listen-seg" }, activeTab, historyTab),
       closeBtn),
-    activeList, historyList, form, foot);
+    activeList, historyList, catalog, form, foot);
 
   return {
     el,

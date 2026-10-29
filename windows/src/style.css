@@ -2552,6 +2552,12 @@ input[type="range"]::-webkit-slider-thumb {
    lit, with a slow ring and how many, while something does. */
 .listen-btn {
   position: relative;
+  transition: margin-left 0.2s ease-out;
+}
+
+/* The folder's count sticks out on its right: the waves keep their gap. */
+.files-btn.has-files + .listen-btn {
+  margin-left: 6px;
 }
 
 .listen-btn.listening {
@@ -2738,7 +2744,7 @@ input[type="range"]::-webkit-slider-thumb {
 .listen-row {
   flex: 0 0 auto;
   display: grid;
-  grid-template-columns: 28px minmax(0, 1fr) auto auto;
+  grid-template-columns: 28px minmax(0, 1fr) auto;
   align-items: center;
   column-gap: 10px;
   min-height: 52px;
@@ -2839,23 +2845,127 @@ input[type="range"]::-webkit-slider-thumb {
   color: #6f7682;
 }
 
-/* Pause and Stop show on the row under the pointer, or with the keyboard. */
-.listen-acts {
+.listen-row[role="button"] {
+  cursor: pointer;
+}
+
+/* An open row and its buttons: Pause, Edit, Go to the chat, Stop. */
+.listen-row-wrap {
+  flex: 0 0 auto;
   display: flex;
-  gap: 2px;
-  width: 0;
-  overflow: hidden;
-  opacity: 0;
-  transition: opacity 0.15s ease-out;
+  flex-direction: column;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.06);
 }
 
-.listen-row:hover .listen-acts,
-.listen-row:focus-within .listen-acts {
-  width: auto;
-  opacity: 1;
+.listen-row-wrap .listen-row {
+  background: transparent;
 }
 
-.listen-act {
+.listen-row-acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 0 10px 10px 48px;
+}
+
+.listen-act-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 13px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 500 11.5px var(--font);
+  color: #c8cdd4;
+  cursor: default;
+  transition: background 0.15s ease-out, color 0.15s ease-out;
+}
+
+.listen-act-btn:hover {
+  background: rgba(255, 255, 255, 0.13);
+  color: var(--ink);
+}
+
+.listen-act-btn.stop:hover {
+  background: rgba(244, 80, 94, 0.16);
+  color: #f87171;
+}
+
+/* "Listen for something": every source, the ones still to come greyed. */
+.listen-catalog {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  overflow-y: auto;
+  padding: 2px;
+}
+
+.listen-catalog[hidden] {
+  display: none;
+}
+
+.listen-catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.listen-source {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease-out, border-color 0.15s ease-out;
+}
+
+.listen-source:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  border-color: rgba(255, 255, 255, 0.1);
+}
+
+.listen-source.soon {
+  cursor: default;
+}
+
+.listen-source.soon .listen-tile,
+.listen-source.soon .listen-source-name,
+.listen-source.soon .listen-source-hint {
+  opacity: 0.45;
+}
+
+.listen-source-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  align-self: stretch;
+}
+
+.listen-soon {
+  padding: 3px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  font: 600 9.5px/1.2 var(--font);
+  color: #8b929e;
+}
+
+.listen-source-name {
+  font: 600 12.5px var(--font);
+  color: var(--ink-2);
+}
+
+.listen-source-hint {
+  font: 400 11px/1.35 var(--font);
   color: #8b929e;
 }
 
