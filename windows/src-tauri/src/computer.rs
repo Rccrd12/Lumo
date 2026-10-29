@@ -290,8 +290,9 @@ fn overlay_show(app: &AppHandle, rect: (i32, i32, i32, i32)) {
     overlay_place(&win, rect);
     let _ = win.show();
     let _ = win.set_ignore_cursor_events(true);
+    let shared = app.state::<crate::Shared>();
     let (aim, cursor) = {
-        let settings = app.state::<crate::Shared>().settings.lock().unwrap();
+        let settings = shared.settings.lock().unwrap();
         (settings.computer_aim, CursorLook::parse(&settings.computer_cursor))
     };
     let look = if cursor == CursorLook::Lucciola { "lucciola" } else { "direct" };
