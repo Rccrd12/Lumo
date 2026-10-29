@@ -18,6 +18,7 @@ import {
 import { buildDiffCard } from "./diff";
 import { lastTextStep } from "../core/diff";
 import { approvalKey } from "../core/approvals";
+import { formatSize } from "../core/screen";
 import { Bridge, type Decision } from "../core/bridge";
 import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
@@ -578,15 +579,18 @@ const EMAIL_TEXT = {
   to: N_("To"),
   cc: N_("Cc"),
   subject: N_("Subject"),
+  attachments: N_("Attachments"),
   noSubject: N_("(no subject)"),
   send: N_("Send"),
   discard: N_("Discard"),
 };
 
-/** The email on its card: who it is from and for, its subject, its whole text. */
+/** The email on its card: who it is from and for, its subject, its files, its whole text. */
 function emailBlock(email: OutgoingEmail): HTMLElement {
-  const line = (label: string, value: string) =>
-    h("div", { class: "mail-line" }, h("span", { class: "mail-label", text: t(label) }), h("span", { class: "mail-value", text: value, title: value }));
+  const line = (label: string, value: string, title = value) =>
+    h("div", { class: "mail-line" }, h("span", { class: "mail-label", text: t(label) }), h("span", { class: "mail-value", text: value, title }));
+  // Each file by its name and size; the full path of each one in the tooltip.
+  const files = email.attachments.map((f) => `${f.name} (${formatSize(f.size)})`).join(", ");
   return h(
     "div",
     { class: "mail-card" },
@@ -594,6 +598,7 @@ function emailBlock(email: OutgoingEmail): HTMLElement {
     line(EMAIL_TEXT.to, email.to.join(", ")),
     email.cc.length ? line(EMAIL_TEXT.cc, email.cc.join(", ")) : null,
     line(EMAIL_TEXT.subject, email.subject || t(EMAIL_TEXT.noSubject)),
+    email.attachments.length ? line(EMAIL_TEXT.attachments, files, email.attachments.map((f) => f.path).join("\n")) : null,
     h("div", { class: "mail-body", text: email.body }),
   );
 }

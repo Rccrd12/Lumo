@@ -1066,7 +1066,10 @@ test("the chat's own Claude Code runs are not sessions of the pill", () => {
 // ── An email the AI wants to send (mail.rs send) ─────────────────────────────
 
 test("an email to send is its own card, whole, and never answered by itself", () => {
-  const email = { from: "me@example.com", to: ["ada@example.com"], cc: [], subject: "Ciao", body: "A domani" };
+  const email = {
+    from: "me@example.com", to: ["ada@example.com"], cc: [], subject: "Ciao", body: "A domani",
+    attachments: [{ name: "Analisi2.pdf", size: 1200, path: "C:\\Users\\me\\Documents\\Analisi2.pdf" }],
+  };
   const card = (request_id, extra = {}) => hook({
     hook_event_name: "PermissionRequest", request_id, lumo_island: true,
     tool_name: "mcp__lumo__mail_send", tool_input: { to: email.to, cc: [], subject: "Ciao" },
@@ -1081,4 +1084,15 @@ test("an email to send is its own card, whole, and never answered by itself", ()
   assert.equal(State.pendingApproval.quick, undefined);
   assert.ok(!asked.includes("quick"));
   assert.ok(asked.includes("alert:approval"));
+});
+
+test("an email's files come with it, and anything that is not one is left out", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "m2", lumo_island: true, tool_name: "mcp__lumo__mail_send",
+    lumo_mail_send: { to: ["ada@example.com"], body: "x", attachments: [{ name: "a.pdf", size: 3, path: "C:\\a.pdf" }, null, { size: 2 }, "b.pdf"] },
+  });
+  assert.deepEqual(State.pendingApproval.email.attachments, [{ name: "a.pdf", size: 3, path: "C:\\a.pdf" }]);
+  State.pendingApproval = null;
+  hook({ hook_event_name: "PermissionRequest", request_id: "m3", lumo_island: true, tool_name: "mcp__lumo__mail_send", lumo_mail_send: { to: ["ada@example.com"], body: "x" } });
+  assert.deepEqual(State.pendingApproval.email.attachments, [], "none");
 });

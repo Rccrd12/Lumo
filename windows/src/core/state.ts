@@ -103,6 +103,8 @@ export interface OutgoingEmail {
   cc: string[];
   subject: string;
   body: string;
+  /** The files attached: each one's name, size in bytes and full path. */
+  attachments: { name: string; size: number; path: string }[];
 }
 
 /** One question of an AskUserQuestion call. */

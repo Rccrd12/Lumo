@@ -762,8 +762,62 @@ fn addresses(v: Option<&serde_json::Value>, field: &str) -> Result<Vec<String>, 
     }
 }
 
-/// `mail_send`'s input, checked: who, the subject, the text.
-pub fn outgoing(input: &serde_json::Value) -> Result<crate::smtp::Outgoing, String> {
+/// A file the AI may attach: one the user attached to the chat (in the
+/// inbox), or any other but those in app data (%APPDATA%, %LOCALAPPDATA%,
+/// where programs keep their own and the user's secrets) or in a hidden
+/// folder (`.ssh`, `.aws`…). The card shows each one before Send all the same.
+fn may_attach(real: &std::path::Path, inbox: Option<&std::path::Path>, app_data: &[std::path::PathBuf]) -> bool {
+    if inbox.is_some_and(|inbox| real.starts_with(inbox)) {
+        return true;
+    }
+    let hidden = real.components().any(|c| matches!(c, std::path::Component::Normal(n) if n.to_string_lossy().starts_with('.')));
+    !hidden && !app_data.iter().any(|d| real.starts_with(d))
+}
+
+/// `mail_send`'s `attachments`: full paths of files, each checked and read.
+fn attachments(v: Option<&serde_json::Value>) -> Result<Vec<(crate::smtp::Attachment, String)>, String> {
+    let paths: Vec<String> = match v {
+        None | Some(serde_json::Value::Null) => return Ok(Vec::new()),
+        Some(serde_json::Value::String(s)) => vec![s.clone()],
+        Some(serde_json::Value::Array(a)) => a.iter().filter_map(|x| x.as_str()).map(str::to_string).collect(),
+        Some(_) => return Err("attachments must be a list of full paths of files.".into()),
+    };
+    if paths.len() > crate::smtp::MAX_ATTACHMENTS {
+        return Err(format!("At most {} files attached.", crate::smtp::MAX_ATTACHMENTS));
+    }
+    let inbox = crate::files::inbox_dir().canonicalize().ok();
+    let app_data: Vec<std::path::PathBuf> = ["APPDATA", "LOCALAPPDATA"]
+        .iter()
+        .filter_map(std::env::var_os)
+        .filter_map(|d| std::path::PathBuf::from(d).canonicalize().ok())
+        .collect();
+    let mut total = 0u64;
+    let mut out = Vec::new();
+    for raw in paths {
+        let path = std::path::Path::new(raw.trim());
+        let real = path
+            .is_absolute()
+            .then(|| path.canonicalize().ok())
+            .flatten()
+            .filter(|r| r.is_file())
+            .ok_or_else(|| format!("{raw} is not a file Lumo can find (give its full path)."))?;
+        if !may_attach(&real, inbox.as_deref(), &app_data) {
+            return Err(format!("{raw} is in a folder Lumo never sends files from (app data or a hidden folder)."));
+        }
+        total += std::fs::metadata(&real).map(|m| m.len()).unwrap_or(0);
+        if total > crate::smtp::MAX_ATTACHED_BYTES {
+            return Err(format!("The files attached weigh more than {} MB together.", crate::smtp::MAX_ATTACHED_BYTES / (1024 * 1024)));
+        }
+        let bytes = std::fs::read(&real).map_err(|e| format!("Lumo couldn't read {raw}: {e}"))?;
+        let name = real.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "file".into());
+        let mime = crate::smtp::mime_of(&name);
+        out.push((crate::smtp::Attachment { name, mime, bytes }, path.to_string_lossy().to_string()));
+    }
+    Ok(out)
+}
+
+/// `mail_send`'s input, checked: who, the subject, the text, the files.
+pub fn outgoing(input: &serde_json::Value) -> Result<(crate::smtp::Outgoing, Vec<String>), String> {
     let to = addresses(input.get("to"), "to")?;
     let cc = addresses(input.get("cc"), "cc")?;
     if to.is_empty() {
@@ -783,21 +837,29 @@ pub fn outgoing(input: &serde_json::Value) -> Result<crate::smtp::Outgoing, Stri
     if body.len() > crate::smtp::MAX_BODY {
         return Err("The email's text is too long.".into());
     }
-    Ok(crate::smtp::Outgoing { to, cc, subject, body })
+    let (attachments, paths): (Vec<_>, Vec<_>) = attachments(input.get("attachments"))?.into_iter().unzip();
+    Ok((crate::smtp::Outgoing { to, cc, subject, body, attachments }, paths))
 }
 
 /// `mail_send`: the email on a card of its own on the island, sent only when
 /// the user clicks Send. Nothing (Auto, Turbo, a trusted tool) skips the card.
 async fn send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
-    let mail = outgoing(input)?;
+    let (mail, paths) = outgoing(input)?;
+    let files: Vec<serde_json::Value> = mail
+        .attachments
+        .iter()
+        .zip(&paths)
+        .map(|(f, path)| json!({ "name": f.name, "size": f.bytes.len(), "path": path }))
+        .collect();
+    let names: Vec<&str> = mail.attachments.iter().map(|f| f.name.as_str()).collect();
     let from = secrets::get(ADDRESS_KEY)
         .ok_or_else(|| "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.".to_string())?;
     let card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
         "tool_name": "mcp__lumo__mail_send",
-        "tool_input": { "to": mail.to, "cc": mail.cc, "subject": mail.subject },
-        "lumo_mail_send": { "from": from, "to": mail.to, "cc": mail.cc, "subject": mail.subject, "body": mail.body },
+        "tool_input": { "to": mail.to, "cc": mail.cc, "subject": mail.subject, "attachments": names },
+        "lumo_mail_send": { "from": from, "to": mail.to, "cc": mail.cc, "subject": mail.subject, "body": mail.body, "attachments": files },
     });
     match crate::pipe::ask(app, card).await.as_deref() {
         Some("allow") => {}
@@ -1770,16 +1832,52 @@ mod tests {
 
     #[test]
     fn mail_send_takes_plain_addresses_a_subject_and_a_text() {
-        let ok = outgoing(&json!({ "to": "ada@example.com, bob@example.com", "subject": "Hi", "body": "Ciao" })).unwrap();
+        let (ok, _) = outgoing(&json!({ "to": "ada@example.com, bob@example.com", "subject": "Hi", "body": "Ciao" })).unwrap();
         assert_eq!(ok.to, ["ada@example.com", "bob@example.com"]);
-        assert!(ok.cc.is_empty());
-        let list = outgoing(&json!({ "to": ["ada@example.com"], "cc": ["c@example.com"], "body": "x" })).unwrap();
+        assert!(ok.cc.is_empty() && ok.attachments.is_empty());
+        let (list, _) = outgoing(&json!({ "to": ["ada@example.com"], "cc": ["c@example.com"], "body": "x" })).unwrap();
         assert_eq!((list.cc.len(), list.subject.as_str()), (1, ""));
         assert!(outgoing(&json!({ "to": [], "body": "x" })).is_err(), "nobody");
         assert!(outgoing(&json!({ "to": "ada@example.com", "body": "  " })).is_err(), "no text");
         assert!(outgoing(&json!({ "to": "ada@example.com>\r\nRCPT TO:<eve@example.com", "body": "x" })).is_err());
         let many: Vec<String> = (0..21).map(|i| format!("p{i}@example.com")).collect();
         assert!(outgoing(&json!({ "to": many, "body": "x" })).is_err(), "too many");
+    }
+
+    #[test]
+    fn mail_send_attaches_files_by_their_full_path() {
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("..").join("target").join("mail-attach-test");
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("Analisi2.pdf");
+        std::fs::write(&file, b"%PDF-1.7").unwrap();
+        let path = file.to_string_lossy().to_string();
+        let (mail, paths) = outgoing(&json!({ "to": "ada@example.com", "body": "x", "attachments": [path] })).unwrap();
+        assert_eq!(mail.attachments.len(), 1);
+        assert_eq!((mail.attachments[0].name.as_str(), mail.attachments[0].mime), ("Analisi2.pdf", "application/pdf"));
+        assert_eq!(mail.attachments[0].bytes, b"%PDF-1.7");
+        assert_eq!(paths, std::slice::from_ref(&path));
+        let (one, _) = outgoing(&json!({ "to": "ada@example.com", "body": "x", "attachments": path })).unwrap();
+        assert_eq!(one.attachments.len(), 1, "one path as a string");
+        for bad in [json!(["Analisi2.pdf"]), json!([dir.join("missing.pdf").to_string_lossy()]), json!([dir.to_string_lossy()]), json!(3)] {
+            assert!(outgoing(&json!({ "to": "ada@example.com", "body": "x", "attachments": bad })).is_err(), "{bad}");
+        }
+        let many = vec![path; crate::smtp::MAX_ATTACHMENTS + 1];
+        assert!(outgoing(&json!({ "to": "ada@example.com", "body": "x", "attachments": many })).is_err());
+    }
+
+    #[test]
+    fn files_in_app_data_or_hidden_folders_are_never_attached_but_the_chats_are() {
+        use std::path::{Path, PathBuf};
+        let inbox = Path::new("C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox");
+        let app_data = [PathBuf::from("C:\\Users\\me\\AppData\\Roaming"), PathBuf::from("C:\\Users\\me\\AppData\\Local")];
+        let ok = |p: &str| may_attach(Path::new(p), Some(inbox), &app_data);
+        assert!(ok("C:\\Users\\me\\Documents\\Analisi2.pdf"));
+        assert!(ok("C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\inbox\\Analisi2.pdf"), "attached to the chat");
+        assert!(!ok("C:\\Users\\me\\AppData\\Local\\Google\\Chrome\\User Data\\Default\\Login Data"));
+        assert!(!ok("C:\\Users\\me\\AppData\\Roaming\\Microsoft\\Credentials\\x"));
+        assert!(!ok("C:\\Users\\me\\AppData\\Local\\com.rccrd12.lumo\\settings.json"));
+        assert!(!ok("C:\\Users\\me\\.ssh\\id_ed25519"));
+        assert!(!ok("D:\\work\\.git\\config"));
     }
 
     #[test]

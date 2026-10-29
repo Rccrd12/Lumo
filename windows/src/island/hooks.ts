@@ -221,7 +221,7 @@ interface HookPayload {
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
   /** An email the AI wants to send, on a card of its own (mail.rs send). */
-  lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown };
+  lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; attachments?: unknown };
 }
 
 /** The email of a `mail_send` card, as the island shows it; null when there is none to show. */
@@ -231,7 +231,12 @@ export function outgoingEmail(raw: HookPayload["lumo_mail_send"]): OutgoingEmail
   const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []);
   const to = list(raw.to);
   if (!to.length) return null;
-  return { from: text(raw.from), to, cc: list(raw.cc), subject: text(raw.subject), body: text(raw.body) };
+  const files = Array.isArray(raw.attachments) ? raw.attachments : [];
+  const attachments = files
+    .filter((f): f is Record<string, unknown> => !!f && typeof f === "object")
+    .map((f) => ({ name: text(f.name), size: typeof f.size === "number" ? f.size : 0, path: text(f.path) }))
+    .filter((f) => f.name);
+  return { from: text(raw.from), to, cc: list(raw.cc), subject: text(raw.subject), body: text(raw.body), attachments };
 }
 
 function lastPathComponent(p: string): string {

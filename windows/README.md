@@ -344,8 +344,12 @@ mailbox reaches any AI: no emails with the question, no email tools, nothing
 for Gemini Live) or **Read and send**. With Read and send, the chat's Claude
 Code, Codex and Antigravity CLI also get the email tools and `mail_send`:
 the email they want to send comes up on a card on the island, whole (from,
-to, cc, subject, text), and goes only when you click **Send**; **Discard**
-sends nothing. No permission mode (Auto included) and no key skips that card.
+to, cc, subject, the files attached with their size, text), and goes only when
+you click **Send**; **Discard** sends nothing. No permission mode (Auto
+included) and no key skips that card. The AI attaches a file by its full path:
+one you attached to the chat, or another one you ask for, never one in app
+data (`%APPDATA%`, `%LOCALAPPDATA%`) or in a hidden folder; at most 10 files,
+18 MB together.
 It goes from your account over SMTP (Gmail, Outlook, iCloud, Yahoo, or the
 `smtp.` server next to your IMAP one), with the same app password, over TLS.
 The calendar, read from its address, stays read only: **Calendar** has Read

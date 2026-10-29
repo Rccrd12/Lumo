@@ -6,7 +6,8 @@
 // password the Email pill already reads the inbox with (secrets.rs), over TLS
 // from the first byte (port 465) or after STARTTLS (587), with the same
 // rustls and root certificates as the IMAP side. The email is plain text,
-// UTF-8, its body in base64. Gmail keeps a copy in Sent by itself; other
+// UTF-8, its body in base64; with files attached it is multipart/mixed, the
+// text first, then each file in base64. Gmail keeps a copy in Sent by itself; other
 // servers may not.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
@@ -26,6 +27,19 @@ const MAX_REPLY: usize = 64 * 1024;
 pub const MAX_RECIPIENTS: usize = 20;
 pub const MAX_SUBJECT: usize = 300;
 pub const MAX_BODY: usize = 100_000;
+/// At most this many files attached.
+pub const MAX_ATTACHMENTS: usize = 10;
+/// The files attached weigh at most this together: in base64 they stay under
+/// the 25 MB Gmail and Outlook take.
+pub const MAX_ATTACHED_BYTES: u64 = 18 * 1024 * 1024;
+
+/// A file attached to an email.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Attachment {
+    pub name: String,
+    pub mime: &'static str,
+    pub bytes: Vec<u8>,
+}
 
 /// One email to send.
 #[derive(Debug, Clone, PartialEq)]
@@ -34,6 +48,54 @@ pub struct Outgoing {
     pub cc: Vec<String>,
     pub subject: String,
     pub body: String,
+    pub attachments: Vec<Attachment>,
+}
+
+/// The MIME type of a file attached, by its extension.
+pub fn mime_of(name: &str) -> &'static str {
+    if let Some(mime) = crate::files::image_mime(std::path::Path::new(name)) {
+        return mime;
+    }
+    let ext = name.rsplit_once('.').map(|(_, e)| e.to_ascii_lowercase()).unwrap_or_default();
+    match ext.as_str() {
+        "pdf" => "application/pdf",
+        "txt" | "log" => "text/plain",
+        "md" => "text/markdown",
+        "csv" => "text/csv",
+        "html" | "htm" => "text/html",
+        "json" => "application/json",
+        "xml" => "application/xml",
+        "zip" => "application/zip",
+        "doc" => "application/msword",
+        "docx" => "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+        "xls" => "application/vnd.ms-excel",
+        "xlsx" => "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        "ppt" => "application/vnd.ms-powerpoint",
+        "pptx" => "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "odt" => "application/vnd.oasis.opendocument.text",
+        "ods" => "application/vnd.oasis.opendocument.spreadsheet",
+        "mp3" => "audio/mpeg",
+        "mp4" => "video/mp4",
+        "svg" => "image/svg+xml",
+        _ => "application/octet-stream",
+    }
+}
+
+/// A file name as RFC 2231 has it in `filename*=`: UTF-8, anything but
+/// letters, digits and a few marks as %XX.
+fn percent_name(name: &str) -> String {
+    name.bytes()
+        .map(|b| if b.is_ascii_alphanumeric() || b"!#$&+-.^_`|~".contains(&b) { (b as char).to_string() } else { format!("%{b:02X}") })
+        .collect()
+}
+
+/// `bytes` in base64 lines of 76, each ended by CRLF.
+fn base64_lines(out: &mut String, bytes: &[u8]) {
+    let encoded = base64_for(bytes);
+    for line in encoded.as_bytes().chunks(76) {
+        out.push_str(std::str::from_utf8(line).unwrap_or(""));
+        out.push_str("\r\n");
+    }
 }
 
 /// A plain address: something@somewhere, nothing that could end a command or
@@ -120,13 +182,28 @@ pub fn message(from: &str, mail: &Outgoing, secs: u64, id: &str) -> String {
     out.push_str(&format!("Date: {}\r\n", date(secs)));
     let domain = from.rsplit('@').next().unwrap_or("lumo.local");
     out.push_str(&format!("Message-ID: <{id}@{domain}>\r\n"));
-    out.push_str("MIME-Version: 1.0\r\nContent-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n");
+    out.push_str("MIME-Version: 1.0\r\n");
     let body = mail.body.replace("\r\n", "\n").replace('\n', "\r\n");
-    let encoded = base64_for(body.as_bytes());
-    for line in encoded.as_bytes().chunks(76) {
-        out.push_str(std::str::from_utf8(line).unwrap_or(""));
-        out.push_str("\r\n");
+    const TEXT: &str = "Content-Type: text/plain; charset=utf-8\r\nContent-Transfer-Encoding: base64\r\n\r\n";
+    if mail.attachments.is_empty() {
+        out.push_str(TEXT);
+        base64_lines(&mut out, body.as_bytes());
+        return out;
     }
+    // Base64 and these headers never hold "=_", so the boundary is in no part.
+    let boundary = format!("=_lumo_{id}");
+    out.push_str(&format!("Content-Type: multipart/mixed; boundary=\"{boundary}\"\r\n\r\n"));
+    out.push_str(&format!("--{boundary}\r\n{TEXT}"));
+    base64_lines(&mut out, body.as_bytes());
+    for file in &mail.attachments {
+        let name: String = file.name.chars().filter(|c| !c.is_control() && *c != '"' && *c != '\\').collect();
+        out.push_str(&format!("--{boundary}\r\n"));
+        out.push_str(&format!("Content-Type: {}; name=\"{}\"\r\n", file.mime, header_text(&name)));
+        out.push_str(&format!("Content-Disposition: attachment; filename*=UTF-8''{}\r\n", percent_name(&name)));
+        out.push_str("Content-Transfer-Encoding: base64\r\n\r\n");
+        base64_lines(&mut out, &file.bytes);
+    }
+    out.push_str(&format!("--{boundary}--\r\n"));
     out
 }
 
@@ -297,6 +374,7 @@ mod tests {
             cc: vec!["bob@example.com".into()],
             subject: "Città\r\nBcc: eve@example.com".into(),
             body: "Ciao Ada,\n.\nA presto".into(),
+            attachments: Vec::new(),
         };
         let text = message("me@example.it", &mail, 0, "1.2.lumo");
         let (head, body) = text.split_once("\r\n\r\n").unwrap();
@@ -308,6 +386,34 @@ mod tests {
         assert!(subject.starts_with("Subject: =?UTF-8?B?"));
         assert!(body.lines().all(|l| l.len() <= 76 && !l.starts_with('.')));
         assert_eq!(body, format!("{}\r\n", base64_for("Ciao Ada,\r\n.\r\nA presto".as_bytes())));
+    }
+
+    #[test]
+    fn files_attached_follow_the_text_each_in_its_own_part() {
+        let pdf = Attachment { name: "Analisi 2 è.pdf".into(), mime: mime_of("Analisi 2 è.pdf"), bytes: vec![0x25, 0x50, 0x44, 0x46, 0xff, 0x00] };
+        let mail = Outgoing {
+            to: vec!["ada@example.com".into()],
+            cc: Vec::new(),
+            subject: "Report".into(),
+            body: "Eccolo".into(),
+            attachments: vec![pdf.clone(), Attachment { name: "a\"b\r\n.txt".into(), mime: "text/plain", bytes: b"x".to_vec() }],
+        };
+        let text = message("me@example.it", &mail, 0, "1.2.lumo");
+        let (head, rest) = text.split_once("\r\n\r\n").unwrap();
+        assert!(head.contains("Content-Type: multipart/mixed; boundary=\"=_lumo_1.2.lumo\""));
+        let parts: Vec<&str> = rest.split("--=_lumo_1.2.lumo").collect();
+        assert_eq!(parts.len(), 5, "before, text, two files, the end: {parts:?}");
+        assert!(parts[1].contains("Content-Type: text/plain; charset=utf-8"));
+        assert!(parts[1].contains(&base64_for(b"Eccolo")));
+        assert!(parts[2].contains("Content-Type: application/pdf; name=\"=?UTF-8?B?"));
+        assert!(parts[2].contains("Content-Disposition: attachment; filename*=UTF-8''Analisi%202%20%C3%A8.pdf\r\n"));
+        assert!(parts[2].contains(&base64_for(&pdf.bytes)));
+        assert!(parts[3].contains("filename*=UTF-8''ab.txt\r\n"), "no quote or line break from a name gets into a header");
+        assert_eq!(parts[4], "--\r\n");
+        assert!(text.lines().all(|l| l.len() <= 998 && !l.starts_with('.')));
+        assert_eq!(mime_of("x.DOCX"), "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        assert_eq!(mime_of("photo.JPG"), "image/jpeg");
+        assert_eq!(mime_of("noext"), "application/octet-stream");
     }
 
     #[test]
