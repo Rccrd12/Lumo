@@ -1023,7 +1023,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
         Action::Click { at, button, count, hold } => {
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
-            hands_off(app, || {
+            let here = hands_off(app, || {
                 if let Some(t) = target {
                     glide_to(app, &view, t, true)?;
                 }
