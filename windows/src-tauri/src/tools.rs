@@ -983,6 +983,30 @@ pub fn offered() -> Vec<ToolInfo> {
     list().into_iter().filter(|t| t.manifest.enabled && !t.missing && t.reviewed).collect()
 }
 
+/// A tool Listening may run by itself, now and then, without a card each
+/// time (listen.rs): on, reviewed, trusted by the user (and trustable), and
+/// asking for nothing it must be given.
+pub fn listenable(id: &str) -> Result<ToolInfo, String> {
+    let Some(tool) = find(id).map(|(dir, m)| info(&dir, m)) else { return Err(format!("Lumo has no tool called {id}.")) };
+    let m = &tool.manifest;
+    if !m.enabled || tool.missing || !tool.reviewed {
+        return Err(t("the tool is off, or not reviewed since it changed"));
+    }
+    if !(m.trust && tool.may_trust) {
+        return Err(t("the tool isn't trusted to run without asking"));
+    }
+    if m.params.iter().any(|p| p.required) {
+        return Err(t("the tool needs to be given something to run"));
+    }
+    Ok(tool)
+}
+
+/// One run of a tool Listening listens to, with nothing given (blocking).
+pub fn run_listened(id: &str) -> Result<RunResult, String> {
+    let tool = listenable(id)?;
+    Ok(run_in(Path::new(&tool.dir), &tool.manifest, &json!({})))
+}
+
 /// The tools agents may use, for the chat's API providers: the island's own
 /// (island_tools.rs, its GitHub ones with `listen`), then the user's that are
 /// on: id, the words the model reads, and the JSON schema of the input.

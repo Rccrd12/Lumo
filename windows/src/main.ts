@@ -8,6 +8,7 @@ import { State, type Settings } from "./core/state";
 import { Island } from "./island/island";
 import { registerHookHandlers } from "./island/hooks";
 import { registerIntegrationHandlers, refreshConfigured } from "./island/integrations";
+import { startCalendarListening } from "./island/listen-calendar";
 import { registerShortcutHandlers } from "./island/shortcuts";
 import { Recap } from "./recap/recap";
 import { onLanguageChange, resolveLanguage, setLanguage, systemLanguages, t } from "./i18n/i18n";
@@ -128,6 +129,7 @@ async function main() {
 
   registerHookHandlers(island);
   registerIntegrationHandlers(island);
+  startCalendarListening();
   registerShortcutHandlers(island, () => setPaused(false));
 
   // Monday recap: app start (greeting over), an agent starting work, waking up.

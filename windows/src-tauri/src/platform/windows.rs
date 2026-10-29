@@ -500,6 +500,47 @@ fn process_table() -> HashMap<u32, Proc> {
     out
 }
 
+/// The battery and the mains, for listening (listen.rs): the battery's percent
+/// (None: no battery, or unknown), and whether the PC is plugged in.
+pub struct Power {
+    pub percent: Option<u32>,
+    pub plugged: bool,
+}
+
+pub fn power() -> Option<Power> {
+    let mut s = SYSTEM_POWER_STATUS::default();
+    unsafe { GetSystemPowerStatus(&mut s) }.ok()?;
+    // 128: no battery; 255: unknown.
+    let percent = (s.BatteryFlag & 128 == 0 && s.BatteryLifePercent <= 100).then_some(s.BatteryLifePercent as u32);
+    Some(Power { percent, plugged: s.ACLineStatus != 0 })
+}
+
+/// The removable drives there now ("E:"): USB sticks, card readers.
+pub fn removable_drives() -> Vec<String> {
+    use ::windows::Win32::Storage::FileSystem::{GetDriveTypeW, GetLogicalDrives};
+    const DRIVE_REMOVABLE: u32 = 2;
+    let mask = unsafe { GetLogicalDrives() };
+    (0..26u32)
+        .filter(|i| mask & (1 << i) != 0)
+        .map(|i| format!("{}:", (b'A' + i as u8) as char))
+        .filter(|drive| {
+            let root: Vec<u16> = format!("{drive}\\").encode_utf16().chain(Some(0)).collect();
+            unsafe { GetDriveTypeW(PCWSTR(root.as_ptr())) == DRIVE_REMOVABLE }
+        })
+        .collect()
+}
+
+/// How long since the user last typed or moved the mouse, in ms.
+pub fn idle_ms() -> u64 {
+    use ::windows::Win32::System::SystemInformation::GetTickCount;
+    use ::windows::Win32::UI::Input::KeyboardAndMouse::{GetLastInputInfo, LASTINPUTINFO};
+    let mut info = LASTINPUTINFO { cbSize: std::mem::size_of::<LASTINPUTINFO>() as u32, dwTime: 0 };
+    if !unsafe { GetLastInputInfo(&mut info) }.as_bool() {
+        return 0;
+    }
+    unsafe { GetTickCount() }.wrapping_sub(info.dwTime) as u64
+}
+
 /// The executables running now, by name in lower case ("node.exe"), for listening (listen_local.rs).
 pub fn process_names() -> std::collections::HashSet<String> {
     process_table().into_values().map(|p| p.exe.to_lowercase()).collect()

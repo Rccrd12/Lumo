@@ -7,7 +7,10 @@
 // closed. The chat's Listening panel (views/listening.ts) shows them all, and
 // starts one by hand. Besides GitHub, a watch can listen on this PC (listen_local.rs):
 // `[[listen fs "C:\Users\me\Downloads" every download: sort it]]`,
-// `[[listen process "node.exe" exited]]`, `[[listen web "https://…" contains "In stock"]]`.
+// `[[listen process "node.exe" exited]]`, `[[listen web "https://…" contains "In stock"]]`;
+// or on what Lumo hears (listen_events.rs): `[[listen email "Marco" from: reply]]`,
+// `[[listen agent "claude" every finished]]`, `[[listen service "calendar" soon 15]]`
+// (a number after the event: the minutes before, the battery's percent…).
 // Pure helpers, so they can be tested without a webview.
 
 import { N_, t } from "../i18n/i18n";
@@ -20,22 +23,66 @@ export const LISTEN_COLOR = pillDefinition("integration_github")?.color ?? "#F45
 export type PrUntil = "checks" | "green" | "approved" | "ready" | "merged" | "closed";
 export const LISTEN_UNTILS: PrUntil[] = ["checks", "green", "approved", "ready", "merged", "closed"];
 
-/** Where a watch listens (listen.rs SOURCES): GitHub, or on this PC. */
-export type ListenSource = "github.pr" | "fs" | "process" | "web";
+/** Where a watch listens (listen.rs SOURCES): GitHub, this PC, or what Lumo hears. */
+export type ListenSource = "github.pr" | "fs" | "process" | "web" | "email" | "service" | "windows" | "agent" | "webhook" | "tool";
 export type LocalSource = Exclude<ListenSource, "github.pr">;
-export const LOCAL_SOURCES: LocalSource[] = ["fs", "process", "web"];
+export const LOCAL_SOURCES: LocalSource[] = ["fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool"];
 
 /** What a watch on this PC waits for, by source (listen_local.rs). */
 export const LOCAL_UNTILS = {
   fs: ["created", "changed", "deleted", "download"],
   process: ["started", "exited", "port_open", "port_closed"],
   web: ["changed", "up", "down", "contains"],
+  email: ["new", "from", "subject"],
+  service: ["event", "succeeded", "failed", "soon"],
+  windows: ["notification", "battery_low", "plugged", "unplugged", "offline", "online", "usb", "back"],
+  agent: ["finished", "permission", "failed"],
+  webhook: ["called"],
+  tool: ["changed", "contains"],
 } as const;
 export type LocalUntil = (typeof LOCAL_UNTILS)[LocalSource][number];
 export type ListenUntil = PrUntil | LocalUntil;
 
 /** Each source's colour, for its tile and what the island says. */
-export const SOURCE_COLOR: Record<LocalSource, string> = { fs: "#F5A524", process: "#2DD4A7", web: "#60A5FA" };
+export const SOURCE_COLOR: Record<LocalSource, string> = {
+  fs: "#F5A524", process: "#2DD4A7", web: "#60A5FA", email: "#EA4335", service: "#C9956A", windows: "#F5F6F8",
+  agent: "#D97757", webhook: "#7DD3FC", tool: "#A78BFA",
+};
+
+/** The services a watch can listen to (listen_local.rs SERVICES): its name in a watch, as shown, its pill. */
+export const LISTEN_SERVICES: { id: string; name: string; pill: string }[] = [
+  { id: "calendar", name: N_("Calendar"), pill: "" },
+  { id: "vercel", name: "Vercel", pill: "integration_vercel" },
+  { id: "stripe", name: "Stripe", pill: "integration_stripe" },
+  { id: "n8n", name: "n8n", pill: "integration_n8n" },
+  { id: "resend", name: "Resend", pill: "integration_resend" },
+  { id: "notion", name: "Notion", pill: "integration_notion" },
+  { id: "calcom", name: "Cal.com", pill: "integration_calcom" },
+];
+
+/** The agents a watch can listen to (listen_local.rs AGENTS): their hook tag and name. */
+export const LISTEN_AGENTS: { id: string; name: string }[] = [
+  { id: "any", name: N_("Any agent") },
+  { id: "claude", name: "Claude Code" },
+  { id: "codex", name: "Codex" },
+  { id: "gemini", name: "Gemini CLI" },
+  { id: "antigravity", name: "Antigravity" },
+  { id: "cursor", name: "Cursor" },
+  { id: "copilot", name: "Copilot CLI" },
+  { id: "opencode", name: "OpenCode" },
+  { id: "amp", name: "Amp" },
+  { id: "hermes", name: "Hermes" },
+  { id: "muse", name: "Muse Code" },
+];
+
+/** What a watch takes a number for, its default and its ceiling (listen_local.rs amount_of). */
+export function amountOf(source: ListenSource, until: string): { default: number; max: number } | null {
+  if (source === "service" && until === "soon") return { default: 10, max: 1440 };
+  if (source === "windows" && until === "battery_low") return { default: 20, max: 99 };
+  if (source === "windows" && until === "back") return { default: 5, max: 1440 };
+  if (source === "tool") return { default: 15, max: 1440 };
+  return null;
+}
 
 /** Once: it ends when it fires. Every: once for each new commit (listen.rs MODES). */
 export type ListenMode = "once" | "every";
@@ -57,8 +104,12 @@ export interface ListenWatch {
   source?: ListenSource;
   /** What a watch on this PC names: a path, a program, a port, a link. */
   target?: string;
-  /** The words a page is waited to show (web, contains). */
+  /** The words a page (or a tool) is waited to show (contains). */
   text?: string;
+  /** The minutes before an event, the battery's percent, the minutes away, the minutes between runs. */
+  amount?: number;
+  /** What it last fired on: a commit, a page's fingerprint, an event's start (Unix ms). */
+  lastSha?: string;
   mode?: ListenMode;
   /** Paused from the Listening panel. */
   paused?: boolean;
@@ -91,6 +142,8 @@ export interface ListenAsk {
   number: number;
   target: string;
   text: string;
+  /** 0: none given. */
+  amount: number;
   until: ListenUntil;
   mode: ListenMode;
   task: string;
@@ -134,6 +187,39 @@ const LOCAL_LISTEN_TEXT: Record<LocalSource, Record<string, string>> = {
     down: N_("Waiting for {what} to go down"),
     contains: N_("Waiting for {what} to show “{text}”"),
   },
+  email: {
+    new: N_("Waiting for a new email"),
+    from: N_("Waiting for an email from {what}"),
+    subject: N_("Waiting for an email about “{what}”"),
+  },
+  service: {
+    event: N_("Waiting for news from {what}"),
+    succeeded: N_("Waiting for {what} to succeed"),
+    failed: N_("Waiting for {what} to fail"),
+    soon: N_("Waiting for the next event on the calendar"),
+  },
+  windows: {
+    notification: N_("Waiting for a notification from {what}"),
+    battery_low: N_("Waiting for the battery to run low"),
+    plugged: N_("Waiting for the PC to be plugged in"),
+    unplugged: N_("Waiting for the PC to be unplugged"),
+    offline: N_("Waiting for the network to go"),
+    online: N_("Waiting for the network to be back"),
+    usb: N_("Waiting for a USB drive"),
+    back: N_("Waiting for you to be back"),
+  },
+  agent: {
+    finished: N_("Waiting for {what} to finish"),
+    permission: N_("Waiting for {what} to ask you"),
+    failed: N_("Waiting for {what} to fail"),
+  },
+  webhook: {
+    called: N_("Waiting for a call to {what}"),
+  },
+  tool: {
+    changed: N_("Waiting for {what} to say something new"),
+    contains: N_("Waiting for {what} to say “{text}”"),
+  },
 };
 
 export const LISTEN_STRINGS = {
@@ -170,6 +256,39 @@ export const LOCAL_UNTIL_TEXT: Record<LocalSource, Record<string, string>> = {
     down: N_("It goes down"),
     contains: N_("It shows a text"),
   },
+  email: {
+    new: N_("Any new email"),
+    from: N_("An email from someone"),
+    subject: N_("An email about something"),
+  },
+  service: {
+    event: N_("Anything new"),
+    succeeded: N_("Something goes well"),
+    failed: N_("Something fails"),
+    soon: N_("An event is about to start"),
+  },
+  windows: {
+    notification: N_("A notification"),
+    battery_low: N_("The battery runs low"),
+    plugged: N_("It is plugged in"),
+    unplugged: N_("It is unplugged"),
+    offline: N_("The network goes"),
+    online: N_("The network is back"),
+    usb: N_("A USB drive is connected"),
+    back: N_("You're back"),
+  },
+  agent: {
+    finished: N_("It finishes"),
+    permission: N_("It asks for you"),
+    failed: N_("It fails"),
+  },
+  webhook: {
+    called: N_("It is called"),
+  },
+  tool: {
+    changed: N_("It says something new"),
+    contains: N_("It says a text"),
+  },
 };
 
 /** Whether the watch listens on GitHub (older files say no source). */
@@ -196,6 +315,17 @@ export function watchLabel(w: ListenWatch): string {
   const target = w.target ?? "";
   if (w.source === "fs") return lastPart(target);
   if (w.source === "process") return w.until.startsWith("port_") ? `:${target}` : target;
+  if (w.source === "email") return w.until === "new" ? t("Email") : target;
+  if (w.source === "service") {
+    const service = LISTEN_SERVICES.find((s) => s.id === target);
+    return service ? (service.pill ? service.name : t(service.name)) : target;
+  }
+  if (w.source === "agent") {
+    const agent = LISTEN_AGENTS.find((a) => a.id === target);
+    return agent ? (agent.id === "any" ? t(agent.name) : agent.name) : target;
+  }
+  if (w.source === "windows") return target === "pc" ? "Windows" : target === "any" ? t("Any app") : target;
+  if (w.source === "webhook" || w.source === "tool") return target;
   const rest = target.replace(/^[a-z]+:\/\//i, "").replace(/^www\./i, "").replace(/\/+$/, "");
   return rest.length > 40 ? `${rest.slice(0, 39)}…` : rest;
 }
@@ -282,6 +412,12 @@ const SOURCE_WORDS: Record<string, LocalSource> = {
   fs: "fs", file: "fs", files: "fs", folder: "fs",
   process: "process", program: "process", port: "process", app: "process",
   web: "web", page: "web", url: "web", site: "web",
+  email: "email", mail: "email", inbox: "email",
+  service: "service", services: "service",
+  windows: "windows", pc: "windows", system: "windows",
+  agent: "agent", agents: "agent",
+  webhook: "webhook", hook: "webhook",
+  tool: "tool",
 };
 
 /** The source and its target: in quotes, or one word without spaces (`process node.exe`). */
@@ -292,7 +428,7 @@ const TARGET_RE = /^\s*([a-z]+)\s+(?:["“]([^"”]+)["”]|([^\s"“”]+))/i;
  * `web "https://…" contains "In stock": task`. Null when it isn't one, or
  * names an event its source hasn't.
  */
-function readLocal(body: string): { source: LocalSource; target: string; text: string; until: LocalUntil; mode: ListenMode; task: string } | null {
+function readLocal(body: string): { source: LocalSource; target: string; text: string; amount: number; until: LocalUntil; mode: ListenMode; task: string } | null {
   const m = TARGET_RE.exec(body);
   const source = m ? SOURCE_WORDS[m[1].toLowerCase()] : undefined;
   if (!m || !source) return null;
@@ -315,8 +451,10 @@ function readLocal(body: string): { source: LocalSource; target: string; text: s
   const until = (words[0] ?? "").toLowerCase() as LocalUntil;
   if (!(LOCAL_UNTILS[source] as readonly string[]).includes(until)) return null;
   if (until === "contains" && !text) return null;
-  const more = words.slice(1).join(" ");
-  return { source, target: (m[2] ?? m[3]).trim(), text, until, mode, task: task || more };
+  // `soon 15`: the minutes before, the percent…, for the events that take one.
+  const amount = amountOf(source, until) && /^\d{1,4}$/.test(words[1] ?? "") ? parseInt(words[1], 10) : 0;
+  const more = words.slice(amount ? 2 : 1).join(" ");
+  return { source, target: (m[2] ?? m[3]).trim(), text, amount, until, mode, task: task || more };
 }
 
 /** `fs "C:\path"`: what `[[unlisten …]]` stops on this PC. */
@@ -354,7 +492,7 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
     const here = local ? readLocal(body) : null;
     const asked = ref ? readUntil(ref.rest) : null;
     if (here) listens.push({ ...here, repo: "", number: 0 });
-    else if (ref && asked) listens.push({ source: "github.pr", repo: ref.repo, number: ref.number, target: "", text: "", ...asked });
+    else if (ref && asked) listens.push({ source: "github.pr", repo: ref.repo, number: ref.number, target: "", text: "", amount: 0, ...asked });
     else unread.push(all.replace(/`/g, "").trim());
     return GONE;
   });
@@ -396,4 +534,28 @@ export function listeningLine(all: ListenWatch[]): string | null {
   const text = LOCAL_LISTEN_TEXT[w.source as LocalSource]?.[w.until];
   const what = w.source === "process" && w.until.startsWith("port_") ? (w.target ?? "") : watchLabel(w);
   return text ? t(text, { what, text: w.text ?? "" }) : watchLabel(w);
+}
+
+/** An event on the calendar, as the island read it (core/calendar.ts CalEvent). */
+export interface ListenEvent {
+  title: string;
+  start: number;
+  allDay: boolean;
+}
+
+/**
+ * The next event a watch on the calendar fires for: one that starts within
+ * its minutes (and has not started more than a minute ago), after the last
+ * it fired for, with its words in the title when it names some. Null: none yet.
+ */
+export function calendarDue(w: ListenWatch, events: ListenEvent[], now: number): ListenEvent | null {
+  if (w.source !== "service" || w.target !== "calendar" || w.paused) return null;
+  const ahead = (w.amount || 10) * 60_000;
+  const last = Number(w.lastSha) || 0;
+  const words = (w.text ?? "").toLowerCase().split(/\s+/).filter(Boolean);
+  const due = events
+    .filter((e) => !e.allDay && e.start > last && e.start > now - 60_000 && e.start - now <= ahead)
+    .filter((e) => words.every((word) => e.title.toLowerCase().includes(word)))
+    .sort((a, b) => a.start - b.start);
+  return due[0] ?? null;
 }

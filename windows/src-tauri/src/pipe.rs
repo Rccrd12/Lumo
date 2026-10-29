@@ -209,6 +209,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         .to_string();
 
     note_session_window(&pipe, &payload, &event);
+    crate::listen_events::heard_hook(&app, &event, &payload);
     // Counts for the weekly recap — never the command, path or prompt itself.
     crate::recap::observe(&app, &payload);
 

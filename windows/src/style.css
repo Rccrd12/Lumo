@@ -2958,29 +2958,11 @@ input[type="range"]::-webkit-slider-thumb {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-.listen-source.soon {
-  cursor: default;
-}
-
-.listen-source.soon .listen-tile,
-.listen-source.soon .listen-source-name,
-.listen-source.soon .listen-source-hint {
-  opacity: 0.45;
-}
-
 .listen-source-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   align-self: stretch;
-}
-
-.listen-soon {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  font: 600 9.5px/1.2 var(--font);
-  color: #8b929e;
 }
 
 .listen-source-name {
@@ -3019,8 +3001,28 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  overflow-y: auto;
+  overflow: hidden;
   padding: 2px 2px 0;
+}
+
+/* The fields scroll between the top and the buttons, which stay; while more
+   fields wait below, the last ones fade out. */
+.listen-form-fields {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+.listen-form-fields.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 40px), transparent);
+}
+
+.listen-form > .listen-form-buttons {
+  flex-shrink: 0;
 }
 
 .listen-label {
@@ -3050,6 +3052,18 @@ input[type="range"]::-webkit-slider-thumb {
 .listen-form .listen-input[hidden],
 .listen-form .listen-label[hidden] {
   display: none;
+}
+
+/* What the form shows only for some sources: a list to pick from, a note. */
+.listen-form .listen-target-row[hidden],
+.listen-form .listen-chips[hidden],
+.listen-form .listen-note[hidden] {
+  display: none;
+}
+
+.listen-note {
+  font: 400 11px/1.4 var(--font);
+  color: #8b929e;
 }
 
 .listen-chips {

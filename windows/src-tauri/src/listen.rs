@@ -14,9 +14,12 @@
 // Listening panel; what fired is kept in a short history for that panel.
 //
 // Besides GitHub's pull requests, a watch can listen on this PC: a file or a
-// folder, a program or a port, a web page (listen_local.rs looks at them, in
-// a loop of its own, a few seconds apart). A watch that listens every time
-// and fires too often in an hour is paused, saying so.
+// folder, a program or a port, a web page, Windows itself, one of the user's
+// tools (listen_local.rs looks at them, in a loop of its own, a few seconds
+// apart). Others are heard as they happen (listen_events.rs): an email, a
+// service's news, an agent's hook, a call to a webhook, an event on the
+// calendar coming up. A watch that listens every time and fires too often in
+// an hour is paused, saying so.
 //
 // GitHub is asked with the token the user gave the GitHub pill, else through
 // their own `gh` (which signs in by itself: Lumo never sees its token), else
@@ -35,7 +38,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Emitter};
 use tokio::sync::Notify;
 
-use crate::i18n::tf;
+use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::listen_local::{self, Listing};
 use crate::{log, platform, secrets};
@@ -47,8 +50,11 @@ pub const MODES: &[&str] = &["once", "every"];
 /// What can listen every time: what happens again with each push.
 pub const EVERY_UNTILS: &[&str] = &["checks", "green"];
 /// Where a watch listens: GitHub's pull requests, a file or a folder, a
-/// program or a port, a web page.
-pub const SOURCES: &[&str] = &["github.pr", "fs", "process", "web"];
+/// program or a port, a web page, the inbox, a service (or the calendar),
+/// Windows, an agent, a webhook, one of the user's tools.
+pub const SOURCES: &[&str] = &["github.pr", "fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool"];
+/// The sources the loop on this PC looks at; the others are heard (listen_events.rs).
+const POLLED: &[&str] = &["fs", "process", "web", "windows", "tool"];
 pub const GITHUB: &str = "github.pr";
 /// What fired, newest last, at most this many.
 const MAX_HISTORY: usize = 50;
@@ -71,6 +77,10 @@ const TASK_CHARS: usize = 2000;
 const LOCAL_EVERY: Duration = Duration::from_secs(5);
 /// How often a web page is asked for.
 const WEB_EVERY_MS: u64 = 60_000;
+/// How often Windows' notifications are read.
+const NOTIFICATIONS_EVERY_MS: u64 = 15_000;
+/// Back at the computer: input in the last this many ms.
+const BACK_MS: u64 = 10_000;
 /// A watch listening every time that fires this often in an hour is paused.
 const MAX_FIRES_PER_HOUR: usize = 12;
 const HOUR_MS: u64 = 3_600_000;
@@ -108,9 +118,13 @@ pub struct Watch {
     /// What a watch on this PC names: a path, a program, a port, a link.
     #[serde(default)]
     pub target: String,
-    /// The words a page is waited to show (web, contains).
+    /// The words a page (or a tool) is waited to show (contains).
     #[serde(default)]
     pub text: String,
+    /// The minutes before an event, the battery's percent, the minutes away,
+    /// the minutes between two runs of a tool (listen_local::amount_of); 0 for the rest.
+    #[serde(default)]
+    pub amount: u32,
 }
 
 fn pull_requests() -> String {
@@ -133,6 +147,11 @@ impl Watch {
 
     pub fn github(&self) -> bool {
         self.source == GITHUB
+    }
+
+    /// Looked at by the loop on this PC (else heard, or GitHub's).
+    fn polled(&self) -> bool {
+        POLLED.contains(&self.source.as_str())
     }
 }
 
@@ -176,11 +195,14 @@ struct Store {
 
 #[derive(Default)]
 struct Seen {
+    /// A folder's files, or the USB drives.
     files: Option<Listing>,
     /// Whether the state it waits for held at the last look.
     on: Option<bool>,
-    /// When the page was last asked for (Unix ms).
+    /// When the page was last asked for, the notifications read, the tool run (Unix ms).
     asked: u64,
+    /// The newest notification seen (Unix seconds).
+    mark: i64,
 }
 
 static STORE: LazyLock<Mutex<Store>> = LazyLock::new(|| Mutex::new(Store::default()));
@@ -290,13 +312,15 @@ pub fn add(repo: &str, number: u64, until: &str, mode: &str, task: &str, chat_id
         last_sha: String::new(),
         target: String::new(),
         text: String::new(),
+        amount: 0,
     };
     Ok(push(watch))
 }
 
 /// Adds a watch on this PC: a file or a folder (`fs`), a program or a port
 /// (`process`), a web page (`web`). The same target and event again replaces the old one.
-pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str, task: &str, chat_id: &str) -> Result<Watch, String> {
+#[allow(clippy::too_many_arguments)]
+pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str, amount: u32, task: &str, chat_id: &str) -> Result<Watch, String> {
     let source = source.trim().to_ascii_lowercase();
     let until = until.trim().to_ascii_lowercase();
     let text: String = text.trim().chars().take(200).collect();
@@ -312,7 +336,9 @@ pub fn add_local(source: &str, target: &str, until: &str, mode: &str, text: &str
         id: 0,
         repo: String::new(),
         number: 0,
-        text: if until == "contains" { text } else { String::new() },
+        // `soon`: the words an event's title has, when it names some.
+        text: if until == "contains" || until == "soon" { text } else { String::new() },
+        amount: listen_local::amount_of(&source, &until, amount),
         until,
         task: task.to_string(),
         chat_id: chat_id.to_string(),
@@ -373,7 +399,8 @@ pub fn cancel_local(source: &str, target: &str) -> usize {
         let before = s.watches.len();
         s.watches.retain(|w| {
             let named = w.target.trim_end_matches(['\\', '/']).to_lowercase();
-            !(w.source == source && (named == target || listen_local::program_name(&target) == named))
+            !(w.source == source
+                && (named == target || listen_local::program_name(&target) == named || listen_local::canonical(&source, &target) == named))
         });
         save(&s.watches);
         before - s.watches.len()
@@ -764,7 +791,7 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
 
 /// `again_on`: the commit it fired on, when the pull request is still open
 /// (a watch that listens every time goes on, waiting for the next one).
-fn fire(app: &AppHandle, id: u64, met: bool, summary: String, again_on: Option<&str>) {
+pub(crate) fn fire(app: &AppHandle, id: u64, met: bool, summary: String, again_on: Option<&str>) {
     if let Some((watch, ended, too_often)) = take(id, met, &summary, again_on) {
         let how = if met { "met" } else { "not met" };
         log::line(format!("listen: {} {} {} ({how})", watch.label(), watch.until, if ended { "ended" } else { "fired" }));
@@ -777,7 +804,9 @@ fn fire(app: &AppHandle, id: u64, met: bool, summary: String, again_on: Option<&
 }
 
 pub fn changed(app: &AppHandle) {
-    let _ = app.emit_to(WINDOW_LABEL, "listen-changed", list());
+    let watches = list();
+    crate::listen_events::prune(&watches);
+    let _ = app.emit_to(WINDOW_LABEL, "listen-changed", watches);
 }
 
 /// One look at every watch.
@@ -827,8 +856,12 @@ fn anonymous_every(watches: usize) -> Duration {
 pub fn start(app: AppHandle) {
     let app_local = app.clone();
     tauri::async_runtime::spawn(async move {
-        // Watches kept from before a restart: say so to the island.
+        // Watches kept from before a restart: say so to the island, and a
+        // webhook gets its server back.
         changed(&app);
+        if list().iter().any(|w| w.source == "webhook") {
+            crate::listen_events::ensure_server(&app);
+        }
         loop {
             if list().iter().all(|w| w.paused || !w.github()) {
                 WAKE.notified().await;
@@ -842,7 +875,7 @@ pub fn start(app: AppHandle) {
     });
     tauri::async_runtime::spawn(async move {
         loop {
-            if list().iter().all(|w| w.paused || w.github()) {
+            if list().iter().all(|w| w.paused || !w.polled()) {
                 WAKE_LOCAL.notified().await;
                 continue;
             }
@@ -867,6 +900,11 @@ fn state_summary(w: &Watch) -> String {
         ("process", "port_closed") => tf("Port {port} closed", &[("port", &w.target)]),
         ("web", "up") => tf("{what} is up", &[("what", what)]),
         ("web", "down") => tf("{what} is down", &[("what", what)]),
+        ("windows", "plugged") => t("The PC is plugged in"),
+        ("windows", "unplugged") => t("The PC runs on its battery"),
+        ("windows", "offline") => t("The PC is offline"),
+        ("windows", "online") => t("The PC is back online"),
+        ("windows", "back") => t("You're back at the computer"),
         _ => tf("{what} now shows “{text}”", &[("what", what), ("text", &w.text)]),
     }
 }
@@ -897,7 +935,7 @@ fn files_summary(w: &Watch, names: &[String]) -> String {
 /// One look at every watch on this PC.
 async fn local_round(app: &AppHandle) {
     let now = now_ms();
-    let watches: Vec<Watch> = list().into_iter().filter(|w| !w.github() && !w.paused).collect();
+    let watches: Vec<Watch> = list().into_iter().filter(|w| w.polled() && !w.paused).collect();
     let programs = if watches.iter().any(|w| w.source == "process" && !w.until.starts_with("port_")) {
         tauri::async_runtime::spawn_blocking(platform::process_names).await.unwrap_or_default()
     } else {
@@ -940,15 +978,7 @@ async fn local_round(app: &AppHandle) {
                 state(app, &w, holds);
             }
             "web" => {
-                let due = with_store(|s| {
-                    let seen = s.seen.entry(w.id).or_default();
-                    let due = now.saturating_sub(seen.asked) >= WEB_EVERY_MS;
-                    if due {
-                        seen.asked = now;
-                    }
-                    due
-                });
-                if !due {
+                if !due(w.id, now, WEB_EVERY_MS) {
                     continue;
                 }
                 let page = listen_local::page(&w.target).await;
@@ -974,7 +1004,144 @@ async fn local_round(app: &AppHandle) {
                     _ => state(app, &w, listen_local::contains(&page, &w.text)),
                 }
             }
+            "windows" => windows(app, &w, now).await,
+            "tool" => tool(app, &w, now).await,
             _ => {}
+        }
+    }
+}
+
+/// Whether the watch's turn came (`every_ms` since it last looked): it looks now.
+fn due(id: u64, now: u64, every_ms: u64) -> bool {
+    with_store(|s| {
+        let seen = s.seen.entry(id).or_default();
+        let due = now.saturating_sub(seen.asked) >= every_ms;
+        if due {
+            seen.asked = now;
+        }
+        due
+    })
+}
+
+/// One look at Windows, for a watch on it.
+async fn windows(app: &AppHandle, w: &Watch, now: u64) {
+    match w.until.as_str() {
+        "notification" => {
+            if !due(w.id, now, NOTIFICATIONS_EVERY_MS) {
+                return;
+            }
+            let read = tauri::async_runtime::spawn_blocking(crate::notifications::read).await;
+            let list = match read {
+                Ok(Ok(list)) => list,
+                Ok(Err(why)) => {
+                    log::line(format!("listen: notifications: {why}"));
+                    fire(app, w.id, false, t("Windows doesn't let Lumo read the notifications"), None);
+                    return;
+                }
+                Err(_) => return,
+            };
+            let newest = list.iter().map(|n| n.at).max().unwrap_or(0);
+            // None: the first look, which only takes note of what is there.
+            let before = with_store(|s| {
+                let seen = s.seen.entry(w.id).or_default();
+                let before = seen.on.is_some().then_some(seen.mark);
+                seen.on = Some(true);
+                seen.mark = seen.mark.max(newest);
+                before
+            });
+            let Some(before) = before else { return };
+            let fresh: Vec<_> = list.iter().filter(|n| n.at > before && listen_local::notification_matches(&w.target, &n.app)).collect();
+            if let Some(n) = fresh.first() {
+                let text = listen_local::excerpt(&n.text, 200);
+                fire(app, w.id, true, tf("{app}: {text}", &[("app", &n.app), ("text", &text)]), Some(""));
+            }
+        }
+        "usb" => {
+            let drives: Listing = tauri::async_runtime::spawn_blocking(platform::removable_drives)
+                .await
+                .unwrap_or_default()
+                .into_iter()
+                .map(|d| (d, (0, 0)))
+                .collect();
+            let before = with_store(|s| s.seen.entry(w.id).or_default().files.replace(drives.clone()));
+            let Some(before) = before else { return };
+            let added: Vec<String> = drives.keys().filter(|d| !before.contains_key(*d)).cloned().collect();
+            if !added.is_empty() {
+                fire(app, w.id, true, tf("A USB drive was connected: {drives}", &[("drives", &listen_local::names_text(&added))]), Some(""));
+            }
+        }
+        "back" => {
+            let idle = tauri::async_runtime::spawn_blocking(platform::idle_ms).await.unwrap_or(0);
+            let away = idle >= w.amount as u64 * 60_000;
+            let before = with_store(|s| {
+                let seen = s.seen.entry(w.id).or_default();
+                let before = seen.on;
+                // Away until the input comes back, whatever the look in between.
+                if away || idle < BACK_MS {
+                    seen.on = Some(away);
+                }
+                before
+            });
+            if before == Some(true) && idle < BACK_MS {
+                fire(app, w.id, true, state_summary(w), Some(""));
+            }
+        }
+        "battery_low" | "plugged" | "unplugged" => {
+            let Some(power) = tauri::async_runtime::spawn_blocking(platform::power).await.ok().flatten() else { return };
+            match w.until.as_str() {
+                "plugged" => state(app, w, power.plugged),
+                "unplugged" => state(app, w, !power.plugged),
+                _ => {
+                    let Some(percent) = power.percent else { return };
+                    let low = !power.plugged && percent <= w.amount;
+                    let before = with_store(|s| s.seen.entry(w.id).or_default().on.replace(low));
+                    if low && (w.mode != "every" || before == Some(false)) {
+                        let percent = percent.to_string();
+                        fire(app, w.id, true, tf("The battery is at {percent}%", &[("percent", &percent)]), Some(""));
+                    }
+                }
+            }
+        }
+        until => {
+            let online = tauri::async_runtime::spawn_blocking(listen_local::online).await.unwrap_or(true);
+            state(app, w, (until == "online") == online);
+        }
+    }
+}
+
+/// One run of the user's tool, when its turn came, for a watch on what it prints.
+async fn tool(app: &AppHandle, w: &Watch, now: u64) {
+    if !due(w.id, now, w.amount.max(1) as u64 * 60_000) {
+        return;
+    }
+    let id = w.target.clone();
+    let Ok(run) = tauri::async_runtime::spawn_blocking(move || crate::tools::run_listened(&id)).await else { return };
+    let run = match run {
+        Ok(run) => run,
+        Err(why) => {
+            fire(app, w.id, false, tf("Lumo can no longer run {tool}: {why}", &[("tool", &w.target), ("why", &why)]), None);
+            return;
+        }
+    };
+    if !run.ok {
+        log::line(format!("listen: tool {} failed", w.target));
+        return;
+    }
+    match w.until.as_str() {
+        "contains" => state(app, w, run.output.to_lowercase().contains(&w.text.trim().to_lowercase())),
+        _ => {
+            let print = listen_local::fingerprint(run.output.trim());
+            if w.last_sha.is_empty() {
+                with_store(|s| {
+                    if let Some(kept) = s.watches.iter_mut().find(|k| k.id == w.id) {
+                        kept.last_sha = print;
+                    }
+                    save(&s.watches);
+                });
+            } else if print != w.last_sha {
+                let said = listen_local::excerpt(&run.output, 200);
+                fire(app, w.id, true, tf("{tool} says: {output}", &[("tool", &w.target), ("output", &said)]), Some(print.as_str()));
+            }
         }
     }
 }
@@ -987,11 +1154,30 @@ pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, mode
     Ok(watch)
 }
 
-/// A watch on this PC (add_local).
+/// A watch on this PC, or on what Lumo hears (add_local). An error starting
+/// with `needs:` names what to turn on first (listen_events::available).
 #[tauri::command(async)]
 #[allow(clippy::too_many_arguments)]
-pub fn listen_add_local(app: AppHandle, source: String, target: String, until: String, mode: Option<String>, text: Option<String>, task: String, chat_id: String) -> Result<Watch, String> {
-    let watch = add_local(&source, &target, &until, mode.as_deref().unwrap_or(""), text.as_deref().unwrap_or(""), &task, &chat_id)?;
+pub fn listen_add_local(
+    app: AppHandle,
+    source: String,
+    target: String,
+    until: String,
+    mode: Option<String>,
+    text: Option<String>,
+    amount: Option<u32>,
+    task: String,
+    chat_id: String,
+) -> Result<Watch, String> {
+    let kind = source.trim().to_ascii_lowercase();
+    let text = text.unwrap_or_default();
+    let named = listen_local::target(&kind, until.trim().to_ascii_lowercase().as_str(), &target, text.trim(), &platform::home_dir())?;
+    crate::listen_events::available(&app, &kind, &named)?;
+    let watch = add_local(&source, &target, &until, mode.as_deref().unwrap_or(""), &text, amount.unwrap_or(0), &task, &chat_id)?;
+    if watch.source == "webhook" {
+        crate::listen_events::ensure_server(&app);
+        crate::listen_events::token_for(watch.id);
+    }
     log::line(format!("listen: {} {} {} {}", watch.source, watch.label(), watch.until, watch.mode));
     changed(&app);
     Ok(watch)
@@ -1070,6 +1256,7 @@ mod tests {
             last_sha: String::new(),
             target: String::new(),
             text: String::new(),
+            amount: 0,
         }
     }
 
