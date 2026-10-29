@@ -31,6 +31,7 @@ mod integrations;
 mod island;
 mod island_tools;
 mod listen;
+mod listen_local;
 mod live;
 mod local_chat;
 mod local_models;
@@ -762,6 +763,18 @@ async fn pick_file(app: AppHandle) -> Result<Option<DroppedFile>, String> {
     files::ingest(&path).map(Some)
 }
 
+/// "Choose…" in the Listening panel's form: the system's folder picker. Only
+/// the path is handed back; nothing is read until the user starts listening.
+#[tauri::command]
+async fn pick_folder(app: AppHandle) -> Result<Option<String>, String> {
+    use tauri_plugin_dialog::DialogExt;
+    let picked = tauri::async_runtime::spawn_blocking(move || app.dialog().file().blocking_pick_folder())
+        .await
+        .map_err(|e| e.to_string())?;
+    let Some(picked) = picked else { return Ok(None) };
+    Ok(Some(picked.into_path().map_err(|e| e.to_string())?.to_string_lossy().to_string()))
+}
+
 // ── The chat's screen button ──────────────────────────────────────────────────
 //
 // Each of these runs only when the user clicks its entry in the menu
@@ -1182,6 +1195,7 @@ pub fn run() {
             island_reset_size,
             island_recenter,
             pick_file,
+            pick_folder,
             screen_displays,
             screen_windows,
             screen_window_share,
@@ -1197,6 +1211,8 @@ pub fn run() {
             explorer_attach,
             listen::listen_add,
             listen::listen_cancel,
+            listen::listen_add_local,
+            listen::listen_cancel_local,
             listen::listen_list,
             listen::listen_stop,
             listen::listen_pause,

@@ -212,6 +212,11 @@ export const Bridge = {
   /** Stops listening to a pull request (`until` null: to everything on it). */
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
+  /** Listens on this PC (listen_local.rs): a file or a folder, a program or a port, a web page. */
+  listenAddLocal: (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once") =>
+    call<ListenWatch>("listen_add_local", { source, target, until, mode, text, task, chatId }),
+  /** Stops listening to a target on this PC, for every event. */
+  listenCancelLocal: (source: string, target: string) => call<number>("listen_cancel_local", { source, target }),
   listenList: () => call<ListenWatch[]>("listen_list"),
   /** Stops one watch, by its id. */
   listenStop: (id: number) => call<boolean>("listen_stop", { id }),
@@ -269,6 +274,15 @@ export const Bridge = {
     dialogs++;
     try {
       return await callOrThrow<DroppedFile | null>("pick_file");
+    } finally {
+      dialogs--;
+    }
+  },
+  /** The system's folder picker, for the Listening panel: the path, or null. */
+  pickFolder: async () => {
+    dialogs++;
+    try {
+      return await call<string | null>("pick_folder");
     } finally {
       dialogs--;
     }

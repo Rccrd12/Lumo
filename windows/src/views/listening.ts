@@ -4,16 +4,19 @@
 //
 // Two lists, like the folder's: what listens now, each with Pause and Stop,
 // and the history of what fired. "Listen for something" starts a watch by
-// hand, for the chat on screen, as the chat's `[[listen …]]` line would: a
-// pull request, the event, once or every time, and what Lumo should do then.
+// hand, for the chat on screen, as the chat's `[[listen …]]` line would: its
+// menu of sources, then what to listen to (a pull request, a file or a folder,
+// a program or a port, a page), the event, once or every time, and what Lumo
+// should do then.
 
 import { h, svg, clear } from "./dom";
 import { ICONS } from "./icons";
 import { Bridge } from "../core/bridge";
 import { State } from "../core/state";
 import {
-  EVERY_UNTILS, LISTEN_UNTILS, UNTIL_TEXT, activeWatches, readPullRequest,
-  type ListenMode, type ListenPast, type ListenUntil, type ListenWatch,
+  EVERY_UNTILS, LISTEN_UNTILS, LOCAL_UNTILS, LOCAL_UNTIL_TEXT, SOURCE_COLOR, UNTIL_TEXT, activeWatches, onGitHub,
+  readPullRequest, untilText, watchLabel,
+  type ListenMode, type ListenPast, type ListenSource, type ListenUntil, type ListenWatch, type PrUntil,
 } from "../core/listen";
 import { timeAgo } from "./integrations";
 import { N_, t, tl } from "../i18n/i18n";
@@ -62,6 +65,22 @@ export const LISTENING_STRINGS = {
   edit: N_("Edit"),
   goToChat: N_("Go to the chat"),
   save: N_("Save"),
+  everyLocal: N_("Again each time it happens"),
+  fsTarget: N_("File or folder"),
+  fsHint: N_("e.g. C:\\Users\\you\\Downloads"),
+  choose: N_("Choose…"),
+  processTarget: N_("Program or port"),
+  processHint: N_("e.g. node.exe, or 3000 for a port"),
+  webTarget: N_("Page"),
+  webHint: N_("https://…"),
+  text: N_("Text to wait for"),
+  textHint: N_("e.g. In stock"),
+  notPath: N_("Write the full path of a file or folder, like C:\\Users\\you\\Downloads."),
+  notPort: N_("Write the port as a number, like 3000."),
+  notProgram: N_("Write the program's name, like node.exe."),
+  notLink: N_("Write the page's link, starting with https://."),
+  noText: N_("Write the text to wait for."),
+  taskHintLocal: N_("e.g. move it to Documents. Leave it empty to only be told."),
 };
 
 /** A source in the "Listen for something" menu: what it is and what it hears. */
@@ -71,23 +90,34 @@ interface Source {
   hint: string;
   icon: string;
   color: string;
-  /** Lumo can listen to it already; the others say "Coming soon". */
-  ready: boolean;
+  /** Where Lumo listens for it (listen.rs SOURCES); the others say "Coming soon". */
+  kind?: ListenSource;
 }
 
-/** Every source the concept names, in its order: GitHub works, the rest come with the next versions. */
+/** Every source the concept names, in its order: the first four work, the rest come with the next versions. */
 const SOURCES: Source[] = [
-  { id: "github", name: N_("GitHub"), hint: N_("Pull requests: checks, approval, ready, merged"), icon: ICONS.pull, color: "#F4505E", ready: true },
-  { id: "fs", name: N_("Files and folders"), hint: N_("New, changed or deleted files, downloads done"), icon: ICONS.folder, color: "#F5A524", ready: false },
-  { id: "programs", name: N_("Programs and commands"), hint: N_("A program that ends, a command, a port that opens"), icon: ICONS.terminal, color: "#2DD4A7", ready: false },
-  { id: "web", name: N_("Web pages"), hint: N_("A page or an API that changes, a site that goes down"), icon: ICONS.globe, color: "#60A5FA", ready: false },
-  { id: "email", name: N_("Email"), hint: N_("Email from someone, with a subject, with attachments"), icon: ICONS.envelope, color: "#EA4335", ready: false },
-  { id: "services", name: N_("Calendar and services"), hint: N_("Vercel, Stripe, n8n, Notion, Cal.com, events coming up"), icon: ICONS.calendar, color: "#C9956A", ready: false },
-  { id: "windows", name: N_("Windows"), hint: N_("An app's notifications, battery, network, USB, when you're back"), icon: ICONS.display, color: "#F5F6F8", ready: false },
-  { id: "agents", name: N_("Agents"), hint: N_("Claude Code or Codex finish, ask for a permission, fail"), icon: ICONS.code, color: "#D97757", ready: false },
-  { id: "webhook", name: N_("Webhook"), hint: N_("A local address other programs can write to"), icon: ICONS.waves, color: "#7DD3FC", ready: false },
-  { id: "custom", name: N_("Make a source"), hint: N_("In the tool workshop, for a listening of your own"), icon: ICONS.wrench, color: "#A78BFA", ready: false },
+  { id: "github", name: N_("GitHub"), hint: N_("Pull requests: checks, approval, ready, merged"), icon: ICONS.pull, color: "#F4505E", kind: "github.pr" },
+  { id: "fs", name: N_("Files and folders"), hint: N_("New, changed or deleted files, downloads done"), icon: ICONS.folder, color: SOURCE_COLOR.fs, kind: "fs" },
+  { id: "programs", name: N_("Programs and ports"), hint: N_("A program that starts or ends, a port that opens"), icon: ICONS.terminal, color: SOURCE_COLOR.process, kind: "process" },
+  { id: "web", name: N_("Web pages"), hint: N_("A page or an API that changes, a site that goes down"), icon: ICONS.globe, color: SOURCE_COLOR.web, kind: "web" },
+  { id: "email", name: N_("Email"), hint: N_("Email from someone, with a subject, with attachments"), icon: ICONS.envelope, color: "#EA4335" },
+  { id: "services", name: N_("Calendar and services"), hint: N_("Vercel, Stripe, n8n, Notion, Cal.com, events coming up"), icon: ICONS.calendar, color: "#C9956A" },
+  { id: "windows", name: N_("Windows"), hint: N_("An app's notifications, battery, network, USB, when you're back"), icon: ICONS.display, color: "#F5F6F8" },
+  { id: "agents", name: N_("Agents"), hint: N_("Claude Code or Codex finish, ask for a permission, fail"), icon: ICONS.code, color: "#D97757" },
+  { id: "webhook", name: N_("Webhook"), hint: N_("A local address other programs can write to"), icon: ICONS.waves, color: "#7DD3FC" },
+  { id: "custom", name: N_("Make a source"), hint: N_("In the tool workshop, for a listening of your own"), icon: ICONS.wrench, color: "#A78BFA" },
 ];
+
+/** What the form asks for each source: what to listen to, and an example. */
+const TARGET_TEXT: Record<ListenSource, { label: string; hint: string }> = {
+  "github.pr": { label: LISTENING_STRINGS.target, hint: LISTENING_STRINGS.targetHint },
+  fs: { label: LISTENING_STRINGS.fsTarget, hint: LISTENING_STRINGS.fsHint },
+  process: { label: LISTENING_STRINGS.processTarget, hint: LISTENING_STRINGS.processHint },
+  web: { label: LISTENING_STRINGS.webTarget, hint: LISTENING_STRINGS.webHint },
+};
+
+/** The event a new watch on each source starts with. */
+const FIRST_UNTIL: Record<ListenSource, ListenUntil> = { "github.pr": "ready", fs: "created", process: "exited", web: "changed" };
 
 export interface ListeningPanel {
   el: HTMLElement;
@@ -97,20 +127,27 @@ export interface ListeningPanel {
   opened(): void;
 }
 
-/** GitHub's colour, for a pull request's tile. */
-const PR_TILE = "#F4505E";
+/** The source a watch listens on, as the menu shows it. */
+function sourceOf(w: ListenWatch): Source {
+  const kind = w.source ?? "github.pr";
+  return SOURCES.find((s) => s.kind === kind) ?? SOURCES[0];
+}
 
 /** How long a watch has listened: "For 42m", or "just now". */
 function listenedFor(at: number): string {
   return Date.now() - at < 60_000 ? t("just now") : t(LISTENING_STRINGS.since, { time: timeAgo(at) });
 }
 
-/** The source's tile: a pull request on GitHub, for now. */
-function tile(): HTMLElement {
-  const el = h("span", { class: "listen-tile" }, svg(ICONS.pull, 14, { stroke: 1.8 }));
-  el.style.setProperty("--tile", PR_TILE);
+/** The source's tile: its icon in its colour. */
+function tile(w: ListenWatch): HTMLElement {
+  const source = sourceOf(w);
+  const el = h("span", { class: "listen-tile" }, svg(source.icon, 14, { stroke: 1.8 }));
+  el.style.setProperty("--tile", source.color);
   return el;
 }
+
+/** A path Windows can read from anywhere: `C:\…` or `\\server\…` (`~` is the user's folder). */
+const FULL_PATH = /^(?:[a-z]:[\\/]|\\\\|~)/i;
 
 /** "Once" or "Every time", "Happened"…: a small label on the row's right. */
 function pill(text: string, kind = ""): HTMLElement {
@@ -149,6 +186,14 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     type: "text", class: "history-search listen-input", spellcheck: "false",
     placeholder: tl(LISTENING_STRINGS.targetHint), "aria-label": tl(LISTENING_STRINGS.target),
   }) as HTMLInputElement;
+  const targetLabel = h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.target) });
+  // Files and folders: the system's folder picker beside the path.
+  const chooseBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.choose) });
+  const textInput = h("input", {
+    type: "text", class: "history-search listen-input", spellcheck: "false",
+    placeholder: tl(LISTENING_STRINGS.textHint), "aria-label": tl(LISTENING_STRINGS.text), maxlength: "200",
+  }) as HTMLInputElement;
+  const textLabel = h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.text) });
   const taskInput = h("input", {
     type: "text", class: "history-search listen-input", spellcheck: "false",
     placeholder: tl(LISTENING_STRINGS.taskHint), "aria-label": tl(LISTENING_STRINGS.task), maxlength: "500",
@@ -156,13 +201,15 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   const untilChips = h("div", { class: "listen-chips" });
   const modeChips = h("div", { class: "listen-chips" });
   const formError = h("div", { class: "listen-error" });
+  let kind: ListenSource = "github.pr";
   let until: ListenUntil = "ready";
   let mode: ListenMode = "once";
   const startBtn = h("button", { class: "listen-head-btn listen-add" });
   const cancelBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.cancel) });
   const form = h("div", { class: "listen-form" },
-    h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.target) }), targetInput,
+    targetLabel, h("div", { class: "listen-target-row" }, targetInput, chooseBtn),
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.when) }), untilChips,
+    textLabel, textInput,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.how) }), modeChips,
     h("label", { class: "listen-label", text: tl(LISTENING_STRINGS.task) }), taskInput,
     formError,
@@ -172,24 +219,33 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     return h("button", { class: on ? "picker-chip on" : "picker-chip", title, onclick: onClick }, label);
   }
 
+  /** On GitHub, every time only for what happens again with each push; on this PC, always. */
+  const canRepeat = () => kind !== "github.pr" || EVERY_UNTILS.includes(until as PrUntil);
+
   function drawChoices() {
     clear(untilChips);
-    for (const u of LISTEN_UNTILS) untilChips.append(chip(t(UNTIL_TEXT[u]), u === until, () => {
-      until = u;
-      if (!EVERY_UNTILS.includes(u)) mode = "once";
-      drawChoices();
-    }));
+    const untils: readonly ListenUntil[] = kind === "github.pr" ? LISTEN_UNTILS : LOCAL_UNTILS[kind];
+    for (const u of untils) {
+      const label = kind === "github.pr" ? UNTIL_TEXT[u as PrUntil] : LOCAL_UNTIL_TEXT[kind][u];
+      untilChips.append(chip(t(label), u === until, () => {
+        until = u;
+        if (!canRepeat()) mode = "once";
+        drawChoices();
+      }));
+    }
+    const wantsText = kind === "web" && until === "contains";
+    textLabel.hidden = !wantsText;
+    textInput.hidden = !wantsText;
     clear(modeChips);
     modeChips.append(chip(t(LISTENING_STRINGS.once), mode === "once", () => {
       mode = "once";
       drawChoices();
     }));
-    // Every time only for what happens again with each push.
-    if (EVERY_UNTILS.includes(until)) {
+    if (canRepeat()) {
       modeChips.append(chip(t(LISTENING_STRINGS.every), mode === "every", () => {
         mode = "every";
         drawChoices();
-      }, t(LISTENING_STRINGS.everyHint)));
+      }, t(kind === "github.pr" ? LISTENING_STRINGS.everyHint : LISTENING_STRINGS.everyLocal)));
     }
   }
 
@@ -206,11 +262,12 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     for (const source of SOURCES) {
       const icon = h("span", { class: "listen-tile" }, svg(source.icon, 14, { stroke: 1.8 }));
       icon.style.setProperty("--tile", source.color);
-      const tileEl = h("button", { class: source.ready ? "listen-source" : "listen-source soon", disabled: !source.ready },
-        h("span", { class: "listen-source-top" }, icon, source.ready ? null : h("span", { class: "listen-soon", text: t(LISTENING_STRINGS.soon) })),
+      const ready = source.kind;
+      const tileEl = h("button", { class: ready ? "listen-source" : "listen-source soon", disabled: !ready },
+        h("span", { class: "listen-source-top" }, icon, ready ? null : h("span", { class: "listen-soon", text: t(LISTENING_STRINGS.soon) })),
         h("span", { class: "listen-source-name", text: t(source.name) }),
         h("span", { class: "listen-source-hint", text: t(source.hint) }));
-      if (source.ready) tileEl.addEventListener("click", () => showForm(null));
+      if (ready) tileEl.addEventListener("click", () => showForm(null, ready));
       catalogGrid.append(tileEl);
     }
   }
@@ -229,15 +286,22 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     draw();
   }
 
-  /** The form, empty or with the watch it changes. */
-  function showForm(watch: ListenWatch | null) {
+  /** The form, empty (for the source picked in the menu) or with the watch it changes. */
+  function showForm(watch: ListenWatch | null, source: ListenSource = "github.pr") {
     view = "form";
     editing = watch;
     tab = "active";
+    kind = watch?.source ?? (watch ? "github.pr" : source);
     formError.textContent = "";
-    targetInput.value = watch ? `${watch.repo}#${watch.number}` : "";
+    targetInput.value = !watch ? "" : onGitHub(watch) ? `${watch.repo}#${watch.number}` : watch.target ?? "";
+    targetLabel.textContent = t(TARGET_TEXT[kind].label);
+    targetInput.placeholder = t(TARGET_TEXT[kind].hint);
+    targetInput.setAttribute("aria-label", t(TARGET_TEXT[kind].label));
+    chooseBtn.hidden = kind !== "fs";
+    taskInput.placeholder = t(kind === "github.pr" ? LISTENING_STRINGS.taskHint : LISTENING_STRINGS.taskHintLocal);
+    textInput.value = watch?.text ?? "";
     taskInput.value = watch?.task ?? "";
-    until = watch?.until ?? "ready";
+    until = watch?.until ?? FIRST_UNTIL[kind];
     mode = watch?.mode ?? "once";
     startBtn.textContent = t(watch ? LISTENING_STRINGS.save : LISTENING_STRINGS.start);
     drawChoices();
@@ -245,16 +309,44 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     targetInput.focus();
   }
 
+  /** Why the target can't be listened to, or null when it can. */
+  function wrongTarget(target: string): string | null {
+    if (kind === "fs") return FULL_PATH.test(target) ? null : LISTENING_STRINGS.notPath;
+    if (kind === "web") return /^https?:\/\/\S+$/i.test(target) ? null : LISTENING_STRINGS.notLink;
+    if (kind === "process" && until.startsWith("port_")) return /^:?\d{1,5}$/.test(target) ? null : LISTENING_STRINGS.notPort;
+    if (kind === "process") return target && !/[\\/:*?"<>|]/.test(target) ? null : LISTENING_STRINGS.notProgram;
+    return null;
+  }
+
   async function start() {
-    const pr = readPullRequest(targetInput.value);
-    if (!pr) {
-      formError.textContent = t(LISTENING_STRINGS.notPr);
-      targetInput.focus();
-      return;
-    }
+    const task = taskInput.value.trim();
     // A change keeps the chat the watch answers to, and takes the old one's place.
     const chatId = editing?.chatId ?? State.chatId;
-    const watch = await Bridge.listenAdd(pr.repo, pr.number, until, taskInput.value.trim(), chatId, mode);
+    let watch: ListenWatch | null;
+    if (kind === "github.pr") {
+      const pr = readPullRequest(targetInput.value);
+      if (!pr) {
+        formError.textContent = t(LISTENING_STRINGS.notPr);
+        targetInput.focus();
+        return;
+      }
+      watch = await Bridge.listenAdd(pr.repo, pr.number, until, task, chatId, mode);
+    } else {
+      const target = targetInput.value.trim().replace(/^["“]|["”]$/g, "");
+      const wrong = wrongTarget(target);
+      if (wrong) {
+        formError.textContent = t(wrong);
+        targetInput.focus();
+        return;
+      }
+      const text = textInput.value.trim();
+      if (until === "contains" && !text) {
+        formError.textContent = t(LISTENING_STRINGS.noText);
+        textInput.focus();
+        return;
+      }
+      watch = await Bridge.listenAddLocal(kind, target.replace(/^:/, ""), until, text, task, chatId, mode);
+    }
     if (!watch) {
       formError.textContent = t(LISTENING_STRINGS.failed);
       return;
@@ -267,7 +359,11 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   catalogCancel.addEventListener("click", () => showList());
   cancelBtn.addEventListener("click", () => showList());
   startBtn.addEventListener("click", () => void start());
-  for (const input of [targetInput, taskInput]) {
+  chooseBtn.addEventListener("click", async () => {
+    const folder = await Bridge.pickFolder();
+    if (folder) targetInput.value = folder;
+  });
+  for (const input of [targetInput, textInput, taskInput]) {
     input.addEventListener("keydown", (e) => {
       if ((e as KeyboardEvent).key === "Enter") void start();
       if ((e as KeyboardEvent).key === "Escape") showList();
@@ -318,9 +414,9 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   }
 
   /** A row: the source's tile, what it waits for and what then, its labels on the right. */
-  function row(cls: string, title: string, name: string, detail: Node[], meta: Node[]): HTMLElement {
+  function row(w: ListenWatch, cls: string, title: string, name: string, detail: Node[], meta: Node[]): HTMLElement {
     return h("div", { class: `listen-row ${cls}`.trim(), title },
-      tile(),
+      tile(w),
       h("span", { class: "listen-text" },
         h("span", { class: "listen-name", text: name }),
         h("span", { class: "listen-detail" }, ...detail)),
@@ -357,13 +453,14 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
   }
 
   function watchRow(w: ListenWatch): HTMLElement {
-    const event = t(UNTIL_TEXT[w.until] ?? UNTIL_TEXT.merged);
+    const event = untilText(w);
     const every = w.mode === "every";
     const status = w.paused
       ? t(LISTENING_STRINGS.paused)
       : every && (w.fired ?? 0) > 0 ? t(LISTENING_STRINGS.fired, { count: w.fired ?? 0 }) : listenedFor(w.startedAt);
     const open = openRow === w.id;
-    const el = row(`${w.paused ? "paused" : ""}${open ? " open" : ""}`, `${w.repo}#${w.number}`, `${w.repo}#${w.number} · ${event}`,
+    const label = watchLabel(w);
+    const el = row(w, `${w.paused ? "paused" : ""}${open ? " open" : ""}`, onGitHub(w) ? label : w.target ?? label, `${label} · ${event}`,
       thenAndChat(w.task, w.chatId),
       [pill(t(every ? LISTENING_STRINGS.every : LISTENING_STRINGS.once), every ? "every" : ""), h("span", { class: "listen-status", text: status })]);
     onPress(el, () => {
@@ -376,7 +473,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
 
   function pastRow(p: ListenPast): HTMLElement {
     const w = p.watch;
-    const el = row("past", p.summary, p.summary, thenAndChat(w.task, w.chatId),
+    const el = row(w, "past", p.summary, p.summary, thenAndChat(w.task, w.chatId),
       [pill(t(p.met ? LISTENING_STRINGS.met : LISTENING_STRINGS.notMet), p.met ? "met" : "not-met"),
         h("span", { class: "listen-status", text: Date.now() - p.at < 60_000 ? t("just now") : t("{time} ago", { time: timeAgo(p.at) }) })]);
     if (w.chatId !== State.chatId) onPress(el, () => opts.goToChat(w.chatId));

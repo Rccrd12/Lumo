@@ -500,6 +500,11 @@ fn process_table() -> HashMap<u32, Proc> {
     out
 }
 
+/// The executables running now, by name in lower case ("node.exe"), for listening (listen_local.rs).
+pub fn process_names() -> std::collections::HashSet<String> {
+    process_table().into_values().map(|p| p.exe.to_lowercase()).collect()
+}
+
 /// The ancestors of a process, nearest first, below the desktop shell.
 pub fn process_ancestors(pid: u32) -> Vec<u32> {
     session_window::ancestors(&process_table(), pid)
