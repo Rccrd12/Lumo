@@ -2,7 +2,10 @@
 // writes `[[listen owner/repo#12 ready: merge it]]` (chat.rs
 // listen_tool_note); the chat takes those lines out and hands them to Rust
 // (listen.rs), which asks GitHub now and then and says `listen-fired` once the
-// pull request got there. Pure helpers, so they can be tested without a webview.
+// pull request got there. `[[listen owner/repo#12 every checks: …]]` listens
+// every time: once for each new commit, until the pull request is merged or
+// closed. The chat's Listening panel (views/listening.ts) shows them all, and
+// starts one by hand. Pure helpers, so they can be tested without a webview.
 
 import { N_, t } from "../i18n/i18n";
 import { pillDefinition } from "./pills";
@@ -12,6 +15,12 @@ export const LISTEN_COLOR = pillDefinition("integration_github")?.color ?? "#F45
 
 /** What a watch waits for (listen.rs UNTILS). */
 export type ListenUntil = "checks" | "green" | "approved" | "ready" | "merged" | "closed";
+export const LISTEN_UNTILS: ListenUntil[] = ["checks", "green", "approved", "ready", "merged", "closed"];
+
+/** Once: it ends when it fires. Every: once for each new commit (listen.rs MODES). */
+export type ListenMode = "once" | "every";
+/** What can listen every time (listen.rs EVERY_UNTILS). */
+export const EVERY_UNTILS: ListenUntil[] = ["checks", "green"];
 
 /** A watch as Rust keeps it. */
 export interface ListenWatch {
@@ -24,6 +33,13 @@ export interface ListenWatch {
   task: string;
   chatId: string;
   startedAt: number;
+  /** Where it listens: "github.pr" for now. */
+  source?: string;
+  mode?: ListenMode;
+  /** Paused from the Listening panel. */
+  paused?: boolean;
+  /** How many times it fired (listening every time). */
+  fired?: number;
 }
 
 /** A watch that ended: what it waited for happened (`met`), or no longer can. */
@@ -32,12 +48,23 @@ export interface ListenFired {
   met: boolean;
   /** What happened, in the user's language. */
   summary: string;
+  /** Over (false: it listens every time and goes on). */
+  ended?: boolean;
+}
+
+/** What fired, for the Listening panel's history (listen.rs Past). */
+export interface ListenPast {
+  watch: ListenWatch;
+  met: boolean;
+  summary: string;
+  at: number;
 }
 
 export interface ListenAsk {
   repo: string;
   number: number;
   until: ListenUntil;
+  mode: ListenMode;
   task: string;
 }
 
@@ -57,8 +84,17 @@ export const LISTEN_TEXT = {
 };
 
 export const LISTEN_STRINGS = {
-  hint: N_("Lumo is listening to GitHub and will tell you. × stops listening."),
   unread: N_("Lumo couldn't start listening to: {what}"),
+};
+
+/** What each event is called in the Listening panel, as "when …". */
+export const UNTIL_TEXT: Record<ListenUntil, string> = {
+  checks: N_("Its checks finish"),
+  green: N_("Its checks pass"),
+  approved: N_("It is approved"),
+  ready: N_("It is ready to merge"),
+  merged: N_("It is merged"),
+  closed: N_("It is closed"),
 };
 
 /** What a model may write for each event (listen.rs UNTILS), small models included. */
@@ -70,6 +106,9 @@ const UNTIL_WORDS: Record<string, ListenUntil> = {
   merged: "merged",
   closed: "closed",
 };
+
+/** Words before the event that mean listening every time. */
+const EVERY_WORDS = new Set(["every", "each", "always", "everytime"]);
 
 /** Verbs that are an event only on their own. */
 const ALONE_WORDS: Record<string, ListenUntil> = { merge: "merged", close: "closed" };
@@ -112,19 +151,33 @@ function readRef(body: string): { repo: string; number: number; rest: string } |
  * event Lumo cannot watch is null, so the user is told instead of nothing
  * happening.
  */
-function readUntil(rest: string): { until: ListenUntil; task: string } | null {
+function readUntil(rest: string): { until: ListenUntil; mode: ListenMode; task: string } | null {
   const colon = rest.indexOf(":");
   const head = (colon < 0 ? rest : rest.slice(0, colon)).trim().replace(/^[-–—,]\s*/, "");
   const task = colon < 0 ? "" : rest.slice(colon + 1).trim();
-  if (!head) return { until: LISTEN_DEFAULT, task };
-  const words = head.split(/\s+/);
+  const words = head ? head.split(/\s+/) : [];
+  // `every checks`: once for each new commit.
+  let mode: ListenMode = "once";
+  if (words.length > 0 && EVERY_WORDS.has(words[0].toLowerCase())) {
+    words.shift();
+    mode = "every";
+  }
+  if (words.length === 0) return { until: LISTEN_DEFAULT, mode, task };
   const first = words[0].toLowerCase();
   // `merge` alone means merged; `merge it` is what to do, with no event.
   const until = UNTIL_WORDS[first] ?? (words.length === 1 ? ALONE_WORDS[first] : undefined);
   if (!until) return null;
+  // What can't happen again listens once.
+  if (!EVERY_UNTILS.includes(until)) mode = "once";
   // `[[listen o/r#3 ready merge it]]`: what follows the event, without a colon.
   const more = words.slice(1).join(" ");
-  return { until, task: task || more };
+  return { until, mode, task: task || more };
+}
+
+/** The pull request a person typed (`owner/repo#12`, a link…), for the Listening panel. */
+export function readPullRequest(text: string): { repo: string; number: number } | null {
+  const ref = readRef(text);
+  return ref && !ref.rest.trim() ? { repo: ref.repo, number: ref.number } : null;
 }
 
 /**
@@ -145,7 +198,7 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
       return GONE;
     }
     const asked = ref ? readUntil(ref.rest) : null;
-    if (ref && asked) listens.push({ repo: ref.repo, number: ref.number, until: asked.until, task: asked.task });
+    if (ref && asked) listens.push({ repo: ref.repo, number: ref.number, until: asked.until, mode: asked.mode, task: asked.task });
     else unread.push(all.replace(/`/g, "").trim());
     return GONE;
   });
@@ -162,8 +215,14 @@ export function listenMessage(fired: ListenFired): string {
   return `GitHub: ${fired.summary}\n${fired.watch.task}`;
 }
 
+/** The watches that are on: not paused. */
+export function activeWatches(watches: ListenWatch[]): ListenWatch[] {
+  return watches.filter((w) => !w.paused);
+}
+
 /** The closed island's line while Lumo listens, or null while it does not. */
-export function listeningLine(watches: ListenWatch[]): string | null {
+export function listeningLine(all: ListenWatch[]): string | null {
+  const watches = activeWatches(all);
   if (watches.length === 0) return null;
   if (watches.length > 1) return t(LISTEN_TEXT.many, { count: watches.length });
   const w = watches[0];

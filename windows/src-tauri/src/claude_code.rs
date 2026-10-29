@@ -91,7 +91,8 @@ const COMPUTER_LOOKING: &str = "mcp__lumo__screenshot mcp__lumo__zoom mcp__lumo_
 
 /// The island's timer and GitHub tools (island_tools.rs): they only start what
 /// the user asked for, so Claude Code runs them without asking.
-const ISLAND_ALLOWED: &str = "mcp__lumo__set_timer mcp__lumo__listen_pull_request mcp__lumo__stop_listening";
+const ISLAND_ALLOWED: &str =
+    "mcp__lumo__set_timer mcp__lumo__listen mcp__lumo__listen_pull_request mcp__lumo__stop_listening mcp__lumo__list_listening";
 
 /// Lumo's email tools that only read (mail.rs): Claude Code runs them without
 /// asking, as Security lets the AI read the email.
@@ -1722,7 +1723,7 @@ mod tests {
         for tool in crate::island_tools::NAMES {
             assert!(ISLAND_ALLOWED.split(' ').any(|t| t == format!("mcp__lumo__{tool}")), "{tool}");
         }
-        assert!(APPEND_PROMPT.contains("set_timer") && APPEND_PROMPT.contains("listen_pull_request") && APPEND_PROMPT.contains("[[listen"));
+        assert!(APPEND_PROMPT.contains("set_timer") && APPEND_PROMPT.contains("Lumo's listen tool") && APPEND_PROMPT.contains("[[listen"));
         assert!(COMPUTER_PROMPT.contains("set_timer"));
     }
 

@@ -4,7 +4,7 @@
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { DEFAULT_SHAPE, chatHeight, gripFactors, islandSize, parseDock } from "../src/core/layout.ts";
+import { CHAT_LISTENING, CHAT_PANEL_OPEN, DEFAULT_SHAPE, chatHeight, gripFactors, islandSize, parseDock } from "../src/core/layout.ts";
 
 test("the default shape gives the island its usual sizes", () => {
   assert.deepEqual(islandSize("expanded", "overview", 0, DEFAULT_SHAPE), { w: 640, h: 160 });
@@ -74,4 +74,10 @@ test("the distance from the edge: none, light (the usual), medium (past the hove
   assert.equal(edgeGap(undefined), EDGE_GAP);
   assert.ok(edgeGap("medium") > 14 && edgeGap("medium") < edgeGap("wide"));
   assert.equal(edgeGap("wide"), 28);
+});
+
+test("the Listening panel gets more room than a list, and a taller picked height still wins", () => {
+  assert.equal(chatHeight(DEFAULT_SHAPE, CHAT_PANEL_OPEN), 340);
+  assert.equal(chatHeight(DEFAULT_SHAPE, CHAT_LISTENING), 440);
+  assert.equal(chatHeight({ width: 640, height: 600 }, CHAT_LISTENING), 600);
 });

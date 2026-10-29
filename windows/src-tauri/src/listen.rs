@@ -1,5 +1,5 @@
 // Listening: the chat waits for GitHub without holding a turn open. Claude
-// calls Lumo's listen_pull_request tool, which becomes the line
+// calls Lumo's listen tool, which becomes the line
 // `[[listen owner/repo#12 ready: merge it]]` (island_tools.rs), or writes that
 // line in an answer itself (chat.rs listen_tool_note, src/core/listen.ts takes
 // it out); Lumo keeps that watch here, asks GitHub about the pull request now
@@ -7,6 +7,11 @@
 // tells the island (`listen-fired`). With a task, the chat that asked sends Claude a message
 // saying what happened and what it meant to do then; without one, the island
 // only says it.
+//
+// A watch listens once (it ends when it fires) or every time: a watch on the
+// checks that listens every time fires once for each new commit pushed, and
+// ends only with the pull request. A watch can be paused from the island's
+// Listening panel; what fired is kept in a short history for that panel.
 //
 // GitHub is asked with the token the user gave the GitHub pill, else through
 // their own `gh` (which signs in by itself: Lumo never sees its token), else
@@ -31,6 +36,14 @@ use crate::{log, platform, secrets};
 
 /// What a watch can wait for on a pull request.
 pub const UNTILS: &[&str] = &["checks", "green", "approved", "ready", "merged", "closed"];
+/// Once: the watch ends when it fires. Every: it fires for each new commit.
+pub const MODES: &[&str] = &["once", "every"];
+/// What can listen every time: what happens again with each push.
+pub const EVERY_UNTILS: &[&str] = &["checks", "green"];
+/// Where a watch listens. Only GitHub's pull requests for now.
+pub const SOURCES: &[&str] = &["github.pr"];
+/// What fired, newest last, at most this many.
+const MAX_HISTORY: usize = 50;
 /// At most this many watches at once; the oldest goes for a new one.
 const MAX_WATCHES: usize = 20;
 /// A watch nobody needed for this long stops by itself, saying so.
@@ -62,6 +75,29 @@ pub struct Watch {
     pub chat_id: String,
     /// Unix ms.
     pub started_at: u64,
+    /// Where it listens (SOURCES); older files have none: GitHub's pull requests.
+    #[serde(default = "pull_requests")]
+    pub source: String,
+    /// One of MODES; older files have none: once.
+    #[serde(default = "once")]
+    pub mode: String,
+    /// Paused from the Listening panel: GitHub is not asked about it.
+    #[serde(default)]
+    pub paused: bool,
+    /// How many times it fired (listening every time).
+    #[serde(default)]
+    pub fired: u32,
+    /// The commit it last fired on (listening every time): it waits for the next one.
+    #[serde(default)]
+    pub last_sha: String,
+}
+
+fn pull_requests() -> String {
+    SOURCES[0].to_string()
+}
+
+fn once() -> String {
+    MODES[0].to_string()
 }
 
 impl Watch {
@@ -80,6 +116,19 @@ pub struct Fired {
     pub met: bool,
     /// What happened, in the user's language.
     pub summary: String,
+    /// The watch is over (false: it listens every time and goes on).
+    pub ended: bool,
+}
+
+/// What fired, as the Listening panel's history shows it.
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Past {
+    pub watch: Watch,
+    pub met: bool,
+    pub summary: String,
+    /// Unix ms.
+    pub at: u64,
 }
 
 #[derive(Default)]
@@ -88,6 +137,7 @@ struct Store {
     next_id: u64,
     /// "not found" answers running, per watch.
     misses: HashMap<u64, u32>,
+    history: Vec<Past>,
     loaded: bool,
 }
 
@@ -96,6 +146,10 @@ static WAKE: LazyLock<Notify> = LazyLock::new(Notify::new);
 
 fn file() -> PathBuf {
     platform::local_dir().join("listening.json")
+}
+
+fn history_file() -> PathBuf {
+    platform::local_dir().join("listening-history.json")
 }
 
 fn now_ms() -> u64 {
@@ -115,18 +169,30 @@ fn with_store<R>(f: impl FnOnce(&mut Store) -> R) -> R {
             .unwrap_or_default();
         s.next_id = saved.iter().map(|w| w.id).max().unwrap_or(0) + 1;
         s.watches = saved.into_iter().filter(|w| valid(&w.repo, w.number, &w.until)).collect();
+        s.history = std::fs::read_to_string(history_file())
+            .ok()
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default();
     }
     f(&mut s)
 }
 
-fn save(watches: &[Watch]) {
-    let path = file();
+fn write<T: Serialize + ?Sized>(path: PathBuf, value: &T) {
     if let Some(dir) = path.parent() {
         let _ = std::fs::create_dir_all(dir);
     }
-    if let Ok(text) = serde_json::to_string(watches) {
+    if let Ok(text) = serde_json::to_string(value) {
         let _ = std::fs::write(path, text);
     }
+}
+
+fn save(watches: &[Watch]) {
+    write(file(), watches);
+}
+
+/// Whether `mode` is one, and allowed for `until`.
+pub fn mode_ok(until: &str, mode: &str) -> bool {
+    mode == "once" || (mode == "every" && EVERY_UNTILS.contains(&until))
 }
 
 /// A repository and pull request we are willing to put in a GitHub URL.
@@ -137,11 +203,18 @@ pub fn valid(repo: &str, number: u64, until: &str) -> bool {
 }
 
 /// Adds a watch (the same pull request and event again replaces the old one).
-pub fn add(repo: &str, number: u64, until: &str, task: &str, chat_id: &str) -> Result<Watch, String> {
+pub fn add(repo: &str, number: u64, until: &str, mode: &str, task: &str, chat_id: &str) -> Result<Watch, String> {
     let repo = repo.trim();
     let until = until.trim().to_ascii_lowercase();
     if !valid(repo, number, &until) {
         return Err(format!("not a pull request to listen to: {repo}#{number} {until}"));
+    }
+    let mode = match mode.trim().to_ascii_lowercase() {
+        m if m.is_empty() => once(),
+        m => m,
+    };
+    if !mode_ok(&until, &mode) {
+        return Err(format!("only {} can listen every time", EVERY_UNTILS.join(" or ")));
     }
     let task: String = task.trim().chars().take(TASK_CHARS).collect();
     let chat_id: String = chat_id.chars().take(64).collect();
@@ -150,7 +223,20 @@ pub fn add(repo: &str, number: u64, until: &str, task: &str, chat_id: &str) -> R
         while s.watches.len() >= MAX_WATCHES {
             s.watches.remove(0);
         }
-        let watch = Watch { id: s.next_id, repo: repo.to_string(), number, until, task, chat_id, started_at: now_ms() };
+        let watch = Watch {
+            id: s.next_id,
+            repo: repo.to_string(),
+            number,
+            until,
+            task,
+            chat_id,
+            started_at: now_ms(),
+            source: pull_requests(),
+            mode,
+            paused: false,
+            fired: 0,
+            last_sha: String::new(),
+        };
         s.next_id += 1;
         s.watches.push(watch.clone());
         save(&s.watches);
@@ -171,17 +257,75 @@ pub fn cancel(repo: &str, number: u64, until: Option<&str>) -> usize {
     })
 }
 
+/// Stops one watch, by its id.
+pub fn stop(id: u64) -> bool {
+    with_store(|s| {
+        let before = s.watches.len();
+        s.watches.retain(|w| w.id != id);
+        s.misses.remove(&id);
+        save(&s.watches);
+        before != s.watches.len()
+    })
+}
+
+/// Pauses or resumes one watch (`id` None: every one). How many changed.
+pub fn pause(id: Option<u64>, paused: bool) -> usize {
+    let n = with_store(|s| {
+        let mut n = 0;
+        for w in s.watches.iter_mut().filter(|w| id.is_none_or(|id| w.id == id) && w.paused != paused) {
+            w.paused = paused;
+            n += 1;
+        }
+        save(&s.watches);
+        n
+    });
+    if !paused {
+        WAKE.notify_one();
+    }
+    n
+}
+
 pub fn list() -> Vec<Watch> {
     with_store(|s| s.watches.clone())
 }
 
-fn take(id: u64) -> Option<Watch> {
+pub fn history() -> Vec<Past> {
+    with_store(|s| s.history.clone())
+}
+
+pub fn clear_history() {
+    with_store(|s| {
+        s.history.clear();
+        write(history_file(), &s.history);
+    })
+}
+
+fn remember(s: &mut Store, watch: &Watch, met: bool, summary: &str) {
+    s.history.push(Past { watch: watch.clone(), met, summary: summary.to_string(), at: now_ms() });
+    let over = s.history.len().saturating_sub(MAX_HISTORY);
+    s.history.drain(..over);
+    write(history_file(), &s.history);
+}
+
+/// The watch fired: taken out, or (listening every time on a pull request
+/// still open) kept, waiting for the next commit. The watch as it fired, and
+/// whether it ended.
+fn take(id: u64, met: bool, summary: &str, again_on: Option<&str>) -> Option<(Watch, bool)> {
     with_store(|s| {
         let i = s.watches.iter().position(|w| w.id == id)?;
-        let w = s.watches.remove(i);
         s.misses.remove(&id);
+        let ended = s.watches[i].mode != "every" || again_on.is_none();
+        let watch = if ended {
+            s.watches.remove(i)
+        } else {
+            let w = &mut s.watches[i];
+            w.fired += 1;
+            w.last_sha = again_on.unwrap_or("").to_string();
+            w.clone()
+        };
+        remember(s, &watch, met, summary);
         save(&s.watches);
-        Some(w)
+        Some((watch, ended))
     })
 }
 
@@ -307,6 +451,10 @@ pub fn judge(w: &Watch, pr: &PrState, age_ms: u64) -> Option<(bool, String)> {
     }
     if !pr.open {
         return Some((w.until == "closed", tf("{pr} was closed without being merged", &pr_var)));
+    }
+    // Listening every time: the commit it fired on is done with.
+    if w.mode == "every" && !w.last_sha.is_empty() && w.last_sha == pr.head_sha {
+        return None;
     }
     let settled = |c: &Checks| match c {
         Checks::Passed => Some(true),
@@ -473,10 +621,13 @@ async fn fetch(via: Via, token: Option<&str>, w: &Watch) -> Read {
     Read::State(pr)
 }
 
-fn fire(app: &AppHandle, id: u64, met: bool, summary: String) {
-    if let Some(watch) = take(id) {
-        log::line(format!("listen: {} {} ended ({})", watch.label(), watch.until, if met { "met" } else { "not met" }));
-        let _ = app.emit_to(WINDOW_LABEL, "listen-fired", Fired { watch, met, summary });
+/// `again_on`: the commit it fired on, when the pull request is still open
+/// (a watch that listens every time goes on, waiting for the next one).
+fn fire(app: &AppHandle, id: u64, met: bool, summary: String, again_on: Option<&str>) {
+    if let Some((watch, ended)) = take(id, met, &summary, again_on) {
+        let how = if met { "met" } else { "not met" };
+        log::line(format!("listen: {} {} {} ({how})", watch.label(), watch.until, if ended { "ended" } else { "fired" }));
+        let _ = app.emit_to(WINDOW_LABEL, "listen-fired", Fired { watch, met, summary, ended });
         changed(app);
     }
 }
@@ -492,14 +643,18 @@ async fn round(app: &AppHandle) -> Via {
     for w in list() {
         let age = now.saturating_sub(w.started_at);
         if age >= MAX_AGE_MS {
-            fire(app, w.id, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]));
+            fire(app, w.id, false, tf("Stopped listening to {pr} after a week", &[("pr", &w.label())]), None);
+            continue;
+        }
+        if w.paused {
             continue;
         }
         match fetch(via, token.as_deref(), &w).await {
             Read::State(pr) => {
                 with_store(|s| s.misses.remove(&w.id));
                 if let Some((met, summary)) = judge(&w, &pr, age) {
-                    fire(app, w.id, met, summary);
+                    let again_on = (pr.open && !pr.head_sha.is_empty()).then_some(pr.head_sha.as_str());
+                    fire(app, w.id, met, summary, again_on);
                 }
             }
             Read::Missing => {
@@ -509,7 +664,7 @@ async fn round(app: &AppHandle) -> Via {
                     *n
                 });
                 if misses >= MAX_MISSES {
-                    fire(app, w.id, false, tf("Lumo can't read {pr} on GitHub", &[("pr", &w.label())]));
+                    fire(app, w.id, false, tf("Lumo can't read {pr} on GitHub", &[("pr", &w.label())]), None);
                 }
             }
             Read::Unknown => {}
@@ -530,23 +685,49 @@ pub fn start(app: AppHandle) {
         // Watches kept from before a restart: say so to the island.
         changed(&app);
         loop {
-            if list().is_empty() {
+            if list().iter().all(|w| w.paused) {
                 WAKE.notified().await;
                 continue;
             }
             let via = if crate::integrations::PAUSED.load(Ordering::Relaxed) { Via::Token } else { round(&app).await };
-            let every = if via == Via::Anonymous { anonymous_every(list().len()) } else { EVERY_SIGNED_IN };
+            let on = list().iter().filter(|w| !w.paused).count();
+            let every = if via == Via::Anonymous { anonymous_every(on) } else { EVERY_SIGNED_IN };
             let _ = tokio::time::timeout(every, WAKE.notified()).await;
         }
     });
 }
 
 #[tauri::command(async)]
-pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, task: String, chat_id: String) -> Result<Watch, String> {
-    let watch = add(&repo, number, &until, &task, &chat_id)?;
-    log::line(format!("listen: {} {}", watch.label(), watch.until));
+pub fn listen_add(app: AppHandle, repo: String, number: u64, until: String, mode: Option<String>, task: String, chat_id: String) -> Result<Watch, String> {
+    let watch = add(&repo, number, &until, mode.as_deref().unwrap_or(""), &task, &chat_id)?;
+    log::line(format!("listen: {} {} {}", watch.label(), watch.until, watch.mode));
     changed(&app);
     Ok(watch)
+}
+
+#[tauri::command(async)]
+pub fn listen_stop(app: AppHandle, id: u64) -> bool {
+    let done = stop(id);
+    changed(&app);
+    done
+}
+
+/// `id` None: every watch.
+#[tauri::command(async)]
+pub fn listen_pause(app: AppHandle, id: Option<u64>, paused: bool) -> usize {
+    let n = pause(id, paused);
+    changed(&app);
+    n
+}
+
+#[tauri::command(async)]
+pub fn listen_history() -> Vec<Past> {
+    history()
+}
+
+#[tauri::command(async)]
+pub fn listen_history_clear() {
+    clear_history()
 }
 
 #[tauri::command(async)]
@@ -575,7 +756,20 @@ mod tests {
     }
 
     fn watch(until: &str) -> Watch {
-        Watch { id: 1, repo: "o/r".into(), number: 12, until: until.into(), task: String::new(), chat_id: "c".into(), started_at: 0 }
+        Watch {
+            id: 1,
+            repo: "o/r".into(),
+            number: 12,
+            until: until.into(),
+            task: String::new(),
+            chat_id: "c".into(),
+            started_at: 0,
+            source: pull_requests(),
+            mode: once(),
+            paused: false,
+            fired: 0,
+            last_sha: String::new(),
+        }
     }
 
     fn open(checks: Checks) -> PrState {
@@ -680,6 +874,35 @@ mod tests {
         let status = json!({ "statuses": [{ "context": "vercel", "state": "failure" }] });
         assert_eq!(checks_of(Some(&running), Some(&status)), Checks::Failed(vec!["vercel".into()]));
         assert_eq!(checks_of(Some(&json!({ "check_runs": [] })), Some(&json!({ "statuses": [] }))), Checks::None);
+    }
+
+    #[test]
+    fn only_what_happens_again_with_each_push_can_listen_every_time() {
+        assert!(mode_ok("checks", "every") && mode_ok("green", "every"));
+        assert!(mode_ok("merged", "once") && mode_ok("ready", "once"));
+        assert!(!mode_ok("merged", "every") && !mode_ok("ready", "every"));
+        assert!(!mode_ok("checks", "always"));
+    }
+
+    #[test]
+    fn listening_every_time_waits_for_the_next_commit() {
+        let every = Watch { mode: "every".into(), last_sha: "abc".into(), ..watch("checks") };
+        // The commit it already fired on: nothing new.
+        assert_eq!(judge(&every, &open(Checks::Passed), 0), None);
+        let pushed = PrState { head_sha: "def".into(), ..open(Checks::Passed) };
+        assert_eq!(judge(&every, &pushed, 0).map(|j| j.0), Some(true));
+        // A merge still ends it.
+        let merged = PrState { open: false, merged: true, ..open(Checks::Passed) };
+        assert_eq!(judge(&every, &merged, 0).map(|j| j.0), Some(false));
+    }
+
+    #[test]
+    fn a_file_from_before_reads_as_once_on_a_pull_request() {
+        let old = r#"[{"id":3,"repo":"o/r","number":5,"until":"ready","task":"merge","chatId":"c","startedAt":7}]"#;
+        let read: Vec<Watch> = serde_json::from_str(old).unwrap();
+        assert_eq!(read[0].source, "github.pr");
+        assert_eq!(read[0].mode, "once");
+        assert!(!read[0].paused);
     }
 
     #[test]

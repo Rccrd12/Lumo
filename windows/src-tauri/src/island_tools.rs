@@ -1,6 +1,7 @@
 // The island's own tools for the chat's agents: a timer (`set_timer`), and
-// listening to a pull request on GitHub (`listen_pull_request`,
-// `stop_listening`).
+// listening (`listen`, `stop_listening`, `list_listening`). `listen` takes a
+// source and a target, so more sources can come; for now the only source is a
+// pull request on GitHub. `listen_pull_request`, its name before, still works.
 //
 // They do what the `[[timer …]]`, `[[listen …]]` and `[[unlisten …]]` lines
 // do (chat.rs timer_note, listen_tool_note), as real tools: the model gets told at
@@ -23,10 +24,13 @@ use std::sync::Mutex;
 use serde_json::{json, Value};
 
 pub const SET_TIMER: &str = "set_timer";
-pub const LISTEN: &str = "listen_pull_request";
+pub const LISTEN: &str = "listen";
+/// `listen`'s name before: still answered, no longer offered.
+pub const LISTEN_PULL_REQUEST: &str = "listen_pull_request";
 pub const UNLISTEN: &str = "stop_listening";
-/// Every one of them.
-pub const NAMES: &[&str] = &[SET_TIMER, LISTEN, UNLISTEN];
+pub const LIST: &str = "list_listening";
+/// Every one offered.
+pub const NAMES: &[&str] = &[SET_TIMER, LISTEN, UNLISTEN, LIST];
 
 /// The longest timer: a day.
 const MAX_SECONDS: u64 = 24 * 3600;
@@ -61,16 +65,29 @@ time, then say in a few words that it is set.",
         &["seconds"],
     )];
     if listen {
-        let pr = json!({
-            "repo": { "type": "string", "description": "owner/repository on GitHub, e.g. octocat/hello." },
-            "number": { "type": "integer", "minimum": 1, "description": "The pull request's number." },
+        let target = json!({
+            "source": {
+                "type": "string",
+                "enum": crate::listen::SOURCES,
+                "description": "Where to listen. github.pr: a pull request on GitHub.",
+            },
+            "target": {
+                "type": "string",
+                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link.",
+            },
         });
-        let mut watch = pr.clone();
+        let mut watch = target.clone();
         watch["event"] = json!({
             "type": "string",
             "enum": crate::listen::UNTILS,
             "description": "checks: its checks finished, passed or failed. green: they passed. approved. ready: checks \
 passed and it can be merged. merged. closed.",
+        });
+        watch["mode"] = json!({
+            "type": "string",
+            "enum": crate::listen::MODES,
+            "description": "once (the default): it ends when the event happens. every: for checks or green only, it \
+fires again for each new commit pushed, until the pull request is merged or closed.",
         });
         watch["then"] = json!({
             "type": "string",
@@ -80,13 +97,14 @@ only wants to be told.",
         });
         all.push(tool(
             LISTEN,
-            "Lumo watches a pull request on GitHub and tells the user once the event happens; with something to do \
-then, it sends you a message in this chat starting with GitHub: and you do it then. Use it instead of waiting, \
-sleeping or polling yourself, then say in a few words that Lumo is listening and end your answer.",
+            "Lumo listens for an event and tells the user once it happens; with something to do then, it sends you a \
+message in this chat that says what happened, and you do it then. Use it instead of waiting, sleeping or polling \
+yourself, then say in a few words that Lumo is listening and end your answer.",
             watch,
-            &["repo", "number", "event"],
+            &["source", "target", "event"],
         ));
-        all.push(tool(UNLISTEN, "Stops listening to a pull request on GitHub.", pr, &["repo", "number"]));
+        all.push(tool(UNLISTEN, "Stops listening to something Lumo listens to.", target, &["target"]));
+        all.push(tool(LIST, "Lists what Lumo is listening to, in every chat.", json!({}), &[]));
     }
     all
 }
@@ -97,13 +115,65 @@ fn clean(text: &str, max: usize) -> String {
     one.split_whitespace().collect::<Vec<_>>().join(" ").chars().take(max).collect()
 }
 
+/// `owner/repo#12`, `owner/repo/pull/12` or the pull request's link.
+fn pull_request_of(target: &str) -> Option<(String, u64)> {
+    let text = target.trim().trim_start_matches('<').trim_end_matches('>');
+    let text = text.split_once("://").map_or(text, |(_, rest)| rest);
+    let text = text.strip_prefix("www.").unwrap_or(text);
+    let text = text.strip_prefix("github.com/").unwrap_or(text);
+    let (repo, number) = if let Some((repo, number)) = text.split_once('#') {
+        (repo.trim().to_string(), number.trim())
+    } else {
+        let parts: Vec<&str> = text.split('/').collect();
+        match parts.as_slice() {
+            [owner, name, "pull" | "pulls", number, ..] => (format!("{owner}/{name}"), *number),
+            _ => return None,
+        }
+    };
+    let repo = repo.trim_end_matches(".git").to_string();
+    let number: u64 = number.trim_start_matches('#').parse().ok()?;
+    crate::listen::valid(&repo, number, "checks").then_some((repo, number))
+}
+
+/// The pull request a call names: `target` (and `source`), or `repo` and `number` as before.
 fn pull_request(input: &Value) -> Result<(String, u64), String> {
+    let source = input["source"].as_str().unwrap_or("github.pr").trim().to_ascii_lowercase();
+    if !matches!(source.as_str(), "github.pr" | "github" | "") {
+        return Err(format!("source must be one of {}.", crate::listen::SOURCES.join(", ")));
+    }
+    if let Some(target) = input["target"].as_str() {
+        return pull_request_of(target).ok_or_else(|| "Give the target as owner/repository#number or the pull request's link.".into());
+    }
     let repo = input["repo"].as_str().unwrap_or("").trim().trim_end_matches(".git").to_string();
     let number = input["number"].as_u64().or_else(|| input["number"].as_str().and_then(|n| n.trim().trim_start_matches('#').parse().ok()));
     match number {
         Some(n) if crate::listen::valid(&repo, n, "checks") => Ok((repo, n)),
         _ => Err("Give the repository as owner/repository and the pull request's number.".into()),
     }
+}
+
+/// What Lumo listens to, for `list_listening`.
+fn listening_text(watches: &[crate::listen::Watch], chat_id: &str) -> String {
+    if watches.is_empty() {
+        return "Lumo is not listening to anything.".into();
+    }
+    let rows: Vec<String> = watches
+        .iter()
+        .map(|w| {
+            let mut row = format!("- {} {} ({})", w.label(), w.until, w.mode);
+            if w.paused {
+                row.push_str(", paused");
+            }
+            if w.chat_id == chat_id {
+                row.push_str(", this chat");
+            }
+            if !w.task.is_empty() {
+                row.push_str(&format!(": then {}", w.task));
+            }
+            row
+        })
+        .collect();
+    format!("Lumo is listening to:\n{}", rows.join("\n"))
 }
 
 /// The line for Lumo a call stands for, and what the model is told; or why it can't be done.
@@ -118,20 +188,30 @@ pub fn line(tool: &str, input: &Value) -> Result<(String, String), String> {
             let line = if label.is_empty() { format!("[[timer {seconds}s]]") } else { format!("[[timer {seconds}s: {label}]]") };
             Ok((line, "The timer starts on the island as soon as your answer ends. Say in a few words that it is set.".into()))
         }
-        LISTEN => {
+        LISTEN | LISTEN_PULL_REQUEST => {
             let (repo, number) = pull_request(input)?;
             let event = input["event"].as_str().unwrap_or("").trim().to_ascii_lowercase();
             if !crate::listen::UNTILS.contains(&event.as_str()) {
                 return Err(format!("event must be one of {}.", crate::listen::UNTILS.join(", ")));
             }
+            let mode = input["mode"].as_str().unwrap_or("once").trim().to_ascii_lowercase();
+            if !crate::listen::mode_ok(&event, if mode.is_empty() { "once" } else { mode.as_str() }) {
+                return Err(format!("mode must be once, or every with {}.", crate::listen::EVERY_UNTILS.join(" or ")));
+            }
+            let every = if mode == "every" { "every " } else { "" };
             let then = clean(input["then"].as_str().unwrap_or(""), MAX_TASK);
-            let line = if then.is_empty() { format!("[[listen {repo}#{number} {event}]]") } else { format!("[[listen {repo}#{number} {event}: {then}]]") };
+            let line = if then.is_empty() {
+                format!("[[listen {repo}#{number} {every}{event}]]")
+            } else {
+                format!("[[listen {repo}#{number} {every}{event}: {then}]]")
+            };
             let after = if then.is_empty() {
                 "Lumo will tell the user."
             } else {
                 "Lumo will tell the user and send you a message in this chat starting with GitHub: that says what \
 happened; do what you meant to only if it is what you waited for."
             };
+            let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again for each new commit.") };
             Ok((line, format!("Lumo listens to {repo}#{number} as soon as your answer ends. {after} Say in a few words that Lumo is listening, and end your answer.")))
         }
         UNLISTEN => {
@@ -145,6 +225,9 @@ happened; do what you meant to only if it is what you waited for."
 /// A call for the chat `chat_id`: its line is kept for the answer. What goes
 /// back to the model, and whether it failed.
 pub fn call(chat_id: &str, tool: &str, input: &Value) -> (String, bool) {
+    if tool == LIST {
+        return (listening_text(&crate::listen::list(), chat_id), false);
+    }
     if chat_id.is_empty() {
         return ("Lumo can't tell which chat this is for: write the line for Lumo in your answer instead.".into(), true);
     }
@@ -181,12 +264,19 @@ mod tests {
         let ok = |tool: &str, input: Value| line(tool, &input).unwrap().0;
         assert_eq!(ok(SET_TIMER, json!({ "seconds": 600, "label": "Pasta [al dente]\n" })), "[[timer 600s: Pasta al dente]]");
         assert_eq!(ok(SET_TIMER, json!({ "seconds": 90 })), "[[timer 90s]]");
-        assert_eq!(ok(LISTEN, json!({ "repo": "octocat/hello", "number": 42, "event": "checks" })), "[[listen octocat/hello#42 checks]]");
+        assert_eq!(ok(LISTEN, json!({ "source": "github.pr", "target": "octocat/hello#42", "event": "checks" })), "[[listen octocat/hello#42 checks]]");
         assert_eq!(
-            ok(LISTEN, json!({ "repo": "octocat/hello.git", "number": "#42", "event": "Ready", "then": "merge it: gh pr merge --squash ]]" })),
+            ok(LISTEN, json!({ "source": "github.pr", "target": "https://github.com/octocat/hello/pull/42/files", "event": "green", "mode": "every", "then": "fix what failed" })),
+            "[[listen octocat/hello#42 every green: fix what failed]]"
+        );
+        // Its name before, with repo and number, still works.
+        assert_eq!(ok(LISTEN_PULL_REQUEST, json!({ "repo": "octocat/hello", "number": 42, "event": "checks" })), "[[listen octocat/hello#42 checks]]");
+        assert_eq!(
+            ok(LISTEN_PULL_REQUEST, json!({ "repo": "octocat/hello.git", "number": "#42", "event": "Ready", "then": "merge it: gh pr merge --squash ]]" })),
             "[[listen octocat/hello#42 ready: merge it: gh pr merge --squash]]"
         );
         assert_eq!(ok(UNLISTEN, json!({ "repo": "octocat/hello", "number": 42 })), "[[unlisten octocat/hello#42]]");
+        assert_eq!(ok(UNLISTEN, json!({ "target": "octocat/hello/pull/42" })), "[[unlisten octocat/hello#42]]");
     }
 
     #[test]
@@ -196,6 +286,9 @@ mod tests {
         assert!(line(LISTEN, &json!({ "repo": "octocat", "number": 42, "event": "checks" })).is_err());
         assert!(line(LISTEN, &json!({ "repo": "../x/y", "number": 42, "event": "checks" })).is_err());
         assert!(line(LISTEN, &json!({ "repo": "octocat/hello", "number": 42, "event": "deployed" })).is_err());
+        assert!(line(LISTEN, &json!({ "source": "github.pr", "target": "octocat/hello", "event": "checks" })).is_err());
+        assert!(line(LISTEN, &json!({ "source": "slack", "target": "octocat/hello#1", "event": "checks" })).is_err());
+        assert!(line(LISTEN, &json!({ "source": "github.pr", "target": "octocat/hello#1", "event": "merged", "mode": "every" })).is_err());
         assert!(line("rm", &json!({})).is_err());
     }
 
@@ -212,6 +305,16 @@ mod tests {
         assert!(failed && said.contains("line"));
         assert!(serve(&json!({ "tool": SET_TIMER, "input": { "seconds": 0 }, "chat": "chat-c" }))["error"].is_string());
         assert_eq!(take("chat-c"), "");
+    }
+
+    #[test]
+    fn the_list_says_what_lumo_listens_to() {
+        assert_eq!(listening_text(&[], "c"), "Lumo is not listening to anything.");
+        let w: crate::listen::Watch = serde_json::from_value(json!({
+            "id": 1, "repo": "o/r", "number": 3, "until": "ready", "task": "merge it", "chatId": "c", "startedAt": 0, "paused": true
+        }))
+        .unwrap();
+        assert_eq!(listening_text(&[w], "c"), "Lumo is listening to:\n- o/r#3 ready (once), paused, this chat: then merge it");
     }
 
     #[test]

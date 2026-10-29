@@ -182,7 +182,7 @@ pub fn claude_wait_denied() -> String {
         "hookSpecificOutput": {
             "hookEventName": "PreToolUse",
             "permissionDecision": "deny",
-            "permissionDecisionReason": "Lumo: do not wait for GitHub (or anything else) in a command, it holds the user's chat. Call Lumo's listen_pull_request tool instead (or, without it, write [[listen owner/repo#123 event: what to do then]] on a line of its own in your answer), say Lumo is listening, and end your answer: Lumo watches GitHub and messages you when it happens.",
+            "permissionDecisionReason": "Lumo: do not wait for GitHub (or anything else) in a command, it holds the user's chat. Call Lumo's listen tool instead (or, without it, write [[listen owner/repo#123 event: what to do then]] on a line of its own in your answer), say Lumo is listening, and end your answer: Lumo watches GitHub and messages you when it happens.",
         }
     })
     .to_string()

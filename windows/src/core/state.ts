@@ -500,6 +500,8 @@ class AppState {
   chatHistory: ChatMessage[] = [];
   /** The model picker or the past chats are open: the chat takes its full height. */
   chatPanelOpen = false;
+  /** The open list is the Listening panel, which wants more room (core/layout.ts CHAT_LISTENING). */
+  listeningOpen = false;
   /**
    * A picture of the chat's previews, opened big: it fills the whole open
    * island, and Lumo steps out of its way (views/picture.ts, island.ts).

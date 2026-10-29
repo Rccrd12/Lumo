@@ -3,7 +3,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_FORGE, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_LISTENING, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -1771,10 +1771,12 @@ export class Island {
     // The drop canvas draws its own Lumo; two of them would overlap.
     // The big picture fills the island: Lumo steps out of its way meanwhile.
     const picture = State.picture != null;
-    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture;
+    // The Listening panel takes the whole chat, Lumo's place too.
+    const listening = State.listeningOpen && State.view === "prompt" && State.chatSlot === "chat";
+    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture && !listening;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
-    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture) {
+    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening) {
       const d = p.diameter;
       const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";
@@ -2083,7 +2085,8 @@ export class Island {
   /** What the chat's height follows: its messages, or the most room while a list (or the tool workshop) is open. */
   private get chatCount(): number {
     if (State.chatSlot === "forge") return CHAT_FORGE;
-    return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
+    if (State.chatPanelOpen) return State.listeningOpen ? CHAT_LISTENING : CHAT_PANEL_OPEN;
+    return State.chatHistory.length;
   }
 }
 
