@@ -7,13 +7,13 @@
 
 /** One effect, as computer.rs sends it. Points are [x, y], physical pixels of the screen. */
 export type Fx =
-  | { kind: "show" }
+  | { kind: "show"; aim?: boolean }
   | { kind: "hide" }
   | { kind: "pause" }
   | { kind: "resume" }
   | { kind: "stopped" }
   | { kind: "look" }
-  | { kind: "move"; from: [number, number]; to: [number, number]; ms: number }
+  | { kind: "move"; from: [number, number]; to: [number, number]; ms: number; aim?: boolean }
   | { kind: "drag"; from: [number, number]; to: [number, number]; ms: number }
   | { kind: "click"; at: [number, number]; button: "left" | "right" | "middle"; count: number }
   | { kind: "scroll"; at: [number, number]; dx: number; dy: number }
@@ -40,6 +40,34 @@ export function toCss(p: [number, number], dpr: number): { x: number; y: number 
 export function along(from: { x: number; y: number }, to: { x: number; y: number }, elapsed: number, ms: number) {
   const e = ms > 0 ? ease(elapsed / ms) : 1;
   return { x: from.x + (to.x - from.x) * e, y: from.y + (to.y - from.y) * e };
+}
+
+/**
+ * The Aim corners around where Claude is about to click: from wide to tight
+ * over the glide (CSS pixels, the side of their square). They close in during
+ * the last part of the way, so they read as "here" rather than following along.
+ */
+export function aimSide(elapsed: number, ms: number): number {
+  const WIDE = 46;
+  const TIGHT = 24;
+  const t = ms > 0 ? Math.min(1, Math.max(0, elapsed / ms)) : 1;
+  const close = Math.min(1, Math.max(0, (t - 0.35) / 0.65));
+  return WIDE + (TIGHT - WIDE) * ease(close);
+}
+
+/**
+ * The sparks a click sends out around its ring: `n` directions spread evenly
+ * round the circle, turned by `turn` (0…1 of a step, so two clicks differ),
+ * each with how far it flies (CSS pixels).
+ */
+export function sparks(n: number, turn: number, reach = 22): { dx: number; dy: number }[] {
+  const out: { dx: number; dy: number }[] = [];
+  for (let i = 0; i < n; i++) {
+    const a = ((i + turn) / n) * Math.PI * 2;
+    const r = reach * (i % 2 ? 0.8 : 1);
+    out.push({ dx: Math.round(Math.cos(a) * r * 100) / 100, dy: Math.round(Math.sin(a) * r * 100) / 100 });
+  }
+  return out;
 }
 
 /** Pretty names for the keys of a combination. */

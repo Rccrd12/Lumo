@@ -26,7 +26,7 @@ import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
 import { TOOLS_STRINGS, buildTools } from "./tools";
 import { Live } from "../live/session";
-import type { LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
+import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 
 export interface ViewActions {
@@ -63,6 +63,10 @@ export interface ViewActions {
   chooseLook(look: LumoLook): void;
   /** Wardrobe hover on a look: shows it without keeping it; null ends it. */
   previewLook(look: LumoLook | null): void;
+  /** Wardrobe click on Claude's mouse (computer use): keeps it. */
+  chooseComputerCursor(cursor: ComputerCursor): void;
+  /** Wardrobe click on Aim: the corners before a click, on or off. */
+  setComputerAim(on: boolean): void;
   /** The folded live activities' icon: they come back beside the island. */
   showActivities(): void;
   /** The folded Plan island's icon: it comes back. */

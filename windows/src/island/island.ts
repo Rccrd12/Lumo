@@ -17,7 +17,7 @@ import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../character/engine";
 import { Greeting } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
-import { SeasonCache, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
+import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
@@ -414,6 +414,19 @@ export class Island {
         void Bridge.saveSettings(State.settings);
         Sound.play("pop");
         this.engine.triggerEmote("happy");
+        State.notify();
+      },
+      chooseComputerCursor: (cursor) => {
+        if (parseComputerCursor(State.settings.computerCursor) === cursor) return;
+        State.settings.computerCursor = cursor;
+        void Bridge.saveSettings(State.settings);
+        Sound.play("pop");
+        State.notify();
+      },
+      setComputerAim: (on) => {
+        State.settings.computerAim = on;
+        void Bridge.saveSettings(State.settings);
+        Sound.play("pop");
         State.notify();
       },
       showActivities: () => this.activities.unfold(),

@@ -1,6 +1,8 @@
 // Lumo's wardrobe — the pure logic. What Lumo wears is picked in the wardrobe
 // view (right-click on Lumo, or the tray menu) and stored in the preferences as
-// `lumoOutfit`; his look is picked there too and stored as `lumoCharacter`.
+// `lumoOutfit`; his look is picked there too and stored as `lumoCharacter`,
+// and so is the mouse Claude wears while it uses the computer (`computerCursor`,
+// `computerAim`).
 // The drawing lives in ./outfits.ts and ./looks.ts.
 
 import { N_, labels, t } from "../i18n/i18n";
@@ -30,6 +32,17 @@ export type LumoLook = (typeof LUMO_LOOKS)[number];
 
 export const DEFAULT_LOOK: LumoLook = "filo";
 
+/**
+ * The mouse Claude wears while it uses the computer (computer.rs draws it),
+ * picked in the wardrobe and stored as `computerCursor`: a dark arrow with a
+ * white edge, or Lucciola's butter one. Keep the raw values stable once shipped.
+ */
+export const COMPUTER_CURSORS = ["direct", "lucciola"] as const;
+
+export type ComputerCursor = (typeof COMPUTER_CURSORS)[number];
+
+export const DEFAULT_COMPUTER_CURSOR: ComputerCursor = "direct";
+
 // ── User-visible strings ──────────────────────────────────────────────────────
 
 /** The English names, the keys of their translations (src/i18n). */
@@ -52,6 +65,16 @@ export const LOOK_KEYS: Record<LumoLook, string> = {
 };
 
 export const LOOK_LABELS: Record<LumoLook, string> = labels(LOOK_KEYS);
+
+/** Claude's mouse, by its names, and the Aim switch beside it. */
+export const COMPUTER_CURSOR_KEYS: Record<ComputerCursor, string> = {
+  direct: N_("Direct · the dark arrow"),
+  lucciola: N_("Lucciola · the butter arrow"),
+};
+
+export const COMPUTER_CURSOR_LABELS: Record<ComputerCursor, string> = labels(COMPUTER_CURSOR_KEYS);
+
+export const AIM_KEY = N_("Aim · corners close in before a click");
 
 /** In the current language: every read goes through `t()`. */
 export const OUTFIT_LABELS: Record<OutfitSelection, string> = labels(OUTFIT_KEYS);
@@ -82,6 +105,11 @@ export function parseLook(raw: unknown): LumoLook {
   return typeof raw === "string" && LOOK_SET.has(raw) ? (raw as LumoLook) : DEFAULT_LOOK;
 }
 
+/** A stored mouse → a mouse. Anything unknown is the dark arrow (computer.rs reads it the same way). */
+export function parseComputerCursor(raw: unknown): ComputerCursor {
+  return raw === "lucciola" ? "lucciola" : DEFAULT_COMPUTER_CURSOR;
+}
+
 /**
  * The seasonal outfit for `date`, read in the user's local calendar: the scarf
  * in winter (December to February), the leaf in spring (March 20 to May 31).
@@ -104,16 +132,24 @@ export interface LookHover {
   look: LumoLook;
 }
 
+/** One of Claude's mice, or the Aim switch, under the pointer. */
+export interface CursorHover {
+  cursor: ComputerCursor | "aim";
+}
+
 /**
  * The grey text at the right of the wardrobe header: the hovered outfit,
  * otherwise the current choice.
  */
 export function wardrobeHeader(
-  hovered: OutfitSelection | LookHover | null,
+  hovered: OutfitSelection | LookHover | CursorHover | null,
   selection: OutfitSelection,
   date: Date,
 ): string {
-  if (hovered && typeof hovered === "object") return LOOK_LABELS[hovered.look];
+  if (hovered && typeof hovered === "object") {
+    if ("look" in hovered) return LOOK_LABELS[hovered.look];
+    return hovered.cursor === "aim" ? t(AIM_KEY) : COMPUTER_CURSOR_LABELS[hovered.cursor];
+  }
   const season = OUTFIT_LABELS[seasonalOutfit(date)];
   if (hovered) return hovered === "auto" ? WARDROBE_STRINGS.autoHover(season) : OUTFIT_LABELS[hovered];
   return selection === "auto" ? WARDROBE_STRINGS.autoNow(season) : OUTFIT_LABELS[selection];

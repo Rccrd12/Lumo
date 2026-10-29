@@ -11784,6 +11784,42 @@
    "ru": "Затем:",
    "id": "Lalu:",
    "it": "Poi:"
+  },
+  "Direct · the dark arrow": {
+   "zh-Hans": "直接 · 深色箭头",
+   "hi": "डायरेक्ट · गहरा तीर",
+   "es": "Directo · la flecha oscura",
+   "ar": "مباشر · السهم الداكن",
+   "fr": "Direct · la flèche sombre",
+   "bn": "ডাইরেক্ট · গাঢ় তীর",
+   "pt-BR": "Direto · a seta escura",
+   "ru": "Прямой · тёмная стрелка",
+   "id": "Langsung · panah gelap",
+   "it": "Diretto · la freccia scura"
+  },
+  "Lucciola · the butter arrow": {
+   "zh-Hans": "Lucciola · 奶油色箭头",
+   "hi": "Lucciola · मक्खन रंग का तीर",
+   "es": "Lucciola · la flecha color mantequilla",
+   "ar": "Lucciola · السهم بلون الزبدة",
+   "fr": "Lucciola · la flèche couleur beurre",
+   "bn": "Lucciola · মাখন রঙের তীর",
+   "pt-BR": "Lucciola · a seta cor de manteiga",
+   "ru": "Lucciola · стрелка цвета масла",
+   "id": "Lucciola · panah warna mentega",
+   "it": "Lucciola · la freccia color burro"
+  },
+  "Aim · corners close in before a click": {
+   "zh-Hans": "瞄准 · 点击前四角收拢",
+   "hi": "निशाना · क्लिक से पहले कोने सिमटते हैं",
+   "es": "Mira · las esquinas se cierran antes de un clic",
+   "ar": "تصويب · تقترب الزوايا قبل النقر",
+   "fr": "Viseur · les coins se resserrent avant un clic",
+   "bn": "নিশানা · ক্লিকের আগে কোণগুলো কাছে আসে",
+   "pt-BR": "Mira · os cantos se fecham antes de um clique",
+   "ru": "Прицел · углы сходятся перед щелчком",
+   "id": "Bidikan · sudut merapat sebelum klik",
+   "it": "Mirino · gli angoli si stringono prima del clic"
   }
  }
 }

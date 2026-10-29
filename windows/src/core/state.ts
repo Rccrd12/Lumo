@@ -13,7 +13,7 @@ import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
-import { DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
+import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
 import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
@@ -313,6 +313,14 @@ export interface Settings {
    */
   lumoCharacter: string;
   /**
+   * The mouse Claude wears while it uses the computer, picked in the wardrobe:
+   * "direct" (a dark arrow) or "lucciola" (a butter one). Read it through
+   * parseComputerCursor (character/wardrobe.ts).
+   */
+  computerCursor: string;
+  /** Corners close in on where Claude is about to click (the wardrobe's Aim). */
+  computerAim: boolean;
+  /**
    * A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB").
    * Empty means the catalog's colours; read it through core/pill-colors.ts.
    */
@@ -408,6 +416,8 @@ export const DEFAULT_SETTINGS: Settings = {
   lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
   lumoCharacter: DEFAULT_LOOK,
+  computerCursor: DEFAULT_COMPUTER_CURSOR,
+  computerAim: true,
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
