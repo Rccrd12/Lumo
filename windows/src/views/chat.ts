@@ -1005,8 +1005,10 @@ export function buildPrompt(
   /** An open list gets the chat's full height; closing it gives the room back. */
   function panelChanged() {
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
-    if (open === State.chatPanelOpen) return;
+    const hearing = body.classList.contains("hearing");
+    if (open === State.chatPanelOpen && hearing === State.listeningOpen) return;
     State.chatPanelOpen = open;
+    State.listeningOpen = hearing;
     onHeightChange();
   }
   const historyList = h("div", { class: "picker-list" });

@@ -3,7 +3,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_FORGE, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_LISTENING, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -2079,7 +2079,8 @@ export class Island {
   /** What the chat's height follows: its messages, or the most room while a list (or the tool workshop) is open. */
   private get chatCount(): number {
     if (State.chatSlot === "forge") return CHAT_FORGE;
-    return State.chatPanelOpen ? CHAT_PANEL_OPEN : State.chatHistory.length;
+    if (State.chatPanelOpen) return State.listeningOpen ? CHAT_LISTENING : CHAT_PANEL_OPEN;
+    return State.chatHistory.length;
   }
 }
 
