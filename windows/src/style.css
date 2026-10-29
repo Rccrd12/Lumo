@@ -2938,6 +2938,24 @@ input[type="range"]::-webkit-slider-thumb {
   flex: 0 0 auto;
 }
 
+/* The path and, for files and folders, Choose… beside it. */
+.listen-target-row {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.listen-target-row .history-search.listen-input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.listen-target-row .listen-head-btn[hidden],
+.listen-form .listen-input[hidden],
+.listen-form .listen-label[hidden] {
+  display: none;
+}
+
 .listen-chips {
   display: flex;
   flex-wrap: wrap;

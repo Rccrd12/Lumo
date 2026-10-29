@@ -1,7 +1,8 @@
 // The island's own tools for the chat's agents: a timer (`set_timer`), and
 // listening (`listen`, `stop_listening`, `list_listening`). `listen` takes a
-// source and a target, so more sources can come; for now the only source is a
-// pull request on GitHub. `listen_pull_request`, its name before, still works.
+// source and a target: a pull request on GitHub, or on this PC a file or a
+// folder, a program or a port, a web page (listen_local.rs).
+// `listen_pull_request`, its name before, still works.
 //
 // They do what the `[[timer …]]`, `[[listen …]]` and `[[unlisten …]]` lines
 // do (chat.rs timer_note, listen_tool_note), as real tools: the model gets told at
@@ -69,25 +70,35 @@ time, then say in a few words that it is set.",
             "source": {
                 "type": "string",
                 "enum": crate::listen::SOURCES,
-                "description": "Where to listen. github.pr: a pull request on GitHub.",
+                "description": "Where to listen. github.pr: a pull request on GitHub. fs: a file or a folder on this PC. \
+process: a program running on this PC, or a port on it. web: a web page.",
             },
             "target": {
                 "type": "string",
-                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link.",
+                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link; \
+for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process, the executable's name (node.exe) or, \
+with port_open or port_closed, the port number; for web, the link.",
             },
         });
         let mut watch = target.clone();
         watch["event"] = json!({
             "type": "string",
-            "enum": crate::listen::UNTILS,
-            "description": "checks: its checks finished, passed or failed. green: they passed. approved. ready: checks \
-passed and it can be merged. merged. closed.",
+            "enum": events(),
+            "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
+passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
+folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
+(the page shows text).",
         });
         watch["mode"] = json!({
             "type": "string",
             "enum": crate::listen::MODES,
-            "description": "once (the default): it ends when the event happens. every: for checks or green only, it \
-fires again for each new commit pushed, until the pull request is merged or closed.",
+            "description": "once (the default): it ends when the event happens. every: it fires again each time; on \
+github.pr only for checks or green, once for each new commit, until the pull request is merged or closed.",
+        });
+        watch["text"] = json!({
+            "type": "string",
+            "maxLength": 200,
+            "description": "web with contains only: the text to wait for on the page.",
         });
         watch["then"] = json!({
             "type": "string",
@@ -107,6 +118,67 @@ yourself, then say in a few words that Lumo is listening and end your answer.",
         all.push(tool(LIST, "Lists what Lumo is listening to, in every chat.", json!({}), &[]));
     }
     all
+}
+
+/// Every event of every source, once each.
+fn events() -> Vec<&'static str> {
+    let mut all: Vec<&str> = crate::listen::UNTILS.to_vec();
+    for source in &crate::listen::SOURCES[1..] {
+        for until in crate::listen_local::untils(source) {
+            if !all.contains(until) {
+                all.push(until);
+            }
+        }
+    }
+    all
+}
+
+/// The source a call names, as listen.rs calls it (GitHub when it names none).
+fn source_of(input: &Value) -> Result<&'static str, String> {
+    match input["source"].as_str().unwrap_or("").trim().to_ascii_lowercase().as_str() {
+        "" | "github" | "github.pr" | "pr" => Ok(crate::listen::GITHUB),
+        "fs" | "file" | "files" | "folder" => Ok("fs"),
+        "process" | "program" | "port" | "app" => Ok("process"),
+        "web" | "page" | "url" | "site" => Ok("web"),
+        _ => Err(format!("source must be one of {}.", crate::listen::SOURCES.join(", "))),
+    }
+}
+
+/// `[[listen web "https://…" every changed: then]]` and what the model is told, for a watch on this PC.
+fn local_line(source: &str, input: &Value) -> Result<(String, String), String> {
+    let event = input["event"].as_str().unwrap_or("").trim().to_ascii_lowercase();
+    let text = clean(input["text"].as_str().unwrap_or(""), 200).replace('"', "'");
+    let home = crate::platform::home_dir();
+    let target = crate::listen_local::target(source, &event, input["target"].as_str().unwrap_or(""), &text, &home)?;
+    let mode = input["mode"].as_str().unwrap_or("once").trim().to_ascii_lowercase();
+    if !crate::listen::mode_ok(source, &event, if mode.is_empty() { "once" } else { mode.as_str() }) {
+        return Err("mode must be once or every.".into());
+    }
+    let every = if mode == "every" { "every " } else { "" };
+    let words = if event == "contains" { format!(" \"{text}\"") } else { String::new() };
+    let then = clean(input["then"].as_str().unwrap_or(""), MAX_TASK);
+    let head = format!("[[listen {source} \"{target}\" {every}{event}{words}");
+    let line = if then.is_empty() { format!("{head}]]") } else { format!("{head}: {then}]]") };
+    let after = if then.is_empty() {
+        "Lumo will tell the user."
+    } else {
+        "Lumo will tell the user and send you a message in this chat starting with Lumo: that says what happened; do \
+what you meant to then."
+    };
+    let after = if every.is_empty() { after.to_string() } else { format!("{after} It does so again each time.") };
+    let what = crate::listen_local::label(source, &event, &target);
+    Ok((line, format!("Lumo listens to {what} as soon as your answer ends. {after} Say in a few words that Lumo is listening, and end your answer.")))
+}
+
+/// `[[unlisten fs "C:\…"]]`: the target as listen.rs keeps it, whatever the event.
+fn local_unlisten(source: &str, input: &Value) -> Result<(String, String), String> {
+    let given = input["target"].as_str().unwrap_or("");
+    let home = crate::platform::home_dir();
+    let target = ["changed", "port_open", "started"]
+        .iter()
+        .find_map(|until| crate::listen_local::target(source, until, given, "x", &home).ok())
+        .ok_or_else(|| "Give the target as Lumo listens to it (list_listening says).".to_string())?;
+    Ok((format!("[[unlisten {source} \"{target}\"]]"), format!("Lumo stops listening to {target} as soon as your answer ends.")))
 }
 
 /// Text that goes inside `[[…]]`: one line, no brackets, at most `max` characters.
@@ -137,10 +209,6 @@ fn pull_request_of(target: &str) -> Option<(String, u64)> {
 
 /// The pull request a call names: `target` (and `source`), or `repo` and `number` as before.
 fn pull_request(input: &Value) -> Result<(String, u64), String> {
-    let source = input["source"].as_str().unwrap_or("github.pr").trim().to_ascii_lowercase();
-    if !matches!(source.as_str(), "github.pr" | "github" | "") {
-        return Err(format!("source must be one of {}.", crate::listen::SOURCES.join(", ")));
-    }
     if let Some(target) = input["target"].as_str() {
         return pull_request_of(target).ok_or_else(|| "Give the target as owner/repository#number or the pull request's link.".into());
     }
@@ -189,13 +257,17 @@ pub fn line(tool: &str, input: &Value) -> Result<(String, String), String> {
             Ok((line, "The timer starts on the island as soon as your answer ends. Say in a few words that it is set.".into()))
         }
         LISTEN | LISTEN_PULL_REQUEST => {
+            let source = source_of(input)?;
+            if source != crate::listen::GITHUB {
+                return local_line(source, input);
+            }
             let (repo, number) = pull_request(input)?;
             let event = input["event"].as_str().unwrap_or("").trim().to_ascii_lowercase();
             if !crate::listen::UNTILS.contains(&event.as_str()) {
                 return Err(format!("event must be one of {}.", crate::listen::UNTILS.join(", ")));
             }
             let mode = input["mode"].as_str().unwrap_or("once").trim().to_ascii_lowercase();
-            if !crate::listen::mode_ok(&event, if mode.is_empty() { "once" } else { mode.as_str() }) {
+            if !crate::listen::mode_ok(source, &event, if mode.is_empty() { "once" } else { mode.as_str() }) {
                 return Err(format!("mode must be once, or every with {}.", crate::listen::EVERY_UNTILS.join(" or ")));
             }
             let every = if mode == "every" { "every " } else { "" };
@@ -215,6 +287,10 @@ happened; do what you meant to only if it is what you waited for."
             Ok((line, format!("Lumo listens to {repo}#{number} as soon as your answer ends. {after} Say in a few words that Lumo is listening, and end your answer.")))
         }
         UNLISTEN => {
+            let source = source_of(input)?;
+            if source != crate::listen::GITHUB {
+                return local_unlisten(source, input);
+            }
             let (repo, number) = pull_request(input)?;
             Ok((format!("[[unlisten {repo}#{number}]]"), format!("Lumo stops listening to {repo}#{number} as soon as your answer ends.")))
         }
@@ -277,6 +353,26 @@ mod tests {
         );
         assert_eq!(ok(UNLISTEN, json!({ "repo": "octocat/hello", "number": 42 })), "[[unlisten octocat/hello#42]]");
         assert_eq!(ok(UNLISTEN, json!({ "target": "octocat/hello/pull/42" })), "[[unlisten octocat/hello#42]]");
+    }
+
+    #[test]
+    fn a_watch_on_this_pc_becomes_its_line() {
+        let ok = |tool: &str, input: Value| line(tool, &input).unwrap().0;
+        assert_eq!(
+            ok(LISTEN, json!({ "source": "fs", "target": "C:\\Users\\me\\Downloads\\", "event": "download", "mode": "every", "then": "sort it" })),
+            "[[listen fs \"C:\\Users\\me\\Downloads\" every download: sort it]]"
+        );
+        assert_eq!(ok(LISTEN, json!({ "source": "program", "target": "Code", "event": "exited" })), "[[listen process \"code.exe\" exited]]");
+        assert_eq!(ok(LISTEN, json!({ "source": "process", "target": "localhost:3000", "event": "port_open" })), "[[listen process \"3000\" port_open]]");
+        assert_eq!(
+            ok(LISTEN, json!({ "source": "web", "target": "https://example.com/p", "event": "contains", "text": "In \"stock\"" })),
+            "[[listen web \"https://example.com/p\" contains \"In 'stock'\"]]"
+        );
+        assert_eq!(ok(UNLISTEN, json!({ "source": "web", "target": "https://example.com/p" })), "[[unlisten web \"https://example.com/p\"]]");
+        assert_eq!(ok(UNLISTEN, json!({ "source": "process", "target": "3000" })), "[[unlisten process \"3000\"]]");
+        assert!(line(LISTEN, &json!({ "source": "fs", "target": "Downloads", "event": "created" })).is_err());
+        assert!(line(LISTEN, &json!({ "source": "web", "target": "https://example.com", "event": "contains" })).is_err());
+        assert!(line(LISTEN, &json!({ "source": "fs", "target": "C:\\x", "event": "merged" })).is_err());
     }
 
     #[test]

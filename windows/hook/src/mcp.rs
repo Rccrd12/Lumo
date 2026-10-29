@@ -68,7 +68,8 @@ computer, each doing the job its description says. Use one when it fits what the
 each call on Lumo's island.";
 
 const ISLAND_INSTRUCTIONS: &str = "Lumo's island tools: set_timer starts a timer the user sees on the island; \
-listen has Lumo listen for an event, such as a pull request on GitHub being ready, and tell the user (and you, \
+listen has Lumo listen for an event, such as a pull request on GitHub being ready, a download finishing, a \
+program exiting or a web page changing, and tell the user (and you, \
 with something to do then) once it happens, instead of you waiting for it; stop_listening ends that and \
 list_listening says what Lumo listens to.";
 
@@ -329,25 +330,39 @@ pub const ISLAND_NAMES: &[&str] = &["set_timer", "listen", "stop_listening", "li
 pub fn island_tools() -> Vec<Value> {
     let target = || {
         json!({
-            "source": { "type": "string", "enum": ["github.pr"], "description": "Where to listen. github.pr: a pull request on GitHub." },
+            "source": {
+                "type": "string",
+                "enum": ["github.pr", "fs", "process", "web"],
+                "description": "Where to listen. github.pr: a pull request on GitHub. fs: a file or a folder on this PC. \
+process: a program running on this PC, or a port on it. web: a web page.",
+            },
             "target": {
                 "type": "string",
-                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link.",
+                "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link; \
+for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process, the executable's name (node.exe) or, \
+with port_open or port_closed, the port number; for web, the link.",
             },
         })
     };
     let mut watch = target();
     watch["event"] = json!({
         "type": "string",
-        "enum": ["checks", "green", "approved", "ready", "merged", "closed"],
-        "description": "checks: its checks finished, passed or failed. green: they passed. approved. ready: checks \
-passed and it can be merged. merged. closed.",
+        "enum": ["checks", "green", "approved", "ready", "merged", "closed", "created", "changed", "deleted", "download", "started", "exited", "port_open", "port_closed", "up", "down", "contains"],
+        "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
+passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
+folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
+(the page shows text).",
     });
     watch["mode"] = json!({
         "type": "string",
         "enum": ["once", "every"],
-        "description": "once (the default): it ends when the event happens. every: for checks or green only, it \
-fires again for each new commit pushed, until the pull request is merged or closed.",
+        "description": "once (the default): it ends when the event happens. every: it fires again each time; on \
+github.pr only for checks or green, once for each new commit, until the pull request is merged or closed.",
+    });
+    watch["text"] = json!({
+        "type": "string",
+        "maxLength": 200,
+        "description": "web with contains only: the text to wait for on the page.",
     });
     watch["then"] = json!({
         "type": "string",

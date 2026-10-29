@@ -12,7 +12,7 @@ import {
   type MediaActivity,
 } from "../core/compact";
 import { gitHubRunning, readPulse } from "../core/github";
-import { LISTEN_COLOR, listeningLine } from "../core/listen";
+import { LISTEN_COLOR, activeWatches, listeningLine, onGitHub, watchColor } from "../core/listen";
 import { byEffort } from "../core/energy";
 import { Bridge, onEvent, type MailMessage, type ReminderDue } from "../core/bridge";
 import { activeModel, providerDef } from "../core/providers";
@@ -108,7 +108,7 @@ function agentInputs(): AgentActivityInput[] {
 
 /**
  * What the services are doing: GitHub's CI running on a PR or a default
- * branch, and the pull requests the chat listens to (core/listen.ts).
+ * branch, and what the chat listens to (core/listen.ts).
  */
 function serviceLines(): CompactLine[] {
   const gitHub = State.tasks.find((x) => x.id === "integration_github");
@@ -116,7 +116,10 @@ function serviceLines(): CompactLine[] {
   const running = gitHub && info ? gitHubRunning(readPulse(info.data)) : null;
   const lines: CompactLine[] = running ? [{ text: `${gitHub!.name} · ${running}`, color: gitHub!.color }] : [];
   const listening = listeningLine(State.listening);
-  if (listening) lines.push({ text: `GitHub · ${listening}`, color: gitHub?.color ?? LISTEN_COLOR });
+  // On GitHub only: GitHub's line; on this PC too, Lumo's, in the one source's colour.
+  const on = activeWatches(State.listening);
+  if (listening && on.every(onGitHub)) lines.push({ text: `GitHub · ${listening}`, color: gitHub?.color ?? LISTEN_COLOR });
+  else if (listening) lines.push({ text: `Lumo · ${listening}`, color: on.length === 1 ? watchColor(on[0]) : LISTEN_COLOR });
   return lines;
 }
 

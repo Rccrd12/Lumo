@@ -101,7 +101,7 @@ import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_COLOR, LISTEN_STRINGS, activeWatches, listenMessage, takeListens, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_STRINGS, activeWatches, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
@@ -2650,12 +2650,19 @@ export function buildPrompt(
       // A timer the answer asked for starts now; its line is not shown.
       const timed = takeTimers(reply.text);
       for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
-      // What it asked Lumo to listen for on GitHub, and to stop listening to.
+      // What it asked Lumo to listen for, on GitHub or this PC, and to stop listening to.
       const answered = takeListens(timed.text);
-      for (const stop of answered.stops) void Bridge.listenCancel(stop.repo, stop.number);
-      const added = await Promise.all(answered.listens.map((ask) => Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId, ask.mode)));
+      for (const stop of answered.stops) {
+        if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
+        else void Bridge.listenCancelLocal(stop.source, stop.target);
+      }
+      const addOne = (ask: ListenAsk) => ask.source === "github.pr"
+        ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId, ask.mode)
+        : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, run.chatId, ask.mode);
+      const added = await Promise.all(answered.listens.map(addOne));
       // A line Lumo could not read or start is said, never just dropped.
-      const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map((a) => `${a.repo}#${a.number} ${a.until}`)];
+      const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
+      const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
       const content = unheard.length
         ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
         : answered.text;
@@ -2712,7 +2719,7 @@ export function buildPrompt(
 
   // ── Listening to GitHub ───────────────────────────────────────────────────
 
-  /** GitHub events with something for Claude to do, waiting for the chat to be free. */
+  /** Events with something for Claude to do, waiting for the chat to be free. */
   const heard: ListenFired[] = [];
 
   /**
@@ -2739,7 +2746,7 @@ export function buildPrompt(
   void onEvent<ListenFired>("listen-fired", (fired) => {
     if (!fired) return;
     Sound.play(fired.met ? "finish" : "error");
-    compactNotice(`GitHub · ${fired.summary}`, LISTEN_COLOR, 10_000);
+    compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
     // What it heard joins the panel's history.
     if (body.classList.contains("hearing")) listening.opened();
     if (!fired.watch.task) return;
