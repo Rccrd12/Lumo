@@ -245,7 +245,7 @@ export class Island {
       State.notify();
     });
     State.subscribe(() => {
-      this.fsm.held = State.liveActive;
+      this.fsm.held = State.liveActive || State.computerActive;
       this.fsm.holdChanged();
       this.dirty = true;
       this.ensureRunning();
@@ -262,6 +262,11 @@ export class Island {
     this.fsm.pinned = State.isPinned;
     if (State.pendingApproval) {
       presentApproval(this);
+      return;
+    }
+    // Claude is using the computer: back to Lumo's ring, out of its way.
+    if (fromChat && State.computerActive) {
+      this.collapse();
       return;
     }
     // The chat asked: back to the chat, where the answer is still coming.
@@ -683,6 +688,33 @@ export class Island {
 
   reveal() {
     this.fsm.reveal();
+  }
+
+  /** The chat closed the island for computer use: it reopens on the chat afterwards. */
+  private foldedForComputer = false;
+
+  /**
+   * Claude starts using the computer (computer.rs): the island closes to its
+   * compact form, Lumo's ring, and stays on screen until Claude is done; a card
+   * waiting for an answer is left as it is. Afterwards the chat it closed
+   * comes back, with Claude's answer.
+   */
+  onComputer(on: boolean) {
+    if (State.computerActive === on) return;
+    State.computerActive = on;
+    if (on) {
+      this.foldedForComputer = false;
+      if (!State.pendingApproval && State.mode === "expanded") {
+        this.foldedForComputer = State.view === "prompt";
+        this.collapse();
+      } else if (State.mode === "hidden" && !State.paused) {
+        this.reveal();
+      }
+    } else if (this.foldedForComputer) {
+      this.foldedForComputer = false;
+      if (this.fsm.state === "petit" && !State.pendingApproval) this.setView("prompt");
+    }
+    State.notify();
   }
 
   // ── The right-click menu ────────────────────────────────────────────────────
@@ -1591,9 +1623,12 @@ export class Island {
     // never opens it. Only while they are dragged or resized off the open
     // island do they count as it.
     const hit = this.hitRect();
-    const inIsland = (overPanel && State.mode === "expanded") || (
+    // While Claude uses the computer the mouse is Claude's (computer.rs): passing
+    // over the island never opens it. A card hands it back to the user.
+    const claudes = State.computerActive && !State.pendingApproval;
+    const inIsland = !claudes && ((overPanel && State.mode === "expanded") || (
       x >= hit.x - HIT_MARGIN && x <= hit.x + hit.w + HIT_MARGIN &&
-      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN);
+      y >= hit.y - HIT_MARGIN && y <= hit.y + hit.h + HIT_MARGIN));
 
     // Mid-resize the cursor rides the edge, a little in or out: not a leave.
     if (!this.resizing && !this.moving) {
@@ -1619,7 +1654,7 @@ export class Island {
     }
 
     // Bot hover → love
-    const overBot = State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
+    const overBot = !claudes && State.mode === "expanded" && State.stateOverride == null && this.isBotHit(x, y);
     if (overBot && !this.botHovering) this.botHoverIn(x, y);
     if (!overBot && this.botHovering) this.cancelBotHover();
     this.botHovering = overBot;

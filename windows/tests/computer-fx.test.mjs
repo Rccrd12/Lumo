@@ -43,9 +43,8 @@ test("the typing bubble shows the end of the text, on one line", () => {
   assert.ok(long.startsWith("…"));
 });
 
-test("the Aim corners start wide and close in on the spot by the end of the glide", () => {
+test("the Aim corners start wide and close in on the spot before the mouse sets off", () => {
   assert.equal(aimSide(0, 600), 46);
-  assert.equal(aimSide(100, 600), 46, "wide for the first part of the way");
   assert.equal(aimSide(600, 600), 24);
   assert.equal(aimSide(9999, 600), 24, "never tighter than the spot");
   assert.equal(aimSide(0, 0), 24, "no glide: already there");

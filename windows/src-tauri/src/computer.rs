@@ -181,6 +181,8 @@ fn engage(app: &AppHandle) {
     if let Some(rect) = rect {
         overlay_show(app, rect);
     }
+    // The island closes to its compact form, Lumo's ring, while Claude works.
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-engaged", true);
     // A card already waiting on the island keeps the mouse the user's until it is answered.
     if CARDS.load(Ordering::SeqCst) == 0 {
         imp::take_mouse(true);
@@ -196,6 +198,7 @@ fn disengage<R: Runtime>(app: &AppHandle<R>) {
     }
     imp::take_mouse(false);
     fx(app, json!({ "kind": "hide" }));
+    let _ = app.emit_to(crate::island::WINDOW_LABEL, "computer-engaged", false);
     let app = app.clone();
     std::thread::spawn(move || {
         // The glow fades before the window goes.
@@ -287,8 +290,13 @@ fn overlay_show(app: &AppHandle, rect: (i32, i32, i32, i32)) {
     overlay_place(&win, rect);
     let _ = win.show();
     let _ = win.set_ignore_cursor_events(true);
-    let aim = app.state::<crate::Shared>().settings.lock().unwrap().computer_aim;
-    fx(app, json!({ "kind": "show", "aim": aim }));
+    let shared = app.state::<crate::Shared>();
+    let (aim, cursor) = {
+        let settings = shared.settings.lock().unwrap();
+        (settings.computer_aim, CursorLook::parse(&settings.computer_cursor))
+    };
+    let look = if cursor == CursorLook::Lucciola { "lucciola" } else { "direct" };
+    fx(app, json!({ "kind": "show", "aim": aim, "cursor": look }));
 }
 
 fn overlay_place<R: Runtime>(win: &WebviewWindow<R>, rect: (i32, i32, i32, i32)) {
@@ -589,6 +597,32 @@ pub fn arrow_pixels(size: u32, look: CursorLook) -> (Vec<u8>, (u32, u32)) {
     (out_px, hot)
 }
 
+/// How long a single click waits (ms) so Windows doesn't merge it with the
+/// one before into a double click: that one came `since_ms` ago, `moved`
+/// pixels away, and the system's double-click time is `limit_ms`.
+pub fn double_click_wait(since_ms: u64, moved: (i32, i32), limit_ms: u64) -> u64 {
+    if moved.0.abs() <= 4 && moved.1.abs() <= 4 && since_ms < limit_ms {
+        limit_ms - since_ms + 30
+    } else {
+        0
+    }
+}
+
+/// What Claude reads after a click: where it landed, in the screenshot's
+/// pixels, so a click that went somewhere else than meant shows at once.
+fn click_text(asked: Option<(i64, i64)>, landed: (i64, i64)) -> String {
+    let (x, y) = landed;
+    match asked {
+        None => format!(
+            "Clicked where the mouse already was, [{x}, {y}]: no coordinate was given. To click somewhere else, pass coordinate: [x, y]. Take a screenshot to see what changed."
+        ),
+        Some((ax, ay)) if (ax - x).abs() > 3 || (ay - y).abs() > 3 => format!(
+            "Clicked at [{x}, {y}], not at [{ax}, {ay}] as asked: the mouse did not get there. Take a screenshot before trying again."
+        ),
+        Some(_) => format!("Clicked at [{x}, {y}]. Take a screenshot to see what changed."),
+    }
+}
+
 /// A key as the keyboard has it: a Windows virtual-key code, or a character
 /// whose key depends on the layout.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -730,14 +764,33 @@ impl Action {
     }
 }
 
+/// A point of the screenshot, `[x, y]`. Models don't always write it that way:
+/// `{"x": …, "y": …}`, `"[x, y]"` as a string, or (for `coordinate`) `x` and
+/// `y` side by side are read too, rather than clicking where the mouse already
+/// is as if no point had been given.
 fn point(input: &Value, key: &str) -> Result<Option<(i64, i64)>, String> {
+    let wrong = || format!("{key} must be two numbers, [x, y].");
+    let pair = |x: Option<f64>, y: Option<f64>| match (x, y) {
+        (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Ok(Some((x.round() as i64, y.round() as i64))),
+        _ => Err(wrong()),
+    };
+    let number = |v: Option<&Value>| v.and_then(|v| v.as_f64().or_else(|| v.as_str().and_then(|s| s.trim().parse().ok())));
     match input.get(key) {
+        None | Some(Value::Null) if key == "coordinate" && (input.get("x").is_some() || input.get("y").is_some()) => {
+            pair(number(input.get("x")), number(input.get("y")))
+        }
         None | Some(Value::Null) => Ok(None),
-        Some(Value::Array(a)) if a.len() == 2 => match (a[0].as_f64(), a[1].as_f64()) {
-            (Some(x), Some(y)) if x.is_finite() && y.is_finite() => Ok(Some((x.round() as i64, y.round() as i64))),
-            _ => Err(format!("{key} must be two numbers, [x, y].")),
-        },
-        Some(_) => Err(format!("{key} must be two numbers, [x, y].")),
+        Some(Value::Array(a)) if a.len() == 2 => pair(number(a.first()), number(a.get(1))),
+        Some(Value::Object(o)) => pair(number(o.get("x")), number(o.get("y"))),
+        Some(Value::String(text)) => {
+            let parts: Vec<f64> = text
+                .split(|c: char| !(c.is_ascii_digit() || c == '.' || c == '-'))
+                .filter(|p| !p.is_empty())
+                .filter_map(|p| p.parse().ok())
+                .collect();
+            if parts.len() == 2 { pair(Some(parts[0]), Some(parts[1])) } else { Err(wrong()) }
+        }
+        Some(_) => Err(wrong()),
     }
 }
 
@@ -907,7 +960,18 @@ fn mouse_rel(view: &View, fallback: (i32, i32)) -> [i32; 2] {
 
 /// The mouse glides to `to`, and the overlay's halo with it; `aim`: it goes
 /// there to click (the overlay may close corners in on the spot).
+/// How long the Aim corners close in on a spot before the mouse sets off for it (ms).
+pub const AIM_LEAD_MS: u64 = 320;
+
 fn glide_to(app: &AppHandle, view: &View, to: (i32, i32), aim: bool) -> Result<(), String> {
+    // Aim (wardrobe): the corners show where Claude will click first, then the mouse goes.
+    if aim && app.state::<crate::Shared>().settings.lock().unwrap().computer_aim {
+        fx(app, json!({ "kind": "aim", "at": rel(view, to), "ms": AIM_LEAD_MS }));
+        let until = std::time::Instant::now() + Duration::from_millis(AIM_LEAD_MS);
+        while std::time::Instant::now() < until && !stopped() {
+            std::thread::sleep(Duration::from_millis(20));
+        }
+    }
     let from = imp::cursor().unwrap_or(to);
     let ms = glide_ms(from, to);
     if ms > 0 {
@@ -960,7 +1024,7 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
         Action::Click { at, button, count, hold } => {
             let view = view()?;
             let target = at.map(|(x, y)| view.to_screen(x, y)).transpose()?;
-            hands_off(app, || {
+            let here = hands_off(app, || {
                 if let Some(t) = target {
                     glide_to(app, &view, t, true)?;
                 }
@@ -974,9 +1038,11 @@ fn perform(app: &AppHandle, action: Action) -> Result<Value, String> {
                     Button::Middle => "middle",
                 };
                 fx(app, json!({ "kind": "click", "at": rel(&view, here), "button": name, "count": count }));
-                imp::click(button, count, &hold)
+                imp::click(button, count, &hold)?;
+                Ok(here)
             })?;
-            Ok(json!({ "text": "Done. Take a screenshot to see what changed." }))
+            let (x, y) = view.point_in_shot(here.0, here.1);
+            Ok(json!({ "text": click_text(at, (x, y)) }))
         }
         Action::Move { at } => {
             let view = view()?;
@@ -1236,9 +1302,24 @@ mod imp {
         }
     }
 
+    /// When, where and with which button the last click was.
+    type LastClick = (std::time::Instant, (i32, i32), Button);
+
     pub fn click(button: Button, count: u32, hold: &[Key]) -> Result<(), String> {
+        // A click on the spot of the one just before, within the double-click
+        // time, would be read as a double click: it waits that time out.
+        static LAST: Mutex<Option<LastClick>> = Mutex::new(None);
+        let here = cursor().unwrap_or((0, 0));
+        let last = *LAST.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some((when, at, _)) = last.filter(|l| l.2 == button) {
+            let limit = u64::from(unsafe { ::windows::Win32::UI::Input::KeyboardAndMouse::GetDoubleClickTime() });
+            let wait = super::double_click_wait(when.elapsed().as_millis() as u64, (here.0 - at.0, here.1 - at.1), limit);
+            if wait > 0 {
+                std::thread::sleep(Duration::from_millis(wait));
+            }
+        }
         let (down, up) = flags(button);
-        holding(hold, || {
+        let out = holding(hold, || {
             for i in 0..count {
                 if i > 0 {
                     std::thread::sleep(Duration::from_millis(40));
@@ -1248,7 +1329,9 @@ mod imp {
                 }
             }
             Ok(())
-        })?;
+        });
+        *LAST.lock().unwrap_or_else(|e| e.into_inner()) = Some((std::time::Instant::now(), here, button));
+        out?;
         note_target();
         Ok(())
     }
@@ -1580,7 +1663,8 @@ mod tests {
             Action::Click { at: Some((10, 20)), button: Button::Left, count: 2, hold: vec![Key::Vk(VK_SHIFT)] }
         );
         assert_eq!(parse("left_click", &json!({})).unwrap(), Action::Click { at: None, button: Button::Left, count: 1, hold: vec![] });
-        assert!(parse("left_click", &json!({ "coordinate": "10,20" })).is_err());
+        // A point written as text is read too (a_point_is_read_however_the_model_writes_it); one number is not a point.
+        assert!(parse("left_click", &json!({ "coordinate": "10" })).is_err());
         assert!(parse("mouse_move", &json!({})).is_err());
         assert_eq!(
             parse("scroll", &json!({ "scroll_direction": "down", "scroll_amount": 5 })).unwrap(),
@@ -1612,6 +1696,40 @@ mod tests {
         let short = glide_ms((0, 0), (100, 0));
         let long = glide_ms((0, 0), (2000, 1000));
         assert!(short >= 220 && short < long && long <= 850, "{short} {long}");
+    }
+
+    #[test]
+    fn a_point_is_read_however_the_model_writes_it() {
+        let at = |v: Value| parse("left_click", &v).map(|a| match a {
+            Action::Click { at, .. } => at,
+            _ => unreachable!(),
+        });
+        assert_eq!(at(json!({ "coordinate": [10, 20] })), Ok(Some((10, 20))));
+        assert_eq!(at(json!({ "x": 562, "y": 790 })), Ok(Some((562, 790))), "x and y side by side");
+        assert_eq!(at(json!({ "x": "562", "y": "790.4" })), Ok(Some((562, 790))));
+        assert_eq!(at(json!({ "coordinate": { "x": 5, "y": 6 } })), Ok(Some((5, 6))));
+        assert_eq!(at(json!({ "coordinate": "[562, 790]" })), Ok(Some((562, 790))));
+        assert_eq!(at(json!({ "coordinate": "562,790" })), Ok(Some((562, 790))));
+        assert_eq!(at(json!({})), Ok(None), "no point: where the mouse is");
+        assert!(at(json!({ "x": 562 })).is_err(), "half a point is not where the mouse is");
+        assert!(at(json!({ "coordinate": "somewhere" })).is_err());
+        assert!(at(json!({ "coordinate": [1, 2, 3] })).is_err());
+        assert!(matches!(parse("mouse_move", &json!({ "x": 1, "y": 2 })), Ok(Action::Move { at: (1, 2) })));
+    }
+
+    #[test]
+    fn a_click_on_the_same_spot_soon_after_another_is_not_a_double_click() {
+        assert_eq!(double_click_wait(100, (0, 0), 500), 430);
+        assert_eq!(double_click_wait(100, (3, -2), 500), 430, "a few pixels away is the same spot to Windows");
+        assert_eq!(double_click_wait(600, (0, 0), 500), 0, "long enough after");
+        assert_eq!(double_click_wait(100, (40, 0), 500), 0, "somewhere else");
+    }
+
+    #[test]
+    fn a_click_says_where_it_landed() {
+        assert!(click_text(None, (562, 790)).contains("no coordinate was given"));
+        assert!(click_text(Some((562, 790)), (563, 789)).starts_with("Clicked at [563, 789]."));
+        assert!(click_text(Some((562, 790)), (100, 100)).contains("not at [562, 790]"));
     }
 
     #[test]

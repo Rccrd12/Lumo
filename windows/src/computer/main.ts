@@ -33,11 +33,12 @@ let glide: number | null = null;
 let bubble: HTMLElement | null = null;
 let bubbleText = "";
 let bubbleTimer: number | null = null;
-/** The wardrobe's Aim: corners close in before a click. */
-let aimOn = true;
 let aimEl: HTMLElement | null = null;
 let aimTimer: number | null = null;
+let aimFrame: number | null = null;
 let clicks = 0;
+/** The wardrobe's Lucciola: the light sits in the arrow's tail and leaves a trail. */
+let lucciola = false;
 
 const css = (p: [number, number]) => toCss(p, window.devicePixelRatio || 1);
 
@@ -73,6 +74,8 @@ function land() {
 function aimAt(p: { x: number; y: number } | null, side = 0) {
   if (aimTimer != null) window.clearTimeout(aimTimer);
   aimTimer = null;
+  if (aimFrame != null) cancelAnimationFrame(aimFrame);
+  aimFrame = null;
   if (!p) {
     const el = aimEl;
     aimEl = null;
@@ -93,6 +96,17 @@ function aimAt(p: { x: number; y: number } | null, side = 0) {
   aimEl.style.margin = `${-side / 2}px 0 0 ${-side / 2}px`;
 }
 
+/** The Aim corners close in on `p` over `ms`, before the mouse sets off for it. */
+function aimIn(p: { x: number; y: number }, ms: number) {
+  const start = performance.now();
+  const step = (now: number) => {
+    const elapsed = now - start;
+    aimAt(p, aimSide(elapsed, ms));
+    if (elapsed < ms) aimFrame = requestAnimationFrame(step);
+  };
+  step(start);
+}
+
 function glideTo(
   from: { x: number; y: number },
   to: { x: number; y: number },
@@ -101,19 +115,29 @@ function glideTo(
   aim = false,
 ) {
   if (glide != null) cancelAnimationFrame(glide);
-  if (aimEl) aimAt(null);
+  // The corners already on the spot (an "aim" just before) wait for the mouse there.
+  if (aimEl && !aim) aimAt(null);
   const start = performance.now();
+  let mote = start;
   const step = (now: number) => {
     const elapsed = now - start;
-    setHalo(along(from, to, elapsed, ms), elapsed < ms);
-    if (aim) aimAt(to, aimSide(elapsed, ms));
+    const p = along(from, to, elapsed, ms);
+    setHalo(p, elapsed < ms);
+    // Lucciola: a short firefly trail behind the tail as it glides.
+    if (lucciola && elapsed < ms && now - mote >= 45) {
+      mote = now;
+      const dot = document.createElement("div");
+      dot.className = "mote";
+      place(dot, p);
+      flash(dot, 500);
+    }
     if (elapsed < ms) {
       glide = requestAnimationFrame(step);
     } else {
       glide = null;
       land();
       // The corners stay on the spot for the click, then go.
-      if (aim) aimTimer = window.setTimeout(() => aimAt(null), 450);
+      if (aim && aimEl) aimTimer = window.setTimeout(() => aimAt(null), 450);
       onEnd?.();
     }
   };
@@ -259,8 +283,8 @@ function handle(fx: Fx) {
   switch (fx.kind) {
     case "show":
       root.style.display = "";
-      root.className = "on";
-      aimOn = fx.aim !== false;
+      lucciola = fx.cursor === "lucciola";
+      root.className = lucciola ? "on lucciola" : "on";
       break;
     case "resume":
       root.classList.remove("paused");
@@ -290,8 +314,12 @@ function handle(fx: Fx) {
       void glow.offsetWidth;
       glow.classList.add("flash");
       break;
+    case "aim":
+      // Rust sends it only with Aim on in the wardrobe.
+      aimIn(css(fx.at), fx.ms);
+      break;
     case "move":
-      glideTo(at ?? css(fx.from), css(fx.to), fx.ms, undefined, aimOn && fx.aim === true);
+      glideTo(at ?? css(fx.from), css(fx.to), fx.ms, undefined, fx.aim === true);
       break;
     case "drag": {
       const from = css(fx.from);
@@ -306,6 +334,8 @@ function handle(fx: Fx) {
       const p = css(fx.at);
       setHalo(p, false);
       rings(p, fx.button, fx.count);
+      // Already on the spot, no glide: the corners go once it is clicked.
+      if (aimEl && glide == null && aimTimer == null) aimTimer = window.setTimeout(() => aimAt(null), 450);
       break;
     }
     case "scroll":
