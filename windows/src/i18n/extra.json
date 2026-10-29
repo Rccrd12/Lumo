@@ -10981,30 +10981,6 @@
    "id": "Daftar skill Anda",
    "it": "Elenca le tue skill"
   },
-  "Listening now": {
-   "zh-Hans": "正在监听",
-   "hi": "अभी सुन रहा है",
-   "es": "Escuchando ahora",
-   "ar": "يستمع الآن",
-   "fr": "En écoute",
-   "bn": "এখন শুনছে",
-   "pt-BR": "Ouvindo agora",
-   "ru": "Слушает сейчас",
-   "id": "Sedang mendengarkan",
-   "it": "In ascolto"
-  },
-  "What happened": {
-   "zh-Hans": "发生了什么",
-   "hi": "क्या हुआ",
-   "es": "Qué pasó",
-   "ar": "ما حدث",
-   "fr": "Ce qui s'est passé",
-   "bn": "কী ঘটেছে",
-   "pt-BR": "O que aconteceu",
-   "ru": "Что произошло",
-   "id": "Yang terjadi",
-   "it": "Cosa è successo"
-  },
   "Listen for something": {
    "zh-Hans": "新建监听",
    "hi": "कुछ सुनें",
@@ -11112,18 +11088,6 @@
    "ru": "Срабатываний: {count}",
    "id": "Sejauh ini: {count} kali",
    "it": "Volte finora: {count}"
-  },
-  "Then: {task}": {
-   "zh-Hans": "然后：{task}",
-   "hi": "फिर: {task}",
-   "es": "Después: {task}",
-   "ar": "ثم: {task}",
-   "fr": "Ensuite : {task}",
-   "bn": "তারপর: {task}",
-   "pt-BR": "Depois: {task}",
-   "ru": "Затем: {task}",
-   "id": "Lalu: {task}",
-   "it": "Poi: {task}"
   },
   "Only tell me": {
    "zh-Hans": "只通知我",
@@ -11412,6 +11376,66 @@
    "ru": "Его закроют",
    "id": "Ditutup",
    "it": "Viene chiusa"
+  },
+  "Active": {
+   "zh-Hans": "活动中",
+   "hi": "सक्रिय",
+   "es": "Activos",
+   "ar": "النشطة",
+   "fr": "Actifs",
+   "bn": "সক্রিয়",
+   "pt-BR": "Ativos",
+   "ru": "Активные",
+   "id": "Aktif",
+   "it": "Attivi"
+  },
+  "History": {
+   "zh-Hans": "历史",
+   "hi": "इतिहास",
+   "es": "Historial",
+   "ar": "السجل",
+   "fr": "Historique",
+   "bn": "ইতিহাস",
+   "pt-BR": "Histórico",
+   "ru": "История",
+   "id": "Riwayat",
+   "it": "Cronologia"
+  },
+  "This chat": {
+   "zh-Hans": "此聊天",
+   "hi": "यह चैट",
+   "es": "Este chat",
+   "ar": "هذه المحادثة",
+   "fr": "Cette discussion",
+   "bn": "এই চ্যাট",
+   "pt-BR": "Este chat",
+   "ru": "Этот чат",
+   "id": "Obrolan ini",
+   "it": "Questa chat"
+  },
+  "For {time}": {
+   "zh-Hans": "已 {time}",
+   "hi": "{time} से",
+   "es": "Desde hace {time}",
+   "ar": "منذ {time}",
+   "fr": "Depuis {time}",
+   "bn": "{time} ধরে",
+   "pt-BR": "Há {time}",
+   "ru": "Уже {time}",
+   "id": "Selama {time}",
+   "it": "Da {time}"
+  },
+  "Then:": {
+   "zh-Hans": "然后：",
+   "hi": "फिर:",
+   "es": "Después:",
+   "ar": "ثم:",
+   "fr": "Ensuite :",
+   "bn": "তারপর:",
+   "pt-BR": "Depois:",
+   "ru": "Затем:",
+   "id": "Lalu:",
+   "it": "Poi:"
   }
  }
 }

@@ -15,12 +15,13 @@ import {
   EVERY_UNTILS, LISTEN_UNTILS, UNTIL_TEXT, activeWatches, readPullRequest,
   type ListenMode, type ListenPast, type ListenUntil, type ListenWatch,
 } from "../core/listen";
+import { timeAgo } from "./integrations";
 import { N_, t, tl } from "../i18n/i18n";
 
 export const LISTENING_STRINGS = {
   title: N_("Listening"),
-  active: N_("Listening now"),
-  history: N_("What happened"),
+  active: N_("Active"),
+  history: N_("History"),
   add: N_("Listen for something"),
   pauseAll: N_("Pause all"),
   resumeAll: N_("Resume all"),
@@ -33,9 +34,11 @@ export const LISTENING_STRINGS = {
   everyHint: N_("Again for each new commit, until the pull request is merged or closed"),
   paused: N_("Paused"),
   fired: N_("Times so far: {count}"),
-  then: N_("Then: {task}"),
+  then: N_("Then:"),
   onlyTell: N_("Only tell me"),
   otherChat: N_("Another chat"),
+  thisChat: N_("This chat"),
+  since: N_("For {time}"),
   met: N_("Happened"),
   notMet: N_("Didn't happen"),
   emptyTitle: N_("Lumo isn't listening to anything"),
@@ -66,18 +69,21 @@ export interface ListeningPanel {
 /** GitHub's colour, for a pull request's tile. */
 const PR_TILE = "#F4505E";
 
-function when(at: number): string {
-  const d = new Date(at);
-  const today = new Date().toDateString() === d.toDateString();
-  return today
-    ? d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
-    : `${d.toLocaleDateString()} ${d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+/** How long a watch has listened: "For 42m", or "just now". */
+function listenedFor(at: number): string {
+  return Date.now() - at < 60_000 ? t("just now") : t(LISTENING_STRINGS.since, { time: timeAgo(at) });
 }
 
+/** The source's tile: a pull request on GitHub, for now. */
 function tile(): HTMLElement {
-  const el = h("span", { class: "attach-tile listen-tile" }, svg(ICONS.pull, 15, { stroke: 1.8 }));
+  const el = h("span", { class: "listen-tile" }, svg(ICONS.pull, 14, { stroke: 1.8 }));
   el.style.setProperty("--tile", PR_TILE);
   return el;
+}
+
+/** "Once" or "Every time", "Happened"…: a small label on the row's right. */
+function pill(text: string, kind = ""): HTMLElement {
+  return h("span", { class: kind ? `listen-pill ${kind}` : "listen-pill", text });
 }
 
 function empty(title: string, hint: string): HTMLElement {
@@ -93,14 +99,14 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void }
   let past: ListenPast[] = [];
 
   const count = h("span", { class: "files-count" });
-  const activeTab = h("button", { class: "picker-title files-tab on" }, h("span", { text: tl(LISTENING_STRINGS.active) }), count);
-  const historyTab = h("button", { class: "picker-title files-tab", text: tl(LISTENING_STRINGS.history) });
+  const activeTab = h("button", { class: "listen-seg-btn on", text: tl(LISTENING_STRINGS.active) });
+  const historyTab = h("button", { class: "listen-seg-btn", text: tl(LISTENING_STRINGS.history) });
   const pauseAllBtn = h("button", { class: "listen-head-btn" });
   const clearBtn = h("button", { class: "listen-head-btn", text: tl(LISTENING_STRINGS.clear) });
   const addBtn = h("button", { class: "listen-head-btn listen-add" },
     svg(ICONS.plus, 10), h("span", { text: tl(LISTENING_STRINGS.add) }));
-  const activeList = h("div", { class: "picker-list files-list listen-list" });
-  const historyList = h("div", { class: "picker-list files-list listen-list" });
+  const activeList = h("div", { class: "picker-list listen-list" });
+  const historyList = h("div", { class: "picker-list listen-list" });
 
   // ── Listen for something: the form ──────────────────────────────────────
   const targetInput = h("input", {
@@ -243,42 +249,52 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void }
     });
   }
 
+  /** A row: the source's tile, what it waits for and what then, its labels on the right. */
+  function row(cls: string, title: string, name: string, detail: Node[], meta: Node[], acts: Node[] = []): HTMLElement {
+    return h("div", { class: `listen-row ${cls}`.trim(), title },
+      tile(),
+      h("span", { class: "listen-text" },
+        h("span", { class: "listen-name", text: name }),
+        h("span", { class: "listen-detail" }, ...detail)),
+      h("span", { class: "listen-meta" }, ...meta),
+      acts.length ? h("span", { class: "listen-acts" }, ...acts) : null);
+  }
+
+  /** "Then: merge it · This chat": what Lumo does then, in which chat. */
+  function thenAndChat(task: string, chatId: string): Node[] {
+    const then = task
+      ? [document.createTextNode(`${t(LISTENING_STRINGS.then)} `), h("span", { class: "listen-task", text: task })]
+      : [document.createTextNode(t(LISTENING_STRINGS.onlyTell))];
+    const chat = chatId === State.chatId ? t(LISTENING_STRINGS.thisChat) : t(LISTENING_STRINGS.otherChat);
+    return [...then, document.createTextNode(` · ${chat}`)];
+  }
+
   function watchRow(w: ListenWatch): HTMLElement {
     const event = t(UNTIL_TEXT[w.until] ?? UNTIL_TEXT.merged);
-    const then = w.task ? t(LISTENING_STRINGS.then, { task: w.task }) : t(LISTENING_STRINGS.onlyTell);
-    const how = [
-      w.paused ? t(LISTENING_STRINGS.paused) : "",
-      w.mode === "every" ? t(LISTENING_STRINGS.every) : t(LISTENING_STRINGS.once),
-      w.mode === "every" && (w.fired ?? 0) > 0 ? t(LISTENING_STRINGS.fired, { count: w.fired ?? 0 }) : "",
-      w.chatId === State.chatId ? "" : t(LISTENING_STRINGS.otherChat),
-      when(w.startedAt),
-    ].filter(Boolean).join(" · ");
-    const row = h("div", { class: w.paused ? "attach-row listen-row paused" : "attach-row listen-row", title: `${w.repo}#${w.number}` },
-      tile(),
-      h("span", { class: "attach-text" },
-        h("span", { class: "attach-name", text: `${w.repo}#${w.number} · ${event}` }),
-        h("span", { class: "attach-detail", text: then }),
-        h("span", { class: "attach-detail attach-path", text: how })),
-      h("span", { class: "listen-acts" },
+    const every = w.mode === "every";
+    const status = w.paused
+      ? t(LISTENING_STRINGS.paused)
+      : every && (w.fired ?? 0) > 0 ? t(LISTENING_STRINGS.fired, { count: w.fired ?? 0 }) : listenedFor(w.startedAt);
+    const el = row(w.paused ? "paused" : "", `${w.repo}#${w.number}`, `${w.repo}#${w.number} · ${event}`,
+      thenAndChat(w.task, w.chatId),
+      [pill(t(every ? LISTENING_STRINGS.every : LISTENING_STRINGS.once), every ? "every" : ""), h("span", { class: "listen-status", text: status })],
+      [
         w.paused
           ? rowButton(ICONS.play, 10, t(LISTENING_STRINGS.resume), () => void Bridge.listenPause(w.id, false))
           : rowButton(ICONS.pause, 10, t(LISTENING_STRINGS.pause), () => void Bridge.listenPause(w.id, true)),
-        rowButton(ICONS.xmark, 10, t(LISTENING_STRINGS.stop), () => void Bridge.listenStop(w.id))));
-    opensChat(row, w.chatId);
-    return row;
+        rowButton(ICONS.xmark, 10, t(LISTENING_STRINGS.stop), () => void Bridge.listenStop(w.id)),
+      ]);
+    opensChat(el, w.chatId);
+    return el;
   }
 
   function pastRow(p: ListenPast): HTMLElement {
     const w = p.watch;
-    const detail = [p.met ? t(LISTENING_STRINGS.met) : t(LISTENING_STRINGS.notMet), when(p.at)].join(" · ");
-    const row = h("div", { class: "attach-row listen-row past" },
-      tile(),
-      h("span", { class: "attach-text" },
-        h("span", { class: "attach-name", text: p.summary }),
-        h("span", { class: "attach-detail", text: w.task ? t(LISTENING_STRINGS.then, { task: w.task }) : t(LISTENING_STRINGS.onlyTell) }),
-        h("span", { class: p.met ? "attach-detail listen-met" : "attach-detail listen-not-met", text: detail })));
-    opensChat(row, w.chatId);
-    return row;
+    const el = row("past", p.summary, p.summary, thenAndChat(w.task, w.chatId),
+      [pill(t(p.met ? LISTENING_STRINGS.met : LISTENING_STRINGS.notMet), p.met ? "met" : "not-met"),
+        h("span", { class: "listen-status", text: Date.now() - p.at < 60_000 ? t("just now") : t("{time} ago", { time: timeAgo(p.at) }) })]);
+    opensChat(el, w.chatId);
+    return el;
   }
 
   function draw() {
@@ -291,6 +307,7 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void }
     pauseAllBtn.hidden = tab !== "active" || adding || watches.length === 0;
     clearBtn.hidden = tab !== "history" || past.length === 0;
     addBtn.hidden = tab !== "active" || adding;
+    foot.hidden = adding || (tab === "history" && past.length === 0);
     form.hidden = !adding;
     activeList.hidden = tab !== "active" || adding;
     historyList.hidden = tab !== "history";
@@ -308,9 +325,12 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void }
     }
   }
 
+  const foot = h("div", { class: "listen-foot" }, addBtn, pauseAllBtn, clearBtn);
   const el = h("div", { class: "picker listen-panel" },
-    h("div", { class: "files-head" }, activeTab, historyTab, h("span", { class: "listen-head-gap" }), pauseAllBtn, clearBtn, addBtn),
-    activeList, historyList, form);
+    h("div", { class: "listen-head" },
+      h("span", { class: "listen-title", text: tl(LISTENING_STRINGS.title) }), count,
+      h("span", { class: "listen-seg" }, activeTab, historyTab)),
+    activeList, historyList, form, foot);
 
   return {
     el,
