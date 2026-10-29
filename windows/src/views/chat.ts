@@ -1116,6 +1116,13 @@ export function buildPrompt(
       openChat(saved);
     },
     close: () => closeListening(),
+    // Make a source: a tool of one's own, in the workshop.
+    openWorkshop: () => {
+      closeListening();
+      State.forgeAsk = { edit: null };
+      State.useSlot("forge");
+      State.notify();
+    },
   });
   // The commands' menu, over the log just above the field.
   const slashList = h("div", { class: "slash-list", role: "listbox" });
@@ -2790,7 +2797,7 @@ export function buildPrompt(
       }
       const addOne = (ask: ListenAsk) => ask.source === "github.pr"
         ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId, ask.mode)
-        : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, run.chatId, ask.mode);
+        : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, run.chatId, ask.mode, ask.amount);
       const added = await Promise.all(answered.listens.map(addOne));
       // A line Lumo could not read or start is said, never just dropped.
       const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);

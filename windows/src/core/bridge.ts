@@ -212,9 +212,23 @@ export const Bridge = {
   /** Stops listening to a pull request (`until` null: to everything on it). */
   listenCancel: (repo: string, number: number, until: string | null = null) =>
     call<number>("listen_cancel", { repo, number, until }),
-  /** Listens on this PC (listen_local.rs): a file or a folder, a program or a port, a web page. */
-  listenAddLocal: (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once") =>
-    call<ListenWatch>("listen_add_local", { source, target, until, mode, text, task, chatId }),
+  /** Listens on this PC (listen_local.rs): a file or a folder, a program or a port, a web page; or to what Lumo hears. */
+  listenAddLocal: async (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once", amount = 0) =>
+    (await Bridge.listenTryLocal(source, target, until, text, task, chatId, mode, amount)).watch ?? null,
+  /** The same, with why it could not: `needs:…` names what to turn on first (listen_events.rs available). */
+  listenTryLocal: async (source: string, target: string, until: string, text: string, task: string, chatId: string, mode = "once", amount = 0): Promise<{ watch?: ListenWatch; error?: string }> => {
+    if (!IS_TAURI) return {};
+    try {
+      return { watch: await tauriInvoke<ListenWatch>("listen_add_local", { source, target, until, mode, text, amount, task, chatId }) };
+    } catch (err) {
+      console.error("[lumo] listen_add_local failed", err);
+      return { error: String(err) };
+    }
+  },
+  /** An event on the calendar coming up, for a watch on it (`at`: its start). */
+  listenFire: (id: number, summary: string, at: number) => call<boolean>("listen_fire", { id, summary, at }),
+  /** A webhook's address, on this PC. */
+  listenWebhookUrl: (id: number) => call<string | null>("listen_webhook_url", { id }),
   /** Stops listening to a target on this PC, for every event. */
   listenCancelLocal: (source: string, target: string) => call<number>("listen_cancel_local", { source, target }),
   listenList: () => call<ListenWatch[]>("listen_list"),

@@ -521,26 +521,35 @@ pub fn island_tools() -> Vec<Value> {
         json!({
             "source": {
                 "type": "string",
-                "enum": ["github.pr", "fs", "process", "web"],
+                "enum": ["github.pr", "fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool"],
                 "description": "Where to listen. github.pr: a pull request on GitHub. fs: a file or a folder on this PC. \
-process: a program running on this PC, or a port on it. web: a web page.",
+process: a program running on this PC, or a port on it. web: a web page. email: the user's inbox (the Email pill). \
+service: one of the user's services (vercel, stripe, n8n, resend, notion, calcom) or their calendar. windows: Windows \
+itself. agent: a coding agent's session (Claude Code, Codex and the others). webhook: an address on this PC that other \
+programs can call. tool: one of the user's own tools, run now and then.",
             },
             "target": {
                 "type": "string",
                 "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link; \
 for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process, the executable's name (node.exe) or, \
-with port_open or port_closed, the port number; for web, the link.",
+with port_open or port_closed, the port number; for web, the link; for email, the sender (from) or words of the \
+subject (subject), nothing for new; for service, the service, or calendar; for windows, the app whose notifications \
+to wait for, else nothing; for agent, any or one of claude, codex, gemini, antigravity, cursor, copilot, opencode, \
+amp, hermes, muse; for webhook, a short name; for tool, the tool's id.",
             },
         })
     };
     let mut watch = target();
     watch["event"] = json!({
         "type": "string",
-        "enum": ["checks", "green", "approved", "ready", "merged", "closed", "created", "changed", "deleted", "download", "started", "exited", "port_open", "port_closed", "up", "down", "contains"],
+        "enum": ["checks", "green", "approved", "ready", "merged", "closed", "created", "changed", "deleted", "download", "started", "exited", "port_open", "port_closed", "up", "down", "contains", "new", "from", "subject", "event", "succeeded", "failed", "soon", "notification", "battery_low", "plugged", "unplugged", "offline", "online", "usb", "back", "finished", "permission", "called"],
         "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
 passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
 folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
-(the page shows text).",
+(the page shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
+event starts within amount minutes). windows: notification, battery_low, plugged, unplugged, offline, online, usb (a \
+drive is connected), back (the user is back after amount minutes away). agent: finished, permission (it asks for a \
+permission or a reply), failed. webhook: called. tool: changed (what it prints), contains.",
     });
     watch["mode"] = json!({
         "type": "string",
@@ -551,7 +560,14 @@ github.pr only for checks or green, once for each new commit, until the pull req
     watch["text"] = json!({
         "type": "string",
         "maxLength": 200,
-        "description": "web with contains only: the text to wait for on the page.",
+        "description": "contains only (web, tool): the text to wait for.",
+    });
+    watch["amount"] = json!({
+        "type": "integer",
+        "minimum": 1,
+        "maximum": 1440,
+        "description": "service soon: the minutes before the event (10). windows battery_low: the percent (20); \
+back: the minutes away (5). tool: the minutes between two runs (15). Leave it out for the rest.",
     });
     watch["then"] = json!({
         "type": "string",

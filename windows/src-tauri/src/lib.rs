@@ -31,6 +31,7 @@ mod integrations;
 mod island;
 mod island_tools;
 mod listen;
+mod listen_events;
 mod listen_local;
 mod live;
 mod local_chat;
@@ -1213,6 +1214,8 @@ pub fn run() {
             listen::listen_cancel,
             listen::listen_add_local,
             listen::listen_cancel_local,
+            listen_events::listen_fire,
+            listen_events::listen_webhook_url,
             listen::listen_list,
             listen::listen_stop,
             listen::listen_pause,

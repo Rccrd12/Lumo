@@ -323,6 +323,7 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
         emit(app, IntegrationUpdate { id: ID, data, error: None, event: None });
     }
     if !fresh.is_empty() {
+        crate::listen_events::heard_mail(app, &fresh);
         let _ = app.emit_to(WINDOW_LABEL, "mail-new", &fresh);
     }
 }

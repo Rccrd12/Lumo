@@ -71,13 +71,19 @@ time, then say in a few words that it is set.",
                 "type": "string",
                 "enum": crate::listen::SOURCES,
                 "description": "Where to listen. github.pr: a pull request on GitHub. fs: a file or a folder on this PC. \
-process: a program running on this PC, or a port on it. web: a web page.",
+process: a program running on this PC, or a port on it. web: a web page. email: the user's inbox (the Email pill). \
+service: one of the user's services (vercel, stripe, n8n, resend, notion, calcom) or their calendar. windows: Windows \
+itself. agent: a coding agent's session (Claude Code, Codex and the others). webhook: an address on this PC that other \
+programs can call. tool: one of the user's own tools, run now and then.",
             },
             "target": {
                 "type": "string",
                 "description": "What to listen to: for github.pr, owner/repository#number or the pull request's link; \
 for fs, the full path (C:\\Users\\name\\Downloads, or ~\\Downloads); for process, the executable's name (node.exe) or, \
-with port_open or port_closed, the port number; for web, the link.",
+with port_open or port_closed, the port number; for web, the link; for email, the sender (from) or words of the \
+subject (subject), nothing for new; for service, the service, or calendar; for windows, the app whose notifications \
+to wait for, else nothing; for agent, any or one of claude, codex, gemini, antigravity, cursor, copilot, opencode, \
+amp, hermes, muse; for webhook, a short name; for tool, the tool's id.",
             },
         });
         let mut watch = target.clone();
@@ -87,7 +93,10 @@ with port_open or port_closed, the port number; for web, the link.",
             "description": "github.pr: checks (finished, passed or failed), green (passed), approved, ready (checks \
 passed and it can be merged), merged, closed. fs: created, changed, deleted, download (a download finished in the \
 folder). process: started, exited, port_open, port_closed. web: changed (what the page shows), up, down, contains \
-(the page shows text).",
+(the page shows text). email: new, from, subject. service: event, succeeded, failed, or soon for the calendar (an \
+event starts within amount minutes). windows: notification, battery_low, plugged, unplugged, offline, online, usb (a \
+drive is connected), back (the user is back after amount minutes away). agent: finished, permission (it asks for a \
+permission or a reply), failed. webhook: called. tool: changed (what it prints), contains.",
         });
         watch["mode"] = json!({
             "type": "string",
@@ -98,7 +107,14 @@ github.pr only for checks or green, once for each new commit, until the pull req
         watch["text"] = json!({
             "type": "string",
             "maxLength": 200,
-            "description": "web with contains only: the text to wait for on the page.",
+            "description": "contains only (web, tool): the text to wait for.",
+        });
+        watch["amount"] = json!({
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 1440,
+            "description": "service soon: the minutes before the event (10). windows battery_low: the percent (20); \
+back: the minutes away (5). tool: the minutes between two runs (15). Leave it out for the rest.",
         });
         watch["then"] = json!({
             "type": "string",
@@ -140,6 +156,12 @@ fn source_of(input: &Value) -> Result<&'static str, String> {
         "fs" | "file" | "files" | "folder" => Ok("fs"),
         "process" | "program" | "port" | "app" => Ok("process"),
         "web" | "page" | "url" | "site" => Ok("web"),
+        "email" | "mail" | "inbox" => Ok("email"),
+        "service" | "services" | "calendar" => Ok("service"),
+        "windows" | "pc" | "system" | "notifications" | "battery" | "network" | "usb" => Ok("windows"),
+        "agent" | "agents" | "session" | "claude" | "codex" => Ok("agent"),
+        "webhook" | "hook" => Ok("webhook"),
+        "tool" | "own_tool" => Ok("tool"),
         _ => Err(format!("source must be one of {}.", crate::listen::SOURCES.join(", "))),
     }
 }
@@ -150,12 +172,16 @@ fn local_line(source: &str, input: &Value) -> Result<(String, String), String> {
     let text = clean(input["text"].as_str().unwrap_or(""), 200).replace('"', "'");
     let home = crate::platform::home_dir();
     let target = crate::listen_local::target(source, &event, input["target"].as_str().unwrap_or(""), &text, &home)?;
+    let amount = crate::listen_local::amount_of(source, &event, input["amount"].as_u64().unwrap_or(0).min(u32::MAX as u64) as u32);
     let mode = input["mode"].as_str().unwrap_or("once").trim().to_ascii_lowercase();
     if !crate::listen::mode_ok(source, &event, if mode.is_empty() { "once" } else { mode.as_str() }) {
         return Err("mode must be once or every.".into());
     }
     let every = if mode == "every" { "every " } else { "" };
-    let words = if event == "contains" { format!(" \"{text}\"") } else { String::new() };
+    let mut words = if event == "contains" { format!(" \"{text}\"") } else { String::new() };
+    if amount > 0 {
+        words.push_str(&format!(" {amount}"));
+    }
     let then = clean(input["then"].as_str().unwrap_or(""), MAX_TASK);
     let head = format!("[[listen {source} \"{target}\" {every}{event}{words}");
     let line = if then.is_empty() { format!("{head}]]") } else { format!("{head}: {then}]]") };
@@ -174,10 +200,14 @@ what you meant to then."
 fn local_unlisten(source: &str, input: &Value) -> Result<(String, String), String> {
     let given = input["target"].as_str().unwrap_or("");
     let home = crate::platform::home_dir();
-    let target = ["changed", "port_open", "started"]
-        .iter()
-        .find_map(|until| crate::listen_local::target(source, until, given, "x", &home).ok())
-        .ok_or_else(|| "Give the target as Lumo listens to it (list_listening says).".to_string())?;
+    let target = if matches!(source, "fs" | "process" | "web") {
+        ["changed", "port_open", "started"].iter().find_map(|until| crate::listen_local::target(source, until, given, "x", &home).ok())
+    } else {
+        // As kept: the services and agents by their names in a watch.
+        let named = crate::listen_local::canonical(source, given);
+        (!named.is_empty() && !named.contains(['"', '[', ']'])).then_some(named)
+    }
+    .ok_or_else(|| "Give the target as Lumo listens to it (list_listening says).".to_string())?;
     Ok((format!("[[unlisten {source} \"{target}\"]]"), format!("Lumo stops listening to {target} as soon as your answer ends.")))
 }
 
@@ -373,6 +403,14 @@ mod tests {
         assert!(line(LISTEN, &json!({ "source": "fs", "target": "Downloads", "event": "created" })).is_err());
         assert!(line(LISTEN, &json!({ "source": "web", "target": "https://example.com", "event": "contains" })).is_err());
         assert!(line(LISTEN, &json!({ "source": "fs", "target": "C:\\x", "event": "merged" })).is_err());
+        // What Lumo hears, and Windows.
+        assert_eq!(ok(LISTEN, json!({ "source": "email", "target": "Marco", "event": "from", "then": "reply" })), "[[listen email \"Marco\" from: reply]]");
+        assert_eq!(ok(LISTEN, json!({ "source": "agent", "target": "Claude Code", "event": "finished", "mode": "every" })), "[[listen agent \"claude\" every finished]]");
+        assert_eq!(ok(LISTEN, json!({ "source": "calendar", "target": "", "event": "soon", "amount": 15 })), "[[listen service \"calendar\" soon 15]]");
+        assert_eq!(ok(LISTEN, json!({ "source": "battery", "event": "battery_low" })), "[[listen windows \"pc\" battery_low 20]]");
+        assert_eq!(ok(LISTEN, json!({ "source": "webhook", "target": "Deploys", "event": "called" })), "[[listen webhook \"deploys\" called]]");
+        assert_eq!(ok(UNLISTEN, json!({ "source": "service", "target": "Cal.com" })), "[[unlisten service \"calcom\"]]");
+        assert!(line(LISTEN, &json!({ "source": "service", "target": "jira", "event": "event" })).is_err());
     }
 
     #[test]

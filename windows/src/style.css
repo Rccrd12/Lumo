@@ -2934,29 +2934,11 @@ input[type="range"]::-webkit-slider-thumb {
   border-color: rgba(255, 255, 255, 0.1);
 }
 
-.listen-source.soon {
-  cursor: default;
-}
-
-.listen-source.soon .listen-tile,
-.listen-source.soon .listen-source-name,
-.listen-source.soon .listen-source-hint {
-  opacity: 0.45;
-}
-
 .listen-source-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   align-self: stretch;
-}
-
-.listen-soon {
-  padding: 3px 7px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
-  font: 600 9.5px/1.2 var(--font);
-  color: #8b929e;
 }
 
 .listen-source-name {
@@ -3026,6 +3008,18 @@ input[type="range"]::-webkit-slider-thumb {
 .listen-form .listen-input[hidden],
 .listen-form .listen-label[hidden] {
   display: none;
+}
+
+/* What the form shows only for some sources: a list to pick from, a note. */
+.listen-form .listen-target-row[hidden],
+.listen-form .listen-chips[hidden],
+.listen-form .listen-note[hidden] {
+  display: none;
+}
+
+.listen-note {
+  font: 400 11px/1.4 var(--font);
+  color: #8b929e;
 }
 
 .listen-chips {

@@ -43,6 +43,8 @@ pub struct IntegrationEvent {
 }
 
 pub(crate) fn emit(app: &AppHandle, update: IntegrationUpdate) {
+    let event = update.event.as_ref().map(|e| (e.success, e.label.as_str()));
+    crate::listen_events::heard_service(app, update.id, &update.data, update.error.is_some(), event);
     let _ = app.emit_to(WINDOW_LABEL, "integration", update);
 }
 
