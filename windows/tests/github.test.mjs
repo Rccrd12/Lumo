@@ -178,16 +178,16 @@ test("the CI running after a push or on a PR is what GitHub is doing", () => {
   const pulse = (myPRs, mainCI) => ({ login: "me", myPRs, toReview: [], mainCI, fetchedAt: 1 });
   assert.equal(gitHubRunning(null), null);
   assert.equal(gitHubRunning(pulse([pr("a/b#1", "success")], [repo("a/c", "failure")])), null, "nothing running");
-  assert.equal(gitHubRunning(pulse([pr("a/b#1", "pending")], [])), "CI running on b#1");
-  assert.equal(gitHubRunning(pulse([], [repo("a/c", "pending")])), "CI running on c");
-  assert.equal(gitHubRunning(pulse([pr("a/b#1", "pending")], [repo("a/c", "pending")])), "CI running on b#1 · +1 more");
+  assert.equal(gitHubRunning(pulse([pr("a/b#1", "pending")], [])), "CI running");
+  assert.equal(gitHubRunning(pulse([], [repo("a/c", "pending")])), "CI running");
+  assert.equal(gitHubRunning(pulse([pr("a/b#1", "pending")], [repo("a/c", "pending")])), "CI running +1");
 });
 
 test("each alert says what happened", () => {
-  assert.equal(gitHubNote({ kind: "ciFailed", prId: "a/b#1" }), "CI failed on b#1");
-  assert.equal(gitHubNote({ kind: "ciPassed", prId: "a/b#1" }), "CI passed on b#1");
-  assert.equal(gitHubNote({ kind: "mainFailed", repo: "a/c" }), "CI failed on c");
-  assert.equal(gitHubNote({ kind: "reviewRequested", prId: "a/b#2" }), "Review requested on b#2");
+  assert.equal(gitHubNote({ kind: "ciFailed", prId: "a/b#1" }), "CI failed #1");
+  assert.equal(gitHubNote({ kind: "ciPassed", prId: "a/b#1" }), "CI passed #1");
+  assert.equal(gitHubNote({ kind: "mainFailed", repo: "a/c" }), "CI failed c");
+  assert.equal(gitHubNote({ kind: "reviewRequested", prId: "a/b#2" }), "Review requested #2");
 });
 
 const island = { reveal: () => {} };
@@ -224,10 +224,10 @@ test("an alert is said on the closed island, each in its turn, not while the isl
   };
   emit("github-alerts", [{ kind: "ciPassed", prId: "a/b#1" }, { kind: "reviewRequested", prId: "a/b#2" }]);
   const closed = said();
-  assert.deepEqual(closed.slice(-2), ["GitHub · CI passed on b#1", "GitHub · Review requested on b#2"]);
+  assert.deepEqual(closed.slice(-2), ["GitHub · CI passed #1", "GitHub · Review requested #2"]);
   State.mode = "expanded";
   emit("github-alerts", [{ kind: "ciFailed", prId: "a/b#3" }]);
-  assert.ok(!said().includes("GitHub · CI failed on b#3"));
+  assert.ok(!said().includes("GitHub · CI failed #3"));
 });
 
 test("no badge while the GitHub pill is the one on screen", () => {

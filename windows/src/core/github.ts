@@ -308,17 +308,24 @@ export function gitHubRunning(pulse: GitHubPulse | null): string | null {
     ...pulse.mainCI.filter((r) => r.ci === "pending").map((r) => shortRepo(r.repo)),
   ];
   if (running.length === 0) return null;
-  const line = t("CI running on {target}", { target: running[0] });
-  return running.length > 1 ? `${line} · ${t("+{count} more", { count: running.length - 1 })}` : line;
+  // Which one is in the open island; here only that CI runs, and how many.
+  const line = t("CI running");
+  return running.length > 1 ? `${line} +${running.length - 1}` : line;
+}
+
+/** "#12" for a PR's id ("owner/repo#12"), else the repository's short name. */
+function prNumber(id: string): string {
+  const at = id.lastIndexOf("#");
+  return at < 0 ? shortRepo(id) : id.slice(at);
 }
 
 /** What one alert says on the closed island, after "GitHub · ". */
 export function gitHubNote(e: GitHubEvent): string {
   switch (e.kind) {
-    case "ciFailed": return t("CI failed on {target}", { target: shortPR(e.prId) });
-    case "ciPassed": return t("CI passed on {target}", { target: shortPR(e.prId) });
-    case "mainFailed": return t("CI failed on {target}", { target: shortRepo(e.repo) });
-    case "reviewRequested": return t("Review requested on {target}", { target: shortPR(e.prId) });
+    case "ciFailed": return t("CI failed {target}", { target: prNumber(e.prId) });
+    case "ciPassed": return t("CI passed {target}", { target: prNumber(e.prId) });
+    case "mainFailed": return t("CI failed {target}", { target: shortRepo(e.repo) });
+    case "reviewRequested": return t("Review requested {target}", { target: prNumber(e.prId) });
   }
 }
 

@@ -268,6 +268,11 @@ const ACTIVITY_STRINGS = {
   tool: N_("Using {tool}"),
 };
 
+const ISLAND_ACTIVITY_STRINGS = {
+  subtask: N_("Sub-task"),
+  tool: N_("Uses a tool"),
+};
+
 const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
 /**
@@ -361,6 +366,32 @@ export function activityLabel(activity: ChatActivity | null): string {
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
     default:
       return t(ACTIVITY_STRINGS.thinking);
+  }
+}
+
+/**
+ * The same, in the closed island's fewer words (core/compact.ts): what it
+ * looks for, runs or uses is left to the chat.
+ */
+export function islandActivityLabel(activity: ChatActivity | null): string {
+  switch (activity?.kind) {
+    case "search":
+      return t(COMPACT_TEXT.searching);
+    case "command":
+      return t(COMPACT_TEXT.command);
+    case "subtask":
+      return t(ISLAND_ACTIVITY_STRINGS.subtask);
+    case "tool":
+      return activity.detail.trim() ? t(ISLAND_ACTIVITY_STRINGS.tool) : t(COMPACT_TEXT.thinking);
+    case "read":
+    case "edit":
+    case "web":
+    case "plan":
+    case "screen":
+    case "computer":
+      return activityLabel(activity);
+    default:
+      return t(COMPACT_TEXT.thinking);
   }
 }
 
@@ -2574,7 +2605,7 @@ export function buildPrompt(
    */
   function drawIslandActivity() {
     const run = answering() ?? [...runs.values()].pop();
-    const next = run ? { label: run.text === "" || run.dots ? activityLabel(run.activity) : null } : null;
+    const next = run ? { label: run.text === "" || run.dots ? islandActivityLabel(run.activity) : null } : null;
     const now = State.chatActivity;
     if (next == null ? now == null : now != null && now.label === next.label) return;
     State.chatActivity = next;

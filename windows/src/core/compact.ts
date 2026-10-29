@@ -94,20 +94,24 @@ const MAX_NOTICES = 4;
 export const MIN_TIMER_MS = 5_000;
 export const MAX_TIMER_MS = 24 * 3_600_000;
 
+// Short on purpose: the closed island has room for a few words, so what the
+// AI is doing is said in a verb and, at most, a file's name or a PR's number.
 export const COMPACT_TEXT = {
-  thinking: N_("Thinking…"),
-  writing: N_("Writing…"),
+  thinking: N_("Thinks…"),
+  writing: N_("Writes…"),
   speaking: N_("Speaking"),
   listening: N_("Listening"),
   connecting: N_("Connecting…"),
   // The same words as the call view's (live/strings.ts).
   muted: N_("Microphone off"),
   working: N_("Working…"),
-  waiting: N_("Waiting for your OK"),
-  question: N_("Has a question for you"),
+  command: N_("Runs a command"),
+  searching: N_("Searches the files"),
+  waiting: N_("Waits for your OK"),
+  question: N_("Has a question"),
   // The same words as under a Gemini Live call (live/strings.ts).
   answered: N_("{helper} answered"),
-  failed: N_("{helper} ran into a problem"),
+  failed: N_("{helper} · Error"),
   finished: N_("{helper} finished"),
   timerDone: N_("Time's up"),
   inMinutes: N_("in {n} min"),
@@ -201,13 +205,38 @@ function liveWords(phase: LiveActivityInput["phase"]): string {
   }
 }
 
+/**
+ * An agent's step (island/hooks.ts stepLabel, "Runs · npm test") in fewer
+ * words: the name of a file it reads or edits stays, a command or what it
+ * looks for is left to the open island.
+ */
+export function shortStep(step: string): string {
+  const at = step.indexOf(" · ");
+  if (at < 0) return step;
+  const label = step.slice(0, at);
+  if (label === t("Runs")) return t(COMPACT_TEXT.command);
+  if (label === t("Searches")) return t(COMPACT_TEXT.searching);
+  const name = step.slice(at + 3);
+  for (const [tool, words] of FILE_STEPS) if (label === t(tool)) return t(words, { name });
+  return label;
+}
+
+/** The steps whose file's name stays, with their words: "Edits · app.ts" is "Edits app.ts". */
+const FILE_STEPS: [string, string][] = [
+  ["Reads", N_("Reads {name}")],
+  ["Writes", N_("Writes {name}")],
+  ["Edits", N_("Edits {name}")],
+  ["Lists", N_("Lists {name}")],
+];
+
 function agentWords(a: AgentActivityInput): string | null {
+  const step = a.step?.trim() ? shortStep(a.step.trim()) : null;
   switch (a.state) {
     case "working":
     case "searching":
-      return a.step?.trim() || t(COMPACT_TEXT.working);
+      return step || t(COMPACT_TEXT.working);
     case "thinking":
-      return a.step?.trim() || t(COMPACT_TEXT.thinking);
+      return step || t(COMPACT_TEXT.thinking);
     case "approval":
       return t(COMPACT_TEXT.waiting);
     case "question":

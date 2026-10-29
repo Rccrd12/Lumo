@@ -60,9 +60,9 @@ test("Claude is told what happened and what it meant to do", () => {
 test("the closed island says what it waits for, or how many", () => {
   const w = (number, until) => ({ id: number, repo: "o/r", number, until, task: "", chatId: "c", startedAt: 0 });
   assert.equal(listeningLine([]), null);
-  assert.equal(listeningLine([w(7, "merged")]), "Waiting for #7 to be merged");
-  assert.equal(listeningLine([w(7, "checks")]), "Waiting for the checks on #7");
-  assert.equal(listeningLine([w(7, "merged"), w(8, "ready")]), "Listening to 2 pull requests");
+  assert.equal(listeningLine([w(7, "merged")]), "Waits for the merge #7");
+  assert.equal(listeningLine([w(7, "checks")]), "Waits for the checks #7");
+  assert.equal(listeningLine([w(7, "merged"), w(8, "ready")]), "Listening (2 PRs)");
 });
 
 test("every listens again for each new commit, only on the checks", () => {
@@ -86,7 +86,7 @@ test("a paused watch is not said on the closed island", () => {
   const w = (number, paused) => ({ id: number, repo: "o/r", number, until: "merged", task: "", chatId: "c", startedAt: 0, paused });
   assert.equal(listeningLine([w(1, true)]), null);
   assert.deepEqual(activeWatches([w(1, true), w(2, false)]).map((x) => x.number), [2]);
-  assert.equal(listeningLine([w(1, true), w(2, false)]), "Waiting for #2 to be merged");
+  assert.equal(listeningLine([w(1, true), w(2, false)]), "Waits for the merge #2");
 });
 
 test("a line can listen on this PC: a folder, a program, a port, a page", () => {
@@ -117,10 +117,10 @@ test("a watch on this PC is named by its target, and tells Claude as Lumo", () =
   assert.equal(watchLabel(w("fs", "changed", "D:\\")), "D:\\");
   assert.equal(watchLabel(w("process", "port_open", "3000")), ":3000");
   assert.equal(watchLabel(w("web", "up", "https://www.example.com/")), "example.com");
-  assert.equal(listeningLine([w("fs", "download", "C:\\Users\\me\\Downloads")]), "Waiting for a download in Downloads");
-  assert.equal(listeningLine([w("process", "port_open", "3000")]), "Waiting for port 3000 to open");
-  assert.equal(listeningLine([w("web", "contains", "https://x.y", { text: "In stock" })]), "Waiting for x.y to show “In stock”");
-  assert.equal(listeningLine([w("fs", "created", "C:\\a"), { id: 2, repo: "o/r", number: 3, until: "merged", task: "", chatId: "c", startedAt: 0 }]), "Listening to 2 things");
+  assert.equal(listeningLine([w("fs", "download", "C:\\Users\\me\\Downloads")]), "Waits for a download in Downloads");
+  assert.equal(listeningLine([w("process", "port_open", "3000")]), "Waits for port 3000");
+  assert.equal(listeningLine([w("web", "contains", "https://x.y", { text: "In stock" })]), "Waits for “In stock” on x.y");
+  assert.equal(listeningLine([w("fs", "created", "C:\\a"), { id: 2, repo: "o/r", number: 3, until: "merged", task: "", chatId: "c", startedAt: 0 }]), "Listening (2)");
   assert.equal(untilText(w("process", "exited", "node.exe")), "It exits");
   assert.equal(untilText({ until: "merged" }), "It is merged");
   const fired = { watch: w("fs", "download", "C:\\Users\\me\\Downloads", { task: "sort it" }), met: true, summary: "Downloaded in Downloads: a.pdf" };
@@ -152,9 +152,9 @@ test("what Lumo hears is named in words", () => {
   assert.equal(watchLabel(w("agent", "finished", "gemini")), "Gemini CLI");
   assert.equal(watchLabel(w("windows", "usb", "pc")), "Windows");
   assert.equal(watchLabel(w("email", "new", "inbox")), "Email");
-  assert.equal(listeningLine([w("agent", "permission", "codex")]), "Waiting for Codex to ask you");
-  assert.equal(listeningLine([w("email", "from", "Marco")]), "Waiting for an email from Marco");
-  assert.equal(listeningLine([w("windows", "back", "pc")]), "Waiting for you to be back");
+  assert.equal(listeningLine([w("agent", "permission", "codex")]), "Waits for Codex to ask you");
+  assert.equal(listeningLine([w("email", "from", "Marco")]), "Waits for an email from Marco");
+  assert.equal(listeningLine([w("windows", "back", "pc")]), "Waits for you to be back");
   assert.equal(untilText(w("service", "failed", "vercel")), "Something fails");
   assert.equal(watchColor(w("agent", "finished", "any")), "#D97757");
   assert.deepEqual(amountOf("windows", "battery_low"), { default: 20, max: 99 });

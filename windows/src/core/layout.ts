@@ -82,7 +82,7 @@ export const COMPACT_BOT_X = 18;
  * edges; standing upright on a side it stays as it is.
  */
 export const COMPACT_SIZES = {
-  one: { w: 460, h: NOTCH_H },
+  one: { w: 380, h: NOTCH_H },
   two: { w: 540, h: NOTCH_H },
   many: { w: 620, h: NOTCH_H },
   mail: { w: 452, h: 120 },
