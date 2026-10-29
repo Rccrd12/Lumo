@@ -242,7 +242,7 @@ export class Island {
       State.notify();
     });
     State.subscribe(() => {
-      this.fsm.held = State.liveActive;
+      this.fsm.held = State.liveActive || State.computerActive;
       this.fsm.holdChanged();
       this.dirty = true;
       this.ensureRunning();
@@ -259,6 +259,11 @@ export class Island {
     this.fsm.pinned = State.isPinned;
     if (State.pendingApproval) {
       presentApproval(this);
+      return;
+    }
+    // Claude is using the computer: back to Lumo's ring, out of its way.
+    if (fromChat && State.computerActive) {
+      this.collapse();
       return;
     }
     // The chat asked: back to the chat, where the answer is still coming.
@@ -680,6 +685,33 @@ export class Island {
 
   reveal() {
     this.fsm.reveal();
+  }
+
+  /** The chat closed the island for computer use: it reopens on the chat afterwards. */
+  private foldedForComputer = false;
+
+  /**
+   * Claude starts using the computer (computer.rs): the island closes to its
+   * compact form, Lumo's ring, and stays on screen until Claude is done; a card
+   * waiting for an answer is left as it is. Afterwards the chat it closed
+   * comes back, with Claude's answer.
+   */
+  onComputer(on: boolean) {
+    if (State.computerActive === on) return;
+    State.computerActive = on;
+    if (on) {
+      this.foldedForComputer = false;
+      if (!State.pendingApproval && State.mode === "expanded") {
+        this.foldedForComputer = State.view === "prompt";
+        this.collapse();
+      } else if (State.mode === "hidden" && !State.paused) {
+        this.reveal();
+      }
+    } else if (this.foldedForComputer) {
+      this.foldedForComputer = false;
+      if (this.fsm.state === "petit" && !State.pendingApproval) this.setView("prompt");
+    }
+    State.notify();
   }
 
   // ── The right-click menu ────────────────────────────────────────────────────

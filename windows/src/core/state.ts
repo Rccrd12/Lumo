@@ -432,6 +432,8 @@ class AppState {
   liveState: BotStateName | null = null;
   /** A Gemini Live call is on: the island opens on it, and the compact island stays. */
   liveActive = false;
+  /** Claude is using the computer for the chat: the island stays compact and on screen. */
+  computerActive = false;
   /**
    * The chat is answering: what it is doing, in words ("Reading main.ts"), or
    * null once the answer is being written. For the closed island (core/compact.ts).

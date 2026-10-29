@@ -159,7 +159,7 @@ fn coordinate(what: &str) -> Value {
         "items": { "type": "integer", "minimum": 0 },
         "minItems": 2,
         "maxItems": 2,
-        "description": format!("[x, y] {what}, in the pixels of the last screenshot."),
+        "description": format!("[x, y] {what}, in the pixels of the last screenshot: one array of two numbers, e.g. [562, 790], not x and y apart."),
     })
 }
 
@@ -172,7 +172,7 @@ pub fn tools() -> Vec<Value> {
     let click = |name: &str, what: &str| {
         tool(
             name,
-            &format!("{what} at a point of the screen (or where the mouse is, without a coordinate)."),
+            &format!("{what} at a point of the screen, given as coordinate: [x, y] (without a coordinate: where the mouse already is)."),
             json!({ "coordinate": coordinate("where to click"), "text": modifiers() }),
             &[],
         )
