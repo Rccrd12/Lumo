@@ -3,7 +3,7 @@
 import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
-  CHAT_FORGE, CHAT_LISTENING, CHAT_PANEL_OPEN, compactWidth, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
+  CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
@@ -15,6 +15,7 @@ import { Sound } from "../core/sound";
 import { NEUTRAL_PILL } from "../core/pill-colors";
 import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../character/engine";
+import { LOOK_IDLE } from "../character/looks";
 import { Greeting } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
 import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
@@ -716,6 +717,8 @@ export class Island {
       this.foldedForComputer = false;
       if (this.fsm.state === "petit" && !State.pendingApproval) this.setView("prompt");
     }
+    // Closed already: to the short pill with Lumo in its middle, or back.
+    if (State.mode === "compact") this.animateGeometry(on);
     State.notify();
   }
 
@@ -1222,7 +1225,20 @@ export class Island {
 
   // ── Geometry ────────────────────────────────────────────────────────────────
 
+  /**
+   * Claude is using the computer and the island is closed: it is Lumo alone,
+   * in a short pill (computerCompact). A request answered on the closed
+   * island still gets the room it needs.
+   */
+  private get onlyLumo(): boolean {
+    return State.computerActive && State.mode === "compact" && !State.pendingApproval;
+  }
+
   private targetSize(): { w: number; h: number; r: number } {
+    if (this.onlyLumo) {
+      const { w, h } = computerCompact(this.dock);
+      return { w, h, r: ROUNDED_CORNER };
+    }
     let { w, h } = islandSize(State.mode, State.view, this.chatCount, this.shape, this.dock, this.compact.size,
       compactWidth(State.settings.islandCompactWidth));
     if (State.mode === "expanded" && State.view === "question" && State.pendingApproval?.questions) {
@@ -1813,7 +1829,9 @@ export class Island {
   };
 
   private updateBotTargets() {
-    const p = botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value);
+    const p = this.onlyLumo
+      ? computerCompact("top").bot
+      : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value);
     // Upright on a side, the closed island has Lumo at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;
@@ -1876,6 +1894,8 @@ export class Island {
     const wear = planCardOpen() ? openPlanColor() : null;
     // Dozing, he is his sleeping grey whatever pill is in front.
     this.engine.bodyColor = wear && !this.dozing && wear.toUpperCase() !== NEUTRAL_PILL ? hexToRGB(wear) : null;
+    // While Claude uses the computer he is his own yellow, whatever the chat is doing.
+    if (this.onlyLumo) this.engine.bodyColor = LOOK_IDLE;
     this.engine.particleOverhang = BOT_OVERHANG;
     this.engine.lookX = this.lookX();
     this.engine.lookY = this.lookY();
@@ -1993,7 +2013,7 @@ export class Island {
 
     // What the closed island says next to Lumo. Standing upright on a side
     // there is no room for it. A change of what it shows resizes the island.
-    const compactOn = State.mode === "compact" && !isUpright(this.dock);
+    const compactOn = State.mode === "compact" && !isUpright(this.dock) && !this.onlyLumo;
     // Saving energy, a leaf at the right end, opposite Lumo; an email or a
     // request filling the closed island has the corner to itself.
     this.leafEl.classList.toggle("on",
