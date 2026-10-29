@@ -56,9 +56,8 @@ const CARD_R = 20;
 const SPARK0 = { x: C0.x - 30, y: 4 };
 const SPARK_CTRL = { x: C0.x + 150, y: 36 };
 
-/** The compact island the greeting lands in. */
+/** The compact island the greeting lands in (its width is the user's, see smallPose). */
 const COMPACT = {
-  width: COMPACT_W,
   height: NOTCH_H,
   botDiameter: Math.min(20, Math.max(0, NOTCH_H - 6)),
   botCenterY: NOTCH_H / 2,
@@ -133,10 +132,10 @@ function greetPose(t: number): Pose {
   };
 }
 
-function smallPose(): Pose {
+function smallPose(compactW: number): Pose {
   return {
     hb: (EAR_HB * COMPACT.botDiameter) / 20,
-    x: GREETING_W / 2 - COMPACT.width / 2 + COMPACT_BOT_X,
+    x: GREETING_W / 2 - compactW / 2 + COMPACT_BOT_X,
     y: COMPACT.botCenterY,
     sx: 1, sy: 1,
     eye: "dot", open: 1,
@@ -147,11 +146,14 @@ function smallPose(): Pose {
   };
 }
 
-/** Lumo's pose `t` seconds in; `tc` is when the collapse began (∞ if not yet). */
-export function greetingPose(t: number, tc = Number.POSITIVE_INFINITY): Pose {
+/**
+ * Lumo's pose `t` seconds in; `tc` is when the collapse began (∞ if not yet),
+ * into a closed island `compactW` wide.
+ */
+export function greetingPose(t: number, tc = Number.POSITIVE_INFINITY, compactW = COMPACT_W): Pose {
   if (t < tc) return greetPose(Math.min(t, T.end + 10));
   const a = greetPose(tc);
-  const b = smallPose();
+  const b = smallPose(compactW);
   // Same curve and duration (340 ms) as the island shrinking around him, so
   // the island never gets ahead of him and cuts him off.
   const k = seg(t, tc, tc + T.COLLAPSE);
@@ -466,6 +468,8 @@ export class Greeting {
   onComplete: (() => void) | null = null;
   /** The look he blooms in; the island sets it. */
   look: LumoLook = DEFAULT_LOOK;
+  /** How wide the closed island he lands in is; the island sets it. */
+  compactWidth = COMPACT_W;
 
   start() {
     this.startMs = performance.now();
@@ -519,7 +523,7 @@ export class Greeting {
     const t = this.elapsed;
     if (!this.fired && t >= T.end && this.tc >= T.autoLeave) this.fire();
 
-    const p = greetingPose(t, this.tc);
+    const p = greetingPose(t, this.tc, this.compactWidth);
     x.clearRect(0, 0, GREETING_W, GREETING_H);
 
     if (p.card > 0) {

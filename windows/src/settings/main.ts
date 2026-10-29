@@ -1444,6 +1444,16 @@ function islandSection(): HTMLElement {
     settings.islandEdgeGap = v;
     void save();
   });
+  // How wide the closed island is, the rest of the island as it is.
+  const compactW = select([
+    ["normal", t("Wide (default)")],
+    ["narrower", t("Mid-width")],
+    ["narrow", t("Short")],
+    ["lumo", t("Just Lumo")],
+  ], ["narrower", "narrow", "lumo"].includes(settings.islandCompactWidth) ? settings.islandCompactWidth : "normal", (v) => {
+    settings.islandCompactWidth = v;
+    void save();
+  });
   // The island's icons, against their usual size.
   const icons = h("select", {}) as HTMLSelectElement;
   for (const pct of [100, 125, 150]) {
@@ -1489,6 +1499,7 @@ function islandSection(): HTMLElement {
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
+    setting(t("Closed island width"), t("only the closed island: the text, the icons and the open island keep their size. What it has to say still widens it"), compactW),
     setting(t("Distance from the edge"), t("between the island and the edge of the screen it is docked to. With Medium the mouse can cross the top of the screen above the island without opening it"), gap),
     setting(t("Icon size"), null, icons),
     setting(t("Put the island back in the centre"), null,
