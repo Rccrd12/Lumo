@@ -14244,6 +14244,42 @@
    "ru": "Не получает ваших инструментов: только отвечает и планирует.",
    "id": "Tidak mendapat alat Anda: hanya menjawab dan merencanakan.",
    "it": "Non riceve nessuno dei tuoi strumenti: risponde e pianifica soltanto."
+  },
+  "Loading the model…": {
+   "zh-Hans": "正在加载模型…",
+   "hi": "मॉडल लोड हो रहा है…",
+   "es": "Cargando el modelo…",
+   "ar": "جارٍ تحميل النموذج…",
+   "fr": "Chargement du modèle…",
+   "bn": "মডেল লোড হচ্ছে…",
+   "pt-BR": "Carregando o modelo…",
+   "ru": "Загружаю модель…",
+   "id": "Memuat model…",
+   "it": "Carico il modello…"
+  },
+  "Loading the model: {percent}%": {
+   "zh-Hans": "正在加载模型：{percent}%",
+   "hi": "मॉडल लोड हो रहा है: {percent}%",
+   "es": "Cargando el modelo: {percent}%",
+   "ar": "جارٍ تحميل النموذج: {percent}%",
+   "fr": "Chargement du modèle : {percent} %",
+   "bn": "মডেল লোড হচ্ছে: {percent}%",
+   "pt-BR": "Carregando o modelo: {percent}%",
+   "ru": "Загружаю модель: {percent}%",
+   "id": "Memuat model: {percent}%",
+   "it": "Carico il modello: {percent}%"
+  },
+  "Processing the prompt…": {
+   "zh-Hans": "正在处理提示…",
+   "hi": "प्रॉम्प्ट प्रोसेस हो रहा है…",
+   "es": "Procesando el prompt…",
+   "ar": "جارٍ معالجة الطلب…",
+   "fr": "Traitement du prompt…",
+   "bn": "প্রম্পট প্রসেস হচ্ছে…",
+   "pt-BR": "Processando o prompt…",
+   "ru": "Обрабатываю запрос…",
+   "id": "Memproses prompt…",
+   "it": "Elaboro il prompt…"
   }
  }
 }

@@ -1007,16 +1007,50 @@ pub fn run_listened(id: &str) -> Result<RunResult, String> {
     Ok(run_in(Path::new(&tool.dir), &tool.manifest, &json!({})))
 }
 
-/// The tools agents may use, for the chat's API providers: the island's own
-/// (island_tools.rs, its GitHub ones with `listen`), then the user's that are
-/// on: id, the words the model reads, and the JSON schema of the input.
-pub fn api_tools(listen: bool) -> Vec<(String, String, Value)> {
-    let mut all = crate::island_tools::api_tools(listen);
-    // Never one of the user's with the name of the island's own.
-    all.extend(offered().iter().filter(|t| !crate::island_tools::NAMES.contains(&t.manifest.id.as_str())).map(|t| {
-        let v = mcp_tool(&t.manifest);
-        (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
-    }));
+/// Lumo's email tools for `mail` (mail.rs ai_tools: "", "mail",
+/// "mail,mailsend" or "mail,mailsend,mailmanage"), as the CLIs get them from
+/// lumo-hook (the same file, hook/src/mail_tools.rs): id, words, schema.
+pub fn mail_api_tools(mail: &str) -> Vec<(String, String, Value)> {
+    use crate::mail_tool_defs as defs;
+    let kits: Vec<&str> = mail.split(',').map(str::trim).collect();
+    let mut all = Vec::new();
+    if kits.contains(&"mail") {
+        all.extend(defs::mail_tools());
+    }
+    if kits.contains(&"mailsend") {
+        all.extend(defs::mail_send_tools());
+    }
+    if kits.contains(&"mailmanage") {
+        all.extend(defs::mail_manage_tools());
+    }
+    all.into_iter()
+        .map(|v| (v["name"].as_str().unwrap_or("").to_string(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone()))
+        .collect()
+}
+
+/// Whether `id` is one of Lumo's email tools.
+pub fn is_mail_tool(id: &str) -> bool {
+    crate::mail_tool_defs::mail_tool(id)
+}
+
+/// The tools agents may use, for the chat's API providers (claude.rs,
+/// openai_compat.rs, local_chat.rs): the island's own (island_tools.rs: the
+/// timer and listening), Lumo's email tools as Security lets the AI have
+/// them (`mail`, mail.rs ai_tools), then the user's that are on: id, the
+/// words the model reads, and the JSON schema of the input.
+pub fn chat_tools(mail: &str) -> Vec<(String, String, Value)> {
+    let mut all = crate::island_tools::api_tools(true);
+    all.extend(mail_api_tools(mail));
+    // Never one of the user's with the name of the island's own or the email's.
+    all.extend(
+        offered()
+            .iter()
+            .filter(|t| !crate::island_tools::NAMES.contains(&t.manifest.id.as_str()) && !is_mail_tool(&t.manifest.id))
+            .map(|t| {
+                let v = mcp_tool(&t.manifest);
+                (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
+            }),
+    );
     all
 }
 
@@ -1028,7 +1062,12 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
-    let answer = serve_call(app, &json!({ "tool": id, "input": input, "always_ask": always_ask })).await;
+    // Lumo's email tools: what Security lets the AI do, each send or change on its card (mail.rs).
+    let answer = if is_mail_tool(id) {
+        crate::mail::serve(app, &json!({ "tool": id, "input": input })).await
+    } else {
+        serve_call(app, &json!({ "tool": id, "input": input, "always_ask": always_ask })).await
+    };
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
         None => (answer.get("text").and_then(Value::as_str).unwrap_or("Done.").to_string(), false),
@@ -1256,6 +1295,26 @@ pub fn tools_reveal(id: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_api_providers_get_the_email_tools_security_lets_the_ai_have() {
+        let names = |mail: &str| mail_api_tools(mail).into_iter().map(|t| t.0).collect::<Vec<_>>();
+        assert!(names("").is_empty());
+        assert_eq!(names("mail"), ["mail_recent", "mail_search", "mail_read", "mail_attachment", "mail_folders"]);
+        let send = names("mail,mailsend");
+        assert!(send.contains(&"mail_send".to_string()) && !send.contains(&"mail_trash".to_string()));
+        assert!(names("mail,mailsend,mailmanage").contains(&"mail_trash".to_string()));
+        for (name, description, schema) in mail_api_tools("mail,mailsend,mailmanage") {
+            assert!(is_mail_tool(&name), "{name}");
+            assert!(!description.is_empty() && schema["type"] == "object", "{name}");
+        }
+        assert!(!is_mail_tool("set_timer"));
+        // The island's listening is offered too, with the timer.
+        let all: Vec<String> = chat_tools("mail").into_iter().map(|t| t.0).collect();
+        for name in [crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"] {
+            assert!(all.iter().any(|n| n == name), "{name}");
+        }
+    }
 
     #[test]
     fn a_name_becomes_an_id_mcp_takes() {

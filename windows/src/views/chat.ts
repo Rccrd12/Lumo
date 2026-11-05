@@ -276,6 +276,10 @@ const ACTIVITY_STRINGS = {
   screen: N_("Looking at the screen"),
   computer: COMPUTER_TEXT.using,
   tool: N_("Using {tool}"),
+  // A local model (local_chat.rs): loading it, then reading the prompt.
+  loading: N_("Loading the model…"),
+  loadingAt: N_("Loading the model: {percent}%"),
+  prompt: N_("Processing the prompt…"),
 };
 
 const ISLAND_ACTIVITY_STRINGS = {
@@ -374,6 +378,10 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.computer);
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
+    case "loading":
+      return /^\d{1,3}$/.test(detail) ? t(ACTIVITY_STRINGS.loadingAt, { percent: detail }) : t(ACTIVITY_STRINGS.loading);
+    case "prompt":
+      return t(ACTIVITY_STRINGS.prompt);
     default:
       return t(ACTIVITY_STRINGS.thinking);
   }
@@ -399,6 +407,8 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "plan":
     case "screen":
     case "computer":
+    case "loading":
+    case "prompt":
       return activityLabel(activity);
     default:
       return t(COMPACT_TEXT.thinking);

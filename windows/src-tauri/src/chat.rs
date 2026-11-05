@@ -474,6 +474,25 @@ macro_rules! listen_tool_note {
 }
 pub(crate) use listen_tool_note;
 
+/// What the chat's API providers (claude.rs, openai_compat.rs, local_chat.rs)
+/// are told of their tools besides the timer: listening, and Lumo's email
+/// tools when Security lets the AI have them (`mail`, mail.rs ai_tools).
+pub fn api_tools_note(mail: &str) -> String {
+    let mut note = listen_tool_note!().to_string();
+    if !mail.is_empty() {
+        note.push_str(" The user's email: Lumo's email tools (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached; Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking.");
+        if mail.contains("mailsend") {
+            note.push_str(" To send one, answer one in its conversation or forward one, use mail_send, mail_reply or mail_forward: the user sees the email on a card and it goes only if they click Send; mail_draft saves one in their Drafts.");
+        } else {
+            note.push_str(" You can't send email: write a draft for the user to send themselves.");
+        }
+        if mail.contains("mailmanage") {
+            note.push_str(" Use mail_mark, mail_move, mail_archive and mail_trash only when the user asks: each change is a card the user approves.");
+        }
+    }
+    note
+}
+
 /// `answer`, with the lines for Lumo (`[[timer …]]`, `[[listen …]]`,
 /// `[[unlisten …]]`) that were written earlier in the turn, in a message
 /// before a tool call, added back: the CLIs return only their last message.

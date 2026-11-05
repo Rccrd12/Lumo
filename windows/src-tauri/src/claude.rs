@@ -129,6 +129,8 @@ async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<V
     for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
         let id = b["id"].as_str().unwrap_or_default();
         let name = b["name"].as_str().unwrap_or_default();
+        // The island says which tool runs, in place of Thinking….
+        chat.events().activity(app, crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
         let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone(), false).await;
         results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
     }
@@ -188,8 +190,12 @@ pub async fn send(
     let mut content = image_blocks(images);
     content.extend(user_content(turn.first, context.as_ref(), &query));
     let user = json!({ "role": "user", "content": content });
-    let tools = tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default();
-    let mut body = with_user_tools(request_body(model, &chat::system_prompt_in(chat, true, true), &turn.history, &user), &tools);
+    // Lumo's email tools, usable only while this turn runs.
+    let mail = crate::mail::ai_tools(app);
+    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail)).await.unwrap_or_default();
+    let system = format!("{}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail));
+    let mut body = with_user_tools(request_body(model, &system, &turn.history, &user), &tools);
 
     // Not streamed: Stop drops the request (or the tool's card), and nothing was written yet.
     let mut said: Vec<String> = Vec::new();

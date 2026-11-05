@@ -29,6 +29,7 @@ use std::time::Duration;
 
 use serde_json::Value;
 
+mod mail_tools;
 mod mcp;
 mod normalize;
 mod reply;

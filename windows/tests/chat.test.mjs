@@ -723,6 +723,11 @@ test("each activity has its words, with a file name, a host or a tool", () => {
     [{ kind: "screen", detail: "" }, "Looking at the screen"],
     [{ kind: "tool", detail: "create issue (github)" }, "Using create issue (github)"],
     [{ kind: "tool", detail: "" }, "Thinking…"],
+    // A local model: loading it (with how far, when the server tells), then reading the prompt.
+    [{ kind: "loading", detail: "" }, "Loading the model…"],
+    [{ kind: "loading", detail: "42" }, "Loading the model: 42%"],
+    [{ kind: "loading", detail: "<b>" }, "Loading the model…"],
+    [{ kind: "prompt", detail: "" }, "Processing the prompt…"],
     [{ kind: "something new", detail: "x" }, "Thinking…"],
     [null, "Thinking…"],
   ];

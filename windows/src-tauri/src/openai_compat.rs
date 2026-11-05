@@ -203,8 +203,12 @@ pub async fn send(
     }
     let turn = chat.begin(p.id);
     let user = with_images(user_message(turn.first, context.as_ref(), &query), images);
-    let mut body = request_body(p, model, &chat::system_prompt_in(chat, false, true), &turn.history, &user);
-    let tools = tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default();
+    // Lumo's email tools, usable only while this turn runs.
+    let mail = crate::mail::ai_tools(app);
+    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    let system = format!("{}{}", chat::system_prompt_in(chat, false, true), chat::api_tools_note(mail));
+    let mut body = request_body(p, model, &system, &turn.history, &user);
+    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail)).await.unwrap_or_default();
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }
@@ -236,6 +240,8 @@ pub async fn send(
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
+                // The island says which tool runs, in place of Thinking….
+                chat.events().activity(app, crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, false).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }

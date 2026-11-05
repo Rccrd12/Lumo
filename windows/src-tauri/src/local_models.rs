@@ -212,6 +212,8 @@ pub struct Caps {
     pub max_context: u64,
     /// The context it is loaded with now, in tokens (0: not loaded, or not said).
     pub loaded_context: u64,
+    /// It is in memory now (None: not said), so the chat knows to load it first.
+    pub loaded: Option<bool>,
 }
 
 /// How long what a server said about a model is kept: it changes when the
@@ -260,6 +262,89 @@ pub async fn caps(server: &Server, model: &str) -> Caps {
     caps
 }
 
+/// What was said of `model` is asked again next time: it was just loaded.
+pub fn forget(server: &Server, model: &str) {
+    let Ok(base) = local_chat::base_url(server) else { return };
+    let key = format!("{}|{}|{model}", server.id, base.as_str());
+    if let Some(all) = CAPS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        all.remove(&key);
+    }
+}
+
+/// How long loading a model may take before it is given up on.
+const LOAD: Duration = Duration::from_secs(10 * 60);
+
+/// Loads `model` into memory before the chat's question goes, so the island
+/// can say so: LM Studio tells how far it is (`on_progress`, 0–100), through
+/// its own chat endpoint's `model_load.progress` events, and the stream is
+/// dropped as soon as the model is in (nothing is written); Ollama loads it
+/// for a request without a prompt, and says nothing until then. A server that
+/// can't is no error: the question loads the model itself.
+pub async fn load(server: &Server, model: &str, mut on_progress: impl FnMut(u8)) -> Result<(), String> {
+    let model = safe_name(model).ok_or_else(|| t("Pick a model above the chat box first."))?;
+    let base = local_chat::base_url(server)?;
+    let result = if server.id == "ollama" {
+        post_json(server, &base, "api/generate", json!({ "model": model }), LOAD).await.map(|_| ())
+    } else if server.id == "lmstudio" {
+        load_lmstudio(server, &base, model, &mut on_progress).await
+    } else {
+        Ok(())
+    };
+    forget(server, model);
+    result
+}
+
+async fn load_lmstudio(server: &Server, base: &Url, model: &str, on_progress: &mut impl FnMut(u8)) -> Result<(), String> {
+    let mut reply = net::streaming_client(base, LOAD)?
+        .post(net::join(base, "api/v1/chat"))
+        .header("Authorization", local_chat::bearer(server.key.as_deref()))
+        .json(&json!({ "model": model, "input": "Hi", "stream": true, "store": false }))
+        .send()
+        .await
+        .map_err(|_| local_chat::unreachable(base))?;
+    if !reply.status().is_success() {
+        return Err(format!("HTTP {}", reply.status().as_u16()));
+    }
+    let mut pending = Vec::<u8>::new();
+    while let Some(chunk) = reply.chunk().await.map_err(|_| local_chat::unreachable(base))? {
+        pending.extend_from_slice(&chunk);
+        while let Some(end) = pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = pending.drain(..=end).collect();
+            match load_event(String::from_utf8_lossy(&line).trim_end()) {
+                Some(LoadEvent::Progress(p)) => on_progress(p),
+                // In memory: the rest of this answer is of no use.
+                Some(LoadEvent::Loaded) => return Ok(()),
+                None => {}
+            }
+        }
+        if pending.len() > MAX_LINE {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, PartialEq)]
+enum LoadEvent {
+    /// How far the model is loaded, 0–100.
+    Progress(u8),
+    /// It is in memory (it was, or it is now): nothing more to wait for.
+    Loaded,
+}
+
+/// One line of LM Studio's chat stream, as far as loading goes: `data:` lines
+/// carry a `type` (model_load.progress with its `progress` from 0 to 1;
+/// model_load.end; anything past loading means it is in).
+fn load_event(line: &str) -> Option<LoadEvent> {
+    let payload = line.strip_prefix("data:")?.trim_start();
+    let v: Value = serde_json::from_str(payload).ok()?;
+    match v["type"].as_str()? {
+        "model_load.progress" => Some(LoadEvent::Progress((v["progress"].as_f64()?.clamp(0.0, 1.0) * 100.0).round() as u8)),
+        "chat.start" | "model_load.start" => None,
+        _ => Some(LoadEvent::Loaded),
+    }
+}
+
 /// Ollama's `/api/show` of `model`, and its `/api/ps` for the context it is
 /// loaded with. Its `capabilities` name "vision", "tools", "thinking"; its
 /// `model_info` gives the longest context as `<architecture>.context_length`.
@@ -283,19 +368,17 @@ fn parse_ollama_caps(model: &str, show: &Value, ps: Option<&Value>) -> Caps {
         .unwrap_or(0);
     // `/api/ps` names a model as it was asked for: "llama3.2" is "llama3.2:latest".
     let same = |name: &str| name == model || name.strip_suffix(":latest") == Some(model);
-    let loaded_context = ps
-        .and_then(|ps| ps["models"].as_array())
-        .into_iter()
-        .flatten()
-        .find(|m| [m["name"].as_str(), m["model"].as_str()].into_iter().flatten().any(same))
-        .and_then(|m| m["context_length"].as_u64())
-        .unwrap_or(0);
+    let running = ps.and_then(|ps| ps["models"].as_array()).map(|all| {
+        all.iter().find(|m| [m["name"].as_str(), m["model"].as_str()].into_iter().flatten().any(same)).cloned()
+    });
+    let loaded_context = running.clone().flatten().and_then(|m| m["context_length"].as_u64()).unwrap_or(0);
     Caps {
         vision: known.then(|| has("vision")),
         tools: known.then(|| has("tools")),
         reasoning: reasoning.iter().map(|s| s.to_string()).collect(),
         max_context,
         loaded_context,
+        loaded: running.map(|m| m.is_some()),
     }
 }
 
@@ -324,7 +407,8 @@ fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
         // A model that only reasons ("on" alone) has nothing to pick.
         reasoning: if reasoning.len() > 1 { reasoning } else { Vec::new() },
         max_context: m["max_context_length"].as_u64().unwrap_or(0),
-        loaded_context: instance.and_then(|i| i.pointer("/config/context_length").and_then(Value::as_u64)).unwrap_or(0),
+        loaded_context: instance.as_ref().and_then(|i| i.pointer("/config/context_length").and_then(Value::as_u64)).unwrap_or(0),
+        loaded: Some(instance.is_some()),
     }
 }
 
@@ -495,13 +579,13 @@ mod tests {
         });
         let ps = json!({ "models": [{ "name": "qwen3-vl:8b", "model": "qwen3-vl:8b", "context_length": 65536 }] });
         let caps = parse_ollama_caps("qwen3-vl:8b", &show, Some(&ps));
-        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536 });
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536, loaded: Some(true) });
 
         // gpt-oss takes levels; ":latest" is the same model; not loaded, no context.
         let show = json!({ "capabilities": ["completion", "tools", "thinking"], "details": { "family": "gptoss" } });
         let ps = json!({ "models": [{ "name": "llama3.2:latest", "context_length": 4096 }] });
         let caps = parse_ollama_caps("gpt-oss:20b", &show, Some(&ps));
-        assert_eq!((caps.vision, caps.reasoning.len(), caps.loaded_context), (Some(false), 3, 0));
+        assert_eq!((caps.vision, caps.reasoning.len(), caps.loaded_context, caps.loaded), (Some(false), 3, 0, Some(false)));
         let caps = parse_ollama_caps("llama3.2", &json!({ "capabilities": ["completion"] }), Some(&ps));
         assert_eq!((caps.tools, caps.loaded_context), (Some(false), 4096));
 
@@ -521,12 +605,26 @@ mod tests {
             { "key": "nomic-embed", "type": "embedding", "loaded_instances": [] },
         ] });
         let caps = parse_lmstudio_caps("google/gemma-4-26b-a4b", &body);
-        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536 });
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536, loaded: Some(true) });
         // A second copy by its instance id; "on" alone is nothing to pick.
         let caps = parse_lmstudio_caps("deepseek/r1:2", &body);
         assert_eq!((caps.vision, caps.reasoning.is_empty(), caps.loaded_context), (Some(false), true, 8192));
-        assert_eq!(parse_lmstudio_caps("nomic-embed", &body), Caps::default());
+        let embed = parse_lmstudio_caps("nomic-embed", &body);
+        assert_eq!((embed.vision, embed.loaded), (None, Some(false)));
         assert_eq!(parse_lmstudio_caps("unknown", &body), Caps::default());
+    }
+
+    #[test]
+    fn lm_studio_says_how_far_the_model_is_loaded_and_when_it_is_in() {
+        assert_eq!(load_event(r#"data: {"type":"chat.start","model_instance_id":"m"}"#), None);
+        assert_eq!(load_event(r#"data: {"type":"model_load.start","model_instance_id":"m"}"#), None);
+        assert_eq!(load_event(r#"data: {"type":"model_load.progress","progress":0.424}"#), Some(LoadEvent::Progress(42)));
+        assert_eq!(load_event(r#"data: {"type":"model_load.progress","progress":1.5}"#), Some(LoadEvent::Progress(100)));
+        assert_eq!(load_event(r#"data: {"type":"model_load.end","load_time_seconds":3.1}"#), Some(LoadEvent::Loaded));
+        // Already in memory: the prompt comes at once.
+        assert_eq!(load_event(r#"data: {"type":"prompt_processing.start"}"#), Some(LoadEvent::Loaded));
+        assert_eq!(load_event("event: model_load.progress"), None);
+        assert_eq!(load_event("data: nope"), None);
     }
 
     #[test]

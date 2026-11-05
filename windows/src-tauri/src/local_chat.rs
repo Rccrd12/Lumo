@@ -29,6 +29,7 @@ use serde_json::{json, Value};
 use tauri::AppHandle;
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
+use crate::claude_code::Activity;
 use crate::local_models::Caps;
 use crate::settings::Settings;
 use crate::i18n::{t, tf};
@@ -270,12 +271,14 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
 const PLAN_NOTE: &str = "\n\nThe user picked Plan only: read and plan, and change nothing. You have none of the user's tools now; say what you would do with them instead.";
 
 /// The tools a turn offers in permission `mode` (claude_code::permission_mode):
-/// on Plan only, the island's own (a timer, listening) and none of the user's.
+/// on Plan only, the island's own (a timer, listening) and the email's that
+/// only read, none of the user's and nothing that sends or changes an email.
 fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String, String, Value)> {
     if mode != "plan" {
         return all;
     }
-    all.into_iter().filter(|(id, _, _)| crate::island_tools::NAMES.contains(&id.as_str())).collect()
+    let reads = |id: &str| crate::island_tools::NAMES.contains(&id) || crate::mail_tool_defs::MAIL_NAMES.contains(&id);
+    all.into_iter().filter(|(id, _, _)| reads(id)).collect()
 }
 
 /// Whether `path` is a picture a model that sees can be sent.
@@ -320,14 +323,18 @@ pub async fn send(
     let user = user_message(caps.vision == Some(true), turn.first, context.as_ref(), &query, shared);
     // The tools, unless the server says the model takes none.
     let mode = crate::claude_code::permission_mode(mode);
+    // Lumo's email tools, usable only while this turn runs.
+    let mail = if caps.tools == Some(false) { "" } else { crate::mail::ai_tools(app) };
+    let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     let tools = if caps.tools == Some(false) {
         Vec::new()
     } else {
-        let all = tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default();
+        let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail)).await.unwrap_or_default();
         tools_for_mode(all, mode)
     };
     let always_ask = mode == "default";
     let system = chat::system_prompt_in(chat, false, !tools.is_empty());
+    let system = if tools.is_empty() { system } else { format!("{system}{}", chat::api_tools_note(if mode == "plan" && !mail.is_empty() { "mail" } else { mail })) };
     let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
     let mut body = request_body(model, &system, &turn.history, &user);
     if !tools.is_empty() {
@@ -343,13 +350,34 @@ pub async fn send(
     let mut said: Vec<String> = Vec::new();
     let events = chat.events();
     let answer = async {
+        // A model not in memory is loaded first, so the island can say so
+        // (with how far, when LM Studio tells); a local model then reads the
+        // whole prompt before it writes, which takes a while too.
+        if caps.loaded == Some(false) {
+            events.activity(app, Activity::new("loading", ""));
+            let loaded = crate::local_models::load(server, model, |percent| {
+                events.activity(app, Activity::new("loading", percent.to_string()));
+            })
+            .await;
+            if let Err(e) = loaded {
+                crate::log::line(format!("[local] loading {model}: {e}"));
+            }
+        }
         let mut rounds = 0;
         loop {
+            events.activity(app, Activity::new("prompt", ""));
             let before = said.join("\n\n");
-            let streamed = stream(&base, server.key.as_deref(), model, &body, |visible| {
-                shown = if before.is_empty() { visible } else if visible.is_empty() { before.clone() } else { format!("{before}\n\n{visible}") };
-                events.delta(app, &shown);
-            })
+            let streamed = stream(
+                &base,
+                server.key.as_deref(),
+                model,
+                &body,
+                |visible| {
+                    shown = if before.is_empty() { visible } else if visible.is_empty() { before.clone() } else { format!("{before}\n\n{visible}") };
+                    events.delta(app, &shown);
+                },
+                || events.activity(app, Activity::thinking()),
+            )
             .await;
             let streamed = match streamed {
                 // A model that takes no tools refuses the request: once more without them.
@@ -381,6 +409,7 @@ pub async fn send(
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
+                events.activity(app, Activity::new("tool", crate::claude_code::pretty_tool(name)));
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, always_ask).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
             }
@@ -417,7 +446,7 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
     }
     let user = json!({ "role": "user", "content": prompt });
     let body = request_body(model, system, &[], &user);
-    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}).await.map_err(|(_, e)| e)?.text;
+    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}, || {}).await.map_err(|(_, e)| e)?.text;
     if answer.is_empty() {
         return Err(t("No response text."));
     }
@@ -434,6 +463,9 @@ enum Event {
     /// Pieces of tool calls, each with its `index` (the OpenAI API streams a
     /// call's arguments in pieces; Ollama sends each call whole).
     Calls(Vec<Value>),
+    /// A piece of the model's reasoning (`reasoning_content`, Ollama's
+    /// `reasoning`), never shown: it only says the model is thinking.
+    Reasoning,
     /// An error event.
     Error(String),
 }
@@ -453,7 +485,13 @@ fn parse_sse_line(line: &str) -> Option<Event> {
     if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array).filter(|c| !c.is_empty()) {
         return Some(Event::Calls(calls.clone()));
     }
-    delta.get("content")?.as_str().map(|s| Event::Text(s.to_string()))
+    match delta.get("content").and_then(Value::as_str).filter(|s| !s.is_empty()) {
+        Some(text) => Some(Event::Text(text.to_string())),
+        None => ["reasoning_content", "reasoning"]
+            .iter()
+            .any(|k| delta.get(*k).and_then(Value::as_str).is_some_and(|r| !r.is_empty()))
+            .then_some(Event::Reasoning),
+    }
 }
 
 /// The tool calls of an answer, put together from their pieces: each one's
@@ -529,14 +567,16 @@ struct Streamed {
 }
 
 /// Posts the request and reads the event stream. `on_delta` gets the visible
-/// text at most 15 times a second, and once more at the end. An error comes
-/// with the HTTP status (0 when there was none).
+/// text at most 15 times a second, and once more at the end; `on_think`, once,
+/// when the model starts reasoning before any text. An error comes with the
+/// HTTP status (0 when there was none).
 async fn stream(
     base: &Url,
     key: Option<&str>,
     model: &str,
     body: &Value,
     mut on_delta: impl FnMut(String),
+    mut on_think: impl FnMut(),
 ) -> Result<Streamed, (u16, String)> {
     let mut reply = net::streaming_client(base, Duration::from_secs(300))
         .map_err(|e| (0, e))?
@@ -561,9 +601,15 @@ async fn stream(
     let mut calls = CallParts::default();
     let mut pending = Vec::<u8>::new();
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
+    let mut thinking = false;
     let mut take = |line: &str, accumulated: &mut String| -> Result<(), (u16, String)> {
         match parse_sse_line(line) {
             Some(Event::Text(delta)) => accumulated.push_str(&delta),
+            Some(Event::Reasoning) if !thinking && accumulated.is_empty() => {
+                thinking = true;
+                on_think();
+            }
+            Some(Event::Reasoning) => {}
             Some(Event::Calls(pieces)) => calls.feed(&pieces),
             Some(Event::Error(message)) => return Err((0, message)),
             None => {}
@@ -616,7 +662,10 @@ mod tests {
         assert_eq!(parse_sse_line(""), None);
         assert_eq!(parse_sse_line(": keep-alive"), None);
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#), None);
-        assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":null,"reasoning_content":"x"}}]}"#), None);
+        // Reasoning only says the model is thinking (LM Studio's field, then Ollama's).
+        assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":null,"reasoning_content":"x"}}]}"#), Some(Event::Reasoning));
+        assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":"","reasoning":"x"}}]}"#), Some(Event::Reasoning));
+        assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":""}}]}"#), None);
         assert_eq!(parse_sse_line("data: not json"), None);
         assert_eq!(parse_sse_line(r#"data: {"error":{"message":"out of memory"}}"#), Some(Event::Error("out of memory".into())));
         let line = r#"data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"c1","function":{"name":"set_timer"}}]}}]}"#;
@@ -639,13 +688,13 @@ mod tests {
     }
 
     #[test]
-    fn plan_only_keeps_the_islands_tools_and_none_of_the_users() {
+    fn plan_only_keeps_the_tools_that_only_look_and_none_of_the_users() {
         let tool = |id: &str| (id.to_string(), String::new(), json!({}));
-        let all = vec![tool(crate::island_tools::SET_TIMER), tool("pdfcraft"), tool(crate::island_tools::LISTEN)];
+        let all = vec![tool(crate::island_tools::SET_TIMER), tool("pdfcraft"), tool(crate::island_tools::LISTEN), tool("mail_read"), tool("mail_send")];
         let ids = |v: Vec<(String, String, Value)>| v.into_iter().map(|t| t.0).collect::<Vec<_>>();
-        assert_eq!(ids(tools_for_mode(all.clone(), "plan")), vec![crate::island_tools::SET_TIMER, crate::island_tools::LISTEN]);
-        assert_eq!(ids(tools_for_mode(all.clone(), "default")).len(), 3);
-        assert_eq!(ids(tools_for_mode(all, "auto")).len(), 3);
+        assert_eq!(ids(tools_for_mode(all.clone(), "plan")), vec![crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"]);
+        assert_eq!(ids(tools_for_mode(all.clone(), "default")).len(), 5);
+        assert_eq!(ids(tools_for_mode(all, "auto")).len(), 5);
     }
 
     #[test]
@@ -757,7 +806,9 @@ mod tests {
         body.push_str("data: [DONE]\n\n");
         let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.into_bytes());
         let mut seen = Vec::new();
-        let answer = block_on(stream(&url(&u), None, "m", &json!({}), |v| seen.push(v))).unwrap().text;
+        let mut thought = 0;
+        let answer = block_on(stream(&url(&u), None, "m", &json!({}), |v| seen.push(v), || thought += 1)).unwrap().text;
+        assert_eq!(thought, 0, "the reasoning came after the text had started");
         assert_eq!(answer, "## Answer\n\n- **item 1**\n```python\nprint('hello')\n```");
         assert_eq!(seen.last().unwrap(), &answer);
         assert!(seen.iter().all(|v| !v.contains("step") && !v.contains("internal")));
@@ -772,7 +823,7 @@ mod tests {
         ];
         let body: String = events.iter().map(|e| format!("data: {e}\n\n")).collect();
         let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.into_bytes());
-        let streamed = block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).ok().unwrap();
+        let streamed = block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).ok().unwrap();
         assert_eq!(streamed.text, "Setting it.");
         assert_eq!(streamed.calls, vec![json!({"id":"c1","name":"set_timer","arguments":"{\"minutes\":5}"})]);
     }
@@ -780,19 +831,19 @@ mod tests {
     #[test]
     fn stream_errors_say_what_happened() {
         let u = serve_once("404 Not Found", "Content-Length: 2\r\n", b"{}".to_vec());
-        let err = block_on(stream(&url(&u), None, "unknown-model", &json!({}), |_| {})).err().unwrap();
+        let err = block_on(stream(&url(&u), None, "unknown-model", &json!({}), |_| {}, || {})).err().unwrap();
         assert_eq!(err, (404, "unknown-model isn't installed. Pick another model above the chat box.".to_string()));
         let body = br#"{"error":{"message":"context too long"}}"#;
         let u = serve_once("400 Bad Request", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
-        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).err().unwrap(), (400, "context too long".to_string()));
+        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap(), (400, "context too long".to_string()));
         let u = serve_once("200 OK", "", b"data: {\"error\":{\"message\":\"crashed\"}}\n".to_vec());
-        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).err().unwrap().1, "crashed");
+        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap().1, "crashed");
     }
 
     #[test]
     fn an_endless_line_is_cut_off() {
         let u = serve_once("200 OK", "", vec![b'x'; MAX_LINE + 10]);
-        let err = block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).err().unwrap().1;
+        let err = block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap().1;
         assert_eq!(err, "The server's answer is too large.");
     }
 

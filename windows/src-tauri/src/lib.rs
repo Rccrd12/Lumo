@@ -1,6 +1,10 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
 mod activities;
+/// Lumo's email tools as lumo-hook lists them: the same file, for the chat's API providers (tools.rs).
+#[path = "../../hook/src/mail_tools.rs"]
+#[allow(dead_code)]
+mod mail_tool_defs;
 mod plan_island;
 mod agent_hooks;
 mod agents;
