@@ -379,7 +379,13 @@ pub async fn send(
                 model,
                 &body,
                 |visible| {
-                    shown = if before.is_empty() { visible } else if visible.is_empty() { before.clone() } else { format!("{before}\n\n{visible}") };
+                    // Nothing new yet in this round (a tool ran, the model reads or
+                    // thinks): the text so far isn't sent again, or the island would
+                    // drop the dots that say what the answer is doing.
+                    if visible.is_empty() {
+                        return;
+                    }
+                    shown = if before.is_empty() { visible } else { format!("{before}\n\n{visible}") };
                     events.delta(app, &shown);
                 },
                 || events.activity(app, Activity::thinking()),
