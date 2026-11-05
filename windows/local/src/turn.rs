@@ -8,7 +8,7 @@ use std::time::Duration;
 
 use serde_json::{json, Value};
 
-use crate::guard::{asks_change, call_input, claims_change, written_call, without_images};
+use crate::guard::{announces, asks_change, call_input, claims_change, claims_done, written_call, without_images};
 use crate::native::calls_in_text;
 use crate::sse::progressive_filter;
 use crate::transport::{ask_whole, stream, Endpoint, Failure, Seen};
@@ -144,7 +144,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut used = None;
     let mut rounds = 0;
     // Each check sends the model back once a turn.
-    let (mut written, mut claimed) = (false, false);
+    let (mut written, mut claimed, mut stopped) = (false, false, false);
     // A copy changed by a tool in this turn.
     let mut changed = false;
     let mut notes: Vec<String> = Vec::new();
@@ -269,6 +269,23 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 json!({ "role": "assistant", "content": answer.text }),
                 json!({ "role": "user", "content": "(Lumo: you said a file was changed, but no tool changed one in this answer: nothing changed. Call workspace_write or workspace_edit on the copy now, or tell the user plainly that it wasn't done.)" }),
             ]);
+            hooks.shown(&before);
+            hooks.doing(Doing::Thinking);
+            continue;
+        }
+        // "It's set" with no tool called in the whole turn, or "Let me read
+        // it first" and nothing more: the model is told once.
+        let nothing_ran = rounds == 0 && !claims_change(&answer.text);
+        if answer.calls.is_empty() && tools && !stopped && !answer.cut && ((nothing_ran && claims_done(&answer.text)) || announces(&answer.text)) {
+            stopped = true;
+            let said_done = nothing_ran && claims_done(&answer.text);
+            fixes.push(if said_done { "done said, not made" } else { "stopped before the tool" });
+            let note = if said_done {
+                "(Lumo: you said it was done, but you called no tool: nothing was done. Call the tool that does it now, or tell the user plainly that you can't.)"
+            } else {
+                "(Lumo: you said what you would do next, but called no tool, so nothing happened and the user is still waiting. Call the tool now and finish the task.)"
+            };
+            push(body, [json!({ "role": "assistant", "content": answer.text }), json!({ "role": "user", "content": note })]);
             hooks.shown(&before);
             hooks.doing(Doing::Thinking);
             continue;

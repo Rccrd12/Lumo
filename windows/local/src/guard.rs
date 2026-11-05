@@ -27,6 +27,37 @@ pub fn claims_change(text: &str) -> bool {
     .any(|w| t.contains(w))
 }
 
+/// Whether an answer says, in the first person, that something was done:
+/// a file changed, a timer set, a folder listened to, a mail written.
+pub fn claims_done(text: &str) -> bool {
+    let t = text.to_lowercase();
+    claims_change(text)
+        || [
+            "ho impostato", "ho attivato", "ho messo", "ho creato", "ho programmato", "ho iniziato", "ho avviato", "ho preparato", "ho inviato", "ho mandato",
+            "ti avviserò", "ti avviso io", "i've set", "i have set", "i set up", "i've created", "i created", "i've started", "i started", "i'll let you know",
+            "i will let you know", "i'll notify", "i've sent", "i sent",
+        ]
+        .iter()
+        .any(|w| t.contains(w))
+}
+
+/// Whether a short answer only says what the model is about to do ("Let me
+/// read the file first."), and stops there.
+pub fn announces(text: &str) -> bool {
+    let t = text.trim().to_lowercase();
+    if t.is_empty() || t.chars().count() > 300 {
+        return false;
+    }
+    let t = t.replace("let me know", "").replace("fammi sapere", "");
+    [
+        "let me ", "i'll first", "i will first", "i'll now", "i will now", "now i'll", "i'm going to", "first, i", "first i ", "lasciami ", "fammi ",
+        "prima leggo", "ora leggo", "adesso leggo", "leggo prima", "procedo a", "procedo con", "sto per ", "vado a ", "ora controllo", "adesso controllo",
+        "ora apro", "ora copio", "adesso copio",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+}
+
 /// The longest answer to ask for: most of what the context leaves past the
 /// prompt (`taken` tokens, a rough count), between 2 048 and 32 768 tokens;
 /// 8 192 when the context isn't known.
@@ -100,6 +131,16 @@ mod tests {
         assert_eq!(answer_room(0, 100), 8_192);
         assert_eq!(answer_room(32_768, 2_768), 24_000);
         assert_eq!(answer_room(8_192, 7_000), 2_048);
+    }
+
+    #[test]
+    fn a_thing_said_done_or_only_announced_is_noticed() {
+        assert!(claims_done("Ho impostato l'ascolto per la cartella Downloads. Ti avviserò."));
+        assert!(!claims_done("Non posso prenotare tavoli, ma posso scrivere una mail."));
+        assert!(announces("Let me read the contents of the file first so I can expand on it appropriately."));
+        assert!(announces("Prima leggo il file, poi lo allungo."));
+        assert!(!announces("Il file ha 12 righe. Fammi sapere se ti serve altro."));
+        assert!(!announces("Done. Let me know if you need anything else."));
     }
 
     #[test]

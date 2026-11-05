@@ -394,6 +394,27 @@ fn each_request_has_its_own_retries_when_the_engine_fails() {
 }
 
 #[test]
+fn a_thing_said_done_with_no_tool_or_only_announced_goes_back_once() {
+    // "I set it" with no tool called: back once, and then the tool is called.
+    let mut island = Island::default();
+    let replies = vec![answer("Ho impostato l'ascolto per la cartella Downloads."), calls("c1", "set_timer", "{\"minutes\":1}"), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut question("Avvisami quando cambia la cartella", &["set_timer"]), &rules("said-done", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Fatto.", ["done said, not made"].as_slice()));
+    assert!(requests[1]["messages"].to_string().contains("you called no tool"));
+    // "Let me read it first" and nothing more: back once; a second time, it is the answer.
+    let mut island = Island::default();
+    let replies = vec![answer("Let me read the file first."), answer("Let me read the file first.")];
+    let (outcome, requests) = turn(replies, &mut question("Allungalo", &["workspace_read"]), &rules("announced", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["stopped before the tool"]);
+    assert_eq!(requests.len(), 2);
+    // A plain answer, or one with no tools offered, stays as it is.
+    let (outcome, requests) = turn(vec![answer("Il file ha 12 righe.")], &mut question("Quante righe?", &["workspace_read"]), &rules("plain", ""), &mut Island::default());
+    assert!(outcome.unwrap().fixes.is_empty());
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
 fn a_gemma_call_left_in_the_text_is_made() {
     let mut island = Island::default();
     let gemma = "<|tool_call>call:workspace_write{content:<|\"|>Mele\nPere\nBanane\n<|\"|>,path:<|\"|>frutti.txt<|\"|>}<tool_call|>";
