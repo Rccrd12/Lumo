@@ -277,7 +277,7 @@ fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String,
     if mode != "plan" {
         return all;
     }
-    let reads = |id: &str| crate::island_tools::NAMES.contains(&id) || crate::mail_tool_defs::MAIL_NAMES.contains(&id);
+    let reads = |id: &str| crate::island_tools::NAMES.contains(&id) || crate::mail_tool_defs::MAIL_NAMES.contains(&id) || crate::web_search::NAMES.contains(&id);
     all.into_iter().filter(|(id, _, _)| reads(id)).collect()
 }
 
@@ -327,15 +327,19 @@ pub async fn send(
     // Lumo's email tools, usable only while this turn runs.
     let mail = if caps.tools == Some(false) { "" } else { crate::mail::ai_tools(app) };
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
+    // Lumo's own web search, when the user turned it on (web_search.rs).
+    let web = caps.tools != Some(false) && tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false);
     let tools = if caps.tools == Some(false) {
         Vec::new()
     } else {
-        let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail)).await.unwrap_or_default();
+        let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web)).await.unwrap_or_default();
         tools_for_mode(all, mode)
     };
+    let web = web && !tools.is_empty();
     let always_ask = mode == "default";
-    let system = chat::system_prompt_in(chat, false, !tools.is_empty());
+    let system = chat::system_prompt_in(chat, web, !tools.is_empty());
     let system = if tools.is_empty() { system } else { format!("{system}{}", chat::api_tools_note(if mode == "plan" && !mail.is_empty() { "mail" } else { mail })) };
+    let system = if web { format!("{system}{}", crate::web_search::NOTE) } else { system };
     let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
     let mut body = request_body(model, &system, &turn.history, &user);
     if !tools.is_empty() {
@@ -418,7 +422,7 @@ pub async fn send(
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
-                events.activity(app, Activity::new("tool", crate::claude_code::pretty_tool(name)));
+                events.activity(app, if crate::web_search::NAMES.contains(&name) { crate::web_search::activity(name) } else { Activity::new("tool", crate::claude_code::pretty_tool(name)) });
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, always_ask).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
             }

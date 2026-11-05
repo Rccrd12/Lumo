@@ -155,6 +155,10 @@ pub struct Settings {
     /// The chat's Claude Code may see the screen, click and type (computer.rs,
     /// lumo-hook --mcp), Windows only. Off until the user turns it on.
     pub chat_computer_use: bool,
+    /// Lumo's own web search (web_search.rs) for the chat's providers that
+    /// have none of their own: DuckDuckGo, else Mojeek or Wikipedia, and the
+    /// pages read from this computer. Off until the user turns it on.
+    pub chat_web_search: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -299,6 +303,7 @@ impl Default for Settings {
             chat_share_open: true,
             chat_share_tabs: false,
             chat_computer_use: false,
+            chat_web_search: false,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             live_model: "gemini-3.8-live".into(),
@@ -629,6 +634,7 @@ mod tests {
   "chatShareOpen": false,
   "chatShareTabs": true,
   "chatComputerUse": true,
+  "chatWebSearch": true,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
@@ -1085,6 +1091,7 @@ mod tests {
                 "chatShareOpen",
                 "chatShareTabs",
                 "chatComputerUse",
+                "chatWebSearch",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "liveModel",

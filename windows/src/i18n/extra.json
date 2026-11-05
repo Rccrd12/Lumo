@@ -14412,6 +14412,42 @@
    "ru": "Модель не дала краткого изложения. Попробуйте ещё раз.",
    "id": "Model tidak memberi ringkasan. Coba lagi.",
    "it": "Il modello non ha dato un riassunto. Riprova."
+  },
+  "Web search": {
+   "zh-Hans": "网页搜索",
+   "hi": "वेब खोज",
+   "es": "Búsqueda web",
+   "ar": "البحث في الويب",
+   "fr": "Recherche web",
+   "bn": "ওয়েব অনুসন্ধান",
+   "pt-BR": "Pesquisa na web",
+   "ru": "Поиск в интернете",
+   "id": "Pencarian web",
+   "it": "Ricerca web"
+  },
+  "Search the web for the AI": {
+   "zh-Hans": "为 AI 搜索网页",
+   "hi": "AI के लिए वेब पर खोजें",
+   "es": "Buscar en la web para la IA",
+   "ar": "البحث في الويب للذكاء الاصطناعي",
+   "fr": "Chercher sur le web pour l'IA",
+   "bn": "AI-এর জন্য ওয়েবে খুঁজুন",
+   "pt-BR": "Pesquisar na web para a IA",
+   "ru": "Искать в интернете для ИИ",
+   "id": "Cari di web untuk AI",
+   "it": "Cerca sul web per l'AI"
+  },
+  "For local models, OpenAI, Google and OpenRouter. The question goes to DuckDuckGo (else Mojeek or Wikipedia) without an account, the pages open from this computer, and only the passages that answer reach the model. Free, no key.": {
+   "zh-Hans": "适用于本地模型、OpenAI、Google 和 OpenRouter。问题会发送到 DuckDuckGo（否则为 Mojeek 或维基百科），无需账号；网页从这台电脑打开，只有回答问题的段落会发给模型。免费，无需密钥。",
+   "hi": "लोकल मॉडल, OpenAI, Google और OpenRouter के लिए। सवाल बिना खाते के DuckDuckGo (वरना Mojeek या Wikipedia) पर जाता है, पेज इसी कंप्यूटर से खुलते हैं, और सिर्फ़ जवाब देने वाले हिस्से मॉडल तक पहुँचते हैं। मुफ़्त, बिना कुंजी।",
+   "es": "Para modelos locales, OpenAI, Google y OpenRouter. La pregunta va a DuckDuckGo (si no, a Mojeek o Wikipedia) sin cuenta, las páginas se abren desde este ordenador y al modelo solo le llegan los fragmentos que responden. Gratis, sin clave.",
+   "ar": "للنماذج المحلية وOpenAI وGoogle وOpenRouter. يذهب السؤال إلى DuckDuckGo (وإلا فإلى Mojeek أو ويكيبيديا) دون حساب، وتُفتح الصفحات من هذا الحاسوب، ولا يصل إلى النموذج إلا المقاطع التي تجيب. مجاني، بلا مفتاح.",
+   "fr": "Pour les modèles locaux, OpenAI, Google et OpenRouter. La question part vers DuckDuckGo (sinon Mojeek ou Wikipédia) sans compte, les pages s'ouvrent depuis cet ordinateur et seuls les passages qui répondent arrivent au modèle. Gratuit, sans clé.",
+   "bn": "লোকাল মডেল, OpenAI, Google ও OpenRouter-এর জন্য। প্রশ্নটি অ্যাকাউন্ট ছাড়াই DuckDuckGo-তে (নইলে Mojeek বা Wikipedia-তে) যায়, পেজগুলো এই কম্পিউটার থেকে খোলে, আর শুধু উত্তর দেওয়া অংশগুলোই মডেলের কাছে যায়। বিনামূল্যে, কোনো কী লাগে না।",
+   "pt-BR": "Para modelos locais, OpenAI, Google e OpenRouter. A pergunta vai para o DuckDuckGo (senão Mojeek ou Wikipédia) sem conta, as páginas abrem deste computador e só os trechos que respondem chegam ao modelo. Grátis, sem chave.",
+   "ru": "Для локальных моделей, OpenAI, Google и OpenRouter. Вопрос уходит в DuckDuckGo (иначе в Mojeek или Википедию) без аккаунта, страницы открываются с этого компьютера, а модели достаются только отрывки с ответом. Бесплатно, без ключа.",
+   "id": "Untuk model lokal, OpenAI, Google, dan OpenRouter. Pertanyaan dikirim ke DuckDuckGo (atau Mojeek atau Wikipedia) tanpa akun, halaman dibuka dari komputer ini, dan hanya bagian yang menjawab yang sampai ke model. Gratis, tanpa kunci.",
+   "it": "Per i modelli locali, OpenAI, Google e OpenRouter. La domanda va a DuckDuckGo (altrimenti Mojeek o Wikipedia) senza account, le pagine si aprono da questo PC e al modello arrivano solo i passaggi che rispondono. Gratis, senza chiave."
   }
  }
 }

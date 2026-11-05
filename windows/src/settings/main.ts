@@ -721,6 +721,13 @@ const PERMISSION_NAMES: Record<string, string> = {
   default: N_("Ask every time"), auto: N_("Auto"), plan: N_("Plan only"),
 };
 
+/** Lumo's own web search (web_search.rs), for the providers that have none. */
+const WEB_SETTINGS = {
+  get group() { return t("Web search"); },
+  get label() { return t("Search the web for the AI"); },
+  get hint() { return t("For local models, OpenAI, Google and OpenRouter. The question goes to DuckDuckGo (else Mojeek or Wikipedia) without an account, the pages open from this computer, and only the passages that answer reach the model. Free, no key."); },
+};
+
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
   get hint() { return t("Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back."); },
@@ -786,6 +793,10 @@ function securitySection(): HTMLElement {
       }),
     ),
     note,
+    group(WEB_SETTINGS.group),
+    setting(WEB_SETTINGS.label, WEB_SETTINGS.hint,
+      toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
+    ),
     group(SECURITY.other),
     setting(SECURITY.keys, SECURITY.keysHint),
   );

@@ -1036,16 +1036,23 @@ pub fn is_mail_tool(id: &str) -> bool {
 /// The tools agents may use, for the chat's API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): the island's own (island_tools.rs: the
 /// timer and listening), Lumo's email tools as Security lets the AI have
-/// them (`mail`, mail.rs ai_tools), then the user's that are on: id, the
-/// words the model reads, and the JSON schema of the input.
-pub fn chat_tools(mail: &str) -> Vec<(String, String, Value)> {
+/// them (`mail`, mail.rs ai_tools), Lumo's web search when `web`
+/// (web_search.rs), then the user's that are on: id, the words the model
+/// reads, and the JSON schema of the input.
+pub fn chat_tools(mail: &str, web: bool) -> Vec<(String, String, Value)> {
     let mut all = crate::island_tools::api_tools(true);
     all.extend(mail_api_tools(mail));
-    // Never one of the user's with the name of the island's own or the email's.
+    if web {
+        all.extend(crate::web_search::api_tools());
+    }
+    // Never one of the user's with the name of the island's own, the email's or the web search's.
     all.extend(
         offered()
             .iter()
-            .filter(|t| !crate::island_tools::NAMES.contains(&t.manifest.id.as_str()) && !is_mail_tool(&t.manifest.id))
+            .filter(|t| {
+                let id = t.manifest.id.as_str();
+                !crate::island_tools::NAMES.contains(&id) && !is_mail_tool(id) && !crate::web_search::NAMES.contains(&id)
+            })
             .map(|t| {
                 let v = mcp_tool(&t.manifest);
                 (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
@@ -1061,6 +1068,11 @@ pub fn chat_tools(mail: &str) -> Vec<(String, String, Value)> {
 pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, always_ask: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
+    }
+    // Lumo's web search, read-only: no card, as for a search engine's own.
+    if crate::web_search::NAMES.contains(&id) {
+        let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
+        return crate::web_search::call(id, &input, &provider).await;
     }
     // Lumo's email tools: what Security lets the AI do, each send or change on its card (mail.rs).
     let answer = if is_mail_tool(id) {
@@ -1310,7 +1322,7 @@ mod tests {
         }
         assert!(!is_mail_tool("set_timer"));
         // The island's listening is offered too, with the timer.
-        let all: Vec<String> = chat_tools("mail").into_iter().map(|t| t.0).collect();
+        let all: Vec<String> = chat_tools("mail", false).into_iter().map(|t| t.0).collect();
         for name in [crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"] {
             assert!(all.iter().any(|n| n == name), "{name}");
         }

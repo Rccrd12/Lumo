@@ -308,6 +308,33 @@ pub async fn load_for_picker(app: &AppHandle, provider: &str, model: &str) -> Re
     .await
 }
 
+/// The embedding vectors of `texts` from `provider`'s embedding model, for
+/// the web search's ranking (web_search.rs). Only one already in memory is
+/// used: nothing is loaded or unloaded for it, the VRAM stays the chat
+/// model's. None without one, or when it fails.
+pub async fn embed(provider: &str, texts: &[String]) -> Option<Vec<Vec<f32>>> {
+    let (server, base) = server_for(provider).ok()?;
+    let embedding = |name: &str| {
+        let n = name.to_lowercase();
+        ["embed", "bge-", "minilm", "e5-", "gte-"].iter().any(|k| n.contains(k))
+    };
+    let floats = |v: &Value| -> Option<Vec<f32>> { v.as_array()?.iter().map(|x| x.as_f64().map(|f| f as f32)).collect() };
+    if server.id == "ollama" {
+        let ps = get_json(&server, &base, "api/ps").await.ok()?;
+        let model = ps["models"].as_array()?.iter().filter_map(|m| m["name"].as_str()).find(|n| embedding(n))?.to_string();
+        let body = post_json(&server, &base, "api/embed", json!({ "model": model, "input": texts, "truncate": true }), QUICK * 3).await.ok()?;
+        body["embeddings"].as_array()?.iter().map(floats).collect()
+    } else {
+        let models = get_json(&server, &base, "api/v1/models").await.ok()?;
+        let model = models["models"].as_array()?.iter().find(|m| {
+            m["type"] == "embedding" && m["loaded_instances"].as_array().is_some_and(|i| !i.is_empty())
+        })?;
+        let id = model["loaded_instances"][0]["id"].as_str().or(model["key"].as_str())?.to_string();
+        let body = post_json(&server, &base, "v1/embeddings", json!({ "model": id, "input": texts }), QUICK * 3).await.ok()?;
+        body["data"].as_array()?.iter().map(|d| floats(&d["embedding"])).collect()
+    }
+}
+
 /// What was said of `model` is asked again next time: it was just loaded.
 pub fn forget(server: &Server, model: &str) {
     let Ok(base) = local_chat::base_url(server) else { return };

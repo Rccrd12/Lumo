@@ -296,6 +296,8 @@ export interface Settings {
   chatShareTabs: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
+  /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
+  chatWebSearch: boolean;
   /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -415,6 +417,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShareOpen: true,
   chatShareTabs: false,
   chatComputerUse: false,
+  chatWebSearch: false,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   ollamaUrl: "",

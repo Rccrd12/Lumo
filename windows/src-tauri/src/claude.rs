@@ -193,7 +193,7 @@ pub async fn send(
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
-    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail)).await.unwrap_or_default();
+    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, false)).await.unwrap_or_default();
     let system = format!("{}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail));
     let mut body = with_user_tools(request_body(model, &system, &turn.history, &user), &tools);
 

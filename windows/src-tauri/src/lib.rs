@@ -68,6 +68,7 @@ mod tools;
 mod tray;
 mod typing;
 mod updater;
+mod web_search;
 mod webview_drop;
 mod window_control;
 

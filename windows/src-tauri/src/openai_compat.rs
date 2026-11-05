@@ -206,9 +206,11 @@ pub async fn send(
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
-    let system = format!("{}{}", chat::system_prompt_in(chat, false, true), chat::api_tools_note(mail));
+    // Lumo's own web search, when the user turned it on (web_search.rs).
+    let web = tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false);
+    let system = format!("{}{}{}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" });
     let mut body = request_body(p, model, &system, &turn.history, &user);
-    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail)).await.unwrap_or_default();
+    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web)).await.unwrap_or_default();
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }
@@ -241,7 +243,7 @@ pub async fn send(
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
                 // The island says which tool runs, in place of Thinking….
-                chat.events().activity(app, crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
+                chat.events().activity(app, if crate::web_search::NAMES.contains(&name) { crate::web_search::activity(name) } else { crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)) });
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, false).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }
