@@ -285,7 +285,7 @@ pub(crate) mod tests {
 
     /// Reads one request: the head up to the blank line, then `Content-Length`
     /// bytes of body.
-    fn read_request(conn: &mut std::net::TcpStream) {
+    pub(crate) fn read_request(conn: &mut std::net::TcpStream) {
         use std::io::Read;
         let mut data = Vec::new();
         let mut buf = [0u8; 8192];
