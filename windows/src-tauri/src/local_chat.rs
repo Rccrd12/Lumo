@@ -483,6 +483,9 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
 /// One server-sent event line.
 #[derive(Debug, PartialEq)]
 enum Event {
+    /// `data: [DONE]`: the answer is complete. Some servers (LM Studio) keep
+    /// the connection open after it, so the stream ends here, not at its close.
+    Done,
     /// A piece of the answer's text.
     Text(String),
     /// Pieces of tool calls, each with its `index` (the OpenAI API streams a
@@ -500,10 +503,21 @@ enum Event {
 
 /// One server-sent event line, or None for anything else (other lines,
 /// `[DONE]`, a delta without content, such as reasoning-only ones).
+/// Whether an event line says the answer is over (`finish_reason` set): only
+/// the usage chunk and `[DONE]` may follow.
+fn finish_reason(line: &str) -> bool {
+    let Some(payload) = line.strip_prefix("data:").map(str::trim_start) else { return false };
+    payload.contains("finish_reason")
+        && serde_json::from_str::<Value>(payload).ok().is_some_and(|j| j.pointer("/choices/0/finish_reason").is_some_and(Value::is_string))
+}
+
+/// How long the stream waits for the usage chunk and `[DONE]` once the answer is over.
+const AFTER_FINISH: Duration = Duration::from_secs(3);
+
 fn parse_sse_line(line: &str) -> Option<Event> {
     let payload = line.strip_prefix("data:")?.trim_start();
     if payload == "[DONE]" {
-        return None;
+        return Some(Event::Done);
     }
     let json: Value = serde_json::from_str(payload).ok()?;
     if let Some(msg) = json.pointer("/error/message").and_then(Value::as_str) {
@@ -636,8 +650,16 @@ async fn stream(
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
     let mut thinking = false;
     let mut used = None;
+    // The answer said it is over (`finish_reason`, `[DONE]`): what follows is
+    // only waited for a moment, then the stream ends even if the connection stays open.
+    let finished = std::sync::atomic::AtomicBool::new(false);
+    let done = std::sync::atomic::AtomicBool::new(false);
     let mut take = |line: &str, accumulated: &mut String| -> Result<(), (u16, String)> {
+        if finish_reason(line) {
+            finished.store(true, std::sync::atomic::Ordering::Relaxed);
+        }
         match parse_sse_line(line) {
+            Some(Event::Done) => done.store(true, std::sync::atomic::Ordering::Relaxed),
             Some(Event::Text(delta)) => accumulated.push_str(&delta),
             Some(Event::Reasoning) if !thinking && accumulated.is_empty() => {
                 thinking = true;
@@ -651,12 +673,30 @@ async fn stream(
         }
         Ok(())
     };
-    while let Some(chunk) = reply.chunk().await.map_err(|_| (0, unreachable(base)))? {
+    loop {
+        let next = if finished.load(std::sync::atomic::Ordering::Relaxed) {
+            match tokio::time::timeout(AFTER_FINISH, reply.chunk()).await {
+                Ok(next) => next,
+                Err(_) => break,
+            }
+        } else {
+            reply.chunk().await
+        };
+        let chunk = match next {
+            Ok(Some(chunk)) => chunk,
+            Ok(None) => break,
+            // The answer was complete: a connection dropped after it loses nothing.
+            Err(_) if finished.load(std::sync::atomic::Ordering::Relaxed) => break,
+            Err(_) => return Err((0, unreachable(base))),
+        };
         pending.extend_from_slice(&chunk);
         // Whole lines only: a chunk may end in the middle of one, or of a character.
         while let Some(end) = pending.iter().position(|b| *b == b'\n') {
             let line: Vec<u8> = pending.drain(..=end).collect();
             take(String::from_utf8_lossy(&line).trim_end(), &mut accumulated)?;
+        }
+        if done.load(std::sync::atomic::Ordering::Relaxed) {
+            break;
         }
         if pending.len() > MAX_LINE || accumulated.len() > MAX_ANSWER {
             return Err((0, t("The server's answer is too large.")));
@@ -693,7 +733,9 @@ mod tests {
         assert_eq!(parse_sse_line(line), text("Hel"));
         let line = r#"data:{"choices":[{"delta":{"content":"lo"}}]}"#;
         assert_eq!(parse_sse_line(line), text("lo"));
-        assert_eq!(parse_sse_line("data: [DONE]"), None);
+        assert_eq!(parse_sse_line("data: [DONE]"), Some(Event::Done));
+        assert!(finish_reason(r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#));
+        assert!(!finish_reason(r#"data: {"choices":[{"delta":{"content":"x"},"finish_reason":null}]}"#));
         assert_eq!(parse_sse_line(""), None);
         assert_eq!(parse_sse_line(": keep-alive"), None);
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#), None);
@@ -849,6 +891,43 @@ mod tests {
         assert_eq!(answer, "## Answer\n\n- **item 1**\n```python\nprint('hello')\n```");
         assert_eq!(seen.last().unwrap(), &answer);
         assert!(seen.iter().all(|v| !v.contains("step") && !v.contains("internal")));
+    }
+
+    /// A server that sends `body` and then keeps the connection open, as LM
+    /// Studio does after `[DONE]`.
+    fn serve_and_hold(body: String) -> String {
+        use std::io::Write;
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let url = format!("http://{}", listener.local_addr().unwrap());
+        std::thread::spawn(move || {
+            let (mut conn, _) = listener.accept().unwrap();
+            let _ = conn.set_read_timeout(Some(Duration::from_secs(10)));
+            crate::net::tests::read_request(&mut conn);
+            let _ = conn.write_all(b"HTTP/1.1 200 OK\r\nContent-Type: text/event-stream\r\n\r\n");
+            let _ = conn.write_all(body.as_bytes());
+            let _ = conn.flush();
+            std::thread::sleep(Duration::from_secs(20));
+        });
+        url
+    }
+
+    #[test]
+    fn the_answer_ends_at_done_even_when_the_server_keeps_the_connection_open() {
+        let body = concat!(
+            "data: {\"choices\":[{\"delta\":{\"content\":\"Sunny.\"}}]}\n\n",
+            "data: {\"choices\":[],\"usage\":{\"total_tokens\":42}}\n\n",
+            "data: [DONE]\n\n",
+        );
+        let started = Instant::now();
+        let streamed = block_on(stream(&url(&serve_and_hold(body.into())), None, "m", &json!({}), |_| {}, || {})).ok().unwrap();
+        assert_eq!((streamed.text.as_str(), streamed.used), ("Sunny.", Some(42)));
+        assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
+        // No [DONE] at all: the finish_reason ends it a moment later.
+        let body = "data: {\"choices\":[{\"delta\":{\"content\":\"Hi\"},\"finish_reason\":\"stop\"}]}\n\n";
+        let started = Instant::now();
+        let streamed = block_on(stream(&url(&serve_and_hold(body.into())), None, "m", &json!({}), |_| {}, || {})).ok().unwrap();
+        assert_eq!(streamed.text, "Hi");
+        assert!(started.elapsed() < AFTER_FINISH + Duration::from_secs(3), "{:?}", started.elapsed());
     }
 
     #[test]
