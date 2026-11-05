@@ -4075,6 +4075,14 @@ textarea.chat-input {
   color: var(--dim-3);
 }
 
+/* An answer that failed: what went wrong, where the answer would be. */
+.msg-failed {
+  font: 400 12.5px/1.45 var(--font);
+  color: var(--red-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* The question being edited, and what sending it would drop. */
 .chat-row.editing .bubble {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);

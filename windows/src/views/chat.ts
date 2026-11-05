@@ -263,6 +263,10 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
       h("div", { class: "bubble", text: message.content }),
     );
   }
+  // The answer failed: what went wrong stays under the question.
+  if (message.failed) {
+    return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
+  }
   const reply = h("div", { class: "reply" });
   if (opts.workshop) {
     const shown = stripDraft(message.content);
@@ -2658,7 +2662,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.map((m) => ({ role: m.role, content: m.content }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -3031,8 +3035,14 @@ export function buildPrompt(
       giveBack(true);
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed);
-      State.noteMessage = String(err).replace(/^Error:\s*/, "");
-      State.view = "note";
+      const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: chatSpeaker().who });
+      // Said in the chat, under the question, so it is still there when the
+      // island opens again; the note says it too when the chat isn't on screen.
+      run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true });
+      if (!(State.mode === "expanded" && State.view === "prompt")) {
+        State.noteMessage = problem;
+        State.view = "note";
+      }
       Sound.play("error");
     } finally {
       clearTimeout(run.timer);
