@@ -7,7 +7,7 @@ import { N_ } from "../i18n/i18n";
 
 export type ProviderId =
   | "anthropic" | "claude-code" | "antigravity-cli" | "codex" | "openai" | "google" | "openrouter"
-  | "ollama" | "lmstudio" | "custom";
+  | "ollama" | "lmstudio" | "unsloth" | "custom";
 
 export interface ProviderDef {
   id: ProviderId;
@@ -17,7 +17,7 @@ export interface ProviderDef {
   /** Credential store entry of its key; null for the model servers. */
   key: string | null;
   /** Settings field holding a model server's address. */
-  urlField: "ollamaUrl" | "lmstudioUrl" | "customUrl" | null;
+  urlField: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" | "customUrl" | null;
   defaultModel: string;
   /** When the saved model is not offered, the first one containing this is picked. */
   prefer: string | null;
@@ -38,6 +38,8 @@ export const PROVIDERS: readonly ProviderDef[] = [
   { id: "openrouter", name: "OpenRouter", accent: "#6467F2", key: "openrouter-api-key", urlField: null, defaultModel: "openrouter/auto", prefer: null },
   { id: "ollama", name: "Ollama", accent: "#FACC15", key: null, urlField: "ollamaUrl", defaultModel: "", prefer: null },
   { id: "lmstudio", name: "LM Studio", accent: "#A3E635", key: null, urlField: "lmstudioUrl", defaultModel: "", prefer: null },
+  // Unsloth Studio's server (llama-server underneath), with its sk-unsloth key (local_chat.rs).
+  { id: "unsloth", name: "Unsloth Studio", accent: "#34D399", key: null, urlField: "unslothUrl", defaultModel: "", prefer: null },
   { id: "custom", name: N_("Custom server"), accent: "#C0C4CC", key: null, urlField: "customUrl", defaultModel: "", prefer: null },
 ];
 
@@ -171,6 +173,8 @@ export function effortFor(id: string, saved: string | undefined): string {
 
 /** Credential store entry of the custom server's optional key. */
 export const CUSTOM_SERVER_KEY = "openai-compatible-key";
+/** Credential store entry of Unsloth Studio's key (local_chat.rs UNSLOTH_KEY). */
+export const UNSLOTH_SERVER_KEY = "unsloth-studio-key";
 
 export function providerDef(id: string): ProviderDef {
   return PROVIDERS.find((p) => p.id === id) ?? PROVIDERS[0];

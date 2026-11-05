@@ -69,7 +69,7 @@ export interface CommandTool {
  * one, but a local model its server says takes no tools.
  */
 export function usesYourTools(provider: string): boolean {
-  if (["ollama", "lmstudio", "custom"].includes(provider)) return localCapsOf(provider)?.tools !== false;
+  if (["ollama", "lmstudio", "unsloth", "custom"].includes(provider)) return localCapsOf(provider)?.tools !== false;
   return ["", "anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli"].includes(provider);
 }
 

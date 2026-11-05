@@ -6,7 +6,7 @@ import "../core/legacy";
 import "./settings.css";
 import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
 import {
-  CUSTOM_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, providerDef, urlExposure,
+  CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, providerDef, urlExposure,
 } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
@@ -979,14 +979,21 @@ function helperChoices(): { modelRow: HTMLElement; problem: HTMLElement; effortR
 
 // ── Local models section ──────────────────────────────────────────────────────
 
-type LocalId = "ollama" | "lmstudio" | "custom";
+type LocalId = "ollama" | "lmstudio" | "unsloth" | "custom";
+/** The servers that take a key, and its credential store entry. */
+const KEYED: Partial<Record<LocalId, string>> = { custom: CUSTOM_SERVER_KEY, unsloth: UNSLOTH_SERVER_KEY };
 
 /** Redraws the local models section after a change made elsewhere (the island). */
 let localRedraw: (() => void) | null = null;
 
+/** Unsloth Studio's key field: its sk-unsloth key, from its Settings → API. */
+const UNSLOTH_KEY_HINT = N_("Its key, sk-unsloth-… (Unsloth Studio → Settings → API)");
+
 const LOCAL: Record<LocalId, { name: string; usual: string }> = {
   ollama: { name: "Ollama", usual: "http://127.0.0.1:11434" },
   lmstudio: { name: "LM Studio", usual: "http://127.0.0.1:1234" },
+  // Its port is the one `unsloth run` prints: 8888, else 8000 (both are tried).
+  unsloth: { name: "Unsloth Studio", usual: "http://127.0.0.1:8888" },
   // No usual address: any server that speaks the OpenAI API.
   custom: { name: N_("OpenAI-compatible"), usual: "" },
 };
@@ -1007,7 +1014,7 @@ function exposureNotice(url: string, withKey: boolean): HTMLElement | null {
   }
 }
 
-function localSection(customKey: boolean): HTMLElement {
+function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
   const body = h("div", { class: "setting-list" });
   const section = h(
     "section",
@@ -1042,9 +1049,10 @@ function localSection(customKey: boolean): HTMLElement {
       disconnect.addEventListener("click", async () => {
         settings[field] = "";
         if (settings.chatProvider === id) settings.chatProvider = "anthropic";
-        if (id === "custom") {
-          await Bridge.secretClear(CUSTOM_SERVER_KEY).catch(() => {});
-          customKey = false;
+        const entry = KEYED[id];
+        if (entry) {
+          await Bridge.secretClear(entry).catch(() => {});
+          keys[id] = false;
         }
         await save();
         redraw();
@@ -1053,10 +1061,10 @@ function localSection(customKey: boolean): HTMLElement {
         setting(h("span", { class: "with-dot" }, label(), statusDot(true)), h("span", { class: "path", text: settings[field] }), use, disconnect),
         status,
       );
-      exposure.append(exposureNotice(settings[field], id === "custom" && customKey) ?? "");
+      exposure.append(exposureNotice(settings[field], keys[id] === true) ?? "");
       block.append(exposure);
       // What Ollama and LM Studio hold in memory, and a model to download.
-      if (id !== "custom") block.append(localModelsBlock(id));
+      if (id === "ollama" || id === "lmstudio") block.append(localModelsBlock(id));
       return block;
     }
 
@@ -1070,7 +1078,7 @@ function localSection(customKey: boolean): HTMLElement {
     // A custom server may want a key; it goes to the keychain, never to settings.json.
     const key = h("input", {
       type: "password",
-      placeholder: customKey ? CHAT_STRINGS.stored : CHAT_STRINGS.keyOptional,
+      placeholder: keys[id] ? CHAT_STRINGS.stored : id === "unsloth" ? t(UNSLOTH_KEY_HINT) : CHAT_STRINGS.keyOptional,
       style: "flex:1 1 auto;min-width:0",
       autocomplete: "off",
       spellcheck: "false",
@@ -1079,7 +1087,7 @@ function localSection(customKey: boolean): HTMLElement {
 
     const showExposure = () => {
       clear(exposure);
-      const withKey = id === "custom" && (customKey || key.value.trim() !== "");
+      const withKey = KEYED[id] !== undefined && (keys[id] === true || key.value.trim() !== "");
       const notice = exposureNotice(input.value || def.usual, withKey);
       if (notice) exposure.append(notice);
     };
@@ -1091,11 +1099,11 @@ function localSection(customKey: boolean): HTMLElement {
       clear(status);
       status.append(h("div", { class: "hint", text: CHAT_STRINGS.connecting }));
       try {
-        if (id === "custom" && key.value.trim()) {
+        if ((id === "custom" || id === "unsloth") && key.value.trim()) {
           // Stored with this address: the key is only ever sent there.
-          await Bridge.localSetKey(input.value || def.usual, key.value.trim());
+          await Bridge.localSetKey(input.value || def.usual, key.value.trim(), id);
           key.value = "";
-          customKey = true;
+          keys[id] = true;
         }
         const server = await Bridge.localConnect(id, input.value);
         if (!server.models.length) {
@@ -1118,7 +1126,7 @@ function localSection(customKey: boolean): HTMLElement {
     });
 
     block.append(wideSetting(label(), null, input, connect));
-    if (id === "custom") block.append(h("div", { class: "setting-extra" }, key));
+    if (KEYED[id]) block.append(h("div", { class: "setting-extra" }, key));
     block.append(status, exposure);
     showExposure();
     return block;
@@ -1991,11 +1999,11 @@ async function main() {
 
   void onEvent<ShortcutsReport>("shortcuts-status", (fresh) => shortcutsListener?.report(fresh));
   void onEvent<Settings>("settings-changed", (s) => {
-    const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.customUrl}`;
+    const before = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
     settings = { ...settings, ...s };
     shortcutsListener?.settingsChanged();
     for (const redraw of declaredViews) redraw();
-    const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.customUrl}`;
+    const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
     if (before !== after) localRedraw?.();
     applyLanguage();
   });
@@ -2039,7 +2047,10 @@ async function render() {
     const key = providerDef(def.id).key!;
     chatKeys[key] = (await Bridge.secretPresent(key)) ?? false;
   }
-  const customKey = (await Bridge.secretPresent(CUSTOM_SERVER_KEY)) ?? false;
+  const serverKeys: Partial<Record<LocalId, boolean>> = {
+    custom: (await Bridge.secretPresent(CUSTOM_SERVER_KEY)) ?? false,
+    unsloth: (await Bridge.secretPresent(UNSLOTH_SERVER_KEY)) ?? false,
+  };
 
   declaredViews.length = 0;
   localRedraw = null;
@@ -2052,7 +2063,7 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection(), securitySection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(customKey), chatUsageSection()],
+    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],

@@ -12,7 +12,7 @@ import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 const settings = (over = {}) => ({ ...DEFAULT_SETTINGS, ...over });
 
 test("the ids and key names match the Rust side", () => {
-  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama", "lmstudio", "custom"]);
+  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama", "lmstudio", "unsloth", "custom"]);
   assert.equal(providerDef("google").key, "google-api-key");
   assert.equal(providerDef("openai").key, "openai-api-key");
   assert.equal(providerDef("openrouter").key, "openrouter-api-key");

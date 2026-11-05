@@ -37,6 +37,18 @@ use crate::{net, secrets};
 
 /// Credential store entry of the key of the user's own OpenAI-compatible server.
 pub const CUSTOM_KEY: &str = "openai-compatible-key";
+/// Unsloth Studio's key (`sk-unsloth-…`, its Settings → API), bound to its address too.
+pub const UNSLOTH_KEY: &str = "unsloth-studio-key";
+
+/// The credential store entry of a server's key: only the custom server and
+/// Unsloth Studio take one.
+pub fn key_entry(id: &str) -> Option<&'static str> {
+    match id {
+        "custom" => Some(CUSTOM_KEY),
+        "unsloth" => Some(UNSLOTH_KEY),
+        _ => None,
+    }
+}
 
 const MAX_TOKENS: u32 = 4096;
 /// Rounds of tools one answer may take before it must answer.
@@ -70,20 +82,21 @@ fn may_carry_key(url: &Url) -> bool {
     url.scheme() == "https" || net::is_loopback_url(url)
 }
 
-/// Settings → Local models: stores the key for the address typed next to it.
-pub fn set_custom_key(typed_url: &str, key: &str) -> Result<(), String> {
+/// Settings → Local models: stores `id`'s key for the address typed next to it.
+pub fn set_key(id: &str, typed_url: &str, key: &str) -> Result<(), String> {
+    let entry = key_entry(id).ok_or_else(|| format!("{id} takes no key"))?;
     let url = net::normalise_server_url(typed_url)?;
     if !may_carry_key(&url) {
         return Err(t("A key is only sent over https, or to a server on this computer."));
     }
     let bound = BoundKey { url: url.as_str().trim_end_matches('/').to_string(), key: key.trim().to_string() };
     let value = serde_json::to_string(&bound).map_err(|e| e.to_string())?;
-    secrets::set(CUSTOM_KEY, &value)
+    secrets::set(entry, &value)
 }
 
-/// The key, if it was entered for exactly this address.
-fn custom_key_for(url: &Url) -> Option<String> {
-    let stored = secrets::get(CUSTOM_KEY)?;
+/// `id`'s key, if it was entered for exactly this address.
+fn key_of(id: &str, url: &Url) -> Option<String> {
+    let stored = secrets::get(key_entry(id)?)?;
     key_for(&stored, url)
 }
 
@@ -102,13 +115,17 @@ pub struct Server {
     pub key: Option<String>,
 }
 
-/// Ollama, LM Studio or "custom", from the settings; None for any other id.
+/// Ollama, LM Studio, Unsloth Studio or "custom", from the settings; None for any other id.
 pub fn server(settings: &Settings, id: &str) -> Option<Server> {
     let (id, name, url, key) = match id {
         "ollama" => ("ollama", "Ollama", &settings.ollama_url, None),
         "lmstudio" => ("lmstudio", "LM Studio", &settings.lmstudio_url, None),
+        "unsloth" => {
+            let key = net::normalise_server_url(&settings.unsloth_url).ok().and_then(|u| key_of("unsloth", &u));
+            ("unsloth", "Unsloth Studio", &settings.unsloth_url, key)
+        }
         "custom" => {
-            let key = net::normalise_server_url(&settings.custom_url).ok().and_then(|u| custom_key_for(&u));
+            let key = net::normalise_server_url(&settings.custom_url).ok().and_then(|u| key_of("custom", &u));
             ("custom", crate::i18n::n_("OpenAI-compatible server"), &settings.custom_url, key)
         }
         _ => return None,
@@ -127,6 +144,8 @@ fn usual_address(id: &str) -> Option<String> {
                 .unwrap_or_else(|| "http://127.0.0.1:11434".into()),
         ),
         "lmstudio" => Some("http://127.0.0.1:1234".into()),
+        // Unsloth Studio says which port it took; 8888 most often, else 8000 (connect tries both).
+        "unsloth" => Some("http://127.0.0.1:8888".into()),
         _ => None,
     }
 }
@@ -160,9 +179,17 @@ pub struct Connected {
 /// does it have? An empty address means the usual one on this machine.
 pub async fn connect(id: &str, typed: &str) -> Result<Connected, String> {
     let raw = if typed.trim().is_empty() { usual_address(id).unwrap_or_default() } else { typed.to_string() };
-    let url = net::normalise_server_url(&raw)?;
-    let key = if id == "custom" { custom_key_for(&url) } else { None };
-    let models = list(&url, key.as_deref()).await?;
+    let mut url = net::normalise_server_url(&raw)?;
+    let mut models = list(&url, key_of(id, &url).as_deref()).await;
+    // Unsloth Studio on its other usual port.
+    if id == "unsloth" && typed.trim().is_empty() && models.is_err() {
+        let other = net::normalise_server_url("http://127.0.0.1:8000")?;
+        if let Ok(found) = list(&other, key_of(id, &other).as_deref()).await {
+            url = other;
+            models = Ok(found);
+        }
+    }
+    let models = models?;
     Ok(Connected {
         url: url.as_str().trim_end_matches('/').to_string(),
         models,
@@ -345,7 +372,7 @@ pub async fn send(
         body["reasoning_effort"] = json!(level);
     }
     // How much of the context the chat fills comes with the last event (the ring).
-    if matches!(server.id, "ollama" | "lmstudio") {
+    if matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
         body["stream_options"] = json!({ "include_usage": true });
     }
     let mut used = None;

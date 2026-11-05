@@ -729,8 +729,8 @@ async fn local_pull(app: AppHandle, provider: String, model: String) -> Result<(
 /// Stores the custom server's key for the address typed next to it; it is only
 /// ever sent to that address.
 #[tauri::command(async)]
-fn local_set_key(url: String, key: String) -> Result<(), String> {
-    local_chat::set_custom_key(&url, &key)
+fn local_set_key(url: String, key: String, provider: Option<String>) -> Result<(), String> {
+    local_chat::set_key(provider.as_deref().unwrap_or("custom"), &url, &key)
 }
 
 /// A new chat on screen, `chat_id`. An answer still being written in the
@@ -1017,7 +1017,7 @@ fn secret_present(key: String) -> bool {
 #[tauri::command(async)]
 fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> {
     // Bound to its server's address: only local_set_key may store it.
-    if key == local_chat::CUSTOM_KEY {
+    if key == local_chat::CUSTOM_KEY || key == local_chat::UNSLOTH_KEY {
         return Err("use local_set_key".into());
     }
     let before = (key == "github-token").then(|| secrets::get(&key));

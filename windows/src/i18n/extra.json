@@ -14412,6 +14412,18 @@
    "ru": "Модель не дала краткого изложения. Попробуйте ещё раз.",
    "id": "Model tidak memberi ringkasan. Coba lagi.",
    "it": "Il modello non ha dato un riassunto. Riprova."
+  },
+  "Its key, sk-unsloth-… (Unsloth Studio → Settings → API)": {
+   "zh-Hans": "它的密钥，sk-unsloth-…（Unsloth Studio → Settings → API）",
+   "hi": "इसकी कुंजी, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "es": "Su clave, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "ar": "مفتاحه، sk-unsloth-…‏ (Unsloth Studio → Settings → API)",
+   "fr": "Sa clé, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "bn": "এর কী, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "pt-BR": "A chave dele, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "ru": "Его ключ, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "id": "Kuncinya, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "it": "La sua chiave, sk-unsloth-… (Unsloth Studio → Settings → API)"
   }
  }
 }

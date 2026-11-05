@@ -36,7 +36,7 @@ export type PillConnect =
   /** A key in the credential store. */
   | { kind: "key"; key: string }
   /** A model server the chat is connected to (Settings → Local models). */
-  | { kind: "server"; field: "ollamaUrl" | "lmstudioUrl" }
+  | { kind: "server"; field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" }
   /** Nothing to set up. */
   | { kind: "none" };
 
@@ -55,7 +55,7 @@ export interface PillDefinition {
 const hooks: PillConnect = { kind: "hooks" };
 const key = (k: string): PillConnect => ({ kind: "key", key: k });
 const none: PillConnect = { kind: "none" };
-const server = (field: "ollamaUrl" | "lmstudioUrl"): PillConnect => ({ kind: "server", field });
+const server = (field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl"): PillConnect => ({ kind: "server", field });
 
 /** Each chat provider's accent colour. */
 const ACCENT = {
@@ -64,6 +64,7 @@ const ACCENT = {
   openai: "#10A37F",
   ollama: "#FACC15",
   lmstudio: "#A3E635",
+  unsloth: "#34D399",
 };
 
 export const PILL_CATALOG: readonly PillDefinition[] = [
@@ -110,6 +111,8 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Chat"), source: "n8n", support: "yes", connect: server("ollamaUrl") },
   { id: "ai_lmstudio", name: "LM Studio", color: ACCENT.lmstudio, category: "ai",
     subtitle: N_("Chat"), source: "n8n", support: "yes", connect: server("lmstudioUrl") },
+  { id: "ai_unsloth", name: "Unsloth Studio", color: ACCENT.unsloth, category: "ai",
+    subtitle: N_("Chat"), source: "n8n", support: "yes", connect: server("unslothUrl") },
   // ── Services ───────────────────────────────────────────────────────────────
   { id: "integration_resend", name: "Resend", color: "#22C55E", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("resend-api-key") },

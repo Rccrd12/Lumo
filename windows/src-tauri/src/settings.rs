@@ -190,6 +190,8 @@ pub struct Settings {
     pub lmstudio_url: String,
     /// Any other OpenAI-compatible server; its key, if any, is in the keychain.
     pub custom_url: String,
+    /// Unsloth Studio's address once connected (local_chat.rs), "" before.
+    pub unsloth_url: String,
     /// Global shortcuts the user changed, by action id; the others keep their
     /// default (see shortcuts.rs).
     pub shortcuts: crate::shortcuts::Bindings,
@@ -311,6 +313,7 @@ impl Default for Settings {
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
+            unsloth_url: String::new(),
             shortcuts: Default::default(),
             lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
@@ -641,6 +644,7 @@ mod tests {
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
+  "unslothUrl": "http://127.0.0.1:8888",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
   "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
@@ -1097,6 +1101,7 @@ mod tests {
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",
+                "unslothUrl",
                 "shortcuts",
                 "lumoOutfit",
                 "lumoMotion",
