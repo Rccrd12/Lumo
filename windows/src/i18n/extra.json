@@ -14724,6 +14724,18 @@
    "ru": "Раньше в нём была одна строка.",
    "id": "Sebelumnya ada satu baris.",
    "it": "Prima aveva una riga."
+  },
+  "The answer was cut off at the length limit: ask to continue.": {
+   "zh-Hans": "回答在长度上限处被截断：请让它继续。",
+   "hi": "जवाब लंबाई की सीमा पर कट गया: आगे जारी रखने को कहें।",
+   "es": "La respuesta se cortó al llegar al límite de longitud: pide que continúe.",
+   "ar": "انقطعت الإجابة عند حد الطول: اطلب المتابعة.",
+   "fr": "La réponse a été coupée à la limite de longueur : demandez la suite.",
+   "bn": "উত্তরটি দৈর্ঘ্যের সীমায় কেটে গেছে: চালিয়ে যেতে বলুন।",
+   "pt-BR": "A resposta foi cortada no limite de tamanho: peça para continuar.",
+   "ru": "Ответ оборвался на пределе длины: попросите продолжить.",
+   "id": "Jawaban terpotong di batas panjang: minta untuk melanjutkan.",
+   "it": "La risposta è stata tagliata al limite di lunghezza: chiedi di continuare."
   }
  }
 }

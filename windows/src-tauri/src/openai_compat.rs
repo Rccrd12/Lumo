@@ -419,7 +419,7 @@ const MAX_PDF_CHARS: usize = 40_000;
 pub(crate) const MAX_PDF_PAGES: u32 = 10;
 /// What one page drawn 1024 pixels wide costs a model, in tokens, reckoned
 /// high (Qwen's vision reads it as some 1,700; Gemma's as 256).
-const PAGE_TOKENS: u64 = 2_000;
+pub(crate) const PAGE_TOKENS: u64 = 2_000;
 
 /// How many pages of a PDF may go as pictures to a model with `context`
 /// tokens (0: not known), `taken` of them already spoken for (instructions,

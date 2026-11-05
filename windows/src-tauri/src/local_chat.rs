@@ -351,6 +351,40 @@ fn user_message_in(vision: bool, pages: u32, first: bool, context: Option<&ChatC
     crate::openai_compat::with_images(user, &shared, pdf)
 }
 
+/// Whether the user asks for a change to a file (or for something written).
+fn asks_change(query: &str) -> bool {
+    let q = query.to_lowercase();
+    [
+        "modific", "scriv", "aggiung", "cambi", "cancell", "rimuov", "togli", "salva", "corregg", "sistem", "aggiorn", "riscriv", "allung", "accorc",
+        "edit", "write", "add ", "change", "delete", "remove", "save", "fix", "update", "rewrite", "modif", "écri", "ajout", "escrib", "añad", "cambia",
+    ]
+    .iter()
+    .any(|w| q.contains(w))
+}
+
+/// Whether an answer says, in the first person, that a file was changed.
+fn claims_change(text: &str) -> bool {
+    let t = text.to_lowercase();
+    [
+        "ho modificato", "ho scritto", "ho salvato", "ho aggiornato", "ho aggiunto", "ho sovrascritto", "ho cancellato", "ho riscritto", "ho corretto",
+        "è stato modificato", "è stata modificata", "è stato aggiornato", "è stata aggiornata",
+        "i modified", "i've modified", "i have modified", "i updated", "i've updated", "i have updated", "i wrote", "i've written", "i saved",
+        "i've saved", "i added", "i've added", "i changed", "i've changed", "has been updated", "has been modified", "j'ai modifié", "he modificado",
+    ]
+    .iter()
+    .any(|w| t.contains(w))
+}
+
+/// The longest answer to ask for: most of what the context leaves past the
+/// prompt (`taken` tokens, a rough count), between 2 048 and 32 768 tokens;
+/// 8 192 when the context isn't known.
+fn answer_room(context: u64, taken: u64) -> u64 {
+    if context == 0 {
+        return 8_192;
+    }
+    (context.saturating_sub(taken) * 4 / 5).clamp(2_048, 32_768)
+}
+
 /// The tool of `names` that `text` writes as a line of its own (`[[name …]]`
 /// or `[name(…)]`) instead of calling it.
 fn written_call(text: &str, names: &[String]) -> Option<String> {
@@ -536,6 +570,8 @@ pub async fn send(
             }
         }
         body = request_body(model, &system, &turn.history, &user);
+        // As long an answer as the context leaves room for, not 4 096 tokens.
+        body["max_tokens"] = json!(answer_room(context_size, (taken_chars / 3) as u64 + u64::from(pages) * crate::openai_compat::PAGE_TOKENS));
         if !tools.is_empty() {
             body["tools"] = crate::openai_compat::function_tools(&tools);
         }
@@ -554,9 +590,14 @@ pub async fn send(
         // A model whose stream hung once in this session answers whole from then on.
         let mut whole = hung(server, model, false);
         let mut corrected = false;
+        // A copy changed by a tool in this turn, and whether the model was
+        // already told it said so without one.
+        let mut changed = false;
+        let mut checked = false;
         let mut names: Vec<String> = tools.iter().map(|(id, _, _)| id.clone()).collect();
         loop {
-            events.activity(app, Activity::new("prompt", ""));
+            // Not streamed, nothing says when the prompt is read: the model is at work.
+            events.activity(app, if whole { Activity::thinking() } else { Activity::new("prompt", "") });
             let before = said.join("\n\n");
             // Once the server dropped a streamed answer, the answer comes whole.
             let streamed = if whole {
@@ -631,7 +672,23 @@ pub async fn send(
                 events.activity(app, Activity::thinking());
                 continue;
             }
+            // "I changed the file" with no tool that changed one: the model is told once.
+            if streamed.calls.is_empty() && !checked && workspace && !changed && asks_change(&query) && claims_change(&streamed.text) {
+                checked = true;
+                if let Some(messages) = body["messages"].as_array_mut() {
+                    messages.push(json!({ "role": "assistant", "content": streamed.text }));
+                    messages.push(json!({ "role": "user", "content": "(Lumo: you said a file was changed, but no tool changed one in this answer: nothing changed. Call workspace_write or workspace_edit on the copy now, or tell the user plainly that it wasn't done.)" }));
+                }
+                shown = before.clone();
+                events.delta(app, &shown);
+                events.activity(app, Activity::thinking());
+                continue;
+            }
             if streamed.calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
+                // Stopped at the length limit: said under what was written.
+                if streamed.cut && streamed.calls.is_empty() {
+                    return Ok::<_, String>(format!("{}\n\n_{}_", streamed.text, t("The answer was cut off at the length limit: ask to continue.")).trim_start().to_string());
+                }
                 return Ok::<_, String>(streamed.text);
             }
             rounds += 1;
@@ -697,7 +754,10 @@ pub async fn send(
                 } else {
                     Activity::new("tool", crate::claude_code::pretty_tool(name))
                 });
-                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, always_ask).await;
+                let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, input, always_ask).await;
+                if !failed && [crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE].contains(&name) {
+                    changed = true;
+                }
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
             }
             if let Some(messages) = body["messages"].as_array_mut() {
@@ -893,6 +953,8 @@ struct Streamed {
     calls: Vec<Value>,
     /// The tokens the request and its answer took, when the server said.
     used: Option<u64>,
+    /// The answer stopped at the length limit (`finish_reason: length`).
+    cut: bool,
 }
 
 /// Posts the request without streaming and reads the whole answer: for a
@@ -949,7 +1011,8 @@ fn whole_answer(bytes: &[u8]) -> Result<Streamed, String> {
                 .collect()
         })
         .unwrap_or_default();
-    Ok(Streamed { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64) })
+    let cut = json.pointer("/choices/0/finish_reason").and_then(Value::as_str) == Some("length");
+    Ok(Streamed { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64), cut })
 }
 
 /// Posts the request and reads the event stream. `on_delta` gets the visible
@@ -993,17 +1056,24 @@ async fn stream(
     // only waited for a moment, then the stream ends even if the connection stays open.
     let finished = std::sync::atomic::AtomicBool::new(false);
     let done = std::sync::atomic::AtomicBool::new(false);
+    let cut = std::sync::atomic::AtomicBool::new(false);
     let mut take = |line: &str, accumulated: &mut String| -> Result<(), (u16, String)> {
         if finish_reason(line) {
             finished.store(true, std::sync::atomic::Ordering::Relaxed);
+            if line.contains("\"length\"") {
+                cut.store(true, std::sync::atomic::Ordering::Relaxed);
+            }
         }
-        match parse_sse_line(line) {
+        let event = parse_sse_line(line);
+        // The model has started (it reasons, prepares a tool call, or the
+        // server opened its answer) before any text: no longer the prompt.
+        if !thinking && accumulated.is_empty() && line.starts_with("data:") && !matches!(event, Some(Event::Text(_) | Event::Done | Event::Error(_))) {
+            thinking = true;
+            on_think();
+        }
+        match event {
             Some(Event::Done) => done.store(true, std::sync::atomic::Ordering::Relaxed),
             Some(Event::Text(delta)) => accumulated.push_str(&delta),
-            Some(Event::Reasoning) if !thinking && accumulated.is_empty() => {
-                thinking = true;
-                on_think();
-            }
             Some(Event::Reasoning) => {}
             Some(Event::Usage(total)) => used = Some(total),
             Some(Event::Calls(pieces)) => calls.feed(&pieces),
@@ -1054,7 +1124,7 @@ async fn stream(
     }
     // The last state always goes out, whatever the throttle skipped.
     on_delta(progressive_filter(&accumulated));
-    Ok(Streamed { text: filter_thinking_blocks(&accumulated), calls: calls.done(), used })
+    Ok(Streamed { text: filter_thinking_blocks(&accumulated), calls: calls.done(), used, cut: cut.load(std::sync::atomic::Ordering::Relaxed) })
 }
 
 #[cfg(test)]
@@ -1297,6 +1367,17 @@ mod tests {
         assert_eq!(answer.used, Some(42));
         assert_eq!(whole_answer(br#"{"error":"terminated"}"#).err().unwrap(), "terminated");
         assert_eq!(whole_answer(b"").err().unwrap(), CUT_SHORT);
+    }
+
+    #[test]
+    fn a_change_said_but_not_made_is_noticed() {
+        assert!(asks_change("Puoi modificarlo aggiungendoci qualche dettaglio?"));
+        assert!(!asks_change("Me lo leggi?"));
+        assert!(claims_change("Ho modificato proprio quella copia con il testo allungato."));
+        assert!(!claims_change("Ecco cosa contiene il file."));
+        assert_eq!(answer_room(0, 100), 8_192);
+        assert_eq!(answer_room(32_768, 2_768), 24_000);
+        assert_eq!(answer_room(8_192, 7_000), 2_048);
     }
 
     #[test]
