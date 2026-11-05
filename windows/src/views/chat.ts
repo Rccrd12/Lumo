@@ -305,7 +305,7 @@ export function inWorkspace(path: string): boolean {
  * file of the computer, Put it back, which shows the differences first and
  * writes over the original only on a second click.
  */
-function copiesBox(copies: { chat: string; path: string }[]): HTMLElement {
+function copiesBox(copies: { chat: string; path: string; made?: boolean }[]): HTMLElement {
   const box = h("div", { class: "reply-copies" },
     h("div", { class: "reply-copies-title", text: t(COPY_STRINGS.title) }));
   for (const copy of copies) {
@@ -319,7 +319,7 @@ function copiesBox(copies: { chat: string; path: string }[]): HTMLElement {
     back.addEventListener("click", () => void showDiff(copy, detail, back));
     box.append(h("div", { class: "reply-copy" },
       h("div", { class: "reply-copy-row" },
-        h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder, back),
+        h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder, copy.made ? null : back),
       detail));
   }
   return box;
@@ -419,7 +419,7 @@ interface Run {
   /** Deleted from Past chats meanwhile: its answer is stopped, and the chat is not saved again. */
   forgotten?: boolean;
   /** The copies the answer changed or made in the chat's folder (workspace.rs). */
-  copies?: Set<string>;
+  copies?: Map<string, boolean>;
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }
@@ -2904,7 +2904,11 @@ export function buildPrompt(
     addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
     // A copy changed or made in the chat's folder: listed under the answer.
     const run = runs.get(chat);
-    if (run && kind !== "read" && inWorkspace(path)) (run.copies ??= new Set()).add(path);
+    // `made`: the model wrote it from nothing, so there is no original to put it back over.
+    if (run && kind !== "read" && inWorkspace(path)) {
+      const copies = (run.copies ??= new Map());
+      copies.set(path, copies.get(path) ?? kind === "created");
+    }
     if (chat === State.chatId) drawChatFiles();
   });
 
@@ -3101,7 +3105,7 @@ export function buildPrompt(
           content,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
-          copies: run.copies?.size ? [...run.copies].map((path) => ({ chat: run.chatId, path })) : undefined,
+          copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
         });
         run.copies = undefined;
       } else {

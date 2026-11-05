@@ -124,7 +124,7 @@ export interface ChatMessage {
   turn?: number;
   /** The files a local model changed or made in its folder of copies while
    * answering (workspace.rs), listed under the answer to open or put back. */
-  copies?: { chat: string; path: string }[];
+  copies?: { chat: string; path: string; made?: boolean }[];
 }
 
 export type PromptContext =
