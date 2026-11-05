@@ -1,5 +1,5 @@
-//! A PDF's first pages as pictures, for a model that sees (pdf_text.rs gives
-//! their text): drawn by Windows itself (Windows.Data.Pdf), as PNG, with
+//! A short PDF's pages as pictures, for a model that sees (a longer one goes
+//! as its text, pdf_text.rs): drawn by Windows itself (Windows.Data.Pdf), as PNG, with
 //! nothing added to Lumo. Elsewhere, and for a file Windows can't open (a
 //! password, a damaged file), there are none.
 
@@ -7,7 +7,8 @@
 #[cfg(windows)]
 const WIDTH: u32 = 1024;
 
-/// The first `max` pages of the PDF at `path`, each a PNG.
+/// Every page of the PDF at `path`, each a PNG, when it has `max` pages or
+/// fewer; none for a longer one.
 pub fn render(path: &str, max: u32) -> Vec<Vec<u8>> {
     #[cfg(windows)]
     {
@@ -33,8 +34,12 @@ mod imp {
     pub fn render(path: &str, max: u32) -> windows::core::Result<Vec<Vec<u8>>> {
         let file = StorageFile::GetFileFromPathAsync(&HSTRING::from(path))?.get()?;
         let doc = PdfDocument::LoadFromFileAsync(&file)?.get()?;
+        let count = doc.PageCount()?;
+        if count > max {
+            return Ok(Vec::new());
+        }
         let mut pages = Vec::new();
-        for i in 0..doc.PageCount()?.min(max) {
+        for i in 0..count {
             let page = doc.GetPage(i)?;
             let size = page.Size()?;
             let options = PdfPageRenderOptions::new()?;
