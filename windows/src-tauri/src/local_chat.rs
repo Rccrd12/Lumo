@@ -31,6 +31,7 @@ use tauri::AppHandle;
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::claude_code::Activity;
 use crate::local_models::Caps;
+use crate::local_profile as profile;
 use crate::settings::Settings;
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
@@ -308,13 +309,6 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     json!({ "model": model, "messages": messages, "stream": true, "max_tokens": MAX_TOKENS })
 }
 
-/// Added to Lumo's instructions when the chat's folder of copies is there
-/// (workspace.rs): what it is, and to say a copy changed, never the file.
-const WORKSPACE_NOTE: &str = "\n\nYou can't open or change the user's files yourself. To read or work on a file or a folder of the computer, copy it into your own folder with workspace_copy (its full path; a dropped file's path is given with it), then use the other workspace tools on the copy. The original never changes: when you change a copy, say that the copy changed and where it is, never that you changed their file. The chat's files list each copy you changed, with a button to put it back over the original.";
-
-/// Added to Lumo's instructions on Plan only.
-const PLAN_NOTE: &str = "\n\nThe user picked Plan only: read and plan, and change nothing. You have none of the user's tools now; say what you would do with them instead.";
-
 /// The tools a turn offers in permission `mode` (claude_code::permission_mode):
 /// on Plan only, the island's own (a timer, listening) and the email's that
 /// only read, none of the user's and nothing that sends or changes an email.
@@ -461,21 +455,43 @@ pub async fn send(
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     // Lumo's own web search, when the user turned it on (web_search.rs).
     let web = caps.tools != Some(false) && tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false);
-    let tools = if caps.tools == Some(false) {
+    // Every tool the chat could have; a local model starts with the core ones
+    // and those of the groups the question names (local_profile.rs).
+    let all = if caps.tools == Some(false) {
         Vec::new()
     } else {
         let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, true)).await.unwrap_or_default();
         tools_for_mode(all, mode)
     };
-    let web = web && !tools.is_empty();
+    let user_tools: Vec<_> = all.iter().filter(|(id, _, _)| profile::group_of(id) == Some(profile::Group::User)).cloned().collect();
+    let mut named = profile::named_groups(&query, &user_tools);
+    if chat.is_workshop() {
+        named.push(profile::Group::User);
+    }
+    let groups = profile::groups_of(chat.id(), &named);
+    let mut tools = profile::pick(&all, &groups);
+    let more = profile::missing(&all, &groups);
+    if !more.is_empty() {
+        tools.push(profile::more_tool(&more));
+    }
+    let web = web && tools.iter().any(|(id, _, _)| crate::web_search::NAMES.contains(&id.as_str()));
     let always_ask = mode == "default";
-    let system = chat::system_prompt_in(chat, web, !tools.is_empty());
-    let system = if tools.is_empty() { system } else { format!("{system}{}", chat::api_tools_note(if mode == "plan" && !mail.is_empty() { "mail" } else { mail })) };
-    let system = if web { format!("{system}{}", crate::web_search::NOTE) } else { system };
-    let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
     let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
-    // Where the user's folders really are: a model guesses C:\Users\<name> from the name it is told.
-    let system = if workspace { format!("{system}{WORKSPACE_NOTE}{}", crate::workspace::folders_note()) } else { system };
+    let prompt_for = |groups: &[profile::Group], more: bool, tools: bool| {
+        profile::system_prompt(&profile::Prompt {
+            first_name: crate::identity::first_name(),
+            tools,
+            web: web && tools,
+            timer: tools,
+            workspace: workspace && tools,
+            groups,
+            more: more && tools,
+            mail: if mode == "plan" && !mail.is_empty() { "mail" } else { mail },
+            plan: mode == "plan",
+            workshop: chat.is_workshop(),
+        })
+    };
+    let system = prompt_for(&groups, !more.is_empty(), !tools.is_empty());
     // Built once the model is in memory, when its server says what it can do.
     let mut user = Value::Null;
     let mut body = Value::Null;
@@ -539,7 +555,7 @@ pub async fn send(
         // A model whose stream hung once in this session answers whole from then on.
         let mut whole = hung(server, model, false);
         let mut corrected = false;
-        let names: Vec<String> = tools.iter().map(|(id, _, _)| id.clone()).collect();
+        let mut names: Vec<String> = tools.iter().map(|(id, _, _)| id.clone()).collect();
         loop {
             events.activity(app, Activity::new("prompt", ""));
             let before = said.join("\n\n");
@@ -583,8 +599,7 @@ pub async fn send(
                 // A model that takes no tools refuses the request: once more without them.
                 Err((400 | 422, _)) if body.get("tools").is_some() => {
                     body.as_object_mut().map(|b| b.remove("tools"));
-                    let system = chat::system_prompt_in(chat, false, false);
-                    body["messages"][0]["content"] = json!(if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system });
+                    body["messages"][0]["content"] = json!(prompt_for(&[], false, false));
                     continue;
                 }
                 // The server dropped the answer before anything of it came (LM
@@ -636,7 +651,36 @@ pub async fn send(
             let mut turn_messages = vec![json!({ "role": "assistant", "content": streamed.text, "tool_calls": calls })];
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
-                let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
+                let arguments = call.pointer("/function/arguments").and_then(Value::as_str).unwrap_or_default();
+                // Arguments that aren't JSON go back to the model, never as `{}` to the tool.
+                let input = if arguments.trim().is_empty() { Some(json!({})) } else { serde_json::from_str::<Value>(arguments).ok().filter(Value::is_object) };
+                let Some(input) = input else {
+                    let text = format!("The arguments of this {name} call aren't valid JSON (it may have been cut off): nothing was done. Call it again with a JSON object.");
+                    turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
+                    continue;
+                };
+                // More of Lumo's tools, from now on in this chat.
+                if name == profile::MORE {
+                    let text = match profile::asked_group(&input) {
+                        Some(group) => {
+                            let now = profile::groups_of(chat.id(), &[group]);
+                            let added: Vec<_> = profile::pick(&all, &now).into_iter().filter(|(id, _, _)| profile::group_of(id) == Some(group)).collect();
+                            let left = profile::missing(&all, &now);
+                            let mut offered: Vec<_> = profile::pick(&all, &now);
+                            if !left.is_empty() {
+                                offered.push(profile::more_tool(&left));
+                            }
+                            body["tools"] = crate::openai_compat::function_tools(&offered);
+                            names = offered.iter().map(|(id, _, _)| id.clone()).collect();
+                            body["messages"][0]["content"] = json!(prompt_for(&now, !left.is_empty(), true));
+                            let ids: Vec<&str> = added.iter().map(|(id, _, _)| id.as_str()).collect();
+                            if ids.is_empty() { "That group has no tools here.".to_string() } else { format!("You have them now: {}. Call them.", ids.join(", ")) }
+                        }
+                        None => "Unknown group: nothing was added.".to_string(),
+                    };
+                    turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
+                    continue;
+                }
                 events.activity(app, if crate::web_search::NAMES.contains(&name) {
                     crate::web_search::activity(name)
                 } else if crate::workspace::NAMES.contains(&name) {

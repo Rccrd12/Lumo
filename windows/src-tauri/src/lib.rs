@@ -40,6 +40,7 @@ mod listen_local;
 mod live;
 mod local_chat;
 mod local_models;
+mod local_profile;
 mod log;
 mod mail;
 mod media;
