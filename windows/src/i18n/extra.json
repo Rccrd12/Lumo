@@ -14448,6 +14448,18 @@
    "ru": "Для локальных моделей, OpenAI, Google и OpenRouter. Вопрос уходит в DuckDuckGo (иначе в Mojeek или Википедию) без аккаунта, страницы открываются с этого компьютера, а модели достаются только отрывки с ответом. Бесплатно, без ключа.",
    "id": "Untuk model lokal, OpenAI, Google, dan OpenRouter. Pertanyaan dikirim ke DuckDuckGo (atau Mojeek atau Wikipedia) tanpa akun, halaman dibuka dari komputer ini, dan hanya bagian yang menjawab yang sampai ke model. Gratis, tanpa kunci.",
    "it": "Per i modelli locali, OpenAI, Google e OpenRouter. La domanda va a DuckDuckGo (altrimenti Mojeek o Wikipedia) senza account, le pagine si aprono da questo PC e al modello arrivano solo i passaggi che rispondono. Gratis, senza chiave."
+  },
+  "Its key, sk-unsloth-… (Unsloth Studio → Settings → API)": {
+   "zh-Hans": "它的密钥，sk-unsloth-…（Unsloth Studio → Settings → API）",
+   "hi": "इसकी कुंजी, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "es": "Su clave, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "ar": "مفتاحه، sk-unsloth-…‏ (Unsloth Studio → Settings → API)",
+   "fr": "Sa clé, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "bn": "এর কী, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "pt-BR": "A chave dele, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "ru": "Его ключ, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "id": "Kuncinya, sk-unsloth-… (Unsloth Studio → Settings → API)",
+   "it": "La sua chiave, sk-unsloth-… (Unsloth Studio → Settings → API)"
   }
  }
 }

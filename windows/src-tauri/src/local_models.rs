@@ -229,7 +229,7 @@ const LEVELS: &[&str] = &["off", "on", "low", "medium", "high"];
 /// model; a server that doesn't answer gives the empty Caps (nothing known).
 pub async fn caps(server: &Server, model: &str) -> Caps {
     let Some(model) = safe_name(model) else { return Caps::default() };
-    if !matches!(server.id, "ollama" | "lmstudio") {
+    if !matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
         return Caps::default();
     }
     let Ok(base) = local_chat::base_url(server) else { return Caps::default() };
@@ -244,6 +244,18 @@ pub async fn caps(server: &Server, model: &str) -> Caps {
         let ps = get_json(server, &base, "api/ps").await;
         match show {
             Ok(show) => parse_ollama_caps(model, &show, ps.as_ref().ok()),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    } else if server.id == "unsloth" {
+        // Unsloth Studio runs llama-server: its model list says what is in
+        // memory, /v1/props what the loaded model was started with.
+        let models = get_json(server, &base, "v1/models").await;
+        let props = get_json(server, &base, "v1/props").await;
+        match models {
+            Ok(models) => parse_unsloth_caps(model, &models, props.as_ref().ok()),
             Err(e) => {
                 crate::log::line(format!("[local] {model}: {e}"));
                 Caps::default()
@@ -470,6 +482,39 @@ fn lmstudio_entry<'a>(model: &str, body: &'a Value) -> Option<(&'a Value, Option
 }
 
 /// LM Studio's `/api/v1/models`: what `model` can do (`lmstudio_entry`).
+/// Unsloth Studio (llama-server underneath): `/v1/models` lists the models
+/// with `loaded`, and llama-server's `meta.n_ctx_train`; `/v1/props`
+/// describes the model in memory: its context (`n_ctx`), whether it reads
+/// pictures (`modalities.vision`) and, from its chat template, tools.
+/// What isn't said stays unknown.
+fn parse_unsloth_caps(model: &str, models: &Value, props: Option<&Value>) -> Caps {
+    let entry = models["data"].as_array().into_iter().flatten().chain(models["models"].as_array().into_iter().flatten()).find(|m| {
+        [&m["id"], &m["name"], &m["model"]].iter().any(|v| v.as_str() == Some(model))
+    });
+    let loaded = entry.and_then(|m| m["loaded"].as_bool().or_else(|| m["status"]["value"].as_str().map(|s| s == "loaded")));
+    let number = |v: &Value| v.as_u64().filter(|n| *n > 0);
+    let max_context = entry
+        .and_then(|m| number(&m["meta"]["n_ctx_train"]).or_else(|| number(&m["context_length"])).or_else(|| number(&m["max_context_length"])))
+        .unwrap_or(0);
+    let mut caps = Caps { max_context, loaded, ..Caps::default() };
+    // The props are the loaded model's: only taken for it.
+    let props = props.filter(|p| {
+        let path = p["model_path"].as_str().unwrap_or("");
+        let alias = p["model_alias"].as_str().or(p["alias"].as_str()).unwrap_or("");
+        loaded != Some(false) && (alias == model || path.contains(model) || (alias.is_empty() && path.is_empty()))
+    });
+    if let Some(p) = props {
+        caps.loaded_context = number(&p["default_generation_settings"]["n_ctx"]).or_else(|| number(&p["n_ctx"])).unwrap_or(0);
+        caps.vision = p["modalities"]["vision"].as_bool();
+        let template = &p["chat_template_caps"];
+        caps.tools = template["supports_tool_calls"].as_bool().or(template["supports_tools"].as_bool());
+        if caps.loaded.is_none() {
+            caps.loaded = Some(true);
+        }
+    }
+    caps
+}
+
 fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
     let Some((m, instance)) = lmstudio_entry(model, body) else { return Caps::default() };
     let caps = &m["capabilities"];
@@ -784,5 +829,24 @@ mod tests {
         assert!(PullGuard::take("test-other").is_some());
         drop(first);
         assert!(PullGuard::take("test-server").is_some());
+    }
+    #[test]
+    fn unsloth_studio_says_what_is_loaded_and_how() {
+        let models = json!({ "data": [
+            { "id": "gemma-4-26b", "loaded": true, "meta": { "n_ctx_train": 262144 } },
+            { "id": "qwen3-8b", "loaded": false }
+        ] });
+        let props = json!({
+            "model_alias": "gemma-4-26b",
+            "default_generation_settings": { "n_ctx": 65536 },
+            "modalities": { "vision": true },
+            "chat_template_caps": { "supports_tool_calls": true }
+        });
+        let caps = parse_unsloth_caps("gemma-4-26b", &models, Some(&props));
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec![], max_context: 262144, loaded_context: 65536, loaded: Some(true) });
+        // The props are the loaded model's, not another's.
+        let other = parse_unsloth_caps("qwen3-8b", &models, Some(&props));
+        assert_eq!(other, Caps { loaded: Some(false), ..Caps::default() });
+        assert_eq!(parse_unsloth_caps("gone", &json!({}), None), Caps::default());
     }
 }

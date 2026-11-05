@@ -306,6 +306,8 @@ export interface Settings {
   ollamaUrl: string;
   lmstudioUrl: string;
   customUrl: string;
+  /** Unsloth Studio's address once connected, "" before. */
+  unslothUrl: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
   /**
@@ -423,6 +425,7 @@ export const DEFAULT_SETTINGS: Settings = {
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
+  unslothUrl: "",
   shortcuts: {},
   lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
