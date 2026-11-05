@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// The tool a model calls for a group it doesn't have yet.
-pub const MORE: &str = "lumo_tools";
+pub use lumo_local::MORE;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum Group {

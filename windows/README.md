@@ -1065,6 +1065,8 @@ windows/
     settings/          the settings window
   src-tauri/           Rust backend: window, named pipe, Claude API, pollers
   hook/                lumo-hook.exe, the Claude Code relay
+  local/               the chat with a model on this machine: stream, tool rounds,
+                       checks, tested against a fake server (cargo test -p lumo-local)
   scripts/             icon generator
 ```
 

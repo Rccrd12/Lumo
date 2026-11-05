@@ -2113,6 +2113,7 @@ version = "0.16.1"
 dependencies = [
  "auto-launch",
  "keyring",
+ "lumo-local",
  "reqwest 0.12.28",
  "serde",
  "serde_json",
@@ -2136,6 +2137,15 @@ version = "0.16.1"
 dependencies = [
  "serde_json",
  "windows 0.61.3",
+]
+
+[[package]]
+name = "lumo-local"
+version = "0.16.1"
+dependencies = [
+ "reqwest 0.12.28",
+ "serde_json",
+ "tokio",
 ]
 
 [[package]]

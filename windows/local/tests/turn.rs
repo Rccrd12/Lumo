@@ -1,0 +1,318 @@
+// Whole turns against a fake server: every way a local model or its server
+// went wrong in use, and what Lumo does about it.
+
+mod fake;
+
+use std::time::{Duration, Instant};
+
+use fake::*;
+use lumo_local::{run, Doing, End, Failure, Outcome, Rules, MORE};
+use serde_json::{json, Value};
+
+const CHANGES: &[&str] = &["workspace_write", "workspace_edit", "workspace_delete"];
+
+fn rules<'a>(key: &str, query: &'a str) -> Rules<'a> {
+    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8 }
+}
+
+/// Runs a turn of `body` on a server with `replies`.
+fn turn(replies: Vec<Reply>, body: &mut Value, rules: &Rules, island: &mut Island) -> (Result<Outcome, Failure>, Vec<Value>) {
+    let fake = serve(replies);
+    let outcome = block_on(run(&fake.endpoint(), body, rules, island));
+    (outcome, fake.requests())
+}
+
+#[test]
+fn a_plain_answer_streams_in() {
+    let mut island = Island::default();
+    let mut body = question("Ciao", &[]);
+    let (outcome, requests) = turn(vec![answer("Ciao Riccardo.")], &mut body, &rules("plain", "Ciao"), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.end, outcome.used, outcome.rounds), ("Ciao Riccardo.", End::Answer, Some(50), 0));
+    assert!(!outcome.whole && outcome.fixes.is_empty());
+    assert_eq!(island.doing[0], Doing::Prompt);
+    assert_eq!(island.shown.last().unwrap(), "Ciao Riccardo.");
+    assert_eq!(requests.len(), 1);
+    assert_eq!(requests[0]["stream"], true);
+    assert_eq!(requests[0]["messages"][1]["content"], "Ciao");
+}
+
+#[test]
+fn thinking_stays_hidden_and_says_the_prompt_is_read() {
+    let mut island = Island::default();
+    let mut body = question("Quanto fa 2+2?", &[]);
+    let replies = vec![Reply::Events(vec![reasoning("hmm"), text("<think>conto"), text("</think>Fa 4."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut body, &rules("think", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Thinking]);
+    assert!(island.shown.iter().all(|s| !s.contains("conto") && !s.contains("hmm")));
+}
+
+#[test]
+fn a_tool_round_then_the_answer() {
+    let mut island = Island::default();
+    let mut body = question("Timer di 5 minuti", &["set_timer"]);
+    let replies = vec![
+        Reply::Events(vec![text("Metto il timer."), call("c1", "set_timer", "{\"minutes\":"), call("", "", "5}"), finish("tool_calls"), DONE.into()]),
+        answer("Fatto."),
+    ];
+    let (outcome, requests) = turn(replies, &mut body, &rules("round", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(island.ran, [("set_timer".to_string(), json!({ "minutes": 5 }))]);
+    assert_eq!((outcome.rounds, outcome.answer().as_str()), (1, "Metto il timer.\n\nFatto."));
+    assert_eq!(island.shown.last().unwrap(), "Metto il timer.\n\nFatto.");
+    let messages = requests[1]["messages"].as_array().unwrap();
+    assert_eq!(messages[2]["tool_calls"][0]["id"], "c1");
+    assert_eq!(messages[2]["tool_calls"][0]["function"]["arguments"], "{\"minutes\":5}");
+    assert_eq!((messages[3]["role"].as_str(), messages[3]["tool_call_id"].as_str()), (Some("tool"), Some("c1")));
+    assert_eq!(messages[3]["content"], "set_timer done");
+}
+
+#[test]
+fn an_ollama_call_comes_whole_with_its_arguments_as_an_object() {
+    let mut island = Island::default();
+    let mut body = question("Timer di 3 minuti", &["set_timer"]);
+    let ollama = json!({ "choices": [{ "delta": { "role": "assistant", "content": "", "tool_calls": [{ "function": { "name": "set_timer", "arguments": { "minutes": 3 } } }] }, "finish_reason": "tool_calls" }] });
+    let replies = vec![Reply::Events(vec![ollama.to_string(), DONE.into()]), answer("Ok.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("ollama", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ok.");
+    assert_eq!(island.ran, [("set_timer".to_string(), json!({ "minutes": 3 }))]);
+    // No id from the server: one is made up, the same for the call and its result.
+    assert_eq!(requests[1]["messages"][2]["tool_calls"][0]["id"], "call_1_0");
+    assert_eq!(requests[1]["messages"][3]["tool_call_id"], "call_1_0");
+}
+
+#[test]
+fn lm_studio_keeping_the_connection_open_after_the_answer_ends_it_all_the_same() {
+    let mut island = Island::default();
+    let mut body = question("Che tempo fa?", &[]);
+    let started = Instant::now();
+    let replies = vec![Reply::Hold(vec![text("Sole."), finish("stop"), usage(42), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut body, &rules("hold", ""), &mut island);
+    assert_eq!(outcome.unwrap().used, Some(42));
+    assert!(started.elapsed() < Duration::from_secs(3), "{:?}", started.elapsed());
+    // No [DONE]: the finish_reason ends it a moment later.
+    let started = Instant::now();
+    let (outcome, _) = turn(vec![Reply::Hold(vec![text("Sole."), finish("stop")])], &mut question("x", &[]), &rules("hold2", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Sole.");
+    assert!(started.elapsed() < Duration::from_secs(4), "{:?}", started.elapsed());
+}
+
+#[test]
+fn a_stream_lm_studio_drops_as_terminated_is_asked_again_whole_and_remembered() {
+    let key = "lmstudio\0gemma-terminated";
+    let mut island = Island::default();
+    let mut body = question("Riscrivi il file più lungo", &["workspace_write"]);
+    let long = format!("{{\"path\":\"a.txt\",\"content\":\"{}\"}}", "parola ".repeat(500));
+    let replies = vec![
+        Reply::Events(vec![json!({ "choices": [{ "delta": { "role": "assistant" } }] }).to_string(), json!({ "error": "terminated" }).to_string()]),
+        whole("", &[("c1", "workspace_write", &long)]),
+        whole("Fatto: il file è più lungo.", &[]),
+    ];
+    let (outcome, requests) = turn(replies, &mut body, &rules(key, "Riscrivi il file più lungo"), &mut island);
+    let outcome = outcome.unwrap();
+    assert!(outcome.whole);
+    assert_eq!(outcome.fixes, ["answered whole"]);
+    assert_eq!((outcome.text.as_str(), outcome.used), ("Fatto: il file è più lungo.", Some(77)));
+    assert_eq!(island.ran.len(), 1);
+    assert_eq!(island.ran[0].1["content"].as_str().unwrap().len(), 3500);
+    assert_eq!(requests.len(), 3);
+    assert_eq!(requests[0]["stream"], true);
+    for r in &requests[1..] {
+        assert_eq!(r["stream"], false);
+        assert!(r.get("stream_options").is_none());
+    }
+    // The next turn with the same model goes whole from the start.
+    let mut island = Island::default();
+    let (outcome, requests) = turn(vec![whole("Ciao.", &[])], &mut question("Ciao", &[]), &rules(key, ""), &mut island);
+    assert!(outcome.unwrap().fixes.is_empty());
+    assert_eq!(requests[0]["stream"], false);
+    assert_eq!(island.doing[0], Doing::Thinking);
+    assert_eq!(island.shown, ["Ciao."]);
+}
+
+#[test]
+fn a_stream_closed_with_nothing_in_it_is_asked_again_whole() {
+    let mut island = Island::default();
+    let (outcome, requests) = turn(vec![Reply::Headers, whole("Eccomi.", &[])], &mut question("Ci sei?", &[]), &rules("closed", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Eccomi.");
+    assert_eq!(requests.len(), 2);
+    // Whole too, the server still gives nothing: it is said, not asked again.
+    let (outcome, requests) = turn(vec![Reply::Headers, Reply::Json(200, "not json".into())], &mut question("Ci sei?", &[]), &rules("closed2", ""), &mut island);
+    let failure = outcome.unwrap_err();
+    assert!(failure.is_cut_short(), "{failure:?}");
+    assert_eq!(requests.len(), 2);
+}
+
+#[test]
+fn server_errors_come_back_as_they_are() {
+    let mut island = Island::default();
+    let r = rules("errors", "");
+    let (outcome, requests) = turn(vec![Reply::Events(vec![json!({ "error": { "message": "out of memory" } }).to_string()])], &mut question("x", &[]), &r, &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::Server("out of memory".into()));
+    assert_eq!(requests.len(), 1);
+    let (outcome, _) = turn(vec![Reply::Json(404, "{}".into())], &mut question("x", &[]), &r, &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::NotInstalled);
+    let (outcome, _) = turn(vec![Reply::Json(500, json!({ "error": "boom" }).to_string())], &mut question("x", &[]), &r, &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::Status(500, "boom".into()));
+    // A refusal that isn't about pictures or tools is said at once.
+    let (outcome, requests) = turn(vec![Reply::Json(400, json!({ "error": { "message": "context too long" } }).to_string())], &mut question("x", &[]), &r, &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::Status(400, "context too long".into()));
+    assert_eq!(requests.len(), 1);
+    let nobody = lumo_local::Endpoint { url: "http://127.0.0.1:1/v1/chat/completions".into(), ..serve(vec![]).endpoint() };
+    assert_eq!(block_on(run(&nobody, &mut question("x", &[]), &r, &mut island)).unwrap_err(), Failure::Unreachable);
+}
+
+#[test]
+fn an_endless_line_is_too_large() {
+    let mut island = Island::default();
+    let (outcome, _) = turn(vec![Reply::Raw(vec![b'x'; lumo_local::transport::MAX_LINE + 10])], &mut question("x", &[]), &rules("endless", ""), &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::TooLarge);
+}
+
+#[test]
+fn a_tool_call_written_as_text_sends_the_model_back_once() {
+    let mut island = Island::default();
+    let mut body = question("Cambia la riga", &["workspace_edit"]);
+    let replies = vec![
+        answer("Fatto.\n[[workspace_edit \"a.txt\" \"x\" \"y\"]]"),
+        calls("c1", "workspace_edit", "{\"path\":\"a.txt\"}"),
+        answer("Ora è fatto."),
+    ];
+    let (outcome, requests) = turn(replies, &mut body, &rules("written", "Cambia la riga"), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.fixes, ["call written as text"]);
+    assert_eq!(outcome.answer(), "Ora è fatto.");
+    assert!(last_said(&requests[1]).contains("workspace_edit written in your answer is only text"));
+    assert_eq!(island.ran.len(), 1);
+    // What it wrote went from the island.
+    assert!(island.shown.contains(&String::new()));
+    // Written again: once is enough, the answer stays.
+    let mut island = Island::default();
+    let replies = vec![answer("[[workspace_edit a]]"), answer("[[workspace_edit b]]")];
+    let (outcome, requests) = turn(replies, &mut question("x", &["workspace_edit"]), &rules("written2", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "[[workspace_edit b]]");
+    assert_eq!(requests.len(), 2);
+}
+
+#[test]
+fn a_change_said_but_not_made_sends_the_model_back_once() {
+    let query = "Modifica il file e allungalo";
+    let mut island = Island::default();
+    let replies = vec![answer("Ho modificato il file."), calls("c1", "workspace_edit", "{}"), answer("Ho modificato il file.")];
+    let (outcome, requests) = turn(replies, &mut question(query, &["workspace_edit"]), &rules("claimed", query), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.fixes, ["change said, not made"]);
+    assert!(last_said(&requests[1]).contains("no tool changed one"));
+    assert_eq!((island.ran.len(), requests.len()), (1, 3));
+    // A question that asks for no change, or a chat with no workspace: nothing to check.
+    let mut island = Island::default();
+    let (_, requests) = turn(vec![answer("Ho modificato il file.")], &mut question("Cosa c'è?", &["workspace_edit"]), &rules("claimed2", "Cosa c'è?"), &mut island);
+    assert_eq!(requests.len(), 1);
+    let no_workspace = Rules { workspace: false, ..rules("claimed3", query) };
+    let (_, requests) = turn(vec![answer("Ho modificato il file.")], &mut question(query, &["workspace_edit"]), &no_workspace, &mut island);
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
+fn arguments_cut_off_go_back_to_the_model_not_to_the_tool() {
+    let mut island = Island::default();
+    let replies = vec![calls("c1", "workspace_write", "{\"path\":\"a.txt\",\"content\":\"tron"), answer("Riprovo.")];
+    let (outcome, requests) = turn(replies, &mut question("Scrivi", &["workspace_write"]), &rules("json", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["arguments not JSON"]);
+    assert!(island.ran.is_empty());
+    assert!(last_said(&requests[1]).contains("aren't valid JSON"));
+}
+
+#[test]
+fn a_made_up_tool_is_answered_with_the_real_ones() {
+    let mut island = Island { all: vec!["set_timer".into(), "mail_read".into()], ..Island::default() };
+    let replies = vec![calls("c1", "delete_everything", "{}"), answer("Non posso.")];
+    let (outcome, requests) = turn(replies, &mut question("Cancella tutto", &["set_timer"]), &rules("made-up", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["made-up tool"]);
+    assert!(island.ran.is_empty());
+    let said = last_said(&requests[1]);
+    assert!(said.contains("no tool named delete_everything") && said.contains("set_timer, mail_read"), "{said}");
+}
+
+#[test]
+fn pictures_a_model_refuses_are_taken_out_and_the_question_asked_again() {
+    let mut island = Island::default();
+    let user = json!({ "role": "user", "content": [{ "type": "text", "text": "Cos'è?" }, { "type": "image_url", "image_url": { "url": "data:image/png;base64,AA" } }] });
+    let mut body = request(user, &[]);
+    let replies = vec![Reply::Json(400, json!({ "error": "Model does not support images" }).to_string()), answer("Non vedo immagini.")];
+    let (outcome, requests) = turn(replies, &mut body, &rules("images", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["without pictures"]);
+    assert_eq!(requests[1]["messages"][1]["content"], "Cos'è?");
+    // The user message stays where it was, without its pictures, for the conversation.
+    assert_eq!(body["messages"][1]["content"], "Cos'è?");
+}
+
+#[test]
+fn tools_a_model_refuses_are_left_out_and_the_question_asked_again() {
+    let mut island = Island::default();
+    let replies = vec![Reply::Json(400, json!({ "error": { "message": "tools not supported" } }).to_string()), answer("Ciao.")];
+    let (outcome, requests) = turn(replies, &mut question("Ciao", &["set_timer"]), &rules("no-tools", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["without tools"]);
+    assert!(requests[1].get("tools").is_none());
+    assert_eq!(requests[1]["messages"][0]["content"], "system without tools");
+}
+
+#[test]
+fn an_answer_stopped_at_the_length_limit_says_so() {
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("Una storia lunga"), finish("length"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("Scrivi una storia", &[]), &rules("length", ""), &mut island);
+    assert_eq!(outcome.unwrap().end, End::Cut);
+    // Answered whole, the same.
+    lumo_local::turn::hung("length-whole", true);
+    let (outcome, _) = turn(vec![Reply::Json(200, json!({ "choices": [{ "message": { "content": "Lunga" }, "finish_reason": "length" }] }).to_string())], &mut question("x", &[]), &rules("length-whole", ""), &mut island);
+    assert_eq!(outcome.unwrap().end, End::Cut);
+}
+
+#[test]
+fn a_tool_of_the_catalog_is_loaded_when_called_then_called_again() {
+    let mut island = Island { catalog: vec!["mail_read".into(), "listen".into()], ..Island::default() };
+    let replies = vec![calls("c1", "mail_read", "{}"), calls("c2", "mail_read", "{\"id\":1}"), answer("Ecco la mail.")];
+    let (outcome, requests) = turn(replies, &mut question("Leggi la mail", &["set_timer", MORE]), &rules("catalog", ""), &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["tools loaded"]);
+    assert_eq!(last_said(&requests[1]), "mail_read is loaded now, nothing was done yet: call it again with its arguments.");
+    assert_eq!(offered(&requests[1]), ["set_timer", MORE, "mail_read"]);
+    assert_eq!(requests[1]["messages"][0]["content"], "system with set_timer, lumo_tools, mail_read");
+    assert_eq!(island.ran, [("mail_read".to_string(), json!({ "id": 1 }))]);
+}
+
+#[test]
+fn tools_asked_for_by_name_are_loaded() {
+    let mut island = Island { catalog: vec!["listen".into()], ..Island::default() };
+    let replies = vec![calls("c1", MORE, "{\"names\":[\"listen\",\"nope\"]}"), calls("c2", MORE, "{\"names\":[\"nope\"]}"), answer("Ok.")];
+    let (_, requests) = turn(replies, &mut question("Ascolta la cartella", &[MORE]), &rules("more", ""), &mut island);
+    assert_eq!(last_said(&requests[1]), "Loaded: listen. Call them now.");
+    assert_eq!(offered(&requests[1]), [MORE, "listen"]);
+    assert_eq!(last_said(&requests[2]), "None of those is in the catalog: nothing was loaded.");
+    assert!(island.ran.is_empty());
+}
+
+#[test]
+fn a_model_that_keeps_calling_tools_stops_after_the_last_round() {
+    let mut island = Island::default();
+    let replies = (0..3).map(|i| calls(&format!("c{i}"), "set_timer", "{}")).collect();
+    let r = Rules { max_rounds: 2, ..rules("rounds", "") };
+    let (outcome, requests) = turn(replies, &mut question("x", &["set_timer"]), &r, &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.end, outcome.rounds), (End::Rounds, 2));
+    assert_eq!((island.ran.len(), requests.len()), (2, 3));
+}
+
+#[test]
+fn stop_mid_answer_keeps_what_was_shown_and_the_question() {
+    let mut island = Island::default();
+    let mut body = question("Raccontami", &[]);
+    let fake = serve(vec![Reply::Hold(vec![text("Mezza risposta")])]);
+    let to = fake.endpoint();
+    let r = rules("stop", "");
+    let stopped = block_on(async { tokio::time::timeout(Duration::from_millis(800), run(&to, &mut body, &r, &mut island)).await });
+    assert!(stopped.is_err());
+    assert_eq!(island.shown.last().unwrap(), "Mezza risposta");
+    assert_eq!(body["messages"][1]["content"], "Raccontami");
+}

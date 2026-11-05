@@ -1,0 +1,281 @@
+// One turn of the chat: the request, the answer, and as many rounds of tool
+// calls as the model makes (up to `Rules::max_rounds`), with the checks that
+// send a model back once when it got something wrong. The app does what only
+// it can through `Hooks`: shows the answer, runs the tools, loads more of them.
+
+use std::future::Future;
+
+use serde_json::{json, Value};
+
+use crate::guard::{asks_change, call_input, claims_change, written_call, without_images};
+use crate::sse::progressive_filter;
+use crate::transport::{ask_whole, stream, Endpoint, Failure, Seen};
+
+/// The tool that loads more of Lumo's tools, by name (local_profile.rs).
+pub const MORE: &str = "lumo_tools";
+
+/// What the island says the answer is doing.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Doing {
+    /// The model reads the prompt (streamed: until anything of the answer comes).
+    Prompt,
+    /// The model is at work: it thinks, or answers whole.
+    Thinking,
+}
+
+/// Tools loaded in the middle of a turn, and what the request carries from then on.
+pub struct Loaded {
+    /// The tools loaded (none when nothing asked for is in the catalog).
+    pub wanted: Vec<String>,
+    /// The request's `tools`, their names, and its system message.
+    pub tools: Value,
+    pub names: Vec<String>,
+    pub system: String,
+}
+
+pub trait Hooks {
+    /// The text of the answer so far, as the island shows it.
+    fn shown(&mut self, text: &str);
+    fn doing(&mut self, doing: Doing);
+    /// The system message for a request with no tools (a model that refused them).
+    fn without_tools(&mut self) -> String;
+    /// More tools for `name` called with `input`: `lumo_tools`, or a tool of
+    /// the catalog not loaded yet. None for a tool `offered` has, or none at all.
+    fn load(&mut self, name: &str, input: &Value, offered: &[String]) -> Option<Loaded>;
+    /// Every tool there is, for a model that made one up.
+    fn known(&self) -> Vec<String>;
+    /// Runs a tool: what it answered, and whether it failed.
+    fn call(&mut self, name: &str, input: Value) -> impl Future<Output = (String, bool)> + Send;
+}
+
+/// What a turn goes by.
+pub struct Rules<'a> {
+    /// Names the server and the model, for what this session remembers of them.
+    pub key: String,
+    /// The user's question.
+    pub query: &'a str,
+    /// The chat has a workspace to work on copies in.
+    pub workspace: bool,
+    /// The tools that change a copy.
+    pub changes: &'a [&'a str],
+    pub max_rounds: usize,
+}
+
+/// How the turn ended.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum End {
+    Answer,
+    /// At the length limit.
+    Cut,
+    /// The model still called tools after the last round.
+    Rounds,
+}
+
+/// A turn's answer, and what it took.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Outcome {
+    /// What the model said before each round of tools.
+    pub said: Vec<String>,
+    /// Its last answer.
+    pub text: String,
+    pub end: End,
+    /// The tokens of the last request that said.
+    pub used: Option<u64>,
+    pub rounds: usize,
+    /// Answered whole, the stream having hung.
+    pub whole: bool,
+    /// What was put right on the way, in order (for the log).
+    pub fixes: Vec<&'static str>,
+}
+
+impl Outcome {
+    /// The whole answer: what was said before the tools, then the last answer.
+    pub fn answer(&self) -> String {
+        self.said.iter().chain([&self.text]).filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("\n\n")
+    }
+}
+
+/// Whether the stream of `key` (server and model) hung in this session, after
+/// noting that it did when `now`.
+pub fn hung(key: &str, now: bool) -> bool {
+    static HUNG: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let mut hung = HUNG.lock().unwrap_or_else(|e| e.into_inner());
+    if now && !hung.iter().any(|k| k == key) {
+        hung.push(key.to_string());
+    }
+    hung.iter().any(|k| k == key)
+}
+
+/// The names of the tools `body` offers.
+fn offered(body: &Value) -> Vec<String> {
+    body["tools"].as_array().map(|t| t.iter().filter_map(|t| t.pointer("/function/name").and_then(Value::as_str)).map(str::to_string).collect()).unwrap_or_default()
+}
+
+fn push(body: &mut Value, messages: impl IntoIterator<Item = Value>) {
+    if let Some(m) = body["messages"].as_array_mut() {
+        m.extend(messages);
+    }
+}
+
+/// Runs one turn on `body` (a chat completions request, its last message the
+/// user's). The body grows with the turn: whatever ends the turn (its future
+/// dropped on Stop included), its user message is still where it was, without
+/// its pictures if the server refused them.
+pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, hooks: &mut H) -> Result<Outcome, Failure> {
+    let mut names = offered(body);
+    // A model whose stream hung once in this session answers whole from then on.
+    let mut whole = hung(&rules.key, false);
+    let mut said: Vec<String> = Vec::new();
+    let mut fixes = Vec::new();
+    let mut used = None;
+    let mut rounds = 0;
+    // Each check sends the model back once a turn.
+    let (mut written, mut claimed) = (false, false);
+    // A copy changed by a tool in this turn.
+    let mut changed = false;
+    loop {
+        hooks.doing(if whole { Doing::Thinking } else { Doing::Prompt });
+        let before = said.join("\n\n");
+        let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
+        let answer = if whole {
+            let answer = ask_whole(to, body).await;
+            if let Ok(a) = &answer {
+                if !a.text.is_empty() {
+                    hooks.shown(&after_before(&progressive_filter(&a.text)));
+                }
+            }
+            answer
+        } else {
+            stream(to, body, |seen| match seen {
+                // Nothing new yet in this round: the text so far isn't sent
+                // again, or the island would drop the dots that say what the
+                // answer is doing.
+                Seen::Text(visible) if visible.is_empty() => {}
+                Seen::Text(visible) => hooks.shown(&after_before(&visible)),
+                Seen::Started => hooks.doing(Doing::Thinking),
+            })
+            .await
+        };
+        let answer = match answer {
+            // A model that doesn't see refuses the pictures: once more with the text alone.
+            Err(Failure::Status(400 | 422, _)) if without_images(body) => {
+                fixes.push("without pictures");
+                continue;
+            }
+            // A model that takes no tools refuses the request: once more without them.
+            Err(Failure::Status(400 | 422, _)) if body.get("tools").is_some() => {
+                body.as_object_mut().map(|b| b.remove("tools"));
+                body["messages"][0]["content"] = json!(hooks.without_tools());
+                names.clear();
+                fixes.push("without tools");
+                continue;
+            }
+            // LM Studio's stream hangs on some tool calls (long text in their
+            // arguments), then says "terminated", or closes with nothing: the
+            // same request, not streamed, from then on.
+            Err(e) if !whole && e.is_cut_short() => {
+                whole = hung(&rules.key, true);
+                fixes.push("answered whole");
+                continue;
+            }
+            other => other?,
+        };
+        if answer.used.is_some() {
+            used = answer.used;
+        }
+        let tools = body.get("tools").is_some();
+        // A tool call written in the answer as text (`[[workspace_edit …]]`)
+        // does nothing: the model is told so once, and what it wrote goes.
+        if answer.calls.is_empty() && !written && tools {
+            if let Some(name) = written_call(&answer.text, &names) {
+                written = true;
+                fixes.push("call written as text");
+                push(body, [
+                    json!({ "role": "assistant", "content": answer.text }),
+                    json!({ "role": "user", "content": format!("(Lumo: {name} written in your answer is only text: nothing was done. Call the {name} tool itself, as a function call, then answer. Never write a tool call in your answer, and never say something was done when no tool did it.)") }),
+                ]);
+                hooks.shown(&before);
+                hooks.doing(Doing::Thinking);
+                continue;
+            }
+        }
+        // "I changed the file" with no tool that changed one: the model is told once.
+        if answer.calls.is_empty() && !claimed && rules.workspace && !changed && asks_change(rules.query) && claims_change(&answer.text) {
+            claimed = true;
+            fixes.push("change said, not made");
+            push(body, [
+                json!({ "role": "assistant", "content": answer.text }),
+                json!({ "role": "user", "content": "(Lumo: you said a file was changed, but no tool changed one in this answer: nothing changed. Call workspace_write or workspace_edit on the copy now, or tell the user plainly that it wasn't done.)" }),
+            ]);
+            hooks.shown(&before);
+            hooks.doing(Doing::Thinking);
+            continue;
+        }
+        if answer.calls.is_empty() || !tools || rounds == rules.max_rounds {
+            let end = if !answer.calls.is_empty() && tools {
+                End::Rounds
+            } else if answer.cut {
+                End::Cut
+            } else {
+                End::Answer
+            };
+            return Ok(Outcome { said, text: answer.text, end, used, rounds, whole, fixes });
+        }
+        rounds += 1;
+        if !answer.text.is_empty() {
+            said.push(answer.text.clone());
+        }
+        let calls: Vec<Value> = answer
+            .calls
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let id = c["id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).unwrap_or_else(|| format!("call_{rounds}_{i}"));
+                json!({ "id": id, "type": "function", "function": { "name": c["name"], "arguments": c["arguments"] } })
+            })
+            .collect();
+        let mut replies = vec![json!({ "role": "assistant", "content": answer.text, "tool_calls": calls })];
+        for call in &calls {
+            let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
+            let reply = |text: String| json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text });
+            // Arguments that aren't JSON go back to the model, never as `{}` to the tool.
+            let Some(input) = call_input(call.pointer("/function/arguments").and_then(Value::as_str).unwrap_or_default()) else {
+                fixes.push("arguments not JSON");
+                replies.push(reply(format!("The arguments of this {name} call aren't valid JSON (it may have been cut off): nothing was done. Call it again with a JSON object.")));
+                continue;
+            };
+            // More of Lumo's tools, from now on: asked for by name, or called
+            // straight from the catalog.
+            if let Some(loaded) = hooks.load(name, &input, &names) {
+                let text = if loaded.wanted.is_empty() {
+                    "None of those is in the catalog: nothing was loaded.".to_string()
+                } else if name == MORE {
+                    format!("Loaded: {}. Call them now.", loaded.wanted.join(", "))
+                } else {
+                    format!("{name} is loaded now, nothing was done yet: call it again with its arguments.")
+                };
+                body["tools"] = loaded.tools;
+                body["messages"][0]["content"] = json!(loaded.system);
+                names = loaded.names;
+                fixes.push("tools loaded");
+                replies.push(reply(text));
+                continue;
+            }
+            // A tool the model made up: said as such, with the real ones.
+            if !names.iter().any(|n| n == name) {
+                fixes.push("made-up tool");
+                replies.push(reply(format!(
+                    "There is no tool named {name}: nothing was done. These are the only tools: {}. Tell the user plainly if none of them can do it.",
+                    hooks.known().join(", ")
+                )));
+                continue;
+            }
+            let (text, failed) = hooks.call(name, input).await;
+            if !failed && rules.changes.contains(&name) {
+                changed = true;
+            }
+            replies.push(reply(text));
+        }
+        push(body, replies);
+    }
+}
