@@ -667,6 +667,13 @@ pub async fn send(
                 } else {
                     None
                 };
+                // A tool the model made up: said as such, with the real ones.
+                if wanted.is_none() && !names.iter().any(|n| n == name) {
+                    let known: Vec<&str> = all.iter().map(|(id, _, _)| id.as_str()).collect();
+                    let text = format!("There is no tool named {name}: nothing was done. These are the only tools: {}. Tell the user plainly if none of them can do it.", known.join(", "));
+                    turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
+                    continue;
+                }
                 if let Some(wanted) = wanted {
                     let now = profile::loaded(chat.id(), &wanted);
                     let offered = profile::pick(&all, &now);
