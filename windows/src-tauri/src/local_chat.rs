@@ -333,7 +333,7 @@ fn is_image(path: &str) -> bool {
 /// button (a model that doesn't see gets the text of the text files only).
 fn user_message(vision: bool, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
     use crate::openai_compat::PdfAs;
-    // A PDF: its text, and its first pages as pictures for a model that sees.
+    // A PDF: pictures of its pages for a model that sees, when it has few; else its text.
     let pdf = if vision { PdfAs::TextAndPages } else { PdfAs::Text };
     let dropped = matches!(chat::turn_context(first, context), Some(ChatContext::File { path, .. }) if is_image(path) || crate::openai_compat::is_pdf(path));
     let user = if vision && dropped {

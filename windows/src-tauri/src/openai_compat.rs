@@ -403,8 +403,8 @@ enum FilePart {
 pub(crate) enum PdfAs {
     /// Its text (a model that doesn't see).
     Text,
-    /// Its text and its first pages as pictures (a model that sees, whose
-    /// API takes no file: Google's, a local server).
+    /// Its pages as pictures when it has few, else its text (a model that
+    /// sees, whose API takes no file: Google's, a local server).
     TextAndPages,
     /// The file itself (OpenAI's and OpenRouter's `file` part).
     File,
@@ -414,8 +414,9 @@ pub(crate) enum PdfAs {
 const MAX_PDF: u64 = 20_000_000;
 /// The most of a PDF's text sent.
 const MAX_PDF_CHARS: usize = 40_000;
-/// The most pages sent as pictures.
-const MAX_PDF_PAGES: u32 = 4;
+/// A PDF of this many pages or fewer goes as pictures of them to a model that
+/// sees; a longer one as its text.
+const MAX_PDF_PAGES: u32 = 10;
 /// Told the model of a PDF whose text couldn't be read, so it says so.
 pub(crate) const PDF_UNREAD: &str = "(Lumo couldn't read this PDF: it may be a scan, protected, or damaged. Say so.)";
 
@@ -431,7 +432,6 @@ fn pdf_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
         let data = format!("data:application/pdf;base64,{}", crate::claude::base64_for(&bytes));
         return Some(FilePart::Pdf { parts: vec![json!({ "type": "file", "file": { "filename": name, "file_data": data } })], text: None });
     }
-    let text = crate::pdf_text::text(path, MAX_PDF_CHARS);
     let parts: Vec<Value> = if pdf == PdfAs::Text {
         Vec::new()
     } else {
@@ -441,6 +441,8 @@ fn pdf_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
             .map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{}", crate::claude::base64_for(&png)) } }))
             .collect()
     };
+    // Its pages seen, its text isn't needed; a long PDF, or one Windows can't draw, goes as text.
+    let text = if parts.is_empty() { crate::pdf_text::text(path, MAX_PDF_CHARS) } else { None };
     (text.is_some() || !parts.is_empty()).then_some(FilePart::Pdf { parts, text })
 }
 
