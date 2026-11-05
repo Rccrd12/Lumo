@@ -227,7 +227,7 @@ pub async fn send(
     let web = tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false);
     let system = format!("{}{}{}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" });
     let mut body = request_body(p, model, &system, &turn.history, &user);
-    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web)).await.unwrap_or_default();
+    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false)).await.unwrap_or_default();
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }

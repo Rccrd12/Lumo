@@ -122,6 +122,9 @@ export interface ChatMessage {
   stopped?: boolean;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
+  /** The files a local model changed or made in its folder of copies while
+   * answering (workspace.rs), listed under the answer to open or put back. */
+  copies?: { chat: string; path: string }[];
 }
 
 export type PromptContext =

@@ -277,7 +277,90 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   const foot = message.stopped
     ? h("div", { class: "reply-foot" }, h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }), actions)
     : h("div", { class: "reply-foot floating" }, actions);
-  return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, foot));
+  const copies = message.copies?.length ? copiesBox(message.copies) : null;
+  return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, foot));
+}
+
+/** What the copies' box under an answer says (workspace.rs). */
+const COPY_STRINGS = {
+  title: N_("Changed in Lumo's copies: your files are as they were"),
+  open: N_("Open"),
+  folder: N_("Show the folder"),
+  putBack: N_("Put it back"),
+  confirm: N_("Write it over the original"),
+  cancel: N_("Cancel"),
+  over: N_("Over {path}. The original is kept beside it first."),
+  done: N_("Put back. The original was kept as {name}."),
+  doneNew: N_("Put back."),
+  unchanged: N_("The copy is the same as the original."),
+};
+
+/** A path in a chat's folder of copies (workspace.rs). */
+export function inWorkspace(path: string): boolean {
+  return /[\\/]com\.rccrd12\.lumo[\\/]workspaces[\\/]/i.test(path);
+}
+
+/**
+ * The copies an answer changed or made: each with Open and, for a copy of a
+ * file of the computer, Put it back, which shows the differences first and
+ * writes over the original only on a second click.
+ */
+function copiesBox(copies: { chat: string; path: string }[]): HTMLElement {
+  const box = h("div", { class: "reply-copies" },
+    h("div", { class: "reply-copies-title", text: t(COPY_STRINGS.title) }));
+  for (const copy of copies) {
+    const name = copy.path.split(/[\\/]/).pop() ?? copy.path;
+    const detail = h("div", { class: "reply-copy-detail" });
+    const open = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.open) });
+    open.addEventListener("click", () => void Bridge.chatFileOpen(copy.path));
+    const folder = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.folder) });
+    folder.addEventListener("click", () => void Bridge.chatFileReveal(copy.path));
+    const back = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.putBack) });
+    back.addEventListener("click", () => void showDiff(copy, detail, back));
+    box.append(h("div", { class: "reply-copy" },
+      h("div", { class: "reply-copy-row" },
+        h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder, back),
+      detail));
+  }
+  return box;
+}
+
+async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement, back: HTMLElement) {
+  clear(detail);
+  let diff: { original: string; lines: string[] };
+  try {
+    diff = await Bridge.workspaceDiff(copy.chat, copy.path);
+  } catch (err) {
+    detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
+    return;
+  }
+  if (!diff.lines.some((l) => l.startsWith("+") || l.startsWith("-"))) {
+    detail.append(h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.unchanged) }));
+    return;
+  }
+  const lines = h("div", { class: "reply-copy-diff" },
+    ...diff.lines.slice(0, 400).map((l) => h("div", {
+      class: l.startsWith("+") ? "diff-add" : l.startsWith("-") ? "diff-del" : "diff-same",
+      text: l,
+    })));
+  const confirm = h("button", { class: "reply-copy-btn primary", text: t(COPY_STRINGS.confirm) });
+  const cancel = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.cancel) });
+  cancel.addEventListener("click", () => clear(detail));
+  confirm.addEventListener("click", async () => {
+    try {
+      const kept = await Bridge.workspacePutBack(copy.chat, copy.path);
+      clear(detail);
+      const keptName = kept.split(/[\\/]/).pop() ?? kept;
+      detail.append(h("div", { class: "reply-copy-note", text: kept ? t(COPY_STRINGS.done, { name: keptName }) : t(COPY_STRINGS.doneNew) }));
+      back.setAttribute("disabled", "");
+    } catch (err) {
+      detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
+    }
+  });
+  detail.append(
+    h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.over, { path: diff.original }) }),
+    lines,
+    h("div", { class: "reply-copy-row" }, confirm, cancel));
 }
 
 /** What the line next to the typing dots says (claude_code.rs Activity). */
@@ -335,6 +418,8 @@ interface Run {
   stopping: boolean;
   /** Deleted from Past chats meanwhile: its answer is stopped, and the chat is not saved again. */
   forgotten?: boolean;
+  /** The copies the answer changed or made in the chat's folder (workspace.rs). */
+  copies?: Set<string>;
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }
@@ -2411,6 +2496,8 @@ export function buildPrompt(
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
         dropChatFiles(c.id);
+        // So does its folder of copies (workspace.rs).
+        void Bridge.workspaceDelete(c.id);
         // Being answered in the background: that answer ends with it.
         const run = runs.get(c.id);
         if (run) {
@@ -2815,6 +2902,9 @@ export function buildPrompt(
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
     addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
+    // A copy changed or made in the chat's folder: listed under the answer.
+    const run = runs.get(chat);
+    if (run && kind !== "read" && inWorkspace(path)) (run.copies ??= new Set()).add(path);
     if (chat === State.chatId) drawChatFiles();
   });
 
@@ -3011,7 +3101,9 @@ export function buildPrompt(
           content,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
+          copies: run.copies?.size ? [...run.copies].map((path) => ({ chat: run.chatId, path })) : undefined,
         });
+        run.copies = undefined;
       } else {
         giveBack(false);
       }

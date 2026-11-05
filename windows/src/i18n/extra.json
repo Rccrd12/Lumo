@@ -14496,6 +14496,102 @@
    "ru": "Unsloth Studio не удалось загрузить модель: {error}",
    "id": "Unsloth Studio tidak dapat memuat model: {error}",
    "it": "Unsloth Studio non è riuscito a caricare il modello: {error}"
+  },
+  "Changed in Lumo's copies: your files are as they were": {
+   "zh-Hans": "在 Lumo 的副本中更改：你的文件保持原样",
+   "hi": "Lumo की कॉपी में बदला गया: आपकी फ़ाइलें जैसी थीं वैसी ही हैं",
+   "es": "Cambiado en las copias de Lumo: tus archivos siguen como estaban",
+   "ar": "تم التغيير في نسخ Lumo: ملفاتك كما كانت",
+   "fr": "Modifié dans les copies de Lumo : vos fichiers sont restés tels quels",
+   "bn": "Lumo-র কপিতে বদলানো হয়েছে: আপনার ফাইল আগের মতোই আছে",
+   "pt-BR": "Alterado nas cópias do Lumo: seus arquivos continuam como estavam",
+   "ru": "Изменено в копиях Lumo: ваши файлы остались прежними",
+   "id": "Diubah di salinan Lumo: file Anda tetap seperti semula",
+   "it": "Modificato nelle copie di Lumo: i tuoi file sono com'erano"
+  },
+  "Show the folder": {
+   "zh-Hans": "显示文件夹",
+   "hi": "फ़ोल्डर दिखाएँ",
+   "es": "Mostrar la carpeta",
+   "ar": "إظهار المجلد",
+   "fr": "Afficher le dossier",
+   "bn": "ফোল্ডার দেখান",
+   "pt-BR": "Mostrar a pasta",
+   "ru": "Показать папку",
+   "id": "Tampilkan folder",
+   "it": "Mostra la cartella"
+  },
+  "Put it back": {
+   "zh-Hans": "放回原处",
+   "hi": "वापस रखें",
+   "es": "Devolverlo a su sitio",
+   "ar": "إعادته إلى مكانه",
+   "fr": "Le remettre en place",
+   "bn": "আগের জায়গায় রাখুন",
+   "pt-BR": "Colocar de volta",
+   "ru": "Вернуть на место",
+   "id": "Kembalikan",
+   "it": "Rimetti al suo posto"
+  },
+  "Write it over the original": {
+   "zh-Hans": "覆盖原文件",
+   "hi": "मूल पर लिखें",
+   "es": "Escribirlo sobre el original",
+   "ar": "الكتابة فوق الأصل",
+   "fr": "L'écrire sur l'original",
+   "bn": "মূলের উপর লিখুন",
+   "pt-BR": "Gravar por cima do original",
+   "ru": "Записать поверх оригинала",
+   "id": "Tulis di atas aslinya",
+   "it": "Scrivilo sopra l'originale"
+  },
+  "Over {path}. The original is kept beside it first.": {
+   "zh-Hans": "覆盖 {path}。原文件会先在旁边保留一份。",
+   "hi": "{path} के ऊपर। मूल पहले उसके पास रख लिया जाता है।",
+   "es": "Sobre {path}. Antes se guarda el original a su lado.",
+   "ar": "فوق {path}. يُحفظ الأصل بجانبه أولًا.",
+   "fr": "Sur {path}. L'original est d'abord gardé à côté.",
+   "bn": "{path}-এর উপর। মূলটি আগে তার পাশে রেখে দেওয়া হয়।",
+   "pt-BR": "Sobre {path}. O original é guardado ao lado antes.",
+   "ru": "Поверх {path}. Сначала оригинал сохраняется рядом.",
+   "id": "Di atas {path}. Aslinya disimpan dulu di sebelahnya.",
+   "it": "Sopra {path}. Prima l'originale viene salvato lì accanto."
+  },
+  "Put back. The original was kept as {name}.": {
+   "zh-Hans": "已放回。原文件保存为 {name}。",
+   "hi": "वापस रख दिया। मूल {name} के रूप में रखा गया।",
+   "es": "Devuelto. El original se guardó como {name}.",
+   "ar": "تمت الإعادة. حُفظ الأصل باسم {name}.",
+   "fr": "Remis en place. L'original a été gardé sous le nom {name}.",
+   "bn": "আগের জায়গায় রাখা হয়েছে। মূলটি {name} নামে রাখা হয়েছে।",
+   "pt-BR": "Colocado de volta. O original foi guardado como {name}.",
+   "ru": "Возвращено. Оригинал сохранён как {name}.",
+   "id": "Dikembalikan. Aslinya disimpan sebagai {name}.",
+   "it": "Rimesso al suo posto. L'originale è stato salvato come {name}."
+  },
+  "Put back.": {
+   "zh-Hans": "已放回。",
+   "hi": "वापस रख दिया।",
+   "es": "Devuelto.",
+   "ar": "تمت الإعادة.",
+   "fr": "Remis en place.",
+   "bn": "আগের জায়গায় রাখা হয়েছে।",
+   "pt-BR": "Colocado de volta.",
+   "ru": "Возвращено.",
+   "id": "Dikembalikan.",
+   "it": "Rimesso al suo posto."
+  },
+  "The copy is the same as the original.": {
+   "zh-Hans": "副本与原文件相同。",
+   "hi": "कॉपी मूल जैसी ही है।",
+   "es": "La copia es igual al original.",
+   "ar": "النسخة مطابقة للأصل.",
+   "fr": "La copie est identique à l'original.",
+   "bn": "কপিটি মূলের মতোই।",
+   "pt-BR": "A cópia é igual ao original.",
+   "ru": "Копия совпадает с оригиналом.",
+   "id": "Salinannya sama dengan aslinya.",
+   "it": "La copia è uguale all'originale."
   }
  }
 }

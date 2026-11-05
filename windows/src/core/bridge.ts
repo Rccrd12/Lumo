@@ -377,6 +377,12 @@ export const Bridge = {
    * "refused" (chat_files.rs).
    */
   chatFileOpen: (path: string) => call<string>("chat_file_open", { path }),
+  /** The chat's folder of copies (workspace.rs): a copy and its original, line by line. */
+  workspaceDiff: (chat: string, path: string) => callOrThrow<{ original: string; lines: string[] }>("workspace_diff", { chat, path }),
+  /** The copy over its original, after a click: where the original was kept. */
+  workspacePutBack: (chat: string, path: string) => callOrThrow<string>("workspace_put_back", { chat, path }),
+  workspaceReveal: (chat: string) => call<void>("workspace_reveal", { chat }),
+  workspaceDelete: (chat: string) => call<void>("workspace_delete", { chat }),
   /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
   /** A chat's picture as a data URL, for its preview; null for any other file. */

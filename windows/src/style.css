@@ -4070,6 +4070,97 @@ textarea.chat-input {
   background: rgba(24, 25, 28, 0.92);
 }
 
+/* The copies a local model changed in its folder (workspace.rs), under its answer. */
+.reply-copies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.reply-copies-title {
+  font: 500 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.reply-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reply-copy-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 11.5px var(--font);
+  color: #c8cdd4;
+}
+
+.reply-copy-btn {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 10.5px var(--font);
+  color: #c8cdd4;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.reply-copy-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e9ee;
+}
+
+.reply-copy-btn.primary {
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.reply-copy-btn:disabled {
+  opacity: 0.5;
+}
+
+.reply-copy-detail:empty {
+  display: none;
+}
+
+.reply-copy-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.reply-copy-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+}
+
+.reply-copy-diff {
+  max-height: 180px;
+  overflow: auto;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 400 10.5px/1.45 ui-monospace, Consolas, monospace;
+  white-space: pre;
+}
+
+.reply-copy-diff .diff-add { color: #6ee7b7; }
+.reply-copy-diff .diff-del { color: #fca5a5; }
+.reply-copy-diff .diff-same { color: #7b8089; }
+
 .msg-stopped {
   font: 400 10.5px var(--font);
   color: var(--dim-3);

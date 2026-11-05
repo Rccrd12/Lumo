@@ -73,6 +73,7 @@ mod updater;
 mod web_search;
 mod webview_drop;
 mod window_control;
+mod workspace;
 
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -1321,6 +1322,11 @@ pub fn run() {
             ingest_file,
             file_preview,
             chat_files::chat_file_open,
+            workspace::workspace_changes,
+            workspace::workspace_diff,
+            workspace::workspace_put_back,
+            workspace::workspace_reveal,
+            workspace::workspace_delete,
             chat_files::chat_file_reveal,
             chat_files::chat_file_preview,
             chat_files::chat_files_present,

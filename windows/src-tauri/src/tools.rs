@@ -1039,11 +1039,14 @@ pub fn is_mail_tool(id: &str) -> bool {
 /// them (`mail`, mail.rs ai_tools), Lumo's web search when `web`
 /// (web_search.rs), then the user's that are on: id, the words the model
 /// reads, and the JSON schema of the input.
-pub fn chat_tools(mail: &str, web: bool) -> Vec<(String, String, Value)> {
+pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String, Value)> {
     let mut all = crate::island_tools::api_tools(true);
     all.extend(mail_api_tools(mail));
     if web {
         all.extend(crate::web_search::api_tools());
+    }
+    if workspace {
+        all.extend(crate::workspace::api_tools());
     }
     // Never one of the user's with the name of the island's own, the email's or the web search's.
     all.extend(
@@ -1051,7 +1054,7 @@ pub fn chat_tools(mail: &str, web: bool) -> Vec<(String, String, Value)> {
             .iter()
             .filter(|t| {
                 let id = t.manifest.id.as_str();
-                !crate::island_tools::NAMES.contains(&id) && !is_mail_tool(id) && !crate::web_search::NAMES.contains(&id)
+                !crate::island_tools::NAMES.contains(&id) && !is_mail_tool(id) && !crate::web_search::NAMES.contains(&id) && !crate::workspace::NAMES.contains(&id)
             })
             .map(|t| {
                 let v = mcp_tool(&t.manifest);
@@ -1068,6 +1071,19 @@ pub fn chat_tools(mail: &str, web: bool) -> Vec<(String, String, Value)> {
 pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, always_ask: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
+    }
+    // The chat's own folder of copies (a local model's): nothing outside it,
+    // so no card; what it touched joins the chat's files.
+    if crate::workspace::NAMES.contains(&id) {
+        let chat = chat_id.to_string();
+        let tool = id.to_string();
+        let (text, failed, touched) = tauri::async_runtime::spawn_blocking(move || crate::workspace::call(&chat, &tool, &input)).await.unwrap_or_else(|_| ("Failed.".into(), true, Vec::new()));
+        for (kind, path) in touched {
+            let path = path.to_string_lossy().to_string();
+            crate::chat_files::remember(&path);
+            let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-file", json!({ "chat": chat_id, "kind": kind, "path": path }));
+        }
+        return (text, failed);
     }
     // Lumo's web search, read-only: no card, as for a search engine's own.
     if crate::web_search::NAMES.contains(&id) {
@@ -1322,7 +1338,7 @@ mod tests {
         }
         assert!(!is_mail_tool("set_timer"));
         // The island's listening is offered too, with the timer.
-        let all: Vec<String> = chat_tools("mail", false).into_iter().map(|t| t.0).collect();
+        let all: Vec<String> = chat_tools("mail", false, false).into_iter().map(|t| t.0).collect();
         for name in [crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"] {
             assert!(all.iter().any(|n| n == name), "{name}");
         }

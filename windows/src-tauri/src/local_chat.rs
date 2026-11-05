@@ -308,6 +308,10 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     json!({ "model": model, "messages": messages, "stream": true, "max_tokens": MAX_TOKENS })
 }
 
+/// Added to Lumo's instructions when the chat's folder of copies is there
+/// (workspace.rs): what it is, and to say a copy changed, never the file.
+const WORKSPACE_NOTE: &str = "\n\nYou can't open or change the user's files yourself. To read or work on a file or a folder of the computer, copy it into your own folder with workspace_copy (its full path; a dropped file's path is given with it), then use the other workspace tools on the copy. The original never changes: when you change a copy, say that the copy changed and where it is, never that you changed their file. The chat's files list each copy you changed, with a button to put it back over the original.";
+
 /// Added to Lumo's instructions on Plan only.
 const PLAN_NOTE: &str = "\n\nThe user picked Plan only: read and plan, and change nothing. You have none of the user's tools now; say what you would do with them instead.";
 
@@ -318,7 +322,9 @@ fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String,
     if mode != "plan" {
         return all;
     }
-    let reads = |id: &str| crate::island_tools::NAMES.contains(&id) || crate::mail_tool_defs::MAIL_NAMES.contains(&id) || crate::web_search::NAMES.contains(&id);
+    let reads = |id: &str| {
+        crate::island_tools::NAMES.contains(&id) || crate::mail_tool_defs::MAIL_NAMES.contains(&id) || crate::web_search::NAMES.contains(&id) || crate::workspace::READS.contains(&id)
+    };
     all.into_iter().filter(|(id, _, _)| reads(id)).collect()
 }
 
@@ -402,7 +408,7 @@ pub async fn send(
     let tools = if caps.tools == Some(false) {
         Vec::new()
     } else {
-        let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web)).await.unwrap_or_default();
+        let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, true)).await.unwrap_or_default();
         tools_for_mode(all, mode)
     };
     let web = web && !tools.is_empty();
@@ -411,6 +417,7 @@ pub async fn send(
     let system = if tools.is_empty() { system } else { format!("{system}{}", chat::api_tools_note(if mode == "plan" && !mail.is_empty() { "mail" } else { mail })) };
     let system = if web { format!("{system}{}", crate::web_search::NOTE) } else { system };
     let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
+    let system = if tools.iter().any(|(id, _, _)| id == crate::workspace::COPY) { format!("{system}{WORKSPACE_NOTE}") } else { system };
     // Built once the model is in memory, when its server says what it can do.
     let mut user = Value::Null;
     let mut body = Value::Null;
@@ -526,7 +533,13 @@ pub async fn send(
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
-                events.activity(app, if crate::web_search::NAMES.contains(&name) { crate::web_search::activity(name) } else { Activity::new("tool", crate::claude_code::pretty_tool(name)) });
+                events.activity(app, if crate::web_search::NAMES.contains(&name) {
+                    crate::web_search::activity(name)
+                } else if crate::workspace::NAMES.contains(&name) {
+                    crate::workspace::activity(name, &input)
+                } else {
+                    Activity::new("tool", crate::claude_code::pretty_tool(name))
+                });
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, always_ask).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
             }
