@@ -3,9 +3,10 @@
 // every word of it before each answer, and 27 tools and ~7 000 tokens of
 // instructions made small models slow, confused and prone to writing calls
 // as text. The core tools are always there (the copies, the web search, the
-// timer); the email, listening and the user's own tools come in groups, when
-// the question names them or when the model asks with `lumo_tools`, and stay
-// for the rest of the chat.
+// timer); every other one is a line in a catalog in the prompt, so the model
+// knows it exists, and comes whole when the question names its group, when
+// the model asks for it by name with `lumo_tools`, or when the model calls it
+// straight away. Loaded, it stays for the rest of the chat.
 
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -34,15 +35,6 @@ impl Group {
 
     fn from_id(id: &str) -> Option<Group> {
         Group::ALL.into_iter().find(|g| g.id() == id)
-    }
-
-    /// What `lumo_tools` says the group is for.
-    fn about(self) -> &'static str {
-        match self {
-            Group::Mail => "mail: read, search and write the user's email",
-            Group::Listen => "listen: be told when something happens (a pull request, a file, a download, a program, a web page)",
-            Group::User => "user: the user's own tools",
-        }
     }
 }
 
@@ -77,7 +69,10 @@ pub fn named_groups(query: &str, user_tools: &[(String, String, Value)]) -> Vec<
     if MAIL_WORDS.iter().any(|w| q.contains(w)) {
         found.push(Group::Mail);
     }
-    if LISTEN_WORDS.iter().any(|w| q.contains(w)) {
+    // "Does the Downloads folder change?": a change to watch, not one to make.
+    let watch = ["cambia", "cambiano", "si modifica", "nuovi file", "nuovo file", "arriva", "changes", "new file", "gets modified"].iter().any(|w| q.contains(w))
+        && ["cartella", "download", "file", "folder", "pagina", "page", "sito", "site"].iter().any(|w| q.contains(w));
+    if watch || LISTEN_WORDS.iter().any(|w| q.contains(w)) {
         found.push(Group::Listen);
     }
     let user = user_tools.iter().any(|(id, _, _)| {
@@ -90,59 +85,122 @@ pub fn named_groups(query: &str, user_tools: &[(String, String, Value)]) -> Vec<
     found
 }
 
-/// The groups each chat has used, kept for the rest of the chat.
-fn sticky() -> &'static Mutex<HashMap<String, Vec<Group>>> {
-    static STICKY: std::sync::OnceLock<Mutex<HashMap<String, Vec<Group>>>> = std::sync::OnceLock::new();
+/// The tools each chat has loaded beyond the core ones, kept for the rest of the chat.
+fn sticky() -> &'static Mutex<HashMap<String, Vec<String>>> {
+    static STICKY: std::sync::OnceLock<Mutex<HashMap<String, Vec<String>>>> = std::sync::OnceLock::new();
     STICKY.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
-/// The groups `chat` has, after adding `more`.
-pub fn groups_of(chat: &str, more: &[Group]) -> Vec<Group> {
+/// The tools `chat` has loaded, after adding `more`.
+pub fn loaded(chat: &str, more: &[String]) -> Vec<String> {
     let mut all = sticky().lock().unwrap_or_else(|e| e.into_inner());
     let had = all.entry(chat.to_string()).or_default();
-    for g in more {
-        if !had.contains(g) {
-            had.push(*g);
+    for id in more {
+        if !had.contains(id) {
+            had.push(id.clone());
         }
     }
     had.clone()
 }
 
-/// The tools of `all` a turn starts with: the core ones and those of `groups`.
-pub fn pick(all: &[(String, String, Value)], groups: &[Group]) -> Vec<(String, String, Value)> {
-    all.iter()
-        .filter(|(id, _, _)| group_of(id).is_none_or(|g| groups.contains(&g)))
+/// The tools of `all` in `groups`.
+pub fn in_groups(all: &[(String, String, Value)], groups: &[Group]) -> Vec<String> {
+    all.iter().filter(|(id, _, _)| group_of(id).is_some_and(|g| groups.contains(&g))).map(|(id, _, _)| id.clone()).collect()
+}
+
+/// The tools of `all` a round offers: the core ones and the `loaded` ones,
+/// and `lumo_tools` while some are left in the catalog.
+pub fn pick(all: &[(String, String, Value)], loaded: &[String]) -> Vec<(String, String, Value)> {
+    let mut out: Vec<_> = all
+        .iter()
+        .filter(|(id, _, _)| group_of(id).is_none() || loaded.contains(id))
         .map(|(id, d, s)| (id.clone(), short(d), s.clone()))
-        .collect()
+        .collect();
+    if all.iter().any(|(id, _, _)| group_of(id).is_some() && !loaded.contains(id)) {
+        out.push(more_tool());
+    }
+    out
 }
 
-/// The groups of `all` not in `groups`: what `lumo_tools` offers.
-pub fn missing(all: &[(String, String, Value)], groups: &[Group]) -> Vec<Group> {
-    Group::ALL
-        .into_iter()
-        .filter(|g| !groups.contains(g) && all.iter().any(|(id, _, _)| group_of(id) == Some(*g)))
-        .collect()
+/// The tools of `all` still in the catalog.
+fn left<'a>(all: &'a [(String, String, Value)], loaded: &[String]) -> Vec<&'a (String, String, Value)> {
+    all.iter().filter(|(id, _, _)| group_of(id).is_some() && !loaded.contains(id)).collect()
 }
 
-/// The `lumo_tools` tool for the groups not loaded yet.
-pub fn more_tool(missing: &[Group]) -> (String, String, Value) {
-    let ids: Vec<&str> = missing.iter().map(|g| g.id()).collect();
-    let about: Vec<&str> = missing.iter().map(|g| g.about()).collect();
+/// The catalog: one short line for each tool not loaded (the email's on one
+/// line), for the model to know they exist.
+pub fn catalog(all: &[(String, String, Value)], loaded: &[String]) -> String {
+    let left = left(all, loaded);
+    if left.is_empty() {
+        return String::new();
+    }
+    let mut lines = Vec::new();
+    let mail: Vec<&str> = left.iter().filter(|(id, _, _)| group_of(id) == Some(Group::Mail)).map(|(id, _, _)| id.as_str()).collect();
+    if !mail.is_empty() {
+        lines.push(format!("{}: the user's email (read, search, write)", mail.join(", ")));
+    }
+    for (id, description, _) in left.iter().filter(|(id, _, _)| group_of(id) != Some(Group::Mail)) {
+        let line = match id.as_str() {
+            crate::island_tools::LISTEN => "be told when a file or folder changes, a download ends, a pull request's checks finish, a program starts or exits, a web page changes".to_string(),
+            crate::island_tools::UNLISTEN => "stop listening".to_string(),
+            crate::island_tools::LIST => "what Lumo is listening to".to_string(),
+            _ => one_line(description),
+        };
+        lines.push(format!("{id}: {line}"));
+    }
+    format!(
+        " More tools, not loaded yet. When one would help, call {MORE} with its names, or call it straight away: Lumo loads it and you call it again.\n- {}",
+        lines.join("\n- ")
+    )
+}
+
+/// The `lumo_tools` tool.
+fn more_tool() -> (String, String, Value) {
     (
         MORE.to_string(),
-        format!("Gives you more of Lumo's tools, for the rest of the chat: {}. Call it before you need them, then call them.", about.join("; ")),
+        "Loads tools from the catalog in your instructions (More tools), by name, for the rest of the chat; then call them.".to_string(),
         json!({
             "type": "object",
-            "properties": { "group": { "type": "string", "enum": ids } },
-            "required": ["group"],
+            "properties": { "names": { "type": "array", "items": { "type": "string" }, "description": "The tools to load, as the catalog names them." } },
+            "required": ["names"],
             "additionalProperties": false
         }),
     )
 }
 
-/// The group a `lumo_tools` call asks for.
-pub fn asked_group(input: &Value) -> Option<Group> {
-    input.get("group").and_then(Value::as_str).and_then(Group::from_id)
+/// The tools of `all` a `lumo_tools` call asks for (by name, or by group).
+pub fn asked(all: &[(String, String, Value)], input: &Value) -> Vec<String> {
+    let mut words: Vec<String> = match input.get("names").or_else(|| input.get("name")).or_else(|| input.get("group")) {
+        Some(Value::Array(a)) => a.iter().filter_map(Value::as_str).map(str::to_string).collect(),
+        Some(Value::String(s)) => s.split([',', ' ']).filter(|w| !w.is_empty()).map(str::to_string).collect(),
+        _ => Vec::new(),
+    };
+    words.iter_mut().for_each(|w| *w = w.trim().to_lowercase());
+    let mut out = Vec::new();
+    for w in &words {
+        if let Some(group) = Group::from_id(w) {
+            out.extend(in_groups(all, &[group]));
+        } else if all.iter().any(|(id, _, _)| id == w && group_of(id).is_some()) {
+            out.push(w.clone());
+        }
+    }
+    out.dedup();
+    out
+}
+
+/// Whether a call names a tool of the catalog (in `all`, not offered now).
+pub fn in_catalog(all: &[(String, String, Value)], offered: &[String], name: &str) -> bool {
+    !offered.iter().any(|n| n == name) && all.iter().any(|(id, _, _)| id == name && group_of(id).is_some())
+}
+
+/// The first sentence of a description, at most 90 characters.
+fn one_line(description: &str) -> String {
+    let first = description.split(". ").next().unwrap_or(description).trim_end_matches('.');
+    if first.chars().count() > 90 {
+        first.chars().take(90).collect::<String>() + "…"
+    } else {
+        first.to_string()
+    }
 }
 
 /// The first sentences of a description, at most `SHORT` characters: the
@@ -167,8 +225,8 @@ fn short(description: &str) -> String {
 }
 
 /// What a local model is told. `tools`: it has any; `web`, `timer`,
-/// `workspace`: those core tools; `groups`: the groups it has now; `more`:
-/// it can ask for the others; `mail`: what the email tools may do.
+/// `workspace`: those core tools; `groups`: the groups it has tools of now;
+/// `catalog`: the tools it can load; `mail`: what the email tools may do.
 pub struct Prompt<'a> {
     pub first_name: Option<&'a str>,
     pub tools: bool,
@@ -176,7 +234,7 @@ pub struct Prompt<'a> {
     pub timer: bool,
     pub workspace: bool,
     pub groups: &'a [Group],
-    pub more: bool,
+    pub catalog: &'a str,
     pub mail: &'a str,
     pub plan: bool,
     pub workshop: bool,
@@ -220,8 +278,8 @@ Lumo may give you the windows and documents open on the user's computer: use the
     if p.groups.contains(&Group::Listen) {
         out.push_str(" To be told when something happens (a pull request's checks, a file or download, a program, a web page, an email), call listen with what to do then, and never wait, sleep or poll yourself; Lumo writes to you in this chat when it happens.");
     }
-    if p.more {
-        out.push_str(" More tools (email, listening, the user's own tools) come with lumo_tools: call it when the user asks for something they do.");
+    if p.tools {
+        out.push_str(p.catalog);
     }
     if p.plan {
         out.push_str(" The user picked Plan only: read and plan, and change nothing.");
@@ -246,24 +304,35 @@ mod tests {
         assert_eq!(named_groups("Ciao, che mi racconti?", &user), vec![]);
         assert_eq!(named_groups("Leggimi l'ultima mail di Marco", &user), vec![Group::Mail]);
         assert_eq!(named_groups("Avvisami quando finiscono i check", &user), vec![Group::Listen]);
+        assert_eq!(named_groups("Ei, mi dici se la cartella download cambia?", &user), vec![Group::Listen]);
         assert_eq!(named_groups("Unisci questi pdf con pdfcraft", &user), vec![Group::User]);
     }
 
     #[test]
-    fn a_turn_starts_with_the_core_tools_and_its_groups() {
-        let all = vec![tool("set_timer"), tool("listen"), tool("mail_read"), tool("web_search"), tool("workspace_copy"), tool("pdfcraft")];
+    fn a_turn_starts_with_the_core_tools_and_a_catalog_of_the_rest() {
+        let all = vec![tool("set_timer"), tool("listen"), tool("mail_read"), tool("mail_search"), tool("web_search"), tool("workspace_copy"), tool("pdfcraft")];
         let names = |v: Vec<(String, String, Value)>| v.into_iter().map(|t| t.0).collect::<Vec<_>>();
-        assert_eq!(names(pick(&all, &[])), ["set_timer", "web_search", "workspace_copy"]);
-        assert_eq!(names(pick(&all, &[Group::Mail])), ["set_timer", "mail_read", "web_search", "workspace_copy"]);
-        assert_eq!(missing(&all, &[Group::Mail]), vec![Group::Listen, Group::User]);
-        assert_eq!(asked_group(&json!({"group": "listen"})), Some(Group::Listen));
+        assert_eq!(names(pick(&all, &[])), ["set_timer", "web_search", "workspace_copy", MORE]);
+        let with_mail = in_groups(&all, &[Group::Mail]);
+        assert_eq!(names(pick(&all, &with_mail)), ["set_timer", "mail_read", "mail_search", "web_search", "workspace_copy", MORE]);
+        let everything: Vec<String> = all.iter().map(|t| t.0.clone()).collect();
+        assert_eq!(names(pick(&all, &everything)).last().map(String::as_str), Some("pdfcraft"), "nothing left, no lumo_tools");
+        let catalog = catalog(&all, &[]);
+        assert!(catalog.contains("- mail_read, mail_search: the user's email"));
+        assert!(catalog.contains("- listen: be told when a file or folder changes"));
+        assert!(catalog.contains("- pdfcraft: Does it"));
+        assert!(!catalog.contains("workspace_copy"));
+        assert_eq!(asked(&all, &json!({"names": ["listen", "nope"]})), ["listen"]);
+        assert_eq!(asked(&all, &json!({"names": ["mail"]})), ["mail_read", "mail_search"]);
+        assert!(in_catalog(&all, &["set_timer".into()], "listen"));
+        assert!(!in_catalog(&all, &["set_timer".into()], "set_timer"));
     }
 
     #[test]
-    fn groups_stay_with_their_chat() {
-        assert_eq!(groups_of("chat-a", &[Group::Mail]), vec![Group::Mail]);
-        assert_eq!(groups_of("chat-a", &[]), vec![Group::Mail]);
-        assert_eq!(groups_of("chat-b", &[]), vec![]);
+    fn tools_stay_with_their_chat() {
+        assert_eq!(loaded("chat-a", &["listen".into()]), ["listen"]);
+        assert_eq!(loaded("chat-a", &[]), ["listen"]);
+        assert!(loaded("chat-b", &[]).is_empty());
     }
 
     #[test]

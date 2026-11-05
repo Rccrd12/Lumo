@@ -468,30 +468,29 @@ pub async fn send(
     if chat.is_workshop() {
         named.push(profile::Group::User);
     }
-    let groups = profile::groups_of(chat.id(), &named);
-    let mut tools = profile::pick(&all, &groups);
-    let more = profile::missing(&all, &groups);
-    if !more.is_empty() {
-        tools.push(profile::more_tool(&more));
-    }
+    let loaded = profile::loaded(chat.id(), &profile::in_groups(&all, &named));
+    let tools = profile::pick(&all, &loaded);
     let web = web && tools.iter().any(|(id, _, _)| crate::web_search::NAMES.contains(&id.as_str()));
     let always_ask = mode == "default";
     let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
-    let prompt_for = |groups: &[profile::Group], more: bool, tools: bool| {
+    // What the model is told, for the tools it has loaded (and none, when the server takes none).
+    let prompt_for = |loaded: &[String], tools: bool| {
+        let groups: Vec<profile::Group> = profile::Group::ALL.into_iter().filter(|g| loaded.iter().any(|id| profile::group_of(id) == Some(*g))).collect();
+        let catalog = profile::catalog(&all, loaded);
         profile::system_prompt(&profile::Prompt {
             first_name: crate::identity::first_name(),
             tools,
             web: web && tools,
             timer: tools,
             workspace: workspace && tools,
-            groups,
-            more: more && tools,
+            groups: &groups,
+            catalog: &catalog,
             mail: if mode == "plan" && !mail.is_empty() { "mail" } else { mail },
             plan: mode == "plan",
             workshop: chat.is_workshop(),
         })
     };
-    let system = prompt_for(&groups, !more.is_empty(), !tools.is_empty());
+    let system = prompt_for(&loaded, !tools.is_empty());
     // Built once the model is in memory, when its server says what it can do.
     let mut user = Value::Null;
     let mut body = Value::Null;
@@ -599,7 +598,7 @@ pub async fn send(
                 // A model that takes no tools refuses the request: once more without them.
                 Err((400 | 422, _)) if body.get("tools").is_some() => {
                     body.as_object_mut().map(|b| b.remove("tools"));
-                    body["messages"][0]["content"] = json!(prompt_for(&[], false, false));
+                    body["messages"][0]["content"] = json!(prompt_for(&[], false));
                     continue;
                 }
                 // The server dropped the answer before anything of it came (LM
@@ -659,24 +658,27 @@ pub async fn send(
                     turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
                     continue;
                 };
-                // More of Lumo's tools, from now on in this chat.
-                if name == profile::MORE {
-                    let text = match profile::asked_group(&input) {
-                        Some(group) => {
-                            let now = profile::groups_of(chat.id(), &[group]);
-                            let added: Vec<_> = profile::pick(&all, &now).into_iter().filter(|(id, _, _)| profile::group_of(id) == Some(group)).collect();
-                            let left = profile::missing(&all, &now);
-                            let mut offered: Vec<_> = profile::pick(&all, &now);
-                            if !left.is_empty() {
-                                offered.push(profile::more_tool(&left));
-                            }
-                            body["tools"] = crate::openai_compat::function_tools(&offered);
-                            names = offered.iter().map(|(id, _, _)| id.clone()).collect();
-                            body["messages"][0]["content"] = json!(prompt_for(&now, !left.is_empty(), true));
-                            let ids: Vec<&str> = added.iter().map(|(id, _, _)| id.as_str()).collect();
-                            if ids.is_empty() { "That group has no tools here.".to_string() } else { format!("You have them now: {}. Call them.", ids.join(", ")) }
-                        }
-                        None => "Unknown group: nothing was added.".to_string(),
+                // More of Lumo's tools, from now on in this chat: asked for by
+                // name, or called straight from the catalog.
+                let wanted = if name == profile::MORE {
+                    Some(profile::asked(&all, &input))
+                } else if profile::in_catalog(&all, &names, name) {
+                    Some(vec![name.to_string()])
+                } else {
+                    None
+                };
+                if let Some(wanted) = wanted {
+                    let now = profile::loaded(chat.id(), &wanted);
+                    let offered = profile::pick(&all, &now);
+                    body["tools"] = crate::openai_compat::function_tools(&offered);
+                    names = offered.iter().map(|(id, _, _)| id.clone()).collect();
+                    body["messages"][0]["content"] = json!(prompt_for(&now, true));
+                    let text = if wanted.is_empty() {
+                        "None of those is in the catalog: nothing was loaded.".to_string()
+                    } else if name == profile::MORE {
+                        format!("Loaded: {}. Call them now.", wanted.join(", "))
+                    } else {
+                        format!("{name} is loaded now, nothing was done yet: call it again with its arguments.")
                     };
                     turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
                     continue;
