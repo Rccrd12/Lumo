@@ -518,7 +518,7 @@ fn finish_reason(line: &str) -> bool {
 }
 
 /// How long the stream waits for the usage chunk and `[DONE]` once the answer is over.
-const AFTER_FINISH: Duration = Duration::from_secs(3);
+const AFTER_FINISH: Duration = Duration::from_secs(1);
 
 fn parse_sse_line(line: &str) -> Option<Event> {
     let payload = line.strip_prefix("data:")?.trim_start();
