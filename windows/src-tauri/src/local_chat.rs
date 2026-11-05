@@ -367,6 +367,18 @@ fn written_call(text: &str, names: &[String]) -> Option<String> {
     None
 }
 
+/// Whether the stream of `model` on `server` hung in this session, after
+/// noting that it did when `now`.
+fn hung(server: &Server, model: &str, now: bool) -> bool {
+    static HUNG: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+    let key = format!("{}\u{0}{model}", server.id);
+    let mut hung = HUNG.lock().unwrap_or_else(|e| e.into_inner());
+    if now && !hung.contains(&key) {
+        hung.push(key.clone());
+    }
+    hung.contains(&key)
+}
+
 /// The server gave up on the answer halfway.
 fn is_cut_short(e: &str) -> bool {
     e == CUT_SHORT || e.trim().eq_ignore_ascii_case("terminated")
@@ -493,13 +505,18 @@ pub async fn send(
             body["stream_options"] = json!({ "include_usage": true });
         }
         let mut rounds = 0;
-        let mut retried = false;
+        // A model whose stream hung once in this session answers whole from then on.
+        let mut whole = hung(server, model, false);
         let mut corrected = false;
         let names: Vec<String> = tools.iter().map(|(id, _, _)| id.clone()).collect();
         loop {
             events.activity(app, Activity::new("prompt", ""));
             let before = said.join("\n\n");
-            let streamed = stream(
+            // Once the server dropped a streamed answer, the answer comes whole.
+            let streamed = if whole {
+                ask_whole(&base, server.key.as_deref(), model, &body).await
+            } else {
+                stream(
                 &base,
                 server.key.as_deref(),
                 model,
@@ -516,7 +533,14 @@ pub async fn send(
                 },
                 || events.activity(app, Activity::thinking()),
             )
-            .await;
+            .await
+            };
+            if let (true, Ok(answer)) = (whole, &streamed) {
+                if !answer.text.is_empty() {
+                    shown = if before.is_empty() { progressive_filter(&answer.text) } else { format!("{before}\n\n{}", progressive_filter(&answer.text)) };
+                    events.delta(app, &shown);
+                }
+            }
             let streamed = match streamed {
                 // A model that doesn't see refuses the pictures: once more with the text alone.
                 Err((400 | 422, _)) if without_images(&mut body) => {
@@ -535,8 +559,10 @@ pub async fn send(
                 // The server dropped the answer before anything of it came (LM
                 // Studio sometimes never ends one, then says "terminated"): no
                 // tool ran, so it is asked once more.
-                Err((0, e)) if !retried && is_cut_short(&e) => {
-                    retried = true;
+                // LM Studio's stream hangs on some tool calls (long text in their
+                // arguments, with Gemma): the same request, not streamed, from then on.
+                Err((0, e)) if !whole && is_cut_short(&e) => {
+                    whole = hung(server, model, true);
                     events.activity(app, Activity::thinking());
                     continue;
                 }
@@ -777,6 +803,63 @@ struct Streamed {
     calls: Vec<Value>,
     /// The tokens the request and its answer took, when the server said.
     used: Option<u64>,
+}
+
+/// Posts the request without streaming and reads the whole answer: for a
+/// server whose stream hung (LM Studio, `stream`'s CUT_SHORT).
+async fn ask_whole(base: &Url, key: Option<&str>, model: &str, body: &Value) -> Result<Streamed, (u16, String)> {
+    let mut body = body.clone();
+    body["stream"] = json!(false);
+    if let Some(b) = body.as_object_mut() {
+        b.remove("stream_options");
+    }
+    let reply = net::client(base, Duration::from_secs(600))
+        .map_err(|e| (0, e))?
+        .post(net::join(base, "v1/chat/completions"))
+        .header("Authorization", bearer(key))
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| (0, if e.is_timeout() { CUT_SHORT.to_string() } else { unreachable(base) }))?;
+    let status = reply.status();
+    if status.as_u16() == 404 {
+        return Err((404, tf("{model} isn't installed. Pick another model above the chat box.", &[("model", model)])));
+    }
+    let bytes = net::read_capped(reply, net::MAX_BODY).await.map_err(|_| (0, CUT_SHORT.to_string()))?;
+    if !status.is_success() {
+        let detail = net::error_detail(&bytes);
+        return Err((status.as_u16(), if detail.is_empty() { format!("HTTP {}", status.as_u16()) } else { detail }));
+    }
+    whole_answer(&bytes).map_err(|e| (0, e))
+}
+
+/// The text, tool calls and tokens of a whole (not streamed) answer.
+fn whole_answer(bytes: &[u8]) -> Result<Streamed, String> {
+    let json: Value = serde_json::from_slice(bytes).map_err(|_| CUT_SHORT.to_string())?;
+    if let Some(e) = json.get("error").filter(|e| !e.is_null()) {
+        return Err(e.pointer("/message").or(Some(e)).and_then(Value::as_str).unwrap_or_default().to_string());
+    }
+    let message = json.pointer("/choices/0/message").ok_or_else(|| CUT_SHORT.to_string())?;
+    let text = filter_thinking_blocks(message.get("content").and_then(Value::as_str).unwrap_or_default());
+    let calls = message
+        .get("tool_calls")
+        .and_then(Value::as_array)
+        .map(|calls| {
+            calls
+                .iter()
+                .map(|c| {
+                    let arguments = match c.pointer("/function/arguments") {
+                        Some(Value::String(a)) => a.clone(),
+                        Some(other) if !other.is_null() => other.to_string(),
+                        _ => String::new(),
+                    };
+                    json!({ "id": c["id"].as_str().unwrap_or(""), "name": c.pointer("/function/name").and_then(Value::as_str).unwrap_or(""), "arguments": arguments })
+                })
+                .filter(|c| c["name"].as_str().is_some_and(|n| !n.is_empty()))
+                .collect()
+        })
+        .unwrap_or_default();
+    Ok(Streamed { text, calls, used: json.pointer("/usage/total_tokens").and_then(Value::as_u64) })
 }
 
 /// Posts the request and reads the event stream. `on_delta` gets the visible
@@ -1113,6 +1196,17 @@ mod tests {
         let streamed = block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).ok().unwrap();
         assert_eq!(streamed.text, "Setting it.");
         assert_eq!(streamed.calls, vec![json!({"id":"c1","name":"set_timer","arguments":"{\"minutes\":5}"})]);
+    }
+
+    #[test]
+    fn a_whole_answer_brings_its_text_and_calls() {
+        let body = br#"{"choices":[{"message":{"role":"assistant","content":"Ok.","tool_calls":[{"id":"c1","type":"function","function":{"name":"workspace_write","arguments":"{\"path\":\"file.txt\"}"}}]}}],"usage":{"total_tokens":42}}"#;
+        let answer = whole_answer(body).unwrap();
+        assert_eq!(answer.text, "Ok.");
+        assert_eq!(answer.calls, vec![json!({"id":"c1","name":"workspace_write","arguments":"{\"path\":\"file.txt\"}"})]);
+        assert_eq!(answer.used, Some(42));
+        assert_eq!(whole_answer(br#"{"error":"terminated"}"#).err().unwrap(), "terminated");
+        assert_eq!(whole_answer(b"").err().unwrap(), CUT_SHORT);
     }
 
     #[test]
