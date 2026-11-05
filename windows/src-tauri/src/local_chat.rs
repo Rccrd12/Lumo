@@ -353,6 +353,17 @@ fn user_message_in(vision: bool, pages: u32, first: bool, context: Option<&ChatC
 
 /// What the server said, in the user's language where Lumo knows it.
 fn server_error(server: &Server, e: String) -> String {
+    // The server dropped the answer halfway, or its model process ended
+    // ("terminated", LM Studio): said as such, in the user's language.
+    if e == CUT_SHORT || e.trim().eq_ignore_ascii_case("terminated") {
+        return tf(
+            "{name} stopped the answer before it was over: the model may have crashed or run out of memory. Look at {name}, then ask again.",
+            &[("name", &t(server.name))],
+        );
+    }
+    if e.trim().is_empty() {
+        return tf("{name} answered with an error and gave no reason. Look at {name}, then ask again.", &[("name", &t(server.name))]);
+    }
     if server.id == "unsloth" && e.contains("No model loaded") {
         return t("No model is loaded in Unsloth Studio. Pick one above the chat box, and Lumo loads it.");
     }
@@ -571,7 +582,7 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
     }
     let user = json!({ "role": "user", "content": prompt });
     let body = request_body(model, system, &[], &user);
-    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}, || {}).await.map_err(|(_, e)| e)?.text;
+    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}, || {}).await.map_err(|(_, e)| server_error(server, e))?.text;
     if answer.is_empty() {
         return Err(t("No response text."));
     }
@@ -611,6 +622,10 @@ fn finish_reason(line: &str) -> bool {
         && serde_json::from_str::<Value>(payload).ok().is_some_and(|j| j.pointer("/choices/0/finish_reason").is_some_and(Value::is_string))
 }
 
+/// What `stream` says when the connection closed before the answer said it
+/// was over and nothing came: `server_error` puts it in words.
+const CUT_SHORT: &str = "\u{0}cut short";
+
 /// How long the stream waits for the usage chunk and `[DONE]` once the answer is over.
 const AFTER_FINISH: Duration = Duration::from_secs(1);
 
@@ -622,6 +637,10 @@ fn parse_sse_line(line: &str) -> Option<Event> {
     let json: Value = serde_json::from_str(payload).ok()?;
     if let Some(msg) = json.pointer("/error/message").and_then(Value::as_str) {
         return Some(Event::Error(msg.to_string()));
+    }
+    // LM Studio and llama.cpp also say it as `{"error": "…"}`.
+    if let Some(error) = json.get("error").filter(|e| !e.is_null()) {
+        return Some(Event::Error(error.as_str().map(str::to_string).unwrap_or_default()));
     }
     if let Some(total) = json.pointer("/usage/total_tokens").and_then(Value::as_u64).filter(|_| json.pointer("/choices/0/delta/content").is_none()) {
         return Some(Event::Usage(total));
@@ -808,6 +827,11 @@ async fn stream(
     }
     // A last line without its newline.
     take(String::from_utf8_lossy(&pending).trim_end(), &mut accumulated)?;
+    // Closed before the answer was over, with nothing in it: the server gave up.
+    let over = finished.load(std::sync::atomic::Ordering::Relaxed) || done.load(std::sync::atomic::Ordering::Relaxed);
+    if !over && accumulated.trim().is_empty() && calls.calls.is_empty() {
+        return Err((0, CUT_SHORT.to_string()));
+    }
     // The last state always goes out, whatever the throttle skipped.
     on_delta(progressive_filter(&accumulated));
     Ok(Streamed { text: filter_thinking_blocks(&accumulated), calls: calls.done(), used })
@@ -1054,6 +1078,11 @@ mod tests {
         assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap(), (400, "context too long".to_string()));
         let u = serve_once("200 OK", "", b"data: {\"error\":{\"message\":\"crashed\"}}\n".to_vec());
         assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap().1, "crashed");
+        let u = serve_once("200 OK", "", b"data: {\"error\":\"terminated\"}\n".to_vec());
+        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap().1, "terminated");
+        // Closed with nothing and no end: cut short, never an empty answer.
+        let u = serve_once("200 OK", "", b": ping\n".to_vec());
+        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).err().unwrap().1, CUT_SHORT);
     }
 
     #[test]

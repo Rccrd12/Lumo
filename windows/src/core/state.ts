@@ -120,6 +120,8 @@ export interface ChatMessage {
   content: string;
   /** An answer cut short by the Stop button. */
   stopped?: boolean;
+  /** No answer: what went wrong, said in the chat where it was asked (never saved). */
+  failed?: boolean;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
 }
