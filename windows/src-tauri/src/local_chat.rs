@@ -351,11 +351,16 @@ fn user_message_in(vision: bool, pages: u32, first: bool, context: Option<&ChatC
     crate::openai_compat::with_images(user, &shared, pdf)
 }
 
+/// The server gave up on the answer halfway.
+fn is_cut_short(e: &str) -> bool {
+    e == CUT_SHORT || e.trim().eq_ignore_ascii_case("terminated")
+}
+
 /// What the server said, in the user's language where Lumo knows it.
 fn server_error(server: &Server, e: String) -> String {
     // The server dropped the answer halfway, or its model process ended
     // ("terminated", LM Studio): said as such, in the user's language.
-    if e == CUT_SHORT || e.trim().eq_ignore_ascii_case("terminated") {
+    if is_cut_short(&e) {
         return tf(
             "{name} stopped the answer before it was over: the model may have crashed or run out of memory. Look at {name}, then ask again.",
             &[("name", &t(server.name))],
@@ -472,6 +477,7 @@ pub async fn send(
             body["stream_options"] = json!({ "include_usage": true });
         }
         let mut rounds = 0;
+        let mut retried = false;
         loop {
             events.activity(app, Activity::new("prompt", ""));
             let before = said.join("\n\n");
@@ -506,6 +512,14 @@ pub async fn send(
                     body.as_object_mut().map(|b| b.remove("tools"));
                     let system = chat::system_prompt_in(chat, false, false);
                     body["messages"][0]["content"] = json!(if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system });
+                    continue;
+                }
+                // The server dropped the answer before anything of it came (LM
+                // Studio sometimes never ends one, then says "terminated"): no
+                // tool ran, so it is asked once more.
+                Err((0, e)) if !retried && is_cut_short(&e) => {
+                    retried = true;
+                    events.activity(app, Activity::thinking());
                     continue;
                 }
                 other => other.map_err(|(_, e)| server_error(server, e))?,
