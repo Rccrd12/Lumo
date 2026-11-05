@@ -48,6 +48,8 @@ mod net;
 mod notifications;
 mod openai_compat;
 mod pc_status;
+mod pdf_pages;
+mod pdf_text;
 mod pipe;
 mod plan_usage;
 mod platform;

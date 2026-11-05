@@ -160,9 +160,9 @@ test("a shared folder is something to send, with an attachment naming it", () =>
   assert.deepEqual(screenItems(withoutFolder(two, MUSIC.path)).map((i) => i.label), ["PDFs"], "a × takes back that one only");
 });
 
-test("a local model looks at a screenshot only when its server says it sees pictures", () => {
+test("a local model looks at a screenshot unless its server says it doesn't see pictures", () => {
   for (const id of ["anthropic", "claude-code", "openai", "google", "openrouter"]) assert.ok(seesImages(providerDef(id)), id);
-  for (const id of ["ollama", "lmstudio", "custom"]) assert.ok(!seesImages(providerDef(id)), id);
+  for (const id of ["ollama", "lmstudio", "unsloth", "custom"]) assert.ok(seesImages(providerDef(id)), id);
   setLocalCaps("ollama", { vision: true, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
   assert.ok(seesImages(providerDef("ollama")));
   setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
@@ -421,8 +421,9 @@ test("all windows go with their text, without pictures; a minimized one has no p
   assert.equal(sent("screen_window_shot").length, 0, "nothing to see of a minimized window");
 });
 
-test("a local model gets a window's text but no picture of it", async () => {
+test("a local model that doesn't see gets a window's text but no picture of it", async () => {
   State.settings = { ...State.settings, chatProvider: "ollama", ollamaUrl: "http://localhost:11434" };
+  setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
   await openMenu();
   entries()[0].fire("click");
   await flush();
@@ -430,6 +431,7 @@ test("a local model gets a window's text but no picture of it", async () => {
   await flush();
   assert.deepEqual(sent("screen_window_share"), [{ ids: [101] }]);
   assert.equal(sent("screen_window_shot").length, 0);
+  setLocalCaps("ollama", null);
 });
 
 test("Back returns to the first list", async () => {
@@ -519,8 +521,9 @@ test("no browser open: no tabs entry", async () => {
   assert.ok(!entries().map(label).includes("Browser tabs"));
 });
 
-test("a local model can't take a screenshot: the screens are greyed out and say why", async () => {
+test("a local model that doesn't see can't take a screenshot: the screens are greyed out and say why", async () => {
   State.settings = { ...State.settings, chatProvider: "ollama", ollamaUrl: "http://localhost:11434" };
+  setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
   await openMenu();
   const rows = entries();
   assert.equal(rows[0].getAttribute("disabled"), null, "the window list is text: fine");
@@ -528,7 +531,8 @@ test("a local model can't take a screenshot: the screens are greyed out and say 
   rows[2].fire("click");
   await flush();
   assert.equal(sent("screen_capture").length, 0);
-  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "Screenshots need the Claude Code or Anthropic provider."));
+  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "This model doesn't see pictures. Pick one that does, or ask without the screenshot."));
+  setLocalCaps("ollama", null);
 });
 
 test("when the screen can't be read the menu says so, and nothing else happens", async () => {

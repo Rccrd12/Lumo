@@ -90,16 +90,24 @@ pub(crate) fn url(p: &Provider, tail: &str) -> Result<Url, String> {
 
 /// The user's message for one turn: plain text, or text and an image part
 /// when the turn carries a dropped picture.
-pub(crate) fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Value {
+pub(crate) fn user_message(first: bool, context: Option<&ChatContext>, query: &str, pdf: PdfAs) -> Value {
     let mut prefix = String::new();
-    let mut image = None;
+    let mut leading = Vec::new();
     match chat::turn_context(first, context) {
-        Some(ChatContext::File { name, path }) => match file_part(path) {
+        Some(ChatContext::File { name, path }) => match file_part(path, pdf) {
             Some(FilePart::Image(part)) => {
-                image = Some(part);
+                leading.push(part);
                 prefix = format!("File: {name}\n\n");
             }
             Some(FilePart::Text(body)) => prefix = format!("File: {name}\nFile contents:\n{body}\n\n"),
+            Some(FilePart::Pdf { parts, text }) => {
+                prefix = match text {
+                    Some(body) => format!("File: {name}\nFile contents:\n{body}\n\n"),
+                    None => format!("File: {name}\n\n"),
+                };
+                leading = parts;
+            }
+            None if is_pdf(path) => prefix = format!("File: {name}\n{PDF_UNREAD}\n\n"),
             None => prefix = format!("File: {name}\n\n"),
         },
         Some(ChatContext::Window { app_name, title, url }) => {
@@ -108,25 +116,33 @@ pub(crate) fn user_message(first: bool, context: Option<&ChatContext>, query: &s
         None => {}
     }
     let text = format!("{prefix}{query}");
-    match image {
-        None => json!({ "role": "user", "content": text }),
-        Some(part) => json!({ "role": "user", "content": [part, { "type": "text", "text": text }] }),
+    if leading.is_empty() {
+        return json!({ "role": "user", "content": text });
     }
+    leading.push(json!({ "type": "text", "text": text }));
+    json!({ "role": "user", "content": leading })
 }
 
 /// Screenshots and files the user shared (screen.rs): image parts, and the
 /// text of a text file, ahead of the message's text, on whichever turn they
 /// were added.
-pub(crate) fn with_images(mut user: Value, images: &[String]) -> Value {
+pub(crate) fn with_images(mut user: Value, images: &[String], pdf: PdfAs) -> Value {
     let parts: Vec<Value> = images
         .iter()
-        .filter_map(|path| match file_part(path) {
-            Some(FilePart::Image(part)) => Some(part),
-            Some(FilePart::Text(body)) => {
-                let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
-                Some(json!({ "type": "text", "text": format!("File: {name}\nFile contents:\n{body}") }))
+        .flat_map(|path| {
+            let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+            match file_part(path, pdf) {
+                Some(FilePart::Image(part)) => vec![part],
+                Some(FilePart::Text(body)) => vec![json!({ "type": "text", "text": format!("File: {name}\nFile contents:\n{body}") })],
+                Some(FilePart::Pdf { mut parts, text }) => {
+                    if let Some(body) = text {
+                        parts.push(json!({ "type": "text", "text": format!("File: {name}\nFile contents:\n{body}") }));
+                    }
+                    parts
+                }
+                None if is_pdf(path) => vec![json!({ "type": "text", "text": format!("File: {name}\n{PDF_UNREAD}") })],
+                None => Vec::new(),
             }
-            None => None,
         })
         .collect();
     if parts.is_empty() {
@@ -202,7 +218,8 @@ pub async fn send(
         return Err(tf("Pick a {name} model above the chat box.", &[("name", p.name)]));
     }
     let turn = chat.begin(p.id);
-    let user = with_images(user_message(turn.first, context.as_ref(), &query), images);
+    let pdf = if matches!(p.id, "openai" | "openrouter") { PdfAs::File } else { PdfAs::TextAndPages };
+    let user = with_images(user_message(turn.first, context.as_ref(), &query, pdf), images, pdf);
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
@@ -375,11 +392,59 @@ fn is_free(m: &Value, id: &str) -> bool {
 enum FilePart {
     Image(Value),
     Text(String),
+    /// A PDF: the file itself or its pages as pictures, and its text.
+    Pdf { parts: Vec<Value>, text: Option<String> },
 }
 
-/// Images → image_url data URL, text/code → inline text. PDFs and other binary
-/// files go by name only (there is no portable document part).
-fn file_part(path: &str) -> Option<FilePart> {
+/// How a PDF goes to a model, as its API takes it.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub(crate) enum PdfAs {
+    /// Its text (a model that doesn't see).
+    Text,
+    /// Its text and its first pages as pictures (a model that sees, whose
+    /// API takes no file: Google's, a local server).
+    TextAndPages,
+    /// The file itself (OpenAI's and OpenRouter's `file` part).
+    File,
+}
+
+/// The biggest PDF sent as itself.
+const MAX_PDF: u64 = 20_000_000;
+/// The most of a PDF's text sent.
+const MAX_PDF_CHARS: usize = 40_000;
+/// The most pages sent as pictures.
+const MAX_PDF_PAGES: u32 = 4;
+/// Told the model of a PDF whose text couldn't be read, so it says so.
+pub(crate) const PDF_UNREAD: &str = "(Lumo couldn't read this PDF: it may be a scan, protected, or damaged. Say so.)";
+
+pub(crate) fn is_pdf(path: &str) -> bool {
+    std::path::Path::new(path).extension().and_then(|e| e.to_str()).is_some_and(|e| e.eq_ignore_ascii_case("pdf"))
+}
+
+/// A PDF as `pdf` says: None when nothing of it could be read.
+fn pdf_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
+    let name = std::path::Path::new(path).file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_default();
+    if pdf == PdfAs::File && std::fs::metadata(path).ok()?.len() <= MAX_PDF {
+        let bytes = std::fs::read(path).ok()?;
+        let data = format!("data:application/pdf;base64,{}", crate::claude::base64_for(&bytes));
+        return Some(FilePart::Pdf { parts: vec![json!({ "type": "file", "file": { "filename": name, "file_data": data } })], text: None });
+    }
+    let text = crate::pdf_text::text(path, MAX_PDF_CHARS);
+    let parts: Vec<Value> = if pdf == PdfAs::Text {
+        Vec::new()
+    } else {
+        crate::pdf_pages::render(path, MAX_PDF_PAGES)
+            .into_iter()
+            .filter(|png| png.len() as u64 <= MAX_IMAGE)
+            .map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{}", crate::claude::base64_for(&png)) } }))
+            .collect()
+    };
+    (text.is_some() || !parts.is_empty()).then_some(FilePart::Pdf { parts, text })
+}
+
+/// Images → image_url data URL, text/code → inline text, a PDF as `pdf`
+/// says. Other binary files go by name only.
+fn file_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
     let ext = std::path::Path::new(path)
         .extension()
         .and_then(|e| e.to_str())
@@ -401,7 +466,10 @@ fn file_part(path: &str) -> Option<FilePart> {
         let url = format!("data:{media};base64,{}", crate::claude::base64_for(&bytes));
         return Some(FilePart::Image(json!({ "type": "image_url", "image_url": { "url": url } })));
     }
-    if ext == "pdf" || len > MAX_INLINE_TEXT {
+    if ext == "pdf" {
+        return pdf_part(path, pdf);
+    }
+    if len > MAX_INLINE_TEXT {
         return None;
     }
     std::fs::read_to_string(path).ok().map(FilePart::Text)
@@ -434,7 +502,7 @@ mod tests {
     #[test]
     fn the_request_is_system_then_history_then_the_new_turn() {
         let history = vec![json!({"role":"user","content":"a"}), json!({"role":"assistant","content":"b"})];
-        let user = user_message(false, None, "c");
+        let user = user_message(false, None, "c", PdfAs::Text);
         assert_eq!(user, json!({"role":"user","content":"c"}));
         let body = request_body(p("google"), "gemini-x", "sys", &history, &user);
         assert_eq!(body["model"], "gemini-x");
@@ -458,7 +526,7 @@ mod tests {
         std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
         let shots = vec![png.to_string_lossy().to_string()];
 
-        let msg = with_images(user_message(false, None, "what's on screen?"), &shots);
+        let msg = with_images(user_message(false, None, "what's on screen?", PdfAs::Text), &shots, PdfAs::Text);
         let parts = msg["content"].as_array().unwrap();
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[0]["type"], "image_url");
@@ -466,14 +534,14 @@ mod tests {
 
         // A dropped picture and a screenshot: both images, then the text.
         let ctx = ChatContext::File { name: "pic.png".into(), path: png.to_string_lossy().into() };
-        let msg = with_images(user_message(true, Some(&ctx), "compare"), &shots);
+        let msg = with_images(user_message(true, Some(&ctx), "compare", PdfAs::Text), &shots, PdfAs::Text);
         let kinds: Vec<&str> = msg["content"].as_array().unwrap().iter().map(|p| p["type"].as_str().unwrap()).collect();
         assert_eq!(kinds, ["image_url", "image_url", "text"]);
 
         // Nothing readable: the message is left as it was.
-        let plain = user_message(false, None, "q");
-        assert_eq!(with_images(plain.clone(), &["/no/such.png".into()]), plain);
-        assert_eq!(with_images(plain.clone(), &[]), plain);
+        let plain = user_message(false, None, "q", PdfAs::Text);
+        assert_eq!(with_images(plain.clone(), &["/no/such.png".into()], PdfAs::Text), plain);
+        assert_eq!(with_images(plain.clone(), &[], PdfAs::Text), plain);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -485,16 +553,16 @@ mod tests {
         std::fs::write(&txt, "hello").unwrap();
         let ctx = ChatContext::File { name: "notes.txt".into(), path: txt.to_string_lossy().into() };
         assert_eq!(
-            user_message(true, Some(&ctx), "sum up")["content"],
+            user_message(true, Some(&ctx), "sum up", PdfAs::Text)["content"],
             "File: notes.txt\nFile contents:\nhello\n\nsum up"
         );
         // Dropped mid-conversation: it rides with that question all the same.
-        assert_eq!(user_message(false, Some(&ctx), "more")["content"], "File: notes.txt\nFile contents:\nhello\n\nmore");
+        assert_eq!(user_message(false, Some(&ctx), "more", PdfAs::Text)["content"], "File: notes.txt\nFile contents:\nhello\n\nmore");
 
         let png = dir.join("pic.png");
         std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
         let ctx = ChatContext::File { name: "pic.png".into(), path: png.to_string_lossy().into() };
-        let msg = user_message(true, Some(&ctx), "what is it?");
+        let msg = user_message(true, Some(&ctx), "what is it?", PdfAs::Text);
         let parts = msg["content"].as_array().unwrap();
         assert_eq!(parts[0]["type"], "image_url");
         assert!(parts[0]["image_url"]["url"].as_str().unwrap().starts_with("data:image/png;base64,"));
@@ -503,11 +571,18 @@ mod tests {
         let pdf = dir.join("doc.pdf");
         std::fs::write(&pdf, "%PDF").unwrap();
         let ctx = ChatContext::File { name: "doc.pdf".into(), path: pdf.to_string_lossy().into() };
-        assert_eq!(user_message(true, Some(&ctx), "q")["content"], "File: doc.pdf\n\nq");
+        // A PDF with nothing to read: the model is told, to say so.
+        assert_eq!(user_message(true, Some(&ctx), "q", PdfAs::Text)["content"], format!("File: doc.pdf\n{PDF_UNREAD}\n\nq"));
+        // Sent as itself to an API that takes files.
+        let msg = user_message(true, Some(&ctx), "q", PdfAs::File);
+        assert_eq!(msg["content"][0]["type"], "file");
+        assert_eq!(msg["content"][0]["file"]["filename"], "doc.pdf");
+        assert!(msg["content"][0]["file"]["file_data"].as_str().unwrap().starts_with("data:application/pdf;base64,"));
+        assert_eq!(msg["content"][1], json!({ "type": "text", "text": "File: doc.pdf\n\nq" }));
         let _ = std::fs::remove_dir_all(dir);
 
         let ctx = ChatContext::Window { app_name: "Code".into(), title: "x".into(), url: None };
-        assert_eq!(user_message(true, Some(&ctx), "q")["content"], "Context — App: Code, Window: x\n\nq");
+        assert_eq!(user_message(true, Some(&ctx), "q", PdfAs::Text)["content"], "Context — App: Code, Window: x\n\nq");
     }
 
     #[test]

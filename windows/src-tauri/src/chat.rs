@@ -757,6 +757,10 @@ fn is_cli(provider: &str) -> bool {
 fn with_screen(provider: &str, vision: bool, screen: Option<&ScreenContext>, query: String) -> Result<(String, Vec<String>), String> {
     let Some(screen) = screen.filter(|s| !s.is_empty()) else { return Ok((query, Vec::new())) };
     if !screen.shots.is_empty() && !sees_images(provider) && !vision {
+        // A local model whose server says it doesn't see.
+        if crate::local_chat::is_local(provider) {
+            return Err(crate::i18n::t("This model doesn't see pictures. Pick one that does, or ask without the screenshot."));
+        }
         return Err(crate::i18n::t("Screenshots need the Claude Code or Anthropic provider."));
     }
     let cli = is_cli(provider);
@@ -884,7 +888,9 @@ async fn send_to(
         Some(server) => crate::local_models::caps(server, &model).await,
         None => crate::local_models::Caps::default(),
     };
-    let (query, images) = with_screen(provider, caps.vision == Some(true), screen.as_ref(), query)?;
+    // A local model sees unless its server says it doesn't (one that refuses is asked again without).
+    let sees = local.is_some() && caps.vision != Some(false);
+    let (query, images) = with_screen(provider, sees, screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
         return claude::send(app, chat, &model, query, context, &images, usage).await;
     }
@@ -1373,8 +1379,9 @@ mod tests {
 
         assert_eq!(
             with_screen("ollama", false, Some(&screen), "q".into()).unwrap_err(),
-            "Screenshots need the Claude Code or Anthropic provider."
+            "This model doesn't see pictures. Pick one that does, or ask without the screenshot."
         );
+
         // Unless its server says the model sees pictures: they go as images.
         let (_, images) = with_screen("ollama", true, Some(&screen), "q".into()).unwrap();
         assert!(!images.is_empty());

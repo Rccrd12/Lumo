@@ -2375,6 +2375,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 .model-name {
   min-width: 0;
+  /* A long model name doesn't push the buttons beside it away. */
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
