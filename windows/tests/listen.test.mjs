@@ -4,7 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  activeWatches, amountOf, calendarDue, firedTitle, listenMessage, listeningLine, readPullRequest, takeListens, untilText, watchColor, watchLabel,
+  activeWatches, amountOf, answersInChat, calendarDue, firedTitle, listenMessage, listeningLine, readPullRequest, takeListens, untilText, watchColor, watchLabel,
 } from "../src/core/listen.ts";
 
 test("a listen line is taken out of the answer, with what to do then", () => {
@@ -177,4 +177,12 @@ test("the calendar fires for the next event within its minutes, once each", () =
   assert.equal(calendarDue({ ...w, text: "lunch" , amount: 180 }, events, now)?.title, "Lunch");
   assert.equal(calendarDue({ ...w, paused: true }, events, now), null);
   assert.equal(calendarDue({ ...w, target: "vercel" }, events, now), null);
+});
+
+test("a watch with no task still goes back to its chat, asked to tell what happened", () => {
+  const watch = { id: 1, repo: "", number: 0, until: "change", task: "", chatId: "c1", startedAt: 0, source: "folder", target: "C:\\Downloads" };
+  const fired = { watch, met: true, summary: "Downloaded in Downloads: a.pdf" };
+  assert.equal(answersInChat(fired), true);
+  assert.equal(listenMessage(fired), "Lumo: Downloaded in Downloads: a.pdf\nTell me in a line what happened.");
+  assert.equal(answersInChat({ ...fired, watch: { ...watch, chatId: "" } }), false);
 });

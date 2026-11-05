@@ -314,6 +314,7 @@ pub async fn send(
     query: String,
     context: Option<ChatContext>,
     shared: &[String],
+    usage: &mut Option<crate::chat_usage::ChatUsage>,
 ) -> Result<ChatReply, String> {
     let base = base_url(server)?;
     if model.is_empty() {
@@ -343,6 +344,11 @@ pub async fn send(
     if let Some(level) = crate::local_models::reasoning_effort(caps, effort) {
         body["reasoning_effort"] = json!(level);
     }
+    // How much of the context the chat fills comes with the last event (the ring).
+    if matches!(server.id, "ollama" | "lmstudio") {
+        body["stream_options"] = json!({ "include_usage": true });
+    }
+    let mut used = None;
 
     // What the island shows so far: kept if Stop is pressed mid-answer. What
     // was said before each round of tools stays above the round after it.
@@ -389,6 +395,9 @@ pub async fn send(
                 }
                 other => other.map_err(|(_, e)| e)?,
             };
+            if streamed.used.is_some() {
+                used = streamed.used;
+            }
             if streamed.calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
                 return Ok::<_, String>(streamed.text);
             }
@@ -428,6 +437,18 @@ pub async fn send(
         return Ok(ChatReply::stopped(shown, None));
     };
     let answer = answer?;
+    // How full the context is, out of what the model is loaded with now.
+    if let Some(used) = used {
+        let now = crate::local_models::caps(server, model).await;
+        let total = if now.loaded_context > 0 { now.loaded_context } else { now.max_context };
+        *usage = Some(crate::chat_usage::ChatUsage {
+            provider: server.id.to_string(),
+            context: Some(crate::chat_usage::ContextUse { chat: chat.id().to_string(), used, total }),
+            tokens: None,
+            requests: None,
+            credits: None,
+        });
+    }
     // After the tools, what was said before each call comes first.
     let answer = said.into_iter().chain([answer]).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
     if answer.is_empty() {
@@ -463,6 +484,9 @@ enum Event {
     /// Pieces of tool calls, each with its `index` (the OpenAI API streams a
     /// call's arguments in pieces; Ollama sends each call whole).
     Calls(Vec<Value>),
+    /// What the request and its answer took, in tokens (the last event, with
+    /// `stream_options.include_usage`).
+    Usage(u64),
     /// A piece of the model's reasoning (`reasoning_content`, Ollama's
     /// `reasoning`), never shown: it only says the model is thinking.
     Reasoning,
@@ -480,6 +504,9 @@ fn parse_sse_line(line: &str) -> Option<Event> {
     let json: Value = serde_json::from_str(payload).ok()?;
     if let Some(msg) = json.pointer("/error/message").and_then(Value::as_str) {
         return Some(Event::Error(msg.to_string()));
+    }
+    if let Some(total) = json.pointer("/usage/total_tokens").and_then(Value::as_u64).filter(|_| json.pointer("/choices/0/delta/content").is_none()) {
+        return Some(Event::Usage(total));
     }
     let delta = json.pointer("/choices/0/delta")?;
     if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array).filter(|c| !c.is_empty()) {
@@ -564,6 +591,8 @@ fn progressive_filter(text: &str) -> String {
 struct Streamed {
     text: String,
     calls: Vec<Value>,
+    /// The tokens the request and its answer took, when the server said.
+    used: Option<u64>,
 }
 
 /// Posts the request and reads the event stream. `on_delta` gets the visible
@@ -602,6 +631,7 @@ async fn stream(
     let mut pending = Vec::<u8>::new();
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
     let mut thinking = false;
+    let mut used = None;
     let mut take = |line: &str, accumulated: &mut String| -> Result<(), (u16, String)> {
         match parse_sse_line(line) {
             Some(Event::Text(delta)) => accumulated.push_str(&delta),
@@ -610,6 +640,7 @@ async fn stream(
                 on_think();
             }
             Some(Event::Reasoning) => {}
+            Some(Event::Usage(total)) => used = Some(total),
             Some(Event::Calls(pieces)) => calls.feed(&pieces),
             Some(Event::Error(message)) => return Err((0, message)),
             None => {}
@@ -635,7 +666,7 @@ async fn stream(
     take(String::from_utf8_lossy(&pending).trim_end(), &mut accumulated)?;
     // The last state always goes out, whatever the throttle skipped.
     on_delta(progressive_filter(&accumulated));
-    Ok(Streamed { text: filter_thinking_blocks(&accumulated), calls: calls.done() })
+    Ok(Streamed { text: filter_thinking_blocks(&accumulated), calls: calls.done(), used })
 }
 
 #[cfg(test)]
@@ -666,6 +697,8 @@ mod tests {
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":null,"reasoning_content":"x"}}]}"#), Some(Event::Reasoning));
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":"","reasoning":"x"}}]}"#), Some(Event::Reasoning));
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":""}}]}"#), None);
+        // The last event says what the request and its answer took.
+        assert_eq!(parse_sse_line(r#"data: {"choices":[],"usage":{"prompt_tokens":1200,"completion_tokens":34,"total_tokens":1234}}"#), Some(Event::Usage(1234)));
         assert_eq!(parse_sse_line("data: not json"), None);
         assert_eq!(parse_sse_line(r#"data: {"error":{"message":"out of memory"}}"#), Some(Event::Error("out of memory".into())));
         let line = r#"data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"c1","function":{"name":"set_timer"}}]}}]}"#;

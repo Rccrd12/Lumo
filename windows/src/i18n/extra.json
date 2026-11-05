@@ -14280,6 +14280,66 @@
    "ru": "Обрабатываю запрос…",
    "id": "Memproses prompt…",
    "it": "Elaboro il prompt…"
+  },
+  "Context: {used} of {total}": {
+   "zh-Hans": "上下文：{used} / {total}",
+   "hi": "संदर्भ: {total} में से {used}",
+   "es": "Contexto: {used} de {total}",
+   "ar": "السياق: {used} من {total}",
+   "fr": "Contexte : {used} sur {total}",
+   "bn": "কনটেক্সট: {total}-এর মধ্যে {used}",
+   "pt-BR": "Contexto: {used} de {total}",
+   "ru": "Контекст: {used} из {total}",
+   "id": "Konteks: {used} dari {total}",
+   "it": "Contesto: {used} su {total}"
+  },
+  "Context: {used} tokens": {
+   "zh-Hans": "上下文：{used} 个 token",
+   "hi": "संदर्भ: {used} टोकन",
+   "es": "Contexto: {used} tokens",
+   "ar": "السياق: {used} رمز",
+   "fr": "Contexte : {used} tokens",
+   "bn": "কনটেক্সট: {used} টোকেন",
+   "pt-BR": "Contexto: {used} tokens",
+   "ru": "Контекст: {used} токенов",
+   "id": "Konteks: {used} token",
+   "it": "Contesto: {used} token"
+  },
+  "Load into memory": {
+   "zh-Hans": "载入内存",
+   "hi": "मेमोरी में लोड करें",
+   "es": "Cargar en memoria",
+   "ar": "تحميل إلى الذاكرة",
+   "fr": "Charger en mémoire",
+   "bn": "মেমরিতে লোড করুন",
+   "pt-BR": "Carregar na memória",
+   "ru": "Загрузить в память",
+   "id": "Muat ke memori",
+   "it": "Carica in memoria"
+  },
+  "Eject from memory": {
+   "zh-Hans": "从内存中卸载",
+   "hi": "मेमोरी से हटाएँ",
+   "es": "Expulsar de la memoria",
+   "ar": "إخراج من الذاكرة",
+   "fr": "Éjecter de la mémoire",
+   "bn": "মেমরি থেকে সরান",
+   "pt-BR": "Ejetar da memória",
+   "ru": "Выгрузить из памяти",
+   "id": "Keluarkan dari memori",
+   "it": "Espelli dalla memoria"
+  },
+  "Tell me in a line what happened.": {
+   "zh-Hans": "用一句话告诉我发生了什么。",
+   "hi": "एक पंक्ति में बताओ कि क्या हुआ।",
+   "es": "Dime en una línea qué ha pasado.",
+   "ar": "أخبرني في سطر واحد بما حدث.",
+   "fr": "Dis-moi en une ligne ce qui s'est passé.",
+   "bn": "এক লাইনে বলো কী হয়েছে।",
+   "pt-BR": "Me diga em uma linha o que aconteceu.",
+   "ru": "Скажи одной строкой, что произошло.",
+   "id": "Ceritakan dalam satu baris apa yang terjadi.",
+   "it": "Dimmi in una riga cosa è successo."
   }
  }
 }

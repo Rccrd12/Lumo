@@ -875,7 +875,7 @@ async fn send_to(
         return openai_compat::send(app, chat, p, &model, query, context, &images, usage).await;
     }
     if let Some(server) = local {
-        return local_chat::send(app, chat, &server, &model, &caps, &settings.chat_effort, &settings.chat_permission_mode, query, context, &images).await;
+        return local_chat::send(app, chat, &server, &model, &caps, &settings.chat_effort, &settings.chat_permission_mode, query, context, &images, usage).await;
     }
     Err(format!("Unknown chat provider: {provider}"))
 }

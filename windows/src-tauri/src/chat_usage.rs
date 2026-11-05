@@ -6,7 +6,8 @@
 // are read off those responses. OpenRouter puts nothing of the kind on its
 // answers, so its key's credits are asked from its own key endpoint, with the
 // user's OpenRouter key, only while the option is on (chat_usage in lib.rs).
-// Google, the local servers and the custom one: nothing is read.
+// Google and the custom server: nothing is read. Ollama and LM Studio: how
+// much of the model's context the chat fills (ContextUse, local_chat.rs).
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
@@ -35,10 +36,23 @@ pub struct Credits {
     pub used: Option<f64>,
 }
 
+/// How much of a local model's context a chat fills: the tokens of its last
+/// request and answer, out of the context the model is loaded with (0 when
+/// the server doesn't say). `chat`: the chat it is of.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContextUse {
+    pub chat: String,
+    pub used: u64,
+    pub total: u64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ChatUsage {
     pub provider: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub context: Option<ContextUse>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tokens: Option<Quota>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -80,7 +94,7 @@ pub fn from_anthropic(headers: &HeaderMap) -> Option<ChatUsage> {
     if tokens.is_none() && requests.is_none() {
         return None;
     }
-    Some(ChatUsage { provider: crate::chat::ANTHROPIC.into(), tokens, requests, credits: None })
+    Some(ChatUsage { provider: crate::chat::ANTHROPIC.into(), tokens, requests, credits: None, context: None })
 }
 
 // ── OpenAI ────────────────────────────────────────────────────────────────────
@@ -102,7 +116,7 @@ pub fn from_openai(headers: &HeaderMap, now: i64) -> Option<ChatUsage> {
     if tokens.is_none() && requests.is_none() {
         return None;
     }
-    Some(ChatUsage { provider: "openai".into(), tokens, requests, credits: None })
+    Some(ChatUsage { provider: "openai".into(), tokens, requests, credits: None, context: None })
 }
 
 // ── OpenRouter ────────────────────────────────────────────────────────────────
@@ -122,6 +136,7 @@ pub fn from_openrouter_key(json: &Value) -> Option<ChatUsage> {
         tokens: None,
         requests: None,
         credits: Some(Credits { remaining: remaining.filter(|_| limit.is_some()), limit, used }),
+        context: None,
     })
 }
 

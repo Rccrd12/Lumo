@@ -354,6 +354,12 @@ export const Bridge = {
   localLoaded: (provider: "ollama" | "lmstudio") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
   /** What a local model can do (pictures, tools, reasoning, its context), as its server says. */
   localCaps: (provider: string, model: string) => callOrThrow<LocalCaps>("local_caps", { provider, model }),
+  /** The chat picker: which of `models` the server holds in memory now. */
+  localLoadedOf: (provider: string, models: string[]) => callOrThrow<string[]>("local_loaded_of", { provider, models }),
+  /** The chat picker's +: resolves once the model is in memory (progress: `local-load` events). */
+  localLoad: (provider: string, model: string) => callOrThrow<void>("local_load", { provider, model }),
+  /** The chat picker's −: the model leaves the server's memory. */
+  localUnloadModel: (provider: string, model: string) => callOrThrow<void>("local_unload_model", { provider, model }),
   /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
   localUnload: (provider: "ollama" | "lmstudio") => callOrThrow<number>("local_unload", { provider }),
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
@@ -775,6 +781,13 @@ export interface LocalLoaded {
   size: number;
   /** Bytes in the graphics card's memory (Ollama), else 0. */
   vram: number;
+}
+
+/** How far loading a model from the chat picker is (`local-load`): LM Studio's percent. */
+export interface LocalLoad {
+  provider: string;
+  model: string;
+  percent: number;
 }
 
 /** How far a download to a local server is (`local-pull`): bytes so far and in all, 0 while unknown. */

@@ -36,6 +36,8 @@ export interface Credits {
 
 export interface ChatUsage {
   provider: string;
+  /** A local model: how much of its context the chat fills (chat_usage.rs ContextUse). */
+  context?: { chat: string; used: number; total: number };
   tokens?: Quota;
   requests?: Quota;
   credits?: Credits;
@@ -59,6 +61,9 @@ export const USAGE_TEXT = {
     return t("Claude Code reports your plan usage in its terminal sessions; its answers in the chat report it only now and then.");
   },
   usedPct: (pct: number) => t("{pct}% used", { pct }),
+  contextOf: (used: string, total: string) => t("Context: {used} of {total}", { used, total }),
+  contextUsed: (used: string) => t("Context: {used} tokens", { used }),
+  get context() { return t("Context"); },
   resets: (when: string) => t("Resets {when}", { when }),
   get title() { return t("Usage"); },
   get askAnthropic() {
@@ -230,6 +235,28 @@ function rateLine(seen: SeenUsage, now: number): UsageLine | null {
   };
 }
 
+/**
+ * A local model: how much of the context the chat on screen fills, out of
+ * what the model is loaded with (its longest when the server doesn't say).
+ */
+function contextLine(seen: SeenUsage | undefined, provider: string, chatId: string): UsageLine | null {
+  const c = seen?.provider === provider ? seen.context : undefined;
+  if (!c || c.chat !== chatId || !isNum(c.used)) return null;
+  if (!isNum(c.total) || c.total <= 0) {
+    const text = USAGE_TEXT.contextUsed(compact(c.used));
+    return { text, title: USAGE_TEXT.context, color: null, pct: null, rows: [{ label: text, value: "", pct: null, reset: null }] };
+  }
+  const pct = Math.min(100, (c.used / c.total) * 100);
+  const text = USAGE_TEXT.contextOf(compact(c.used), compact(c.total));
+  return {
+    text,
+    title: USAGE_TEXT.context,
+    color: planColor(pct),
+    pct,
+    rows: [{ label: text, value: USAGE_TEXT.usedPct(Math.round(pct)), pct, reset: null }],
+  };
+}
+
 function creditsLine(seen: SeenUsage, now: number): UsageLine | null {
   const c = seen.credits;
   if (!c) return null;
@@ -257,9 +284,11 @@ export function usageLine(
   seen: SeenUsage | undefined,
   now = Date.now(),
   agy: AntigravityPlanUsage | null = null,
+  chatId = "",
 ): UsageLine | null {
   if (!settings.chatShowUsage) return null;
   const provider = providerDef(settings.chatProvider).id;
+  if (providerDef(provider).urlField) return contextLine(seen, provider, chatId);
   if (provider === "claude-code") return planLine(settings, plan, now);
   if (provider === "antigravity-cli") return antigravityLine(agy, now);
   if (!seen || seen.provider !== provider) return null;

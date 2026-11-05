@@ -507,7 +507,16 @@ export function takeListens(text: string): { text: string; listens: ListenAsk[];
 
 /** What the chat sends Claude once a watch with something to do ends. */
 export function listenMessage(fired: ListenFired): string {
-  return `${onGitHub(fired.watch) ? "GitHub" : "Lumo"}: ${fired.summary}\n${fired.watch.task}`;
+  const task = fired.watch.task.trim() || t(LISTEN_TELL);
+  return `${onGitHub(fired.watch) ? "GitHub" : "Lumo"}: ${fired.summary}\n${task}`;
+}
+
+/** What the chat is asked when the watch was only meant to tell the user. */
+const LISTEN_TELL = N_("Tell me in a line what happened.");
+
+/** A watch's event goes back to the chat it was asked in: with its task, or to be told. */
+export function answersInChat(fired: ListenFired): boolean {
+  return Boolean(fired.watch.task.trim() || fired.watch.chatId);
 }
 
 /** What the island says before an event's summary: "GitHub", or the watch's own name. */

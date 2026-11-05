@@ -74,7 +74,7 @@ import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
 import {
-  Bridge, onEvent, type BrowserTab, type ChatActivity, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
+  Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
@@ -103,7 +103,7 @@ import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_STRINGS, activeWatches, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
@@ -166,6 +166,16 @@ const STRINGS = {
 const FILLED_ICONS = new Set(["plus", "gear", "timer"]);
 
 /** The effort levels by name, "Auto" for the CLI's own default. */
+/** The picker's − and + on a local model: in and out of the server's memory. */
+const LOAD_STRINGS = {
+  load: N_("Load into memory"),
+  eject: N_("Eject from memory"),
+  loading: N_("Loading the model…"),
+};
+const LOAD_RING = "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z";
+const LOAD_MINUS = `${LOAD_RING}M8.5 12h7`;
+const LOAD_PLUS = `${LOAD_RING}M8.5 12h7M12 8.5v7`;
+
 const EFFORT_NAMES: Record<string, string> = {
   // A local model that thinks or doesn't (local_models.rs).
   off: N_("Off"),
@@ -922,6 +932,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         on && p.urlField ? h("span", { class: "picker-model-caps" }) : null,
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
+      if (holds(p)) row.append(loadButton(p, m.id));
       row.addEventListener("click", () => {
         State.settings = withModel(State.settings, p.id, m.id);
         saveSettings();
@@ -933,7 +944,78 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     }
     drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
+    if (holds(p)) void drawLoaded(p, models.map((m) => m.id));
   }
+
+  /** Ollama and LM Studio load and eject models; a custom server doesn't say. */
+  function holds(p: ProviderDef): boolean {
+    return p.id === "ollama" || p.id === "lmstudio";
+  }
+
+  /** Which models are in memory: − on those, + on the others. */
+  async function drawLoaded(p: ProviderDef, ids: string[]) {
+    const ticket = request;
+    let loaded: string[];
+    try {
+      loaded = await Bridge.localLoadedOf(p.id, ids);
+    } catch {
+      return;
+    }
+    if (ticket !== request || !isOpen) return;
+    for (const b of list.querySelectorAll<HTMLElement>(".picker-model-load")) {
+      if (b.dataset.busy) continue;
+      setLoadState(b, loaded.includes(b.dataset.model ?? "") ? "loaded" : "unloaded");
+    }
+  }
+
+  function setLoadState(b: HTMLElement, state: "loaded" | "unloaded" | "busy", percent?: number) {
+    b.dataset.state = state;
+    b.hidden = false;
+    clear(b);
+    if (state === "busy") {
+      b.dataset.busy = "1";
+      b.title = t(LOAD_STRINGS.loading);
+      b.append(h("span", { class: "picker-model-load-pct", text: percent != null ? `${percent}%` : "…" }));
+      return;
+    }
+    delete b.dataset.busy;
+    b.title = t(state === "loaded" ? LOAD_STRINGS.eject : LOAD_STRINGS.load);
+    b.append(svg(state === "loaded" ? LOAD_MINUS : LOAD_PLUS, 15, { stroke: 1.6 }));
+  }
+
+  /** The round − / + at the far right of a local model's row. */
+  function loadButton(p: ProviderDef, model: string): HTMLElement {
+    const b = h("span", { class: "picker-model-load", role: "button" });
+    b.dataset.model = model;
+    b.hidden = true;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (b.dataset.busy) return;
+      const eject = b.dataset.state === "loaded";
+      setLoadState(b, "busy");
+      const done = eject ? Bridge.localUnloadModel(p.id, model) : Bridge.localLoad(p.id, model);
+      Sound.play("blip");
+      void done
+        .then(() => setLoadState(b, eject ? "unloaded" : "loaded"))
+        .catch((err) => {
+          setLoadState(b, eject ? "loaded" : "unloaded");
+          b.title = String(err).replace(/^Error:\s*/, "");
+        })
+        .finally(() => {
+          if (State.settings.chatProvider === p.id && activeModel(State.settings) === model) {
+            capsKey = "";
+            refreshCaps();
+          }
+        });
+    });
+    return b;
+  }
+
+  void onEvent<LocalLoad>("local-load", (e) => {
+    for (const b of list.querySelectorAll<HTMLElement>(".picker-model-load")) {
+      if (b.dataset.model === e.model && b.dataset.busy) setLoadState(b, "busy", Math.round(e.percent));
+    }
+  });
 
   async function loadModels() {
     const p = providerDef(State.settings.chatProvider);
@@ -1317,7 +1399,7 @@ export function buildPrompt(
   let usageLineShown: UsageLine | null = null;
 
   function drawUsage(now = Date.now()) {
-    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage);
+    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage, State.chatId);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1336,7 +1418,9 @@ export function buildPrompt(
   /** The menu: each limit with how much is used, its bar and when it resets. */
   function drawUsageMenu() {
     const line = usageLineShown;
-    usageTitle.textContent = line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
+    // A local model's ring is its context: the menu says only that.
+    const local = providerDef(State.settings.chatProvider).urlField !== null;
+    usageTitle.textContent = line && local ? line.title : line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
     if (line.rows.length === 0) {
@@ -2972,6 +3056,8 @@ export function buildPrompt(
     if (State.chatId !== fired.watch.chatId) {
       const saved = loadChats().find((c) => c.id === fired.watch.chatId);
       if (saved) openChat(saved);
+      // Only to be told, and its chat is gone: the island's notice was enough.
+      else if (!fired.watch.task.trim()) return runHeard();
       else newChat();
     }
     void submit(listenMessage(fired));
@@ -2983,7 +3069,8 @@ export function buildPrompt(
     compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
     // What it heard joins the panel's history.
     if (body.classList.contains("hearing")) listening.opened();
-    if (!fired.watch.task) return;
+    // With no task, the chat it was asked in still says what happened.
+    if (!answersInChat(fired)) return;
     heard.push(fired);
     runHeard();
   });

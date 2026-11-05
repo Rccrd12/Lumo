@@ -262,6 +262,52 @@ pub async fn caps(server: &Server, model: &str) -> Caps {
     caps
 }
 
+/// Which of `models` (the chat picker's, as `/v1/models` names them) are in
+/// `provider`'s memory now, for the picker's − and + (Ollama's `/api/ps`, LM
+/// Studio's loaded instances).
+pub async fn loaded_of(provider: &str, models: &[String]) -> Result<Vec<String>, String> {
+    let (server, base) = server_for(provider)?;
+    if server.id == "ollama" {
+        let ps = get_json(&server, &base, "api/ps").await?;
+        let names: Vec<String> = ps["models"].as_array().into_iter().flatten().flat_map(|m| [m["name"].as_str(), m["model"].as_str()]).flatten().map(str::to_string).collect();
+        let same = |id: &str| names.iter().any(|n| n == id || n.strip_suffix(":latest") == Some(id));
+        Ok(models.iter().filter(|id| same(id)).cloned().collect())
+    } else {
+        let body = get_json(&server, &base, "api/v1/models").await?;
+        Ok(models.iter().filter(|id| lmstudio_entry(id, &body).is_some_and(|(_, instance)| instance.is_some())).cloned().collect())
+    }
+}
+
+/// The picker's −: `model` leaves `provider`'s memory (every copy LM Studio
+/// holds of it).
+pub async fn unload(provider: &str, model: &str) -> Result<(), String> {
+    let model = safe_name(model).ok_or_else(|| t("Pick a model above the chat box first."))?;
+    let (server, base) = server_for(provider)?;
+    if server.id == "ollama" {
+        post_json(&server, &base, "api/generate", json!({ "model": model, "keep_alive": 0 }), UNLOAD).await?;
+    } else {
+        let body = get_json(&server, &base, "api/v1/models").await?;
+        let ids: Vec<String> = lmstudio_entry(model, &body)
+            .map(|(m, _)| m["loaded_instances"].as_array().into_iter().flatten().filter_map(|i| i["id"].as_str().map(str::to_string)).collect())
+            .unwrap_or_default();
+        for id in ids {
+            post_json(&server, &base, "api/v1/models/unload", json!({ "instance_id": id }), UNLOAD).await?;
+        }
+    }
+    forget(&server, model);
+    Ok(())
+}
+
+/// The picker's +: `model` is loaded into `provider`'s memory, how far told
+/// as `local-load` events (LM Studio's percent; Ollama says nothing until it is in).
+pub async fn load_for_picker(app: &AppHandle, provider: &str, model: &str) -> Result<(), String> {
+    let (server, _) = server_for(provider)?;
+    load(&server, model, |percent| {
+        let _ = app.emit("local-load", json!({ "provider": provider, "model": model, "percent": percent }));
+    })
+    .await
+}
+
 /// What was said of `model` is asked again next time: it was just loaded.
 pub fn forget(server: &Server, model: &str) {
     let Ok(base) = local_chat::base_url(server) else { return };
@@ -382,17 +428,23 @@ fn parse_ollama_caps(model: &str, show: &Value, ps: Option<&Value>) -> Caps {
     }
 }
 
-/// LM Studio's `/api/v1/models`: the entry whose key is `model`, or that has
-/// a loaded instance by that id (a second copy of a model is "key:2").
-fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
-    let entries = body["models"].as_array().cloned().unwrap_or_default();
+/// LM Studio's `/api/v1/models` entry for `model` (as `/v1/models` names it),
+/// and its loaded instance if any: the entry whose key or variant is
+/// `model`, else the one with a loaded instance by that id (a second copy of
+/// a model is "key:2").
+fn lmstudio_entry<'a>(model: &str, body: &'a Value) -> Option<(&'a Value, Option<Value>)> {
+    let entries = body["models"].as_array()?;
     let instance_of = |m: &Value| m["loaded_instances"].as_array().into_iter().flatten().find(|i| i["id"].as_str() == Some(model)).cloned();
-    let found = entries
+    entries
         .iter()
         .find(|m| m["key"].as_str() == Some(model) || m["selected_variant"].as_str() == Some(model))
         .map(|m| (m, m["loaded_instances"].get(0).cloned()))
-        .or_else(|| entries.iter().find_map(|m| instance_of(m).map(|i| (m, Some(i)))));
-    let Some((m, instance)) = found else { return Caps::default() };
+        .or_else(|| entries.iter().find_map(|m| instance_of(m).map(|i| (m, Some(i)))))
+}
+
+/// LM Studio's `/api/v1/models`: what `model` can do (`lmstudio_entry`).
+fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
+    let Some((m, instance)) = lmstudio_entry(model, body) else { return Caps::default() };
     let caps = &m["capabilities"];
     let reasoning = caps["reasoning"]["allowed_options"]
         .as_array()

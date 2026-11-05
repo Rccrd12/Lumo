@@ -7319,3 +7319,35 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
   font-size: 10px;
   color: #8b929e;
 }
+
+/* The chat picker's − / + on a local model: eject it from memory or load it. */
+.picker-model-load {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border-radius: 9px;
+  color: #8b929e;
+  cursor: pointer;
+}
+
+.picker-model-load[hidden] {
+  display: none;
+}
+
+.picker-model-load:hover {
+  color: #e6e9ee;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.picker-model-load[data-busy] {
+  cursor: default;
+}
+
+.picker-model-load-pct {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}

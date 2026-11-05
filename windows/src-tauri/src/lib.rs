@@ -695,6 +695,24 @@ async fn local_caps(shared: State<'_, Shared>, provider: String, model: String) 
     })
 }
 
+/// The chat picker: which of `models` the local server holds in memory now.
+#[tauri::command]
+async fn local_loaded_of(provider: String, models: Vec<String>) -> Result<Vec<String>, String> {
+    local_models::loaded_of(&provider, &models).await
+}
+
+/// The chat picker's +: loads a local model, how far told as `local-load` events.
+#[tauri::command]
+async fn local_load(app: AppHandle, provider: String, model: String) -> Result<(), String> {
+    local_models::load_for_picker(&app, &provider, &model).await
+}
+
+/// The chat picker's −: a local model leaves the server's memory.
+#[tauri::command]
+async fn local_unload_model(provider: String, model: String) -> Result<(), String> {
+    local_models::unload(&provider, &model).await
+}
+
 /// Settings → Local models → Free memory: every model the server holds is unloaded.
 #[tauri::command]
 async fn local_unload(provider: String) -> Result<usize, String> {
@@ -1200,6 +1218,9 @@ pub fn run() {
             local_connect,
             local_loaded,
             local_caps,
+            local_loaded_of,
+            local_load,
+            local_unload_model,
             local_unload,
             local_pull,
             local_set_key,
