@@ -7352,8 +7352,37 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
   font-variant-numeric: tabular-nums;
 }
 
-/* Under a local model's context bar: /compact. */
+/* Under a local model's context bar: /compact, a small pill at the bottom right. */
+/* margin-top: auto keeps it at the bottom of the menu, however tall. */
+.usage-compact-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
 .usage-compact {
-  align-self: flex-start;
-  margin-top: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 11px var(--font);
+  color: #c8cdd4;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.usage-compact:hover {
+  color: #e6e9ee;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.usage-compact svg {
+  opacity: 0.8;
 }

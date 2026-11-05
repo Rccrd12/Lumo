@@ -109,7 +109,7 @@ import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stri
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 import {
-  lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
+  SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
 
 const STRINGS = {
@@ -166,6 +166,9 @@ const STRINGS = {
 const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);
 
 /** The effort levels by name, "Auto" for the CLI's own default. */
+/** Two arrows meeting at a line: the chat pressed together. */
+const COMPACT_ICON = "M12 3.5v5.5M9 6.5l3 2.5 3-2.5M12 20.5V15M9 17.5l3-2.5 3 2.5M5 12h14";
+
 /** /compact with the providers called by their API. */
 const COMPACT_STRINGS = {
   action: N_("Compact the chat"),
@@ -1451,7 +1454,9 @@ export function buildPrompt(
     }
     // A local model's context: /compact from here, under its bar.
     if (local && State.chatHistory.length > 0) {
-      usageList.append(h("button", { class: "picker-link usage-compact", text: t(COMPACT_STRINGS.action), onclick: () => void compactChat() }));
+      const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
+        svg(COMPACT_ICON, 12, { stroke: 1.8 }), h("span", { text: t(COMPACT_STRINGS.action) }));
+      usageList.append(h("div", { class: "usage-compact-row" }, compact));
     }
   }
 
