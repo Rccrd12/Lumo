@@ -6,6 +6,7 @@
 // against a fake server in the tests, on any system.
 
 pub mod guard;
+pub mod native;
 pub mod sse;
 pub mod transport;
 pub mod turn;

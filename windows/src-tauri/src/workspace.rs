@@ -206,6 +206,33 @@ struct Workspace {
     dir: PathBuf,
 }
 
+/// Text a model copied from workspace_read with its line numbers on every
+/// line (`    7| text`, counting up): the text without them. None for any other.
+fn without_line_numbers(content: &str) -> Option<String> {
+    let lines: Vec<&str> = content.lines().collect();
+    if lines.len() < 2 {
+        return None;
+    }
+    let mut plain = Vec::with_capacity(lines.len());
+    let mut next: Option<u64> = None;
+    for line in lines {
+        let line = line.trim_start();
+        let bar = line.find('|')?;
+        let n: u64 = line[..bar].parse().ok()?;
+        if next.is_some_and(|want| want != n) {
+            return None;
+        }
+        next = Some(n + 1);
+        let rest = &line[bar + 1..];
+        plain.push(rest.strip_prefix(' ').unwrap_or(rest));
+    }
+    let mut text = plain.join("\n");
+    if content.ends_with('\n') {
+        text.push('\n');
+    }
+    Some(text)
+}
+
 /// What a tool says, and the files it touched (their kind, for the chat's files).
 type Done = (String, Vec<(&'static str, PathBuf)>);
 
@@ -505,9 +532,15 @@ impl Workspace {
         if let Some(parent) = full.parent() {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
-        std::fs::write(&full, content).map_err(|e| e.to_string())?;
+        // The line numbers of workspace_read copied into the text go.
+        let (content, numbered) = match without_line_numbers(content) {
+            Some(plain) => (plain, true),
+            None => (content.to_string(), false),
+        };
+        std::fs::write(&full, &content).map_err(|e| e.to_string())?;
         let kind = self.touched_kind(&rel);
-        Ok((format!("Wrote {} in your folder ({} bytes).", rel_string(&rel), content.len()), vec![(kind, full)]))
+        let note = if numbered { ", the line numbers of workspace_read left out" } else { "" };
+        Ok((format!("Wrote {} in your folder ({} bytes{note}).", rel_string(&rel), content.len()), vec![(kind, full)]))
     }
 
     fn edit(&self, path: &str, old: &str, new: &str, all: bool) -> Result<Done, String> {
@@ -732,6 +765,15 @@ fn diff_numbered(before: &str, after: &str) -> (Vec<String>, Vec<usize>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn line_numbers_copied_from_a_read_are_left_out() {
+        assert_eq!(without_line_numbers("    1| Lista\n    2| \n    3| il cane\n").as_deref(), Some("Lista\n\nil cane\n"));
+        assert_eq!(without_line_numbers("   10| a\n   11| b").as_deref(), Some("a\nb"));
+        assert_eq!(without_line_numbers("1| a\n3| b"), None);
+        assert_eq!(without_line_numbers("a | b\nc | d"), None);
+        assert_eq!(without_line_numbers("    1| sola"), None);
+    }
 
     fn temp(name: &str) -> PathBuf {
         let d = std::env::temp_dir().join(format!("lumo-ws-{name}-{}", std::process::id()));

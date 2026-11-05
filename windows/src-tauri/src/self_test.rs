@@ -422,7 +422,7 @@ fn common(r: &Run, expect_cut: bool) -> Vec<(Level, String)> {
         match t {
             Err(e) => out.push((Level::Ko, format!("errore{n}: {e}"))),
             Ok(o) => {
-                if o.answer().trim().is_empty() {
+                if o.answer().trim().is_empty() && !(expect_cut && o.end == End::Cut) {
                     out.push((Level::Ko, format!("risposta vuota{n}")));
                 }
                 if o.end == End::Rounds {
@@ -431,10 +431,13 @@ fn common(r: &Run, expect_cut: bool) -> Vec<(Level, String)> {
                 if o.end == End::Cut && !expect_cut {
                     out.push((Level::Warn, format!("risposta tagliata al limite di lunghezza{n}")));
                 }
+                if o.fixes.contains(&"asked again") {
+                    out.push((Level::Warn, format!("il server ha perso o rifiutato una richiesta, rifatta una volta{n}")));
+                }
                 if o.fixes.contains(&"answered whole") {
                     out.push((Level::Warn, format!("lo stream si è bloccato, risposta chiesta intera{n}")));
                 }
-                for fix in o.fixes.iter().filter(|f| **f != "answered whole" && **f != "tools loaded") {
+                for fix in o.fixes.iter().filter(|f| !matches!(**f, "answered whole" | "tools loaded" | "asked again")) {
                     out.push((Level::Warn, format!("corretto da Lumo: {fix}{n}")));
                 }
                 let a = o.answer();
@@ -745,6 +748,9 @@ fn section(n: usize, case: &Case, run: &Run, level: Level, found: &[(Level, Stri
                     o.used.map(|u| u.to_string()).unwrap_or("?".into()),
                     if o.fixes.is_empty() { "niente".to_string() } else { o.fixes.join(", ") }
                 ));
+                if !o.notes.is_empty() {
+                    s.push_str(&format!("\nErrori del server lungo la strada: {}\n", o.notes.join(" · ")));
+                }
                 s.push_str(&format!("\n```text\n{}\n```\n", short(&o.answer(), 1500).replace("```", "'''")));
             }
             Some(Err(e)) => s.push_str(&format!("\nErrore: {e}\n")),

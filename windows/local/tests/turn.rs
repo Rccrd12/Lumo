@@ -137,11 +137,12 @@ fn a_stream_closed_with_nothing_in_it_is_asked_again_whole() {
     let (outcome, requests) = turn(vec![Reply::Headers, whole("Eccomi.", &[])], &mut question("Ci sei?", &[]), &rules("closed", ""), &mut island);
     assert_eq!(outcome.unwrap().text, "Eccomi.");
     assert_eq!(requests.len(), 2);
-    // Whole too, the server still gives nothing: it is said, not asked again.
-    let (outcome, requests) = turn(vec![Reply::Headers, Reply::Json(200, "not json".into())], &mut question("Ci sei?", &[]), &rules("closed2", ""), &mut island);
+    // Whole too, the server still gives nothing, twice: it is said, not asked again.
+    let replies = vec![Reply::Headers, Reply::Json(200, "not json".into()), Reply::Json(200, "not json".into())];
+    let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("closed2", ""), &mut island);
     let failure = outcome.unwrap_err();
     assert!(failure.is_cut_short(), "{failure:?}");
-    assert_eq!(requests.len(), 2);
+    assert_eq!(requests.len(), 3);
 }
 
 #[test]
@@ -156,9 +157,10 @@ fn server_errors_come_back_as_they_are() {
     let (outcome, _) = turn(vec![Reply::Json(500, json!({ "error": "boom" }).to_string())], &mut question("x", &[]), &r, &mut island);
     assert_eq!(outcome.unwrap_err(), Failure::Status(500, "boom".into()));
     // A refusal that isn't about pictures or tools is said at once.
-    let (outcome, requests) = turn(vec![Reply::Json(400, json!({ "error": { "message": "context too long" } }).to_string())], &mut question("x", &[]), &r, &mut island);
+    let too_long = || Reply::Json(400, json!({ "error": { "message": "context too long" } }).to_string());
+    let (outcome, requests) = turn(vec![too_long(), too_long()], &mut question("x", &[]), &r, &mut island);
     assert_eq!(outcome.unwrap_err(), Failure::Status(400, "context too long".into()));
-    assert_eq!(requests.len(), 1);
+    assert_eq!(requests.len(), 2);
     let nobody = lumo_local::Endpoint { url: "http://127.0.0.1:1/v1/chat/completions".into(), ..serve(vec![]).endpoint() };
     assert_eq!(block_on(run(&nobody, &mut question("x", &[]), &r, &mut island)).unwrap_err(), Failure::Unreachable);
 }
@@ -251,11 +253,31 @@ fn pictures_a_model_refuses_are_taken_out_and_the_question_asked_again() {
 #[test]
 fn tools_a_model_refuses_are_left_out_and_the_question_asked_again() {
     let mut island = Island::default();
-    let replies = vec![Reply::Json(400, json!({ "error": { "message": "tools not supported" } }).to_string()), answer("Ciao.")];
+    let refused = || Reply::Json(400, json!({ "error": { "message": "tools not supported" } }).to_string());
+    let replies = vec![refused(), refused(), answer("Ciao.")];
     let (outcome, requests) = turn(replies, &mut question("Ciao", &["set_timer"]), &rules("no-tools", ""), &mut island);
-    assert_eq!(outcome.unwrap().fixes, ["without tools"]);
-    assert!(requests[1].get("tools").is_none());
-    assert_eq!(requests[1]["messages"][0]["content"], "system without tools");
+    assert_eq!(outcome.unwrap().fixes, ["asked again", "without tools"]);
+    assert!(requests[1].get("tools").is_some());
+    assert!(requests[2].get("tools").is_none());
+    assert_eq!(requests[2]["messages"][0]["content"], "system without tools");
+}
+
+#[test]
+fn a_refusal_after_tools_ran_is_asked_again_with_them_never_without() {
+    let mut island = Island::default();
+    let refused = || Reply::Json(400, json!({ "error": "Failed to parse tool call" }).to_string());
+    // Once: the same request again, and it goes.
+    let replies = vec![calls("c1", "workspace_read", "{}"), refused(), answer("Letto.")];
+    let (outcome, requests) = turn(replies, &mut question("Leggi", &["workspace_read"]), &rules("refused-once", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.fixes.as_slice(), outcome.text.as_str()), (["asked again"].as_slice(), "Letto."));
+    assert!(requests[2].get("tools").is_some());
+    assert_eq!(outcome.notes, [r#"Status(400, "Failed to parse tool call")"#]);
+    // Twice: said, the tools stay.
+    let replies = vec![calls("c1", "workspace_read", "{}"), refused(), refused()];
+    let (outcome, requests) = turn(replies, &mut question("Leggi", &["workspace_read"]), &rules("refused-twice", ""), &mut island);
+    assert_eq!(outcome.unwrap_err(), Failure::Status(400, "Failed to parse tool call".into()));
+    assert!(requests.iter().all(|r| r.get("tools").is_some()));
 }
 
 #[test]
@@ -315,4 +337,53 @@ fn stop_mid_answer_keeps_what_was_shown_and_the_question() {
     assert!(stopped.is_err());
     assert_eq!(island.shown.last().unwrap(), "Mezza risposta");
     assert_eq!(body["messages"][1]["content"], "Raccontami");
+}
+
+#[test]
+fn lm_studio_s_engine_failing_is_asked_again_whole_then_once_more() {
+    let mut island = Island::default();
+    let engine = || json!({ "error": "Engine protocol predict request failed: fetch failed" }).to_string();
+    let replies = vec![Reply::Events(vec![engine()]), Reply::Json(500, json!({ "error": "Engine protocol predict request failed: fetch failed" }).to_string()), whole("Eccomi.", &[])];
+    let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine", ""), &mut island);
+    // Whole, the engine failed again (as a 500): once more, and it goes.
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Eccomi.", ["answered whole", "asked again"].as_slice()));
+    assert_eq!(requests.len(), 3);
+    assert_eq!(outcome.notes.len(), 2);
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![engine()]), Reply::Events(vec![]), whole("Eccomi.", &[])];
+    let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine2", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Eccomi.", ["answered whole", "asked again"].as_slice()));
+    assert_eq!(requests.len(), 3);
+}
+
+#[test]
+fn a_gemma_call_left_in_the_text_is_made() {
+    let mut island = Island::default();
+    let gemma = "<|tool_call>call:workspace_write{content:<|\"|>Mele\nPere\nBanane\n<|\"|>,path:<|\"|>frutti.txt<|\"|>}<tool_call|>";
+    let replies = vec![answer(gemma), answer("Fatto: il terzo è Banane.")];
+    let (outcome, requests) = turn(replies, &mut question("Crea frutti.txt", &["workspace_write"]), &rules("gemma-text", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.fixes, ["call read from the text"]);
+    assert_eq!(island.ran, [("workspace_write".to_string(), json!({ "content": "Mele\nPere\nBanane\n", "path": "frutti.txt" }))]);
+    assert_eq!(requests[1]["messages"][2]["tool_calls"][0]["id"], "call_1_0");
+    assert_eq!(outcome.answer(), "Fatto: il terzo è Banane.");
+}
+
+#[test]
+fn the_same_change_asked_twice_is_made_once_and_said_once() {
+    let mut island = Island::default();
+    let write = "{\"path\":\"a.txt\",\"content\":\"lungo\"}";
+    let replies = vec![
+        Reply::Events(vec![text("Ho riscritto il file."), call("c1", "workspace_write", write), finish("tool_calls"), DONE.into()]),
+        Reply::Events(vec![text("Ho riscritto il file."), call("c2", "workspace_write", write), finish("tool_calls"), DONE.into()]),
+        answer("Ho riscritto il file."),
+    ];
+    let (outcome, requests) = turn(replies, &mut question("Riscrivi", &["workspace_write"]), &rules("twice", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(island.ran.len(), 1);
+    assert_eq!(outcome.fixes, ["same call again"]);
+    assert!(last_said(&requests[2]).contains("already ran"));
+    assert_eq!(outcome.answer(), "Ho riscritto il file.");
 }

@@ -468,7 +468,8 @@ fn log_turn(server: &Server, model: &str, prompt: usize, tools: usize, outcome: 
             };
             let used = o.used.map(|u| format!(", {u} tokens used")).unwrap_or_default();
             let fixes = if o.fixes.is_empty() { String::new() } else { format!(", put right: {}", o.fixes.join(", ")) };
-            format!("{end}{} after {} rounds{used}{fixes}", if o.whole { " whole" } else { "" }, o.rounds)
+            let notes = if o.notes.is_empty() { String::new() } else { format!(", on the way: {}", o.notes.join(" | ")) };
+            format!("{end}{} after {} rounds{used}{fixes}{notes}", if o.whole { " whole" } else { "" }, o.rounds)
         }
         Err(f) => format!("failed: {f:?}"),
     };

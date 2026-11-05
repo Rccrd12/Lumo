@@ -8,6 +8,7 @@ use std::future::Future;
 use serde_json::{json, Value};
 
 use crate::guard::{asks_change, call_input, claims_change, written_call, without_images};
+use crate::native::calls_in_text;
 use crate::sse::progressive_filter;
 use crate::transport::{ask_whole, stream, Endpoint, Failure, Seen};
 
@@ -86,12 +87,22 @@ pub struct Outcome {
     pub whole: bool,
     /// What was put right on the way, in order (for the log).
     pub fixes: Vec<&'static str>,
+    /// What the server said when it failed on the way, in order (for the log).
+    pub notes: Vec<String>,
 }
 
 impl Outcome {
     /// The whole answer: what was said before the tools, then the last answer.
+    /// The same words said twice in a row (a model that repeats itself
+    /// after a tool) are said once.
     pub fn answer(&self) -> String {
-        self.said.iter().chain([&self.text]).filter(|s| !s.is_empty()).cloned().collect::<Vec<_>>().join("\n\n")
+        let mut parts: Vec<&str> = Vec::new();
+        for s in self.said.iter().chain([&self.text]).map(|s| s.trim()).filter(|s| !s.is_empty()) {
+            if parts.last() != Some(&s) {
+                parts.push(s);
+            }
+        }
+        parts.join("\n\n")
     }
 }
 
@@ -133,6 +144,13 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let (mut written, mut claimed) = (false, false);
     // A copy changed by a tool in this turn.
     let mut changed = false;
+    let mut notes: Vec<String> = Vec::new();
+    // A refusal (400) asked again once as it was, and a server that dropped
+    // the answer asked again once whole: what failed once may not fail twice.
+    let (mut asked_again, mut dropped_again) = (false, false);
+    // The calls that changed something, as they were made: one made again
+    // the same is not made twice.
+    let mut made: Vec<(String, String, String)> = Vec::new();
     loop {
         hooks.doing(if whole { Doing::Thinking } else { Doing::Prompt });
         let before = said.join("\n\n");
@@ -156,14 +174,25 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             })
             .await
         };
+        if let Err(e) = &answer {
+            notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
+        }
         let answer = match answer {
             // A model that doesn't see refuses the pictures: once more with the text alone.
             Err(Failure::Status(400 | 422, _)) if without_images(body) => {
                 fixes.push("without pictures");
                 continue;
             }
-            // A model that takes no tools refuses the request: once more without them.
-            Err(Failure::Status(400 | 422, _)) if body.get("tools").is_some() => {
+            // A refusal may be the server failing to read what the model
+            // wrote (a tool call it couldn't parse): the same request once more.
+            Err(Failure::Status(400 | 422, _)) if !asked_again => {
+                asked_again = true;
+                fixes.push("asked again");
+                continue;
+            }
+            // A model that takes no tools refuses the first request with
+            // them: once more without. Not once tools have run in this turn.
+            Err(Failure::Status(400 | 422, _)) if body.get("tools").is_some() && rounds == 0 => {
                 body.as_object_mut().map(|b| b.remove("tools"));
                 body["messages"][0]["content"] = json!(hooks.without_tools());
                 names.clear();
@@ -178,8 +207,25 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 fixes.push("answered whole");
                 continue;
             }
+            // Whole too: once more, for an engine that dropped one request.
+            Err(e) if e.is_cut_short() && !dropped_again => {
+                dropped_again = true;
+                fixes.push("asked again");
+                continue;
+            }
             other => other?,
         };
+        let mut answer = answer;
+        // Calls the model wrote in its own format, that the server left in
+        // the text (Gemma's `<|tool_call>…`): made into calls.
+        if answer.calls.is_empty() && !names.is_empty() {
+            if let Some((calls, rest)) = calls_in_text(&answer.text, &names) {
+                answer.calls = calls;
+                answer.text = rest;
+                fixes.push("call read from the text");
+                hooks.shown(&after_before(&answer.text));
+            }
+        }
         if answer.used.is_some() {
             used = answer.used;
         }
@@ -219,7 +265,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             } else {
                 End::Answer
             };
-            return Ok(Outcome { said, text: answer.text, end, used, rounds, whole, fixes });
+            return Ok(Outcome { said, text: answer.text, end, used, rounds, whole, fixes, notes });
         }
         rounds += 1;
         if !answer.text.is_empty() {
@@ -270,9 +316,17 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 )));
                 continue;
             }
+            // The same change asked for again: done already, not twice.
+            let arguments = input.to_string();
+            if let Some((_, _, before)) = made.iter().find(|(n, a, _)| n == name && *a == arguments) {
+                fixes.push("same call again");
+                replies.push(reply(format!("This exact {name} call already ran in this answer ({before}): nothing was done again. Don't repeat it; answer the user.")));
+                continue;
+            }
             let (text, failed) = hooks.call(name, input).await;
             if !failed && rules.changes.contains(&name) {
                 changed = true;
+                made.push((name.to_string(), arguments, text.clone()));
             }
             replies.push(reply(text));
         }

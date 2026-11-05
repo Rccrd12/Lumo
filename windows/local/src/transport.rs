@@ -55,7 +55,13 @@ impl Failure {
     pub fn is_cut_short(&self) -> bool {
         match self {
             Failure::CutShort => true,
-            Failure::Server(e) => e.trim().eq_ignore_ascii_case("terminated"),
+            // LM Studio's words when its model process ends or its engine
+            // drops the request ("Engine protocol predict request failed:
+            // fetch failed").
+            Failure::Server(e) | Failure::Status(500..=599, e) => {
+                let e = e.trim().to_lowercase();
+                e == "terminated" || ["fetch failed", "predict request failed", "model has crashed", "model crashed"].iter().any(|w| e.contains(w))
+            }
             _ => false,
         }
     }
