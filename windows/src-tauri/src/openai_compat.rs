@@ -218,7 +218,7 @@ pub async fn send(
         return Err(tf("Pick a {name} model above the chat box.", &[("name", p.name)]));
     }
     let turn = chat.begin(p.id);
-    let pdf = if matches!(p.id, "openai" | "openrouter") { PdfAs::File } else { PdfAs::TextAndPages };
+    let pdf = if matches!(p.id, "openai" | "openrouter") { PdfAs::File } else { PdfAs::TextAndPages { pages: MAX_PDF_PAGES } };
     let user = with_images(user_message(turn.first, context.as_ref(), &query, pdf), images, pdf);
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
@@ -403,9 +403,9 @@ enum FilePart {
 pub(crate) enum PdfAs {
     /// Its text (a model that doesn't see).
     Text,
-    /// Its pages as pictures when it has few, else its text (a model that
-    /// sees, whose API takes no file: Google's, a local server).
-    TextAndPages,
+    /// Its pages as pictures when it has `pages` or fewer, else its text (a
+    /// model that sees, whose API takes no file: Google's, a local server).
+    TextAndPages { pages: u32 },
     /// The file itself (OpenAI's and OpenRouter's `file` part).
     File,
 }
@@ -416,7 +416,21 @@ const MAX_PDF: u64 = 20_000_000;
 const MAX_PDF_CHARS: usize = 40_000;
 /// A PDF of this many pages or fewer goes as pictures of them to a model that
 /// sees; a longer one as its text.
-const MAX_PDF_PAGES: u32 = 10;
+pub(crate) const MAX_PDF_PAGES: u32 = 10;
+/// What one page drawn 1024 pixels wide costs a model, in tokens, reckoned
+/// high (Qwen's vision reads it as some 1,700; Gemma's as 256).
+const PAGE_TOKENS: u64 = 2_000;
+
+/// How many pages of a PDF may go as pictures to a model with `context`
+/// tokens (0: not known), `taken` of them already spoken for (instructions,
+/// tools, the conversation, room for the answer): as many as fit, at most
+/// MAX_PDF_PAGES. A context not known is taken as a small one, 8k.
+pub(crate) fn pages_that_fit(context: u64, taken: u64) -> u32 {
+    let context = if context == 0 { 8_192 } else { context };
+    // A tenth kept free: the reckoning is a guess.
+    let free = (context - context / 10).saturating_sub(taken);
+    u32::try_from(free / PAGE_TOKENS).unwrap_or(u32::MAX).min(MAX_PDF_PAGES)
+}
 /// Told the model of a PDF whose text couldn't be read, so it says so.
 pub(crate) const PDF_UNREAD: &str = "(Lumo couldn't read this PDF: it may be a scan, protected, or damaged. Say so.)";
 
@@ -432,15 +446,14 @@ fn pdf_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
         let data = format!("data:application/pdf;base64,{}", crate::claude::base64_for(&bytes));
         return Some(FilePart::Pdf { parts: vec![json!({ "type": "file", "file": { "filename": name, "file_data": data } })], text: None });
     }
-    let parts: Vec<Value> = if pdf == PdfAs::Text {
-        Vec::new()
-    } else {
-        crate::pdf_pages::render(path, MAX_PDF_PAGES)
-            .into_iter()
-            .filter(|png| png.len() as u64 <= MAX_IMAGE)
-            .map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{}", crate::claude::base64_for(&png)) } }))
-            .collect()
-    };
+    let parts: Vec<Value> = match pdf {
+        PdfAs::TextAndPages { pages } if pages > 0 => crate::pdf_pages::render(path, pages),
+        _ => Vec::new(),
+    }
+    .into_iter()
+    .filter(|png| png.len() as u64 <= MAX_IMAGE)
+    .map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{}", crate::claude::base64_for(&png)) } }))
+    .collect();
     // Its pages seen, its text isn't needed; a long PDF, or one Windows can't draw, goes as text.
     let text = if parts.is_empty() { crate::pdf_text::text(path, MAX_PDF_CHARS) } else { None };
     (text.is_some() || !parts.is_empty()).then_some(FilePart::Pdf { parts, text })
@@ -577,6 +590,12 @@ mod tests {
         let ctx = ChatContext::File { name: "doc.pdf".into(), path: pdf.to_string_lossy().into() };
         // A PDF with nothing to read: the model is told, to say so.
         assert_eq!(user_message(true, Some(&ctx), "q", PdfAs::Text)["content"], format!("File: doc.pdf\n{PDF_UNREAD}\n\nq"));
+        // How many pages fit: none in a small context, at most ten in a big one.
+        assert_eq!(pages_that_fit(4_096, 3_000), 0);
+        assert_eq!(pages_that_fit(32_768, 9_000), 10);
+        assert_eq!(pages_that_fit(16_384, 9_000), 2);
+        assert_eq!(pages_that_fit(262_144, 9_000), 10);
+        assert_eq!(pages_that_fit(0, 2_000), 2);
         // Sent as itself to an API that takes files.
         let msg = user_message(true, Some(&ctx), "q", PdfAs::File);
         assert_eq!(msg["content"][0]["type"], "file");

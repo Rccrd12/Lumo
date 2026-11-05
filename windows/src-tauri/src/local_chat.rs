@@ -331,10 +331,16 @@ fn is_image(path: &str) -> bool {
 /// The user's message: text only, or with its pictures for a model that
 /// sees them. `shared`: the screenshots and the files shared from the screen
 /// button (a model that doesn't see gets the text of the text files only).
+#[cfg(test)]
 fn user_message(vision: bool, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
+    user_message_in(vision, crate::openai_compat::MAX_PDF_PAGES, first, context, query, shared)
+}
+
+/// `user_message`, with at most `pages` of a PDF drawn for a model that sees.
+fn user_message_in(vision: bool, pages: u32, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
     use crate::openai_compat::PdfAs;
     // A PDF: pictures of its pages for a model that sees, when it has few; else its text.
-    let pdf = if vision { PdfAs::TextAndPages } else { PdfAs::Text };
+    let pdf = if vision { PdfAs::TextAndPages { pages } } else { PdfAs::Text };
     let dropped = matches!(chat::turn_context(first, context), Some(ChatContext::File { path, .. }) if is_image(path) || crate::openai_compat::is_pdf(path));
     let user = if vision && dropped {
         crate::openai_compat::user_message(first, context, query, pdf)
@@ -436,7 +442,13 @@ pub async fn send(
         let caps = if caps.loaded == Some(false) { crate::local_models::caps(server, model).await } else { caps.clone() };
         // Pictures go unless the server says the model doesn't see them; one
         // that refuses them is asked again without (below).
-        user = user_message(caps.vision != Some(false), turn.first, context.as_ref(), &query, shared);
+        // A PDF's pages go as pictures as far as the context leaves room for
+        // them, past the instructions, the tools, the conversation and the answer.
+        let context_size = if caps.loaded_context > 0 { caps.loaded_context } else { caps.max_context };
+        let taken_chars = system.len() + turn.history.iter().map(|m| m.to_string().len()).sum::<usize>() + query.len() + if tools.is_empty() { 0 } else { crate::openai_compat::function_tools(&tools).to_string().len() };
+        let taken = (taken_chars / 3) as u64 + u64::from(MAX_TOKENS);
+        let pages = crate::openai_compat::pages_that_fit(context_size, taken);
+        user = user_message_in(caps.vision != Some(false), pages, turn.first, context.as_ref(), &query, shared);
         body = request_body(model, &system, &turn.history, &user);
         if !tools.is_empty() {
             body["tools"] = crate::openai_compat::function_tools(&tools);
