@@ -11,6 +11,7 @@ import type { ChatUsage } from "./chat-usage";
 import type { ListenPast, ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
+import type { LocalCaps } from "./providers";
 
 /** An answer to a permission card: `always` allows it for the rest of the session. */
 export type Decision = "allow" | "deny" | "always";
@@ -351,6 +352,8 @@ export const Bridge = {
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Settings → Local models: the models Ollama or LM Studio holds in memory now. */
   localLoaded: (provider: "ollama" | "lmstudio") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
+  /** What a local model can do (pictures, tools, reasoning, its context), as its server says. */
+  localCaps: (provider: string, model: string) => callOrThrow<LocalCaps>("local_caps", { provider, model }),
   /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
   localUnload: (provider: "ollama" | "lmstudio") => callOrThrow<number>("local_unload", { provider }),
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */

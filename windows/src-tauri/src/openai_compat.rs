@@ -90,7 +90,7 @@ pub(crate) fn url(p: &Provider, tail: &str) -> Result<Url, String> {
 
 /// The user's message for one turn: plain text, or text and an image part
 /// when the turn carries a dropped picture.
-fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Value {
+pub(crate) fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Value {
     let mut prefix = String::new();
     let mut image = None;
     match chat::turn_context(first, context) {
@@ -117,7 +117,7 @@ fn user_message(first: bool, context: Option<&ChatContext>, query: &str) -> Valu
 /// Screenshots and files the user shared (screen.rs): image parts, and the
 /// text of a text file, ahead of the message's text, on whichever turn they
 /// were added.
-fn with_images(mut user: Value, images: &[String]) -> Value {
+pub(crate) fn with_images(mut user: Value, images: &[String]) -> Value {
     let parts: Vec<Value> = images
         .iter()
         .filter_map(|path| match file_part(path) {
@@ -257,7 +257,7 @@ pub async fn send(
 }
 
 /// The island's tools (island_tools.rs) and the user's that are on and reviewed (tools.rs), as functions.
-fn function_tools(tools: &[(String, String, Value)]) -> Value {
+pub(crate) fn function_tools(tools: &[(String, String, Value)]) -> Value {
     Value::Array(
         tools
             .iter()

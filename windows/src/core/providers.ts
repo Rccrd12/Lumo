@@ -86,13 +86,71 @@ export function parsePermissionMode(v: unknown, provider: string): PermissionMod
 }
 
 /**
+ * What a local model can do, as its server says (local_models.rs Caps): null
+ * or empty where it says nothing (an OpenAI-compatible server of another kind).
+ */
+export interface LocalCaps {
+  vision: boolean | null;
+  tools: boolean | null;
+  /** The reasoning levels it takes ("off", "on", "low", "medium", "high"). */
+  reasoning: string[];
+  /** Tokens: the longest context it was made for, and the one it is loaded with (0: not said). */
+  maxContext: number;
+  loadedContext: number;
+}
+
+/** The caps of the model picked on each model server, once asked (views/chat.ts). */
+const localCaps = new Map<string, LocalCaps>();
+
+/** Keeps what `provider`'s server said about its model picked; null forgets it. */
+export function setLocalCaps(provider: string, caps: LocalCaps | null): void {
+  if (caps) localCaps.set(provider, caps);
+  else localCaps.delete(provider);
+}
+
+/** What the model picked on `provider` can do, when its server said. */
+export function localCapsOf(provider: string): LocalCaps | undefined {
+  return localCaps.get(provider);
+}
+
+/** "64k", "256k", "1M": a context size, short. */
+export function contextSize(tokens: number): string {
+  if (tokens >= 1024 * 1024) return `${Math.round(tokens / (1024 * 1024))}M`;
+  if (tokens >= 1024) return `${Math.round(tokens / 1024)}k`;
+  return String(tokens);
+}
+
+/**
+ * The words next to a local model in the picker: what it can do, and its
+ * context (loaded with / longest). Empty when its server said nothing.
+ */
+export function capsWords(caps: LocalCaps | undefined): string[] {
+  if (!caps) return [];
+  const words: string[] = [];
+  if (caps.vision) words.push(N_("Images"));
+  if (caps.tools) words.push(N_("Tools"));
+  if (caps.reasoning.length > 0) words.push(N_("Thinking"));
+  return words;
+}
+
+/** The context part of that line: "64k / 256k", "256k", or "" when unknown. */
+export function capsContext(caps: LocalCaps | undefined): string {
+  if (!caps || (!caps.loadedContext && !caps.maxContext)) return "";
+  if (caps.loadedContext && caps.maxContext) return `${contextSize(caps.loadedContext)} / ${contextSize(caps.maxContext)}`;
+  return contextSize(caps.loadedContext || caps.maxContext);
+}
+
+/**
  * The effort levels the picker offers for `id`; none for a provider without
  * any. Antigravity CLI has none to pick: each of its models carries its effort
- * in its name (`gemini-3.8-flash-low`), so the model is the choice.
+ * in its name (`gemini-3.8-flash-low`), so the model is the choice. A local
+ * model offers the reasoning levels its server says it takes.
  */
 export function effortsFor(id: string): readonly string[] {
   if (id === "claude-code") return EFFORTS;
   if (id === "codex") return CODEX_EFFORTS;
+  const local = localCaps.get(id);
+  if (local && local.reasoning.length > 0) return ["", ...local.reasoning];
   return [];
 }
 

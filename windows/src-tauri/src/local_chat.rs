@@ -6,6 +6,13 @@
 // growing; the reply of the command is the finished text. `<think>` blocks of
 // reasoning models stay hidden while open and are dropped from the answer.
 //
+// What the model can do decides what goes with a question (local_models.rs
+// caps): pictures (screenshots, a dropped image) to a model that sees them,
+// the island's tools and the user's (the Tools tab, each call asked for on the
+// island) to one that calls tools, and the reasoning level picked to one that
+// reasons. A server that says nothing is sent the tools all the same, and a
+// model that refuses them is asked again without.
+//
 // Nothing leaves the machine unless the user pointed the server address
 // somewhere else: that address is the only place this module talks to.
 
@@ -17,6 +24,7 @@ use serde_json::{json, Value};
 use tauri::AppHandle;
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
+use crate::local_models::Caps;
 use crate::settings::Settings;
 use crate::i18n::{t, tf};
 use crate::{net, secrets};
@@ -25,6 +33,8 @@ use crate::{net, secrets};
 pub const CUSTOM_KEY: &str = "openai-compatible-key";
 
 const MAX_TOKENS: u32 = 4096;
+/// Rounds of tools one answer may take before it must answer.
+const MAX_TOOL_ROUNDS: usize = 8;
 /// A text file is sent inline up to this many characters; the rest is cut.
 const MAX_INLINE_CHARS: usize = 24_000;
 /// The island is told about new text at most this often.
@@ -251,32 +261,111 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     json!({ "model": model, "messages": messages, "stream": true, "max_tokens": MAX_TOKENS })
 }
 
+/// Whether `path` is a picture a model that sees can be sent.
+fn is_image(path: &str) -> bool {
+    let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
+    matches!(ext.as_str(), "jpg" | "jpeg" | "png" | "gif" | "webp")
+}
+
+/// The user's message: text only, or with its pictures for a model that
+/// sees them. `shared`: the screenshots and the files shared from the screen
+/// button (a model that doesn't see gets the text of the text files only).
+fn user_message(vision: bool, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
+    let dropped_image = matches!(chat::turn_context(first, context), Some(ChatContext::File { path, .. }) if is_image(path));
+    let user = if vision && dropped_image {
+        crate::openai_compat::user_message(first, context, query)
+    } else {
+        json!({ "role": "user", "content": user_text(first, context, query) })
+    };
+    let shared: Vec<String> = shared.iter().filter(|p| vision || !is_image(p)).cloned().collect();
+    crate::openai_compat::with_images(user, &shared)
+}
+
 /// One chat turn with a model server.
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     server: &Server,
     model: &str,
+    caps: &Caps,
+    effort: &str,
     query: String,
     context: Option<ChatContext>,
+    shared: &[String],
 ) -> Result<ChatReply, String> {
     let base = base_url(server)?;
     if model.is_empty() {
         return Err(t("Pick a model above the chat box first."));
     }
     let turn = chat.begin(server.id);
-    let user = json!({ "role": "user", "content": user_text(turn.first, context.as_ref(), &query) });
-    let body = request_body(model, &chat::system_prompt_in(chat, false, false), &turn.history, &user);
+    let user = user_message(caps.vision == Some(true), turn.first, context.as_ref(), &query, shared);
+    // The tools, unless the server says the model takes none.
+    let tools = if caps.tools == Some(false) {
+        Vec::new()
+    } else {
+        tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default()
+    };
+    let mut body = request_body(model, &chat::system_prompt_in(chat, false, !tools.is_empty()), &turn.history, &user);
+    if !tools.is_empty() {
+        body["tools"] = crate::openai_compat::function_tools(&tools);
+    }
+    if let Some(level) = crate::local_models::reasoning_effort(caps, effort) {
+        body["reasoning_effort"] = json!(level);
+    }
 
-    // What the island shows so far: kept if Stop is pressed mid-answer.
+    // What the island shows so far: kept if Stop is pressed mid-answer. What
+    // was said before each round of tools stays above the round after it.
     let mut shown = String::new();
+    let mut said: Vec<String> = Vec::new();
     let events = chat.events();
-    let streamed = chat
-        .unless_stopped(stream(&base, server.key.as_deref(), model, &body, |visible| {
-            shown.clone_from(&visible);
-            events.delta(app, &visible);
-        }))
-        .await;
+    let answer = async {
+        let mut rounds = 0;
+        loop {
+            let before = said.join("\n\n");
+            let streamed = stream(&base, server.key.as_deref(), model, &body, |visible| {
+                shown = if before.is_empty() { visible } else if visible.is_empty() { before.clone() } else { format!("{before}\n\n{visible}") };
+                events.delta(app, &shown);
+            })
+            .await;
+            let streamed = match streamed {
+                // A model that takes no tools refuses the request: once more without them.
+                Err((400 | 422, _)) if body.get("tools").is_some() => {
+                    body.as_object_mut().map(|b| b.remove("tools"));
+                    body["messages"][0]["content"] = json!(chat::system_prompt_in(chat, false, false));
+                    continue;
+                }
+                other => other.map_err(|(_, e)| e)?,
+            };
+            if streamed.calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
+                return Ok::<_, String>(streamed.text);
+            }
+            rounds += 1;
+            if !streamed.text.is_empty() {
+                said.push(streamed.text.clone());
+            }
+            let calls: Vec<Value> = streamed
+                .calls
+                .iter()
+                .enumerate()
+                .map(|(i, c)| {
+                    let id = c["id"].as_str().filter(|s| !s.is_empty()).map(str::to_string).unwrap_or_else(|| format!("call_{rounds}_{i}"));
+                    json!({ "id": id, "type": "function", "function": { "name": c["name"], "arguments": c["arguments"] } })
+                })
+                .collect();
+            let mut turn_messages = vec![json!({ "role": "assistant", "content": streamed.text, "tool_calls": calls })];
+            for call in &calls {
+                let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
+                let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
+                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input).await;
+                turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
+            }
+            if let Some(messages) = body["messages"].as_array_mut() {
+                messages.extend(turn_messages);
+            }
+        }
+    };
+    let streamed = chat.unless_stopped(answer).await;
     let plain = chat::plain_question(turn.first, context.as_ref(), &query);
     let Some(answer) = streamed else {
         // The connection is closed. What was written stays in the conversation.
@@ -286,6 +375,8 @@ pub async fn send(
         return Ok(ChatReply::stopped(shown, None));
     };
     let answer = answer?;
+    // After the tools, what was said before each call comes first.
+    let answer = said.into_iter().chain([answer]).filter(|s| !s.is_empty()).collect::<Vec<_>>().join("\n\n");
     if answer.is_empty() {
         return Err(t("No response text."));
     }
@@ -302,7 +393,7 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
     }
     let user = json!({ "role": "user", "content": prompt });
     let body = request_body(model, system, &[], &user);
-    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}).await?;
+    let answer = stream(&base, server.key.as_deref(), model, &body, |_| {}).await.map_err(|(_, e)| e)?.text;
     if answer.is_empty() {
         return Err(t("No response text."));
     }
@@ -311,19 +402,76 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
 
 // ── Streaming ─────────────────────────────────────────────────────────────────
 
-/// One server-sent event line: `Some(Ok(text))` for a content delta,
-/// `Some(Err(message))` for an error event, None for anything else (other
-/// lines, `[DONE]`, a delta without content, such as reasoning-only ones).
-fn parse_sse_line(line: &str) -> Option<Result<String, String>> {
+/// One server-sent event line.
+#[derive(Debug, PartialEq)]
+enum Event {
+    /// A piece of the answer's text.
+    Text(String),
+    /// Pieces of tool calls, each with its `index` (the OpenAI API streams a
+    /// call's arguments in pieces; Ollama sends each call whole).
+    Calls(Vec<Value>),
+    /// An error event.
+    Error(String),
+}
+
+/// One server-sent event line, or None for anything else (other lines,
+/// `[DONE]`, a delta without content, such as reasoning-only ones).
+fn parse_sse_line(line: &str) -> Option<Event> {
     let payload = line.strip_prefix("data:")?.trim_start();
     if payload == "[DONE]" {
         return None;
     }
     let json: Value = serde_json::from_str(payload).ok()?;
     if let Some(msg) = json.pointer("/error/message").and_then(Value::as_str) {
-        return Some(Err(msg.to_string()));
+        return Some(Event::Error(msg.to_string()));
     }
-    json.pointer("/choices/0/delta/content")?.as_str().map(|s| Ok(s.to_string()))
+    let delta = json.pointer("/choices/0/delta")?;
+    if let Some(calls) = delta.get("tool_calls").and_then(Value::as_array).filter(|c| !c.is_empty()) {
+        return Some(Event::Calls(calls.clone()));
+    }
+    delta.get("content")?.as_str().map(|s| Event::Text(s.to_string()))
+}
+
+/// The tool calls of an answer, put together from their pieces: each one's
+/// id, name and arguments (a JSON text), in order.
+#[derive(Default)]
+struct CallParts {
+    calls: Vec<Value>,
+}
+
+impl CallParts {
+    fn feed(&mut self, pieces: &[Value]) {
+        for (n, piece) in pieces.iter().enumerate() {
+            let index = piece["index"].as_u64().map(|i| i as usize).unwrap_or(self.calls.len().max(n));
+            if index > 64 {
+                continue;
+            }
+            while self.calls.len() <= index {
+                self.calls.push(json!({ "id": "", "name": "", "arguments": "" }));
+            }
+            let call = &mut self.calls[index];
+            if let Some(id) = piece["id"].as_str() {
+                call["id"] = json!(id);
+            }
+            if let Some(name) = piece.pointer("/function/name").and_then(Value::as_str) {
+                let joined = format!("{}{name}", call["name"].as_str().unwrap_or(""));
+                call["name"] = json!(joined);
+            }
+            match piece.pointer("/function/arguments") {
+                Some(Value::String(more)) => {
+                    let joined = format!("{}{more}", call["arguments"].as_str().unwrap_or(""));
+                    call["arguments"] = json!(joined);
+                }
+                // Some servers send the arguments as an object.
+                Some(v @ Value::Object(_)) => call["arguments"] = json!(v.to_string()),
+                _ => {}
+            }
+        }
+    }
+
+    fn done(self) -> Vec<Value> {
+        self.calls.into_iter().filter(|c| c["name"].as_str().is_some_and(|n| !n.is_empty())).collect()
+    }
 }
 
 /// Removes finished `<think>…</think>` blocks (reasoning models such as DeepSeek-R1).
@@ -349,51 +497,64 @@ fn progressive_filter(text: &str) -> String {
     }
 }
 
+/// A streamed answer: its text without its thinking, and the tools it calls.
+#[derive(Debug)]
+struct Streamed {
+    text: String,
+    calls: Vec<Value>,
+}
+
 /// Posts the request and reads the event stream. `on_delta` gets the visible
-/// text at most 15 times a second, and once more at the end; the result is the
-/// whole answer without its thinking.
+/// text at most 15 times a second, and once more at the end. An error comes
+/// with the HTTP status (0 when there was none).
 async fn stream(
     base: &Url,
     key: Option<&str>,
     model: &str,
     body: &Value,
     mut on_delta: impl FnMut(String),
-) -> Result<String, String> {
-    let mut reply = net::streaming_client(base, Duration::from_secs(300))?
+) -> Result<Streamed, (u16, String)> {
+    let mut reply = net::streaming_client(base, Duration::from_secs(300))
+        .map_err(|e| (0, e))?
         .post(net::join(base, "v1/chat/completions"))
         .header("Authorization", bearer(key))
         .json(body)
         .send()
         .await
-        .map_err(|_| unreachable(base))?;
+        .map_err(|_| (0, unreachable(base)))?;
 
     let status = reply.status();
     if status.as_u16() == 404 {
-        return Err(tf("{model} isn't installed. Pick another model above the chat box.", &[("model", model)]));
+        return Err((404, tf("{model} isn't installed. Pick another model above the chat box.", &[("model", model)])));
     }
     if !status.is_success() {
         let body = net::read_capped(reply, net::MAX_ERROR_BODY).await.unwrap_or_default();
         let detail = net::error_detail(&body);
-        return Err(if detail.is_empty() { format!("HTTP {}", status.as_u16()) } else { detail });
+        return Err((status.as_u16(), if detail.is_empty() { format!("HTTP {}", status.as_u16()) } else { detail }));
     }
 
     let mut accumulated = String::new();
+    let mut calls = CallParts::default();
     let mut pending = Vec::<u8>::new();
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
-    while let Some(chunk) = reply.chunk().await.map_err(|_| unreachable(base))? {
+    let mut take = |line: &str, accumulated: &mut String| -> Result<(), (u16, String)> {
+        match parse_sse_line(line) {
+            Some(Event::Text(delta)) => accumulated.push_str(&delta),
+            Some(Event::Calls(pieces)) => calls.feed(&pieces),
+            Some(Event::Error(message)) => return Err((0, message)),
+            None => {}
+        }
+        Ok(())
+    };
+    while let Some(chunk) = reply.chunk().await.map_err(|_| (0, unreachable(base)))? {
         pending.extend_from_slice(&chunk);
         // Whole lines only: a chunk may end in the middle of one, or of a character.
         while let Some(end) = pending.iter().position(|b| *b == b'\n') {
             let line: Vec<u8> = pending.drain(..=end).collect();
-            let line = String::from_utf8_lossy(&line);
-            match parse_sse_line(line.trim_end()) {
-                Some(Ok(delta)) => accumulated.push_str(&delta),
-                Some(Err(message)) => return Err(message),
-                None => {}
-            }
+            take(String::from_utf8_lossy(&line).trim_end(), &mut accumulated)?;
         }
         if pending.len() > MAX_LINE || accumulated.len() > MAX_ANSWER {
-            return Err(t("The server's answer is too large."));
+            return Err((0, t("The server's answer is too large.")));
         }
         if last.elapsed() >= DELTA_INTERVAL {
             last = Instant::now();
@@ -401,12 +562,10 @@ async fn stream(
         }
     }
     // A last line without its newline.
-    if let Some(Ok(delta)) = parse_sse_line(String::from_utf8_lossy(&pending).trim_end()) {
-        accumulated.push_str(&delta);
-    }
+    take(String::from_utf8_lossy(&pending).trim_end(), &mut accumulated)?;
     // The last state always goes out, whatever the throttle skipped.
     on_delta(progressive_filter(&accumulated));
-    Ok(filter_thinking_blocks(&accumulated))
+    Ok(Streamed { text: filter_thinking_blocks(&accumulated), calls: calls.done() })
 }
 
 #[cfg(test)]
@@ -423,18 +582,61 @@ mod tests {
     }
 
     #[test]
-    fn only_content_deltas_are_taken_from_the_event_stream() {
+    fn content_and_tool_calls_are_taken_from_the_event_stream() {
+        let text = |s: &str| Some(Event::Text(s.into()));
         let line = r#"data: {"choices":[{"delta":{"content":"Hel"}}]}"#;
-        assert_eq!(parse_sse_line(line), Some(Ok("Hel".into())));
+        assert_eq!(parse_sse_line(line), text("Hel"));
         let line = r#"data:{"choices":[{"delta":{"content":"lo"}}]}"#;
-        assert_eq!(parse_sse_line(line), Some(Ok("lo".into())));
+        assert_eq!(parse_sse_line(line), text("lo"));
         assert_eq!(parse_sse_line("data: [DONE]"), None);
         assert_eq!(parse_sse_line(""), None);
         assert_eq!(parse_sse_line(": keep-alive"), None);
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"role":"assistant"}}]}"#), None);
         assert_eq!(parse_sse_line(r#"data: {"choices":[{"delta":{"content":null,"reasoning_content":"x"}}]}"#), None);
         assert_eq!(parse_sse_line("data: not json"), None);
-        assert_eq!(parse_sse_line(r#"data: {"error":{"message":"out of memory"}}"#), Some(Err("out of memory".into())));
+        assert_eq!(parse_sse_line(r#"data: {"error":{"message":"out of memory"}}"#), Some(Event::Error("out of memory".into())));
+        let line = r#"data: {"choices":[{"delta":{"content":"","tool_calls":[{"index":0,"id":"c1","function":{"name":"set_timer"}}]}}]}"#;
+        assert!(matches!(parse_sse_line(line), Some(Event::Calls(c)) if c.len() == 1));
+    }
+
+    #[test]
+    fn a_tool_call_streamed_in_pieces_is_put_back_together() {
+        let mut parts = CallParts::default();
+        parts.feed(&[json!({"index":0,"id":"c1","function":{"name":"set_","arguments":""}})]);
+        parts.feed(&[json!({"index":0,"function":{"name":"timer","arguments":"{\"min"}})]);
+        parts.feed(&[json!({"index":0,"function":{"arguments":"utes\":5}"}}), json!({"index":1,"function":{"name":"listen","arguments":{"source":"x"}}})]);
+        // A piece without a name is no call.
+        parts.feed(&[json!({"index":2,"function":{"arguments":"{}"}})]);
+        let calls = parts.done();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0], json!({"id":"c1","name":"set_timer","arguments":"{\"minutes\":5}"}));
+        assert_eq!(calls[1]["name"], "listen");
+        assert_eq!(calls[1]["arguments"], r#"{"source":"x"}"#);
+    }
+
+    #[test]
+    fn pictures_go_only_to_a_model_that_sees_them() {
+        let dir = std::env::temp_dir().join(format!("lumo-local-vision-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let png = dir.join("screenshot.png");
+        std::fs::write(&png, [0x89, b'P', b'N', b'G']).unwrap();
+        let txt = dir.join("notes.txt");
+        std::fs::write(&txt, "hello").unwrap();
+        let shared = vec![png.to_string_lossy().to_string(), txt.to_string_lossy().to_string()];
+
+        let seen = user_message(true, false, None, "what's this?", &shared);
+        let kinds: Vec<&str> = seen["content"].as_array().unwrap().iter().map(|p| p["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, ["image_url", "text", "text"]);
+        let blind = user_message(false, false, None, "what's this?", &shared);
+        let kinds: Vec<&str> = blind["content"].as_array().unwrap().iter().map(|p| p["type"].as_str().unwrap()).collect();
+        assert_eq!(kinds, ["text", "text"]);
+        assert_eq!(user_message(false, false, None, "q", &[]), json!({"role":"user","content":"q"}));
+
+        // A dropped picture: an image part for a model that sees, its name otherwise.
+        let ctx = ChatContext::File { name: "pic.png".into(), path: png.to_string_lossy().into() };
+        assert_eq!(user_message(true, true, Some(&ctx), "q", &[])["content"][0]["type"], "image_url");
+        assert_eq!(user_message(false, true, Some(&ctx), "q", &[])["content"], "File: pic.png\n\nq");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
@@ -521,28 +723,42 @@ mod tests {
         body.push_str("data: [DONE]\n\n");
         let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.into_bytes());
         let mut seen = Vec::new();
-        let answer = block_on(stream(&url(&u), None, "m", &json!({}), |v| seen.push(v))).unwrap();
+        let answer = block_on(stream(&url(&u), None, "m", &json!({}), |v| seen.push(v))).unwrap().text;
         assert_eq!(answer, "## Answer\n\n- **item 1**\n```python\nprint('hello')\n```");
         assert_eq!(seen.last().unwrap(), &answer);
         assert!(seen.iter().all(|v| !v.contains("step") && !v.contains("internal")));
     }
 
     #[test]
+    fn the_stream_brings_back_the_tools_the_model_calls() {
+        let events = [
+            r#"{"choices":[{"delta":{"content":"Setting it."}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c1","type":"function","function":{"name":"set_timer","arguments":"{\"minutes\":"}}]}}]}"#,
+            r#"{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"5}"}}]}}]}"#,
+        ];
+        let body: String = events.iter().map(|e| format!("data: {e}\n\n")).collect();
+        let u = serve_once("200 OK", "Content-Type: text/event-stream\r\n", body.into_bytes());
+        let streamed = block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).ok().unwrap();
+        assert_eq!(streamed.text, "Setting it.");
+        assert_eq!(streamed.calls, vec![json!({"id":"c1","name":"set_timer","arguments":"{\"minutes\":5}"})]);
+    }
+
+    #[test]
     fn stream_errors_say_what_happened() {
         let u = serve_once("404 Not Found", "Content-Length: 2\r\n", b"{}".to_vec());
-        let err = block_on(stream(&url(&u), None, "unknown-model", &json!({}), |_| {})).unwrap_err();
-        assert_eq!(err, "unknown-model isn't installed. Pick another model above the chat box.");
+        let err = block_on(stream(&url(&u), None, "unknown-model", &json!({}), |_| {})).err().unwrap();
+        assert_eq!(err, (404, "unknown-model isn't installed. Pick another model above the chat box.".to_string()));
         let body = br#"{"error":{"message":"context too long"}}"#;
         let u = serve_once("400 Bad Request", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
-        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).unwrap_err(), "context too long");
+        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).err().unwrap(), (400, "context too long".to_string()));
         let u = serve_once("200 OK", "", b"data: {\"error\":{\"message\":\"crashed\"}}\n".to_vec());
-        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).unwrap_err(), "crashed");
+        assert_eq!(block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).err().unwrap().1, "crashed");
     }
 
     #[test]
     fn an_endless_line_is_cut_off() {
         let u = serve_once("200 OK", "", vec![b'x'; MAX_LINE + 10]);
-        let err = block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).unwrap_err();
+        let err = block_on(stream(&url(&u), None, "m", &json!({}), |_| {})).err().unwrap().1;
         assert_eq!(err, "The server's answer is too large.");
     }
 

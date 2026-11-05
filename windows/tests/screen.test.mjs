@@ -13,7 +13,7 @@ import { calls, internals, sent } from "./tauri.mjs";
 installFakeDom();
 const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
-const { providerDef } = await import("../src/core/providers.ts");
+const { providerDef, setLocalCaps } = await import("../src/core/providers.ts");
 const {
   afterSent, emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
   seesImages, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows, withoutFolder, withoutItem, folderPicks, foldersByThemselves,
@@ -160,9 +160,14 @@ test("a shared folder is something to send, with an attachment naming it", () =>
   assert.deepEqual(screenItems(withoutFolder(two, MUSIC.path)).map((i) => i.label), ["PDFs"], "a × takes back that one only");
 });
 
-test("only the local model servers can't look at a screenshot", () => {
+test("a local model looks at a screenshot only when its server says it sees pictures", () => {
   for (const id of ["anthropic", "claude-code", "openai", "google", "openrouter"]) assert.ok(seesImages(providerDef(id)), id);
   for (const id of ["ollama", "lmstudio", "custom"]) assert.ok(!seesImages(providerDef(id)), id);
+  setLocalCaps("ollama", { vision: true, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
+  assert.ok(seesImages(providerDef("ollama")));
+  setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
+  assert.ok(!seesImages(providerDef("ollama")));
+  setLocalCaps("ollama", null);
 });
 
 test("what is waiting becomes one payload, one attachment each and a list of files to delete", () => {

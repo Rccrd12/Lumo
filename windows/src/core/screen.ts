@@ -33,7 +33,7 @@ import type {
   BrowserTab, DroppedFile, ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText,
   SharedWindow,
 } from "./bridge";
-import type { ProviderDef } from "./providers";
+import { localCapsOf, type ProviderDef } from "./providers";
 import type { Settings } from "./state";
 import { N_, t } from "../i18n/i18n";
 
@@ -228,11 +228,11 @@ export function entryLabel(entry: MenuEntry): string {
 
 /**
  * Who can look at a screenshot: Claude Code reads it from the inbox, the
- * Anthropic API and the cloud providers take it as an image. The local model
- * servers get text only (chat.rs says the same).
+ * Anthropic API and the cloud providers take it as an image. A local model
+ * only when its server says it sees pictures (chat.rs says the same).
  */
 export function seesImages(provider: ProviderDef): boolean {
-  return provider.urlField === null;
+  return provider.urlField === null || localCapsOf(provider.id)?.vision === true;
 }
 
 /** A screenshot the user kept, waiting for the next question. */

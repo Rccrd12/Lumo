@@ -7308,3 +7308,14 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
 .ctx-usage {
   gap: 10px;
 }
+
+/* What a local model can do, next to it in the model picker (local_models.rs caps). */
+.picker-model-caps {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #8b929e;
+}

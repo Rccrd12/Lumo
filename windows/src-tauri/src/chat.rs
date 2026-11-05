@@ -686,9 +686,10 @@ fn is_cli(provider: &str) -> bool {
 
 /// The question with the screen context in front of it, and the screenshots
 /// to send as images (none for the CLIs, which are given their paths).
-fn with_screen(provider: &str, screen: Option<&ScreenContext>, query: String) -> Result<(String, Vec<String>), String> {
+/// `vision`: a local model its server says sees pictures (local_models.rs caps).
+fn with_screen(provider: &str, vision: bool, screen: Option<&ScreenContext>, query: String) -> Result<(String, Vec<String>), String> {
     let Some(screen) = screen.filter(|s| !s.is_empty()) else { return Ok((query, Vec::new())) };
-    if !screen.shots.is_empty() && !sees_images(provider) {
+    if !screen.shots.is_empty() && !sees_images(provider) && !vision {
         return Err(crate::i18n::t("Screenshots need the Claude Code or Anthropic provider."));
     }
     let cli = is_cli(provider);
@@ -810,7 +811,13 @@ async fn send_to(
 ) -> Result<ChatReply, String> {
     let provider = settings.chat_provider.as_str();
     let model = model_for(settings, provider);
-    let (query, images) = with_screen(provider, screen.as_ref(), query)?;
+    // A local model: what its server says it can do decides what goes with the question.
+    let local = local_chat::server(settings, provider);
+    let caps = match &local {
+        Some(server) => crate::local_models::caps(server, &model).await,
+        None => crate::local_models::Caps::default(),
+    };
+    let (query, images) = with_screen(provider, caps.vision == Some(true), screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
         return claude::send(app, chat, &model, query, context, &images, usage).await;
     }
@@ -848,8 +855,8 @@ async fn send_to(
     if let Some(p) = openai_compat::provider(provider) {
         return openai_compat::send(app, chat, p, &model, query, context, &images, usage).await;
     }
-    if let Some(server) = local_chat::server(settings, provider) {
-        return local_chat::send(app, chat, &server, &model, query, context).await;
+    if let Some(server) = local {
+        return local_chat::send(app, chat, &server, &model, &caps, &settings.chat_effort, query, context, &images).await;
     }
     Err(format!("Unknown chat provider: {provider}"))
 }
@@ -1206,7 +1213,7 @@ mod tests {
             mail: String::new(),
         };
         for cli in ["claude-code", "antigravity-cli"] {
-            let (q, images) = with_screen(cli, Some(&screen), "what is this?".into()).unwrap();
+            let (q, images) = with_screen(cli, false, Some(&screen), "what is this?".into()).unwrap();
             assert!(q.contains("Read them from these paths:\n- Screen 1: /inbox/s1.png"), "{cli}");
             assert!(q.contains("- Docs — msedge (active)"));
             assert!(q.ends_with("what is this?"));
@@ -1214,19 +1221,22 @@ mod tests {
         }
 
         for provider in ["anthropic", "openai", "google", "openrouter"] {
-            let (q, images) = with_screen(provider, Some(&screen), "q".into()).unwrap();
+            let (q, images) = with_screen(provider, false, Some(&screen), "q".into()).unwrap();
             assert_eq!(images, vec!["/inbox/s1.png".to_string()], "{provider}");
             assert!(!q.contains("/inbox/s1.png"));
             assert!(q.contains("(attached: Screen 1)"));
         }
 
         assert_eq!(
-            with_screen("ollama", Some(&screen), "q".into()).unwrap_err(),
+            with_screen("ollama", false, Some(&screen), "q".into()).unwrap_err(),
             "Screenshots need the Claude Code or Anthropic provider."
         );
+        // Unless its server says the model sees pictures: they go as images.
+        let (_, images) = with_screen("ollama", true, Some(&screen), "q".into()).unwrap();
+        assert!(!images.is_empty());
         // The window list alone is text: every provider takes it.
         let windows_only = ScreenContext { shots: vec![], ..screen.clone() };
-        let (q, images) = with_screen("ollama", Some(&windows_only), "q".into()).unwrap();
+        let (q, images) = with_screen("ollama", false, Some(&windows_only), "q".into()).unwrap();
         assert!(q.starts_with("Windows open on the user's computer") && q.ends_with("q") && images.is_empty());
 
         // So is a selection, for every provider.
@@ -1235,7 +1245,7 @@ mod tests {
             ..Default::default()
         };
         for provider in ["claude-code", "anthropic", "openai", "ollama"] {
-            let (q, images) = with_screen(provider, Some(&selected), "translate".into()).unwrap();
+            let (q, images) = with_screen(provider, false, Some(&selected), "translate".into()).unwrap();
             assert_eq!(
                 q,
                 "The user selected this text in Acrobat (\"bail.pdf\") and shared it just now:\n<selected_text>\nLe contrat\n</selected_text>\n\ntranslate",
@@ -1244,8 +1254,8 @@ mod tests {
             assert!(images.is_empty());
         }
 
-        assert_eq!(with_screen("openai", None, "q".into()).unwrap(), ("q".to_string(), vec![]));
-        assert_eq!(with_screen("ollama", Some(&ScreenContext::default()), "q".into()).unwrap(), ("q".to_string(), vec![]));
+        assert_eq!(with_screen("openai", false, None, "q".into()).unwrap(), ("q".to_string(), vec![]));
+        assert_eq!(with_screen("ollama", false, Some(&ScreenContext::default()), "q".into()).unwrap(), ("q".to_string(), vec![]));
     }
 
     #[test]

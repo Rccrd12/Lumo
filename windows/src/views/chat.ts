@@ -78,7 +78,7 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
-  activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, permissionModesFor, pickModel, providerDef,
+  activeModel, capsContext, capsWords, effortFor, effortsFor, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -106,6 +106,7 @@ import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration
 import { LISTEN_STRINGS, activeWatches, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
+import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 import {
   lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
@@ -166,6 +167,9 @@ const FILLED_ICONS = new Set(["plus", "gear", "timer"]);
 
 /** The effort levels by name, "Auto" for the CLI's own default. */
 const EFFORT_NAMES: Record<string, string> = {
+  // A local model that thinks or doesn't (local_models.rs).
+  off: N_("Off"),
+  on: N_("On"),
   low: N_("Low"),
   medium: N_("Medium"),
   high: N_("High"),
@@ -652,6 +656,8 @@ interface Picker {
   el: HTMLElement;
   open(): void;
   close(): void;
+  /** Asks a local model's server what the model picked can do, when it changed. */
+  refreshCaps(): void;
   readonly isOpen: boolean;
 }
 
@@ -851,6 +857,43 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     list.append(line);
   }
 
+  /**
+   * A local model's server is asked what the model picked can do (pictures,
+   * tools, reasoning, its context) each time the model changes: the effort
+   * slider, the screenshots and the line next to the model follow.
+   */
+  let capsKey = "";
+  function refreshCaps() {
+    const p = providerDef(State.settings.chatProvider);
+    const model = activeModel(State.settings);
+    const key = p.urlField && model ? `${p.id}|${model}` : "";
+    if (key === capsKey) return;
+    capsKey = key;
+    if (!key) return;
+    setLocalCaps(p.id, null);
+    void Bridge.localCaps(p.id, model)
+      .then((caps) => {
+        if (capsKey !== key) return;
+        setLocalCaps(p.id, caps);
+        drawCaps();
+        drawEfforts();
+        onChange();
+      })
+      .catch(() => {});
+  }
+
+  /** What the local model picked can do, on its row: "Images · Tools · Thinking · Context 64k / 256k". */
+  function drawCaps() {
+    const p = providerDef(State.settings.chatProvider);
+    const slot = list.querySelector<HTMLElement>(".picker-model.on .picker-model-caps");
+    if (!slot || !p.urlField) return;
+    const caps = localCapsOf(p.id);
+    const context = capsContext(caps);
+    const words = capsWords(caps).map((w) => t(w));
+    if (context) words.push(`${t(CONTEXT_STRINGS.title)} ${context}`);
+    slot.textContent = words.join(" · ");
+  }
+
   function drawModels(p: ProviderDef, models: ModelInfo[]) {
     clear(list);
     const current = activeModel(State.settings);
@@ -860,6 +903,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         "button",
         { class: on ? "picker-model on" : "picker-model", style: `--accent:${p.accent}`, title: m.id },
         h("span", { class: "picker-model-name", text: m.label }),
+        on && p.urlField ? h("span", { class: "picker-model-caps" }) : null,
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
       row.addEventListener("click", () => {
@@ -867,9 +911,11 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         saveSettings();
         Sound.play("blip");
         close();
+        refreshCaps();
       });
       list.append(row);
     }
+    drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
   }
 
@@ -949,6 +995,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     el,
     open,
     close,
+    refreshCaps,
     get isOpen() {
       return isOpen;
     },
@@ -1364,6 +1411,7 @@ export function buildPrompt(
   });
 
   function drawModelButton() {
+    picker.refreshCaps();
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
     const model = activeModel(State.settings) || t(STRINGS.noModel);

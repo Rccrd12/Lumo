@@ -679,6 +679,18 @@ async fn local_loaded(provider: String) -> Result<Vec<local_models::Loaded>, Str
     local_models::loaded(&provider).await
 }
 
+/// What the chat's local model can do (pictures, tools, reasoning, its
+/// context), as its server says, for the model picker. Nothing is known of a
+/// server that isn't Ollama or LM Studio, or isn't connected.
+#[tauri::command]
+async fn local_caps(shared: State<'_, Shared>, provider: String, model: String) -> Result<local_models::Caps, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(match local_chat::server(&settings, &provider) {
+        Some(server) => local_models::caps(&server, &model).await,
+        None => local_models::Caps::default(),
+    })
+}
+
 /// Settings → Local models → Free memory: every model the server holds is unloaded.
 #[tauri::command]
 async fn local_unload(provider: String) -> Result<usize, String> {
@@ -1183,6 +1195,7 @@ pub fn run() {
             chat_usage,
             local_connect,
             local_loaded,
+            local_caps,
             local_unload,
             local_pull,
             local_set_key,

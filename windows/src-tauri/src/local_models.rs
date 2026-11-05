@@ -12,6 +12,14 @@
 //   which models have instances loaded; `POST /api/v1/models/unload` unloads
 //   one instance; `POST /api/v1/models/download` starts a download, and
 //   `GET /api/v1/models/download/status/<job>` says how far it is.
+//
+// And what a model can do, for the chat (`caps`): whether it sees pictures,
+// calls tools and reasons (with which levels), its longest context and the
+// one it is loaded with. Ollama says it in `POST /api/show` (`capabilities`,
+// `model_info`) and `GET /api/ps` (`context_length`, Ollama 0.12 and later);
+// LM Studio in `GET /api/v1/models` (`capabilities`, `max_context_length`,
+// each loaded instance's `config.context_length`). Any other server says
+// nothing: the chat tries, and does without what it refuses.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -186,6 +194,156 @@ pub async fn unload_all(provider: &str) -> Result<usize, String> {
     Ok(models.len())
 }
 
+// ── What a model can do ───────────────────────────────────────────────────────
+
+/// What a local model can do, as its server says; None (or empty) where it
+/// says nothing, as an OpenAI-compatible server of another kind never does.
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Caps {
+    /// It reads pictures (screenshots, a dropped image).
+    pub vision: Option<bool>,
+    /// It calls tools (the island's and the user's).
+    pub tools: Option<bool>,
+    /// It reasons: the levels it takes, from Lumo's names ("off", "on",
+    /// "low", "medium", "high"); empty when it doesn't, or nobody says.
+    pub reasoning: Vec<String>,
+    /// The longest context it was made for, in tokens (0: not said).
+    pub max_context: u64,
+    /// The context it is loaded with now, in tokens (0: not loaded, or not said).
+    pub loaded_context: u64,
+}
+
+/// How long what a server said about a model is kept: it changes when the
+/// user loads the model again with another context, and is asked again then.
+const CAPS_FRESH: Duration = Duration::from_secs(20);
+/// What servers said, by server, address and model.
+static CAPS: Mutex<Option<HashMap<String, (std::time::Instant, Caps)>>> = Mutex::new(None);
+
+/// The levels Lumo offers, in order; anything else a server names is left out.
+const LEVELS: &[&str] = &["off", "on", "low", "medium", "high"];
+
+/// What `server` says `model` can do. Asked at most every few seconds per
+/// model; a server that doesn't answer gives the empty Caps (nothing known).
+pub async fn caps(server: &Server, model: &str) -> Caps {
+    let Some(model) = safe_name(model) else { return Caps::default() };
+    if !matches!(server.id, "ollama" | "lmstudio") {
+        return Caps::default();
+    }
+    let Ok(base) = local_chat::base_url(server) else { return Caps::default() };
+    let key = format!("{}|{}|{model}", server.id, base.as_str());
+    if let Some((at, caps)) = CAPS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&key)) {
+        if at.elapsed() < CAPS_FRESH {
+            return caps.clone();
+        }
+    }
+    let caps = if server.id == "ollama" {
+        let show = post_json(server, &base, "api/show", json!({ "model": model }), QUICK).await;
+        let ps = get_json(server, &base, "api/ps").await;
+        match show {
+            Ok(show) => parse_ollama_caps(model, &show, ps.as_ref().ok()),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    } else {
+        match get_json(server, &base, "api/v1/models").await {
+            Ok(body) => parse_lmstudio_caps(model, &body),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    };
+    CAPS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key, (std::time::Instant::now(), caps.clone()));
+    caps
+}
+
+/// Ollama's `/api/show` of `model`, and its `/api/ps` for the context it is
+/// loaded with. Its `capabilities` name "vision", "tools", "thinking"; its
+/// `model_info` gives the longest context as `<architecture>.context_length`.
+/// gpt-oss takes low, medium and high; Ollama's other thinking models think
+/// or don't.
+fn parse_ollama_caps(model: &str, show: &Value, ps: Option<&Value>) -> Caps {
+    let said: Vec<&str> = show["capabilities"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let has = |c: &str| said.contains(&c);
+    let known = !said.is_empty();
+    let family = show.pointer("/details/family").and_then(Value::as_str).unwrap_or("").to_lowercase();
+    let reasoning: &[&str] = if !has("thinking") {
+        &[]
+    } else if family.contains("gptoss") || family.contains("gpt-oss") || model.to_lowercase().contains("gpt-oss") {
+        &["low", "medium", "high"]
+    } else {
+        &["off", "on"]
+    };
+    let max_context = show["model_info"]
+        .as_object()
+        .and_then(|info| info.iter().find(|(k, _)| k.ends_with(".context_length")).and_then(|(_, v)| v.as_u64()))
+        .unwrap_or(0);
+    // `/api/ps` names a model as it was asked for: "llama3.2" is "llama3.2:latest".
+    let same = |name: &str| name == model || name.strip_suffix(":latest") == Some(model);
+    let loaded_context = ps
+        .and_then(|ps| ps["models"].as_array())
+        .into_iter()
+        .flatten()
+        .find(|m| [m["name"].as_str(), m["model"].as_str()].into_iter().flatten().any(same))
+        .and_then(|m| m["context_length"].as_u64())
+        .unwrap_or(0);
+    Caps {
+        vision: known.then(|| has("vision")),
+        tools: known.then(|| has("tools")),
+        reasoning: reasoning.iter().map(|s| s.to_string()).collect(),
+        max_context,
+        loaded_context,
+    }
+}
+
+/// LM Studio's `/api/v1/models`: the entry whose key is `model`, or that has
+/// a loaded instance by that id (a second copy of a model is "key:2").
+fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
+    let entries = body["models"].as_array().cloned().unwrap_or_default();
+    let instance_of = |m: &Value| m["loaded_instances"].as_array().into_iter().flatten().find(|i| i["id"].as_str() == Some(model)).cloned();
+    let found = entries
+        .iter()
+        .find(|m| m["key"].as_str() == Some(model) || m["selected_variant"].as_str() == Some(model))
+        .map(|m| (m, m["loaded_instances"].get(0).cloned()))
+        .or_else(|| entries.iter().find_map(|m| instance_of(m).map(|i| (m, Some(i)))));
+    let Some((m, instance)) = found else { return Caps::default() };
+    let caps = &m["capabilities"];
+    let reasoning = caps["reasoning"]["allowed_options"]
+        .as_array()
+        .map(|options| {
+            let said: Vec<&str> = options.iter().filter_map(Value::as_str).collect();
+            LEVELS.iter().filter(|l| said.contains(l)).map(|l| l.to_string()).collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Caps {
+        vision: caps["vision"].as_bool(),
+        tools: caps["trained_for_tool_use"].as_bool(),
+        // A model that only reasons ("on" alone) has nothing to pick.
+        reasoning: if reasoning.len() > 1 { reasoning } else { Vec::new() },
+        max_context: m["max_context_length"].as_u64().unwrap_or(0),
+        loaded_context: instance.and_then(|i| i.pointer("/config/context_length").and_then(Value::as_u64)).unwrap_or(0),
+    }
+}
+
+/// What the chat sends as `reasoning_effort` (Ollama and LM Studio both take
+/// it on their OpenAI-compatible API) for the level picked, when the model
+/// takes that level: "off" is "none", "on" is "medium".
+pub fn reasoning_effort(caps: &Caps, picked: &str) -> Option<&'static str> {
+    if !caps.reasoning.iter().any(|l| l == picked) {
+        return None;
+    }
+    match picked {
+        "off" => Some("none"),
+        "on" | "medium" => Some("medium"),
+        "low" => Some("low"),
+        "high" => Some("high"),
+        _ => None,
+    }
+}
+
 // ── Downloads ─────────────────────────────────────────────────────────────────
 
 /// Ollama's progress, layer by layer: what each one has, summed.
@@ -327,6 +485,61 @@ pub async fn pull(app: &AppHandle, provider: &str, model: &str) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn ollama_says_what_a_model_can_do_and_the_context_it_runs_with() {
+        let show = json!({
+            "capabilities": ["completion", "vision", "tools", "thinking"],
+            "details": { "family": "qwen3" },
+            "model_info": { "general.architecture": "qwen3", "qwen3.context_length": 262144 },
+        });
+        let ps = json!({ "models": [{ "name": "qwen3-vl:8b", "model": "qwen3-vl:8b", "context_length": 65536 }] });
+        let caps = parse_ollama_caps("qwen3-vl:8b", &show, Some(&ps));
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536 });
+
+        // gpt-oss takes levels; ":latest" is the same model; not loaded, no context.
+        let show = json!({ "capabilities": ["completion", "tools", "thinking"], "details": { "family": "gptoss" } });
+        let ps = json!({ "models": [{ "name": "llama3.2:latest", "context_length": 4096 }] });
+        let caps = parse_ollama_caps("gpt-oss:20b", &show, Some(&ps));
+        assert_eq!((caps.vision, caps.reasoning.len(), caps.loaded_context), (Some(false), 3, 0));
+        let caps = parse_ollama_caps("llama3.2", &json!({ "capabilities": ["completion"] }), Some(&ps));
+        assert_eq!((caps.tools, caps.loaded_context), (Some(false), 4096));
+
+        // An Ollama too old to say: nothing known.
+        assert_eq!(parse_ollama_caps("m", &json!({}), None), Caps::default());
+    }
+
+    #[test]
+    fn lm_studio_says_what_a_model_can_do_and_the_context_it_was_loaded_with() {
+        let body = json!({ "models": [
+            { "key": "google/gemma-4-26b-a4b", "max_context_length": 262144,
+              "capabilities": { "vision": true, "trained_for_tool_use": true, "reasoning": { "allowed_options": ["off", "on"], "default": "on" } },
+              "loaded_instances": [{ "id": "google/gemma-4-26b-a4b", "config": { "context_length": 65536 } }] },
+            { "key": "deepseek/r1", "max_context_length": 131072,
+              "capabilities": { "vision": false, "trained_for_tool_use": true, "reasoning": { "allowed_options": ["on"], "default": "on" } },
+              "loaded_instances": [{ "id": "deepseek/r1:2", "config": { "context_length": 8192 } }] },
+            { "key": "nomic-embed", "type": "embedding", "loaded_instances": [] },
+        ] });
+        let caps = parse_lmstudio_caps("google/gemma-4-26b-a4b", &body);
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536 });
+        // A second copy by its instance id; "on" alone is nothing to pick.
+        let caps = parse_lmstudio_caps("deepseek/r1:2", &body);
+        assert_eq!((caps.vision, caps.reasoning.is_empty(), caps.loaded_context), (Some(false), true, 8192));
+        assert_eq!(parse_lmstudio_caps("nomic-embed", &body), Caps::default());
+        assert_eq!(parse_lmstudio_caps("unknown", &body), Caps::default());
+    }
+
+    #[test]
+    fn the_level_picked_goes_as_reasoning_effort_only_when_the_model_takes_it() {
+        let on_off = Caps { reasoning: vec!["off".into(), "on".into()], ..Caps::default() };
+        assert_eq!(reasoning_effort(&on_off, "off"), Some("none"));
+        assert_eq!(reasoning_effort(&on_off, "on"), Some("medium"));
+        assert_eq!(reasoning_effort(&on_off, "high"), None);
+        assert_eq!(reasoning_effort(&on_off, ""), None);
+        let levels = Caps { reasoning: vec!["low".into(), "medium".into(), "high".into()], ..Caps::default() };
+        assert_eq!(reasoning_effort(&levels, "low"), Some("low"));
+        assert_eq!(reasoning_effort(&Caps::default(), "low"), None);
+    }
 
     #[test]
     fn ollamas_models_in_memory_are_read_off_api_ps() {
