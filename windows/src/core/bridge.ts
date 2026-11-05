@@ -369,6 +369,10 @@ export const Bridge = {
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
   /** A chat's picture as a data URL, for its preview; null for any other file. */
   chatFilePreview: (path: string) => call<string | null>("chat_file_preview", { path }),
+  /** A deleted chat's copies in the inbox go, but for those `keep` names; how many went. */
+  inboxRelease: (paths: string[], keep: string[]) => call<number>("inbox_release", { paths, keep }),
+  /** The inbox's files no chat names in `keep`, a day old or more, go; how many went. */
+  inboxTidy: (keep: string[]) => call<number>("inbox_tidy", { keep }),
   /** Which of a chat's files are still where they were. */
   chatFilesPresent: (paths: string[]) => call<boolean[]>("chat_files_present", { paths }),
   /**

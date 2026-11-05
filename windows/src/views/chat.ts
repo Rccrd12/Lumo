@@ -85,7 +85,7 @@ import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
 import {
-  addChatFile, aiKind, chatFiles, dropChatFiles, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
+  addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
 import { planColor } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
@@ -1000,6 +1000,11 @@ function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: str
 // ── View ──────────────────────────────────────────────────────────────────────
 
 /** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
+/** The copies waiting in the field, not sent yet: never deleted from under it. */
+function fieldCopies(): string[] {
+  return [State.droppedFile?.path ?? "", ...State.moreFiles.map((f) => f.path)].filter(Boolean);
+}
+
 export function buildPrompt(
   onHeightChange: () => void,
   openSettings: () => void = () => void Bridge.openSettingsWindow(),
@@ -1008,6 +1013,9 @@ export function buildPrompt(
   chatDeleted: (chatId: string) => void = () => {},
   openTools: () => void = () => {},
 ): ViewHost {
+  // Copies no past chat names any more (deleted before Lumo released them,
+  // or gone past the history's end) leave the inbox once a day old.
+  void Bridge.inboxTidy([...keptCopies(), ...fieldCopies()]);
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   // The log stays where it is read: sending a question and the answer being
@@ -2243,7 +2251,10 @@ export function buildPrompt(
         deleteChat(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
+        // Its copies in the inbox too, but for those another chat or the field still has.
+        const copies = chatCopies(c.id);
         dropChatFiles(c.id);
+        if (copies.length > 0) void Bridge.inboxRelease(copies, [...keptCopies(), ...fieldCopies()]);
         // Being answered in the background: that answer ends with it.
         const run = runs.get(c.id);
         if (run) {
@@ -2756,6 +2767,8 @@ export function buildPrompt(
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = State.chatId;
       const history = State.chatHistory;
+      // Its copies in the inbox now belong to the chat: they go when it is deleted.
+      noteSentCopies(chatId, sent.map((f) => f.path));
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: nextId++, role: "user", content: query };

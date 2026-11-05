@@ -887,6 +887,19 @@ async fn ingest_file(path: String) -> Result<DroppedFile, String> {
     tauri::async_runtime::spawn_blocking(move || files::ingest(&path)).await.map_err(|e| e.to_string())?
 }
 
+/// A deleted chat's copies in the inbox go, but for those `keep` (the other
+/// chats) still name. Only files directly in the inbox are touched.
+#[tauri::command]
+async fn inbox_release(paths: Vec<String>, keep: Vec<String>) -> usize {
+    tauri::async_runtime::spawn_blocking(move || files::release(&paths, &keep)).await.unwrap_or(0)
+}
+
+/// The inbox's files no chat names in `keep`, a day old or more, go.
+#[tauri::command]
+async fn inbox_tidy(keep: Vec<String>) -> usize {
+    tauri::async_runtime::spawn_blocking(move || files::tidy(&keep)).await.unwrap_or(0)
+}
+
 /// Ctrl+V in the chat with an image (or a file the page can read): its bytes,
 /// sent raw, written into the inbox like a dropped file. The name rides in the
 /// `x-lumo-name` header, percent-encoded.
@@ -1260,6 +1273,8 @@ pub fn run() {
             calendar::calendar_fetch,
             media::media_control,
             ingest_file,
+            inbox_release,
+            inbox_tidy,
             file_preview,
             chat_files::chat_file_open,
             chat_files::chat_file_reveal,
