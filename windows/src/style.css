@@ -4147,19 +4147,126 @@ textarea.chat-input {
   overflow-wrap: anywhere;
 }
 
-.reply-copy-diff {
-  max-height: 180px;
+.reply-copy-where {
+  font-weight: 400;
+  color: var(--dim-3);
+}
+
+.reply-copy-count {
+  flex: none;
+  font: 500 10px var(--mono);
+}
+
+.reply-copy-count .plus { color: var(--green); }
+.reply-copy-count .minus { color: var(--red); }
+
+.reply-copy-btn.on {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+}
+
+.reply-copy-row .reply-copy-note {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-copy-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The copy rewritten: its text, read as a document. */
+.reply-copy-text {
+  max-height: 220px;
   overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 400 12px/1.5 var(--font);
+  color: #d6d9de;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* A few changed lines: before and after side by side. */
+.reply-copy-pair {
+  display: flex;
+  gap: 6px;
+}
+
+.reply-copy-side {
+  flex: 1 1 0;
+  min-width: 0;
   padding: 6px 8px;
   border-radius: 6px;
   background: rgba(0, 0, 0, 0.25);
-  font: 400 10.5px/1.45 ui-monospace, Consolas, monospace;
-  white-space: pre;
+  font: 400 11.5px/1.45 var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
 }
 
-.reply-copy-diff .diff-add { color: #6ee7b7; }
-.reply-copy-diff .diff-del { color: #fca5a5; }
-.reply-copy-diff .diff-same { color: #7b8089; }
+.reply-copy-side.del { color: #fca5a5; }
+.reply-copy-side.add { color: #86efac; }
+
+.reply-copy-side mark {
+  border-radius: 2px;
+  color: inherit;
+}
+
+.reply-copy-side.del mark { background: rgba(244, 80, 94, 0.28); color: #fecaca; }
+.reply-copy-side.add mark { background: rgba(34, 197, 94, 0.28); color: #bbf7d0; }
+
+.reply-copy-label {
+  margin-bottom: 2px;
+  font: 500 10px var(--font);
+  color: var(--dim-3);
+}
+
+/* The changed lines and their neighbours, numbered, each wrapped. */
+.reply-copy-diff {
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  user-select: text;
+}
+
+.copy-line {
+  display: flex;
+  min-height: 15px; /* an empty line still takes a row */
+  padding: 0 8px 0 0;
+  font: 400 10.5px/1.45 var(--mono);
+  color: #7b8089;
+}
+
+.copy-line .num {
+  flex: 0 0 30px;
+  padding-right: 6px;
+  text-align: right;
+  color: #454850;
+}
+
+.copy-line .sym {
+  flex: 0 0 12px;
+  color: #454850;
+}
+
+.copy-line .txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.copy-line.add { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+.copy-line.add .sym { color: var(--green); }
+.copy-line.del { background: rgba(244, 80, 94, 0.12); color: #fca5a5; }
+.copy-line.del .sym { color: var(--red); }
+.copy-line.gap { padding-left: 36px; color: #454850; }
 
 .msg-stopped {
   font: 400 10.5px var(--font);

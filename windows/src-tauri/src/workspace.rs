@@ -633,7 +633,16 @@ pub fn workspace_diff(chat: String, path: String) -> Result<Diff, String> {
     let (entry, _) = ws.entry_of(Path::new(&path)).ok_or("This file wasn't copied from the computer.")?;
     let before = std::fs::read_to_string(&entry.original).unwrap_or_default();
     let after = std::fs::read_to_string(&path).map_err(|_| "This copy isn't text: its changes can't be shown.".to_string())?;
-    Ok(Diff { original: entry.original, lines: diff_lines(&before, &after) })
+    let (lines, numbers) = diff_numbered(&before, &after);
+    let mut text: String = after.chars().take(DIFF_TEXT).collect();
+    if text.len() < after.len() {
+        text.push('…');
+    }
+    let mut was: String = before.chars().take(DIFF_TEXT).collect();
+    if was.len() < before.len() {
+        was.push('…');
+    }
+    Ok(Diff { original: entry.original, lines, numbers, before_lines: before.lines().count(), after_lines: after.lines().count(), text, before: was })
 }
 
 /// Puts the copy back over its original, after the user's click: where the
@@ -668,16 +677,34 @@ pub struct Diff {
     pub original: String,
     /// " line", "-line", "+line", or "…" where unchanged lines are left out.
     pub lines: Vec<String>,
+    /// Each line's number: in the original for "-", in the copy otherwise (0 for "…").
+    pub numbers: Vec<usize>,
+    /// How many lines the original and the copy have.
+    pub before_lines: usize,
+    pub after_lines: usize,
+    /// The copy's text and the original's, at most DIFF_TEXT characters each:
+    /// what is shown when the copy is rewritten.
+    pub text: String,
+    pub before: String,
 }
 
 /// The most lines compared line by line; past it, the whole of each is shown.
 const DIFF_MAX: usize = 3_000;
+/// The most characters of the copy's text sent along with its differences.
+const DIFF_TEXT: usize = 20_000;
 
+#[cfg(test)]
 fn diff_lines(before: &str, after: &str) -> Vec<String> {
+    diff_numbered(before, after).0
+}
+
+fn diff_numbered(before: &str, after: &str) -> (Vec<String>, Vec<usize>) {
     let a: Vec<&str> = before.lines().collect();
     let b: Vec<&str> = after.lines().collect();
     if a.len() > DIFF_MAX || b.len() > DIFF_MAX {
-        return a.iter().map(|l| format!("-{l}")).chain(b.iter().map(|l| format!("+{l}"))).take(2 * DIFF_MAX).collect();
+        let lines = a.iter().map(|l| format!("-{l}")).chain(b.iter().map(|l| format!("+{l}"))).take(2 * DIFF_MAX).collect();
+        let numbers = (1..=a.len()).chain(1..=b.len()).take(2 * DIFF_MAX).collect();
+        return (lines, numbers);
     }
     // The longest common lines (LCS), then the edit script.
     let mut lcs = vec![vec![0u16; b.len() + 1]; a.len() + 1];
@@ -687,19 +714,23 @@ fn diff_lines(before: &str, after: &str) -> Vec<String> {
         }
     }
     let mut script = Vec::new();
+    let mut numbers = Vec::new();
     let (mut i, mut j) = (0, 0);
     while i < a.len() || j < b.len() {
         if i < a.len() && j < b.len() && a[i] == b[j] {
             script.push(format!(" {}", a[i]));
             i += 1;
             j += 1;
+            numbers.push(j);
         } else if i < a.len() && (j == b.len() || lcs[i + 1][j] >= lcs[i][j + 1]) {
             // What goes, before what comes in its place.
             script.push(format!("-{}", a[i]));
             i += 1;
+            numbers.push(i);
         } else {
             script.push(format!("+{}", b[j]));
             j += 1;
+            numbers.push(j);
         }
     }
     // Three lines of context around each change; the rest is "…".
@@ -709,14 +740,17 @@ fn diff_lines(before: &str, after: &str) -> Vec<String> {
         script[lo..hi].iter().any(|l| !l.starts_with(' '))
     }).collect();
     let mut out = Vec::new();
+    let mut nums = Vec::new();
     for (k, line) in script.into_iter().enumerate() {
         if near[k] {
             out.push(line);
+            nums.push(numbers[k]);
         } else if out.last().map(String::as_str) != Some("…") {
             out.push("…".into());
+            nums.push(0);
         }
     }
-    out
+    (out, nums)
 }
 
 #[cfg(test)]
@@ -815,6 +849,7 @@ mod tests {
         let after = before.replace("10", "dieci");
         assert_eq!(diff_lines(&before, &after), ["…", " 7", " 8", " 9", "-10", "+dieci", " 11", " 12", " 13", "…"]);
         assert_eq!(diff_lines("a", "a\nb"), [" a", "+b"]);
+        assert_eq!(diff_numbered("a\nb\nc", "a\nB\nc").1, [1, 2, 2, 3]);
         assert_eq!(safe_id("chat-1/../x"), "chat-1____x");
     }
 }

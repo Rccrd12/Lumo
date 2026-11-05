@@ -14604,6 +14604,138 @@
    "ru": "{name} вернул ошибку без объяснения причины. Посмотрите в {name} и спросите ещё раз.",
    "id": "{name} menjawab dengan galat tanpa menyebut alasannya. Periksa {name}, lalu tanyakan lagi.",
    "it": "{name} ha risposto con un errore senza dire il motivo. Controlla {name}, poi chiedi di nuovo."
+  },
+  "rewritten": {
+   "zh-Hans": "已重写",
+   "hi": "फिर से लिखा",
+   "es": "reescrito",
+   "ar": "أُعيدت كتابته",
+   "fr": "réécrit",
+   "bn": "নতুন করে লেখা",
+   "pt-BR": "reescrito",
+   "ru": "переписан",
+   "id": "ditulis ulang",
+   "it": "riscritto"
+  },
+  "line {n}": {
+   "zh-Hans": "第 {n} 行",
+   "hi": "पंक्ति {n}",
+   "es": "línea {n}",
+   "ar": "السطر {n}",
+   "fr": "ligne {n}",
+   "bn": "লাইন {n}",
+   "pt-BR": "linha {n}",
+   "ru": "строка {n}",
+   "id": "baris {n}",
+   "it": "riga {n}"
+  },
+  "{count} places": {
+   "zh-Hans": "{count} 处",
+   "hi": "{count} जगह",
+   "es": "{count} sitios",
+   "ar": "{count} مواضع",
+   "fr": "{count} endroits",
+   "bn": "{count} জায়গায়",
+   "pt-BR": "{count} lugares",
+   "ru": "мест: {count}",
+   "id": "{count} tempat",
+   "it": "{count} punti"
+  },
+  "New text": {
+   "zh-Hans": "新文本",
+   "hi": "नया टेक्स्ट",
+   "es": "Texto nuevo",
+   "ar": "النص الجديد",
+   "fr": "Nouveau texte",
+   "bn": "নতুন লেখা",
+   "pt-BR": "Texto novo",
+   "ru": "Новый текст",
+   "id": "Teks baru",
+   "it": "Testo nuovo"
+  },
+  "Changes": {
+   "zh-Hans": "修改",
+   "hi": "बदलाव",
+   "es": "Cambios",
+   "ar": "التغييرات",
+   "fr": "Modifications",
+   "bn": "পরিবর্তন",
+   "pt-BR": "Alterações",
+   "ru": "Изменения",
+   "id": "Perubahan",
+   "it": "Modifiche"
+  },
+  "Before and after": {
+   "zh-Hans": "修改前后",
+   "hi": "पहले और बाद में",
+   "es": "Antes y después",
+   "ar": "قبل وبعد",
+   "fr": "Avant et après",
+   "bn": "আগে ও পরে",
+   "pt-BR": "Antes e depois",
+   "ru": "До и после",
+   "id": "Sebelum dan sesudah",
+   "it": "Prima e dopo"
+  },
+  "Before": {
+   "zh-Hans": "之前",
+   "hi": "पहले",
+   "es": "Antes",
+   "ar": "قبل",
+   "fr": "Avant",
+   "bn": "আগে",
+   "pt-BR": "Antes",
+   "ru": "До",
+   "id": "Sebelum",
+   "it": "Prima"
+  },
+  "After": {
+   "zh-Hans": "之后",
+   "hi": "बाद में",
+   "es": "Después",
+   "ar": "بعد",
+   "fr": "Après",
+   "bn": "পরে",
+   "pt-BR": "Depois",
+   "ru": "После",
+   "id": "Sesudah",
+   "it": "Dopo"
+  },
+  "Before, it was empty.": {
+   "zh-Hans": "之前是空的。",
+   "hi": "पहले यह खाली थी।",
+   "es": "Antes estaba vacío.",
+   "ar": "كان فارغًا من قبل.",
+   "fr": "Avant, il était vide.",
+   "bn": "আগে এটি খালি ছিল।",
+   "pt-BR": "Antes, estava vazio.",
+   "ru": "Раньше он был пустым.",
+   "id": "Sebelumnya kosong.",
+   "it": "Prima era vuoto."
+  },
+  "Before, it was: “{text}”": {
+   "zh-Hans": "之前是：“{text}”",
+   "hi": "पहले यह था: “{text}”",
+   "es": "Antes era: «{text}»",
+   "ar": "كان من قبل: «{text}»",
+   "fr": "Avant : « {text} »",
+   "bn": "আগে ছিল: “{text}”",
+   "pt-BR": "Antes era: “{text}”",
+   "ru": "Раньше было: «{text}»",
+   "id": "Sebelumnya: “{text}”",
+   "it": "Prima era: «{text}»"
+  },
+  "Before, it had {count} lines.": {
+   "zh-Hans": "之前有 {count} 行。",
+   "hi": "पहले इसमें {count} पंक्तियाँ थीं।",
+   "es": "Antes tenía {count} líneas.",
+   "ar": "كان يحتوي من قبل على {count} سطرًا.",
+   "fr": "Avant, il faisait {count} lignes.",
+   "bn": "আগে এতে {count}টি লাইন ছিল।",
+   "pt-BR": "Antes tinha {count} linhas.",
+   "ru": "Раньше в нём было строк: {count}.",
+   "id": "Sebelumnya ada {count} baris.",
+   "it": "Prima aveva {count} righe."
   }
  }
 }

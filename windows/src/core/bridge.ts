@@ -1,3 +1,4 @@
+import type { CopyDiff } from "./copy-diff";
 import type { ChatCompact } from "./chats";
 // Thin wrapper over the Tauri commands/events. Every call is a no-op when the
 // page is opened in a plain browser, so the island can be iterated on with
@@ -378,7 +379,7 @@ export const Bridge = {
    */
   chatFileOpen: (path: string) => call<string>("chat_file_open", { path }),
   /** The chat's folder of copies (workspace.rs): a copy and its original, line by line. */
-  workspaceDiff: (chat: string, path: string) => callOrThrow<{ original: string; lines: string[] }>("workspace_diff", { chat, path }),
+  workspaceDiff: (chat: string, path: string) => callOrThrow<CopyDiff>("workspace_diff", { chat, path }),
   /** The copy over its original, after a click: where the original was kept. */
   workspacePutBack: (chat: string, path: string) => callOrThrow<string>("workspace_put_back", { chat, path }),
   workspaceReveal: (chat: string) => call<void>("workspace_reveal", { chat }),

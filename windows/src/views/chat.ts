@@ -102,6 +102,7 @@ import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
+import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
 import { LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
@@ -292,6 +293,17 @@ const COPY_STRINGS = {
   folder: N_("Show the folder"),
   confirm: N_("Write it over the original"),
   over: N_("Over {path}. The original is kept beside it first."),
+  rewritten: N_("rewritten"),
+  line: N_("line {n}"),
+  places: N_("{count} places"),
+  newText: N_("New text"),
+  changes: N_("Changes"),
+  sideBySide: N_("Before and after"),
+  before: N_("Before"),
+  after: N_("After"),
+  wasEmpty: N_("Before, it was empty."),
+  was: N_("Before, it was: “{text}”"),
+  wasLines: N_("Before, it had {count} lines."),
   done: N_("Put back. The original was kept as {name}."),
   doneNew: N_("Put back."),
   unchanged: N_("The copy is the same as the original."),
@@ -317,34 +329,54 @@ function copiesBox(copies: { chat: string; path: string; made?: boolean }[]): HT
     open.addEventListener("click", () => void Bridge.chatFileOpen(copy.path));
     const folder = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.folder) });
     folder.addEventListener("click", () => void Bridge.chatFileReveal(copy.path));
-    box.append(h("div", { class: "reply-copy" },
-      h("div", { class: "reply-copy-row" },
-        h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder),
-      detail));
+    const row = h("div", { class: "reply-copy-row" },
+      h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder);
+    box.append(h("div", { class: "reply-copy" }, row, detail));
     // A copy of a file of the computer shows what changed right away.
-    if (!copy.made) void showDiff(copy, detail);
+    if (!copy.made) void showDiff(copy, detail, row);
   }
   return box;
 }
 
-async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement) {
+async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement, row: HTMLElement) {
   clear(detail);
-  let diff: { original: string; lines: string[] };
+  let diff: CopyDiff;
   try {
     diff = await Bridge.workspaceDiff(copy.chat, copy.path);
   } catch (err) {
     detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
     return;
   }
-  if (!diff.lines.some((l) => l.startsWith("+") || l.startsWith("-"))) {
+  const { added, removed } = counts(diff);
+  if (added + removed === 0) {
     detail.append(h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.unchanged) }));
     return;
   }
-  const lines = h("div", { class: "reply-copy-diff" },
-    ...diff.lines.slice(0, 400).map((l) => h("div", {
-      class: l.startsWith("+") ? "diff-add" : l.startsWith("-") ? "diff-del" : "diff-same",
-      text: l,
-    })));
+  const best = copyView(diff);
+  const found = pairs(diff);
+  // Beside the name: how it changed.
+  const where = best === "text" ? t(COPY_STRINGS.rewritten)
+    : found.length === 1 ? t(COPY_STRINGS.line, { n: found[0].at }) : t(COPY_STRINGS.places, { count: found.length });
+  const name = row.querySelector(".reply-copy-name");
+  if (name) name.append(h("span", { class: "reply-copy-where", text: ` · ${where}` }));
+  name?.after(h("span", { class: "reply-copy-count" },
+    h("span", { class: "plus", text: `+${added}` }), " ", h("span", { class: "minus", text: `−${removed}` })));
+
+  const body = h("div", { class: "reply-copy-body" });
+  const show = (view: CopyView) => {
+    clear(body);
+    if (view === "text") body.append(newText(diff));
+    else if (view === "pairs") body.append(sideBySide(found));
+    else body.append(changedLines(diff));
+    for (const [b, v] of tabs) b.classList.toggle("on", v === view);
+  };
+  // The rewritten file and the few changed lines can also be seen line by line.
+  const tabs: [HTMLElement, CopyView][] = best === "byLine" ? [] : [
+    [h("button", { class: "reply-copy-btn", text: t(best === "text" ? COPY_STRINGS.newText : COPY_STRINGS.sideBySide) }), best],
+    [h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.changes) }), "byLine"],
+  ];
+  for (const [b, v] of tabs) b.addEventListener("click", () => show(v));
+
   const confirm = h("button", { class: "reply-copy-btn primary", text: t(COPY_STRINGS.confirm) });
   confirm.addEventListener("click", async () => {
     try {
@@ -356,10 +388,45 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
       detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
     }
   });
+  if (tabs.length) detail.append(h("div", { class: "reply-copy-row" }, ...tabs.map(([b]) => b)));
   detail.append(
-    h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.over, { path: diff.original }) }),
-    lines,
-    h("div", { class: "reply-copy-row" }, confirm));
+    body,
+    h("div", { class: "reply-copy-row" }, confirm, h("span", { class: "reply-copy-note", text: t(COPY_STRINGS.over, { path: diff.original }) })));
+  show(best);
+}
+
+/** The copy rewritten: its text, to read, and what it was. */
+function newText(diff: CopyDiff): HTMLElement {
+  const before = diff.before.trim();
+  const was = before === "" ? t(COPY_STRINGS.wasEmpty)
+    : before.length <= 80 && !before.includes("\n") ? t(COPY_STRINGS.was, { text: before })
+    : t(COPY_STRINGS.wasLines, { count: diff.beforeLines });
+  return h("div", { class: "reply-copy-view" },
+    h("div", { class: "reply-copy-text", text: diff.text }),
+    h("div", { class: "reply-copy-note", text: was }));
+}
+
+/** A few changed lines: before and after side by side, the changed words lit. */
+function sideBySide(found: Pair[]): HTMLElement {
+  const marked = (segments: Segment[]) => segments.map((s) => s.changed ? h("mark", { text: s.text }) : document.createTextNode(s.text));
+  return h("div", { class: "reply-copy-view" }, ...found.map((p) => {
+    const words = wordMarks(p.before.join("\n"), p.after.join("\n"));
+    return h("div", { class: "reply-copy-pair" },
+      h("div", { class: "reply-copy-side del" }, h("div", { class: "reply-copy-label", text: t(COPY_STRINGS.before) }), ...marked(words.before)),
+      h("div", { class: "reply-copy-side add" }, h("div", { class: "reply-copy-label", text: t(COPY_STRINGS.after) }), ...marked(words.after)));
+  }));
+}
+
+/** The changed lines with three of their neighbours, numbered, each wrapped. */
+function changedLines(diff: CopyDiff): HTMLElement {
+  return h("div", { class: "reply-copy-diff" }, ...diff.lines.slice(0, 400).map((l, i) => {
+    if (l === "…") return h("div", { class: "copy-line gap", text: "⋯" });
+    const kind = l[0] === "+" ? "add" : l[0] === "-" ? "del" : "same";
+    return h("div", { class: `copy-line ${kind}` },
+      h("span", { class: "num", text: String(diff.numbers[i] || "") }),
+      h("span", { class: "sym", text: kind === "add" ? "+" : kind === "del" ? "−" : "" }),
+      h("span", { class: "txt", text: l.slice(1) }));
+  }));
 }
 
 /** What the line next to the typing dots says (claude_code.rs Activity). */
