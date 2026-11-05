@@ -13,6 +13,11 @@ test("a file written anew is shown as its new text", () => {
   assert.equal(copyView(d), "text");
 });
 
+test("a paragraph made longer is shown before and after, not as a new text", () => {
+  const d = diff(["-L'IA si basa su reti neurali. I pesi contano.", "+L'IA si basa su reti neurali. I pesi contano. Questa capacità permette molto."], [1, 1], 1, 1);
+  assert.equal(copyView(d), "pairs");
+});
+
 test("a few lines of a long file are shown before and after", () => {
   const d = diff(["…", " a", " b", " c", "-La consegna è il 12 marzo.", "+La consegna è il 19 marzo.", " d", "…"], [0, 39, 40, 41, 42, 42, 43, 0], 184, 184);
   assert.equal(copyView(d), "pairs");

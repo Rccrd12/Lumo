@@ -292,7 +292,6 @@ const COPY_STRINGS = {
   open: N_("Open"),
   folder: N_("Show the folder"),
   confirm: N_("Write it over the original"),
-  over: N_("Over {path}. The original is kept beside it first."),
   rewritten: N_("rewritten"),
   line: N_("line {n}"),
   places: N_("{count} places"),
@@ -304,8 +303,8 @@ const COPY_STRINGS = {
   wasEmpty: N_("Before, it was empty."),
   was: N_("Before, it was: “{text}”"),
   wasLines: N_("Before, it had {count} lines."),
-  done: N_("Put back. The original was kept as {name}."),
-  doneNew: N_("Put back."),
+  wasLine: N_("Before, it had one line."),
+  done: N_("Written over the original."),
   unchanged: N_("The copy is the same as the original."),
 };
 
@@ -380,10 +379,9 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
   const confirm = h("button", { class: "reply-copy-btn primary", text: t(COPY_STRINGS.confirm) });
   confirm.addEventListener("click", async () => {
     try {
-      const kept = await Bridge.workspacePutBack(copy.chat, copy.path);
+      await Bridge.workspacePutBack(copy.chat, copy.path);
       clear(detail);
-      const keptName = kept.split(/[\\/]/).pop() ?? kept;
-      detail.append(h("div", { class: "reply-copy-note", text: kept ? t(COPY_STRINGS.done, { name: keptName }) : t(COPY_STRINGS.doneNew) }));
+      detail.append(h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.done) }));
     } catch (err) {
       detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
     }
@@ -391,7 +389,7 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
   if (tabs.length) detail.append(h("div", { class: "reply-copy-row" }, ...tabs.map(([b]) => b)));
   detail.append(
     body,
-    h("div", { class: "reply-copy-row" }, confirm, h("span", { class: "reply-copy-note", text: t(COPY_STRINGS.over, { path: diff.original }) })));
+    h("div", { class: "reply-copy-row" }, confirm));
   show(best);
 }
 
@@ -400,7 +398,7 @@ function newText(diff: CopyDiff): HTMLElement {
   const before = diff.before.trim();
   const was = before === "" ? t(COPY_STRINGS.wasEmpty)
     : before.length <= 80 && !before.includes("\n") ? t(COPY_STRINGS.was, { text: before })
-    : t(COPY_STRINGS.wasLines, { count: diff.beforeLines });
+    : diff.beforeLines === 1 ? t(COPY_STRINGS.wasLine) : t(COPY_STRINGS.wasLines, { count: diff.beforeLines });
   return h("div", { class: "reply-copy-view" },
     h("div", { class: "reply-copy-text", text: diff.text }),
     h("div", { class: "reply-copy-note", text: was }));

@@ -83,13 +83,28 @@ const REWRITTEN = 0.3;
 /** The view that shows best what changed. */
 export function copyView(diff: CopyDiff): CopyView {
   const { added, removed } = counts(diff);
-  const kept = Math.max(0, diff.afterLines - added);
-  if (diff.afterLines > 0 && kept <= REWRITTEN * Math.max(diff.beforeLines, diff.afterLines)) return "text";
-  // Lines reworded, not added or taken away: what was there beside what is there now.
   const found = pairs(diff);
+  // Lines reworded, not added or taken away: what was there beside what is there now.
   const reworded = found.every((p) => p.before.length > 0 && p.after.length > 0 && p.before.length <= PAIR_LINES && p.after.length <= PAIR_LINES);
-  if (diff.beforeLines >= LONG_FILE && added + removed <= FEW_LINES && found.length <= FEW_PAIRS && reworded) return "pairs";
+  const few = added + removed <= FEW_LINES && found.length <= FEW_PAIRS;
+  // Rewritten: little of it is left, and what replaced it shares few words with what was there.
+  const kept = Math.max(0, diff.afterLines - added);
+  const little = diff.afterLines > 0 && kept <= REWRITTEN * Math.max(diff.beforeLines, diff.afterLines);
+  if (little && !(few && reworded && found.every(alike))) return "text";
+  if (few && reworded && (diff.beforeLines >= LONG_FILE || found.every(alike))) return "pairs";
   return "byLine";
+}
+
+/** At least this share of the words that were there are still there. */
+const ALIKE = 0.4;
+
+/** A block whose new lines keep much of what the old ones said. */
+function alike(p: Pair): boolean {
+  const words = (lines: string[]) => lines.join(" ").toLowerCase().split(/\s+/).filter((w) => w !== "");
+  const before = words(p.before);
+  if (before.length === 0) return false;
+  const after = new Set(words(p.after));
+  return before.filter((w) => after.has(w)).length >= ALIKE * before.length;
 }
 
 /** Words, and the spaces between them, each a token of its own. */

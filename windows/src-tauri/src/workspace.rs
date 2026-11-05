@@ -5,9 +5,8 @@
 // no "..", no drive or root, no link or junction on the way.
 //
 // The user finds what changed in the chat's files (`chat-file` events), and
-// puts a copy back over its original with a click (`workspace_put_back`), its
-// differences seen first and the original kept beside it as
-// `name.bak-<date>`, as for ~/.claude/settings.json.
+// writes a copy over its original with a click (`workspace_put_back`), its
+// differences seen first.
 //
 // %LOCALAPPDATA%\com.rccrd12.lumo\workspaces\<chat>; deleted with the chat.
 
@@ -580,29 +579,12 @@ impl Workspace {
         self.manifest().into_iter().find(|e| e.copy == key).map(|e| (e, rel.to_path_buf()))
     }
 
-    /// The copy over its original, the original kept beside it first
-    /// (`name.bak-<date>`): where that backup is.
-    fn put_back(&self, copy: &Path) -> Result<String, String> {
+    /// The copy over its original, after the user's click.
+    fn put_back(&self, copy: &Path) -> Result<(), String> {
         let (entry, _) = self.entry_of(copy).ok_or("This file wasn't copied from the computer: there's nowhere to put it back.")?;
         let original = Path::new(&entry.original);
         let bytes = std::fs::read(copy).map_err(|e| e.to_string())?;
-        let mut backup = String::new();
-        if original.exists() {
-            let stamp = {
-                let t = crate::platform::local_time();
-                format!("{:04}{:02}{:02}-{:02}{:02}{:02}", t.year, t.month, t.day, t.hour, t.minute, t.second)
-            };
-            let name = original.file_name().unwrap_or_default().to_string_lossy().to_string();
-            let mut to = original.with_file_name(format!("{name}.bak-{stamp}"));
-            for n in 1..100 {
-                if !to.exists() {
-                    break;
-                }
-                to = original.with_file_name(format!("{name}.bak-{stamp}-{n}"));
-            }
-            std::fs::copy(original, &to).map_err(|e| e.to_string())?;
-            backup = to.to_string_lossy().to_string();
-        } else if let Some(parent) = original.parent() {
+        if let Some(parent) = original.parent().filter(|_| !original.exists()) {
             std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
         }
         std::fs::write(original, &bytes).map_err(|e| e.to_string())?;
@@ -615,7 +597,7 @@ impl Workspace {
             e
         }).collect();
         self.save_manifest(&entries)?;
-        Ok(backup)
+        Ok(())
     }
 }
 
@@ -645,16 +627,10 @@ pub fn workspace_diff(chat: String, path: String) -> Result<Diff, String> {
     Ok(Diff { original: entry.original, lines, numbers, before_lines: before.lines().count(), after_lines: after.lines().count(), text, before: was })
 }
 
-/// Puts the copy back over its original, after the user's click: where the
-/// original was kept (empty when there was none).
+/// Writes the copy over its original, after the user's click.
 #[tauri::command(async)]
-pub fn workspace_put_back(chat: String, path: String) -> Result<String, String> {
-    let ws = Workspace::new(dir(&chat));
-    let backup = ws.put_back(Path::new(&path))?;
-    if !backup.is_empty() {
-        crate::chat_files::remember(&backup);
-    }
-    Ok(backup)
+pub fn workspace_put_back(chat: String, path: String) -> Result<(), String> {
+    Workspace::new(dir(&chat)).put_back(Path::new(&path))
 }
 
 /// The chat's folder in File Explorer.
@@ -804,11 +780,10 @@ mod tests {
         assert!(changes.iter().any(|c| c.path.ends_with("notes.txt") && c.original.as_deref() == Some(notes.as_str())));
         assert!(changes.iter().any(|c| c.path.ends_with("summary.md") && c.original.is_none()));
 
-        // Put back: the original kept beside it, then the copy over it.
+        // Written over the original, with nothing left beside it.
         let copy = ws.dir.join("notes.txt");
-        let backup = ws.put_back(&copy).unwrap();
-        assert!(backup.contains("notes.txt.bak-"));
-        assert_eq!(std::fs::read_to_string(&backup).unwrap(), "uno\ndue\ntre\n");
+        ws.put_back(&copy).unwrap();
+        assert_eq!(std::fs::read_dir(&computer).unwrap().filter_map(Result::ok).filter(|e| e.file_name().to_string_lossy().contains(".bak")).count(), 0);
         assert_eq!(std::fs::read_to_string(computer.join("notes.txt")).unwrap(), "uno\nDUE\ntre\n");
         assert_eq!(ws.changes().len(), 1, "back in place, no longer a change");
         assert!(ws.put_back(&ws.dir.join("out/summary.md")).is_err());

@@ -380,8 +380,8 @@ export const Bridge = {
   chatFileOpen: (path: string) => call<string>("chat_file_open", { path }),
   /** The chat's folder of copies (workspace.rs): a copy and its original, line by line. */
   workspaceDiff: (chat: string, path: string) => callOrThrow<CopyDiff>("workspace_diff", { chat, path }),
-  /** The copy over its original, after a click: where the original was kept. */
-  workspacePutBack: (chat: string, path: string) => callOrThrow<string>("workspace_put_back", { chat, path }),
+  /** The copy written over its original, after a click. */
+  workspacePutBack: (chat: string, path: string) => callOrThrow<void>("workspace_put_back", { chat, path }),
   workspaceReveal: (chat: string) => call<void>("workspace_reveal", { chat }),
   workspaceDelete: (chat: string) => call<void>("workspace_delete", { chat }),
   /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */

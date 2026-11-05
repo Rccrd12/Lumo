@@ -14533,42 +14533,6 @@
    "id": "Tulis di atas aslinya",
    "it": "Scrivilo sopra l'originale"
   },
-  "Over {path}. The original is kept beside it first.": {
-   "zh-Hans": "覆盖 {path}。原文件会先在旁边保留一份。",
-   "hi": "{path} के ऊपर। मूल पहले उसके पास रख लिया जाता है।",
-   "es": "Sobre {path}. Antes se guarda el original a su lado.",
-   "ar": "فوق {path}. يُحفظ الأصل بجانبه أولًا.",
-   "fr": "Sur {path}. L'original est d'abord gardé à côté.",
-   "bn": "{path}-এর উপর। মূলটি আগে তার পাশে রেখে দেওয়া হয়।",
-   "pt-BR": "Sobre {path}. O original é guardado ao lado antes.",
-   "ru": "Поверх {path}. Сначала оригинал сохраняется рядом.",
-   "id": "Di atas {path}. Aslinya disimpan dulu di sebelahnya.",
-   "it": "Sopra {path}. Prima l'originale viene salvato lì accanto."
-  },
-  "Put back. The original was kept as {name}.": {
-   "zh-Hans": "已放回。原文件保存为 {name}。",
-   "hi": "वापस रख दिया। मूल {name} के रूप में रखा गया।",
-   "es": "Devuelto. El original se guardó como {name}.",
-   "ar": "تمت الإعادة. حُفظ الأصل باسم {name}.",
-   "fr": "Remis en place. L'original a été gardé sous le nom {name}.",
-   "bn": "আগের জায়গায় রাখা হয়েছে। মূলটি {name} নামে রাখা হয়েছে।",
-   "pt-BR": "Colocado de volta. O original foi guardado como {name}.",
-   "ru": "Возвращено. Оригинал сохранён как {name}.",
-   "id": "Dikembalikan. Aslinya disimpan sebagai {name}.",
-   "it": "Rimesso al suo posto. L'originale è stato salvato come {name}."
-  },
-  "Put back.": {
-   "zh-Hans": "已放回。",
-   "hi": "वापस रख दिया।",
-   "es": "Devuelto.",
-   "ar": "تمت الإعادة.",
-   "fr": "Remis en place.",
-   "bn": "আগের জায়গায় রাখা হয়েছে।",
-   "pt-BR": "Colocado de volta.",
-   "ru": "Возвращено.",
-   "id": "Dikembalikan.",
-   "it": "Rimesso al suo posto."
-  },
   "The copy is the same as the original.": {
    "zh-Hans": "副本与原文件相同。",
    "hi": "कॉपी मूल जैसी ही है।",
@@ -14736,6 +14700,30 @@
    "ru": "Раньше в нём было строк: {count}.",
    "id": "Sebelumnya ada {count} baris.",
    "it": "Prima aveva {count} righe."
+  },
+  "Written over the original.": {
+   "zh-Hans": "已覆盖原文件。",
+   "hi": "मूल फ़ाइल पर लिख दिया गया।",
+   "es": "Escrito sobre el original.",
+   "ar": "تمت الكتابة فوق الأصل.",
+   "fr": "Écrit par-dessus l'original.",
+   "bn": "মূল ফাইলের ওপর লেখা হয়েছে।",
+   "pt-BR": "Gravado sobre o original.",
+   "ru": "Записано поверх оригинала.",
+   "id": "Ditulis di atas file asli.",
+   "it": "Scritto sopra l'originale."
+  },
+  "Before, it had one line.": {
+   "zh-Hans": "之前只有一行。",
+   "hi": "पहले इसमें एक पंक्ति थी।",
+   "es": "Antes tenía una línea.",
+   "ar": "كان يحتوي من قبل على سطر واحد.",
+   "fr": "Avant, il faisait une ligne.",
+   "bn": "আগে এতে একটি লাইন ছিল।",
+   "pt-BR": "Antes tinha uma linha.",
+   "ru": "Раньше в нём была одна строка.",
+   "id": "Sebelumnya ada satu baris.",
+   "it": "Prima aveva una riga."
   }
  }
 }
