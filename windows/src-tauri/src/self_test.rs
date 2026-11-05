@@ -418,6 +418,11 @@ fn names(r: &Run) -> String {
 }
 
 /// What every scenario is checked for, besides its own checks.
+/// The requests of a turn the server lost or refused, and Lumo asked again.
+fn lost_requests(o: &Outcome) -> usize {
+    o.fixes.iter().filter(|f| **f == "asked again").count()
+}
+
 fn common(r: &Run, expect_cut: bool) -> Vec<(Level, String)> {
     let mut out = vec![];
     for (i, t) in r.turns.iter().enumerate() {
@@ -434,8 +439,11 @@ fn common(r: &Run, expect_cut: bool) -> Vec<(Level, String)> {
                 if o.end == End::Cut && !expect_cut {
                     out.push((Level::Warn, format!("risposta tagliata al limite di lunghezza{n}")));
                 }
-                if o.fixes.contains(&"asked again") {
-                    out.push((Level::Warn, format!("il server ha perso o rifiutato una richiesta, rifatta una volta{n}")));
+                // The server losing requests (LM Studio's own bug) isn't
+                // Lumo's doing: said, not counted as a warning.
+                let lost = lost_requests(o);
+                if lost > 0 {
+                    out.push((Level::Ok, format!("il server ha perso {lost} richiest{}, rifatt{} da Lumo{n}", if lost == 1 { "a" } else { "e" }, if lost == 1 { "a" } else { "e" })));
                 }
                 if o.fixes.contains(&"answered whole") {
                     out.push((Level::Warn, format!("lo stream si è bloccato, risposta chiesta intera{n}")));
@@ -511,6 +519,7 @@ pub async fn run(app: &AppHandle, chat: &Chat, server: &Server, model: &str, cap
     let mut sections: Vec<String> = Vec::new();
     let mut rows: Vec<String> = Vec::new();
     let mut tally = [0usize; 4];
+    let mut lost = 0usize;
     let started = Instant::now();
 
     let work = async {
@@ -559,6 +568,7 @@ pub async fn run(app: &AppHandle, chat: &Chat, server: &Server, model: &str, cap
             let mut found = if case.turns.is_empty() { Vec::new() } else { common(&run, case.max_tokens.is_some()) };
             found.extend((case.check)(&run));
             let level = found.iter().map(|(l, _)| *l).max().unwrap_or(Level::Ok);
+            lost += run.turns.iter().filter_map(|t| t.as_ref().ok()).map(lost_requests).sum::<usize>();
             tally[level as usize] += 1;
             let rounds: usize = run.turns.iter().filter_map(|t| t.as_ref().ok()).map(|o| o.rounds).sum();
             let notes_line = found.iter().map(|(_, n)| n.as_str()).collect::<Vec<_>>().join("; ");
@@ -566,7 +576,7 @@ pub async fn run(app: &AppHandle, chat: &Chat, server: &Server, model: &str, cap
             sections.push(section(i + 1, case, &run, level, &found));
             progress.push_str(&format!("\n- {} **{}** {:.0} s{}", level.mark(), case.title, run.took.as_secs_f64(), if notes_line.is_empty() { String::new() } else { format!(": {}", short(&notes_line, 120)) }));
             events.delta(app, &progress);
-            write_report(&report_path, &header, &tally, started.elapsed(), &rows, &sections);
+            write_report(&report_path, &header, &tally, lost, started.elapsed(), &rows, &sections);
         }
         Ok::<_, String>(())
     };
@@ -795,9 +805,9 @@ fn section(n: usize, case: &Case, run: &Run, level: Level, found: &[(Level, Stri
     s
 }
 
-fn write_report(path: &Path, header: &str, tally: &[usize; 4], took: Duration, rows: &[String], sections: &[String]) {
+fn write_report(path: &Path, header: &str, tally: &[usize; 4], lost: usize, took: Duration, rows: &[String], sections: &[String]) {
     let text = format!(
-        "{header}\n**{} OK, {} avvisi, {} KO, {} saltati** · {} min\n\n| # | Scenario | Esito | Tempo | Giri | Note |\n|---|---|---|---|---|---|\n{}\n{}",
+        "{header}\n**{} OK, {} avvisi, {} KO, {} saltati** · {} min · richieste perse dal server e rifatte: {lost}\n\n| # | Scenario | Esito | Tempo | Giri | Note |\n|---|---|---|---|---|---|\n{}\n{}",
         tally[0],
         tally[2],
         tally[3],
