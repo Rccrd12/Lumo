@@ -290,9 +290,7 @@ const COPY_STRINGS = {
   title: N_("Changed in Lumo's copies: your files are as they were"),
   open: N_("Open"),
   folder: N_("Show the folder"),
-  putBack: N_("Put it back"),
   confirm: N_("Write it over the original"),
-  cancel: N_("Cancel"),
   over: N_("Over {path}. The original is kept beside it first."),
   done: N_("Put back. The original was kept as {name}."),
   doneNew: N_("Put back."),
@@ -306,8 +304,8 @@ export function inWorkspace(path: string): boolean {
 
 /**
  * The copies an answer changed or made: each with Open and, for a copy of a
- * file of the computer, Put it back, which shows the differences first and
- * writes over the original only on a second click.
+ * file of the computer, what changed in it and a button that writes it over
+ * the original.
  */
 function copiesBox(copies: { chat: string; path: string; made?: boolean }[]): HTMLElement {
   const box = h("div", { class: "reply-copies" },
@@ -319,17 +317,17 @@ function copiesBox(copies: { chat: string; path: string; made?: boolean }[]): HT
     open.addEventListener("click", () => void Bridge.chatFileOpen(copy.path));
     const folder = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.folder) });
     folder.addEventListener("click", () => void Bridge.chatFileReveal(copy.path));
-    const back = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.putBack) });
-    back.addEventListener("click", () => void showDiff(copy, detail, back));
     box.append(h("div", { class: "reply-copy" },
       h("div", { class: "reply-copy-row" },
-        h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder, copy.made ? null : back),
+        h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder),
       detail));
+    // A copy of a file of the computer shows what changed right away.
+    if (!copy.made) void showDiff(copy, detail);
   }
   return box;
 }
 
-async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement, back: HTMLElement) {
+async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement) {
   clear(detail);
   let diff: { original: string; lines: string[] };
   try {
@@ -348,15 +346,12 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
       text: l,
     })));
   const confirm = h("button", { class: "reply-copy-btn primary", text: t(COPY_STRINGS.confirm) });
-  const cancel = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.cancel) });
-  cancel.addEventListener("click", () => clear(detail));
   confirm.addEventListener("click", async () => {
     try {
       const kept = await Bridge.workspacePutBack(copy.chat, copy.path);
       clear(detail);
       const keptName = kept.split(/[\\/]/).pop() ?? kept;
       detail.append(h("div", { class: "reply-copy-note", text: kept ? t(COPY_STRINGS.done, { name: keptName }) : t(COPY_STRINGS.doneNew) }));
-      back.setAttribute("disabled", "");
     } catch (err) {
       detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
     }
@@ -364,7 +359,7 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
   detail.append(
     h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.over, { path: diff.original }) }),
     lines,
-    h("div", { class: "reply-copy-row" }, confirm, cancel));
+    h("div", { class: "reply-copy-row" }, confirm));
 }
 
 /** What the line next to the typing dots says (claude_code.rs Activity). */
