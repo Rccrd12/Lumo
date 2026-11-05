@@ -43,6 +43,7 @@ impl Fake {
             authorization: "Bearer test".into(),
             streaming: client(reqwest::Client::builder().read_timeout(Duration::from_secs(10))),
             whole: client(reqwest::Client::builder().timeout(Duration::from_secs(10))),
+            stall: Duration::from_secs(1),
         }
     }
 }

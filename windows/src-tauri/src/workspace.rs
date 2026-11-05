@@ -405,7 +405,7 @@ impl Workspace {
         let top_name = rel_string(&top);
         let what = if meta.is_dir() { format!("{} files", files.len()) } else { "the file".into() };
         let touched = if meta.is_dir() { Vec::new() } else { vec![("read", self.dir.join(&top))] };
-        Ok((format!("Copied {what} to {top_name} in your folder. Work on it there: {source} stays as it was."), touched))
+        Ok((format!("Copied {what} to {top_name} in your folder. Work on it there: {source} stays as it was. Read it (workspace_read, or workspace_list for a folder) before you answer about it or change it."), touched))
     }
 
     fn changed(&self, entries: &[Entry], rel: &str, full: &Path) -> Option<bool> {
@@ -473,7 +473,8 @@ impl Workspace {
         let mut out = String::new();
         let mut last = from - 1;
         for (i, line) in all.iter().enumerate().skip(from - 1).take(lines.unwrap_or(usize::MAX)) {
-            let next = format!("{:>5}| {line}\n", i + 1);
+            // Unpadded: a model that copies the text back drops "7| " and keeps no spaces.
+            let next = format!("{}| {line}\n", i + 1);
             if out.len() + next.len() > MAX_READ {
                 break;
             }
@@ -804,7 +805,7 @@ mod tests {
 
         let listed = ws.run(LIST, &json!({})).unwrap().0;
         assert!(listed.contains("notes.txt (12 bytes)") && listed.contains("proj/src/main.rs") && !listed.contains("node_modules"), "{listed}");
-        assert_eq!(ws.run(READ, &json!({ "path": "notes.txt", "from_line": 2, "lines": 1 })).unwrap().0, "    2| due\n… 3 lines in all: read on from line 3.");
+        assert_eq!(ws.run(READ, &json!({ "path": "notes.txt", "from_line": 2, "lines": 1 })).unwrap().0, "2| due\n… 3 lines in all: read on from line 3.");
         assert_eq!(ws.run(SEARCH, &json!({ "text": "CIAO" })).unwrap().0, "proj/src/main.rs:2: println!(\"ciao\");");
 
         // Changing a copy never touches the original.

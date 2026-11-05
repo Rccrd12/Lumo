@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 const CHANGES: &[&str] = &["workspace_write", "workspace_edit", "workspace_delete"];
 
 fn rules<'a>(key: &str, query: &'a str) -> Rules<'a> {
-    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8 }
+    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO }
 }
 
 /// Runs a turn of `body` on a server with `replies`.
@@ -99,20 +99,24 @@ fn lm_studio_keeping_the_connection_open_after_the_answer_ends_it_all_the_same()
 }
 
 #[test]
-fn a_stream_lm_studio_drops_as_terminated_is_asked_again_whole_and_remembered() {
-    let key = "lmstudio\0gemma-terminated";
+fn a_stream_that_hangs_halfway_is_asked_again_whole_and_remembered() {
+    let key = "lmstudio\0gemma-hung";
     let mut island = Island::default();
     let mut body = question("Riscrivi il file più lungo", &["workspace_write"]);
     let long = format!("{{\"path\":\"a.txt\",\"content\":\"{}\"}}", "parola ".repeat(500));
+    let started = Instant::now();
     let replies = vec![
-        Reply::Events(vec![json!({ "choices": [{ "delta": { "role": "assistant" } }] }).to_string(), json!({ "error": "terminated" }).to_string()]),
+        // The call starts, then nothing more: LM Studio's hang.
+        Reply::Hold(vec![call("c1", "workspace_write", "{\"path\":\"a.txt\",\"content\":\"parola ")]),
         whole("", &[("c1", "workspace_write", &long)]),
         whole("Fatto: il file è più lungo.", &[]),
     ];
     let (outcome, requests) = turn(replies, &mut body, &rules(key, "Riscrivi il file più lungo"), &mut island);
     let outcome = outcome.unwrap();
+    assert!(started.elapsed() < Duration::from_secs(5), "{:?}", started.elapsed());
     assert!(outcome.whole);
     assert_eq!(outcome.fixes, ["answered whole"]);
+    assert_eq!(outcome.notes, ["CutShort"]);
     assert_eq!((outcome.text.as_str(), outcome.used), ("Fatto: il file è più lungo.", Some(77)));
     assert_eq!(island.ran.len(), 1);
     assert_eq!(island.ran[0].1["content"].as_str().unwrap().len(), 3500);
@@ -132,17 +136,28 @@ fn a_stream_lm_studio_drops_as_terminated_is_asked_again_whole_and_remembered() 
 }
 
 #[test]
+fn a_slow_prompt_is_not_a_hang() {
+    // Nothing for longer than the stall before the first word: the model reads.
+    let mut island = Island::default();
+    let fake = serve(vec![Reply::Hold(vec![json!({ "choices": [{ "delta": { "role": "assistant" } }] }).to_string()])]);
+    let mut body = question("Ciao", &[]);
+    let r = rules("slow-prompt", "");
+    let waited = block_on(async { tokio::time::timeout(Duration::from_millis(2500), run(&fake.endpoint(), &mut body, &r, &mut island)).await });
+    assert!(waited.is_err(), "it gave up while the prompt was read");
+}
+
+#[test]
 fn a_stream_closed_with_nothing_in_it_is_asked_again_whole() {
     let mut island = Island::default();
     let (outcome, requests) = turn(vec![Reply::Headers, whole("Eccomi.", &[])], &mut question("Ci sei?", &[]), &rules("closed", ""), &mut island);
     assert_eq!(outcome.unwrap().text, "Eccomi.");
     assert_eq!(requests.len(), 2);
-    // Whole too, the server still gives nothing, twice: it is said, not asked again.
-    let replies = vec![Reply::Headers, Reply::Json(200, "not json".into()), Reply::Json(200, "not json".into())];
+    // Whole too, the server still gives nothing: it is said, not asked again.
+    let replies = vec![Reply::Headers, Reply::Json(200, "not json".into())];
     let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("closed2", ""), &mut island);
     let failure = outcome.unwrap_err();
     assert!(failure.is_cut_short(), "{failure:?}");
-    assert_eq!(requests.len(), 3);
+    assert_eq!(requests.len(), 2);
 }
 
 #[test]
@@ -340,22 +355,30 @@ fn stop_mid_answer_keeps_what_was_shown_and_the_question() {
 }
 
 #[test]
-fn lm_studio_s_engine_failing_is_asked_again_whole_then_once_more() {
+fn lm_studio_s_engine_failing_is_asked_again_and_never_costs_the_tools() {
+    let engine = "Engine protocol predict request failed: fetch failed";
+    // In the stream, then as a 400: the same request again, tools and stream kept.
     let mut island = Island::default();
-    let engine = || json!({ "error": "Engine protocol predict request failed: fetch failed" }).to_string();
-    let replies = vec![Reply::Events(vec![engine()]), Reply::Json(500, json!({ "error": "Engine protocol predict request failed: fetch failed" }).to_string()), whole("Eccomi.", &[])];
-    let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine", ""), &mut island);
-    // Whole, the engine failed again (as a 500): once more, and it goes.
+    let replies = vec![Reply::Events(vec![json!({ "error": engine }).to_string()]), Reply::Json(400, json!({ "error": "terminated" }).to_string()), answer("Eccomi.")];
+    let (outcome, requests) = turn(replies, &mut question("Ci sei?", &["set_timer"]), &rules("engine", ""), &mut island);
     let outcome = outcome.unwrap();
-    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Eccomi.", ["answered whole", "asked again"].as_slice()));
-    assert_eq!(requests.len(), 3);
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice(), outcome.whole), ("Eccomi.", ["asked again", "asked again"].as_slice(), false));
     assert_eq!(outcome.notes.len(), 2);
+    assert!(requests.iter().all(|r| r["stream"] == true && r.get("tools").is_some()));
+    // Three times: whole for this turn, not remembered for the next.
     let mut island = Island::default();
-    let replies = vec![Reply::Events(vec![engine()]), Reply::Events(vec![]), whole("Eccomi.", &[])];
+    let failing = || Reply::Events(vec![json!({ "error": "terminated" }).to_string()]);
+    let replies = vec![failing(), failing(), failing(), whole("Eccomi.", &[])];
     let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine2", ""), &mut island);
     let outcome = outcome.unwrap();
-    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Eccomi.", ["answered whole", "asked again"].as_slice()));
-    assert_eq!(requests.len(), 3);
+    assert_eq!(outcome.fixes, ["asked again", "asked again", "answered whole"]);
+    assert_eq!((requests.len(), requests[3]["stream"].as_bool()), (4, Some(false)));
+    let (_, requests) = turn(vec![answer("Ciao.")], &mut question("Ciao", &[]), &rules("engine2", ""), &mut island);
+    assert_eq!(requests[0]["stream"], true);
+    // Whole too, and again: said in the end.
+    let replies = vec![failing(), failing(), failing(), Reply::Json(400, json!({ "error": "terminated" }).to_string())];
+    let (outcome, _) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine3", ""), &mut island);
+    assert!(outcome.unwrap_err().is_engine());
 }
 
 #[test]

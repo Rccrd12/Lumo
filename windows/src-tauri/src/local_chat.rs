@@ -386,6 +386,8 @@ pub(crate) fn endpoint(server: &Server, base: &Url) -> Result<Endpoint, String> 
         // No limit on an answer that streams in, only on five minutes of silence.
         streaming: net::streaming_client(base, Duration::from_secs(300))?,
         whole: net::client(base, Duration::from_secs(600))?,
+        // Once the answer flows, a minute of silence is a stream that hung.
+        stall: Duration::from_secs(60),
     })
 }
 
@@ -605,6 +607,7 @@ pub async fn send(
             workspace,
             changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
             max_rounds: MAX_TOOL_ROUNDS,
+            pause: Duration::from_secs(1),
         };
         let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;

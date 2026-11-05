@@ -4,6 +4,7 @@
 // it can through `Hooks`: shows the answer, runs the tools, loads more of them.
 
 use std::future::Future;
+use std::time::Duration;
 
 use serde_json::{json, Value};
 
@@ -60,6 +61,8 @@ pub struct Rules<'a> {
     /// The tools that change a copy.
     pub changes: &'a [&'a str],
     pub max_rounds: usize,
+    /// How long to wait before asking again a server whose engine failed.
+    pub pause: Duration,
 }
 
 /// How the turn ended.
@@ -145,9 +148,10 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     // A copy changed by a tool in this turn.
     let mut changed = false;
     let mut notes: Vec<String> = Vec::new();
-    // A refusal (400) asked again once as it was, and a server that dropped
-    // the answer asked again once whole: what failed once may not fail twice.
-    let (mut asked_again, mut dropped_again) = (false, false);
+    // A refusal (400) asked again once as it was; an engine that failed,
+    // twice (then once whole): what failed once may not fail again.
+    let mut asked_again = false;
+    let mut engine_retries = 0;
     // The calls that changed something, as they were made: one made again
     // the same is not made twice.
     let mut made: Vec<(String, String, String)> = Vec::new();
@@ -183,6 +187,21 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 fixes.push("without pictures");
                 continue;
             }
+            // LM Studio's engine failed this request ("terminated", "fetch
+            // failed"): the same request after a moment, twice, then whole
+            // for this turn. Nothing to do with the stream: not remembered.
+            Err(e) if e.is_engine() && engine_retries < 2 => {
+                engine_retries += 1;
+                fixes.push("asked again");
+                tokio::time::sleep(rules.pause).await;
+                continue;
+            }
+            Err(e) if e.is_engine() && !whole => {
+                whole = true;
+                fixes.push("answered whole");
+                continue;
+            }
+            Err(e) if e.is_engine() => return Err(e),
             // A refusal may be the server failing to read what the model
             // wrote (a tool call it couldn't parse): the same request once more.
             Err(Failure::Status(400 | 422, _)) if !asked_again => {
@@ -199,18 +218,12 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 fixes.push("without tools");
                 continue;
             }
-            // LM Studio's stream hangs on some tool calls (long text in their
-            // arguments), then says "terminated", or closes with nothing: the
-            // same request, not streamed, from then on.
-            Err(e) if !whole && e.is_cut_short() => {
+            // The stream hung halfway (LM Studio, on some tool calls with long
+            // text in their arguments) or closed with nothing: the same
+            // request, not streamed, from then on with this model.
+            Err(Failure::CutShort) if !whole => {
                 whole = hung(&rules.key, true);
                 fixes.push("answered whole");
-                continue;
-            }
-            // Whole too: once more, for an engine that dropped one request.
-            Err(e) if e.is_cut_short() && !dropped_again => {
-                dropped_again = true;
-                fixes.push("asked again");
                 continue;
             }
             other => other?,

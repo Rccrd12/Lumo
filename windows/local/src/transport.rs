@@ -29,6 +29,9 @@ pub struct Endpoint {
     pub authorization: String,
     pub streaming: Client,
     pub whole: Client,
+    /// Once the answer flows, this long with nothing more is a stream that
+    /// hung (LM Studio stops halfway, and says nothing for minutes).
+    pub stall: Duration,
 }
 
 /// What went wrong, for the app to say in the user's language.
@@ -53,12 +56,16 @@ impl Failure {
     /// The server dropped the answer halfway: said as such, and a streamed
     /// request is asked again whole.
     pub fn is_cut_short(&self) -> bool {
+        matches!(self, Failure::CutShort) || self.is_engine()
+    }
+
+    /// The server's engine dropped the request: LM Studio's words when its
+    /// model process ends or fails one ("terminated", "Engine protocol
+    /// predict request failed: fetch failed"), in an error event or with any
+    /// status (it sends them with a 400 too).
+    pub fn is_engine(&self) -> bool {
         match self {
-            Failure::CutShort => true,
-            // LM Studio's words when its model process ends or its engine
-            // drops the request ("Engine protocol predict request failed:
-            // fetch failed").
-            Failure::Server(e) | Failure::Status(500..=599, e) => {
+            Failure::Server(e) | Failure::Status(_, e) => {
                 let e = e.trim().to_lowercase();
                 e == "terminated" || ["fetch failed", "predict request failed", "model has crashed", "model crashed"].iter().any(|w| e.contains(w))
             }
@@ -205,6 +212,10 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     // only waited for a moment, then the stream ends even if the connection
     // stays open (LM Studio keeps it open).
     let finished = AtomicBool::new(false);
+    // Something of the answer came (text, reasoning, a call): from then on a
+    // silence of `to.stall` is a stream that hung. Before, the model may
+    // still be reading a long prompt.
+    let flowing = AtomicBool::new(false);
     let done = AtomicBool::new(false);
     let cut = AtomicBool::new(false);
     let mut take = |line: &str, text: &mut String, on: &mut dyn FnMut(Seen)| -> Result<(), Failure> {
@@ -218,6 +229,9 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         if !started && text.is_empty() && line.starts_with("data:") && !matches!(event, Some(Event::Text(_) | Event::Done | Event::Error(_))) {
             started = true;
             on(Seen::Started);
+        }
+        if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(_))) {
+            flowing.store(true, Ordering::Relaxed);
         }
         match event {
             Some(Event::Done) => done.store(true, Ordering::Relaxed),
@@ -234,6 +248,11 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             match tokio::time::timeout(AFTER_FINISH, reply.chunk()).await {
                 Ok(next) => next,
                 Err(_) => break,
+            }
+        } else if flowing.load(Ordering::Relaxed) {
+            match tokio::time::timeout(to.stall, reply.chunk()).await {
+                Ok(next) => next,
+                Err(_) => return Err(Failure::CutShort),
             }
         } else {
             reply.chunk().await

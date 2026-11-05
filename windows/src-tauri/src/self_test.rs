@@ -659,6 +659,7 @@ async fn one<P: Fn(&[String], bool) -> String + Sync>(
             workspace: true,
             changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
             max_rounds: 8,
+            pause: Duration::from_secs(1),
         };
         island.started = Instant::now();
         island.first_text = None;
