@@ -14,10 +14,10 @@
 // helpers, so they can be tested without a webview.
 
 import { N_ } from "../i18n/i18n";
-import { effortsFor, hasPermissions, localCapsOf } from "./providers";
+import { effortsFor, hasPermissions, isCliProvider, localCapsOf } from "./providers";
 
 /** What one of Lumo's own commands does in the chat. */
-export type SlashAction = "new" | "history" | "model" | "effort" | "attach" | "screen" | "permissions" | "timer";
+export type SlashAction = "new" | "history" | "model" | "effort" | "attach" | "screen" | "permissions" | "timer" | "compact";
 
 export interface SlashCommand {
   /** Without the slash. */
@@ -82,6 +82,7 @@ const LUMO: readonly SlashCommand[] = [
   { name: "screen", note: N_("Share your screen or open windows"), icon: "display", kind: "lumo", action: "screen" },
   { name: "permissions", note: N_("Permissions"), icon: "shield", kind: "lumo", action: "permissions" },
   { name: "timer", note: SLASH_STRINGS.timer, icon: "timer", kind: "lumo", action: "timer", args: true },
+  { name: "compact", note: SLASH_STRINGS.compact, icon: "stack", kind: "lumo", action: "compact" },
 ];
 
 /** What every Claude Code answers to, before a turn says what this one has. */
@@ -122,7 +123,11 @@ export function isCommandName(name: string): boolean {
  */
 export function slashCommands(provider: string, reported: readonly string[] | null, tools: readonly CommandTool[] = []): SlashCommand[] {
   const own = LUMO.filter((c) =>
-    c.action === "permissions" ? hasPermissions(provider) : c.action === "effort" ? effortsFor(provider).some((e) => e !== "") : true,
+    c.action === "permissions" ? hasPermissions(provider)
+      : c.action === "effort" ? effortsFor(provider).some((e) => e !== "")
+      // The CLIs sum up their own conversation (their /compact, sent as typed).
+      : c.action === "compact" ? !isCliProvider(provider)
+      : true,
   );
   const lumo = [...own, ...toolCommands(provider, tools)];
   const taken = new Set(lumo.map((c) => c.name));

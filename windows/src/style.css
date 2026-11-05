@@ -7351,3 +7351,9 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
   font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
+
+/* Under a local model's context bar: /compact. */
+.usage-compact {
+  align-self: flex-start;
+  margin-top: 4px;
+}

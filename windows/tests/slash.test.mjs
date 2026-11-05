@@ -29,9 +29,20 @@ test("Lumo's commands are there with every provider, the shield with the CLIs an
 test("only what the provider can use is listed: Claude Code's own only with Claude Code", () => {
   for (const provider of ["anthropic", "ollama", "antigravity-cli"]) {
     const list = names(slashCommands(provider, ["compact", "review"]));
-    assert.equal(list.includes("compact"), provider === "antigravity-cli", provider);
     assert.ok(!list.includes("review"), provider);
   }
+});
+
+test("/compact is Lumo's with the providers called by their API, and the CLI's own with a CLI", () => {
+  const compact = (provider, reported = null) => slashCommands(provider, reported).filter((c) => c.name === "compact");
+  for (const provider of ["anthropic", "openai", "ollama", "lmstudio", "custom"]) {
+    assert.deepEqual(compact(provider).map((c) => [c.kind, c.action]), [["lumo", "compact"]], provider);
+    assert.equal(lumoCommand("/compact", provider), "compact", provider);
+  }
+  assert.deepEqual(compact("antigravity-cli").map((c) => c.kind), ["cli"]);
+  assert.deepEqual(compact("claude-code", ["compact"]).map((c) => c.kind), ["cli"]);
+  assert.deepEqual(compact("codex"), []);
+  assert.equal(lumoCommand("/compact", "claude-code"), null);
 });
 
 test("Antigravity CLI lists the commands it answers without a terminal, each with what it does", () => {

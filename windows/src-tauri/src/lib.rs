@@ -781,8 +781,25 @@ struct SavedTurn {
 /// or Antigravity CLI conversation that answered it, if any, so the next
 /// question continues it.
 #[tauri::command]
-fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>) {
-    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);
+fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+}
+
+/// A chat's /compact, as its saved file keeps it: the summary of its first `upto` turns.
+#[derive(serde::Deserialize, serde::Serialize)]
+struct SavedCompact {
+    upto: usize,
+    summary: String,
+}
+
+/// /compact with a provider called by its API: the chat's model sums the
+/// conversation up, and the summary stands for its turns from then on (chat.rs
+/// `compact`). None: nothing new to sum up.
+#[tauri::command]
+async fn chat_compact(shared: State<'_, Shared>, chats: State<'_, Chats>, chat_id: String) -> Result<Option<SavedCompact>, String> {
+    let chat = chats.get(&chat_id);
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(chat::compact(&chat, &settings).await?.map(|(upto, summary)| SavedCompact { upto, summary }))
 }
 
 /// "Attach a file" in the chat: the system's file picker, then the same copy
@@ -1226,6 +1243,7 @@ pub fn run() {
             local_set_key,
             chat_reset,
             chat_restore,
+            chat_compact,
             chat_commands,
             chat_stop,
             chat_rewind,

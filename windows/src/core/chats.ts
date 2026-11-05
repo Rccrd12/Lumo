@@ -74,7 +74,47 @@ export function saveChat(chat: SavedChat): SavedChat[] {
 export function deleteChat(id: string): SavedChat[] {
   const list = loadChats().filter((c) => c.id !== id);
   store(list);
+  setCompact(id, null);
   return list;
+}
+
+/** A chat's /compact: the summary the model is sent in place of its first `upto` turns (chat.rs). */
+export interface ChatCompact {
+  upto: number;
+  summary: string;
+}
+
+const COMPACT_KEY = "lumo.chats.compact.v1";
+
+function compacts(): Record<string, ChatCompact> {
+  try {
+    const raw = storage()?.getItem(COMPACT_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    return all && typeof all === "object" && !Array.isArray(all) ? all : {};
+  } catch {
+    return {};
+  }
+}
+
+/** The summary a chat was compacted to, if it was. */
+export function compactOf(id: string): ChatCompact | null {
+  const c = compacts()[id];
+  return c && typeof c.upto === "number" && typeof c.summary === "string" ? c : null;
+}
+
+/** Keeps (or with null forgets) a chat's summary; only chats still in the history keep one. */
+export function setCompact(id: string, compact: ChatCompact | null) {
+  const all = compacts();
+  if (compact) all[id] = compact;
+  else delete all[id];
+  const kept = new Set(loadChats().map((c) => c.id));
+  kept.add(compact ? id : "");
+  for (const key of Object.keys(all)) if (!kept.has(key)) delete all[key];
+  try {
+    storage()?.setItem(COMPACT_KEY, JSON.stringify(all));
+  } catch {
+    // Storage full: the summary lasts while the app is open.
+  }
 }
 
 export function newChatId(): string {

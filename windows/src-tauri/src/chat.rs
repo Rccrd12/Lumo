@@ -136,6 +136,26 @@ struct Conversation {
     /// Files the user took out of the chat's context (its files' ×), as the
     /// next question tells the AI: name and path.
     forgotten: Vec<(String, String)>,
+    /// /compact with the providers called by their API: the first `.0` turns
+    /// go to the model as the summary `.1` instead. The turns stay, so an
+    /// edit still finds its place; one before `.0` drops the summary.
+    compact: Option<(usize, String)>,
+}
+
+/// How a summary goes to the model in place of the turns it sums up.
+fn summary_turns(summary: &str) -> [Value; 2] {
+    [
+        json!({ "role": "user", "content": format!("Summary of our conversation so far, written when it was compacted:\n\n{summary}") }),
+        json!({ "role": "assistant", "content": "Understood. I'll continue from this summary." }),
+    ]
+}
+
+/// The history the model is sent: the summary, then the turns after it.
+fn compacted(turns: &[Value], compact: &Option<(usize, String)>) -> Vec<Value> {
+    match compact {
+        Some((upto, summary)) if *upto <= turns.len() => summary_turns(summary).into_iter().chain(turns[*upto..].iter().cloned()).collect(),
+        _ => turns.to_vec(),
+    }
 }
 
 /// What a provider needs to build one turn.
@@ -187,16 +207,16 @@ impl Chat {
             epoch: c.epoch,
             provider: provider.to_string(),
             first: c.plain.is_empty(),
-            history: c.native.clone(),
+            history: compacted(&c.native, &c.compact),
         }
     }
 
     /// Puts a chat from the history back: its turns as plain text, and the
     /// session to continue, if a CLI answered it (as `cli_session` gave it).
-    pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>) {
+    pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>, compact: Option<(usize, String)>) {
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
-        let plain = turns
+        let plain: Vec<Value> = turns
             .into_iter()
             .filter(|(role, _)| role == "user" || role == "assistant")
             .map(|(role, content)| json!({ "role": role, "content": content }))
@@ -205,7 +225,8 @@ impl Chat {
             Some((owner, id)) => (Some(owner.to_string()), Some(id.to_string())),
             None => (None, None),
         };
-        *c = Conversation { epoch, plain, cli_session, cli_owner, ..Default::default() };
+        let compact = compact.filter(|(upto, summary)| upto.is_multiple_of(2) && *upto <= plain.len() && !summary.trim().is_empty());
+        *c = Conversation { epoch, plain, cli_session, cli_owner, compact, ..Default::default() };
     }
 
     /// An edited message: the conversation goes back to its first `keep` turns
@@ -219,12 +240,39 @@ impl Chat {
         c.files.retain(|(_, _, turn)| *turn < keep);
         c.cli_dirs.retain(|(_, turn)| *turn < keep);
         c.plain.truncate(keep);
+        if c.compact.as_ref().is_some_and(|(upto, _)| keep < *upto) {
+            c.compact = None;
+        }
         c.native.truncate(keep);
         if c.native.len() != c.plain.len() {
             c.owner = None; // rebuilt from the plain turns on the next one
         }
         c.cli_session = None;
         c.cli_owner = None;
+    }
+
+    /// /compact: what the model would be sent now, as text to sum up, and
+    /// how many turns that is; None with nothing new since the last summary.
+    pub fn to_compact(&self) -> Option<(usize, String)> {
+        let c = self.inner.lock().unwrap();
+        let upto = c.plain.len();
+        if upto == 0 || c.compact.as_ref().is_some_and(|(at, _)| *at == upto) {
+            return None;
+        }
+        let mut text = String::new();
+        for turn in compacted(&c.plain, &c.compact) {
+            let who = if turn["role"] == "user" { "User" } else { "Assistant" };
+            text.push_str(&format!("{who}: {}\n\n", turn["content"].as_str().unwrap_or("")));
+        }
+        Some((upto, text))
+    }
+
+    /// The summary of the first `upto` turns goes to the model in their place.
+    pub fn set_compact(&self, upto: usize, summary: String) {
+        let mut c = self.inner.lock().unwrap();
+        if upto <= c.plain.len() && upto.is_multiple_of(2) {
+            c.compact = Some((upto, summary));
+        }
     }
 
     /// How many plain turns the conversation holds.
@@ -883,6 +931,48 @@ async fn send_to(
 /// The models `provider` offers. Asked only when the user opens the picker on
 /// that provider, and only once it has a key (or, for a local server, an
 /// address): nothing is sent anywhere before that.
+/// What the model is asked to write when a chat is compacted.
+const COMPACT_SYSTEM: &str = "You sum up a conversation between a user and an AI assistant so that the assistant can continue it from the summary alone. Keep what matters to go on: the user's goal and requests, decisions made, facts, names, numbers, file names and paths, code that is still being worked on, and what was left to do. Leave out greetings and anything already settled that won't come up again. Write in the conversation's language, as short plain paragraphs or a list, with no preface.";
+
+/// The longest transcript sent to be summed up, in characters (its end is kept).
+const COMPACT_MAX: usize = 200_000;
+
+/// /compact with a provider called by its API: the chat's model sums up the
+/// conversation, and the summary goes in place of its turns from the next
+/// question on. Returns the turns it sums up and the summary, or None with
+/// nothing new to sum up. The CLIs have their own /compact.
+pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<(usize, String)>, String> {
+    let provider = settings.chat_provider.as_str();
+    if is_cli(provider) {
+        return Err(crate::i18n::t("This provider compacts the chat itself: send /compact."));
+    }
+    let Some((upto, mut text)) = chat.to_compact() else { return Ok(None) };
+    if text.len() > COMPACT_MAX {
+        let mut cut = text.len() - COMPACT_MAX;
+        while !text.is_char_boundary(cut) {
+            cut += 1;
+        }
+        text = text.split_off(cut);
+    }
+    let prompt = format!("Here is the conversation:\n\n{text}\nWrite the summary now.");
+    let model = model_for(settings, provider);
+    let summary = if provider == ANTHROPIC || provider.is_empty() {
+        crate::claude::complete(&model, COMPACT_SYSTEM, &prompt).await?
+    } else if let Some(p) = openai_compat::provider(provider) {
+        openai_compat::complete(p, &model, COMPACT_SYSTEM, &prompt).await?
+    } else if let Some(server) = local_chat::server(settings, provider) {
+        local_chat::complete(&server, &model, COMPACT_SYSTEM, &prompt).await?
+    } else {
+        return Err(format!("Unknown chat provider: {provider}"));
+    };
+    let summary = summary.trim().to_string();
+    if summary.is_empty() {
+        return Err(crate::i18n::t("The model gave no summary. Try again."));
+    }
+    chat.set_compact(upto, summary.clone());
+    Ok(Some((upto, summary)))
+}
+
 pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo>, String> {
     let no_key = || crate::i18n::t("No API key — add it in Settings.");
     if provider == ANTHROPIC {
@@ -930,7 +1020,7 @@ mod tests {
     #[test]
     fn a_restored_chat_continues_as_plain_turns() {
         let chat = Chat::default();
-        chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()));
+        chat.restore(vec![("user".into(), "hi".into()), ("system".into(), "x".into()), ("assistant".into(), "hello".into())], Some("s".into()), None);
         assert_eq!(chat.cli_session().as_deref(), Some("s"));
         assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("s"));
         assert_eq!(chat.cli_session_for("antigravity-cli"), None, "never another CLI's session");
@@ -962,17 +1052,17 @@ mod tests {
         chat.rewind(0);
         assert_eq!(chat.cli_session_for("antigravity-cli"), None);
         assert_eq!(chat.cli_session(), None);
-        chat.restore(vec![], Some(saved));
+        chat.restore(vec![], Some(saved), None);
         assert_eq!(chat.cli_session_for("antigravity-cli").as_deref(), Some("agy-conversation"));
         assert_eq!(chat.cli_session_for("claude-code"), None);
         // A Claude Code session goes untagged, as chats were saved before.
         let t = chat.begin("claude-code");
         chat.set_cli_session(&t, "0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b");
         assert_eq!(chat.cli_session().as_deref(), Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"));
-        chat.restore(vec![], Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b".into()));
+        chat.restore(vec![], Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b".into()), None);
         assert_eq!(chat.cli_session_for("claude-code").as_deref(), Some("0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"));
         assert_eq!(chat.cli_session_for("antigravity-cli"), None);
-        chat.restore(vec![], None);
+        chat.restore(vec![], None, None);
         assert_eq!(chat.cli_session(), None);
     }
 
@@ -1019,6 +1109,41 @@ mod tests {
         chat.rewind(99); // nothing to cut: no harm
         chat.reset();
         assert!(chat.files().is_empty());
+    }
+
+    #[test]
+    fn a_compacted_chat_sends_its_summary_in_place_of_the_turns_it_sums_up() {
+        let chat = Chat::default();
+        for (q, a) in [("one", "1"), ("two", "2")] {
+            let t = chat.begin("ollama");
+            let (u, r) = qa(q, a);
+            chat.commit(&t, u, r, q, a);
+        }
+        let (upto, text) = chat.to_compact().expect("something to sum up");
+        assert_eq!(upto, 4);
+        assert!(text.contains("User: one") && text.contains("Assistant: 2"), "{text}");
+        chat.set_compact(upto, "We counted to two.".into());
+        assert!(chat.to_compact().is_none(), "nothing new since");
+        let t = chat.begin("ollama");
+        assert_eq!(t.history.len(), 2);
+        assert!(t.history[0]["content"].as_str().unwrap().contains("We counted to two."));
+        let (u, r) = qa("three", "3");
+        chat.commit(&t, u, r, "three", "3");
+        assert_eq!(chat.turns(), 6, "the turns stay, for an edit to find its place");
+        assert_eq!(chat.begin("ollama").history.len(), 4);
+        // A later /compact sums up the summary and what came after.
+        let (_, text) = chat.to_compact().unwrap();
+        assert!(text.contains("We counted to two.") && text.contains("User: three") && !text.contains("User: one"), "{text}");
+        // An edit of a summed-up question drops the summary.
+        chat.rewind(2);
+        assert_eq!(chat.begin("ollama").history.len(), 2);
+        assert!(chat.begin("ollama").history[0]["content"] == "one");
+        // A saved chat comes back with its summary; a bad one is ignored.
+        chat.restore(vec![("user".into(), "a".into()), ("assistant".into(), "b".into())], None, Some((2, "S".into())));
+        assert_eq!(chat.begin("ollama").history.len(), 2);
+        assert!(chat.begin("ollama").history[0]["content"].as_str().unwrap().contains('S'));
+        chat.restore(vec![("user".into(), "a".into())], None, Some((4, "S".into())));
+        assert_eq!(chat.begin("ollama").history[0]["content"], "a");
     }
 
     #[test]

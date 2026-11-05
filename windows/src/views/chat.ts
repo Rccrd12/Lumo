@@ -83,7 +83,7 @@ import {
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
-import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
+import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import {
   addChatFile, aiKind, chatFiles, dropChatFiles, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
@@ -163,9 +163,17 @@ const STRINGS = {
 };
 
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
-const FILLED_ICONS = new Set(["plus", "gear", "timer"]);
+const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);
 
 /** The effort levels by name, "Auto" for the CLI's own default. */
+/** /compact with the providers called by their API. */
+const COMPACT_STRINGS = {
+  action: N_("Compact the chat"),
+  working: N_("Compacting the chat…"),
+  done: N_("Chat compacted: the model now starts from its summary"),
+  nothing: N_("Nothing new to compact"),
+};
+
 /** The picker's − and + on a local model: in and out of the server's memory. */
 const LOAD_STRINGS = {
   load: N_("Load into memory"),
@@ -1441,6 +1449,10 @@ export function buildPrompt(
         i === 0 && line.note ? h("span", { class: "usage-note", text: line.note }) : null,
       ));
     }
+    // A local model's context: /compact from here, under its bar.
+    if (local && State.chatHistory.length > 0) {
+      usageList.append(h("button", { class: "picker-link usage-compact", text: t(COMPACT_STRINGS.action), onclick: () => void compactChat() }));
+    }
   }
 
   function openUsage() {
@@ -2459,7 +2471,7 @@ export function buildPrompt(
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
       State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, c.turns, c.session);
+      void Bridge.chatRestore(c.id, c.turns, c.session, compactOf(c.id));
     }
     State.chatId = c.id;
     State.droppedFile = null;
@@ -2576,7 +2588,7 @@ export function buildPrompt(
     // Rust lets a chat go once another is on screen: it gets this one back as it is.
     if (!runs.has(State.chatId) && State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
-      void Bridge.chatRestore(State.chatId, State.chatHistory.map((m) => ({ role: m.role, content: m.content })), State.chatSession);
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map((m) => ({ role: m.role, content: m.content })), State.chatSession, compactOf(State.chatId));
     }
     const workshop = State.chatSlot === "forge";
     cardEl.classList.toggle("forge", workshop);
@@ -3243,6 +3255,43 @@ export function buildPrompt(
         setInput("/timer ");
         input.focus();
         break;
+      case "compact":
+        void compactChat();
+        break;
+    }
+  }
+
+  /**
+   * /compact with a provider called by its API: the chat's model sums up the
+   * conversation, and from the next question on it is sent the summary in
+   * place of the turns it sums up. What was said stays on screen.
+   */
+  let compacting = false;
+  async function compactChat() {
+    const chatId = State.chatId;
+    if (compacting || answering()) return;
+    if (State.chatHistory.length === 0) {
+      compactNotice(t(COMPACT_STRINGS.nothing), providerDef(State.settings.chatProvider).accent);
+      return;
+    }
+    compacting = true;
+    closeUsage();
+    const row = typingDots(t(COMPACT_STRINGS.working));
+    log.append(row);
+    onHeightChange();
+    try {
+      const done = await Bridge.chatCompact(chatId);
+      if (done) setCompact(chatId, done);
+      compactNotice(t(done ? COMPACT_STRINGS.done : COMPACT_STRINGS.nothing), providerDef(State.settings.chatProvider).accent);
+      Sound.play("blip");
+    } catch (err) {
+      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      Sound.play("error");
+    } finally {
+      compacting = false;
+      row.remove();
+      State.notify();
+      onHeightChange();
     }
   }
 

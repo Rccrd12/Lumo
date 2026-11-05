@@ -14340,6 +14340,78 @@
    "ru": "Скажи одной строкой, что произошло.",
    "id": "Ceritakan dalam satu baris apa yang terjadi.",
    "it": "Dimmi in una riga cosa è successo."
+  },
+  "Compact the chat": {
+   "zh-Hans": "压缩聊天",
+   "hi": "चैट को संक्षिप्त करें",
+   "es": "Compactar el chat",
+   "ar": "ضغط المحادثة",
+   "fr": "Compacter le chat",
+   "bn": "চ্যাট সংক্ষিপ্ত করুন",
+   "pt-BR": "Compactar o chat",
+   "ru": "Сжать чат",
+   "id": "Ringkas chat",
+   "it": "Compatta la chat"
+  },
+  "Compacting the chat…": {
+   "zh-Hans": "正在压缩聊天…",
+   "hi": "चैट संक्षिप्त हो रहा है…",
+   "es": "Compactando el chat…",
+   "ar": "جارٍ ضغط المحادثة…",
+   "fr": "Compactage du chat…",
+   "bn": "চ্যাট সংক্ষিপ্ত হচ্ছে…",
+   "pt-BR": "Compactando o chat…",
+   "ru": "Сжимаю чат…",
+   "id": "Meringkas chat…",
+   "it": "Compatto la chat…"
+  },
+  "Chat compacted: the model now starts from its summary": {
+   "zh-Hans": "聊天已压缩：模型现在从摘要继续",
+   "hi": "चैट संक्षिप्त हुआ: मॉडल अब इसके सारांश से शुरू करता है",
+   "es": "Chat compactado: el modelo sigue desde su resumen",
+   "ar": "تم ضغط المحادثة: يبدأ النموذج الآن من ملخصها",
+   "fr": "Chat compacté : le modèle repart de son résumé",
+   "bn": "চ্যাট সংক্ষিপ্ত হয়েছে: মডেল এখন সারাংশ থেকে শুরু করে",
+   "pt-BR": "Chat compactado: o modelo agora parte do resumo",
+   "ru": "Чат сжат: модель продолжает с его краткого изложения",
+   "id": "Chat diringkas: model kini mulai dari ringkasannya",
+   "it": "Chat compattata: il modello ora riparte dal riassunto"
+  },
+  "Nothing new to compact": {
+   "zh-Hans": "没有可压缩的新内容",
+   "hi": "संक्षिप्त करने के लिए कुछ नया नहीं",
+   "es": "Nada nuevo que compactar",
+   "ar": "لا جديد لضغطه",
+   "fr": "Rien de nouveau à compacter",
+   "bn": "সংক্ষিপ্ত করার মতো নতুন কিছু নেই",
+   "pt-BR": "Nada novo para compactar",
+   "ru": "Нечего сжимать",
+   "id": "Tidak ada yang baru untuk diringkas",
+   "it": "Niente di nuovo da compattare"
+  },
+  "This provider compacts the chat itself: send /compact.": {
+   "zh-Hans": "此提供方会自行压缩聊天：发送 /compact。",
+   "hi": "यह प्रदाता चैट को खुद संक्षिप्त करता है: /compact भेजें।",
+   "es": "Este proveedor compacta el chat por su cuenta: envía /compact.",
+   "ar": "هذا المزوّد يضغط المحادثة بنفسه: أرسل /compact.",
+   "fr": "Ce fournisseur compacte le chat lui-même : envoyez /compact.",
+   "bn": "এই প্রদানকারী নিজেই চ্যাট সংক্ষিপ্ত করে: /compact পাঠান।",
+   "pt-BR": "Este provedor compacta o chat sozinho: envie /compact.",
+   "ru": "Этот провайдер сжимает чат сам: отправьте /compact.",
+   "id": "Penyedia ini meringkas chat sendiri: kirim /compact.",
+   "it": "Questo provider compatta la chat da sé: invia /compact."
+  },
+  "The model gave no summary. Try again.": {
+   "zh-Hans": "模型没有给出摘要。请重试。",
+   "hi": "मॉडल ने कोई सारांश नहीं दिया। फिर से कोशिश करें।",
+   "es": "El modelo no dio ningún resumen. Inténtalo de nuevo.",
+   "ar": "لم يقدّم النموذج ملخصًا. حاول مرة أخرى.",
+   "fr": "Le modèle n'a donné aucun résumé. Réessayez.",
+   "bn": "মডেল কোনো সারাংশ দেয়নি। আবার চেষ্টা করুন।",
+   "pt-BR": "O modelo não deu um resumo. Tente de novo.",
+   "ru": "Модель не дала краткого изложения. Попробуйте ещё раз.",
+   "id": "Model tidak memberi ringkasan. Coba lagi.",
+   "it": "Il modello non ha dato un riassunto. Riprova."
   }
  }
 }

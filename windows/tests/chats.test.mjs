@@ -2,7 +2,7 @@
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_CHATS, chatTitle, deleteChat, loadChats, saveChat } from "../src/core/chats.ts";
+import { MAX_CHATS, chatTitle, compactOf, deleteChat, loadChats, saveChat, setCompact } from "../src/core/chats.ts";
 
 const mem = new Map();
 globalThis.localStorage = {
@@ -61,4 +61,18 @@ test("past chats are searched in questions and answers, accents and case aside",
   // Every word must be there, in any message of the chat.
   assert.deepEqual(searchChats(chats, "pasta cottura").map((x) => x.chat.id), ["b"]);
   assert.deepEqual(searchChats(chats, "pasta pdf"), []);
+});
+
+test("a compacted chat keeps its summary until it is deleted", () => {
+  saveChat(chat("a"));
+  saveChat(chat("b"));
+  setCompact("a", { upto: 2, summary: "S" });
+  assert.deepEqual(compactOf("a"), { upto: 2, summary: "S" });
+  assert.equal(compactOf("b"), null);
+  setCompact("b", { upto: 4, summary: "T" });
+  deleteChat("a");
+  assert.equal(compactOf("a"), null);
+  assert.deepEqual(compactOf("b"), { upto: 4, summary: "T" });
+  setCompact("b", null);
+  assert.equal(compactOf("b"), null);
 });

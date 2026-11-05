@@ -1,3 +1,4 @@
+import type { ChatCompact } from "./chats";
 // Thin wrapper over the Tauri commands/events. Every call is a no-op when the
 // page is opened in a plain browser, so the island can be iterated on with
 // `npm run dev` alone.
@@ -282,8 +283,10 @@ export const Bridge = {
   /** Double click on a grip: the usual width, height, or both. */
   islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
-  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null) =>
-    call<void>("chat_restore", { chatId, turns, session }),
+  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
+    call<void>("chat_restore", { chatId, turns, session, compact }),
+  /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
+  chatCompact: (chatId: string) => callOrThrow<ChatCompact | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: async () => {
     dialogs++;
