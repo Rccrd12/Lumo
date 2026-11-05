@@ -41,6 +41,8 @@ mod live;
 mod local_chat;
 mod local_models;
 mod local_profile;
+// /test with a local model: for testing only, out before the release.
+mod self_test;
 mod log;
 mod mail;
 mod media;

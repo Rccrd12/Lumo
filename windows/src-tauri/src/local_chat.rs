@@ -379,7 +379,7 @@ fn failure(server: &Server, model: &str, base: &Url, f: Failure) -> String {
 }
 
 /// Where the requests of a chat go, with the clients for them.
-fn endpoint(server: &Server, base: &Url) -> Result<Endpoint, String> {
+pub(crate) fn endpoint(server: &Server, base: &Url) -> Result<Endpoint, String> {
     Ok(Endpoint {
         url: net::join(base, "v1/chat/completions"),
         authorization: bearer(server.key.as_deref()),
