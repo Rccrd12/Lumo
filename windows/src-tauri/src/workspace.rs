@@ -116,6 +116,43 @@ pub fn activity(id: &str, input: &Value) -> crate::claude_code::Activity {
     }
 }
 
+/// The user's own folders as they are on this computer (OneDrive's when it
+/// holds them), for the model's instructions.
+pub fn folders_note() -> String {
+    let home = crate::platform::home_dir();
+    let mut found = vec![format!("home {}", home.display())];
+    for name in ["Desktop", "Documents", "Downloads", "Pictures"] {
+        let at = [home.join("OneDrive").join(name), home.join(name)].into_iter().find(|p| p.is_dir());
+        if let Some(at) = at {
+            found.push(format!("{name} {}", at.display()));
+        }
+    }
+    format!(" The user's folders on this computer: {}. Use these paths as they are; never guess one from the user's name.", found.join(", "))
+}
+
+/// A path that isn't there: what its folder holds instead, so the model can
+/// pick the right name (or what the nearest folder that is there holds).
+fn not_found(path: &Path) -> String {
+    let mut dir = path.parent();
+    while let Some(d) = dir {
+        if d.is_dir() {
+            let mut names: Vec<String> = std::fs::read_dir(d)
+                .map(|r| r.flatten().map(|e| {
+                    let n = e.file_name().to_string_lossy().to_string();
+                    if e.file_type().is_ok_and(|k| k.is_dir()) { format!("{n}\\") } else { n }
+                }).collect())
+                .unwrap_or_default();
+            names.sort_by_key(|n| n.to_lowercase());
+            let more = names.len().saturating_sub(80);
+            names.truncate(80);
+            let tail = if more > 0 { format!(" and {more} more") } else { String::new() };
+            return format!("{} doesn't exist. {} holds: {}{tail}.", path.display(), d.display(), if names.is_empty() { "nothing".into() } else { names.join(", ") });
+        }
+        dir = d.parent();
+    }
+    format!("{} doesn't exist, or can't be read.", path.display())
+}
+
 /// The chat's folder.
 pub fn dir(chat: &str) -> PathBuf {
     root().join(safe_id(chat))
@@ -272,7 +309,7 @@ impl Workspace {
         if !from.is_absolute() {
             return Err(format!("{source}: give the full path of the file or folder on the computer."));
         }
-        let meta = std::fs::metadata(from).map_err(|_| format!("{source} doesn't exist, or can't be read."))?;
+        let meta = std::fs::metadata(from).map_err(|_| not_found(from))?;
         let mut entries = self.manifest();
         // Copied already: the copy, perhaps changed, stays as it is.
         let same = |e: &Entry| Path::new(&e.original) == from || Path::new(&e.original).starts_with(from) && meta.is_dir();
@@ -765,6 +802,10 @@ mod tests {
         assert!(ws.dir.join("a.txt").exists());
         assert_eq!(std::fs::read_to_string(base.join("secret.txt")).unwrap(), "no");
         assert!(ws.run(COPY, &json!({ "path": "relative.txt" })).is_err());
+        // A path that isn't there says what its folder holds.
+        let missing = base.join("Riccardo").join("file.txt").to_string_lossy().to_string();
+        let said = ws.run(COPY, &json!({ "path": missing })).unwrap_err();
+        assert!(said.contains("doesn't exist") && said.contains("secret.txt") && said.contains("ws"), "{said}");
         let _ = std::fs::remove_dir_all(base);
     }
 

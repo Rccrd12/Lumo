@@ -365,6 +365,18 @@ fn server_error(server: &Server, e: String) -> String {
     e
 }
 
+/// `text` after what `message` says, as its last words.
+fn append_text(message: &mut Value, text: &str) {
+    match &mut message["content"] {
+        Value::String(s) => {
+            s.push_str("\n\n");
+            s.push_str(text);
+        }
+        Value::Array(parts) => parts.push(json!({ "type": "text", "text": text })),
+        _ => {}
+    }
+}
+
 /// Takes the pictures out of the last message of `body` (its text stays),
 /// for a server that refused them. Whether there were any.
 fn without_images(body: &mut Value) -> bool {
@@ -417,7 +429,9 @@ pub async fn send(
     let system = if tools.is_empty() { system } else { format!("{system}{}", chat::api_tools_note(if mode == "plan" && !mail.is_empty() { "mail" } else { mail })) };
     let system = if web { format!("{system}{}", crate::web_search::NOTE) } else { system };
     let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
-    let system = if tools.iter().any(|(id, _, _)| id == crate::workspace::COPY) { format!("{system}{WORKSPACE_NOTE}") } else { system };
+    let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
+    // Where the user's folders really are: a model guesses C:\Users\<name> from the name it is told.
+    let system = if workspace { format!("{system}{WORKSPACE_NOTE}{}", crate::workspace::folders_note()) } else { system };
     // Built once the model is in memory, when its server says what it can do.
     let mut user = Value::Null;
     let mut body = Value::Null;
@@ -456,6 +470,12 @@ pub async fn send(
         let taken = (taken_chars / 3) as u64 + u64::from(MAX_TOKENS);
         let pages = crate::openai_compat::pages_that_fit(context_size, taken);
         user = user_message_in(caps.vision != Some(false), pages, turn.first, context.as_ref(), &query, shared);
+        // A dropped file, to work on: where it is, to copy it.
+        if workspace {
+            if let Some(ChatContext::File { path, .. }) = chat::turn_context(turn.first, context.as_ref()) {
+                append_text(&mut user, &format!("(This file is at {path}: copy it with {} to work on it.)", crate::workspace::COPY));
+            }
+        }
         body = request_body(model, &system, &turn.history, &user);
         if !tools.is_empty() {
             body["tools"] = crate::openai_compat::function_tools(&tools);
