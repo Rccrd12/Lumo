@@ -14592,6 +14592,30 @@
    "ru": "Копия совпадает с оригиналом.",
    "id": "Salinannya sama dengan aslinya.",
    "it": "La copia è uguale all'originale."
+  },
+  "{name} stopped the answer before it was over: the model may have crashed or run out of memory. Look at {name}, then ask again.": {
+   "zh-Hans": "{name} 在回答结束前停止了：模型可能崩溃了或内存不足。请查看 {name}，然后再问一次。",
+   "hi": "{name} ने जवाब पूरा होने से पहले रोक दिया: मॉडल क्रैश हो गया होगा या उसकी मेमोरी खत्म हो गई होगी। {name} देखें, फिर दोबारा पूछें।",
+   "es": "{name} detuvo la respuesta antes de terminarla: puede que el modelo se haya bloqueado o se haya quedado sin memoria. Mira {name} y vuelve a preguntar.",
+   "ar": "أوقف {name} الإجابة قبل أن تكتمل: ربما تعطّل النموذج أو نفدت ذاكرته. تحقّق من {name} ثم اسأل مرة أخرى.",
+   "fr": "{name} a arrêté la réponse avant la fin : le modèle a peut-être planté ou manqué de mémoire. Regardez {name}, puis redemandez.",
+   "bn": "{name} উত্তর শেষ হওয়ার আগেই থামিয়ে দিয়েছে: মডেলটি হয়তো ক্র্যাশ করেছে বা মেমরি ফুরিয়ে গেছে। {name} দেখুন, তারপর আবার জিজ্ঞাসা করুন।",
+   "pt-BR": "{name} parou a resposta antes do fim: o modelo pode ter travado ou ficado sem memória. Veja o {name} e pergunte de novo.",
+   "ru": "{name} прервал ответ, не закончив его: возможно, модель упала или ей не хватило памяти. Посмотрите в {name} и спросите ещё раз.",
+   "id": "{name} menghentikan jawaban sebelum selesai: model mungkin macet atau kehabisan memori. Periksa {name}, lalu tanyakan lagi.",
+   "it": "{name} ha interrotto la risposta prima della fine: il modello potrebbe essersi bloccato o aver esaurito la memoria. Controlla {name}, poi chiedi di nuovo."
+  },
+  "{name} answered with an error and gave no reason. Look at {name}, then ask again.": {
+   "zh-Hans": "{name} 返回了错误，但没有说明原因。请查看 {name}，然后再问一次。",
+   "hi": "{name} ने बिना कारण बताए एक त्रुटि लौटाई। {name} देखें, फिर दोबारा पूछें।",
+   "es": "{name} respondió con un error sin dar el motivo. Mira {name} y vuelve a preguntar.",
+   "ar": "ردّ {name} بخطأ دون ذكر السبب. تحقّق من {name} ثم اسأل مرة أخرى.",
+   "fr": "{name} a répondu par une erreur sans en donner la raison. Regardez {name}, puis redemandez.",
+   "bn": "{name} কারণ না জানিয়ে একটি ত্রুটি দিয়েছে। {name} দেখুন, তারপর আবার জিজ্ঞাসা করুন।",
+   "pt-BR": "{name} respondeu com um erro sem dizer o motivo. Veja o {name} e pergunte de novo.",
+   "ru": "{name} вернул ошибку без объяснения причины. Посмотрите в {name} и спросите ещё раз.",
+   "id": "{name} menjawab dengan galat tanpa menyebut alasannya. Periksa {name}, lalu tanyakan lagi.",
+   "it": "{name} ha risposto con un errore senza dire il motivo. Controlla {name}, poi chiedi di nuovo."
   }
  }
 }
