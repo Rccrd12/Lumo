@@ -54,6 +54,7 @@ export const SCREEN_STRINGS = {
   capturing: N_("Taking the screenshot…"),
   confirm: N_("Send this to the chat?"),
   needsImages: N_("Screenshots need the Claude Code or Anthropic provider."),
+  modelNoImages: N_("This model doesn't see pictures. Pick one that does, or ask without the screenshot."),
   remove: N_("Remove"),
   selected: N_("Selected text"),
   selectedIn: N_("Text from {app}"),
@@ -229,10 +230,15 @@ export function entryLabel(entry: MenuEntry): string {
 /**
  * Who can look at a screenshot: Claude Code reads it from the inbox, the
  * Anthropic API and the cloud providers take it as an image. A local model
- * only when its server says it sees pictures (chat.rs says the same).
+ * unless its server says it doesn't see pictures (chat.rs says the same).
  */
 export function seesImages(provider: ProviderDef): boolean {
-  return provider.urlField === null || localCapsOf(provider.id)?.vision === true;
+  return provider.urlField === null || localCapsOf(provider.id)?.vision !== false;
+}
+
+/** Why `provider` takes no screenshot: a local model that doesn't see, or a provider that never does. */
+export function noImagesReason(provider: ProviderDef): string {
+  return t(provider.urlField ? SCREEN_STRINGS.modelNoImages : SCREEN_STRINGS.needsImages);
 }
 
 /** A screenshot the user kept, waiting for the next question. */

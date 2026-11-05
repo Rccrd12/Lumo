@@ -106,6 +106,12 @@ fn key_for(stored: &str, url: &Url) -> Option<String> {
         .then_some(bound.key)
 }
 
+/// Whether `provider` is a model server of the user's (Ollama, LM Studio,
+/// Unsloth Studio, a custom one).
+pub fn is_local(provider: &str) -> bool {
+    matches!(provider, "ollama" | "lmstudio" | "unsloth" | "custom")
+}
+
 /// A model server as the settings describe it.
 pub struct Server {
     pub id: &'static str,
@@ -231,6 +237,8 @@ fn parse_models(body: &Value) -> Option<Vec<String>> {
     Some(
         items
             .iter()
+            // Unsloth Studio names its speech and music models' `task`: they don't chat.
+            .filter(|m| m.get("task").is_none_or(Value::is_null))
             .filter_map(|m| m.get("id").and_then(Value::as_str))
             .filter(|id| !NOT_CHAT.iter().any(|n| id.to_lowercase().contains(n)))
             .map(str::to_string)
@@ -240,12 +248,18 @@ fn parse_models(body: &Value) -> Option<Vec<String>> {
 
 // ── Messages ──────────────────────────────────────────────────────────────────
 
-/// What a dropped file adds to its message: text inline (cut), anything
-/// else by name only.
+/// What a dropped file adds to its message: text inline (cut), a PDF's text
+/// (pdf_text.rs), anything else by name only.
 fn file_note(name: &str, path: &str) -> String {
     let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     let binary = matches!(ext.as_str(), "pdf" | "jpg" | "jpeg" | "png" | "gif" | "webp");
     // Read no more than the inline limit can use (4 bytes per character at most).
+    if ext == "pdf" {
+        return match crate::pdf_text::text(path, MAX_INLINE_CHARS) {
+            Some(text) => format!("File: {name}\nFile contents:\n{text}"),
+            None => format!("File: {name}\n{}", crate::openai_compat::PDF_UNREAD),
+        };
+    }
     let text = if binary { None } else { read_prefix(path, MAX_INLINE_CHARS * 4) };
     match text {
         Some(text) if !text.is_empty() => {
@@ -318,14 +332,38 @@ fn is_image(path: &str) -> bool {
 /// sees them. `shared`: the screenshots and the files shared from the screen
 /// button (a model that doesn't see gets the text of the text files only).
 fn user_message(vision: bool, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
-    let dropped_image = matches!(chat::turn_context(first, context), Some(ChatContext::File { path, .. }) if is_image(path));
-    let user = if vision && dropped_image {
-        crate::openai_compat::user_message(first, context, query)
+    use crate::openai_compat::PdfAs;
+    // A PDF: its text, and its first pages as pictures for a model that sees.
+    let pdf = if vision { PdfAs::TextAndPages } else { PdfAs::Text };
+    let dropped = matches!(chat::turn_context(first, context), Some(ChatContext::File { path, .. }) if is_image(path) || crate::openai_compat::is_pdf(path));
+    let user = if vision && dropped {
+        crate::openai_compat::user_message(first, context, query, pdf)
     } else {
         json!({ "role": "user", "content": user_text(first, context, query) })
     };
     let shared: Vec<String> = shared.iter().filter(|p| vision || !is_image(p)).cloned().collect();
-    crate::openai_compat::with_images(user, &shared)
+    crate::openai_compat::with_images(user, &shared, pdf)
+}
+
+/// What the server said, in the user's language where Lumo knows it.
+fn server_error(server: &Server, e: String) -> String {
+    if server.id == "unsloth" && e.contains("No model loaded") {
+        return t("No model is loaded in Unsloth Studio. Pick one above the chat box, and Lumo loads it.");
+    }
+    e
+}
+
+/// Takes the pictures out of the last message of `body` (its text stays),
+/// for a server that refused them. Whether there were any.
+fn without_images(body: &mut Value) -> bool {
+    let Some(last) = body["messages"].as_array_mut().and_then(|m| m.last_mut()) else { return false };
+    let Some(parts) = last["content"].as_array() else { return false };
+    if !parts.iter().any(|p| p["type"] == "image_url") {
+        return false;
+    }
+    let text: Vec<&str> = parts.iter().filter(|p| p["type"] == "text").filter_map(|p| p["text"].as_str()).collect();
+    last["content"] = json!(text.join("\n\n"));
+    true
 }
 
 /// One chat turn with a model server.
@@ -348,7 +386,6 @@ pub async fn send(
         return Err(t("Pick a model above the chat box first."));
     }
     let turn = chat.begin(server.id);
-    let user = user_message(caps.vision == Some(true), turn.first, context.as_ref(), &query, shared);
     // The tools, unless the server says the model takes none.
     let mode = crate::claude_code::permission_mode(mode);
     // Lumo's email tools, usable only while this turn runs.
@@ -368,17 +405,9 @@ pub async fn send(
     let system = if tools.is_empty() { system } else { format!("{system}{}", chat::api_tools_note(if mode == "plan" && !mail.is_empty() { "mail" } else { mail })) };
     let system = if web { format!("{system}{}", crate::web_search::NOTE) } else { system };
     let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
-    let mut body = request_body(model, &system, &turn.history, &user);
-    if !tools.is_empty() {
-        body["tools"] = crate::openai_compat::function_tools(&tools);
-    }
-    if let Some(level) = crate::local_models::reasoning_effort(caps, effort) {
-        body["reasoning_effort"] = json!(level);
-    }
-    // How much of the context the chat fills comes with the last event (the ring).
-    if matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
-        body["stream_options"] = json!({ "include_usage": true });
-    }
+    // Built once the model is in memory, when its server says what it can do.
+    let mut user = Value::Null;
+    let mut body = Value::Null;
     let mut used = None;
 
     // What the island shows so far: kept if Stop is pressed mid-answer. What
@@ -398,7 +427,30 @@ pub async fn send(
             .await;
             if let Err(e) = loaded {
                 crate::log::line(format!("[local] loading {model}: {e}"));
+                // Unsloth Studio answers nothing until a model is in: its reason, said.
+                if server.id == "unsloth" {
+                    return Err(tf("Unsloth Studio couldn't load the model: {error}", &[("error", &e)]));
+                }
             }
+        }
+        let caps = if caps.loaded == Some(false) { crate::local_models::caps(server, model).await } else { caps.clone() };
+        // Pictures go unless the server says the model doesn't see them; one
+        // that refuses them is asked again without (below).
+        user = user_message(caps.vision != Some(false), turn.first, context.as_ref(), &query, shared);
+        body = request_body(model, &system, &turn.history, &user);
+        if !tools.is_empty() {
+            body["tools"] = crate::openai_compat::function_tools(&tools);
+        }
+        if let Some(level) = crate::local_models::reasoning_effort(&caps, effort) {
+            body["reasoning_effort"] = json!(level);
+            // Unsloth Studio turns thinking on and off with its own switch.
+            if server.id == "unsloth" {
+                body["enable_thinking"] = json!(level != "none");
+            }
+        }
+        // How much of the context the chat fills comes with the last event (the ring).
+        if matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
+            body["stream_options"] = json!({ "include_usage": true });
         }
         let mut rounds = 0;
         loop {
@@ -423,6 +475,13 @@ pub async fn send(
             )
             .await;
             let streamed = match streamed {
+                // A model that doesn't see refuses the pictures: once more with the text alone.
+                Err((400 | 422, _)) if without_images(&mut body) => {
+                    if let Some(last) = body["messages"].as_array().and_then(|m| m.last()).filter(|m| m["role"] == "user") {
+                        user = last.clone();
+                    }
+                    continue;
+                }
                 // A model that takes no tools refuses the request: once more without them.
                 Err((400 | 422, _)) if body.get("tools").is_some() => {
                     body.as_object_mut().map(|b| b.remove("tools"));
@@ -430,7 +489,7 @@ pub async fn send(
                     body["messages"][0]["content"] = json!(if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system });
                     continue;
                 }
-                other => other.map_err(|(_, e)| e)?,
+                other => other.map_err(|(_, e)| server_error(server, e))?,
             };
             if streamed.used.is_some() {
                 used = streamed.used;

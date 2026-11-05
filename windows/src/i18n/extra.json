@@ -14460,6 +14460,42 @@
    "ru": "Его ключ, sk-unsloth-… (Unsloth Studio → Settings → API)",
    "id": "Kuncinya, sk-unsloth-… (Unsloth Studio → Settings → API)",
    "it": "La sua chiave, sk-unsloth-… (Unsloth Studio → Settings → API)"
+  },
+  "This model doesn't see pictures. Pick one that does, or ask without the screenshot.": {
+   "zh-Hans": "这个模型看不到图片。请选择一个能看图的模型，或者不带截图提问。",
+   "hi": "यह मॉडल तस्वीरें नहीं देखता। ऐसा मॉडल चुनें जो देखता हो, या स्क्रीनशॉट के बिना पूछें।",
+   "es": "Este modelo no ve imágenes. Elige uno que las vea o pregunta sin la captura.",
+   "ar": "هذا النموذج لا يرى الصور. اختر نموذجًا يراها، أو اسأل من دون لقطة الشاشة.",
+   "fr": "Ce modèle ne voit pas les images. Choisissez-en un qui les voit, ou posez la question sans la capture.",
+   "bn": "এই মডেল ছবি দেখতে পায় না। এমন একটি বেছে নিন যেটি দেখে, অথবা স্ক্রিনশট ছাড়া জিজ্ঞাসা করুন।",
+   "pt-BR": "Este modelo não vê imagens. Escolha um que veja ou pergunte sem a captura.",
+   "ru": "Эта модель не видит изображения. Выберите ту, что видит, или спросите без снимка экрана.",
+   "id": "Model ini tidak melihat gambar. Pilih model yang bisa, atau bertanya tanpa tangkapan layar.",
+   "it": "Questo modello non vede le immagini. Scegline uno che le vede, oppure chiedi senza lo screenshot."
+  },
+  "No model is loaded in Unsloth Studio. Pick one above the chat box, and Lumo loads it.": {
+   "zh-Hans": "Unsloth Studio 中没有加载模型。在聊天框上方选择一个，Lumo 会加载它。",
+   "hi": "Unsloth Studio में कोई मॉडल लोड नहीं है। चैट बॉक्स के ऊपर एक चुनें, और Lumo उसे लोड करेगा।",
+   "es": "No hay ningún modelo cargado en Unsloth Studio. Elige uno encima del cuadro del chat y Lumo lo carga.",
+   "ar": "لا يوجد نموذج محمّل في Unsloth Studio. اختر واحدًا فوق مربع الدردشة، وسيحمّله Lumo.",
+   "fr": "Aucun modèle n'est chargé dans Unsloth Studio. Choisissez-en un au-dessus de la zone de chat, et Lumo le charge.",
+   "bn": "Unsloth Studio-তে কোনো মডেল লোড করা নেই। চ্যাট বক্সের উপরে একটি বেছে নিন, Lumo সেটি লোড করবে।",
+   "pt-BR": "Nenhum modelo está carregado no Unsloth Studio. Escolha um acima da caixa do chat e o Lumo o carrega.",
+   "ru": "В Unsloth Studio не загружена модель. Выберите её над полем чата, и Lumo её загрузит.",
+   "id": "Tidak ada model yang dimuat di Unsloth Studio. Pilih satu di atas kotak obrolan, dan Lumo memuatnya.",
+   "it": "Nessun modello è caricato in Unsloth Studio. Scegline uno sopra la casella della chat e Lumo lo carica."
+  },
+  "Unsloth Studio couldn't load the model: {error}": {
+   "zh-Hans": "Unsloth Studio 无法加载模型：{error}",
+   "hi": "Unsloth Studio मॉडल लोड नहीं कर सका: {error}",
+   "es": "Unsloth Studio no pudo cargar el modelo: {error}",
+   "ar": "تعذّر على Unsloth Studio تحميل النموذج: {error}",
+   "fr": "Unsloth Studio n'a pas pu charger le modèle : {error}",
+   "bn": "Unsloth Studio মডেলটি লোড করতে পারেনি: {error}",
+   "pt-BR": "O Unsloth Studio não conseguiu carregar o modelo: {error}",
+   "ru": "Unsloth Studio не удалось загрузить модель: {error}",
+   "id": "Unsloth Studio tidak dapat memuat model: {error}",
+   "it": "Unsloth Studio non è riuscito a caricare il modello: {error}"
   }
  }
 }

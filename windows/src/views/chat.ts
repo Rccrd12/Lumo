@@ -92,7 +92,7 @@ import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, short,
+  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
   shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
   type PendingScreen, type PreviewBlock, type ScreenItem,
 } from "../core/screen";
@@ -960,7 +960,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
 
   /** Ollama and LM Studio load and eject models; a custom server doesn't say. */
   function holds(p: ProviderDef): boolean {
-    return p.id === "ollama" || p.id === "lmstudio";
+    return p.id === "ollama" || p.id === "lmstudio" || p.id === "unsloth";
   }
 
   /** Which models are in memory: − on those, + on the others. */
@@ -1534,6 +1534,8 @@ export function buildPrompt(
     const model = activeModel(State.settings) || t(STRINGS.noModel);
     const effort = effortFor(p.id, State.settings.chatEffort);
     modelName.textContent = effort ? `${model} · ${effortLabel(effort)}` : model;
+    // A long name is cut; the whole of it shows on hover.
+    modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);
     drawSend();
     drawPermButton();
@@ -2098,7 +2100,7 @@ export function buildPrompt(
       screenList.append(row);
     }
     if (problem) screenStatus(problem);
-    else if (displays.length > 0 && !images) screenStatus(t(SCREEN_STRINGS.needsImages));
+    else if (displays.length > 0 && !images) screenStatus(noImagesReason(providerDef(State.settings.chatProvider)));
     screenStatus(t(SCREEN_STRINGS.nothingYet));
   }
 
