@@ -129,7 +129,7 @@ async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<V
     for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
         let id = b["id"].as_str().unwrap_or_default();
         let name = b["name"].as_str().unwrap_or_default();
-        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone()).await;
+        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone(), false).await;
         results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
     }
     results

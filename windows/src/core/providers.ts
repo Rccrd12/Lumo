@@ -58,6 +58,15 @@ export function isCliProvider(id: string): boolean {
 }
 
 /**
+ * Whether the chat's shield is offered with `id`: the CLIs, and the model
+ * servers, whose tools the modes hold too (local_chat.rs: Ask every time asks
+ * even for a trusted tool, Auto runs the trusted ones, Plan only gives none).
+ */
+export function hasPermissions(id: string): boolean {
+  return isCliProvider(id) || PROVIDERS.some((p) => p.id === id && p.urlField !== null);
+}
+
+/**
  * What the chat's CLIs may do without asking (Settings.chatPermissionMode,
  * claude_code::permission_mode): ask for everything, let the AI decide what
  * is safe to do without asking (Claude Code's auto mode), or only plan. With

@@ -13,6 +13,11 @@
 // reasons. A server that says nothing is sent the tools all the same, and a
 // model that refuses them is asked again without.
 //
+// The chat's permission modes hold here too: Ask every time is a card for
+// each call of the user's tools, even one they trust; Auto lets the tools
+// they trust run without asking (the others ask); Plan only gives the model
+// none of the user's tools, only the island's timer and listening.
+//
 // Nothing leaves the machine unless the user pointed the server address
 // somewhere else: that address is the only place this module talks to.
 
@@ -261,6 +266,18 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     json!({ "model": model, "messages": messages, "stream": true, "max_tokens": MAX_TOKENS })
 }
 
+/// Added to Lumo's instructions on Plan only.
+const PLAN_NOTE: &str = "\n\nThe user picked Plan only: read and plan, and change nothing. You have none of the user's tools now; say what you would do with them instead.";
+
+/// The tools a turn offers in permission `mode` (claude_code::permission_mode):
+/// on Plan only, the island's own (a timer, listening) and none of the user's.
+fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String, String, Value)> {
+    if mode != "plan" {
+        return all;
+    }
+    all.into_iter().filter(|(id, _, _)| crate::island_tools::NAMES.contains(&id.as_str())).collect()
+}
+
 /// Whether `path` is a picture a model that sees can be sent.
 fn is_image(path: &str) -> bool {
     let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
@@ -290,6 +307,7 @@ pub async fn send(
     model: &str,
     caps: &Caps,
     effort: &str,
+    mode: &str,
     query: String,
     context: Option<ChatContext>,
     shared: &[String],
@@ -301,12 +319,17 @@ pub async fn send(
     let turn = chat.begin(server.id);
     let user = user_message(caps.vision == Some(true), turn.first, context.as_ref(), &query, shared);
     // The tools, unless the server says the model takes none.
+    let mode = crate::claude_code::permission_mode(mode);
     let tools = if caps.tools == Some(false) {
         Vec::new()
     } else {
-        tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default()
+        let all = tauri::async_runtime::spawn_blocking(|| crate::tools::api_tools(false)).await.unwrap_or_default();
+        tools_for_mode(all, mode)
     };
-    let mut body = request_body(model, &chat::system_prompt_in(chat, false, !tools.is_empty()), &turn.history, &user);
+    let always_ask = mode == "default";
+    let system = chat::system_prompt_in(chat, false, !tools.is_empty());
+    let system = if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system };
+    let mut body = request_body(model, &system, &turn.history, &user);
     if !tools.is_empty() {
         body["tools"] = crate::openai_compat::function_tools(&tools);
     }
@@ -332,7 +355,8 @@ pub async fn send(
                 // A model that takes no tools refuses the request: once more without them.
                 Err((400 | 422, _)) if body.get("tools").is_some() => {
                     body.as_object_mut().map(|b| b.remove("tools"));
-                    body["messages"][0]["content"] = json!(chat::system_prompt_in(chat, false, false));
+                    let system = chat::system_prompt_in(chat, false, false);
+                    body["messages"][0]["content"] = json!(if mode == "plan" { format!("{system}{PLAN_NOTE}") } else { system });
                     continue;
                 }
                 other => other.map_err(|(_, e)| e)?,
@@ -357,7 +381,7 @@ pub async fn send(
             for call in &calls {
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
-                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input).await;
+                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, always_ask).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "name": name, "content": text }));
             }
             if let Some(messages) = body["messages"].as_array_mut() {
@@ -612,6 +636,16 @@ mod tests {
         assert_eq!(calls[0], json!({"id":"c1","name":"set_timer","arguments":"{\"minutes\":5}"}));
         assert_eq!(calls[1]["name"], "listen");
         assert_eq!(calls[1]["arguments"], r#"{"source":"x"}"#);
+    }
+
+    #[test]
+    fn plan_only_keeps_the_islands_tools_and_none_of_the_users() {
+        let tool = |id: &str| (id.to_string(), String::new(), json!({}));
+        let all = vec![tool(crate::island_tools::SET_TIMER), tool("pdfcraft"), tool(crate::island_tools::LISTEN)];
+        let ids = |v: Vec<(String, String, Value)>| v.into_iter().map(|t| t.0).collect::<Vec<_>>();
+        assert_eq!(ids(tools_for_mode(all.clone(), "plan")), vec![crate::island_tools::SET_TIMER, crate::island_tools::LISTEN]);
+        assert_eq!(ids(tools_for_mode(all.clone(), "default")).len(), 3);
+        assert_eq!(ids(tools_for_mode(all, "auto")).len(), 3);
     }
 
     #[test]

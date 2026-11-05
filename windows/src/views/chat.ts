@@ -78,7 +78,7 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
-  activeModel, capsContext, capsWords, effortFor, effortsFor, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
+  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -186,6 +186,12 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
 
 /** Auto with Antigravity CLI: agy's own Turbo preset (antigravity_cli.rs). */
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
+/** The modes with a local model, whose only actions are the user's tools (local_chat.rs). */
+const LOCAL_NOTES: Record<PermissionMode, string> = {
+  default: N_("Asks before each of your tools runs, even one you trust."),
+  auto: N_("Runs the tools you trust without asking, and asks for the rest."),
+  plan: N_("Gets none of your tools: it only answers and plans."),
+};
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
@@ -1520,7 +1526,7 @@ export function buildPrompt(
           h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
           h("span", {
             class: "perm-note",
-            text: t(mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
+            text: t(p.urlField ? LOCAL_NOTES[mode] : mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
           }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
@@ -1545,9 +1551,9 @@ export function buildPrompt(
     panelChanged();
   }
 
-  /** The shield: shown for the CLIs only, lit when they may do more than ask. */
+  /** The shield: shown for the CLIs and the model servers, lit when they may do more than ask. */
   function drawPermButton() {
-    const cli = isCliProvider(State.settings.chatProvider);
+    const cli = hasPermissions(State.settings.chatProvider);
     permBtn.hidden = !cli;
     if (!cli) closePermissions();
     const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);

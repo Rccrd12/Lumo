@@ -14208,6 +14208,42 @@
    "ru": "Смотрит {name}",
    "id": "Mendaftar {name}",
    "it": "Elenca {name}"
+  },
+  "Asks before each of your tools runs, even one you trust.": {
+   "zh-Hans": "运行你的每个工具前都会询问，即使是你信任的工具。",
+   "hi": "आपके हर टूल के चलने से पहले पूछता है, भरोसेमंद टूल के लिए भी।",
+   "es": "Pregunta antes de que se ejecute cada una de tus herramientas, incluso las de confianza.",
+   "ar": "يسأل قبل تشغيل كل أداة من أدواتك، حتى الموثوقة منها.",
+   "fr": "Demande avant chaque exécution de vos outils, même ceux de confiance.",
+   "bn": "আপনার প্রতিটি টুল চালানোর আগে জিজ্ঞেস করে, বিশ্বস্ত টুলের ক্ষেত্রেও।",
+   "pt-BR": "Pergunta antes de cada uma das suas ferramentas rodar, mesmo as confiáveis.",
+   "ru": "Спрашивает перед запуском каждого вашего инструмента, даже доверенного.",
+   "id": "Bertanya sebelum setiap alat Anda dijalankan, bahkan yang Anda percayai.",
+   "it": "Chiede prima di ogni tuo strumento, anche quelli di cui ti fidi."
+  },
+  "Runs the tools you trust without asking, and asks for the rest.": {
+   "zh-Hans": "直接运行你信任的工具，其余的会先询问。",
+   "hi": "भरोसेमंद टूल बिना पूछे चलाता है, बाकी के लिए पूछता है।",
+   "es": "Ejecuta sin preguntar las herramientas de confianza y pregunta por el resto.",
+   "ar": "يشغّل الأدوات الموثوقة دون سؤال، ويسأل عن الباقي.",
+   "fr": "Lance sans demander les outils de confiance, et demande pour les autres.",
+   "bn": "বিশ্বস্ত টুল না জিজ্ঞেস করেই চালায়, বাকিগুলোর জন্য জিজ্ঞেস করে।",
+   "pt-BR": "Roda sem perguntar as ferramentas confiáveis e pergunta pelas outras.",
+   "ru": "Запускает доверенные инструменты без вопросов, об остальных спрашивает.",
+   "id": "Menjalankan alat yang Anda percayai tanpa bertanya, dan bertanya untuk sisanya.",
+   "it": "Usa senza chiedere gli strumenti di cui ti fidi, e chiede per gli altri."
+  },
+  "Gets none of your tools: it only answers and plans.": {
+   "zh-Hans": "不使用你的任何工具：只回答和规划。",
+   "hi": "आपका कोई टूल नहीं मिलता: केवल जवाब देता है और योजना बनाता है।",
+   "es": "No recibe ninguna de tus herramientas: solo responde y planifica.",
+   "ar": "لا يحصل على أي من أدواتك: يجيب ويخطط فقط.",
+   "fr": "N'a aucun de vos outils : il répond et planifie seulement.",
+   "bn": "আপনার কোনো টুল পায় না: শুধু উত্তর দেয় ও পরিকল্পনা করে।",
+   "pt-BR": "Não recebe nenhuma das suas ferramentas: só responde e planeja.",
+   "ru": "Не получает ваших инструментов: только отвечает и планирует.",
+   "id": "Tidak mendapat alat Anda: hanya menjawab dan merencanakan.",
+   "it": "Non riceve nessuno dei tuoi strumenti: risponde e pianifica soltanto."
   }
  }
 }

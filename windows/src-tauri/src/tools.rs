@@ -1021,12 +1021,14 @@ pub fn api_tools(listen: bool) -> Vec<(String, String, Value)> {
 }
 
 /// A call from the chat `chat_id`'s API providers (claude.rs,
-/// openai_compat.rs): what goes back to the model, and whether it failed.
-pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value) -> (String, bool) {
+/// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
+/// it failed. `always_ask`: a card even for a tool the user trusts (a local
+/// model's chat on Ask every time).
+pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, always_ask: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
-    let answer = serve_call(app, &json!({ "tool": id, "input": input })).await;
+    let answer = serve_call(app, &json!({ "tool": id, "input": input, "always_ask": always_ask })).await;
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
         None => (answer.get("text").and_then(Value::as_str).unwrap_or("Done.").to_string(), false),
@@ -1064,11 +1066,12 @@ fn take_allowed(id: &str) -> bool {
 }
 
 /// The user's go-ahead for one call: none needed for a tool they trust (and
-/// Lumo can hold to what it declared), the click on Claude Code's own card
-/// when there was one, else an Allow / Deny card on the island.
-async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value) -> Result<(), String> {
+/// Lumo can hold to what it declared) unless `always_ask`, the click on
+/// Claude Code's own card when there was one, else an Allow / Deny card on
+/// the island.
+async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value, always_ask: bool) -> Result<(), String> {
     let m = &tool.manifest;
-    if m.trust && tool.may_trust {
+    if m.trust && tool.may_trust && !always_ask {
         return Ok(());
     }
     if take_allowed(&m.id) {
@@ -1105,7 +1108,8 @@ pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
     if !tool.reviewed {
         return json!({ "error": format!("The tool {} changed since it was reviewed. The user can review it again in Lumo's Tools tab.", m.name) });
     }
-    if let Err(e) = approve(app, &tool, &input).await {
+    let always_ask = request.get("always_ask").and_then(Value::as_bool).unwrap_or(false);
+    if let Err(e) = approve(app, &tool, &input, always_ask).await {
         return json!({ "error": e });
     }
     let name = m.name.clone();

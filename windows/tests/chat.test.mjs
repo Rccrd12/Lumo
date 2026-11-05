@@ -10,6 +10,7 @@ import { calls, emit, internals, sent } from "./tauri.mjs";
 installFakeDom();
 const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
+const { setLocalCaps } = await import("../src/core/providers.ts");
 
 /** What the mocked Rust side answers, by command. */
 let answers;
@@ -953,8 +954,16 @@ test("a tool's command is in the menu, and what follows it goes to the AI as a r
   assert.match(sentQuery, /^Use my Lumo tool "pdfcraft_mcp" \(tool id: pdfcraft_mcp\) for this\.\n\nmerge the two PDFs$/);
   assert.equal(State.chatHistory[0].content, "/pdfcraft merge the two PDFs", "the chat shows what was typed");
 
-  State.settings = { ...State.settings, chatProvider: "ollama" };
+  // A local model its server says takes no tools.
+  answers.local_caps = { vision: false, tools: false, reasoning: [], maxContext: 0, loadedContext: 0 };
+  State.settings = { ...State.settings, chatProvider: "ollama", chatModels: { ...State.settings.chatModels, ollama: "m" } };
+  State.notify();
+  await flush();
+  await flush();
+  setLocalCaps("ollama", answers.local_caps);
   typeText("/pdf");
-  assert.ok(!commanding(), "a provider that can't use the tools doesn't list them");
+  assert.ok(!commanding(), "a model that can't use the tools doesn't list them");
+  delete answers.local_caps;
+  setLocalCaps("ollama", null);
   State.tools = [];
 });
