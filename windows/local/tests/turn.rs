@@ -365,20 +365,32 @@ fn lm_studio_s_engine_failing_is_asked_again_and_never_costs_the_tools() {
     assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice(), outcome.whole), ("Eccomi.", ["asked again", "asked again"].as_slice(), false));
     assert_eq!(outcome.notes.len(), 2);
     assert!(requests.iter().all(|r| r["stream"] == true && r.get("tools").is_some()));
-    // Three times: whole for this turn, not remembered for the next.
+    // Four times: whole for this turn, not remembered for the next.
     let mut island = Island::default();
     let failing = || Reply::Events(vec![json!({ "error": "terminated" }).to_string()]);
-    let replies = vec![failing(), failing(), failing(), whole("Eccomi.", &[])];
+    let replies = vec![failing(), failing(), failing(), failing(), whole("Eccomi.", &[])];
     let (outcome, requests) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine2", ""), &mut island);
     let outcome = outcome.unwrap();
-    assert_eq!(outcome.fixes, ["asked again", "asked again", "answered whole"]);
-    assert_eq!((requests.len(), requests[3]["stream"].as_bool()), (4, Some(false)));
+    assert_eq!(outcome.fixes, ["asked again", "asked again", "asked again", "answered whole"]);
+    assert_eq!((requests.len(), requests[4]["stream"].as_bool()), (5, Some(false)));
     let (_, requests) = turn(vec![answer("Ciao.")], &mut question("Ciao", &[]), &rules("engine2", ""), &mut island);
     assert_eq!(requests[0]["stream"], true);
     // Whole too, and again: said in the end.
-    let replies = vec![failing(), failing(), failing(), Reply::Json(400, json!({ "error": "terminated" }).to_string())];
+    let replies = vec![failing(), failing(), failing(), failing(), Reply::Json(400, json!({ "error": "terminated" }).to_string())];
     let (outcome, _) = turn(replies, &mut question("Ci sei?", &[]), &rules("engine3", ""), &mut island);
     assert!(outcome.unwrap_err().is_engine());
+}
+
+#[test]
+fn each_request_has_its_own_retries_when_the_engine_fails() {
+    // Three failures before the tool call, three before the answer: streamed throughout.
+    let mut island = Island::default();
+    let failing = || Reply::Events(vec![json!({ "error": "terminated" }).to_string()]);
+    let replies = vec![failing(), failing(), failing(), calls("c1", "set_timer", "{\"minutes\":5}"), failing(), failing(), failing(), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &rules("engine-rounds", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.whole, outcome.fixes.len()), ("Fatto.", false, 6));
+    assert!(requests.iter().all(|r| r["stream"] == true));
 }
 
 #[test]

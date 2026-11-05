@@ -290,9 +290,12 @@ fn cases(caps: &Caps) -> Vec<Case> {
             }
         }) },
         Case { file: File::Story, ..Case::new("riscrittura-lunga", "Riscrivere un file più lungo (il caso che bloccava Gemma)", &["Riscrivi tutto il file in modo più lungo e dettagliato, almeno il doppio."], |r| {
-            match r.file("racconto.txt") {
-                None => vec![(Level::Ko, "la copia di racconto.txt non c'è".into())],
-                Some(t) if t.len() * 2 < r.original_len * 3 => vec![(Level::Ko, format!("la copia è di {} caratteri, l'originale {}: non è più lunga di 1,5 volte", t.len(), r.original_len))],
+            // Over the copy or in a new file beside it: the longest text counts.
+            let longest = r.files.iter().max_by_key(|(_, t)| t.len());
+            match longest {
+                None => vec![(Level::Ko, "nessun file nella cartella di lavoro".into())],
+                Some((name, t)) if t.len() * 2 < r.original_len * 3 => vec![(Level::Ko, format!("il file più lungo ({name}) è di {} caratteri, l'originale {}: non è più lungo di 1,5 volte", t.len(), r.original_len))],
+                Some((name, _)) if !name.eq_ignore_ascii_case("racconto.txt") => vec![(Level::Warn, format!("ha scritto la versione lunga in {name} invece di riscrivere racconto.txt"))],
                 _ => vec![],
             }
         }) },

@@ -149,7 +149,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut changed = false;
     let mut notes: Vec<String> = Vec::new();
     // A refusal (400) asked again once as it was; an engine that failed,
-    // twice (then once whole): what failed once may not fail again.
+    // three times for each request (then once whole): what failed once may
+    // not fail again.
     let mut asked_again = false;
     let mut engine_retries = 0;
     // The calls that changed something, as they were made: one made again
@@ -188,9 +189,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 continue;
             }
             // LM Studio's engine failed this request ("terminated", "fetch
-            // failed"): the same request after a moment, twice, then whole
-            // for this turn. Nothing to do with the stream: not remembered.
-            Err(e) if e.is_engine() && engine_retries < 2 => {
+            // failed"): the same request after a moment, three times, then
+            // whole for this turn. Nothing to do with the stream: not remembered.
+            Err(e) if e.is_engine() && engine_retries < 3 => {
                 engine_retries += 1;
                 fixes.push("asked again");
                 tokio::time::sleep(rules.pause).await;
@@ -228,6 +229,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
             other => other?,
         };
+        // The next request has its own retries.
+        engine_retries = 0;
         let mut answer = answer;
         // Calls the model wrote in its own format, that the server left in
         // the text (Gemma's `<|tool_call>…`): made into calls.

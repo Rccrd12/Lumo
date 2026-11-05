@@ -209,8 +209,17 @@ struct Workspace {
 /// Text a model copied from workspace_read with its line numbers on every
 /// line (`    7| text`, counting up): the text without them. None for any other.
 fn without_line_numbers(content: &str) -> Option<String> {
+    if content.lines().count() < 2 {
+        return None;
+    }
+    numbered_lines(content)
+}
+
+/// The text without the `N| ` of workspace_read at the start of every line
+/// (numbered one after the other), if each has one: one line is enough.
+fn numbered_lines(content: &str) -> Option<String> {
     let lines: Vec<&str> = content.lines().collect();
-    if lines.len() < 2 {
+    if lines.is_empty() {
         return None;
     }
     let mut plain = Vec::with_capacity(lines.len());
@@ -550,9 +559,19 @@ impl Workspace {
         if old.is_empty() {
             return Err("Say the text to replace.".into());
         }
-        let found = text.matches(old).count();
+        let mut found = text.matches(old).count();
+        // The line numbers of workspace_read copied into the text to replace
+        // (and so likely into the new one): without them.
+        let plain = if found == 0 { numbered_lines(old).map(|o| (o, numbered_lines(new).unwrap_or_else(|| new.to_string()))) } else { None };
+        let (old, new) = match &plain {
+            Some((o, n)) if !o.is_empty() && text.contains(o.as_str()) => {
+                found = text.matches(o.as_str()).count();
+                (o.as_str(), n.as_str())
+            }
+            _ => (old, new),
+        };
         if found == 0 {
-            return Err(format!("{path} doesn't hold that text: read it again and copy it exactly."));
+            return Err(format!("{path} doesn't hold that text: read it again and copy it exactly, without the line numbers."));
         }
         if found > 1 && !all {
             return Err(format!("{path} holds that text {found} times: give more of it around, or all: true."));
@@ -774,6 +793,19 @@ mod tests {
         assert_eq!(without_line_numbers("1| a\n3| b"), None);
         assert_eq!(without_line_numbers("a | b\nc | d"), None);
         assert_eq!(without_line_numbers("    1| sola"), None);
+    }
+
+    #[test]
+    fn an_edit_with_the_line_numbers_of_a_read_finds_its_text() {
+        let base = temp("numbered-edit");
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        std::fs::write(ws.dir.join("notes.txt"), "uno\ndue\nfine della lista\n").unwrap();
+        ws.run(EDIT, &json!({ "path": "notes.txt", "old": "3| fine della lista\n", "new": "3| fine della lista\n4| controllato\n" })).unwrap();
+        assert_eq!(std::fs::read_to_string(ws.dir.join("notes.txt")).unwrap(), "uno\ndue\nfine della lista\ncontrollato\n");
+        // A text the file doesn't hold, numbered or not, is still refused.
+        assert!(ws.run(EDIT, &json!({ "path": "notes.txt", "old": "9| altro", "new": "x" })).is_err());
+        let _ = std::fs::remove_dir_all(&base);
     }
 
     fn temp(name: &str) -> PathBuf {
