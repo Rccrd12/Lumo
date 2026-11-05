@@ -351,6 +351,22 @@ fn user_message_in(vision: bool, pages: u32, first: bool, context: Option<&ChatC
     crate::openai_compat::with_images(user, &shared, pdf)
 }
 
+/// The tool of `names` that `text` writes as a line of its own (`[[name …]]`
+/// or `[name(…)]`) instead of calling it.
+fn written_call(text: &str, names: &[String]) -> Option<String> {
+    let mut rest = text;
+    while let Some(at) = rest.find('[') {
+        let after = rest[at..].trim_start_matches('[').trim_start();
+        if let Some(name) = names.iter().find(|n| {
+            after.starts_with(n.as_str()) && after[n.len()..].starts_with(|c: char| c.is_whitespace() || c == '(' || c == ':' || c == '{' || c == '"')
+        }) {
+            return Some(name.clone());
+        }
+        rest = &rest[at + 1..];
+    }
+    None
+}
+
 /// The server gave up on the answer halfway.
 fn is_cut_short(e: &str) -> bool {
     e == CUT_SHORT || e.trim().eq_ignore_ascii_case("terminated")
@@ -478,6 +494,8 @@ pub async fn send(
         }
         let mut rounds = 0;
         let mut retried = false;
+        let mut corrected = false;
+        let names: Vec<String> = tools.iter().map(|(id, _, _)| id.clone()).collect();
         loop {
             events.activity(app, Activity::new("prompt", ""));
             let before = said.join("\n\n");
@@ -526,6 +544,21 @@ pub async fn send(
             };
             if streamed.used.is_some() {
                 used = streamed.used;
+            }
+            // A tool call written in the answer as text (`[[workspace_edit …]]`,
+            // like the timer's line) does nothing: the model is told so once,
+            // and what it wrote is not kept.
+            if streamed.calls.is_empty() && !corrected && body.get("tools").is_some() && written_call(&streamed.text, &names).is_some() {
+                corrected = true;
+                let name = written_call(&streamed.text, &names).unwrap_or_default();
+                if let Some(messages) = body["messages"].as_array_mut() {
+                    messages.push(json!({ "role": "assistant", "content": streamed.text }));
+                    messages.push(json!({ "role": "user", "content": format!("(Lumo: {name} written in your answer is only text: nothing was done. Call the {name} tool itself, as a function call, then answer. Never write a tool call in your answer, and never say something was done when no tool did it.)") }));
+                }
+                shown = before.clone();
+                events.delta(app, &shown);
+                events.activity(app, Activity::thinking());
+                continue;
             }
             if streamed.calls.is_empty() || body.get("tools").is_none() || rounds == MAX_TOOL_ROUNDS {
                 return Ok::<_, String>(streamed.text);
@@ -1080,6 +1113,15 @@ mod tests {
         let streamed = block_on(stream(&url(&u), None, "m", &json!({}), |_| {}, || {})).ok().unwrap();
         assert_eq!(streamed.text, "Setting it.");
         assert_eq!(streamed.calls, vec![json!({"id":"c1","name":"set_timer","arguments":"{\"minutes\":5}"})]);
+    }
+
+    #[test]
+    fn a_tool_call_written_as_text_is_caught() {
+        let names = vec!["workspace_edit".to_string(), "web_search".to_string()];
+        assert_eq!(written_call("Fatto.\n[[workspace_edit \"file.txt\" \"a\" \"b\"]]", &names).as_deref(), Some("workspace_edit"));
+        assert_eq!(written_call("[web_search(query=\"meteo\")]", &names).as_deref(), Some("web_search"));
+        assert_eq!(written_call("[[timer 10m: pasta]] and [link](https://x) about web_searching", &names), None);
+        assert_eq!(written_call("Use [workspace_editor] later", &names), None);
     }
 
     #[test]
