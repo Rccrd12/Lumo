@@ -663,7 +663,6 @@ async fn one<P: Fn(&[String], bool) -> String + Sync>(
             changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
             max_rounds: 8,
             pause: Duration::from_secs(1),
-            spacing: if server.id == "lmstudio" { Duration::from_millis(1500) } else { Duration::ZERO },
         };
         island.started = Instant::now();
         island.first_text = None;

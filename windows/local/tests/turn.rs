@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 const CHANGES: &[&str] = &["workspace_write", "workspace_edit", "workspace_delete"];
 
 fn rules<'a>(key: &str, query: &'a str) -> Rules<'a> {
-    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO, spacing: Duration::ZERO }
+    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO }
 }
 
 /// Runs a turn of `body` on a server with `replies`.
@@ -391,17 +391,6 @@ fn each_request_has_its_own_retries_when_the_engine_fails() {
     let outcome = outcome.unwrap();
     assert_eq!((outcome.text.as_str(), outcome.whole, outcome.fixes.len()), ("Fatto.", false, 6));
     assert!(requests.iter().all(|r| r["stream"] == true));
-}
-
-#[test]
-fn a_request_waits_its_spacing_after_the_answer_before() {
-    let mut island = Island::default();
-    let spaced = Rules { spacing: Duration::from_millis(400), ..rules("spaced", "") };
-    let started = std::time::Instant::now();
-    let replies = vec![calls("c1", "set_timer", "{\"minutes\":5}"), answer("Fatto.")];
-    let (outcome, _) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &spaced, &mut island);
-    assert_eq!(outcome.unwrap().text, "Fatto.");
-    assert!(started.elapsed() >= Duration::from_millis(400));
 }
 
 #[test]

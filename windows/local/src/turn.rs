@@ -63,10 +63,6 @@ pub struct Rules<'a> {
     pub max_rounds: usize,
     /// How long to wait before asking again a server whose engine failed.
     pub pause: Duration,
-    /// The least time between the end of an answer and the next request to
-    /// the same server: LM Studio often fails a request sent the moment the
-    /// one before ended ("fetch failed", after 19 s).
-    pub spacing: Duration,
 }
 
 /// How the turn ended.
@@ -124,27 +120,6 @@ pub fn hung(key: &str, now: bool) -> bool {
     hung.iter().any(|k| k == key)
 }
 
-/// When the server and model of `key` last ended an answer (`now` notes it is now).
-fn last_end(key: &str, now: bool) -> Option<std::time::Instant> {
-    static ENDS: std::sync::Mutex<Vec<(String, std::time::Instant)>> = std::sync::Mutex::new(Vec::new());
-    let mut ends = ENDS.lock().unwrap_or_else(|e| e.into_inner());
-    if now {
-        ends.retain(|(k, _)| k != key);
-        ends.push((key.to_string(), std::time::Instant::now()));
-    }
-    ends.iter().find(|(k, _)| k == key).map(|(_, at)| *at)
-}
-
-/// Waits until the server of `rules` has had its spacing since its last answer.
-async fn spaced(rules: &Rules<'_>) {
-    if let Some(at) = last_end(&rules.key, false) {
-        let left = rules.spacing.saturating_sub(at.elapsed());
-        if !left.is_zero() {
-            tokio::time::sleep(left).await;
-        }
-    }
-}
-
 /// The names of the tools `body` offers.
 fn offered(body: &Value) -> Vec<String> {
     body["tools"].as_array().map(|t| t.iter().filter_map(|t| t.pointer("/function/name").and_then(Value::as_str)).map(str::to_string).collect()).unwrap_or_default()
@@ -185,7 +160,6 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         hooks.doing(if whole { Doing::Thinking } else { Doing::Prompt });
         let before = said.join("\n\n");
         let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
-        spaced(rules).await;
         let answer = if whole {
             let answer = ask_whole(to, body).await;
             if let Ok(a) = &answer {
@@ -205,7 +179,6 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             })
             .await
         };
-        last_end(&rules.key, true);
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
         }

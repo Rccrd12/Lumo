@@ -608,7 +608,6 @@ pub async fn send(
             changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
             max_rounds: MAX_TOOL_ROUNDS,
             pause: Duration::from_secs(1),
-            spacing: if server.id == "lmstudio" { Duration::from_millis(1500) } else { Duration::ZERO },
         };
         let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
