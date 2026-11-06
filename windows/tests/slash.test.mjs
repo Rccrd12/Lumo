@@ -4,6 +4,7 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import { CLAUDE_CODE_DEFAULT, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand } from "../src/core/slash.ts";
+import { setLocalCaps } from "../src/core/providers.ts";
 
 const names = (list) => list.map((c) => c.name);
 
@@ -17,20 +18,31 @@ test("the menu only has business with a slash first and no space yet", () => {
   assert.equal(slashQuery(""), null);
 });
 
-test("Lumo's commands are there with every provider, the shield only with the CLIs", () => {
+test("Lumo's commands are there with every provider, the shield with the CLIs and the model servers", () => {
   for (const provider of ["anthropic", "openai", "ollama", "antigravity-cli", "claude-code"]) {
     const list = names(slashCommands(provider, null));
     for (const name of ["new", "history", "model", "attach", "screen", "timer"]) assert.ok(list.includes(name), `${provider}: ${name}`);
-    assert.equal(list.includes("permissions"), provider === "claude-code" || provider === "antigravity-cli", provider);
+    assert.equal(list.includes("permissions"), ["claude-code", "antigravity-cli", "ollama"].includes(provider), provider);
   }
 });
 
 test("only what the provider can use is listed: Claude Code's own only with Claude Code", () => {
   for (const provider of ["anthropic", "ollama", "antigravity-cli"]) {
     const list = names(slashCommands(provider, ["compact", "review"]));
-    assert.equal(list.includes("compact"), provider === "antigravity-cli", provider);
     assert.ok(!list.includes("review"), provider);
   }
+});
+
+test("/compact is Lumo's with the providers called by their API, and the CLI's own with a CLI", () => {
+  const compact = (provider, reported = null) => slashCommands(provider, reported).filter((c) => c.name === "compact");
+  for (const provider of ["anthropic", "openai", "ollama", "lmstudio", "custom"]) {
+    assert.deepEqual(compact(provider).map((c) => [c.kind, c.action]), [["lumo", "compact"]], provider);
+    assert.equal(lumoCommand("/compact", provider), "compact", provider);
+  }
+  assert.deepEqual(compact("antigravity-cli").map((c) => c.kind), ["cli"]);
+  assert.deepEqual(compact("claude-code", ["compact"]).map((c) => c.kind), ["cli"]);
+  assert.deepEqual(compact("codex"), []);
+  assert.equal(lumoCommand("/compact", "claude-code"), null);
 });
 
 test("Antigravity CLI lists the commands it answers without a terminal, each with what it does", () => {
@@ -53,9 +65,13 @@ test("a tool's command is listed with the providers that can use the user's tool
     assert.equal(c.text, "pdfcraft_mcp");
     assert.ok(c.args, "a tool with parameters waits for what to do");
   }
+  // A local model too, unless its server says it takes no tools.
   for (const provider of ["ollama", "lmstudio", "custom"]) {
-    assert.ok(!names(slashCommands(provider, null, [pdf])).includes("pdfcraft"), provider);
+    assert.ok(names(slashCommands(provider, null, [pdf])).includes("pdfcraft"), provider);
   }
+  setLocalCaps("ollama", { vision: null, tools: false, reasoning: [], maxContext: 0, loadedContext: 0 });
+  assert.ok(!names(slashCommands("ollama", null, [pdf])).includes("pdfcraft"));
+  setLocalCaps("ollama", null);
 });
 
 test("a tool that is off, unreviewed, missing or without a command has none in the menu", () => {
@@ -77,7 +93,9 @@ test("/pdfcraft and what follows asks the AI to use that tool for it", () => {
   const ask = toolAsk(called.tool, called.rest);
   assert.match(ask, /^Use my Lumo tool "pdfcraft_mcp" \(tool id: pdfcraft_mcp\) for this\.\n\nmerge the PDF/);
   assert.equal(toolAsk(called.tool, ""), 'Use my Lumo tool "pdfcraft_mcp" (tool id: pdfcraft_mcp) for this.');
-  assert.equal(toolCommand("/pdfcraft x", "ollama", [pdf]), null, "a provider without the tools gets the text as typed");
+  setLocalCaps("ollama", { vision: null, tools: false, reasoning: [], maxContext: 0, loadedContext: 0 });
+  assert.equal(toolCommand("/pdfcraft x", "ollama", [pdf]), null, "a model without tools gets the text as typed");
+  setLocalCaps("ollama", null);
   assert.equal(toolCommand("use /pdfcraft", "anthropic", [pdf]), null);
 });
 
@@ -100,7 +118,8 @@ test("typing filters: names starting with it first, then those containing it", (
 test("Lumo's own commands typed in full run in Lumo; the rest goes to the AI", () => {
   assert.equal(lumoCommand("/new", "anthropic"), "new");
   assert.equal(lumoCommand(" /Model ", "ollama"), "model");
-  assert.equal(lumoCommand("/permissions", "anthropic"), null, "no shield without a CLI");
+  assert.equal(lumoCommand("/permissions", "anthropic"), null, "no shield with a cloud API");
+  assert.equal(lumoCommand("/permissions", "lmstudio"), "permissions");
   assert.equal(lumoCommand("/permissions", "claude-code"), "permissions");
   assert.equal(lumoCommand("/timer", "anthropic"), null, "the timer waits for its duration");
   assert.equal(lumoCommand("/new chat please", "anthropic"), null);

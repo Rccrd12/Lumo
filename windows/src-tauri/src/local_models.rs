@@ -12,6 +12,14 @@
 //   which models have instances loaded; `POST /api/v1/models/unload` unloads
 //   one instance; `POST /api/v1/models/download` starts a download, and
 //   `GET /api/v1/models/download/status/<job>` says how far it is.
+//
+// And what a model can do, for the chat (`caps`): whether it sees pictures,
+// calls tools and reasons (with which levels), its longest context and the
+// one it is loaded with. Ollama says it in `POST /api/show` (`capabilities`,
+// `model_info`) and `GET /api/ps` (`context_length`, Ollama 0.12 and later);
+// LM Studio in `GET /api/v1/models` (`capabilities`, `max_context_length`,
+// each loaded instance's `config.context_length`). Any other server says
+// nothing: the chat tries, and does without what it refuses.
 
 use std::collections::{HashMap, HashSet};
 use std::sync::Mutex;
@@ -46,7 +54,7 @@ const MAX_LINE: usize = 64 * 1024;
 static PULLING: Mutex<Option<HashSet<String>>> = Mutex::new(None);
 
 /// A model in memory.
-#[derive(Debug, Serialize, PartialEq)]
+#[derive(Debug, Default, Serialize, PartialEq)]
 #[serde(rename_all = "camelCase")]
 pub struct Loaded {
     /// What the server calls it, as shown.
@@ -74,7 +82,7 @@ pub struct Progress {
 fn server_for(provider: &str) -> Result<(Server, Url), String> {
     let settings = crate::settings::load();
     let server = match provider {
-        "ollama" | "lmstudio" => local_chat::server(&settings, provider),
+        "ollama" | "lmstudio" | "unsloth" => local_chat::server(&settings, provider),
         _ => None,
     }
     .ok_or_else(|| format!("Unknown model server: {provider}"))?;
@@ -166,6 +174,9 @@ pub async fn loaded(provider: &str) -> Result<Vec<Loaded>, String> {
     let (server, base) = server_for(provider)?;
     if server.id == "ollama" {
         Ok(parse_ollama_ps(&get_json(&server, &base, "api/ps").await?))
+    } else if server.id == "unsloth" {
+        let models = get_json(&server, &base, "v1/models").await?;
+        Ok(unsloth_loaded(&models).into_iter().map(|id| Loaded { name: id.clone(), handle: id, ..Loaded::default() }).collect())
     } else {
         Ok(parse_lmstudio_models(&get_json(&server, &base, "api/v1/models").await?))
     }
@@ -179,11 +190,454 @@ pub async fn unload_all(provider: &str) -> Result<usize, String> {
         if server.id == "ollama" {
             // Unloaded at once: no prompt, kept alive for no time at all.
             post_json(&server, &base, "api/generate", json!({ "model": m.handle, "keep_alive": 0 }), UNLOAD).await?;
+        } else if server.id == "unsloth" {
+            post_json(&server, &base, "api/inference/unload", json!({ "model_path": m.handle }), UNLOAD).await?;
         } else {
             post_json(&server, &base, "api/v1/models/unload", json!({ "instance_id": m.handle }), UNLOAD).await?;
         }
     }
     Ok(models.len())
+}
+
+// ── What a model can do ───────────────────────────────────────────────────────
+
+/// What a local model can do, as its server says; None (or empty) where it
+/// says nothing, as an OpenAI-compatible server of another kind never does.
+#[derive(Clone, Debug, Default, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct Caps {
+    /// It reads pictures (screenshots, a dropped image).
+    pub vision: Option<bool>,
+    /// It calls tools (the island's and the user's).
+    pub tools: Option<bool>,
+    /// It reasons: the levels it takes, from Lumo's names ("off", "on",
+    /// "low", "medium", "high"); empty when it doesn't, or nobody says.
+    pub reasoning: Vec<String>,
+    /// The longest context it was made for, in tokens (0: not said).
+    pub max_context: u64,
+    /// The context it is loaded with now, in tokens (0: not loaded, or not said).
+    pub loaded_context: u64,
+    /// It is in memory now (None: not said), so the chat knows to load it first.
+    pub loaded: Option<bool>,
+}
+
+/// How long what a server said about a model is kept: it changes when the
+/// user loads the model again with another context, and is asked again then.
+const CAPS_FRESH: Duration = Duration::from_secs(20);
+/// What servers said, by server, address and model.
+static CAPS: Mutex<Option<HashMap<String, (std::time::Instant, Caps)>>> = Mutex::new(None);
+
+/// The levels Lumo offers, in order; anything else a server names is left out.
+const LEVELS: &[&str] = &["off", "on", "low", "medium", "high"];
+
+/// What `server` says `model` can do. Asked at most every few seconds per
+/// model; a server that doesn't answer gives the empty Caps (nothing known).
+pub async fn caps(server: &Server, model: &str) -> Caps {
+    let Some(model) = safe_name(model) else { return Caps::default() };
+    if !matches!(server.id, "ollama" | "lmstudio" | "unsloth") {
+        return Caps::default();
+    }
+    let Ok(base) = local_chat::base_url(server) else { return Caps::default() };
+    let key = format!("{}|{}|{model}", server.id, base.as_str());
+    if let Some((at, caps)) = CAPS.lock().unwrap_or_else(|e| e.into_inner()).as_ref().and_then(|m| m.get(&key)) {
+        if at.elapsed() < CAPS_FRESH {
+            return caps.clone();
+        }
+    }
+    let caps = if server.id == "ollama" {
+        let show = post_json(server, &base, "api/show", json!({ "model": model }), QUICK).await;
+        let ps = get_json(server, &base, "api/ps").await;
+        match show {
+            Ok(show) => parse_ollama_caps(model, &show, ps.as_ref().ok()),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    } else if server.id == "unsloth" {
+        // Unsloth Studio: its model list says what is in memory, and its
+        // own status what the model in memory can do.
+        let models = get_json(server, &base, "v1/models").await;
+        let status = get_json(server, &base, "api/inference/status").await;
+        match models {
+            Ok(models) => parse_unsloth_caps(model, &models, status.as_ref().ok()),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    } else {
+        match get_json(server, &base, "api/v1/models").await {
+            Ok(body) => parse_lmstudio_caps(model, &body),
+            Err(e) => {
+                crate::log::line(format!("[local] {model}: {e}"));
+                Caps::default()
+            }
+        }
+    };
+    CAPS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key, (std::time::Instant::now(), caps.clone()));
+    caps
+}
+
+/// Which of `models` (the chat picker's, as `/v1/models` names them) are in
+/// `provider`'s memory now, for the picker's − and + (Ollama's `/api/ps`, LM
+/// Studio's loaded instances).
+pub async fn loaded_of(provider: &str, models: &[String]) -> Result<Vec<String>, String> {
+    let (server, base) = server_for(provider)?;
+    if server.id == "ollama" {
+        let ps = get_json(&server, &base, "api/ps").await?;
+        let names: Vec<String> = ps["models"].as_array().into_iter().flatten().flat_map(|m| [m["name"].as_str(), m["model"].as_str()]).flatten().map(str::to_string).collect();
+        let same = |id: &str| names.iter().any(|n| n == id || n.strip_suffix(":latest") == Some(id));
+        Ok(models.iter().filter(|id| same(id)).cloned().collect())
+    } else if server.id == "unsloth" {
+        let body = get_json(&server, &base, "v1/models").await?;
+        let loaded = unsloth_loaded(&body);
+        Ok(models.iter().filter(|id| unsloth_entry(id, &body).and_then(|m| m["id"].as_str()).is_some_and(|e| loaded.iter().any(|l| l == e))).cloned().collect())
+    } else {
+        let body = get_json(&server, &base, "api/v1/models").await?;
+        Ok(models.iter().filter(|id| lmstudio_entry(id, &body).is_some_and(|(_, instance)| instance.is_some())).cloned().collect())
+    }
+}
+
+/// The picker's −: `model` leaves `provider`'s memory (every copy LM Studio
+/// holds of it).
+pub async fn unload(provider: &str, model: &str) -> Result<(), String> {
+    let model = safe_name(model).ok_or_else(|| t("Pick a model above the chat box first."))?;
+    let (server, base) = server_for(provider)?;
+    if server.id == "ollama" {
+        post_json(&server, &base, "api/generate", json!({ "model": model, "keep_alive": 0 }), UNLOAD).await?;
+    } else if server.id == "unsloth" {
+        let path = unsloth_load_body(model)["model_path"].as_str().unwrap_or(model).to_string();
+        post_json(&server, &base, "api/inference/unload", json!({ "model_path": path }), UNLOAD).await?;
+    } else {
+        let body = get_json(&server, &base, "api/v1/models").await?;
+        let ids: Vec<String> = lmstudio_entry(model, &body)
+            .map(|(m, _)| m["loaded_instances"].as_array().into_iter().flatten().filter_map(|i| i["id"].as_str().map(str::to_string)).collect())
+            .unwrap_or_default();
+        for id in ids {
+            post_json(&server, &base, "api/v1/models/unload", json!({ "instance_id": id }), UNLOAD).await?;
+        }
+    }
+    forget(&server, model);
+    Ok(())
+}
+
+/// The picker's +: `model` is loaded into `provider`'s memory, how far told
+/// as `local-load` events (LM Studio's percent; Ollama says nothing until it is in).
+pub async fn load_for_picker(app: &AppHandle, provider: &str, model: &str) -> Result<(), String> {
+    let (server, _) = server_for(provider)?;
+    load(&server, model, |percent| {
+        let _ = app.emit("local-load", json!({ "provider": provider, "model": model, "percent": percent }));
+    })
+    .await
+}
+
+/// The embedding vectors of `texts` from `provider`'s embedding model, for
+/// the web search's ranking (web_search.rs). Only one already in memory is
+/// used: nothing is loaded or unloaded for it, the VRAM stays the chat
+/// model's. None without one, or when it fails.
+pub async fn embed(provider: &str, texts: &[String]) -> Option<Vec<Vec<f32>>> {
+    let (server, base) = server_for(provider).ok()?;
+    let embedding = |name: &str| {
+        let n = name.to_lowercase();
+        ["embed", "bge-", "minilm", "e5-", "gte-"].iter().any(|k| n.contains(k))
+    };
+    let floats = |v: &Value| -> Option<Vec<f32>> { v.as_array()?.iter().map(|x| x.as_f64().map(|f| f as f32)).collect() };
+    if server.id == "ollama" {
+        let ps = get_json(&server, &base, "api/ps").await.ok()?;
+        let model = ps["models"].as_array()?.iter().filter_map(|m| m["name"].as_str()).find(|n| embedding(n))?.to_string();
+        let body = post_json(&server, &base, "api/embed", json!({ "model": model, "input": texts, "truncate": true }), QUICK * 3).await.ok()?;
+        body["embeddings"].as_array()?.iter().map(floats).collect()
+    } else {
+        let models = get_json(&server, &base, "api/v1/models").await.ok()?;
+        let model = models["models"].as_array()?.iter().find(|m| {
+            m["type"] == "embedding" && m["loaded_instances"].as_array().is_some_and(|i| !i.is_empty())
+        })?;
+        let id = model["loaded_instances"][0]["id"].as_str().or(model["key"].as_str())?.to_string();
+        let body = post_json(&server, &base, "v1/embeddings", json!({ "model": id, "input": texts }), QUICK * 3).await.ok()?;
+        body["data"].as_array()?.iter().map(|d| floats(&d["embedding"])).collect()
+    }
+}
+
+/// What was said of `model` is asked again next time: it was just loaded.
+pub fn forget(server: &Server, model: &str) {
+    let Ok(base) = local_chat::base_url(server) else { return };
+    let key = format!("{}|{}|{model}", server.id, base.as_str());
+    if let Some(all) = CAPS.lock().unwrap_or_else(|e| e.into_inner()).as_mut() {
+        all.remove(&key);
+    }
+}
+
+/// How long loading a model may take before it is given up on.
+const LOAD: Duration = Duration::from_secs(10 * 60);
+
+/// Loads `model` into memory before the chat's question goes, so the island
+/// can say so: LM Studio tells how far it is (`on_progress`, 0–100), through
+/// its own chat endpoint's `model_load.progress` events, and the stream is
+/// dropped as soon as the model is in (nothing is written); Ollama loads it
+/// for a request without a prompt, and says nothing until then. A server that
+/// can't is no error: the question loads the model itself.
+pub async fn load(server: &Server, model: &str, mut on_progress: impl FnMut(u8)) -> Result<(), String> {
+    let model = safe_name(model).ok_or_else(|| t("Pick a model above the chat box first."))?;
+    let base = local_chat::base_url(server)?;
+    let result = if server.id == "ollama" {
+        post_json(server, &base, "api/generate", json!({ "model": model }), LOAD).await.map(|_| ())
+    } else if server.id == "lmstudio" {
+        load_lmstudio(server, &base, model, &mut on_progress).await
+    } else if server.id == "unsloth" {
+        load_unsloth(server, &base, model, &mut on_progress).await
+    } else {
+        Ok(())
+    };
+    forget(server, model);
+    result
+}
+
+async fn load_lmstudio(server: &Server, base: &Url, model: &str, on_progress: &mut impl FnMut(u8)) -> Result<(), String> {
+    let mut reply = net::streaming_client(base, LOAD)?
+        .post(net::join(base, "api/v1/chat"))
+        .header("Authorization", local_chat::bearer(server.key.as_deref()))
+        .json(&json!({ "model": model, "input": "Hi", "stream": true, "store": false }))
+        .send()
+        .await
+        .map_err(|_| local_chat::unreachable(base))?;
+    if !reply.status().is_success() {
+        return Err(format!("HTTP {}", reply.status().as_u16()));
+    }
+    let mut pending = Vec::<u8>::new();
+    while let Some(chunk) = reply.chunk().await.map_err(|_| local_chat::unreachable(base))? {
+        pending.extend_from_slice(&chunk);
+        while let Some(end) = pending.iter().position(|b| *b == b'\n') {
+            let line: Vec<u8> = pending.drain(..=end).collect();
+            match load_event(String::from_utf8_lossy(&line).trim_end()) {
+                Some(LoadEvent::Progress(p)) => on_progress(p),
+                // In memory: the rest of this answer is of no use.
+                Some(LoadEvent::Loaded) => return Ok(()),
+                None => {}
+            }
+        }
+        if pending.len() > MAX_LINE {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+#[derive(Debug, PartialEq)]
+enum LoadEvent {
+    /// How far the model is loaded, 0–100.
+    Progress(u8),
+    /// It is in memory (it was, or it is now): nothing more to wait for.
+    Loaded,
+}
+
+/// One line of LM Studio's chat stream, as far as loading goes: `data:` lines
+/// carry a `type` (model_load.progress with its `progress` from 0 to 1;
+/// model_load.end; anything past loading means it is in).
+fn load_event(line: &str) -> Option<LoadEvent> {
+    let payload = line.strip_prefix("data:")?.trim_start();
+    let v: Value = serde_json::from_str(payload).ok()?;
+    match v["type"].as_str()? {
+        "model_load.progress" => Some(LoadEvent::Progress((v["progress"].as_f64()?.clamp(0.0, 1.0) * 100.0).round() as u8)),
+        "chat.start" | "model_load.start" => None,
+        _ => Some(LoadEvent::Loaded),
+    }
+}
+
+/// Ollama's `/api/show` of `model`, and its `/api/ps` for the context it is
+/// loaded with. Its `capabilities` name "vision", "tools", "thinking"; its
+/// `model_info` gives the longest context as `<architecture>.context_length`.
+/// gpt-oss takes low, medium and high; Ollama's other thinking models think
+/// or don't.
+fn parse_ollama_caps(model: &str, show: &Value, ps: Option<&Value>) -> Caps {
+    let said: Vec<&str> = show["capabilities"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+    let has = |c: &str| said.contains(&c);
+    let known = !said.is_empty();
+    let family = show.pointer("/details/family").and_then(Value::as_str).unwrap_or("").to_lowercase();
+    let reasoning: &[&str] = if !has("thinking") {
+        &[]
+    } else if family.contains("gptoss") || family.contains("gpt-oss") || model.to_lowercase().contains("gpt-oss") {
+        &["low", "medium", "high"]
+    } else {
+        &["off", "on"]
+    };
+    let max_context = show["model_info"]
+        .as_object()
+        .and_then(|info| info.iter().find(|(k, _)| k.ends_with(".context_length")).and_then(|(_, v)| v.as_u64()))
+        .unwrap_or(0);
+    // `/api/ps` names a model as it was asked for: "llama3.2" is "llama3.2:latest".
+    let same = |name: &str| name == model || name.strip_suffix(":latest") == Some(model);
+    let running = ps.and_then(|ps| ps["models"].as_array()).map(|all| {
+        all.iter().find(|m| [m["name"].as_str(), m["model"].as_str()].into_iter().flatten().any(same)).cloned()
+    });
+    let loaded_context = running.clone().flatten().and_then(|m| m["context_length"].as_u64()).unwrap_or(0);
+    Caps {
+        vision: known.then(|| has("vision")),
+        tools: known.then(|| has("tools")),
+        reasoning: reasoning.iter().map(|s| s.to_string()).collect(),
+        max_context,
+        loaded_context,
+        loaded: running.map(|m| m.is_some()),
+    }
+}
+
+/// LM Studio's `/api/v1/models` entry for `model` (as `/v1/models` names it),
+/// and its loaded instance if any: the entry whose key or variant is
+/// `model`, else the one with a loaded instance by that id (a second copy of
+/// a model is "key:2").
+fn lmstudio_entry<'a>(model: &str, body: &'a Value) -> Option<(&'a Value, Option<Value>)> {
+    let entries = body["models"].as_array()?;
+    let instance_of = |m: &Value| m["loaded_instances"].as_array().into_iter().flatten().find(|i| i["id"].as_str() == Some(model)).cloned();
+    entries
+        .iter()
+        .find(|m| m["key"].as_str() == Some(model) || m["selected_variant"].as_str() == Some(model))
+        .map(|m| (m, m["loaded_instances"].get(0).cloned()))
+        .or_else(|| entries.iter().find_map(|m| instance_of(m).map(|i| (m, Some(i)))))
+}
+
+/// LM Studio's `/api/v1/models`: what `model` can do (`lmstudio_entry`).
+/// Unsloth Studio: `/v1/models` lists every model it has (`loaded` for the
+/// ones in memory, with `context_length` and `max_context_length`), and
+/// `/api/inference/status` describes the model in memory (`active_model`,
+/// `loaded`): `is_vision`, `supports_tools`, how it reasons
+/// (`supports_reasoning`, `reasoning_style`, `reasoning_effort_levels`,
+/// `reasoning_always_on`) and its context. What isn't said stays unknown.
+fn parse_unsloth_caps(model: &str, models: &Value, status: Option<&Value>) -> Caps {
+    let entry = unsloth_entry(model, models);
+    let number = |v: &Value| v.as_u64().filter(|n| *n > 0);
+    let loaded = entry.map(|m| m["loaded"].as_bool().unwrap_or(false) || m["status"]["value"].as_str() == Some("loaded"));
+    let mut caps = Caps {
+        max_context: entry.and_then(|m| number(&m["max_context_length"])).unwrap_or(0),
+        loaded_context: entry.filter(|_| loaded == Some(true)).and_then(|m| number(&m["context_length"])).unwrap_or(0),
+        loaded,
+        ..Caps::default()
+    };
+    // The status is the model in memory's: only taken for it.
+    let Some(s) = status.filter(|s| loaded != Some(false) && unsloth_is_active(model, s)) else { return caps };
+    caps.loaded = Some(true);
+    caps.vision = s["is_vision"].as_bool();
+    caps.tools = s["supports_tools"].as_bool();
+    if caps.max_context == 0 {
+        caps.max_context = number(&s["max_context_length"]).or_else(|| number(&s["native_context_length"])).unwrap_or(0);
+    }
+    if caps.loaded_context == 0 {
+        caps.loaded_context = number(&s["context_length"]).unwrap_or(0);
+    }
+    if s["supports_reasoning"].as_bool() == Some(true) {
+        let named: Vec<&str> = s["reasoning_effort_levels"].as_array().into_iter().flatten().filter_map(Value::as_str).collect();
+        let efforts: Vec<String> = LEVELS[2..].iter().filter(|l| named.contains(l)).map(|l| l.to_string()).collect();
+        let always = s["reasoning_always_on"].as_bool() == Some(true);
+        caps.reasoning = match s["reasoning_style"].as_str() {
+            _ if always => Vec::new(),
+            Some("reasoning_effort") if efforts.is_empty() => ["low", "medium", "high"].map(String::from).to_vec(),
+            Some("reasoning_effort") => efforts,
+            Some("enable_thinking_effort") if !efforts.is_empty() => std::iter::once("off".to_string()).chain(efforts).collect(),
+            _ => ["off", "on"].map(String::from).to_vec(),
+        };
+    }
+    caps
+}
+
+/// The `/v1/models` row of `model`: its id, or the id without the quant it
+/// was pinned to (`repo:Q4_K_M`), any case. Rows of speech or music models
+/// (`task`) don't chat.
+fn unsloth_entry<'a>(model: &str, models: &'a Value) -> Option<&'a Value> {
+    let rows = models["data"].as_array()?;
+    let same = |m: &Value| m["id"].as_str().is_some_and(|id| id.eq_ignore_ascii_case(model));
+    rows.iter().find(|m| same(m)).or_else(|| {
+        let (base, _) = model.rsplit_once(':')?;
+        rows.iter().find(|m| m["id"].as_str().is_some_and(|id| id.eq_ignore_ascii_case(base)))
+    })
+}
+
+/// The chat models Unsloth Studio holds in memory, by `/v1/models` id.
+fn unsloth_loaded(models: &Value) -> Vec<String> {
+    models["data"]
+        .as_array()
+        .into_iter()
+        .flatten()
+        .filter(|m| m["task"].is_null() && (m["loaded"].as_bool() == Some(true) || m["status"]["value"].as_str() == Some("loaded")))
+        .filter_map(|m| m["id"].as_str().map(str::to_string))
+        .collect()
+}
+
+/// Whether `/api/inference/status` speaks of `model`.
+fn unsloth_is_active(model: &str, status: &Value) -> bool {
+    let model = model.to_lowercase();
+    let base = model.rsplit_once(':').map(|(b, _)| b.to_string()).unwrap_or_else(|| model.clone());
+    let named = [&status["active_model"], &status["model_identifier"]]
+        .into_iter()
+        .chain(status["loaded"].as_array().into_iter().flatten())
+        .filter_map(Value::as_str)
+        .map(str::to_lowercase);
+    named.into_iter().any(|n| n == model || n == base || n.rsplit_once(':').is_some_and(|(b, _)| b == base))
+}
+
+/// What Unsloth Studio's `/api/inference/load` takes for `model`: its id,
+/// and the quant when the id pins one (`repo:Q4_K_M`).
+fn unsloth_load_body(model: &str) -> Value {
+    let quant = model.rsplit_once(':').filter(|(base, q)| base.contains('/') && !q.is_empty() && !q.contains('/'));
+    match quant {
+        Some((base, q)) => json!({ "model_path": base, "gguf_variant": q, "max_seq_length": 0 }),
+        None => json!({ "model_path": model, "max_seq_length": 0 }),
+    }
+}
+
+/// How far Unsloth Studio's load is, from `/api/inference/load-progress`
+/// (`fraction`, 0 to 1), while one is going.
+fn unsloth_progress(v: &Value) -> Option<u8> {
+    v["phase"].as_str()?;
+    Some((v["fraction"].as_f64()?.clamp(0.0, 1.0) * 100.0).round() as u8)
+}
+
+async fn load_unsloth(server: &Server, base: &Url, model: &str, on_progress: &mut impl FnMut(u8)) -> Result<(), String> {
+    // The load answers once the model is in; how far it is, asked meanwhile.
+    let mut load = std::pin::pin!(post_json(server, base, "api/inference/load", unsloth_load_body(model), LOAD));
+    loop {
+        if let Ok(done) = tokio::time::timeout(Duration::from_millis(700), &mut load).await {
+            return done.map(|_| ());
+        }
+        if let Some(p) = get_json(server, base, "api/inference/load-progress").await.ok().as_ref().and_then(unsloth_progress) {
+            on_progress(p);
+        }
+    }
+}
+
+fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
+    let Some((m, instance)) = lmstudio_entry(model, body) else { return Caps::default() };
+    let caps = &m["capabilities"];
+    let reasoning = caps["reasoning"]["allowed_options"]
+        .as_array()
+        .map(|options| {
+            let said: Vec<&str> = options.iter().filter_map(Value::as_str).collect();
+            LEVELS.iter().filter(|l| said.contains(l)).map(|l| l.to_string()).collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+    Caps {
+        vision: caps["vision"].as_bool(),
+        tools: caps["trained_for_tool_use"].as_bool(),
+        // A model that only reasons ("on" alone) has nothing to pick.
+        reasoning: if reasoning.len() > 1 { reasoning } else { Vec::new() },
+        max_context: m["max_context_length"].as_u64().unwrap_or(0),
+        loaded_context: instance.as_ref().and_then(|i| i.pointer("/config/context_length").and_then(Value::as_u64)).unwrap_or(0),
+        loaded: Some(instance.is_some()),
+    }
+}
+
+/// What the chat sends as `reasoning_effort` (Ollama and LM Studio both take
+/// it on their OpenAI-compatible API) for the level picked, when the model
+/// takes that level: "off" is "none", "on" is "medium".
+pub fn reasoning_effort(caps: &Caps, picked: &str) -> Option<&'static str> {
+    if !caps.reasoning.iter().any(|l| l == picked) {
+        return None;
+    }
+    match picked {
+        "off" => Some("none"),
+        "on" | "medium" => Some("medium"),
+        "low" => Some("low"),
+        "high" => Some("high"),
+        _ => None,
+    }
 }
 
 // ── Downloads ─────────────────────────────────────────────────────────────────
@@ -329,6 +783,75 @@ mod tests {
     use super::*;
 
     #[test]
+    fn ollama_says_what_a_model_can_do_and_the_context_it_runs_with() {
+        let show = json!({
+            "capabilities": ["completion", "vision", "tools", "thinking"],
+            "details": { "family": "qwen3" },
+            "model_info": { "general.architecture": "qwen3", "qwen3.context_length": 262144 },
+        });
+        let ps = json!({ "models": [{ "name": "qwen3-vl:8b", "model": "qwen3-vl:8b", "context_length": 65536 }] });
+        let caps = parse_ollama_caps("qwen3-vl:8b", &show, Some(&ps));
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536, loaded: Some(true) });
+
+        // gpt-oss takes levels; ":latest" is the same model; not loaded, no context.
+        let show = json!({ "capabilities": ["completion", "tools", "thinking"], "details": { "family": "gptoss" } });
+        let ps = json!({ "models": [{ "name": "llama3.2:latest", "context_length": 4096 }] });
+        let caps = parse_ollama_caps("gpt-oss:20b", &show, Some(&ps));
+        assert_eq!((caps.vision, caps.reasoning.len(), caps.loaded_context, caps.loaded), (Some(false), 3, 0, Some(false)));
+        let caps = parse_ollama_caps("llama3.2", &json!({ "capabilities": ["completion"] }), Some(&ps));
+        assert_eq!((caps.tools, caps.loaded_context), (Some(false), 4096));
+
+        // An Ollama too old to say: nothing known.
+        assert_eq!(parse_ollama_caps("m", &json!({}), None), Caps::default());
+    }
+
+    #[test]
+    fn lm_studio_says_what_a_model_can_do_and_the_context_it_was_loaded_with() {
+        let body = json!({ "models": [
+            { "key": "google/gemma-4-26b-a4b", "max_context_length": 262144,
+              "capabilities": { "vision": true, "trained_for_tool_use": true, "reasoning": { "allowed_options": ["off", "on"], "default": "on" } },
+              "loaded_instances": [{ "id": "google/gemma-4-26b-a4b", "config": { "context_length": 65536 } }] },
+            { "key": "deepseek/r1", "max_context_length": 131072,
+              "capabilities": { "vision": false, "trained_for_tool_use": true, "reasoning": { "allowed_options": ["on"], "default": "on" } },
+              "loaded_instances": [{ "id": "deepseek/r1:2", "config": { "context_length": 8192 } }] },
+            { "key": "nomic-embed", "type": "embedding", "loaded_instances": [] },
+        ] });
+        let caps = parse_lmstudio_caps("google/gemma-4-26b-a4b", &body);
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536, loaded: Some(true) });
+        // A second copy by its instance id; "on" alone is nothing to pick.
+        let caps = parse_lmstudio_caps("deepseek/r1:2", &body);
+        assert_eq!((caps.vision, caps.reasoning.is_empty(), caps.loaded_context), (Some(false), true, 8192));
+        let embed = parse_lmstudio_caps("nomic-embed", &body);
+        assert_eq!((embed.vision, embed.loaded), (None, Some(false)));
+        assert_eq!(parse_lmstudio_caps("unknown", &body), Caps::default());
+    }
+
+    #[test]
+    fn lm_studio_says_how_far_the_model_is_loaded_and_when_it_is_in() {
+        assert_eq!(load_event(r#"data: {"type":"chat.start","model_instance_id":"m"}"#), None);
+        assert_eq!(load_event(r#"data: {"type":"model_load.start","model_instance_id":"m"}"#), None);
+        assert_eq!(load_event(r#"data: {"type":"model_load.progress","progress":0.424}"#), Some(LoadEvent::Progress(42)));
+        assert_eq!(load_event(r#"data: {"type":"model_load.progress","progress":1.5}"#), Some(LoadEvent::Progress(100)));
+        assert_eq!(load_event(r#"data: {"type":"model_load.end","load_time_seconds":3.1}"#), Some(LoadEvent::Loaded));
+        // Already in memory: the prompt comes at once.
+        assert_eq!(load_event(r#"data: {"type":"prompt_processing.start"}"#), Some(LoadEvent::Loaded));
+        assert_eq!(load_event("event: model_load.progress"), None);
+        assert_eq!(load_event("data: nope"), None);
+    }
+
+    #[test]
+    fn the_level_picked_goes_as_reasoning_effort_only_when_the_model_takes_it() {
+        let on_off = Caps { reasoning: vec!["off".into(), "on".into()], ..Caps::default() };
+        assert_eq!(reasoning_effort(&on_off, "off"), Some("none"));
+        assert_eq!(reasoning_effort(&on_off, "on"), Some("medium"));
+        assert_eq!(reasoning_effort(&on_off, "high"), None);
+        assert_eq!(reasoning_effort(&on_off, ""), None);
+        let levels = Caps { reasoning: vec!["low".into(), "medium".into(), "high".into()], ..Caps::default() };
+        assert_eq!(reasoning_effort(&levels, "low"), Some("low"));
+        assert_eq!(reasoning_effort(&Caps::default(), "low"), None);
+    }
+
+    #[test]
     fn ollamas_models_in_memory_are_read_off_api_ps() {
         let body = json!({ "models": [
             { "name": "llama3.2:3b", "model": "llama3.2:3b", "size": 3_400_000_000u64, "size_vram": 3_000_000_000u64, "expires_at": "2026-10-22T15:00:00Z" },
@@ -395,4 +918,40 @@ mod tests {
         drop(first);
         assert!(PullGuard::take("test-server").is_some());
     }
+    #[test]
+    fn unsloth_studio_says_what_is_loaded_and_how() {
+        let models = json!({ "object": "list", "data": [
+            { "id": "unsloth/gemma-4-26b-GGUF", "loaded": true, "status": { "value": "loaded" }, "context_length": 65536, "max_context_length": 262144 },
+            { "id": "unsloth/Qwen3-8B-GGUF", "loaded": false, "status": { "value": "unloaded" } },
+            { "id": "kokoro", "task": "text-to-speech", "loaded": true }
+        ] });
+        let status = json!({
+            "active_model": "unsloth/gemma-4-26b-GGUF",
+            "loaded": ["unsloth/gemma-4-26b-GGUF"],
+            "is_vision": true,
+            "supports_tools": true,
+            "supports_reasoning": true,
+            "reasoning_style": "enable_thinking",
+            "context_length": 65536
+        });
+        let caps = parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&status));
+        assert_eq!(caps, Caps { vision: Some(true), tools: Some(true), reasoning: vec!["off".into(), "on".into()], max_context: 262144, loaded_context: 65536, loaded: Some(true) });
+        // A pinned quant is the same model.
+        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF:Q4_K_M", &models, Some(&status)).loaded, Some(true));
+        // The status is the loaded model's, not another's.
+        let other = parse_unsloth_caps("unsloth/Qwen3-8B-GGUF", &models, Some(&status));
+        assert_eq!(other, Caps { loaded: Some(false), ..Caps::default() });
+        assert_eq!(parse_unsloth_caps("gone", &json!({}), None), Caps::default());
+        // Efforts, as the template offers them.
+        let effort = json!({ "active_model": "unsloth/gemma-4-26b-GGUF", "supports_reasoning": true, "reasoning_style": "enable_thinking_effort", "reasoning_effort_levels": ["low", "high", "max"] });
+        assert_eq!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&effort)).reasoning, vec!["off", "low", "high"]);
+        let always = json!({ "active_model": "unsloth/gemma-4-26b-GGUF", "supports_reasoning": true, "reasoning_always_on": true });
+        assert!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&always)).reasoning.is_empty());
+        assert_eq!(unsloth_loaded(&models), vec!["unsloth/gemma-4-26b-GGUF"]);
+        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF:Q4_K_M"), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "gguf_variant": "Q4_K_M", "max_seq_length": 0 }));
+        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF"), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "max_seq_length": 0 }));
+        assert_eq!(unsloth_progress(&json!({ "phase": "mmap", "fraction": 0.42 })), Some(42));
+        assert_eq!(unsloth_progress(&json!({ "phase": null, "bytes_loaded": 0 })), None);
+    }
+
 }

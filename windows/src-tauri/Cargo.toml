@@ -23,6 +23,8 @@ auto-launch = "0.5"
 tauri-plugin-global-shortcut = "2"
 # "Attach a file" in the chat: the native file picker, called from Rust only.
 tauri-plugin-dialog = "2"
+# The chat with a model on this machine: its stream, tool rounds and checks (../local).
+lumo-local = { path = "../local" }
 serde = { version = "1", features = ["derive"] }
 serde_json = { version = "1", features = ["preserve_order"] }
 tokio = { version = "1", features = ["net", "io-util", "sync", "time", "rt"] }
@@ -51,6 +53,10 @@ windows = { version = "0.61", features = [
   # The music playing, for the closed island (media.rs): the system's media
   # controls, the ones the volume flyout shows.
   "Media_Control",
+  # A PDF dropped in the chat, its pages drawn for a model that sees (pdf_pages.rs).
+  "Data_Pdf",
+  "Storage",
+  "Storage_Streams",
   # Gemini Live's control_computer (system_control.rs): the speakers' volume.
   "Win32_Media_Audio",
   "Win32_Media_Audio_Endpoints",

@@ -155,6 +155,10 @@ pub struct Settings {
     /// The chat's Claude Code may see the screen, click and type (computer.rs,
     /// lumo-hook --mcp), Windows only. Off until the user turns it on.
     pub chat_computer_use: bool,
+    /// Lumo's own web search (web_search.rs) for the chat's providers that
+    /// have none of their own: DuckDuckGo, else Mojeek or Wikipedia, and the
+    /// pages read from this computer. Off until the user turns it on.
+    pub chat_web_search: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -190,6 +194,8 @@ pub struct Settings {
     pub lmstudio_url: String,
     /// Any other OpenAI-compatible server; its key, if any, is in the keychain.
     pub custom_url: String,
+    /// Unsloth Studio's address once connected (local_chat.rs), "" before.
+    pub unsloth_url: String,
     /// Global shortcuts the user changed, by action id; the others keep their
     /// default (see shortcuts.rs).
     pub shortcuts: crate::shortcuts::Bindings,
@@ -299,6 +305,7 @@ impl Default for Settings {
             chat_share_open: true,
             chat_share_tabs: false,
             chat_computer_use: false,
+            chat_web_search: false,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             live_model: "gemini-3.8-live".into(),
@@ -311,6 +318,7 @@ impl Default for Settings {
             ollama_url: String::new(),
             lmstudio_url: String::new(),
             custom_url: String::new(),
+            unsloth_url: String::new(),
             shortcuts: Default::default(),
             lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
@@ -629,6 +637,7 @@ mod tests {
   "chatShareOpen": false,
   "chatShareTabs": true,
   "chatComputerUse": true,
+  "chatWebSearch": true,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
@@ -641,6 +650,7 @@ mod tests {
   "ollamaUrl": "http://127.0.0.1:11434",
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
+  "unslothUrl": "http://127.0.0.1:8888",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
   "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
@@ -1085,6 +1095,7 @@ mod tests {
                 "chatShareOpen",
                 "chatShareTabs",
                 "chatComputerUse",
+                "chatWebSearch",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "liveModel",
@@ -1097,6 +1108,7 @@ mod tests {
                 "ollamaUrl",
                 "lmstudioUrl",
                 "customUrl",
+                "unslothUrl",
                 "shortcuts",
                 "lumoOutfit",
                 "lumoMotion",

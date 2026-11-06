@@ -1007,26 +1007,95 @@ pub fn run_listened(id: &str) -> Result<RunResult, String> {
     Ok(run_in(Path::new(&tool.dir), &tool.manifest, &json!({})))
 }
 
-/// The tools agents may use, for the chat's API providers: the island's own
-/// (island_tools.rs, its GitHub ones with `listen`), then the user's that are
-/// on: id, the words the model reads, and the JSON schema of the input.
-pub fn api_tools(listen: bool) -> Vec<(String, String, Value)> {
-    let mut all = crate::island_tools::api_tools(listen);
-    // Never one of the user's with the name of the island's own.
-    all.extend(offered().iter().filter(|t| !crate::island_tools::NAMES.contains(&t.manifest.id.as_str())).map(|t| {
-        let v = mcp_tool(&t.manifest);
-        (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
-    }));
+/// Lumo's email tools for `mail` (mail.rs ai_tools: "", "mail",
+/// "mail,mailsend" or "mail,mailsend,mailmanage"), as the CLIs get them from
+/// lumo-hook (the same file, hook/src/mail_tools.rs): id, words, schema.
+pub fn mail_api_tools(mail: &str) -> Vec<(String, String, Value)> {
+    use crate::mail_tool_defs as defs;
+    let kits: Vec<&str> = mail.split(',').map(str::trim).collect();
+    let mut all = Vec::new();
+    if kits.contains(&"mail") {
+        all.extend(defs::mail_tools());
+    }
+    if kits.contains(&"mailsend") {
+        all.extend(defs::mail_send_tools());
+    }
+    if kits.contains(&"mailmanage") {
+        all.extend(defs::mail_manage_tools());
+    }
+    all.into_iter()
+        .map(|v| (v["name"].as_str().unwrap_or("").to_string(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone()))
+        .collect()
+}
+
+/// Whether `id` is one of Lumo's email tools.
+pub fn is_mail_tool(id: &str) -> bool {
+    crate::mail_tool_defs::mail_tool(id)
+}
+
+/// The tools agents may use, for the chat's API providers (claude.rs,
+/// openai_compat.rs, local_chat.rs): the island's own (island_tools.rs: the
+/// timer and listening), Lumo's email tools as Security lets the AI have
+/// them (`mail`, mail.rs ai_tools), Lumo's web search when `web`
+/// (web_search.rs), then the user's that are on: id, the words the model
+/// reads, and the JSON schema of the input.
+pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String, Value)> {
+    let mut all = crate::island_tools::api_tools(true);
+    all.extend(mail_api_tools(mail));
+    if web {
+        all.extend(crate::web_search::api_tools());
+    }
+    if workspace {
+        all.extend(crate::workspace::api_tools());
+    }
+    // Never one of the user's with the name of the island's own, the email's or the web search's.
+    all.extend(
+        offered()
+            .iter()
+            .filter(|t| {
+                let id = t.manifest.id.as_str();
+                !crate::island_tools::NAMES.contains(&id) && !is_mail_tool(id) && !crate::web_search::NAMES.contains(&id) && !crate::workspace::NAMES.contains(&id)
+            })
+            .map(|t| {
+                let v = mcp_tool(&t.manifest);
+                (t.manifest.id.clone(), v["description"].as_str().unwrap_or("").to_string(), v["inputSchema"].clone())
+            }),
+    );
     all
 }
 
 /// A call from the chat `chat_id`'s API providers (claude.rs,
-/// openai_compat.rs): what goes back to the model, and whether it failed.
-pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value) -> (String, bool) {
+/// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
+/// it failed. `always_ask`: a card even for a tool the user trusts (a local
+/// model's chat on Ask every time).
+pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, always_ask: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
-    let answer = serve_call(app, &json!({ "tool": id, "input": input })).await;
+    // The chat's own folder of copies (a local model's): nothing outside it,
+    // so no card; what it touched joins the chat's files.
+    if crate::workspace::NAMES.contains(&id) {
+        let chat = chat_id.to_string();
+        let tool = id.to_string();
+        let (text, failed, touched) = tauri::async_runtime::spawn_blocking(move || crate::workspace::call(&chat, &tool, &input)).await.unwrap_or_else(|_| ("Failed.".into(), true, Vec::new()));
+        for (kind, path) in touched {
+            let path = path.to_string_lossy().to_string();
+            crate::chat_files::remember(&path);
+            let _ = app.emit_to(crate::island::WINDOW_LABEL, "chat-file", json!({ "chat": chat_id, "kind": kind, "path": path }));
+        }
+        return (text, failed);
+    }
+    // Lumo's web search, read-only: no card, as for a search engine's own.
+    if crate::web_search::NAMES.contains(&id) {
+        let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
+        return crate::web_search::call(id, &input, &provider).await;
+    }
+    // Lumo's email tools: what Security lets the AI do, each send or change on its card (mail.rs).
+    let answer = if is_mail_tool(id) {
+        crate::mail::serve(app, &json!({ "tool": id, "input": input })).await
+    } else {
+        serve_call(app, &json!({ "tool": id, "input": input, "always_ask": always_ask })).await
+    };
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
         None => (answer.get("text").and_then(Value::as_str).unwrap_or("Done.").to_string(), false),
@@ -1064,11 +1133,12 @@ fn take_allowed(id: &str) -> bool {
 }
 
 /// The user's go-ahead for one call: none needed for a tool they trust (and
-/// Lumo can hold to what it declared), the click on Claude Code's own card
-/// when there was one, else an Allow / Deny card on the island.
-async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value) -> Result<(), String> {
+/// Lumo can hold to what it declared) unless `always_ask`, the click on
+/// Claude Code's own card when there was one, else an Allow / Deny card on
+/// the island.
+async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value, always_ask: bool) -> Result<(), String> {
     let m = &tool.manifest;
-    if m.trust && tool.may_trust {
+    if m.trust && tool.may_trust && !always_ask {
         return Ok(());
     }
     if take_allowed(&m.id) {
@@ -1105,7 +1175,8 @@ pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
     if !tool.reviewed {
         return json!({ "error": format!("The tool {} changed since it was reviewed. The user can review it again in Lumo's Tools tab.", m.name) });
     }
-    if let Err(e) = approve(app, &tool, &input).await {
+    let always_ask = request.get("always_ask").and_then(Value::as_bool).unwrap_or(false);
+    if let Err(e) = approve(app, &tool, &input, always_ask).await {
         return json!({ "error": e });
     }
     let name = m.name.clone();
@@ -1252,6 +1323,26 @@ pub fn tools_reveal(id: Option<String>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_api_providers_get_the_email_tools_security_lets_the_ai_have() {
+        let names = |mail: &str| mail_api_tools(mail).into_iter().map(|t| t.0).collect::<Vec<_>>();
+        assert!(names("").is_empty());
+        assert_eq!(names("mail"), ["mail_recent", "mail_search", "mail_read", "mail_attachment", "mail_folders"]);
+        let send = names("mail,mailsend");
+        assert!(send.contains(&"mail_send".to_string()) && !send.contains(&"mail_trash".to_string()));
+        assert!(names("mail,mailsend,mailmanage").contains(&"mail_trash".to_string()));
+        for (name, description, schema) in mail_api_tools("mail,mailsend,mailmanage") {
+            assert!(is_mail_tool(&name), "{name}");
+            assert!(!description.is_empty() && schema["type"] == "object", "{name}");
+        }
+        assert!(!is_mail_tool("set_timer"));
+        // The island's listening is offered too, with the timer.
+        let all: Vec<String> = chat_tools("mail", false, false).into_iter().map(|t| t.0).collect();
+        for name in [crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"] {
+            assert!(all.iter().any(|n| n == name), "{name}");
+        }
+    }
 
     #[test]
     fn a_name_becomes_an_id_mcp_takes() {

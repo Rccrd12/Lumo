@@ -13,6 +13,7 @@ import {
 } from "../src/core/shortcuts.ts";
 import { registerShortcutHandlers, runGlobalShortcut, runIslandKey } from "../src/island/shortcuts.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
+import { setLocalCaps } from "../src/core/providers.ts";
 
 const FIRST_IDS = [
   "toggleIsland", "openChat", "goToAlert", "jumpToTerminal",
@@ -294,14 +295,16 @@ test("the sharing shortcuts open the chat with what Rust took, or say what went 
   assert.equal(State.noteMessage, "Nothing is selected.");
   assert.equal(State.incomingShare, null);
 
-  // A local model can't look at a screenshot: it is deleted at once.
+  // A local model that doesn't see can't look at a screenshot: it is deleted at once.
   did = [];
   State.settings = { ...State.settings, chatProvider: "ollama" };
+  setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
   const shot = { display: 0, name: "s.png", path: "C:\\inbox\\s.png", width: 1, height: 1, preview: "" };
   emit("ask-context", { kind: "screen", shots: [shot] });
   assert.deepEqual(sent("screen_discard"), [{ paths: [shot.path] }]);
   assert.deepEqual(did, ["resume", "alert:note", "emote:annoyed"]);
-  assert.equal(State.noteMessage, "Screenshots need the Claude Code or Anthropic provider.");
+  assert.equal(State.noteMessage, "This model doesn't see pictures. Pick one that does, or ask without the screenshot.");
+  setLocalCaps("ollama", null);
 
   did = [];
   State.settings = { ...State.settings, chatProvider: "claude-code" };

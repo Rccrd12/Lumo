@@ -1,6 +1,10 @@
 // Lumo for Windows — app wiring and the commands the island calls.
 
 mod activities;
+/// Lumo's email tools as lumo-hook lists them: the same file, for the chat's API providers (tools.rs).
+#[path = "../../hook/src/mail_tools.rs"]
+#[allow(dead_code)]
+mod mail_tool_defs;
 mod plan_island;
 mod agent_hooks;
 mod agents;
@@ -36,6 +40,7 @@ mod listen_local;
 mod live;
 mod local_chat;
 mod local_models;
+mod local_profile;
 mod log;
 mod mail;
 mod media;
@@ -44,6 +49,8 @@ mod net;
 mod notifications;
 mod openai_compat;
 mod pc_status;
+mod pdf_pages;
+mod pdf_text;
 mod pipe;
 mod plan_usage;
 mod platform;
@@ -64,8 +71,10 @@ mod tools;
 mod tray;
 mod typing;
 mod updater;
+mod web_search;
 mod webview_drop;
 mod window_control;
+mod workspace;
 
 use std::process::Command;
 use std::sync::atomic::Ordering;
@@ -679,6 +688,36 @@ async fn local_loaded(provider: String) -> Result<Vec<local_models::Loaded>, Str
     local_models::loaded(&provider).await
 }
 
+/// What the chat's local model can do (pictures, tools, reasoning, its
+/// context), as its server says, for the model picker. Nothing is known of a
+/// server that isn't Ollama or LM Studio, or isn't connected.
+#[tauri::command]
+async fn local_caps(shared: State<'_, Shared>, provider: String, model: String) -> Result<local_models::Caps, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(match local_chat::server(&settings, &provider) {
+        Some(server) => local_models::caps(&server, &model).await,
+        None => local_models::Caps::default(),
+    })
+}
+
+/// The chat picker: which of `models` the local server holds in memory now.
+#[tauri::command]
+async fn local_loaded_of(provider: String, models: Vec<String>) -> Result<Vec<String>, String> {
+    local_models::loaded_of(&provider, &models).await
+}
+
+/// The chat picker's +: loads a local model, how far told as `local-load` events.
+#[tauri::command]
+async fn local_load(app: AppHandle, provider: String, model: String) -> Result<(), String> {
+    local_models::load_for_picker(&app, &provider, &model).await
+}
+
+/// The chat picker's −: a local model leaves the server's memory.
+#[tauri::command]
+async fn local_unload_model(provider: String, model: String) -> Result<(), String> {
+    local_models::unload(&provider, &model).await
+}
+
 /// Settings → Local models → Free memory: every model the server holds is unloaded.
 #[tauri::command]
 async fn local_unload(provider: String) -> Result<usize, String> {
@@ -695,8 +734,8 @@ async fn local_pull(app: AppHandle, provider: String, model: String) -> Result<(
 /// Stores the custom server's key for the address typed next to it; it is only
 /// ever sent to that address.
 #[tauri::command(async)]
-fn local_set_key(url: String, key: String) -> Result<(), String> {
-    local_chat::set_custom_key(&url, &key)
+fn local_set_key(url: String, key: String, provider: Option<String>) -> Result<(), String> {
+    local_chat::set_key(provider.as_deref().unwrap_or("custom"), &url, &key)
 }
 
 /// A new chat on screen, `chat_id`. An answer still being written in the
@@ -747,8 +786,25 @@ struct SavedTurn {
 /// or Antigravity CLI conversation that answered it, if any, so the next
 /// question continues it.
 #[tauri::command]
-fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>) {
-    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session);
+fn chat_restore(chats: State<Chats>, chat_id: String, turns: Vec<SavedTurn>, session: Option<String>, compact: Option<SavedCompact>) {
+    chats.focus(&chat_id).restore(turns.into_iter().map(|t| (t.role, t.content)).collect(), session, compact.map(|c| (c.upto, c.summary)));
+}
+
+/// A chat's /compact, as its saved file keeps it: the summary of its first `upto` turns.
+#[derive(serde::Deserialize, serde::Serialize)]
+struct SavedCompact {
+    upto: usize,
+    summary: String,
+}
+
+/// /compact with a provider called by its API: the chat's model sums the
+/// conversation up, and the summary stands for its turns from then on (chat.rs
+/// `compact`). None: nothing new to sum up.
+#[tauri::command]
+async fn chat_compact(shared: State<'_, Shared>, chats: State<'_, Chats>, chat_id: String) -> Result<Option<SavedCompact>, String> {
+    let chat = chats.get(&chat_id);
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(chat::compact(&chat, &settings).await?.map(|(upto, summary)| SavedCompact { upto, summary }))
 }
 
 /// "Attach a file" in the chat: the system's file picker, then the same copy
@@ -966,7 +1022,7 @@ fn secret_present(key: String) -> bool {
 #[tauri::command(async)]
 fn secret_set(app: AppHandle, key: String, value: String) -> Result<(), String> {
     // Bound to its server's address: only local_set_key may store it.
-    if key == local_chat::CUSTOM_KEY {
+    if key == local_chat::CUSTOM_KEY || key == local_chat::UNSLOTH_KEY {
         return Err("use local_set_key".into());
     }
     let before = (key == "github-token").then(|| secrets::get(&key));
@@ -1183,11 +1239,16 @@ pub fn run() {
             chat_usage,
             local_connect,
             local_loaded,
+            local_caps,
+            local_loaded_of,
+            local_load,
+            local_unload_model,
             local_unload,
             local_pull,
             local_set_key,
             chat_reset,
             chat_restore,
+            chat_compact,
             chat_commands,
             chat_stop,
             chat_rewind,
@@ -1262,6 +1323,11 @@ pub fn run() {
             ingest_file,
             file_preview,
             chat_files::chat_file_open,
+            workspace::workspace_changes,
+            workspace::workspace_diff,
+            workspace::workspace_put_back,
+            workspace::workspace_reveal,
+            workspace::workspace_delete,
             chat_files::chat_file_reveal,
             chat_files::chat_file_preview,
             chat_files::chat_files_present,

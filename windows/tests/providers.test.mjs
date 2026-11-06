@@ -5,14 +5,14 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
   PERMISSION_MODES, PROVIDERS, activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, permissionModesFor, isLoopbackHost, pickModel, providerDef, urlExposure,
-  visibleProviders, withModel, anyProviderReady,
+  visibleProviders, withModel, anyProviderReady, capsContext, capsWords, contextSize, localCapsOf, setLocalCaps,
 } from "../src/core/providers.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 
 const settings = (over = {}) => ({ ...DEFAULT_SETTINGS, ...over });
 
 test("the ids and key names match the Rust side", () => {
-  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama", "lmstudio", "custom"]);
+  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama", "lmstudio", "unsloth", "custom"]);
   assert.equal(providerDef("google").key, "google-api-key");
   assert.equal(providerDef("openai").key, "openai-api-key");
   assert.equal(providerDef("openrouter").key, "openrouter-api-key");
@@ -141,4 +141,29 @@ test("an address says whether what you type leaves this computer", () => {
   assert.equal(urlExposure("ftp://example.com"), "invalid");
   assert.equal(urlExposure("http://user:pw@example.com"), "invalid");
   assert.equal(urlExposure("http://"), "invalid");
+});
+
+test("a local model's caps: the reasoning levels it takes become its efforts, and its line says what it can do", () => {
+  const caps = { vision: true, tools: true, reasoning: ["off", "on"], maxContext: 262144, loadedContext: 65536 };
+  assert.deepEqual(effortsFor("lmstudio"), []);
+  setLocalCaps("lmstudio", caps);
+  assert.equal(localCapsOf("lmstudio"), caps);
+  assert.deepEqual(effortsFor("lmstudio"), ["", "off", "on"]);
+  assert.equal(effortFor("lmstudio", "on"), "on");
+  assert.equal(effortFor("lmstudio", "max"), "", "a level the model doesn't take is its own default");
+  assert.deepEqual(effortsFor("ollama"), [], "each server its own");
+  assert.deepEqual(capsWords(caps), ["Images", "Tools", "Thinking"]);
+  assert.equal(capsContext(caps), "64k / 256k");
+  setLocalCaps("lmstudio", null);
+  assert.deepEqual(effortsFor("lmstudio"), []);
+
+  // A server that says nothing: no words, no levels.
+  const none = { vision: null, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 };
+  assert.deepEqual(capsWords(none), []);
+  assert.equal(capsContext(none), "");
+  assert.deepEqual(capsWords(undefined), []);
+  assert.equal(capsContext({ ...none, maxContext: 131072 }), "128k");
+  assert.equal(contextSize(4096), "4k");
+  assert.equal(contextSize(1048576), "1M");
+  assert.equal(contextSize(512), "512");
 });

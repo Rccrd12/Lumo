@@ -274,3 +274,19 @@ test("the week alone: the 5 hours read as plenty left, since Claude Code reports
   assert.match(line.rows[0].reset, /near the limit/);
   assert.equal(line.pct, 75, "the ring shows the week");
 });
+
+test("a local model's ring is how much of its context the chat on screen fills", () => {
+  const s = on({ chatProvider: "lmstudio" });
+  const seen = { provider: "lmstudio", context: { chat: "c1", used: 16384, total: 65536 }, at: NOW };
+  const line = usageLine(s, null, seen, NOW, null, "c1");
+  assert.equal(line.pct, 25);
+  assert.equal(line.title, "Context");
+  assert.match(line.text, /^Context: 16.*K of 65.*K$/);
+  assert.equal(line.rows[0].value, "25% used");
+  assert.equal(usageLine(s, null, seen, NOW, null, "c2"), null, "another chat's");
+  assert.equal(usageLine(on({ chatProvider: "ollama" }), null, seen, NOW, null, "c1"), null, "another server's");
+  const unknown = usageLine(s, null, { ...seen, context: { chat: "c1", used: 900, total: 0 } }, NOW, null, "c1");
+  assert.equal(unknown.pct, null);
+  assert.equal(unknown.text, "Context: 900 tokens");
+  assert.equal(usageLine({ ...s, chatShowUsage: false }, null, seen, NOW, null, "c1"), null);
+});

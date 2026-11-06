@@ -74,16 +74,16 @@ import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
 import {
-  Bridge, onEvent, type BrowserTab, type ChatActivity, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
+  Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
 } from "../core/bridge";
 import {
-  activeModel, effortFor, effortsFor, isCliProvider, parsePermissionMode, permissionModesFor, pickModel, providerDef,
+  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
-import { chatTitle, deleteChat, loadChats, saveChat, searchChats, type ChatHit, type SavedChat } from "../core/chats";
+import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import {
   addChatFile, aiKind, chatFiles, dropChatFiles, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
@@ -92,7 +92,7 @@ import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
   ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, screenItems, screenLabel, screenPayload, seesImages, short,
+  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
   shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
   type PendingScreen, type PreviewBlock, type ScreenItem,
 } from "../core/screen";
@@ -102,13 +102,15 @@ import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
 import { N_, t, tl } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
+import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
-import { LISTEN_STRINGS, activeWatches, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
+import { LISTEN_STRINGS, activeWatches, answersInChat, firedTitle, listenMessage, takeListens, watchColor, type ListenAsk, type ListenFired, type ListenWatch } from "../core/listen";
 import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
+import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 import {
-  lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
+  SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
 
 const STRINGS = {
@@ -162,10 +164,34 @@ const STRINGS = {
 };
 
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
-const FILLED_ICONS = new Set(["plus", "gear", "timer"]);
+const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);
 
 /** The effort levels by name, "Auto" for the CLI's own default. */
+/** Two arrows meeting at a line: the chat pressed together. */
+const COMPACT_ICON = "M12 3.5v5.5M9 6.5l3 2.5 3-2.5M12 20.5V15M9 17.5l3-2.5 3 2.5M5 12h14";
+
+/** /compact with the providers called by their API. */
+const COMPACT_STRINGS = {
+  action: N_("Compact the chat"),
+  working: N_("Compacting the chat…"),
+  done: N_("Chat compacted: the model now starts from its summary"),
+  nothing: N_("Nothing new to compact"),
+};
+
+/** The picker's − and + on a local model: in and out of the server's memory. */
+const LOAD_STRINGS = {
+  load: N_("Load into memory"),
+  eject: N_("Eject from memory"),
+  loading: N_("Loading the model…"),
+};
+const LOAD_RING = "M12 3.5a8.5 8.5 0 1 0 0 17 8.5 8.5 0 0 0 0-17z";
+const LOAD_MINUS = `${LOAD_RING}M8.5 12h7`;
+const LOAD_PLUS = `${LOAD_RING}M8.5 12h7M12 8.5v7`;
+
 const EFFORT_NAMES: Record<string, string> = {
+  // A local model that thinks or doesn't (local_models.rs).
+  off: N_("Off"),
+  on: N_("On"),
   low: N_("Low"),
   medium: N_("Medium"),
   high: N_("High"),
@@ -182,6 +208,12 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
 
 /** Auto with Antigravity CLI: agy's own Turbo preset (antigravity_cli.rs). */
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
+/** The modes with a local model, whose only actions are the user's tools (local_chat.rs). */
+const LOCAL_NOTES: Record<PermissionMode, string> = {
+  default: N_("Asks before each of your tools runs, even one you trust."),
+  auto: N_("Runs the tools you trust without asking, and asks for the rest."),
+  plan: N_("Gets none of your tools: it only answers and plans."),
+};
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
@@ -232,6 +264,10 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
       h("div", { class: "bubble", text: message.content }),
     );
   }
+  // The answer failed: what went wrong stays under the question.
+  if (message.failed) {
+    return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
+  }
   const reply = h("div", { class: "reply" });
   if (opts.workshop) {
     const shown = stripDraft(message.content);
@@ -246,7 +282,149 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   const foot = message.stopped
     ? h("div", { class: "reply-foot" }, h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }), actions)
     : h("div", { class: "reply-foot floating" }, actions);
-  return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, foot));
+  const copies = message.copies?.length ? copiesBox(message.copies) : null;
+  return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, foot));
+}
+
+/** What the copies' box under an answer says (workspace.rs). */
+const COPY_STRINGS = {
+  title: N_("Changed in Lumo's copies: your files are as they were"),
+  open: N_("Open"),
+  folder: N_("Show the folder"),
+  confirm: N_("Write it over the original"),
+  rewritten: N_("rewritten"),
+  line: N_("line {n}"),
+  places: N_("{count} places"),
+  newText: N_("New text"),
+  changes: N_("Changes"),
+  sideBySide: N_("Before and after"),
+  before: N_("Before"),
+  after: N_("After"),
+  wasEmpty: N_("Before, it was empty."),
+  was: N_("Before, it was: “{text}”"),
+  wasLines: N_("Before, it had {count} lines."),
+  wasLine: N_("Before, it had one line."),
+  done: N_("Written over the original."),
+  unchanged: N_("The copy is the same as the original."),
+};
+
+/** A path in a chat's folder of copies (workspace.rs). */
+export function inWorkspace(path: string): boolean {
+  return /[\\/]com\.rccrd12\.lumo[\\/]workspaces[\\/]/i.test(path);
+}
+
+/**
+ * The copies an answer changed or made: each with Open and, for a copy of a
+ * file of the computer, what changed in it and a button that writes it over
+ * the original.
+ */
+function copiesBox(copies: { chat: string; path: string; made?: boolean }[]): HTMLElement {
+  const box = h("div", { class: "reply-copies" },
+    h("div", { class: "reply-copies-title", text: t(COPY_STRINGS.title) }));
+  for (const copy of copies) {
+    const name = copy.path.split(/[\\/]/).pop() ?? copy.path;
+    const detail = h("div", { class: "reply-copy-detail" });
+    const open = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.open) });
+    open.addEventListener("click", () => void Bridge.chatFileOpen(copy.path));
+    const folder = h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.folder) });
+    folder.addEventListener("click", () => void Bridge.chatFileReveal(copy.path));
+    const row = h("div", { class: "reply-copy-row" },
+      h("span", { class: "reply-copy-name", text: name, title: copy.path }), open, folder);
+    box.append(h("div", { class: "reply-copy" }, row, detail));
+    // A copy of a file of the computer shows what changed right away.
+    if (!copy.made) void showDiff(copy, detail, row);
+  }
+  return box;
+}
+
+async function showDiff(copy: { chat: string; path: string }, detail: HTMLElement, row: HTMLElement) {
+  clear(detail);
+  let diff: CopyDiff;
+  try {
+    diff = await Bridge.workspaceDiff(copy.chat, copy.path);
+  } catch (err) {
+    detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
+    return;
+  }
+  const { added, removed } = counts(diff);
+  if (added + removed === 0) {
+    detail.append(h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.unchanged) }));
+    return;
+  }
+  const best = copyView(diff);
+  const found = pairs(diff);
+  // Beside the name: how it changed.
+  const where = best === "text" ? t(COPY_STRINGS.rewritten)
+    : found.length === 1 ? t(COPY_STRINGS.line, { n: found[0].at }) : t(COPY_STRINGS.places, { count: found.length });
+  const name = row.querySelector(".reply-copy-name");
+  if (name) name.append(h("span", { class: "reply-copy-where", text: ` · ${where}` }));
+  name?.after(h("span", { class: "reply-copy-count" },
+    h("span", { class: "plus", text: `+${added}` }), " ", h("span", { class: "minus", text: `−${removed}` })));
+
+  const body = h("div", { class: "reply-copy-body" });
+  const show = (view: CopyView) => {
+    clear(body);
+    if (view === "text") body.append(newText(diff));
+    else if (view === "pairs") body.append(sideBySide(found));
+    else body.append(changedLines(diff));
+    for (const [b, v] of tabs) b.classList.toggle("on", v === view);
+  };
+  // The rewritten file and the few changed lines can also be seen line by line.
+  const tabs: [HTMLElement, CopyView][] = best === "byLine" ? [] : [
+    [h("button", { class: "reply-copy-btn", text: t(best === "text" ? COPY_STRINGS.newText : COPY_STRINGS.sideBySide) }), best],
+    [h("button", { class: "reply-copy-btn", text: t(COPY_STRINGS.changes) }), "byLine"],
+  ];
+  for (const [b, v] of tabs) b.addEventListener("click", () => show(v));
+
+  const confirm = h("button", { class: "reply-copy-btn primary", text: t(COPY_STRINGS.confirm) });
+  confirm.addEventListener("click", async () => {
+    try {
+      await Bridge.workspacePutBack(copy.chat, copy.path);
+      clear(detail);
+      detail.append(h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.done) }));
+    } catch (err) {
+      detail.append(h("div", { class: "reply-copy-note", text: String(err) }));
+    }
+  });
+  if (tabs.length) detail.append(h("div", { class: "reply-copy-row" }, ...tabs.map(([b]) => b)));
+  detail.append(
+    body,
+    h("div", { class: "reply-copy-row" }, confirm));
+  show(best);
+}
+
+/** The copy rewritten: its text, to read, and what it was. */
+function newText(diff: CopyDiff): HTMLElement {
+  const before = diff.before.trim();
+  const was = before === "" ? t(COPY_STRINGS.wasEmpty)
+    : before.length <= 80 && !before.includes("\n") ? t(COPY_STRINGS.was, { text: before })
+    : diff.beforeLines === 1 ? t(COPY_STRINGS.wasLine) : t(COPY_STRINGS.wasLines, { count: diff.beforeLines });
+  return h("div", { class: "reply-copy-view" },
+    h("div", { class: "reply-copy-text", text: diff.text }),
+    h("div", { class: "reply-copy-note", text: was }));
+}
+
+/** A few changed lines: before and after side by side, the changed words lit. */
+function sideBySide(found: Pair[]): HTMLElement {
+  const marked = (segments: Segment[]) => segments.map((s) => s.changed ? h("mark", { text: s.text }) : document.createTextNode(s.text));
+  return h("div", { class: "reply-copy-view" }, ...found.map((p) => {
+    const words = wordMarks(p.before.join("\n"), p.after.join("\n"));
+    return h("div", { class: "reply-copy-pair" },
+      h("div", { class: "reply-copy-side del" }, h("div", { class: "reply-copy-label", text: t(COPY_STRINGS.before) }), ...marked(words.before)),
+      h("div", { class: "reply-copy-side add" }, h("div", { class: "reply-copy-label", text: t(COPY_STRINGS.after) }), ...marked(words.after)));
+  }));
+}
+
+/** The changed lines with three of their neighbours, numbered, each wrapped. */
+function changedLines(diff: CopyDiff): HTMLElement {
+  return h("div", { class: "reply-copy-diff" }, ...diff.lines.slice(0, 400).map((l, i) => {
+    if (l === "…") return h("div", { class: "copy-line gap", text: "⋯" });
+    const kind = l[0] === "+" ? "add" : l[0] === "-" ? "del" : "same";
+    return h("div", { class: `copy-line ${kind}` },
+      h("span", { class: "num", text: String(diff.numbers[i] || "") }),
+      h("span", { class: "sym", text: kind === "add" ? "+" : kind === "del" ? "−" : "" }),
+      h("span", { class: "txt", text: l.slice(1) }));
+  }));
 }
 
 /** What the line next to the typing dots says (claude_code.rs Activity). */
@@ -266,6 +444,10 @@ const ACTIVITY_STRINGS = {
   screen: N_("Looking at the screen"),
   computer: COMPUTER_TEXT.using,
   tool: N_("Using {tool}"),
+  // A local model (local_chat.rs): loading it, then reading the prompt.
+  loading: N_("Loading the model…"),
+  loadingAt: N_("Loading the model: {percent}%"),
+  prompt: N_("Processing the prompt…"),
 };
 
 const ISLAND_ACTIVITY_STRINGS = {
@@ -300,6 +482,8 @@ interface Run {
   stopping: boolean;
   /** Deleted from Past chats meanwhile: its answer is stopped, and the chat is not saved again. */
   forgotten?: boolean;
+  /** The copies the answer changed or made in the chat's folder (workspace.rs). */
+  copies?: Map<string, boolean>;
   /** Settles once the answer is over (answered, stopped or failed). */
   done: Promise<void>;
 }
@@ -364,6 +548,10 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.computer);
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
+    case "loading":
+      return /^\d{1,3}$/.test(detail) ? t(ACTIVITY_STRINGS.loadingAt, { percent: detail }) : t(ACTIVITY_STRINGS.loading);
+    case "prompt":
+      return t(ACTIVITY_STRINGS.prompt);
     default:
       return t(ACTIVITY_STRINGS.thinking);
   }
@@ -389,6 +577,8 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "plan":
     case "screen":
     case "computer":
+    case "loading":
+    case "prompt":
       return activityLabel(activity);
     default:
       return t(COMPACT_TEXT.thinking);
@@ -652,6 +842,8 @@ interface Picker {
   el: HTMLElement;
   open(): void;
   close(): void;
+  /** Asks a local model's server what the model picked can do, when it changed. */
+  refreshCaps(): void;
   readonly isOpen: boolean;
 }
 
@@ -851,6 +1043,43 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     list.append(line);
   }
 
+  /**
+   * A local model's server is asked what the model picked can do (pictures,
+   * tools, reasoning, its context) each time the model changes: the effort
+   * slider, the screenshots and the line next to the model follow.
+   */
+  let capsKey = "";
+  function refreshCaps() {
+    const p = providerDef(State.settings.chatProvider);
+    const model = activeModel(State.settings);
+    const key = p.urlField && model ? `${p.id}|${model}` : "";
+    if (key === capsKey) return;
+    capsKey = key;
+    if (!key) return;
+    setLocalCaps(p.id, null);
+    void Bridge.localCaps(p.id, model)
+      .then((caps) => {
+        if (capsKey !== key) return;
+        setLocalCaps(p.id, caps);
+        drawCaps();
+        drawEfforts();
+        onChange();
+      })
+      .catch(() => {});
+  }
+
+  /** What the local model picked can do, on its row: "Images · Tools · Thinking · Context 64k / 256k". */
+  function drawCaps() {
+    const p = providerDef(State.settings.chatProvider);
+    const slot = list.querySelector<HTMLElement>(".picker-model.on .picker-model-caps");
+    if (!slot || !p.urlField) return;
+    const caps = localCapsOf(p.id);
+    const context = capsContext(caps);
+    const words = capsWords(caps).map((w) => t(w));
+    if (context) words.push(`${t(CONTEXT_STRINGS.title)} ${context}`);
+    slot.textContent = words.join(" · ");
+  }
+
   function drawModels(p: ProviderDef, models: ModelInfo[]) {
     clear(list);
     const current = activeModel(State.settings);
@@ -860,18 +1089,93 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         "button",
         { class: on ? "picker-model on" : "picker-model", style: `--accent:${p.accent}`, title: m.id },
         h("span", { class: "picker-model-name", text: m.label }),
+        on && p.urlField ? h("span", { class: "picker-model-caps" }) : null,
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
+      if (holds(p)) row.append(loadButton(p, m.id));
       row.addEventListener("click", () => {
         State.settings = withModel(State.settings, p.id, m.id);
         saveSettings();
         Sound.play("blip");
         close();
+        refreshCaps();
       });
       list.append(row);
     }
+    drawCaps();
     list.querySelector(".picker-model.on")?.scrollIntoView({ block: "nearest" });
+    if (holds(p)) void drawLoaded(p, models.map((m) => m.id));
   }
+
+  /** Ollama and LM Studio load and eject models; a custom server doesn't say. */
+  function holds(p: ProviderDef): boolean {
+    return p.id === "ollama" || p.id === "lmstudio" || p.id === "unsloth";
+  }
+
+  /** Which models are in memory: − on those, + on the others. */
+  async function drawLoaded(p: ProviderDef, ids: string[]) {
+    const ticket = request;
+    let loaded: string[];
+    try {
+      loaded = await Bridge.localLoadedOf(p.id, ids);
+    } catch {
+      return;
+    }
+    if (ticket !== request || !isOpen) return;
+    for (const b of list.querySelectorAll<HTMLElement>(".picker-model-load")) {
+      if (b.dataset.busy) continue;
+      setLoadState(b, loaded.includes(b.dataset.model ?? "") ? "loaded" : "unloaded");
+    }
+  }
+
+  function setLoadState(b: HTMLElement, state: "loaded" | "unloaded" | "busy", percent?: number) {
+    b.dataset.state = state;
+    b.hidden = false;
+    clear(b);
+    if (state === "busy") {
+      b.dataset.busy = "1";
+      b.title = t(LOAD_STRINGS.loading);
+      b.append(h("span", { class: "picker-model-load-pct", text: percent != null ? `${percent}%` : "…" }));
+      return;
+    }
+    delete b.dataset.busy;
+    b.title = t(state === "loaded" ? LOAD_STRINGS.eject : LOAD_STRINGS.load);
+    b.append(svg(state === "loaded" ? LOAD_MINUS : LOAD_PLUS, 15, { stroke: 1.6 }));
+  }
+
+  /** The round − / + at the far right of a local model's row. */
+  function loadButton(p: ProviderDef, model: string): HTMLElement {
+    const b = h("span", { class: "picker-model-load", role: "button" });
+    b.dataset.model = model;
+    b.hidden = true;
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      if (b.dataset.busy) return;
+      const eject = b.dataset.state === "loaded";
+      setLoadState(b, "busy");
+      const done = eject ? Bridge.localUnloadModel(p.id, model) : Bridge.localLoad(p.id, model);
+      Sound.play("blip");
+      void done
+        .then(() => setLoadState(b, eject ? "unloaded" : "loaded"))
+        .catch((err) => {
+          setLoadState(b, eject ? "loaded" : "unloaded");
+          b.title = String(err).replace(/^Error:\s*/, "");
+        })
+        .finally(() => {
+          if (State.settings.chatProvider === p.id && activeModel(State.settings) === model) {
+            capsKey = "";
+            refreshCaps();
+          }
+        });
+    });
+    return b;
+  }
+
+  void onEvent<LocalLoad>("local-load", (e) => {
+    for (const b of list.querySelectorAll<HTMLElement>(".picker-model-load")) {
+      if (b.dataset.model === e.model && b.dataset.busy) setLoadState(b, "busy", Math.round(e.percent));
+    }
+  });
 
   async function loadModels() {
     const p = providerDef(State.settings.chatProvider);
@@ -949,6 +1253,7 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     el,
     open,
     close,
+    refreshCaps,
     get isOpen() {
       return isOpen;
     },
@@ -1254,7 +1559,7 @@ export function buildPrompt(
   let usageLineShown: UsageLine | null = null;
 
   function drawUsage(now = Date.now()) {
-    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage);
+    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage, State.chatId);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1273,7 +1578,9 @@ export function buildPrompt(
   /** The menu: each limit with how much is used, its bar and when it resets. */
   function drawUsageMenu() {
     const line = usageLineShown;
-    usageTitle.textContent = line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
+    // A local model's ring is its context: the menu says only that.
+    const local = providerDef(State.settings.chatProvider).urlField !== null;
+    usageTitle.textContent = line && local ? line.title : line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
     if (line.rows.length === 0) {
@@ -1293,6 +1600,12 @@ export function buildPrompt(
         // How to get the 5 hours up to date: under them, where it is seen.
         i === 0 && line.note ? h("span", { class: "usage-note", text: line.note }) : null,
       ));
+    }
+    // A local model's context: /compact from here, under its bar.
+    if (local && State.chatHistory.length > 0) {
+      const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
+        svg(COMPACT_ICON, 12, { stroke: 1.8 }), h("span", { text: t(COMPACT_STRINGS.action) }));
+      usageList.append(h("div", { class: "usage-compact-row" }, compact));
     }
   }
 
@@ -1364,11 +1677,14 @@ export function buildPrompt(
   });
 
   function drawModelButton() {
+    picker.refreshCaps();
     const p = providerDef(State.settings.chatProvider);
     modelDot.style.background = p.accent;
     const model = activeModel(State.settings) || t(STRINGS.noModel);
     const effort = effortFor(p.id, State.settings.chatEffort);
     modelName.textContent = effort ? `${model} · ${effortLabel(effort)}` : model;
+    // A long name is cut; the whole of it shows on hover.
+    modelName.title = modelName.textContent;
     modelBtn.classList.toggle("open", picker.isOpen);
     drawSend();
     drawPermButton();
@@ -1472,7 +1788,7 @@ export function buildPrompt(
           h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
           h("span", {
             class: "perm-note",
-            text: t(mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
+            text: t(p.urlField ? LOCAL_NOTES[mode] : mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
           }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
@@ -1497,9 +1813,9 @@ export function buildPrompt(
     panelChanged();
   }
 
-  /** The shield: shown for the CLIs only, lit when they may do more than ask. */
+  /** The shield: shown for the CLIs and the model servers, lit when they may do more than ask. */
   function drawPermButton() {
-    const cli = isCliProvider(State.settings.chatProvider);
+    const cli = hasPermissions(State.settings.chatProvider);
     permBtn.hidden = !cli;
     if (!cli) closePermissions();
     const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);
@@ -1933,7 +2249,7 @@ export function buildPrompt(
       screenList.append(row);
     }
     if (problem) screenStatus(problem);
-    else if (displays.length > 0 && !images) screenStatus(t(SCREEN_STRINGS.needsImages));
+    else if (displays.length > 0 && !images) screenStatus(noImagesReason(providerDef(State.settings.chatProvider)));
     screenStatus(t(SCREEN_STRINGS.nothingYet));
   }
 
@@ -2244,6 +2560,8 @@ export function buildPrompt(
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
         dropChatFiles(c.id);
+        // So does its folder of copies (workspace.rs).
+        void Bridge.workspaceDelete(c.id);
         // Being answered in the background: that answer ends with it.
         const run = runs.get(c.id);
         if (run) {
@@ -2311,7 +2629,7 @@ export function buildPrompt(
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
       State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, c.turns, c.session);
+      void Bridge.chatRestore(c.id, c.turns, c.session, compactOf(c.id));
     }
     State.chatId = c.id;
     State.droppedFile = null;
@@ -2428,7 +2746,7 @@ export function buildPrompt(
     // Rust lets a chat go once another is on screen: it gets this one back as it is.
     if (!runs.has(State.chatId) && State.chatHistory.length > 0) {
       State.chatHistory = State.chatHistory.map((m, i) => ({ ...m, turn: i }));
-      void Bridge.chatRestore(State.chatId, State.chatHistory.map((m) => ({ role: m.role, content: m.content })), State.chatSession);
+      void Bridge.chatRestore(State.chatId, State.chatHistory.map((m) => ({ role: m.role, content: m.content })), State.chatSession, compactOf(State.chatId));
     }
     const workshop = State.chatSlot === "forge";
     cardEl.classList.toggle("forge", workshop);
@@ -2491,7 +2809,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.map((m) => ({ role: m.role, content: m.content }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -2648,6 +2966,13 @@ export function buildPrompt(
   // A file the answer read, edited or created: the chat's files list it.
   void onEvent<ChatFileEvent>("chat-file", ({ chat, kind, path }) => {
     addChatFile(chat, kind, path, undefined, undefined, runs.get(chat)?.turn);
+    // A copy changed or made in the chat's folder: listed under the answer.
+    const run = runs.get(chat);
+    // `made`: the model wrote it from nothing, so there is no original to put it back over.
+    if (run && kind !== "read" && inWorkspace(path)) {
+      const copies = (run.copies ??= new Map());
+      copies.set(path, copies.get(path) ?? kind === "created");
+    }
     if (chat === State.chatId) drawChatFiles();
   });
 
@@ -2844,7 +3169,9 @@ export function buildPrompt(
           content,
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
+          copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
         });
+        run.copies = undefined;
       } else {
         giveBack(false);
       }
@@ -2864,8 +3191,14 @@ export function buildPrompt(
       giveBack(true);
       outcome = "error";
       noticeAway(COMPACT_TEXT.failed);
-      State.noteMessage = String(err).replace(/^Error:\s*/, "");
-      State.view = "note";
+      const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: chatSpeaker().who });
+      // Said in the chat, under the question, so it is still there when the
+      // island opens again; the note says it too when the chat isn't on screen.
+      run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true });
+      if (!(State.mode === "expanded" && State.view === "prompt")) {
+        State.noteMessage = problem;
+        State.view = "note";
+      }
       Sound.play("error");
     } finally {
       clearTimeout(run.timer);
@@ -2908,6 +3241,8 @@ export function buildPrompt(
     if (State.chatId !== fired.watch.chatId) {
       const saved = loadChats().find((c) => c.id === fired.watch.chatId);
       if (saved) openChat(saved);
+      // Only to be told, and its chat is gone: the island's notice was enough.
+      else if (!fired.watch.task.trim()) return runHeard();
       else newChat();
     }
     void submit(listenMessage(fired));
@@ -2919,7 +3254,8 @@ export function buildPrompt(
     compactNotice(`${firedTitle(fired.watch)} · ${fired.summary}`, watchColor(fired.watch), 10_000);
     // What it heard joins the panel's history.
     if (body.classList.contains("hearing")) listening.opened();
-    if (!fired.watch.task) return;
+    // With no task, the chat it was asked in still says what happened.
+    if (!answersInChat(fired)) return;
     heard.push(fired);
     runHeard();
   });
@@ -3092,6 +3428,43 @@ export function buildPrompt(
         setInput("/timer ");
         input.focus();
         break;
+      case "compact":
+        void compactChat();
+        break;
+    }
+  }
+
+  /**
+   * /compact with a provider called by its API: the chat's model sums up the
+   * conversation, and from the next question on it is sent the summary in
+   * place of the turns it sums up. What was said stays on screen.
+   */
+  let compacting = false;
+  async function compactChat() {
+    const chatId = State.chatId;
+    if (compacting || answering()) return;
+    if (State.chatHistory.length === 0) {
+      compactNotice(t(COMPACT_STRINGS.nothing), providerDef(State.settings.chatProvider).accent);
+      return;
+    }
+    compacting = true;
+    closeUsage();
+    const row = typingDots(t(COMPACT_STRINGS.working));
+    log.append(row);
+    onHeightChange();
+    try {
+      const done = await Bridge.chatCompact(chatId);
+      if (done) setCompact(chatId, done);
+      compactNotice(t(done ? COMPACT_STRINGS.done : COMPACT_STRINGS.nothing), providerDef(State.settings.chatProvider).accent);
+      Sound.play("blip");
+    } catch (err) {
+      State.noteMessage = String(err).replace(/^Error:\s*/, "");
+      Sound.play("error");
+    } finally {
+      compacting = false;
+      row.remove();
+      State.notify();
+      onHeightChange();
     }
   }
 

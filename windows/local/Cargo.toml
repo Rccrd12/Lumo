@@ -1,0 +1,15 @@
+[package]
+name = "lumo-local"
+description = "Lumo's chat with a model server on this machine (Ollama, LM Studio, Unsloth…): the stream, the tool rounds and the checks, testable on any system"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+tokio = { version = "1", features = ["time"] }
+
+[dev-dependencies]
+tokio = { version = "1", features = ["rt", "time", "net"] }

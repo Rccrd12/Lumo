@@ -14,10 +14,10 @@
 // helpers, so they can be tested without a webview.
 
 import { N_ } from "../i18n/i18n";
-import { effortsFor, isCliProvider } from "./providers";
+import { effortsFor, hasPermissions, isCliProvider, localCapsOf } from "./providers";
 
 /** What one of Lumo's own commands does in the chat. */
-export type SlashAction = "new" | "history" | "model" | "effort" | "attach" | "screen" | "permissions" | "timer";
+export type SlashAction = "new" | "history" | "model" | "effort" | "attach" | "screen" | "permissions" | "timer" | "compact";
 
 export interface SlashCommand {
   /** Without the slash. */
@@ -65,10 +65,11 @@ export interface CommandTool {
 
 /**
  * The providers the user's tools go to (claude.rs, openai_compat.rs,
- * claude_code.rs, codex_chat.rs, antigravity_cli.rs): every one but the model
- * servers (local_chat.rs), which are given no tools.
+ * claude_code.rs, codex_chat.rs, antigravity_cli.rs, local_chat.rs): every
+ * one, but a local model its server says takes no tools.
  */
 export function usesYourTools(provider: string): boolean {
+  if (["ollama", "lmstudio", "unsloth", "custom"].includes(provider)) return localCapsOf(provider)?.tools !== false;
   return ["", "anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli"].includes(provider);
 }
 
@@ -81,6 +82,7 @@ const LUMO: readonly SlashCommand[] = [
   { name: "screen", note: N_("Share your screen or open windows"), icon: "display", kind: "lumo", action: "screen" },
   { name: "permissions", note: N_("Permissions"), icon: "shield", kind: "lumo", action: "permissions" },
   { name: "timer", note: SLASH_STRINGS.timer, icon: "timer", kind: "lumo", action: "timer", args: true },
+  { name: "compact", note: SLASH_STRINGS.compact, icon: "stack", kind: "lumo", action: "compact" },
 ];
 
 /** What every Claude Code answers to, before a turn says what this one has. */
@@ -116,12 +118,16 @@ export function isCommandName(name: string): boolean {
 
 /**
  * The menu's commands with `provider`: Lumo's (the shield's only for the
- * CLIs, the effort's only where there is one to pick), then the CLI's own:
+ * CLIs and the model servers, the effort's only where there is one to pick), then the CLI's own:
  * Claude Code's (`reported`, as its last turn listed them) or Antigravity's.
  */
 export function slashCommands(provider: string, reported: readonly string[] | null, tools: readonly CommandTool[] = []): SlashCommand[] {
   const own = LUMO.filter((c) =>
-    c.action === "permissions" ? isCliProvider(provider) : c.action === "effort" ? effortsFor(provider).some((e) => e !== "") : true,
+    c.action === "permissions" ? hasPermissions(provider)
+      : c.action === "effort" ? effortsFor(provider).some((e) => e !== "")
+      // The CLIs sum up their own conversation (their /compact, sent as typed).
+      : c.action === "compact" ? !isCliProvider(provider)
+      : true,
   );
   const lumo = [...own, ...toolCommands(provider, tools)];
   const taken = new Set(lumo.map((c) => c.name));

@@ -120,8 +120,13 @@ export interface ChatMessage {
   content: string;
   /** An answer cut short by the Stop button. */
   stopped?: boolean;
+  /** No answer: what went wrong, said in the chat where it was asked (never saved). */
+  failed?: boolean;
   /** Its place in Rust's conversation (chat.rs), once recorded there; editing cuts it there. */
   turn?: number;
+  /** The files a local model changed or made in its folder of copies while
+   * answering (workspace.rs), listed under the answer to open or put back. */
+  copies?: { chat: string; path: string; made?: boolean }[];
 }
 
 export type PromptContext =
@@ -296,6 +301,8 @@ export interface Settings {
   chatShareTabs: boolean;
   /** The chat's Claude Code may see the screen, click and type (Windows; computer.rs). Off by default. */
   chatComputerUse: boolean;
+  /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
+  chatWebSearch: boolean;
   /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -304,6 +311,8 @@ export interface Settings {
   ollamaUrl: string;
   lmstudioUrl: string;
   customUrl: string;
+  /** Unsloth Studio's address once connected, "" before. */
+  unslothUrl: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
   /**
@@ -415,11 +424,13 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShareOpen: true,
   chatShareTabs: false,
   chatComputerUse: false,
+  chatWebSearch: false,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",
+  unslothUrl: "",
   shortcuts: {},
   lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",

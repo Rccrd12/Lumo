@@ -2375,6 +2375,8 @@ input[type="range"]::-webkit-slider-thumb {
 
 .model-name {
   min-width: 0;
+  /* A long model name doesn't push the buttons beside it away. */
+  max-width: 220px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -4068,9 +4070,215 @@ textarea.chat-input {
   background: rgba(24, 25, 28, 0.92);
 }
 
+/* The copies a local model changed in its folder (workspace.rs), under its answer. */
+.reply-copies {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 8px 0 22px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.reply-copies-title {
+  font: 500 10.5px var(--font);
+  color: var(--dim-3);
+}
+
+.reply-copy-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.reply-copy-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 500 11.5px var(--font);
+  color: #c8cdd4;
+}
+
+.reply-copy-btn {
+  flex: none;
+  padding: 2px 9px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 10.5px var(--font);
+  color: #c8cdd4;
+  white-space: nowrap;
+  transition: background 0.15s, color 0.15s;
+}
+
+.reply-copy-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6e9ee;
+}
+
+.reply-copy-btn.primary {
+  border-color: rgba(52, 211, 153, 0.35);
+  color: #6ee7b7;
+}
+
+.reply-copy-btn:disabled {
+  opacity: 0.5;
+}
+
+.reply-copy-detail:empty {
+  display: none;
+}
+
+.reply-copy-detail {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.reply-copy-note {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+}
+
+.reply-copy-where {
+  font-weight: 400;
+  color: var(--dim-3);
+}
+
+.reply-copy-count {
+  flex: none;
+  font: 500 10px var(--mono);
+}
+
+.reply-copy-count .plus { color: var(--green); }
+.reply-copy-count .minus { color: var(--red); }
+
+.reply-copy-btn.on {
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--ink);
+}
+
+.reply-copy-row .reply-copy-note {
+  flex: 1;
+  min-width: 0;
+}
+
+.reply-copy-view {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* The copy rewritten: its text, read as a document. */
+.reply-copy-text {
+  max-height: 220px;
+  overflow: auto;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 400 12px/1.5 var(--font);
+  color: #d6d9de;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+/* A few changed lines: before and after side by side. */
+.reply-copy-pair {
+  display: flex;
+  gap: 6px;
+}
+
+.reply-copy-side {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  font: 400 11.5px/1.45 var(--font);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.reply-copy-side.del { color: #fca5a5; }
+.reply-copy-side.add { color: #86efac; }
+
+.reply-copy-side mark {
+  border-radius: 2px;
+  color: inherit;
+}
+
+.reply-copy-side.del mark { background: rgba(244, 80, 94, 0.28); color: #fecaca; }
+.reply-copy-side.add mark { background: rgba(34, 197, 94, 0.28); color: #bbf7d0; }
+
+.reply-copy-label {
+  margin-bottom: 2px;
+  font: 500 10px var(--font);
+  color: var(--dim-3);
+}
+
+/* The changed lines and their neighbours, numbered, each wrapped. */
+.reply-copy-diff {
+  max-height: 220px;
+  overflow: auto;
+  padding: 4px 0;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, 0.25);
+  user-select: text;
+}
+
+.copy-line {
+  display: flex;
+  min-height: 15px; /* an empty line still takes a row */
+  padding: 0 8px 0 0;
+  font: 400 10.5px/1.45 var(--mono);
+  color: #7b8089;
+}
+
+.copy-line .num {
+  flex: 0 0 30px;
+  padding-right: 6px;
+  text-align: right;
+  color: #454850;
+}
+
+.copy-line .sym {
+  flex: 0 0 12px;
+  color: #454850;
+}
+
+.copy-line .txt {
+  flex: 1 1 auto;
+  min-width: 0;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.copy-line.add { background: rgba(34, 197, 94, 0.12); color: #86efac; }
+.copy-line.add .sym { color: var(--green); }
+.copy-line.del { background: rgba(244, 80, 94, 0.12); color: #fca5a5; }
+.copy-line.del .sym { color: var(--red); }
+.copy-line.gap { padding-left: 36px; color: #454850; }
+
 .msg-stopped {
   font: 400 10.5px var(--font);
   color: var(--dim-3);
+}
+
+/* An answer that failed: what went wrong, where the answer would be. */
+.msg-failed {
+  font: 400 12.5px/1.45 var(--font);
+  color: var(--red-text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 
 /* The question being edited, and what sending it would drop. */
@@ -7307,4 +7515,82 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
 /* Antigravity's /usage in the chat: the usage menu's rows, in a card. */
 .ctx-usage {
   gap: 10px;
+}
+
+/* What a local model can do, next to it in the model picker (local_models.rs caps). */
+.picker-model-caps {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  color: #8b929e;
+}
+
+/* The chat picker's − / + on a local model: eject it from memory or load it. */
+.picker-model-load {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  margin-left: auto;
+  border-radius: 9px;
+  color: #8b929e;
+  cursor: pointer;
+}
+
+.picker-model-load[hidden] {
+  display: none;
+}
+
+.picker-model-load:hover {
+  color: #e6e9ee;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.picker-model-load[data-busy] {
+  cursor: default;
+}
+
+.picker-model-load-pct {
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Under a local model's context bar: /compact, a small pill at the bottom right. */
+/* margin-top: auto keeps it at the bottom of the menu, however tall. */
+.usage-compact-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.usage-compact {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.06);
+  font: 500 11px var(--font);
+  color: #c8cdd4;
+  white-space: nowrap;
+  cursor: default;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+
+.usage-compact:hover {
+  color: #e6e9ee;
+  border-color: rgba(255, 255, 255, 0.2);
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.usage-compact svg {
+  opacity: 0.8;
 }

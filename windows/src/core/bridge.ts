@@ -1,3 +1,5 @@
+import type { CopyDiff } from "./copy-diff";
+import type { ChatCompact } from "./chats";
 // Thin wrapper over the Tauri commands/events. Every call is a no-op when the
 // page is opened in a plain browser, so the island can be iterated on with
 // `npm run dev` alone.
@@ -11,6 +13,7 @@ import type { ChatUsage } from "./chat-usage";
 import type { ListenPast, ListenWatch } from "./listen";
 import type { RecapHistory, RecapPrefs } from "../recap/summary";
 import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
+import type { LocalCaps } from "./providers";
 
 /** An answer to a permission card: `always` allows it for the rest of the session. */
 export type Decision = "allow" | "deny" | "always";
@@ -281,8 +284,10 @@ export const Bridge = {
   /** Double click on a grip: the usual width, height, or both. */
   islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */
-  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null) =>
-    call<void>("chat_restore", { chatId, turns, session }),
+  chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
+    call<void>("chat_restore", { chatId, turns, session, compact }),
+  /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
+  chatCompact: (chatId: string) => callOrThrow<ChatCompact | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: async () => {
     dialogs++;
@@ -345,12 +350,20 @@ export const Bridge = {
   chatUsage: () => call<ChatUsage | null>("chat_usage"),
   /** Settings → Local models → Connect: does the server answer, and with which models? */
   /** The custom server's key, bound to the address it is entered for. */
-  localSetKey: (url: string, key: string) => call<void>("local_set_key", { url, key }),
+  localSetKey: (url: string, key: string, provider: "custom" | "unsloth" = "custom") => call<void>("local_set_key", { url, key, provider }),
 
-  localConnect: (provider: "ollama" | "lmstudio" | "custom", url: string) =>
+  localConnect: (provider: "ollama" | "lmstudio" | "unsloth" | "custom", url: string) =>
     callOrThrow<LocalServer>("local_connect", { provider, url }),
   /** Settings → Local models: the models Ollama or LM Studio holds in memory now. */
   localLoaded: (provider: "ollama" | "lmstudio") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
+  /** What a local model can do (pictures, tools, reasoning, its context), as its server says. */
+  localCaps: (provider: string, model: string) => callOrThrow<LocalCaps>("local_caps", { provider, model }),
+  /** The chat picker: which of `models` the server holds in memory now. */
+  localLoadedOf: (provider: string, models: string[]) => callOrThrow<string[]>("local_loaded_of", { provider, models }),
+  /** The chat picker's +: resolves once the model is in memory (progress: `local-load` events). */
+  localLoad: (provider: string, model: string) => callOrThrow<void>("local_load", { provider, model }),
+  /** The chat picker's −: the model leaves the server's memory. */
+  localUnloadModel: (provider: string, model: string) => callOrThrow<void>("local_unload_model", { provider, model }),
   /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
   localUnload: (provider: "ollama" | "lmstudio") => callOrThrow<number>("local_unload", { provider }),
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
@@ -365,6 +378,12 @@ export const Bridge = {
    * "refused" (chat_files.rs).
    */
   chatFileOpen: (path: string) => call<string>("chat_file_open", { path }),
+  /** The chat's folder of copies (workspace.rs): a copy and its original, line by line. */
+  workspaceDiff: (chat: string, path: string) => callOrThrow<CopyDiff>("workspace_diff", { chat, path }),
+  /** The copy written over its original, after a click. */
+  workspacePutBack: (chat: string, path: string) => callOrThrow<void>("workspace_put_back", { chat, path }),
+  workspaceReveal: (chat: string) => call<void>("workspace_reveal", { chat }),
+  workspaceDelete: (chat: string) => call<void>("workspace_delete", { chat }),
   /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),
   /** A chat's picture as a data URL, for its preview; null for any other file. */
@@ -772,6 +791,13 @@ export interface LocalLoaded {
   size: number;
   /** Bytes in the graphics card's memory (Ollama), else 0. */
   vram: number;
+}
+
+/** How far loading a model from the chat picker is (`local-load`): LM Studio's percent. */
+export interface LocalLoad {
+  provider: string;
+  model: string;
+  percent: number;
 }
 
 /** How far a download to a local server is (`local-pull`): bytes so far and in all, 0 while unknown. */

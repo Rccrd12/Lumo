@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows 0.17.0 — November 6, 2026
+
+- **Local models do much more**: tools, pictures and reasoning by what the model can do, the chat's permission modes and its / commands, the email and listening tools, and a short prompt of their own with the tools in groups. The tools not loaded are in a catalog the model loads by name. The picker shows the context ring and loads or ejects a model
+- **A folder of copies for each chat**: a local model works on copies of your files, never on the originals. What changed shows under the answer, and the copy goes over the original only with a click
+- **Unsloth Studio** as a server of its own, with its key, loading its models from Lumo
+- **PDFs reach every model**: a short PDF goes as pictures of its pages, as far as the model's context has room, a longer one as its text
+- **Lumo's own web search** for the providers without one (local models, OpenAI, Google, OpenRouter), and the email and listening tools for every API provider
+- **/compact** for the providers called by their API. With a local model the context ring offers it, and Compact the chat is a small pill at the bottom of the context menu
+- **Steadier answers from local models**: a request the server drops (LM Studio's "terminated" or "fetch failed") is asked again, and a stream that hangs is asked for whole. A tool call written as text, a change said but not made, or a task left halfway goes back to the model once, and a made-up tool is answered with the real ones. A failed answer always says why
+
 ## Windows 0.16.1 — October 29, 2026
 
 - **A width for the closed island alone**: Settings → Island → Closed island width makes the closed island Wide (as before), Mid-width, Short or Just Lumo, without zooming the text, the icons or the open island. When it has something to say (an activity, a timer, an email, a request) it still widens as much as it needs

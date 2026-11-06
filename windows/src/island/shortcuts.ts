@@ -9,8 +9,7 @@
 import { Bridge, onEvent, type SharedContext } from "../core/bridge";
 import type { BotEmoteName, IslandViewName } from "../core/layout";
 import { providerDef } from "../core/providers";
-import { SCREEN_STRINGS, seesImages } from "../core/screen";
-import { t } from "../i18n/i18n";
+import { noImagesReason, seesImages } from "../core/screen";
 import { cyclePill, islandKeyAction, pillByNumber, type IslandKeyAction } from "../core/shortcuts";
 import { Sound } from "../core/sound";
 import { State } from "../core/state";
@@ -166,7 +165,7 @@ export function runShared(host: ShortcutHost, shared: SharedContext, resume: () 
   let problem = shared.kind === "problem" ? shared.message : null;
   if (shared.kind === "screen" && !seesImages(providerDef(State.settings.chatProvider))) {
     void Bridge.screenDiscard(shared.shots.map((s) => s.path));
-    problem = t(SCREEN_STRINGS.needsImages);
+    problem = noImagesReason(providerDef(State.settings.chatProvider));
   }
   if (problem !== null) {
     State.noteMessage = problem;
