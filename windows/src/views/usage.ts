@@ -345,11 +345,21 @@ export class PlanCard {
     const u = usageOf(kind);
     const key = `${language()}|${kind}|${JSON.stringify(u)}|${JSON.stringify(codexRefresh)}|${JSON.stringify(antigravityRefresh)}|${JSON.stringify(claudeRefresh)}|${State.settings.planUsageOnline}|${Math.floor(now / 30_000)}`;
     if (key === this.key) return;
+    // The redraw every 30 s keeps the limits where they were scrolled to.
+    const kept = this.el.querySelector<HTMLElement>(".plan-rows")?.scrollTop ?? 0;
     this.key = key;
     clear(this.el);
     if (kind === "codex") this.drawCodex(State.codexPlanUsage, now);
     else if (kind === "antigravity") this.drawAntigravity(State.antigravityPlanUsage, now);
     else this.drawClaude(State.planUsage, now);
+    // On an island too short for them all, the limits scroll and fade at
+    // their foot until scrolled to the end.
+    const rows = this.el.querySelector<HTMLElement>(".plan-rows");
+    if (!rows) return;
+    rows.scrollTop = kept;
+    const more = () => rows.classList.toggle("more", rows.scrollTop + rows.clientHeight < rows.scrollHeight - 2);
+    rows.addEventListener("scroll", more);
+    if (typeof ResizeObserver !== "undefined") new ResizeObserver(more).observe(rows);
   }
 
   private drawClaude(u: PlanUsage | null, now: number) {
@@ -405,26 +415,16 @@ export class PlanCard {
     const rows = h("div", { class: "plan-rows" });
     const buckets = u?.buckets ?? [];
     // agy has a quota per group of models ("Gemini", "Claude and GPT"): the
-    // group's name goes in front when there is more than one. The card has
-    // room for two limits, Gemini's first; any other group shows its most
-    // used limit on one line.
+    // group's name goes in front when there is more than one. Every limit is
+    // shown, Gemini's first, in the order agy gives them; the rows scroll
+    // when the island is too short for them all.
     const groups = new Set(buckets.map((b) => b.group));
     const named = (b: (typeof buckets)[number], window: string) =>
       groups.size > 1 ? `${antigravityGroupName(b.group)} · ${window}` : window;
     const windowName = (window: string) =>
       window === "weekly" ? PLAN_TEXT.week : window === "5h" ? PLAN_TEXT.fiveHours : window;
-    const shown = buckets.slice(0, 2);
-    if (!shown.length) rows.append(gaugeRow(PLAN_TEXT.week, undefined, true, now));
-    for (const b of shown) rows.append(gaugeRow(named(b, windowName(b.window)), b.w, b.window === "weekly", now));
-    const rest = buckets.slice(2).filter((b) => !shown.some((s) => s.group === b.group));
-    const other = rest.reduce<(typeof rest)[number] | undefined>((m, b) => (!m || effectivePct(b.w, now) > effectivePct(m.w, now) ? b : m), undefined);
-    if (other) {
-      const pct = effectivePct(other.w, now);
-      rows.append(h("div", { class: "plan-row" },
-        h("span", { class: "plan-label", text: antigravityGroupName(other.group) }),
-        h("span", { class: "plan-credits", text: `${Math.round(pct)}%`, style: `color:${planColor(pct)}` }),
-      ));
-    }
+    if (!buckets.length) rows.append(gaugeRow(PLAN_TEXT.week, undefined, true, now));
+    for (const b of buckets) rows.append(gaugeRow(named(b, windowName(b.window)), b.w, b.window === "weekly", now));
     // agy can be asked again at once: Refresh, which turns while it does.
     const busy = antigravityRefresh.busy;
     const refresh = h("button", {
