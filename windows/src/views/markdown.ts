@@ -251,7 +251,7 @@ function appendInline(into: HTMLElement, nodes: Inline[]) {
         into.append(h("code", { class: "md-code", text: node.text }));
         break;
       case "math":
-        into.append(renderMath(node.tex, node.display));
+        into.append(node.display ? mathBlock(node.tex) : renderMath(node.tex));
         break;
       case "strong":
       case "em": {
@@ -389,8 +389,21 @@ function render(block: Block): HTMLElement {
     case "rule":
       return h("hr", { class: "md-rule" });
     case "math":
-      return renderMath(block.tex, true);
+      return mathBlock(block.tex);
   }
+}
+
+/**
+ * A formula on a line of its own, in a box of its own: a size up, centred,
+ * scrolling sideways when wider than the chat, its TeX one click away.
+ */
+function mathBlock(tex: string): HTMLElement {
+  return h(
+    "div",
+    { class: "md-math" },
+    h("div", { class: "md-math-scroll" }, renderMath(tex, true)),
+    copyButton(`$$${tex.trim()}$$`),
+  );
 }
 
 /** Replaces what `into` shows with the Markdown rendered. */

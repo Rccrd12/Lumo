@@ -642,10 +642,19 @@ function draw(node: Node): HTMLElement | Text {
           h("span", { class: "mx-limit" }, node.sub ? draw(node.sub) : ""),
         );
       }
+      // ∫ in a formula of its own line: taller, its bounds beside it, the
+      // upper one at its top and the lower one at its foot, even when alone.
+      if (displayMode && node.base?.t === "sym" && INTEGRALS.has(node.base.v)) {
+        return h("span", { class: "mx-script mx-intscript" },
+          h("span", { class: "mx-int", text: node.base.v }),
+          h("span", { class: "mx-supsub" },
+            h("span", { class: "mx-sup" }, node.sup ? draw(node.sup) : ""),
+            h("span", { class: "mx-sub" }, node.sub ? draw(node.sub) : ""),
+          ),
+        );
+      }
       const el = h("span", { class: "mx-script" });
-      // ∫ in a formula of its own line: taller, its bounds beside it.
-      if (displayMode && node.base?.t === "sym" && INTEGRALS.has(node.base.v)) el.append(h("span", { class: "mx-int", text: node.base.v }));
-      else if (node.base) el.append(draw(node.base));
+      if (node.base) el.append(draw(node.base));
       if (node.sup && node.sub) {
         el.append(h("span", { class: "mx-supsub" }, h("span", { class: "mx-sup" }, draw(node.sup)), h("span", { class: "mx-sub" }, draw(node.sub))));
       } else {
@@ -723,6 +732,8 @@ function drawAll(nodes: Node[], tag: "span" | "div"): HTMLElement {
   for (const n of nodes) {
     if (n.t === "sym" && n.upright && RELATIONS.has(n.v)) el.append(h("span", { class: "mx-rel", text: n.v }));
     else if (n.t === "sym" && n.upright && BINARY.has(n.v) && isOperand(prev)) el.append(h("span", { class: "mx-bin", text: n.v }));
+    // A comma between terms, f(x, y): a thin space after it, as TeX leaves.
+    else if (n.t === "sym" && (n.v === "," || n.v === ";")) el.append(h("span", { class: "mx-punct", text: n.v }));
     else el.append(draw(n));
     prev = n;
   }

@@ -1817,11 +1817,61 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 600;
 }
 
-/* TeX math in answers (views/math.ts): a serif face for it, letters in italic. */
+/* TeX math in answers (views/math.ts): a serif face for it, letters in italic,
+   a size up and a shade lighter than the words around it. */
 .mx {
   font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
-  font-size: 1.06em;
+  font-size: 1.14em;
+  color: #e4e7ec;
   white-space: nowrap;
+}
+
+/* A formula on a line of its own (views/markdown.ts): a box of its own,
+   centred, scrolling sideways when wider than the chat, Copy on hover. */
+.md-math {
+  position: relative;
+  margin: 2px 0;
+  padding: 14px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
+  white-space: normal;
+}
+
+.md-math-scroll {
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
+}
+
+.md-math .mx-display {
+  width: max-content;
+  margin: 0 auto;
+  padding: 2px 4px;
+  font-size: 17px;
+  color: #eef0f3;
+  overflow: visible;
+}
+
+/* In a quote, the box takes the quote's width. */
+.md-quote > .md-p:has(.md-math) {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.md-math .md-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.md-math:hover .md-copy,
+.md-math .md-copy:focus-visible,
+.md-math .md-copy.done {
+  opacity: 1;
 }
 
 .mx-display {
@@ -1834,6 +1884,12 @@ input[type="range"]::-webkit-slider-thumb {
 
 .mx-var {
   font-style: italic;
+  /* The slanted letter leans over what follows: f(x) and not f(x touching. */
+  margin-right: 0.05em;
+}
+
+.mx-punct {
+  margin-right: 0.17em;
 }
 
 .mx-op,
@@ -2089,6 +2145,28 @@ input[type="range"]::-webkit-slider-thumb {
   margin-right: 0.08em;
 }
 
+/* ∫ on a line of its own: the upper bound by its top, the lower by its foot. */
+.mx-intscript {
+  display: inline-flex;
+  align-items: stretch;
+  vertical-align: middle;
+  margin-right: 0.12em;
+}
+
+.mx-intscript > .mx-int {
+  font-size: 1.9em;
+  margin-right: 0.04em;
+}
+
+.mx-intscript > .mx-supsub {
+  justify-content: space-between;
+  padding: 0.1em 0;
+}
+
+.mx-intscript > .mx-supsub > .mx-sub {
+  margin-left: -0.3em;
+}
+
 .mx-box {
   display: inline-block;
   padding: 0.1em 0.3em;
@@ -2169,7 +2247,7 @@ input[type="range"]::-webkit-slider-thumb {
   gap: 8px;
 }
 
-.md-quote i {
+.md-quote > i {
   flex: 0 0 2px;
   border-radius: 1px;
   background: var(--dim-5);
