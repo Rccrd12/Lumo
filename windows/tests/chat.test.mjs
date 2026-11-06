@@ -284,8 +284,12 @@ test("scrolled to its end, the chat follows the answer until the slightest scrol
   log.scrollHeight = 1400;
   emit("chat-delta", { chat: State.chatId, text: "Once upon a time" });
   assert.equal(log.scrollTop, 900, "let go, it stays where it is read");
+  log.scrollTop = 1250; // still in sight of the end: no arrow yet
   log.fire("scroll");
-  assert.ok(!arrow.hidden, "a little way up, the arrow shows");
+  assert.ok(arrow.hidden, "just above the end, no arrow");
+  log.scrollTop = 900; // more than a screenful up
+  log.fire("scroll");
+  assert.ok(!arrow.hidden, "a screenful up, the arrow shows");
 
   arrow.fire("click");
   assert.equal(log.scrollTop, 1400, "the arrow brings it to the end");

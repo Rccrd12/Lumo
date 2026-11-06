@@ -1305,8 +1305,8 @@ function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: str
 
 /** Within this of the end the log is at its end, and stuck to it. */
 const STUCK_PX = 1;
-/** Further up than this from the end, the arrow down shows. */
-const TO_END_ARROW_PX = 48;
+/** Further up from the end than this share of the log's height, the arrow down shows. */
+const TO_END_ARROW_SCREENS = 1;
 
 // ── View ──────────────────────────────────────────────────────────────────────
 
@@ -1332,9 +1332,9 @@ export function buildPrompt(
   const toEnd = h("button", { class: "chat-to-end", title: tl(STRINGS.toEnd) }, svg(ICONS.arrowDown, 11));
   toEnd.hidden = true;
   const fromEnd = () => log.scrollHeight - log.clientHeight - log.scrollTop;
-  /** The arrow shows a little way up from the end, at the bottom of the log. */
+  /** The arrow shows about a screenful up from the end, at the bottom of the log. */
   function drawToEnd() {
-    const away = log.clientHeight > 0 && fromEnd() > TO_END_ARROW_PX;
+    const away = log.clientHeight > 0 && fromEnd() > log.clientHeight * TO_END_ARROW_SCREENS;
     if (away) {
       toEnd.style.top = `${log.offsetTop + log.clientHeight - 32}px`;
       toEnd.style.left = `${log.offsetLeft + log.clientWidth / 2 - 13}px`;
