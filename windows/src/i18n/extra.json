@@ -14533,6 +14533,78 @@
    "id": "Tulis di atas aslinya",
    "it": "Scrivilo sopra l'originale"
   },
+  "Read a file you didn't give it": {
+   "zh-Hans": "读取一个你没有给它的文件",
+   "hi": "ऐसी फ़ाइल पढ़ना जो आपने नहीं दी",
+   "es": "Leer un archivo que no le diste",
+   "ar": "قراءة ملف لم تعطه إياه",
+   "fr": "Lire un fichier que vous ne lui avez pas donné",
+   "bn": "এমন একটি ফাইল পড়া যা আপনি দেননি",
+   "pt-BR": "Ler um arquivo que você não deu a ele",
+   "ru": "Прочитать файл, который вы ему не давали",
+   "id": "Membaca file yang tidak Anda berikan",
+   "it": "Leggere un file che non gli hai dato"
+  },
+  "Open a file you didn't give it": {
+   "zh-Hans": "打开一个你没有给它的文件",
+   "hi": "ऐसी फ़ाइल खोलना जो आपने नहीं दी",
+   "es": "Abrir un archivo que no le diste",
+   "ar": "فتح ملف لم تعطه إياه",
+   "fr": "Ouvrir un fichier que vous ne lui avez pas donné",
+   "bn": "এমন একটি ফাইল খোলা যা আপনি দেননি",
+   "pt-BR": "Abrir um arquivo que você não deu a ele",
+   "ru": "Открыть файл, который вы ему не давали",
+   "id": "Membuka file yang tidak Anda berikan",
+   "it": "Aprire un file che non gli hai dato"
+  },
+  "That file holds keys or passwords: Lumo never reads or opens it for the voice.": {
+   "zh-Hans": "该文件包含密钥或密码：Lumo 从不为语音读取或打开它。",
+   "hi": "इस फ़ाइल में कुंजियाँ या पासवर्ड हैं: Lumo आवाज़ के लिए इसे कभी नहीं पढ़ता या खोलता।",
+   "es": "Ese archivo guarda claves o contraseñas: Lumo nunca lo lee ni lo abre para la voz.",
+   "ar": "يحتوي هذا الملف على مفاتيح أو كلمات مرور: لا يقرؤه Lumo ولا يفتحه للصوت أبدًا.",
+   "fr": "Ce fichier contient des clés ou des mots de passe : Lumo ne le lit ni ne l'ouvre jamais pour la voix.",
+   "bn": "এই ফাইলে কী বা পাসওয়ার্ড আছে: Lumo কণ্ঠের জন্য এটি কখনও পড়ে না বা খোলে না।",
+   "pt-BR": "Esse arquivo guarda chaves ou senhas: o Lumo nunca o lê nem o abre para a voz.",
+   "ru": "В этом файле ключи или пароли: Lumo никогда не читает и не открывает его для голоса.",
+   "id": "File itu berisi kunci atau kata sandi: Lumo tidak pernah membaca atau membukanya untuk suara.",
+   "it": "Quel file contiene chiavi o password: Lumo non lo legge né lo apre mai per la voce."
+  },
+  "The user said no: leave this file alone unless they ask again.": {
+   "zh-Hans": "用户拒绝了：除非用户再次要求，否则不要碰这个文件。",
+   "hi": "उपयोगकर्ता ने मना किया: जब तक वे दोबारा न कहें, इस फ़ाइल को न छुएँ।",
+   "es": "El usuario dijo que no: deja este archivo salvo que lo pida de nuevo.",
+   "ar": "رفض المستخدم: اترك هذا الملف ما لم يطلب ذلك مرة أخرى.",
+   "fr": "L'utilisateur a refusé : laissez ce fichier tant qu'il ne le redemande pas.",
+   "bn": "ব্যবহারকারী না বলেছেন: তারা আবার না বললে এই ফাইলটি ছোঁবেন না।",
+   "pt-BR": "O usuário disse não: deixe este arquivo de lado, a menos que ele peça de novo.",
+   "ru": "Пользователь отказал: не трогайте этот файл, пока он не попросит снова.",
+   "id": "Pengguna menolak: biarkan file ini kecuali mereka memintanya lagi.",
+   "it": "L'utente ha detto di no: lascia stare questo file finché non lo chiede di nuovo."
+  },
+  "Lumo couldn't ask the user about this file (the island is busy): try again in a moment.": {
+   "zh-Hans": "Lumo 无法就此文件询问用户（灵动岛正忙）：请稍后再试。",
+   "hi": "Lumo इस फ़ाइल के बारे में उपयोगकर्ता से नहीं पूछ सका (आइलैंड व्यस्त है): थोड़ी देर में फिर कोशिश करें।",
+   "es": "Lumo no pudo preguntar al usuario por este archivo (la isla está ocupada): inténtalo de nuevo en un momento.",
+   "ar": "تعذّر على Lumo سؤال المستخدم عن هذا الملف (الجزيرة مشغولة): حاول مرة أخرى بعد قليل.",
+   "fr": "Lumo n'a pas pu demander à l'utilisateur pour ce fichier (l'île est occupée) : réessayez dans un instant.",
+   "bn": "Lumo এই ফাইল সম্পর্কে ব্যবহারকারীকে জিজ্ঞাসা করতে পারেনি (আইল্যান্ড ব্যস্ত): একটু পরে আবার চেষ্টা করুন।",
+   "pt-BR": "O Lumo não conseguiu perguntar ao usuário sobre este arquivo (a ilha está ocupada): tente de novo em instantes.",
+   "ru": "Lumo не смог спросить пользователя об этом файле (остров занят): попробуйте чуть позже.",
+   "id": "Lumo tidak bisa menanyakan file ini ke pengguna (pulau sedang sibuk): coba lagi sebentar lagi.",
+   "it": "Lumo non è riuscito a chiedere all'utente di questo file (l'isola è occupata): riprova tra un momento."
+  },
+  "The original: {path}": {
+   "zh-Hans": "原文件：{path}",
+   "hi": "मूल फ़ाइल: {path}",
+   "es": "El original: {path}",
+   "ar": "الأصل: {path}",
+   "fr": "L'original : {path}",
+   "bn": "মূল ফাইল: {path}",
+   "pt-BR": "O original: {path}",
+   "ru": "Оригинал: {path}",
+   "id": "Aslinya: {path}",
+   "it": "L'originale: {path}"
+  },
   "The copy is the same as the original.": {
    "zh-Hans": "副本与原文件相同。",
    "hi": "कॉपी मूल जैसी ही है।",

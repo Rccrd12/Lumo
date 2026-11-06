@@ -14,7 +14,7 @@
 // redirects included.
 
 use std::collections::{HashMap, HashSet};
-use std::net::IpAddr;
+use std::net::{IpAddr, Ipv4Addr, SocketAddr};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
@@ -457,10 +457,13 @@ async fn fetch(raw: &str, focus: &str, provider: &str) -> Result<String, String>
 
 /// A page read from this computer: only a public address, redirects too.
 async fn read_page(raw: &str) -> Result<Page, String> {
-    let client = client(false)?;
     let mut url = Url::parse(raw).map_err(|_| "Not a web address.".to_string())?;
     for _ in 0..6 {
-        check_public(&url).await?;
+        // The connection goes to the very addresses checked: a name that
+        // answers a public address to the check and 127.0.0.1 to the
+        // connection (DNS rebinding) reaches nothing on this computer.
+        let addrs = check_public(&url).await?;
+        let client = pinned_client(&url, &addrs)?;
         let response = client
             .get(url.clone())
             .header("Accept", "text/html,application/xhtml+xml,text/plain;q=0.9,*/*;q=0.5")
@@ -503,15 +506,29 @@ async fn read_some(mut response: reqwest::Response, limit: usize) -> Vec<u8> {
     body
 }
 
+/// A client that reaches `url`'s host only at `addrs` (none: an address given as is).
+fn pinned_client(url: &Url, addrs: &[SocketAddr]) -> Result<reqwest::Client, String> {
+    let mut builder = reqwest::Client::builder()
+        .user_agent(AGENT)
+        .connect_timeout(Duration::from_secs(5))
+        .timeout(TIMEOUT)
+        .redirect(reqwest::redirect::Policy::none());
+    if let (Some(host), false) = (url.host_str(), addrs.is_empty()) {
+        builder = builder.resolve_to_addrs(host, addrs);
+    }
+    builder.build().map_err(|e| e.to_string())
+}
+
 /// Only addresses on the internet: never this machine or the local network.
-async fn check_public(url: &Url) -> Result<(), String> {
+/// The addresses the host's name gave, to connect to those and no others.
+async fn check_public(url: &Url) -> Result<Vec<SocketAddr>, String> {
     let refused = || format!("{url} is not a public web address.");
     if !matches!(url.scheme(), "http" | "https") {
         return Err(refused());
     }
     let host = url.host_str().ok_or_else(refused)?.trim_start_matches('[').trim_end_matches(']').to_string();
     if let Ok(ip) = host.parse::<IpAddr>() {
-        return if is_public(ip) { Ok(()) } else { Err(refused()) };
+        return if is_public(ip) { Ok(Vec::new()) } else { Err(refused()) };
     }
     let lower = host.to_lowercase();
     if lower == "localhost" || lower.ends_with(".localhost") || lower.ends_with(".local") || lower.ends_with(".internal") || !lower.contains('.') {
@@ -522,7 +539,7 @@ async fn check_public(url: &Url) -> Result<(), String> {
     if addrs.is_empty() || addrs.iter().any(|a| !is_public(a.ip())) {
         return Err(refused());
     }
-    Ok(())
+    Ok(addrs)
 }
 
 fn is_public(ip: IpAddr) -> bool {
@@ -546,7 +563,21 @@ fn is_public(ip: IpAddr) -> bool {
             if let Some(v4) = v6.to_ipv4_mapped() {
                 return is_public(IpAddr::V4(v4));
             }
-            let first = v6.segments()[0];
+            let seg = v6.segments();
+            let first = seg[0];
+            let v4 = |hi: u16, lo: u16| IpAddr::V4(Ipv4Addr::new((hi >> 8) as u8, hi as u8, (lo >> 8) as u8, lo as u8));
+            // An IPv4 address carried in an IPv6 one counts as that address:
+            // NAT64 (64:ff9b::/96) at its end, 6to4 (2002::/16) after the prefix.
+            if seg[..6] == [0x64, 0xff9b, 0, 0, 0, 0] {
+                return is_public(v4(seg[6], seg[7]));
+            }
+            if first == 0x2002 {
+                return is_public(v4(seg[1], seg[2]));
+            }
+            // Documentation (2001:db8::/32) and the old IPv4-compatible ::a.b.c.d.
+            if (first == 0x2001 && seg[1] == 0x0db8) || seg[..6] == [0, 0, 0, 0, 0, 0] {
+                return false;
+            }
             !(v6.is_loopback() || v6.is_unspecified() || v6.is_multicast() || (first & 0xfe00) == 0xfc00 || (first & 0xffc0) == 0xfe80)
         }
     }
@@ -1040,10 +1071,10 @@ mod tests {
 
     #[test]
     fn only_public_addresses_are_opened() {
-        for ip in ["127.0.0.1", "10.0.0.2", "192.168.1.1", "172.16.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:192.168.0.1"] {
+        for ip in ["127.0.0.1", "10.0.0.2", "192.168.1.1", "172.16.0.1", "169.254.169.254", "100.64.0.1", "0.0.0.0", "::1", "fe80::1", "fd00::1", "::ffff:192.168.0.1", "64:ff9b::7f00:1", "64:ff9b::a9fe:a9fe", "2002:7f00:1::", "2002:c0a8:101::1", "2001:db8::1", "::7f00:1"] {
             assert!(!is_public(ip.parse().unwrap()), "{ip}");
         }
-        for ip in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111"] {
+        for ip in ["93.184.216.34", "1.1.1.1", "2606:4700:4700::1111", "64:ff9b::5db8:d822", "2002:5db8:d822::1"] {
             assert!(is_public(ip.parse().unwrap()), "{ip}");
         }
         let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();

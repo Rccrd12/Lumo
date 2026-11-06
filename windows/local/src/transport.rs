@@ -7,7 +7,7 @@ use std::time::{Duration, Instant};
 use reqwest::Client;
 use serde_json::{json, Value};
 
-use crate::sse::{filter_thinking_blocks, finish_reason, parse_sse_line, progressive_filter, CallParts, Event};
+use crate::sse::{filter_thinking_blocks, finish_reason_of, parse_sse_line, progressive_filter, CallParts, Event};
 
 /// The text shown while streaming goes out at most this often.
 pub const DELTA_INTERVAL: Duration = Duration::from_millis(1000 / 15);
@@ -219,9 +219,9 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let done = AtomicBool::new(false);
     let cut = AtomicBool::new(false);
     let mut take = |line: &str, text: &mut String, on: &mut dyn FnMut(Seen)| -> Result<(), Failure> {
-        if finish_reason(line) {
+        if let Some(reason) = finish_reason_of(line) {
             finished.store(true, Ordering::Relaxed);
-            if line.contains("\"length\"") {
+            if reason == "length" {
                 cut.store(true, Ordering::Relaxed);
             }
         }

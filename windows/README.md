@@ -472,18 +472,31 @@ add their keys in **Settings… → Chat → Chat providers**, then click the mo
 above the chat box to switch provider and model. The model list
 is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
-provider's format is ever sent to another. These providers get no web search
-and no tools — they answer, they never act on your PC.
+provider's format is ever sent to another. These providers get the island's
+tools, the email and listening tools and your own tools. With **Lumo's web search** turned on they can also
+search the web (DuckDuckGo, Mojeek, Wikipedia) and read a page; it is off
+until you turn it on. `/compact` summarises a long chat into a short one.
 
 **Local models**: **Settings… → Chat → Local models** connects **Ollama** or **LM
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
-llama.cpp…), with an optional key kept in the credential store. Answers stream
-in as they are written, and the `<think>` blocks of reasoning models stay
-hidden. A text file you dropped goes along inline (24 000 characters at most);
-images and PDFs by name only. Settings tells you whether the address is this
+llama.cpp…), with an optional key kept in the credential store, and **Unsloth
+Studio** as a server of its own, with its key. Answers stream in as they are
+written, and the `<think>` blocks of reasoning models stay hidden. Local
+models get the same tools as the API providers, the chat's permission modes
+and `/compact`; the tools not loaded are in a catalog the model loads by name.
+A picture goes to a model that sees it, a short PDF as pictures of its pages
+and a longer one as its text. Settings tells you whether the address is this
 PC — nothing leaves it then — and warns before a key would travel over plain
 `http://` to another machine.
+
+**A folder of copies for each chat**: a local model never works on your files.
+It copies a file or a folder in (`%LOCALAPPDATA%\com.rccrd12.lumo\workspaces`),
+then reads, searches and changes only the copies there. What changed shows under
+the answer, line by line, with the original's full path; **Write it over the
+original** puts the copy back, only with that click. Network paths are never
+copied, and the record of what came from where is kept beside the folder,
+where the model can't change it. The folder goes with the chat.
 
 Under a connected Ollama or LM Studio, Settings shows the model it holds in
 memory now (name and size) and **Free memory** unloads it with one click
@@ -509,7 +522,7 @@ Antigravity CLI) and `/timer 10m pasta`. With **Claude Code**, its own
 commands are listed too and go to it exactly as typed: `/compact`, `/context`
 and whatever else its last answer said it has (your own commands and skills
 included). Antigravity CLI runs with its commands turned off and the API and
-local providers have none: the menu lists only what works with the provider
+local providers have `/compact`: the menu lists only what works with the provider
 picked. Your tools have a command too (`/pdfcraft`): the workshop's AI gives
 one to each tool it makes, and the tool's detail in the Tools tab changes or
 clears it. `/pdfcraft merge the PDF in the open folder with the one in X`
@@ -932,8 +945,9 @@ terminal button at the top adds them to **Claude Code in the terminal** for
 all your projects (`claude mcp add --scope user lumo_tools`, which Claude
 Code writes in its own settings; a second click confirms, and clicking again
 takes them away): a click on Claude Code's own card for a tool is the one
-that call needs. Local models (Ollama, LM Studio, a custom server) don't get
-the tools. The closed island says when a tool ran.
+that call needs. Local models (Ollama, LM Studio, Unsloth Studio, a custom
+server) get them too, from the catalog they load by name. The closed island
+says when a tool ran.
 
 ## Listening
 
@@ -1008,7 +1022,7 @@ is off or Lumo is paused.
 
 ## Build it yourself
 
-You need [Rust](https://rustup.rs), [Node 20+](https://nodejs.org), and the
+You need [Rust](https://rustup.rs), [Node 22.18+](https://nodejs.org), and the
 **MSVC build tools** (Visual Studio Build Tools with "Desktop development with
 C++"). WebView2 ships with Windows 10/11.
 

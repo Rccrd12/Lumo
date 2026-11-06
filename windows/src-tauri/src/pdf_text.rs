@@ -11,6 +11,9 @@ use std::collections::{HashMap, HashSet};
 const MAX_FILE: u64 = 40 * 1024 * 1024;
 /// The most one stream inflates to.
 const MAX_STREAM: usize = 16 * 1024 * 1024;
+/// The most all of a document's streams give, together: a page that names the
+/// same stream again and again (`/Contents [4 0 R 4 0 R …]`) adds it each time.
+const MAX_DOC: usize = 64 * 1024 * 1024;
 
 /// The text of the PDF at `path`, at most `limit` characters; None when
 /// there is none to read.
@@ -336,6 +339,8 @@ fn unescape_name(raw: &[u8]) -> Vec<u8> {
 struct Doc {
     objects: HashMap<u32, (Obj, Option<Vec<u8>>)>,
     encrypted: bool,
+    /// Bytes the streams may still give (`MAX_DOC`).
+    left: std::cell::Cell<usize>,
 }
 
 impl Doc {
@@ -362,11 +367,19 @@ impl Doc {
                 if file.get(start) == Some(&b'\n') {
                     start += 1;
                 }
-                let said = obj.dict().and_then(|d| d.get(b"Length".as_slice())).and_then(Obj::num).map(|n| n as usize);
+                // A length past the file's end (1e20, say) is not one: the
+                // file's own `endstream` is looked for instead.
+                let said = obj
+                    .dict()
+                    .and_then(|d| d.get(b"Length".as_slice()))
+                    .and_then(Obj::num)
+                    .filter(|n| n.is_finite() && *n >= 0.0 && *n <= file.len() as f64)
+                    .map(|n| n as usize)
+                    .filter(|n| start.checked_add(*n).is_some_and(|end| end <= file.len()));
                 let end = said
                     .filter(|n| {
                         let end = start + n;
-                        end <= file.len() && {
+                        {
                             let mut after = Lexer::new(file, end);
                             after.skip_space();
                             file[after.i..].starts_with(b"endstream")
@@ -380,14 +393,14 @@ impl Doc {
                         }
                         Some(end)
                     });
-                if let Some(end) = end {
+                if let Some(end) = end.filter(|end| *end >= start) {
                     raw = Some(file[start..end].to_vec());
                     at = end;
                 }
             }
             objects.insert(number, (obj, raw));
         }
-        let mut doc = Doc { objects, encrypted: false };
+        let mut doc = Doc { objects, encrypted: false, left: std::cell::Cell::new(MAX_DOC) };
         doc.unpack_object_streams();
         doc.encrypted = doc.objects.values().any(|(o, _)| o.dict().is_some_and(|d| d.contains_key(b"Encrypt".as_slice()) && (d.contains_key(b"Root".as_slice()) || d.get(b"Type".as_slice()).is_some_and(|t| t.is_name(b"XRef")))))
             || trailer_says_encrypt(file);
@@ -408,10 +421,8 @@ impl Doc {
                 pairs.push((n as u32, off as usize));
             }
             for (n, off) in pairs {
-                if first + off >= bytes.len() {
-                    continue;
-                }
-                if let Some(obj) = Lexer::new(&bytes, first + off).next() {
+                let Some(at) = first.checked_add(off).filter(|at| *at < bytes.len()) else { continue };
+                if let Some(obj) = Lexer::new(&bytes, at).next() {
                     self.objects.entry(n).or_insert((obj, None));
                 }
             }
@@ -451,10 +462,14 @@ impl Doc {
             Some(Obj::Arr(items)) => items.iter().collect(),
             Some(other) => vec![other],
         };
+        let left = self.left.get();
+        if left == 0 || raw.len() > left {
+            return None;
+        }
         let mut data = raw.clone();
         for f in filters {
             if f.is_name(b"FlateDecode") || f.is_name(b"Fl") {
-                data = inflate_zlib(&data, MAX_STREAM);
+                data = inflate_zlib(&data, MAX_STREAM.min(left));
                 if data.is_empty() {
                     return None;
                 }
@@ -462,6 +477,7 @@ impl Doc {
                 return None;
             }
         }
+        self.left.set(left - data.len().min(left));
         Some(data)
     }
 
@@ -1006,6 +1022,39 @@ mod tests {
         out.extend_from_slice(data);
         out.extend_from_slice(b"\nendstream");
         out
+    }
+
+    #[test]
+    fn numbers_past_the_file_do_not_bring_it_down() {
+        // A /Length of 1e20 once wrapped around to just before the stream's start.
+        let file = b"%PDF-1.4\n1 0 obj\n<< /Length 100000000000000000000 >>\nstream\nendstream\nendobj\n2 0 obj\n<< /Type /Catalog >>\nendobj\ntrailer\n<< /Root 2 0 R >>\n%%EOF\n";
+        assert_eq!(text_of(file, 10_000), None);
+        for length in ["-5", "1e400", "18446744073709551615"] {
+            let file = format!("%PDF-1.4\n1 0 obj\n<< /Length {length} >>\nstream\nendstream\nendobj\n");
+            assert_eq!(text_of(file.as_bytes(), 10_000), None);
+        }
+        // An object stream whose /First and offsets run past usize.
+        let file = pdf(&[(1, stream("/Type /ObjStm /N 1 /First 100000000000000000000", b"7 18446744073709551615 << >>"))]);
+        assert_eq!(text_of(&file, 10_000), None);
+    }
+
+    #[test]
+    fn a_stream_named_again_and_again_stops_at_the_documents_budget() {
+        let big = vec![b' '; 4 * 1024 * 1024];
+        let refs = "6 0 R ".repeat(40);
+        let file = pdf(&[
+            (1, b"<< /Type /Catalog /Pages 2 0 R >>".to_vec()),
+            (2, b"<< /Type /Pages /Kids [3 0 R] /Count 1 >>".to_vec()),
+            (3, format!("<< /Type /Page /Parent 2 0 R /Contents [{refs}] >>").into_bytes()),
+            (6, stream("", &big)),
+        ]);
+        let doc = Doc::read(&file);
+        let given: usize = (0..40).filter_map(|_| doc.stream(6)).map(|s| s.len()).sum();
+        assert!(given <= MAX_DOC, "{given}");
+        assert!(given >= MAX_DOC - big.len());
+        assert_eq!(doc.stream(6), None);
+        // The whole page, 160 MB as named, reads within the budget too.
+        assert_eq!(text_of(&file, 10_000), None);
     }
 
     #[test]
