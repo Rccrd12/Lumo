@@ -147,6 +147,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let (mut written, mut claimed, mut stopped) = (false, false, false);
     // A copy changed by a tool in this turn.
     let mut changed = false;
+    // A workspace tool ran in this turn: the model is at work on a file.
+    let mut on_copy = false;
     let mut notes: Vec<String> = Vec::new();
     // A refusal (400) asked again once as it was; an engine that failed,
     // three times for each request (then once whole): what failed once may
@@ -275,8 +277,11 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         }
         // "It's set" with no tool called in the whole turn, or "Let me read
         // it first" and nothing more: the model is told once.
+        // So is a change asked for, a file copied or read, and the answer
+        // ending with nothing changed ("I copied it, now I'll read it").
         let nothing_ran = rounds == 0 && !claims_change(&answer.text);
-        if answer.calls.is_empty() && tools && !stopped && !answer.cut && ((nothing_ran && claims_done(&answer.text)) || announces(&answer.text)) {
+        let left_undone = rules.workspace && on_copy && !changed && asks_change(rules.query);
+        if answer.calls.is_empty() && tools && !stopped && !answer.cut && ((nothing_ran && claims_done(&answer.text)) || announces(&answer.text) || left_undone) {
             stopped = true;
             let said_done = nothing_ran && claims_done(&answer.text);
             fixes.push(if said_done { "done said, not made" } else { "stopped before the tool" });
@@ -357,6 +362,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 continue;
             }
             let (text, failed) = hooks.call(name, input).await;
+            if !failed && name.starts_with("workspace_") {
+                on_copy = true;
+            }
             if !failed && rules.changes.contains(&name) {
                 changed = true;
                 made.push((name.to_string(), arguments, text.clone()));

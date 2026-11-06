@@ -52,7 +52,7 @@ pub fn announces(text: &str) -> bool {
     [
         "let me ", "i'll first", "i will first", "i'll now", "i will now", "now i'll", "i'm going to", "first, i", "first i ", "lasciami ", "fammi ",
         "prima leggo", "ora leggo", "adesso leggo", "leggo prima", "procedo a", "procedo con", "sto per ", "vado a ", "ora controllo", "adesso controllo",
-        "ora apro", "ora copio", "adesso copio",
+        "ora apro", "ora copio", "adesso copio", "lo leggo", "ora lo ", "adesso lo ", "poi lo ", "poi riscriv", "poi modific", "poi cambi",
     ]
     .iter()
     .any(|w| t.contains(w))
@@ -139,6 +139,7 @@ mod tests {
         assert!(!claims_done("Non posso prenotare tavoli, ma posso scrivere una mail."));
         assert!(announces("Let me read the contents of the file first so I can expand on it appropriately."));
         assert!(announces("Prima leggo il file, poi lo allungo."));
+        assert!(announces("Ho copiato il file nel mio workspace. Lo leggo per vedere il contenuto prima di fare la modifica."));
         assert!(!announces("Il file ha 12 righe. Fammi sapere se ti serve altro."));
         assert!(!announces("Done. Let me know if you need anything else."));
     }

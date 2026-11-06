@@ -408,6 +408,12 @@ fn a_thing_said_done_with_no_tool_or_only_announced_goes_back_once() {
     let (outcome, requests) = turn(replies, &mut question("Allungalo", &["workspace_read"]), &rules("announced", ""), &mut island);
     assert_eq!(outcome.unwrap().fixes, ["stopped before the tool"]);
     assert_eq!(requests.len(), 2);
+    // A change asked for, the file copied, and the answer ends with nothing changed: back once.
+    let mut island = Island::default();
+    let replies = vec![calls("c1", "workspace_copy", "{\"path\":\"a.txt\"}"), answer("Copiato."), calls("c2", "workspace_edit", "{\"path\":\"a.txt\",\"old\":\"a\",\"new\":\"b\"}"), answer("Fatto.")];
+    let (outcome, _) = turn(replies, &mut question("Nel file cambia a con b", &["workspace_copy", "workspace_edit"]), &rules("left-undone", "Nel file cambia a con b"), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Fatto.", ["stopped before the tool"].as_slice()));
     // A plain answer, or one with no tools offered, stays as it is.
     let (outcome, requests) = turn(vec![answer("Il file ha 12 righe.")], &mut question("Quante righe?", &["workspace_read"]), &rules("plain", ""), &mut Island::default());
     assert!(outcome.unwrap().fixes.is_empty());
