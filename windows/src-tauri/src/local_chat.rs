@@ -299,6 +299,21 @@ fn user_text(first: bool, context: Option<&ChatContext>, query: &str) -> String 
     }
 }
 
+/// How long `message` reads to a model, in characters: a picture in it
+/// (base64, hundreds of thousands of them) counts as the page it is, some
+/// PAGE_TOKENS tokens, not as its text.
+fn chars_of(message: &Value) -> usize {
+    let mut pictures = 0;
+    let mut plain = message.clone();
+    if let Some(parts) = plain["content"].as_array_mut() {
+        for part in parts.iter_mut().filter(|p| p["type"] == "image_url") {
+            pictures += 1;
+            part["image_url"]["url"] = Value::String(String::new());
+        }
+    }
+    plain.to_string().len() + pictures * (crate::openai_compat::PAGE_TOKENS as usize) * 3
+}
+
 fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> Value {
     let mut messages = vec![json!({ "role": "system", "content": system })];
     messages.extend(history.iter().cloned());
@@ -607,7 +622,7 @@ pub async fn send(
         // A PDF's pages go as pictures as far as the context leaves room for
         // them, past the instructions, the tools, the conversation and the answer.
         let context_size = if caps.loaded_context > 0 { caps.loaded_context } else { caps.max_context };
-        let taken_chars = system.len() + turn.history.iter().map(|m| m.to_string().len()).sum::<usize>() + query.len() + if tools.is_empty() { 0 } else { crate::openai_compat::function_tools(&tools).to_string().len() };
+        let taken_chars = system.len() + turn.history.iter().map(chars_of).sum::<usize>() + query.len() + if tools.is_empty() { 0 } else { crate::openai_compat::function_tools(&tools).to_string().len() };
         let taken = (taken_chars / 3) as u64 + u64::from(MAX_TOKENS);
         let pages = crate::openai_compat::pages_that_fit(context_size, taken);
         user = user_message_in(caps.vision != Some(false), pages, turn.first, context.as_ref(), &query, shared);
@@ -723,6 +738,16 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
 mod tests {
     use super::*;
     use crate::net::tests::serve_once;
+
+    #[test]
+    fn a_picture_in_the_conversation_counts_as_a_page_not_as_its_base64() {
+        let big = format!("data:image/png;base64,{}", "A".repeat(300_000));
+        let message = json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": big } }, { "type": "text", "text": "Cos'è?" }] });
+        let chars = chars_of(&message);
+        assert!(chars < 10_000, "{chars}");
+        assert!(chars >= crate::openai_compat::PAGE_TOKENS as usize * 3);
+        assert_eq!(chars_of(&json!({ "role": "user", "content": "Ciao" })), json!({ "role": "user", "content": "Ciao" }).to_string().len());
+    }
 
     fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)

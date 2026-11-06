@@ -788,6 +788,12 @@ pub fn is_sensitive(path: &Path) -> bool {
     const DIRS: &[&str] = &[".ssh", ".aws", ".azure", ".gnupg", ".claude", ".kube", ".docker", ".password-store"];
     const NAMES: &[&str] = &["credentials", "credentials.json", ".netrc", "_netrc", ".git-credentials", "id_rsa", "id_ed25519", "id_ecdsa"];
     const ENDINGS: &[&str] = &[".pem", ".key", ".pfx", ".p12", ".kdbx", ".ppk", ".gpg", ".asc"];
+    // Codes that open an account by themselves (GitHub's, Google's…), a wallet's words, passwords.
+    const WORDS: &[&str] = &[
+        "recovery-code", "recovery_code", "recovery code", "recoverycode", "backup-code", "backup_code", "backup code", "backupcode",
+        "codici di recupero", "codici-di-recupero", "codici_di_recupero", "seed-phrase", "seed_phrase", "seed phrase", "mnemonic",
+        "password", "passwd",
+    ];
     const PLACES: &[&str] = &[
         "\\appdata\\roaming\\microsoft\\credentials",
         "\\appdata\\local\\microsoft\\credentials",
@@ -804,6 +810,7 @@ pub fn is_sensitive(path: &Path) -> bool {
     parts.iter().any(|p| DIRS.contains(p))
         || NAMES.contains(&name)
         || ENDINGS.iter().any(|e| name.ends_with(e))
+        || WORDS.iter().any(|w| name.contains(w))
         || name == ".env"
         || name.starts_with(".env.")
         || PLACES.iter().any(|p| whole.contains(p))
@@ -1102,7 +1109,8 @@ mod tests {
     #[test]
     fn keys_and_passwords_are_never_the_voices() {
         for p in [r"C:\Users\me\.ssh\id_ed25519", r"C:\Users\me\.aws\config", r"C:\Users\me\proj\.env", r"C:\Users\me\proj\.env.local",
-            r"C:\Users\me\certs\server.KEY", r"C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Login Data", r"C:\Users\me\.claude\.credentials.json"] {
+            r"C:\Users\me\certs\server.KEY", r"C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Login Data", r"C:\Users\me\.claude\.credentials.json",
+            r"C:\Users\me\Downloads\github-recovery-codes.txt", r"C:\Users\me\Downloads\Backup Codes Google.txt", r"C:\Users\me\Documents\passwords.xlsx"] {
             assert!(is_sensitive(Path::new(p)), "{p}");
         }
         for p in [r"C:\Users\me\Documents\contratto.pdf", r"C:\Users\me\proj\environment.md", r"C:\Users\me\keys.txt"] {
