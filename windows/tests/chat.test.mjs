@@ -225,7 +225,7 @@ test("a local answer streams into one reply, then the finished text replaces it"
   assert.ok(!$(".model-btn").disabled);
 });
 
-test("sending and the answer being written never scroll the chat", async () => {
+test("away from its end, sending and the answer being written never scroll the chat", async () => {
   let finish;
   answers.chat_send = () => new Promise((resolve) => (finish = resolve));
   const log = $(".chat-log");
@@ -243,12 +243,6 @@ test("sending and the answer being written never scroll the chat", async () => {
   emit("chat-delta", { chat: State.chatId, text: "Once upon" });
   assert.equal(log.scrollTop, 250, "the answer being written does not pull it down");
 
-  log.scrollTop = 900; // read at its end
-  log.fire("scroll");
-  log.scrollHeight = 1400;
-  emit("chat-delta", { chat: State.chatId, text: "Once upon a time" });
-  assert.equal(log.scrollTop, 900, "not even from the end of the chat");
-
   log.scrollTop = 300;
   log.fire("scroll");
   finish({ text: "Once upon a time." });
@@ -262,6 +256,57 @@ test("sending and the answer being written never scroll the chat", async () => {
   await flush();
   view.sync();
   assert.equal(log.scrollTop, 300, "the next question does not scroll it either");
+});
+
+test("scrolled to its end, the chat follows the answer until the slightest scroll up", async () => {
+  let finish;
+  answers.chat_send = () => new Promise((resolve) => (finish = resolve));
+  const log = $(".chat-log");
+  const arrow = $(".chat-to-end");
+  log.clientHeight = 100;
+  log.scrollHeight = 600;
+  log.scrollTop = 500; // all the way down
+  log.fire("scroll");
+  assert.ok(arrow.hidden, "no arrow at the end");
+  $(".chat-input").value = "tell me a story";
+  $(".send-btn").fire("click");
+  await flush();
+  view.sync();
+
+  log.scrollHeight = 1000;
+  emit("chat-delta", { chat: State.chatId, text: "Once upon" });
+  assert.equal(log.scrollTop, 1000, "stuck to the end, it follows the text");
+  log.scrollTop = 900; // where a real log stops
+  log.fire("scroll");
+  assert.ok(arrow.hidden);
+
+  log.fire("wheel", { deltaY: -10 }); // a turn of the wheel up lets go at once
+  log.scrollHeight = 1400;
+  emit("chat-delta", { chat: State.chatId, text: "Once upon a time" });
+  assert.equal(log.scrollTop, 900, "let go, it stays where it is read");
+  log.scrollTop = 1250; // still in sight of the end: no arrow yet
+  log.fire("scroll");
+  assert.ok(arrow.hidden, "just above the end, no arrow");
+  log.scrollTop = 900; // more than a screenful up
+  log.fire("scroll");
+  assert.ok(!arrow.hidden, "a screenful up, the arrow shows");
+
+  arrow.fire("click");
+  assert.equal(log.scrollTop, 1400, "the arrow brings it to the end");
+  log.scrollTop = 1300;
+  log.fire("scroll");
+  assert.ok(arrow.hidden);
+  log.scrollHeight = 1600;
+  emit("chat-delta", { chat: State.chatId, text: "Once upon a time, there" });
+  assert.equal(log.scrollTop, 1600, "and stuck there again");
+
+  log.scrollTop = 1450; // the scrollbar dragged up
+  log.fire("scroll");
+  log.scrollHeight = 1800;
+  finish({ text: "Once upon a time, there was." });
+  await flush();
+  view.sync();
+  assert.equal(log.scrollTop, 1450, "the finished answer leaves it where it was read");
 });
 
 // ── Stop, copy, edit ──────────────────────────────────────────────────────────
