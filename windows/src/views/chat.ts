@@ -17,7 +17,10 @@
 // the model and its effort (a change goes with the next message), the usage.
 // Moving to another chat leaves the answer going in the background, in its
 // own chat (chat.rs Chats): it lands there when done, and coming back shows it
-// as far as it got. Enter sends once the chat's answer is done. Each message
+// as far as it got. A question sent while the answer is written (the Stop
+// button turns back into the arrow as soon as something is typed) leaves the
+// field and waits just above it, where it can be edited or cancelled; it goes
+// once the answer ends, or comes back to the field after Stop. Each message
 // has Copy under the mouse, each question Edit: sending the edited text
 // replaces it and drops what followed, here and in Rust (chat.rs rewind); sent
 // mid-answer, it stops that answer first.
@@ -85,7 +88,7 @@ import { Sound } from "../core/sound";
 import { State, type ChatMessage } from "../core/state";
 import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import {
-  addChatFile, aiKind, chatFiles, dropChatFiles, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
+  addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
 import { planColor } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
@@ -162,6 +165,8 @@ const STRINGS = {
   edit: N_("Edit"),
   editing: N_("Editing a message"),
   editingHint: N_("Sending replaces this message and everything after it."),
+  queued: N_("Queued"),
+  queuedHint: N_("Sent as soon as this answer ends"),
 };
 
 /** The commands' icons drawn filled (core/slash.ts); the others are strokes. */
@@ -1314,6 +1319,11 @@ const TO_END_ARROW_SCREENS = 1;
 // ── View ──────────────────────────────────────────────────────────────────────
 
 /** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
+/** The copies waiting in the field, not sent yet: never deleted from under it. */
+function fieldCopies(): string[] {
+  return [State.droppedFile?.path ?? "", ...State.moreFiles.map((f) => f.path)].filter(Boolean);
+}
+
 export function buildPrompt(
   onHeightChange: () => void,
   openSettings: () => void = () => void Bridge.openSettingsWindow(),
@@ -1322,6 +1332,9 @@ export function buildPrompt(
   chatDeleted: (chatId: string) => void = () => {},
   openTools: () => void = () => {},
 ): ViewHost {
+  // Copies no past chat names any more (deleted before Lumo released them,
+  // or gone past the history's end) leave the inbox once a day old.
+  void Bridge.inboxTidy([...keptCopies(), ...fieldCopies()]);
   const chipRow = h("div", { class: "chip-row" });
   const log = h("div", { class: "chat-log" });
   // The log stays where it is read: sending a question and the answer being
@@ -1396,6 +1409,20 @@ export function buildPrompt(
   const micBtn = h("button", { class: "tool-btn mic-btn", title: tl(LIVE_STRINGS.talk), "aria-label": tl(LIVE_STRINGS.talk) }, svg(ICONS.mic, 13, { stroke: 1.8 }));
   micBtn.addEventListener("click", () => talk());
   const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, permBtn, input, micBtn, send);
+
+  // The question sent while the chat was answered, just above the field.
+  const queueText = h("div", { class: "queue-text" });
+  const queueEdit = h("button", { class: "queue-btn", title: tl(STRINGS.edit), "aria-label": tl(STRINGS.edit) }, svg(ICONS.pencil, 11, { stroke: 1.8 }));
+  const queueCancel = h("button", { class: "queue-btn", title: tl(STRINGS.cancel), "aria-label": tl(STRINGS.cancel) }, svg(ICONS.xmark, 9));
+  const queueEl = h(
+    "div",
+    { class: "chat-queue", title: tl(STRINGS.queuedHint) },
+    h("span", { class: "queue-label" }, svg(ICONS.clock, 10, { stroke: 2 }), h("span", { text: tl(STRINGS.queued) })),
+    queueText,
+    queueEdit,
+    queueCancel,
+  );
+  queueEl.hidden = true;
 
   const modelDot = h("i", { class: "model-dot" });
   const modelName = h("span", { class: "model-name" });
@@ -1522,7 +1549,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -1746,7 +1773,8 @@ export function buildPrompt(
    */
   function drawSend() {
     const run = answering();
-    const stops = run != null && editing == null;
+    // Something typed meanwhile: the arrow, which queues it.
+    const stops = run != null && editing == null && !input.value.trim();
     const shows = stops ? "stop" : "send";
     if (shows !== sendShows) {
       sendShows = shows;
@@ -2609,9 +2637,12 @@ export function buildPrompt(
         deleteChat(c.id);
         // The plan it made goes with it, finished or not.
         chatDeleted(c.id);
+        // Its copies in the inbox too, but for those another chat or the field still has.
+        const copies = chatCopies(c.id);
         dropChatFiles(c.id);
         // So does its folder of copies (workspace.rs).
         void Bridge.workspaceDelete(c.id);
+        if (copies.length > 0) void Bridge.inboxRelease(copies, [...keptCopies(), ...fieldCopies()]);
         // Being answered in the background: that answer ends with it.
         const run = runs.get(c.id);
         if (run) {
@@ -3035,38 +3066,104 @@ export function buildPrompt(
     showActivity(run, activity, true);
   });
 
-  /** The answer a message typed meanwhile waits for (`sendAfter`). */
-  let waitingFor: Run | null = null;
+  /** The answers a queued question waits for (`sendAfter`). */
+  const waitingFor = new Set<Run>();
+  /** The question sent while its chat was answered, by chat: it waits above the field. */
+  const queued = new Map<string, string>();
+  let queueShown = "";
+
+  /** The question leaves the field and waits above it; a second one joins it. */
+  function enqueue(run: Run, text: string) {
+    const before = queued.get(run.chatId);
+    queued.set(run.chatId, before ? `${before}\n${text}` : text);
+    setInput("");
+    Sound.play("blip");
+    drawQueue();
+    drawSend();
+    sendAfter(run);
+  }
+
+  /** The queued question of the chat on screen, back in the field (before what is typed there now). */
+  function unqueue() {
+    const text = queued.get(State.chatId);
+    if (text == null) return;
+    queued.delete(State.chatId);
+    const typed = input.value.trim();
+    setInput(typed ? `${text}\n${typed}` : text);
+    drawQueue();
+    drawSend();
+  }
+
+  function drawQueue() {
+    const shown = queued.get(State.chatId) ?? "";
+    if (shown === queueShown) return;
+    queueShown = shown;
+    queueEl.hidden = !shown;
+    queueText.textContent = shown;
+    queueText.title = shown;
+  }
+
+  queueEdit.addEventListener("click", (e) => {
+    e.stopPropagation();
+    unqueue();
+    Sound.play("blip");
+    input.focus();
+    input.setSelectionRange(input.value.length, input.value.length);
+  });
+  queueText.addEventListener("click", () => queueEdit.click());
+  queueCancel.addEventListener("click", (e) => {
+    e.stopPropagation();
+    queued.delete(State.chatId);
+    drawQueue();
+    Sound.play("pop");
+    input.focus();
+  });
 
   /**
-   * What is typed while `run` is written goes as soon as it ends, if it is
-   * still in the field and its chat on screen. After Stop it stays there.
+   * The queued question goes as soon as `run` ends, if its chat is on screen
+   * (otherwise once it is again). After Stop it comes back to the field.
    */
   function sendAfter(run: Run) {
-    if (waitingFor === run) return;
-    waitingFor = run;
-    input.title = t("Sent as soon as this answer ends");
+    if (waitingFor.has(run)) return;
+    waitingFor.add(run);
     void run.done.then(() => {
-      if (waitingFor !== run) return;
-      waitingFor = null;
-      input.title = "";
-      if (!run.stopping && State.chatId === run.chatId && input.value.trim() && !answering()) void submit();
+      waitingFor.delete(run);
+      if (!queued.has(run.chatId)) return;
+      if (!run.stopping) sendQueued();
+      else if (State.chatId === run.chatId) unqueue();
+      // Stopped while elsewhere: back in the field once the chat is on screen.
+      else stoppedAway.add(run.chatId);
     });
+  }
+  /** Chats whose answer was stopped while they were not on screen: their queued question does not go by itself. */
+  const stoppedAway = new Set<string>();
+
+  /** The queued question of the chat on screen goes, once it is done answering. */
+  function sendQueued() {
+    const chatId = State.chatId;
+    const text = queued.get(chatId);
+    if (text == null || preparing || answering() || editing != null || stoppedAway.has(chatId)) return;
+    for (const r of waitingFor) if (r.chatId === chatId) return;
+    queued.delete(chatId);
+    drawQueue();
+    void submit(undefined, text);
   }
 
   /**
    * Sends what is typed, or `auto`: a message Lumo writes itself (a GitHub
    * event the chat listened for), which leaves the field, the files waiting
-   * and the screen alone.
+   * and the screen alone. `queuedText`: the question that waited above the
+   * field, sent as if typed, leaving what is typed now where it is.
    */
-  async function submit(auto?: string) {
-    const query = auto ?? input.value.trim();
+  async function submit(auto?: string, queuedText?: string) {
+    const query = auto ?? queuedText ?? input.value.trim();
+    const typed = auto == null && queuedText == null;
     if (!query || preparing) return;
     // "/timer 10m pasta": a timer on the closed island, nothing sent to the AI.
     const timer = auto ? null : /^\/timer\s+(\S+)\s*(.*)$/i.exec(query);
     const timerMs = timer ? parseDuration(timer[1]) : null;
     if (timer && timerMs != null) {
-      setInput("");
+      if (typed) setInput("");
       compactTimer(timerMs, timer[2]);
       Sound.play("blip");
       return;
@@ -3079,15 +3176,15 @@ export function buildPrompt(
     const own = auto || editing != null ? null : lumoCommand(query, State.settings.chatProvider);
     if (own) {
       closeSlash();
-      setInput("");
+      if (typed) setInput("");
       runLumo(own);
       return;
     }
-    // The chat on screen is being answered: the next question waits in the
+    // The chat on screen is being answered: the next question waits above the
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
     if (current) {
-      if (!auto && editing == null) sendAfter(current);
+      if (!auto && editing == null) enqueue(current, query);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;
@@ -3099,7 +3196,7 @@ export function buildPrompt(
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
-    if (!auto) setInput("");
+    if (typed) setInput("");
     Sound.play("send");
 
     let run: Run;
@@ -3133,6 +3230,8 @@ export function buildPrompt(
       // The chat it is asked in, whichever is on screen when its answer comes.
       const chatId = State.chatId;
       const history = State.chatHistory;
+      // Its copies in the inbox now belong to the chat: they go when it is deleted.
+      noteSentCopies(chatId, sent.map((f) => f.path));
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
       question = { id: nextId++, role: "user", content: query };
@@ -3572,12 +3671,13 @@ export function buildPrompt(
   });
   input.addEventListener("focus", () => void peekExplorer(false));
 
+  input.addEventListener("input", () => drawSend());
   send.addEventListener("click", () => {
-    if (answering() && editing == null) stop();
+    if (answering() && editing == null && !input.value.trim()) stop();
     else void submit();
   });
   // The field stays open while an answer is written: the next question can be
-  // typed, and goes with Enter once the answer is done (or stopped).
+  // typed, and Enter queues it above the field until the answer is done.
   input.addEventListener("keydown", (e) => {
     const ke = e as KeyboardEvent;
     const key = ke.key;
@@ -3753,6 +3853,11 @@ export function buildPrompt(
         if (editing != null) chipRow.append(noteChip(t(STRINGS.editing), t(STRINGS.editingHint), cancelEdit));
         else if (uploaded) chipRow.append(uploadedChip(uploaded.name));
       }
+
+      // The queued question shows with its chat, and goes if it ended meanwhile.
+      if (!run && stoppedAway.delete(State.chatId)) unqueue();
+      drawQueue();
+      if (!run) queueMicrotask(sendQueued);
 
       const count = State.chatHistory.length + (run ? 0.5 : 0);
       if (count !== renderedCount) {

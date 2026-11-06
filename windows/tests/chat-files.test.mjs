@@ -5,7 +5,7 @@ import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
 import { saveChat } from "../src/core/chats.ts";
 import {
-  MAX_FILES, addChatFile, aiKind, chatFiles, dropChatFiles, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile,
+  MAX_FILES, addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, fileName, filesByKind, removeChatFile, rewindChatFiles, withFile,
 } from "../src/core/chat-files.ts";
 
 const mem = new Map();
@@ -115,4 +115,37 @@ test("a file's × takes it out of the list, with the inbox's copy of it", () => 
   const [notes] = chatFiles("a").filter((f) => f.name === "notes.md");
   assert.deepEqual(removeChatFile("a", notes).map((f) => f.name), ["game.py"]);
   assert.deepEqual(chatFiles("a").map((f) => f.name), ["game.py"]);
+});
+
+const INBOX = String.raw`C:\Users\me\AppData\Local\com.rccrd12.lumo\inbox`;
+
+test("a chat names the copies it sent, even once its row shows the file's own path", () => {
+  saveChat(chat("a"));
+  const copy = `${INBOX}\\Analisi2.tex`;
+  noteSentCopies("a", [copy, copy.toUpperCase(), ""]);
+  addChatFile("a", "attached", copy, "Analisi2.tex", 1);
+  addChatFile("a", "read", String.raw`C:\Users\me\OneDrive\Analisi2.tex`, undefined, 2);
+  assert.equal(chatFiles("a")[0].path, String.raw`C:\Users\me\OneDrive\Analisi2.tex`);
+  assert.deepEqual(chatCopies("a"), [copy, String.raw`C:\Users\me\OneDrive\Analisi2.tex`], "the copy once, and the file");
+});
+
+test("a deleted chat's copies are released, but for those another chat sent too", () => {
+  saveChat(chat("a"));
+  saveChat(chat("b"));
+  const shared = `${INBOX}\\shared.png`;
+  noteSentCopies("a", [`${INBOX}\\only-a.pdf`, shared]);
+  noteSentCopies("b", [shared]);
+  const copies = chatCopies("a");
+  dropChatFiles("a");
+  assert.deepEqual(chatCopies("a"), [], "forgotten with the chat");
+  assert.deepEqual(copies, [`${INBOX}\\only-a.pdf`, shared]);
+  assert.deepEqual(keptCopies(), [shared], "what b still names is kept");
+});
+
+test("the notes of chats gone from the past chats go too", () => {
+  noteSentCopies("gone", [`${INBOX}\\old.png`]);
+  saveChat(chat("a"));
+  noteSentCopies("a", [`${INBOX}\\new.png`]);
+  assert.deepEqual(chatCopies("gone"), []);
+  assert.deepEqual(keptCopies(), [`${INBOX}\\new.png`]);
 });

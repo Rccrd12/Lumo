@@ -14820,6 +14820,18 @@
    "ru": "Ответ оборвался на пределе длины: попросите продолжить.",
    "id": "Jawaban terpotong di batas panjang: minta untuk melanjutkan.",
    "it": "La risposta è stata tagliata al limite di lunghezza: chiedi di continuare."
+  },
+  "Queued": {
+   "zh-Hans": "排队中",
+   "hi": "कतार में",
+   "es": "En cola",
+   "ar": "في الانتظار",
+   "fr": "En attente",
+   "bn": "সারিতে",
+   "pt-BR": "Na fila",
+   "ru": "В очереди",
+   "id": "Dalam antrean",
+   "it": "In coda"
   }
  }
 }
