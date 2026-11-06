@@ -5,7 +5,7 @@
 - **Local models do much more**: tools, pictures and reasoning by what the model can do, the chat's permission modes and its / commands, the email and listening tools, and a short prompt of their own with the tools in groups. The tools not loaded are in a catalog the model loads by name. The picker shows the context ring and loads or ejects a model
 - **A folder of copies for each chat**: a local model works on copies of your files, never on the originals. What changed shows under the answer, and the copy goes over the original only with a click
 - **Unsloth Studio** as a server of its own, with its key, loading its models from Lumo
-- **PDFs reach every model**: a short PDF goes as pictures of its pages, as far as the model's context has room, a longer one as its text
+- **PDFs reach every model**: a short PDF goes as pictures of its pages, as far as the model's context has room, a longer one as its text, and to a local server that refuses the pictures, its text in their place
 - **Lumo's own web search** for the providers without one (local models, OpenAI, Google, OpenRouter), and the email and listening tools for every API provider
 - **/compact** for the providers called by their API. With a local model the context ring offers it, and Compact the chat is a small pill at the bottom of the context menu. A local model's chat compacts itself before a question once its context is over 80 % (Settings → Chat → Local models), and the ring shows an estimate until the next answer
 - **The seconds next to Thinking…** for every provider, from 2 s on, and for a local model reading the prompt
