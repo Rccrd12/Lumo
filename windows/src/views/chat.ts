@@ -176,11 +176,16 @@ const FILLED_ICONS = new Set(["plus", "gear", "timer", "stack"]);
 /** Two arrows meeting at a line: the chat pressed together. */
 const COMPACT_ICON = "M12 3.5v5.5M9 6.5l3 2.5 3-2.5M12 20.5V15M9 17.5l3-2.5 3 2.5M5 12h14";
 
+/** How full a local model's context is (%) before the chat compacts itself. */
+const AUTO_COMPACT_PCT = 80;
+
 /** /compact with the providers called by their API. */
 const COMPACT_STRINGS = {
   action: N_("Compact the chat"),
   working: N_("Compacting the chat…"),
   done: N_("Chat compacted: the model now starts from its summary"),
+  auto: N_("Context at {pct}%: compacting the chat before answering…"),
+  autoDone: N_("Chat compacted by itself: the model starts again from its summary"),
   nothing: N_("Nothing new to compact"),
 };
 
@@ -457,12 +462,25 @@ const ACTIVITY_STRINGS = {
   loading: N_("Loading the model…"),
   loadingAt: N_("Loading the model: {percent}%"),
   prompt: N_("Processing the prompt…"),
+  // A local model asked again after its server dropped the request, or sent
+  // back once (lumo-local's Doing). Its reasoning and the calls it writes say
+  // Thinking… and Using {tool}, as every provider's do.
+  retry: N_("{name} stopped the answer: trying again ({attempt} of {of})…"),
+  correctWritten: N_("It wrote the tool instead of using it: asking again…"),
+  correctDone: N_("It said it was done without doing it: asking again…"),
+  correctStopped: N_("It stopped halfway: asking again…"),
+  seconds: N_("{seconds} s"),
 };
 
 const ISLAND_ACTIVITY_STRINGS = {
   subtask: N_("Sub-task"),
   tool: N_("Uses a tool"),
+  retry: N_("Tries again"),
+  correcting: N_("Asks again"),
 };
+
+/** What is timed next to the dots: the seconds it has been at it. */
+const TIMED = new Set(["prompt", "reasoning", "thinking", "retry"]);
 
 const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
@@ -483,6 +501,8 @@ interface Run {
   text: string;
   /** What the answer is doing, shown next to the dots until its text does. */
   activity: ChatActivity;
+  /** When `activity` began (epoch ms), for the seconds next to it. */
+  since: number;
   /** The dots are back under the text: the CLI went back to its tools. */
   dots: boolean;
   /** Turns the first activity of a provider that streams no tools into Thinking…. */
@@ -561,9 +581,28 @@ export function activityLabel(activity: ChatActivity | null): string {
       return /^\d{1,3}$/.test(detail) ? t(ACTIVITY_STRINGS.loadingAt, { percent: detail }) : t(ACTIVITY_STRINGS.loading);
     case "prompt":
       return t(ACTIVITY_STRINGS.prompt);
+    case "calling":
+      return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
+    case "retry": {
+      const [attempt, of] = detail.split("/");
+      const name = t(providerDef(State.settings.chatProvider).name);
+      return attempt && of ? t(ACTIVITY_STRINGS.retry, { name, attempt, of }) : t(ACTIVITY_STRINGS.thinking);
+    }
+    case "correcting":
+      return t(detail === "written" ? ACTIVITY_STRINGS.correctWritten : detail === "done" ? ACTIVITY_STRINGS.correctDone : ACTIVITY_STRINGS.correctStopped);
     default:
       return t(ACTIVITY_STRINGS.thinking);
   }
+}
+
+/**
+ * The label with the seconds it has lasted, for what is timed (thinking,
+ * reading the prompt, trying again), from 2 s on, the same for every provider.
+ */
+export function timedLabel(label: string, _provider: string, activity: ChatActivity | null, since: number, now = Date.now()): string {
+  const seconds = Math.floor((now - since) / 1000);
+  if (!activity || !TIMED.has(activity.kind) || seconds < 2) return label;
+  return `${label} ${t(ACTIVITY_STRINGS.seconds, { seconds })}`;
 }
 
 /**
@@ -579,7 +618,12 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "subtask":
       return t(ISLAND_ACTIVITY_STRINGS.subtask);
     case "tool":
+    case "calling":
       return activity.detail.trim() ? t(ISLAND_ACTIVITY_STRINGS.tool) : t(COMPACT_TEXT.thinking);
+    case "retry":
+      return t(ISLAND_ACTIVITY_STRINGS.retry);
+    case "correcting":
+      return t(ISLAND_ACTIVITY_STRINGS.correcting);
     case "read":
     case "edit":
     case "web":
@@ -851,8 +895,8 @@ interface Picker {
   el: HTMLElement;
   open(): void;
   close(): void;
-  /** Asks a local model's server what the model picked can do, when it changed. */
-  refreshCaps(): void;
+  /** Asks a local model's server what the model picked can do, when it changed (or `force`d). */
+  refreshCaps(force?: boolean): void;
   readonly isOpen: boolean;
 }
 
@@ -1058,7 +1102,8 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
    * slider, the screenshots and the line next to the model follow.
    */
   let capsKey = "";
-  function refreshCaps() {
+  function refreshCaps(force = false) {
+    if (force) capsKey = "";
     const p = providerDef(State.settings.chatProvider);
     const model = activeModel(State.settings);
     const key = p.urlField && model ? `${p.id}|${model}` : "";
@@ -1624,6 +1669,8 @@ export function buildPrompt(
 
   /** The last numbers each provider came back with (Anthropic, OpenAI, OpenRouter). */
   const seenUsage = new Map<string, SeenUsage>();
+  /** A local model's context, per chat: each chat shows its own, not the last one answered. */
+  const seenContext = new Map<string, SeenUsage>();
   let usageKey = "";
   let usageSetup = false;
   /** The chat was on screen with OpenRouter and the option on, at the last sync. */
@@ -1636,7 +1683,9 @@ export function buildPrompt(
   let usageLineShown: UsageLine | null = null;
 
   function drawUsage(now = Date.now()) {
-    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage, State.chatId);
+    const local = Boolean(providerDef(State.settings.chatProvider).urlField);
+    const seen = local ? seenContext.get(State.chatId) : seenUsage.get(State.settings.chatProvider);
+    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1722,6 +1771,7 @@ export function buildPrompt(
   function keepUsage(u: ChatUsage | null | undefined) {
     if (!u || typeof u.provider !== "string") return;
     seenUsage.set(u.provider, { ...u, at: Date.now() });
+    if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
     State.notify();
   }
 
@@ -3002,9 +3052,14 @@ export function buildPrompt(
    * What the closed island says the chat is doing: the answer of the chat on
    * screen, else the last one left going in the background.
    */
+  /** The chat is being compacted: what the closed island says meanwhile. */
+  let compactingLabel: string | null = null;
+
   function drawIslandActivity() {
     const run = answering() ?? [...runs.values()].pop();
-    const next = run ? { label: run.text === "" || run.dots ? islandActivityLabel(run.activity) : null } : null;
+    const next = run
+      ? { label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
+      : compactingLabel != null ? { label: compactingLabel } : null;
     const now = State.chatActivity;
     if (next == null ? now == null : now != null && now.label === next.label) return;
     State.chatActivity = next;
@@ -3036,14 +3091,46 @@ export function buildPrompt(
    * back under it.
    */
   function showActivity(run: Run, next: ChatActivity, again = false) {
+    // The seconds start again only when the words do (reasoning is Thinking… too).
+    if (activityLabel(next) !== activityLabel(run.activity)) run.since = Date.now();
     run.activity = next;
     if (again && run.text) run.dots = true;
     drawIslandActivity();
+    tickSeconds();
     if (run.chatId !== State.chatId) return;
     const label = log.querySelector(".typing-label");
-    if (label) label.textContent = activityLabel(next);
-    else if (again && live) log.append(typingDots(activityLabel(next)));
+    if (label) label.textContent = runLabel(run);
+    else if (again && live) log.append(typingDots(runLabel(run)));
     follow();
+  }
+
+  /** What the dots say for `run`, with its seconds. */
+  function runLabel(run: Run): string {
+    return timedLabel(activityLabel(run.activity), run.provider, run.activity, run.since);
+  }
+
+  /**
+   * The seconds next to the dots move once a second while something timed is
+   * on show (a local model reading the prompt, reasoning, asked again); the
+   * timer stops as soon as nothing is.
+   */
+  let secondsTimer: ReturnType<typeof setInterval> | null = null;
+  function tickSeconds() {
+    const timed = () => [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind));
+    if (secondsTimer != null || !timed()) return;
+    secondsTimer = setInterval(() => {
+      if (!timed()) {
+        clearInterval(secondsTimer!);
+        secondsTimer = null;
+        return;
+      }
+      drawIslandActivity();
+      const run = answering();
+      const label = log.querySelector(".typing-label");
+      if (run && label && (!run.text || run.dots)) label.textContent = runLabel(run);
+    }, 1000);
+    // Under Node (the tests), an answer left going doesn't keep the process alive.
+    (secondsTimer as { unref?: () => void }).unref?.();
   }
 
   // A file the answer read, edited or created: the chat's files list it.
@@ -3193,6 +3280,16 @@ export function buildPrompt(
       preparing = false;
       if (State.chatId !== here || editing == null || answering()) return;
     }
+    // Nearly full: the chat is compacted first, the question waiting in the field.
+    const full = editing == null ? autoCompactAt() : null;
+    if (full != null) {
+      preparing = true;
+      try {
+        await compactChat(full);
+      } finally {
+        preparing = false;
+      }
+    }
     if (picker.isOpen) picker.close();
     closeHistory();
     closeScreen();
@@ -3268,6 +3365,7 @@ export function buildPrompt(
         turn,
         text: "",
         activity,
+        since: Date.now(),
         dots: false,
         stopping: false,
         done,
@@ -3354,6 +3452,11 @@ export function buildPrompt(
     } finally {
       clearTimeout(run.timer);
       runs.delete(run.chatId);
+      // A local model the answer loaded: what it can do (reasoning, context) is known only now.
+      const caps = localCapsOf(run.provider);
+      if (providerDef(run.provider).urlField && run.provider === State.settings.chatProvider && (!caps || caps.loadedContext === 0)) {
+        picker.refreshCaps(true);
+      }
       finish();
       // Another answer still being written: Lumo keeps thinking.
       if (runs.size === 0) settle(outcome);
@@ -3591,7 +3694,8 @@ export function buildPrompt(
    * place of the turns it sums up. What was said stays on screen.
    */
   let compacting = false;
-  async function compactChat() {
+  /** `auto`: compacted by itself before a question, with the context this full (%). */
+  async function compactChat(auto?: number) {
     const chatId = State.chatId;
     if (compacting || answering()) return;
     if (State.chatHistory.length === 0) {
@@ -3600,24 +3704,57 @@ export function buildPrompt(
     }
     compacting = true;
     closeUsage();
-    const row = typingDots(t(COMPACT_STRINGS.working));
+    compactingLabel = auto == null ? t(COMPACT_STRINGS.working) : t(COMPACT_STRINGS.auto, { pct: auto });
+    drawIslandActivity();
+    const row = typingDots(compactingLabel);
     log.append(row);
     follow();
     onHeightChange();
     try {
       const done = await Bridge.chatCompact(chatId);
-      if (done) setCompact(chatId, done);
-      compactNotice(t(done ? COMPACT_STRINGS.done : COMPACT_STRINGS.nothing), providerDef(State.settings.chatProvider).accent);
+      if (done) {
+        setCompact(chatId, { upto: done.upto, summary: done.summary });
+        estimateContext(chatId, done.before, done.after);
+      }
+      const said = done ? (auto == null ? COMPACT_STRINGS.done : COMPACT_STRINGS.autoDone) : COMPACT_STRINGS.nothing;
+      compactNotice(t(said), providerDef(State.settings.chatProvider).accent);
       Sound.play("blip");
     } catch (err) {
       State.noteMessage = String(err).replace(/^Error:\s*/, "");
       Sound.play("error");
     } finally {
       compacting = false;
+      compactingLabel = null;
+      drawIslandActivity();
       row.remove();
       State.notify();
       onHeightChange();
     }
+  }
+
+  /**
+   * After a compaction the ring shows an estimate until the next answer says:
+   * what the chat filled, less the history the summary replaced (about three
+   * characters a token, as local_chat.rs counts).
+   */
+  function estimateContext(chatId: string, before: number, after: number) {
+    const seen = seenContext.get(chatId);
+    const c = seen?.context;
+    if (!seen || !c || !(c.total > 0)) return;
+    const used = Math.max(Math.round(after / 3), Math.round(c.used - (before - after) / 3));
+    seenContext.set(chatId, { ...seen, context: { ...c, used, estimate: true }, at: Date.now() });
+  }
+
+  /**
+   * A local model's chat over 80 % full, with "Compact by itself" on: how full
+   * (%) when it should be compacted before the next question, else null.
+   */
+  function autoCompactAt(): number | null {
+    if (State.settings.chatAutoCompact === false || !providerDef(State.settings.chatProvider).urlField) return null;
+    const c = seenContext.get(State.chatId)?.context;
+    if (!c || c.estimate || !(c.total > 0) || State.chatHistory.length === 0) return null;
+    const pct = Math.round((c.used / c.total) * 100);
+    return pct >= AUTO_COMPACT_PCT ? pct : null;
   }
 
   /** Arrows, Enter, Tab and Escape while the menu is open; true when the key was the menu's. */
@@ -3878,7 +4015,7 @@ export function buildPrompt(
           log.append(h("div", { class: "chat-row" }, live));
           drawAnswer(live, run.text, workshop);
         }
-        if (run && (!run.text || run.dots)) log.append(typingDots(activityLabel(run.activity)));
+        if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
         // The chat stays where it was read, or at its end when it is stuck
         // there; one just opened shows its end.
         if (openedChat) stuck = true;

@@ -26,7 +26,7 @@ use std::time::Duration;
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::claude_code::Activity;
@@ -299,6 +299,21 @@ fn user_text(first: bool, context: Option<&ChatContext>, query: &str) -> String 
     }
 }
 
+/// How long `message` reads to a model, in characters: a picture in it
+/// (base64, hundreds of thousands of them) counts as the page it is, some
+/// PAGE_TOKENS tokens, not as its text.
+fn chars_of(message: &Value) -> usize {
+    let mut pictures = 0;
+    let mut plain = message.clone();
+    if let Some(parts) = plain["content"].as_array_mut() {
+        for part in parts.iter_mut().filter(|p| p["type"] == "image_url") {
+            pictures += 1;
+            part["image_url"]["url"] = Value::String(String::new());
+        }
+    }
+    plain.to_string().len() + pictures * (crate::openai_compat::PAGE_TOKENS as usize) * 3
+}
+
 fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> Value {
     let mut messages = vec![json!({ "role": "system", "content": system })];
     messages.extend(history.iter().cloned());
@@ -403,6 +418,10 @@ struct Island<'a, P> {
     /// The system message, for the tools loaded (and none, for a model that takes none).
     prompt_for: &'a P,
     always_ask: bool,
+    /// The server's id, as the ring knows it.
+    server: &'static str,
+    /// The context the model is loaded with, in tokens (0: not said), for the ring.
+    context: u64,
 }
 
 impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P> {
@@ -411,10 +430,30 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         self.events.delta(self.app, text);
     }
 
+    /// The ring follows each round of tools, not only the end of the answer.
+    fn used(&mut self, tokens: u64) {
+        let usage = crate::chat_usage::ChatUsage {
+            provider: self.server.to_string(),
+            context: Some(crate::chat_usage::ContextUse { chat: self.chat.id().to_string(), used: tokens, total: self.context }),
+            tokens: None,
+            requests: None,
+            credits: None,
+        };
+        let _ = self.app.emit("chat-usage", usage);
+    }
+
     fn doing(&mut self, doing: Doing) {
         self.events.activity(self.app, match doing {
             Doing::Prompt => Activity::new("prompt", ""),
             Doing::Thinking => Activity::thinking(),
+            Doing::Reasoning => Activity::new("reasoning", ""),
+            Doing::Calling(name) => Activity::new("calling", crate::claude_code::pretty_tool(&name)),
+            Doing::Retrying { attempt, of } => Activity::new("retry", format!("{attempt}/{of}")),
+            Doing::Correcting(why) => Activity::new("correcting", match why {
+                lumo_local::Correction::Written => "written",
+                lumo_local::Correction::SaidDone => "done",
+                lumo_local::Correction::Stopped => "stopped",
+            }),
         });
     }
 
@@ -583,14 +622,18 @@ pub async fn send(
         // A PDF's pages go as pictures as far as the context leaves room for
         // them, past the instructions, the tools, the conversation and the answer.
         let context_size = if caps.loaded_context > 0 { caps.loaded_context } else { caps.max_context };
-        let taken_chars = system.len() + turn.history.iter().map(|m| m.to_string().len()).sum::<usize>() + query.len() + if tools.is_empty() { 0 } else { crate::openai_compat::function_tools(&tools).to_string().len() };
+        let taken_chars = system.len() + turn.history.iter().map(chars_of).sum::<usize>() + query.len() + if tools.is_empty() { 0 } else { crate::openai_compat::function_tools(&tools).to_string().len() };
         let taken = (taken_chars / 3) as u64 + u64::from(MAX_TOKENS);
         let pages = crate::openai_compat::pages_that_fit(context_size, taken);
         user = user_message_in(caps.vision != Some(false), pages, turn.first, context.as_ref(), &query, shared);
+        // The same for a model that doesn't see: what goes if the server refuses the pictures.
+        let mut text_only = user_message_in(false, 0, turn.first, context.as_ref(), &query, shared);
         // A dropped file, to work on: where it is, to copy it.
         if workspace {
             if let Some(ChatContext::File { path, .. }) = chat::turn_context(turn.first, context.as_ref()) {
-                append_text(&mut user, &format!("(This file is at {path}: copy it with {} to work on it.)", crate::workspace::COPY));
+                let note = format!("(This file is at {path}: copy it with {} to work on it.)", crate::workspace::COPY);
+                append_text(&mut user, &note);
+                append_text(&mut text_only, &note);
             }
         }
         body = request_body(model, &system, &turn.history, &user);
@@ -618,8 +661,9 @@ pub async fn send(
             changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
             max_rounds: MAX_TOOL_ROUNDS,
             pause: Duration::from_secs(1),
+            text_only: (text_only != user).then_some(text_only),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, taken_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))
@@ -655,7 +699,16 @@ pub async fn send(
     // stopped at the length limit says so under it.
     let mut answer = outcome.answer();
     if outcome.end == End::Cut {
-        answer = format!("{answer}\n\n_{}_", t("The answer was cut off at the length limit: ask to continue.")).trim_start().to_string();
+        // Cut before a word of it: the context was full, or its reasoning took all the room.
+        let full = usage.as_ref().and_then(|u| u.context.as_ref()).is_some_and(|c| c.total > 0 && c.used * 10 >= c.total * 9);
+        let why = if !answer.trim().is_empty() {
+            t("The answer was cut off at the length limit: ask to continue.")
+        } else if full {
+            t("The context is full and the model had no room left to answer: compact the chat from the context ring, then ask again.")
+        } else {
+            t("The model used all its room reasoning and wrote no answer: ask again, or turn reasoning down.")
+        };
+        answer = format!("{answer}\n\n_{why}_").trim_start().to_string();
     }
     if answer.is_empty() {
         return Err(t("No response text."));
@@ -685,6 +738,16 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
 mod tests {
     use super::*;
     use crate::net::tests::serve_once;
+
+    #[test]
+    fn a_picture_in_the_conversation_counts_as_a_page_not_as_its_base64() {
+        let big = format!("data:image/png;base64,{}", "A".repeat(300_000));
+        let message = json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": big } }, { "type": "text", "text": "Cos'è?" }] });
+        let chars = chars_of(&message);
+        assert!(chars < 10_000, "{chars}");
+        assert!(chars >= crate::openai_compat::PAGE_TOKENS as usize * 3);
+        assert_eq!(chars_of(&json!({ "role": "user", "content": "Ciao" })), json!({ "role": "user", "content": "Ciao" }).to_string().len());
+    }
 
     fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
         tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)

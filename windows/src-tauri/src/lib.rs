@@ -801,10 +801,10 @@ struct SavedCompact {
 /// conversation up, and the summary stands for its turns from then on (chat.rs
 /// `compact`). None: nothing new to sum up.
 #[tauri::command]
-async fn chat_compact(shared: State<'_, Shared>, chats: State<'_, Chats>, chat_id: String) -> Result<Option<SavedCompact>, String> {
+async fn chat_compact(shared: State<'_, Shared>, chats: State<'_, Chats>, chat_id: String) -> Result<Option<chat::Compacted>, String> {
     let chat = chats.get(&chat_id);
     let settings = shared.settings.lock().unwrap().clone();
-    Ok(chat::compact(&chat, &settings).await?.map(|(upto, summary)| SavedCompact { upto, summary }))
+    chat::compact(&chat, &settings).await
 }
 
 /// "Attach a file" in the chat: the system's file picker, then the same copy

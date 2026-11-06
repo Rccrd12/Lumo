@@ -287,7 +287,8 @@ export const Bridge = {
   chatRestore: (chatId: string, turns: { role: string; content: string }[], session: string | null, compact: ChatCompact | null = null) =>
     call<void>("chat_restore", { chatId, turns, session, compact }),
   /** /compact with a provider called by its API: the summary that now stands for the chat's turns; null with nothing new. */
-  chatCompact: (chatId: string) => callOrThrow<ChatCompact | null>("chat_compact", { chatId }),
+  /** The summary, and the history sent to the model before and after it (characters). */
+  chatCompact: (chatId: string) => callOrThrow<(ChatCompact & { before: number; after: number }) | null>("chat_compact", { chatId }),
   /** The system's file picker; the picked file is copied into the inbox like a drop. */
   pickFile: async () => {
     dialogs++;

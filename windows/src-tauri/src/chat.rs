@@ -267,6 +267,14 @@ impl Chat {
         Some((upto, text))
     }
 
+    /// How long the history sent to the model is, in characters (for the
+    /// ring's estimate after a compaction).
+    pub fn history_chars(&self) -> usize {
+        let c = self.inner.lock().unwrap();
+        let turns = if c.owner.is_some() { &c.native } else { &c.plain };
+        compacted(turns, &c.compact).iter().map(|t| t.to_string().len()).sum()
+    }
+
     /// The summary of the first `upto` turns goes to the model in their place.
     pub fn set_compact(&self, upto: usize, summary: String) {
         let mut c = self.inner.lock().unwrap();
@@ -782,10 +790,9 @@ pub async fn send(
     let mut usage = None;
     let reply = dispatch(app, chat, settings, query, context, screen, &mut usage).await;
     // What the provider said is left, read off this very answer (chat_usage.rs).
-    if settings.chat_show_usage {
-        if let Some(usage) = usage {
-            let _ = app.emit("chat-usage", usage);
-        }
+    // A local model's context goes either way: the chat compacts itself by it.
+    if let Some(usage) = usage.filter(|u| settings.chat_show_usage || u.context.is_some()) {
+        let _ = app.emit("chat-usage", usage);
     }
     reply
 }
@@ -945,9 +952,10 @@ const COMPACT_MAX: usize = 200_000;
 
 /// /compact with a provider called by its API: the chat's model sums up the
 /// conversation, and the summary goes in place of its turns from the next
-/// question on. Returns the turns it sums up and the summary, or None with
-/// nothing new to sum up. The CLIs have their own /compact.
-pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<(usize, String)>, String> {
+/// question on. Returns the turns it sums up and the summary, with how long
+/// the history sent was before and is now (characters), or None with nothing
+/// new to sum up. The CLIs have their own /compact.
+pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<Compacted>, String> {
     let provider = settings.chat_provider.as_str();
     if is_cli(provider) {
         return Err(crate::i18n::t("This provider compacts the chat itself: send /compact."));
@@ -975,8 +983,19 @@ pub async fn compact(chat: &Chat, settings: &Settings) -> Result<Option<(usize, 
     if summary.is_empty() {
         return Err(crate::i18n::t("The model gave no summary. Try again."));
     }
+    let before = chat.history_chars();
     chat.set_compact(upto, summary.clone());
-    Ok(Some((upto, summary)))
+    Ok(Some(Compacted { upto, summary, before, after: chat.history_chars() }))
+}
+
+/// A compaction done: what it sums up, and the history's length around it.
+#[derive(Debug, Clone, Serialize)]
+pub struct Compacted {
+    pub upto: usize,
+    pub summary: String,
+    /// The history sent to the model before and after, in characters.
+    pub before: usize,
+    pub after: usize,
 }
 
 pub async fn models(settings: &Settings, provider: &str) -> Result<Vec<ModelInfo>, String> {

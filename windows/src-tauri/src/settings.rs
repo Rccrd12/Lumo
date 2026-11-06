@@ -159,6 +159,9 @@ pub struct Settings {
     /// have none of their own: DuckDuckGo, else Mojeek or Wikipedia, and the
     /// pages read from this computer. Off until the user turns it on.
     pub chat_web_search: bool,
+    /// A local model's chat is compacted by itself before a question, once
+    /// its context is over 80 % full (the ring's last numbers). On by default.
+    pub chat_auto_compact: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -306,6 +309,7 @@ impl Default for Settings {
             chat_share_tabs: false,
             chat_computer_use: false,
             chat_web_search: false,
+            chat_auto_compact: true,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             live_model: "gemini-3.8-live".into(),
@@ -638,6 +642,7 @@ mod tests {
   "chatShareTabs": true,
   "chatComputerUse": true,
   "chatWebSearch": true,
+  "chatAutoCompact": false,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
@@ -1096,6 +1101,7 @@ mod tests {
                 "chatShareTabs",
                 "chatComputerUse",
                 "chatWebSearch",
+                "chatAutoCompact",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "liveModel",

@@ -289,4 +289,7 @@ test("a local model's ring is how much of its context the chat on screen fills",
   assert.equal(unknown.pct, null);
   assert.equal(unknown.text, "Context: 900 tokens");
   assert.equal(usageLine({ ...s, chatShowUsage: false }, null, seen, NOW, null, "c1"), null);
+  // Just after a compaction: an estimate until the next answer says.
+  const estimate = usageLine(s, null, { ...seen, context: { chat: "c1", used: 4500, total: 65536, estimate: true } }, NOW, null, "c1");
+  assert.match(estimate.text, /^Context: about 4.*K of 65.*K$/);
 });

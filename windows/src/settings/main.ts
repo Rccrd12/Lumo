@@ -1025,6 +1025,12 @@ function exposureNotice(url: string, withKey: boolean): HTMLElement | null {
   }
 }
 
+/** A local model's chat compacted by itself when its context is nearly full (views/chat.ts). */
+const AUTO_COMPACT = {
+  get label() { return t("Compact by itself when the context is full"); },
+  get hint() { return t("Over 80 %, before the question goes: the model starts again from a summary of the chat."); },
+};
+
 function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
   const body = h("div", { class: "setting-list" });
   const section = h(
@@ -1032,6 +1038,11 @@ function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
     {},
     ...sectionHead(CHAT_STRINGS.localTitle, CHAT_STRINGS.localHint),
     body,
+    h("div", { class: "setting-list" },
+      setting(AUTO_COMPACT.label, AUTO_COMPACT.hint,
+        toggle(settings.chatAutoCompact !== false, (on) => { settings.chatAutoCompact = on; void save(); }),
+      ),
+    ),
   );
   const redraw = () => {
     clear(body);

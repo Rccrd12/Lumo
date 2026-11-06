@@ -381,6 +381,10 @@ impl Workspace {
         if !from.is_absolute() {
             return Err(format!("{source}: give the full path of the file or folder on the computer."));
         }
+        // Keys, passwords, recovery codes, browser profiles: never copied (live.rs).
+        if crate::live::is_sensitive(from) {
+            return Err(format!("{source} holds keys or passwords: Lumo never copies it."));
+        }
         let meta = std::fs::metadata(from).map_err(|_| not_found(from))?;
         let mut entries = self.manifest();
         // Copied already: the copy, perhaps changed, stays as it is.
@@ -413,7 +417,7 @@ impl Workspace {
                     let path = item.path();
                     let Ok(kind) = item.file_type() else { continue };
                     let item_name = item.file_name().to_string_lossy().to_string();
-                    if kind.is_symlink() {
+                    if kind.is_symlink() || crate::live::is_sensitive(&path) {
                         continue;
                     }
                     if kind.is_dir() {
@@ -972,6 +976,25 @@ mod tests {
             let said = ws.run(COPY, &json!({ "path": unc })).unwrap_err();
             assert!(said.contains("network"), "{unc}: {said}");
         }
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn keys_passwords_and_recovery_codes_are_never_copied() {
+        let base = temp("sensitive");
+        let ws = Workspace::new(base.join("ws"));
+        let src = base.join("src");
+        std::fs::create_dir_all(src.join(".ssh")).unwrap();
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        std::fs::write(src.join(".ssh").join("id_ed25519"), "key").unwrap();
+        std::fs::write(src.join("github-recovery-codes.txt"), "codes").unwrap();
+        std::fs::write(src.join("notes.txt"), "notes").unwrap();
+        let said = ws.run(COPY, &json!({ "path": src.join("github-recovery-codes.txt").to_string_lossy() })).unwrap_err();
+        assert!(said.contains("passwords"), "{said}");
+        ws.run(COPY, &json!({ "path": src.to_string_lossy() })).unwrap();
+        assert!(ws.dir.join("src").join("notes.txt").exists());
+        assert!(!ws.dir.join("src").join("github-recovery-codes.txt").exists());
+        assert!(!ws.dir.join("src").join(".ssh").exists());
         let _ = std::fs::remove_dir_all(base);
     }
 

@@ -716,7 +716,7 @@ test("moving to another chat mid-answer leaves it answering; it lands in its own
 
 // ── What the answer is doing ──────────────────────────────────────────────────
 
-const { activityLabel, firstActivity } = await import("../src/views/chat.ts");
+const { activityLabel, firstActivity, timedLabel } = await import("../src/views/chat.ts");
 const label = () => $(".typing-label")?.textContent ?? null;
 
 test("while Claude Code works, the dots say what it does, and come back after some text", async () => {
@@ -808,10 +808,27 @@ test("each activity has its words, with a file name, a host or a tool", () => {
     [{ kind: "loading", detail: "42" }, "Loading the model: 42%"],
     [{ kind: "loading", detail: "<b>" }, "Loading the model…"],
     [{ kind: "prompt", detail: "" }, "Processing the prompt…"],
+    // What a local model is doing (lumo-local's Doing), in every provider's words.
+    [{ kind: "reasoning", detail: "" }, "Thinking…"],
+    [{ kind: "calling", detail: "workspace edit" }, "Using workspace edit"],
+    [{ kind: "calling", detail: "" }, "Thinking…"],
+    [{ kind: "retry", detail: "2/3" }, "Anthropic stopped the answer: trying again (2 of 3)…"],
+    [{ kind: "retry", detail: "" }, "Thinking…"],
+    [{ kind: "correcting", detail: "written" }, "It wrote the tool instead of using it: asking again…"],
+    [{ kind: "correcting", detail: "done" }, "It said it was done without doing it: asking again…"],
+    [{ kind: "correcting", detail: "stopped" }, "It stopped halfway: asking again…"],
     [{ kind: "something new", detail: "x" }, "Thinking…"],
     [null, "Thinking…"],
   ];
   for (const [activity, words] of cases) assert.equal(activityLabel(activity), words, JSON.stringify(activity));
+
+  // The seconds it has been at it, from 2 s on, the same for every provider; tools aren't timed.
+  const prompt = { kind: "prompt", detail: "" };
+  assert.equal(timedLabel("Processing the prompt…", "lmstudio", prompt, 0, 14_500), "Processing the prompt… 14 s");
+  assert.equal(timedLabel("Processing the prompt…", "lmstudio", prompt, 0, 1_500), "Processing the prompt…");
+  assert.equal(timedLabel("Thinking…", "anthropic", { kind: "thinking", detail: "" }, 0, 9_000), "Thinking… 9 s");
+  assert.equal(timedLabel("Thinking…", "claude-code", { kind: "thinking", detail: "" }, 0, 9_000), "Thinking… 9 s");
+  assert.equal(timedLabel("Using x", "ollama", { kind: "calling", detail: "x" }, 0, 9_000), "Using x");
 
   const file = { kind: "file", name: "a.pdf", path: "/inbox/a.pdf" };
   const shots = { windows: [], shots: [{ name: "Screen 1", path: "/inbox/s.png" }] };
