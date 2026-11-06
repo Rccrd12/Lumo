@@ -7767,6 +7767,18 @@
    "id": "Gulir ke atas",
    "it": "Scorri su"
   },
+  "Go to the bottom": {
+   "zh-Hans": "转到底部",
+   "hi": "नीचे जाएँ",
+   "es": "Ir al final",
+   "ar": "الانتقال إلى الأسفل",
+   "fr": "Aller en bas",
+   "bn": "নিচে যান",
+   "pt-BR": "Ir para o fim",
+   "ru": "Вниз",
+   "id": "Ke bawah",
+   "it": "Vai in fondo"
+  },
   "Scroll down": {
    "zh-Hans": "向下滚动",
    "hi": "नीचे स्क्रॉल करें",
