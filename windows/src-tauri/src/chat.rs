@@ -888,10 +888,6 @@ async fn send_to(
         Some(server) => crate::local_models::caps(server, &model).await,
         None => crate::local_models::Caps::default(),
     };
-    // /test with a local model: the model put through every scenario (testing only, self_test.rs).
-    if let (Some(server), true) = (&local, crate::self_test::is_command(&query)) {
-        return crate::self_test::run(app, chat, server, &model, &caps, &settings.chat_effort).await;
-    }
     // A local model sees unless its server says it doesn't (one that refuses is asked again without).
     let sees = local.is_some() && caps.vision != Some(false);
     let (query, images) = with_screen(provider, sees, screen.as_ref(), query)?;
