@@ -1132,7 +1132,7 @@ export class Island {
       ...waiting.filter((f) => !paths.includes(f.path)).map((f) => ({ name: f.name, path: f.path })),
     ];
 
-    UploadSeq.performDrop(State.uploadDuration);
+    UploadSeq.performDrop(State.uploadDuration, dropped.length > 1 ? USC.BAR_Y_MANY : USC.BAR_Y);
     this.uploadAt = performance.now();
     this.uploadTens = 0;
     this.uploadDone = false;
@@ -1868,7 +1868,8 @@ export class Island {
   private updateBotTargets() {
     const p = this.onlyLumo
       ? computerCompact("top").bot
-      : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value);
+      : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
+        State.uploadNames.length > 1);
     // Upright on a side, the closed island has Lumo at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;

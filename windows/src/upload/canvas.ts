@@ -319,7 +319,7 @@ export class UploadCanvas {
 
     const x0 = USC.BAR_X0;
     const x1 = USC.BAR_X1;
-    const by = USC.BAR_Y;
+    const by = f.barY;
     const barLen = (x1 - x0) * f.barReveal;
 
     // Room up to the percentage (or the check mark) at the bar's right end.
@@ -401,7 +401,7 @@ export class UploadCanvas {
     const reveal = Math.max(0, Math.min(1, f.barReveal));
     cells.forEach((cell, i) => {
       const cx = x0 + (i % 2) * (cellW + gap);
-      const ty = USC.BAR_Y + 16 + Math.floor(i / 2) * 16;
+      const ty = f.barY + 22 + Math.floor(i / 2) * 22;
       if (cell.kind === "more") {
         text(ctx, `+${cell.count}`, cx, ty + 3, `600 11px ${FONT}`, "#8E939B");
         return;

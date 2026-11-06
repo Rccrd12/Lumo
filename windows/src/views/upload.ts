@@ -85,6 +85,7 @@ export function buildUploading(): ViewHost {
       glow.style.left = `max(14px, ${along}%)`;
       glow.style.opacity = State.uploadProgress > 0.01 ? "1" : "0";
       card.classList.toggle("done", done);
+      card.classList.toggle("many", names.length > 1);
 
       const key = names.length > 1 ? names.join("\n") : "";
       if (key !== filesKey) {

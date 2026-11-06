@@ -4635,7 +4635,21 @@ img.zoomable {
   pointer-events: none;
 }
 
-/* Several files dropped together: a small bar each, two by two, "+X" for the rest. */
+/* Several files dropped together: the main bar sits higher (layout.ts UPLOAD_MANY_LIFT),
+   a small bar each under it, two by two, "+X" for the rest. */
+.up-card.many .up-row {
+  top: 18px;
+}
+
+.up-card.many .up-track {
+  top: 40px;
+}
+
+.up-card.many .up-files {
+  top: 62px;
+  row-gap: 8px;
+}
+
 .up-files {
   position: absolute;
   left: 26px;
