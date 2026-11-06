@@ -28,16 +28,16 @@ jobs:
         working-directory: windows
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
         with:
           node-version: 22
           cache: npm
           cache-dependency-path: windows/package-lock.json
 
       - name: Cache cargo
-        uses: actions/cache@v4
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
         with:
           path: |
             ~/.cargo/registry
@@ -85,7 +85,7 @@ jobs:
       # The repo is public, so artifacts are downloadable by any signed-in GitHub
       # user; the condition keeps them off automatic tag builds while downloads
       # are paused. retention-days: 3 limits exposure.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
           name: Lumo-Windows-setup
@@ -94,7 +94,7 @@ jobs:
 
       # MSI installer generated via WiX toolset. Bypasses NSIS extractor false-positives
       # and provides clean native Windows Installer deployment.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
           name: Lumo-Windows-msi
@@ -107,7 +107,7 @@ jobs:
       # the portable pair runs with working Claude Code hooks and no installer.
       # `tauri build` names the app's exe lumo.exe (mainBinaryName in
       # src-tauri/tauri.windows.conf.json), as cargo does.
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: github.event_name == 'workflow_dispatch' || env.PUBLISH == 'true'
         with:
           name: Lumo-Windows-portable

@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, copyFileSync, createR
 import { resolve, join, extname } from "node:path";
 
 // ───────────────────────────────────────────────────────────────────────────────
-// THE one and only place the sound folder is declared: the 29 WAVs in
+// THE one and only place the sound folder is declared: the 22 WAVs in
 // windows/assets/sounds/.
 export const SOUNDS_DIR = resolve(__dirname, "assets/sounds");
 // ───────────────────────────────────────────────────────────────────────────────

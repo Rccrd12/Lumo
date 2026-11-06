@@ -224,6 +224,21 @@ interface HookPayload {
   lumo_mail_send?: { from?: unknown; to?: unknown; cc?: unknown; subject?: unknown; body?: unknown; attachments?: unknown };
   /** A change the AI wants to make to one email (read, star, move, archive, trash), on a card of its own (mail.rs manage). */
   lumo_mail_action?: { actions?: unknown; folder?: unknown; from?: unknown; subject?: unknown; date?: unknown };
+  /** Gemini Live wants to read or open a file the user didn't give it (live.rs may_use). */
+  lumo_live_file?: { action?: unknown };
+}
+
+const LIVE_FILE = {
+  read: N_("Read a file you didn't give it"),
+  open: N_("Open a file you didn't give it"),
+};
+
+/** Gemini Live's card for a file: the file's full path and what it wants to do; null when it is no such card. */
+export function liveFileChange(raw: HookPayload["lumo_live_file"], input: Record<string, unknown>): { command: string; reason: string } | null {
+  if (!raw || typeof raw !== "object") return null;
+  const path = typeof input.path === "string" ? input.path : "";
+  if (!path) return null;
+  return { command: path, reason: t(raw.action === "open" ? LIVE_FILE.open : LIVE_FILE.read) };
 }
 
 /** What each change of mail.rs manage does, as its card says it. */
@@ -770,7 +785,8 @@ function handleHook(island: Island, payload: HookPayload) {
       // An email the AI wants to send: always its own card, always a click.
       const email = outgoingEmail(payload.lumo_mail_send);
       // A change to an email the AI wants to make: always a card too, never the closed island's.
-      const change = email ? null : mailChange(payload.lumo_mail_action);
+      const liveFile = email ? null : liveFileChange(payload.lumo_live_file, payload.tool_input ?? {});
+      const change = email ? null : mailChange(payload.lumo_mail_action) ?? liveFile;
       // The chat's Antigravity CLI run in Auto, agy's own Turbo preset: everything runs.
       const agyMode = chatAgy ? parsePermissionMode(State.settings.chatPermissionMode, "antigravity-cli") : "default";
       if (chatAgy && requestId && !email && !change && agyMode === "auto") {
@@ -823,7 +839,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(fromChat ? { fromChat } : {}),
         ...(payload.lumo_session_allow === true && !questions ? { sessionAllow: true } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
-        ...(!fromChat && !isExternalAgent ? { project: projectName } : {}),
+        ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how

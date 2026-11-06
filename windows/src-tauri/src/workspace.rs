@@ -9,6 +9,9 @@
 // differences seen first.
 //
 // %LOCALAPPDATA%\com.rccrd12.lumo\workspaces\<chat>; deleted with the chat.
+// What was copied from where (the manifest) is kept beside it, in
+// workspaces\<chat>.copies.json: outside the folder, where no tool reaches,
+// so a model can't change where "Write it over the original" writes.
 
 use std::path::{Component, Path, PathBuf};
 
@@ -37,8 +40,11 @@ const SKIP_DIRS: &[&str] = &[".git", "node_modules", "target", "__pycache__", ".
 const MAX_READ: usize = 20_000;
 const MAX_LIST: usize = 300;
 const MAX_HITS: usize = 60;
-/// What the folder keeps of its copies; never listed nor touched by the model.
+/// The name the manifest had inside the folder before it moved beside it:
+/// still never listed nor touched by the model.
 const MANIFEST: &str = ".lumo-copies.json";
+/// The manifest beside the folder: `<chat>` + this.
+const MANIFEST_SUFFIX: &str = ".copies.json";
 
 /// What the model is told the folder is for, in each tool's words.
 const ABOUT: &str = "Your own folder for this chat: you can't read or change the user's files, only copies of them here.";
@@ -179,7 +185,33 @@ pub fn call(chat: &str, id: &str, input: &Value) -> (String, bool, Vec<(&'static
 
 /// The chat's folder goes with the chat.
 pub fn delete(chat: &str) {
-    let _ = std::fs::remove_dir_all(dir(chat));
+    let d = dir(chat);
+    let _ = std::fs::remove_dir_all(&d);
+    let _ = std::fs::remove_file(manifest_of(&d));
+}
+
+/// Where the manifest of the folder `dir` is: beside it, never in it.
+fn manifest_of(dir: &Path) -> PathBuf {
+    let name = dir.file_name().map(|n| n.to_string_lossy().to_string()).unwrap_or_else(|| "chat".into());
+    dir.with_file_name(format!("{name}{MANIFEST_SUFFIX}"))
+}
+
+/// Windows reads some names as something else: a stream ("a.txt:x"), a
+/// device ("con", "nul.txt", "com1"), the same name without its trailing dots
+/// or spaces ("notes.txt."), a short 8.3 name ("NOTES~1.TXT"), characters a
+/// file name can't have.
+fn plain_name(s: &str) -> bool {
+    const DEVICES: [&str; 6] = ["con", "prn", "aux", "nul", "conin$", "conout$"];
+    let stem = s.split('.').next().unwrap_or("").trim_end().to_ascii_lowercase();
+    let numbered = |p: &str| stem.strip_prefix(p).is_some_and(|n| n.chars().count() == 1 && n.chars().all(|c| matches!(c, '0'..='9' | '¹' | '²' | '³')));
+    let short = s.char_indices().any(|(i, c)| c == '~' && s[i + 1..].starts_with(|d: char| d.is_ascii_digit()));
+    !s.is_empty()
+        && !s.ends_with(['.', ' '])
+        && !s.chars().any(|c| c.is_control() || matches!(c, ':' | '<' | '>' | '"' | '|' | '?' | '*'))
+        && !DEVICES.contains(&stem.as_str())
+        && !numbered("com")
+        && !numbered("lpt")
+        && !short
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -204,6 +236,7 @@ pub struct Change {
 
 struct Workspace {
     dir: PathBuf,
+    manifest: PathBuf,
 }
 
 /// Text a model copied from workspace_read with its line numbers on every
@@ -263,16 +296,16 @@ fn rel_string(rel: &Path) -> String {
 
 impl Workspace {
     fn new(dir: PathBuf) -> Self {
-        Workspace { dir }
+        Workspace { manifest: manifest_of(&dir), dir }
     }
 
     fn manifest(&self) -> Vec<Entry> {
-        std::fs::read_to_string(self.dir.join(MANIFEST)).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
+        std::fs::read_to_string(&self.manifest).ok().and_then(|t| serde_json::from_str(&t).ok()).unwrap_or_default()
     }
 
     fn save_manifest(&self, entries: &[Entry]) -> Result<(), String> {
         let text = serde_json::to_string_pretty(entries).map_err(|e| e.to_string())?;
-        std::fs::write(self.dir.join(MANIFEST), text).map_err(|e| e.to_string())
+        std::fs::write(&self.manifest, text).map_err(|e| e.to_string())
     }
 
     /// `path`, as a model names it, inside the folder: relative, or the
@@ -298,8 +331,7 @@ impl Workspace {
             match c {
                 Component::Normal(part) => {
                     let s = part.to_string_lossy();
-                    // Windows reads "a.txt:stream" and "con" as something else.
-                    if s.contains(':') || s.eq_ignore_ascii_case(MANIFEST) {
+                    if !plain_name(&s) || s.eq_ignore_ascii_case(MANIFEST) {
                         return Err(format!("{path}: not a name in your folder."));
                     }
                     clean.push(part);
@@ -341,6 +373,11 @@ impl Workspace {
     fn copy_in(&self, source: &str) -> Result<Done, String> {
         let source = source.trim().trim_matches('"');
         let from = Path::new(source);
+        // A network path (\\server\share, \\?\UNC\…, \\.\device) is not
+        // even looked at: opening it hands the server the user's Windows login.
+        if source.chars().take(2).filter(|c| matches!(c, '\\' | '/')).count() == 2 {
+            return Err(format!("{source}: only files on this computer can be copied, not network paths."));
+        }
         if !from.is_absolute() {
             return Err(format!("{source}: give the full path of the file or folder on the computer."));
         }
@@ -874,7 +911,8 @@ mod tests {
         let ws = Workspace::new(base.join("ws"));
         std::fs::create_dir_all(&ws.dir).unwrap();
         std::fs::write(base.join("secret.txt"), "no").unwrap();
-        for bad in ["../secret.txt", "a/../../secret.txt", "C:\\Windows\\win.ini", "/etc/passwd", "notes.txt:hidden", MANIFEST] {
+        let names = ["notes.txt.", "a/notes.txt /b", "con", "NUL.txt", "com1", "Lpt9.log", "conout$", "LUMO-C~1.JSO", "a<b", "what?"];
+        for bad in ["../secret.txt", "a/../../secret.txt", "C:\\Windows\\win.ini", "/etc/passwd", "notes.txt:hidden", MANIFEST].into_iter().chain(names) {
             assert!(ws.inside(bad).is_err(), "{bad}");
             assert!(ws.run(READ, &json!({ "path": bad })).is_err(), "{bad}");
             assert!(ws.run(WRITE, &json!({ "path": bad, "content": "x" })).is_err(), "{bad}");
@@ -890,6 +928,50 @@ mod tests {
         let missing = base.join("Riccardo").join("file.txt").to_string_lossy().to_string();
         let said = ws.run(COPY, &json!({ "path": missing })).unwrap_err();
         assert!(said.contains("doesn't exist") && said.contains("secret.txt") && said.contains("ws"), "{said}");
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn windows_names_that_mean_something_else_are_refused() {
+        for ok in ["notes.txt", "report v2.md", ".gitignore", "console.log", "com10.txt", "a~b.txt", "lpt.txt"] {
+            assert!(plain_name(ok), "{ok}");
+        }
+        for bad in ["notes.txt.", "notes.txt ", "..", "con", "CON.txt", "nul", "con.d", "aux.json", "prn", "com1", "COM9.txt", "lpt1", "com\u{b9}", "conin$", "NOTES~1.TXT", "a:b", "a|b", "a*b", "a\u{1}b", ""] {
+            assert!(!plain_name(bad), "{bad}");
+        }
+    }
+
+    #[test]
+    fn the_manifest_is_out_of_the_models_reach() {
+        let base = temp("manifest");
+        let computer = base.join("notes.txt");
+        std::fs::write(&computer, "uno\n").unwrap();
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        ws.run(COPY, &json!({ "path": computer.to_string_lossy() })).unwrap();
+        // Beside the folder, never in it.
+        assert_eq!(ws.manifest, base.join("ws.copies.json"));
+        assert!(ws.manifest.is_file());
+        assert!(!ws.dir.join(MANIFEST).exists());
+        // What the model writes can't stand for it: not under the old name,
+        // with a dot or a space after it, nor under its short name.
+        let forged = json!([{ "copy": "notes.txt", "original": base.join("elsewhere.txt").to_string_lossy(), "hash": 0 }]).to_string();
+        for name in [MANIFEST.to_string(), format!("{MANIFEST}."), format!("{MANIFEST} "), "LUMO-C~1.JSO".to_string()] {
+            assert!(ws.run(WRITE, &json!({ "path": name, "content": forged })).is_err(), "{name}");
+        }
+        assert_eq!(ws.entry_of(&ws.dir.join("notes.txt")).unwrap().0.original, computer.to_string_lossy());
+        let _ = std::fs::remove_dir_all(base);
+    }
+
+    #[test]
+    fn a_network_path_is_never_opened() {
+        let base = temp("unc");
+        let ws = Workspace::new(base.join("ws"));
+        std::fs::create_dir_all(&ws.dir).unwrap();
+        for unc in [r"\\attacker.example\share\x.txt", "//attacker.example/share/x.txt", r"\\?\UNC\host\s\x", r"\\.\pipe\x"] {
+            let said = ws.run(COPY, &json!({ "path": unc })).unwrap_err();
+            assert!(said.contains("network"), "{unc}: {said}");
+        }
         let _ = std::fs::remove_dir_all(base);
     }
 

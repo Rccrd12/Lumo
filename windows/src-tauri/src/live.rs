@@ -236,6 +236,8 @@ pub fn is_runnable(path: &Path) -> bool {
         "msix", "appx", "scr", "hta", "cpl", "jar", "lnk", "url", "reg", "pif", "application", "gadget", "inf",
         "sh", "bash", "zsh", "fish", "run", "bin", "py", "pyw", "pl", "rb",
         "scpt", "app", "command",
+        "chm", "msc", "appref-ms", "settingcontent-ms", "xll", "wsc", "sct", "diagcab", "appinstaller", "rdp",
+        "iso", "img", "vhd", "vhdx", "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam", "dll",
     ];
     RUNNABLE.contains(&extension(path).as_str())
 }
@@ -778,6 +780,97 @@ pub fn install(app: &AppHandle) {
     imp::install(app);
 }
 
+// ── What the voice may touch without a click ─────────────────────────────────
+
+/// Folders and files no voice request reads, lists or opens, card or not:
+/// keys, credentials, browser profiles.
+pub fn is_sensitive(path: &Path) -> bool {
+    const DIRS: &[&str] = &[".ssh", ".aws", ".azure", ".gnupg", ".claude", ".kube", ".docker", ".password-store"];
+    const NAMES: &[&str] = &["credentials", "credentials.json", ".netrc", "_netrc", ".git-credentials", "id_rsa", "id_ed25519", "id_ecdsa"];
+    const ENDINGS: &[&str] = &[".pem", ".key", ".pfx", ".p12", ".kdbx", ".ppk", ".gpg", ".asc"];
+    const PLACES: &[&str] = &[
+        "\\appdata\\roaming\\microsoft\\credentials",
+        "\\appdata\\local\\microsoft\\credentials",
+        "\\appdata\\roaming\\microsoft\\protect",
+        "\\appdata\\local\\google\\chrome\\user data",
+        "\\appdata\\local\\microsoft\\edge\\user data",
+        "\\appdata\\local\\bravesoftware\\brave-browser\\user data",
+        "\\appdata\\roaming\\mozilla\\firefox\\profiles",
+        "\\appdata\\roaming\\opera software",
+    ];
+    let whole = path.to_string_lossy().replace('/', "\\").to_lowercase();
+    let parts: Vec<&str> = whole.split('\\').filter(|p| !p.is_empty()).collect();
+    let name = parts.last().copied().unwrap_or_default();
+    parts.iter().any(|p| DIRS.contains(p))
+        || NAMES.contains(&name)
+        || ENDINGS.iter().any(|e| name.ends_with(e))
+        || name == ".env"
+        || name.starts_with(".env.")
+        || PLACES.iter().any(|p| whole.contains(p))
+}
+
+/// The files the user said yes to in this run of Lumo, so a second look at
+/// the same one doesn't ask again.
+static SAID_YES: Mutex<Vec<PathBuf>> = Mutex::new(Vec::new());
+
+fn under(path: &Path, dir: &Path) -> bool {
+    let norm = |p: &Path| p.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    let (p, d) = (norm(path), norm(dir));
+    !d.is_empty() && (p == d || p.starts_with(&format!("{d}\\")))
+}
+
+/// Given to the call already: dropped on the island, in a folder open in File
+/// Explorer, or said yes to before.
+fn given(path: &Path) -> bool {
+    if under(path, &crate::files::inbox_dir()) {
+        return true;
+    }
+    if SAID_YES.lock().unwrap_or_else(|e| e.into_inner()).iter().any(|p| p == path) {
+        return true;
+    }
+    explorer::open_folders().iter().any(|dir| path.parent().is_some_and(|parent| under(parent, dir)))
+}
+
+/// What the voice wants to do with a file.
+#[derive(Clone, Copy, PartialEq, Debug)]
+pub enum Use {
+    Read,
+    Open,
+}
+
+/// The user's go-ahead for `path`: none for a file already given, never for
+/// a sensitive one, else Lumo's own Allow / Deny card on the island.
+pub async fn may_use(app: &AppHandle, path: &Path, what: Use) -> Result<(), String> {
+    let real = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let real = PathBuf::from(real.to_string_lossy().trim_start_matches("\\\\?\\"));
+    if is_sensitive(path) || is_sensitive(&real) {
+        return Err(t("That file holds keys or passwords: Lumo never reads or opens it for the voice."));
+    }
+    if real.is_dir() {
+        return Ok(());
+    }
+    let check = real.clone();
+    if tauri::async_runtime::spawn_blocking(move || given(&check)).await.unwrap_or(false) {
+        return Ok(());
+    }
+    let shown = real.to_string_lossy().to_string();
+    let payload = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": if what == Use::Read { "mcp__lumo__live_read" } else { "mcp__lumo__live_open" },
+        "tool_input": { "path": shown },
+        "lumo_live_file": { "action": if what == Use::Read { "read" } else { "open" } },
+    });
+    match crate::pipe::ask(app, payload).await.as_deref() {
+        Some("allow") => {
+            SAID_YES.lock().unwrap_or_else(|e| e.into_inner()).push(real);
+            Ok(())
+        }
+        Some(_) => Err(t("The user said no: leave this file alone unless they ask again.")),
+        None => Err(t("Lumo couldn't ask the user about this file (the island is busy): try again in a moment.")),
+    }
+}
+
 // ── Commands ──────────────────────────────────────────────────────────────────
 
 /// A token for one conversation: the island's page connects with it.
@@ -787,7 +880,9 @@ pub async fn live_token() -> Result<Token, String> {
 }
 
 #[tauri::command]
-pub async fn live_read(path: String) -> Result<Reading, String> {
+pub async fn live_read(app: AppHandle, path: String) -> Result<Reading, String> {
+    let full = full_path(&path).ok_or_else(|| missing(&path))?;
+    may_use(&app, &full, Use::Read).await?;
     tauri::async_runtime::spawn_blocking(move || read(&path)).await.map_err(|e| e.to_string())?
 }
 
@@ -799,13 +894,19 @@ pub async fn live_find(query: String, within: Option<String>) -> Result<Vec<Foun
 }
 
 #[tauri::command]
-pub async fn live_document(path: String, question: String) -> Result<String, String> {
+pub async fn live_document(app: AppHandle, path: String, question: String) -> Result<String, String> {
+    let full = full_path(&path).ok_or_else(|| missing(&path))?;
+    may_use(&app, &full, Use::Read).await?;
     document(&path, &question).await
 }
 
 #[tauri::command]
-pub fn live_open(target: String) -> Result<String, String> {
-    open(&target)
+pub async fn live_open(app: AppHandle, target: String) -> Result<String, String> {
+    // A web page opens as it did; a file or a folder of the computer is checked first.
+    if let Some(full) = full_path(&target).filter(|p| p.exists()) {
+        may_use(&app, &full, Use::Open).await?;
+    }
+    tauri::async_runtime::spawn_blocking(move || open(&target)).await.map_err(|e| e.to_string())?
 }
 
 #[tauri::command]
@@ -999,8 +1100,21 @@ mod tests {
     }
 
     #[test]
+    fn keys_and_passwords_are_never_the_voices() {
+        for p in [r"C:\Users\me\.ssh\id_ed25519", r"C:\Users\me\.aws\config", r"C:\Users\me\proj\.env", r"C:\Users\me\proj\.env.local",
+            r"C:\Users\me\certs\server.KEY", r"C:\Users\me\AppData\Local\Google\Chrome\User Data\Default\Login Data", r"C:\Users\me\.claude\.credentials.json"] {
+            assert!(is_sensitive(Path::new(p)), "{p}");
+        }
+        for p in [r"C:\Users\me\Documents\contratto.pdf", r"C:\Users\me\proj\environment.md", r"C:\Users\me\keys.txt"] {
+            assert!(!is_sensitive(Path::new(p)), "{p}");
+        }
+        assert!(under(Path::new(r"C:\Users\Me\Downloads\a.pdf"), Path::new(r"c:\users\me\downloads\")));
+        assert!(!under(Path::new(r"C:\Users\me\Downloads2\a.pdf"), Path::new(r"C:\Users\me\Downloads")));
+    }
+
+    #[test]
     fn programs_and_scripts_are_never_opened_by_their_type() {
-        for name in ["setup.exe", "run.BAT", "x.ps1", "link.lnk", "page.url", "a.vbs", "s.sh"] {
+        for name in ["setup.exe", "run.BAT", "x.ps1", "link.lnk", "page.url", "a.vbs", "s.sh", "guide.chm", "conti.XLSM", "disk.iso", "fix.diagcab"] {
             assert!(is_runnable(Path::new(name)), "{name}");
         }
         for name in ["report.pdf", "photo.JPG", "notes.txt", "sheet.xlsx", "deck.pptx", "song.mp3"] {

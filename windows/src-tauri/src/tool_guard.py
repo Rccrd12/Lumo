@@ -74,16 +74,26 @@ def _install():
     }
     reads = {"os.listdir", "os.scandir", "glob.glob", "glob.glob/2"}
     write_flags = os.O_WRONLY | os.O_RDWR | os.O_APPEND | os.O_CREAT | os.O_TRUNC
+    # What these take from their first path is read: a copy or a move of a
+    # file outside the tool's folders into its work folder reads that file.
+    takes_from = {"os.rename", "shutil.move", "shutil.copyfile", "shutil.copytree", "os.link", "os.symlink"}
 
     def hook(event, args):
         if event == "open":
             path, mode, flags = (tuple(args) + (None, None, None))[:3]
             if not isinstance(path, (str, bytes, os.PathLike)):
                 return
-            writing = any(c in mode for c in "wax+") if isinstance(mode, str) else bool((flags or 0) & write_flags)
+            if isinstance(mode, str):
+                writing = any(c in mode for c in "wax+")
+                reading = "r" in mode or "+" in mode
+            else:
+                f = flags or 0
+                writing = bool(f & write_flags)
+                reading = not (f & os.O_WRONLY)
+            # "r+" and O_RDWR read as well as write: both are checked.
             if writing:
                 may_write(path)
-            else:
+            if reading or not writing:
                 may_read(path)
         elif event in network:
             if "network" not in allow:
@@ -92,6 +102,8 @@ def _install():
             if "system" not in allow:
                 refuse("to run programs or change system settings")
         elif event in writes:
+            if event in takes_from and args and isinstance(args[0], (str, bytes, os.PathLike)):
+                may_read(args[0])
             for path in args:
                 if isinstance(path, (str, bytes, os.PathLike)):
                     may_write(path)

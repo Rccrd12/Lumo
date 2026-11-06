@@ -28,9 +28,18 @@ pub enum Event {
 /// Whether an event line says the answer is over (`finish_reason` set): only
 /// the usage chunk and `[DONE]` may follow.
 pub fn finish_reason(line: &str) -> bool {
-    let Some(payload) = line.strip_prefix("data:").map(str::trim_start) else { return false };
-    payload.contains("finish_reason")
-        && serde_json::from_str::<Value>(payload).ok().is_some_and(|j| j.pointer("/choices/0/finish_reason").is_some_and(Value::is_string))
+    finish_reason_of(line).is_some()
+}
+
+/// The reason an event line says the answer ended ("stop", "length"…), read
+/// from its own field: the same word in the text or a tool's arguments is not it.
+pub fn finish_reason_of(line: &str) -> Option<String> {
+    let payload = line.strip_prefix("data:").map(str::trim_start)?;
+    if !payload.contains("finish_reason") {
+        return None;
+    }
+    let json = serde_json::from_str::<Value>(payload).ok()?;
+    json.pointer("/choices/0/finish_reason").and_then(Value::as_str).map(str::to_string)
 }
 
 /// One server-sent event line, or None for anything else (other lines, a
@@ -142,6 +151,10 @@ mod tests {
         assert_eq!(parse_sse_line(line), text("lo"));
         assert_eq!(parse_sse_line("data: [DONE]"), Some(Event::Done));
         assert!(finish_reason(r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#));
+        // The reason is its own field's, not a word of the text.
+        assert_eq!(finish_reason_of(r#"data: {"choices":[{"delta":{"content":"length"},"finish_reason":"stop"}]}"#).as_deref(), Some("stop"));
+        assert_eq!(finish_reason_of(r#"data: {"choices":[{"delta":{},"finish_reason":"length"}]}"#).as_deref(), Some("length"));
+
         assert!(!finish_reason(r#"data: {"choices":[{"delta":{"content":"x"},"finish_reason":null}]}"#));
         assert_eq!(parse_sse_line(""), None);
         assert_eq!(parse_sse_line(": keep-alive"), None);

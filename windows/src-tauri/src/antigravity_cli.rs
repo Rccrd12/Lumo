@@ -704,6 +704,16 @@ fn run(
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     total += n;
+                    // A line past MAX_LINE: the rest of it is dropped up to its end,
+                    // so its tail is not read as the next line.
+                    if n > MAX_LINE && !line.ends_with(b"\n") {
+                        let rest = reader.skip_until(b'\n').unwrap_or(0);
+                        total = total.saturating_add(rest);
+                        if total > MAX_TOTAL {
+                            break;
+                        }
+                        continue;
+                    }
                     if total > MAX_TOTAL || tx.send(line).is_err() {
                         break;
                     }
