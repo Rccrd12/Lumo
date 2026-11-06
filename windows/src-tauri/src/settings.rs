@@ -642,6 +642,7 @@ mod tests {
   "chatShareTabs": true,
   "chatComputerUse": true,
   "chatWebSearch": true,
+  "chatAutoCompact": false,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "liveModel": "gemini-3.8-live-extended-thinking",
