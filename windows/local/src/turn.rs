@@ -88,6 +88,10 @@ pub struct Rules<'a> {
     pub max_rounds: usize,
     /// How long to wait before asking again a server whose engine failed.
     pub pause: Duration,
+    /// The question as it goes to a model that doesn't see: what replaces it
+    /// when the server refuses its pictures (a PDF's text where its pages
+    /// went). None: the pictures are only taken out.
+    pub text_only: Option<Value>,
 }
 
 /// How the turn ended.
@@ -215,6 +219,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         let answer = match answer {
             // A model that doesn't see refuses the pictures: once more with the text alone.
             Err(Failure::Status(400 | 422, _)) if without_images(body) => {
+                if let (Some(text), Some(last)) = (&rules.text_only, body["messages"].as_array_mut().and_then(|m| m.last_mut())) {
+                    *last = text.clone();
+                }
                 fixes.push("without pictures");
                 continue;
             }

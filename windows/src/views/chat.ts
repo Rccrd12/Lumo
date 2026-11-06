@@ -462,10 +462,9 @@ const ACTIVITY_STRINGS = {
   loading: N_("Loading the model…"),
   loadingAt: N_("Loading the model: {percent}%"),
   prompt: N_("Processing the prompt…"),
-  // A local model at work (lumo-local's Doing): reasoning, writing a call,
-  // asked again after its server dropped the request, sent back once.
-  reasoning: N_("Reasoning…"),
-  calling: N_("Preparing {tool}…"),
+  // A local model asked again after its server dropped the request, or sent
+  // back once (lumo-local's Doing). Its reasoning and the calls it writes say
+  // Thinking… and Using {tool}, as every provider's do.
   retry: N_("{name} stopped the answer: trying again ({attempt} of {of})…"),
   correctWritten: N_("It wrote the tool instead of using it: asking again…"),
   correctDone: N_("It said it was done without doing it: asking again…"),
@@ -480,7 +479,7 @@ const ISLAND_ACTIVITY_STRINGS = {
   correcting: N_("Asks again"),
 };
 
-/** What is timed next to the dots: the seconds a local model has been at it. */
+/** What is timed next to the dots: the seconds it has been at it. */
 const TIMED = new Set(["prompt", "reasoning", "thinking", "retry"]);
 
 const THINKING: ChatActivity = { kind: "thinking", detail: "" };
@@ -582,10 +581,8 @@ export function activityLabel(activity: ChatActivity | null): string {
       return /^\d{1,3}$/.test(detail) ? t(ACTIVITY_STRINGS.loadingAt, { percent: detail }) : t(ACTIVITY_STRINGS.loading);
     case "prompt":
       return t(ACTIVITY_STRINGS.prompt);
-    case "reasoning":
-      return t(ACTIVITY_STRINGS.reasoning);
     case "calling":
-      return detail ? t(ACTIVITY_STRINGS.calling, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
+      return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
     case "retry": {
       const [attempt, of] = detail.split("/");
       const name = t(providerDef(State.settings.chatProvider).name);
@@ -599,12 +596,12 @@ export function activityLabel(activity: ChatActivity | null): string {
 }
 
 /**
- * The label with the seconds it has lasted, for what a local model (`provider`)
- * is timed doing, from 2 s on. Other providers' labels stay as they are.
+ * The label with the seconds it has lasted, for what is timed (thinking,
+ * reading the prompt, trying again), from 2 s on, the same for every provider.
  */
-export function timedLabel(label: string, provider: string, activity: ChatActivity | null, since: number, now = Date.now()): string {
+export function timedLabel(label: string, _provider: string, activity: ChatActivity | null, since: number, now = Date.now()): string {
   const seconds = Math.floor((now - since) / 1000);
-  if (!providerDef(provider).urlField || !activity || !TIMED.has(activity.kind) || seconds < 2) return label;
+  if (!activity || !TIMED.has(activity.kind) || seconds < 2) return label;
   return `${label} ${t(ACTIVITY_STRINGS.seconds, { seconds })}`;
 }
 
@@ -621,13 +618,12 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "subtask":
       return t(ISLAND_ACTIVITY_STRINGS.subtask);
     case "tool":
+    case "calling":
       return activity.detail.trim() ? t(ISLAND_ACTIVITY_STRINGS.tool) : t(COMPACT_TEXT.thinking);
     case "retry":
       return t(ISLAND_ACTIVITY_STRINGS.retry);
     case "correcting":
       return t(ISLAND_ACTIVITY_STRINGS.correcting);
-    case "reasoning":
-    case "calling":
     case "read":
     case "edit":
     case "web":
@@ -3095,7 +3091,8 @@ export function buildPrompt(
    * back under it.
    */
   function showActivity(run: Run, next: ChatActivity, again = false) {
-    if (next.kind !== run.activity.kind || next.detail !== run.activity.detail) run.since = Date.now();
+    // The seconds start again only when the words do (reasoning is Thinking… too).
+    if (activityLabel(next) !== activityLabel(run.activity)) run.since = Date.now();
     run.activity = next;
     if (again && run.text) run.dots = true;
     drawIslandActivity();
@@ -3119,7 +3116,7 @@ export function buildPrompt(
    */
   let secondsTimer: ReturnType<typeof setInterval> | null = null;
   function tickSeconds() {
-    const timed = () => [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind) && Boolean(providerDef(r.provider).urlField));
+    const timed = () => [...runs.values()].some((r) => (!r.text || r.dots) && TIMED.has(r.activity.kind));
     if (secondsTimer != null || !timed()) return;
     secondsTimer = setInterval(() => {
       if (!timed()) {
@@ -3132,6 +3129,8 @@ export function buildPrompt(
       const label = log.querySelector(".typing-label");
       if (run && label && (!run.text || run.dots)) label.textContent = runLabel(run);
     }, 1000);
+    // Under Node (the tests), an answer left going doesn't keep the process alive.
+    (secondsTimer as { unref?: () => void }).unref?.();
   }
 
   // A file the answer read, edited or created: the chat's files list it.

@@ -14833,30 +14833,6 @@
    "id": "Dalam antrean",
    "it": "In coda"
   },
-  "Reasoning…": {
-   "zh-Hans": "推理中…",
-   "hi": "तर्क कर रहा है…",
-   "es": "Razonando…",
-   "ar": "يستدل…",
-   "fr": "Raisonne…",
-   "bn": "যুক্তি দিচ্ছে…",
-   "pt-BR": "Raciocinando…",
-   "ru": "Рассуждает…",
-   "id": "Bernalar…",
-   "it": "Ragiona…"
-  },
-  "Preparing {tool}…": {
-   "zh-Hans": "正在准备 {tool}…",
-   "hi": "{tool} तैयार कर रहा है…",
-   "es": "Preparando {tool}…",
-   "ar": "يُحضّر {tool}…",
-   "fr": "Prépare {tool}…",
-   "bn": "{tool} প্রস্তুত করছে…",
-   "pt-BR": "Preparando {tool}…",
-   "ru": "Готовит {tool}…",
-   "id": "Menyiapkan {tool}…",
-   "it": "Prepara {tool}…"
-  },
   "{name} stopped the answer: trying again ({attempt} of {of})…": {
    "zh-Hans": "{name} 中断了回答：正在重试（第 {attempt} 次，共 {of} 次）…",
    "hi": "{name} ने उत्तर रोक दिया: फिर से कोशिश ({attempt}/{of})…",
@@ -15000,6 +14976,30 @@
    "ru": "Больше 80 %, до отправки вопроса: модель продолжит со сводки чата.",
    "id": "Di atas 80 %, sebelum pertanyaan dikirim: model mulai lagi dari ringkasan obrolan.",
    "it": "Oltre l'80%, prima di mandare la domanda: il modello riparte da un riassunto della chat."
+  },
+  "The context is full and the model had no room left to answer: compact the chat from the context ring, then ask again.": {
+   "zh-Hans": "上下文已满，模型没有空间回答：请从上下文圆环压缩聊天，然后再问一次。",
+   "hi": "संदर्भ भर गया है और मॉडल के पास जवाब देने की जगह नहीं बची: संदर्भ रिंग से चैट को संक्षिप्त करें, फिर दोबारा पूछें।",
+   "es": "El contexto está lleno y el modelo no tuvo espacio para responder: compacta el chat desde el anillo de contexto y vuelve a preguntar.",
+   "ar": "السياق ممتلئ ولم يبقَ للنموذج مكان للإجابة: اضغط المحادثة من حلقة السياق، ثم اسأل مجددًا.",
+   "fr": "Le contexte est plein et le modèle n'avait plus de place pour répondre : compactez la discussion depuis l'anneau du contexte, puis redemandez.",
+   "bn": "কনটেক্সট পূর্ণ, মডেলের উত্তর দেওয়ার জায়গা নেই: কনটেক্সট রিং থেকে চ্যাট সংক্ষিপ্ত করুন, তারপর আবার জিজ্ঞেস করুন।",
+   "pt-BR": "O contexto está cheio e o modelo ficou sem espaço para responder: compacte o chat pelo anel de contexto e pergunte de novo.",
+   "ru": "Контекст заполнен, и модели не хватило места для ответа: сожмите чат через кольцо контекста и спросите снова.",
+   "id": "Konteks penuh dan model tidak punya ruang untuk menjawab: ringkas obrolan dari cincin konteks, lalu tanyakan lagi.",
+   "it": "Il contesto è pieno e al modello non è rimasto spazio per rispondere: compatta la chat dall'anello del contesto, poi richiedi."
+  },
+  "The model used all its room reasoning and wrote no answer: ask again, or turn reasoning down.": {
+   "zh-Hans": "模型把空间都用在推理上，没有写出回答：请再问一次，或调低推理。",
+   "hi": "मॉडल ने सारी जगह सोचने में लगा दी और कोई जवाब नहीं लिखा: फिर से पूछें, या रीज़निंग कम करें।",
+   "es": "El modelo gastó todo su espacio razonando y no escribió respuesta: vuelve a preguntar o baja el razonamiento.",
+   "ar": "استهلك النموذج كل مساحته في التفكير ولم يكتب إجابة: اسأل مجددًا، أو خفّض التفكير.",
+   "fr": "Le modèle a utilisé toute sa place à raisonner sans écrire de réponse : redemandez, ou baissez le raisonnement.",
+   "bn": "মডেল সব জায়গা চিন্তায় খরচ করেছে, কোনো উত্তর লেখেনি: আবার জিজ্ঞেস করুন, বা রিজনিং কমান।",
+   "pt-BR": "O modelo gastou todo o espaço raciocinando e não escreveu resposta: pergunte de novo ou diminua o raciocínio.",
+   "ru": "Модель потратила всё место на рассуждения и не написала ответ: спросите снова или уменьшите рассуждение.",
+   "id": "Model menghabiskan semua ruangnya untuk bernalar dan tidak menulis jawaban: tanyakan lagi, atau turunkan penalaran.",
+   "it": "Il modello ha usato tutto lo spazio per ragionare e non ha scritto una risposta: richiedi, o abbassa il reasoning."
   }
  }
 }

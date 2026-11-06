@@ -485,10 +485,10 @@ Studio** as a server of its own, with its key. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
-Next to the dots the chat says what the model is doing, with the seconds:
-reading the prompt, reasoning, preparing a tool, trying again after its server
-dropped the request, or sent back once when it said something was done that
-wasn't. Over 80 % of its context, the chat compacts itself before the next
+Next to the dots the chat says what the model is doing, in the same words as
+every provider (Thinking… with its seconds, Using a tool), plus reading the
+prompt, trying again after its server dropped the request, or sent back once
+when it said something was done that wasn't. Over 80 % of its context, the chat compacts itself before the next
 question (**Compact by itself when the context is full**, on by default).
 A picture goes to a model that sees it, a short PDF as pictures of its pages
 and a longer one as its text. Settings tells you whether the address is this

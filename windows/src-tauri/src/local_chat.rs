@@ -611,10 +611,14 @@ pub async fn send(
         let taken = (taken_chars / 3) as u64 + u64::from(MAX_TOKENS);
         let pages = crate::openai_compat::pages_that_fit(context_size, taken);
         user = user_message_in(caps.vision != Some(false), pages, turn.first, context.as_ref(), &query, shared);
+        // The same for a model that doesn't see: what goes if the server refuses the pictures.
+        let mut text_only = user_message_in(false, 0, turn.first, context.as_ref(), &query, shared);
         // A dropped file, to work on: where it is, to copy it.
         if workspace {
             if let Some(ChatContext::File { path, .. }) = chat::turn_context(turn.first, context.as_ref()) {
-                append_text(&mut user, &format!("(This file is at {path}: copy it with {} to work on it.)", crate::workspace::COPY));
+                let note = format!("(This file is at {path}: copy it with {} to work on it.)", crate::workspace::COPY);
+                append_text(&mut user, &note);
+                append_text(&mut text_only, &note);
             }
         }
         body = request_body(model, &system, &turn.history, &user);
@@ -642,6 +646,7 @@ pub async fn send(
             changes: &[crate::workspace::WRITE, crate::workspace::EDIT, crate::workspace::DELETE],
             max_rounds: MAX_TOOL_ROUNDS,
             pause: Duration::from_secs(1),
+            text_only: (text_only != user).then_some(text_only),
         };
         let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
@@ -679,7 +684,16 @@ pub async fn send(
     // stopped at the length limit says so under it.
     let mut answer = outcome.answer();
     if outcome.end == End::Cut {
-        answer = format!("{answer}\n\n_{}_", t("The answer was cut off at the length limit: ask to continue.")).trim_start().to_string();
+        // Cut before a word of it: the context was full, or its reasoning took all the room.
+        let full = usage.as_ref().and_then(|u| u.context.as_ref()).is_some_and(|c| c.total > 0 && c.used * 10 >= c.total * 9);
+        let why = if !answer.trim().is_empty() {
+            t("The answer was cut off at the length limit: ask to continue.")
+        } else if full {
+            t("The context is full and the model had no room left to answer: compact the chat from the context ring, then ask again.")
+        } else {
+            t("The model used all its room reasoning and wrote no answer: ask again, or turn reasoning down.")
+        };
+        answer = format!("{answer}\n\n_{why}_").trim_start().to_string();
     }
     if answer.is_empty() {
         return Err(t("No response text."));

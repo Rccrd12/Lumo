@@ -12,7 +12,7 @@ use serde_json::{json, Value};
 const CHANGES: &[&str] = &["workspace_write", "workspace_edit", "workspace_delete"];
 
 fn rules<'a>(key: &str, query: &'a str) -> Rules<'a> {
-    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO }
+    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO, text_only: None }
 }
 
 /// Runs a turn of `body` on a server with `replies`.
@@ -320,6 +320,20 @@ fn pictures_a_model_refuses_are_taken_out_and_the_question_asked_again() {
     assert_eq!(requests[1]["messages"][1]["content"], "Cos'è?");
     // The user message stays where it was, without its pictures, for the conversation.
     assert_eq!(body["messages"][1]["content"], "Cos'è?");
+}
+
+#[test]
+fn a_pdf_s_pages_a_model_refuses_go_again_as_its_text() {
+    let mut island = Island::default();
+    let user = json!({ "role": "user", "content": [{ "type": "image_url", "image_url": { "url": "data:image/png;base64,AA" } }, { "type": "text", "text": "Cosa c'è?" }] });
+    let text = json!({ "role": "user", "content": "File: a.pdf\nFile contents:\ne^x = 1 + x\n\nCosa c'è?" });
+    let mut body = request(user, &[]);
+    let replies = vec![Reply::Json(400, json!({ "error": "image input is not supported" }).to_string()), answer("Una formula.")];
+    let r = Rules { text_only: Some(text.clone()), ..rules("pdf-pages", "") };
+    let (outcome, requests) = turn(replies, &mut body, &r, &mut island);
+    assert_eq!(outcome.unwrap().fixes, ["without pictures"]);
+    assert_eq!(requests[1]["messages"][1], text);
+    assert_eq!(body["messages"][1], text);
 }
 
 #[test]
