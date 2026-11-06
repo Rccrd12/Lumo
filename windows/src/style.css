@@ -5479,10 +5479,21 @@ img.zoomable {
   border-radius: 50%;
 }
 
+/* Head, limits, Refresh: the limits give way and scroll when the island is
+   too short for them, so the head and Refresh always show. */
 .plan-card {
   position: relative;
   z-index: 1;
-  padding-top: 12px;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  box-sizing: border-box;
+  padding: 12px 0;
+}
+
+.plan-card > .plan-head,
+.plan-card > .plan-foot {
+  flex: 0 0 auto;
 }
 
 .plan-head {
@@ -5516,6 +5527,21 @@ img.zoomable {
   flex-direction: column;
   gap: 12px;
   padding: 12px 16px 0 108px;
+}
+
+.plan-card > .plan-rows {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding-right: 10px;
+  margin-right: 6px;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.16) transparent;
+}
+
+.plan-card > .plan-rows.more {
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent);
 }
 
 .plan-row {
@@ -7656,4 +7682,44 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
 
 .usage-compact svg {
   opacity: 0.8;
+}
+
+/* ── Back to the end of the chat (views/chat.ts) ─────────────────────────── */
+
+/* Over the bottom of the log, when it is scrolled a little way up from its end. */
+.chat-to-end {
+  position: absolute;
+  z-index: 4;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 50%;
+  background: rgba(36, 37, 42, 0.92);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.4);
+  cursor: default;
+  animation: chat-to-end-in 0.12s ease-out;
+  transition: transform 0.08s ease-out;
+}
+
+.chat-to-end[hidden] {
+  display: none;
+}
+
+.chat-to-end:hover {
+  background: rgba(52, 53, 59, 0.95);
+}
+
+.chat-to-end:active {
+  transform: scale(0.94);
+}
+
+@keyframes chat-to-end-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
 }

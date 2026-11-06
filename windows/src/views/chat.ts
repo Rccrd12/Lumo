@@ -120,6 +120,7 @@ const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
   placeholderNext: N_("Continue…"),
   send: N_("Send"),
+  toEnd: N_("Go to the bottom"),
   switchModel: N_("Switch provider or model"),
   noModel: N_("Choose a model"),
   loading: N_("Loading models…"),
@@ -297,6 +298,7 @@ const COPY_STRINGS = {
   open: N_("Open"),
   folder: N_("Show the folder"),
   confirm: N_("Write it over the original"),
+  original: N_("The original: {path}"),
   rewritten: N_("rewritten"),
   line: N_("line {n}"),
   places: N_("{count} places"),
@@ -392,8 +394,10 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
     }
   });
   if (tabs.length) detail.append(h("div", { class: "reply-copy-row" }, ...tabs.map(([b]) => b)));
+  // Where the click writes, in full: the manifest says it, the user sees it.
   detail.append(
     body,
+    h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.original, { path: diff.original }) }),
     h("div", { class: "reply-copy-row" }, confirm));
   show(best);
 }
@@ -1307,6 +1311,11 @@ function usageRingSvg(): { el: SVGSVGElement; set(pct: number | null, color: str
   };
 }
 
+/** Within this of the end the log is at its end, and stuck to it. */
+const STUCK_PX = 1;
+/** Further up from the end than this share of the log's height, the arrow down shows. */
+const TO_END_ARROW_SCREENS = 1;
+
 // ── View ──────────────────────────────────────────────────────────────────────
 
 /** `openSettings`: the island's Settings view (the window where there is no island, as in tests). */
@@ -1324,6 +1333,47 @@ export function buildPrompt(
   // written never scroll it. Only a chat coming on screen opens at its end.
   gentleWheel(log);
   let openedChat = true;
+  // Scrolled all the way down, the log is stuck to its end and follows what is
+  // written there, with no animation; the slightest scroll up lets go of it.
+  // Away from the end, an arrow over the log brings it back down.
+  let stuck = true;
+  const toEnd = h("button", { class: "chat-to-end", title: tl(STRINGS.toEnd) }, svg(ICONS.arrowDown, 11));
+  toEnd.hidden = true;
+  const fromEnd = () => log.scrollHeight - log.clientHeight - log.scrollTop;
+  /** The arrow shows about a screenful up from the end, at the bottom of the log. */
+  function drawToEnd() {
+    const away = log.clientHeight > 0 && fromEnd() > log.clientHeight * TO_END_ARROW_SCREENS;
+    if (away) {
+      toEnd.style.top = `${log.offsetTop + log.clientHeight - 32}px`;
+      toEnd.style.left = `${log.offsetLeft + log.clientWidth / 2 - 13}px`;
+    }
+    if (toEnd.hidden === away) toEnd.hidden = !away;
+  }
+  /** Stuck: down to the end of what is there now. */
+  function follow() {
+    if (stuck && log.clientHeight > 0) log.scrollTop = log.scrollHeight;
+    drawToEnd();
+  }
+  log.addEventListener("scroll", () => {
+    if (log.clientHeight === 0) return; // hidden behind a panel
+    stuck = fromEnd() <= STUCK_PX;
+    drawToEnd();
+  }, { passive: true });
+  // A turn of the wheel upwards lets go at once, before the scroll it starts.
+  log.addEventListener("wheel", (e) => {
+    if (e.deltaY < 0 && !e.ctrlKey && !e.shiftKey) stuck = false;
+  }, { passive: true });
+  // Whatever grows the log (streamed text, the dots, a picture loading, the
+  // island resizing) keeps it at its end while it is stuck there.
+  if (typeof MutationObserver !== "undefined") {
+    new MutationObserver(follow).observe(log, { childList: true, subtree: true, characterData: true });
+  }
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(follow).observe(log);
+  log.addEventListener("load", follow, true);
+  toEnd.addEventListener("click", () => {
+    stuck = true;
+    follow();
+  });
   // A text area of one line that grows with what is typed (up to a few lines,
   // then it scrolls): Enter sends, Shift+Enter starts a new line.
   const input = h("textarea", {
@@ -1491,7 +1541,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -2966,6 +3016,7 @@ export function buildPrompt(
       log.append(h("div", { class: "chat-row" }, live));
     }
     drawAnswer(live, text, isWorkshopChat(chat));
+    follow();
   });
 
   /**
@@ -2981,6 +3032,7 @@ export function buildPrompt(
     const label = log.querySelector(".typing-label");
     if (label) label.textContent = activityLabel(next);
     else if (again && live) log.append(typingDots(activityLabel(next)));
+    follow();
   }
 
   // A file the answer read, edited or created: the chat's files list it.
@@ -3537,6 +3589,7 @@ export function buildPrompt(
     closeUsage();
     const row = typingDots(t(COMPACT_STRINGS.working));
     log.append(row);
+    follow();
     onHeightChange();
     try {
       const done = await Bridge.chatCompact(chatId);
@@ -3813,9 +3866,12 @@ export function buildPrompt(
           drawAnswer(live, run.text, workshop);
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(activityLabel(run.activity)));
-        // The chat stays where it was read; one just opened shows its end.
-        log.scrollTop = openedChat ? log.scrollHeight : kept;
+        // The chat stays where it was read, or at its end when it is stuck
+        // there; one just opened shows its end.
+        if (openedChat) stuck = true;
+        log.scrollTop = stuck ? log.scrollHeight : kept;
         openedChat = false;
+        drawToEnd();
       }
 
       micBtn.classList.toggle("lit", State.liveActive);

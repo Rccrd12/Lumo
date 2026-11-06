@@ -1018,6 +1018,16 @@ pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> R
                 Ok(0) | Err(_) => break,
                 Ok(n) => {
                     total = total.saturating_add(n);
+                    // A line past MAX_LINE: the rest of it is dropped up to its end,
+                    // so its tail is not read as the next line.
+                    if n > MAX_LINE && !line.ends_with(b"\n") {
+                        let rest = reader.skip_until(b'\n').unwrap_or(0);
+                        total = total.saturating_add(rest);
+                        if total > max_total {
+                            break;
+                        }
+                        continue;
+                    }
                     if total > max_total || tx.send(line).is_err() {
                         break;
                     }

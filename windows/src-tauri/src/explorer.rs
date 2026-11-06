@@ -349,6 +349,11 @@ pub fn share() -> Result<Option<ExplorerFolder>, String> {
     }))
 }
 
+/// Every folder open in File Explorer now, nothing listed or remembered.
+pub fn open_folders() -> Vec<PathBuf> {
+    imp::open_folders().unwrap_or_default()
+}
+
 /// The same folder whatever its case or a slash at its end (Windows paths).
 pub fn same_folder(a: &str, b: &str) -> bool {
     let norm = |p: &str| p.trim().replace('/', "\\").trim_end_matches('\\').to_lowercase();

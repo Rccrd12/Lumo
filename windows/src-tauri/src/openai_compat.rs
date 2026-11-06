@@ -240,7 +240,9 @@ pub async fn send(
         loop {
             let json = match post(p, &endpoint, &key, &body, usage).await {
                 // A model that takes no tools refuses the request: once more without them.
-                Err((400 | 404 | 422, _)) if body.get("tools").is_some() => {
+                // Only on the first request: later ones carry the tools' answers,
+                // which no server takes without the tools they answer.
+                Err((400 | 404 | 422, _)) if rounds == 0 && body.get("tools").is_some() => {
                     body.as_object_mut().map(|b| b.remove("tools"));
                     continue;
                 }

@@ -25,6 +25,10 @@ const RUNS: &[&str] = &[
     "msi", "msp", "mst", "scr", "pif", "cpl", "hta", "lnk", "url", "reg", "inf", "jar", "application", "appref-ms",
     "msc", "gadget", "scf", "py", "pyw", "sh", "settingcontent-ms", "library-ms", "search-ms", "appx", "msix",
     "appxbundle", "msixbundle", "dll", "sys", "chm", "xbap", "website",
+    // Add-ins, connections, disk images that mount and run, troubleshooters,
+    // installers, documents with macros.
+    "xll", "rdp", "iso", "img", "vhd", "vhdx", "diagcab", "appinstaller", "wsc", "sct",
+    "docm", "dotm", "xlsm", "xltm", "xlam", "pptm", "potm", "ppam",
 ];
 
 #[derive(Default)]

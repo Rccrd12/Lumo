@@ -1,0 +1,16 @@
+# Weekly notices of updates to the app's dependencies and to the workflows'
+# actions (pinned by commit, so Dependabot moves the pin and its comment).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /windows
+    schedule:
+      interval: weekly
+  - package-ecosystem: cargo
+    directory: /windows
+    schedule:
+      interval: weekly
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
