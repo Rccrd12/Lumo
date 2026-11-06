@@ -844,6 +844,8 @@ function buildError(actions: ViewActions): ViewHost {
   const row = h("div", { class: "actions" },
     btn(tl("Retry"), "primary", () => actions.setView(State.agentsView())),
     openN8n,
+    // Closes the card at once, even with the mouse still on the island.
+    btn(tl("Close"), "secondary", () => actions.collapse()),
   );
   const el = h("div", { class: "view" }, card("red", stack(116, 16, who, title, detail, row)));
   return {
@@ -892,9 +894,11 @@ function buildFinished(actions: ViewActions): ViewHost {
 
 // ── Note ──────────────────────────────────────────────────────────────────────
 
-function buildNote(): ViewHost {
+function buildNote(actions: ViewActions): ViewHost {
   const title = h("div", { class: "title" });
-  const el = h("div", { class: "view" }, card(null, h("div", { class: "stack", style: "padding:0 18px 0 98px" }, title)));
+  // Closes the note at once, even with the mouse still on the island.
+  const row = h("div", { class: "actions" }, btn(tl("Close"), "secondary", () => actions.collapse()));
+  const el = h("div", { class: "view" }, card(null, h("div", { class: "stack", style: "padding:0 18px 0 98px;gap:12px" }, title, row)));
   return {
     el,
     sync() {
@@ -916,7 +920,7 @@ export function buildViews(
   map.set("question", buildQuestion(actions));
   map.set("error", buildError(actions));
   map.set("finished", buildFinished(actions));
-  map.set("note", buildNote());
+  map.set("note", buildNote(actions));
   map.set("settings", buildSettingsFrame(actions));
   map.set("prompt", buildPrompt(onChatHeightChange, () => actions.setView("settings"), () => {
     actions.setView("live");
