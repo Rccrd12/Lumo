@@ -311,7 +311,7 @@ test("Shift+Enter starts a new line instead of sending; Enter sends it all", asy
 const rows = () => view.el.find(".chat-row");
 const editOf = (i) => rows()[i].find(".msg-action")[1];
 
-test("a message typed while the answer is written goes as soon as it ends", async () => {
+test("a message sent while the answer is written waits above the field, then goes as soon as it ends", async () => {
   const pending = heldAnswers();
   await ask("tell me a story");
   const input = $(".chat-input");
@@ -319,29 +319,62 @@ test("a message typed while the answer is written goes as soon as it ends", asyn
   type("Enter");
   await flush();
   assert.equal(sent("chat_send").length, 1, "it waits");
-  assert.equal(input.title, "Sent as soon as this answer ends");
+  assert.equal(input.value, "", "it leaves the field");
+  assert.ok(!$(".chat-queue").hidden, "and waits above it");
+  assert.equal($(".queue-text").textContent, "and another");
+  // A second one joins it.
+  input.value = "and a third";
+  type("Enter");
+  await flush();
+  assert.equal($(".queue-text").textContent, "and another\nand a third");
+  input.value = "still typing";
   pending[0]({ text: "Once upon a time.", turns: 2 });
   await flush();
   await flush();
   assert.equal(sent("chat_send").length, 2, "then it goes");
-  assert.equal(input.value, "");
-  assert.equal(input.title, "");
+  assert.equal(sent("chat_send")[1].query, "and another\nand a third");
+  assert.equal(input.value, "still typing", "what is typed meanwhile stays");
+  view.sync();
+  assert.ok($(".chat-queue").hidden);
 });
 
-test("while an answer is written, the field stays open and send is a Stop button", async () => {
+test("a queued message can be edited or cancelled", async () => {
+  const pending = heldAnswers();
+  await ask("tell me a story");
+  const input = $(".chat-input");
+  input.value = "and another";
+  type("Enter");
+  await flush();
+  $(".chat-queue").find(".queue-btn")[0].fire("click");
+  assert.equal(input.value, "and another", "Edit puts it back in the field");
+  assert.ok($(".chat-queue").hidden);
+  type("Enter");
+  await flush();
+  $(".chat-queue").find(".queue-btn")[1].fire("click");
+  assert.ok($(".chat-queue").hidden, "Cancel drops it");
+  assert.equal(input.value, "");
+  pending[0]({ text: "Once upon a time.", turns: 2 });
+  await flush();
+  await flush();
+  assert.equal(sent("chat_send").length, 1, "nothing else goes");
+});
+
+test("while an answer is written, send is a Stop button, and the arrow again once something is typed", async () => {
   const pending = heldAnswers();
   await ask("tell me a story");
   const input = $(".chat-input");
   assert.ok(!input.disabled, "the next question can be typed meanwhile");
   assert.ok($(".send-btn").classList.contains("stop"));
   assert.equal($(".send-btn").title, "Stop");
-
-  // Enter waits for the answer: nothing is sent yet, the text stays (and Stop keeps it there).
   input.value = "and another";
-  type("Enter");
+  input.fire("input");
+  assert.ok(!$(".send-btn").classList.contains("stop"), "something typed: the arrow");
+  $(".send-btn").fire("click");
   await flush();
-  assert.equal(sent("chat_send").length, 1);
-  assert.equal(input.value, "and another");
+  assert.equal(sent("chat_send").length, 1, "the arrow queues it");
+  assert.equal(sent("chat_stop").length, 0);
+  assert.equal(input.value, "");
+  assert.ok($(".send-btn").classList.contains("stop"), "the field empty again: Stop");
 
   emit("chat-delta", { chat: State.chatId, text: "Once upon" });
   $(".send-btn").fire("click");
@@ -362,7 +395,9 @@ test("while an answer is written, the field stays open and send is a Stop button
   assert.ok(!$(".send-btn").classList.contains("stop"));
   assert.ok(!$(".send-btn").disabled);
   assert.equal($(".send-btn").title, "Send");
-  assert.equal(input.value, "and another", "the typed question is still there, ready to go");
+  assert.equal(sent("chat_send").length, 1, "after Stop the queued question does not go");
+  assert.equal(input.value, "and another", "it comes back to the field, ready to go");
+  assert.ok($(".chat-queue").hidden);
 });
 
 test("Escape stops an answer; stopped before any text, the question stays unanswered", async () => {
