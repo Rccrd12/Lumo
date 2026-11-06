@@ -29,6 +29,7 @@ use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
 use tauri::{AppHandle, Emitter};
+use tokio::sync::watch;
 
 use crate::i18n::{t, tf};
 use crate::local_chat::{self, Server};
@@ -326,10 +327,76 @@ pub async fn unload(provider: &str, model: &str) -> Result<(), String> {
 /// as `local-load` events (LM Studio's percent; Ollama says nothing until it is in).
 pub async fn load_for_picker(app: &AppHandle, provider: &str, model: &str) -> Result<(), String> {
     let (server, _) = server_for(provider)?;
+    // Known while it runs, so a question sent meanwhile waits for it (picker_load).
+    let loading = picker_key(&server, model).map(PickerLoad::start);
     load(&server, model, |percent| {
+        if let Some(loading) = &loading {
+            loading.progress(percent);
+        }
         let _ = app.emit("local-load", json!({ "provider": provider, "model": model, "percent": percent }));
     })
     .await
+}
+
+/// The picker's loads under way, by server, address and model: how far each
+/// is (None until the server says). A load's sender goes when it ends, and
+/// with it the entry.
+static PICKER_LOADS: Mutex<Option<HashMap<String, watch::Receiver<Option<u8>>>>> = Mutex::new(None);
+
+/// The key of `model` on `server`, as CAPS keeps it.
+fn picker_key(server: &Server, model: &str) -> Option<String> {
+    let model = safe_name(model)?;
+    let base = local_chat::base_url(server).ok()?;
+    Some(format!("{}|{}|{model}", server.id, base.as_str()))
+}
+
+/// One load of the picker, listed while it runs.
+struct PickerLoad {
+    key: String,
+    sender: watch::Sender<Option<u8>>,
+}
+
+impl PickerLoad {
+    fn start(key: String) -> Self {
+        let (sender, receiver) = watch::channel(None);
+        PICKER_LOADS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).insert(key.clone(), receiver);
+        PickerLoad { key, sender }
+    }
+
+    fn progress(&self, percent: u8) {
+        self.sender.send_replace(Some(percent));
+    }
+}
+
+impl Drop for PickerLoad {
+    fn drop(&mut self) {
+        let mut loads = PICKER_LOADS.lock().unwrap_or_else(|e| e.into_inner());
+        if let Some(all) = loads.as_mut() {
+            // Only this load's own entry: a newer one for the same model stays.
+            if all.get(&self.key).is_some_and(|r| r.same_channel(&self.sender.subscribe())) {
+                all.remove(&self.key);
+            }
+        }
+    }
+}
+
+/// The picker is loading `model` on `server` right now: what to wait on.
+pub fn picker_load(server: &Server, model: &str) -> Option<watch::Receiver<Option<u8>>> {
+    let key = picker_key(server, model)?;
+    PICKER_LOADS.lock().unwrap_or_else(|e| e.into_inner()).as_ref()?.get(&key).cloned()
+}
+
+/// Waits for the picker's load to end, telling how far it is as it goes.
+pub async fn wait_for_picker(mut load: watch::Receiver<Option<u8>>, mut on_progress: impl FnMut(u8)) {
+    loop {
+        let percent = *load.borrow_and_update();
+        if let Some(percent) = percent {
+            on_progress(percent);
+        }
+        if load.changed().await.is_err() {
+            return;
+        }
+    }
 }
 
 /// The embedding vectors of `texts` from `provider`'s embedding model, for
@@ -781,6 +848,34 @@ pub async fn pull(app: &AppHandle, provider: &str, model: &str) -> Result<(), St
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_question_waits_for_the_pickers_load_with_its_percent() {
+        let server = Server { id: "lmstudio", name: "LM Studio", url: "http://127.0.0.1:1234".into(), key: None };
+        let other = Server { id: "ollama", name: "Ollama", url: "http://127.0.0.1:11434".into(), key: None };
+        assert!(picker_load(&server, "qwen3-8b").is_none());
+        let load = PickerLoad::start(picker_key(&server, "qwen3-8b").unwrap());
+        // Only that model on that server is being loaded.
+        assert!(picker_load(&server, "gemma-3-12b").is_none());
+        assert!(picker_load(&other, "qwen3-8b").is_none());
+        let waiting = picker_load(&server, "qwen3-8b").expect("listed while it runs");
+        let seen = std::sync::Arc::new(Mutex::new(Vec::new()));
+        let rt = tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap();
+        let heard = seen.clone();
+        let waiter = rt.spawn(wait_for_picker(waiting, move |p| heard.lock().unwrap().push(p)));
+        rt.block_on(async {
+            tokio::task::yield_now().await;
+            load.progress(40);
+            tokio::task::yield_now().await;
+            load.progress(90);
+            tokio::task::yield_now().await;
+            drop(load);
+            waiter.await.unwrap();
+        });
+        assert_eq!(*seen.lock().unwrap(), vec![40, 90]);
+        // Done: no longer listed, so the next question goes straight on.
+        assert!(picker_load(&server, "qwen3-8b").is_none());
+    }
 
     #[test]
     fn ollama_says_what_a_model_can_do_and_the_context_it_runs_with() {

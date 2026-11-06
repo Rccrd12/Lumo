@@ -553,7 +553,17 @@ pub async fn send(
         // A model not in memory is loaded first, so the island can say so
         // (with how far, when LM Studio tells); a local model then reads the
         // whole prompt before it writes, which takes a while too.
-        if caps.loaded == Some(false) {
+        // The picker is loading this model already: that load is waited for,
+        // with its percent, rather than taken for a model in memory.
+        let picker = crate::local_models::picker_load(server, model);
+        let waited = picker.is_some();
+        if let Some(load) = picker {
+            events.activity(app, Activity::new("loading", ""));
+            crate::local_models::wait_for_picker(load, |percent| {
+                events.activity(app, Activity::new("loading", percent.to_string()));
+            })
+            .await;
+        } else if caps.loaded == Some(false) {
             events.activity(app, Activity::new("loading", ""));
             let loaded = crate::local_models::load(server, model, |percent| {
                 events.activity(app, Activity::new("loading", percent.to_string()));
@@ -567,7 +577,7 @@ pub async fn send(
                 }
             }
         }
-        let caps = if caps.loaded == Some(false) { crate::local_models::caps(server, model).await } else { caps.clone() };
+        let caps = if waited || caps.loaded == Some(false) { crate::local_models::caps(server, model).await } else { caps.clone() };
         // Pictures go unless the server says the model doesn't see them; one
         // that refuses them is asked again without (below).
         // A PDF's pages go as pictures as far as the context leaves room for
