@@ -24,6 +24,20 @@ pub fn text(path: &str, limit: usize) -> Option<String> {
     text_of(&std::fs::read(path).ok()?, limit)
 }
 
+/// Said under a file's text that goes on past what was sent.
+pub const CUT: &str = "[Cut here: only the start of the file fits in this message.]";
+
+/// `text`, with CUT under it when the PDF goes on past `limit` characters.
+pub fn text_cut(path: &str, limit: usize) -> Option<String> {
+    let mut text = text(path, limit.saturating_add(1))?;
+    if text.chars().count() > limit {
+        text = text.chars().take(limit).collect();
+        text.push('\n');
+        text.push_str(CUT);
+    }
+    Some(text)
+}
+
 fn text_of(file: &[u8], limit: usize) -> Option<String> {
     if !file.starts_with(b"%PDF") && find(file, b"%PDF", 0).is_none_or(|i| i > 1024) {
         return None;
