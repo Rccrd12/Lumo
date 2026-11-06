@@ -1,6 +1,8 @@
 // Dropped files are copied into %LOCALAPPDATA%\com.rccrd12.lumo\inbox so the original is
 // never touched and the copy survives the drag source going away.
-// The inbox is swept of anything older than a week.
+// The inbox is swept of anything older than a week. A deleted chat takes its
+// copies with it (`release`), and a copy no chat names any more goes once it
+// is a day old (`tidy`), so the inbox only holds what a chat can still use.
 
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -265,9 +267,106 @@ fn sweep(dir: &Path) {
     }
 }
 
+// ── Copies no chat needs any more ─────────────────────────────────────────────
+//
+// The page names the copies by path, so it could name any file: only a file
+// directly in the inbox is ever deleted here (`in_inbox`), never a folder, and
+// never one of the user's own files an answer read where it is.
+
+/// A copy no chat names is left this long: it may be waiting in the field, or
+/// a screenshot not sent yet.
+const UNNAMED_FOR: Duration = Duration::from_secs(24 * 60 * 60);
+
+/// The same file whatever its case or slashes (Windows paths).
+fn path_key(path: &str) -> String {
+    path.trim().replace('/', "\\").to_lowercase()
+}
+
+/// A deleted chat's copies: each of `paths` that is in the inbox and not in
+/// `keep` (another chat sent it too) is deleted. Returns how many went.
+pub fn release(paths: &[String], keep: &[String]) -> usize {
+    let kept: std::collections::HashSet<String> = keep.iter().map(|p| path_key(p)).collect();
+    let mut gone = 0;
+    for path in paths {
+        if kept.contains(&path_key(path)) {
+            continue;
+        }
+        let path = Path::new(path);
+        if in_inbox(path) && path.is_file() && std::fs::remove_file(path).is_ok() {
+            gone += 1;
+        }
+    }
+    gone
+}
+
+/// Every file of the inbox no chat names in `keep` and older than a day is
+/// deleted: the copies of chats deleted before Lumo did this, or gone past the history's
+/// end, and attachments taken out of the field before they went.
+pub fn tidy(keep: &[String]) -> usize {
+    tidy_in(&inbox_dir(), keep, UNNAMED_FOR)
+}
+
+fn tidy_in(dir: &Path, keep: &[String], older_than: Duration) -> usize {
+    let kept: std::collections::HashSet<String> = keep.iter().map(|p| path_key(p)).collect();
+    let Ok(entries) = std::fs::read_dir(dir) else { return 0 };
+    let now = SystemTime::now();
+    let mut gone = 0;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let Ok(meta) = std::fs::symlink_metadata(&path) else { continue };
+        if !meta.is_file() || kept.contains(&path_key(&path.to_string_lossy())) {
+            continue;
+        }
+        let old = meta.modified().ok().and_then(|at| now.duration_since(at).ok()).is_some_and(|age| age >= older_than);
+        if old && std::fs::remove_file(&path).is_ok() {
+            gone += 1;
+        }
+    }
+    gone
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_released_copy_goes_unless_another_chat_keeps_it() {
+        let a = write_in("release-test-a.txt", b"a").unwrap();
+        let b = write_in("release-test-b.txt", b"b").unwrap();
+        let outside = std::env::temp_dir().join(format!("lumo-release-{}.txt", std::process::id()));
+        std::fs::write(&outside, b"mine").unwrap();
+        let paths = vec![a.path.clone(), b.path.to_uppercase(), outside.to_string_lossy().to_string(), inbox_dir().to_string_lossy().to_string()];
+        // b is kept, named with other case and slashes.
+        let gone = release(&paths, &[b.path.replace('\\', "/")]);
+        assert_eq!(gone, 1);
+        assert!(!Path::new(&a.path).exists(), "released");
+        assert!(Path::new(&b.path).exists(), "another chat keeps it");
+        assert!(outside.exists(), "a file outside the inbox is never deleted");
+        assert!(inbox_dir().is_dir(), "nor the inbox itself");
+        let _ = std::fs::remove_file(&b.path);
+        let _ = std::fs::remove_file(&outside);
+    }
+
+    #[test]
+    fn tidy_drops_only_old_files_no_chat_names() {
+        let dir = std::env::temp_dir().join(format!("lumo-tidy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(dir.join("folder")).unwrap();
+        for name in ["named.txt", "orphan.txt"] {
+            std::fs::write(dir.join(name), b"x").unwrap();
+        }
+        std::fs::write(dir.join("folder").join("inside.txt"), b"x").unwrap();
+        let keep = vec![dir.join("NAMED.txt").to_string_lossy().to_string()];
+        // Nothing is old enough yet.
+        assert_eq!(tidy_in(&dir, &keep, Duration::from_secs(3600)), 0);
+        assert!(dir.join("orphan.txt").exists());
+        // Now everything is: only the orphan goes, the folder stays.
+        assert_eq!(tidy_in(&dir, &keep, Duration::ZERO), 1);
+        assert!(!dir.join("orphan.txt").exists());
+        assert!(dir.join("named.txt").exists());
+        assert!(dir.join("folder").join("inside.txt").exists());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn only_a_picture_in_the_inbox_is_previewed() {

@@ -211,7 +211,71 @@ export function filesByKind(files: readonly ChatFile[]): { kind: ChatFileKind; f
 /** A deleted chat's files are forgotten with it (the files themselves stay where they are). */
 export function dropChatFiles(id: string) {
   const all = loadAll();
-  if (!(id in all)) return;
-  delete all[id];
-  store(all);
+  if (id in all) {
+    delete all[id];
+    store(all);
+  }
+  const copies = loadCopies();
+  if (id in copies) {
+    delete copies[id];
+    storeCopies(copies);
+  }
+}
+
+// ── The inbox's copies ────────────────────────────────────────────────────────
+//
+// What goes with a question is Lumo's copy in the inbox (files.rs). Each chat
+// notes the copies it sent, kept apart from its files above (whose row takes
+// the file's own path once the AI read it there), so that deleting the chat
+// deletes them too, but for one another chat sent as well. Any copy no chat
+// names goes on its own once a day old (`inbox_tidy`).
+
+const COPIES_KEY = "lumo.chatCopies.v1";
+
+function loadCopies(): Record<string, string[]> {
+  try {
+    const raw = storage()?.getItem(COPIES_KEY);
+    const all = raw ? JSON.parse(raw) : {};
+    if (!all || typeof all !== "object" || Array.isArray(all)) return {};
+    const out: Record<string, string[]> = {};
+    for (const [id, list] of Object.entries(all)) {
+      if (Array.isArray(list)) out[id] = list.filter((p): p is string => typeof p === "string" && p.trim() !== "");
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+function storeCopies(all: Record<string, string[]>) {
+  try {
+    storage()?.setItem(COPIES_KEY, JSON.stringify(all));
+  } catch {
+    // Storage full: the copy still goes once a day old and no chat names it.
+  }
+}
+
+/** Chat `id` sent these copies. The notes of chats no longer in the past chats go at the same time. */
+export function noteSentCopies(id: string, paths: readonly string[]) {
+  const fresh = paths.filter((p) => p.trim() !== "");
+  if (!fresh.length) return;
+  const all = loadCopies();
+  const kept = new Set(loadChats().map((c) => c.id));
+  kept.add(id);
+  for (const other of Object.keys(all)) if (!kept.has(other)) delete all[other];
+  const list = all[id] ?? [];
+  for (const p of fresh) if (!list.some((q) => samePath(p, q))) list.push(p);
+  all[id] = list.slice(-MAX_FILES);
+  storeCopies(all);
+}
+
+/** Every path chat `id` names: the copies it sent and its files (Rust deletes only those in the inbox). */
+export function chatCopies(id: string): string[] {
+  const paths = [...(loadCopies()[id] ?? []), ...(loadAll()[id] ?? []).map((f) => f.path)];
+  return paths.filter((p, i) => paths.findIndex((q) => samePath(p, q)) === i);
+}
+
+/** What every past chat names, so that nothing they can still open is deleted. */
+export function keptCopies(): string[] {
+  return loadChats().flatMap((c) => chatCopies(c.id));
 }
