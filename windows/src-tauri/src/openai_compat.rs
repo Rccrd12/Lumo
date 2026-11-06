@@ -218,7 +218,7 @@ pub async fn send(
         return Err(tf("Pick a {name} model above the chat box.", &[("name", p.name)]));
     }
     let turn = chat.begin(p.id);
-    let pdf = if matches!(p.id, "openai" | "openrouter") { PdfAs::File } else { PdfAs::TextAndPages { pages: MAX_PDF_PAGES } };
+    let pdf = if matches!(p.id, "openai" | "openrouter") { PdfAs::File } else { PdfAs::TextAndPages { pages: MAX_PDF_PAGES, chars: MAX_PDF_CHARS } };
     let user = with_images(user_message(turn.first, context.as_ref(), &query, pdf), images, pdf);
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
@@ -407,15 +407,16 @@ pub(crate) enum PdfAs {
     Text,
     /// Its pages as pictures when it has `pages` or fewer, else its text (a
     /// model that sees, whose API takes no file: Google's, a local server).
-    TextAndPages { pages: u32 },
+    /// At most `chars` of its text.
+    TextAndPages { pages: u32, chars: usize },
     /// The file itself (OpenAI's and OpenRouter's `file` part).
     File,
 }
 
 /// The biggest PDF sent as itself.
 const MAX_PDF: u64 = 20_000_000;
-/// The most of a PDF's text sent.
-const MAX_PDF_CHARS: usize = 40_000;
+/// The most of a PDF's text sent (a local model's: as much as its context has room for).
+pub(crate) const MAX_PDF_CHARS: usize = 40_000;
 /// A PDF of this many pages or fewer goes as pictures of them to a model that
 /// sees; a longer one as its text.
 pub(crate) const MAX_PDF_PAGES: u32 = 10;
@@ -449,7 +450,7 @@ fn pdf_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
         return Some(FilePart::Pdf { parts: vec![json!({ "type": "file", "file": { "filename": name, "file_data": data } })], text: None });
     }
     let parts: Vec<Value> = match pdf {
-        PdfAs::TextAndPages { pages } if pages > 0 => crate::pdf_pages::render(path, pages),
+        PdfAs::TextAndPages { pages, .. } if pages > 0 => crate::pdf_pages::render(path, pages),
         _ => Vec::new(),
     }
     .into_iter()
@@ -457,7 +458,8 @@ fn pdf_part(path: &str, pdf: PdfAs) -> Option<FilePart> {
     .map(|png| json!({ "type": "image_url", "image_url": { "url": format!("data:image/png;base64,{}", crate::claude::base64_for(&png)) } }))
     .collect();
     // Its pages seen, its text isn't needed; a long PDF, or one Windows can't draw, goes as text.
-    let text = if parts.is_empty() { crate::pdf_text::text(path, MAX_PDF_CHARS) } else { None };
+    let chars = if let PdfAs::TextAndPages { chars, .. } = pdf { chars } else { MAX_PDF_CHARS };
+    let text = if parts.is_empty() { crate::pdf_text::text_cut(path, chars) } else { None };
     (text.is_some() || !parts.is_empty()).then_some(FilePart::Pdf { parts, text })
 }
 

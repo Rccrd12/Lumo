@@ -56,8 +56,26 @@ pub fn key_entry(id: &str) -> Option<&'static str> {
 const MAX_TOKENS: u32 = 4096;
 /// Rounds of tools one answer may take before it must answer.
 const MAX_TOOL_ROUNDS: usize = 8;
-/// A text file is sent inline up to this many characters; the rest is cut.
+/// A dropped file's text, sent inline up to this many characters when the
+/// model's context isn't known; the rest is cut.
 const MAX_INLINE_CHARS: usize = 24_000;
+/// How much of the context a dropped file's text may fill, with what the
+/// chat already holds: the rest stays for the answer and its reasoning.
+const FILE_SHARE_PCT: u64 = 60;
+/// The least and the most of a file's text sent, whatever the context.
+const MIN_FILE_CHARS: usize = 4_000;
+const MAX_FILE_CHARS: usize = 1_000_000;
+
+/// How many characters of a dropped file's text go to a model with `context`
+/// tokens (0: not known), `taken` of them by the instructions, the tools and
+/// the conversation: up to 60 % of the context, at about 3 characters a token.
+fn file_chars(context: u64, taken: u64) -> usize {
+    if context == 0 {
+        return MAX_INLINE_CHARS;
+    }
+    let tokens = (context * FILE_SHARE_PCT / 100).saturating_sub(taken);
+    usize::try_from(tokens.saturating_mul(3)).unwrap_or(MAX_FILE_CHARS).clamp(MIN_FILE_CHARS, MAX_FILE_CHARS)
+}
 /// Ollama and LM Studio ignore the key, but some clients insist on sending one.
 const NO_KEY: &str = "ollama";
 /// Models that embed or rank rather than chat are left out of the list.
@@ -248,22 +266,23 @@ fn parse_models(body: &Value) -> Option<Vec<String>> {
 
 /// What a dropped file adds to its message: text inline (cut), a PDF's text
 /// (pdf_text.rs), anything else by name only.
-fn file_note(name: &str, path: &str) -> String {
+fn file_note(name: &str, path: &str, chars: usize) -> String {
     let ext = std::path::Path::new(path).extension().and_then(|e| e.to_str()).unwrap_or("").to_lowercase();
     let binary = matches!(ext.as_str(), "pdf" | "jpg" | "jpeg" | "png" | "gif" | "webp");
     // Read no more than the inline limit can use (4 bytes per character at most).
     if ext == "pdf" {
-        return match crate::pdf_text::text(path, MAX_INLINE_CHARS) {
+        return match crate::pdf_text::text_cut(path, chars) {
             Some(text) => format!("File: {name}\nFile contents:\n{text}"),
             None => format!("File: {name}\n{}", crate::openai_compat::PDF_UNREAD),
         };
     }
-    let text = if binary { None } else { read_prefix(path, MAX_INLINE_CHARS * 4) };
+    let text = if binary { None } else { read_prefix(path, chars.saturating_mul(4)) };
     match text {
         Some(text) if !text.is_empty() => {
-            let mut body: String = text.chars().take(MAX_INLINE_CHARS).collect();
+            let mut body: String = text.chars().take(chars).collect();
             if body.len() < text.len() {
-                body.push_str("\n[truncated]");
+                body.push('\n');
+                body.push_str(crate::pdf_text::CUT);
             }
             format!("File: {name}\nFile contents:\n{body}")
         }
@@ -289,9 +308,9 @@ fn read_prefix(path: &str, limit: usize) -> Option<String> {
     }
 }
 
-fn user_text(first: bool, context: Option<&ChatContext>, query: &str) -> String {
+fn user_text(first: bool, context: Option<&ChatContext>, query: &str, chars: usize) -> String {
     match chat::turn_context(first, context) {
-        Some(ChatContext::File { name, path }) => format!("{}\n\n{query}", file_note(name, path)),
+        Some(ChatContext::File { name, path }) => format!("{}\n\n{query}", file_note(name, path, chars)),
         Some(ChatContext::Window { app_name, title, url }) => {
             format!("{}\n\n{query}", chat::window_line(app_name, title, url.as_deref()))
         }
@@ -345,19 +364,20 @@ fn is_image(path: &str) -> bool {
 /// button (a model that doesn't see gets the text of the text files only).
 #[cfg(test)]
 fn user_message(vision: bool, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
-    user_message_in(vision, crate::openai_compat::MAX_PDF_PAGES, first, context, query, shared)
+    user_message_in(vision, crate::openai_compat::MAX_PDF_PAGES, MAX_INLINE_CHARS, first, context, query, shared)
 }
 
-/// `user_message`, with at most `pages` of a PDF drawn for a model that sees.
-fn user_message_in(vision: bool, pages: u32, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
+/// `user_message`, with at most `pages` of a PDF drawn for a model that sees,
+/// and at most `chars` of a dropped file's text.
+fn user_message_in(vision: bool, pages: u32, chars: usize, first: bool, context: Option<&ChatContext>, query: &str, shared: &[String]) -> Value {
     use crate::openai_compat::PdfAs;
     // A PDF: pictures of its pages for a model that sees, when it has few; else its text.
-    let pdf = if vision { PdfAs::TextAndPages { pages } } else { PdfAs::Text };
+    let pdf = if vision { PdfAs::TextAndPages { pages, chars } } else { PdfAs::Text };
     let dropped = matches!(chat::turn_context(first, context), Some(ChatContext::File { path, .. }) if is_image(path) || crate::openai_compat::is_pdf(path));
     let user = if vision && dropped {
         crate::openai_compat::user_message(first, context, query, pdf)
     } else {
-        json!({ "role": "user", "content": user_text(first, context, query) })
+        json!({ "role": "user", "content": user_text(first, context, query, chars) })
     };
     let shared: Vec<String> = shared.iter().filter(|p| vision || !is_image(p)).cloned().collect();
     crate::openai_compat::with_images(user, &shared, pdf)
@@ -625,20 +645,23 @@ pub async fn send(
         let taken_chars = system.len() + turn.history.iter().map(chars_of).sum::<usize>() + query.len() + if tools.is_empty() { 0 } else { crate::openai_compat::function_tools(&tools).to_string().len() };
         let taken = (taken_chars / 3) as u64 + u64::from(MAX_TOKENS);
         let pages = crate::openai_compat::pages_that_fit(context_size, taken);
-        user = user_message_in(caps.vision != Some(false), pages, turn.first, context.as_ref(), &query, shared);
+        let chars = file_chars(context_size, (taken_chars / 3) as u64);
+        user = user_message_in(caps.vision != Some(false), pages, chars, turn.first, context.as_ref(), &query, shared);
         // The same for a model that doesn't see: what goes if the server refuses the pictures.
-        let mut text_only = user_message_in(false, 0, turn.first, context.as_ref(), &query, shared);
+        let mut text_only = user_message_in(false, 0, chars, turn.first, context.as_ref(), &query, shared);
         // A dropped file, to work on: where it is, to copy it.
         if workspace {
             if let Some(ChatContext::File { path, .. }) = chat::turn_context(turn.first, context.as_ref()) {
-                let note = format!("(This file is at {path}: copy it with {} to work on it.)", crate::workspace::COPY);
+                let note = format!("(This file is at {path}: copy it with {} to work on it, or to read all of it.)", crate::workspace::COPY);
                 append_text(&mut user, &note);
                 append_text(&mut text_only, &note);
             }
         }
         body = request_body(model, &system, &turn.history, &user);
         // As long an answer as the context leaves room for, not 4 096 tokens.
-        body["max_tokens"] = json!(answer_room(context_size, (taken_chars / 3) as u64 + u64::from(pages) * crate::openai_compat::PAGE_TOKENS));
+        // The question counts as sent: the file's text, and a picture as the page it is.
+        let prompt_chars = taken_chars - query.len() + chars_of(&user);
+        body["max_tokens"] = json!(answer_room(context_size, (prompt_chars / 3) as u64));
         if !tools.is_empty() {
             body["tools"] = crate::openai_compat::function_tools(&tools);
         }
@@ -665,7 +688,7 @@ pub async fn send(
         };
         let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
-        log_turn(server, model, taken_chars / 3, tools.len(), &outcome);
+        log_turn(server, model, prompt_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))
     };
     let streamed = chat.unless_stopped(answer).await;
@@ -738,6 +761,17 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
 mod tests {
     use super::*;
     use crate::net::tests::serve_once;
+
+    #[test]
+    fn a_file_s_text_takes_up_to_60_percent_of_the_context() {
+        assert_eq!(file_chars(0, 0), MAX_INLINE_CHARS);
+        // 32k context, 2 500 tokens of instructions and tools: some 17k tokens of text.
+        assert_eq!(file_chars(32_768, 2_500), (32_768 * 60 / 100 - 2_500) * 3);
+        assert_eq!(file_chars(131_072, 2_500), (131_072 * 60 / 100 - 2_500) * 3);
+        // A small or full context still gets the start of the file.
+        assert_eq!(file_chars(4_096, 4_000), MIN_FILE_CHARS);
+        assert_eq!(file_chars(10_000_000, 0), MAX_FILE_CHARS);
+    }
 
     #[test]
     fn a_picture_in_the_conversation_counts_as_a_page_not_as_its_base64() {
@@ -852,22 +886,22 @@ mod tests {
         std::fs::create_dir_all(&dir).unwrap();
         let txt = dir.join("notes.txt");
         std::fs::write(&txt, "é".repeat(MAX_INLINE_CHARS + 500)).unwrap();
-        let note = file_note("notes.txt", txt.to_str().unwrap());
+        let note = file_note("notes.txt", txt.to_str().unwrap(), MAX_INLINE_CHARS);
         let body = note.strip_prefix("File: notes.txt\nFile contents:\n").expect("inline text");
-        let body = body.strip_suffix("\n[truncated]").expect("marked as cut");
+        let body = body.strip_suffix(&format!("\n{}", crate::pdf_text::CUT)).expect("marked as cut");
         assert_eq!(body.chars().count(), MAX_INLINE_CHARS);
 
         let small = dir.join("small.md");
         std::fs::write(&small, "# hi").unwrap();
-        assert_eq!(file_note("small.md", small.to_str().unwrap()), "File: small.md\nFile contents:\n# hi");
+        assert_eq!(file_note("small.md", small.to_str().unwrap(), MAX_INLINE_CHARS), "File: small.md\nFile contents:\n# hi");
 
         let png = dir.join("pic.png");
         std::fs::write(&png, "not really a picture").unwrap();
-        assert_eq!(file_note("pic.png", png.to_str().unwrap()), "File: pic.png");
-        assert_eq!(file_note("gone.txt", "/no/such/file"), "File: gone.txt");
+        assert_eq!(file_note("pic.png", png.to_str().unwrap(), MAX_INLINE_CHARS), "File: pic.png");
+        assert_eq!(file_note("gone.txt", "/no/such/file", MAX_INLINE_CHARS), "File: gone.txt");
         let bin = dir.join("blob.bin");
         std::fs::write(&bin, [0xff, 0xfe, 0x00, 0x80]).unwrap();
-        assert_eq!(file_note("blob.bin", bin.to_str().unwrap()), "File: blob.bin");
+        assert_eq!(file_note("blob.bin", bin.to_str().unwrap(), MAX_INLINE_CHARS), "File: blob.bin");
         let _ = std::fs::remove_dir_all(dir);
     }
 
