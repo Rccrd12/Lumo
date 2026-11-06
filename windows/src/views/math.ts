@@ -851,9 +851,13 @@ function draw(node: Node): Element {
       if (node.size === "text") return m("mrow", { displaystyle: "false" }, frac);
       return frac;
     }
-    case "sqrt":
-      if (node.index) return m("mroot", { class: "mx-sqrt" }, draw(node.body), draw(node.index));
-      return m("msqrt", { class: "mx-sqrt" }, draw(node.body));
+    case "sqrt": {
+      // The radical sign and its bar drawn by style.css as one line, as tall
+      // as what it holds: the font's √ and MathML's bar do not always meet.
+      const root = m("mrow", { class: "mx-sqrt" }, draw(node.body));
+      if (!node.index) return root;
+      return m("mrow", { class: "mx-root" }, m("mpadded", { voffset: "0.55em", class: "mx-root-index" }, draw(node.index)), root);
+    }
     case "accent":
       return accent(node);
     case "over":

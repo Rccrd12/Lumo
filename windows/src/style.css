@@ -1854,12 +1854,6 @@ math.mx-display {
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
-/* In a quote, the box takes the quote's width. */
-.md-quote > .md-p:has(.md-math) {
-  flex: 1 1 auto;
-  min-width: 0;
-}
-
 .md-math .md-copy {
   position: absolute;
   top: 6px;
@@ -1883,6 +1877,21 @@ math.mx mtext {
 /* \vec's arrow: small, as TeX draws it, not a whole →. */
 math.mx .mx-vec {
   font-size: 0.72em;
+}
+
+/* \sqrt (views/math.ts): the radical sign and its bar as one line, the sign
+   as tall as what it holds, the bar as long. */
+math.mx .mx-sqrt {
+  padding: 0.16em 0.06em 0.12em 0.62em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 100' preserveAspectRatio='none'%3E%3Cpath d='M0.6 62 L2.4 56.5 L5 97 L9.7 0.6' fill='none' stroke='%23eceef1' stroke-width='1.2' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"), linear-gradient(#eceef1, #eceef1);
+  background-repeat: no-repeat;
+  background-size: 0.6em 100%, calc(100% - 0.58em) 1.2px;
+  background-position: left top, right top;
+}
+
+math.mx .mx-root-index {
+  font-size: 0.6em;
+  margin-right: -0.42em;
 }
 
 /* \overbrace and \underbrace (views/math.ts): the brace in pieces, as wide
@@ -2043,6 +2052,14 @@ math.mx .mx-cancel.mx-sout {
   flex: 0 0 2px;
   border-radius: 1px;
   background: var(--dim-5);
+}
+
+.md-quote-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .md-quote .md-p {

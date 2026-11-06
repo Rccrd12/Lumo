@@ -344,11 +344,8 @@ function render(block: Block): HTMLElement {
       if (block.indent) item.style.paddingLeft = `${block.indent * 12}px`;
       return item;
     }
-    case "quote": {
-      const text = h("span", { class: "md-p" });
-      inline(block.text, text);
-      return h("div", { class: "md-quote" }, h("i"), text);
-    }
+    case "quote":
+      return quoteRun([block.text]);
     case "table": {
       const cell = (tag: "th" | "td" | "div", text: string) => {
         const el = h(tag);
@@ -406,7 +403,37 @@ function mathBlock(tex: string): HTMLElement {
   );
 }
 
+/**
+ * Quote lines one after the other, blank lines between them or not: one
+ * quote with one bar down its side, its lines spaced as paragraphs.
+ */
+function quoteRun(lines: string[]): HTMLElement {
+  const body = h("div", { class: "md-quote-body" });
+  for (const line of lines) {
+    const text = h("span", { class: "md-p" });
+    inline(line, text);
+    body.append(text);
+  }
+  return h("div", { class: "md-quote" }, h("i"), body);
+}
+
 /** Replaces what `into` shows with the Markdown rendered. */
 export function renderMarkdown(into: HTMLElement, markdown: string) {
-  into.replaceChildren(...parseMarkdown(markdown).map(render));
+  const blocks = parseMarkdown(markdown);
+  const out: HTMLElement[] = [];
+  for (let i = 0; i < blocks.length; i++) {
+    const block = blocks[i];
+    if (block.kind !== "quote") {
+      out.push(render(block));
+      continue;
+    }
+    const lines: string[] = [];
+    for (; i < blocks.length && blocks[i].kind === "quote"; i++) {
+      const text = (blocks[i] as { text: string }).text;
+      if (text) lines.push(text);
+    }
+    i--;
+    if (lines.length) out.push(quoteRun(lines));
+  }
+  into.replaceChildren(...out);
 }
