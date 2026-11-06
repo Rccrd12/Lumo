@@ -4,7 +4,8 @@
 import { h } from "./dom";
 import { State } from "../core/state";
 import type { ViewHost } from "./views";
-import { N_, t, tl } from "../i18n/i18n";
+import { N_, t, tl, tn } from "../i18n/i18n";
+import { fileCells, fileProgress, uploadingLabel } from "../upload/files";
 
 /** Dashed rounded rect drawn as SVG so the dashes can march. */
 function dashedFrame(): SVGSVGElement {
@@ -54,12 +55,17 @@ export function buildUploading(): ViewHost {
   const percent = h("span", { class: "up-pct" });
   const fill = h("div", { class: "up-fill" });
   const glow = h("div", { class: "up-glow" });
+  // Several files dropped together: a small bar each, under the main one.
+  const files = h("div", { class: "up-files" });
   const card = h(
     "div",
     { class: "card up-card" },
     h("div", { class: "up-row" }, label, percent),
     h("div", { class: "up-track" }, fill, glow),
+    files,
   );
+  let filesKey = "";
+  let fileFills: { el: HTMLElement; pct: HTMLElement; index: number }[] = [];
   const el = h("div", { class: "view" }, card);
 
   return {
@@ -67,9 +73,10 @@ export function buildUploading(): ViewHost {
     sync() {
       const done = State.uploadProgress >= 0.999;
       const pct = Math.round(State.uploadProgress * 100);
+      const names = State.uploadNames.length > 1 ? State.uploadNames : [State.droppedFile?.name ?? t("file")];
       label.textContent = done
-        ? `✓  ${State.droppedFile?.name ?? t("File")}`
-        : t("Uploading {name}", { name: State.droppedFile?.name ?? t("file") });
+        ? `✓  ${names.length > 1 ? tn("{count} file", "{count} files", names.length) : State.droppedFile?.name ?? t("File")}`
+        : uploadingLabel(names);
       label.classList.toggle("done", done);
       percent.textContent = done ? "" : `${pct} %`;
       // The track spans the card, as far from either side.
@@ -78,6 +85,31 @@ export function buildUploading(): ViewHost {
       glow.style.left = `max(14px, ${along}%)`;
       glow.style.opacity = State.uploadProgress > 0.01 ? "1" : "0";
       card.classList.toggle("done", done);
+
+      const key = names.length > 1 ? names.join("\n") : "";
+      if (key !== filesKey) {
+        filesKey = key;
+        fileFills = [];
+        files.replaceChildren(...fileCells(names).map((cell) => {
+          if (cell.kind === "more") return h("div", { class: "up-file more", text: `+${cell.count}` });
+          const fileFill = h("i");
+          const filePct = h("span", { class: "up-file-pct" });
+          fileFills.push({ el: fileFill, pct: filePct, index: cell.index });
+          return h(
+            "div",
+            { class: "up-file" },
+            h("div", { class: "up-file-row" }, h("span", { class: "up-file-name", text: cell.name, title: cell.name }), filePct),
+            h("div", { class: "up-file-track" }, fileFill),
+          );
+        }));
+      }
+      for (const { el: fileFill, pct: filePct, index } of fileFills) {
+        const p = fileProgress(State.uploadProgress, index, names.length);
+        const fileDone = p >= 0.999;
+        fileFill.style.width = `${p * 100}%`;
+        filePct.textContent = fileDone ? "✓" : `${Math.round(p * 100)} %`;
+        filePct.classList.toggle("done", fileDone);
+      }
     },
   };
 }

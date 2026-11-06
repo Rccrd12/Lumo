@@ -516,6 +516,8 @@ class AppState {
 
   uploadProgress = 0;
   uploadDuration = 2.4;
+  /** The names of the files on the upload bar now: several when they were dropped together. */
+  uploadNames: string[] = [];
   /** A dropped file just landed in the chat: it says so until `until` (Date.now()). */
   uploadedNote: { name: string; until: number } | null = null;
   fileDragOver = false;

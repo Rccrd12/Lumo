@@ -20,6 +20,7 @@ import { Greeting } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
 import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
+import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
@@ -1135,7 +1136,8 @@ export class Island {
     this.uploadAt = performance.now();
     this.uploadTens = 0;
     this.uploadDone = false;
-    Feed.upload = { name: first.name };
+    State.uploadNames = dropped.map((f) => f.name);
+    Feed.upload = { name: dropName(State.uploadNames) };
 
     this.engine.gulp();
     Sound.play("approve");
@@ -1177,6 +1179,10 @@ export class Island {
             } else {
               State.moreFiles = State.moreFiles.filter((f) => f.path !== path);
             }
+            // Its bar goes too: the upload shows the files that will be there.
+            const gone = State.uploadNames.indexOf(nameOf(path));
+            if (gone >= 0) State.uploadNames = State.uploadNames.filter((_, i) => i !== gone);
+            if (Feed.upload) Feed.upload = { name: dropName(State.uploadNames) };
             State.notify();
             return;
           }
@@ -1235,7 +1241,7 @@ export class Island {
     this.uploadAt = null;
     Feed.upload = null;
     State.uploadProgress = 1;
-    const name = State.droppedFile?.name ?? t("file");
+    const name = State.uploadNames.length > 1 ? dropName(State.uploadNames) : State.droppedFile?.name ?? t("file");
     if (State.mode === "expanded") {
       State.uploadedNote = { name, until: Date.now() + UPLOADED_NOTE_MS };
       window.setTimeout(() => State.notify(), UPLOADED_NOTE_MS + 20);
