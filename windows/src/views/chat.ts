@@ -292,6 +292,7 @@ const COPY_STRINGS = {
   open: N_("Open"),
   folder: N_("Show the folder"),
   confirm: N_("Write it over the original"),
+  original: N_("The original: {path}"),
   rewritten: N_("rewritten"),
   line: N_("line {n}"),
   places: N_("{count} places"),
@@ -387,8 +388,10 @@ async function showDiff(copy: { chat: string; path: string }, detail: HTMLElemen
     }
   });
   if (tabs.length) detail.append(h("div", { class: "reply-copy-row" }, ...tabs.map(([b]) => b)));
+  // Where the click writes, in full: the manifest says it, the user sees it.
   detail.append(
     body,
+    h("div", { class: "reply-copy-note", text: t(COPY_STRINGS.original, { path: diff.original }) }),
     h("div", { class: "reply-copy-row" }, confirm));
   show(best);
 }

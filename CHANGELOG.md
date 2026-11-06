@@ -9,6 +9,7 @@
 - **Lumo's own web search** for the providers without one (local models, OpenAI, Google, OpenRouter), and the email and listening tools for every API provider
 - **/compact** for the providers called by their API. With a local model the context ring offers it, and Compact the chat is a small pill at the bottom of the context menu
 - **Steadier answers from local models**: a request the server drops (LM Studio's "terminated" or "fetch failed") is asked again, and a stream that hangs is asked for whole. A tool call written as text, a change said but not made, or a task left halfway goes back to the model once, and a made-up tool is answered with the real ones. A failed answer always says why
+- **Safer copies and PDFs**: the record of what each copy came from is kept outside the model's folder, and the card shows the original's full path before **Write it over the original**. Names Windows reads as something else (a trailing dot, `con`, `NOTES~1.TXT`) and network paths are refused. A malformed PDF can no longer close Lumo, and a PDF's streams decompress to 64 MB at most
 
 ## Windows 0.16.1 — October 29, 2026
 

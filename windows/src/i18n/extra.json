@@ -14533,6 +14533,18 @@
    "id": "Tulis di atas aslinya",
    "it": "Scrivilo sopra l'originale"
   },
+  "The original: {path}": {
+   "zh-Hans": "原文件：{path}",
+   "hi": "मूल फ़ाइल: {path}",
+   "es": "El original: {path}",
+   "ar": "الأصل: {path}",
+   "fr": "L'original : {path}",
+   "bn": "মূল ফাইল: {path}",
+   "pt-BR": "O original: {path}",
+   "ru": "Оригинал: {path}",
+   "id": "Aslinya: {path}",
+   "it": "L'originale: {path}"
+  },
   "The copy is the same as the original.": {
    "zh-Hans": "副本与原文件相同。",
    "hi": "कॉपी मूल जैसी ही है।",
