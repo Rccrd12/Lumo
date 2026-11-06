@@ -1,5 +1,5 @@
-// TeX math in the chat's answers ($…$, $$…$$, \(…\), \[…\]), drawn as DOM
-// with no library: the notation answers use — Greek letters, operators and
+// TeX math in the chat's answers ($…$, $$…$$, \(…\), \[…\]), drawn as
+// MathML with no library: the notation answers use — Greek letters, operators and
 // arrows, sub- and superscripts, \frac, \sqrt, \vec (and \vect, \vv) and
 // other accents, \mathbb and friends, \text, \left…\right with brackets as
 // tall as what they hold, matrices, array, cases and aligned rows, sums with
@@ -7,7 +7,8 @@
 // \abs, \norm and bra-kets. A command it does not know shows what it is
 // given, or else its name, never raw markup.
 //
-// Built with textContent only, like the rest of the Markdown (markdown.ts).
+// Built with textContent only, like the rest of the Markdown (markdown.ts);
+// the WebView lays the MathML out with the math font (styles in style.css).
 
 import { h } from "./dom";
 
@@ -54,6 +55,67 @@ const SYMBOLS: Record<string, string> = {
   enspace: " ", thinspace: " ", medspace: " ", thickspace: " ", ">": " ", negthinspace: "",
   // The number sets that notes define as macros of their own: \R, \N…
   R: "ℝ", N: "ℕ", Z: "ℤ", Q: "ℚ", C: "ℂ",
+  // More Greek: the capitals that look Latin, the slanted capitals, Hebrew.
+  Alpha: "A", Beta: "B", Epsilon: "E", Zeta: "Z", Eta: "H", Iota: "I", Kappa: "K", Mu: "M", Nu: "N",
+  Omicron: "O", omicron: "ο", Rho: "P", Tau: "T", Chi: "X", varGamma: "𝛤", varDelta: "𝛥",
+  varTheta: "𝛩", varLambda: "𝛬", varXi: "𝛯", varPi: "𝛱", varSigma: "𝛴", varUpsilon: "𝛶",
+  varPhi: "𝛷", varPsi: "𝛹", varOmega: "𝛺", beth: "ℶ", gimel: "ℷ", daleth: "ℸ",
+  // Letter-like symbols
+  hslash: "ℏ", eth: "ð", mho: "℧", Finv: "Ⅎ", Game: "⅁", Bbbk: "𝕜", backprime: "‵",
+  // Operations
+  ddagger: "‡", ddag: "‡", dag: "†", Dagger: "‡", centerdot: "⋅", bigcirc: "◯", bigtriangleup: "△",
+  bigtriangledown: "▽", triangleleft: "◃", triangleright: "▹", lhd: "⊲", rhd: "⊳", unlhd: "⊴",
+  unrhd: "⊵", boxplus: "⊞", boxminus: "⊟", boxtimes: "⊠", boxdot: "⊡", circledast: "⊛",
+  circledcirc: "⊚", circleddash: "⊝", curlyvee: "⋎", curlywedge: "⋏", divideontimes: "⋇",
+  dotplus: "∔", doublebarwedge: "⩞", intercal: "⊺", leftthreetimes: "⋋", rightthreetimes: "⋌",
+  ltimes: "⋉", rtimes: "⋊", smallsetminus: "∖", veebar: "⊻", barwedge: "⊼", Cap: "⋒", Cup: "⋓",
+  minus: "−", bigsqcap: "⨅", gt: ">", lt: "<",
+  // Relations, and their negations
+  approxeq: "≊", backsim: "∽", backsimeq: "⋍", bumpeq: "≏", Bumpeq: "≎", circeq: "≗",
+  curlyeqprec: "⋞", curlyeqsucc: "⋟", doteqdot: "≑", Doteq: "≑", eqcirc: "≖", eqsim: "≂",
+  eqslantgtr: "⪖", eqslantless: "⪕", fallingdotseq: "≒", risingdotseq: "≓", geqq: "≧", leqq: "≦",
+  ggg: "⋙", gggtr: "⋙", lll: "⋘", llless: "⋘", gnapprox: "⪊", gneq: "⪈", gneqq: "≩", gnsim: "⋧",
+  gtrapprox: "⪆", gtrdot: "⋗", gtreqless: "⋛", gtreqqless: "⪌", gtrless: "≷", lessapprox: "⪅",
+  lessdot: "⋖", lesseqgtr: "⋚", lesseqqgtr: "⪋", lessgtr: "≶", lnapprox: "⪉", lneq: "⪇",
+  lneqq: "≨", lnsim: "⋦", ncong: "≇", ngtr: "≯", nless: "≮", nprec: "⊀", nsucc: "⊁",
+  npreceq: "⋠", nsucceq: "⋡", nsim: "≁", nparallel: "∦", nshortmid: "∤", nshortparallel: "∦",
+  nsupseteq: "⊉", nsubset: "⊄", nsupset: "⊅", ntriangleleft: "⋪", ntriangleright: "⋫",
+  ntrianglelefteq: "⋬", ntrianglerighteq: "⋭", nvdash: "⊬", nvDash: "⊭", nVdash: "⊮", nVDash: "⊯",
+  precapprox: "⪷", preccurlyeq: "≼", preceq: "⪯", precsim: "≾", precnsim: "⋨", precneqq: "⪵",
+  succapprox: "⪸", succcurlyeq: "≽", succeq: "⪰", succsim: "≿", succnsim: "⋩", succneqq: "⪶",
+  sqsubset: "⊏", sqsupset: "⊐", sqsupseteq: "⊒", Subset: "⋐", Supset: "⋑", subseteqq: "⫅",
+  supseteqq: "⫆", subsetneqq: "⫋", supsetneqq: "⫌", thicksim: "∼", thickapprox: "≈",
+  trianglelefteq: "⊴", trianglerighteq: "⊵", vartriangle: "△", vartriangleleft: "⊲",
+  vartriangleright: "⊳", vDash: "⊨", Vdash: "⊩", Vvdash: "⊪", smile: "⌣", frown: "⌢",
+  between: "≬", pitchfork: "⋔", shortmid: "∣", shortparallel: "∥", varpropto: "∝",
+  backepsilon: "϶", notni: "∌", nni: "∌", multimap: "⊸", eqqcolon: "≕", coloneq: "≔",
+  Coloneqq: "⩴", eqcolon: "≕", lesseqslant: "⩽", nleqslant: "⪇", ngeqslant: "⪈", nleqq: "≰",
+  ngeqq: "≱", gtreqslant: "⪖", nmodels: "⊭", sqsubsetneq: "⋤",
+  // Arrows
+  Lleftarrow: "⇚", Rrightarrow: "⇛", Lsh: "↰", Rsh: "↱", curvearrowleft: "↶",
+  curvearrowright: "↷", circlearrowleft: "↺", downdownarrows: "⇊", upuparrows: "⇈",
+  leftleftarrows: "⇇", leftrightarrows: "⇆", rightleftarrows: "⇄", leftrightharpoons: "⇋",
+  leftrightsquigarrow: "↭", rightsquigarrow: "⇝", looparrowleft: "↫", looparrowright: "↬",
+  twoheadleftarrow: "↞", twoheadrightarrow: "↠", leftarrowtail: "↢", rightarrowtail: "↣",
+  downharpoonleft: "⇃", downharpoonright: "⇂", upharpoonleft: "↿", upharpoonright: "↾",
+  restriction: "↾", leftharpoondown: "↽", rightharpoondown: "⇁", nleftarrow: "↚",
+  nrightarrow: "↛", nLeftarrow: "⇍", nRightarrow: "⇏", nleftrightarrow: "↮", nLeftrightarrow: "⇎",
+  Updownarrow: "⇕", dashrightarrow: "⇢", dashleftarrow: "⇠", mapsfrom: "↤", Longmapsto: "⟾",
+  longmapsfrom: "⟻", righttoleftarrow: "⇄",
+  // Big operators and integrals
+  iiiint: "⨌", oiint: "∯", oiiint: "∰", intop: "∫", smallint: "∫", bigplus: "⨁",
+  // Brackets
+  llbracket: "⟦", rrbracket: "⟧", lgroup: "⟮", rgroup: "⟯", ulcorner: "⌜", urcorner: "⌝",
+  llcorner: "⌞", lrcorner: "⌟", lmoustache: "⎰", rmoustache: "⎱", lparen: "(", rparen: ")",
+  // Shapes, suits and the rest
+  measuredangle: "∡", sphericalangle: "∢", bigstar: "★", blacklozenge: "⧫", blacktriangle: "▲",
+  blacktriangledown: "▼", blacktriangleleft: "◀", blacktriangleright: "▶", triangledown: "▿",
+  clubsuit: "♣", diamondsuit: "♢", heartsuit: "♡", spadesuit: "♠", varclubsuit: "♧",
+  vardiamondsuit: "♦", varheartsuit: "♥", varspadesuit: "♤", Diamond: "◊", maltese: "✠",
+  surd: "√", copyright: "©", textcopyright: "©", pounds: "£", yen: "¥", euro: "€", S: "§",
+  P: "¶", textdegree: "°", circledR: "®", circledS: "Ⓢ", hdots: "…", iddots: "⋰", adots: "⋰",
+  And: "&", infin: "∞", diameter: "⌀", Diamondblack: "◆",
+  textasciitilde: "~", textbackslash: "\\", textbar: "|", textendash: "–", textemdash: "—",
 };
 
 /** Functions set upright: \sin x, \lim, \max… */
@@ -62,12 +124,22 @@ const FUNCTIONS = new Set([
   "log", "ln", "lg", "exp", "lim", "liminf", "limsup", "max", "min", "sup", "inf", "det", "dim",
   "ker", "deg", "gcd", "arg", "Pr", "mod", "rank", "tr", "sgn", "hom", "lcm", "Tr", "diag",
   "argmax", "argmin", "span", "Var", "Cov", "erf", "csch", "sech", "coth", "arccot",
+  "arcsec", "arccsc", "sh", "ch", "th", "tg", "ctg", "cth", "arctg", "arcctg", "injlim", "projlim",
+  "codim", "id", "sign", "ord", "lub", "glb", "Ker", "Im", "End", "Aut", "Hom", "supp", "dom",
+  "cod", "card", "rk", "Res", "vol", "corr", "plim", "esssup", "essinf", "adj", "proj",
 ]);
 
-/** Combining marks for the accents. */
+/** The accents' marks, drawn over the letter; the wide ones stretch to what they cover. */
 const ACCENTS: Record<string, string> = {
-  vec: "⃗", hat: "̂", widehat: "̂", tilde: "̃", widetilde: "̃",
-  dot: "̇", ddot: "̈", acute: "́", grave: "̀", check: "̌", breve: "̆",
+  vec: "→", hat: "ˆ", tilde: "˜", dot: "˙", ddot: "¨", dddot: "⋯", acute: "´", grave: "`",
+  check: "ˇ", breve: "˘", bar: "¯", mathring: "˚",
+};
+const WIDE_ACCENTS: Record<string, string> = {
+  widehat: "\u0302", widetilde: "˜", widecheck: "ˇ", overrightarrow: "→", overleftarrow: "←",
+  overleftrightarrow: "↔", Overrightarrow: "⇒", overgroup: "⏠", overlinesegment: "↔",
+};
+const UNDER_ACCENTS: Record<string, string> = {
+  underrightarrow: "→", underleftarrow: "←", underleftrightarrow: "↔", undergroup: "⏡", utilde: "˜",
 };
 
 /** \mathbb letters (double-struck). */
@@ -104,12 +176,13 @@ type Node =
   | { t: "sym"; v: string; upright?: boolean }
   | { t: "group"; c: Node[] }
   | { t: "sup"; base: Node | null; sup: Node | null; sub: Node | null }
-  | { t: "frac"; num: Node; den: Node }
+  | { t: "frac"; num: Node; den: Node; size?: "display" | "text"; line?: boolean }
   | { t: "sqrt"; body: Node; index: Node | null }
-  | { t: "accent"; mark: string; body: Node }
+  | { t: "accent"; mark: string; body: Node; stretchy?: boolean; under?: boolean }
   | { t: "over"; body: Node; under?: boolean }
-  | { t: "style"; style: "bold" | "boldit" | "italic" | "upright" | "text"; body: Node }
-  | { t: "matrix"; rows: Node[][]; open: string; close: string; align: string[]; kind: "matrix" | "aligned" | "cases" }
+  | { t: "style"; style: "bold" | "boldit" | "italic" | "upright" | "text" | "display" | "textstyle"; body: Node }
+  | { t: "cancel"; kind: "cancel" | "bcancel" | "xcancel" | "sout"; body: Node }
+  | { t: "matrix"; rows: Node[][]; open: string; close: string; align: string[]; kind: "matrix" | "aligned" | "cases"; small?: boolean }
   | { t: "fence"; open: string; body: Node[]; close: string }
   | { t: "delim"; v: string }
   | { t: "big"; v: string; scale: number }
@@ -159,8 +232,8 @@ const ENVIRONMENTS: Record<string, { open: string; close: string; kind: "matrix"
 };
 
 /** Sums, products, limits…: in a formula on a line of its own, their scripts go above and below. */
-const BIG_OPERATORS = new Set(["∑", "∏", "∐", "⋃", "⋂", "⨁", "⨂", "⨀", "⨄", "⨆", "⋁", "⋀"]);
-const LIMIT_FUNCTIONS = new Set(["lim", "liminf", "limsup", "max", "min", "sup", "inf", "argmax", "argmin"]);
+const BIG_OPERATORS = new Set(["∑", "∏", "∐", "⋃", "⋂", "⨁", "⨂", "⨀", "⨄", "⨆", "⨅", "⋁", "⋀"]);
+const LIMIT_FUNCTIONS = new Set(["lim", "liminf", "limsup", "max", "min", "sup", "inf", "argmax", "argmin", "injlim", "projlim", "det", "gcd", "Pr", "plim", "esssup", "essinf"]);
 
 /** Where `\end{env}` closes the `\begin` whose body starts at `from`, nested ones skipped. */
 function environmentEnd(s: string, from: number): { start: number; end: number } | null {
@@ -333,12 +406,27 @@ class Parser {
     const name = this.name();
     const arg = () => this.atom() ?? { t: "group" as const, c: [] };
     switch (name) {
-      case "frac": case "dfrac": case "tfrac": case "cfrac":
+      case "frac": case "cfrac":
         return { t: "frac", num: arg(), den: arg() };
+      case "dfrac": case "tfrac":
+        return { t: "frac", num: arg(), den: arg(), size: name === "dfrac" ? "display" : "text" };
       case "binom": case "dbinom": case "tbinom": {
         const top = arg();
         const bottom = arg();
-        return { t: "matrix", rows: [[top], [bottom]], open: "(", close: ")", align: ["c"], kind: "matrix" };
+        const size = name === "dbinom" ? "display" : name === "tbinom" ? "text" : undefined;
+        return { t: "fence", open: "(", body: [{ t: "frac", num: top, den: bottom, line: false, size }], close: ")" };
+      }
+      case "pmod": return { t: "group", c: [{ t: "sym", v: "\u2003", upright: true }, this.fenced("(", { t: "group", c: [{ t: "op", name: "mod" }, arg()] }, ")")] };
+      case "bmod": return { t: "group", c: [{ t: "sym", v: "\u205f", upright: true }, { t: "op", name: "mod" }, { t: "sym", v: "\u205f", upright: true }] };
+      case "cancel": case "bcancel": case "xcancel": case "sout": return { t: "cancel", kind: name, body: arg() };
+      case "substack": {
+        const rows = splitTop(this.raw(), "row").map((r) => [{ t: "group" as const, c: new Parser(r.trim()).parseAll() }]);
+        return { t: "matrix", rows, open: "", close: "", align: ["c"], kind: "matrix", small: true };
+      }
+      case "displaystyle": case "textstyle": {
+        // To the end of the group it is in: \displaystyle\int… in the text.
+        const body: Node = { t: "group", c: this.parse() };
+        return { t: "style", style: name === "displaystyle" ? "display" : "textstyle", body };
       }
       case "sqrt": {
         let index: Node | null = null;
@@ -351,11 +439,10 @@ class Parser {
         }
         return { t: "sqrt", body: arg(), index };
       }
-      case "overline": case "bar": return { t: "over", body: arg() };
+      case "overline": return { t: "over", body: arg() };
       case "underline": return { t: "over", body: arg(), under: true };
       // \vect{v} and \vv{v}: the vector macros of many notes and packages.
-      case "vect": case "vv": case "Vec": case "overrightarrow": return { t: "accent", mark: ACCENTS.vec, body: arg() };
-      case "overleftarrow": return { t: "stack", top: { t: "sym", v: "←", upright: true }, body: arg(), bottom: null };
+      case "vect": case "vv": case "Vec": return { t: "accent", mark: ACCENTS.vec, body: arg() };
       case "overbrace": return { t: "stack", top: { t: "sym", v: "⏞", upright: true }, body: arg(), bottom: null };
       case "underbrace": return { t: "stack", top: null, body: arg(), bottom: { t: "sym", v: "⏟", upright: true } };
       case "overset": case "stackrel": {
@@ -413,7 +500,7 @@ class Parser {
         if (space) this.i += space[0].length;
         return null;
       }
-      case "displaystyle": case "textstyle": case "scriptstyle": case "scriptscriptstyle": case "limits":
+      case "scriptstyle": case "scriptscriptstyle": case "limits":
       case "nolimits": case "notag": case "nonumber": case "hline": case "hdashline": case "nobreak":
       case "allowbreak": case "relax": case "strut": case "centering": case "small": case "large":
       case "Large": case "normalsize": case "footnotesize": case "tiny": case "huge": case "Huge":
@@ -464,6 +551,8 @@ class Parser {
       return v ? { t: "big", v, scale: BIG_SIZES[name] } : null;
     }
     if (ACCENTS[name]) return { t: "accent", mark: ACCENTS[name], body: arg() };
+    if (WIDE_ACCENTS[name]) return { t: "accent", mark: WIDE_ACCENTS[name], body: arg(), stretchy: true };
+    if (UNDER_ACCENTS[name]) return { t: "accent", mark: UNDER_ACCENTS[name], body: arg(), stretchy: true, under: true };
     if (FUNCTIONS.has(name)) return { t: "op", name };
     if (name in SYMBOLS) return { t: "sym", v: SYMBOLS[name], upright: true };
     // Unknown, as a macro of the answer's own (\vett{v}, \R…): what it is
@@ -571,194 +660,356 @@ function flatten(node: Node): string {
 }
 
 // ── Drawing ───────────────────────────────────────────────────────────────────
+//
+// The formula becomes MathML, which the WebView lays out itself with the
+// math font's own tables (Cambria Math on Windows): integrals and sums at
+// their display size, brackets that stretch, fractions, roots, scripts and
+// the room around each operator as TeX sets them.
 
-/** Brackets drawn as lines that stretch to what they hold, in a 10×100 box. */
-const DELIM_PATHS: Record<string, string> = {
-  "(": "M8.5 1 C1 22 1 78 8.5 99",
-  ")": "M1.5 1 C9 22 9 78 1.5 99",
-  "[": "M8 1 H3 V99 H8",
-  "]": "M2 1 H7 V99 H2",
-  "{": "M8.5 1 C5 1 5 3 5 8 V42 C5 47 4 50 1.5 50 C4 50 5 53 5 58 V92 C5 97 5 99 8.5 99",
-  "}": "M1.5 1 C5 1 5 3 5 8 V42 C5 47 6 50 8.5 50 C6 50 5 53 5 58 V92 C5 97 5 99 1.5 99",
-  "|": "M5 0 V100",
-  "‖": "M3 0 V100 M7 0 V100",
-  "⟨": "M8 1 L2 50 L8 99",
-  "⟩": "M2 1 L8 50 L2 99",
-  "⌊": "M3 1 V99 H8",
-  "⌋": "M7 1 V99 H2",
-  "⌈": "M3 99 V1 H8",
-  "⌉": "M7 99 V1 H2",
-};
+const MATHML = "http://www.w3.org/1998/Math/MathML";
 
-const SVG = "http://www.w3.org/2000/svg";
+type Child = Element | string | null;
 
-/** A bracket as tall as its row; its character stays in the text, for copying. */
-function delimiter(v: string): HTMLElement | Text {
-  const path = DELIM_PATHS[v];
-  if (!path) return v ? h("span", { class: "mx-delim-text", text: v }) : document.createTextNode("");
-  const svg = document.createElementNS(SVG, "svg");
-  svg.setAttribute("viewBox", "0 0 10 100");
-  svg.setAttribute("preserveAspectRatio", "none");
-  svg.setAttribute("aria-hidden", "true");
-  const line = document.createElementNS(SVG, "path");
-  line.setAttribute("d", path);
-  svg.append(line);
-  const wide = v === "{" || v === "}" ? " mx-delim-wide" : v === "|" || v === "‖" ? " mx-delim-thin" : "";
-  return h("span", { class: `mx-delim${wide}` }, h("span", { class: "mx-delim-char", text: v }), svg);
+function m(tag: string, attrs: Record<string, string> = {}, ...children: Child[]): Element {
+  const el = document.createElementNS(MATHML, tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") el.className = v;
+    else el.setAttribute(k, v);
+  }
+  for (const c of children) if (c != null) el.append(c);
+  return el;
 }
 
 /** Relations, with room on both sides: a = b, x ∈ A, f → g. */
 const RELATIONS = new Set([..."=<>≤≥≠≈∼≃≅≡∝≪≫≺≻∈∉∋⊂⊃⊆⊇⊊⊋⊈⊑→←↔⇒⇐⇔⟹⟸⟺↦⟶⟵⟷⟼⇝⇌∥⊥≜≐≔≍⊨⊢⊣≲≳⩽⩾≰≱"]);
 /** Operations between two terms, with a little less: a + b, a × b. A sign in front (−x) keeps none. */
 const BINARY = new Set([..."+−×÷±∓·∗⋆∘∪∩∖∧∨⊕⊖⊗⊙⊘⊎⊔⊓"]);
-const INTEGRALS = new Set([..."∫∬∭∮"]);
+const INTEGRALS = new Set([..."∫∬∭∮∯∰⨌"]);
+/** Brackets: as written they keep their size; \left, \right and \big make them taller. */
+const BRACKETS = new Set([..."()[]{}|‖⟨⟩⌊⌋⌈⌉⟦⟧⟮⟯⌜⌝⌞⌟⎰⎱"]);
+/** Symbols that are things, not operations, though they sit among the operators in Unicode. */
+const ORDINARY = new Set([..."∂∇∞∅∠∡∢∟∴∵⊤⊥△▽◊□■★"]);
+/** Letters set upright, as TeX does: capital Greek and the letter-like symbols. */
+const UPRIGHT_LETTERS = /^[ΓΔΘΛΞΠΣΥΦΨΩ∇ℏℓ℘ℜℑℵℶℷℸð℧Ⅎ⅁]$/u;
+/** The widths of the spaces: \, \: \; \quad, \qquad, ~ and \enspace. */
+const SPACE_WIDTHS: Record<string, number> = { " ": 0.1667, " ": 0.2222, " ": 0.2778, " ": 0.5, " ": 1, " ": 0.3333 };
 
-/** Set while drawing a formula on a line of its own: sums take their limits above and below. */
-let displayMode = false;
+/** Whether a character is an operator for MathML: arrows, relations, operations, punctuation. */
+function isOperatorChar(c: string): boolean {
+  if (ORDINARY.has(c)) return false;
+  if (RELATIONS.has(c) || BINARY.has(c) || BRACKETS.has(c) || INTEGRALS.has(c) || BIG_OPERATORS.has(c)) return true;
+  if (",;:.!?/′″‴∀∃∄¬&".includes(c)) return true;
+  const cp = c.codePointAt(0) ?? 0;
+  return (
+    (cp >= 0x2190 && cp <= 0x21ff) || // arrows
+    (cp >= 0x2200 && cp <= 0x22ff) || // mathematical operators
+    (cp >= 0x27f0 && cp <= 0x27ff) || // long arrows
+    (cp >= 0x2900 && cp <= 0x297f) || // more arrows
+    (cp >= 0x2a00 && cp <= 0x2aff) || // more operators
+    (cp >= 0x2308 && cp <= 0x230b) || // floor and ceiling
+    (cp >= 0x23de && cp <= 0x23df) // over- and underbrace
+  );
+}
 
+// ── Letters in a style: \mathbf, \boldsymbol, \mathit ──────────────────────
+
+type LetterStyle = "bold" | "boldit" | "italic" | "upright" | null;
+let letterStyle: LetterStyle = null;
+/** Inside \text: words, not math. */
+let inText = false;
+
+const ITALIC_HOLES: Record<string, string> = { h: "ℎ" };
+
+function styled(c: string, style: LetterStyle): string {
+  const upper = /[A-Z]/.test(c);
+  const lower = /[a-z]/.test(c);
+  const digit = /[0-9]/.test(c);
+  const at = (base: number, from: string) => String.fromCodePoint(base + c.charCodeAt(0) - from.charCodeAt(0));
+  switch (style) {
+    case "bold":
+      if (upper) return at(0x1d400, "A");
+      if (lower) return at(0x1d41a, "a");
+      if (digit) return at(0x1d7ce, "0");
+      return c;
+    case "boldit":
+      if (upper) return at(0x1d468, "A");
+      if (lower) return at(0x1d482, "a");
+      if (digit) return at(0x1d7ce, "0");
+      return c;
+    case "italic":
+      if (ITALIC_HOLES[c]) return ITALIC_HOLES[c];
+      if (upper) return at(0x1d434, "A");
+      if (lower) return at(0x1d44e, "a");
+      return c;
+    default:
+      return c;
+  }
+}
+
+/** One symbol: a number, a letter, an operator, a space or a word. */
+function symbol(v: string, upright: boolean | undefined): Element {
+  if (inText) return m("mtext", {}, v.replace(/ /g, " "));
+  if (v === "") return m("mspace", { width: "-0.1667em" }); // \!
+  if (/^\s+$/u.test(v)) {
+    const width = [...v].reduce((sum, c) => sum + (SPACE_WIDTHS[c] ?? 0.25), 0);
+    return m("mspace", { width: `${width.toFixed(4)}em` });
+  }
+  const chars = [...v];
+  if (/^[0-9]+$/.test(v)) return m("mn", {}, letterStyle ? chars.map((c) => styled(c, letterStyle)).join("") : v);
+  if (chars.length === 1 && /[A-Za-z]/.test(v)) {
+    if (letterStyle && letterStyle !== "upright") return m("mi", { mathvariant: "normal" }, styled(v, letterStyle));
+    if (letterStyle === "upright" || upright) return m("mi", { mathvariant: "normal" }, v);
+    return m("mi", {}, v);
+  }
+  if (chars.length === 1 && isOperatorChar(v)) {
+    const attrs: Record<string, string> = {};
+    // A bracket as written keeps its size; only \left…\right stretches.
+    // and, like TeX's, takes no room around it: |x|, not | x |.
+    if (BRACKETS.has(v)) Object.assign(attrs, { stretchy: "false", lspace: "0", rspace: "0" });
+    if (RELATIONS.has(v)) attrs.class = "mx-rel";
+    // ∫ and ∑: TeX's thin space beside them, not the wide default of the rarer ones (∬, ∯…).
+    if (INTEGRALS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.0833em" });
+    if (BIG_OPERATORS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.1667em" });
+    // f′: the math font's prime already sits high, close to the letter.
+    if (v === "′" || v === "″" || v === "‴") Object.assign(attrs, { class: "mx-prime", lspace: "0", rspace: "0" });
+    return m("mo", attrs, v);
+  }
+  if (chars.length === 1) {
+    // Greek small letters lean like Latin ones; capitals and ℝ, ℏ… stand.
+    if (/^[α-ωϑϕϖϰϱϵϝ]$/u.test(v) && !letterStyle) return m("mi", {}, v);
+    if (letterStyle === "bold" || letterStyle === "boldit") return m("mi", { mathvariant: "normal", class: "mx-bold" }, v);
+    if (UPRIGHT_LETTERS.test(v) || upright) return m("mi", { mathvariant: "normal" }, v);
+    return m("mi", {}, v);
+  }
+  // A word (a macro's name, \tag's number) or a composed sign (∇×, ≠ written \not=).
+  if (/^\p{L}+$/u.test(v)) return m("mi", { mathvariant: "normal" }, v);
+  if (chars.length <= 3 && chars.every((c) => isOperatorChar(c) || /\p{M}/u.test(c) || ORDINARY.has(c))) return m("mo", {}, v);
+  return m("mtext", {}, v.replace(/ /g, " "));
+}
+
+/** The names TeX sets as two words: lim sup, arg max… */
+const OP_NAMES: Record<string, string> = {
+  liminf: "lim\u2009inf", limsup: "lim\u2009sup", argmax: "arg\u2009max", argmin: "arg\u2009min",
+  injlim: "inj\u2009lim", projlim: "proj\u2009lim", esssup: "ess\u2009sup", essinf: "ess\u2009inf",
+};
+
+function opName(name: string): string {
+  return OP_NAMES[name] ?? name;
+}
+
+/** Whether a node is ∑, ∏, \lim, \max… whose scripts go above and below on a line of its own. */
 function isBigOperator(node: Node | null): boolean {
   if (!node) return false;
   if (node.t === "sym") return BIG_OPERATORS.has(node.v);
   if (node.t === "op") return LIMIT_FUNCTIONS.has(node.name);
   if (node.t === "style") return node.style === "upright" && LIMIT_FUNCTIONS.has(flatten(node.body));
-  return node.t === "stack";
+  return false;
 }
 
-function draw(node: Node): HTMLElement | Text {
+/** The marks of the accents, as MathML draws them over a letter. */
+function accent(node: Extract<Node, { t: "accent" }>): Element {
+  const mark = m("mo", { stretchy: node.stretchy ? "true" : "false", class: node.mark === "→" && !node.stretchy ? "mx-vec" : "mx-accent" }, node.mark);
+  if (node.under) return m("munder", { accentunder: "true" }, draw(node.body), mark);
+  return m("mover", { accent: "true", class: node.mark === "→" ? "mx-vecover" : "" }, draw(node.body), mark);
+}
+
+function draw(node: Node): Element {
   switch (node.t) {
     case "sym":
-      return node.upright || node.v.length !== 1 ? document.createTextNode(node.v) : h("i", { class: "mx-var", text: node.v });
+      return symbol(node.v, node.upright);
     case "op":
-      return h("span", { class: "mx-op", text: node.name });
+      return m("mi", { mathvariant: "normal", class: "mx-op" }, opName(node.name));
     case "group":
-      return drawAll(node.c, "span");
+      return drawAll(node.c);
     case "sup": {
-      if (isBigOperator(node.base) && (displayMode || node.base?.t === "stack")) {
-        // Limits above and below: ∑ with i=1 under it and n over it.
-        const big = node.base?.t === "sym" ? " mx-bigop" : "";
-        return h("span", { class: "mx-limits" },
-          h("span", { class: "mx-limit" }, node.sup ? draw(node.sup) : ""),
-          h("span", { class: `mx-limits-base${big}` }, node.base ? draw(node.base) : ""),
-          h("span", { class: "mx-limit" }, node.sub ? draw(node.sub) : ""),
-        );
+      const base = node.base ? draw(node.base) : m("mrow");
+      // ∑, \lim: limits above and below on a line of its own, beside it in the text.
+      if (isBigOperator(node.base)) {
+        const b = node.base!;
+        const op = b.t === "sym"
+          ? m("mo", { movablelimits: "true", class: "mx-bigop" }, b.v)
+          : m("mo", { movablelimits: "true", lspace: "0.1667em", rspace: "0.1667em", class: "mx-op" }, b.t === "op" ? opName(b.name) : flatten(b));
+        const tag = node.sub && node.sup ? "munderover" : node.sub ? "munder" : "mover";
+        return m(tag, { class: "mx-limits" }, op, node.sub ? draw(node.sub) : null, node.sup ? draw(node.sup) : null);
       }
-      // ∫ in a formula of its own line: taller, its bounds beside it, the
-      // upper one at its top and the lower one at its foot, even when alone.
-      if (displayMode && node.base?.t === "sym" && INTEGRALS.has(node.base.v)) {
-        return h("span", { class: "mx-script mx-intscript" },
-          h("span", { class: "mx-int", text: node.base.v }),
-          h("span", { class: "mx-supsub" },
-            h("span", { class: "mx-sup" }, node.sup ? draw(node.sup) : ""),
-            h("span", { class: "mx-sub" }, node.sub ? draw(node.sub) : ""),
-          ),
-        );
+      // \overbrace{…}^{n}, \underbrace{…}_{n}: always above and below.
+      if (node.base?.t === "stack") {
+        const tag = node.sub && node.sup ? "munderover" : node.sub ? "munder" : "mover";
+        return m(tag, { class: "mx-limits" }, base, node.sub ? draw(node.sub) : null, node.sup ? draw(node.sup) : null);
       }
-      const el = h("span", { class: "mx-script" });
-      if (node.base) el.append(draw(node.base));
-      if (node.sup && node.sub) {
-        el.append(h("span", { class: "mx-supsub" }, h("span", { class: "mx-sup" }, draw(node.sup)), h("span", { class: "mx-sub" }, draw(node.sub))));
-      } else {
-        if (node.sup) el.append(h("sup", { class: "mx-sup" }, draw(node.sup)));
-        if (node.sub) el.append(h("sub", { class: "mx-sub" }, draw(node.sub)));
-      }
-      return el;
+      const cls = node.base?.t === "sym" && INTEGRALS.has(node.base.v) ? "mx-script mx-int" : "mx-script";
+      if (node.sup && node.sub) return m("msubsup", { class: cls }, base, draw(node.sub), draw(node.sup));
+      if (node.sup) return m("msup", { class: cls }, base, draw(node.sup));
+      return m("msub", { class: cls }, base, node.sub ? draw(node.sub) : m("mrow"));
     }
-    case "frac":
-      return h("span", { class: "mx-frac" }, h("span", { class: "mx-num" }, draw(node.num)), h("span", { class: "mx-den" }, draw(node.den)));
-    case "sqrt": {
-      const el = h("span", { class: "mx-sqrt" });
-      if (node.index) el.append(h("sup", { class: "mx-root" }, draw(node.index)));
-      el.append(h("span", { class: "mx-radic", text: "√" }), h("span", { class: "mx-radicand" }, draw(node.body)));
-      return el;
+    case "frac": {
+      const attrs: Record<string, string> = { class: "mx-frac" };
+      if (node.line === false) attrs.linethickness = "0";
+      const frac = m("mfrac", attrs, draw(node.num), draw(node.den));
+      // \dfrac in the text: as big as on a line of its own; \tfrac: as small as in the text.
+      if (node.size === "display") return m("mrow", { displaystyle: "true" }, frac);
+      if (node.size === "text") return m("mrow", { displaystyle: "false" }, frac);
+      return frac;
     }
-    case "accent": {
-      const flat = flatten(node.body);
-      // A vector's arrow is drawn over it (the combining arrow is missing from
-      // many fonts); one letter takes the other marks itself.
-      if (node.mark === ACCENTS.vec) return h("span", { class: "mx-vecover" }, draw(node.body));
-      if ([...flat].length === 1) return h("i", { class: "mx-var", text: flat + node.mark });
-      return h("span", { class: "mx-over" }, draw(node.body));
-    }
+    case "sqrt":
+      if (node.index) return m("mroot", { class: "mx-sqrt" }, draw(node.body), draw(node.index));
+      return m("msqrt", { class: "mx-sqrt" }, draw(node.body));
+    case "accent":
+      return accent(node);
     case "over":
-      return h("span", { class: node.under ? "mx-under" : "mx-over" }, draw(node.body));
+      if (node.under) return m("munder", { accentunder: "true" }, draw(node.body), m("mo", { stretchy: "true" }, "_"));
+      return m("mover", { accent: "true" }, draw(node.body), m("mo", { stretchy: "true" }, "‾"));
     case "style": {
-      const cls = { bold: "mx-bold", boldit: "mx-bold mx-boldit", italic: "mx-it", text: "mx-text", upright: "mx-rm" }[node.style];
-      const inner = node.body.t === "sym" ? document.createTextNode(node.body.v) : draw(node.body);
-      return h("span", { class: cls }, inner);
-    }
-    case "fence": {
-      const inner = drawAll(node.body, "span");
-      inner.className = "mx-fenced";
-      return h("span", { class: "mx-fence" }, delimiter(node.open), inner, delimiter(node.close));
-    }
-    case "delim":
-      return delimiter(node.v);
-    case "big": {
-      const el = h("span", { class: "mx-big", text: node.v });
-      el.style.fontSize = `${node.scale}em`;
-      return el;
-    }
-    case "stack":
-      return h("span", { class: "mx-stack" },
-        node.top ? h("span", { class: "mx-limit" }, draw(node.top)) : "",
-        h("span", { class: "mx-stack-base" }, draw(node.body)),
-        node.bottom ? h("span", { class: "mx-limit" }, draw(node.bottom)) : "",
-      );
-    case "box":
-      return h("span", { class: "mx-box" }, draw(node.body));
-    case "matrix": {
-      const grid = h("span", { class: `mx-grid mx-grid-${node.kind}` });
-      const cols = Math.max(1, ...node.rows.map((r) => r.length));
-      grid.style.gridTemplateColumns = `repeat(${cols}, auto)`;
-      for (const row of node.rows) {
-        for (let k = 0; k < cols; k++) {
-          const cell = h("span", { class: "mx-cell" }, row[k] ? draw(row[k]) : "");
-          const align = node.align[k] ?? "c";
-          if (align !== "c") cell.style.textAlign = align === "l" ? "left" : "right";
-          // aligned: a gap between each pair of columns, none inside one.
-          if (node.kind === "aligned" && k > 0 && k % 2 === 0) cell.classList.add("mx-cell-pair");
-          grid.append(cell);
+      if (node.style === "text") {
+        const was = inText;
+        inText = true;
+        try {
+          return m("mrow", { class: "mx-text" }, draw(node.body));
+        } finally {
+          inText = was;
         }
       }
-      if (!node.open && !node.close) return h("span", { class: "mx-matrix" }, grid);
-      return h("span", { class: "mx-fence mx-matrix" }, delimiter(node.open), grid, delimiter(node.close));
+      if (node.style === "display" || node.style === "textstyle") {
+        return m("mrow", { displaystyle: node.style === "display" ? "true" : "false" }, draw(node.body));
+      }
+      const was = letterStyle;
+      letterStyle = node.style;
+      try {
+        return m("mrow", { class: `mx-${node.style}` }, draw(node.body));
+      } finally {
+        letterStyle = was;
+      }
     }
+    case "cancel":
+      return m("mrow", { class: `mx-cancel mx-${node.kind}` }, draw(node.body));
+    case "fence":
+      return m("mrow", { class: "mx-fence" }, fenceMark(node.open, "prefix"), drawAll(node.body), fenceMark(node.close, "postfix"));
+    case "delim":
+      return m("mo", { stretchy: "true", symmetric: "true", class: "mx-delim" }, node.v);
+    case "big":
+      return m("mo", { stretchy: "true", symmetric: "true", minsize: `${node.scale}em`, maxsize: `${node.scale}em`, class: "mx-delim" }, node.v);
+    case "stack": {
+      const body = draw(node.body);
+      // A brace or an arrow over or under: as wide as what it spans.
+      const stretch = (n: Node | null) => (n && n.t === "sym" && isOperatorChar(n.v) ? m("mo", { stretchy: "true" }, n.v) : n ? draw(n) : null);
+      const base = node.body.t === "sym" && isOperatorChar(node.body.v) ? m("mo", { stretchy: "true", class: "mx-xarrow" }, node.body.v) : body;
+      // \overbrace and \underbrace: a brace as wide as what it spans, drawn
+      // by style.css in pieces (two ends, the point, the lines between), since
+      // not every math font's brace stretches cleanly in the WebView.
+      if (node.top?.t === "sym" && node.top.v === "⏞") return m("mrow", { class: "mx-stack mx-overbrace" }, base);
+      if (node.bottom?.t === "sym" && node.bottom.v === "⏟") return m("mrow", { class: "mx-stack mx-underbrace" }, base);
+      if (node.top && node.bottom) return m("munderover", { class: "mx-stack" }, base, stretch(node.bottom), stretch(node.top));
+      if (node.top) return m("mover", { class: "mx-stack" }, base, stretch(node.top));
+      if (node.bottom) return m("munder", { class: "mx-stack" }, base, stretch(node.bottom));
+      return base;
+    }
+    case "box":
+      return m("mrow", { class: "mx-box" }, draw(node.body));
+    case "matrix":
+      return matrix(node);
   }
 }
 
-function drawAll(nodes: Node[], tag: "span" | "div"): HTMLElement {
-  const el = h(tag);
-  let prev: Node | null = null;
-  for (const n of nodes) {
-    if (n.t === "sym" && n.upright && RELATIONS.has(n.v)) el.append(h("span", { class: "mx-rel", text: n.v }));
-    else if (n.t === "sym" && n.upright && BINARY.has(n.v) && isOperand(prev)) el.append(h("span", { class: "mx-bin", text: n.v }));
-    // A comma between terms, f(x, y): a thin space after it, as TeX leaves.
-    else if (n.t === "sym" && (n.v === "," || n.v === ";")) el.append(h("span", { class: "mx-punct", text: n.v }));
-    else el.append(draw(n));
-    prev = n;
+/** A bracket of \left…\right: as tall as what it holds. "." is none. */
+function fenceMark(v: string, form: "prefix" | "postfix"): Element | null {
+  if (!v) return null;
+  return m("mo", { stretchy: "true", symmetric: "true", fence: "true", form, class: "mx-delim" }, v);
+}
+
+function matrix(node: Extract<Node, { t: "matrix" }>): Element {
+  const cols = Math.max(1, ...node.rows.map((r) => r.length));
+  const attrs: Record<string, string> = { class: `mx-grid mx-grid-${node.kind}` };
+  // aligned rows are equations set as on a line of their own; matrices and cases are not.
+  if (node.kind === "aligned") attrs.displaystyle = "true";
+  if (node.small) attrs.class += " mx-grid-small";
+  const table = m("mtable", attrs);
+  for (const row of node.rows) {
+    const tr = m("mtr");
+    for (let k = 0; k < cols; k++) {
+      const cell = m("mtd", { class: "mx-cell" }, row[k] ? draw(row[k]) : null) as HTMLElement;
+      const align = node.align[k] ?? "c";
+      if (align !== "c") cell.style.textAlign = align === "l" ? "left" : "right";
+      // aligned: a gap between each pair of columns, none inside one.
+      if (node.kind === "aligned" && k > 0 && k % 2 === 0) cell.classList.add("mx-cell-pair");
+      if (node.kind === "aligned" && k % 2 === 1) cell.classList.add("mx-cell-right");
+      tr.append(cell);
+    }
+    table.append(tr);
   }
-  return el;
+  if (!node.open && !node.close) return m("mrow", { class: "mx-matrix" }, table);
+  return m("mrow", { class: "mx-fence mx-matrix" }, fenceMark(node.open, "prefix"), table, fenceMark(node.close, "postfix"));
 }
 
 /** Whether a node ends a term, so that a + or − after it joins two terms. */
 function isOperand(node: Node | null): boolean {
   if (!node) return false;
+  if (node.t === "op") return false;
   if (node.t !== "sym") return node.t !== "delim";
-  return !RELATIONS.has(node.v) && !BINARY.has(node.v) && !"([{⟨,;".includes(node.v) && node.v.trim() !== "";
+  return !RELATIONS.has(node.v) && !BINARY.has(node.v) && !"([{⟨,;:".includes(node.v) && node.v.trim() !== "";
+}
+
+/** Whether a node opens with a bracket: \sin(x) takes no space before it. */
+function opensWithBracket(node: Node | undefined): boolean {
+  if (!node) return true;
+  if (node.t === "fence" || node.t === "big") return true;
+  if (node.t === "sup") return opensWithBracket(node.base ?? undefined);
+  if (node.t === "sym") return "([{⟨|‖".includes(node.v) || RELATIONS.has(node.v) || BINARY.has(node.v) || ",;.".includes(node.v) || /^\s*$/.test(node.v);
+  return false;
+}
+
+function isDigit(node: Node | undefined): node is Extract<Node, { t: "sym" }> {
+  return node?.t === "sym" && /^[0-9]$/.test(node.v);
+}
+
+/**
+ * A row of nodes. Numbers stay whole (3.14), a sign in front of a term is
+ * not an operation (−x), and \sin x gets its thin space.
+ */
+function drawAll(input: Node[]): Element {
+  const nodes = input;
+  const row = m("mrow");
+  let prev: Node | null = null;
+  for (let i = 0; i < nodes.length; i++) {
+    const n = nodes[i];
+    if (!inText && isDigit(n)) {
+      // Digits, with a point or comma between digits: one number.
+      let v = n.v;
+      while (isDigit(nodes[i + 1]) || (nodes[i + 1]?.t === "sym" && (nodes[i + 1] as { v: string }).v === "." && isDigit(nodes[i + 2]))) {
+        v += (nodes[++i] as { v: string }).v;
+      }
+      row.append(m("mn", {}, letterStyle ? [...v].map((c) => styled(c, letterStyle)).join("") : v));
+      prev = n;
+      continue;
+    }
+    if (!inText && n.t === "sym" && n.upright && BINARY.has(n.v)) {
+      // A sign in front (−x, (−1)) has no room around it; between two terms it does.
+      const el = m("mo", isOperand(prev) ? { class: "mx-bin" } : { form: "prefix", lspace: "0", rspace: "0" }, n.v);
+      row.append(el);
+      prev = n;
+      continue;
+    }
+    const isOp = n.t === "op" || (n.t === "sup" && n.base?.t === "op" && !isBigOperator(n.base));
+    if (isOp && isOperand(prev)) row.append(m("mspace", { width: "0.1667em" }));
+    row.append(draw(n));
+    if (isOp && !opensWithBracket(nodes[i + 1])) row.append(m("mspace", { width: "0.1667em" }));
+    prev = n;
+  }
+  return row;
 }
 
 /** TeX as a math element: inline in the text, or a centred line of its own. */
-export function renderMath(tex: string, display = false): HTMLElement {
-  let el: HTMLElement;
+export function renderMath(tex: string, display = false): Element {
   try {
     const nodes = new Parser(tex.trim()).parseAll();
-    displayMode = display;
-    el = drawAll(nodes, display ? "div" : "span");
+    const math = m("math", { class: display ? "mx mx-display" : "mx" }, drawAll(nodes));
+    if (display) math.setAttribute("display", "block");
+    // The TeX it was written in, for copying and screen readers' fallback.
+    math.setAttribute("alttext", tex.trim());
+    return math;
   } catch {
     return h("span", { class: "md-code", text: tex });
   } finally {
-    displayMode = false;
+    letterStyle = null;
+    inText = false;
   }
-  el.className = display ? "mx mx-display" : "mx";
-  return el;
 }
