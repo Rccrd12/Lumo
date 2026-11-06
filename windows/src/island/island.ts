@@ -20,6 +20,7 @@ import { Greeting } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
 import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
+import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
@@ -1043,13 +1044,14 @@ export class Island {
       case "drop": {
         this.forgetDrag();
         State.fileDragOver = false;
-        const path = e.paths?.[0];
-        if (!path) {
+        // Every file let go together, once each: dropping several at once used to keep the first only.
+        const paths = [...new Set((e.paths ?? []).filter(Boolean))];
+        if (paths.length === 0) {
           this.engine.animateMorph(0);
           this.setView(State.defaultView());
           return;
         }
-        this.swallow(path);
+        this.swallow(paths);
         break;
       }
     }
@@ -1110,26 +1112,32 @@ export class Island {
   }
 
   /**
-   * Lumo eats the file. Nothing here waits on the file system: the copy into
-   * the inbox runs in the background and swaps the path in when it lands, so a
-   * slow disk can never stall the animation.
+   * Lumo eats the files, all of them in one gulp. Nothing here waits on the
+   * file system: each copy into the inbox runs in the background and swaps its
+   * path in when it lands, so a slow disk can never stall the animation.
    */
-  private swallow(path: string) {
-    const name = path.split(/[\\/]/).pop() || "file";
-    // A file still waiting to be asked about: this one joins it. Either way it
-    // goes into the chat open now, with the next question asked there.
-    const waiting = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile, ...State.moreFiles] : null;
-    // Put back if the copy fails: the next question goes with what was there.
+  private swallow(paths: string[]) {
+    const nameOf = (p: string) => p.split(/[\\/]/).pop() || "file";
+    const dropped = paths.map((path) => ({ name: nameOf(path), path }));
+    const [first, ...rest] = dropped;
+    // Files still waiting to be asked about: these join them. Either way they
+    // go into the chat open now, with the next question asked there.
+    const waiting = State.droppedFile && !State.droppedFile.sent ? [State.droppedFile, ...State.moreFiles] : [];
+    // Put back if every copy fails: the next question goes with what was there.
     const before = { file: State.droppedFile, more: State.moreFiles, context: State.promptContext };
-    State.droppedFile = { name, path };
-    State.promptContext = { kind: "file", name, path };
-    if (waiting) State.moreFiles = waiting.filter((f) => f.path !== path).map((f) => ({ name: f.name, path: f.path }));
+    State.droppedFile = { ...first };
+    State.promptContext = { kind: "file", name: first.name, path: first.path };
+    State.moreFiles = [
+      ...rest,
+      ...waiting.filter((f) => !paths.includes(f.path)).map((f) => ({ name: f.name, path: f.path })),
+    ];
 
-    UploadSeq.performDrop(State.uploadDuration);
+    UploadSeq.performDrop(State.uploadDuration, dropped.length > 1 ? USC.BAR_Y_MANY : USC.BAR_Y);
     this.uploadAt = performance.now();
     this.uploadTens = 0;
     this.uploadDone = false;
-    Feed.upload = { name };
+    State.uploadNames = dropped.map((f) => f.name);
+    Feed.upload = { name: dropName(State.uploadNames) };
 
     this.engine.gulp();
     Sound.play("approve");
@@ -1140,30 +1148,59 @@ export class Island {
     this.setView("uploading");
     this.ensureRunning();
 
-    void Bridge.ingestFile(path)
-      .then((file) => {
-        // Cancelled (or replaced by another drop) while the copy was running.
-        if (State.droppedFile?.path !== path) return;
-        State.droppedFile = { name: file.name, path: file.path };
-        State.promptContext = { kind: "file", name: file.name, path: file.path };
-        State.notify();
-      })
-      .catch((err) => {
-        if (State.droppedFile?.path !== path) return;
-        State.droppedFile = before.file;
-        State.moreFiles = before.more;
-        State.promptContext = before.context;
-        UploadSeq.deactivate();
-        this.uploadAt = null;
-        Feed.upload = null;
-        State.noteMessage = String(err).replace(/^Error:\s*/, "");
-        this.engine.animateMorph(0);
-        this.setView("note");
-        Sound.play("error");
-        window.setTimeout(() => {
-          if (State.view === "note") this.setView(State.defaultView());
-        }, 2400);
-      });
+    /** Still waiting in the chat under the path it was dropped with (not cancelled or replaced). */
+    const holds = (path: string) => State.droppedFile?.path === path || State.moreFiles.some((f) => f.path === path);
+    let failed = 0;
+    let lastError = "";
+    for (const { path } of dropped) {
+      void Bridge.ingestFile(path)
+        .then((file) => {
+          if (!holds(path)) return;
+          const landed = { name: file.name, path: file.path };
+          if (State.droppedFile?.path === path) {
+            State.droppedFile = landed;
+            State.promptContext = { kind: "file", ...landed };
+          } else {
+            State.moreFiles = State.moreFiles.map((f) => (f.path === path ? landed : f));
+          }
+          State.notify();
+        })
+        .catch((err) => {
+          failed++;
+          lastError = String(err).replace(/^Error:\s*/, "");
+          if (!holds(path)) return;
+          if (failed < dropped.length) {
+            // Only this one could not be copied: the others still go.
+            if (State.droppedFile?.path === path) {
+              const [next, ...others] = State.moreFiles;
+              State.droppedFile = next ? { ...next } : null;
+              State.moreFiles = others;
+              State.promptContext = next ? { kind: "file", name: next.name, path: next.path } : null;
+            } else {
+              State.moreFiles = State.moreFiles.filter((f) => f.path !== path);
+            }
+            // Its bar goes too: the upload shows the files that will be there.
+            const gone = State.uploadNames.indexOf(nameOf(path));
+            if (gone >= 0) State.uploadNames = State.uploadNames.filter((_, i) => i !== gone);
+            if (Feed.upload) Feed.upload = { name: dropName(State.uploadNames) };
+            State.notify();
+            return;
+          }
+          State.droppedFile = before.file;
+          State.moreFiles = before.more;
+          State.promptContext = before.context;
+          UploadSeq.deactivate();
+          this.uploadAt = null;
+          Feed.upload = null;
+          State.noteMessage = lastError;
+          this.engine.animateMorph(0);
+          this.setView("note");
+          Sound.play("error");
+          window.setTimeout(() => {
+            if (State.view === "note") this.setView(State.defaultView());
+          }, 2400);
+        });
+    }
   }
 
   /**
@@ -1204,7 +1241,7 @@ export class Island {
     this.uploadAt = null;
     Feed.upload = null;
     State.uploadProgress = 1;
-    const name = State.droppedFile?.name ?? t("file");
+    const name = State.uploadNames.length > 1 ? dropName(State.uploadNames) : State.droppedFile?.name ?? t("file");
     if (State.mode === "expanded") {
       State.uploadedNote = { name, until: Date.now() + UPLOADED_NOTE_MS };
       window.setTimeout(() => State.notify(), UPLOADED_NOTE_MS + 20);
@@ -1831,7 +1868,8 @@ export class Island {
   private updateBotTargets() {
     const p = this.onlyLumo
       ? computerCompact("top").bot
-      : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value);
+      : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
+        State.uploadNames.length > 1);
     // Upright on a side, the closed island has Lumo at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;

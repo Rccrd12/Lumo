@@ -102,6 +102,8 @@ export function computerCompact(dock: Dock): { w: number; h: number; bot: BotPla
 }
 /** The uploading view's track: 36 pt in from either side of the island (views/upload.ts). */
 export const UPLOAD_TRACK_INSET = 36;
+/** How much higher the uploading view's track sits when several files were dropped (.up-card.many in style.css). */
+export const UPLOAD_MANY_LIFT = 18;
 
 export const ROUNDED_CORNER = 14; // hidden / compact
 /** Between the island and the edge of the screen it is docked to (island.rs EDGE_GAP). */
@@ -298,6 +300,7 @@ export function botPosition(
   islandH: number,
   uploadProgress = 0,
   islandW = EXPANDED_W,
+  uploadMany = false,
 ): BotPlacement {
   switch (mode) {
     case "hidden":
@@ -311,7 +314,8 @@ export function botPosition(
           // Along the track, as wide as the card leaves it (views/upload.ts):
           // a smaller island has a shorter track.
           cx: UPLOAD_TRACK_INSET + uploadProgress * Math.max(0, islandW - 2 * UPLOAD_TRACK_INSET),
-          cy: layout.botY ?? 103,
+          // Several files: the track sits higher, their own bars under it (.up-card.many).
+          cy: (layout.botY ?? 103) - (uploadMany ? UPLOAD_MANY_LIFT : 0),
           diameter: layout.botDiameter,
           opacity: 1,
         };
