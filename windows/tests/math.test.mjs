@@ -9,7 +9,7 @@ installFakeDom();
 const { renderMath } = await import("../src/views/math.ts");
 
 /** The text a formula reads as, without its layout. */
-const mathText = (tex, display = false) => renderMath(tex, display).textContent ?? "";
+const mathText = (tex, display = false) => (renderMath(tex, display).textContent ?? "").replace(/\u00a0/g, " ");
 const { parseInline, parseMarkdown } = await import("../src/views/markdown.ts");
 
 test("formulas are found among the text, and money is not one", () => {
@@ -31,14 +31,15 @@ test("a formula on lines of its own is a block", () => {
 
 test("the notation reads as math", () => {
   assert.equal(mathText("f:\\Omega\\subseteq\\mathbb{R}^n\\to\\mathbb{R}"), "f:Ω⊆ℝn→ℝ");
-  assert.equal(mathText("\\nabla f(\\vec{x}_0)=\\vec{0}"), "∇f(x0)=0");
+  assert.equal(mathText("\\nabla f(\\vec{x}_0)=\\vec{0}"), "∇f(x→0)=0→");
   assert.equal(mathText("\\alpha \\leq \\beta \\cdot \\gamma"), "α≤β·γ");
   assert.equal(mathText("\\frac{a}{b}"), "ab");
-  assert.equal(mathText("\\sqrt{2}"), "√2");
+  assert.equal(mathText("\\sqrt{2}"), "2");
+  assert.equal(renderMath("\\sqrt[3]{2}").find(".mx-sqrt").length, 1);
   assert.equal(mathText("M_1, \\dots, M_n"), "M1,…,Mn");
   assert.equal(mathText("\\text{se } x>0"), "se x>0");
   assert.equal(mathText("\\sin x + \\lim_{n\\to\\infty} a_n"), "sinx+limn→∞an");
-  assert.equal(mathText("Hf(\\vec{x}_0)"), "Hf(x0)");
+  assert.equal(mathText("Hf(\\vec{x}_0)"), "Hf(x→0)");
   assert.equal(mathText("\\unknowncommand"), "unknowncommand");
   assert.equal(mathText("\\begin{pmatrix} 1 & 2 \\\\ 3 & 4 \\end{pmatrix}"), "(1234)");
   assert.equal(mathText("C^2"), "C2");
@@ -61,7 +62,7 @@ test("the physics package's notation reads as math, not as its name", () => {
 test("vectors written with the notes' own macros keep their arrow", () => {
   // \vect is not LaTeX's own: it showed as "vecti" before.
   const kcl = renderMath("\\mathbf{A}\\vect{i}=\\vect{0}");
-  assert.equal(kcl.textContent, "Ai=0");
+  assert.equal(kcl.textContent, "𝐀i→=0→");
   assert.equal(kcl.find(".mx-vecover").length, 2);
   assert.equal(renderMath("\\vv{F} + \\overrightarrow{AB}").find(".mx-vecover").length, 2);
   // A macro it does not know shows what it is given, not its name.
@@ -93,9 +94,9 @@ test("matrices, arrays, cases and aligned rows keep their cells and columns", ()
   assert.equal(mathText("\\begin{Bmatrix} x \\end{Bmatrix}"), "{x}");
   // A matrix inside a case, \& and braces are not this level's columns, \\[4pt] is a row.
   const cases = renderMath("f = \\begin{cases} \\begin{pmatrix} 1 & 2 \\end{pmatrix} & \\text{if } {a \\& b} \\\\[4pt] 0 & \\text{else} \\end{cases}");
-  const cells = cases.find(".mx-cell").filter((c) => c.parentNode.classList.contains("mx-grid-cases"));
+  const cells = cases.find(".mx-cell").filter((c) => c.parentNode.parentNode.classList.contains("mx-grid-cases"));
   assert.equal(cells.length, 4);
-  assert.equal(cells[1].textContent, "if a&b");
+  assert.equal(cells[1].textContent.replace(/\u00a0/g, " "), "if a&b");
   assert.equal(cells[0].find(".mx-cell").length, 2);
   assert.equal(cells[1].style.textAlign, "left");
   // aligned: right, then left, around the &.
@@ -122,10 +123,30 @@ test("relations and operations get their room, a sign in front does not", () => 
 test("on a line of its own, sums take their limits above and below", () => {
   const display = renderMath("\\sum_{k=1}^{n} k = \\lim_{x\\to 0} f", true);
   assert.equal(display.find(".mx-limits").length, 2);
-  assert.equal(display.textContent, "n∑k=1k=limx→0f");
-  assert.equal(renderMath("\\sum_{k=1}^{n} k").find(".mx-limits").length, 0);
+  assert.equal(display.textContent, "∑k=1nk=limx→0f");
+  // In the text, the same limits move beside the sum: MathML's movablelimits.
+  assert.equal(renderMath("\\sum_{k=1}^{n} k").find(".mx-bigop")[0].getAttribute("movablelimits"), "true");
   assert.equal(renderMath("\\int_0^1 x\\,dx", true).find(".mx-int").length, 1);
-  assert.equal(mathText("\\underbrace{a+b}_{n}"), "a+b⏟n");
-  assert.equal(mathText("\\overset{!}{=} \\xrightarrow{f}"), "!=f⟶");
+  assert.equal(mathText("\\underbrace{a+b}_{n}"), "a+bn");
+  assert.equal(renderMath("\\overbrace{a+b}^{n}").find(".mx-overbrace").length, 1);
+  assert.equal(mathText("\\overset{!}{=} \\xrightarrow{f}"), "=!⟶f");
   assert.equal(mathText("\\boxed{E=mc^2} \\tag{1}"), "E=mc2  (1)");
+});
+
+test("the whole catalogue of symbols, and the constructs around them", () => {
+  // AMS relations, arrows, Hebrew, suits: each its own sign, none its name.
+  assert.equal(mathText("a \\lessgtr b \\twoheadrightarrow c \\nRightarrow d"), "a≶b↠c⇏d");
+  assert.equal(mathText("\\beth \\clubsuit \\varDelta \\llbracket x \\rrbracket"), "ℶ♣𝛥⟦x⟧");
+  assert.equal(mathText("\\limsup_n a_n"), "lim supnan");
+  // \dfrac, \binom, \cancel, \pmod, \substack, \displaystyle.
+  const f = renderMath("\\dfrac{1}{2} \\binom{n}{k} \\cancel{x} a \\equiv b \\pmod{n}");
+  assert.equal(f.find(".mx-frac").length, 2);
+  assert.equal(f.find(".mx-cancel").length, 1);
+  assert.equal(f.textContent.replace(/\s/g, ""), "12(nk)xa≡b(modn)");
+  assert.equal(renderMath("\\sum_{\\substack{i<n \\\\ i \\ne j}} a_i").find(".mx-grid-small").length, 1);
+  assert.equal(renderMath("\\displaystyle \\int_0^1 f").find("mrow")[1].getAttribute("displaystyle"), "true");
+  // Numbers stay whole, brackets as written keep their size.
+  const n = renderMath("3.14 (x)");
+  assert.equal(n.find("mn")[0].textContent, "3.14");
+  assert.equal(n.find("mo")[0].getAttribute("stretchy"), "false");
 });

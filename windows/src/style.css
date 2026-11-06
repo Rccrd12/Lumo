@@ -1817,282 +1817,161 @@ input[type="range"]::-webkit-slider-thumb {
   font-weight: 600;
 }
 
-/* TeX math in answers (views/math.ts): a serif face for it, letters in italic. */
-.mx {
-  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", "Times New Roman", serif;
-  font-size: 1.06em;
-  white-space: nowrap;
+/* TeX math in answers (views/math.ts), as MathML: the WebView sets it with
+   the math font's own tables. A size up and a shade lighter than the words
+   around it, so a formula in a sentence reads at a glance. */
+math.mx {
+  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", math;
+  font-size: 1.16em;
+  color: #e6e8ec;
 }
 
-.mx-display {
-  display: block;
-  margin: 6px 0;
-  text-align: center;
+/* A formula on a line of its own: a box of its own (below), centred,
+   scrolling sideways when wider than the chat. */
+math.mx-display {
+  display: block math;
+  width: max-content;
+  margin: 0 auto;
+  padding: 4px 6px;
+  font-size: 18px;
+  color: #f1f2f4;
+}
+
+.md-math {
+  position: relative;
+  margin: 2px 0;
+  padding: 12px 12px;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.04);
   white-space: normal;
+}
+
+.md-math-scroll {
   overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
-.mx-var {
-  font-style: italic;
+.md-math .md-copy {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 
-.mx-op,
-.mx-rm,
-.mx-text {
-  font-style: normal;
+.md-math:hover .md-copy,
+.md-math .md-copy:focus-visible,
+.md-math .md-copy.done {
+  opacity: 1;
 }
 
-.mx-op {
-  margin: 0 0.12em;
-}
-
-.mx-text {
+/* Words in a formula (\text): the chat's own face, a touch smaller. */
+math.mx mtext {
   font-family: var(--font);
-  font-size: 0.94em;
+  font-size: 0.86em;
 }
 
-.mx-bold {
+/* \vec's arrow: small, as TeX draws it, not a whole →. */
+math.mx .mx-vec {
+  font-size: 0.72em;
+}
+
+/* \sqrt (views/math.ts): the radical sign and its bar as one line, the sign
+   as tall as what it holds, the bar as long. */
+math.mx .mx-sqrt {
+  padding: 0.16em 0.06em 0.12em 0.62em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 100' preserveAspectRatio='none'%3E%3Cpath d='M0.6 62 L2.4 56.5 L5 97 L9.7 0.6' fill='none' stroke='%23eceef1' stroke-width='1.2' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"), linear-gradient(#eceef1, #eceef1);
+  background-repeat: no-repeat;
+  background-size: 0.6em 100%, calc(100% - 0.58em) 1.2px;
+  background-position: left top, right top;
+}
+
+math.mx .mx-root-index {
+  font-size: 0.6em;
+  margin-right: -0.42em;
+}
+
+/* \overbrace and \underbrace (views/math.ts): the brace in pieces, as wide
+   as what it spans: the two ends, the point in the middle, the lines between. */
+math.mx .mx-overbrace,
+math.mx .mx-underbrace {
+  background-repeat: no-repeat;
+}
+
+math.mx .mx-overbrace {
+  padding-top: 0.55em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpath d='M1 9.5 Q1 5 5.5 5 H10' fill='none' stroke='%23f1f2f4' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 H4.5 Q9 5 9 9.5' fill='none' stroke='%23f1f2f4' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 H5 Q9 5 10 0.8 Q11 5 15 5 H20' fill='none' stroke='%23f1f2f4' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E"), linear-gradient(transparent calc(50% - 0.028em), #f1f2f4 calc(50% - 0.028em), #f1f2f4 calc(50% + 0.028em), transparent calc(50% + 0.028em)), linear-gradient(transparent calc(50% - 0.028em), #f1f2f4 calc(50% - 0.028em), #f1f2f4 calc(50% + 0.028em), transparent calc(50% + 0.028em));
+  background-size: 0.5em 0.5em, 0.5em 0.5em, 1em 0.5em, calc(50% - 0.95em) 0.5em, calc(50% - 0.95em) 0.5em;
+  background-position: left top, right top, center top, 0.45em top, right 0.45em top;
+}
+
+math.mx .mx-underbrace {
+  padding-bottom: 0.55em;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpath d='M1 0.5 Q1 5 5.5 5 H10' fill='none' stroke='%23f1f2f4' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 H4.5 Q9 5 9 0.5' fill='none' stroke='%23f1f2f4' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E"), url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 20 10' preserveAspectRatio='none'%3E%3Cpath d='M0 5 H5 Q9 5 10 9.2 Q11 5 15 5 H20' fill='none' stroke='%23f1f2f4' stroke-width='1.1' stroke-linecap='round'/%3E%3C/svg%3E"), linear-gradient(transparent calc(50% - 0.028em), #f1f2f4 calc(50% - 0.028em), #f1f2f4 calc(50% + 0.028em), transparent calc(50% + 0.028em)), linear-gradient(transparent calc(50% - 0.028em), #f1f2f4 calc(50% - 0.028em), #f1f2f4 calc(50% + 0.028em), transparent calc(50% + 0.028em));
+  background-size: 0.5em 0.5em, 0.5em 0.5em, 1em 0.5em, calc(50% - 0.95em) 0.5em, calc(50% - 0.95em) 0.5em;
+  background-position: left bottom, right bottom, center bottom, 0.45em bottom, right 0.45em bottom;
+}
+
+/* \mathbf on a symbol with no bold letter of its own (Greek). */
+math.mx .mx-bold {
   font-weight: 700;
 }
 
-.mx-script {
-  display: inline;
+/* Matrices, cases and aligned rows: TeX's room between columns and rows. */
+math.mx mtd {
+  padding: 0.15em 0.5em;
 }
 
-.mx-sup,
-.mx-sub {
-  font-size: 0.72em;
-  line-height: 0;
+math.mx .mx-grid-aligned mtd {
+  padding: 0.2em 0;
 }
 
-.mx-supsub {
-  display: inline-flex;
-  flex-direction: column;
-  vertical-align: middle;
-  line-height: 1;
-}
-
-.mx-supsub .mx-sup,
-.mx-supsub .mx-sub {
-  line-height: 1.1;
-}
-
-.mx-frac {
-  display: inline-flex;
-  flex-direction: column;
-  vertical-align: middle;
-  text-align: center;
-  margin: 0 0.1em;
-  font-size: 0.9em;
-}
-
-.mx-num {
-  border-bottom: 1px solid currentColor;
-  padding: 0 0.15em;
-}
-
-.mx-den {
-  padding: 0 0.15em;
-}
-
-.mx-sqrt {
-  display: inline-flex;
-  align-items: flex-start;
-}
-
-.mx-radicand {
-  border-top: 1px solid currentColor;
-  padding: 0 0.1em;
-}
-
-.mx-root {
-  font-size: 0.6em;
-  margin-right: -0.3em;
-}
-
-.mx-over {
-  text-decoration: overline;
-}
-
-.mx-under {
-  text-decoration: underline;
-}
-
-.mx-vecover {
-  display: inline-block;
-  position: relative;
-  line-height: 1.15;
-  font-style: italic;
-}
-
-.mx-vecover::before {
-  content: "\2192";
-  position: absolute;
-  top: -0.62em;
-  left: 50%;
-  transform: translateX(-45%) scaleX(0.9);
-  font-size: 0.62em;
-  font-style: normal;
-  line-height: 1;
-}
-
-.mx-bold .mx-var {
-  font-style: normal;
-}
-
-.mx-boldit .mx-var,
-.mx-it {
-  font-style: italic;
-}
-
-/* A bracket pair (\left…\right, matrices): lines as tall as what they hold. */
-.mx-fence {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
-}
-
-.mx-fenced {
-  padding: 0 0.08em;
-}
-
-.mx-delim {
-  position: relative;
-  align-self: stretch;
-  flex: 0 0 auto;
-  width: 0.42em;
-  min-height: 1.15em;
-}
-
-.mx-delim-wide {
-  width: 0.55em;
-}
-
-.mx-delim-thin {
-  width: 0.3em;
-}
-
-.mx-delim svg {
-  position: absolute;
-  inset: 0.08em 0;
-  width: 100%;
-  height: calc(100% - 0.16em);
-  overflow: visible;
-  fill: none;
-  stroke: currentColor;
-  stroke-width: 1.15px;
-  vector-effect: non-scaling-stroke;
-}
-
-.mx-delim svg path {
-  vector-effect: non-scaling-stroke;
-}
-
-/* The bracket's character, for copying and screen readers, not seen. */
-.mx-delim-char {
-  position: absolute;
-  opacity: 0;
-  pointer-events: none;
-}
-
-.mx-big {
-  display: inline-block;
-  line-height: 1;
-  vertical-align: middle;
-  font-weight: 300;
-}
-
-.mx-matrix {
-  display: inline-flex;
-  align-items: center;
-  vertical-align: middle;
-}
-
-.mx-grid {
-  display: inline-grid;
-  column-gap: 0.9em;
-  row-gap: 0.25em;
-  align-items: baseline;
-  text-align: center;
-  padding: 0.15em 0.2em;
-}
-
-.mx-grid-aligned {
-  column-gap: 0;
-}
-
-.mx-grid-aligned .mx-cell-pair {
+math.mx .mx-grid-aligned .mx-cell-pair {
   padding-left: 1.5em;
 }
 
-.mx-grid-cases {
-  column-gap: 1.1em;
-  padding-left: 0.35em;
+math.mx .mx-grid-cases mtd {
+  padding: 0.15em 1em 0.15em 0.15em;
 }
 
-.mx-cell {
-  white-space: nowrap;
+math.mx .mx-grid-small {
+  font-size: 0.75em;
 }
 
-/* Sums and limits in a formula of its own line, and \overset, \underbrace… */
-.mx-limits,
-.mx-stack {
-  display: inline-flex;
-  flex-direction: column;
-  align-items: center;
-  vertical-align: middle;
-  margin: 0 0.1em;
-  line-height: 1.05;
+math.mx .mx-grid-small mtd {
+  padding: 0;
 }
 
-.mx-limit {
-  font-size: 0.7em;
-}
-
-.mx-bigop {
-  font-size: 1.45em;
-  line-height: 1;
-}
-
-.mx-rel {
-  margin: 0 0.28em;
-}
-
-.mx-bin {
-  margin: 0 0.22em;
-}
-
-.mx-sup .mx-rel,
-.mx-sub .mx-rel,
-.mx-limit .mx-rel,
-.mx-sup .mx-bin,
-.mx-sub .mx-bin,
-.mx-limit .mx-bin {
-  margin: 0 0.08em;
-}
-
-.mx-display .mx-frac {
-  font-size: 1em;
-}
-
-.mx-display .mx-frac .mx-frac,
-.mx-display .mx-sup .mx-frac,
-.mx-display .mx-sub .mx-frac {
-  font-size: 0.85em;
-}
-
-.mx-int {
-  display: inline-block;
-  font-size: 1.5em;
-  line-height: 1;
-  vertical-align: middle;
-  margin-right: 0.08em;
-}
-
-.mx-box {
-  display: inline-block;
-  padding: 0.1em 0.3em;
+math.mx .mx-box {
+  padding: 0.15em 0.35em;
   border: 1px solid currentColor;
+  border-radius: 2px;
+}
+
+/* \cancel, \bcancel, \xcancel and \sout: a line across. */
+math.mx .mx-cancel {
+  --stroke: linear-gradient(to top right, transparent calc(50% - 0.6px), currentColor calc(50% - 0.6px), currentColor calc(50% + 0.6px), transparent calc(50% + 0.6px));
+  --back: linear-gradient(to bottom right, transparent calc(50% - 0.6px), currentColor calc(50% - 0.6px), currentColor calc(50% + 0.6px), transparent calc(50% + 0.6px));
+  padding: 0 0.1em;
+}
+
+math.mx .mx-cancel.mx-cancel {
+  background: var(--stroke);
+}
+
+math.mx .mx-cancel.mx-bcancel {
+  background: var(--back);
+}
+
+math.mx .mx-cancel.mx-xcancel {
+  background: var(--stroke), var(--back);
+}
+
+math.mx .mx-cancel.mx-sout {
+  background: linear-gradient(transparent calc(50% - 0.6px), currentColor calc(50% - 0.6px), currentColor calc(50% + 0.6px), transparent calc(50% + 0.6px));
 }
 
 .md-code {
@@ -2169,10 +2048,18 @@ input[type="range"]::-webkit-slider-thumb {
   gap: 8px;
 }
 
-.md-quote i {
+.md-quote > i {
   flex: 0 0 2px;
   border-radius: 1px;
   background: var(--dim-5);
+}
+
+.md-quote-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
 .md-quote .md-p {
