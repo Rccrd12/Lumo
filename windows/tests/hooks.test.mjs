@@ -1063,6 +1063,32 @@ test("the chat's own Claude Code runs are not sessions of the pill", () => {
   assert.equal(task().state, "finished");
 });
 
+// ── A file Gemini Live wasn't given (live.rs may_use) ─────────────────────────
+
+test("Gemini Live's file is the usual card: whose it is, what for, the whole path, never the closed island's", () => {
+  State.mode = "compact";
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "g1", lumo_island: true,
+    tool_name: "mcp__lumo__live_read", tool_input: { path: "C:\\Users\\me\\Documents\\contratto.pdf" },
+    lumo_live_file: { action: "read" },
+  });
+  const req = State.pendingApproval;
+  assert.equal(req?.project, "Gemini Live");
+  assert.equal(req?.command, "C:\\Users\\me\\Documents\\contratto.pdf");
+  assert.equal(req?.reason, "Read a file you didn't give it");
+  assert.equal(req?.quick, undefined);
+  assert.deepEqual(asked, ["alert:approval"]);
+});
+
+test("Gemini Live's card to open a file says so", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "g2", lumo_island: true,
+    tool_name: "mcp__lumo__live_open", tool_input: { path: "C:\\Users\\me\\Downloads\\guida.chm" },
+    lumo_live_file: { action: "open" },
+  });
+  assert.equal(State.pendingApproval?.reason, "Open a file you didn't give it");
+});
+
 // ── An email the AI wants to send (mail.rs send) ─────────────────────────────
 
 test("an email to send is its own card, whole, and never answered by itself", () => {
