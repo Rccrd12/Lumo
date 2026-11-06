@@ -12,4 +12,4 @@ pub mod transport;
 pub mod turn;
 
 pub use transport::{Answer, Endpoint, Failure};
-pub use turn::{run, Doing, End, Hooks, Loaded, Outcome, Rules, MORE};
+pub use turn::{run, Correction, Doing, End, Hooks, Loaded, Outcome, Rules, MORE};

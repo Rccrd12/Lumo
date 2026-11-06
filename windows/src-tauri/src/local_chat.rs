@@ -431,6 +431,14 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         self.events.activity(self.app, match doing {
             Doing::Prompt => Activity::new("prompt", ""),
             Doing::Thinking => Activity::thinking(),
+            Doing::Reasoning => Activity::new("reasoning", ""),
+            Doing::Calling(name) => Activity::new("calling", crate::claude_code::pretty_tool(&name)),
+            Doing::Retrying { attempt, of } => Activity::new("retry", format!("{attempt}/{of}")),
+            Doing::Correcting(why) => Activity::new("correcting", match why {
+                lumo_local::Correction::Written => "written",
+                lumo_local::Correction::SaidDone => "done",
+                lumo_local::Correction::Stopped => "stopped",
+            }),
         });
     }
 

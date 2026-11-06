@@ -37,7 +37,7 @@ export interface Credits {
 export interface ChatUsage {
   provider: string;
   /** A local model: how much of its context the chat fills (chat_usage.rs ContextUse). */
-  context?: { chat: string; used: number; total: number };
+  context?: { chat: string; used: number; total: number; estimate?: boolean };
   tokens?: Quota;
   requests?: Quota;
   credits?: Credits;
@@ -62,6 +62,7 @@ export const USAGE_TEXT = {
   },
   usedPct: (pct: number) => t("{pct}% used", { pct }),
   contextOf: (used: string, total: string) => t("Context: {used} of {total}", { used, total }),
+  contextAbout: (used: string, total: string) => t("Context: about {used} of {total}", { used, total }),
   contextUsed: (used: string) => t("Context: {used} tokens", { used }),
   get context() { return t("Context"); },
   resets: (when: string) => t("Resets {when}", { when }),
@@ -247,7 +248,8 @@ function contextLine(seen: SeenUsage | undefined, provider: string, chatId: stri
     return { text, title: USAGE_TEXT.context, color: null, pct: null, rows: [{ label: text, value: "", pct: null, reset: null }] };
   }
   const pct = Math.min(100, (c.used / c.total) * 100);
-  const text = USAGE_TEXT.contextOf(compact(c.used), compact(c.total));
+  // Just after a compaction: an estimate until the next answer says.
+  const text = (c.estimate ? USAGE_TEXT.contextAbout : USAGE_TEXT.contextOf)(compact(c.used), compact(c.total));
   return {
     text,
     title: USAGE_TEXT.context,

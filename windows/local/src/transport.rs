@@ -91,9 +91,10 @@ pub struct Answer {
 pub enum Seen {
     /// The visible text so far.
     Text(String),
-    /// The model started (it reasons or prepares a tool call) before any
-    /// text: the prompt is read.
-    Started,
+    /// The model reasons, before any text: the prompt is read. Once.
+    Reasoning,
+    /// The model prepares a call of this tool (each new one, once its name comes).
+    Calling(String),
 }
 
 /// The body of `reply`, refused past `limit` bytes.
@@ -187,8 +188,8 @@ pub fn whole_answer(bytes: &[u8]) -> Result<Answer, Failure> {
 }
 
 /// Posts the request and reads the event stream. `on` gets the visible text at
-/// most 15 times a second and once more at the end, and `Started` once, when
-/// the model starts before any text.
+/// most 15 times a second and once more at the end, `Reasoning` once when the
+/// model reasons before any visible text, and `Calling` as each tool call starts.
 pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Result<Answer, Failure> {
     let mut reply = to
         .streaming
@@ -207,6 +208,10 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
     let mut pending = Vec::<u8>::new();
     let mut last = Instant::now().checked_sub(DELTA_INTERVAL).unwrap_or_else(Instant::now);
     let mut started = false;
+    // Some of the answer's text showed: what comes next is the answer, not reasoning.
+    let mut visible = false;
+    // The tools whose calls the model started, in order.
+    let mut calling: Vec<String> = Vec::new();
     let mut used = None;
     // The answer said it is over (`finish_reason`, `[DONE]`): what follows is
     // only waited for a moment, then the stream ends even if the connection
@@ -228,16 +233,35 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
         let event = parse_sse_line(line);
         // Only a sign of the model at work: LM Studio opens its answer with
         // an empty `{"role":"assistant"}` delta while it still reads the prompt.
-        if !started && text.is_empty() && matches!(event, Some(Event::Reasoning | Event::Calls(_))) {
+        if !started && text.is_empty() && matches!(event, Some(Event::Reasoning)) {
             started = true;
-            on(Seen::Started);
+            on(Seen::Reasoning);
+        }
+        if let Some(Event::Calls(pieces)) = &event {
+            for name in pieces.iter().filter_map(|p| p.pointer("/function/name").and_then(Value::as_str)).filter(|n| !n.is_empty()) {
+                if calling.last().map(String::as_str) != Some(name) {
+                    calling.push(name.to_string());
+                    on(Seen::Calling(name.to_string()));
+                }
+            }
         }
         if matches!(event, Some(Event::Text(_) | Event::Reasoning | Event::Calls(_))) {
             flowing.store(true, Ordering::Relaxed);
         }
         match event {
             Some(Event::Done) => done.store(true, Ordering::Relaxed),
-            Some(Event::Text(delta)) => text.push_str(&delta),
+            Some(Event::Text(delta)) => {
+                text.push_str(&delta);
+                // Reasoning written in the text (`<think>…`) is hidden: it is reasoning too.
+                if !started && !visible {
+                    if progressive_filter(text).is_empty() {
+                        started = true;
+                        on(Seen::Reasoning);
+                    } else {
+                        visible = true;
+                    }
+                }
+            }
             Some(Event::Reasoning) | None => {}
             Some(Event::Usage(total)) => used = Some(total),
             Some(Event::Calls(pieces)) => calls.feed(&pieces),

@@ -6,7 +6,7 @@ mod fake;
 use std::time::{Duration, Instant};
 
 use fake::*;
-use lumo_local::{run, Doing, End, Failure, Outcome, Rules, MORE};
+use lumo_local::{run, Correction, Doing, End, Failure, Outcome, Rules, MORE};
 use serde_json::{json, Value};
 
 const CHANGES: &[&str] = &["workspace_write", "workspace_edit", "workspace_delete"];
@@ -44,7 +44,7 @@ fn thinking_stays_hidden_and_says_the_prompt_is_read() {
     let replies = vec![Reply::Events(vec![reasoning("hmm"), text("<think>conto"), text("</think>Fa 4."), finish("stop"), DONE.into()])];
     let (outcome, _) = turn(replies, &mut body, &rules("think", ""), &mut island);
     assert_eq!(outcome.unwrap().text, "Fa 4.");
-    assert_eq!(island.doing, [Doing::Prompt, Doing::Thinking]);
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning]);
     assert!(island.shown.iter().all(|s| !s.contains("conto") && !s.contains("hmm")));
 }
 
@@ -70,6 +70,39 @@ fn each_round_says_how_full_the_context_is() {
     let (outcome, _) = turn(replies, &mut body, &rules("rounds-used", ""), &mut island);
     assert_eq!(outcome.unwrap().used, Some(50));
     assert_eq!(island.used, [40, 50]);
+}
+
+#[test]
+fn the_island_says_what_the_model_is_doing() {
+    // Reasoning, then a call, then the answer; a second call of another tool is said too.
+    let mut island = Island::default();
+    let replies = vec![
+        Reply::Events(vec![reasoning("hmm"), call("c1", "set_timer", "{\"minutes\":5}"), finish("tool_calls"), DONE.into()]),
+        answer("Fatto."),
+    ];
+    let (outcome, _) = turn(replies, &mut question("Timer di 5 minuti", &["set_timer"]), &rules("doing", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning, Doing::Calling("set_timer".into()), Doing::Prompt]);
+    // Reasoning written in the text, hidden by its tags, is reasoning too.
+    let mut island = Island::default();
+    let replies = vec![Reply::Events(vec![text("<think>conto"), text("</think>Fa 4."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("2+2?", &[]), &rules("doing-think", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fa 4.");
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Reasoning]);
+}
+
+#[test]
+fn a_retry_and_a_model_sent_back_are_said() {
+    let mut island = Island::default();
+    let failing = || Reply::Events(vec![json!({ "error": "terminated" }).to_string()]);
+    let (outcome, _) = turn(vec![failing(), failing(), answer("Eccomi.")], &mut question("Ci sei?", &[]), &rules("doing-retry", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Eccomi.");
+    assert_eq!(island.doing, [Doing::Prompt, Doing::Retrying { attempt: 1, of: 3 }, Doing::Retrying { attempt: 2, of: 3 }]);
+    let mut island = Island::default();
+    let replies = vec![answer("Ho impostato il timer."), calls("c1", "set_timer", "{\"minutes\":1}"), answer("Fatto.")];
+    let (outcome, _) = turn(replies, &mut question("Timer di un minuto", &["set_timer"]), &rules("doing-back", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Fatto.");
+    assert!(island.doing.contains(&Doing::Correcting(Correction::SaidDone)), "{:?}", island.doing);
 }
 
 #[test]

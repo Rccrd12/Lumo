@@ -303,6 +303,8 @@ export interface Settings {
   chatComputerUse: boolean;
   /** Lumo's own web search for the providers without one (web_search.rs). Off until turned on. */
   chatWebSearch: boolean;
+  /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
+  chatAutoCompact: boolean;
   /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -425,6 +427,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatShareTabs: false,
   chatComputerUse: false,
   chatWebSearch: false,
+  chatAutoCompact: true,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   ollamaUrl: "",

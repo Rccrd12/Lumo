@@ -17,13 +17,35 @@ use crate::transport::{ask_whole, stream, Endpoint, Failure, Seen};
 pub const MORE: &str = "lumo_tools";
 
 /// What the island says the answer is doing.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Doing {
     /// The model reads the prompt (streamed: until anything of the answer comes).
     Prompt,
-    /// The model is at work: it thinks, or answers whole.
+    /// The model is at work, with nothing more said: it answers whole.
     Thinking,
+    /// The model reasons (its reasoning stays hidden).
+    Reasoning,
+    /// The model writes a call of this tool.
+    Calling(String),
+    /// The server's engine dropped the request: asked again, `attempt` of `of`.
+    Retrying { attempt: u8, of: u8 },
+    /// The model got something wrong and is sent back once.
+    Correcting(Correction),
 }
+
+/// Why the model is sent back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Correction {
+    /// It wrote a tool call in its text instead of making it.
+    Written,
+    /// It said a file changed, or that it was done, and no tool did it.
+    SaidDone,
+    /// It stopped before the tool it announced, or left the change undone.
+    Stopped,
+}
+
+/// How many times an engine that dropped a request is asked again.
+const ENGINE_RETRIES: u8 = 3;
 
 /// Tools loaded in the middle of a turn, and what the request carries from then on.
 pub struct Loaded {
@@ -157,12 +179,14 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     // three times for each request (then once whole): what failed once may
     // not fail again.
     let mut asked_again = false;
-    let mut engine_retries = 0;
+    let mut engine_retries: u8 = 0;
     // The calls that changed something, as they were made: one made again
     // the same is not made twice.
     let mut made: Vec<(String, String, String)> = Vec::new();
+    // What the island says next, when the loop goes round for a reason of its own.
+    let mut next: Option<Doing> = None;
     loop {
-        hooks.doing(if whole { Doing::Thinking } else { Doing::Prompt });
+        hooks.doing(next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt }));
         let before = said.join("\n\n");
         let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
         let answer = if whole {
@@ -180,7 +204,8 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 // answer is doing.
                 Seen::Text(visible) if visible.is_empty() => {}
                 Seen::Text(visible) => hooks.shown(&after_before(&visible)),
-                Seen::Started => hooks.doing(Doing::Thinking),
+                Seen::Reasoning => hooks.doing(Doing::Reasoning),
+                Seen::Calling(name) => hooks.doing(Doing::Calling(name)),
             })
             .await
         };
@@ -196,8 +221,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             // LM Studio's engine failed this request ("terminated", "fetch
             // failed"): the same request after a moment, three times, then
             // whole for this turn. Nothing to do with the stream: not remembered.
-            Err(e) if e.is_engine() && engine_retries < 3 => {
+            Err(e) if e.is_engine() && engine_retries < ENGINE_RETRIES => {
                 engine_retries += 1;
+                next = Some(Doing::Retrying { attempt: engine_retries, of: ENGINE_RETRIES });
                 fixes.push("asked again");
                 tokio::time::sleep(rules.pause).await;
                 continue;
@@ -263,7 +289,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                     json!({ "role": "user", "content": format!("(Lumo: {name} written in your answer is only text: nothing was done. Call the {name} tool itself, as a function call, then answer. Never write a tool call in your answer, and never say something was done when no tool did it.)") }),
                 ]);
                 hooks.shown(&before);
-                hooks.doing(Doing::Thinking);
+                next = Some(Doing::Correcting(Correction::Written));
                 continue;
             }
         }
@@ -276,7 +302,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 json!({ "role": "user", "content": "(Lumo: you said a file was changed, but no tool changed one in this answer: nothing changed. Call workspace_write or workspace_edit on the copy now, or tell the user plainly that it wasn't done.)" }),
             ]);
             hooks.shown(&before);
-            hooks.doing(Doing::Thinking);
+            next = Some(Doing::Correcting(Correction::SaidDone));
             continue;
         }
         // "It's set" with no tool called in the whole turn, or "Let me read
@@ -296,7 +322,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             };
             push(body, [json!({ "role": "assistant", "content": answer.text }), json!({ "role": "user", "content": note })]);
             hooks.shown(&before);
-            hooks.doing(Doing::Thinking);
+            next = Some(Doing::Correcting(if said_done { Correction::SaidDone } else { Correction::Stopped }));
             continue;
         }
         if answer.calls.is_empty() || !tools || rounds == rules.max_rounds {
