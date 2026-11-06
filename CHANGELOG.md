@@ -13,6 +13,7 @@
 - **Gemini Live asks before a file you didn't give it**: reading or opening a file that wasn't dropped on the island or in a folder open in File Explorer is the usual Allow / Deny card, with the file's full path. Keys, passwords and browser profiles are never read or opened for the voice. More types that run something (`.chm`, `.iso`, `.xlsm`, `.diagcab`…) are never opened by their type
 - **Web pages are read from the address that was checked**: a site can no longer point Lumo's web search at this computer or the local network after the check (DNS rebinding), NAT64 and 6to4 addresses included
 - **Fixed**: a tool's guard in Python checks what `r+`, a copy or a move reads; a cloud model's request no longer drops its tools after the first round; a line of Claude Code or Antigravity CLI over 4 MB no longer spills into the next one; a local model's answer that says "length" in its text is no longer taken for one cut short
+- **Fixed**: the Antigravity CLI usage card shows every limit, not two and a summary, and on a short island the limits of every plan card scroll while Refresh stays in view
 - **Fixed**: the error card and the error note have a Close button: they no longer stay open while the mouse is on the island
 
 ## Windows 0.16.1 — October 29, 2026
