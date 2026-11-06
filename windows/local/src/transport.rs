@@ -91,8 +91,8 @@ pub struct Answer {
 pub enum Seen {
     /// The visible text so far.
     Text(String),
-    /// The model started (it reasons, prepares a tool call, or the server
-    /// opened its answer) before any text: the prompt is read.
+    /// The model started (it reasons or prepares a tool call) before any
+    /// text: the prompt is read.
     Started,
 }
 
@@ -226,7 +226,9 @@ pub async fn stream(to: &Endpoint, body: &Value, mut on: impl FnMut(Seen)) -> Re
             }
         }
         let event = parse_sse_line(line);
-        if !started && text.is_empty() && line.starts_with("data:") && !matches!(event, Some(Event::Text(_) | Event::Done | Event::Error(_))) {
+        // Only a sign of the model at work: LM Studio opens its answer with
+        // an empty `{"role":"assistant"}` delta while it still reads the prompt.
+        if !started && text.is_empty() && matches!(event, Some(Event::Reasoning | Event::Calls(_))) {
             started = true;
             on(Seen::Started);
         }

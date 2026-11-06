@@ -49,6 +49,30 @@ fn thinking_stays_hidden_and_says_the_prompt_is_read() {
 }
 
 #[test]
+fn an_answer_opened_empty_is_still_reading_the_prompt() {
+    // LM Studio opens the stream with an empty role delta before it has read the prompt.
+    let mut island = Island::default();
+    let opened = json!({ "choices": [{ "delta": { "role": "assistant", "content": "" } }] }).to_string();
+    let replies = vec![Reply::Events(vec![opened, text("Ciao."), finish("stop"), DONE.into()])];
+    let (outcome, _) = turn(replies, &mut question("Ciao", &[]), &rules("opened", ""), &mut island);
+    assert_eq!(outcome.unwrap().text, "Ciao.");
+    assert_eq!(island.doing, [Doing::Prompt]);
+}
+
+#[test]
+fn each_round_says_how_full_the_context_is() {
+    let mut island = Island::default();
+    let mut body = question("Timer di 5 minuti", &["set_timer"]);
+    let replies = vec![
+        Reply::Events(vec![call("c1", "set_timer", "{\"minutes\":5}"), finish("tool_calls"), usage(40), DONE.into()]),
+        answer("Fatto."),
+    ];
+    let (outcome, _) = turn(replies, &mut body, &rules("rounds-used", ""), &mut island);
+    assert_eq!(outcome.unwrap().used, Some(50));
+    assert_eq!(island.used, [40, 50]);
+}
+
+#[test]
 fn a_tool_round_then_the_answer() {
     let mut island = Island::default();
     let mut body = question("Timer di 5 minuti", &["set_timer"]);

@@ -26,7 +26,7 @@ use std::time::Duration;
 use reqwest::Url;
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::AppHandle;
+use tauri::{AppHandle, Emitter};
 
 use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo};
 use crate::claude_code::Activity;
@@ -403,12 +403,28 @@ struct Island<'a, P> {
     /// The system message, for the tools loaded (and none, for a model that takes none).
     prompt_for: &'a P,
     always_ask: bool,
+    /// The server's id, as the ring knows it.
+    server: &'static str,
+    /// The context the model is loaded with, in tokens (0: not said), for the ring.
+    context: u64,
 }
 
 impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P> {
     fn shown(&mut self, text: &str) {
         text.clone_into(self.shown);
         self.events.delta(self.app, text);
+    }
+
+    /// The ring follows each round of tools, not only the end of the answer.
+    fn used(&mut self, tokens: u64) {
+        let usage = crate::chat_usage::ChatUsage {
+            provider: self.server.to_string(),
+            context: Some(crate::chat_usage::ContextUse { chat: self.chat.id().to_string(), used: tokens, total: self.context }),
+            tokens: None,
+            requests: None,
+            credits: None,
+        };
+        let _ = self.app.emit("chat-usage", usage);
     }
 
     fn doing(&mut self, doing: Doing) {
@@ -619,7 +635,7 @@ pub async fn send(
             max_rounds: MAX_TOOL_ROUNDS,
             pause: Duration::from_secs(1),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, taken_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))

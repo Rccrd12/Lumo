@@ -207,6 +207,8 @@ pub struct Island {
     pub all: Vec<String>,
     /// The tools fail.
     pub failing: bool,
+    /// What each request took, as the turn said it.
+    pub used: Vec<u64>,
 }
 
 impl Hooks for Island {
@@ -216,6 +218,10 @@ impl Hooks for Island {
 
     fn doing(&mut self, doing: Doing) {
         self.doing.push(doing);
+    }
+
+    fn used(&mut self, tokens: u64) {
+        self.used.push(tokens);
     }
 
     fn without_tools(&mut self) -> String {

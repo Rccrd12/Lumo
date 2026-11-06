@@ -39,6 +39,9 @@ pub trait Hooks {
     /// The text of the answer so far, as the island shows it.
     fn shown(&mut self, text: &str);
     fn doing(&mut self, doing: Doing);
+    /// What a request of the turn took, in tokens, as soon as the server says
+    /// (each round of tools has its own): how full the context is now.
+    fn used(&mut self, _tokens: u64) {}
     /// The system message for a request with no tools (a model that refused them).
     fn without_tools(&mut self) -> String;
     /// More tools for `name` called with `input`: `lumo_tools`, or a tool of
@@ -244,8 +247,9 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 hooks.shown(&after_before(&answer.text));
             }
         }
-        if answer.used.is_some() {
-            used = answer.used;
+        if let Some(tokens) = answer.used {
+            used = Some(tokens);
+            hooks.used(tokens);
         }
         let tools = body.get("tools").is_some();
         // A tool call written in the answer as text (`[[workspace_edit …]]`)

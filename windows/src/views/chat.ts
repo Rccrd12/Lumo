@@ -1624,6 +1624,8 @@ export function buildPrompt(
 
   /** The last numbers each provider came back with (Anthropic, OpenAI, OpenRouter). */
   const seenUsage = new Map<string, SeenUsage>();
+  /** A local model's context, per chat: each chat shows its own, not the last one answered. */
+  const seenContext = new Map<string, SeenUsage>();
   let usageKey = "";
   let usageSetup = false;
   /** The chat was on screen with OpenRouter and the option on, at the last sync. */
@@ -1636,7 +1638,9 @@ export function buildPrompt(
   let usageLineShown: UsageLine | null = null;
 
   function drawUsage(now = Date.now()) {
-    const line = usageLine(State.settings, State.planUsage, seenUsage.get(State.settings.chatProvider), now, State.antigravityPlanUsage, State.chatId);
+    const local = Boolean(providerDef(State.settings.chatProvider).urlField);
+    const seen = local ? seenContext.get(State.chatId) : seenUsage.get(State.settings.chatProvider);
+    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -1722,6 +1726,7 @@ export function buildPrompt(
   function keepUsage(u: ChatUsage | null | undefined) {
     if (!u || typeof u.provider !== "string") return;
     seenUsage.set(u.provider, { ...u, at: Date.now() });
+    if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
     State.notify();
   }
 
@@ -3002,9 +3007,14 @@ export function buildPrompt(
    * What the closed island says the chat is doing: the answer of the chat on
    * screen, else the last one left going in the background.
    */
+  /** The chat is being compacted: what the closed island says meanwhile. */
+  let compactingLabel: string | null = null;
+
   function drawIslandActivity() {
     const run = answering() ?? [...runs.values()].pop();
-    const next = run ? { label: run.text === "" || run.dots ? islandActivityLabel(run.activity) : null } : null;
+    const next = run
+      ? { label: run.text === "" || run.dots ? islandActivityLabel(run.activity) : null }
+      : compactingLabel != null ? { label: compactingLabel } : null;
     const now = State.chatActivity;
     if (next == null ? now == null : now != null && now.label === next.label) return;
     State.chatActivity = next;
@@ -3600,7 +3610,9 @@ export function buildPrompt(
     }
     compacting = true;
     closeUsage();
-    const row = typingDots(t(COMPACT_STRINGS.working));
+    compactingLabel = t(COMPACT_STRINGS.working);
+    drawIslandActivity();
+    const row = typingDots(compactingLabel);
     log.append(row);
     follow();
     onHeightChange();
@@ -3614,6 +3626,8 @@ export function buildPrompt(
       Sound.play("error");
     } finally {
       compacting = false;
+      compactingLabel = null;
+      drawIslandActivity();
       row.remove();
       State.notify();
       onHeightChange();
