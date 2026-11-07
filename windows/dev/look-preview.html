@@ -12,6 +12,8 @@
         transformCallback: (cb) => cb,
         invoke: async (cmd, args) => {
           if (cmd === "plugin:event|listen") { window.__lumoListeners.set(args.event, args.handler); return window.__lumoListeners.size; }
+          // A dropped file lands in the inbox as itself.
+          if (cmd === "ingest_file") return { name: args.path.split(/[\\/]/).pop(), path: args.path };
           return null;
         },
       };

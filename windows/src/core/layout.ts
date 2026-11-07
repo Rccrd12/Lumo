@@ -376,7 +376,8 @@ export const NEW_LOOK_SIDE_PAD = 10;
 export const NEW_LOOK_SIDE_GAP = 10;
 
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
-  if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
+  // (A drop keeps him there: the file flies up to him, upload/canvas.ts.)
+  if (view === "greeting" || view === "settings") return null;
   return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };
 }
 

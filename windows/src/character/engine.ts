@@ -526,6 +526,8 @@ export class BotEngine {
   }
 
   animateMorph(target: number, durationMs?: number) {
+    // The new look's two eyes never turn into the box (the drop flies the file up to them).
+    if (this.eyesOnly) target = 0;
     const dur = durationMs ?? (target > 0.5 ? 550 : 650);
     this.anim("morph", [[target, dur, Ease.inOut]]);
   }

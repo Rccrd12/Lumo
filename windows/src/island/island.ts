@@ -1178,6 +1178,8 @@ export class Island {
     ];
 
     UploadSeq.performDrop(State.uploadDuration, dropped.length > 1 ? USC.BAR_Y_MANY : USC.BAR_Y);
+    // The new look: the file flies up to his eyes, which are glad of it.
+    if (this.engine.eyesOnly) window.setTimeout(() => this.engine.triggerEmote("happy"), 380);
     this.uploadAt = performance.now();
     this.uploadTens = 0;
     this.uploadDone = false;
@@ -2011,7 +2013,9 @@ export class Island {
     const picture = State.picture != null;
     // The Listening panel takes the whole chat, Lumo's place too.
     const listening = State.listeningOpen && State.view === "prompt" && State.chatSlot === "chat";
-    const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture && !listening;
+    // (The new look's drop leaves him in the top bar: the file goes to him there.)
+    const ownLumo = !this.uploadActive || this.engine.eyesOnly;
+    const visible = p.opacity > 0 && !greetingActive && ownLumo && !picture && !listening;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening
