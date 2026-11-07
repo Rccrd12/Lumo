@@ -391,7 +391,7 @@ function render(block: Block): HTMLElement {
 }
 
 /**
- * A formula on a line of its own, in a box of its own: a size up, centred,
+ * A formula on a line of its own: a size up, centred on the chat,
  * scrolling sideways when wider than the chat, its TeX one click away.
  */
 function mathBlock(tex: string): HTMLElement {

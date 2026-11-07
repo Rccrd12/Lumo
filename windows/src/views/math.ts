@@ -20,7 +20,7 @@ const SYMBOLS: Record<string, string> = {
   varphi: "φ", chi: "χ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ",
   Xi: "Ξ", Pi: "Π", Sigma: "Σ", Upsilon: "Υ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
   // Operators and relations
-  cdot: "·", times: "×", div: "÷", pm: "±", mp: "∓", ast: "∗", star: "⋆", circ: "∘", bullet: "•",
+  cdot: "⋅", times: "×", div: "÷", pm: "±", mp: "∓", ast: "∗", star: "⋆", circ: "∘", bullet: "•",
   leq: "≤", le: "≤", geq: "≥", ge: "≥", neq: "≠", ne: "≠", approx: "≈", sim: "∼", simeq: "≃",
   cong: "≅", equiv: "≡", propto: "∝", ll: "≪", gg: "≫", prec: "≺", succ: "≻",
   in: "∈", notin: "∉", ni: "∋", subset: "⊂", supset: "⊃", subseteq: "⊆", supseteq: "⊇",
@@ -683,7 +683,7 @@ function m(tag: string, attrs: Record<string, string> = {}, ...children: Child[]
 /** Relations, with room on both sides: a = b, x ∈ A, f → g. */
 const RELATIONS = new Set([..."=<>≤≥≠≈∼≃≅≡∝≪≫≺≻∈∉∋⊂⊃⊆⊇⊊⊋⊈⊑→←↔⇒⇐⇔⟹⟸⟺↦⟶⟵⟷⟼⇝⇌∥⊥≜≐≔≍⊨⊢⊣≲≳⩽⩾≰≱"]);
 /** Operations between two terms, with a little less: a + b, a × b. A sign in front (−x) keeps none. */
-const BINARY = new Set([..."+−×÷±∓·∗⋆∘∪∩∖∧∨⊕⊖⊗⊙⊘⊎⊔⊓"]);
+const BINARY = new Set([..."+−×÷±∓·⋅∗⋆∘∪∩∖∧∨⊕⊖⊗⊙⊘⊎⊔⊓"]);
 const INTEGRALS = new Set([..."∫∬∭∮∯∰⨌"]);
 /** Brackets: as written they keep their size; \left, \right and \big make them taller. */
 const BRACKETS = new Set([..."()[]{}|‖⟨⟩⌊⌋⌈⌉⟦⟧⟮⟯⌜⌝⌞⌟⎰⎱"]);
@@ -766,7 +766,11 @@ function symbol(v: string, upright: boolean | undefined): Element {
     // A bracket as written keeps its size; only \left…\right stretches.
     // and, like TeX's, takes no room around it: |x|, not | x |.
     if (BRACKETS.has(v)) Object.assign(attrs, { stretchy: "false", lspace: "0", rspace: "0" });
+    // a/b written in a line: the slash sits between them with no room, as in TeX.
+    if (v === "/") Object.assign(attrs, { stretchy: "false", lspace: "0", rspace: "0" });
     if (RELATIONS.has(v)) attrs.class = "mx-rel";
+    // \implies, \impliedby, \iff: LaTeX sets them with a thick space on each side.
+    if ("⟹⟸⟺".includes(v)) Object.assign(attrs, { lspace: "0.5556em", rspace: "0.5556em" });
     // ∫ and ∑: TeX's thin space beside them, not the wide default of the rarer ones (∬, ∯…).
     if (INTEGRALS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.0833em" });
     if (BIG_OPERATORS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.1667em" });
@@ -917,7 +921,9 @@ function draw(node: Node): Element {
 /** A bracket of \left…\right: as tall as what it holds. "." is none. */
 function fenceMark(v: string, form: "prefix" | "postfix"): Element | null {
   if (!v) return null;
-  return m("mo", { stretchy: "true", symmetric: "true", fence: "true", form, class: "mx-delim" }, v);
+  // Not symmetric: the bracket hugs what it holds, as LaTeX's does, rather
+  // than growing as far below the axis as the tallest part reaches above.
+  return m("mo", { stretchy: "true", symmetric: "false", fence: "true", form, class: "mx-delim" }, v);
 }
 
 function matrix(node: Extract<Node, { t: "matrix" }>): Element {
@@ -966,6 +972,25 @@ function isDigit(node: Node | undefined): node is Extract<Node, { t: "sym" }> {
 }
 
 /**
+ * A minus drawn as an empty fraction: a text glyph snaps to a whole pixel and
+ * a fraction rule does not, so a − beside a fraction can sit a pixel above its
+ * bar. Drawn by the same rule, at the same axis and thickness, they meet. The
+ * glyph stays inside, transparent, for the copied text. Room in em around it.
+ */
+function fractionMinus(before: number, after: number): Element {
+  // Latin Modern Math's minus: 0.778em wide, its ink 0.056em in and 0.666em long.
+  const glyph = m("mpadded", { width: "0.666em", height: "0", depth: "0" }, m("mo", { lspace: "0", rspace: "0" }, "−"));
+  const rule = m("mfrac", { displaystyle: "true" }, glyph, m("mrow"));
+  return m("mpadded", {
+    class: "mx-minus",
+    lspace: `${before + 0.056}em`,
+    width: `${before + 0.778 + after}em`,
+    height: "0.3em",
+    depth: "0",
+  }, rule);
+}
+
+/**
  * A row of nodes. Numbers stay whole (3.14), a sign in front of a term is
  * not an operation (−x), and \sin x gets its thin space.
  */
@@ -987,7 +1012,17 @@ function drawAll(input: Node[]): Element {
     }
     if (!inText && n.t === "sym" && n.upright && BINARY.has(n.v)) {
       // A sign in front (−x, (−1)) has no room around it; between two terms it does.
-      const el = m("mo", isOperand(prev) ? { class: "mx-bin" } : { form: "prefix", lspace: "0", rspace: "0" }, n.v);
+      const binary = isOperand(prev);
+      const beforeFrac = nodes[i + 1]?.t === "frac";
+      // A minus in a row with a fraction is drawn with the fraction's own rule,
+      // so the two always land on the same pixel row.
+      const el = n.v === "−" && nodes.some((x) => x.t === "frac")
+        ? fractionMinus(binary ? 0.2222 : 0, binary ? 0.2222 : beforeFrac ? 0.1111 : 0)
+        : m("mo", binary
+          ? { class: "mx-bin", lspace: "0.2222em", rspace: "0.2222em" }
+          // A sign before a fraction stands a hair away from its bar.
+          : { form: "prefix", lspace: "0", rspace: beforeFrac ? "0.1111em" : "0" }, n.v);
+      if (binary) el.classList.add("mx-bin");
       row.append(el);
       prev = n;
       continue;

@@ -1820,30 +1820,35 @@ input[type="range"]::-webkit-slider-thumb {
 /* TeX math in answers (views/math.ts), as MathML: the WebView sets it with
    the math font's own tables. A size up and a shade lighter than the words
    around it, so a formula in a sentence reads at a glance. */
+/* Latin Modern Math: the face of LaTeX (Computer Modern) with the tables
+   MathML needs, shipped with the app (assets/fonts, GUST Font License). */
+@font-face {
+  font-family: "Latin Modern Math";
+  src: url("../assets/fonts/latinmodern-math.otf") format("opentype");
+  font-display: swap;
+}
+
 math.mx {
-  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", math;
-  font-size: 1.16em;
+  font-family: "Latin Modern Math", "Cambria Math", "STIX Two Math", math;
+  font-size: 1.21em;
+  font-weight: 400;
   color: #e6e8ec;
 }
 
-/* A formula on a line of its own: a box of its own (below), centred,
+/* A formula on a line of its own: centred on the chat's own background,
    scrolling sideways when wider than the chat. */
 math.mx-display {
   display: block math;
   width: max-content;
   margin: 0 auto;
-  padding: 4px 6px;
+  padding: 2px 4px;
   font-size: 18px;
   color: #f1f2f4;
 }
 
 .md-math {
   position: relative;
-  margin: 2px 0;
-  padding: 12px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 28px;
   white-space: normal;
 }
 
@@ -1856,8 +1861,9 @@ math.mx-display {
 
 .md-math .md-copy {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
   opacity: 0;
   transition: opacity 0.15s;
 }
@@ -1868,12 +1874,6 @@ math.mx-display {
   opacity: 1;
 }
 
-/* Words in a formula (\text): the chat's own face, a touch smaller. */
-math.mx mtext {
-  font-family: var(--font);
-  font-size: 0.86em;
-}
-
 /* \vec's arrow: small, as TeX draws it, not a whole →. */
 math.mx .mx-vec {
   font-size: 0.72em;
@@ -1881,6 +1881,16 @@ math.mx .mx-vec {
 
 /* \sqrt (views/math.ts): the radical sign and its bar as one line, the sign
    as tall as what it holds, the bar as long. */
+/* A minus beside a fraction (views/math.ts fractionMinus): the rule is the
+   fraction's, the glyph only there for the copied text. */
+math.mx .mx-minus > mfrac {
+  padding: 0;
+}
+
+math.mx .mx-minus mo {
+  -webkit-text-fill-color: transparent;
+}
+
 math.mx .mx-sqrt {
   padding: 0.16em 0.06em 0.12em 0.62em;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 100' preserveAspectRatio='none'%3E%3Cpath d='M0.6 62 L2.4 56.5 L5 97 L9.7 0.6' fill='none' stroke='%23eceef1' stroke-width='1.2' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"), linear-gradient(#eceef1, #eceef1);
@@ -3328,6 +3338,29 @@ math.mx .mx-cancel.mx-sout {
 
 .chat-log .md-pre pre {
   font-size: 11.5px;
+}
+
+/* The chat's answers read like a page: lines with room between them, and a
+   little more between paragraphs, list items and formulas. */
+.chat-log .reply {
+  gap: 10px;
+}
+
+.chat-log .md-p,
+.chat-log .md-bullet {
+  line-height: 1.6;
+}
+
+.chat-log .md-quote-body {
+  gap: 8px;
+}
+
+.chat-log .md-h {
+  margin-top: 6px;
+}
+
+.chat-log .md-math {
+  padding: 6px 28px;
 }
 
 /* Claude Code's effort: Auto beside its name, then a short slider with the

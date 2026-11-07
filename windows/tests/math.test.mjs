@@ -32,7 +32,7 @@ test("a formula on lines of its own is a block", () => {
 test("the notation reads as math", () => {
   assert.equal(mathText("f:\\Omega\\subseteq\\mathbb{R}^n\\to\\mathbb{R}"), "f:Ω⊆ℝn→ℝ");
   assert.equal(mathText("\\nabla f(\\vec{x}_0)=\\vec{0}"), "∇f(x→0)=0→");
-  assert.equal(mathText("\\alpha \\leq \\beta \\cdot \\gamma"), "α≤β·γ");
+  assert.equal(mathText("\\alpha \\leq \\beta \\cdot \\gamma"), "α≤β⋅γ");
   assert.equal(mathText("\\frac{a}{b}"), "ab");
   assert.equal(mathText("\\sqrt{2}"), "2");
   assert.equal(renderMath("\\sqrt[3]{2}").find(".mx-sqrt").length, 1);
@@ -118,6 +118,14 @@ test("relations and operations get their room, a sign in front does not", () => 
   assert.equal(f.textContent, "−a+b=c");
   assert.equal(f.find(".mx-rel").length, 1);
   assert.equal(f.find(".mx-bin").length, 1);
+});
+
+test("a minus beside a fraction is drawn with the fraction's rule, its text kept", () => {
+  const f = renderMath("-\\frac{1}{2} - \\frac{1}{3}", true);
+  assert.equal(f.textContent, "−12−13");
+  assert.equal(f.find(".mx-minus").length, 2);
+  assert.equal(f.find(".mx-bin").length, 1);
+  assert.equal(renderMath("-a + b").find(".mx-minus").length, 0);
 });
 
 test("on a line of its own, sums take their limits above and below", () => {
