@@ -367,12 +367,14 @@ html.look-new .home-btn.acc:hover {
 }
 
 html.look-new .home-empty {
-  height: 54px;
+  /* As tall as a session's row; taller when its line wraps on a narrow home. */
+  min-height: 54px;
+  box-sizing: border-box;
   display: flex;
   flex-direction: column;
   justify-content: center;
   gap: 3px;
-  padding: 0 14px;
+  padding: 8px 14px;
   border-radius: 14px;
   background: #111214;
 }
