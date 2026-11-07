@@ -998,8 +998,7 @@ html.look-new .tile-input.bad {
 }
 
 /* A running timer: the time on the left, the ring of what is left on the
-   right. The ring is the pause button, its icon in the middle under the
-   mouse (always, once paused); × waits apart at the end of the label's row. */
+   right; under the mouse the ring steps back for pause and ×. */
 html.look-new .tile-timer {
   flex-direction: row;
   align-items: center;
@@ -1014,44 +1013,6 @@ html.look-new .tile-timer-text {
   gap: 4px;
 }
 
-html.look-new .tile-timer .tile-kick {
-  min-width: 0;
-}
-
-html.look-new .tile-timer-label {
-  flex: 0 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-}
-
-html.look-new .tile-timer-stop {
-  flex: none;
-  display: grid;
-  place-items: center;
-  width: 16px;
-  height: 16px;
-  margin-left: auto;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.08);
-  color: var(--dim);
-  cursor: pointer;
-  transition: background 0.15s ease-out, color 0.15s ease-out;
-}
-
-/* Out of the way, and taking no room from the label, until the mouse comes. */
-html.look-new .tile-timer:not(:hover):not(:focus-within) .tile-timer-stop {
-  display: none;
-}
-
-html.look-new .tile-timer-stop:hover {
-  background: rgba(244, 80, 94, 0.18);
-  color: var(--red);
-}
-
 html.look-new .tile-timer.paused .tile-big {
   color: var(--dim);
 }
@@ -1059,30 +1020,22 @@ html.look-new .tile-timer.paused .tile-big {
 html.look-new .tile-timer-side {
   position: relative;
   flex: none;
-  display: grid;
-  place-items: center;
-  width: 48px;
-  height: 48px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: transparent;
-  color: var(--ink);
-  cursor: pointer;
+  width: 60px;
+  height: 60px;
 }
 
 html.look-new .tile-ring {
   position: absolute;
   inset: 0;
-  width: 48px;
-  height: 48px;
+  width: 60px;
+  height: 60px;
   transform: rotate(-90deg);
 }
 
 html.look-new .tile-ring-track,
 html.look-new .tile-ring-fill {
   fill: none;
-  stroke-width: 4;
+  stroke-width: 3.5;
 }
 
 html.look-new .tile-ring-track {
@@ -1098,29 +1051,36 @@ html.look-new .tile-timer.paused .tile-ring-fill {
   stroke: #5b6069;
 }
 
-/* Inside the ring, clear of it: a soft disc with the icon. */
-html.look-new .tile-timer-icon {
-  position: relative;
-  display: grid;
-  place-items: center;
-  width: 30px;
-  height: 30px;
-  border-radius: 50%;
-  background: rgba(255, 255, 255, 0.07);
+/* Inside the ring, clear of it: pause (or go on) and ×, under the mouse
+   (and always once paused, so it shows how to go on). */
+html.look-new .tile-timer-ctls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
   opacity: 0;
-  transform: scale(0.85);
-  transition: opacity 0.15s ease-out, transform 0.15s ease-out, background 0.15s ease-out;
+  transition: opacity 0.15s ease-out;
 }
 
-html.look-new .tile-timer:hover .tile-timer-icon,
-html.look-new .tile-timer.paused .tile-timer-icon,
-html.look-new .tile-timer-side:focus-visible .tile-timer-icon {
+html.look-new .tile-timer-ctls .tile-ctl {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+  cursor: pointer;
+}
+
+html.look-new .tile-timer-ctls .tile-ctl:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+html.look-new .tile-timer:hover .tile-timer-ctls,
+html.look-new .tile-timer:focus-within .tile-timer-ctls,
+html.look-new .tile-timer.paused .tile-timer-ctls {
   opacity: 1;
-  transform: none;
-}
-
-html.look-new .tile-timer-side:hover .tile-timer-icon {
-  background: rgba(255, 255, 255, 0.13);
 }
 
 /* Three tiles: side by side in one row, so the home stays low. */

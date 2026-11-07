@@ -25,7 +25,7 @@ export const HOME_TEXT = {
 };
 
 /** The timer ring's radius, and its length. */
-const RING_R = 22;
+const RING_R = 27;
 const RING_C = 2 * Math.PI * RING_R;
 
 /** What the home needs from the island. */
@@ -233,12 +233,12 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   function timerRing(): { el: SVGSVGElement; fill: SVGCircleElement } {
     const NS = "http://www.w3.org/2000/svg";
     const el = document.createElementNS(NS, "svg") as SVGSVGElement;
-    el.setAttribute("viewBox", "0 0 52 52");
+    el.setAttribute("viewBox", "0 0 60 60");
     el.setAttribute("class", "tile-ring");
     const circle = (cls: string) => {
       const c = document.createElementNS(NS, "circle") as SVGCircleElement;
-      c.setAttribute("cx", "26");
-      c.setAttribute("cy", "26");
+      c.setAttribute("cx", "30");
+      c.setAttribute("cy", "30");
       c.setAttribute("r", String(RING_R));
       c.setAttribute("class", cls);
       el.append(c);
@@ -264,27 +264,24 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             h("label", { class: "tile-field" }, svg(ICONS.clock, 12, { stroke: 1.8 }), timerInput),
             h("div", { class: "tile-chips" }, start(5), start(10), start(25)));
         }
-        // Running: the time on the left, a ring of what is left on the right.
-        // The ring is the pause (or go on) button, its icon showing in the
-        // middle under the mouse; × sits apart, at the end of the label's row.
+        // Running: the time on the left, a ring of what is left on the right;
+        // under the mouse pause (or go on) and × show inside it, clear of it.
         const paused = timer.pausedLeft != null;
         const big = h("div", { class: "tile-big", text: remaining(timer.endsAt) });
         const ring = timerRing();
         timerEls.push({ el: big, ring: ring.fill, timer });
-        const pauseTitle = t(paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause);
+        const ctl = (icon: string, title: string, run: () => void) =>
+          h("button", { class: "tile-ctl", title: t(title), "aria-label": t(title), onclick: run }, svg(icon, 11));
         return h("div", { class: `home-tile tile-timer${paused ? " paused" : ""}` },
           h("div", { class: "tile-timer-text" },
             h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }),
-              h("span", { class: "tile-timer-label", text: paused ? t(HOME_TEXT.paused) : timer.label || t(ACTIVITIES_TEXT.timer) }),
-              h("button", {
-                class: "tile-timer-stop", title: t(HOME_TEXT.stop), "aria-label": t(HOME_TEXT.stop),
-                onclick: () => actions.activity({ kind: "cancelTimer", id: timer.id }),
-              }, svg(ICONS.xmark, 9, { stroke: 2 }))),
+              h("span", { text: paused ? t(HOME_TEXT.paused) : timer.label || t(ACTIVITIES_TEXT.timer) })),
             big),
-          h("button", {
-            class: "tile-timer-side", title: pauseTitle, "aria-label": pauseTitle,
-            onclick: () => actions.activity({ kind: "pauseTimer", id: timer.id }),
-          }, ring.el, h("span", { class: "tile-timer-icon" }, svg(paused ? ICONS.play : ICONS.pause, 13))));
+          h("div", { class: "tile-timer-side" }, ring.el,
+            h("div", { class: "tile-timer-ctls" },
+              ctl(paused ? ICONS.play : ICONS.pause, paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause,
+                () => actions.activity({ kind: "pauseTimer", id: timer.id })),
+              ctl(ICONS.xmark, HOME_TEXT.stop, () => actions.activity({ kind: "cancelTimer", id: timer.id })))));
       }
       case "music": {
         const media = data.media;
