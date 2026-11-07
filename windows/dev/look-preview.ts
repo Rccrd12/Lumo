@@ -12,6 +12,7 @@ import { registerHookHandlers } from "../src/island/hooks";
 import type { IslandViewName } from "../src/core/layout";
 import { Feed } from "../src/core/compact";
 import { Calendar } from "../src/island/activities";
+import { setLanguage } from "../src/i18n/i18n";
 
 type Listener = (e: { event: string; id: number; payload: unknown }) => void;
 const listeners = (window as unknown as { __lumoListeners: Map<string, Listener> }).__lumoListeners;
@@ -19,11 +20,17 @@ const emit = (event: string, payload: unknown) => listeners.get(event)?.({ event
 const hook = (payload: Record<string, unknown>) => emit("hook", payload);
 
 const params = new URLSearchParams(location.search);
+// ?lang=it: the island in that language (as Settings → General → Language).
+const lang = params.get("lang");
+if (lang) {
+  setLanguage(lang as Parameters<typeof setLanguage>[0]);
+  State.settings = { ...State.settings, language: lang } as typeof State.settings;
+}
 const island = new Island(document.getElementById("root")!);
 (window as unknown as { island: Island; State: typeof State }).island = island;
 (window as unknown as { State: typeof State }).State = State;
 await registerHookHandlers(island);
-State.settings = { ...State.settings, islandNewLook: params.get("look") === "new", soundEnabled: false };
+State.settings = { ...State.settings, islandNewLook: params.get("look") === "new", soundEnabled: false, ...(lang ? { language: lang } : {}) } as typeof State.settings;
 island.applySettings();
 State.loadIntegrationTasks();
 
@@ -100,12 +107,17 @@ if (params.has("busy")) {
 }
 
 // A short chat.
-State.chatHistory = [
+State.chatHistory = lang === "it" ? [
+  { id: 1, role: "user", content: "Aggiungi l'interruttore del nuovo look" },
+  { id: 2, role: "assistant", content: "Ho letto le impostazioni: ecco come lo farei." },
+] : [
   { id: 1, role: "user", content: "What does `npm test` run in this repo?" },
   { id: 2, role: "assistant", content: "Node's built-in test runner on `tests/**/*.test.mjs`: 54 test files, done in about ten seconds. The TypeScript check is separate: `npx tsc --noEmit`." },
 ];
 
-const PLAN_MD = "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests";
+const PLAN_MD = lang === "it"
+  ? "1. Leggi la pagina delle impostazioni\n2. Aggiungi l'interruttore\n3. Salvalo con gli altri\n4. Esegui i test"
+  : "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests";
 
 function show(view: IslandViewName, ask = view === "approval") {
   // ?ask=plan: Claude Code asks to start its plan; ?ask=chatplan: the island's own chat asks.

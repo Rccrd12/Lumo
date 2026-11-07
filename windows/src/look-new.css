@@ -1961,3 +1961,10 @@ html.look-new .share-detail {
   font-size: 10.5px;
   text-align: center;
 }
+
+/* The plan's words are longer than Deny and Allow: the two buttons share the row evenly. */
+html.look-new .plan-ask-on .approval-actions .deny-btn,
+html.look-new .plan-ask-on .approval-actions .allow-btn {
+  flex: 1 1 0;
+  white-space: nowrap;
+}
