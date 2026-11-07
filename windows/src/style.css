@@ -1881,6 +1881,16 @@ math.mx .mx-vec {
 
 /* \sqrt (views/math.ts): the radical sign and its bar as one line, the sign
    as tall as what it holds, the bar as long. */
+/* A minus beside a fraction (views/math.ts fractionMinus): the rule is the
+   fraction's, the glyph only there for the copied text. */
+math.mx .mx-minus > mfrac {
+  padding: 0;
+}
+
+math.mx .mx-minus mo {
+  -webkit-text-fill-color: transparent;
+}
+
 math.mx .mx-sqrt {
   padding: 0.16em 0.06em 0.12em 0.62em;
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 10 100' preserveAspectRatio='none'%3E%3Cpath d='M0.6 62 L2.4 56.5 L5 97 L9.7 0.6' fill='none' stroke='%23eceef1' stroke-width='1.2' stroke-linejoin='round' vector-effect='non-scaling-stroke'/%3E%3C/svg%3E"), linear-gradient(#eceef1, #eceef1);

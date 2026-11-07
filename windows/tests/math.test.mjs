@@ -120,6 +120,14 @@ test("relations and operations get their room, a sign in front does not", () => 
   assert.equal(f.find(".mx-bin").length, 1);
 });
 
+test("a minus beside a fraction is drawn with the fraction's rule, its text kept", () => {
+  const f = renderMath("-\\frac{1}{2} - \\frac{1}{3}", true);
+  assert.equal(f.textContent, "−12−13");
+  assert.equal(f.find(".mx-minus").length, 2);
+  assert.equal(f.find(".mx-bin").length, 1);
+  assert.equal(renderMath("-a + b").find(".mx-minus").length, 0);
+});
+
 test("on a line of its own, sums take their limits above and below", () => {
   const display = renderMath("\\sum_{k=1}^{n} k = \\lim_{x\\to 0} f", true);
   assert.equal(display.find(".mx-limits").length, 2);
