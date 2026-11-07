@@ -595,10 +595,23 @@ function buildEmpty(actions: ViewActions): ViewHost {
  * click opens the chat, which is where the writing happens.
  */
 function askField(actions: ViewActions): HTMLElement {
-  return h("button", { class: "ask-field", onclick: () => actions.setView("prompt") },
-    svg(ICONS.plus, 13, { stroke: 1.6 }),
-    h("span", { class: "ph", text: tl("Ask me anything…") }),
-    svg(ICONS.mic, 14));
+  // The chat itself, never the tool workshop that may be parked in its place.
+  const openChat = () => {
+    State.useSlot("chat");
+    actions.setView("prompt");
+  };
+  // The "+" opens the chat on its own "+" menu (views/chat.ts plusMenu).
+  const plus = h("span", {
+    class: "ask-plus", role: "button", title: tl("Attach a file"),
+    onclick: (e: Event) => {
+      e.stopPropagation();
+      openChat();
+      requestAnimationFrame(() => document.querySelector<HTMLElement>("#views .view.on .plus-btn")?.click());
+    },
+  }, svg(ICONS.plus, 13, { stroke: 1.6 }));
+  return h("button", { class: "ask-field", onclick: openChat },
+    plus,
+    h("span", { class: "ph", text: tl("Ask me anything…") }));
 }
 
 /**
@@ -820,7 +833,7 @@ function buildApproval(actions: ViewActions): ViewHost {
 function buildQuestion(actions: ViewActions): ViewHost {
   const who = h("div");
   const title = h("div", { class: "title question-text" });
-  const row = h("div", { class: "actions options" });
+  const row = h("div", { class: "actions options question-options" });
   const fold = foldButton(actions);
   const el = h("div", { class: "view" }, card("cyan", stack(116, 16, who, title, row), fold));
 
@@ -892,7 +905,12 @@ function buildQuestion(actions: ViewActions): ViewHost {
           else picked.add(option.label);
           State.notify();
         });
-        if (option.description) button.title = option.description;
+        if (option.description) {
+          button.title = option.description;
+          // Under the label in the new look (look-new.css); the usual one keeps it in the tooltip.
+          button.append(h("span", { class: "q-desc", text: option.description }));
+        }
+        button.classList.add("q-option");
         row.append(button);
       }
       if (q.multiSelect) {

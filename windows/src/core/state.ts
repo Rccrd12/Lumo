@@ -907,9 +907,12 @@ class AppState {
    * on the list.
    */
   private toolsInWorkshop = false;
+  /** A tab's view was open since launch: the new look reopens there rather than on its list. */
+  private tabNoted = false;
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
+    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "empty") this.tabNoted = true;
     if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
       this.lastTab = "tools";
       this.toolsInWorkshop = view === "prompt";
@@ -925,8 +928,9 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
-    // The new look has no tabs: what waits for you and the sessions are home, the chat a field there.
-    if (this.settings.islandNewLook === true) return this.liveActive ? "live" : this.agentsView();
+    // The new look has no tabs: until a view of its own was open, it opens on
+    // the list (what waits for you, the sessions); then where it was left.
+    if (this.settings.islandNewLook === true && !this.tabNoted) return this.liveActive ? "live" : this.agentsView();
     if (this.lastTab === "agents") return this.agentsView();
     if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";

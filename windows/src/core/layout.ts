@@ -350,6 +350,12 @@ export const NEW_LOOK_SESSION_ALLOW_H = 30;
 export const NEW_LOOK_WAITING_H = 56;
 export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 236, empty: 186, tools: 372 };
 
+/** The new look's question card: its options one under the other, each this tall with its description. */
+export const NEW_LOOK_OPTION_H = 46;
+export function newLookQuestionHeight(options: number, multiSelect: boolean): number {
+  return 156 + (options + (multiSelect ? 1 : 0)) * NEW_LOOK_OPTION_H;
+}
+
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
   if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
   return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };

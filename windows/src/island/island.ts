@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_SESSION_ALLOW_H, NEW_LOOK_WAITING_H,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, NEW_LOOK_WAITING_H,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -518,10 +518,15 @@ export class Island {
           const r = icon.getBoundingClientRect();
           return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
         }
-        const plus = this.header.el.querySelector(".tab-drop");
-        if (!plus) return null;
-        const r = plus.getBoundingClientRect();
-        return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        // In the new look the "+" is not in the bar: they go into the "⋯", where they come back from.
+        const plus = this.header.el.querySelector(".tab-drop") as HTMLElement | null;
+        const more = this.header.el.querySelector(".more-btn") as HTMLElement | null;
+        for (const target of [plus, more]) {
+          const r = target?.getBoundingClientRect();
+          if (r && r.width > 0) return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
+        }
+        const at = this.islandRect();
+        return { x: at.x + at.w / 2, y: at.y + 20 };
       },
       movable: this.canResize && IS_TAURI,
       changed: () => State.notify(),
@@ -1308,7 +1313,10 @@ export class Island {
     if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
       h = Math.max(h, EMAIL_CARD_H);
     }
-    if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
+    const asked = State.pendingApproval?.questions?.[0];
+    if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "question" && asked) {
+      h = Math.min(440, newLookQuestionHeight(asked.options.length, asked.multiSelect === true));
+    } else if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
       const extra = State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
         : State.view === "overview" && State.pendingApproval ? NEW_LOOK_WAITING_H : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
