@@ -1968,3 +1968,10 @@ html.look-new .plan-ask-on .approval-actions .allow-btn {
   flex: 1 1 0;
   white-space: nowrap;
 }
+
+html.look-new .usage-ask-context.small {
+  height: 22px;
+  margin-top: 2px;
+  padding: 0 10px;
+  font-size: 11px;
+}

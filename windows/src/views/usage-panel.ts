@@ -15,13 +15,18 @@ const USAGE_PANEL_TEXT = {
   lastContext: N_("As of the last /context in this chat"),
 };
 
-/** The last /context answer in the chat, newest first; null when there is none. */
-export function lastContextReport(messages: readonly { role: string; content: string }[]): ContextReport | null {
+/**
+ * The last /context answer in the chat, and whether nothing was answered
+ * after it (it still tells how the context stands); null when there is none.
+ */
+export function lastContextReport(messages: readonly { role: string; content: string }[]): { report: ContextReport; fresh: boolean } | null {
+  let answersAfter = 0;
   for (let i = messages.length - 1; i >= 0; i--) {
     const m = messages[i];
-    if (m.role !== "assistant" || !m.content.includes("Context Usage")) continue;
-    const report = parseContextReport(m.content);
-    if (report) return report;
+    if (m.role !== "assistant") continue;
+    const report = m.content.includes("Context Usage") ? parseContextReport(m.content) : null;
+    if (report) return { report, fresh: answersAfter === 0 };
+    answersAfter++;
   }
   return null;
 }
@@ -44,15 +49,30 @@ export interface NewUsageInput {
   /** A local model: its one row is its context. */
   local: boolean;
   /** What fills the context, from the last /context; null when not asked yet. */
-  report: ContextReport | null;
+  report: { report: ContextReport; fresh: boolean } | null;
+  /** How full the context is, as the chat's last answer said (Claude Code's stream); null when not known. */
+  fill: { used: number; total: number } | null;
   /** Asks Claude Code for /context; null where there is no such thing. */
   askContext: (() => void) | null;
 }
 
 /** The menu's sections, into `list` (emptied by the caller). */
-export function drawNewUsage(list: HTMLElement, { line, local, report, askContext }: NewUsageInput): void {
-  // The context: split by what fills it when /context said so.
-  if (report) {
+export function drawNewUsage(list: HTMLElement, { line, local, report: last, fill, askContext }: NewUsageInput): void {
+  // The context: split by what fills it when /context said so and nothing was
+  // answered since; otherwise how full it is, as the last answer said.
+  const report = last && (last.fresh || !fill) ? last.report : null;
+  if (!report && fill && fill.total > 0) {
+    const used = Math.max(0, Math.min(fill.used, fill.total));
+    const bar = h("i", { class: "usage-limit-fill" });
+    bar.style.width = `${(used / fill.total) * 100}%`;
+    bar.style.background = "#3b9eff";
+    list.append(h("div", { class: "usage-ctx" },
+      h("div", { class: "usage-ctx-head" },
+        h("span", { class: "usage-ctx-title", text: t(CONTEXT_STRINGS.title) }),
+        h("span", { class: "usage-ctx-numbers", text: `${t(CONTEXT_STRINGS.used, { used: formatTokens(used), total: formatTokens(fill.total) })} · ${t(CONTEXT_STRINGS.free, { free: formatTokens(fill.total - used) })}` })),
+      h("span", { class: "usage-limit-bar" }, bar),
+      askContext ? h("button", { class: "usage-ask-context small", type: "button", text: t(USAGE_PANEL_TEXT.askContext), onclick: askContext }) : null));
+  } else if (report) {
     list.append(h("div", { class: "usage-ctx", title: t(USAGE_PANEL_TEXT.lastContext) },
       h("div", { class: "usage-ctx-head" },
         h("span", { class: "usage-ctx-title", text: t(CONTEXT_STRINGS.title) }),

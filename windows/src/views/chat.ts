@@ -1777,9 +1777,12 @@ export function buildPrompt(
     if (newLook) {
       usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
       const report = lastContextReport(State.chatHistory);
+      // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
+      const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
+      const fill = filled && filled.total > 0 ? { used: filled.used, total: filled.total } : null;
       drawNewUsage(usageList, {
-        line, local, report,
-        askContext: State.settings.chatProvider === "claude-code" && !report ? () => {
+        line, local, report, fill,
+        askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
           closeUsage();
           void submit("/context");
         } : null,
@@ -1849,6 +1852,8 @@ export function buildPrompt(
     if (!u || typeof u.provider !== "string") return;
     seenUsage.set(u.provider, { ...u, at: Date.now() });
     if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
+    // The usage menu open on this chat shows how full it now is.
+    if (body.classList.contains("metering")) drawUsageMenu();
     State.notify();
   }
 
