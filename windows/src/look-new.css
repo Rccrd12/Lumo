@@ -63,11 +63,6 @@ html.look-new .card.wash::after {
   display: none;
 }
 
-/* The overview's two cards stay apart, flat. */
-html.look-new .overview .card {
-  background: #111214;
-}
-
 /* ── The room Lumo's column took goes back to the views ────────────────────── */
 
 html.look-new .who,
@@ -104,17 +99,18 @@ html.look-new .slash-menu {
   left: 16px;
 }
 
-/* ── Home: one list instead of the tabs ──────────────────────────────────────
-   What waits for you on top, the session under it, the other pills in a row,
-   and the field to the chat at the bottom (views.ts waitingRow, askField). */
+/* ── Home: one list instead of the tabs (views/home.ts) ──────────────────────
+   Wide rather than tall: what waits for you and the sessions on the left,
+   the live activities as tiles and the other pills on the right, the field
+   to the chat under both. The overview is now a session's own card. */
 
 .back-btn,
 .ask-field,
-.wait-row {
+.home {
   display: none !important;
 }
 
-html.look-new .tabs > .tab:not(.tab-activities) {
+html.look-new .tabs > .tab:not(.back-btn) {
   display: none;
 }
 
@@ -122,105 +118,79 @@ html.look-new .tabs > .back-btn.away {
   display: grid !important;
 }
 
-html.look-new .overview,
-html.look-new .empty-view {
+html.look-new .home {
+  display: flex !important;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 6px 2px;
+}
+
+html.look-new .home-cols {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+
+html.look-new .home-left {
+  flex: 1 1 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 2px 6px 0;
 }
 
-html.look-new .overview > .left {
-  flex: 1 1 auto;
-  width: auto;
-  min-height: 0;
-}
-
-html.look-new .overview > .right {
-  flex: 0 0 auto;
-}
-
-html.look-new .overview .left .card {
-  background: #111214;
-}
-
-html.look-new .overview .right .card {
-  height: auto;
-  background: transparent;
-  overflow: visible;
-}
-
-html.look-new .empty-view > .card {
-  flex: 1 1 auto;
-  background: #111214;
-}
-
-html.look-new .empty-view > .card .stack {
-  padding: 0 16px !important;
-}
-
-html.look-new .empty-view > .card .btn {
-  display: none;
-}
-
-/* The other pills: a row of names, each with its colour in a dot. */
-html.look-new .pills {
+html.look-new .home-right {
+  flex: 0 0 340px;
+  min-width: 0;
   display: flex;
-  flex-wrap: nowrap;
-  gap: 6px;
-  height: auto;
-  padding: 0 2px;
-  overflow: hidden;
+  flex-direction: column;
+  gap: 12px;
 }
 
-html.look-new .pill {
-  flex: 0 0 auto;
-  height: 26px;
-  padding: 0 11px 0 10px;
-  gap: 7px;
-  background: #111214;
-  border-color: rgba(255, 255, 255, 0.06) !important;
-  box-shadow: none !important;
-}
-
-html.look-new .pill:hover {
-  transform: none;
-  background: #1a1b1f !important;
-}
-
-html.look-new .pill .mini,
-html.look-new .pill .pill-end {
+html.look-new .home-right[hidden],
+html.look-new .home-tiles[hidden],
+html.look-new .home-chips[hidden] {
   display: none;
 }
 
-html.look-new .pill::before {
-  content: "";
-  width: 7px;
-  height: 7px;
-  border-radius: 50%;
-  background: var(--pill-color, var(--dim));
+html.look-new .home-label {
+  height: 24px;
   flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font: 700 10.5px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim-4);
 }
 
-html.look-new .pill .lbl {
-  margin: 0;
-  padding: 0;
-  font: 500 12px var(--font);
-  color: #b0b5be !important;
+html.look-new .home-label .c {
+  color: var(--dim-2);
+  letter-spacing: 0;
 }
 
-html.look-new .pill-badge {
-  top: -4px;
-  right: -3px;
+html.look-new .home-rows {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
 }
 
-html.look-new .wait-row:not([hidden]) {
-  display: flex !important;
-  flex: 0 0 auto;
+html.look-new .home-row + .home-label {
+  margin-top: 12px;
+}
+
+html.look-new .home-row {
+  flex: 0 0 54px;
+  height: 54px;
+  display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 10px 8px 14px;
-  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  padding: 0 12px 0 14px;
+  border: 0;
   border-radius: 14px;
   background: #111214;
   color: var(--ink);
@@ -229,34 +199,250 @@ html.look-new .wait-row:not([hidden]) {
   cursor: default;
 }
 
-html.look-new .wait-text {
+html.look-new button.home-row:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .home-row.hot {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
+}
+
+html.look-new .home-text {
   flex: 1 1 auto;
   min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 3px;
 }
 
-html.look-new .wait-what {
-  font: 400 12px var(--mono);
-  color: #b0b5be;
+html.look-new .home-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font: 400 13px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+html.look-new .home-who .s {
+  margin-left: -3px;
+}
+
+html.look-new .home-who .n {
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .home-line {
+  padding-left: 15px;
+  font: 400 12.5px var(--font);
+  color: var(--dim);
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
-html.look-new .wait-open {
-  flex: none;
-  padding: 6px 12px;
-  border-radius: 10px;
-  background: var(--amber);
-  color: #1a1206;
-  font: 600 12px var(--font);
+html.look-new .home-line code {
+  font: 400 12px var(--mono);
+  color: #d6d8dc;
+  background: #1a1b1f;
+  padding: 1px 6px;
+  border-radius: 5px;
 }
 
+html.look-new .home-line.ok {
+  color: #5ae6a0;
+}
+
+html.look-new .home-line.err {
+  color: var(--red-text);
+}
+
+html.look-new .home-count {
+  flex: none;
+  font: 400 12px var(--font);
+  color: var(--dim-3);
+}
+
+html.look-new .home-btn {
+  flex: none;
+  min-width: 32px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: #1a1b1f;
+  color: var(--ink);
+  font: 700 12.5px var(--font);
+  cursor: default;
+}
+
+html.look-new .home-btn:hover {
+  background: #26282d;
+}
+
+html.look-new .home-btn.acc {
+  background: var(--amber);
+  color: #1a1206;
+}
+
+html.look-new .home-btn.acc:hover {
+  background: #ffb63d;
+}
+
+html.look-new .home-empty {
+  height: 54px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: #111214;
+}
+
+html.look-new .home-empty .n {
+  font: 600 13px var(--font);
+}
+
+html.look-new .home-empty .s {
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+/* The live activities, as tiles: two to a row. */
+html.look-new .home-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 82px;
+  gap: 8px;
+}
+
+html.look-new .home-tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #111214;
+  overflow: hidden;
+}
+
+html.look-new .home-tile.link:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .tile-kick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+html.look-new .tile-big {
+  margin-top: 2px;
+  font: 700 24px var(--font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+html.look-new .tile-title {
+  font: 600 13px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .tile-sub {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .tile-ctls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
+  min-width: 0;
+}
+
+html.look-new .tile-ctl {
+  flex: none;
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: default;
+}
+
+html.look-new .tile-ctl:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .tile-ctls .tile-sub {
+  margin-left: 4px;
+}
+
+/* The other pills: a row of names, each with its colour in a dot. */
+html.look-new .home-chips {
+  display: flex;
+  flex-direction: column;
+}
+
+html.look-new .home-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-height: 64px;
+  overflow: hidden;
+}
+
+html.look-new .home-chip {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #111214;
+  color: #b0b5be;
+  font: 500 12px var(--font);
+  cursor: default;
+}
+
+html.look-new .home-chip:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .home-chip.badge-approval {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 55%, transparent);
+}
+
+html.look-new .home-chip.badge-error {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 55%, transparent);
+}
+
+/* The field to the chat. */
 html.look-new .ask-field {
   display: flex !important;
-  flex: 0 0 38px;
+  flex: 0 0 40px;
   align-items: center;
   gap: 10px;
   padding: 0 14px;
@@ -289,6 +475,24 @@ html.look-new .ask-plus {
 html.look-new .ask-plus:hover {
   background: #26282d;
   color: var(--ink);
+}
+
+/* A session's own card: the whole width, the other pills are on the home. */
+html.look-new .overview {
+  padding: 2px 6px 0;
+}
+
+html.look-new .overview > .left {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+html.look-new .overview > .right {
+  display: none;
+}
+
+html.look-new .overview .left .card {
+  background: #111214;
 }
 
 /* ── Tools: one block per tool, its colour in the icon, what it uses in words ─ */
@@ -682,20 +886,15 @@ html.look-new .question-text {
   margin-top: 2px;
 }
 
-/* ── One island: the live activities and the Plan inside it ─────────────────
-   island.ts sideInside puts them in the island's right-hand side, under the
-   top bar, and says how much room they take in --side-room. */
-
-html.look-new .overview,
-html.look-new .empty-view {
-  margin-right: var(--side-room, 0px);
-}
+/* ── One island: the Plan inside it, beside the chat ────────────────────────
+   island.ts sideInside puts it in the island's right-hand side, under the
+   top bar, and says how much room it takes in --side-room. (The live
+   activities are the home's tiles, views/home.ts.) */
 
 html.look-new .chat-body {
   margin-right: var(--side-room, 0px);
 }
 
-html.look-new #activities.activities,
 html.look-new #plan.agent-plan {
   background: #111214;
   border-radius: 14px;
@@ -703,27 +902,16 @@ html.look-new #plan.agent-plan {
 }
 
 /* Drawn before the island in the page (island.ts), so lifted above it. */
-html.look-new #activities,
 html.look-new #plan {
   z-index: 3;
 }
 
-/* Two columns of cards, no grips: inside the island they are not moved or resized. */
-html.look-new #activities .act-body {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-content: start;
-  align-items: start;
-  border-radius: 0 0 14px 14px;
-}
-
-html.look-new #activities .act-grip,
+/* No grips: inside the island it is not moved or resized. */
 html.look-new #plan .act-grip,
 html.look-new #plan [class*="grip"] {
   display: none;
 }
 
-html.look-new #activities .act-head,
 html.look-new #plan .plan-head {
   cursor: default;
 }

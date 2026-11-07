@@ -11,6 +11,7 @@ import { Island } from "../src/island/island";
 import { registerHookHandlers } from "../src/island/hooks";
 import type { IslandViewName } from "../src/core/layout";
 import { Feed } from "../src/core/compact";
+import { Calendar } from "../src/island/activities";
 
 type Listener = (e: { event: string; id: number; payload: unknown }) => void;
 const listeners = (window as unknown as { __lumoListeners: Map<string, Listener> }).__lumoListeners;
@@ -40,6 +41,35 @@ Feed.media = { title: "Midnight City", artist: "M83", app: "Spotify", playing: t
 // A plan, with ?plan: Claude Code leaving Plan Mode with four steps.
 if (params.has("plan")) {
   hook({ hook_event_name: "PreToolUse", cwd, tool_name: "ExitPlanMode", tool_input: { plan: "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests" } });
+}
+
+// Two more sessions, with ?busy: Codex at work on a site, and another Claude Code session done.
+if (params.has("busy")) {
+  const site = "C:\\dev\\sito-portfolio";
+  hook({ hook_event_name: "SessionStart", cwd: site, lumo_agent: "codex" });
+  hook({ hook_event_name: "PreToolUse", cwd: site, lumo_agent: "codex", tool_name: "Write", tool_input: { file_path: `${site}\\main.py` } });
+  const api = "C:\\dev\\api-server";
+  hook({ hook_event_name: "SessionStart", cwd: api, session_id: "s2" });
+  hook({ hook_event_name: "PreToolUse", cwd: api, session_id: "s2", tool_name: "Bash", tool_input: { command: "npm test" } });
+  hook({ hook_event_name: "Stop", cwd: api, session_id: "s2", last_assistant_message: "2 files changed, tests green" });
+  // The calendar and the email, as their feeds would leave them.
+  // After the calendar's own first (empty) look.
+  window.setTimeout(() => {
+    Calendar.configured = true;
+    Calendar.events = [
+      { title: "Design review", start: Date.now() + 20 * 60_000, end: Date.now() + 50 * 60_000, allDay: false, location: "" },
+      { title: "Sprint planning", start: Date.now() + 18 * 3_600_000, end: Date.now() + 19 * 3_600_000, allDay: false, location: "" },
+    ];
+    State.notify();
+  }, 600);
+  State.settings = { ...State.settings, activeIntegrations: [...State.settings.activeIntegrations, "integration_mail"] };
+  State.integrations.integration_mail = {
+    loaded: true, error: null, configured: true,
+    data: { messages: [
+      { id: "m1", from: "Ada Lovelace", address: "ada@example.com", subject: "Lunch tomorrow?", preview: "", body: "" },
+      { id: "m2", from: "Grace Hopper", address: "grace@example.com", subject: "The talk", preview: "", body: "" },
+    ] },
+  } as unknown as typeof State.integrations.integration_mail;
 }
 
 // A short chat.

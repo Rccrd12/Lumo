@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_ACTIVITIES_W, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, NEW_LOOK_WAITING_H,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -24,7 +24,8 @@ import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
-import { buildHeader, buildViews, type ViewActions, type ViewHost } from "../views/views";
+import { buildHeader, buildViews, hasSessionTicker, type ViewActions, type ViewHost } from "../views/views";
+import { homeHeight } from "../views/home";
 import { h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
 import { IslandStateMachine, type LeaveHold } from "./fsm";
@@ -339,6 +340,8 @@ export class Island {
       collapse: () => this.collapse(),
       hide: () => this.hideInEdge(),
       moreMenu: (x, y) => this.openMoreMenu(x, y),
+      activityData: () => this.activities.data(),
+      activity: (a) => this.activities.act(a),
       foldApproval: () => this.foldApproval(),
       setFocus: (id) => {
         State.setFocus(id);
@@ -1318,18 +1321,25 @@ export class Island {
     if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
       h = Math.max(h, EMAIL_CARD_H);
     }
+    // The new look's home: as wide as it needs to stay low, as tall as what it lists.
+    if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "home") {
+      const sessions = State.tasks.filter(hasSessionTicker).length;
+      const others = State.tasks.length - sessions;
+      w = Math.min(Math.max(w, NEW_LOOK_HOME_W), window.innerWidth - 40);
+      h = homeHeight(sessions, State.pendingApproval != null, this.activities.data(), others);
+    }
     const asked = State.pendingApproval?.questions?.[0];
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "question" && asked) {
       h = Math.min(440, newLookQuestionHeight(asked.options.length, asked.multiSelect === true));
     } else if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
       const extra = State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
-        : State.view === "overview" && State.pendingApproval ? NEW_LOOK_WAITING_H : 0;
+        : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
     }
     // The column inside the island (sideInside): wider by most of it, never past the window.
     const side = this.sideInside();
     if (side) {
-      w = Math.min(w + this.sideWidth(side) - NEW_LOOK_SIDE_GIVE, window.innerWidth - 40);
+      w = Math.min(w + this.plan.width - NEW_LOOK_SIDE_GIVE, window.innerWidth - 40);
       h = Math.max(h, NEW_LOOK_SIDE_MIN_H);
     }
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
@@ -1374,8 +1384,7 @@ export class Island {
       this.plan.place(plan.show, plan.x, plan.y, plan.h, inside);
     }
     const side = this.sideInside();
-    if (side === "activities" && beside.show) this.activities.view.el.style.width = `${NEW_LOOK_ACTIVITIES_W}px`;
-    const room = side ? `${this.sideWidth(side) + NEW_LOOK_SIDE_GAP}px` : "0px";
+    const room = side ? `${this.plan.width + NEW_LOOK_SIDE_GAP}px` : "0px";
     if (room !== this.sideRoom) {
       this.sideRoom = room;
       this.islandEl.style.setProperty("--side-room", room);
@@ -1399,23 +1408,14 @@ export class Island {
 
   /** Whether the live activities show beside the open island, and where. */
   /**
-   * The new look has no islands beside this one: the live activities are the
-   * right-hand column of its list, the Plan that of the chat (or of the list,
-   * when the activities are off). Which one is in, if any.
+   * The new look has no islands beside this one: the live activities are
+   * tiles on its home (views/home.ts), the Plan the chat's right-hand column.
+   * Whether it is in.
    */
-  private sideInside(): "activities" | "plan" | null {
+  private sideInside(): "plan" | null {
     if (State.settings.islandNewLook !== true || State.mode !== "expanded" || this.onlyLumo || isUpright(this.dock)) return null;
-    const s = State.settings;
-    const activities = s.activitiesPanel !== false && s.activitiesFolded !== true && !this.activities.detached;
     const plan = this.plan != null && this.plan.wanted && !this.plan.detached;
-    const home = State.view === "overview" || State.view === "empty";
-    if (home && activities) return "activities";
-    if ((home || State.view === "prompt") && plan) return "plan";
-    return null;
-  }
-
-  private sideWidth(side: "activities" | "plan"): number {
-    return side === "plan" ? this.plan.width : NEW_LOOK_ACTIVITIES_W;
+    return State.view === "prompt" && plan ? "plan" : null;
   }
 
   /** Where the column inside the island goes: its right-hand side, under the top bar, once the island is open. */
@@ -1429,7 +1429,7 @@ export class Island {
 
   private activitiesPlace(): { show: boolean; x: number; y: number; h: number } {
     if (State.settings.islandNewLook === true && !this.activities.detached) {
-      return this.sideInside() === "activities" ? this.sidePlace(NEW_LOOK_ACTIVITIES_W) : { show: false, x: 0, y: 0, h: 0 };
+      return { show: false, x: 0, y: 0, h: 0 };
     }
     const at = this.islandRect();
     const w = this.activities.width;

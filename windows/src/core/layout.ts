@@ -5,6 +5,8 @@ export type IslandMode = "hidden" | "compact" | "expanded";
 
 export type IslandViewName =
   | "overview"
+  /** The new look's list (views/home.ts): what waits for you, the sessions, the live activities, the field. */
+  | "home"
   | "empty"
   | "approval"
   | "question"
@@ -126,6 +128,8 @@ export function edgeGap(name: string | undefined): number {
 
 export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   overview: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "pills" },
+  // Only in the new look, whose geometry is its own (island.ts targetSize, homeHeight).
+  home: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   empty: { height: 160, botX: 70, botY: null, botDiameter: 62, agentMode: "none" },
   approval: { height: 160, botX: 62, botY: null, botDiameter: 56, agentMode: "column" },
   question: { height: 160, botX: 62, botY: null, botDiameter: 56, agentMode: "column" },
@@ -346,9 +350,7 @@ export const NEW_LOOK_COMPACT_DIAMETER = 40;
 /** In the new look a few views take more height, for what the board gives them (look-new.css). */
 /** Plus the line "Allow for this session" under the permission's two buttons. */
 export const NEW_LOOK_SESSION_ALLOW_H = 30;
-/** Plus the row of a request waiting, folded away, on top of the list. */
-export const NEW_LOOK_WAITING_H = 56;
-export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 236, empty: 186, tools: 372 };
+export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372 };
 
 /** The new look's question card: its options one under the other, each this tall with its description. */
 export const NEW_LOOK_OPTION_H = 46;
@@ -357,14 +359,14 @@ export function newLookQuestionHeight(options: number, multiSelect: boolean): nu
 }
 
 /**
- * The new look's column inside the island (island.ts sideInside): the live
- * activities beside the list, the Plan beside the chat. The island grows by
+ * The new look's column inside the island (island.ts sideInside): the Plan
+ * beside the chat. The island grows by
  * its width less what the view gives up, and is at least this tall for it.
  */
 export const NEW_LOOK_SIDE_GIVE = 96;
 export const NEW_LOOK_SIDE_MIN_H = 250;
-/** The live activities inside the island: two columns of cards, wider than beside it. */
-export const NEW_LOOK_ACTIVITIES_W = 420;
+/** The new look's home is this wide at least: wider rather than taller (views/home.ts). */
+export const NEW_LOOK_HOME_W = 880;
 /** Below the top bar, in from the right edge, and between it and the view. */
 export const NEW_LOOK_SIDE_TOP = 44;
 export const NEW_LOOK_SIDE_PAD = 10;

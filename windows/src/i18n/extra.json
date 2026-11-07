@@ -15001,6 +15001,18 @@
    "id": "Model menghabiskan semua ruangnya untuk bernalar dan tidak menulis jawaban: tanyakan lagi, atau turunkan penalaran.",
    "it": "Il modello ha usato tutto lo spazio per ragionare e non ha scritto una risposta: richiedi, o abbassa il reasoning."
   },
+  "Needs you": {
+   "zh-Hans": "需要你",
+   "hi": "आपकी ज़रूरत है",
+   "es": "Te necesita",
+   "ar": "يحتاج إليك",
+   "fr": "A besoin de vous",
+   "bn": "আপনাকে দরকার",
+   "pt-BR": "Precisa de você",
+   "ru": "Ждёт вас",
+   "id": "Butuh kamu",
+   "it": "Ha bisogno di te"
+  },
   "New look (preview)": {
    "zh-Hans": "新外观（预览）",
    "hi": "नया रूप (पूर्वावलोकन)",

@@ -912,13 +912,13 @@ class AppState {
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
-    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "empty") this.tabNoted = true;
+    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "empty" || view === "home") this.tabNoted = true;
     if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
       this.lastTab = "tools";
       this.toolsInWorkshop = view === "prompt";
     }
     else if (view === "prompt" || view === "live") this.lastTab = "chat";
-    else if (view === "overview" || view === "empty") this.lastTab = "agents";
+    else if (view === "overview" || view === "empty" || view === "home") this.lastTab = "agents";
   }
 
   /**
@@ -938,6 +938,8 @@ class AppState {
 
   /** The Agents tab: the coding sessions and pills, or the empty card. */
   agentsView(): IslandViewName {
+    // The new look's list holds the sessions, the empty case and the rest.
+    if (this.settings.islandNewLook === true) return "home";
     return this.tasks.length === 0 ? "empty" : "overview";
   }
 

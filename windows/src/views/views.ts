@@ -26,6 +26,8 @@ import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
 import { TOOLS_STRINGS, buildTools } from "./tools";
 import { Live } from "../live/session";
+import { buildHome } from "./home";
+import type { ActivitiesAction, ActivitiesData } from "./activities-view";
 import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 
@@ -75,6 +77,10 @@ export interface ViewActions {
   forgetChatPlan(chatId: string): void;
   /** The new look's "⋯" (Settings → Island → New look): settings, sound, hide and quit in one menu, at (x, y). */
   moreMenu(x: number, y: number): void;
+  /** The live activities as they stand, for the new look's home tiles. */
+  activityData(): ActivitiesData;
+  /** A click on a home tile: as on the live activities' own card. */
+  activity(a: ActivitiesAction): void;
 }
 
 export interface ViewHost {
@@ -231,7 +237,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const activity = State.agentsActivity;
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
-      backBtn.classList.toggle("away", v !== "overview" && v !== "empty");
+      backBtn.classList.toggle("away", v !== "home");
       chatHead.classList.toggle("on", v === "prompt");
       const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
       if (folded && tabActivities.style.display === "none") {
@@ -329,13 +335,9 @@ function buildOverview(actions: ViewActions): ViewHost {
   const plan = new PlanCard();
   let planTimer: number | null = null;
 
-  // The new look's list (look-new.css): what waits for you on top, the field to the chat under it all.
-  const waiting = waitingRow(actions);
   const el = h("div", { class: "view overview" },
-    waiting.el,
     h("div", { class: "left" }, left),
     h("div", { class: "right" }, right),
-    askField(actions),
   );
 
   let pillIds = "";
@@ -497,7 +499,6 @@ function buildOverview(actions: ViewActions): ViewHost {
         }
       }
 
-      waiting.sync();
       jump.style.display = detailOpen || mode === "plan" || mode === "diff" ? "none" : "";
 
       // Each pill stays in its place when another goes to the card.
@@ -587,58 +588,7 @@ function buildEmpty(actions: ViewActions): ViewHost {
     h("div", { class: "grow" }),
     btn(tl("Ask Claude"), "primary", () => actions.setView("prompt")),
   );
-  return { el: h("div", { class: "view empty-view" }, card(null, body), askField(actions)), sync() {} };
-}
-
-/**
- * The new look's field at the bottom of the list (look-new.css shows it): a
- * click opens the chat, which is where the writing happens.
- */
-function askField(actions: ViewActions): HTMLElement {
-  // The chat itself, never the tool workshop that may be parked in its place.
-  const openChat = () => {
-    State.useSlot("chat");
-    actions.setView("prompt");
-  };
-  // The "+" opens the chat on its own "+" menu (views/chat.ts plusMenu).
-  const plus = h("span", {
-    class: "ask-plus", role: "button", title: tl("Attach a file"),
-    onclick: (e: Event) => {
-      e.stopPropagation();
-      openChat();
-      requestAnimationFrame(() => document.querySelector<HTMLElement>("#views .view.on .plus-btn")?.click());
-    },
-  }, svg(ICONS.plus, 13, { stroke: 1.6 }));
-  return h("button", { class: "ask-field", onclick: openChat },
-    plus,
-    h("span", { class: "ph", text: tl("Ask me anything…") }));
-}
-
-/**
- * The new look's first row in the list while a request waits, folded away:
- * who asks and for what. A click opens its card, where the answer is given.
- */
-function waitingRow(actions: ViewActions): ViewHost {
-  const who = h("div", { class: "wait-who" });
-  const what = h("div", { class: "wait-what" });
-  const el = h("button", {
-    class: "wait-row",
-    onclick: () => {
-      const req = State.pendingApproval;
-      if (req) actions.setView(req.questions ? "question" : "approval");
-    },
-  }, h("div", { class: "wait-text" }, who, what), h("span", { class: "wait-open", text: tl("Open") }));
-  return {
-    el,
-    sync() {
-      const req = State.pendingApproval;
-      el.hidden = !req;
-      if (!req) return;
-      clear(who);
-      who.append(requestWho(req.questions ? t("is asking a question") : t("needs permission")));
-      what.textContent = req.questions ? req.questions[0]?.question ?? "" : req.command || req.tool;
-    },
-  };
+  return { el: h("div", { class: "view" }, card(null, body)), sync() {} };
 }
 
 // ── Approval ──────────────────────────────────────────────────────────────────
@@ -1007,6 +957,36 @@ function buildNote(actions: ViewActions): ViewHost {
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
+/** The new look's home (views/home.ts), on the island's actions. */
+function buildHomeView(actions: ViewActions): ViewHost {
+  const openChat = () => {
+    State.useSlot("chat");
+    actions.setView("prompt");
+  };
+  const home = buildHome({
+    openSession: (id) => {
+      actions.blip();
+      actions.setFocus(id);
+      actions.setView("overview");
+    },
+    openRequest: () => {
+      const req = State.pendingApproval;
+      if (req) actions.setView(req.questions ? "question" : "approval");
+    },
+    decide: (d, requestId) => actions.decide(d, requestId),
+    openChat,
+    // The "+" opens the chat on its own "+" menu (views/chat.ts plusMenu).
+    openChatMenu: () => {
+      openChat();
+      requestAnimationFrame(() => document.querySelector<HTMLElement>("#views .view.on .plus-btn")?.click());
+    },
+    activityData: () => actions.activityData(),
+    activity: (a) => actions.activity(a),
+    blip: () => actions.blip(),
+  }, hasSessionTicker);
+  return { el: home.el, sync: () => home.sync(), tick: () => home.tick() };
+}
+
 export function buildViews(
   actions: ViewActions,
   onChatHeightChange: () => void,
@@ -1036,5 +1016,6 @@ export function buildViews(
   map.set("wardrobe", buildWardrobe(actions));
   map.set("live", buildLive(() => openVoiceSettings(actions.setView)));
   map.set("tools", buildTools(actions));
+  map.set("home", buildHomeView(actions));
   return map;
 }
