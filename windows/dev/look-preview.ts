@@ -51,6 +51,15 @@ if (params.has("idle")) {
 // A plan, with ?plan: Claude Code leaving Plan Mode with four steps.
 if (params.has("plan")) {
   hook({ hook_event_name: "PreToolUse", cwd, tool_name: "ExitPlanMode", tool_input: { plan: "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests" } });
+  // ?plan=2: under way, the first step done and the second one going.
+  if (params.get("plan") === "2") {
+    hook({ hook_event_name: "PreToolUse", cwd, tool_name: "TodoWrite", tool_input: { todos: [
+      { content: "Read the settings page", status: "completed" },
+      { content: "Add the toggle", status: "in_progress" },
+      { content: "Save it with the others", status: "pending" },
+      { content: "Run the tests", status: "pending" },
+    ] } });
+  }
 }
 
 // The plans' usage, with ?plans: Claude and Codex turned on, with numbers.

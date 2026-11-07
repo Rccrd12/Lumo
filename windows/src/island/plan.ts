@@ -72,6 +72,8 @@ function afterPaint(fn: () => void) {
 
 export class IslandPlan {
   readonly book = new PlanBook();
+  /** What State.planNow was last set to (sync). */
+  private nowKey = "";
   readonly view: PlanPanel;
   /** The plans done or whose session ended, the newest first. */
   private past: AgentPlan[] = [];
@@ -406,6 +408,14 @@ export class IslandPlan {
       this.viewing = null;
     }
     const open = this.wanted;
+    // The new look draws it in the chat, as a strip above the field.
+    const now = open ? this.current : null;
+    const nowKey = now ? JSON.stringify([planId(now), now.updatedAt, now.steps]) : "";
+    if (nowKey !== this.nowKey) {
+      this.nowKey = nowKey;
+      State.planNow = now;
+      queueMicrotask(() => State.notify());
+    }
     if (State.planIcon !== any || State.planOpen !== open) {
       State.planIcon = any;
       State.planOpen = open;

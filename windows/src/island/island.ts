@@ -1463,8 +1463,8 @@ export class Island {
    */
   private sideInside(): "plan" | null {
     if (State.settings.islandNewLook !== true || State.mode !== "expanded" || this.onlyLumo || isUpright(this.dock)) return null;
-    const plan = this.plan != null && this.plan.wanted && !this.plan.detached;
-    return State.view === "prompt" && plan ? "plan" : null;
+    // The plan is a strip in the chat now (views/plan-strip.ts): no column.
+    return null;
   }
 
   /** Where the column inside the island goes: its right-hand side, under the top bar, once the island is open. */

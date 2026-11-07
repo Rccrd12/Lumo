@@ -112,6 +112,7 @@ import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
+import { buildPlanStrip } from "./plan-strip";
 import {
   SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
@@ -1594,7 +1595,9 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
+  // The new look's plan: a strip above the field (plan-strip.ts), hidden in the usual look.
+  const planStrip = buildPlanStrip();
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planStrip.el, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -3867,6 +3870,7 @@ export function buildPrompt(
       }
       planBtn.style.display = State.planIcon ? "" : "none";
       planBtn.classList.toggle("open", State.planOpen);
+      planStrip.sync(State.settings.islandNewLook === true && !workshop ? State.planNow : null);
       // Another chat came on screen (here, or a new chat from the menu or a
       // shortcut): the log is drawn again, with its answer if one is coming.
       if (State.chatId !== shownChat) {

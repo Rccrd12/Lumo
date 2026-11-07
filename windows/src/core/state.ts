@@ -512,6 +512,8 @@ class AppState {
   planIcon = false;
   /** The Plan island is open (its icon in the chat looks pressed). */
   planOpen = false;
+  /** The plan open in the Plan island, for the new look's strip in the chat (views/plan-strip.ts); null when folded. */
+  planNow: import("./agent-plan").AgentPlan | null = null;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };
