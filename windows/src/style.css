@@ -1820,9 +1820,18 @@ input[type="range"]::-webkit-slider-thumb {
 /* TeX math in answers (views/math.ts), as MathML: the WebView sets it with
    the math font's own tables. A size up and a shade lighter than the words
    around it, so a formula in a sentence reads at a glance. */
+/* Latin Modern Math: the face of LaTeX (Computer Modern) with the tables
+   MathML needs, shipped with the app (assets/fonts, GUST Font License). */
+@font-face {
+  font-family: "Latin Modern Math";
+  src: url("../assets/fonts/latinmodern-math.otf") format("opentype");
+  font-display: swap;
+}
+
 math.mx {
-  font-family: "Cambria Math", "STIX Two Math", "Latin Modern Math", math;
-  font-size: 1.16em;
+  font-family: "Latin Modern Math", "Cambria Math", "STIX Two Math", math;
+  font-size: 1.21em;
+  font-weight: 400;
   color: #e6e8ec;
 }
 
@@ -1863,12 +1872,6 @@ math.mx-display {
 .md-math .md-copy:focus-visible,
 .md-math .md-copy.done {
   opacity: 1;
-}
-
-/* Words in a formula (\text): the chat's own face, a touch smaller. */
-math.mx mtext {
-  font-family: var(--font);
-  font-size: 0.86em;
 }
 
 /* \vec's arrow: small, as TeX draws it, not a whole →. */

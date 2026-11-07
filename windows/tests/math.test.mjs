@@ -32,7 +32,7 @@ test("a formula on lines of its own is a block", () => {
 test("the notation reads as math", () => {
   assert.equal(mathText("f:\\Omega\\subseteq\\mathbb{R}^n\\to\\mathbb{R}"), "f:Ω⊆ℝn→ℝ");
   assert.equal(mathText("\\nabla f(\\vec{x}_0)=\\vec{0}"), "∇f(x→0)=0→");
-  assert.equal(mathText("\\alpha \\leq \\beta \\cdot \\gamma"), "α≤β·γ");
+  assert.equal(mathText("\\alpha \\leq \\beta \\cdot \\gamma"), "α≤β⋅γ");
   assert.equal(mathText("\\frac{a}{b}"), "ab");
   assert.equal(mathText("\\sqrt{2}"), "2");
   assert.equal(renderMath("\\sqrt[3]{2}").find(".mx-sqrt").length, 1);

@@ -20,7 +20,7 @@ const SYMBOLS: Record<string, string> = {
   varphi: "φ", chi: "χ", psi: "ψ", omega: "ω", Gamma: "Γ", Delta: "Δ", Theta: "Θ", Lambda: "Λ",
   Xi: "Ξ", Pi: "Π", Sigma: "Σ", Upsilon: "Υ", Phi: "Φ", Psi: "Ψ", Omega: "Ω",
   // Operators and relations
-  cdot: "·", times: "×", div: "÷", pm: "±", mp: "∓", ast: "∗", star: "⋆", circ: "∘", bullet: "•",
+  cdot: "⋅", times: "×", div: "÷", pm: "±", mp: "∓", ast: "∗", star: "⋆", circ: "∘", bullet: "•",
   leq: "≤", le: "≤", geq: "≥", ge: "≥", neq: "≠", ne: "≠", approx: "≈", sim: "∼", simeq: "≃",
   cong: "≅", equiv: "≡", propto: "∝", ll: "≪", gg: "≫", prec: "≺", succ: "≻",
   in: "∈", notin: "∉", ni: "∋", subset: "⊂", supset: "⊃", subseteq: "⊆", supseteq: "⊇",
@@ -683,7 +683,7 @@ function m(tag: string, attrs: Record<string, string> = {}, ...children: Child[]
 /** Relations, with room on both sides: a = b, x ∈ A, f → g. */
 const RELATIONS = new Set([..."=<>≤≥≠≈∼≃≅≡∝≪≫≺≻∈∉∋⊂⊃⊆⊇⊊⊋⊈⊑→←↔⇒⇐⇔⟹⟸⟺↦⟶⟵⟷⟼⇝⇌∥⊥≜≐≔≍⊨⊢⊣≲≳⩽⩾≰≱"]);
 /** Operations between two terms, with a little less: a + b, a × b. A sign in front (−x) keeps none. */
-const BINARY = new Set([..."+−×÷±∓·∗⋆∘∪∩∖∧∨⊕⊖⊗⊙⊘⊎⊔⊓"]);
+const BINARY = new Set([..."+−×÷±∓·⋅∗⋆∘∪∩∖∧∨⊕⊖⊗⊙⊘⊎⊔⊓"]);
 const INTEGRALS = new Set([..."∫∬∭∮∯∰⨌"]);
 /** Brackets: as written they keep their size; \left, \right and \big make them taller. */
 const BRACKETS = new Set([..."()[]{}|‖⟨⟩⌊⌋⌈⌉⟦⟧⟮⟯⌜⌝⌞⌟⎰⎱"]);
@@ -769,6 +769,8 @@ function symbol(v: string, upright: boolean | undefined): Element {
     // a/b written in a line: the slash sits between them with no room, as in TeX.
     if (v === "/") Object.assign(attrs, { stretchy: "false", lspace: "0", rspace: "0" });
     if (RELATIONS.has(v)) attrs.class = "mx-rel";
+    // \implies, \impliedby, \iff: LaTeX sets them with a thick space on each side.
+    if ("⟹⟸⟺".includes(v)) Object.assign(attrs, { lspace: "0.5556em", rspace: "0.5556em" });
     // ∫ and ∑: TeX's thin space beside them, not the wide default of the rarer ones (∬, ∯…).
     if (INTEGRALS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.0833em" });
     if (BIG_OPERATORS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.1667em" });
@@ -919,7 +921,9 @@ function draw(node: Node): Element {
 /** A bracket of \left…\right: as tall as what it holds. "." is none. */
 function fenceMark(v: string, form: "prefix" | "postfix"): Element | null {
   if (!v) return null;
-  return m("mo", { stretchy: "true", symmetric: "true", fence: "true", form, class: "mx-delim" }, v);
+  // Not symmetric: the bracket hugs what it holds, as LaTeX's does, rather
+  // than growing as far below the axis as the tallest part reaches above.
+  return m("mo", { stretchy: "true", symmetric: "false", fence: "true", form, class: "mx-delim" }, v);
 }
 
 function matrix(node: Extract<Node, { t: "matrix" }>): Element {
@@ -989,7 +993,7 @@ function drawAll(input: Node[]): Element {
     }
     if (!inText && n.t === "sym" && n.upright && BINARY.has(n.v)) {
       // A sign in front (−x, (−1)) has no room around it; between two terms it does.
-      const el = m("mo", isOperand(prev) ? { class: "mx-bin" } : { form: "prefix", lspace: "0", rspace: "0" }, n.v);
+      const el = m("mo", isOperand(prev) ? { class: "mx-bin", lspace: "0.2222em", rspace: "0.2222em" } : { form: "prefix", lspace: "0", rspace: "0" }, n.v);
       row.append(el);
       prev = n;
       continue;

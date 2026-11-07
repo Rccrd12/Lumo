@@ -14,6 +14,10 @@ The [MIT License](LICENSE) covers the **source code** of Lumo. It does **not** c
 
 Lumo is a fork of [Coucou](https://github.com/Louis-CFM/coucou) by Louis Raillé. The names **“Coucou”** and **“Mochi”**, the Mochi character, Coucou's icon, sounds, images and videos belong to Louis Raillé, under the terms of [Coucou's own asset licence](https://github.com/Louis-CFM/coucou/blob/main/LICENSE-ASSETS.md). This repository does not grant any right to them.
 
+## Third-party font
+
+`windows/assets/fonts/latinmodern-math.otf` is **Latin Modern Math** by Bogusław Jackowski, Piotr Strzelczyk and Piotr Pianowski (GUST e-foundry), shipped unmodified under the [GUST Font License](windows/assets/fonts/GUST-FONT-LICENSE.txt). The chat draws formulas with it.
+
 ## What you can do
 
 - Build and run Lumo from this repository, for yourself, as it is.
