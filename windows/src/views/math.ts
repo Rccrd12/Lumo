@@ -766,6 +766,8 @@ function symbol(v: string, upright: boolean | undefined): Element {
     // A bracket as written keeps its size; only \left…\right stretches.
     // and, like TeX's, takes no room around it: |x|, not | x |.
     if (BRACKETS.has(v)) Object.assign(attrs, { stretchy: "false", lspace: "0", rspace: "0" });
+    // a/b written in a line: the slash sits between them with no room, as in TeX.
+    if (v === "/") Object.assign(attrs, { stretchy: "false", lspace: "0", rspace: "0" });
     if (RELATIONS.has(v)) attrs.class = "mx-rel";
     // ∫ and ∑: TeX's thin space beside them, not the wide default of the rarer ones (∬, ∯…).
     if (INTEGRALS.has(v)) Object.assign(attrs, { lspace: "0.1667em", rspace: "0.0833em" });

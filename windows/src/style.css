@@ -1826,24 +1826,20 @@ math.mx {
   color: #e6e8ec;
 }
 
-/* A formula on a line of its own: a box of its own (below), centred,
+/* A formula on a line of its own: centred on the chat's own background,
    scrolling sideways when wider than the chat. */
 math.mx-display {
   display: block math;
   width: max-content;
   margin: 0 auto;
-  padding: 4px 6px;
+  padding: 2px 4px;
   font-size: 18px;
   color: #f1f2f4;
 }
 
 .md-math {
   position: relative;
-  margin: 2px 0;
-  padding: 12px 12px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.04);
+  padding: 2px 28px;
   white-space: normal;
 }
 
@@ -1856,8 +1852,9 @@ math.mx-display {
 
 .md-math .md-copy {
   position: absolute;
-  top: 6px;
-  right: 6px;
+  top: 50%;
+  right: 0;
+  transform: translateY(-50%);
   opacity: 0;
   transition: opacity 0.15s;
 }
