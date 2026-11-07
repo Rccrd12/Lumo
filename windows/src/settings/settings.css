@@ -1002,3 +1002,44 @@ html[dir="rtl"] :is(.diff, .path, .keycap, input[type="password"], input[type="t
   font-variant-numeric: tabular-nums;
   color: var(--dim);
 }
+
+/* ── Inside the island, in the new look (Settings → Island → New look) ──────
+   main.ts applyLook puts html.look-new on this page while the island wears
+   it: the list a little wider, so the search field is whole, and the
+   sections as the island's own blocks, without a frame. */
+
+html.look-new body.embedded #settings-root {
+  grid-template-columns: 212px minmax(0, 1fr);
+}
+
+html.look-new body.embedded .sidebar {
+  padding-left: 14px;
+}
+
+html.look-new body.embedded .settings-search {
+  background: #111214;
+  border-color: transparent;
+  padding: 7px 10px;
+}
+
+html.look-new body.embedded section {
+  background: #111214;
+  border-color: transparent;
+}
+
+html.look-new body.embedded .nav-item.on,
+html.look-new body.embedded .nav-item.on:hover:not(:disabled) {
+  background: #1a1b1f;
+}
+
+@media (max-width: 560px) {
+  html.look-new body.embedded #settings-root {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 400px) {
+  html.look-new body.embedded #settings-root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}

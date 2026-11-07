@@ -13,14 +13,20 @@ import { lastTextStep } from "../core/diff";
 import { ACTIVITIES_TEXT, eventWhen, type ActivitiesAction, type ActivitiesData } from "./activities-view";
 import { N_, language, t, tl } from "../i18n/i18n";
 import { Bridge, type Decision } from "../core/bridge";
-import { parseDuration } from "../core/compact";
+import { parseDuration, type TimerActivity } from "../core/compact";
 import type { PlanKind } from "../core/plan";
 import { planPillParts, visiblePlanKinds } from "./usage";
 import { TOOLS_STRINGS } from "./tools";
 
 export const HOME_TEXT = {
   needsYou: N_("Needs you"),
+  paused: N_("Paused"),
+  stop: N_("Stop the timer"),
 };
+
+/** The timer ring's radius, and its length. */
+const RING_R = 22;
+const RING_C = 2 * Math.PI * RING_R;
 
 /** What the home needs from the island. */
 export interface HomeActions {
@@ -158,7 +164,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   }
   let shownFor: string | null = null;
   let shownAt = 0;
-  const timerEls: { el: HTMLElement; endsAt: number }[] = [];
+  /** The running timer's countdown and ring, moved on by tick(). */
+  const timerEls: { el: HTMLElement; ring: SVGCircleElement; timer: TimerActivity }[] = [];
 
   const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS || shownFor == null) return;
@@ -217,9 +224,30 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   }
 
   function remaining(endsAt: number): string {
-    const s = Math.max(0, Math.round((endsAt - Date.now()) / 1000));
+    const s = Math.max(0, Math.ceil((endsAt - Date.now()) / 1000));
     const m = Math.floor(s / 60);
     return m >= 60 ? `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}` : `${m}:${String(s % 60).padStart(2, "0")}`;
+  }
+
+  /** The ring round what is left of a timer (52 px, its fill set by tick()). */
+  function timerRing(): { el: SVGSVGElement; fill: SVGCircleElement } {
+    const NS = "http://www.w3.org/2000/svg";
+    const el = document.createElementNS(NS, "svg") as SVGSVGElement;
+    el.setAttribute("viewBox", "0 0 52 52");
+    el.setAttribute("class", "tile-ring");
+    const circle = (cls: string) => {
+      const c = document.createElementNS(NS, "circle") as SVGCircleElement;
+      c.setAttribute("cx", "26");
+      c.setAttribute("cy", "26");
+      c.setAttribute("r", String(RING_R));
+      c.setAttribute("class", cls);
+      el.append(c);
+      return c;
+    };
+    circle("tile-ring-track");
+    const fill = circle("tile-ring-fill");
+    fill.setAttribute("stroke-dasharray", String(RING_C));
+    return { el, fill };
   }
 
   function tile(kind: "timer" | "music" | "calendar" | "mail", data: ActivitiesData): HTMLElement {
@@ -236,11 +264,24 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             h("label", { class: "tile-field" }, svg(ICONS.clock, 12, { stroke: 1.8 }), timerInput),
             h("div", { class: "tile-chips" }, start(5), start(10), start(25)));
         }
+        // Running: the time on the left, a ring of what is left on the right;
+        // under the mouse the ring gives way to pause (or go on) and ×.
+        const paused = timer.pausedLeft != null;
         const big = h("div", { class: "tile-big", text: remaining(timer.endsAt) });
-        timerEls.push({ el: big, endsAt: timer.endsAt });
-        return h("div", { class: "home-tile" },
-          h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }), h("span", { text: timer.label || t(ACTIVITIES_TEXT.timer) })),
-          big);
+        const ring = timerRing();
+        timerEls.push({ el: big, ring: ring.fill, timer });
+        const ctl = (icon: string, title: string, run: () => void) =>
+          h("button", { class: "tile-ctl", title: t(title), "aria-label": t(title), onclick: run }, svg(icon, 11));
+        return h("div", { class: `home-tile tile-timer${paused ? " paused" : ""}` },
+          h("div", { class: "tile-timer-text" },
+            h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }),
+              h("span", { text: paused ? t(HOME_TEXT.paused) : timer.label || t(ACTIVITIES_TEXT.timer) })),
+            big),
+          h("div", { class: "tile-timer-side" }, ring.el,
+            h("div", { class: "tile-timer-ctls" },
+              ctl(paused ? ICONS.play : ICONS.pause, paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause,
+                () => actions.activity({ kind: "pauseTimer", id: timer.id })),
+              ctl(ICONS.xmark, HOME_TEXT.stop, () => actions.activity({ kind: "cancelTimer", id: timer.id })))));
       }
       case "music": {
         const media = data.media;
@@ -312,9 +353,12 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   return {
     el,
     tick(): boolean {
-      for (const timer of timerEls) {
+      for (const { el: big, ring, timer } of timerEls) {
         const text = remaining(timer.endsAt);
-        if (timer.el.textContent !== text) timer.el.textContent = text;
+        if (big.textContent !== text) big.textContent = text;
+        const left = Math.max(0, Math.min(1, (timer.endsAt - Date.now()) / timer.total));
+        const offset = (RING_C * (1 - left)).toFixed(1);
+        if (ring.getAttribute("stroke-dashoffset") !== offset) ring.setAttribute("stroke-dashoffset", offset);
       }
       return false;
     },
@@ -354,7 +398,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       const kinds = visiblePlanKinds();
       const rk = [
         language(), ...tiles,
-        ...data.timers.map((x) => `${x.id}:${x.label}:${x.endsAt}`),
+        // (A paused timer's endsAt moves with the clock: what is left says it.)
+        ...data.timers.map((x) => `${x.id}:${x.label}:${x.pausedLeft != null ? `p${x.pausedLeft}` : x.endsAt}`),
         data.media ? `${data.media.app}:${data.media.title}:${data.media.artist}:${data.media.playing}` : "",
         ...data.calendar.events.slice(0, 2).map((e) => `${e.title}:${e.start}`),
         ...data.mail.messages.slice(0, 1).map((m) => `${m.id}:${m.from}:${m.subject}`), data.mail.messages.length,

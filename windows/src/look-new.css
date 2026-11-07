@@ -974,6 +974,80 @@ html.look-new .tile-input.bad {
   color: var(--red);
 }
 
+/* A running timer: the time on the left, the ring of what is left on the
+   right; under the mouse the ring steps back for pause and ×. */
+html.look-new .tile-timer {
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+html.look-new .tile-timer-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+html.look-new .tile-timer.paused .tile-big {
+  color: var(--dim);
+}
+
+html.look-new .tile-timer-side {
+  position: relative;
+  flex: none;
+  width: 52px;
+  height: 52px;
+}
+
+html.look-new .tile-ring {
+  position: absolute;
+  inset: 0;
+  width: 52px;
+  height: 52px;
+  transform: rotate(-90deg);
+  transition: opacity 0.15s ease-out;
+}
+
+html.look-new .tile-ring-track,
+html.look-new .tile-ring-fill {
+  fill: none;
+  stroke-width: 4;
+}
+
+html.look-new .tile-ring-track {
+  stroke: #1f2125;
+}
+
+html.look-new .tile-ring-fill {
+  stroke: var(--amber);
+  stroke-linecap: round;
+}
+
+html.look-new .tile-timer.paused .tile-ring-fill {
+  stroke: #5b6069;
+}
+
+html.look-new .tile-timer-ctls {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  opacity: 0;
+  transition: opacity 0.15s ease-out;
+}
+
+html.look-new .tile-timer:hover .tile-ring {
+  opacity: 0.2;
+}
+
+html.look-new .tile-timer:hover .tile-timer-ctls {
+  opacity: 1;
+}
+
 /* Three tiles: side by side in one row, so the home stays low. */
 html.look-new .home-right.three {
   flex-basis: 480px;
@@ -1056,4 +1130,23 @@ html.look-new .edge-swatch.glow {
   --edge-y: 6px;
   --edge-blur: 14px;
   --edge-spread: -4px;
+}
+
+/* ── The chat's panels (past chats, files, sharing, permissions, usage,
+   Listening): the island's blocks, without a frame, the scroll bar hidden
+   (the wheel still scrolls them). */
+
+html.look-new .chat-body .picker {
+  background: #111214;
+  border-color: transparent;
+  border-radius: 14px;
+}
+
+html.look-new .chat-body .picker,
+html.look-new .chat-body .picker * {
+  scrollbar-width: none;
+}
+
+html.look-new .chat-body .picker ::-webkit-scrollbar {
+  display: none;
 }

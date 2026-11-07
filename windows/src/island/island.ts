@@ -1302,6 +1302,8 @@ export class Island {
     } else {
       // Closed meanwhile: the closed island says it, and the chat has the file when opened.
       if (UPLOAD_VIEWS.has(State.view)) State.view = "prompt";
+      // The chat holds the file now: that is where the island reopens.
+      if (State.settings.islandNewLook === true) State.noteTab("prompt");
       compactNotice(t(UPLOADED_TEXT), UPLOAD_COLOR);
     }
     State.notify();

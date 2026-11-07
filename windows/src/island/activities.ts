@@ -274,6 +274,9 @@ export class IslandActivities {
       case "cancelTimer":
         Feed.cancelTimer(a.id);
         break;
+      case "pauseTimer":
+        Feed.toggleTimerPause(a.id, Date.now());
+        break;
       case "media":
         void Bridge.mediaControl(a.action);
         if (a.action === "toggle" && Feed.media) Feed.media = { ...Feed.media, playing: !Feed.media.playing };

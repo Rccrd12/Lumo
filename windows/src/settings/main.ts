@@ -1528,7 +1528,7 @@ function islandSection(): HTMLElement {
     setting(t("Lumo's look"), null, look),
     setting(t("New look (preview)"),
       t("Lumo moves to the middle of the open island's top bar, the views get the whole width and his light runs along the island's edge. Turn it off to go back to the usual look."),
-      toggle(settings.islandNewLook === true, (v) => { settings.islandNewLook = v; void save(); })),
+      toggle(settings.islandNewLook === true, (v) => { settings.islandNewLook = v; applyLook(); void save(); })),
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
@@ -2009,6 +2009,7 @@ async function main() {
   });
   setLanguage(resolveLanguage(settings.language, systemLanguages()));
   applyDirection();
+  applyLook();
   onLanguageChange(() => {
     applyDirection();
     void rerender();
@@ -2031,7 +2032,13 @@ async function main() {
     const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
     if (before !== after) localRedraw?.();
     applyLanguage();
+    applyLook();
   });
+}
+
+/** Inside the island, the new look's Settings (settings.css, html.look-new): as the island it is in. */
+function applyLook() {
+  document.documentElement.classList.toggle("look-new", embedded && settings.islandNewLook === true);
 }
 
 /** Reads what the sections show and draws them all. */

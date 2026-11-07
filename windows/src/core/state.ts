@@ -939,6 +939,9 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    // The new look: a file dropped and not yet asked about waits in the chat,
+    // so the island opens there rather than on the home.
+    if (this.settings.islandNewLook === true && this.droppedFile && !this.droppedFile.sent) return "prompt";
     // The new look has no tabs: until a view of its own was open, it opens on
     // the list (what waits for you, the sessions); then where it was left.
     if (this.settings.islandNewLook === true && !this.tabNoted) return this.liveActive ? "live" : this.agentsView();

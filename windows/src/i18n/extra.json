@@ -15073,6 +15073,18 @@
    "id": "Hanya pendar",
    "it": "Solo l’alone"
   },
+  "Stop the timer": {
+   "zh-Hans": "停止计时器",
+   "hi": "टाइमर रोकें",
+   "es": "Detener el temporizador",
+   "ar": "إيقاف المؤقت",
+   "fr": "Arrêter le minuteur",
+   "bn": "টাইমার বন্ধ করুন",
+   "pt-BR": "Parar o timer",
+   "ru": "Остановить таймер",
+   "id": "Hentikan timer",
+   "it": "Ferma il timer"
+  },
   "New look (preview)": {
    "zh-Hans": "新外观（预览）",
    "hi": "नया रूप (पूर्वावलोकन)",
