@@ -1391,3 +1391,9 @@ html.look-new .plan-strip-steps .plan-mark:not(.done) {
 html.look-new :is(.dock-top, .dock-bottom) #compact {
   left: 41px;
 }
+
+/* A plan's segments on a home row (views/home.ts planEnds), as on its chip. */
+html.look-new .home-plan-segs {
+  display: inline-flex;
+  flex: none;
+}

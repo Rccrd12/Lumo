@@ -113,6 +113,7 @@ import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stri
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 import { buildPlanStrip } from "./plan-strip";
+import { planKey } from "../core/agent-plan";
 import {
   SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
@@ -3864,9 +3865,22 @@ export function buildPrompt(
       }
       micBtn.hidden = workshop;
       takeShare();
-      planStrip.sync(State.settings.islandNewLook === true && !workshop ? State.planNow : null);
-      // The new look's chip stands in for the icon while the plan is open.
-      const planIconShown = State.planIcon && planStrip.chip.hidden;
+      // The new look: only this chat's own plan, as a chip while it is open,
+      // as the icon once put away; another chat's or a terminal's plan is not
+      // this chat's (they show on the home).
+      const newLook = State.settings.islandNewLook === true;
+      const ownPlan = newLook && !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
+      planStrip.sync(State.planOpen ? ownPlan : null);
+      const planIconShown = (newLook ? ownPlan != null : State.planIcon) && planStrip.chip.hidden;
+      // The home asked for a chat (its plan's row): that one comes on screen.
+      if (State.chatToOpen != null) {
+        const id = State.chatToOpen;
+        State.chatToOpen = null;
+        if (id !== State.chatId) {
+          const saved = loadChats().find((c) => c.id === id);
+          if (saved) queueMicrotask(() => openChat(saved));
+        }
+      }
       if (planIconShown && planBtn.style.display === "none") {
         // It just landed: a little pop.
         planBtn.classList.remove("pop");

@@ -512,8 +512,14 @@ class AppState {
   planIcon = false;
   /** The Plan island is open (its icon in the chat looks pressed). */
   planOpen = false;
-  /** The plan open in the Plan island, for the new look's strip in the chat (views/plan-strip.ts); null when folded. */
-  planNow: import("./agent-plan").AgentPlan | null = null;
+  /**
+   * Every plan the Plan island holds, the newest first, those under way then
+   * those done (island/plan.ts): the new look draws a chat's own in that chat
+   * (views/plan-strip.ts) and the ones under way on the home.
+   */
+  plans: import("./agent-plan").AgentPlan[] = [];
+  /** A chat the home asked the chat to open (a plan's row): the chat opens it and clears this. */
+  chatToOpen: string | null = null;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };

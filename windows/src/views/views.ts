@@ -976,6 +976,13 @@ function buildHomeView(actions: ViewActions): ViewHost {
       State.useSlot("forge");
       actions.setView("prompt");
     },
+    // A chat's plan on the home: that chat, its plan open in it.
+    openChatPlan: (chatId) => {
+      actions.blip();
+      State.useSlot("chat");
+      State.chatToOpen = chatId;
+      actions.setView("prompt");
+    },
     // A plan's usage on the home opens its card, as its pill does on the overview.
     openPlan: (kind) => {
       actions.blip();

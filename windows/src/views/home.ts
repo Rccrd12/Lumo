@@ -17,6 +17,8 @@ import { parseDuration, type TimerActivity } from "../core/compact";
 import type { PlanKind } from "../core/plan";
 import { planPillParts, visiblePlanKinds } from "./usage";
 import { TOOLS_STRINGS } from "./tools";
+import { planFinished, planProgress, type AgentPlan } from "../core/agent-plan";
+import { stripStep } from "./plan-strip";
 
 export const HOME_TEXT = {
   needsYou: N_("Needs you"),
@@ -61,6 +63,8 @@ export interface HomeActions {
   decide(d: Decision, requestId: string): void;
   openChat(): void;
   openPlan(kind: PlanKind): void;
+  /** A chat's plan row: that chat, with its plan. */
+  openChatPlan(chatId: string): void;
   makeTool(): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
@@ -103,6 +107,32 @@ export function homeLists(active: (t: AgentTask) => boolean, data: ActivitiesDat
     sessions: State.tasks.filter(active),
     others: State.tasks.filter((x) => !active(x) && !(mailTile && x.id === "integration_mail")),
   };
+}
+
+/**
+ * The island chats' plans still under way (island/plan.ts, State.plans), one
+ * per chat: the home lists them with the sessions, as they run nowhere else.
+ */
+export function homeChatPlans(): AgentPlan[] {
+  const seen = new Set<string>();
+  return State.plans.filter((p) => {
+    if (p.pillId !== "chat" || seen.has(p.key)) return false;
+    seen.add(p.key);
+    return p.steps.length > 0 && !planFinished(p.steps);
+  });
+}
+
+/** A session's plan under way, if it follows one. */
+function sessionPlan(task: AgentTask): AgentPlan | null {
+  return State.plans.find((p) => p.pillId === task.id && p.steps.length > 0 && !planFinished(p.steps)) ?? null;
+}
+
+/** A plan's segments and how many steps are done, as its chip in the chat shows them (plan-strip.ts). */
+function planEnds(plan: AgentPlan): HTMLElement[] {
+  const { done, total } = planProgress(plan.steps);
+  const segs = h("span", { class: "plan-chip-segs home-plan-segs" });
+  if (total <= 10) for (const s of plan.steps) segs.append(h("i", { class: s.status }));
+  return [segs, h("span", { class: "home-count", text: `${done}/${total}` })];
 }
 
 /** The home's height for what it shows now: rows on the left, tiles on the right, the field under them. */
@@ -228,12 +258,27 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
     return row;
   }
 
+  /** A chat's plan under way: whose, its step now, its segments; a click opens that chat. */
+  function chatPlanRow(plan: AgentPlan): HTMLElement {
+    const chatId = plan.key.slice(plan.key.indexOf("|") + 1);
+    return h("button", { class: "home-row", onclick: () => actions.openChatPlan(chatId) },
+      h("div", { class: "home-text" },
+        h("div", { class: "home-who" },
+          dot(plan.color, 8),
+          h("span", { class: "n", text: plan.agent }),
+          h("span", { class: "s", text: `· ${plan.project}` })),
+        h("div", { class: "home-line", text: stripStep(plan.steps)?.text ?? "" })),
+      ...planEnds(plan));
+  }
+
   function sessionRow(task: AgentTask): HTMLElement {
     const done = task.state === "finished";
     const failed = task.state === "error";
     const step = done ? task.finalLine || lastTextStep(task.steps) : lastTextStep(task.steps);
     const line = done ? `${t("Done")}${step ? ` · ${step}` : ""}` : failed ? `${t("Error")}${step ? ` · ${step}` : ""}` : step ?? "";
     const count = task.steps.length > 1 && !done ? `${Math.min(task.stepIndex + 1, task.steps.length)}/${task.steps.length}` : "";
+    // Following a plan: its segments and steps done, as in the chat (concept D).
+    const plan = done || failed ? null : sessionPlan(task);
     return h("button", { class: "home-row", onclick: () => actions.openSession(task.id) },
       h("div", { class: "home-text" },
         h("div", { class: "home-who" },
@@ -242,7 +287,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           // An agent's pill is named after it: no need to say it twice.
           t(sessionSubtitle(task.id)) !== task.name ? h("span", { class: "s", text: `· ${t(sessionSubtitle(task.id))}` }) : null),
         h("div", { class: `home-line${done ? " ok" : failed ? " err" : ""}`, text: line })),
-      count ? h("span", { class: "home-count", text: count }) : null);
+      ...(plan ? planEnds(plan) : [count ? h("span", { class: "home-count", text: count }) : null]));
   }
 
   function label(text: string, n?: number): HTMLElement {
@@ -408,23 +453,25 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       }
       const data = actions.activityData();
       const { sessions, others } = homeLists(active, data);
+      const chatPlans = homeChatPlans();
 
       // Rebuilt only when what they show changes: a rebuild between a mouse-down
       // and its mouse-up would swallow the click.
       const lk = [
         language(), id, req?.command, req?.questions?.[0]?.question, req?.email?.subject, State.approvalQueue.length,
         ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}`),
+        ...State.plans.map((p) => `${p.key}:${p.updatedAt}:${p.steps.map((s) => s.status).join(",")}`),
       ].join("~");
       if (lk !== leftKey) {
         leftKey = lk;
         clear(left);
         const waiting = waitingCard();
         if (waiting) left.append(label(t(HOME_TEXT.needsYou), 1 + State.approvalQueue.length), waiting);
-        if (sessions.length) {
-          left.append(label(t("In progress"), sessions.length),
-            h("div", { class: "home-rows" }, ...sessions.map(sessionRow)));
+        if (sessions.length || chatPlans.length) {
+          left.append(label(t("In progress"), sessions.length + chatPlans.length),
+            h("div", { class: "home-rows" }, ...sessions.map(sessionRow), ...chatPlans.map(chatPlanRow)));
         }
-        if (!waiting && !sessions.length) {
+        if (!waiting && !sessions.length && !chatPlans.length) {
           left.append(h("div", { class: "home-empty" },
             h("div", { class: "n", text: t("Nothing running right now.") }),
             h("div", { class: "s", text: t("Drop a file or window, or ask me anything.") })));
