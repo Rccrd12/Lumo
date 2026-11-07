@@ -343,6 +343,11 @@ export const NEW_LOOK_BOT = { cy: 25, diameter: 64 } as const;
 /** In the new look the closed island shows his eyes alone, bigger than the whole ring was. */
 export const NEW_LOOK_COMPACT_DIAMETER = 40;
 
+/** In the new look a few views take more height, for what the board gives them (look-new.css). */
+/** Plus the line "Allow for this session" under the permission's two buttons. */
+export const NEW_LOOK_SESSION_ALLOW_H = 30;
+export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196 };
+
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
   if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
   return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };

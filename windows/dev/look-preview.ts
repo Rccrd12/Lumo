@@ -41,6 +41,8 @@ State.chatHistory = [
 function show(view: IslandViewName) {
   if (view === "approval" && !State.pendingApproval) {
     hook({ hook_event_name: "PermissionRequest", cwd, request_id: "r1", tool_name: "Bash", tool_input: { command: "npm test", description: "Run the test suite" } });
+    // As Claude Code offers it (session_rules.rs), so the line under the buttons shows.
+    if (State.pendingApproval) State.pendingApproval.sessionAllow = true;
   }
   island.setView(view);
   island.holdOpen();

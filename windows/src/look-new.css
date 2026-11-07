@@ -141,3 +141,86 @@ html.look-new .tools-add-plus {
 html.look-new .more-btn:focus:not(:focus-visible) {
   outline: none;
 }
+
+/* ── Permission: what it is for, the command, two big buttons ───────────────
+   As on the board: Deny and Allow side by side, Allow twice as wide and in
+   Lumo's amber; "Allow for this session" a quiet line under them, so it is
+   never the button the cursor lands on. */
+
+html.look-new .approval-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+html.look-new .approval-actions .btn {
+  justify-content: center;
+  height: 34px;
+  border-radius: 10px;
+  font: 600 13px var(--font);
+}
+
+html.look-new .approval-actions .deny-btn {
+  flex: 1 1 0;
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .approval-actions .deny-btn:hover {
+  background: #26282d;
+}
+
+html.look-new .approval-actions .allow-btn {
+  flex: 2 1 0;
+  background: var(--amber);
+  color: #1a1206;
+}
+
+html.look-new .approval-actions .allow-btn:hover {
+  background: #ffb63d;
+}
+
+html.look-new .approval-actions .session-allow {
+  order: 3;
+  flex: 1 0 100%;
+  height: 26px;
+  background: transparent;
+  color: var(--dim);
+  font: 500 12px var(--font);
+}
+
+html.look-new .approval-actions .session-allow:hover {
+  background: transparent;
+  color: var(--ink);
+}
+
+html.look-new .approval-actions .kbd {
+  border-color: currentColor;
+}
+
+html.look-new .who-row,
+html.look-new .who-row .n {
+  font-size: 13px;
+}
+
+html.look-new .approval-about {
+  font-size: 13px;
+  color: #b0b5be;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+html.look-new .stack > .code {
+  font-size: 13px;
+  padding: 8px 12px;
+  background: #111214;
+  border-color: #26282d;
+}
+
+html.look-new .code-tool {
+  color: var(--amber);
+  font-weight: 700;
+  margin-right: 8px;
+}

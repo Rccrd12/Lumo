@@ -108,6 +108,12 @@ function btn(
   );
 }
 
+/** A hook for the new look's stylesheet (look-new.css), which only it reads. */
+function withClass<T extends HTMLElement>(el: T, cls: string): T {
+  el.classList.add(cls);
+  return el;
+}
+
 /** AgentWho — coloured dot + task name + grey label. */
 function agentWho(task: AgentTask | null, label: string): HTMLElement {
   const row = h("div", { class: "who-row" });
@@ -632,7 +638,7 @@ function buildApproval(actions: ViewActions): ViewHost {
   const about = h("div", { class: "approval-about" });
   const code = h("div", { class: "code" });
   const mail = h("div", { class: "mail-slot" });
-  const row = h("div", { class: "actions" });
+  const row = h("div", { class: "actions approval-actions" });
   // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
   const mailRow = h("div", { class: "actions" });
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
@@ -715,8 +721,16 @@ function buildApproval(actions: ViewActions): ViewHost {
       // The whole point of approving here rather than in the terminal: this line
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
-      code.textContent = pending?.command || pending?.tool || "…";
-      code.title = code.textContent;
+      const target = pending?.command || pending?.tool || "…";
+      const tool = pending?.tool ?? "";
+      // In the new look the tool's name stands apart, in Lumo's amber, from what it runs on.
+      if (State.settings.islandNewLook === true && tool && target.startsWith(`${tool} · `)) {
+        clear(code);
+        code.append(h("span", { class: "code-tool", text: tool }), target.slice(tool.length + 3));
+      } else {
+        code.textContent = target;
+      }
+      code.title = target;
       // What it is for: the agent's own words, else what the request does.
       const text = email ? "" : pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
       about.textContent = text;
@@ -732,9 +746,9 @@ function buildApproval(actions: ViewActions): ViewHost {
       rowKey = "built";
       clear(row);
       row.append(
-        btn(tl("Deny"), "secondary", guarded("deny"), "N"),
-        sessionAllow,
-        btn(tl("Allow"), "primary", guarded("allow"), "Y"),
+        withClass(btn(tl("Deny"), "secondary", guarded("deny"), "N"), "deny-btn"),
+        withClass(sessionAllow, "session-allow"),
+        withClass(btn(tl("Allow"), "primary", guarded("allow"), "Y"), "allow-btn"),
       );
       clear(mailRow);
       mailRow.append(
