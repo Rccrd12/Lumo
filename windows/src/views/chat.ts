@@ -76,6 +76,7 @@ import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
+import { drawNewUsage, lastContextReport } from "./usage-panel";
 import {
   Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
@@ -1582,9 +1583,12 @@ export function buildPrompt(
   function panelChanged() {
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
-    if (open === State.chatPanelOpen && hearing === State.listeningOpen) return;
+    // The new look's usage menu holds the context and the limits: as much room as Listening.
+    const tall = State.settings.islandNewLook === true && body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null;
+    if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
+    State.chatPanelTall = tall;
     onHeightChange();
   }
   const historyList = h("div", { class: "picker-list" });
@@ -1765,11 +1769,26 @@ export function buildPrompt(
     usageTitle.textContent = line && local ? line.title : line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
-    if (line.rows.length === 0) {
+    // The new look: the context as one split bar, then the limits as bars (views/usage-panel.ts).
+    const newLook = State.settings.islandNewLook === true;
+    usagePanel.classList.toggle("usage-new", newLook);
+    if (newLook) {
+      usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
+      const report = lastContextReport(State.chatHistory);
+      drawNewUsage(usageList, {
+        line, local, report,
+        askContext: State.settings.chatProvider === "claude-code" && !report ? () => {
+          closeUsage();
+          void submit("/context");
+        } : null,
+      });
+      // Taller while it holds the context (the menu may be open as /context lands).
+      if (body.classList.contains("metering")) panelChanged();
+    } else if (line.rows.length === 0) {
       usageList.append(h("div", { class: "picker-status", text: line.text }));
       return;
     }
-    for (const [i, row] of line.rows.entries()) {
+    if (!newLook) for (const [i, row] of line.rows.entries()) {
       const fill = h("i", { class: "usage-fill" });
       fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
       fill.style.background = row.pct == null ? "" : planColor(row.pct);

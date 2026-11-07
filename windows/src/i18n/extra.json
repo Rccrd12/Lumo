@@ -15250,6 +15250,30 @@
     "one": "{agent} ha un piano · {count} passo",
     "other": "{agent} ha un piano · {count} passi"
    }
+  },
+  "See what fills the context": {
+   "zh-Hans": "查看上下文里有什么",
+   "hi": "देखें संदर्भ में क्या भरा है",
+   "es": "Ver qué llena el contexto",
+   "ar": "اعرض ما يملأ السياق",
+   "fr": "Voir ce qui remplit le contexte",
+   "bn": "দেখুন প্রসঙ্গে কী আছে",
+   "pt-BR": "Ver o que ocupa o contexto",
+   "ru": "Посмотреть, чем занят контекст",
+   "id": "Lihat apa yang mengisi konteks",
+   "it": "Vedi cosa riempie il contesto"
+  },
+  "As of the last /context in this chat": {
+   "zh-Hans": "截至此聊天中最近一次 /context",
+   "hi": "इस चैट के पिछले /context के अनुसार",
+   "es": "Según el último /context de este chat",
+   "ar": "حسب آخر /context في هذه الدردشة",
+   "fr": "D'après le dernier /context de ce chat",
+   "bn": "এই চ্যাটের শেষ /context অনুযায়ী",
+   "pt-BR": "Conforme o último /context deste chat",
+   "ru": "По последнему /context в этом чате",
+   "id": "Menurut /context terakhir di chat ini",
+   "it": "All'ultimo /context di questa chat"
   }
  }
 }

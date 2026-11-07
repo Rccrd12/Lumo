@@ -2441,7 +2441,7 @@ export class Island {
   /** What the chat's height follows: its messages, or the most room while a list (or the tool workshop) is open. */
   private get chatCount(): number {
     if (State.chatSlot === "forge") return CHAT_FORGE;
-    if (State.chatPanelOpen) return State.listeningOpen ? CHAT_LISTENING : CHAT_PANEL_OPEN;
+    if (State.chatPanelOpen) return State.listeningOpen || State.chatPanelTall ? CHAT_LISTENING : CHAT_PANEL_OPEN;
     // A plan asking to start over the field (concept C1): room for it and the chat above.
     if (planAskInChat(State.pendingApproval, State.settings.islandNewLook === true)) return CHAT_LISTENING;
     return State.chatHistory.length;

@@ -569,6 +569,8 @@ class AppState {
   /** The model picker or the past chats are open: the chat takes its full height. */
   chatPanelOpen = false;
   /** The open list is the Listening panel, which wants more room (core/layout.ts CHAT_LISTENING). */
+  /** A chat panel that wants the most room, the Listening one aside: the new look's usage menu. */
+  chatPanelTall = false;
   listeningOpen = false;
   /**
    * A picture of the chat's previews, opened big: it fills the whole open

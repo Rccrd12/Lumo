@@ -57,18 +57,31 @@ function category(name: string) {
   return CONTEXT_CATEGORIES[name] ?? { label: "", color: OTHER };
 }
 
-export function contextCard(report: ContextReport): HTMLElement {
+/** The bar of what fills the context: what is taken from the left, the room kept for compacting at the right end. */
+export function contextBar(report: ContextReport): HTMLElement {
   const used = report.categories.filter((c) => !isDeferred(c.name) && c.name !== BUFFER);
   const buffer = report.categories.find((c) => c.name === BUFFER);
   const width = (tokens: number) => `${Math.max(0, Math.min(100, (tokens / report.total) * 100)).toFixed(2)}%`;
-  // What is taken from the left, the room kept for compacting at the right end.
   const bar = h("div", { class: "ctx-bar" });
   for (const c of used) bar.append(h("i", { style: `width:${width(c.tokens)};background:${category(c.name).color}` }));
   bar.append(h("b"));
   if (buffer) bar.append(h("i", { class: "ctx-buffer", style: `width:${width(buffer.tokens)}` }));
+  return bar;
+}
+
+/** Its legend: each category's colour, name and tokens, the biggest first. */
+export function contextLegend(report: ContextReport): HTMLElement {
+  const used = report.categories.filter((c) => !isDeferred(c.name) && c.name !== BUFFER);
+  const buffer = report.categories.find((c) => c.name === BUFFER);
   const legend = h("div", { class: "ctx-legend" });
   for (const c of [...used].sort((a, b) => b.tokens - a.tokens)) legend.append(key(c.name, c.tokens));
   if (buffer) legend.append(key(buffer.name, buffer.tokens));
+  return legend;
+}
+
+export function contextCard(report: ContextReport): HTMLElement {
+  const bar = contextBar(report);
+  const legend = contextLegend(report);
   const card = h(
     "div",
     { class: "ctx-card" },

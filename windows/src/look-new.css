@@ -1669,3 +1669,132 @@ html.look-new .listen-card-line.dim {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
 }
+
+/* ── Usage (concepts/redesign, Usage A) ─────────────────────────────────────
+   The context as one bar split by what fills it, its legend in two columns,
+   then the plan's limits as bars, each with how much is used and when it
+   resets. */
+
+html.look-new .usage-new .picker-list.usage-list {
+  gap: 10px;
+}
+
+html.look-new .usage-ctx {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+html.look-new .usage-ctx-head,
+html.look-new .usage-limit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+html.look-new .usage-ctx-title {
+  color: var(--ink);
+  font: 600 12.5px var(--font);
+}
+
+html.look-new .usage-ctx-numbers,
+html.look-new .usage-limit-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dim);
+  font: 400 11.5px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+html.look-new .usage-ctx .ctx-bar {
+  height: 8px;
+  border-radius: 4px;
+  gap: 2px;
+  background: #1f2125;
+}
+
+html.look-new .usage-ctx .ctx-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+}
+
+html.look-new .usage-ctx .ctx-key {
+  min-width: 0;
+  font-size: 11.5px;
+  color: #c9c9cc;
+}
+
+html.look-new .usage-ctx .ctx-key i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+html.look-new .usage-ctx .ctx-key-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.look-new .usage-ctx .ctx-key-tokens {
+  margin-left: auto;
+  color: var(--dim);
+}
+
+html.look-new .usage-kick {
+  margin-top: 6px;
+  padding: 0 2px;
+  color: var(--dim);
+  font: 600 10.5px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+html.look-new .usage-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+html.look-new .usage-limit-label {
+  color: var(--ink-2);
+  font: 500 11.5px var(--font);
+}
+
+html.look-new .usage-limit-bar {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: #1f2125;
+  overflow: hidden;
+}
+
+html.look-new .usage-limit-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s cubic-bezier(0.3, 0.8, 0.3, 1);
+}
+
+html.look-new .usage-ask-context {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #1f2024;
+  color: var(--ink-2);
+  font: 500 11.5px var(--font);
+  cursor: pointer;
+}
+
+html.look-new .usage-ask-context:hover {
+  background: #26282d;
+  color: var(--ink);
+}
