@@ -15013,6 +15013,66 @@
    "id": "Butuh kamu",
    "it": "Ha bisogno di te"
   },
+  "Island edge": {
+   "zh-Hans": "岛屿边缘",
+   "hi": "आइलैंड का किनारा",
+   "es": "Borde de la isla",
+   "ar": "حافة الجزيرة",
+   "fr": "Bord de l’île",
+   "bn": "আইল্যান্ডের প্রান্ত",
+   "pt-BR": "Borda da ilha",
+   "ru": "Край острова",
+   "id": "Tepi pulau",
+   "it": "Bordo dell’isola"
+  },
+  "Full light": {
+   "zh-Hans": "完整光",
+   "hi": "पूरी रोशनी",
+   "es": "Luz completa",
+   "ar": "ضوء كامل",
+   "fr": "Lumière pleine",
+   "bn": "পূর্ণ আলো",
+   "pt-BR": "Luz completa",
+   "ru": "Полный свет",
+   "id": "Cahaya penuh",
+   "it": "Luce piena"
+  },
+  "Soft light": {
+   "zh-Hans": "柔和光",
+   "hi": "हल्की रोशनी",
+   "es": "Luz suave",
+   "ar": "ضوء خافت",
+   "fr": "Lumière douce",
+   "bn": "নরম আলো",
+   "pt-BR": "Luz suave",
+   "ru": "Мягкий свет",
+   "id": "Cahaya lembut",
+   "it": "Luce tenue"
+  },
+  "Line only": {
+   "zh-Hans": "仅线条",
+   "hi": "केवल रेखा",
+   "es": "Solo la línea",
+   "ar": "الخط فقط",
+   "fr": "Ligne seule",
+   "bn": "শুধু রেখা",
+   "pt-BR": "Só a linha",
+   "ru": "Только линия",
+   "id": "Hanya garis",
+   "it": "Solo il filo"
+  },
+  "Glow only": {
+   "zh-Hans": "仅光晕",
+   "hi": "केवल चमक",
+   "es": "Solo el halo",
+   "ar": "التوهج فقط",
+   "fr": "Halo seul",
+   "bn": "শুধু আভা",
+   "pt-BR": "Só o brilho",
+   "ru": "Только сияние",
+   "id": "Hanya pendar",
+   "it": "Solo l’alone"
+  },
   "New look (preview)": {
    "zh-Hans": "新外观（预览）",
    "hi": "नया रूप (पूर्वावलोकन)",

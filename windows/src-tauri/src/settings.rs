@@ -237,6 +237,9 @@ pub struct Settings {
     /// Settings → Island → New look (preview): Lumo in the open island's top
     /// bar, his light along its edge (src/look-new.css). Off by default.
     pub island_new_look: bool,
+    /// The new look's light along the island's edge, picked in the wardrobe:
+    /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
+    pub island_edge_light: String,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -336,6 +339,7 @@ impl Default for Settings {
             language: String::new(),
             update_check_on_open: true,
             island_new_look: false,
+            island_edge_light: "full".into(),
         }
     }
 }
@@ -669,7 +673,8 @@ mod tests {
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "updateCheckOnOpen": false,
-  "islandNewLook": true
+  "islandNewLook": true,
+  "islandEdgeLight": "soft"
 }"##;
 
     fn custom() -> Value {
@@ -854,6 +859,13 @@ mod tests {
         assert!(!parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
         assert!(!Settings::default().island_new_look);
         assert!(parse(CUSTOM.as_bytes()).unwrap().island_new_look);
+    }
+
+    #[test]
+    fn the_edge_light_is_full_until_one_is_picked() {
+        assert_eq!(parse(&custom_with("islandEdgeLight", None)).unwrap().island_edge_light, "full");
+        assert_eq!(Settings::default().island_edge_light, "full");
+        assert_eq!(parse(CUSTOM.as_bytes()).unwrap().island_edge_light, "soft");
     }
 
     #[test]
@@ -1137,6 +1149,7 @@ mod tests {
                 "language",
                 "updateCheckOnOpen",
                 "islandNewLook",
+                "islandEdgeLight",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

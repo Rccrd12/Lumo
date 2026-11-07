@@ -7,30 +7,75 @@
    black surface, the colour is Lumo's own — a thin light along the island's
    free edge — and the top bar's right end folds into a "⋯" menu. */
 
-/* ── Lumo's light along the island's edge (--lumo-light, island.ts) ────────── */
+/* ── Lumo's light along the island's edge (--lumo-light, island.ts) ──────────
+   Four ways to draw it, picked in the wardrobe (html[data-edge], island.ts):
+   a line and its glow as it was ("full"), both softer ("soft"), the line
+   alone ("line"), the glow alone ("glow"). The wardrobe's swatches take the
+   same values from their own class. */
+
+html.look-new #island,
+html.look-new .edge-swatch.full {
+  --edge-w: 1.5px;
+  --edge-line: var(--lumo-light, transparent);
+  --edge-y: 8px;
+  --edge-blur: 24px;
+  --edge-spread: -8px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+}
+
+html.look-new[data-edge="soft"] #island,
+html.look-new .edge-swatch.soft {
+  --edge-w: 1px;
+  --edge-line: color-mix(in srgb, var(--lumo-light, transparent) 75%, transparent);
+  --edge-y: 6px;
+  --edge-blur: 18px;
+  --edge-spread: -8px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 32%, transparent);
+}
+
+html.look-new[data-edge="line"] #island,
+html.look-new .edge-swatch.line {
+  --edge-w: 1px;
+  --edge-line: color-mix(in srgb, var(--lumo-light, transparent) 55%, transparent);
+  --edge-y: 0px;
+  --edge-blur: 0px;
+  --edge-spread: 0px;
+  --edge-glow: transparent;
+}
+
+html.look-new[data-edge="glow"] #island,
+html.look-new .edge-swatch.glow {
+  --edge-w: 0px;
+  --edge-line: transparent;
+  --edge-y: 10px;
+  --edge-blur: 28px;
+  --edge-spread: -12px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 38%, transparent);
+}
 
 html.look-new #island {
   transition: box-shadow 0.4s ease-out;
 }
 
-html.look-new .dock-top #island {
-  box-shadow: 0 1.5px 0 0 var(--lumo-light, transparent),
-    0 8px 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+html.look-new .dock-top #island,
+html.look-new .edge-swatch {
+  box-shadow: 0 var(--edge-w) 0 0 var(--edge-line),
+    0 var(--edge-y) var(--edge-blur) var(--edge-spread) var(--edge-glow);
 }
 
 html.look-new .dock-bottom #island {
-  box-shadow: 0 -1.5px 0 0 var(--lumo-light, transparent),
-    0 -8px 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+  box-shadow: 0 calc(-1 * var(--edge-w)) 0 0 var(--edge-line),
+    0 calc(-1 * var(--edge-y)) var(--edge-blur) var(--edge-spread) var(--edge-glow);
 }
 
 html.look-new .dock-left #island {
-  box-shadow: 1.5px 0 0 0 var(--lumo-light, transparent),
-    8px 0 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+  box-shadow: var(--edge-w) 0 0 0 var(--edge-line),
+    var(--edge-y) 0 var(--edge-blur) var(--edge-spread) var(--edge-glow);
 }
 
 html.look-new .dock-right #island {
-  box-shadow: -1.5px 0 0 0 var(--lumo-light, transparent),
-    -8px 0 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+  box-shadow: calc(-1 * var(--edge-w)) 0 0 0 var(--edge-line),
+    calc(-1 * var(--edge-y)) 0 var(--edge-blur) var(--edge-spread) var(--edge-glow);
 }
 
 /* ── Top bar: tabs, Lumo in the middle, "⋯" ────────────────────────────────── */
@@ -894,4 +939,79 @@ html.look-new .home-right.three {
 
 html.look-new .home-right.three .home-tiles {
   grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* ── Wardrobe: the island's edge instead of Lumo's outfits and style ────────
+   (views/wardrobe.ts). The new look draws Lumo as two eyes, so what is left
+   to dress is the light along the island; Claude's mouse stays under it. */
+
+.wardrobe-edges {
+  display: none;
+}
+
+html.look-new .wardrobe-parts {
+  display: none;
+}
+
+html.look-new .wardrobe-edges {
+  display: block;
+}
+
+html.look-new .edge-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+html.look-new .edge-item {
+  height: 66px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #111214;
+  color: var(--dim);
+  font: 500 12px var(--font);
+  cursor: default;
+}
+
+html.look-new .edge-item:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .edge-item.on {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  color: var(--ink);
+}
+
+/* A little island with that light under it: the same light, its glow
+   scaled down to the swatch's size. */
+html.look-new .edge-swatch {
+  width: 72px;
+  height: 18px;
+  border-radius: 0 0 8px 8px;
+  background: #000;
+}
+
+html.look-new .edge-swatch.full {
+  --edge-y: 5px;
+  --edge-blur: 12px;
+  --edge-spread: -3px;
+}
+
+html.look-new .edge-swatch.soft {
+  --edge-y: 4px;
+  --edge-blur: 9px;
+  --edge-spread: -3px;
+}
+
+html.look-new .edge-swatch.glow {
+  --edge-y: 6px;
+  --edge-blur: 14px;
+  --edge-spread: -4px;
 }

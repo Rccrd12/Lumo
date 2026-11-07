@@ -7,6 +7,8 @@
 
 import { h } from "./dom";
 import { State } from "../core/state";
+import { Bridge } from "../core/bridge";
+import { EDGE_LIGHTS, parseEdgeLight, type EdgeLight } from "../core/layout";
 import { drawLookIcon, drawWardrobeIcon } from "../character/outfits";
 import {
   AIM_KEY, COMPUTER_CURSORS, COMPUTER_CURSOR_KEYS, LOOK_KEYS, LUMO_LOOKS, OUTFIT_KEYS, OUTFIT_SELECTIONS,
@@ -17,6 +19,14 @@ import type { ViewActions, ViewHost } from "./views";
 import { language, tl, type Msg } from "../i18n/i18n";
 
 const ICON = 28;
+
+/** The new look's edge lights, by name (look-new.css). */
+const EDGE_NAMES: Record<EdgeLight, Msg> = {
+  full: tl("Full light"),
+  soft: tl("Soft light"),
+  line: tl("Line only"),
+  glow: tl("Glow only"),
+};
 
 /** Claude's arrow, a rounded kite (computer.rs arrow_pixels, on its 32-pixel grid). */
 const KITE: [number, number][] = [[4.2, 4.2], [22.6, 11.4], [15.05, 15.05], [11.4, 22.6]];
@@ -87,6 +97,7 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   const grid = h("div", { class: "wardrobe-grid" });
   const looks = h("div", { class: "wardrobe-grid" });
   const mice = h("div", { class: "wardrobe-grid" });
+  const edges = h("div", { class: "edge-grid" });
   /** One part of the wardrobe: its title over its buttons. */
   const part = (title: Msg, buttons: HTMLElement, kind: string) =>
     h(
@@ -112,6 +123,10 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
           h("div", { class: "wardrobe-divider", "aria-hidden": "true" }),
           part(tl("Lumo's style"), looks, "looks"),
         ),
+        // The new look draws Lumo as two eyes: the island's edge is what to
+        // pick instead of his outfits and style (look-new.css shows it, hides them).
+        h("div", { class: "wardrobe-edges", role: "group", "aria-label": tl("Island edge") },
+          h("span", { class: "wardrobe-label", text: tl("Island edge") }), edges),
         // Claude's mouse on a line of its own, under the two: they keep their room.
         h("div", { class: "wardrobe-extra" }, part(tl("Computer use"), mice, "computer")),
       ),
@@ -119,6 +134,7 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   );
 
   let hovered: OutfitSelection | LookHover | CursorHover | null = null;
+  let edgeHovered: EdgeLight | null = null;
   let drawnSeason: Outfit | null = null;
   let drawnLanguage = language();
   let drawnLook: LumoLook | null = null;
@@ -127,7 +143,10 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
   const items = new Map<OutfitSelection, { button: HTMLButtonElement; canvas: HTMLCanvasElement }>();
 
   const updateNote = () => {
-    note.textContent = wardrobeHeader(hovered, parseOutfit(State.settings.lumoOutfit), new Date());
+    // The new look: the edge light rested on, else the one picked.
+    note.textContent = State.settings.islandNewLook === true && !hovered
+      ? String(EDGE_NAMES[edgeHovered ?? parseEdgeLight(State.settings.islandEdgeLight)])
+      : wardrobeHeader(hovered, parseOutfit(State.settings.lumoOutfit), new Date());
   };
 
   for (const sel of OUTFIT_SELECTIONS) {
@@ -177,6 +196,33 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
     lookCanvases.set(look, canvas);
     lookItems.set(look, button);
     looks.append(button);
+  }
+
+  /** The edge lights: resting on one shows it on the island, a click keeps it. */
+  const edgeItems = new Map<EdgeLight, HTMLButtonElement>();
+  for (const edge of EDGE_LIGHTS) {
+    const button = h("button", { class: "edge-item", title: EDGE_NAMES[edge], "aria-label": EDGE_NAMES[edge] },
+      h("span", { class: `edge-swatch ${edge}` }), h("span", { class: "edge-name", text: EDGE_NAMES[edge] }));
+    button.addEventListener("mouseenter", () => {
+      edgeHovered = edge;
+      State.edgePreview = edge;
+      updateNote();
+      State.notify();
+    });
+    button.addEventListener("mouseleave", () => {
+      if (edgeHovered !== edge) return;
+      edgeHovered = null;
+      State.edgePreview = null;
+      updateNote();
+      State.notify();
+    });
+    button.addEventListener("click", () => {
+      State.settings = { ...State.settings, islandEdgeLight: edge };
+      void Bridge.saveSettings(State.settings);
+      State.notify();
+    });
+    edgeItems.set(edge, button);
+    edges.append(button);
   }
 
   /** Claude's mice and the Aim switch: a click keeps, the pointer only names them in the header. */
@@ -258,6 +304,9 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
       for (const [sel, { button }] of items) button.classList.toggle("on", sel === current);
       const look = parseLook(State.settings.lumoCharacter);
       for (const [l, button] of lookItems) button.classList.toggle("on", l === look);
+      const edge = parseEdgeLight(State.settings.islandEdgeLight);
+      for (const [e, button] of edgeItems) button.classList.toggle("on", e === edge);
+      if (State.edgePreview == null) edgeHovered = null;
       const mouse = parseComputerCursor(State.settings.computerCursor);
       const aim = State.settings.computerAim !== false;
       for (const [cursor, { button }] of mouseItems) {

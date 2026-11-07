@@ -13,6 +13,7 @@ import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
+import type { EdgeLight } from "./layout";
 import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
@@ -354,6 +355,9 @@ export interface Settings {
    * bar, one surface, his light along the island's edge (src/look-new.css).
    * Off by default; turning it off brings the usual look back as it was. */
   islandNewLook: boolean;
+  /** The new look's light along the island's edge, picked in the wardrobe:
+   * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */
+  islandEdgeLight: string;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -448,6 +452,7 @@ export const DEFAULT_SETTINGS: Settings = {
   language: "",
   updateCheckOnOpen: true,
   islandNewLook: false,
+  islandEdgeLight: "full",
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",
@@ -599,6 +604,8 @@ class AppState {
   wardrobePreview: Outfit | null = null;
   /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
   lookPreview: LumoLook | null = null;
+  /** The new look's edge light tried on in the wardrobe; null = the chosen one. */
+  edgePreview: EdgeLight | null = null;
 
   settings: Settings = { ...DEFAULT_SETTINGS };
 

@@ -353,7 +353,7 @@ export const NEW_LOOK_SESSION_ALLOW_H = 30;
 /** The new look's overview while a plan's usage card is open in it (views/usage.ts PlanCard): its limits whole. */
 export const NEW_LOOK_PLAN_CARD_H = 252;
 
-export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372 };
+export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372, wardrobe: 236 };
 
 /** The new look's question card: its options one under the other, each this tall with its description. */
 export const NEW_LOOK_OPTION_H = 46;
@@ -378,6 +378,14 @@ export const NEW_LOOK_SIDE_GAP = 10;
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
   if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
   return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };
+}
+
+/** The new look's light along the island's edge (wardrobe, look-new.css): as it was, softer, a line, a glow. */
+export const EDGE_LIGHTS = ["full", "soft", "line", "glow"] as const;
+export type EdgeLight = (typeof EDGE_LIGHTS)[number];
+
+export function parseEdgeLight(raw: unknown): EdgeLight {
+  return (EDGE_LIGHTS as readonly unknown[]).includes(raw) ? (raw as EdgeLight) : "full";
 }
 
 /** The new look's light along the island's edge: Lumo's colour, warm at rest. */

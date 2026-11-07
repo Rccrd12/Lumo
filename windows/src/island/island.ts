@@ -5,7 +5,7 @@ import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
   ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
-  GRIPS, gripFactors, isUpright, islandSize, islandWidth, pickedHeight, parseDock, type Dock, type Grip, type IslandShape,
+  GRIPS, gripFactors, isUpright, islandSize, islandWidth, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
@@ -1982,6 +1982,9 @@ export class Island {
       this.edgeLight = light;
       this.islandEl.style.setProperty("--lumo-light", light);
     }
+    // How that light is drawn: the one picked, or tried on in the wardrobe.
+    const edge = State.edgePreview ?? parseEdgeLight(State.settings.islandEdgeLight);
+    if (document.documentElement.dataset.edge !== edge) document.documentElement.dataset.edge = edge;
     // Upright on a side, the closed island has Lumo at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;
@@ -2128,6 +2131,7 @@ export class Island {
     // A wardrobe try-on never outlives the wardrobe.
     if (State.wardrobePreview && !(expanded && State.view === "wardrobe")) State.wardrobePreview = null;
     if (State.lookPreview && !(expanded && State.view === "wardrobe")) State.lookPreview = null;
+    if (State.edgePreview && !(expanded && State.view === "wardrobe")) State.edgePreview = null;
 
     this.header.sync();
     // The big picture belongs to the open chat: anywhere else it closes.

@@ -125,3 +125,28 @@ test("the chosen outfit and the chosen look are highlighted, one in each part", 
   assert.equal(on(looks).length, 1);
   assert.equal(on(looks)[0], buttons(looks)[LUMO_LOOKS.indexOf("lucciola")]);
 });
+
+test("the new look's edge lights: one tried on under the pointer, kept with a click, named in the header", () => {
+  const { host } = build();
+  const saved = { ...State.settings };
+  State.settings = { ...State.settings, islandNewLook: true, islandEdgeLight: "full" };
+  host.sync();
+  const edges = host.el.find(".edge-item");
+  assert.equal(edges.length, 4);
+  // Not one of the three parts: the usual look's wardrobe is as it was.
+  assert.equal(host.el.find(".wardrobe-part").length, 3);
+  const [full, soft] = edges;
+  assert.ok(full.classList.contains("on") && !soft.classList.contains("on"));
+  assert.equal(host.el.find(".wardrobe-note")[0].textContent, "Full light");
+
+  soft.fire("mouseenter");
+  assert.equal(State.edgePreview, "soft");
+  assert.equal(host.el.find(".wardrobe-note")[0].textContent, "Soft light");
+  soft.fire("mouseleave");
+  assert.equal(State.edgePreview, null);
+  soft.fire("click");
+  assert.equal(State.settings.islandEdgeLight, "soft");
+  host.sync();
+  assert.ok(soft.classList.contains("on") && !full.classList.contains("on"));
+  State.settings = saved;
+});
