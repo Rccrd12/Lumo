@@ -781,7 +781,9 @@ export class Island {
     switch (id) {
       case "pin": return State.isPinned;
       case "sound": return State.settings.soundEnabled !== false;
-      case "activities": return State.settings.activitiesPanel !== false && State.settings.activitiesFolded !== true;
+      case "activities":
+        if (State.settings.islandNewLook === true) return State.settings.homeActivities !== false;
+        return State.settings.activitiesPanel !== false && State.settings.activitiesFolded !== true;
       default: return false;
     }
   }
@@ -811,6 +813,12 @@ export class Island {
         void Bridge.saveSettings(State.settings);
         break;
       case "activities":
+        // The new look: the home's tiles, on their own.
+        if (State.settings.islandNewLook === true) {
+          State.settings = { ...State.settings, homeActivities: State.settings.homeActivities === false };
+          void Bridge.saveSettings(State.settings);
+          break;
+        }
         if (State.settings.activitiesPanel === false) {
           State.settings = { ...State.settings, activitiesPanel: true, activitiesFolded: false };
           void Bridge.saveSettings(State.settings);
@@ -2169,6 +2177,8 @@ export class Island {
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
         || this.lastSyncedView === "approval";
       this.lastSyncedView = State.view;
+      // The new look's home has the calendar in a tile: as fresh as the panel's.
+      if (State.view === "home" && State.settings.homeActivities !== false) Calendar.refreshIfStale();
       this.applyBehaviour();
       if (State.view === "prompt" && performance.now() - this.lastGesture < GESTURE_WINDOW) {
         this.focusChat();

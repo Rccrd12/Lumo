@@ -358,6 +358,9 @@ export interface Settings {
   /** The new look's light along the island's edge, picked in the wardrobe:
    * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */
   islandEdgeLight: string;
+  /** The new look's home shows the live activities (its "⋯" menu puts them
+   * away), whether or not the usual look's panel is folded. */
+  homeActivities: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -453,6 +456,7 @@ export const DEFAULT_SETTINGS: Settings = {
   updateCheckOnOpen: true,
   islandNewLook: false,
   islandEdgeLight: "full",
+  homeActivities: true,
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",

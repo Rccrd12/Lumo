@@ -240,6 +240,9 @@ pub struct Settings {
     /// The new look's light along the island's edge, picked in the wardrobe:
     /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
     pub island_edge_light: String,
+    /// The new look's home shows the live activities as tiles; its "⋯" menu
+    /// puts them away. Apart from the usual look's panel (`activities_folded`).
+    pub home_activities: bool,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -340,6 +343,7 @@ impl Default for Settings {
             update_check_on_open: true,
             island_new_look: false,
             island_edge_light: "full".into(),
+            home_activities: true,
         }
     }
 }
@@ -674,7 +678,8 @@ mod tests {
   "language": "pt-BR",
   "updateCheckOnOpen": false,
   "islandNewLook": true,
-  "islandEdgeLight": "soft"
+  "islandEdgeLight": "soft",
+  "homeActivities": false
 }"##;
 
     fn custom() -> Value {
@@ -866,6 +871,13 @@ mod tests {
         assert_eq!(parse(&custom_with("islandEdgeLight", None)).unwrap().island_edge_light, "full");
         assert_eq!(Settings::default().island_edge_light, "full");
         assert_eq!(parse(CUSTOM.as_bytes()).unwrap().island_edge_light, "soft");
+    }
+
+    #[test]
+    fn the_home_shows_the_live_activities_until_they_are_put_away() {
+        assert!(parse(&custom_with("homeActivities", None)).unwrap().home_activities);
+        assert!(Settings::default().home_activities);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().home_activities);
     }
 
     #[test]
@@ -1150,6 +1162,7 @@ mod tests {
                 "updateCheckOnOpen",
                 "islandNewLook",
                 "islandEdgeLight",
+                "homeActivities",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

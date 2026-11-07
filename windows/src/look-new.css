@@ -144,6 +144,11 @@ html.look-new .slash-menu {
   left: 16px;
 }
 
+/* The tool workshop's guide: no room left for Lumo, he is in the top bar. */
+html.look-new .chat-card.forge.guiding .forge-guide {
+  left: 10px;
+}
+
 /* ── Home: one list instead of the tabs (views/home.ts) ──────────────────────
    Wide rather than tall: what waits for you and the sessions on the left,
    the live activities as tiles and the other pills on the right, the field
@@ -544,7 +549,44 @@ html.look-new .home-usage.short .home-plan-name {
   display: none;
 }
 
-/* The field to the chat. */
+/* The field to the chat, and the way to make a tool beside it. */
+html.look-new .home-ask {
+  flex: 0 0 40px;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+html.look-new .home-ask .ask-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html.look-new .home-make-tool {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #111214;
+  color: var(--dim);
+  font: 500 12.5px var(--font);
+  white-space: nowrap;
+  cursor: default;
+}
+
+html.look-new .home-make-tool:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .home-make-tool svg {
+  color: var(--amber);
+}
+
+
 html.look-new .ask-field {
   display: flex !important;
   flex: 0 0 40px;

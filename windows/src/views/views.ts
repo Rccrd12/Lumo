@@ -969,6 +969,13 @@ function buildHomeView(actions: ViewActions): ViewHost {
     },
     decide: (d, requestId) => actions.decide(d, requestId),
     openChat,
+    // The tool workshop, as Tools' "Add a tool" opens it (views/tools.ts openWorkshop).
+    makeTool: () => {
+      actions.blip();
+      State.forgeAsk = { edit: null };
+      State.useSlot("forge");
+      actions.setView("prompt");
+    },
     // A plan's usage on the home opens its card, as its pill does on the overview.
     openPlan: (kind) => {
       actions.blip();

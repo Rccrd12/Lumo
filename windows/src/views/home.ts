@@ -16,6 +16,7 @@ import { Bridge, type Decision } from "../core/bridge";
 import { parseDuration } from "../core/compact";
 import type { PlanKind } from "../core/plan";
 import { planPillParts, visiblePlanKinds } from "./usage";
+import { TOOLS_STRINGS } from "./tools";
 
 export const HOME_TEXT = {
   needsYou: N_("Needs you"),
@@ -28,6 +29,7 @@ export interface HomeActions {
   decide(d: Decision, requestId: string): void;
   openChat(): void;
   openPlan(kind: PlanKind): void;
+  makeTool(): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
   blip(): void;
@@ -51,8 +53,9 @@ const BOTTOM = 12;
 
 function tilesOf(data: ActivitiesData): ("timer" | "music" | "calendar" | "mail")[] {
   const tiles: ("timer" | "music" | "calendar" | "mail")[] = [];
-  // Off in Settings, or put away with the "⋯" menu's Live Activities.
-  if (State.settings.activitiesPanel === false || State.settings.activitiesFolded === true) return tiles;
+  // Put away with the "⋯" menu's Live Activities (the usual look's panel,
+  // folded or off, has no say here: on the home they are shown by default).
+  if (State.settings.homeActivities === false) return tiles;
   // The timer and the music always (a timer to start, what plays); the
   // calendar and the email once they are set up, empty or not.
   tiles.push("timer", "music");
@@ -95,7 +98,11 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   right.append(tilesEl);
   const field = h("button", { class: "ask-field home-field", onclick: () => actions.openChat() },
     h("span", { class: "ph", text: tl("Ask me anything…") }));
-  const el = h("div", { class: "view home" }, h("div", { class: "home-cols" }, left, right), chipsEl, field);
+  // Beside the field: straight into the tool workshop (views/forge.ts), as Tools' "Add a tool" does.
+  const makeTool = h("button", { class: "home-make-tool", title: tl(TOOLS_STRINGS.addHint), onclick: () => actions.makeTool() },
+    svg(ICONS.wrench, 13, { stroke: 1.8 }), h("span", { text: tl(TOOLS_STRINGS.add) }));
+  const el = h("div", { class: "view home" }, h("div", { class: "home-cols" }, left, right), chipsEl,
+    h("div", { class: "home-ask" }, field, makeTool));
 
   // The timer's field outlives the tiles' rebuilds, so what is typed in it stays.
   const timerInput = h("input", {
