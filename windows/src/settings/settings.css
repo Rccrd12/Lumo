@@ -1111,3 +1111,41 @@ html.look-new body.embedded .page {
 html.look-new body.embedded .search-none {
   padding-top: 4px;
 }
+
+/* The page's scrollbar, in the new look inside the island: a thin rounded
+   bar with no track and no arrows, clear of the island's edge, that lights up
+   a little under the mouse. */
+html.look-new body.embedded::-webkit-scrollbar,
+html.look-new:has(body.embedded)::-webkit-scrollbar {
+  width: 12px;
+  background: transparent;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-track,
+html.look-new:has(body.embedded)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-thumb,
+html.look-new:has(body.embedded)::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14) padding-box;
+  min-height: 40px;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-thumb:hover,
+html.look-new:has(body.embedded)::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28) padding-box;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-button,
+html.look-new:has(body.embedded)::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-corner,
+html.look-new:has(body.embedded)::-webkit-scrollbar-corner {
+  background: transparent;
+}
