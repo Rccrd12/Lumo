@@ -98,7 +98,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
-| [0.17.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.17.0) | Nov 6, 2026 | Local models with tools, pictures and a folder of copies for each chat; Unsloth Studio; PDFs for every model; Lumo's own web search; `/compact` for API providers |
+| [0.17.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.17.0) | Nov 7, 2026 | Local models with tools, pictures and a folder of copies for each chat; Unsloth Studio; PDFs for every model; Lumo's own web search; `/compact` for API providers; formulas as MathML; several files dropped at once |
 | [0.16.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.16.1) | Oct 29, 2026 | A width for the closed island alone; fewer words on the closed island; Lumo alone in a short pill during computer use |
 | [0.16.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.16.0) | Oct 29, 2026 | Listening to pull requests, files, programs, pages, email, services, Windows, agents, webhooks and your tools; a Security section; more email powers on cards; a new computer use look |
 | [0.15.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.15.0) | Oct 25, 2026 | The session's steps fill the overview card and open up; your tools with Antigravity CLI and Codex; Antigravity CLI's `/usage`, `/credits`, `/skills` and `/compact` |

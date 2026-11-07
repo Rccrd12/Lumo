@@ -1,6 +1,6 @@
 # Changelog
 
-## Windows 0.17.0 — November 6, 2026
+## Windows 0.17.0 — November 7, 2026
 
 - **Local models do much more**: tools, pictures and reasoning by what the model can do, the chat's permission modes and its / commands, the email and listening tools, and a short prompt of their own with the tools in groups. The tools not loaded are in a catalog the model loads by name. The picker shows the context ring and loads or ejects a model
 - **A folder of copies for each chat**: a local model works on copies of your files, never on the originals. What changed shows under the answer, and the copy goes over the original only with a click
@@ -11,6 +11,8 @@
 - **The seconds next to Thinking…** for every provider, from 2 s on, and for a local model reading the prompt
 - **A dropped file fills up to 60 % of a local model's context**, instead of 24,000 characters whatever the model: a 32k context takes some 50,000 characters of a book, a 128k one far more. A file cut short says so, and with a folder of copies the model reads on in it
 - **Steadier answers from local models**: a request the server drops (LM Studio's "terminated" or "fetch failed") is asked again, and a stream that hangs is asked for whole. A tool call written as text, a change said but not made, or a task left halfway goes back to the model once, and a made-up tool is answered with the real ones. A failed answer always says why, and an answer cut before its first word says whether the context was full or the reasoning took all the room. The chat says what a local model is doing in the same words as every provider (Thinking…, Using a tool), plus reading the prompt, asked again after its server dropped the request, or sent back
+- **Formulas drawn as real math**: the chat lays formulas out as MathML with the math font, so integrals, sums, brackets, fractions and roots take the sizes TeX gives them. Over 500 symbols from LaTeX and AMS, `\dfrac`, `\binom`, `\cancel`, `\substack` and more; a formula on its own line sits in a box with Copy for its TeX
+- **Every file dropped on the island is taken**, not just the first: several files upload together with a bar for each (+X past four), and the chat lists them all
 - **The chat follows the answer** while it is written, as long as you are at the end; a turn of the wheel up lets go, and an arrow brings you back down
 - **A message sent while the AI answers waits in sight**: it leaves the field for a Queued row, with a pencil to edit it and × to cancel, and goes on its own when the answer ends (after Stop it comes back to the field)
 - **A chat's files in the inbox go with the chat**: deleting a chat deletes the copies it sent, unless another chat still names them, and on start the inbox drops copies no chat names after a day
