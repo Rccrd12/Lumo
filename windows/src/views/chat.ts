@@ -1540,14 +1540,14 @@ export function buildPrompt(
     plusItems.perm.hidden = permBtn.hidden;
     plusMenu.hidden = !plusMenu.hidden;
   });
-  window.addEventListener("mousedown", (e) => {
+  document.addEventListener("mousedown", (e) => {
     if (plusMenu.hidden) return;
     const target = e.target as Node;
     if (!plusMenu.contains(target) && !plusBtn.contains(target)) plusMenu.hidden = true;
   }, true);
-  window.addEventListener("keydown", (e) => {
+  document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape" || plusMenu.hidden) return;
-    e.stopImmediatePropagation();
+    e.stopPropagation();
     plusMenu.hidden = true;
   }, true);
 
