@@ -289,6 +289,10 @@ export function buildTools(actions: ViewActions): ViewHost {
     }
   }
 
+  function needsWords(tool: ToolInfo): string {
+    return tool.permissions.map((p) => NEED_TEXT[p]).filter((n) => n != null).map((n) => t(n.label)).join(", ");
+  }
+
   function needs(tool: ToolInfo, withWords: boolean): HTMLElement {
     const row = h("span", { class: withWords ? "tool-needs words" : "tool-needs" });
     for (const p of tool.permissions) {
@@ -467,7 +471,9 @@ export function buildTools(actions: ViewActions): ViewHost {
     const isOpen = open === tool.id;
     const head = h("div", { class: "tool-row-head", role: "button", tabindex: "0" },
       toolTile(tool.id),
-      h("span", { class: "tool-text" }, h("span", { class: "tool-name", text: tool.name }), sub),
+      h("span", { class: "tool-text" }, h("span", { class: "tool-name", text: tool.name }),
+        // The new look writes what it uses after what it does (look-new.css); the usual one has the icons.
+        h("span", { class: "tool-sub" }, sub, h("span", { class: "tool-needs-text", text: needsWords(tool) }))),
       reviewBadge(tool),
       needs(tool, false),
       sw);

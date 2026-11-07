@@ -45,9 +45,24 @@ function show(view: IslandViewName, ask = view === "approval") {
     if (State.pendingApproval) State.pendingApproval.sessionAllow = true;
   }
   island.setView(view);
+  if (view === "tools") window.setTimeout(sampleTools, 300);
   island.holdOpen();
   State.notify();
   sync();
+}
+
+// Three tools, as Rust would list them (tools.rs), after its own (empty) answer.
+function sampleTools() {
+  const tool = (id: string, name: string, description: string, permissions: string[], enabled: boolean, verdict: "ok" | "caution") => ({
+    id, name, description, entry: "main.py", args: [], params: [], permissions, enabled, timeout: 60, created: 0, updated: 0,
+    dir: "", files: ["main.py"], missing: false, reviewed: true, review: { verdict, summary: description, risks: [], undeclared: [], model: "claude-opus-5-5", at: 0 },
+  });
+  State.tools = [
+    tool("bench", "PC Benchmark", "Measures CPU, RAM and disk", ["read", "system"], true, "ok"),
+    tool("sales", "Sales report", "Yesterday's sales from your server", ["network"], true, "ok"),
+    tool("clean", "Downloads cleanup", "Moves old files away", ["write"], false, "caution"),
+  ] as unknown as typeof State.tools;
+  State.notify();
 }
 
 const bar = document.getElementById("bar")!;

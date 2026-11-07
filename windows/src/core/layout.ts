@@ -348,7 +348,7 @@ export const NEW_LOOK_COMPACT_DIAMETER = 40;
 export const NEW_LOOK_SESSION_ALLOW_H = 30;
 /** Plus the row of a request waiting, folded away, on top of the list. */
 export const NEW_LOOK_WAITING_H = 56;
-export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 236, empty: 186 };
+export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 236, empty: 186, tools: 372 };
 
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
   if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
