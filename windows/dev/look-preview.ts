@@ -105,7 +105,20 @@ State.chatHistory = [
   { id: 2, role: "assistant", content: "Node's built-in test runner on `tests/**/*.test.mjs`: 54 test files, done in about ten seconds. The TypeScript check is separate: `npx tsc --noEmit`." },
 ];
 
+const PLAN_MD = "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests";
+
 function show(view: IslandViewName, ask = view === "approval") {
+  // ?ask=plan: Claude Code asks to start its plan; ?ask=chatplan: the island's own chat asks.
+  const askPlan = params.get("ask");
+  if (askPlan && !State.pendingApproval) {
+    const chat = askPlan === "chatplan";
+    if (chat) State.settings = { ...State.settings, chatProvider: "claude-code" } as typeof State.settings;
+    hook({ hook_event_name: "PermissionRequest", cwd, request_id: "rp", tool_name: "ExitPlanMode", tool_input: { plan: PLAN_MD }, ...(chat ? { lumo_island: true } : {}) });
+    island.holdOpen();
+    State.notify();
+    sync();
+    return;
+  }
   if (ask && !State.pendingApproval) {
     hook({ hook_event_name: "PermissionRequest", cwd, request_id: "r1", tool_name: "Bash", tool_input: { command: "npm test", description: "Run the test suite" } });
     // As Claude Code offers it (session_rules.rs), so the line under the buttons shows.

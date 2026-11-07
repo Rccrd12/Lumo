@@ -21,6 +21,7 @@ const STRIP_TEXT = {
   done: N_("Done"),
   stepOf: N_("{done} of {total}"),
   fold: N_("Minimize"),
+  waiting: N_("waiting for you"),
 };
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -57,6 +58,12 @@ export interface PlanStrip {
   sync(plan: AgentPlan | null): void;
   /** Folds the list of steps, if it is open. */
   fold(): void;
+  /**
+   * A plan asking to start (concept C1): the chip in Lumo's amber, pulsing,
+   * with a segment for each step and "waiting for you", until the plan is
+   * answered (null). Its own steps are over the field, not in the list.
+   */
+  ask(steps: readonly PlanStep[] | null): void;
 }
 
 /** The step to name: the one under way, else the next one, else the last. */
@@ -85,6 +92,7 @@ export function buildPlanStrip(putAway: () => void): PlanStrip {
 
   let open = false;
   let shownKey = "";
+  let asking: readonly PlanStep[] | null = null;
 
   function setOpen(on: boolean) {
     if (open === on) return;
@@ -115,7 +123,10 @@ export function buildPlanStrip(putAway: () => void): PlanStrip {
     if (e.key === "Escape" || (e.target as HTMLElement | null)?.closest?.(".chat-input")) setOpen(false);
   }
 
-  chip.addEventListener("click", () => setOpen(!open));
+  // While a plan asks to start, its steps are already open over the field.
+  chip.addEventListener("click", () => {
+    if (!asking) setOpen(!open);
+  });
   chip.setAttribute("aria-expanded", "false");
 
   function draw(plan: AgentPlan) {
@@ -154,6 +165,25 @@ export function buildPlanStrip(putAway: () => void): PlanStrip {
     el,
     chip,
     sync(plan) {
+      if (asking) {
+        const key = JSON.stringify(["ask", asking]);
+        chip.hidden = false;
+        setOpen(false);
+        if (key === shownKey) return;
+        shownKey = key;
+        chip.classList.add("asking");
+        chip.classList.remove("finished");
+        chip.style.removeProperty("--agent");
+        count.textContent = t(STRIP_TEXT.waiting);
+        chip.title = `${tl(STRIP_TEXT.title)} · ${t(STRIP_TEXT.waiting)}`;
+        chip.setAttribute("aria-label", chip.title);
+        clear(segs);
+        segs.classList.toggle("bar", asking.length > MAX_SEGMENTS);
+        if (asking.length <= MAX_SEGMENTS) for (const _ of asking) segs.append(h("i", { class: "pending" }));
+        else segs.append(h("i", { class: "fill" }));
+        return;
+      }
+      chip.classList.remove("asking");
       if (!plan || plan.steps.length === 0) {
         chip.hidden = true;
         setOpen(false);
@@ -168,6 +198,12 @@ export function buildPlanStrip(putAway: () => void): PlanStrip {
     },
     fold() {
       setOpen(false);
+    },
+    ask(steps) {
+      const next = steps && steps.length ? steps : null;
+      if (next === asking) return;
+      asking = next;
+      shownKey = "";
     },
   };
 }

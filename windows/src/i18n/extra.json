@@ -15120,6 +15120,136 @@
    "ru": "Ещё",
    "id": "Lainnya",
    "it": "Altro"
+  },
+  "wants to start the plan": {
+   "zh-Hans": "想开始执行计划",
+   "hi": "योजना शुरू करना चाहता है",
+   "es": "quiere empezar el plan",
+   "ar": "يريد بدء الخطة",
+   "fr": "veut commencer le plan",
+   "bn": "পরিকল্পনা শুরু করতে চায়",
+   "pt-BR": "quer começar o plano",
+   "ru": "хочет начать план",
+   "id": "ingin memulai rencana",
+   "it": "vuole iniziare il piano"
+  },
+  "No, keep planning": {
+   "zh-Hans": "不，继续规划",
+   "hi": "नहीं, योजना बनाते रहो",
+   "es": "No, sigue planificando",
+   "ar": "لا، تابع التخطيط",
+   "fr": "Non, continue de planifier",
+   "bn": "না, পরিকল্পনা চালিয়ে যাও",
+   "pt-BR": "Não, continue planejando",
+   "ru": "Нет, продолжай планировать",
+   "id": "Tidak, lanjutkan merencanakan",
+   "it": "No, continua a pianificare"
+  },
+  "Approve": {
+   "zh-Hans": "批准",
+   "hi": "स्वीकृत करें",
+   "es": "Aprobar",
+   "ar": "موافقة",
+   "fr": "Approuver",
+   "bn": "অনুমোদন",
+   "pt-BR": "Aprovar",
+   "ru": "Одобрить",
+   "id": "Setujui",
+   "it": "Approva"
+  },
+  "waiting for you": {
+   "zh-Hans": "等你确认",
+   "hi": "आपका इंतज़ार",
+   "es": "te espera",
+   "ar": "بانتظارك",
+   "fr": "vous attend",
+   "bn": "আপনার অপেক্ষায়",
+   "pt-BR": "esperando você",
+   "ru": "ждёт вас",
+   "id": "menunggumu",
+   "it": "aspetta te"
+  },
+  "Keep planning": {
+   "zh-Hans": "继续规划",
+   "hi": "योजना बनाते रहो",
+   "es": "Seguir planificando",
+   "ar": "تابع التخطيط",
+   "fr": "Continuer à planifier",
+   "bn": "পরিকল্পনা চালিয়ে যাও",
+   "pt-BR": "Continuar planejando",
+   "ru": "Продолжить планирование",
+   "id": "Lanjutkan merencanakan",
+   "it": "Continua a pianificare"
+  },
+  "Approve the plan": {
+   "zh-Hans": "批准计划",
+   "hi": "योजना स्वीकृत करें",
+   "es": "Aprobar el plan",
+   "ar": "الموافقة على الخطة",
+   "fr": "Approuver le plan",
+   "bn": "পরিকল্পনা অনুমোদন করুন",
+   "pt-BR": "Aprovar o plano",
+   "ru": "Одобрить план",
+   "id": "Setujui rencana",
+   "it": "Approva il piano"
+  },
+  "Or write what to change…": {
+   "zh-Hans": "或写下要修改的地方…",
+   "hi": "या लिखें क्या बदलना है…",
+   "es": "O escribe qué cambiar…",
+   "ar": "أو اكتب ما يجب تغييره…",
+   "fr": "Ou écrivez ce qu'il faut changer…",
+   "bn": "অথবা লিখুন কী বদলাতে হবে…",
+   "pt-BR": "Ou escreva o que mudar…",
+   "ru": "Или напишите, что изменить…",
+   "id": "Atau tulis apa yang perlu diubah…",
+   "it": "Oppure scrivi cosa cambiare…"
+  },
+  "{agent} has a plan · {count} steps": {
+   "zh-Hans": {
+    "other": "{agent} 有一个计划 · {count} 步"
+   },
+   "hi": {
+    "one": "{agent} के पास एक योजना है · {count} चरण",
+    "other": "{agent} के पास एक योजना है · {count} चरण"
+   },
+   "es": {
+    "one": "{agent} tiene un plan · {count} paso",
+    "other": "{agent} tiene un plan · {count} pasos"
+   },
+   "ar": {
+    "zero": "لدى {agent} خطة · {count} خطوة",
+    "one": "لدى {agent} خطة · خطوة واحدة",
+    "two": "لدى {agent} خطة · خطوتان",
+    "few": "لدى {agent} خطة · {count} خطوات",
+    "many": "لدى {agent} خطة · {count} خطوة",
+    "other": "لدى {agent} خطة · {count} خطوة"
+   },
+   "fr": {
+    "one": "{agent} a un plan · {count} étape",
+    "other": "{agent} a un plan · {count} étapes"
+   },
+   "bn": {
+    "one": "{agent}-এর একটি পরিকল্পনা আছে · {count}টি ধাপ",
+    "other": "{agent}-এর একটি পরিকল্পনা আছে · {count}টি ধাপ"
+   },
+   "pt-BR": {
+    "one": "{agent} tem um plano · {count} passo",
+    "other": "{agent} tem um plano · {count} passos"
+   },
+   "ru": {
+    "one": "У {agent} есть план · {count} шаг",
+    "few": "У {agent} есть план · {count} шага",
+    "many": "У {agent} есть план · {count} шагов",
+    "other": "У {agent} есть план · {count} шага"
+   },
+   "id": {
+    "other": "{agent} punya rencana · {count} langkah"
+   },
+   "it": {
+    "one": "{agent} ha un piano · {count} passo",
+    "other": "{agent} ha un piano · {count} passi"
+   }
   }
  }
 }

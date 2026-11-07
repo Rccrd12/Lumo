@@ -95,6 +95,16 @@ export interface ApprovalInfo {
   project?: string;
   /** An email the AI wants to send (mail.rs, `mail_send`): shown whole, sent only with a click on Send. */
   email?: OutgoingEmail;
+  /** The plan Claude Code asks to start (ExitPlanMode), as steps: the new look draws them as a list. */
+  plan?: import("./agent-plan").PlanStep[];
+}
+
+/**
+ * A plan the island's own chat asks to start, in the new look: it is asked in
+ * the chat, over the field, rather than on the permission card.
+ */
+export function planAskInChat(req: ApprovalInfo | null | undefined, newLook: boolean): boolean {
+  return newLook && req?.fromChat === true && (req.plan?.length ?? 0) > 0;
 }
 
 /** An email on its card: from the Email pill's account, to whom, what. */
@@ -946,7 +956,10 @@ class AppState {
    * tab it was left on, Chat or Agents.
    */
   defaultView(): IslandViewName {
-    if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    if (this.pendingApproval) {
+      if (planAskInChat(this.pendingApproval, this.settings.islandNewLook === true)) return "prompt";
+      return this.pendingApproval.questions ? "question" : "approval";
+    }
     // The new look: a file dropped and not yet asked about waits in the chat,
     // so the island opens there rather than on the home.
     if (this.settings.islandNewLook === true && this.droppedFile && !this.droppedFile.sent) return "prompt";

@@ -1397,3 +1397,175 @@ html.look-new .home-plan-segs {
   display: inline-flex;
   flex: none;
 }
+
+/* ── A plan asking to start (concepts/redesign, C1 and C2) ──────────────────
+   Its steps numbered, one per line; the buttons say what they do to the plan.
+   Each button carries both its words and the plan's, and shows one. */
+
+.words-plan {
+  display: none;
+}
+
+html.look-new .plan-ask-on .words-plan {
+  display: inline;
+}
+
+html.look-new .plan-ask-on .words-usual {
+  display: none;
+}
+
+html.look-new .plan-ask-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+html.look-new .plan-ask-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: #c9c9cc;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+html.look-new .plan-ask-n {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+html.look-new .plan-ask-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.look-new .plan-ask-slot .plan-ask-steps {
+  max-height: calc(8 * 28px);
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  background: #111214;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent);
+}
+
+html.look-new .plan-ask-slot .plan-ask-step {
+  height: 28px;
+  padding-block: 0;
+}
+
+/* C1: in the chat, over the field, in Lumo's amber; the chip beside the model pulses. */
+
+.plan-ask {
+  display: none;
+}
+
+html.look-new .plan-ask:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  margin: 0 0 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #111214;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
+}
+
+html.look-new .plan-ask-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+html.look-new .plan-ask-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font: 600 13px var(--font);
+}
+
+html.look-new .plan-ask-who {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+html.look-new .plan-ask .plan-ask-steps {
+  max-height: calc(5 * 26px);
+  overflow-y: auto;
+}
+
+html.look-new .plan-ask .plan-ask-step {
+  min-height: 26px;
+}
+
+html.look-new .plan-ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+html.look-new .plan-ask-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  font: 600 12px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html.look-new .plan-ask-btn.keep {
+  background: transparent;
+  color: #c9c9cc;
+  box-shadow: inset 0 0 0 1px #2a2b30;
+}
+
+html.look-new .plan-ask-btn.keep:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .plan-ask-btn.approve {
+  background: var(--amber);
+  color: #1b1305;
+}
+
+html.look-new .plan-ask-btn.approve:hover {
+  background: #ffb63d;
+}
+
+html.look-new .plan-chip.asking:not([hidden]) {
+  background: color-mix(in srgb, var(--amber) 18%, #111214);
+  color: var(--amber);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.look-new .plan-chip.asking:not([hidden]) {
+    animation: plan-chip-ask 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes plan-chip-ask {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 22%, transparent);
+  }
+}

@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
+  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra,
   GRIPS, gripFactors, isUpright, islandSize, islandWidth, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -13,7 +13,7 @@ import {
 } from "../core/layout";
 import { Sound } from "../core/sound";
 import { NEUTRAL_PILL } from "../core/pill-colors";
-import { State, motionAmount, parseCloseMode } from "../core/state";
+import { State, motionAmount, parseCloseMode, planAskInChat } from "../core/state";
 import { BotEngine, hexToRGB } from "../character/engine";
 import { LOOK_IDLE } from "../character/looks";
 import { Greeting, LIGHT_GREET_SMILE, lightGreetFrame } from "../character/greeting";
@@ -1358,7 +1358,10 @@ export class Island {
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "question" && asked) {
       h = Math.min(440, newLookQuestionHeight(asked.options.length, asked.multiSelect === true));
     } else if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
-      const extra = State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
+      const planSteps = State.view === "approval" ? State.pendingApproval?.plan?.length ?? 0 : 0;
+      // A plan asking to start: its steps take the place of the command and of what it is for.
+      const extra = planSteps ? planAskExtra(planSteps)
+        : State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
         : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
       if (State.view === "overview" && planCardOpen()) h = Math.max(h, NEW_LOOK_PLAN_CARD_H);
@@ -2439,6 +2442,8 @@ export class Island {
   private get chatCount(): number {
     if (State.chatSlot === "forge") return CHAT_FORGE;
     if (State.chatPanelOpen) return State.listeningOpen ? CHAT_LISTENING : CHAT_PANEL_OPEN;
+    // A plan asking to start over the field (concept C1): room for it and the chat above.
+    if (planAskInChat(State.pendingApproval, State.settings.islandNewLook === true)) return CHAT_LISTENING;
     return State.chatHistory.length;
   }
 }

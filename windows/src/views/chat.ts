@@ -85,7 +85,7 @@ import {
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, type ChatMessage } from "../core/state";
+import { State, planAskInChat, type ChatMessage } from "../core/state";
 import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
@@ -103,7 +103,7 @@ import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } 
 import { COMPUTER_TEXT } from "../core/computer";
 import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
-import { N_, t, tl } from "../i18n/i18n";
+import { N_, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
@@ -113,6 +113,7 @@ import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stri
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
 import { buildPlanStrip } from "./plan-strip";
+import { planAskSteps } from "./plan-ask";
 import { planKey } from "../core/agent-plan";
 import {
   SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
@@ -121,6 +122,9 @@ import {
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
   placeholderNext: N_("Continue…"),
+  planKeep: N_("Keep planning"),
+  planApprove: N_("Approve the plan"),
+  planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
   switchModel: N_("Switch provider or model"),
@@ -237,6 +241,9 @@ let nextId = 1;
 
 /** The folder open in File Explorer is asked again at most this often while the field takes focus. */
 const PEEK_EVERY_MS = 1500;
+
+/** How long a plan that just came up over the field ignores clicks (as the permission card). */
+const PLAN_ASK_GUARD_MS = 600;
 /**
  * The screen menu waits at most this long for the browsers' tabs (read from
  * their windows on Windows); a slow browser adds its entry when it answers.
@@ -1378,6 +1385,7 @@ export function buildPrompt(
   showPlan: () => void = () => {},
   chatDeleted: (chatId: string) => void = () => {},
   openTools: () => void = () => {},
+  decide: (d: "allow" | "deny", requestId: string) => void = () => {},
 ): ViewHost {
   // Copies no past chat names any more (deleted before Lumo released them,
   // or gone past the history's end) leave the inbox once a day old.
@@ -1506,6 +1514,48 @@ export function buildPrompt(
   // The new look's plan: a chip beside the model in place of the icon, its
   // steps rising over the chat from this row (plan-strip.ts). Hidden in the usual look.
   const planStrip = buildPlanStrip(() => showPlan());
+  // The new look's plan asking to start, from this chat (concept C1): its steps
+  // over the field, Approve and Keep planning; what is typed in the field
+  // instead says what to change (the plan is declined, the text goes next).
+  const planAskTitle = h("span", { class: "plan-ask-title" });
+  const planAskWho = h("span", { class: "plan-ask-who" });
+  const planAskList = h("div", { class: "plan-ask-list" });
+  let planAskFor: string | null = null;
+  let planAskAt = 0;
+  const planDecide = (d: "allow" | "deny") => () => {
+    // A click meant for something else, as the card came up, answers nothing.
+    if (planAskFor == null || performance.now() - planAskAt < PLAN_ASK_GUARD_MS) return;
+    decide(d, planAskFor);
+  };
+  const planAsk = h("div", { class: "plan-ask" },
+    h("div", { class: "plan-ask-head" }, planAskTitle, planAskWho),
+    planAskList,
+    h("div", { class: "plan-ask-actions" },
+      h("button", { class: "plan-ask-btn keep", type: "button", onclick: planDecide("deny") }, h("span", { text: tl(STRINGS.planKeep) })),
+      h("button", { class: "plan-ask-btn approve", type: "button", onclick: planDecide("allow") }, h("span", { text: tl(STRINGS.planApprove) }))));
+  planAsk.hidden = true;
+  /** The plan this chat asks to start, if one is waiting for an answer. */
+  const planAsking = () => {
+    const req = State.pendingApproval;
+    return State.chatSlot !== "forge" && planAskInChat(req, State.settings.islandNewLook === true) ? req : null;
+  };
+  function drawPlanAsk() {
+    const req = planAsking();
+    planStrip.ask(req?.plan ?? null);
+    const id = req?.requestId ?? null;
+    if (id === planAskFor) return;
+    planAskFor = id;
+    planAskAt = performance.now();
+    planAsk.hidden = !req;
+    clear(planAskList);
+    if (req?.plan) {
+      planAskTitle.textContent = tn("{agent} has a plan · {count} step", "{agent} has a plan · {count} steps", req.plan.length,
+        { agent: t(providerDef(State.settings.chatProvider).name) });
+      planAskWho.textContent = activeModel(State.settings) || "";
+      planAskList.append(planAskSteps(req.plan));
+    }
+    onHeightChange();
+  }
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
     planStrip.el,
@@ -1600,7 +1650,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -3273,6 +3323,10 @@ export function buildPrompt(
       runLumo(own);
       return;
     }
+    // A plan asking to start (concept C1): what is typed says what to change.
+    // The plan is declined, so Claude keeps planning, and the text goes next.
+    const asking = typed ? planAsking() : null;
+    if (asking) decide("deny", asking.requestId);
     // The chat on screen is being answered: the next question waits above the
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
@@ -3870,6 +3924,7 @@ export function buildPrompt(
       // this chat's (they show on the home).
       const newLook = State.settings.islandNewLook === true;
       const ownPlan = newLook && !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
+      drawPlanAsk();
       planStrip.sync(State.planOpen ? ownPlan : null);
       const planIconShown = (newLook ? ownPlan != null : State.planIcon) && planStrip.chip.hidden;
       // The home asked for a chat (its plan's row): that one comes on screen.
@@ -4060,6 +4115,7 @@ export function buildPrompt(
 
       input.placeholder = workshop
         ? t(FORGE_STRINGS.placeholder)
+        : planAsking() ? t(STRINGS.planChange)
         : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
     },
     focus() {

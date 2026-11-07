@@ -7,6 +7,7 @@ import { StepsCard } from "./steps";
 import { State, keepPillPlaces, type AgentTask, type OutgoingEmail } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../character/minibots";
+import { planAskSteps } from "./plan-ask";
 import { buildPrompt } from "./chat";
 import { buildUpload, buildUploading } from "./upload";
 import { idleCardKey, renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
@@ -646,16 +647,36 @@ function emailBlock(email: OutgoingEmail): HTMLElement {
   );
 }
 
+/** The new look's card for a plan Claude Code asks to start (concept C2). */
+const PLAN_ASK_TEXT = {
+  wants: N_("wants to start the plan"),
+  keepPlanning: N_("No, keep planning"),
+  approve: N_("Approve"),
+};
+
+/**
+ * A button's words for a plan asking to start, next to its usual ones: the
+ * stylesheet shows one or the other (look-new.css, .plan-ask-on), so the
+ * button is never rebuilt under the cursor.
+ */
+function planWords(button: HTMLElement, words: string): HTMLElement {
+  button.firstElementChild?.classList.add("words-usual");
+  button.insertBefore(h("span", { class: "words-plan", text: tl(words) }), button.children[1] ?? null);
+  return button;
+}
+
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const about = h("div", { class: "approval-about" });
+  const planSlot = h("div", { class: "plan-ask-slot" });
   const code = h("div", { class: "code" });
   const mail = h("div", { class: "mail-slot" });
   const row = h("div", { class: "actions approval-actions" });
   // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
   const mailRow = h("div", { class: "actions" });
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
-  const body = stack(116, 16, who, about, code, mail, row, mailRow);
+  const body = stack(116, 16, who, about, planSlot, code, mail, row, mailRow);
+  let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
   let rowKey = "";
@@ -717,8 +738,17 @@ function buildApproval(actions: ViewActions): ViewHost {
       }
       const pending = State.pendingApproval;
       const email = pending?.email ?? null;
+      // The new look draws a plan asking to start as its steps, with its own words on the buttons.
+      const plan = !email && State.settings.islandNewLook === true && pending?.plan?.length ? pending.plan : null;
       clear(who);
-      who.append(requestWho(email ? t(EMAIL_TEXT.wants) : t("needs permission")));
+      who.append(requestWho(email ? t(EMAIL_TEXT.wants) : plan ? t(PLAN_ASK_TEXT.wants) : t("needs permission")));
+      if ((plan ? req : null) !== planFor) {
+        planFor = plan ? req : null;
+        clear(planSlot);
+        if (plan) planSlot.append(planAskSteps(plan));
+      }
+      planSlot.hidden = !plan;
+      body.classList.toggle("plan-ask-on", !!plan);
       // An email to send: the whole email, and Send or Discard.
       if ((email ? req : null) !== mailFor) {
         mailFor = email ? req : null;
@@ -728,7 +758,7 @@ function buildApproval(actions: ViewActions): ViewHost {
       mail.hidden = !email;
       // The email fills the card from the top, clear of the fold button and of its edges.
       body.classList.toggle("mail-on", !!email);
-      code.hidden = !!email;
+      code.hidden = !!email || !!plan;
       row.hidden = !!email;
       mailRow.hidden = !email;
       // The whole point of approving here rather than in the terminal: this line
@@ -748,10 +778,11 @@ function buildApproval(actions: ViewActions): ViewHost {
       const text = email ? "" : pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
       about.textContent = text;
       about.title = text;
-      about.hidden = !text;
+      about.hidden = !text || !!plan;
       // "Allow for this session" only where the request has a session to be
       // kept for (session_rules.rs): shown or hidden, never rebuilt.
-      sessionAllow.style.display = pending?.sessionAllow === true ? "" : "none";
+      sessionAllow.style.display = pending?.sessionAllow === true && !plan ? "" : "none";
+
       sessionAllow.title = t("Allowed again without asking until this session ends");
       // The buttons are built once. Rebuilding them between a mouse-down and a
       // mouse-up would swallow the click.
@@ -759,9 +790,9 @@ function buildApproval(actions: ViewActions): ViewHost {
       rowKey = "built";
       clear(row);
       row.append(
-        withClass(btn(tl("Deny"), "secondary", guarded("deny"), "N"), "deny-btn"),
+        withClass(planWords(btn(tl("Deny"), "secondary", guarded("deny"), "N"), PLAN_ASK_TEXT.keepPlanning), "deny-btn"),
         withClass(sessionAllow, "session-allow"),
-        withClass(btn(tl("Allow"), "primary", guarded("allow"), "Y"), "allow-btn"),
+        withClass(planWords(btn(tl("Allow"), "primary", guarded("allow"), "Y"), PLAN_ASK_TEXT.approve), "allow-btn"),
       );
       clear(mailRow);
       mailRow.append(
@@ -1018,7 +1049,7 @@ export function buildViews(
   }, (chatId) => actions.forgetChatPlan(chatId), () => {
     actions.blip();
     actions.setView("tools");
-  }));
+  }, (d, requestId) => actions.decide(d, requestId)));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("recap", buildRecap(actions));

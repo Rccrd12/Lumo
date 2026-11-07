@@ -353,6 +353,18 @@ export const NEW_LOOK_SESSION_ALLOW_H = 30;
 /** The new look's overview while a plan's usage card is open in it (views/usage.ts PlanCard): its limits whole. */
 export const NEW_LOOK_PLAN_CARD_H = 252;
 
+/** The steps a plan asking to start shows before its list scrolls (look-new.css .plan-ask-steps). */
+export const PLAN_ASK_MAX_STEPS = 8;
+
+/**
+ * How much taller than a permission card the new look's card for a plan is:
+ * its steps (28 px each, up to PLAN_ASK_MAX_STEPS, in a box) take the place of
+ * the command and of the line saying what it is for.
+ */
+export function planAskExtra(steps: number): number {
+  return Math.min(steps, PLAN_ASK_MAX_STEPS) * 28 + 12 - 62;
+}
+
 export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372, wardrobe: 236 };
 
 /** The new look's question card: its options one under the other, each this tall with its description. */
