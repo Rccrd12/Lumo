@@ -264,24 +264,27 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             h("label", { class: "tile-field" }, svg(ICONS.clock, 12, { stroke: 1.8 }), timerInput),
             h("div", { class: "tile-chips" }, start(5), start(10), start(25)));
         }
-        // Running: the time on the left, a ring of what is left on the right;
-        // under the mouse the ring gives way to pause (or go on) and ×.
+        // Running: the time on the left, a ring of what is left on the right.
+        // The ring is the pause (or go on) button, its icon showing in the
+        // middle under the mouse; × sits apart, at the end of the label's row.
         const paused = timer.pausedLeft != null;
         const big = h("div", { class: "tile-big", text: remaining(timer.endsAt) });
         const ring = timerRing();
         timerEls.push({ el: big, ring: ring.fill, timer });
-        const ctl = (icon: string, title: string, run: () => void) =>
-          h("button", { class: "tile-ctl", title: t(title), "aria-label": t(title), onclick: run }, svg(icon, 11));
+        const pauseTitle = t(paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause);
         return h("div", { class: `home-tile tile-timer${paused ? " paused" : ""}` },
           h("div", { class: "tile-timer-text" },
             h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }),
-              h("span", { text: paused ? t(HOME_TEXT.paused) : timer.label || t(ACTIVITIES_TEXT.timer) })),
+              h("span", { class: "tile-timer-label", text: paused ? t(HOME_TEXT.paused) : timer.label || t(ACTIVITIES_TEXT.timer) }),
+              h("button", {
+                class: "tile-timer-stop", title: t(HOME_TEXT.stop), "aria-label": t(HOME_TEXT.stop),
+                onclick: () => actions.activity({ kind: "cancelTimer", id: timer.id }),
+              }, svg(ICONS.xmark, 9, { stroke: 2 }))),
             big),
-          h("div", { class: "tile-timer-side" }, ring.el,
-            h("div", { class: "tile-timer-ctls" },
-              ctl(paused ? ICONS.play : ICONS.pause, paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause,
-                () => actions.activity({ kind: "pauseTimer", id: timer.id })),
-              ctl(ICONS.xmark, HOME_TEXT.stop, () => actions.activity({ kind: "cancelTimer", id: timer.id })))));
+          h("button", {
+            class: "tile-timer-side", title: pauseTitle, "aria-label": pauseTitle,
+            onclick: () => actions.activity({ kind: "pauseTimer", id: timer.id }),
+          }, ring.el, h("span", { class: "tile-timer-icon" }, svg(paused ? ICONS.play : ICONS.pause, 13))));
       }
       case "music": {
         const media = data.media;
