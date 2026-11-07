@@ -1174,26 +1174,101 @@ html.look-new .chat-body .picker ::-webkit-scrollbar {
   display: none;
 }
 
-/* ── The plan in the chat: a strip above the field (views/plan-strip.ts) ─────
-   Folded, one row; open, the steps rise over the chat. The usual look keeps
-   the Plan island beside the island, so the strip shows only here. */
+/* ── The plan in the chat: a chip beside the model (views/plan-strip.ts) ──────
+   Folded it takes no row of its own; open, the steps rise over the chat from
+   the model row. The usual look keeps the Plan island beside the island, so
+   none of this shows there. */
 
-.plan-strip {
+.plan-chip,
+.plan-strip-list {
   display: none;
 }
 
-html.look-new .plan-strip:not([hidden]) {
-  display: block;
+html.look-new .plan-chip:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+  background: #17181b;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+html.look-new .plan-chip:hover,
+html.look-new .plan-chip.open {
+  background: #1f2024;
+  color: var(--ink);
+}
+
+html.look-new .plan-chip-segs {
+  display: inline-flex;
+  gap: 3px;
+}
+
+html.look-new .plan-chip-segs i {
+  width: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+html.look-new .plan-chip-segs i.done {
+  background: var(--green);
+}
+
+html.look-new .plan-chip-segs i.skipped {
+  background: var(--dim-4);
+}
+
+html.look-new .plan-chip-segs i.active {
+  background: var(--ink);
+}
+
+html.look-new .plan-chip-segs.bar i.fill {
+  width: 40px;
+  background: linear-gradient(to right, var(--green) calc(var(--k, 0) * 100%), rgba(255, 255, 255, 0.14) 0);
+}
+
+html.look-new .model-row {
   position: relative;
-  flex: none;
+}
+
+html.look-new .plan-strip-list {
+  position: absolute;
   z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  padding: 10px 8px 8px;
+  border-radius: 12px;
+  background: #111214;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
+  font-size: 11.5px;
+  opacity: 0;
+  transform: translateY(6px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s 0.2s;
 }
 
-html.look-new .chat-body:is(.metering, .picking, .browsing, .filing, .hearing, .authorizing, .screening) .plan-strip {
-  display: none;
+html.look-new .plan-strip-list.open {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-html.look-new .plan-strip .agent-plan {
+html.look-new .plan-strip-list .agent-plan {
   width: auto;
   height: auto;
   background: transparent;
@@ -1203,129 +1278,11 @@ html.look-new .plan-strip .agent-plan {
   font-size: 11.5px;
 }
 
-html.look-new .plan-strip-row {
+html.look-new .plan-strip-head {
   display: flex;
   align-items: center;
   gap: 8px;
-  width: 100%;
-  height: 30px;
-  padding: 0 10px 0 9px;
-  border: 0;
-  border-radius: 10px;
-  background: #111214;
-  color: var(--ink-2);
-  font: inherit;
-  font-size: 11.5px;
-  text-align: left;
-  cursor: pointer;
-}
-
-html.look-new .plan-strip-row:hover {
-  background: #17181b;
-}
-
-html.look-new .plan-strip-mark {
-  flex: none;
-  display: grid;
-}
-
-html.look-new .plan-strip-mark .plan-mark {
-  margin-top: 0;
-}
-
-html.look-new .plan-strip-mark .plan-mark:not(.done) {
-  background: #111214;
-}
-
-html.look-new .plan-strip-title {
-  flex: none;
-  font-weight: 600;
-  color: var(--ink);
-  white-space: nowrap;
-}
-
-html.look-new .plan-strip-step {
-  flex: 1 1 auto;
-  min-width: 0;
-  overflow: hidden;
-  white-space: nowrap;
-  text-overflow: ellipsis;
-  color: var(--dim);
-}
-
-html.look-new .plan-strip-segs {
-  flex: none;
-  display: flex;
-  gap: 3px;
-}
-
-html.look-new .plan-strip-segs i {
-  width: 10px;
-  height: 4px;
-  border-radius: 2px;
-  background: rgba(255, 255, 255, 0.12);
-}
-
-html.look-new .plan-strip-segs i.done {
-  background: var(--green);
-}
-
-html.look-new .plan-strip-segs i.skipped {
-  background: var(--dim-4);
-}
-
-html.look-new .plan-strip-segs i.active {
-  background: var(--agent, var(--ink));
-}
-
-html.look-new .plan-strip-segs.bar i.fill {
-  width: 64px;
-  background: linear-gradient(to right, var(--green) calc(var(--k, 0) * 100%), rgba(255, 255, 255, 0.12) 0);
-}
-
-html.look-new .plan-strip-chevron {
-  flex: none;
-  display: grid;
-  color: var(--dim);
-  transition: transform 0.2s ease;
-}
-
-html.look-new .plan-strip.open .plan-strip-chevron {
-  transform: rotate(180deg);
-}
-
-
-html.look-new .plan-strip-list {
-  position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(100% + 6px);
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  max-height: 210px;
-  padding: 10px 8px 8px;
-  font-size: 11.5px;
-  border-radius: 12px;
-  background: #111214;
-  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
-  opacity: 0;
-  transform: translateY(6px);
-  pointer-events: none;
-  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
-}
-
-html.look-new .plan-strip.open .plan-strip-list {
-  opacity: 1;
-  transform: none;
-  pointer-events: auto;
-}
-
-html.look-new .plan-strip-head {
-  display: flex;
-  align-items: baseline;
-  gap: 8px;
-  padding: 0 6px;
+  padding: 0 2px 0 6px;
 }
 
 html.look-new .plan-strip-head-title {
@@ -1342,6 +1299,24 @@ html.look-new .plan-strip-head-count {
   flex: none;
   color: var(--dim);
   font-variant-numeric: tabular-nums;
+}
+
+html.look-new .plan-strip-fold {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+html.look-new .plan-strip-fold:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
 }
 
 html.look-new .plan-strip-steps {

@@ -1502,10 +1502,14 @@ export function buildPrompt(
     onclick: () => showPlan(),
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
+  // The new look's plan: a chip beside the model in place of the icon, its
+  // steps rising over the chat from this row (plan-strip.ts). Hidden in the usual look.
+  const planStrip = buildPlanStrip(() => showPlan());
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
+    planStrip.el,
     h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn, listenBtn),
-    h("div", { class: "model-side" }, planBtn, usageEl, modelBtn));
+    h("div", { class: "model-side" }, planBtn, planStrip.chip, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -1595,9 +1599,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  // The new look's plan: a strip above the field (plan-strip.ts), hidden in the usual look.
-  const planStrip = buildPlanStrip();
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planStrip.el, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -3862,15 +3864,17 @@ export function buildPrompt(
       }
       micBtn.hidden = workshop;
       takeShare();
-      if (State.planIcon && planBtn.style.display === "none") {
+      planStrip.sync(State.settings.islandNewLook === true && !workshop ? State.planNow : null);
+      // The new look's chip stands in for the icon while the plan is open.
+      const planIconShown = State.planIcon && planStrip.chip.hidden;
+      if (planIconShown && planBtn.style.display === "none") {
         // It just landed: a little pop.
         planBtn.classList.remove("pop");
         void planBtn.offsetWidth;
         planBtn.classList.add("pop");
       }
-      planBtn.style.display = State.planIcon ? "" : "none";
+      planBtn.style.display = planIconShown ? "" : "none";
       planBtn.classList.toggle("open", State.planOpen);
-      planStrip.sync(State.settings.islandNewLook === true && !workshop ? State.planNow : null);
       // Another chat came on screen (here, or a new chat from the menu or a
       // shortcut): the log is drawn again, with its answer if one is coming.
       if (State.chatId !== shownChat) {
