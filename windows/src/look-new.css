@@ -1370,3 +1370,9 @@ html.look-new .plan-strip-steps {
 html.look-new .plan-strip-steps .plan-mark:not(.done) {
   background: #111214;
 }
+
+/* ── The closed island: as much room between Lumo's eyes and what follows as
+   between his eyes and the island's end (#compact, style.css). ─────────── */
+html.look-new :is(.dock-top, .dock-bottom) #compact {
+  left: 41px;
+}
