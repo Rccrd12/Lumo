@@ -380,8 +380,24 @@ export function newLookQuestionHeight(options: number, multiSelect: boolean): nu
  */
 export const NEW_LOOK_SIDE_GIVE = 96;
 export const NEW_LOOK_SIDE_MIN_H = 250;
-/** The new look's home is this wide at least: wider rather than taller (views/home.ts). */
+/** The new look's home is this much wider than the other views (880 at the usual width): wider rather than taller (views/home.ts). */
 export const NEW_LOOK_HOME_W = 880;
+/**
+ * How narrow the new look's home goes: its grips take the width below the
+ * other views' narrowest (Rust island.rs NARROWEST), the tiles two to a row
+ * still whole and the sessions' column room for its lines. Three tiles side
+ * by side need more, and keep the home at NEW_LOOK_HOME_THREE_MIN_W.
+ */
+export const NEW_LOOK_HOME_MIN_W = 680;
+export const NEW_LOOK_HOME_THREE_MIN_W = 800;
+/** The narrowest the shared width goes on the new look's home (island_resize's minWidth). */
+export const NEW_LOOK_HOME_MIN_SHARED = NEW_LOOK_HOME_MIN_W - (NEW_LOOK_HOME_W - EXPANDED_W);
+
+/** The new look's home's width for the shared one: as much wider as ever, down to its own narrowest. */
+export function homeWidth(shape: IslandShape, threeTiles: boolean): number {
+  const shared = Number.isFinite(shape.width) ? Math.min(MAX_ISLAND_W, Math.max(NEW_LOOK_HOME_MIN_SHARED, shape.width)) : EXPANDED_W;
+  return Math.max(shared + NEW_LOOK_HOME_W - EXPANDED_W, threeTiles ? NEW_LOOK_HOME_THREE_MIN_W : 0);
+}
 /** Below the top bar, in from the right edge, and between it and the view. */
 export const NEW_LOOK_SIDE_TOP = 44;
 export const NEW_LOOK_SIDE_PAD = 10;

@@ -100,6 +100,11 @@ function tilesOf(data: ActivitiesData): ("timer" | "music" | "calendar" | "mail"
   return tiles;
 }
 
+/** Three tiles side by side in one row (look-new.css .three): the home needs more width for them (layout.ts homeWidth). */
+export function homeTilesInARow(data: ActivitiesData): boolean {
+  return tilesOf(data).length === 3;
+}
+
 /** The sessions the home lists, and the other pills it names (the email's is its tile, when shown). */
 export function homeLists(active: (t: AgentTask) => boolean, data: ActivitiesData): { sessions: AgentTask[]; others: AgentTask[] } {
   const mailTile = tilesOf(data).includes("mail");

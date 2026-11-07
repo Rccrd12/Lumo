@@ -4,8 +4,8 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra,
-  GRIPS, gripFactors, isUpright, islandSize, islandWidth, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
+  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, homeWidth, NEW_LOOK_HOME_MIN_SHARED, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, planAskExtra,
+  GRIPS, gripFactors, isUpright, islandSize, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
@@ -25,7 +25,7 @@ import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
 import { buildHeader, buildViews, hasSessionTicker, type ViewActions, type ViewHost } from "../views/views";
-import { homeChatPlans, homeHeight, homeLists } from "../views/home";
+import { homeChatPlans, homeHeight, homeLists, homeTilesInARow } from "../views/home";
 import { h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
 import { IslandStateMachine, type LeaveHold } from "./fsm";
@@ -1350,7 +1350,7 @@ export class Island {
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "home") {
       const data = this.activities.data();
       const { sessions, others } = homeLists(hasSessionTicker, data);
-      w = Math.min(islandWidth(this.shape) + NEW_LOOK_HOME_W - EXPANDED_W, window.innerWidth - 40);
+      w = Math.min(homeWidth(this.shape, homeTilesInARow(data)), window.innerWidth - 40);
       h = Math.max(homeHeight(sessions.length + homeChatPlans().length, State.pendingApproval != null, data, others.length + visiblePlanKinds().length),
         pickedHeight(this.shape));
     }
@@ -1649,7 +1649,9 @@ export class Island {
         if (e.button !== 0 || e.altKey || !f) return;
         e.preventDefault();
         this.resizing = true;
-        void Bridge.islandResize(f.fx, f.fy, this.height.value);
+        // The new look's home goes narrower than the other views, but not with three tiles in a row.
+        const home = State.settings.islandNewLook === true && State.view === "home" && !homeTilesInARow(this.activities.data());
+        void Bridge.islandResize(f.fx, f.fy, this.height.value, home ? NEW_LOOK_HOME_MIN_SHARED : null);
       });
       el.addEventListener("dblclick", (e) => {
         e.stopPropagation();

@@ -29,6 +29,7 @@ if (lang) {
 const island = new Island(document.getElementById("root")!);
 (window as unknown as { island: Island; State: typeof State }).island = island;
 (window as unknown as { State: typeof State }).State = State;
+(window as unknown as { Calendar: typeof Calendar }).Calendar = Calendar;
 await registerHookHandlers(island);
 State.settings = { ...State.settings, islandNewLook: params.get("look") === "new", soundEnabled: false, ...(lang ? { language: lang } : {}) } as typeof State.settings;
 island.applySettings();
