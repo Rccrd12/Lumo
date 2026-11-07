@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.17.1 — November 7, 2026
+
+- **Formulas as LaTeX draws them**: the chat's formulas are in Latin Modern Math, the face of LaTeX, shipped with the app, so they look the same on every PC
+- **Formulas on the chat's background**: a formula on its own line no longer sits in a grey box, and takes less room above and below; Copy for its TeX sits at its right, level with it
+- **Answers with room between their lines**: paragraphs, lists, quotes and formulas in the chat are spaced as in a page, easier to read
+- **Fixed**: a minus in front of a fraction sat a pixel above its bar; it is now drawn on the same line, a hair away from the fraction
+
 ## Windows 0.17.0 — November 7, 2026
 
 - **Local models do much more**: tools, pictures and reasoning by what the model can do, the chat's permission modes and its / commands, the email and listening tools, and a short prompt of their own with the tools in groups. The tools not loaded are in a catalog the model loads by name. The picker shows the context ring and loads or ejects a model
