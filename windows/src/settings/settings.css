@@ -1043,3 +1043,71 @@ html.look-new body.embedded .nav-item.on:hover:not(:disabled) {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── Sections on top (concepts/redesign, Settings A) ───────────────────────
+   No column on the left: the search and the sections as pills at the top,
+   staying there while the page scrolls under them, and the settings below
+   at the whole width. Only inside the island, in the new look. */
+
+html.look-new body.embedded #settings-root,
+html.look-new body.embedded.searching #settings-root {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html.look-new body.embedded .sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: auto;
+  overflow: visible;
+  padding: 2px 16px 10px;
+  gap: 8px;
+  border-inline-end: 0;
+  background: #000;
+  box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.9);
+}
+
+html.look-new body.embedded .sidebar h1 {
+  display: none;
+}
+
+html.look-new body.embedded .settings-search {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+}
+
+html.look-new body.embedded .nav {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+html.look-new body.embedded .nav-item {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #17181b;
+  color: var(--dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+html.look-new body.embedded .nav-item:hover:not(:disabled) {
+  background: #1f2024;
+  color: var(--ink);
+}
+
+html.look-new body.embedded .nav-item.on,
+html.look-new body.embedded .nav-item.on:hover:not(:disabled) {
+  background: #26272c;
+  color: var(--ink);
+}
+
+html.look-new body.embedded .page {
+  max-width: none;
+  padding-top: 4px;
+}
+
+html.look-new body.embedded .search-none {
+  padding-top: 4px;
+}
