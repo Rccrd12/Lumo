@@ -25,8 +25,34 @@ export const HOME_TEXT = {
 };
 
 /** The timer ring's radius, and its length. */
-const RING_R = 27;
-const RING_C = 2 * Math.PI * RING_R;
+/** The line round a running timer's tile (timerEdge). */
+interface TimerEdge {
+  el: SVGSVGElement;
+  track: SVGPathElement;
+  fill: SVGPathElement;
+  /** The size its path was drawn for. */
+  size: string;
+}
+
+/** The timer tile's corner (look-new.css .home-tile), and how far in its edge line runs. */
+const EDGE_R = 14;
+const EDGE_IN = 1.5;
+
+/**
+ * The tile's outline as one path from the middle of its top edge, clockwise
+ * round its corners and back: the timer's line runs out along it.
+ */
+export function edgePath(w: number, h: number): string {
+  const i = EDGE_IN;
+  const r = Math.max(0, Math.min(EDGE_R - i, (w - 2 * i) / 2, (h - 2 * i) / 2));
+  const L = i, T = i, R = w - i, B = h - i;
+  return [
+    `M${w / 2} ${T}`, `H${R - r}`, `A${r} ${r} 0 0 1 ${R} ${T + r}`,
+    `V${B - r}`, `A${r} ${r} 0 0 1 ${R - r} ${B}`,
+    `H${L + r}`, `A${r} ${r} 0 0 1 ${L} ${B - r}`,
+    `V${T + r}`, `A${r} ${r} 0 0 1 ${L + r} ${T}`, `Z`,
+  ].join(" ");
+}
 
 /** What the home needs from the island. */
 export interface HomeActions {
@@ -165,7 +191,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   let shownFor: string | null = null;
   let shownAt = 0;
   /** The running timer's countdown and ring, moved on by tick(). */
-  const timerEls: { el: HTMLElement; ring: SVGCircleElement; timer: TimerActivity }[] = [];
+  const timerEls: { el: HTMLElement; edge: TimerEdge; timer: TimerActivity }[] = [];
 
   const guarded = (d: Decision) => () => {
     if (performance.now() - shownAt < CLICK_GUARD_MS || shownFor == null) return;
@@ -230,24 +256,22 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   }
 
   /** The ring round what is left of a timer (52 px, its fill set by tick()). */
-  function timerRing(): { el: SVGSVGElement; fill: SVGCircleElement } {
+  /** The line round a running timer's tile, and the track it runs on (edgePath, drawn as the tile is sized). */
+  function timerEdge(): TimerEdge {
     const NS = "http://www.w3.org/2000/svg";
     const el = document.createElementNS(NS, "svg") as SVGSVGElement;
-    el.setAttribute("viewBox", "0 0 60 60");
-    el.setAttribute("class", "tile-ring");
-    const circle = (cls: string) => {
-      const c = document.createElementNS(NS, "circle") as SVGCircleElement;
-      c.setAttribute("cx", "30");
-      c.setAttribute("cy", "30");
-      c.setAttribute("r", String(RING_R));
-      c.setAttribute("class", cls);
-      el.append(c);
-      return c;
+    el.setAttribute("class", "tile-edge");
+    el.setAttribute("aria-hidden", "true");
+    const path = (cls: string) => {
+      const p = document.createElementNS(NS, "path") as SVGPathElement;
+      p.setAttribute("class", cls);
+      p.setAttribute("pathLength", "100");
+      el.append(p);
+      return p;
     };
-    circle("tile-ring-track");
-    const fill = circle("tile-ring-fill");
-    fill.setAttribute("stroke-dasharray", String(RING_C));
-    return { el, fill };
+    const track = path("tile-edge-track");
+    const fill = path("tile-edge-fill");
+    return { el, track, fill, size: "" };
   }
 
   function tile(kind: "timer" | "music" | "calendar" | "mail", data: ActivitiesData): HTMLElement {
@@ -264,24 +288,25 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             h("label", { class: "tile-field" }, svg(ICONS.clock, 12, { stroke: 1.8 }), timerInput),
             h("div", { class: "tile-chips" }, start(5), start(10), start(25)));
         }
-        // Running: the time on the left, a ring of what is left on the right;
-        // under the mouse pause (or go on) and × show inside it, clear of it.
+        // Running: the time on the left, what is left as a line round the
+        // tile's edge (the island's own light, in small), and on the right
+        // two round buttons, pause (or go on) and ×.
         const paused = timer.pausedLeft != null;
         const big = h("div", { class: "tile-big", text: remaining(timer.endsAt) });
-        const ring = timerRing();
-        timerEls.push({ el: big, ring: ring.fill, timer });
-        const ctl = (icon: string, title: string, run: () => void) =>
-          h("button", { class: "tile-ctl", title: t(title), "aria-label": t(title), onclick: run }, svg(icon, 11));
+        const edge = timerEdge();
+        timerEls.push({ el: big, edge, timer });
+        const ctl = (cls: string, icon: string, size: number, title: string, run: () => void) =>
+          h("button", { class: `tile-timer-btn ${cls}`, title: t(title), "aria-label": t(title), onclick: run }, svg(icon, size));
         return h("div", { class: `home-tile tile-timer${paused ? " paused" : ""}` },
+          edge.el,
           h("div", { class: "tile-timer-text" },
             h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }),
               h("span", { text: paused ? t(HOME_TEXT.paused) : timer.label || t(ACTIVITIES_TEXT.timer) })),
             big),
-          h("div", { class: "tile-timer-side" }, ring.el,
-            h("div", { class: "tile-timer-ctls" },
-              ctl(paused ? ICONS.play : ICONS.pause, paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause,
-                () => actions.activity({ kind: "pauseTimer", id: timer.id })),
-              ctl(ICONS.xmark, HOME_TEXT.stop, () => actions.activity({ kind: "cancelTimer", id: timer.id })))));
+          h("div", { class: "tile-timer-ctls" },
+            ctl("pause", paused ? ICONS.play : ICONS.pause, 13, paused ? ACTIVITIES_TEXT.play : ACTIVITIES_TEXT.pause,
+              () => actions.activity({ kind: "pauseTimer", id: timer.id })),
+            ctl("stop", ICONS.xmark, 11, HOME_TEXT.stop, () => actions.activity({ kind: "cancelTimer", id: timer.id }))));
       }
       case "music": {
         const media = data.media;
@@ -353,12 +378,24 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   return {
     el,
     tick(): boolean {
-      for (const { el: big, ring, timer } of timerEls) {
+      for (const { el: big, edge, timer } of timerEls) {
         const text = remaining(timer.endsAt);
         if (big.textContent !== text) big.textContent = text;
+        // The outline, drawn again only when the tile changed size.
+        const w = edge.el.clientWidth;
+        const hh = edge.el.clientHeight;
+        const size = `${w}x${hh}`;
+        if (w > 0 && hh > 0 && size !== edge.size) {
+          edge.size = size;
+          const d = edgePath(w, hh);
+          edge.track.setAttribute("d", d);
+          edge.fill.setAttribute("d", d);
+        }
+        // From the top middle, clockwise as far as there is time left: it
+        // runs back anticlockwise as the time goes, as the ring did.
         const left = Math.max(0, Math.min(1, (timer.endsAt - Date.now()) / timer.total));
-        const offset = (RING_C * (1 - left)).toFixed(1);
-        if (ring.getAttribute("stroke-dashoffset") !== offset) ring.setAttribute("stroke-dashoffset", offset);
+        const dash = `${(left * 100).toFixed(2)} 100`;
+        if (edge.fill.getAttribute("stroke-dasharray") !== dash) edge.fill.setAttribute("stroke-dasharray", dash);
       }
       return false;
     },
