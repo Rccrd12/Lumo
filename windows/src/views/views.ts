@@ -192,6 +192,12 @@ export function buildHeader(actions: ViewActions): ViewHost {
   // The new look has no tabs: away from home, this goes back to it (look-new.css shows it).
   const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.agentsView()) },
     svg(ICONS.chevronLeft, 14, { stroke: 2 }));
+  // The new look's chat: past chats and a new chat up here, by the "⋯", as
+  // clicks on the chat's own buttons (views/chat.ts), which it hides.
+  const chatButton = (cls: string) => () => document.querySelector<HTMLElement>(`#views .view.on .${cls}`)?.click();
+  const chatHead = h("div", { class: "chat-head" },
+    h("button", { title: tl("Past chats"), onclick: chatButton("chat-history") }, svg(ICONS.clock, 14, { stroke: 1.8 })),
+    h("button", { title: tl("New chat"), onclick: chatButton("chat-new") }, svg(ICONS.plus, 14, { stroke: 1.8 })));
   // Plan usage pills (off by default): before the gear, Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
@@ -209,6 +215,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
     "div",
     { id: "header" },
     h("div", { class: "tabs" }, backBtn, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
+    chatHead,
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn, moreBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
@@ -225,6 +232,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
       backBtn.classList.toggle("away", v !== "overview" && v !== "empty");
+      chatHead.classList.toggle("on", v === "prompt");
       const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
       if (folded && tabActivities.style.display === "none") {
         // It just landed: a little pop.

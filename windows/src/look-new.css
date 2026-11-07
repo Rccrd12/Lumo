@@ -382,3 +382,138 @@ html.look-new .code-tool {
   font-weight: 700;
   margin-right: 8px;
 }
+
+/* ── Chat: one field, "+" for the rest, the model in it ───────────────────────
+   The row of round buttons under the chat goes; past chats and a new chat sit
+   in the top bar by the "⋯" (views.ts chatHead); attach, screen, folder,
+   listening and permissions are lines of the "+" menu (chat.ts plusMenu). */
+
+.plus-btn,
+.chat-head {
+  display: none !important;
+}
+
+html.look-new .chat-head.on {
+  display: flex !important;
+  gap: 14px;
+  margin-left: auto;
+  margin-right: -2px;
+}
+
+html.look-new .chat-head.on + .header-actions {
+  margin-left: 14px;
+}
+
+html.look-new .chat-head button {
+  border: 0;
+  background: transparent;
+  color: var(--dim-2);
+  display: grid;
+  place-items: center;
+  cursor: default;
+}
+
+html.look-new .chat-head button:hover {
+  color: var(--ink);
+}
+
+html.look-new .model-row {
+  display: none;
+}
+
+html.look-new .chat-bar > .tool-btn:not(.plus-btn):not(.mic-btn) {
+  display: none;
+}
+
+html.look-new .chat-bar {
+  align-items: center;
+  padding: 6px 8px 6px 6px;
+  border-radius: 12px;
+  background: #111214;
+}
+
+html.look-new .chat-bar .chat-input {
+  align-self: center;
+}
+
+html.look-new .chat-bar > .tool-btn,
+html.look-new .chat-bar .model-side .tool-btn {
+  background: transparent;
+}
+
+html.look-new .chat-bar > .tool-btn:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .plus-btn {
+  display: grid !important;
+  position: relative;
+  width: 28px;
+  height: 28px;
+  flex-basis: 28px;
+}
+
+html.look-new .plus-dot {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #7dd3fc;
+  display: none;
+}
+
+html.look-new .plus-dot.on {
+  display: block;
+}
+
+html.look-new .chat-bar .model-side {
+  flex: 0 1 auto;
+}
+
+html.look-new .chat-bar .model-btn {
+  background: #1a1b1f;
+}
+
+html.look-new .plus-menu:not([hidden]) {
+  position: absolute;
+  left: 16px;
+  bottom: 60px;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  padding: 5px;
+  border-radius: 12px;
+  background: #111214;
+  border: 1px solid #26282d;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+}
+
+html.look-new .plus-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--ink);
+  font: 400 13px var(--font);
+  text-align: left;
+  cursor: default;
+}
+
+html.look-new .plus-item[hidden] {
+  display: none;
+}
+
+html.look-new .plus-item:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .plus-item svg {
+  color: var(--dim);
+  flex: none;
+}
