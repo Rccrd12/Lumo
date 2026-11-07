@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -1894,6 +1894,13 @@ export class Island {
       ? computerCompact("top").bot
       : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
         State.uploadNames.length > 1));
+    // The new look: only his eyes, open or closed island alike (the island is his body).
+    this.engine.eyesOnly = State.settings.islandNewLook === true && State.mode !== "hidden" && !this.onlyLumo
+      && (notch != null || State.mode === "compact");
+    if (this.engine.eyesOnly && State.mode === "compact") {
+      p.diameter = NEW_LOOK_COMPACT_DIAMETER;
+      p.cx += 4;
+    }
     // The new look's light along the island's edge (look-new.css), in Lumo's colour.
     const light = State.mode === "hidden" ? "transparent" : edgeLightColor(State.shownState);
     if (light !== this.edgeLight) {
@@ -1921,7 +1928,8 @@ export class Island {
     const visible = p.opacity > 0 && !greetingActive && !this.uploadActive && !picture && !listening;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
-    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening) {
+    if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening
+      && !this.engine.eyesOnly) {
       const d = p.diameter;
       const color = botGlowColor(State.shownState);
       this.botGlow.style.display = "block";
