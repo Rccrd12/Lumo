@@ -1,5 +1,18 @@
 # Changelog
 
+## Windows 0.18.0 — November 8, 2026
+
+- **A new look, to try** (Settings → Island → New look, off by default): Lumo is two eyes in the open island's top bar and on the closed island, and the island's light runs along its edge, in a colour picked in the wardrobe. With it off, Lumo is exactly as before
+- **One home instead of the tabs**: what waits for you, the sessions at work, the plans under way, the live activities as tiles (the timer with its ring round the tile's edge, the music, the calendar, the email), the services and the plans' usage, and the field to the chat. It resizes like the rest of the island, and goes narrower than the other views
+- **The chat in one field**, with "+" for the rest and past chats in the top bar; the plan is a chip beside the model, its steps rising over the chat
+- **A plan asking to start shows its steps**: in the chat, above the field, with Keep planning and Approve (or write what to change), and on the permission card as a numbered list
+- **The chat's usage as bars**: how full the context is after every answer (from Claude Code, and about how full for Antigravity CLI), what fills it after `/context`, and each limit of the plan with when it resets
+- **Share as pills and tiles**: open windows, screens, tabs and folders, nothing captured until Send to the chat
+- **What Lumo listens to as cards**, and tools as blocks with what each uses written out
+- **Permission cards with two big buttons**, and Allow for this session under them
+- **Settings in the island** with the search and the sections on top, always in sight while scrolling, and a thin scrollbar
+- **The opening is the island's light coming on**, with a sound of its own; a dropped file flies up to Lumo in the top bar
+
 ## Windows 0.17.1 — November 7, 2026
 
 - **Formulas as LaTeX draws them**: the chat's formulas are in Latin Modern Math, the face of LaTeX, shipped with the app, so they look the same on every PC

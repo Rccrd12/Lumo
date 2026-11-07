@@ -98,6 +98,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
+| [0.18.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.18.0) | Nov 8, 2026 | A new look to try (off by default): Lumo's eyes in the top bar, one home instead of the tabs, plans that show their steps when they ask to start, usage and sharing as bars and tiles |
 | [0.17.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.17.1) | Nov 7, 2026 | Formulas in Latin Modern Math, on the chat's background; answers with room between their lines; the minus on the fraction's line |
 | [0.17.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.17.0) | Nov 7, 2026 | Local models with tools, pictures and a folder of copies for each chat; Unsloth Studio; PDFs for every model; Lumo's own web search; `/compact` for API providers; formulas as MathML; several files dropped at once |
 | [0.16.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.16.1) | Oct 29, 2026 | A width for the closed island alone; fewer words on the closed island; Lumo alone in a short pill during computer use |
