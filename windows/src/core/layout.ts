@@ -356,6 +356,20 @@ export function newLookQuestionHeight(options: number, multiSelect: boolean): nu
   return 156 + (options + (multiSelect ? 1 : 0)) * NEW_LOOK_OPTION_H;
 }
 
+/**
+ * The new look's column inside the island (island.ts sideInside): the live
+ * activities beside the list, the Plan beside the chat. The island grows by
+ * its width less what the view gives up, and is at least this tall for it.
+ */
+export const NEW_LOOK_SIDE_GIVE = 96;
+export const NEW_LOOK_SIDE_MIN_H = 250;
+/** The live activities inside the island: two columns of cards, wider than beside it. */
+export const NEW_LOOK_ACTIVITIES_W = 420;
+/** Below the top bar, in from the right edge, and between it and the view. */
+export const NEW_LOOK_SIDE_TOP = 44;
+export const NEW_LOOK_SIDE_PAD = 10;
+export const NEW_LOOK_SIDE_GAP = 10;
+
 export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
   if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
   return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };

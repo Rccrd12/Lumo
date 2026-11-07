@@ -681,3 +681,49 @@ html.look-new .question-text {
   line-height: 1.35;
   margin-top: 2px;
 }
+
+/* ── One island: the live activities and the Plan inside it ─────────────────
+   island.ts sideInside puts them in the island's right-hand side, under the
+   top bar, and says how much room they take in --side-room. */
+
+html.look-new .overview,
+html.look-new .empty-view {
+  margin-right: var(--side-room, 0px);
+}
+
+html.look-new .chat-body {
+  margin-right: var(--side-room, 0px);
+}
+
+html.look-new #activities.activities,
+html.look-new #plan.agent-plan {
+  background: #111214;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+/* Drawn before the island in the page (island.ts), so lifted above it. */
+html.look-new #activities,
+html.look-new #plan {
+  z-index: 3;
+}
+
+/* Two columns of cards, no grips: inside the island they are not moved or resized. */
+html.look-new #activities .act-body {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  align-content: start;
+  align-items: start;
+  border-radius: 0 0 14px 14px;
+}
+
+html.look-new #activities .act-grip,
+html.look-new #plan .act-grip,
+html.look-new #plan [class*="grip"] {
+  display: none;
+}
+
+html.look-new #activities .act-head,
+html.look-new #plan .plan-head {
+  cursor: default;
+}

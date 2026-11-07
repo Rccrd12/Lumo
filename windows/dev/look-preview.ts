@@ -10,6 +10,7 @@ import { State } from "../src/core/state";
 import { Island } from "../src/island/island";
 import { registerHookHandlers } from "../src/island/hooks";
 import type { IslandViewName } from "../src/core/layout";
+import { Feed } from "../src/core/compact";
 
 type Listener = (e: { event: string; id: number; payload: unknown }) => void;
 const listeners = (window as unknown as { __lumoListeners: Map<string, Listener> }).__lumoListeners;
@@ -31,6 +32,15 @@ hook({ hook_event_name: "SessionStart", cwd });
 hook({ hook_event_name: "UserPromptSubmit", cwd, prompt: "Add a dark mode toggle to the settings" });
 hook({ hook_event_name: "PreToolUse", cwd, tool_name: "Read", tool_input: { file_path: `${cwd}\\src\\settings\\general.ts` } });
 hook({ hook_event_name: "PreToolUse", cwd, tool_name: "Edit", tool_input: { file_path: `${cwd}\\src\\settings\\general.ts`, old_string: "a", new_string: "b" } });
+
+// A timer and some music, for the live activities.
+Feed.timers = [{ id: 1, label: "Pasta", endsAt: Date.now() + 398_000, total: 600_000 }];
+Feed.media = { title: "Midnight City", artist: "M83", app: "Spotify", playing: true };
+
+// A plan, with ?plan: Claude Code leaving Plan Mode with four steps.
+if (params.has("plan")) {
+  hook({ hook_event_name: "PreToolUse", cwd, tool_name: "ExitPlanMode", tool_input: { plan: "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests" } });
+}
 
 // A short chat.
 State.chatHistory = [

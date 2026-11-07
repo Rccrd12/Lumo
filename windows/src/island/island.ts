@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, NEW_LOOK_WAITING_H,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_ACTIVITIES_W, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H, NEW_LOOK_WAITING_H,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -171,6 +171,11 @@ export class Island {
   private header!: ViewHost;
   /** The colour last given to the new look's edge light. */
   private edgeLight = "";
+  /** The room the column inside the island takes, as last set on --side-room. */
+  private sideRoom = "";
+  /** The new look's open size as last set (sync), and the look as last applied. */
+  private newLookSize = "";
+  private lookApplied: boolean | null = null;
   private views!: Map<IslandViewName, ViewHost>;
   private uploadCanvas!: UploadCanvas;
   /** A picture of the chat's previews, opened big over the whole island (views/picture.ts). */
@@ -1321,6 +1326,12 @@ export class Island {
         : State.view === "overview" && State.pendingApproval ? NEW_LOOK_WAITING_H : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
     }
+    // The column inside the island (sideInside): wider by most of it, never past the window.
+    const side = this.sideInside();
+    if (side) {
+      w = Math.min(w + this.sideWidth(side) - NEW_LOOK_SIDE_GIVE, window.innerWidth - 40);
+      h = Math.max(h, NEW_LOOK_SIDE_MIN_H);
+    }
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;
     return { w, h, r };
   }
@@ -1354,11 +1365,20 @@ export class Island {
     this.islandEl.style.transform = Math.abs(lift - 1) > 0.001 ? `scale(${lift})` : "";
     // These follow the island as it resizes, so they belong here rather than in
     // the state-driven DOM sync.
+    // In the new look they are drawn inside the island, so they go with it at once.
+    const inside = State.settings.islandNewLook === true;
     const beside = this.activitiesPlace();
-    this.activities.place(beside.show, beside.x, beside.y, beside.h);
+    this.activities.place(beside.show, beside.x, beside.y, beside.h, inside);
     if (this.plan) {
       const plan = this.planPlace();
-      this.plan.place(plan.show, plan.x, plan.y, plan.h);
+      this.plan.place(plan.show, plan.x, plan.y, plan.h, inside);
+    }
+    const side = this.sideInside();
+    if (side === "activities" && beside.show) this.activities.view.el.style.width = `${NEW_LOOK_ACTIVITIES_W}px`;
+    const room = side ? `${this.sideWidth(side) + NEW_LOOK_SIDE_GAP}px` : "0px";
+    if (room !== this.sideRoom) {
+      this.sideRoom = room;
+      this.islandEl.style.setProperty("--side-room", room);
     }
     this.greetingCanvas.style.left = `${(w - EXPANDED_W) / 2}px`;
     // The drop sequence covers the island, whatever size it was given.
@@ -1378,7 +1398,39 @@ export class Island {
   }
 
   /** Whether the live activities show beside the open island, and where. */
+  /**
+   * The new look has no islands beside this one: the live activities are the
+   * right-hand column of its list, the Plan that of the chat (or of the list,
+   * when the activities are off). Which one is in, if any.
+   */
+  private sideInside(): "activities" | "plan" | null {
+    if (State.settings.islandNewLook !== true || State.mode !== "expanded" || this.onlyLumo || isUpright(this.dock)) return null;
+    const s = State.settings;
+    const activities = s.activitiesPanel !== false && s.activitiesFolded !== true && !this.activities.detached;
+    const plan = this.plan != null && this.plan.wanted && !this.plan.detached;
+    const home = State.view === "overview" || State.view === "empty";
+    if (home && activities) return "activities";
+    if ((home || State.view === "prompt") && plan) return "plan";
+    return null;
+  }
+
+  private sideWidth(side: "activities" | "plan"): number {
+    return side === "plan" ? this.plan.width : NEW_LOOK_ACTIVITIES_W;
+  }
+
+  /** Where the column inside the island goes: its right-hand side, under the top bar, once the island is open. */
+  private sidePlace(width: number): { show: boolean; x: number; y: number; h: number } {
+    const at = this.islandRect();
+    const target = this.targetSize();
+    const settled = Math.abs(at.w - target.w) < 3 && Math.abs(at.h - target.h) < 3;
+    const h = at.h - NEW_LOOK_SIDE_TOP - NEW_LOOK_SIDE_PAD;
+    return { show: settled, x: at.x + at.w - width - NEW_LOOK_SIDE_PAD, y: at.y + NEW_LOOK_SIDE_TOP, h };
+  }
+
   private activitiesPlace(): { show: boolean; x: number; y: number; h: number } {
+    if (State.settings.islandNewLook === true && !this.activities.detached) {
+      return this.sideInside() === "activities" ? this.sidePlace(NEW_LOOK_ACTIVITIES_W) : { show: false, x: 0, y: 0, h: 0 };
+    }
     const at = this.islandRect();
     const w = this.activities.width;
     const right = State.settings.activitiesSide === "right";
@@ -1411,6 +1463,9 @@ export class Island {
 
   /** Whether the Plan island shows beside the open island, and where: as the live activities, on the other side. */
   private planPlace(): { show: boolean; x: number; y: number; h: number } {
+    if (State.settings.islandNewLook === true && !this.plan.detached) {
+      return this.sideInside() === "plan" ? this.sidePlace(this.plan.width) : { show: false, x: 0, y: 0, h: 0 };
+    }
     const at = this.islandRect();
     const w = this.plan.width;
     const x = this.planSide() === "right" ? at.x + at.w + ACTIVITIES_GAP : at.x - ACTIVITIES_GAP - w;
@@ -2088,6 +2143,19 @@ export class Island {
     // Only a tab seen on the open island counts: the view the app starts on
     // (State.view's "overview") or one set while folded is not where you left it.
     if (expanded) State.noteTab(State.view);
+    // The new look's sizes hang on more than the view (a request waiting, the
+    // column inside, a question's options): when they change, so does the island.
+    if (expanded && State.settings.islandNewLook === true) {
+      const size = this.targetSize();
+      const key = `${size.w}x${size.h}`;
+      if (key !== this.newLookSize) {
+        const resize = this.newLookSize !== "";
+        this.newLookSize = key;
+        if (resize) this.animateGeometry(false);
+      }
+    } else {
+      this.newLookSize = "";
+    }
     if (this.lastSyncedView !== State.view) {
       // A permission card can have taken the keyboard too, for Y and N.
       const wasTyping = this.lastSyncedView === "prompt" || this.lastSyncedView === "settings" || this.lastSyncedView === "live"
@@ -2152,7 +2220,11 @@ export class Island {
     this.applyBehaviour();
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     // Settings → Island → New look: one class, so turning it off is the usual look again.
-    document.documentElement.classList.toggle("look-new", State.settings.islandNewLook === true);
+    const look = State.settings.islandNewLook === true;
+    document.documentElement.classList.toggle("look-new", look);
+    // Turned on or off with the island open: to the look's size at once.
+    if (this.lookApplied != null && look !== this.lookApplied) this.animateGeometry(false);
+    this.lookApplied = look;
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
     // the top (Settings, tray), or a new closed island width: grow, shrink or
