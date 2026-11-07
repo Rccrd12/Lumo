@@ -136,3 +136,8 @@ html.look-new .tools-add-plus {
   background: #1a1b1f;
   box-shadow: none;
 }
+
+/* A click leaves no ring; the keyboard still shows where it is. */
+html.look-new .more-btn:focus:not(:focus-visible) {
+  outline: none;
+}
