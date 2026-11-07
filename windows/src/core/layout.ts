@@ -350,6 +350,9 @@ export const NEW_LOOK_COMPACT_DIAMETER = 40;
 /** In the new look a few views take more height, for what the board gives them (look-new.css). */
 /** Plus the line "Allow for this session" under the permission's two buttons. */
 export const NEW_LOOK_SESSION_ALLOW_H = 30;
+/** The new look's overview while a plan's usage card is open in it (views/usage.ts PlanCard): its limits whole. */
+export const NEW_LOOK_PLAN_CARD_H = 252;
+
 export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372 };
 
 /** The new look's question card: its options one under the other, each this tall with its description. */

@@ -456,6 +456,49 @@ html.look-new .home-chip.badge-error {
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 55%, transparent);
 }
 
+/* The plans' usage at the end of the line: names and numbers, numbers only,
+   or nothing, whichever fits after the services (views/home.ts fitUsage). */
+html.look-new .home-usage {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+html.look-new .home-usage.none {
+  display: none;
+}
+
+html.look-new .home-plan {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px #26282d;
+  color: #b0b5be;
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  cursor: default;
+}
+
+html.look-new .home-plan:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .home-plan-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+html.look-new .home-usage.short .home-plan-name {
+  display: none;
+}
+
 /* The field to the chat. */
 html.look-new .ask-field {
   display: flex !important;
@@ -478,20 +521,6 @@ html.look-new .ask-field:hover {
 
 html.look-new .ask-field .ph {
   flex: 1 1 auto;
-}
-
-html.look-new .ask-plus {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  margin-left: -6px;
-  border-radius: 8px;
-}
-
-html.look-new .ask-plus:hover {
-  background: #26282d;
-  color: var(--ink);
 }
 
 /* A session's own card: the whole width, the other pills are on the home. */
@@ -708,140 +737,6 @@ html.look-new .code-tool {
   margin-right: 8px;
 }
 
-/* ── Chat: one field, "+" for the rest, the model in it ───────────────────────
-   The row of round buttons under the chat goes; past chats and a new chat sit
-   in the top bar by the "⋯" (views.ts chatHead); attach, screen, folder,
-   listening and permissions are lines of the "+" menu (chat.ts plusMenu). */
-
-.plus-btn,
-.chat-head {
-  display: none !important;
-}
-
-html.look-new .chat-head.on {
-  display: flex !important;
-  gap: 14px;
-  margin-left: auto;
-  margin-right: -2px;
-}
-
-html.look-new .chat-head.on + .header-actions {
-  margin-left: 14px;
-}
-
-html.look-new .chat-head button {
-  border: 0;
-  background: transparent;
-  color: var(--dim-2);
-  display: grid;
-  place-items: center;
-  cursor: default;
-}
-
-html.look-new .chat-head button:hover {
-  color: var(--ink);
-}
-
-html.look-new .model-row {
-  display: none;
-}
-
-html.look-new .chat-bar > .tool-btn:not(.plus-btn):not(.mic-btn) {
-  display: none;
-}
-
-html.look-new .chat-bar {
-  align-items: center;
-  padding: 6px 8px 6px 6px;
-  border-radius: 12px;
-  background: #111214;
-}
-
-html.look-new .chat-bar .chat-input {
-  align-self: center;
-}
-
-html.look-new .chat-bar > .tool-btn {
-  background: transparent;
-}
-
-html.look-new .chat-bar > .tool-btn:hover {
-  background: #1a1b1f;
-}
-
-html.look-new .plus-btn {
-  display: grid !important;
-  position: relative;
-  width: 28px;
-  height: 28px;
-  flex-basis: 28px;
-}
-
-html.look-new .plus-dot {
-  position: absolute;
-  top: 3px;
-  right: 3px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: #7dd3fc;
-  display: none;
-}
-
-html.look-new .plus-dot.on {
-  display: block;
-}
-
-html.look-new .chat-bar .model-side {
-  flex: 0 1 auto;
-}
-
-html.look-new .chat-bar .model-btn {
-  background: #1a1b1f;
-}
-
-html.look-new .plus-menu:not([hidden]) {
-  position: absolute;
-  left: 16px;
-  bottom: 60px;
-  z-index: 5;
-  display: flex;
-  flex-direction: column;
-  min-width: 220px;
-  padding: 5px;
-  border-radius: 12px;
-  background: #111214;
-  border: 1px solid #26282d;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
-}
-
-html.look-new .plus-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 7px 10px;
-  border: 0;
-  border-radius: 8px;
-  background: transparent;
-  color: var(--ink);
-  font: 400 13px var(--font);
-  text-align: left;
-  cursor: default;
-}
-
-html.look-new .plus-item[hidden] {
-  display: none;
-}
-
-html.look-new .plus-item:hover {
-  background: #1a1b1f;
-}
-
-html.look-new .plus-item svg {
-  color: var(--dim);
-  flex: none;
-}
-
 /* ── A question: its options one under the other, each with its description ─ */
 
 .q-desc {
@@ -942,7 +837,7 @@ html.look-new .tile-chips {
 
 html.look-new .tile-chip {
   flex: 1 1 0;
-  height: 28px;
+  height: 26px;
   border: 0;
   border-radius: 8px;
   background: #1a1b1f;
@@ -953,6 +848,43 @@ html.look-new .tile-chip {
 
 html.look-new .tile-chip:hover {
   background: #26282d;
+}
+
+/* The timer to type ("15m pasta", Enter), above the three to click. */
+html.look-new .tile-field {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #1a1b1f;
+  color: var(--dim);
+  cursor: text;
+}
+
+html.look-new .tile-field:focus-within {
+  box-shadow: inset 0 0 0 1px #3a3d44;
+}
+
+html.look-new .tile-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 12.5px var(--font);
+}
+
+html.look-new .tile-input::placeholder {
+  color: var(--dim-3);
+}
+
+html.look-new .tile-input.bad {
+  color: var(--red);
 }
 
 /* Three tiles: side by side in one row, so the home stays low. */

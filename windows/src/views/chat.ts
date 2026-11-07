@@ -1453,12 +1453,7 @@ export function buildPrompt(
   // Gemini Live: a spoken call instead of a typed chat (views/live.ts); lit while one is on.
   const micBtn = h("button", { class: "tool-btn mic-btn", title: tl(LIVE_STRINGS.talk), "aria-label": tl(LIVE_STRINGS.talk) }, svg(ICONS.mic, 13, { stroke: 1.8 }));
   micBtn.addEventListener("click", () => talk());
-  // The new look's "+" (look-new.css): the buttons above, and those of the row
-  // under the chat, in one menu with their names written out.
-  const plusDot = h("i", { class: "plus-dot" });
-  const plusBtn = h("button", { class: "tool-btn plus-btn", title: tl(STRINGS.attach), "aria-label": tl(STRINGS.attach) },
-    svg(ICONS.plus, 13, { stroke: 1.8 }), plusDot);
-  const bar = h("div", { class: "chat-bar" }, plusBtn, attachBtn, screenBtn, permBtn, input, micBtn, send);
+  const bar = h("div", { class: "chat-bar" }, attachBtn, screenBtn, permBtn, input, micBtn, send);
 
   // The question sent while the chat was answered, just above the field.
   const queueText = h("div", { class: "queue-text" });
@@ -1483,8 +1478,8 @@ export function buildPrompt(
     modelName,
     svg(ICONS.chevronUpDown, 9, { stroke: 2 }),
   );
-  const newBtn = h("button", { class: "tool-btn chat-new", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
-  const historyBtn = h("button", { class: "tool-btn chat-history", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
+  const newBtn = h("button", { class: "tool-btn", title: tl(STRINGS.newChat) }, svg(ICONS.plus, 12));
+  const historyBtn = h("button", { class: "tool-btn", title: tl(STRINGS.pastChats) }, svg(ICONS.clock, 13, { stroke: 1.8 }));
   // Everything attached to the next question, in a list of its own, so the
   // chat keeps its whole height; the badge says how many.
   const filesBadge = h("span", { class: "tool-badge" });
@@ -1507,49 +1502,9 @@ export function buildPrompt(
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
   // The ring sits right before the model it measures.
-  const modelSide = h("div", { class: "model-side" }, planBtn, usageEl, modelBtn);
   const modelRow = h("div", { class: "model-row" },
     h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn, listenBtn),
-    modelSide);
-  // The "+" menu: each line a click on the button it stands for, which stays
-  // where it was (hidden), so everything it does is as it was.
-  const plusMenu = h("div", { class: "plus-menu" });
-  plusMenu.hidden = true;
-  const plusItem = (source: HTMLElement, label: ReturnType<typeof tl>, run = () => source.click()) => {
-    const icon = source.querySelector("svg")?.cloneNode(true) ?? null;
-    const item = h("button", {
-      class: "plus-item",
-      onclick: () => {
-        plusMenu.hidden = true;
-        run();
-      },
-    }, icon, h("span", { text: label }));
-    return item;
-  };
-  const toolsSource = h("i", {}, svg(ICONS.wrench, 13, { stroke: 1.8 }));
-  const plusItems = {
-    attach: plusItem(attachBtn, tl(STRINGS.attach)),
-    screen: plusItem(screenBtn, tl(SCREEN_STRINGS.button)),
-    files: plusItem(filesBtn, tl(STRINGS.attachments)),
-    listen: plusItem(listenBtn, tl("Listening")),
-    perm: plusItem(permBtn, tl(STRINGS.permissions)),
-    tools: plusItem(toolsSource, tl("Tools"), () => openTools()),
-  };
-  plusMenu.append(...Object.values(plusItems));
-  plusBtn.addEventListener("click", () => {
-    plusItems.perm.hidden = permBtn.hidden;
-    plusMenu.hidden = !plusMenu.hidden;
-  });
-  document.addEventListener("mousedown", (e) => {
-    if (plusMenu.hidden) return;
-    const target = e.target as Node;
-    if (!plusMenu.contains(target) && !plusBtn.contains(target)) plusMenu.hidden = true;
-  }, true);
-  document.addEventListener("keydown", (e) => {
-    if (e.key !== "Escape" || plusMenu.hidden) return;
-    e.stopPropagation();
-    plusMenu.hidden = true;
-  }, true);
+    h("div", { class: "model-side" }, planBtn, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -1639,7 +1594,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, plusMenu, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -4070,13 +4025,6 @@ export function buildPrompt(
       }
 
       micBtn.classList.toggle("lit", State.liveActive);
-      // The new look: the model in the field, before the microphone, and a dot
-      // on the "+" while something it holds is on (look-new.css).
-      const newLook = State.settings.islandNewLook === true;
-      if (newLook && modelSide.parentElement !== bar) bar.insertBefore(modelSide, micBtn);
-      else if (!newLook && modelSide.parentElement !== modelRow) modelRow.append(modelSide);
-      plusDot.classList.toggle("on", !!filesBadge.textContent || !!listenBadge.textContent || permBtn.classList.contains("lit"));
-      if (!newLook) plusMenu.hidden = true;
       drawModelButton();
       const openRouter = State.mode === "expanded" && State.view === "prompt"
         && State.settings.chatShowUsage && State.settings.chatProvider === "openrouter";

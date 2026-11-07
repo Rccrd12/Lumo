@@ -4,8 +4,8 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
-  GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
+  GRIPS, gripFactors, isUpright, islandSize, islandWidth, pickedHeight, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
   type BotEmoteName, type IslandMode, type IslandViewName,
@@ -23,7 +23,7 @@ import { UploadCanvas } from "../upload/canvas";
 import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
-import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
+import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
 import { buildHeader, buildViews, hasSessionTicker, type ViewActions, type ViewHost } from "../views/views";
 import { homeHeight, homeLists } from "../views/home";
 import { h, svg } from "../views/dom";
@@ -1321,12 +1321,15 @@ export class Island {
     if (State.mode === "expanded" && State.view === "approval" && State.pendingApproval?.email) {
       h = Math.max(h, EMAIL_CARD_H);
     }
-    // The new look's home: as wide as it needs to stay low, as tall as what it lists.
+    // The new look's home: wider than the other views by as much as it needs
+    // to stay low, so its grips move it as theirs do (Rust grows the shared
+    // width, islandWidth); as tall as what it lists, or as the height picked.
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "home") {
       const data = this.activities.data();
       const { sessions, others } = homeLists(hasSessionTicker, data);
-      w = Math.min(Math.max(w, NEW_LOOK_HOME_W), window.innerWidth - 40);
-      h = homeHeight(sessions.length, State.pendingApproval != null, data, others.length);
+      w = Math.min(islandWidth(this.shape) + NEW_LOOK_HOME_W - EXPANDED_W, window.innerWidth - 40);
+      h = Math.max(homeHeight(sessions.length, State.pendingApproval != null, data, others.length + visiblePlanKinds().length),
+        pickedHeight(this.shape));
     }
     const asked = State.pendingApproval?.questions?.[0];
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "question" && asked) {
@@ -1335,6 +1338,7 @@ export class Island {
       const extra = State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
         : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
+      if (State.view === "overview" && planCardOpen()) h = Math.max(h, NEW_LOOK_PLAN_CARD_H);
     }
     // The column inside the island (sideInside): wider by most of it, never past the window.
     const side = this.sideInside();

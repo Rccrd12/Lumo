@@ -53,6 +53,14 @@ if (params.has("plan")) {
   hook({ hook_event_name: "PreToolUse", cwd, tool_name: "ExitPlanMode", tool_input: { plan: "1. Read the settings page\n2. Add the toggle\n3. Save it with the others\n4. Run the tests" } });
 }
 
+// The plans' usage, with ?plans: Claude and Codex turned on, with numbers.
+if (params.has("plans")) {
+  State.settings = { ...State.settings, showPlanInNotch: true, planRelayInstalled: true, showCodexPlanInNotch: true };
+  const hour = 3_600_000;
+  State.planUsage = { fiveHour: { usedPct: 42, resetsAt: Date.now() + 2 * hour }, sevenDay: { usedPct: 18, resetsAt: Date.now() + 90 * hour }, updatedAt: Date.now() };
+  State.codexPlanUsage = { fiveHour: { usedPct: 71, resetsAt: Date.now() + hour }, updatedAt: Date.now() };
+}
+
 // Two more sessions, with ?busy: Codex at work on a site, and another Claude Code session done.
 if (params.has("busy")) {
   const site = "C:\\dev\\sito-portfolio";

@@ -12,7 +12,10 @@ import { sessionSubtitle } from "../core/pills";
 import { lastTextStep } from "../core/diff";
 import { ACTIVITIES_TEXT, eventWhen, type ActivitiesAction, type ActivitiesData } from "./activities-view";
 import { N_, language, t, tl } from "../i18n/i18n";
-import type { Decision } from "../core/bridge";
+import { Bridge, type Decision } from "../core/bridge";
+import { parseDuration } from "../core/compact";
+import type { PlanKind } from "../core/plan";
+import { planPillParts, visiblePlanKinds } from "./usage";
 
 export const HOME_TEXT = {
   needsYou: N_("Needs you"),
@@ -24,7 +27,7 @@ export interface HomeActions {
   openRequest(): void;
   decide(d: Decision, requestId: string): void;
   openChat(): void;
-  openChatMenu(): void;
+  openPlan(kind: PlanKind): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
   blip(): void;
@@ -86,20 +89,66 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   const right = h("div", { class: "home-right" });
   const tilesEl = h("div", { class: "home-tiles" });
   const chipsEl = h("div", { class: "home-chips" });
+  // The plans' usage, at the end of the services' line: written out when it
+  // fits, only the numbers when that fits, else not at all (fitUsage).
+  const usageEl = h("div", { class: "home-usage" });
   right.append(tilesEl);
-  const plus = h("span", {
-    class: "ask-plus", role: "button", title: tl("Attach a file"),
-    onclick: (e: Event) => {
-      e.stopPropagation();
-      actions.openChatMenu();
-    },
-  }, svg(ICONS.plus, 13, { stroke: 1.6 }));
   const field = h("button", { class: "ask-field home-field", onclick: () => actions.openChat() },
-    plus, h("span", { class: "ph", text: tl("Ask me anything…") }));
+    h("span", { class: "ph", text: tl("Ask me anything…") }));
   const el = h("div", { class: "view home" }, h("div", { class: "home-cols" }, left, right), chipsEl, field);
+
+  // The timer's field outlives the tiles' rebuilds, so what is typed in it stays.
+  const timerInput = h("input", {
+    class: "tile-input", type: "text", spellcheck: "false", autocomplete: "off",
+    placeholder: tl(ACTIVITIES_TEXT.timerHint), "aria-label": tl(ACTIVITIES_TEXT.timer),
+  }) as HTMLInputElement;
+  // The island only gets the keyboard once asked (as the chat's field does).
+  timerInput.addEventListener("mousedown", () => {
+    if (document.hasFocus()) return;
+    void Bridge.focusWindow(true);
+    window.setTimeout(() => timerInput.focus(), 60);
+  });
+  timerInput.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    e.preventDefault();
+    const m = /^(\S+)\s*(.*)$/.exec(timerInput.value.trim());
+    const ms = m ? parseDuration(m[1]) : null;
+    if (!m || ms == null) {
+      timerInput.classList.add("bad");
+      window.setTimeout(() => timerInput.classList.remove("bad"), 600);
+      return;
+    }
+    timerInput.value = "";
+    timerInput.blur();
+    actions.activity({ kind: "timer", ms, label: m[2] });
+  });
 
   let leftKey = "";
   let rightKey = "";
+  let usageKey = "";
+  /** The room the usage was last fitted to: the line's width, what the services take. */
+  let fitKey = "";
+
+  /** Full names, numbers only, or nothing: the most of it that fits after the services. */
+  function fitUsage() {
+    if (!usageEl.childElementCount || State.view !== "home") return;
+    const width = chipsEl.clientWidth;
+    const row = chipsEl.querySelector<HTMLElement>(".home-chip-row");
+    const name = chipsEl.querySelector<HTMLElement>(".home-chips-name");
+    // What the services need, whole, and the 10px gaps between the line's parts.
+    // (The line's own width says nothing: it stretches into what is free.)
+    const first = row?.firstElementChild as HTMLElement | null;
+    const last = row?.lastElementChild as HTMLElement | null;
+    const services = first && last ? last.offsetLeft + last.offsetWidth - first.offsetLeft : 0;
+    const used = (name ? name.offsetWidth + 10 : 0) + (services ? services + 10 : 0) + 4;
+    const key = `${width}:${used}`;
+    if (key === fitKey) return;
+    fitKey = key;
+    for (const mode of ["full", "short", "none"] as const) {
+      usageEl.className = `home-usage ${mode}`;
+      if (mode === "none" || usageEl.scrollWidth <= width - used) break;
+    }
+  }
   let shownFor: string | null = null;
   let shownAt = 0;
   const timerEls: { el: HTMLElement; endsAt: number }[] = [];
@@ -170,14 +219,14 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
     switch (kind) {
       case "timer": {
         const timer = data.timers[0];
-        // None running: three to start with a click.
+        // None running: one to type ("15m pasta", Enter), or three to start with a click.
         if (!timer) {
           const start = (minutes: number) => h("button", {
             class: "tile-chip", text: `${minutes}m`,
             onclick: () => actions.activity({ kind: "timer", ms: minutes * 60_000, label: "" }),
           });
           return h("div", { class: "home-tile" },
-            h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.timer) })),
+            h("label", { class: "tile-field" }, svg(ICONS.clock, 12, { stroke: 1.8 }), timerInput),
             h("div", { class: "tile-chips" }, start(5), start(10), start(25)));
         }
         const big = h("div", { class: "tile-big", text: remaining(timer.endsAt) });
@@ -188,36 +237,48 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       }
       case "music": {
         const media = data.media;
+        // The whole tile plays or pauses (with nothing playing, it asks the
+        // last player to go on); its own buttons do only what they say.
+        const playPause = (tileEl: HTMLElement) => {
+          tileEl.addEventListener("click", (e) => {
+            if (!(e.target as Element).closest("button")) actions.activity({ kind: "media", action: "toggle" });
+          });
+          return tileEl;
+        };
         if (!media) {
-          return h("div", { class: "home-tile" },
+          return playPause(h("div", { class: "home-tile link", title: t(ACTIVITIES_TEXT.play) },
             h("div", { class: "tile-kick" }, svg(ICONS.play, 10), h("span", { text: t(ACTIVITIES_TEXT.music) })),
-            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.nothingPlaying) }));
+            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.nothingPlaying) })));
         }
         const ctl = (icon: string, title: string, action: "toggle" | "next") =>
           h("button", { class: "tile-ctl", title: t(title), onclick: () => actions.activity({ kind: "media", action }) }, svg(icon, 11));
-        return h("div", { class: "home-tile" },
+        return playPause(h("div", { class: "home-tile link", title: t(media.playing ? ACTIVITIES_TEXT.pause : ACTIVITIES_TEXT.play) },
           h("div", { class: "tile-kick" }, dot("#22c55e", 6), h("span", { text: media.app || t(ACTIVITIES_TEXT.music) })),
           h("div", { class: "tile-title", text: media.title }),
           h("div", { class: "tile-ctls" },
             ctl(media.playing ? ICONS.pause : ICONS.play, media.playing ? ACTIVITIES_TEXT.pause : ACTIVITIES_TEXT.play, "toggle"),
             ctl(ICONS.forward, ACTIVITIES_TEXT.next, "next"),
-            h("span", { class: "tile-sub", text: media.artist })));
+            h("span", { class: "tile-sub", text: media.artist }))));
       }
       case "calendar": {
         const [first, second] = data.calendar.events;
         const now = Date.now();
+        // Opens the calendar on the web, or its Settings when it has no site.
+        const opens = (tileEl: HTMLElement) => {
+          tileEl.addEventListener("click", () => actions.activity(data.calendar.link ? { kind: "calendarWeb" } : { kind: "settings" }));
+          return tileEl;
+        };
         if (!first) {
-          return h("div", { class: "home-tile" },
+          return opens(h("div", { class: "home-tile link" },
             h("div", { class: "tile-kick" }, svg(ICONS.calendar, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.calendar) })),
-            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.nothingSoon) }));
+            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.nothingSoon) })));
         }
         const tileEl = h("div", { class: "home-tile link" },
           h("div", { class: "tile-kick" }, svg(ICONS.calendar, 12, { stroke: 1.8 }),
             h("span", { text: first.allDay ? t(ACTIVITIES_TEXT.allDay) : eventWhen(first, now, language()) })),
           h("div", { class: "tile-title", text: first.title }),
           second ? h("div", { class: "tile-sub", text: `${second.title} · ${second.allDay ? t(ACTIVITIES_TEXT.allDay) : eventWhen(second, now, language())}` }) : null);
-        if (data.calendar.link) tileEl.addEventListener("click", () => actions.activity({ kind: "calendarWeb" }));
-        return tileEl;
+        return opens(tileEl);
       }
       case "mail": {
         const mail = data.mail.messages;
@@ -237,6 +298,9 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       }
     }
   }
+
+  // Shown, or the island resized without anything else changing: fitted again.
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(() => fitUsage()).observe(chipsEl);
 
   return {
     el,
@@ -280,6 +344,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       }
 
       const tiles = tilesOf(data);
+      const kinds = visiblePlanKinds();
       const rk = [
         language(), ...tiles,
         ...data.timers.map((x) => `${x.id}:${x.label}:${x.endsAt}`),
@@ -290,12 +355,15 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       ].join("~");
       if (rk !== rightKey) {
         rightKey = rk;
+        const typing = document.activeElement === timerInput;
         clear(tilesEl);
         timerEls.length = 0;
         for (const kind of tiles) tilesEl.append(tile(kind, data));
+        if (typing && timerInput.isConnected) timerInput.focus();
         tilesEl.hidden = tiles.length === 0;
         right.classList.toggle("three", tiles.length === 3);
         clear(chipsEl);
+        usageKey = "";
         if (others.length) {
           // One line across the island, its name first, as on the board.
           chipsEl.append(h("span", { class: "home-chips-name", text: t("Services") }),
@@ -306,9 +374,25 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
               return chip;
             })));
         }
-        chipsEl.hidden = others.length === 0;
+        chipsEl.hidden = others.length === 0 && kinds.length === 0;
         right.hidden = tiles.length === 0;
       }
+      const uk = kinds.map((kind) => {
+        const p = planPillParts(kind);
+        return `${kind}:${p.value}:${p.color}`;
+      }).join("~");
+      if (uk !== usageKey) {
+        usageKey = uk;
+        clear(usageEl);
+        usageEl.append(...kinds.map((kind) => {
+          const p = planPillParts(kind);
+          return h("button", { class: "home-plan", title: `${p.name} ${p.value}`, onclick: () => actions.openPlan(kind) },
+            dot(p.color, 7), h("span", { class: "home-plan-name", text: p.name }), h("span", { class: "home-plan-pct", text: p.value }));
+        }));
+        if (usageEl.parentElement !== chipsEl || chipsEl.lastElementChild !== usageEl) chipsEl.append(usageEl);
+        fitKey = "";
+      }
+      fitUsage();
     },
   };
 }

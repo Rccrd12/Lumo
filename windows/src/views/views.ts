@@ -12,7 +12,7 @@ import { buildUpload, buildUploading } from "./upload";
 import { idleCardKey, renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
 import { pillDefinition, sessionSubtitle } from "../core/pills";
 import {
-  PlanCard, buildPlanPill, claudePillVisible, codexPillVisible, antigravityPillVisible, planCardOpen, refreshCodexPlanUsage,
+  PlanCard, buildPlanPill, openPlanCard, claudePillVisible, codexPillVisible, antigravityPillVisible, planCardOpen, refreshCodexPlanUsage,
   refreshAntigravityPlanUsage,
 } from "./usage";
 import { buildDiffCard } from "./diff";
@@ -198,12 +198,6 @@ export function buildHeader(actions: ViewActions): ViewHost {
   // The new look has no tabs: away from home, this goes back to it (look-new.css shows it).
   const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.agentsView()) },
     svg(ICONS.chevronLeft, 14, { stroke: 2 }));
-  // The new look's chat: past chats and a new chat up here, by the "⋯", as
-  // clicks on the chat's own buttons (views/chat.ts), which it hides.
-  const chatButton = (cls: string) => () => document.querySelector<HTMLElement>(`#views .view.on .${cls}`)?.click();
-  const chatHead = h("div", { class: "chat-head" },
-    h("button", { title: tl("Past chats"), onclick: chatButton("chat-history") }, svg(ICONS.clock, 14, { stroke: 1.8 })),
-    h("button", { title: tl("New chat"), onclick: chatButton("chat-new") }, svg(ICONS.plus, 14, { stroke: 1.8 })));
   // Plan usage pills (off by default): before the gear, Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
@@ -221,7 +215,6 @@ export function buildHeader(actions: ViewActions): ViewHost {
     "div",
     { id: "header" },
     h("div", { class: "tabs" }, backBtn, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
-    chatHead,
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn, moreBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
@@ -238,7 +231,6 @@ export function buildHeader(actions: ViewActions): ViewHost {
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
       backBtn.classList.toggle("away", v !== "home");
-      chatHead.classList.toggle("on", v === "prompt");
       const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
       if (folded && tabActivities.style.display === "none") {
         // It just landed: a little pop.
@@ -263,7 +255,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
     claudePill.el.style.display = claudeOn ? "" : "none";
     codexPill.el.style.display = codexOn ? "" : "none";
     antigravityPill.el.style.display = antigravityOn ? "" : "none";
-    planPills.classList.toggle("on", claudeOn || codexOn || antigravityOn);
+    // The new look's home has them beside the services (views/home.ts), not up here.
+    const onHome = State.view === "home";
+    planPills.classList.toggle("on", (claudeOn || codexOn || antigravityOn) && !onHome);
     // Two pills or more: the right side tightens so it still clears the screen edge.
     headerActions.classList.toggle("both-plans", Number(claudeOn) + Number(codexOn) + Number(antigravityOn) >= 2);
     if (claudeOn) claudePill.sync();
@@ -975,10 +969,11 @@ function buildHomeView(actions: ViewActions): ViewHost {
     },
     decide: (d, requestId) => actions.decide(d, requestId),
     openChat,
-    // The "+" opens the chat on its own "+" menu (views/chat.ts plusMenu).
-    openChatMenu: () => {
-      openChat();
-      requestAnimationFrame(() => document.querySelector<HTMLElement>("#views .view.on .plus-btn")?.click());
+    // A plan's usage on the home opens its card, as its pill does on the overview.
+    openPlan: (kind) => {
+      actions.blip();
+      openPlanCard(kind);
+      actions.setView("overview");
     },
     activityData: () => actions.activityData(),
     activity: (a) => actions.activity(a),
