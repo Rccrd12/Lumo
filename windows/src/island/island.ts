@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
+  ROUNDED_CORNER, VIEW_LAYOUTS, NEW_LOOK_BOT, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_HOME_W, NEW_LOOK_PLAN_CARD_H, NEW_LOOK_SIDE_GAP, NEW_LOOK_SIDE_GIVE, NEW_LOOK_SIDE_MIN_H, NEW_LOOK_SIDE_PAD, NEW_LOOK_SIDE_TOP, newLookQuestionHeight, NEW_LOOK_SESSION_ALLOW_H,
   GRIPS, gripFactors, isUpright, islandSize, islandWidth, pickedHeight, parseDock, parseEdgeLight, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -16,7 +16,7 @@ import { NEUTRAL_PILL } from "../core/pill-colors";
 import { State, motionAmount, parseCloseMode } from "../core/state";
 import { BotEngine, hexToRGB } from "../character/engine";
 import { LOOK_IDLE } from "../character/looks";
-import { Greeting } from "../character/greeting";
+import { Greeting, LIGHT_GREET_SMILE, lightGreetFrame } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
 import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
@@ -199,6 +199,8 @@ export class Island {
   private engine = new BotEngine();
   private greeting = new Greeting();
   private greetingShown = false;
+  /** The new look's opening has smiled (LIGHT_GREET_SMILE). */
+  private greetSmiled = false;
   private seasons = new SeasonCache();
 
   private running = false;
@@ -600,6 +602,8 @@ export class Island {
           void refreshHookPills();
           break;
         case "greeting":
+          this.greetSmiled = false;
+          this.greeting.light = State.settings.islandNewLook === true;
           this.expand("greeting");
           this.greeting.start();
           break;
@@ -1914,6 +1918,18 @@ export class Island {
     const dt = Math.min(0.05, (nowMs - this.lastFrame) / 1000);
     this.lastFrame = nowMs;
 
+    // The new look's opening is the island itself: its size follows the frame.
+    if (this.lightGreeting) {
+      const f = lightGreetFrame(this.greeting.elapsed, compactWidth(State.settings.islandCompactWidth));
+      this.width.jump(f.w);
+      this.height.jump(f.h);
+      this.radius.jump(f.r);
+      this.islandEl.style.setProperty("--greet", f.spark.toFixed(3));
+      if (!this.greetSmiled && this.greeting.elapsed >= LIGHT_GREET_SMILE) {
+        this.greetSmiled = true;
+        this.engine.triggerEmote("happy");
+      }
+    }
     this.width.step(dt, nowMs);
     this.height.step(dt, nowMs);
     this.radius.step(dt, nowMs);
@@ -1933,7 +1949,7 @@ export class Island {
     this.botSize.step(dt);
 
     const greetingActive = State.mode === "expanded" && State.view === "greeting";
-    if (greetingActive) {
+    if (greetingActive && !this.lightGreeting) {
       // Sized for the scale it is drawn at, which changes with the island's
       // zoom and the display it is on: a canvas sized once, before the zoom
       // was applied, drew the greeting too big and cut off on the right.
@@ -2005,9 +2021,11 @@ export class Island {
   };
 
   private updateBotTargets() {
-    const notch = State.settings.islandNewLook === true && State.mode === "expanded" && !this.onlyLumo
-      ? newLookBot(State.view, this.width.value)
-      : null;
+    const notch = this.lightGreeting
+      ? this.lightGreetBot()
+      : State.settings.islandNewLook === true && State.mode === "expanded" && !this.onlyLumo
+        ? newLookBot(State.view, this.width.value)
+        : null;
     const p = notch ?? (this.onlyLumo
       ? computerCompact("top").bot
       : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
@@ -2033,7 +2051,9 @@ export class Island {
     this.botCx.target = turned ? p.cy : p.cx;
     this.botCy.target = turned ? p.cx : p.cy;
     this.botSize.target = p.diameter / 0.6;
-    if (this.snapBot) {
+    // The new look's opening: his eyes stay in the middle of the island as it
+    // grows; folding up, they glide from there to their place.
+    if (this.snapBot || this.lightGreeting) {
       this.snapBot = false;
       this.botCx.set(this.botCx.target);
       this.botCy.set(this.botCy.target);
@@ -2048,7 +2068,7 @@ export class Island {
     const listening = State.listeningOpen && State.view === "prompt" && State.chatSlot === "chat";
     // (The new look's drop leaves him in the top bar: the file goes to him there.)
     const ownLumo = !this.uploadActive || this.engine.eyesOnly;
-    const visible = p.opacity > 0 && !greetingActive && ownLumo && !picture && !listening;
+    const visible = p.opacity > 0 && (!greetingActive || this.lightGreeting) && ownLumo && !picture && !listening;
     this.botCanvas.style.opacity = visible ? "1" : "0";
 
     if (State.mode === "expanded" && State.view !== "uploading" && !greetingActive && !this.uploadActive && !picture && !listening
@@ -2168,7 +2188,9 @@ export class Island {
     // underneath, so only the header may keep taking clicks up here.
     this.contentEl.style.pointerEvents = live && !this.uploadActive ? "auto" : "none";
     this.header.el.style.pointerEvents = live ? "auto" : "none";
-    this.greetingCanvas.style.display = greetingActive ? "block" : "none";
+    // The new look's opening has no canvas of its own: the island is the light.
+    this.greetingCanvas.style.display = greetingActive && State.settings.islandNewLook !== true ? "block" : "none";
+    this.islandEl.classList.toggle("greet-light", greetingActive && State.settings.islandNewLook === true);
 
     // Leaving the greeting, however it ends, lets its sound fade out.
     if (this.greetingShown && !greetingActive) this.greeting.leave();
@@ -2353,6 +2375,22 @@ export class Island {
     if (edgeGap(State.settings.islandEdgeGap) !== 0) return 0;
     if (!isUpright(this.dock) && (State.settings.islandFloat ?? 0) > 0) return 0;
     return 1;
+  }
+
+  /** The new look's opening is playing (greeting.ts lightGreetFrame). */
+  private get lightGreeting(): boolean {
+    return State.settings.islandNewLook === true && State.mode === "expanded" && State.view === "greeting";
+  }
+
+  /** Lumo's eyes in the new look's opening: the middle of the island, opening wide. */
+  private lightGreetBot() {
+    const f = lightGreetFrame(this.greeting.elapsed, compactWidth(State.settings.islandCompactWidth));
+    return {
+      cx: this.width.value / 2,
+      cy: this.height.value / 2,
+      diameter: Math.max(1, NEW_LOOK_BOT.diameter * 1.15 * f.eyes),
+      opacity: f.eyes > 0.02 ? 1 : 0,
+    };
   }
 
   /** Where Rust put the window: the island is drawn this far off its usual place. */

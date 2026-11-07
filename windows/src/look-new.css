@@ -78,6 +78,29 @@ html.look-new .dock-right #island {
     calc(-1 * var(--edge-y)) 0 var(--edge-blur) var(--edge-spread) var(--edge-glow);
 }
 
+/* ── The opening (greeting.ts lightGreetFrame): the island is the light ──────
+   A spark, then a line, then the black body unrolling under it: --greet (1…0)
+   is how much of the island is still light. */
+
+html.look-new #island.greet-light {
+  transition: none;
+}
+
+html.look-new #island.greet-light::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* The light rides on the edge as the body unrolls above it. */
+  height: min(100%, 10px);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--lumo-light, #ffd68c) 70%, #fff);
+  box-shadow: 0 0 14px 3px var(--lumo-light, #ffd68c);
+  opacity: var(--greet, 0);
+  pointer-events: none;
+}
+
 /* ── Top bar: tabs, Lumo in the middle, "⋯" ────────────────────────────────── */
 
 .more-btn {

@@ -1,4 +1,4 @@
-// Synthesises Lumo's 22 sounds from code and writes them to assets/sounds/.
+// Synthesises Lumo's 23 sounds from code and writes them to assets/sounds/.
 // No dependencies, no samples: every sound is built here out of oscillators,
 // FM, Karplus-Strong plucks and filtered noise, with envelopes, an echo and a
 // small reverb written by hand. The noise comes from a seeded PRNG, so running
@@ -548,6 +548,32 @@ const SOUNDS = {
     for (const n of ["C5", "E5", "G5", "C6"]) tone(tr, { at: 0.95, freq: hz(n), amp: 0.09, env: swell(0.6, 0.3) });
     bell(tr, 1.1, hz("E6"), 0.45, 0.3);
     bell(tr, 1.14, hz("G6"), 0.4, 0.3);
+    reverb(tr, { mix: 0.22, size: 0.9 });
+  }],
+
+  // The new look's opening, the same voice lined up with its own animation
+  // (greeting.ts lightGreetFrame): the spark (0–0.22), the line stretching
+  // (0.18–0.5), the island unrolling (0.44–0.86), "lu-mo" as the eyes open
+  // (0.74, 0.88), the smile 0.96, then a short ring-out.
+  "greeting-light": [1.7, -6, (tr) => {
+    // The spark: one bright glint.
+    chime(tr, 0.0, hz("E7"), 0.35, 0.08);
+    bell(tr, 0.02, hz("B6"), 0.3, 0.12);
+    // The line stretching: an airy sweep and sparkles running outwards.
+    whoosh(tr, 0.16, 0.36, 700, 3000, 0.12, 0.18);
+    ["C6", "E6", "G6", "C7"].forEach((n, i) => chime(tr, 0.2 + i * 0.07, hz(n), 0.07 + i * 0.03, 0.05));
+    // The island unrolling: the warm swell and its bubble.
+    for (const n of ["C5", "G5"]) tone(tr, { at: 0.46, len: 0.45, freq: hz(n), amp: 0.22, attack: 0.05, decay: 0.25 });
+    bubble(tr, 0.5, 280, 850, 0.06, 0.5, 0.05);
+    // "Lu-mo": the eyes open.
+    fmPluck(tr, 0.74, hz("G6"), 0.55, 0.14);
+    bell(tr, 0.74, hz("G6"), 0.9, 0.22);
+    fmPluck(tr, 0.88, hz("C7"), 0.5, 0.16);
+    bell(tr, 0.88, hz("C7"), 0.85, 0.28, { vib: 0.004, vibRate: 5, vibDelay: 0.08 });
+    // The smile: a warm chord and bells on top.
+    for (const n of ["C5", "E5", "G5", "C6"]) tone(tr, { at: 0.96, freq: hz(n), amp: 0.08, env: swell(0.5, 0.3) });
+    bell(tr, 1.0, hz("E6"), 0.4, 0.3);
+    bell(tr, 1.04, hz("G6"), 0.35, 0.3);
     reverb(tr, { mix: 0.22, size: 0.9 });
   }],
 };

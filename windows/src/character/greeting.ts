@@ -40,6 +40,8 @@ export const GREETING_END = T.end;
 
 /** The greeting's own sound, played from the start (greeting.wav, made by scripts/gen-sounds.mjs). */
 const GREETING_SOUND = "greeting";
+/** The new look's opening has its own, lined up with it (greeting-light.wav). */
+const LIGHT_GREETING_SOUND = "greeting-light";
 
 // ── Geometry (640×150) ────────────────────────────────────────────────────────
 
@@ -453,6 +455,52 @@ function drawLumo(x: CanvasRenderingContext2D, p: Pose, t: number) {
   x.restore();
 }
 
+// ── The new look's opening ────────────────────────────────────────────────────
+
+/** What the new look's opening shows at one moment: the island itself and Lumo's eyes in it. */
+export interface LightGreetFrame {
+  /** The island's size and corner, in page pixels. */
+  w: number;
+  h: number;
+  r: number;
+  /** How much of the island is still light (1: a spark, a line; 0: its black body). */
+  spark: number;
+  /** His eyes' size, 0…1 (0: not there yet). */
+  eyes: number;
+}
+
+/**
+ * Settings → Island → New look: Lumo is the island's light and his eyes, so
+ * the opening is that light coming on (concept A). A spark on the edge of the
+ * screen stretches into a line, the island unrolls under it, his eyes open in
+ * the middle and smile; at T.end it folds into the closed island like any
+ * other view. Same length and sound timing as the usual greeting.
+ */
+export function lightGreetFrame(t: number, compactW: number): LightGreetFrame {
+  const bigW = compactW + 72;
+  const bigH = 64;
+  const sparkK = E.back(seg(t, 0, 0.22));
+  const stretch = E.out(seg(t, 0.18, 0.5));
+  const unroll = seg(t, 0.44, 0.86);
+  // A soft spring as it unrolls: a touch past, then back.
+  const sp = unroll >= 1 ? 1 : 1 - Math.exp(-6 * unroll) * Math.cos(10 * unroll);
+  let w: number;
+  let h: number;
+  if (t < 0.18) {
+    w = h = lerp(2, 10, sparkK);
+  } else {
+    w = lerp(10, bigW, stretch);
+    h = unroll > 0 ? lerp(3, bigH, sp) : lerp(10, 3, stretch);
+  }
+  const r = Math.min(h / 2, 22);
+  const spark = 1 - E.out(seg(t, 0.46, 0.6));
+  const eyes = E.back(seg(t, 0.72, 0.9));
+  return { w, h, r, spark, eyes };
+}
+
+/** When the new look's opening smiles (the island sends the emote). */
+export const LIGHT_GREET_SMILE = 0.96;
+
 // ── Controller ────────────────────────────────────────────────────────────────
 
 /**
@@ -470,6 +518,9 @@ export class Greeting {
   look: LumoLook = DEFAULT_LOOK;
   /** How wide the closed island he lands in is; the island sets it. */
   compactWidth = COMPACT_W;
+  /** The new look's opening (lightGreetFrame), with its own sound; the island sets it. */
+  light = false;
+  private sound: string = GREETING_SOUND;
 
   start() {
     this.startMs = performance.now();
@@ -477,7 +528,8 @@ export class Greeting {
     this.fired = false;
     this.cancelTimers();
     // The sound plays from the start; it fades when the greeting view goes away (see leave()).
-    Sound.play(GREETING_SOUND);
+    this.sound = this.light ? LIGHT_GREETING_SOUND : GREETING_SOUND;
+    Sound.play(this.sound);
     this.timers.push(window.setTimeout(() => this.fire(), (T.end + 0.05) * 1000));
   }
 
@@ -490,13 +542,13 @@ export class Greeting {
     // when the collapse is over (leave() follows at once, so not in `timers`).
     const started = this.startMs;
     if (!this.fired) window.setTimeout(() => this.startMs === started && this.fire(), T.COLLAPSE * 1000);
-    Sound.fadeOut(GREETING_SOUND, 0.25);
+    Sound.fadeOut(this.sound, 0.25);
   }
 
   /** The greeting view is gone: let what is left of its sound fade away. */
   leave() {
     this.cancelTimers();
-    Sound.fadeOut(GREETING_SOUND, 0.2);
+    Sound.fadeOut(this.sound, 0.2);
   }
 
   get elapsed(): number {
