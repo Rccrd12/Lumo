@@ -104,19 +104,177 @@ html.look-new .slash-menu {
   left: 16px;
 }
 
-/* ── Sessions: the session gets the room, the pills a narrow column ────────── */
+/* ── Home: one list instead of the tabs ──────────────────────────────────────
+   What waits for you on top, the session under it, the other pills in a row,
+   and the field to the chat at the bottom (views.ts waitingRow, askField). */
+
+.back-btn,
+.ask-field,
+.wait-row {
+  display: none !important;
+}
+
+html.look-new .tabs > .tab:not(.tab-activities) {
+  display: none;
+}
+
+html.look-new .tabs > .back-btn.away {
+  display: grid !important;
+}
+
+html.look-new .overview,
+html.look-new .empty-view {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 2px 6px 0;
+}
 
 html.look-new .overview > .left {
   flex: 1 1 auto;
   width: auto;
+  min-height: 0;
 }
 
 html.look-new .overview > .right {
-  flex: 0 0 256px;
+  flex: 0 0 auto;
+}
+
+html.look-new .overview .left .card {
+  background: #111214;
+}
+
+html.look-new .overview .right .card {
+  height: auto;
+  background: transparent;
+  overflow: visible;
+}
+
+html.look-new .empty-view > .card {
+  flex: 1 1 auto;
+  background: #111214;
+}
+
+html.look-new .empty-view > .card .stack {
+  padding: 0 16px !important;
+}
+
+html.look-new .empty-view > .card .btn {
+  display: none;
+}
+
+/* The other pills: a row of names, each with its colour in a dot. */
+html.look-new .pills {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  height: auto;
+  padding: 0 2px;
+  overflow: hidden;
 }
 
 html.look-new .pill {
-  border-color: rgba(255, 255, 255, 0.06);
+  flex: 0 0 auto;
+  height: 26px;
+  padding: 0 11px 0 10px;
+  gap: 7px;
+  background: #111214;
+  border-color: rgba(255, 255, 255, 0.06) !important;
+  box-shadow: none !important;
+}
+
+html.look-new .pill:hover {
+  transform: none;
+  background: #1a1b1f !important;
+}
+
+html.look-new .pill .mini,
+html.look-new .pill .pill-end {
+  display: none;
+}
+
+html.look-new .pill::before {
+  content: "";
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--pill-color, var(--dim));
+  flex: none;
+}
+
+html.look-new .pill .lbl {
+  margin: 0;
+  padding: 0;
+  font: 500 12px var(--font);
+  color: #b0b5be !important;
+}
+
+html.look-new .pill-badge {
+  top: -4px;
+  right: -3px;
+}
+
+html.look-new .wait-row:not([hidden]) {
+  display: flex !important;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px 8px 14px;
+  border: 1px solid color-mix(in srgb, var(--amber) 40%, transparent);
+  border-radius: 14px;
+  background: #111214;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: default;
+}
+
+html.look-new .wait-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+html.look-new .wait-what {
+  font: 400 12px var(--mono);
+  color: #b0b5be;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .wait-open {
+  flex: none;
+  padding: 6px 12px;
+  border-radius: 10px;
+  background: var(--amber);
+  color: #1a1206;
+  font: 600 12px var(--font);
+}
+
+html.look-new .ask-field {
+  display: flex !important;
+  flex: 0 0 38px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #111214;
+  color: var(--dim-2);
+  font: 400 13px var(--font);
+  text-align: left;
+  cursor: text;
+}
+
+html.look-new .ask-field:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .ask-field .ph {
+  flex: 1 1 auto;
 }
 
 /* ── Tools: "Add a tool" in grey, like the rest ────────────────────────────── */

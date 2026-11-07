@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_SESSION_ALLOW_H,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot, NEW_LOOK_COMPACT_DIAMETER, NEW_LOOK_HEIGHT, NEW_LOOK_SESSION_ALLOW_H, NEW_LOOK_WAITING_H,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -751,6 +751,9 @@ export class Island {
     };
     // Its right edge under the button's.
     this.menu.open(x - 220, y, [
+      { kind: "item", label: t(N_("Tools")), run: () => this.setView("tools") },
+      item("activities"),
+      { kind: "sep" },
       item("settings"),
       item("sound"),
       item("pin"),
@@ -1306,7 +1309,8 @@ export class Island {
       h = Math.max(h, EMAIL_CARD_H);
     }
     if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
-      const extra = State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H : 0;
+      const extra = State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
+        : State.view === "overview" && State.pendingApproval ? NEW_LOOK_WAITING_H : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);
     }
     const r = State.mode === "expanded" ? EXPANDED_CORNER : ROUNDED_CORNER;

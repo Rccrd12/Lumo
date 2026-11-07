@@ -38,8 +38,8 @@ State.chatHistory = [
   { id: 2, role: "assistant", content: "Node's built-in test runner on `tests/**/*.test.mjs`: 54 test files, done in about ten seconds. The TypeScript check is separate: `npx tsc --noEmit`." },
 ];
 
-function show(view: IslandViewName) {
-  if (view === "approval" && !State.pendingApproval) {
+function show(view: IslandViewName, ask = view === "approval") {
+  if (ask && !State.pendingApproval) {
     hook({ hook_event_name: "PermissionRequest", cwd, request_id: "r1", tool_name: "Bash", tool_input: { command: "npm test", description: "Run the test suite" } });
     // As Claude Code offers it (session_rules.rs), so the line under the buttons shows.
     if (State.pendingApproval) State.pendingApproval.sessionAllow = true;
@@ -60,6 +60,11 @@ for (const [view, label] of views) {
   bar.append(b);
   buttons.set(view, b);
 }
+// A request folded away: the list shows it on top.
+const waitBtn = document.createElement("button");
+waitBtn.textContent = "Waiting";
+waitBtn.onclick = () => show("overview", true);
+bar.append(waitBtn);
 const lookBtn = document.createElement("button");
 lookBtn.onclick = () => {
   State.settings = { ...State.settings, islandNewLook: !State.settings.islandNewLook };
@@ -78,4 +83,4 @@ function sync() {
   lookBtn.classList.toggle("on", State.settings.islandNewLook === true);
 }
 
-show((params.get("view") as IslandViewName | null) ?? "overview");
+show((params.get("view") as IslandViewName | null) ?? "overview", params.has("wait") || params.get("view") === "approval");

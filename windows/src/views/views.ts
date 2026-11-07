@@ -189,6 +189,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
       actions.moreMenu(r.right, r.bottom + 4);
     },
   }, svg(ICONS.ellipsis, 16));
+  // The new look has no tabs: away from home, this goes back to it (look-new.css shows it).
+  const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.agentsView()) },
+    svg(ICONS.chevronLeft, 14, { stroke: 2 }));
   // Plan usage pills (off by default): before the gear, Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
@@ -205,7 +208,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
+    h("div", { class: "tabs" }, backBtn, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
     h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn, moreBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
@@ -221,6 +224,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const activity = State.agentsActivity;
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
+      backBtn.classList.toggle("away", v !== "overview" && v !== "empty");
       const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
       if (folded && tabActivities.style.display === "none") {
         // It just landed: a little pop.
@@ -317,9 +321,13 @@ function buildOverview(actions: ViewActions): ViewHost {
   const plan = new PlanCard();
   let planTimer: number | null = null;
 
+  // The new look's list (look-new.css): what waits for you on top, the field to the chat under it all.
+  const waiting = waitingRow(actions);
   const el = h("div", { class: "view overview" },
+    waiting.el,
     h("div", { class: "left" }, left),
     h("div", { class: "right" }, right),
+    askField(actions),
   );
 
   let pillIds = "";
@@ -481,6 +489,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         }
       }
 
+      waiting.sync();
       jump.style.display = detailOpen || mode === "plan" || mode === "diff" ? "none" : "";
 
       // Each pill stays in its place when another goes to the card.
@@ -522,6 +531,7 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     h("span", { class: "pill-end" }),
   );
   pill.style.borderColor = `${task.color}24`;
+  pill.style.setProperty("--pill-color", task.color);
   pill.addEventListener("mouseenter", () => {
     pill.style.background = `${task.color}2e`;
     pill.style.borderColor = `${task.color}8c`;
@@ -569,7 +579,45 @@ function buildEmpty(actions: ViewActions): ViewHost {
     h("div", { class: "grow" }),
     btn(tl("Ask Claude"), "primary", () => actions.setView("prompt")),
   );
-  return { el: h("div", { class: "view" }, card(null, body)), sync() {} };
+  return { el: h("div", { class: "view empty-view" }, card(null, body), askField(actions)), sync() {} };
+}
+
+/**
+ * The new look's field at the bottom of the list (look-new.css shows it): a
+ * click opens the chat, which is where the writing happens.
+ */
+function askField(actions: ViewActions): HTMLElement {
+  return h("button", { class: "ask-field", onclick: () => actions.setView("prompt") },
+    svg(ICONS.plus, 13, { stroke: 1.6 }),
+    h("span", { class: "ph", text: tl("Ask me anything…") }),
+    svg(ICONS.mic, 14));
+}
+
+/**
+ * The new look's first row in the list while a request waits, folded away:
+ * who asks and for what. A click opens its card, where the answer is given.
+ */
+function waitingRow(actions: ViewActions): ViewHost {
+  const who = h("div", { class: "wait-who" });
+  const what = h("div", { class: "wait-what" });
+  const el = h("button", {
+    class: "wait-row",
+    onclick: () => {
+      const req = State.pendingApproval;
+      if (req) actions.setView(req.questions ? "question" : "approval");
+    },
+  }, h("div", { class: "wait-text" }, who, what), h("span", { class: "wait-open", text: tl("Open") }));
+  return {
+    el,
+    sync() {
+      const req = State.pendingApproval;
+      el.hidden = !req;
+      if (!req) return;
+      clear(who);
+      who.append(requestWho(req.questions ? t("is asking a question") : t("needs permission")));
+      what.textContent = req.questions ? req.questions[0]?.question ?? "" : req.command || req.tool;
+    },
+  };
 }
 
 // ── Approval ──────────────────────────────────────────────────────────────────

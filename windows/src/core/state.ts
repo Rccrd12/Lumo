@@ -925,6 +925,8 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    // The new look has no tabs: what waits for you and the sessions are home, the chat a field there.
+    if (this.settings.islandNewLook === true) return this.liveActive ? "live" : this.agentsView();
     if (this.lastTab === "agents") return this.agentsView();
     if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
