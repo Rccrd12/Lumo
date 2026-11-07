@@ -185,6 +185,13 @@ export class Island {
   private width = new Tracked(NOTCH_W);
   private height = new Tracked(0);
   private radius = new Tracked(ROUNDED_CORNER);
+  /**
+   * The new look: 1 when the island touches its edge of the screen (no gap,
+   * not floating, not picked up), so the corners on that side are square, as
+   * if it came out of the edge; 0 off it, rounded all round. Eases between.
+   */
+  private flat = new Tracked(0);
+  private flatGoal: number | null = null;
   private botCx = new Spring(46);
   private botCy = new Spring(16);
   private botSize = new Spring(10);
@@ -1382,8 +1389,30 @@ export class Island {
     const r = this.radius.value;
     this.islandEl.style.width = `${w}px`;
     this.islandEl.style.height = `${hh}px`;
-    // Rounded all round, a little off the edge of the screen.
-    this.islandEl.style.borderRadius = `${r}px`;
+    // Rounded all round, a little off the edge of the screen. The new look,
+    // against the edge: square on that side (flatTarget).
+    const goal = this.flatTarget();
+    if (goal !== this.flatGoal) {
+      if (this.flatGoal == null) this.flat.jump(goal);
+      else this.flat.springTo(goal, 0.4, 1);
+      this.flatGoal = goal;
+    }
+    const flat = this.flat.value;
+    if (flat > 0.001) {
+      const e = `${Math.max(0, r * (1 - flat))}px`;
+      const o = `${r}px`;
+      const d = this.dock;
+      // top-left, top-right, bottom-right, bottom-left
+      const c = [
+        d === "top" || d === "left" ? e : o,
+        d === "top" || d === "right" ? e : o,
+        d === "bottom" || d === "right" ? e : o,
+        d === "bottom" || d === "left" ? e : o,
+      ];
+      this.islandEl.style.borderRadius = c.join(" ");
+    } else {
+      this.islandEl.style.borderRadius = `${r}px`;
+    }
     const at = this.islandRect();
     this.islandEl.style.left = `${at.x}px`;
     this.islandEl.style.top = `${at.y}px`;
@@ -1890,6 +1919,7 @@ export class Island {
     this.radius.step(dt, nowMs);
     this.lift.step(dt, nowMs);
     this.gap.step(dt, nowMs);
+    this.flat.step(dt, nowMs);
     this.applyGeometry();
 
     if (this.dirty) {
@@ -1950,7 +1980,8 @@ export class Island {
     // sweep — so a hidden island went on burning frames in exactly the states it
     // spends most of its life in. Geometry still has to finish retracting.
     const settling =
-      this.width.animating || this.height.animating || this.radius.animating || this.gap.animating;
+      this.width.animating || this.height.animating || this.radius.animating || this.gap.animating
+      || this.flat.animating;
     const busy = State.mode === "hidden"
       ? settling
       : settling ||
@@ -2311,6 +2342,17 @@ export class Island {
     this.engine.triggerEmote("happy");
     Sound.play("pop");
     this.ensureRunning();
+  }
+
+  /**
+   * The new look's island against its edge of the screen: no distance asked
+   * for in Settings, not left floating off it, and not being carried.
+   */
+  private flatTarget(): number {
+    if (State.settings.islandNewLook !== true || this.moving) return 0;
+    if (edgeGap(State.settings.islandEdgeGap) !== 0) return 0;
+    if (!isUpright(this.dock) && (State.settings.islandFloat ?? 0) > 0) return 0;
+    return 1;
   }
 
   /** Where Rust put the window: the island is drawn this far off its usual place. */
