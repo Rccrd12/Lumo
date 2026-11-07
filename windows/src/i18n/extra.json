@@ -15274,6 +15274,54 @@
    "ru": "По последнему /context в этом чате",
    "id": "Menurut /context terakhir di chat ini",
    "it": "All'ultimo /context di questa chat"
+  },
+  "Screens": {
+   "zh-Hans": "屏幕",
+   "hi": "स्क्रीन",
+   "es": "Pantallas",
+   "ar": "الشاشات",
+   "fr": "Écrans",
+   "bn": "স্ক্রিন",
+   "pt-BR": "Telas",
+   "ru": "Экраны",
+   "id": "Layar",
+   "it": "Schermi"
+  },
+  "Tabs": {
+   "zh-Hans": "标签页",
+   "hi": "टैब",
+   "es": "Pestañas",
+   "ar": "علامات التبويب",
+   "fr": "Onglets",
+   "bn": "ট্যাব",
+   "pt-BR": "Abas",
+   "ru": "Вкладки",
+   "id": "Tab",
+   "it": "Schede"
+  },
+  "Folders": {
+   "zh-Hans": "文件夹",
+   "hi": "फ़ोल्डर",
+   "es": "Carpetas",
+   "ar": "المجلدات",
+   "fr": "Dossiers",
+   "bn": "ফোল্ডার",
+   "pt-BR": "Pastas",
+   "ru": "Папки",
+   "id": "Folder",
+   "it": "Cartelle"
+  },
+  "Send to the chat": {
+   "zh-Hans": "发送到聊天",
+   "hi": "चैट में भेजें",
+   "es": "Enviar al chat",
+   "ar": "أرسل إلى الدردشة",
+   "fr": "Envoyer dans le chat",
+   "bn": "চ্যাটে পাঠান",
+   "pt-BR": "Enviar para o chat",
+   "ru": "Отправить в чат",
+   "id": "Kirim ke chat",
+   "it": "Invia alla chat"
   }
  }
 }

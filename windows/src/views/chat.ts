@@ -77,6 +77,7 @@ import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
 import { drawNewUsage, lastContextReport } from "./usage-panel";
+import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
   Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
@@ -1584,7 +1585,8 @@ export function buildPrompt(
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
     // The new look's usage menu holds the context and the limits: as much room as Listening.
-    const tall = State.settings.islandNewLook === true && body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null;
+    const tall = State.settings.islandNewLook === true && ((body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
+      || body.classList.contains("screening"));
     if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
@@ -2417,6 +2419,24 @@ export function buildPrompt(
     const tabList = await Promise.race([tabs, late]);
     window.clearTimeout(timer);
     if (ticket !== screenTicket) return;
+    // The new look: pills and tiles (views/share-panel.ts), with the windows listed too.
+    if (State.settings.islandNewLook === true) {
+      let windows: OpenWindow[] = [];
+      try {
+        windows = (await Bridge.screenWindows()) ?? [];
+      } catch {
+        // The Windows pill then says none is open.
+      }
+      if (ticket !== screenTicket) return;
+      drawShareTiles(displays, explorer, tabList ?? [], windows, problem);
+      // Drawn without the tabs: they join once they come, if the menu is still there.
+      if (tabList === null) {
+        void tabs.then((list) => {
+          if (ticket === screenTicket && list.length > 0) drawShareTiles(displays, explorer, list, windows, problem);
+        });
+      }
+      return;
+    }
     drawScreenEntries(displays, explorer, tabList ?? [], problem);
     // Drawn without them: they join the menu once they come, if it is still there.
     if (tabList === null) {
@@ -2454,6 +2474,29 @@ export function buildPrompt(
     if (problem) screenStatus(problem);
     else if (displays.length > 0 && !images) screenStatus(noImagesReason(providerDef(State.settings.chatProvider)));
     screenStatus(t(SCREEN_STRINGS.nothingYet));
+  }
+
+  /** The kind of things the new look's Share menu shows: the last one picked. */
+  let shareKind: ShareKindId = "windows";
+
+  function drawShareTiles(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], windows: OpenWindow[], problem: string) {
+    const images = seesImages(providerDef(State.settings.chatProvider));
+    const fromPicks = (picks: PickEntry[], go: (pick: PickEntry) => void): ShareItem[] =>
+      picks.map((pick) => ({ key: String(pick.id), label: pick.label, detail: pick.detail, title: [pick.title || pick.label, pick.detail].filter(Boolean).join("\n"), all: pick.id == null, go: () => go(pick) }));
+    const screens: ShareItem[] = displays.map((d) => ({
+      key: `d${d.index}`, label: screenLabel(d.index), detail: `${d.width} × ${d.height}`, title: `${screenLabel(d.index)} · ${d.width} × ${d.height}`, disabled: !images,
+      go: () => void pickEntry({ kind: "display", index: d.index, width: d.width, height: d.height }),
+    }));
+    if (displays.length > 1) screens.unshift({ key: "all", label: t(SCREEN_STRINGS.allScreens), title: t(SCREEN_STRINGS.allScreens), all: true, disabled: !images, go: () => void pickEntry({ kind: "all" }) });
+    const folders = explorer.problem ? [] : explorer.folders;
+    const kinds: ShareKind[] = [
+      { id: "windows", count: windows.length, items: fromPicks(windowPicks(windows), (pick) => void shareWindows(pick, windows)), empty: t(SCREEN_STRINGS.noWindows) },
+      ...(displays.length ? [{ id: "screens" as const, count: displays.length, items: screens }] : []),
+      ...(tabList.length ? [{ id: "tabs" as const, count: tabList.length, items: fromPicks(tabPicks(tabList), (pick) => void shareTabs(pick)) }] : []),
+      ...(folders.length ? [{ id: "folders" as const, count: folders.length, items: fromPicks(folderPicks(folders), (pick) => void shareFolders(typeof pick.id === "string" ? [pick.id] : [])) }] : []),
+    ];
+    const notes = problem ? [problem] : displays.length > 0 && !images ? [noImagesReason(providerDef(State.settings.chatProvider))] : [];
+    drawShareGrid(screenList, kinds, shareKind, (id) => { shareKind = id; }, notes, t(SCREEN_STRINGS.nothingYet));
   }
 
   /** The second list: "All …", then each window or tab, under a way back. */
