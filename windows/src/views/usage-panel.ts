@@ -13,7 +13,20 @@ import { N_, t } from "../i18n/i18n";
 const USAGE_PANEL_TEXT = {
   askContext: N_("See what fills the context"),
   lastContext: N_("As of the last /context in this chat"),
+  about: N_("about {used} of {total}"),
 };
+
+/**
+ * The context window of a model Antigravity CLI runs, by its name: agy does
+ * not say it in the chat. Its own choice ("default") is a Gemini model. Null
+ * for a model the island does not know.
+ */
+export function agyContextWindow(model: string): number | null {
+  const m = model.trim().toLowerCase();
+  if (!m || m === "default" || m.includes("gemini")) return 1_000_000;
+  if (m.includes("claude")) return 200_000;
+  return null;
+}
 
 /**
  * The last /context answer in the chat, and whether nothing was answered
@@ -51,7 +64,7 @@ export interface NewUsageInput {
   /** What fills the context, from the last /context; null when not asked yet. */
   report: { report: ContextReport; fresh: boolean } | null;
   /** How full the context is, as the chat's last answer said (Claude Code's stream); null when not known. */
-  fill: { used: number; total: number } | null;
+  fill: { used: number; total: number; estimate?: boolean } | null;
   /** Asks Claude Code for /context; null where there is no such thing. */
   askContext: (() => void) | null;
 }
@@ -69,7 +82,7 @@ export function drawNewUsage(list: HTMLElement, { line, local, report: last, fil
     list.append(h("div", { class: "usage-ctx" },
       h("div", { class: "usage-ctx-head" },
         h("span", { class: "usage-ctx-title", text: t(CONTEXT_STRINGS.title) }),
-        h("span", { class: "usage-ctx-numbers", text: `${t(CONTEXT_STRINGS.used, { used: formatTokens(used), total: formatTokens(fill.total) })} · ${t(CONTEXT_STRINGS.free, { free: formatTokens(fill.total - used) })}` })),
+        h("span", { class: "usage-ctx-numbers", text: `${t(fill.estimate ? USAGE_PANEL_TEXT.about : CONTEXT_STRINGS.used, { used: formatTokens(used), total: formatTokens(fill.total) })} · ${t(CONTEXT_STRINGS.free, { free: formatTokens(fill.total - used) })}` })),
       h("span", { class: "usage-limit-bar" }, bar),
       askContext ? h("button", { class: "usage-ask-context small", type: "button", text: t(USAGE_PANEL_TEXT.askContext), onclick: askContext }) : null));
   } else if (report) {

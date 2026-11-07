@@ -76,7 +76,7 @@ import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
-import { drawNewUsage, lastContextReport } from "./usage-panel";
+import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
   Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
@@ -1779,7 +1779,10 @@ export function buildPrompt(
       const report = lastContextReport(State.chatHistory);
       // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
       const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
-      const fill = filled && filled.total > 0 ? { used: filled.used, total: filled.total } : null;
+      // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
+      const agy = State.settings.chatProvider === "antigravity-cli";
+      const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
+      const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
       drawNewUsage(usageList, {
         line, local, report, fill,
         askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {

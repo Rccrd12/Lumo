@@ -393,6 +393,17 @@ struct Run {
     touching: Vec<(u64, FileTouch)>,
     /// Files used by steps that finished, not passed on yet (`take_files`).
     touched: Vec<FileTouch>,
+    /// The tokens the turn's result says it used (read and written): about how
+    /// full the conversation is, for the chat's usage menu.
+    context_used: Option<u64>,
+}
+
+/// The tokens a result's `usage` counts: what the model read (cached or not,
+/// as agy's input counts the cache in) and what it wrote and thought.
+fn usage_tokens(usage: &Value) -> Option<u64> {
+    let n = |k: &str| usage[k].as_u64().unwrap_or(0);
+    let total = n("input_tokens") + n("output_tokens") + n("thinking_tokens");
+    (total > 0).then_some(total)
 }
 
 impl Run {
@@ -417,6 +428,9 @@ impl Run {
                 // The result's conversation is the one to resume, whatever came before.
                 if let Some(id) = id {
                     self.conversation = Some(id.to_string());
+                }
+                if let Some(used) = usage_tokens(&v["usage"]) {
+                    self.context_used = Some(used);
                 }
                 let status = v["status"].as_str().unwrap_or("").trim().to_ascii_uppercase();
                 let error = error_text(&v["error"]);
@@ -904,6 +918,7 @@ pub async fn send(
     let events = chat.events();
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
+    let usage_chat = chat_id.clone();
     let state = tauri::async_runtime::spawn_blocking(move || {
         // agy's plan, for the Plan island (src/island/plan.ts): what it gives
         // Lumo's update_plan tool, as it goes. A checklist in its answer is
@@ -938,6 +953,18 @@ pub async fn send(
     .await
     .map_err(|e| e.to_string())??;
 
+    // About how full the conversation is, for the chat's usage menu: agy does
+    // not say its model's context window, the island knows it by the model's name.
+    if let Some(used) = state.context_used {
+        let usage = crate::chat_usage::ChatUsage {
+            provider: "antigravity-cli".to_string(),
+            context: Some(crate::chat_usage::ContextUse { chat: usage_chat, used, total: 0 }),
+            tokens: None,
+            requests: None,
+            credits: None,
+        };
+        let _ = app.emit("chat-usage", usage);
+    }
     if let Some(id) = &state.conversation {
         chat.set_cli_session(&turn, id);
     }
@@ -1435,6 +1462,16 @@ mod tests {
         assert_eq!(run.visible, "The PDF says hi.", "a new response step replaces the one before");
         assert_eq!(run.result, Some(Ok("The PDF says hi.".into())));
         assert_eq!(run.denied, 0);
+    }
+
+    #[test]
+    fn the_result_says_about_how_many_tokens_the_conversation_holds() {
+        let mut run = Run::default();
+        run.feed(br#"{"event":"result","result":{"status":"SUCCESS","response":"ok","usage":{"input_tokens":10050,"output_tokens":120,"thinking_tokens":30,"cache_read_tokens":9000,"total_tokens":10200}}}"#);
+        assert_eq!(run.context_used, Some(10200));
+        let mut bare = Run::default();
+        bare.feed(br#"{"event":"result","result":{"status":"SUCCESS","response":"ok"}}"#);
+        assert_eq!(bare.context_used, None);
     }
 
     #[test]

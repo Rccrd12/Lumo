@@ -15322,6 +15322,18 @@
    "ru": "Отправить в чат",
    "id": "Kirim ke chat",
    "it": "Invia alla chat"
+  },
+  "about {used} of {total}": {
+   "zh-Hans": "约 {used} / {total}",
+   "hi": "लगभग {used} / {total}",
+   "es": "unos {used} de {total}",
+   "ar": "حوالي {used} من {total}",
+   "fr": "environ {used} sur {total}",
+   "bn": "প্রায় {used} / {total}",
+   "pt-BR": "cerca de {used} de {total}",
+   "ru": "около {used} из {total}",
+   "id": "sekitar {used} dari {total}",
+   "it": "circa {used} su {total}"
   }
  }
 }
