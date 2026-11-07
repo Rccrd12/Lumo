@@ -1265,8 +1265,23 @@ html.look-new .plan-chip-segs i.skipped {
   background: var(--dim-4);
 }
 
+/* As in the concept (piano-e-apertura): done in green, the step under way
+   in the island's working blue, here and in the list of steps. */
 html.look-new .plan-chip-segs i.active {
-  background: var(--ink);
+  background: #3b9eff;
+}
+
+html.look-new .plan-strip-list .plan-lit-ring {
+  stroke: #3b9eff;
+}
+
+html.look-new .plan-strip-list .plan-lit-dot {
+  fill: #3b9eff;
+}
+
+html.look-new .plan-strip-list .plan-step.done .plan-text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--dim) 60%, transparent);
 }
 
 html.look-new .plan-chip-segs.bar i.fill {
