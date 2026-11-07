@@ -3330,6 +3330,29 @@ math.mx .mx-cancel.mx-sout {
   font-size: 11.5px;
 }
 
+/* The chat's answers read like a page: lines with room between them, and a
+   little more between paragraphs, list items and formulas. */
+.chat-log .reply {
+  gap: 10px;
+}
+
+.chat-log .md-p,
+.chat-log .md-bullet {
+  line-height: 1.6;
+}
+
+.chat-log .md-quote-body {
+  gap: 8px;
+}
+
+.chat-log .md-h {
+  margin-top: 6px;
+}
+
+.chat-log .md-math {
+  padding: 6px 28px;
+}
+
 /* Claude Code's effort: Auto beside its name, then a short slider with the
    level it is on. Two short rows, so the model list keeps its room. */
 .picker-efforts {
