@@ -50,11 +50,21 @@ function tilesOf(data: ActivitiesData): ("timer" | "music" | "calendar" | "mail"
   const tiles: ("timer" | "music" | "calendar" | "mail")[] = [];
   // Off in Settings, or put away with the "⋯" menu's Live Activities.
   if (State.settings.activitiesPanel === false || State.settings.activitiesFolded === true) return tiles;
-  if (data.timers.length) tiles.push("timer");
-  if (data.media) tiles.push("music");
-  if (data.calendar.configured && data.calendar.events.length) tiles.push("calendar");
-  if (data.mail.on && data.mail.messages.length) tiles.push("mail");
+  // The timer and the music always (a timer to start, what plays); the
+  // calendar and the email once they are set up, empty or not.
+  tiles.push("timer", "music");
+  if (data.calendar.configured) tiles.push("calendar");
+  if (data.mail.on) tiles.push("mail");
   return tiles;
+}
+
+/** The sessions the home lists, and the other pills it names (the email's is its tile, when shown). */
+export function homeLists(active: (t: AgentTask) => boolean, data: ActivitiesData): { sessions: AgentTask[]; others: AgentTask[] } {
+  const mailTile = tilesOf(data).includes("mail");
+  return {
+    sessions: State.tasks.filter(active),
+    others: State.tasks.filter((x) => !active(x) && !(mailTile && x.id === "integration_mail")),
+  };
 }
 
 /** The home's height for what it shows now: rows on the left, tiles on the right, the field under them. */
@@ -65,9 +75,10 @@ export function homeHeight(sessions: number, waiting: boolean, data: ActivitiesD
   if (shown) left += (waiting ? GAP : 0) + LABEL_H + shown * ROW_H + (shown - 1) * ROW_GAP;
   if (!left) left = ROW_H;
   const tiles = tilesOf(data).length;
-  let right = tiles ? Math.ceil(tiles / 2) * TILE_H + (Math.ceil(tiles / 2) - 1) * 8 : 0;
-  if (chips) right += (tiles ? GAP : 0) + LABEL_H + CHIPS_H;
-  return TOP + Math.max(left, right) + GAP + FIELD_H + BOTTOM;
+  // Three side by side in one row (look-new.css .three), else two to a row.
+  const rows = tiles === 3 ? 1 : Math.ceil(tiles / 2);
+  const right = tiles ? rows * TILE_H + (rows - 1) * 8 : 0;
+  return TOP + Math.max(left, right) + (chips ? GAP + CHIPS_H : 0) + GAP + FIELD_H + BOTTOM;
 }
 
 export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolean) {
@@ -75,7 +86,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   const right = h("div", { class: "home-right" });
   const tilesEl = h("div", { class: "home-tiles" });
   const chipsEl = h("div", { class: "home-chips" });
-  right.append(tilesEl, chipsEl);
+  right.append(tilesEl);
   const plus = h("span", {
     class: "ask-plus", role: "button", title: tl("Attach a file"),
     onclick: (e: Event) => {
@@ -85,7 +96,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   }, svg(ICONS.plus, 13, { stroke: 1.6 }));
   const field = h("button", { class: "ask-field home-field", onclick: () => actions.openChat() },
     plus, h("span", { class: "ph", text: tl("Ask me anything…") }));
-  const el = h("div", { class: "view home" }, h("div", { class: "home-cols" }, left, right), field);
+  const el = h("div", { class: "view home" }, h("div", { class: "home-cols" }, left, right), chipsEl, field);
 
   let leftKey = "";
   let rightKey = "";
@@ -159,6 +170,16 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
     switch (kind) {
       case "timer": {
         const timer = data.timers[0];
+        // None running: three to start with a click.
+        if (!timer) {
+          const start = (minutes: number) => h("button", {
+            class: "tile-chip", text: `${minutes}m`,
+            onclick: () => actions.activity({ kind: "timer", ms: minutes * 60_000, label: "" }),
+          });
+          return h("div", { class: "home-tile" },
+            h("div", { class: "tile-kick" }, svg(ICONS.clock, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.timer) })),
+            h("div", { class: "tile-chips" }, start(5), start(10), start(25)));
+        }
         const big = h("div", { class: "tile-big", text: remaining(timer.endsAt) });
         timerEls.push({ el: big, endsAt: timer.endsAt });
         return h("div", { class: "home-tile" },
@@ -166,7 +187,12 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           big);
       }
       case "music": {
-        const media = data.media!;
+        const media = data.media;
+        if (!media) {
+          return h("div", { class: "home-tile" },
+            h("div", { class: "tile-kick" }, svg(ICONS.play, 10), h("span", { text: t(ACTIVITIES_TEXT.music) })),
+            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.nothingPlaying) }));
+        }
         const ctl = (icon: string, title: string, action: "toggle" | "next") =>
           h("button", { class: "tile-ctl", title: t(title), onclick: () => actions.activity({ kind: "media", action }) }, svg(icon, 11));
         return h("div", { class: "home-tile" },
@@ -180,6 +206,11 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       case "calendar": {
         const [first, second] = data.calendar.events;
         const now = Date.now();
+        if (!first) {
+          return h("div", { class: "home-tile" },
+            h("div", { class: "tile-kick" }, svg(ICONS.calendar, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.calendar) })),
+            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.nothingSoon) }));
+        }
         const tileEl = h("div", { class: "home-tile link" },
           h("div", { class: "tile-kick" }, svg(ICONS.calendar, 12, { stroke: 1.8 }),
             h("span", { text: first.allDay ? t(ACTIVITIES_TEXT.allDay) : eventWhen(first, now, language()) })),
@@ -190,6 +221,13 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       }
       case "mail": {
         const mail = data.mail.messages;
+        if (!mail.length) {
+          const quiet = h("div", { class: "home-tile link" },
+            h("div", { class: "tile-kick" }, svg(ICONS.envelope, 12, { stroke: 1.8 }), h("span", { text: t(ACTIVITIES_TEXT.email) })),
+            h("div", { class: "tile-sub", text: t(ACTIVITIES_TEXT.noUnread) }));
+          quiet.addEventListener("click", () => actions.activity({ kind: "inbox" }));
+          return quiet;
+        }
         const tileEl = h("div", { class: "home-tile link" },
           h("div", { class: "tile-kick" }, dot("#f4505e", 6), h("span", { text: `${t(ACTIVITIES_TEXT.email)} · ${mail.length}` })),
           h("div", { class: "tile-title", text: mail[0].from }),
@@ -202,14 +240,6 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
 
   return {
     el,
-    /** The sessions on the list, in State's order. */
-    sessions(): AgentTask[] {
-      return State.tasks.filter(active);
-    },
-    /** The other pills, named in a row. */
-    others(): AgentTask[] {
-      return State.tasks.filter((x) => !active(x));
-    },
     tick(): boolean {
       for (const timer of timerEls) {
         const text = remaining(timer.endsAt);
@@ -224,9 +254,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         shownFor = id;
         shownAt = performance.now();
       }
-      const sessions = this.sessions();
-      const others = this.others();
       const data = actions.activityData();
+      const { sessions, others } = homeLists(active, data);
 
       // Rebuilt only when what they show changes: a rebuild between a mouse-down
       // and its mouse-up would swallow the click.
@@ -265,9 +294,11 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         timerEls.length = 0;
         for (const kind of tiles) tilesEl.append(tile(kind, data));
         tilesEl.hidden = tiles.length === 0;
+        right.classList.toggle("three", tiles.length === 3);
         clear(chipsEl);
         if (others.length) {
-          chipsEl.append(label(t("Services")),
+          // One line across the island, its name first, as on the board.
+          chipsEl.append(h("span", { class: "home-chips-name", text: t("Services") }),
             h("div", { class: "home-chip-row" }, ...others.map((x) => {
               const chip = h("button", { class: "home-chip", onclick: () => actions.openSession(x.id) },
                 dot(x.color, 7), h("span", { text: x.id === "integration_claude" ? "VS Code" : x.name }));
@@ -276,7 +307,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             })));
         }
         chipsEl.hidden = others.length === 0;
-        right.hidden = tiles.length === 0 && others.length === 0;
+        right.hidden = tiles.length === 0;
       }
     },
   };

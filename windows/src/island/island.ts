@@ -25,7 +25,7 @@ import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen } from "../views/usage";
 import { buildHeader, buildViews, hasSessionTicker, type ViewActions, type ViewHost } from "../views/views";
-import { homeHeight } from "../views/home";
+import { homeHeight, homeLists } from "../views/home";
 import { h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
 import { IslandStateMachine, type LeaveHold } from "./fsm";
@@ -1323,10 +1323,10 @@ export class Island {
     }
     // The new look's home: as wide as it needs to stay low, as tall as what it lists.
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "home") {
-      const sessions = State.tasks.filter(hasSessionTicker).length;
-      const others = State.tasks.length - sessions;
+      const data = this.activities.data();
+      const { sessions, others } = homeLists(hasSessionTicker, data);
       w = Math.min(Math.max(w, NEW_LOOK_HOME_W), window.innerWidth - 40);
-      h = homeHeight(sessions, State.pendingApproval != null, this.activities.data(), others);
+      h = homeHeight(sessions.length, State.pendingApproval != null, data, others.length);
     }
     const asked = State.pendingApproval?.questions?.[0];
     if (State.mode === "expanded" && State.settings.islandNewLook === true && State.view === "question" && asked) {

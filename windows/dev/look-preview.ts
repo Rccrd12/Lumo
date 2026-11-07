@@ -29,14 +29,24 @@ State.loadIntegrationTasks();
 
 // A Claude Code session at work in "lumo".
 const cwd = "C:\\dev\\lumo";
-hook({ hook_event_name: "SessionStart", cwd });
-hook({ hook_event_name: "UserPromptSubmit", cwd, prompt: "Add a dark mode toggle to the settings" });
-hook({ hook_event_name: "PreToolUse", cwd, tool_name: "Read", tool_input: { file_path: `${cwd}\\src\\settings\\general.ts` } });
-hook({ hook_event_name: "PreToolUse", cwd, tool_name: "Edit", tool_input: { file_path: `${cwd}\\src\\settings\\general.ts`, old_string: "a", new_string: "b" } });
+// With ?idle nothing runs and nothing plays: the home as it is most of the day.
+if (!params.has("idle")) {
+  hook({ hook_event_name: "SessionStart", cwd });
+  hook({ hook_event_name: "UserPromptSubmit", cwd, prompt: "Add a dark mode toggle to the settings" });
+  hook({ hook_event_name: "PreToolUse", cwd, tool_name: "Read", tool_input: { file_path: `${cwd}\\src\\settings\\general.ts` } });
+  hook({ hook_event_name: "PreToolUse", cwd, tool_name: "Edit", tool_input: { file_path: `${cwd}\\src\\settings\\general.ts`, old_string: "a", new_string: "b" } });
 
-// A timer and some music, for the live activities.
-Feed.timers = [{ id: 1, label: "Pasta", endsAt: Date.now() + 398_000, total: 600_000 }];
-Feed.media = { title: "Midnight City", artist: "M83", app: "Spotify", playing: true };
+  // A timer and some music, for the live activities.
+  Feed.timers = [{ id: 1, label: "Pasta", endsAt: Date.now() + 398_000, total: 600_000 }];
+  Feed.media = { title: "Midnight City", artist: "M83", app: "Spotify", playing: true };
+}
+
+// Idle, the Email pill on with nothing unread, as most days.
+if (params.has("idle")) {
+  State.settings = { ...State.settings, activeIntegrations: [...State.settings.activeIntegrations, "integration_mail"] };
+  State.integrations.integration_mail = { loaded: true, error: null, configured: true, data: { messages: [] } } as unknown as typeof State.integrations.integration_mail;
+  State.loadIntegrationTasks();
+}
 
 // A plan, with ?plan: Claude Code leaving Plan Mode with four steps.
 if (params.has("plan")) {
