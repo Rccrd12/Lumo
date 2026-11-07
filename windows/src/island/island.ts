@@ -4,7 +4,7 @@ import { Tracked, Spring, clamp } from "../core/anim";
 import { Bridge, IS_TAURI, isDialogOpen, onDragDrop } from "../core/bridge";
 import {
   CHAT_FORGE, CHAT_LISTENING, compactWidth, computerCompact, CHAT_PANEL_OPEN, EXPANDED_CORNER, edgeGap, EXPANDED_W, NOTCH_W,
-  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition,
+  ROUNDED_CORNER, VIEW_LAYOUTS, botGlowColor, botGlowOpacity, botPosition, edgeLightColor, newLookBot,
   GRIPS, gripFactors, isUpright, islandSize, parseDock, type Dock, type Grip, type IslandShape,
   QUESTION_PICKER_H,
   EMAIL_CARD_H,
@@ -34,13 +34,13 @@ import type { MailMessage } from "../core/bridge";
 import { refreshConfigured, refreshHookPills } from "./integrations";
 import { ContextMenu, textEntries, type MenuEntry } from "../views/context-menu";
 import { ownEntries } from "../views/own-menu";
-import { MENU_TEXT, pickedItems } from "../core/context-menu";
+import { MENU_ITEMS, MENU_TEXT, pickedItems } from "../core/context-menu";
 import { Feed, UPLOADED_TEXT, compactNotice, compactTimer, setCompactNewsHandler } from "../core/compact";
 import { agentPlanWanted, refreshAntigravityPlanUsage, refreshClaudePlanOnline, refreshCodexPlanUsage } from "../views/usage";
 import { reloadRecap } from "../views/integrations";
 import { isHookPill, pillDefinition } from "../core/pills";
 import { isComputerTool } from "../core/computer";
-import { t } from "../i18n/i18n";
+import { N_, t } from "../i18n/i18n";
 import { Calendar } from "./activities";
 import { IslandPlan } from "./plan";
 import { PlanView } from "../views/plan-view";
@@ -169,6 +169,8 @@ export class Island {
   private lastDock: Dock | null = null;
 
   private header!: ViewHost;
+  /** The colour last given to the new look's edge light. */
+  private edgeLight = "";
   private views!: Map<IslandViewName, ViewHost>;
   private uploadCanvas!: UploadCanvas;
   /** A picture of the chat's previews, opened big over the whole island (views/picture.ts). */
@@ -331,6 +333,7 @@ export class Island {
       setView: (v) => this.setView(v),
       collapse: () => this.collapse(),
       hide: () => this.hideInEdge(),
+      moreMenu: (x, y) => this.openMoreMenu(x, y),
       foldApproval: () => this.foldApproval(),
       setFocus: (id) => {
         State.setFocus(id);
@@ -738,6 +741,24 @@ export class Island {
     }
     entries.push({ kind: "sep" }, { kind: "item", label: t(MENU_TEXT.customize), run: () => this.openSettingsAt("general") });
     this.menu.open(x, y, entries);
+  }
+
+  /** The new look's "⋯": what the top bar's right end used to hold, and a few of the right-click menu's items. */
+  openMoreMenu(x: number, y: number) {
+    const item = (id: string): MenuEntry => {
+      const def = MENU_ITEMS.find((i) => i.id === id)!;
+      return { kind: "item", label: t(def.label), checked: def.toggle ? this.menuChecked(id) : undefined, run: () => this.menuAction(id) };
+    };
+    // Its right edge under the button's.
+    this.menu.open(x - 220, y, [
+      item("settings"),
+      item("sound"),
+      item("pin"),
+      item("wardrobe"),
+      { kind: "sep" },
+      { kind: "item", label: t(N_("Hide in the edge of the screen")), run: () => this.hideInEdge() },
+      item("quit"),
+    ]);
   }
 
   private menuChecked(id: string): boolean {
@@ -1866,10 +1887,19 @@ export class Island {
   };
 
   private updateBotTargets() {
-    const p = this.onlyLumo
+    const notch = State.settings.islandNewLook === true && State.mode === "expanded" && !this.onlyLumo
+      ? newLookBot(State.view, this.width.value)
+      : null;
+    const p = notch ?? (this.onlyLumo
       ? computerCompact("top").bot
       : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
-        State.uploadNames.length > 1);
+        State.uploadNames.length > 1));
+    // The new look's light along the island's edge (look-new.css), in Lumo's colour.
+    const light = State.mode === "hidden" ? "transparent" : edgeLightColor(State.shownState);
+    if (light !== this.edgeLight) {
+      this.edgeLight = light;
+      this.islandEl.style.setProperty("--lumo-light", light);
+    }
     // Upright on a side, the closed island has Lumo at its top end.
     const turned = isUpright(this.dock) && State.mode !== "expanded";
     this.botCx.target = turned ? p.cy : p.cx;
@@ -2097,6 +2127,8 @@ export class Island {
     Sound.setVolume(State.settings.soundVolume);
     this.applyBehaviour();
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
+    // Settings → Island → New look: one class, so turning it off is the usual look again.
+    document.documentElement.classList.toggle("look-new", State.settings.islandNewLook === true);
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
     // the top (Settings, tray), or a new closed island width: grow, shrink or

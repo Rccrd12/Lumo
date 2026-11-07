@@ -234,6 +234,9 @@ pub struct Settings {
     /// When Lumo opens, ask GitHub once whether a newer Windows release is out
     /// (updater.rs) and say so on the island. Settings → Updates turns it off.
     pub update_check_on_open: bool,
+    /// Settings → Island → New look (preview): Lumo in the open island's top
+    /// bar, his light along its edge (src/look-new.css). Off by default.
+    pub island_new_look: bool,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -332,6 +335,7 @@ impl Default for Settings {
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
+            island_new_look: false,
         }
     }
 }
@@ -664,7 +668,8 @@ mod tests {
   "computerAim": false,
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
-  "updateCheckOnOpen": false
+  "updateCheckOnOpen": false,
+  "islandNewLook": true
 }"##;
 
     fn custom() -> Value {
@@ -842,6 +847,13 @@ mod tests {
         assert!(parse(&custom_with("updateCheckOnOpen", None)).unwrap().update_check_on_open);
         assert!(!parse(CUSTOM.as_bytes()).unwrap().update_check_on_open);
         assert!(Settings::default().update_check_on_open);
+    }
+
+    #[test]
+    fn a_file_from_before_the_new_look_keeps_the_usual_one() {
+        assert!(!parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
+        assert!(!Settings::default().island_new_look);
+        assert!(parse(CUSTOM.as_bytes()).unwrap().island_new_look);
     }
 
     #[test]
@@ -1124,6 +1136,7 @@ mod tests {
                 "pillColors",
                 "language",
                 "updateCheckOnOpen",
+                "islandNewLook",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

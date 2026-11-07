@@ -1,0 +1,138 @@
+/* Settings → Island → New look (preview). Everything here hangs on the
+   `look-new` class island.ts puts on <html> while it is on, so turning it off
+   is the usual look again, as it ships: this file changes nothing else.
+
+   The idea (concepts/redesign): Lumo leaves the left column for the middle of
+   the top bar (layout.ts newLookBot), the views take the whole width on one
+   black surface, the colour is Lumo's own — a thin light along the island's
+   free edge — and the top bar's right end folds into a "⋯" menu. */
+
+/* ── Lumo's light along the island's edge (--lumo-light, island.ts) ────────── */
+
+html.look-new #island {
+  transition: box-shadow 0.4s ease-out;
+}
+
+html.look-new .dock-top #island {
+  box-shadow: 0 1.5px 0 0 var(--lumo-light, transparent),
+    0 8px 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+}
+
+html.look-new .dock-bottom #island {
+  box-shadow: 0 -1.5px 0 0 var(--lumo-light, transparent),
+    0 -8px 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+}
+
+html.look-new .dock-left #island {
+  box-shadow: 1.5px 0 0 0 var(--lumo-light, transparent),
+    8px 0 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+}
+
+html.look-new .dock-right #island {
+  box-shadow: -1.5px 0 0 0 var(--lumo-light, transparent),
+    -8px 0 24px -8px color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+}
+
+/* ── Top bar: tabs, Lumo in the middle, "⋯" ────────────────────────────────── */
+
+.more-btn {
+  display: none !important;
+}
+
+html.look-new .more-btn {
+  display: grid !important;
+}
+
+html.look-new .header-actions > button:not(.more-btn) {
+  display: none;
+}
+
+html.look-new .tab.on {
+  background: #1a1b1f;
+}
+
+/* ── One surface: the cards lose their fill, edge and coloured wash ────────── */
+
+html.look-new .card {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 14px;
+}
+
+html.look-new .card.wash::after {
+  display: none;
+}
+
+/* The overview's two cards stay apart, flat. */
+html.look-new .overview .card {
+  background: #111214;
+}
+
+/* ── The room Lumo's column took goes back to the views ────────────────────── */
+
+html.look-new .who,
+html.look-new .plan-head {
+  padding-left: 16px;
+}
+
+html.look-new .ticker {
+  margin-left: 16px;
+}
+
+html.look-new .steps-card,
+html.look-new .diff-card,
+html.look-new .int-card,
+html.look-new .int-card.tool-card,
+html.look-new .plan-rows,
+html.look-new .plan-foot,
+html.look-new .recap-stack,
+html.look-new .recap-share,
+html.look-new .wardrobe-stack {
+  padding-left: 16px;
+}
+
+html.look-new .stack {
+  padding-left: 16px !important;
+}
+
+html.look-new .chat-body,
+html.look-new .tools-body {
+  padding-left: 16px;
+}
+
+html.look-new .slash-menu {
+  left: 16px;
+}
+
+/* ── Sessions: the session gets the room, the pills a narrow column ────────── */
+
+html.look-new .overview > .left {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+html.look-new .overview > .right {
+  flex: 0 0 256px;
+}
+
+html.look-new .pill {
+  border-color: rgba(255, 255, 255, 0.06);
+}
+
+/* ── Tools: "Add a tool" in grey, like the rest ────────────────────────────── */
+
+html.look-new .tools-add {
+  border: 1px solid #26282d;
+  background: transparent;
+}
+
+html.look-new .tools-add:hover {
+  border-color: #3a3d44;
+  background: #111214;
+}
+
+html.look-new .tools-add-plus {
+  color: #f5f6f8;
+  background: #1a1b1f;
+  box-shadow: none;
+}

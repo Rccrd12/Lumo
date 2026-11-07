@@ -15000,6 +15000,42 @@
    "ru": "Модель потратила всё место на рассуждения и не написала ответ: спросите снова или уменьшите рассуждение.",
    "id": "Model menghabiskan semua ruangnya untuk bernalar dan tidak menulis jawaban: tanyakan lagi, atau turunkan penalaran.",
    "it": "Il modello ha usato tutto lo spazio per ragionare e non ha scritto una risposta: richiedi, o abbassa il reasoning."
+  },
+  "New look (preview)": {
+   "zh-Hans": "新外观（预览）",
+   "hi": "नया रूप (पूर्वावलोकन)",
+   "es": "Nuevo aspecto (vista previa)",
+   "ar": "مظهر جديد (معاينة)",
+   "fr": "Nouveau look (aperçu)",
+   "bn": "নতুন চেহারা (প্রিভিউ)",
+   "pt-BR": "Novo visual (prévia)",
+   "ru": "Новый вид (предпросмотр)",
+   "id": "Tampilan baru (pratinjau)",
+   "it": "Nuovo look (anteprima)"
+  },
+  "Lumo moves to the middle of the open island's top bar, the views get the whole width and his light runs along the island's edge. Turn it off to go back to the usual look.": {
+   "zh-Hans": "Lumo 移到展开岛顶栏的中间，视图占满整个宽度，他的光沿着岛的边缘亮起。关闭即可恢复原来的外观。",
+   "hi": "Lumo खुले आइलैंड की ऊपरी पट्टी के बीच में आ जाता है, व्यू पूरी चौड़ाई लेते हैं और उसकी रोशनी आइलैंड के किनारे पर चलती है। सामान्य रूप पर लौटने के लिए इसे बंद करें।",
+   "es": "Lumo pasa al centro de la barra superior de la isla abierta, las vistas ocupan todo el ancho y su luz recorre el borde de la isla. Desactívalo para volver al aspecto habitual.",
+   "ar": "ينتقل Lumo إلى منتصف الشريط العلوي للجزيرة المفتوحة، وتأخذ العروض العرض كله، ويمتد ضوؤه على حافة الجزيرة. أوقفه للعودة إلى المظهر المعتاد.",
+   "fr": "Lumo passe au milieu de la barre du haut de l'île ouverte, les vues prennent toute la largeur et sa lumière court le long du bord de l'île. Désactivez-le pour retrouver le look habituel.",
+   "bn": "Lumo খোলা আইল্যান্ডের উপরের বারের মাঝখানে চলে যায়, ভিউগুলো পুরো প্রস্থ পায় আর তার আলো আইল্যান্ডের কিনারা ধরে জ্বলে। চেনা চেহারায় ফিরতে এটি বন্ধ করুন।",
+   "pt-BR": "O Lumo vai para o meio da barra superior da ilha aberta, as telas ocupam toda a largura e a luz dele corre pela borda da ilha. Desative para voltar ao visual de sempre.",
+   "ru": "Lumo переходит в середину верхней панели открытого острова, виды занимают всю ширину, а его свет идёт по краю острова. Выключите, чтобы вернуть обычный вид.",
+   "id": "Lumo pindah ke tengah bilah atas pulau yang terbuka, tampilan memakai seluruh lebar dan cahayanya menyusuri tepi pulau. Matikan untuk kembali ke tampilan biasa.",
+   "it": "Lumo passa al centro della barra in alto dell'isola aperta, le viste prendono tutta la larghezza e la sua luce corre lungo il bordo dell'isola. Spegnilo per tornare al look di sempre."
+  },
+  "More": {
+   "zh-Hans": "更多",
+   "hi": "और",
+   "es": "Más",
+   "ar": "المزيد",
+   "fr": "Plus",
+   "bn": "আরও",
+   "pt-BR": "Mais",
+   "ru": "Ещё",
+   "id": "Lainnya",
+   "it": "Altro"
   }
  }
 }

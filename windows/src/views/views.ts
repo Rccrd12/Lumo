@@ -73,6 +73,8 @@ export interface ViewActions {
   showPlan(): void;
   /** A chat deleted from Past chats: its plans go too. */
   forgetChatPlan(chatId: string): void;
+  /** The new look's "⋯" (Settings → Island → New look): settings, sound, hide and quit in one menu, at (x, y). */
+  moreMenu(x: number, y: number): void;
 }
 
 export interface ViewHost {
@@ -173,6 +175,14 @@ export function buildHeader(actions: ViewActions): ViewHost {
   // Closes Lumo altogether; it opens again from the Start menu.
   const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
     svg(ICONS.power, 13, { stroke: 2 }));
+  // The new look gathers the four above in a menu (look-new.css shows it, hides them).
+  const moreBtn = h("button", {
+    class: "more-btn", title: tl("More"),
+    onclick: (e: Event) => {
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      actions.moreMenu(r.right, r.bottom + 4);
+    },
+  }, svg(ICONS.ellipsis, 16));
   // Plan usage pills (off by default): before the gear, Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
@@ -190,7 +200,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
     "div",
     { id: "header" },
     h("div", { class: "tabs" }, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
-    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn),
+    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn, moreBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
 

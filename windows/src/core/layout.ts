@@ -332,6 +332,24 @@ export function botPosition(
   }
 }
 
+/**
+ * The new look (Settings → Island → New look): Lumo leaves the open island's
+ * left column for the middle of its top bar (8 pt inset + 34 pt header), small,
+ * and the views take the whole width. Null where he stays where he is: the drop
+ * sequence draws its own Lumo, the greeting and the Settings frame have none.
+ */
+export const NEW_LOOK_BOT = { cy: 25, diameter: 24 } as const;
+
+export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
+  if (view === "upload" || view === "uploading" || view === "greeting" || view === "settings") return null;
+  return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };
+}
+
+/** The new look's light along the island's edge: Lumo's colour, warm at rest. */
+export function edgeLightColor(s: BotStateName): string {
+  return s === "idle" || s === "sleeping" || s === "dizzy" ? "#FFD68C" : botGlowColor(s);
+}
+
 export function botGlowColor(s: BotStateName): string {
   switch (s) {
     case "working":

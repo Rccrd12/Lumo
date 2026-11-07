@@ -350,6 +350,10 @@ export interface Settings {
   language: string;
   /** When Lumo opens, one look at GitHub for a newer release (Settings → Updates). */
   updateCheckOnOpen: boolean;
+  /** Settings → Island → New look (preview): Lumo in the open island's top
+   * bar, one surface, his light along the island's edge (src/look-new.css).
+   * Off by default; turning it off brings the usual look back as it was. */
+  islandNewLook: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -443,6 +447,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
+  islandNewLook: false,
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",

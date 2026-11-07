@@ -2,6 +2,7 @@
 
 import "./core/legacy";
 import "./style.css";
+import "./look-new.css";
 import { Bridge, IS_TAURI, lendTauri, onEvent, type IslandShift, type MailMessage } from "./core/bridge";
 import { Sound } from "./core/sound";
 import { State, type Settings } from "./core/state";
