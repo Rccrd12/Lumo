@@ -4635,6 +4635,77 @@ img.zoomable {
   pointer-events: none;
 }
 
+/* Several files dropped together: the main bar sits higher (layout.ts UPLOAD_MANY_LIFT),
+   a small bar each under it, two by two, "+X" for the rest. */
+.up-card.many .up-row {
+  top: 18px;
+}
+
+.up-card.many .up-track {
+  top: 40px;
+}
+
+.up-card.many .up-files {
+  top: 62px;
+  row-gap: 8px;
+}
+
+.up-files {
+  position: absolute;
+  left: 26px;
+  right: 26px;
+  top: 76px;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px 24px;
+  font: 500 10.5px var(--font);
+  color: #8e939b;
+}
+
+.up-files:empty {
+  display: none;
+}
+
+.up-file-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.up-file-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.up-file-pct {
+  flex: 0 0 auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.up-file-pct.done {
+  color: var(--green-2);
+}
+
+.up-file.more {
+  font-weight: 600;
+  align-self: center;
+}
+
+.up-file-track {
+  height: 3px;
+  margin-top: 3px;
+  border-radius: 1.5px;
+  background: rgba(255, 255, 255, 0.07);
+}
+
+.up-file-track i {
+  display: block;
+  height: 3px;
+  border-radius: 1.5px;
+  background: #1fa87a;
+}
+
 /* ── Integration cards (overview, left card) ────────────────────────────── */
 
 .left-body {

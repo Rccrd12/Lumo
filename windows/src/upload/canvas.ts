@@ -6,6 +6,7 @@
 // canvas draws its own.
 
 import { lerp } from "../core/anim";
+import { fileCells, fileProgress, uploadingLabel } from "./files";
 import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
@@ -318,11 +319,12 @@ export class UploadCanvas {
 
     const x0 = USC.BAR_X0;
     const x1 = USC.BAR_X1;
-    const by = USC.BAR_Y;
+    const by = f.barY;
     const barLen = (x1 - x0) * f.barReveal;
 
     // Room up to the percentage (or the check mark) at the bar's right end.
-    const uploading = t("Uploading {name}", { name: State.droppedFile?.name ?? t("file") });
+    const names = State.uploadNames.length > 1 ? State.uploadNames : [State.droppedFile?.name ?? t("file")];
+    const uploading = uploadingLabel(names);
     const label = fitted(ctx, uploading, x1 - x0 - 56, 500, 12.5);
     text(ctx, label.s, x0, by - 30, label.font, "#A9ADB5");
 
@@ -385,7 +387,44 @@ export class UploadCanvas {
       ctx.fill();
       ctx.restore();
     }
+    this.drawFileBars(ctx, f, names);
     ctx.restore();
+  }
+
+  /** Several files dropped together: a small bar each under the main one, two by two, "+X" for the rest. */
+  private drawFileBars(ctx: CanvasRenderingContext2D, f: UploadFrame, names: readonly string[]) {
+    const cells = fileCells(names);
+    if (cells.length === 0) return;
+    const x0 = USC.BAR_X0;
+    const gap = 24;
+    const cellW = (USC.BAR_X1 - x0 - gap) / 2;
+    const reveal = Math.max(0, Math.min(1, f.barReveal));
+    cells.forEach((cell, i) => {
+      const cx = x0 + (i % 2) * (cellW + gap);
+      const ty = f.barY + 22 + Math.floor(i / 2) * 22;
+      if (cell.kind === "more") {
+        text(ctx, `+${cell.count}`, cx, ty + 3, `600 11px ${FONT}`, "#8E939B");
+        return;
+      }
+      const p = fileProgress(f.progress, cell.index, names.length);
+      const done = p >= 0.999;
+      const pct = done ? "✓" : `${Math.round(p * 100)} %`;
+      text(ctx, pct, cx + cellW, ty, `500 10.5px ${FONT}`, done ? "#34D399" : "#8E939B", "right");
+      const label = fitted(ctx, cell.name, cellW - 44, 500, 10.5);
+      text(ctx, label.s, cx, ty, label.font, "#8E939B");
+      const len = cellW * reveal;
+      if (len > 0) {
+        ctx.fillStyle = "rgba(255,255,255,0.07)";
+        rr(ctx, cx, ty + 6, len, 3, 1.5);
+        ctx.fill();
+      }
+      const fw = cellW * p;
+      if (fw > 1) {
+        ctx.fillStyle = done ? "#34D399" : "#1FA87A";
+        rr(ctx, cx, ty + 6, fw, 3, 1.5);
+        ctx.fill();
+      }
+    });
   }
 
   // ── Lumo ──────────────────────────────────────────────────────────────────

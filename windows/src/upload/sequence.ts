@@ -27,6 +27,8 @@ export const USC = {
   // As far from the card's right edge as BAR_X0 is from its left.
   BAR_X1: 594,
   BAR_Y: 118,
+  /** The bar a little higher when several files are dropped: their own bars go under it. */
+  BAR_Y_MANY: 94,
   MOUTH_OPEN: 0.42,
   MOUTH_MAX: 0.5,
   // Phase timestamps, in seconds on the reference timeline (drop = 1.95).
@@ -146,6 +148,8 @@ export interface UploadFrame {
   check: number;
   greenWash: number;
   progEnd: number;
+  /** Where the bar runs (USC.BAR_Y, or BAR_Y_MANY for several files). */
+  barY: number;
 }
 
 function restFrame(): UploadFrame {
@@ -178,6 +182,7 @@ function restFrame(): UploadFrame {
     check: 0,
     greenWash: 0,
     progEnd: USC.T_PROG_START + 2.4,
+    barY: USC.BAR_Y,
   };
 }
 
@@ -269,8 +274,12 @@ class UploadSequence {
     this.cursorY = y;
   }
 
-  performDrop(uploadDuration: number) {
+  /** Where the bar runs for the drop on show. */
+  barY: number = USC.BAR_Y;
+
+  performDrop(uploadDuration: number, barY: number = USC.BAR_Y) {
     this.uploadDuration = uploadDuration;
+    this.barY = barY;
     this.over = true;
     this.dropWall = this.now();
     // Restart the canonical post-drop timeline however long the user hovered.
@@ -377,22 +386,23 @@ class UploadSequence {
     if (pt >= USC.T_CHEW_END && pt < USC.T_PROG_START) {
       const k = eInOut(seg(pt, USC.T_CHEW_END, USC.T_SHRINK_END));
       x = lerp(this.bx.v, USC.BAR_X0, k);
-      y = lerp(this.by.v, USC.BAR_Y, k);
+      y = lerp(this.by.v, this.barY, k);
       d = lerp(USC.D_BOX, 14, k);
     }
     if (pt >= USC.T_PROG_START) {
       const p = progressAt(pt, USC.T_PROG_START, progEnd);
       x = lerp(USC.BAR_X0, USC.BAR_X1, p);
-      y = USC.BAR_Y;
+      y = this.barY;
       d = 14;
     }
     if (pt >= progEnd) {
       x = USC.BAR_X1;
-      y = USC.BAR_Y - 8 * Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.2));
+      y = this.barY - 8 * Math.sin(Math.PI * seg(pt, progEnd, progEnd + 0.2));
     }
     f.x = x;
     f.y = y;
     f.d = d;
+    f.barY = this.barY;
 
     // Squeeze.
     let sx = 1;
