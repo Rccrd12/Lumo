@@ -16,7 +16,7 @@
 // files, to read), the list of folders. They answer only while an agent of
 // the island is at work (`agent_turn`), each on a short connection of its own.
 //
-// What more they may do is Settings → General → Security → Email's: with
+// What more they may do is Settings → Security → Email's: with
 // "Read and send", send, reply in the conversation and forward with the files
 // (each email on its card, gone only when the user clicks Send; smtp.rs),
 // and save drafts in the mailbox's Drafts; with "Read, send and manage",
@@ -103,7 +103,7 @@ pub fn wake() {
 /// Whether a change of settings concerns the Email pill: turned on or off (its
 /// connection opens or closes now), its promotions filter, or the language its
 /// errors are written in. Any other change leaves the inbox alone.
-/// What the AI may do with the email (Settings → General → Security): "none",
+/// What the AI may do with the email (Settings → Security): "none",
 /// "read", "send" (read, and send what the user approves on a card), or
 /// "manage" (and mark, move, archive and trash, each on a card).
 /// Anything else reads as "read", as before the setting.
@@ -1349,13 +1349,13 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     }
     let level = access(&app.state::<crate::Shared>().settings.lock().unwrap());
     if level == "none" {
-        return refuse("The user turned off the AI's access to their email in Lumo (Settings → General → Security).".into());
+        return refuse("The user turned off the AI's access to their email in Lumo (Settings → Security).".into());
     }
     let tool = request.get("tool").and_then(|v| v.as_str()).unwrap_or("");
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
     if SEND_TOOLS.contains(&tool) {
         if level == "read" {
-            return refuse("The user lets the AI only read their email (Lumo's Settings → General → Security): write a draft for them to send instead.".into());
+            return refuse("The user lets the AI only read their email (Lumo's Settings → Security): write a draft for them to send instead.".into());
         }
         let done = match tool {
             "mail_send" => send(app, &input).await,
@@ -1370,7 +1370,7 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     }
     if MANAGE_TOOLS.contains(&tool) {
         if level != "manage" {
-            return refuse("The user doesn't let the AI change their mailbox (Lumo's Settings → General → Security → Email): tell them what you would do instead.".into());
+            return refuse("The user doesn't let the AI change their mailbox (Lumo's Settings → Security → Email): tell them what you would do instead.".into());
         }
         return match manage(app, tool, &input).await {
             Ok(text) => json!({ "text": text }),

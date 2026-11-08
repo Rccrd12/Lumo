@@ -371,7 +371,7 @@ other entries kept, taken out when the pill is off), and they answer only
 while an agent answers in the island, in the chat or for Gemini Live. They
 only read, so they need no card.
 
-**Settings… → General → Security → Email** says what the AI may do with
+**Settings… → Security → Email** says what the AI may do with
 it: **Read only** (the default, as above), **No access** (nothing of the
 mailbox reaches any AI: no emails with the question, no email tools, nothing
 for Gemini Live), **Read and send** or **Read, send and manage**. With Read
@@ -681,7 +681,7 @@ several). Text pastes as usual.
 
 ### The chat knows what's open
 
-With **Settings → General → Security → Tell the AI what's open** (on by default), every
+With **Settings → Security → Open windows** (on by default), every
 message carries the titles of the open windows and the documents they show:
 Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
 "Budget - Excel") and finds them on disk, from Windows' recent files or a
@@ -766,7 +766,7 @@ to this setting.
 
 ### Let Claude use the computer
 
-**Settings… → General → Security → Let Claude use the computer** (off by
+**Settings… → Security → Let Claude use the computer** (off by
 default, Windows only) lets Claude Code, as the chat's provider or for Gemini
 Live, see your screen and use it — click, type, press keys, scroll and drag — for what a
 command or a file can't do: an app with no command line, a website, a form.

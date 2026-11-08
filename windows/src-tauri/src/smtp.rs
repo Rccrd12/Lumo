@@ -1,5 +1,5 @@
 // Sending an email for the AI, once the user clicked Send on its card
-// (mail.rs serve, `mail_send`): Settings → General → Security → Email set to
+// (mail.rs serve, `mail_send`): Settings → Security → Email set to
 // "Read and send". Nothing here decides whether to send: it only sends.
 //
 // It speaks SMTP to the account's own server with the address and app

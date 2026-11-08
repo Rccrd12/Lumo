@@ -1450,7 +1450,7 @@ pub async fn send(
     let mut args = with_cards(args_with(&append, model, effort, mode, session.as_deref(), &inbox, &chat.cli_dirs(folder)));
     // The user's tools that are on, for Claude to use (each call asks on the island).
     let tools = tauri::async_runtime::spawn_blocking(crate::tools::any_enabled).await.unwrap_or(false);
-    // Lumo's email tools, as Settings → General → Security lets the AI have them,
+    // Lumo's email tools, as Settings → Security lets the AI have them,
     // usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     args = with_mcp(args, computer, tools, true, mail);
