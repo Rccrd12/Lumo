@@ -1,0 +1,133 @@
+name: Windows beta
+
+# The beta channel (Settings → Updates → Beta versions): main with every open
+# pull request of this repository merged into it, tested, packed and published
+# as the one `windows-beta` pre-release, which replaces the one before. Lumo
+# offers it only to whoever turned Beta versions on.
+#
+# It runs when main moves and when a pull request is opened, updated, reopened
+# or closed. A pull request that does not merge is left out, and the release's
+# notes say what it conflicts with (scripts/beta.mjs). When the tests fail,
+# nothing is published and the beta before stays. Pull requests from forks
+# never take part: their code is never checked out here.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  pull-requests: read
+
+# A newer change makes the build under way pointless.
+concurrency:
+  group: windows-beta
+  cancel-in-progress: true
+
+jobs:
+  beta:
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: windows
+        shell: bash
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+
+      # Until this workflow's script is on main (the pull request adding it),
+      # there is nothing to build: the run ends here, green.
+      - name: Is the beta set up on main?
+        id: ready
+        run: |
+          if [ -f scripts/beta.mjs ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::scripts/beta.mjs is not on main yet: the beta starts once it is merged."
+          fi
+
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        if: steps.ready.outputs.ok == 'true'
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: windows/package-lock.json
+
+      - name: Cache cargo
+        if: steps.ready.outputs.ok == 'true'
+        uses: actions/cache@0057852bfaa89a56745cba8c7296529d2fc39830 # v4.3.0
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            windows/target
+          key: windows-beta-cargo-${{ github.repository }}-${{ hashFiles('windows/Cargo.lock') }}
+          restore-keys: |
+            windows-beta-cargo-${{ github.repository }}-
+            windows-cargo-${{ github.repository }}-
+
+      # The script is read before anything is merged: a pull request cannot
+      # change how it is merged.
+      - name: Merge the open pull requests into main
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: node scripts/beta.mjs merge "$RUNNER_TEMP/beta.json"
+
+      - name: Install dependencies
+        if: steps.ready.outputs.ok == 'true'
+        run: npm ci
+
+      - name: Type check
+        if: steps.ready.outputs.ok == 'true'
+        run: npx tsc --noEmit
+
+      - name: Island tests
+        if: steps.ready.outputs.ok == 'true'
+        run: npm test
+
+      - name: Build the relay
+        if: steps.ready.outputs.ok == 'true'
+        run: cargo build --release -p lumo-hook
+
+      - name: Rust tests
+        if: steps.ready.outputs.ok == 'true'
+        run: cargo test --workspace --locked
+
+      - name: Set the beta's version
+        if: steps.ready.outputs.ok == 'true'
+        id: version
+        run: echo "version=$(node scripts/beta.mjs version ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
+
+      - name: Build and pack the installer
+        if: steps.ready.outputs.ok == 'true'
+        run: |
+          npm run pack
+          ls -l release
+
+      - name: Publish the beta
+        if: steps.ready.outputs.ok == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          node scripts/beta.mjs notes "$RUNNER_TEMP/beta.json" "$VERSION" > "$RUNNER_TEMP/notes.md"
+          main=$(node -p "require(process.env.RUNNER_TEMP + '/beta.json').main")
+          gh release delete windows-beta --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          gh release create windows-beta \
+            "release/Lumo-Windows-$VERSION-setup.exe" \
+            "release/Lumo-Windows-$VERSION.msi" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$main" \
+            --prerelease \
+            --latest=false \
+            --title "Lumo for Windows beta $VERSION" \
+            --notes-file "$RUNNER_TEMP/notes.md"

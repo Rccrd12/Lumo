@@ -147,8 +147,13 @@ async function main() {
     window.setTimeout(() => {
       void checkOnOpen({
         enabled: State.settings.updateCheckOnOpen !== false,
-        check: Bridge.updateCheck,
-        notify: (latest) => compactNotice(t("Lumo {version} available", { version: latest }), "#22c55e", UPDATE_NOTICE_MS),
+        check: () => Bridge.updateCheck(State.settings.updateBeta === true),
+        notify: (latest, beta) =>
+          compactNotice(
+            beta ? t("Lumo beta {version} available", { version: latest }) : t("Lumo {version} available", { version: latest }),
+            "#22c55e",
+            UPDATE_NOTICE_MS,
+          ),
         log: (line) => void Bridge.log(line),
       });
     }, CHECK_DELAY_MS);

@@ -57,6 +57,21 @@ Lumo quits so the installer can replace it, and the installer opens the new
 Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
 repository's GitHub releases are accepted.
 
+**Beta versions** (off unless you turn it on) also offers the beta: one build
+with main and every open pull request of the repository merged into it, so
+changes can be tried before they are released, with no terminal and no
+branch to check out. The **Windows beta** workflow
+(`.github/workflows/windows-beta.yml`, steps in `windows/scripts/beta.mjs`)
+rebuilds it whenever main moves or a pull request is opened, updated or
+closed: it merges the pull requests one at a time, leaves out any that
+conflicts (Settings says with what), runs the tests, and publishes the
+`windows-beta` pre-release in place of the one before. Nothing is published
+when the tests fail. Its version is the next patch with the build's number
+(`0.18.1-312`), so the release that follows is newer and comes as a plain
+update. Settings lists the pull requests in the beta, with **Install the
+beta**; on a beta, **Back to the release** reinstalls the latest release.
+Pull requests from forks never take part.
+
 Under it, the **Changelog** lists what changed in every version, the installed
 one marked. It is the repository's `CHANGELOG.md`, built into the app, so it is
 there offline and always matches the build.

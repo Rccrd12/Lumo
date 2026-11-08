@@ -89,6 +89,16 @@ test("the repository's CHANGELOG.md reads with a version for every entry and the
 
 const info = (newer, current = "0.8.0") => ({
   current, latest: newer ? "0.9.0" : current, newer, notes: "n", assetUrl: newer ? "https://github.com/x" : null,
+  currentBeta: false, beta: null,
+});
+
+const betaBuild = (newer = true) => ({
+  version: "0.8.1-312",
+  newer,
+  publishedAt: "2026-11-08T11:00:00Z",
+  assetUrl: "https://github.com/b",
+  included: [{ number: 146, title: "Web search", updatedAt: "2026-11-08T10:00:00Z" }],
+  excluded: [{ number: 148, title: "Models", updatedAt: "2026-11-08T09:00:00Z", with: "146" }],
 });
 
 function run(over = {}) {
@@ -99,7 +109,7 @@ function run(over = {}) {
     logged,
     enabled: true,
     check: async () => info(true),
-    notify: (v) => said.push(v),
+    notify: (v, beta) => said.push(beta ? `beta ${v}` : v),
     log: (l) => logged.push(l),
     ...over,
   };
@@ -143,4 +153,88 @@ test("what is kept for Settings is checked before it is shown", () => {
   assert.equal(foundFor("0.8.0"), null);
   rememberFound(null);
   assert.equal(store.has(FOUND_KEY), false);
+});
+
+test("with Beta versions on, a newer beta is said and kept when no release is newer", async () => {
+  const withBeta = { ...info(false), beta: betaBuild() };
+  const r = run({ check: async () => withBeta });
+  await checkOnOpen(r);
+  assert.deepEqual(r.said, ["beta 0.8.1-312"]);
+  assert.equal(store.get("lumo.settings.page"), "updates");
+  assert.deepEqual(foundFor("0.8.0"), withBeta);
+
+  // A newer release is said rather than the beta.
+  const both = run({ check: async () => ({ ...info(true), beta: betaBuild() }) });
+  await checkOnOpen(both);
+  assert.deepEqual(both.said, ["0.9.0"]);
+
+  // A beta that is not newer says nothing and is not kept.
+  const old = run({ check: async () => ({ ...info(false), beta: betaBuild(false) }) });
+  await checkOnOpen(old);
+  assert.deepEqual(old.said, []);
+  assert.equal(foundFor("0.8.0"), null);
+});
+
+test("a kept beta is read back field by field", () => {
+  store.set(FOUND_KEY, JSON.stringify({
+    ...info(false),
+    beta: { ...betaBuild(), included: [{ number: 146, title: "Web search", updatedAt: "x", evil: 1 }, { title: "no number" }], excluded: "nope" },
+  }));
+  const found = foundFor("0.8.0");
+  assert.deepEqual(found.beta.included, [{ number: 146, title: "Web search", updatedAt: "x" }]);
+  assert.deepEqual(found.beta.excluded, []);
+  store.set(FOUND_KEY, JSON.stringify({ ...info(false), beta: { newer: true } }));
+  assert.equal(foundFor("0.8.0"), null, "a beta without its version is no beta");
+});
+
+// ── The beta's list in Settings ───────────────────────────────────────────────
+
+const { isBetaVersion, pullRow } = await import("../src/settings/beta.ts");
+
+test("a version with a pre-release part is a beta", () => {
+  assert.equal(isBetaVersion("0.18.1-312"), true);
+  assert.equal(isBetaVersion("0.18.1"), false);
+  assert.equal(isBetaVersion(""), false);
+});
+
+test("a pull request left out of the beta says what it conflicts with", () => {
+  const pr = { number: 148, title: "<b>Models</b>", updatedAt: "2026-11-08T09:00:00Z" };
+  assert.match(pullRow({ ...pr, with: "146" }, true).textContent, /#148.*<b>Models<\/b>.*#146/);
+  assert.match(pullRow({ ...pr, with: "main" }, true).textContent, /conflicts with main/);
+  assert.match(pullRow(pr, true).textContent, /the other changes/);
+  const kept = pullRow(pr, false);
+  assert.ok(!kept.textContent.includes("conflicts"));
+  assert.equal(kept.className, "pill-row");
+});
+
+// ── scripts/beta.mjs, the workflow's steps ────────────────────────────────────
+
+const { BETA_MARK, betaVersion, cleanTitle, renderNotes } = await import("../scripts/beta.mjs");
+
+test("the beta's version is the next patch with the run as its pre-release", () => {
+  assert.equal(betaVersion("0.18.0", 312), "0.18.1-312");
+  assert.equal(betaVersion("0.18.1-40", "7"), "0.18.2-7");
+  assert.throws(() => betaVersion("0.18.0", 70000), /range/, "the .msi takes up to 65535");
+  assert.throws(() => betaVersion("latest", 1));
+});
+
+test("the notes carry the list for Lumo, which no title can break out of", () => {
+  const state = {
+    main: "abc",
+    included: [{ number: 146, title: "Web  search -->\n<script>", updatedAt: "t1", head: "h" }],
+    excluded: [{ number: 148, title: "Models", updatedAt: "t2", head: "h2", with: 146 }, { number: 149, title: "X", updatedAt: "t3", with: null }],
+  };
+  const notes = renderNotes(state, "0.18.1-312");
+  assert.match(notes, /- #146 Web search -->/);
+  assert.match(notes, /#148 Models \(conflicts with #146\)/);
+  assert.match(notes, /#149 X \(conflicts with the other changes\)/);
+  const start = notes.indexOf(BETA_MARK) + BETA_MARK.length;
+  const end = notes.indexOf("-->", start);
+  assert.equal(notes.slice(end), "-->", "the comment ends only where it should");
+  const list = JSON.parse(notes.slice(start, end));
+  assert.equal(list.version, "0.18.1-312");
+  assert.deepEqual(list.included, [{ number: 146, title: "Web search --> <script>", updatedAt: "t1" }]);
+  assert.equal(list.excluded[0].with, "146");
+  assert.equal("with" in list.excluded[1], false);
+  assert.equal(cleanTitle("x".repeat(500)).length, 200);
 });

@@ -5,9 +5,15 @@
 // (src-tauri/src/updater.rs), which then replaces Lumo without a window and
 // opens it again. Under it, the
 // changelog built into the app (./changelog.ts).
+//
+// Beta versions (off unless turned on) adds the beta channel's build, main
+// with every open pull request (.github/workflows/windows-beta.yml), with the
+// list of what is in it and Install the beta. On a beta, Back to the release
+// reinstalls the latest release.
 
 import CHANGELOG from "virtual:lumo-changelog";
-import { Bridge, onEvent, type UpdateInfo } from "../core/bridge";
+import { Bridge, onEvent, type BetaInfo, type UpdateInfo } from "../core/bridge";
+import { isBetaVersion, pullRow } from "./beta";
 import { foundFor, rememberFound } from "../core/update-check";
 import { clear, h } from "../views/dom";
 import { errorText, sectionHead, setting } from "./parts";
@@ -32,6 +38,18 @@ const TEXT = {
   get changelogIntro() { return t("What changed in each version of Lumo."); },
   get installed() { return t("Installed"); },
   get noTelemetry() { return t("No telemetry. Network requests only go to the services you configure yourself."); },
+  get betaTag() { return t("beta"); },
+  betaAvailable: (version: string) => t("Beta {version} is available, with the changes below not released yet.", { version }),
+  newerBeta: (version: string) => t("A newer beta is available: {version}.", { version }),
+  get latestBeta() { return t("You have the latest beta."); },
+  get noBeta() { return t("No beta has been published yet."); },
+  get inThisBeta() { return t("In this beta"); },
+  get onlyMain() { return t("No pull request is open: this beta is main, with what has not been released yet."); },
+  get installBeta() { return t("Install the beta"); },
+  get updateBeta() { return t("Update the beta"); },
+  get betaHint() { return t("Lumo downloads the beta, installs it by itself and opens again."); },
+  backToRelease: (version: string) => t("Back to the release {version}", { version }),
+  get backHint() { return t("Reinstalls the latest public version. Your settings stay."); },
 };
 
 type Phase =
@@ -47,6 +65,8 @@ type Phase =
 let phase: Phase = { kind: "idle" };
 let redraw: (() => void) | null = null;
 let listening = false;
+/** Settings → Updates → Beta versions, as settings/main.ts keeps it. */
+let betaOn: () => boolean = () => false;
 
 function set(next: Phase) {
   phase = next;
@@ -60,7 +80,7 @@ function lastInfo(): UpdateInfo | null {
 async function check() {
   set({ kind: "checking" });
   try {
-    const info = await Bridge.updateCheck();
+    const info = await Bridge.updateCheck(betaOn());
     rememberFound(info);
     set({ kind: "checked", info });
   } catch (err) {
@@ -68,22 +88,36 @@ async function check() {
   }
 }
 
-async function install(info: UpdateInfo) {
-  if (!info.assetUrl) return;
+/** Installs `url`: the release's installer, unless another (the beta's) is given. */
+async function install(info: UpdateInfo, url = info.assetUrl) {
+  if (!url) return;
   set({ kind: "downloading", info, received: 0, total: 0 });
   try {
-    await Bridge.updateInstall(info.assetUrl);
+    await Bridge.updateInstall(url);
     set({ kind: "launching", info });
   } catch (err) {
     set({ kind: "failed", error: errorText(err), info });
   }
 }
 
+/** Beta versions was just turned on or off: look again, with or without the beta. */
+export function betaChanged() {
+  if (phase.kind === "downloading" || phase.kind === "launching") return;
+  void check();
+}
+
 /**
- * `checkOnOpen` is Settings → Updates → Check when Lumo opens, as a row
- * settings/main.ts builds with its switch.
+ * `checkOnOpen` is Settings → Updates → Check when Lumo opens, and `beta` Beta
+ * versions, as rows settings/main.ts builds with their switches; `isBetaOn`
+ * reads that switch.
  */
-export function updatesSection(version: string, checkOnOpen: HTMLElement): HTMLElement {
+export function updatesSection(
+  version: string,
+  checkOnOpen: HTMLElement,
+  beta: HTMLElement,
+  isBetaOn: () => boolean,
+): HTMLElement {
+  betaOn = isBetaOn;
   // A newer release the island found when Lumo opened: shown at once, with Update now.
   if (phase.kind === "idle") {
     const found = foundFor(version);
@@ -107,18 +141,26 @@ export function updatesSection(version: string, checkOnOpen: HTMLElement): HTMLE
     }) as HTMLButtonElement;
     checkBtn.disabled = busy;
     const info = lastInfo();
+    const current = info?.current || version;
+    const onBeta = info?.currentBeta ?? isBetaVersion(current);
+    const label = h("span", { style: "display:inline-flex;gap:8px;align-items:center" },
+      TEXT.version, " ", h("span", { class: "version-number", text: current || "—" }));
+    if (onBeta) label.append(h("span", { class: "tag warn", text: TEXT.betaTag }));
     body.append(
-      setting(h("span", {}, TEXT.version, " ", h("span", { class: "version-number", text: info?.current || version || "—" })),
+      setting(label,
         TEXT.noTelemetry,
         checkBtn,
       ),
       checkOnOpen,
+      beta,
     );
 
     switch (phase.kind) {
       case "checked":
         if (!phase.info.newer) {
-          body.append(h("div", { class: "notice ok", text: TEXT.upToDate }));
+          // Up to date, unless a beta is what there is to install.
+          const betaOffered = betaOn() && phase.info.beta?.newer === true;
+          if (!onBeta && !betaOffered) body.append(h("div", { class: "notice ok", text: TEXT.upToDate }));
         } else if (!phase.info.assetUrl) {
           body.append(h("div", { class: "notice warn", text: TEXT.noInstaller(phase.info.latest) }));
           notes(phase.info);
@@ -135,6 +177,8 @@ export function updatesSection(version: string, checkOnOpen: HTMLElement): HTMLE
             ),
           );
         }
+        if (betaOn()) betaPart(phase.info, onBeta);
+        if (onBeta) backToRelease(phase.info);
         break;
       case "downloading": {
         const pct = phase.total > 0 ? Math.min(100, Math.round((phase.received / phase.total) * 100)) : null;
@@ -167,6 +211,46 @@ export function updatesSection(version: string, checkOnOpen: HTMLElement): HTMLE
         break;
     }
 
+  }
+
+  /** The beta's build: what is new, what is in it, Install the beta. */
+  function betaPart(info: UpdateInfo, onBeta: boolean) {
+    const b: BetaInfo | null | undefined = info.beta;
+    if (!b) {
+      body.append(h("div", { class: "notice warn", text: TEXT.noBeta }));
+      return;
+    }
+    // Not newer than this build, or a release came out since: nothing to try.
+    if (!b.newer && (!onBeta || info.newer)) return;
+    if (b.newer && !b.assetUrl) {
+      body.append(h("div", { class: "notice warn", text: TEXT.noInstaller(b.version) }));
+    } else if (b.newer) {
+      body.append(h("div", { class: "notice ok", text: onBeta ? TEXT.newerBeta(b.version) : TEXT.betaAvailable(b.version) }));
+    } else {
+      body.append(h("div", { class: "notice ok", text: TEXT.latestBeta }));
+    }
+    body.append(h("div", { class: "subhead", text: TEXT.inThisBeta }));
+    const list = h("div", { style: "display:flex;flex-direction:column;gap:7px" });
+    for (const pr of b.included) list.append(pullRow(pr, false));
+    for (const pr of b.excluded) list.append(pullRow(pr, true));
+    if (!b.included.length) list.prepend(h("span", { class: "hint", text: TEXT.onlyMain }));
+    body.append(list);
+    if (b.newer && b.assetUrl) {
+      const url = b.assetUrl;
+      body.append(h("div", { class: "row" },
+        h("button", { class: "primary", text: onBeta ? TEXT.updateBeta : TEXT.installBeta, onclick: () => void install(info, url) }),
+        h("span", { class: "hint", text: TEXT.betaHint }),
+      ));
+    }
+  }
+
+  /** On a beta: back to the latest release, unless a newer one is offered above. */
+  function backToRelease(info: UpdateInfo) {
+    if (info.newer || !info.assetUrl) return;
+    body.append(h("div", { class: "row" },
+      h("button", { text: TEXT.backToRelease(info.latest), onclick: () => void install(info) }),
+      h("span", { class: "hint", text: TEXT.backHint }),
+    ));
   }
 
   function notes(info: UpdateInfo) {
