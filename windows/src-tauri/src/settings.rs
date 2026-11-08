@@ -112,6 +112,15 @@ pub struct Settings {
     /// Promotions category, elsewhere the emails with an unsubscribe link.
     /// Off until the user turns it on.
     pub mail_hide_promotions: bool,
+    /// The Email pill's sources (Settings → Pills → Email): the server over
+    /// IMAP (mail.rs), on as before; the classic Outlook on this PC
+    /// (outlook.rs), off until the user turns it on. Both can be on.
+    pub mail_imap: bool,
+    pub mail_outlook: bool,
+    /// Settings → Security → "Open Outlook if it's closed": Lumo starts
+    /// Outlook in the background once, when it starts (outlook.rs). Off
+    /// until the user turns it on.
+    pub outlook_start: bool,
     /// Settings → General → Energy (energy.rs): "none" (near real time),
     /// "light" (as Lumo always was), "auto" (saving on battery) or "saver".
     pub energy_mode: String,
@@ -315,6 +324,9 @@ impl Default for Settings {
             quick_approvals: true,
             activities_follow_island: true,
             mail_hide_promotions: false,
+            mail_imap: true,
+            mail_outlook: false,
+            outlook_start: false,
             energy_mode: "auto".into(),
             energy_on_power: "light".into(),
             context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),

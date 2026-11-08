@@ -329,7 +329,30 @@ declare still shows up, for as long as it runs.
 
 ### Email
 
-The **Email** pill (Settings… → Pills & integrations) reads your inbox over
+The **Email** pill (Settings… → Pills & integrations) reads your inbox from
+two sources, each with its switch, one or both on:
+
+- **Outlook on this PC**: the classic Outlook (Office, Microsoft 365) already
+  set up on the computer, every account in it, through Outlook's own
+  automation (COM): no password, nothing typed, nothing sent on the network by
+  Lumo. Lumo asks Outlook what the inboxes hold as often as it looks at IMAP
+  (every 20 seconds as usual, see Energy), and the row under the switch shows
+  the accounts it found. Lumo never starts Outlook, unless **Settings →
+  Security → Open Outlook if it's closed** is on (off by default): then it
+  starts it once, in the background with no window, when Lumo starts; if you
+  close Outlook, Lumo doesn't start it again until it next starts. Outlook
+  closed only pauses its emails. The new Outlook for Windows can't be read by
+  other apps: with it, use IMAP. If Windows' antivirus isn't one Outlook
+  knows, Outlook may ask once whether to let a program read the mail.
+- **IMAP** (on as before):
+
+The rest of this section is about IMAP; Outlook's emails come with it to the
+island, the chat and the email tools (their ids start with `outlook-`, their
+folders with `outlook:`), and a reply, a forward, a move or a trash goes to
+the mailbox the email is in. A new email goes out of Outlook when it is on
+(into its Sent Items), over SMTP otherwise. Open on an Outlook email of the
+island shows it in Outlook.
+
 IMAP: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an **app
 password**. The connection stays open and the server says when an email
 arrives (IMAP IDLE); Lumo also looks every 20 seconds in case the server is

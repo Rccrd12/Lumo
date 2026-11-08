@@ -76,8 +76,8 @@ Meet **Lumo**: two bright eyes at the top of your screen. The island they live i
 - 🛡️ **Lumo's supervisor** — every saved or changed tool is read by a second model, which says in plain words what it really does and whether it looks safe, needs reading first or is dangerous (a dangerous tool is turned off). What a tool declared it needs is enforced: no internet, no files outside its folder, no programs unless it said so.
 - 👂 **Listening** — Lumo can keep an ear on a GitHub pull request, a file or a folder, a program, a web page, an email, the calendar, your services, Windows, your agents, a webhook or one of your tools, once or every time, and tell you or have the chat act on it.
 - ⏱️ **Live activities** — on the home, as tiles: the timer with its ring round the tile's edge, the music playing with its controls, the next events of your calendar, the newest emails. The closed island says what's going on, several things side by side. Any model in the chat or Gemini Live can set a timer.
-- ✉️ **Email** — the Email pill reads your inbox over IMAP (Gmail, Outlook, iCloud, any server, with an app password): a new email peeks out of the closed island within seconds, with **Summarize** and **Draft a reply**. Read only unless you allow more in **Settings → Security → Email**, and then each send, reply or move waits for your click on its card.
-- 🔌 **Integrations** — Email (IMAP), Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com, as pills on the home.
+- ✉️ **Email** — the Email pill reads your inbox from the classic Outlook on your PC (no password) or over IMAP (Gmail, Outlook, iCloud, any server, with an app password), or both: a new email peeks out of the closed island within seconds, with **Summarize** and **Draft a reply**. Read only unless you allow more in **Settings → Security → Email**, and then each send, reply or move waits for your click on its card.
+- 🔌 **Integrations** — Email (Outlook or IMAP), Stripe payments, n8n workflows, GitHub (open PRs, reviews requested, CI status, contributions), Vercel deployments, Resend emails, Notion, Cal.com, as pills on the home.
 - 📋 **Declare the tools you use** — Settings → Pills & integrations: pick your main tool (VS Code, Cursor, Codex or Antigravity), then up to 4 more agents, chat providers and services.
 
 <table>
@@ -112,7 +112,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
-| [0.20.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.0) | Nov 8, 2026 | A card answered in the terminal goes away, Claude Desktop's, Antigravity's and OpenCode's requests on the island, sessions by their title, approve a plan and let it edit files, `CLAUDE_CONFIG_DIR`, updates checked against GitHub's SHA-256 |
+| [0.20.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.0) | Nov 8, 2026 | A card answered in the terminal goes away, Claude Desktop's, Antigravity's and OpenCode's requests on the island, email from the classic Outlook on the PC with no password, Security in a tab of its own, sessions by their title, approve a plan and let it edit files, `CLAUDE_CONFIG_DIR`, updates checked against GitHub's SHA-256 |
 | [0.19.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.19.1) | Nov 8, 2026 | Menus with their text centred, and no beta offered when it holds nothing the release does not |
 | [0.19.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.19.0) | Nov 8, 2026 | The chat reads your GitHub (off until turned on in Security), the Plan island for every provider, chats at work on the home, Unsloth Studio loads and frees its models better, beta versions in Settings → Updates |
 | [0.18.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.18.0) | Nov 8, 2026 | A new look (the previous one a switch away in Settings): Lumo's eyes in the top bar, one home instead of the tabs, plans that show their steps when they ask to start, usage and sharing as bars and tiles |
@@ -198,7 +198,7 @@ Click the Lumo icon in the system tray → **Settings…**
 | **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager |
 | **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager |
 | **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |
-| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: address, IMAP server and an app password · Windows Credential Manager |
+| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: **Outlook on this PC** (the classic Outlook, nothing to type) and/or **IMAP** with address, IMAP server and an app password · Windows Credential Manager |
 | **Calendar** | the next events in the live activities and on the closed island | Settings → Island → Calendar: your calendar's secret iCal address · Windows Credential Manager |
 | Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Settings → Pills & integrations · Windows Credential Manager, all optional |
 

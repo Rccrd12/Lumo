@@ -8319,18 +8319,6 @@
    "id": "Bicara dengan Gemini dari pulau, dengan mikrofon di samping kotak obrolan atau {keys}. Ia menjawab dengan suara, melihat layar Anda bila membantu, dan menyerahkan sisanya ke asisten di bawah. Memakai kunci Google AI Anda, ditagih per menit; panggilan berakhir setelah 5 menit hening.",
    "it": "Parla con Gemini dall'isola, con il microfono accanto alla chat o {keys}. Risponde a voce, guarda lo schermo quando serve e affida il resto all'assistente qui sotto. Usa la tua chiave Google AI, fatturata al minuto; la chiamata termina dopo 5 minuti di silenzio."
   },
-  "New emails show on the closed island. Lumo only reads: it never sends, deletes or marks anything as read. Gmail needs an app password (myaccount.google.com/apppasswords), with 2-Step Verification on.": {
-   "zh-Hans": "新邮件会显示在收起的岛上。Lumo 只读取：从不发送、删除或标记为已读。Gmail 需要应用专用密码（myaccount.google.com/apppasswords），并开启两步验证。",
-   "hi": "नए ईमेल बंद आइलैंड पर दिखते हैं। Lumo सिर्फ़ पढ़ता है: वह कभी कुछ नहीं भेजता, मिटाता या पढ़ा हुआ चिह्नित करता। Gmail के लिए ऐप पासवर्ड चाहिए (myaccount.google.com/apppasswords), 2-चरणीय सत्यापन चालू होना चाहिए।",
-   "es": "Los correos nuevos aparecen en la isla cerrada. Lumo solo lee: nunca envía, elimina ni marca nada como leído. Gmail necesita una contraseña de aplicación (myaccount.google.com/apppasswords), con la verificación en dos pasos activada.",
-   "ar": "تظهر الرسائل الجديدة على الجزيرة المغلقة. يقرأ Lumo فقط: لا يرسل ولا يحذف ولا يضع علامة مقروء على أي شيء أبدًا. يحتاج Gmail إلى كلمة مرور للتطبيقات (myaccount.google.com/apppasswords) مع تفعيل التحقق بخطوتين.",
-   "fr": "Les nouveaux e-mails s'affichent sur l'île fermée. Lumo se contente de lire : il n'envoie, ne supprime et ne marque jamais rien comme lu. Gmail demande un mot de passe d'application (myaccount.google.com/apppasswords), avec la validation en deux étapes activée.",
-   "bn": "নতুন ইমেল বন্ধ আইল্যান্ডে দেখা যায়। Lumo শুধু পড়ে: কখনও কিছু পাঠায় না, মোছে না বা পড়া হিসেবে চিহ্নিত করে না। Gmail-এর জন্য অ্যাপ পাসওয়ার্ড লাগে (myaccount.google.com/apppasswords), ২-ধাপ যাচাই চালু রেখে।",
-   "pt-BR": "Novos e-mails aparecem na ilha fechada. O Lumo só lê: nunca envia, apaga ou marca nada como lido. O Gmail precisa de uma senha de app (myaccount.google.com/apppasswords), com a verificação em duas etapas ativada.",
-   "ru": "Новые письма показываются на свёрнутом острове. Lumo только читает: никогда ничего не отправляет, не удаляет и не помечает прочитанным. Для Gmail нужен пароль приложения (myaccount.google.com/apppasswords) и включённая двухэтапная аутентификация.",
-   "id": "Email baru muncul di pulau yang tertutup. Lumo hanya membaca: tidak pernah mengirim, menghapus, atau menandai apa pun sebagai dibaca. Gmail memerlukan sandi aplikasi (myaccount.google.com/apppasswords), dengan Verifikasi 2 Langkah aktif.",
-   "it": "Le nuove email compaiono sull'isola chiusa. Lumo legge soltanto: non invia, non cancella e non segna nulla come letto. Gmail richiede una password per le app (myaccount.google.com/apppasswords), con la verifica in due passaggi attiva."
-  },
   "Drag the top bar to move the island: near an edge it docks to it. Drag an edge or a corner to resize it; a double click puts the usual size back.": {
    "zh-Hans": "拖动顶部栏可移动岛：靠近屏幕边缘时会吸附上去。拖动边缘或角落可调整大小；双击恢复常规大小。",
    "hi": "आइलैंड को खिसकाने के लिए ऊपर की पट्टी खींचें: किनारे के पास वह उससे चिपक जाता है। आकार बदलने के लिए किनारा या कोना खींचें; डबल क्लिक से सामान्य आकार लौट आता है।",
@@ -15610,6 +15598,150 @@
    "ru": "Никаких данных об использовании: Lumo обращается только к настроенным вами службам.",
    "id": "Tanpa data penggunaan: Lumo hanya berbicara dengan layanan yang Anda atur.",
    "it": "Nessun dato d'uso: Lumo parla solo con i servizi che hai impostato."
+  },
+  "New emails show on the closed island. You can use Outlook, IMAP or both together.": {
+   "zh-Hans": "新邮件会显示在收起的岛上。你可以使用 Outlook、IMAP，或两者同时使用。",
+   "hi": "नए ईमेल बंद आइलैंड पर दिखते हैं। आप Outlook, IMAP या दोनों एक साथ इस्तेमाल कर सकते हैं।",
+   "es": "Los correos nuevos aparecen en la isla cerrada. Puedes usar Outlook, IMAP o los dos a la vez.",
+   "ar": "تظهر الرسائل الجديدة على الجزيرة المغلقة. يمكنك استخدام Outlook أو IMAP أو كليهما معًا.",
+   "fr": "Les nouveaux e-mails s'affichent sur l'île fermée. Vous pouvez utiliser Outlook, IMAP ou les deux ensemble.",
+   "bn": "নতুন ইমেল বন্ধ আইল্যান্ডে দেখা যায়। আপনি Outlook, IMAP বা দুটোই একসাথে ব্যবহার করতে পারেন।",
+   "pt-BR": "Novos e-mails aparecem na ilha fechada. Você pode usar o Outlook, o IMAP ou os dois juntos.",
+   "ru": "Новые письма показываются на свёрнутом острове. Можно использовать Outlook, IMAP или оба сразу.",
+   "id": "Email baru muncul di pulau yang tertutup. Anda bisa memakai Outlook, IMAP, atau keduanya sekaligus.",
+   "it": "Le nuove email compaiono sull'isola chiusa. Puoi usare Outlook, IMAP o tutti e due insieme."
+  },
+  "Outlook on this PC": {
+   "zh-Hans": "此电脑上的 Outlook",
+   "hi": "इस PC पर Outlook",
+   "es": "Outlook en este PC",
+   "ar": "Outlook على هذا الكمبيوتر",
+   "fr": "Outlook sur ce PC",
+   "bn": "এই পিসিতে Outlook",
+   "pt-BR": "Outlook neste PC",
+   "ru": "Outlook на этом компьютере",
+   "id": "Outlook di PC ini",
+   "it": "Outlook su questo PC"
+  },
+  "Classic Outlook, already set up: no password.": {
+   "zh-Hans": "经典版 Outlook，已经设置好：无需密码。",
+   "hi": "क्लासिक Outlook, पहले से सेट: कोई पासवर्ड नहीं।",
+   "es": "Outlook clásico, ya configurado: sin contraseña.",
+   "ar": "Outlook الكلاسيكي، مُعدّ مسبقًا: بلا كلمة مرور.",
+   "fr": "Outlook classique, déjà configuré : aucun mot de passe.",
+   "bn": "ক্লাসিক Outlook, আগে থেকেই সেট করা: কোনো পাসওয়ার্ড নয়।",
+   "pt-BR": "Outlook clássico, já configurado: sem senha.",
+   "ru": "Классический Outlook, уже настроенный: без пароля.",
+   "id": "Outlook klasik yang sudah disiapkan: tanpa sandi.",
+   "it": "L'Outlook classico, già configurato: nessuna password."
+  },
+  "Account": {
+   "zh-Hans": "账户",
+   "hi": "खाता",
+   "es": "Cuenta",
+   "ar": "الحساب",
+   "fr": "Compte",
+   "bn": "অ্যাকাউন্ট",
+   "pt-BR": "Conta",
+   "ru": "Учётная запись",
+   "id": "Akun",
+   "it": "Account"
+  },
+  "Gmail, iCloud or another server, with an app password. Gmail's is made at myaccount.google.com/apppasswords, with 2-Step Verification on.": {
+   "zh-Hans": "Gmail、iCloud 或其他服务器，使用应用专用密码。Gmail 的应用专用密码在 myaccount.google.com/apppasswords 创建，需开启两步验证。",
+   "hi": "Gmail, iCloud या कोई और सर्वर, ऐप पासवर्ड के साथ। Gmail का ऐप पासवर्ड myaccount.google.com/apppasswords पर बनता है, 2-चरणीय सत्यापन चालू होना चाहिए।",
+   "es": "Gmail, iCloud u otro servidor, con una contraseña de aplicación. La de Gmail se crea en myaccount.google.com/apppasswords, con la verificación en dos pasos activada.",
+   "ar": "Gmail أو iCloud أو خادم آخر، مع كلمة مرور للتطبيقات. تُنشأ كلمة مرور Gmail في myaccount.google.com/apppasswords مع تفعيل التحقق بخطوتين.",
+   "fr": "Gmail, iCloud ou un autre serveur, avec un mot de passe d'application. Celui de Gmail se crée sur myaccount.google.com/apppasswords, avec la validation en deux étapes activée.",
+   "bn": "Gmail, iCloud বা অন্য কোনো সার্ভার, অ্যাপ পাসওয়ার্ড দিয়ে। Gmail-এরটা myaccount.google.com/apppasswords-এ তৈরি হয়, ২-ধাপ যাচাই চালু রেখে।",
+   "pt-BR": "Gmail, iCloud ou outro servidor, com uma senha de app. A do Gmail é criada em myaccount.google.com/apppasswords, com a verificação em duas etapas ativada.",
+   "ru": "Gmail, iCloud или другой сервер с паролем приложения. Для Gmail его создают на myaccount.google.com/apppasswords при включённой двухэтапной аутентификации.",
+   "id": "Gmail, iCloud, atau server lain, dengan sandi aplikasi. Sandi Gmail dibuat di myaccount.google.com/apppasswords, dengan Verifikasi 2 Langkah aktif.",
+   "it": "Gmail, iCloud o un altro server, con una password per le app. Quella di Gmail si crea su myaccount.google.com/apppasswords, con la verifica in due passaggi attiva."
+  },
+  "Outlook is closed: the emails come back as soon as you open it.": {
+   "zh-Hans": "Outlook 已关闭：打开它后邮件就会回来。",
+   "hi": "Outlook बंद है: इसे खोलते ही ईमेल वापस आ जाएँगे।",
+   "es": "Outlook está cerrado: los correos vuelven en cuanto lo abras.",
+   "ar": "Outlook مغلق: تعود الرسائل بمجرد فتحه.",
+   "fr": "Outlook est fermé : les e-mails reviennent dès que vous l'ouvrez.",
+   "bn": "Outlook বন্ধ: খুললেই ইমেলগুলো ফিরে আসবে।",
+   "pt-BR": "O Outlook está fechado: os e-mails voltam assim que você o abrir.",
+   "ru": "Outlook закрыт: письма вернутся, как только вы его откроете.",
+   "id": "Outlook tertutup: email kembali begitu Anda membukanya.",
+   "it": "Outlook è chiuso: le email tornano appena lo apri."
+  },
+  "Classic Outlook isn't installed on this PC. The new Outlook can't be read by other apps: use IMAP.": {
+   "zh-Hans": "此电脑未安装经典版 Outlook。新版 Outlook 不允许其他应用读取：请使用 IMAP。",
+   "hi": "इस PC पर क्लासिक Outlook इंस्टॉल नहीं है। नया Outlook दूसरे ऐप्स को पढ़ने नहीं देता: IMAP इस्तेमाल करें।",
+   "es": "Outlook clásico no está instalado en este PC. El nuevo Outlook no deja que otras apps lo lean: usa IMAP.",
+   "ar": "Outlook الكلاسيكي غير مثبت على هذا الكمبيوتر. لا يسمح Outlook الجديد للتطبيقات الأخرى بقراءته: استخدم IMAP.",
+   "fr": "Outlook classique n'est pas installé sur ce PC. Le nouvel Outlook ne se laisse pas lire par d'autres apps : utilisez IMAP.",
+   "bn": "এই পিসিতে ক্লাসিক Outlook ইনস্টল করা নেই। নতুন Outlook অন্য অ্যাপকে পড়তে দেয় না: IMAP ব্যবহার করুন।",
+   "pt-BR": "O Outlook clássico não está instalado neste PC. O novo Outlook não deixa outros apps lerem: use o IMAP.",
+   "ru": "Классический Outlook не установлен на этом компьютере. Новый Outlook не даёт другим приложениям читать почту: используйте IMAP.",
+   "id": "Outlook klasik tidak terpasang di PC ini. Outlook baru tidak bisa dibaca aplikasi lain: gunakan IMAP.",
+   "it": "L'Outlook classico non è installato su questo PC. Il nuovo Outlook non si lascia leggere da altre app: usa IMAP."
+  },
+  "Lumo couldn't read Outlook. It tries again in a moment.": {
+   "zh-Hans": "Lumo 无法读取 Outlook，稍后会再试。",
+   "hi": "Lumo Outlook नहीं पढ़ पाया। वह थोड़ी देर में फिर कोशिश करेगा।",
+   "es": "Lumo no pudo leer Outlook. Lo vuelve a intentar en un momento.",
+   "ar": "تعذّر على Lumo قراءة Outlook. سيحاول مجددًا بعد قليل.",
+   "fr": "Lumo n'a pas pu lire Outlook. Il réessaie dans un instant.",
+   "bn": "Lumo Outlook পড়তে পারেনি। একটু পরে আবার চেষ্টা করবে।",
+   "pt-BR": "O Lumo não conseguiu ler o Outlook. Ele tenta de novo daqui a pouco.",
+   "ru": "Lumo не удалось прочитать Outlook. Он попробует снова через минуту.",
+   "id": "Lumo tidak bisa membaca Outlook. Ia akan mencoba lagi sebentar lagi.",
+   "it": "Lumo non è riuscito a leggere Outlook. Ci riprova tra poco."
+  },
+  "Open Outlook if it's closed": {
+   "zh-Hans": "Outlook 关闭时自动打开",
+   "hi": "Outlook बंद हो तो खोलें",
+   "es": "Abrir Outlook si está cerrado",
+   "ar": "افتح Outlook إن كان مغلقًا",
+   "fr": "Ouvrir Outlook s'il est fermé",
+   "bn": "Outlook বন্ধ থাকলে খুলুন",
+   "pt-BR": "Abrir o Outlook se estiver fechado",
+   "ru": "Открывать Outlook, если он закрыт",
+   "id": "Buka Outlook jika tertutup",
+   "it": "Apri Outlook se è chiuso"
+  },
+  "When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts.": {
+   "zh-Hans": "Lumo 启动时会在后台打开经典版 Outlook，不显示窗口。如果你自己关掉了它，Lumo 在下次启动前不会再打开它。",
+   "hi": "Lumo शुरू होते ही क्लासिक Outlook को बैकग्राउंड में, बिना विंडो के खोलता है। अगर आप उसे ख़ुद बंद कर दें, तो Lumo अगली बार शुरू होने तक उसे फिर नहीं खोलता।",
+   "es": "Cuando Lumo se inicia, abre Outlook clásico en segundo plano, sin ventana. Si lo cierras tú, Lumo no lo vuelve a abrir hasta su próximo inicio.",
+   "ar": "عند بدء Lumo، يفتح Outlook الكلاسيكي في الخلفية بلا نافذة. إذا أغلقته بنفسك، فلن يفتحه Lumo مجددًا حتى بدء تشغيله التالي.",
+   "fr": "Au démarrage de Lumo, Outlook classique s'ouvre en arrière-plan, sans fenêtre. Si vous le fermez vous-même, Lumo ne le rouvre pas avant son prochain démarrage.",
+   "bn": "Lumo চালু হলে ক্লাসিক Outlook ব্যাকগ্রাউন্ডে, কোনো উইন্ডো ছাড়া খোলে। আপনি নিজে বন্ধ করলে Lumo পরের বার চালু হওয়া পর্যন্ত আর খোলে না।",
+   "pt-BR": "Quando o Lumo inicia, ele abre o Outlook clássico em segundo plano, sem janela. Se você o fechar, o Lumo não o abre de novo até a próxima vez que iniciar.",
+   "ru": "При запуске Lumo открывает классический Outlook в фоне, без окна. Если вы закроете его сами, Lumo не откроет его снова до следующего запуска.",
+   "id": "Saat Lumo mulai, ia membuka Outlook klasik di latar belakang, tanpa jendela. Jika Anda menutupnya sendiri, Lumo tidak membukanya lagi sampai Lumo dimulai berikutnya.",
+   "it": "Quando Lumo parte, avvia l'Outlook classico in background, senza finestra. Se poi lo chiudi tu, Lumo non lo riapre fino al prossimo avvio."
+  },
+  "Only your Windows account can talk to Lumo through the pipe the agents' hooks use.": {
+   "zh-Hans": "只有你的 Windows 帐户可以通过代理钩子使用的管道与 Lumo 通信。",
+   "hi": "एजेंटों के हुक जिस पाइप का उपयोग करते हैं, उससे केवल आपका Windows खाता Lumo से बात कर सकता है।",
+   "es": "Solo tu cuenta de Windows puede hablar con Lumo por la tubería que usan los hooks de los agentes.",
+   "ar": "حساب Windows الخاص بك وحده يمكنه التحدث مع Lumo عبر القناة التي تستخدمها خطافات الوكلاء.",
+   "fr": "Seul votre compte Windows peut parler à Lumo par le canal qu'utilisent les hooks des agents.",
+   "bn": "এজেন্টদের হুক যে পাইপ ব্যবহার করে, তা দিয়ে শুধু আপনার Windows অ্যাকাউন্টই Lumo-র সাথে কথা বলতে পারে।",
+   "pt-BR": "Só a sua conta do Windows pode falar com o Lumo pelo canal que os hooks dos agentes usam.",
+   "ru": "Только ваша учётная запись Windows может обращаться к Lumo через канал, которым пользуются хуки агентов.",
+   "id": "Hanya akun Windows Anda yang bisa berbicara dengan Lumo melalui pipe yang dipakai hook para agen.",
+   "it": "Solo il tuo account Windows può parlare con Lumo attraverso il canale usato dagli hook degli agenti."
+  },
+  "An update is installed only if it matches the one GitHub published.": {
+   "zh-Hans": "只有与 GitHub 发布的版本一致的更新才会被安装。",
+   "hi": "कोई अपडेट तभी इंस्टॉल होता है जब वह GitHub पर प्रकाशित अपडेट से मेल खाता है।",
+   "es": "Una actualización solo se instala si coincide con la que publicó GitHub.",
+   "ar": "لا يُثبَّت التحديث إلا إذا طابق التحديث المنشور على GitHub.",
+   "fr": "Une mise à jour n'est installée que si elle correspond à celle publiée sur GitHub.",
+   "bn": "কোনো আপডেট তখনই ইনস্টল হয় যখন তা GitHub-এ প্রকাশিত আপডেটের সাথে মেলে।",
+   "pt-BR": "Uma atualização só é instalada se corresponder à publicada no GitHub.",
+   "ru": "Обновление устанавливается, только если оно совпадает с опубликованным на GitHub.",
+   "id": "Pembaruan hanya dipasang jika cocok dengan yang dipublikasikan di GitHub.",
+   "it": "Un aggiornamento si installa solo se corrisponde a quello pubblicato su GitHub."
   }
  }
 }

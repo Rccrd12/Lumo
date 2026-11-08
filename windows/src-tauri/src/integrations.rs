@@ -78,6 +78,7 @@ pub fn start(app: AppHandle) {
     spawn_github_loops(app.clone());
     spawn(app.clone(), "integration_calcom", 8, 300, poll_calcom);
     tauri::async_runtime::spawn(crate::mail::run(app.clone()));
+    tauri::async_runtime::spawn(crate::outlook::run(app.clone()));
     spawn(app, "integration_notion", 9, 300, poll_notion);
 }
 

@@ -305,6 +305,11 @@ export interface Settings {
   activitiesFollowIsland: boolean;
   /** The Email pill leaves out the promotional emails (mail.rs). */
   mailHidePromotions: boolean;
+  /** The Email pill's sources: the server over IMAP (mail.rs), the classic Outlook on this PC (outlook.rs). */
+  mailImap: boolean;
+  mailOutlook: boolean;
+  /** Settings → Security: Lumo starts Outlook in the background once, when it starts (outlook.rs). */
+  outlookStart: boolean;
   /** Settings → General → Energy (core/energy.ts): "none", "light", "auto" or "saver". */
   energyMode: string;
   /** With "auto" on mains power: "none" or "light". */
@@ -461,6 +466,9 @@ export const DEFAULT_SETTINGS: Settings = {
   quickApprovals: true,
   activitiesFollowIsland: true,
   mailHidePromotions: false,
+  mailImap: true,
+  mailOutlook: false,
+  outlookStart: false,
   energyMode: "auto",
   energyOnPower: "light",
   contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],

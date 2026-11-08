@@ -517,7 +517,9 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
   /** Why a pill would show nothing yet. */
   function hint(def: PillDefinition): string | null {
     if (def.connect.kind === "hooks" && !connected[def.id]) return t("Hooks not installed");
-    if (def.connect.kind === "key" && !connected[def.id]) return t("Key not configured");
+    if (def.connect.kind === "key" && !connected[def.id] && !(def.connect.orSetting && settings[def.connect.orSetting])) {
+      return t("Key not configured");
+    }
     if (def.connect.kind === "server" && !settings[def.connect.field]) return t("Not connected");
     return null;
   }
@@ -713,6 +715,8 @@ const SECURITY = {
   get accounts() { return t("Your accounts"); },
   get mailHint() { return t("At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good."); },
   get calendarHint() { return t("Read your coming events, or nothing."); },
+  get outlookStart() { return t("Open Outlook if it's closed"); },
+  get outlookStartHint() { return t("When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts."); },
   get githubHint() { return t("Read your pull requests, issues and checks when you ask. Off until you turn it on."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
@@ -721,6 +725,8 @@ const SECURITY = {
   get alwaysOn() { return t("Always on"); },
   get keys() { return t("Keys and passwords stay in Windows Credential Manager, never in a file."); },
   get noData() { return t("No usage data: Lumo talks only to the services you set up."); },
+  get pipe() { return t("Only your Windows account can talk to Lumo through the pipe the agents' hooks use."); },
+  get updates() { return t("An update is installed only if it matches the one GitHub published."); },
 };
 
 /** The chat's permission modes, by the names its shield gives them (views/chat.ts). */
@@ -801,12 +807,17 @@ function securitySection(): HTMLElement {
     ),
     group(SECURITY.accounts),
     setting(t("Email"), SECURITY.mailHint, mailAccess),
+    setting(SECURITY.outlookStart, SECURITY.outlookStartHint,
+      toggle(settings.outlookStart === true, (on) => { settings.outlookStart = on; void save(); }),
+    ),
     setting(t("Calendar"), SECURITY.calendarHint, calendarAccess),
     setting("GitHub", SECURITY.githubHint, githubAccess),
     group(SECURITY.alwaysOn),
     h("ul", { class: "always-on" },
       h("li", { text: SECURITY.keys }),
       h("li", { text: SECURITY.noData }),
+      h("li", { text: SECURITY.pipe }),
+      h("li", { text: SECURITY.updates }),
     ),
   );
 }
@@ -1203,14 +1214,14 @@ const INTEGRATIONS: IntegrationDef[] = [
     fields: [{ key: "notion-api-key", label: N_("Integration token"), placeholder: "ntn_…", secret: true }] },
   { id: "integration_calcom", name: "Cal.com", color: "#C9956A",
     fields: [{ key: "calcom-api-key", label: N_("API key"), placeholder: "cal_…", secret: true }] },
-  // The inbox over IMAP (mail.rs): read only, never sends.
+  // The inbox over IMAP (mail.rs), and the classic Outlook on this PC (outlook.rs): mailSourceRows.
   { id: "integration_mail", name: N_("Email"), color: "#EA4335",
     fields: [
       { key: "mail-address", label: N_("Address"), placeholder: "you@gmail.com", secret: false },
       { key: "mail-app-password", label: N_("App password"), placeholder: "abcd efgh ijkl mnop", secret: true },
       { key: "mail-imap-server", label: N_("IMAP server"), placeholder: N_("found from the address"), secret: false },
     ],
-    hint: N_("New emails show on the closed island. Lumo only reads: it never sends, deletes or marks anything as read. Gmail needs an app password (myaccount.google.com/apppasswords), with 2-Step Verification on.") },
+    hint: N_("New emails show on the closed island. You can use Outlook, IMAP or both together.") },
 ];
 
 const MAX_ACTIVE = MAX_DECLARED;
@@ -1309,7 +1320,7 @@ function integrationsSection(
           def.hint ? t(def.hint) : null,
           sw,
         ),
-        rows,
+        ...(def.id === "integration_mail" ? mailSourceRows(rows) : [rows]),
         def.id === "integration_mail" ? promotionsRow() : null,
       ),
     );
@@ -1317,6 +1328,53 @@ function integrationsSection(
 
   updateNote();
   return h("section", {}, ...sectionHead(t("Integrations")), note, list);
+}
+
+const MAIL_SOURCES = {
+  get outlook() { return t("Outlook on this PC"); },
+  get outlookHint() { return t("Classic Outlook, already set up: no password."); },
+  get account() { return t("Account"); },
+  get imapHint() { return t("Gmail, iCloud or another server, with an app password. Gmail's is made at myaccount.google.com/apppasswords, with 2-Step Verification on."); },
+  get closed() { return t("Outlook is closed: the emails come back as soon as you open it."); },
+  get missing() { return t("Classic Outlook isn't installed on this PC. The new Outlook can't be read by other apps: use IMAP."); },
+};
+
+/**
+ * Settings → Pills → Email's two sources, one switch each: the classic
+ * Outlook on this PC with the accounts it has (outlook.rs), and IMAP with its
+ * address, app password and server (mail.rs). Both can be on.
+ */
+function mailSourceRows(imapFields: HTMLElement): HTMLElement[] {
+  const found = h("span", { style: "flex:1 1 auto;min-width:0;opacity:.9" });
+  const dot = statusDot(false);
+  const account = h("div", { class: "field-rows" },
+    h("div", { class: "field-row" }, h("label", { text: MAIL_SOURCES.account }), found, dot));
+  // What Outlook says now: asked only while it runs, it is never started from here.
+  const showOutlook = async () => {
+    account.hidden = !settings.mailOutlook;
+    if (!settings.mailOutlook) return;
+    const status = await Bridge.outlookStatus();
+    if (!status) return;
+    const running = status.installed && status.running;
+    found.textContent = !status.installed ? MAIL_SOURCES.missing
+      : !status.running ? MAIL_SOURCES.closed
+      : status.accounts.join(", ") || "Outlook";
+    found.title = found.textContent;
+    found.style.opacity = running ? ".9" : ".6";
+    dot.style.background = running ? "#22c55e" : status.installed ? "#8a8f98" : "#f4505e";
+  };
+  const showImap = () => { imapFields.hidden = !settings.mailImap; };
+  void showOutlook();
+  showImap();
+  window.addEventListener("focus", () => void showOutlook());
+  return [
+    setting(MAIL_SOURCES.outlook, MAIL_SOURCES.outlookHint,
+      toggle(settings.mailOutlook, (v) => { settings.mailOutlook = v; void showOutlook(); void save(); })),
+    account,
+    setting("IMAP", MAIL_SOURCES.imapHint,
+      toggle(settings.mailImap, (v) => { settings.mailImap = v; showImap(); void save(); })),
+    imapFields,
+  ];
 }
 
 /** Settings → Pills → Email: the promotional emails left out of the island (mail.rs). */

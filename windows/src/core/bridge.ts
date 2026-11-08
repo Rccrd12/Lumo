@@ -62,6 +62,14 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
   }
 }
 
+/** Settings → Pills → Email: the classic Outlook on this PC (outlook.rs). */
+export interface OutlookStatus {
+  installed: boolean;
+  running: boolean;
+  /** Its accounts' addresses. */
+  accounts: string[];
+}
+
 /** Settings → Updates: what a check found (updater.rs). */
 export interface UpdateInfo {
   current: string;
@@ -434,6 +442,8 @@ export const Bridge = {
   pasteCopiedFile: () => callOrThrow<DroppedFile | null>("paste_copied_file"),
   /** The text on the clipboard (the right-click menu's Paste), read by Lumo. */
   clipboardText: () => call<string | null>("clipboard_text"),
+  /** Whether Outlook runs and its accounts: asked only if it runs, never started (outlook.rs). */
+  outlookStatus: () => call<OutlookStatus>("outlook_status"),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
   /** The chat providers that are set up: a key stored, or the CLI installed with Lumo's hooks (lib.rs). */

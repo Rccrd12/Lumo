@@ -95,6 +95,8 @@ windows = { version = "0.61", features = [
   "Win32_System_Shutdown",
   "Win32_System_SystemInformation",
   "Win32_System_Threading",
+  # The Email pill's Outlook (outlook.rs): its dates are local times.
+  "Win32_System_Time",
   # "Folder open in File Explorer" in the chat (explorer.rs): IShellWindows
   # and the folder of each window, which take and return VARIANTs.
   "Win32_System_Variant",

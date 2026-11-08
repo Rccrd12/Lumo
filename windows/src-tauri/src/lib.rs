@@ -49,6 +49,7 @@ mod migrate;
 mod net;
 mod notifications;
 mod openai_compat;
+mod outlook;
 mod pc_status;
 mod pdf_pages;
 mod pdf_text;
@@ -360,6 +361,11 @@ fn list_monitors(app: AppHandle) -> Vec<island::MonitorChoice> {
 
 #[tauri::command]
 fn open_url(url: String) {
+    // An Outlook email on the island, or its inbox: shown in Outlook (outlook.rs).
+    if url.starts_with(outlook::LINK_PREFIX) {
+        outlook::open(&url);
+        return;
+    }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return;
     }
@@ -1233,6 +1239,7 @@ pub fn run() {
             reposition,
             list_monitors,
             open_url,
+            outlook::outlook_status,
             open_in_vscode,
             open_session,
             open_claude_desktop,

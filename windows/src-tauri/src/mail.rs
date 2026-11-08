@@ -1,7 +1,9 @@
 // The Email pill: new messages in the user's inbox, read over IMAP with an app
 // password (Gmail, Outlook, iCloud, any IMAP server), for the closed island's
 // email preview and the pill's card. The server says when one arrives (IDLE),
-// so it shows within seconds.
+// so it shows within seconds. The classic Outlook on this PC can be a source
+// too, alone or with IMAP (Settings → Pills → Email, outlook.rs): the island
+// and the agents get both, the emails of each kept by their own ids.
 //
 // The pill itself only reads: the inbox is opened with EXAMINE (the server
 // refuses any change to it) and message bodies are fetched with BODY.PEEK
@@ -57,10 +59,10 @@ const IDLE_ANSWER: Duration = Duration::from_secs(10);
 const MAX_READ: usize = 4 * 1024 * 1024;
 /// The newest unread messages kept: the island shows three, and the next ones
 /// move up when one is ignored.
-const FETCH: usize = 8;
+pub(crate) const FETCH: usize = 8;
 /// Of each message's body, enough for a preview and for the AI to answer it.
 const BODY_BYTES: usize = 24 * 1024;
-const BODY_CHARS: usize = 6000;
+pub(crate) const BODY_CHARS: usize = 6000;
 const PREVIEW_CHARS: usize = 180;
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -83,9 +85,18 @@ pub struct Message {
 static LAST_UID: Mutex<Option<(String, u32)>> = Mutex::new(None);
 /// What the island was last sent, so an unchanged inbox sends nothing.
 static LAST_SENT: Mutex<Option<String>> = Mutex::new(None);
-/// The inbox as last read (unread count, newest unread emails), for the chat
-/// (chat.rs): any provider can say what the newest emails are.
-static INBOX: Mutex<Option<(usize, Vec<Message>)>> = Mutex::new(None);
+/// What each source last read, or why it couldn't: the island and the chat
+/// (chat.rs) get the two together.
+static IMAP_NOW: Mutex<Option<Result<Read, String>>> = Mutex::new(None);
+static OUTLOOK_NOW: Mutex<Option<Result<Read, String>>> = Mutex::new(None);
+
+/// One source's inbox: how many unread, the newest unread, where to open it.
+#[derive(Clone)]
+struct Read {
+    unread: usize,
+    messages: Vec<Message>,
+    inbox: Option<String>,
+}
 
 // ── Watching the inbox ────────────────────────────────────────────────────────
 
@@ -98,6 +109,7 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 pub fn wake() {
     *LAST_SENT.lock().unwrap() = None;
     WAKE.notify_one();
+    crate::outlook::wake();
 }
 
 /// Whether a change of settings concerns the Email pill: turned on or off (its
@@ -140,7 +152,22 @@ pub fn for_ai(app: &AppHandle) -> bool {
 
 pub fn concerned(before: &Settings, after: &Settings) -> bool {
     let on = |s: &Settings| s.active_integrations.iter().any(|id| id == ID);
-    on(before) != on(after) || before.mail_hide_promotions != after.mail_hide_promotions || before.language != after.language
+    on(before) != on(after)
+        || before.mail_hide_promotions != after.mail_hide_promotions
+        || before.language != after.language
+        || before.mail_imap != after.mail_imap
+        || before.mail_outlook != after.mail_outlook
+        || before.outlook_start != after.outlook_start
+}
+
+/// Settings → Pills → Email → "IMAP": on unless the user turned it off.
+fn imap_on(app: &AppHandle) -> bool {
+    app.try_state::<crate::Shared>().is_some_and(|s| s.settings.lock().unwrap().mail_imap)
+}
+
+/// IMAP is on and has its keys.
+fn imap_ready(app: &AppHandle) -> bool {
+    imap_on(app) && secrets::get(ADDRESS_KEY).is_some() && secrets::get(PASSWORD_KEY).is_some()
 }
 
 /// The keys changed: sign in again with the new ones.
@@ -164,14 +191,14 @@ pub async fn run(app: AppHandle) {
     let mut health = Health::default();
     let mut generation = GENERATION.load(Ordering::Relaxed);
     loop {
-        if !crate::integrations::enabled(&app, ID) || crate::integrations::PAUSED.load(Ordering::Relaxed) {
-            *INBOX.lock().unwrap() = None;
+        if !crate::integrations::enabled(&app, ID) || crate::integrations::PAUSED.load(Ordering::Relaxed) || !imap_on(&app) {
+            clear_imap(&app);
             health = Health::default();
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
         }
         let Some((address, password)) = secrets::get(ADDRESS_KEY).zip(secrets::get(PASSWORD_KEY)) else {
-            *INBOX.lock().unwrap() = None;
+            clear_imap(&app);
             health = Health::default();
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
@@ -265,6 +292,7 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
             GENERATION.load(Ordering::Relaxed) != generation
                 || !crate::integrations::enabled(app, ID)
                 || crate::integrations::PAUSED.load(Ordering::Relaxed)
+                || !imap_on(app)
         };
         if stop() {
             let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
@@ -309,9 +337,61 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
         *last = Some((account.to_string(), newest.max(seen.unwrap_or(0))));
         fresh
     };
-    *INBOX.lock().unwrap() = Some((unread, messages.clone()));
-    // Only what changed reaches the island: a quiet inbox wakes nothing.
-    let data = json!({ "messages": messages, "unread": unread, "inbox": inbox_link(host) });
+    *IMAP_NOW.lock().unwrap() = Some(Ok(Read { unread, messages, inbox: inbox_link(host) }));
+    publish(app);
+    announce(app, fresh);
+}
+
+/// Emails that just arrived: on the closed island, and to Gemini Live.
+fn announce(app: &AppHandle, fresh: Vec<Message>) {
+    if !fresh.is_empty() {
+        crate::listen_events::heard_mail(app, &fresh);
+        let _ = app.emit_to(WINDOW_LABEL, "mail-new", &fresh);
+    }
+}
+
+fn fail(app: &AppHandle, error: String) {
+    log::line(format!("[mail] {error}"));
+    *IMAP_NOW.lock().unwrap() = Some(Err(error));
+    publish(app);
+}
+
+/// IMAP off, or without its keys: only Outlook's emails, if any, stay.
+fn clear_imap(app: &AppHandle) {
+    let was = IMAP_NOW.lock().unwrap().take();
+    if was.is_some() {
+        publish(app);
+    }
+}
+
+/// What Outlook's side read (outlook.rs): its inbox, why not (closed), or
+/// nothing (off); with the emails that just arrived.
+pub fn from_outlook(app: &AppHandle, read: Option<Result<(usize, Vec<Message>), String>>, fresh: Vec<Message>) {
+    let inbox = Some(format!("{}inbox", crate::outlook::LINK_PREFIX));
+    *OUTLOOK_NOW.lock().unwrap() = read.map(|r| r.map(|(unread, messages)| Read { unread, messages, inbox: inbox.clone() }));
+    publish(app);
+    announce(app, fresh);
+}
+
+/// The island gets the two sources together: an error only when neither has
+/// emails to show. Only what changed reaches it: a quiet inbox wakes nothing.
+fn publish(app: &AppHandle) {
+    let imap = IMAP_NOW.lock().unwrap().clone();
+    let outlook = OUTLOOK_NOW.lock().unwrap().clone();
+    let read: Vec<Read> = [&imap, &outlook].into_iter().filter_map(|s| s.as_ref()?.as_ref().ok().cloned()).collect();
+    if read.is_empty() {
+        let error = [&imap, &outlook].into_iter().find_map(|s| s.as_ref()?.as_ref().err().cloned());
+        let shown = LAST_SENT.lock().unwrap().take().is_some();
+        match error {
+            Some(error) => emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None }),
+            None if shown => emit(app, IntegrationUpdate { id: ID, data: json!({ "messages": [], "unread": 0 }), error: None, event: None }),
+            None => {}
+        }
+        return;
+    }
+    let inbox = read.iter().find_map(|r| r.inbox.clone());
+    let (unread, messages) = together(read);
+    let data = json!({ "messages": messages, "unread": unread, "inbox": inbox });
     let text = data.to_string();
     let changed = {
         let mut sent = LAST_SENT.lock().unwrap();
@@ -322,17 +402,19 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
     if changed {
         emit(app, IntegrationUpdate { id: ID, data, error: None, event: None });
     }
-    if !fresh.is_empty() {
-        crate::listen_events::heard_mail(app, &fresh);
-        let _ = app.emit_to(WINDOW_LABEL, "mail-new", &fresh);
-    }
 }
 
-fn fail(app: &AppHandle, error: String) {
-    *LAST_SENT.lock().unwrap() = None;
-    *INBOX.lock().unwrap() = None;
-    log::line(format!("[mail] {error}"));
-    emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None });
+/// The sources' unread emails as one inbox: newest first, the unread added up.
+fn together(read: Vec<Read>) -> (usize, Vec<Message>) {
+    let unread = read.iter().map(|r| r.unread).sum();
+    if read.len() == 1 {
+        let one = read.into_iter().next().map(|r| r.messages).unwrap_or_default();
+        return (unread, one);
+    }
+    let mut all: Vec<Message> = read.into_iter().flat_map(|r| r.messages).collect();
+    all.sort_by_key(|m| std::cmp::Reverse(date_key(&m.date)));
+    all.truncate(FETCH);
+    (unread, all)
 }
 
 // ── For the chat ──────────────────────────────────────────────────────────────
@@ -342,7 +424,8 @@ const CHAT_BODY_CHARS: usize = 1500;
 
 /// The inbox as last read, while the pill is on and signed in.
 pub fn inbox() -> Option<(usize, Vec<Message>)> {
-    INBOX.lock().unwrap().clone()
+    let read: Vec<Read> = [&IMAP_NOW, &OUTLOOK_NOW].into_iter().filter_map(|s| s.lock().unwrap().clone()?.ok()).collect();
+    (!read.is_empty()).then(|| together(read))
 }
 
 /// Whether `query` speaks of email ("le ultime email", "any new mail?",
@@ -390,11 +473,11 @@ pub fn context_text(unread: usize, messages: &[Message]) -> String {
 // ── For the agents ────────────────────────────────────────────────────────────
 
 /// What the agents' tools give at most, and by default.
-const MOST: usize = 25;
+pub(crate) const MOST: usize = 25;
 const DEFAULT_COUNT: usize = 10;
 /// Of an email read in full: what is fetched, and what the agent reads.
 const FULL_BYTES: usize = 256 * 1024;
-const FULL_CHARS: usize = 20_000;
+pub(crate) const FULL_CHARS: usize = 20_000;
 /// Of each email in a list: the start of its text.
 const LIST_CHARS: usize = 400;
 /// Of the email answered, what is quoted under a reply.
@@ -405,6 +488,8 @@ const MOST_FOLDERS: usize = 60;
 const SLOW_TIMEOUT: Duration = Duration::from_secs(55);
 /// The most a file attached to an email may weigh as it comes (in base64).
 const MAX_ATTACHMENT_READ: usize = 32 * 1024 * 1024;
+/// The same, decoded: what an Outlook file may weigh (outlook.rs).
+pub(crate) const MAX_ATTACHMENT_BYTES: usize = MAX_ATTACHMENT_READ / 4 * 3;
 /// How long the chat waits for the newest emails before it makes do with the unread ones.
 const CHAT_WAIT: Duration = Duration::from_secs(12);
 
@@ -480,7 +565,10 @@ fn seen(unit: &[Part]) -> bool {
 /// A short connection for an agent: the Email pill must be on, and signed in.
 async fn open(app: &AppHandle) -> Result<(Imap, String), String> {
     if !crate::integrations::enabled(app, ID) {
-        return Err("The Email pill is off in Lumo: the user can turn it on in Lumo's Settings.".into());
+        return Err(PILL_OFF.into());
+    }
+    if !imap_on(app) {
+        return Err("IMAP is off in Lumo's Settings (the Email pill): Lumo reads only Outlook.".into());
     }
     let (address, password) = secrets::get(ADDRESS_KEY)
         .zip(secrets::get(PASSWORD_KEY))
@@ -491,6 +579,7 @@ async fn open(app: &AppHandle) -> Result<(Imap, String), String> {
     Ok((imap, host))
 }
 
+const PILL_OFF: &str = "The Email pill is off in Lumo: the user can turn it on in Lumo's Settings.";
 const NO_ACCOUNT: &str = "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.";
 
 /// Ends a short connection, without waiting long for the server's goodbye.
@@ -573,6 +662,11 @@ impl Role {
             Role::All => &["all mail"],
         }
     }
+}
+
+/// Whether a folder's name says it is the archive (an Outlook folder, outlook.rs).
+pub(crate) fn is_archive_name(name: &str) -> bool {
+    Role::Archive.names().contains(&name.trim().to_lowercase().as_str())
 }
 
 fn role_of(b: &Mailbox) -> Option<Role> {
@@ -921,7 +1015,7 @@ fn gone(id: &str) -> String {
 
 /// An email's Date header as seconds since 1970 (UTC), to put the emails of
 /// several folders in order; 0 when it can't be read.
-fn date_key(date: &str) -> i64 {
+pub(crate) fn date_key(date: &str) -> i64 {
     const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
     let words: Vec<&str> = date.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).collect();
     let month = |w: &str| MONTHS.iter().position(|m| w.get(..3).is_some_and(|p| p.eq_ignore_ascii_case(m)));
@@ -1270,7 +1364,7 @@ async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<S
 }
 
 /// "120 KB", "3.4 MB".
-fn size_text(bytes: usize) -> String {
+pub(crate) fn size_text(bytes: usize) -> String {
     if bytes >= 1024 * 1024 {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     } else {
@@ -1326,7 +1420,7 @@ pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
 /// not, or, when the server is slow or says no, the unread ones last read.
 pub async fn for_chat(app: &AppHandle) -> Option<String> {
     let cached = inbox();
-    match tokio::time::timeout(CHAT_WAIT, newest(app, DEFAULT_COUNT, false, None)).await {
+    match tokio::time::timeout(CHAT_WAIT, newest_anywhere(app, DEFAULT_COUNT, false, None)).await {
         Ok(Ok(found)) => Some(recent_text(&found, cached.map(|(n, _)| n))),
         Ok(Err(e)) => {
             log::line(format!("[mail] for the chat: {e}"));
@@ -1357,7 +1451,16 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         if level == "read" {
             return refuse("The user lets the AI only read their email (Lumo's Settings → Security): write a draft for them to send instead.".into());
         }
+        // A reply, a forward go out of the email's own mailbox; a new email
+        // out of Outlook when it is on.
+        let about = |key: &str| input.get(key).and_then(|v| v.as_str()).is_some_and(crate::outlook::is_id);
+        let answers = input.get("reply_to").and_then(|v| v.as_str()).is_some_and(|r| !r.trim().is_empty());
+        let new_in_outlook = (tool == "mail_send" || (tool == "mail_draft" && !answers)) && sends_from_outlook(app).await;
         let done = match tool {
+            "mail_reply" if about("id") => outlook_reply(app, &input).await,
+            "mail_forward" if about("id") => outlook_forward(app, &input).await,
+            "mail_draft" if about("reply_to") || new_in_outlook => outlook_draft(&input).await,
+            "mail_send" if new_in_outlook => outlook_send(app, &input).await,
             "mail_send" => send(app, &input).await,
             "mail_reply" => reply(app, &input).await,
             "mail_forward" => forward(app, &input).await,
@@ -1372,7 +1475,9 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         if level != "manage" {
             return refuse("The user doesn't let the AI change their mailbox (Lumo's Settings → Security → Email): tell them what you would do instead.".into());
         }
-        return match manage(app, tool, &input).await {
+        let outlook = input.get("id").and_then(|v| v.as_str()).is_some_and(crate::outlook::is_id);
+        let done = if outlook { outlook_manage(app, tool, &input).await } else { manage(app, tool, &input).await };
+        return match done {
             Ok(text) => json!({ "text": text }),
             Err(e) => refuse(e),
         };
@@ -1383,7 +1488,7 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         "mail_recent" => {
             let unread_only = input.get("unread_only").and_then(|v| v.as_bool()).unwrap_or(false);
             let place = folder.unwrap_or("inbox");
-            newest(app, count, unread_only, folder).await.map(|found| {
+            newest_anywhere(app, count, unread_only, folder).await.map(|found| {
                 if found.is_empty() {
                     if unread_only { format!("No unread email in {place}.") } else { format!("No email in {place}.") }
                 } else {
@@ -1393,7 +1498,7 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         }
         "mail_search" => {
             let query = input.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            search(app, &query, count, folder).await.map(|found| {
+            search_anywhere(app, &query, count, folder).await.map(|found| {
                 if found.is_empty() {
                     format!("No email matches {query}.")
                 } else {
@@ -1403,32 +1508,288 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         }
         "mail_read" => {
             let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            read(app, &id).await.map(|(f, files)| {
-                let m = &f.message;
-                let state = if f.unread { "unread" } else { "read" };
-                let mut text = format!("From: {} <{}>\nDate: {}\nSubject: {}\nState: {state}\n", m.from, m.address, m.date, m.subject);
-                if let Some(link) = &m.link {
-                    text.push_str(&format!("Link: {link}\n"));
-                }
-                if !files.is_empty() {
-                    text.push_str("Files attached (mail_attachment saves one where you can read it):\n");
-                    for (n, file) in files.iter().enumerate() {
-                        text.push_str(&format!("  {}. {} ({}, {})\n", n + 1, file.name, file.mime, size_text(file.file_size())));
-                    }
-                }
-                text.push('\n');
-                text.push_str(if m.body.trim().is_empty() { &m.preview } else { &m.body });
-                text
-            })
+            if crate::outlook::is_id(&id) {
+                crate::outlook::read(id, FULL_CHARS)
+                    .await
+                    .map(|(f, files)| read_text(&f, files.iter().map(|x| (x.name.as_str(), x.mime, x.size)).collect()))
+            } else {
+                read(app, &id).await.map(|(f, files)| read_text(&f, files.iter().map(|x| (x.name.as_str(), x.mime.as_str(), x.file_size())).collect()))
+            }
         }
-        "mail_folders" => folders(app).await,
-        "mail_attachment" => save_attachment(app, &input).await,
+        "mail_folders" => folders_anywhere(app).await,
+        "mail_attachment" => {
+            let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if crate::outlook::is_id(&id) {
+                crate::outlook::save_attachment(id, input.get("attachment").cloned()).await
+            } else {
+                save_attachment(app, &input).await
+            }
+        }
         _ => Err(format!("Lumo has no email tool called {tool}.")),
     };
     match answer {
         Ok(text) => json!({ "text": text }),
         Err(e) => refuse(e),
     }
+}
+
+/// `mail_read`'s answer: the email's header lines, its files, its text.
+fn read_text(f: &Found, files: Vec<(&str, &str, usize)>) -> String {
+    let m = &f.message;
+    let state = if f.unread { "unread" } else { "read" };
+    let mut text = format!("From: {} <{}>\nDate: {}\nSubject: {}\nState: {state}\n", m.from, m.address, m.date, m.subject);
+    if let Some(link) = m.link.as_ref().filter(|l| l.starts_with("http")) {
+        text.push_str(&format!("Link: {link}\n"));
+    }
+    if !files.is_empty() {
+        text.push_str("Files attached (mail_attachment saves one where you can read it):\n");
+        for (n, (name, mime, size)) in files.iter().enumerate() {
+            text.push_str(&format!("  {}. {name} ({mime}, {})\n", n + 1, size_text(*size)));
+        }
+    }
+    text.push('\n');
+    text.push_str(if m.body.trim().is_empty() { &m.preview } else { &m.body });
+    text
+}
+
+// ── IMAP, Outlook or both ─────────────────────────────────────────────────────
+
+/// Which source a reading tool asks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Sources {
+    Imap,
+    Outlook,
+    Both,
+}
+
+/// The folder names both sources understand, each its own way.
+fn shared_folder(asked: &str) -> bool {
+    ["inbox", "sent", "drafts", "archive", "trash", "spam", "junk", "deleted"].iter().any(|w| asked.trim().eq_ignore_ascii_case(w))
+}
+
+/// IMAP for its own folders, Outlook for its own ("outlook:…"), both for the
+/// inbox, the sent, the trash… when both are on.
+fn sources_for(imap: bool, outlook: bool, folder: Option<&str>) -> Result<Sources, String> {
+    let either = match (imap, outlook) {
+        (true, true) => Sources::Both,
+        (true, false) => Sources::Imap,
+        (false, true) => Sources::Outlook,
+        (false, false) => return Err(NO_ACCOUNT.into()),
+    };
+    Ok(match folder {
+        Some(f) if crate::outlook::is_folder(f) => {
+            if !outlook {
+                return Err("Outlook is off in Lumo's Settings (the Email pill): its folders can't be read.".into());
+            }
+            Sources::Outlook
+        }
+        Some(f) if !shared_folder(f) => {
+            if imap {
+                Sources::Imap
+            } else {
+                Sources::Outlook
+            }
+        }
+        _ => either,
+    })
+}
+
+async fn which(app: &AppHandle, folder: Option<&str>) -> Result<Sources, String> {
+    if !crate::integrations::enabled(app, ID) {
+        return Err(PILL_OFF.into());
+    }
+    sources_for(imap_ready(app), crate::outlook::on(app), folder)
+}
+
+/// The two answers as one list, newest first; one source failing leaves the other's.
+fn both_found(imap: Result<Vec<Found>, String>, outlook: Result<Vec<Found>, String>, count: usize) -> Result<Vec<Found>, String> {
+    let mut all: Vec<Found> = match (imap, outlook) {
+        (Ok(a), Ok(b)) => a.into_iter().chain(b).collect(),
+        (Ok(a), Err(e)) | (Err(e), Ok(a)) => {
+            log::line(format!("[mail] one source: {e}"));
+            a
+        }
+        (Err(a), Err(_)) => return Err(a),
+    };
+    all.sort_by_key(|f| std::cmp::Reverse(date_key(&f.message.date)));
+    all.truncate(count);
+    Ok(all)
+}
+
+/// `newest`, from IMAP, Outlook or both.
+async fn newest_anywhere(app: &AppHandle, count: usize, unread_only: bool, folder: Option<&str>) -> Result<Vec<Found>, String> {
+    let count = count.clamp(1, MOST);
+    let owned = folder.map(str::to_string);
+    match which(app, folder).await? {
+        Sources::Imap => newest(app, count, unread_only, folder).await,
+        Sources::Outlook => crate::outlook::newest(count, unread_only, owned).await,
+        Sources::Both => {
+            let (a, b) = both(newest(app, count, unread_only, folder), crate::outlook::newest(count, unread_only, owned)).await;
+            both_found(a, b, count)
+        }
+    }
+}
+
+/// `search`, in IMAP, Outlook or both.
+async fn search_anywhere(app: &AppHandle, query: &str, count: usize, folder: Option<&str>) -> Result<Vec<Found>, String> {
+    let count = count.clamp(1, MOST);
+    let owned = folder.map(str::to_string);
+    match which(app, folder).await? {
+        Sources::Imap => search(app, query, count, folder).await,
+        Sources::Outlook => crate::outlook::search(query.to_string(), count, owned).await,
+        Sources::Both => {
+            let (a, b) = both(search(app, query, count, folder), crate::outlook::search(query.to_string(), count, owned)).await;
+            both_found(a, b, count)
+        }
+    }
+}
+
+/// `mail_folders`, of each source on.
+async fn folders_anywhere(app: &AppHandle) -> Result<String, String> {
+    let outlook_list = || async {
+        crate::outlook::folders()
+            .await
+            .map(|list| format!("Outlook's folders, on this PC (give the name as it is, with outlook:, to mail_recent's, mail_search's or mail_move's folder):\n{list}"))
+    };
+    match which(app, None).await? {
+        Sources::Imap => folders(app).await,
+        Sources::Outlook => outlook_list().await,
+        Sources::Both => {
+            let (a, b) = both(folders(app), outlook_list()).await;
+            match (a, b) {
+                (Ok(a), Ok(b)) => Ok(format!("{a}\n{b}\ninbox, sent, drafts, archive, trash and spam name both mailboxes' own.")),
+                (Ok(one), Err(e)) | (Err(e), Ok(one)) => Ok(format!("{one}\n(The other mailbox didn't answer: {e})")),
+                (Err(a), Err(_)) => Err(a),
+            }
+        }
+    }
+}
+
+/// A new email goes out of Outlook when it is on and running, else over SMTP.
+async fn sends_from_outlook(app: &AppHandle) -> bool {
+    crate::outlook::on(app) && (!imap_ready(app) || crate::outlook::running().await)
+}
+
+/// `mail_send` out of Outlook.
+async fn outlook_send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let (mail, paths) = outgoing(input)?;
+    let draft = crate::outlook::Draft::New { to: mail.to, cc: mail.cc };
+    outlook_deliver(app, "mail_send", draft, mail.subject, mail.body, paths).await
+}
+
+/// `mail_reply` to an Outlook email: Outlook's own reply, in its conversation.
+async fn outlook_reply(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let (_, body) = subject_and_body(input)?;
+    let all = input.get("reply_all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let cc = addresses(input.get("cc"), "cc")?;
+    let (_, paths): (Vec<_>, Vec<_>) = attachments(input.get("attachments"))?.into_iter().unzip();
+    let draft = crate::outlook::Draft::Reply { id, all, cc };
+    outlook_deliver(app, "mail_reply", draft, String::new(), body, paths).await
+}
+
+/// `mail_forward` of an Outlook email, with its files unless `with_files` is false.
+async fn outlook_forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let to = addresses(input.get("to"), "to")?;
+    let cc = addresses(input.get("cc"), "cc")?;
+    if to.is_empty() {
+        return Err("Say who to forward the email to (to).".into());
+    }
+    let note = input.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if note.len() > crate::smtp::MAX_BODY / 2 {
+        return Err("The email's text is too long.".into());
+    }
+    let with_files = input.get("with_files").and_then(|v| v.as_bool()).unwrap_or(true);
+    let draft = crate::outlook::Draft::Forward { id, to, cc, with_files };
+    outlook_deliver(app, "mail_forward", draft, String::new(), note, Vec::new()).await
+}
+
+/// `mail_draft` in Outlook's Drafts: nothing is sent, no card.
+async fn outlook_draft(input: &serde_json::Value) -> Result<String, String> {
+    let (mail, paths) = outgoing_for(input, false)?;
+    let draft = match input.get("reply_to").and_then(|v| v.as_str()).map(str::trim).filter(|r| !r.is_empty()) {
+        Some(id) if crate::outlook::is_id(id) => crate::outlook::Draft::Reply { id: id.to_string(), all: false, cc: mail.cc },
+        _ => crate::outlook::Draft::New { to: mail.to, cc: mail.cc },
+    };
+    let made = crate::outlook::make(draft, mail.subject, mail.body, paths).await?;
+    let place = crate::outlook::keep_draft(&made).await?;
+    log::line("[outlook] a draft saved");
+    Ok(format!("Saved in Outlook's {place}: the user finds it among their drafts, to read, finish and send themselves. It was not sent."))
+}
+
+/// Any email the AI sends out of Outlook: made in Outlook, shown whole on its
+/// card, and sent only once the user clicks Send; thrown away otherwise.
+async fn outlook_deliver(
+    app: &AppHandle,
+    tool: &str,
+    draft: crate::outlook::Draft,
+    subject: String,
+    text: String,
+    paths: Vec<String>,
+) -> Result<String, String> {
+    let made = crate::outlook::make(draft, subject, text, paths).await?;
+    let names: Vec<String> = made.files.iter().filter_map(|f| f.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect();
+    let card = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": format!("mcp__lumo__{tool}"),
+        "tool_input": { "to": made.to, "cc": made.cc, "subject": made.subject, "attachments": names },
+        "lumo_mail_send": { "from": made.from, "to": made.to, "cc": made.cc, "subject": made.subject, "body": made.body, "attachments": made.files },
+    });
+    let answer = crate::pipe::ask(app, card).await;
+    let send = answer.as_deref() == Some("allow");
+    let done = crate::outlook::finish(&made, send).await;
+    match answer.as_deref() {
+        Some("allow") => {}
+        Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
+        None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
+    }
+    done.inspect_err(|e| log::line(format!("[outlook] send: {e}")))?;
+    log::line(format!("[outlook] sent to {} people", made.to.len() + made.cc.len()));
+    wake();
+    Ok(format!("Sent from Outlook to {}.", made.to.iter().chain(&made.cc).cloned().collect::<Vec<_>>().join(", ")))
+}
+
+/// `mail_mark`, `mail_move`, `mail_archive`, `mail_trash` on an Outlook
+/// email: on its card first, done only on the user's click. The trash is
+/// Deleted Items: nothing is deleted for good.
+async fn outlook_manage(app: &AppHandle, tool: &str, input: &serde_json::Value) -> Result<String, String> {
+    use crate::outlook::Change as OutlookChange;
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let (change, words) = match tool {
+        "mail_mark" => {
+            let (_, words) = marks(input)?;
+            let flag = |key: &str| input.get(key).and_then(|v| v.as_bool());
+            (OutlookChange::Mark { read: flag("read"), starred: flag("starred") }, words)
+        }
+        "mail_move" => {
+            let asked = input.get("folder").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            if asked.is_empty() {
+                return Err("Say which folder to move it to (mail_folders lists them).".into());
+            }
+            (OutlookChange::Move(asked), vec!["move"])
+        }
+        "mail_archive" => (OutlookChange::Archive, vec!["archive"]),
+        _ => (OutlookChange::Trash, vec!["trash"]),
+    };
+    let (planned, change) = crate::outlook::plan(id.clone(), change).await?;
+    let card = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": format!("mcp__lumo__{tool}"),
+        "tool_input": { "id": id },
+        "lumo_mail_action": { "actions": words, "folder": planned.folder, "from": planned.from, "subject": planned.subject, "date": planned.date },
+    });
+    match crate::pipe::ask(app, card).await.as_deref() {
+        Some("allow") => {}
+        Some(_) => return Err("The user said no: the email was left as it is.".into()),
+        None => return Err("Lumo couldn't show the card to the user (the island is paused or busy): nothing was changed.".into()),
+    }
+    let done = crate::outlook::apply(id, change).await.inspect_err(|e| log::line(format!("[outlook] {tool}: {e}")))?;
+    log::line(format!("[outlook] {tool} done"));
+    wake();
+    Ok(if tool == "mail_mark" { format!("Done: the email is marked {}.", words.join(", ")) } else { done })
 }
 
 /// The addresses of `mail_send`'s `to` or `cc`: a list or one string, each checked.
@@ -1499,7 +1860,7 @@ fn attachments(v: Option<&serde_json::Value>) -> Result<Vec<(crate::smtp::Attach
     Ok(out)
 }
 
-fn too_heavy() -> String {
+pub(crate) fn too_heavy() -> String {
     format!("The files attached weigh more than {} MB together.", crate::smtp::MAX_ATTACHED_BYTES / (1024 * 1024))
 }
 
@@ -2351,6 +2712,32 @@ async fn first_of<A: std::future::Future, B: std::future::Future>(a: A, b: B) ->
     .await
 }
 
+/// Both futures, run together, and both their outputs.
+async fn both<A: std::future::Future, B: std::future::Future>(a: A, b: B) -> (A::Output, B::Output) {
+    let mut a = std::pin::pin!(a);
+    let mut b = std::pin::pin!(b);
+    let (mut got_a, mut got_b) = (None, None);
+    std::future::poll_fn(|cx| {
+        if got_a.is_none() {
+            if let std::task::Poll::Ready(v) = a.as_mut().poll(cx) {
+                got_a = Some(v);
+            }
+        }
+        if got_b.is_none() {
+            if let std::task::Poll::Ready(v) = b.as_mut().poll(cx) {
+                got_b = Some(v);
+            }
+        }
+        if got_a.is_some() && got_b.is_some() {
+            if let (Some(a), Some(b)) = (got_a.take(), got_b.take()) {
+                return std::task::Poll::Ready((a, b));
+            }
+        }
+        std::task::Poll::Pending
+    })
+    .await
+}
+
 /// `{123}` at the end of a line announces 123 bytes that follow it.
 fn literal_size(line: &str) -> Option<usize> {
     let open = line.strip_suffix('}')?.rfind('{')?;
@@ -2400,7 +2787,7 @@ fn sign_in_error(host: &str, why: &str) -> String {
 }
 
 /// Settings → Pills → Email: the promotional emails are left out.
-fn hides_promotions(app: &AppHandle) -> bool {
+pub(crate) fn hides_promotions(app: &AppHandle) -> bool {
     app.try_state::<crate::Shared>()
         .map(|shared| shared.settings.lock().unwrap().mail_hide_promotions)
         .unwrap_or(false)
@@ -2999,7 +3386,7 @@ pub fn entities(text: &str) -> String {
 }
 
 /// Lines trimmed, runs of blank lines down to one, quoted replies cut off.
-fn tidy(text: &str) -> String {
+pub(crate) fn tidy(text: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for line in text.lines() {
         let line = line.trim();
@@ -3018,7 +3405,7 @@ fn tidy(text: &str) -> String {
     out.join("\n")
 }
 
-fn preview(text: &str) -> String {
+pub(crate) fn preview(text: &str) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() <= PREVIEW_CHARS {
         return flat;
@@ -3030,6 +3417,36 @@ fn preview(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn imap_folders_go_to_imap_outlook_folders_to_outlook_the_shared_ones_to_both() {
+        assert_eq!(sources_for(true, true, None), Ok(Sources::Both));
+        assert_eq!(sources_for(true, true, Some("Sent")), Ok(Sources::Both));
+        assert_eq!(sources_for(true, true, Some("Archivio/2025")), Ok(Sources::Imap));
+        assert_eq!(sources_for(true, true, Some("outlook:ada@outlook.it/Inbox")), Ok(Sources::Outlook));
+        assert_eq!(sources_for(false, true, Some("Lavoro")), Ok(Sources::Outlook));
+        assert_eq!(sources_for(true, false, None), Ok(Sources::Imap));
+        assert!(sources_for(true, false, Some("outlook:ada@outlook.it/Inbox")).is_err());
+        assert_eq!(sources_for(false, false, None), Err(NO_ACCOUNT.to_string()));
+    }
+
+    #[test]
+    fn two_inboxes_are_one_newest_first_and_their_unread_add_up() {
+        let mail = |id: &str, date: &str| Message { id: id.into(), date: date.into(), ..Default::default() };
+        let imap = Read { unread: 3, messages: vec![mail("imap:9", "Sun, 8 Nov 2026 10:00:00 +0100"), mail("imap:8", "Sat, 7 Nov 2026 10:00:00 +0100")], inbox: None };
+        let outlook = Read { unread: 1, messages: vec![mail("outlook-1", "Sun, 8 Nov 2026 09:30:00 +0000")], inbox: None };
+        let (unread, messages) = together(vec![imap.clone(), outlook]);
+        assert_eq!(unread, 4);
+        let ids: Vec<&str> = messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["outlook-1", "imap:9", "imap:8"], "09:30 UTC is after 10:00 in +01:00");
+        // One source keeps its own order.
+        assert_eq!(together(vec![imap]).1.len(), 2);
+    }
+
+    #[test]
+    fn an_outlook_folder_named_archive_in_any_language_is_the_archive() {
+        assert!(is_archive_name("Archive") && is_archive_name(" archivio ") && !is_archive_name("Lavoro"));
+    }
 
     #[test]
     fn the_ai_reads_the_email_unless_security_says_none() {
