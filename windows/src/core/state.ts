@@ -312,6 +312,8 @@ export interface Settings {
   outlookStart: boolean;
   /** Settings → Pills → Email → IMAP: the accounts paused with their switch, by address (mail.rs). */
   mailPaused: string[];
+  /** Settings → Chat: the CLIs taken out of the chat's provider list ("Show in the chat"). */
+  hiddenChatProviders: string[];
   /** Settings → General → Energy (core/energy.ts): "none", "light", "auto" or "saver". */
   energyMode: string;
   /** With "auto" on mains power: "none" or "light". */
@@ -472,6 +474,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mailOutlook: false,
   outlookStart: false,
   mailPaused: [],
+  hiddenChatProviders: [],
   energyMode: "auto",
   energyOnPower: "light",
   contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],

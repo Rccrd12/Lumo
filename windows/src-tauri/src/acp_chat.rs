@@ -398,6 +398,19 @@ fn option_values(options: &Value) -> Vec<(String, String)> {
     out
 }
 
+/// Each model once, by its id and by its name: Copilot CLI lists "Auto"
+/// twice (two ids, one name), which the picker can't tell apart. The first stays.
+fn once_each(list: Vec<(String, String)>) -> Vec<(String, String)> {
+    let mut out: Vec<(String, String)> = Vec::new();
+    for (id, name) in list {
+        let seen = out.iter().any(|(i, n)| *i == id || n.trim().eq_ignore_ascii_case(name.trim()));
+        if !seen {
+            out.push((id, name));
+        }
+    }
+    out
+}
+
 impl Offer {
     /// Read off a `session/new` or `session/load` answer.
     fn parse(result: &Value) -> Offer {
@@ -451,8 +464,11 @@ impl Offer {
 
     /// The models the picker offers: id and name.
     fn model_list(&self) -> Vec<(String, String)> {
-        let list = self.choice("model").map(|c| c.values.clone()).unwrap_or_else(|| self.models.clone());
-        list.into_iter().filter(|(id, _)| safe_model(id).is_some()).take(MAX_MODELS).collect()
+        // Both lists when the CLI gives both: its config option may hold less
+        // ("Auto" alone) than its models.
+        let mut list = self.choice("model").map(|c| c.values.clone()).unwrap_or_default();
+        list.extend(self.models.iter().cloned());
+        once_each(list.into_iter().filter(|(id, _)| safe_model(id).is_some()).collect()).into_iter().take(MAX_MODELS).collect()
     }
 
     fn current_model(&self) -> Option<&str> {
@@ -480,8 +496,8 @@ impl Offer {
 
     /// The request that sets the model to `id` (without the session), if offered.
     fn set_model(&self, id: &str) -> Option<(&'static str, Value)> {
-        if let Some(c) = self.choice("model") {
-            return c.values.iter().any(|(v, _)| v == id).then(|| ("session/set_config_option", json!({ "configId": c.id, "value": id })));
+        if let Some(c) = self.choice("model").filter(|c| c.values.iter().any(|(v, _)| v == id)) {
+            return Some(("session/set_config_option", json!({ "configId": c.id, "value": id })));
         }
         self.models.iter().any(|(m, _)| m == id).then(|| ("session/set_model", json!({ "modelId": id })))
     }
@@ -1577,6 +1593,19 @@ pub(crate) fn complete(provider: &str, model: &str, prompt: &str) -> Result<Stri
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn each_model_shows_once_from_both_lists() {
+        let offer = Offer::parse(&json!({
+            "configOptions": [{ "id": "model", "category": "model", "type": "select", "currentValue": "auto",
+                "options": [{ "value": "auto", "name": "Auto" }, { "value": "auto-2", "name": "Auto" }] }],
+            "models": { "availableModels": [{ "modelId": "auto", "name": "Auto" }, { "modelId": "gpt-5", "name": "GPT-5" }] },
+        }));
+        assert_eq!(offer.model_list(), [("auto".to_string(), "Auto".to_string()), ("gpt-5".to_string(), "GPT-5".to_string())]);
+        assert_eq!(offer.set_model("auto").unwrap().0, "session/set_config_option");
+        assert_eq!(offer.set_model("gpt-5").unwrap().0, "session/set_model");
+        assert!(offer.set_model("nope").is_none());
+    }
 
     fn feed(run: &mut Run, update: Value) -> bool {
         run.feed(&update)

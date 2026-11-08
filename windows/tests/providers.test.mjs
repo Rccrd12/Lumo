@@ -59,6 +59,14 @@ test("once Rust says which are set up, only those show (and the active one)", ()
   assert.equal(anyProviderReady(settings({ ollamaUrl: "http://127.0.0.1:11434" }), new Set()), true);
 });
 
+test("a CLI taken out with Show in the chat leaves the picker, unless the chat is on it", () => {
+  const ready = new Set(["claude-code", "copilot-cli", "cursor-cli"]);
+  const ids = (s) => visibleProviders(s, ready).map((p) => p.id);
+  assert.deepEqual(ids(settings({ chatProvider: "claude-code", hiddenChatProviders: ["copilot-cli"] })), ["claude-code", "cursor-cli"]);
+  assert.deepEqual(ids(settings({ chatProvider: "copilot-cli", hiddenChatProviders: ["copilot-cli"] })), ["claude-code", "copilot-cli", "cursor-cli"]);
+  assert.equal(anyProviderReady(settings({ hiddenChatProviders: ["copilot-cli"] }), new Set(["copilot-cli"])), false);
+});
+
 test("the saved model is kept when offered, else a sensible one is picked", () => {
   const google = providerDef("google");
   assert.equal(pickModel(google, ["gemini-2.5-pro", "gemini-2.0-flash"], "gemini-2.5-pro"), "gemini-2.5-pro");
