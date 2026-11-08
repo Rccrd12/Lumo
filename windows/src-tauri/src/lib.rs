@@ -72,7 +72,6 @@ mod tools;
 mod tray;
 mod typing;
 mod updater;
-mod web_browser;
 mod web_search;
 mod webview_drop;
 mod window_control;
@@ -1390,7 +1389,6 @@ pub fn run() {
         ])
         .setup(move |app| {
             let handle = app.handle().clone();
-            web_browser::install(&handle);
             tray::build(&handle)?;
             // Before the island: see create_settings_window.
             create_settings_window(&handle);

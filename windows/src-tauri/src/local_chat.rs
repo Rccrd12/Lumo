@@ -783,6 +783,46 @@ pub async fn send(
     Ok(ChatReply::answer(answer, None))
 }
 
+/// A web search made by Unsloth Studio itself (its `web_search` tool, with
+/// the model it has in memory), for a chat with it: its engines answer where
+/// Lumo's own are taken for a robot. Only with a key: a caller without one
+/// gets no tools, and its model would answer from memory. An answer with no
+/// link is taken for a search that didn't happen.
+pub async fn unsloth_search(query: &str, range: &str) -> Result<String, String> {
+    let settings = crate::settings::load();
+    let server = server(&settings, "unsloth").ok_or_else(|| "Unsloth Studio isn't connected".to_string())?;
+    if server.key.is_none() {
+        return Err("Unsloth Studio has no key in Lumo, and gives its tools only with one".into());
+    }
+    let base = base_url(&server)?;
+    let model = crate::local_models::loaded("unsloth").await?.into_iter().next().map(|m| m.handle).ok_or_else(|| "no model in memory".to_string())?;
+    let when = match range {
+        "day" => " Only pages from the last day.",
+        "week" => " Only pages from the last week.",
+        "month" => " Only pages from the last month.",
+        "year" => " Only pages from the last year.",
+        _ => "",
+    };
+    let system = format!(
+        "Today is {}. Search the web with web_search for what the user writes, then report what the pages found say: the facts, names, numbers and dates, each with the link of its page as a Markdown link. Only what the pages say, nothing from memory; if they don't answer, say so. No introduction.",
+        profile::today()
+    );
+    let user = json!({ "role": "user", "content": format!("{query}{when}") });
+    let mut body = request_body(&model, &system, &[], &user);
+    body["enable_tools"] = json!(true);
+    body["enabled_tools"] = json!(["web_search"]);
+    body["permission_mode"] = json!("off");
+    body["enable_thinking"] = json!(false);
+    body["max_tokens"] = json!(2_048);
+    let to = endpoint(&server, &base)?;
+    let answer = lumo_local::transport::stream(&to, &body, |_| {}).await.map_err(|f| failure(&server, &model, &base, f))?.text;
+    let answer = answer.trim();
+    if !answer.contains("http") {
+        return Err("it answered with no link: no search was made".into());
+    }
+    Ok(format!("Web search by Unsloth Studio for \"{query}\" (its engines, its summary of the pages):\n\n{answer}"))
+}
+
 /// One question with no conversation: the supervisor's review of a tool
 /// (tool_review.rs).
 pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) -> Result<String, String> {
