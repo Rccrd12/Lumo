@@ -4,7 +4,7 @@
 
 import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport } from "../core/bridge";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
 import {
   CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, isHidden, providerDef, urlExposure, visibleProviders,
 } from "../core/providers";
@@ -26,7 +26,7 @@ import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
 import { betaChanged, changelogSection, updatesSection } from "./updates";
-import { localModelsBlock } from "./local-models";
+import { localModelsBlock, type UnslothMemory } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
@@ -1074,6 +1074,92 @@ const AUTO_COMPACT = {
   get hint() { return t("Over 80 %, before the question goes: the model starts again from a summary of the chat."); },
 };
 
+/** Unsloth Studio started and stopped by Lumo (unsloth_studio.rs). */
+const UNSLOTH_START = {
+  label: N_("Start and stop it by itself"),
+  hint: N_("When you pick it in the chat, Lumo starts Unsloth Studio in the background, with no window."),
+  notInstalled: N_("Not found on this computer: install Unsloth Studio first."),
+  notHere: N_("Only for Unsloth Studio on this computer."),
+  stopAfter: N_("Stop after"),
+  stopAfterHint: N_("Only if Lumo started it: an Unsloth Studio you opened stays on."),
+  minutes5: N_("5 minutes with no question"),
+  minutes15: N_("15 minutes with no question"),
+  hour: N_("1 hour with no question"),
+  exit: N_("When Lumo quits"),
+  never: N_("Never"),
+  off: N_("Off: it starts when you use it in the chat."),
+  offPlain: N_("Off."),
+  start: N_("Start now"),
+  stop: N_("Stop now"),
+  starting: N_("Starting Unsloth Studio…"),
+  seconds: N_("{seconds} s"),
+  ownedAfter: N_("Started by Lumo: it stops after {minutes} minutes with no question."),
+  ownedExit: N_("Started by Lumo: it stops when Lumo quits."),
+  ownedNever: N_("Started by Lumo: it stays on."),
+};
+
+/** Unsloth Studio's address is this computer: the only one Lumo starts. */
+function unslothHere(): boolean {
+  return urlExposure(settings.unslothUrl) === "local";
+}
+
+/** "Start and stop it by itself" and "Stop after", under a connected Unsloth Studio. */
+function unslothStartBlock(): HTMLElement {
+  const block = h("div", {});
+  const hint = h("span", { text: t(UNSLOTH_START.hint) });
+  const stopAfter = select(
+    [
+      ["5", t(UNSLOTH_START.minutes5)],
+      ["15", t(UNSLOTH_START.minutes15)],
+      ["60", t(UNSLOTH_START.hour)],
+      ["exit", t(UNSLOTH_START.exit)],
+      ["never", t(UNSLOTH_START.never)],
+    ],
+    settings.unslothStopAfter || "15",
+    (v) => { settings.unslothStopAfter = v; void save().then(() => unslothMemory.refresh()); },
+  );
+  block.append(
+    setting(t(UNSLOTH_START.label), hint, toggle(settings.unslothAutoStart !== false, (on) => {
+      settings.unslothAutoStart = on;
+      void save().then(() => unslothMemory.refresh());
+    })),
+    setting(t(UNSLOTH_START.stopAfter), t(UNSLOTH_START.stopAfterHint), stopAfter),
+  );
+  // Not installed, or connected at another computer's address: said in place of the hint.
+  if (!unslothHere()) hint.textContent = t(UNSLOTH_START.notHere);
+  else void Bridge.unslothStudioStatus().then((s) => { if (s && !s.installed) hint.textContent = t(UNSLOTH_START.notInstalled); });
+  return block;
+}
+
+/**
+ * The In memory row of Unsloth Studio, while it is off, starting, or on and
+ * started by Lumo (local-models.ts asks this for the words and the buttons).
+ */
+const unslothMemory: UnslothMemory = {
+  refresh: () => {},
+  async describe(reachable: boolean, live?: UnslothStudio) {
+    const s = live ?? (await Bridge.unslothStudioStatus());
+    if (!s) return null;
+    if (s.state === "starting") {
+      const seconds = s.seconds >= 2 ? t(UNSLOTH_START.seconds, { seconds: s.seconds }) : "";
+      return { starting: t(UNSLOTH_START.starting), seconds };
+    }
+    if (reachable) {
+      if (!s.owned) return null;
+      const after = settings.unslothStopAfter || "15";
+      const line = after === "exit" ? t(UNSLOTH_START.ownedExit)
+        : after === "never" ? t(UNSLOTH_START.ownedNever)
+        : t(UNSLOTH_START.ownedAfter, { minutes: after });
+      return { line, stop: t(UNSLOTH_START.stop) };
+    }
+    // Off, and Lumo can start it: no error, only what happens next.
+    if (!s.installed || !unslothHere()) return null;
+    return { off: t(settings.unslothAutoStart !== false ? UNSLOTH_START.off : UNSLOTH_START.offPlain), start: t(UNSLOTH_START.start) };
+  },
+  start: () => Bridge.unslothStudioStart(),
+  stop: () => Bridge.unslothStudioStop().then(() => {}),
+};
+
 function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
   const body = h("div", { class: "setting-list" });
   const section = h(
@@ -1128,8 +1214,12 @@ function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
       );
       exposure.append(exposureNotice(settings[field], keys[id] === true) ?? "");
       block.append(exposure);
+      // Unsloth Studio on this computer: Lumo starts it when the chat needs it, and stops it.
+      if (id === "unsloth") block.append(unslothStartBlock());
       // What Ollama, LM Studio and Unsloth Studio hold in memory (and a model to download where offered).
-      if (id === "ollama" || id === "lmstudio" || id === "unsloth") block.append(localModelsBlock(id));
+      if (id === "ollama" || id === "lmstudio" || id === "unsloth") {
+        block.append(localModelsBlock(id, id === "unsloth" ? unslothMemory : undefined));
+      }
       return block;
     }
 

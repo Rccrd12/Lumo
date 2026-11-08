@@ -412,6 +412,12 @@ export const Bridge = {
   localUnloadModel: (provider: string, model: string) => callOrThrow<void>("local_unload_model", { provider, model }),
   /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
   localUnload: (provider: "ollama" | "lmstudio" | "unsloth") => callOrThrow<number>("local_unload", { provider }),
+  /** Settings → Local models → Unsloth Studio: installed, off, starting or on, and whether Lumo started it. */
+  unslothStudioStatus: () => call<UnslothStudio>("unsloth_studio_status"),
+  /** Settings → Local models → Start now: resolves once Unsloth Studio answers (progress: `unsloth-studio` events). */
+  unslothStudioStart: () => callOrThrow<void>("unsloth_studio_start"),
+  /** Settings → Local models → Stop now: the Unsloth Studio Lumo started stops; whether there was one. */
+  unslothStudioStop: () => callOrThrow<boolean>("unsloth_studio_stop"),
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
   localPull: (provider: "ollama" | "lmstudio", model: string) => callOrThrow<void>("local_pull", { provider, model }),
   /** Copies a dropped file into the inbox. */
@@ -705,6 +711,23 @@ export interface ChatActivity {
   kind: string;
   detail: string;
 }
+
+/**
+ * Unsloth Studio as Lumo starts and stops it (unsloth_studio.rs Status), also
+ * the payload of the `unsloth-studio` event.
+ */
+export interface UnslothStudio {
+  /** Its own Python was found on this computer. */
+  installed: boolean;
+  state: "off" | "starting" | "on";
+  /** Lumo started it, so Lumo stops it. */
+  owned: boolean;
+  /** How long the start has taken so far. */
+  seconds: number;
+}
+
+/** The event that follows Unsloth Studio's state while Lumo starts or stops it. */
+export const UNSLOTH_STUDIO_EVENT = "unsloth-studio";
 
 /** One answered chat turn (chat.rs ChatReply). */
 export interface ChatReply {

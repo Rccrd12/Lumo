@@ -3,7 +3,7 @@
 // model with its progress (local_models.rs). The server is asked only while
 // this is on screen, never in the background.
 
-import { Bridge, onEvent, type LocalLoaded, type LocalPull } from "../core/bridge";
+import { Bridge, onEvent, UNSLOTH_STUDIO_EVENT, type LocalLoaded, type LocalPull, type UnslothStudio } from "../core/bridge";
 import { formatSize } from "../core/screen";
 import { N_, t } from "../i18n/i18n";
 import { h, clear } from "../views/dom";
@@ -54,8 +54,41 @@ export function pullPercent(p: Pick<LocalPull, "completed" | "total">): number |
   return p.total > 0 ? Math.min(100, Math.floor((p.completed / p.total) * 100)) : null;
 }
 
+/**
+ * What the In memory row says of Unsloth Studio started and stopped by Lumo
+ * (settings/main.ts): while it starts, the words and the seconds; on and
+ * started by Lumo, when it stops and Stop now; off and startable, Off in place
+ * of the error, and Start now. Null: the row as for any server.
+ */
+export interface UnslothRow {
+  starting?: string;
+  seconds?: string;
+  line?: string;
+  stop?: string;
+  off?: string;
+  start?: string;
+}
+
+export interface UnslothMemory {
+  /** Set by the row on screen: asks the server again. */
+  refresh: () => void;
+  describe(reachable: boolean, live?: UnslothStudio): Promise<UnslothRow | null>;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+}
+
+/** The Unsloth Studio row on screen, told each step of a start or a stop. */
+let unslothShown: ((s: UnslothStudio) => void) | null = null;
+let unslothListening = false;
+
+function listenUnsloth() {
+  if (unslothListening) return;
+  unslothListening = true;
+  void onEvent<UnslothStudio>(UNSLOTH_STUDIO_EVENT, (s) => unslothShown?.(s));
+}
+
 /** The memory and download rows of a connected Ollama, LM Studio or Unsloth Studio. */
-export function localModelsBlock(id: ModelServerId): HTMLElement {
+export function localModelsBlock(id: ModelServerId, studio?: UnslothMemory): HTMLElement {
   listen();
   const block = h("div", {});
 
@@ -64,17 +97,64 @@ export function localModelsBlock(id: ModelServerId): HTMLElement {
   const free = h("button", { text: t(STRINGS.free) }) as HTMLButtonElement;
   free.disabled = true;
   const memoryStatus = h("div", {});
+  // Unsloth Studio started and stopped by Lumo: Start now and Stop now, beside Free memory.
+  const startNow = studio ? (h("button", { text: "" }) as HTMLButtonElement) : null;
+  const stopNow = studio ? (h("button", { class: "danger", text: "" }) as HTMLButtonElement) : null;
+  /** Start now and Stop now, shown with their words or hidden. */
+  const showButtons = (start?: string, stop?: string) => {
+    for (const [b, text] of [[startNow, start], [stopNow, stop]] as const) {
+      if (!b) continue;
+      b.hidden = !text;
+      b.textContent = text ?? "";
+      b.disabled = false;
+    }
+  };
+  showButtons();
+  /** Unsloth Studio starting: the words and a bar, nothing asked of the server yet. */
+  const drawStarting = (row: UnslothRow) => {
+    clear(memoryStatus);
+    memory.textContent = "";
+    free.disabled = true;
+    showButtons();
+    memoryStatus.append(
+      h("div", { class: "row" },
+        h("span", { class: "hint", text: row.starting ?? "" }),
+        h("span", { class: "spacer" }),
+        h("span", { class: "hint", text: row.seconds ?? "" }),
+      ),
+      h("div", { class: "progress busy" }, h("i", {})),
+    );
+  };
+  /** What Lumo says of Unsloth Studio, or false for the row as for any server. */
+  const drawStudio = async (reachable: boolean, live?: UnslothStudio): Promise<boolean> => {
+    const row = studio ? await studio.describe(reachable, live).catch(() => null) : null;
+    showButtons(row?.start, row?.stop);
+    if (!row) return false;
+    if (row.starting) {
+      drawStarting(row);
+      return true;
+    }
+    if (row.off) {
+      memory.textContent = row.off;
+      return true;
+    }
+    if (row.line) memoryStatus.append(h("div", { class: "hint", text: row.line }));
+    return false;
+  };
   const refresh = async () => {
     clear(memoryStatus);
+    let failed: unknown = null;
     try {
       const models = await Bridge.localLoaded(id);
       memory.textContent = loadedText(models);
       free.disabled = models.length === 0;
     } catch (err) {
+      failed = err ?? "";
       memory.textContent = "";
       free.disabled = true;
-      memoryStatus.append(h("div", { class: "notice err", text: errorText(err) }));
     }
+    if (studio && (await drawStudio(failed === null))) return;
+    if (failed !== null) memoryStatus.append(h("div", { class: "notice err", text: errorText(failed) }));
   };
   free.addEventListener("click", async () => {
     free.disabled = true;
@@ -86,11 +166,35 @@ export function localModelsBlock(id: ModelServerId): HTMLElement {
     }
     await refresh();
   });
-  const memoryRow = setting(t(STRINGS.inMemory), memory, free);
+  startNow?.addEventListener("click", async () => {
+    startNow.disabled = true;
+    try {
+      await studio?.start();
+      await refresh();
+    } catch (err) {
+      await refresh();
+      memoryStatus.append(h("div", { class: "notice err", text: errorText(err) }));
+    }
+  });
+  stopNow?.addEventListener("click", async () => {
+    stopNow.disabled = true;
+    await studio?.stop().catch(() => {});
+    await refresh();
+  });
+  const memoryRow = setting(t(STRINGS.inMemory), memory, startNow, free, stopNow);
   void refresh();
 
   // Unsloth Studio reports what is in memory and unloads it, without a pull endpoint.
   if (id === "unsloth") {
+    if (studio) {
+      studio.refresh = () => void refresh();
+      listenUnsloth();
+      // A start says each second; on or off, the server is asked again.
+      unslothShown = (s) => {
+        if (s.state === "starting") void drawStudio(false, s);
+        else void refresh();
+      };
+    }
     block.append(memoryRow, memoryStatus);
     return block;
   }

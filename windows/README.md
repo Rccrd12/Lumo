@@ -549,7 +549,12 @@ until you turn it on. `/compact` summarises a long chat into a short one.
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
 llama.cpp…), with an optional key kept in the credential store, and **Unsloth
-Studio** as a server of its own, with its key. Answers stream in as they are
+Studio** as a server of its own, with its key. Installed on this PC, Unsloth
+Studio needn't be open: when you pick it in the chat or write to it, Lumo starts
+it in the background, with no window, and stops it again after 15 minutes with
+no question (**Start and stop it by itself** and **Stop after**, which also
+offers 5 minutes, 1 hour, when Lumo quits or never). Lumo only ever stops one it
+started: an Unsloth Studio you opened stays on. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
