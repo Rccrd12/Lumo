@@ -14,7 +14,7 @@ import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
-import type { BackgroundCounts } from "./background";
+import type { BackgroundInfo } from "./background";
 import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
@@ -54,7 +54,7 @@ export interface AgentTask {
   /** The title of the session the pill shows (/rename, else Claude Code's own): its name, with the folder beside it. */
   sessionTitle?: string | null;
   /** A program's sessions in the background, grouped on this pill (core/background.ts): how many run, answered, failed. */
-  background?: BackgroundCounts | null;
+  background?: BackgroundInfo | null;
 }
 
 /**

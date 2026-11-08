@@ -11,6 +11,7 @@ import { State, type ActiveChatRun, type AgentTask } from "../core/state";
 import { sessionSubtitle } from "../core/pills";
 import { lastTextStep } from "../core/diff";
 import { BACKGROUND_TEXT, backgroundLine, type BackgroundCounts } from "../core/background";
+import { lanes } from "./background";
 import { ACTIVITIES_TEXT, eventWhen, type ActivitiesAction, type ActivitiesData } from "./activities-view";
 import { N_, language, t, tl } from "../i18n/i18n";
 import { Bridge, type Decision } from "../core/bridge";
@@ -232,9 +233,6 @@ export function homeGitHubItems(): HomeGitHubItem[] {
 export function homeWatches(): ListenWatch[] {
   return activeWatches(State.listening);
 }
-
-/** The most sessions of one program in the background shown as dots on its row. */
-const MAX_LANES = 8;
 
 /** Total rows shown under "In progress" on the left side of the home. */
 export function homeInProgressCount(sessionsCount: number): number {
@@ -491,8 +489,6 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
     const failed = task.state === "error";
     const counts = backgroundLine(c);
     const line = done ? `${t("Done")} · ${counts}` : failed ? `${t("Error")} · ${counts}` : counts;
-    const lanes = h("span", { class: "home-lanes", "aria-hidden": "true" });
-    for (let i = 0; i < Math.min(c.running, MAX_LANES); i++) lanes.append(h("i", {}));
     return h("button", { class: "home-row", onclick: () => actions.openSession(task.id) },
       h("div", { class: "home-text" },
         h("div", { class: "home-who" },
@@ -500,7 +496,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           h("span", { class: "n", text: task.name }),
           h("span", { class: "s", text: `· ${t(BACKGROUND_TEXT.inBackground)}` })),
         h("div", { class: `home-line${done ? " ok" : failed ? " err" : ""}`, text: line })),
-      c.running > 0 ? lanes : null);
+      lanes(c.running));
   }
 
   function label(text: string, n?: number): HTMLElement {

@@ -7734,3 +7734,138 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
 .tool-needs-text {
   display: none;
 }
+
+/* ── A program's sessions in the background (views/background.ts) ─────────
+   The home's rows: what runs and on what, the last answer, the errors. */
+
+.bg-detail {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+.bg-label {
+  height: 22px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font: 700 10.5px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim-4);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.bg-label .c {
+  color: var(--dim-2);
+  letter-spacing: 0;
+}
+
+.bg-rows {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.bg-row {
+  flex: 0 0 54px;
+  height: 54px;
+  width: 100%;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #111214;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  overflow: hidden;
+  cursor: default;
+}
+
+button.bg-row:hover {
+  background: #1a1b1f;
+}
+
+.bg-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.bg-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  font: 400 13px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+.bg-who .n {
+  flex: 0 0 auto;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.bg-who .s {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin-left: -3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bg-line {
+  padding-left: 15px;
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.bg-line.ok {
+  color: #5ae6a0;
+}
+
+.bg-line.err {
+  color: var(--red-text);
+}
+
+.bg-note {
+  margin: 2px 4px 0;
+  font: 400 11.5px var(--font);
+  color: var(--dim-3);
+}
+
+/* A dot for each session running, four to a row. */
+.bg-lanes {
+  flex: none;
+  display: grid;
+  grid-template-columns: repeat(4, 5px);
+  gap: 4px;
+  direction: ltr;
+}
+
+.bg-lanes i {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #60a5fa;
+  box-shadow: 0 0 4px rgba(96, 165, 250, 0.7);
+}

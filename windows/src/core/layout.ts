@@ -355,6 +355,11 @@ export const NEW_LOOK_PLAN_CARD_H = 252;
 /** The new look's overview while the GitHub card shows a list (views/github.ts listDetail): three rows whole, the fourth showing. */
 export const NEW_LOOK_GH_LIST_H = 304;
 
+/** The new look's overview with a program's sessions in the background (views/background.ts): its label, rows and note whole. */
+export function newLookBackgroundHeight(rows: number): number {
+  return 110 + rows * 60;
+}
+
 /** The steps a plan asking to start shows before its list scrolls (look-new.css .plan-ask-steps). */
 export const PLAN_ASK_MAX_STEPS = 8;
 

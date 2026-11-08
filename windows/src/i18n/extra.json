@@ -16461,42 +16461,6 @@
    "id": "di latar belakang",
    "it": "in background"
   },
-  "Running: {count}": {
-   "zh-Hans": "进行中：{count}",
-   "hi": "चल रहे: {count}",
-   "es": "En curso: {count}",
-   "ar": "قيد التشغيل: {count}",
-   "fr": "En cours : {count}",
-   "bn": "চলছে: {count}",
-   "pt-BR": "Em andamento: {count}",
-   "ru": "Выполняется: {count}",
-   "id": "Berjalan: {count}",
-   "it": "In corso: {count}"
-  },
-  "Done: {count}": {
-   "zh-Hans": "已完成：{count}",
-   "hi": "पूरे: {count}",
-   "es": "Terminadas: {count}",
-   "ar": "اكتمل: {count}",
-   "fr": "Terminées : {count}",
-   "bn": "শেষ: {count}",
-   "pt-BR": "Concluídas: {count}",
-   "ru": "Готово: {count}",
-   "id": "Selesai: {count}",
-   "it": "Finite: {count}"
-  },
-  "Failed: {count}": {
-   "zh-Hans": "失败：{count}",
-   "hi": "विफल: {count}",
-   "es": "Con error: {count}",
-   "ar": "فشل: {count}",
-   "fr": "En échec : {count}",
-   "bn": "ব্যর্থ: {count}",
-   "pt-BR": "Com erro: {count}",
-   "ru": "С ошибкой: {count}",
-   "id": "Gagal: {count}",
-   "it": "Errori: {count}"
-  },
   "Background sessions": {
    "zh-Hans": "后台会话",
    "hi": "बैकग्राउंड सत्र",
@@ -16568,6 +16532,180 @@
    "ru": "Сеансы, которые другая программа запускает сама, а не вы: Claude Code с ‑p или через Agent SDK, либо любой агент, запущенный с LUMO_BACKGROUND=1. Группой — у каждой программы одна строка, без звука и оповещения на каждый ответ и с одним уведомлением в конце. Запросы разрешений приходят всегда.",
    "id": "Sesi yang dimulai program lain dengan sendirinya, bukan oleh Anda: Claude Code yang dijalankan dengan ‑p atau lewat Agent SDK, atau agen apa pun yang dimulai dengan LUMO_BACKGROUND=1. Jika dikelompokkan, setiap program mendapat satu baris, tanpa suara atau peringatan untuk setiap jawaban, dan satu pemberitahuan saat selesai. Permintaan izin selalu muncul.",
    "it": "Sessioni che un altro programma avvia da solo, non tu: Claude Code lanciato con ‑p o tramite l'Agent SDK, o qualsiasi agente avviato con LUMO_BACKGROUND=1. Raggruppate, ogni programma ha una riga sola, senza suoni né avvisi a ogni risposta e con un solo avviso quando ha finito. Le richieste di permesso arrivano sempre."
+  },
+  "{count} done": {
+   "zh-Hans": {
+    "other": "{count} 个已完成"
+   },
+   "hi": {
+    "one": "{count} पूरा",
+    "other": "{count} पूरे"
+   },
+   "es": {
+    "one": "{count} terminada",
+    "other": "{count} terminadas"
+   },
+   "ar": {
+    "zero": "{count} مكتملة",
+    "one": "واحدة مكتملة",
+    "two": "اثنتان مكتملتان",
+    "few": "{count} مكتملة",
+    "many": "{count} مكتملة",
+    "other": "{count} مكتملة"
+   },
+   "fr": {
+    "one": "{count} terminée",
+    "other": "{count} terminées"
+   },
+   "bn": {
+    "one": "{count}টি শেষ",
+    "other": "{count}টি শেষ"
+   },
+   "pt-BR": {
+    "one": "{count} concluída",
+    "other": "{count} concluídas"
+   },
+   "ru": {
+    "one": "{count} готова",
+    "few": "{count} готовы",
+    "many": "{count} готово",
+    "other": "{count} готово"
+   },
+   "id": {
+    "other": "{count} selesai"
+   },
+   "it": {
+    "one": "{count} finita",
+    "other": "{count} finite"
+   }
+  },
+  "{count} running": {
+   "zh-Hans": {
+    "other": "{count} 个进行中"
+   },
+   "hi": {
+    "one": "{count} चल रहा है",
+    "other": "{count} चल रहे हैं"
+   },
+   "es": {
+    "one": "{count} en curso",
+    "other": "{count} en curso"
+   },
+   "ar": {
+    "zero": "{count} قيد التشغيل",
+    "one": "واحدة قيد التشغيل",
+    "two": "اثنتان قيد التشغيل",
+    "few": "{count} قيد التشغيل",
+    "many": "{count} قيد التشغيل",
+    "other": "{count} قيد التشغيل"
+   },
+   "fr": {
+    "one": "{count} en cours",
+    "other": "{count} en cours"
+   },
+   "bn": {
+    "one": "{count}টি চলছে",
+    "other": "{count}টি চলছে"
+   },
+   "pt-BR": {
+    "one": "{count} em andamento",
+    "other": "{count} em andamento"
+   },
+   "ru": {
+    "one": "{count} выполняется",
+    "few": "{count} выполняются",
+    "many": "{count} выполняются",
+    "other": "{count} выполняются"
+   },
+   "id": {
+    "other": "{count} berjalan"
+   },
+   "it": {
+    "one": "{count} in corso",
+    "other": "{count} in corso"
+   }
+  },
+  "{count} failed": {
+   "zh-Hans": {
+    "other": "{count} 个出错"
+   },
+   "hi": {
+    "one": "{count} त्रुटि",
+    "other": "{count} त्रुटियाँ"
+   },
+   "es": {
+    "one": "{count} error",
+    "other": "{count} errores"
+   },
+   "ar": {
+    "zero": "{count} أخطاء",
+    "one": "خطأ واحد",
+    "two": "خطآن",
+    "few": "{count} أخطاء",
+    "many": "{count} خطأً",
+    "other": "{count} خطأ"
+   },
+   "fr": {
+    "one": "{count} erreur",
+    "other": "{count} erreurs"
+   },
+   "bn": {
+    "one": "{count}টি ত্রুটি",
+    "other": "{count}টি ত্রুটি"
+   },
+   "pt-BR": {
+    "one": "{count} erro",
+    "other": "{count} erros"
+   },
+   "ru": {
+    "one": "{count} ошибка",
+    "few": "{count} ошибки",
+    "many": "{count} ошибок",
+    "other": "{count} ошибки"
+   },
+   "id": {
+    "other": "{count} gagal"
+   },
+   "it": {
+    "one": "{count} errore",
+    "other": "{count} errori"
+   }
+  },
+  "up to {count} at a time": {
+   "zh-Hans": "最多同时 {count} 个",
+   "hi": "एक साथ {count} तक",
+   "es": "hasta {count} a la vez",
+   "ar": "حتى {count} في وقت واحد",
+   "fr": "jusqu'à {count} à la fois",
+   "bn": "একসাথে {count}টি পর্যন্ত",
+   "pt-BR": "até {count} de cada vez",
+   "ru": "до {count} одновременно",
+   "id": "hingga {count} sekaligus",
+   "it": "fino a {count} alla volta"
+  },
+  "Last answer": {
+   "zh-Hans": "最新回答",
+   "hi": "आख़िरी जवाब",
+   "es": "Última respuesta",
+   "ar": "آخر إجابة",
+   "fr": "Dernière réponse",
+   "bn": "শেষ উত্তর",
+   "pt-BR": "Última resposta",
+   "ru": "Последний ответ",
+   "id": "Jawaban terakhir",
+   "it": "Ultima risposta"
+  },
+  "A permission request still comes up as a card, always with your click.": {
+   "zh-Hans": "权限请求仍会以卡片显示，始终需要你点击。",
+   "hi": "अनुमति का अनुरोध फिर भी कार्ड के रूप में आता है, हमेशा आपके क्लिक के साथ।",
+   "es": "Una solicitud de permiso sigue apareciendo como tarjeta, siempre con tu clic.",
+   "ar": "يظهر طلب الإذن مع ذلك كبطاقة، دائمًا بنقرة منك.",
+   "fr": "Une demande d'autorisation arrive quand même en carte, toujours avec votre clic.",
+   "bn": "অনুমতির অনুরোধ তবুও কার্ড হয়ে আসে, সবসময় আপনার ক্লিকে।",
+   "pt-BR": "Um pedido de permissão ainda aparece como cartão, sempre com o seu clique.",
+   "ru": "Запрос разрешения всё равно приходит карточкой и всегда ждёт вашего клика.",
+   "id": "Permintaan izin tetap muncul sebagai kartu, selalu dengan klik Anda.",
+   "it": "Una richiesta di permesso arriva comunque come card, sempre con il tuo clic."
   }
  }
 }

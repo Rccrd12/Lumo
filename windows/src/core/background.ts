@@ -7,7 +7,7 @@
 //
 // This file keeps the counts; island/hooks.ts shows them.
 
-import { N_, t } from "../i18n/i18n";
+import { N_, tn } from "../i18n/i18n";
 
 /** Settings → Agents → Background sessions. */
 export type BackgroundMode = "grouped" | "single" | "hidden";
@@ -54,14 +54,45 @@ export interface BackgroundCounts {
   failed: number;
 }
 
+/** One session's answer, or its error, and what it was about. */
+export interface BackgroundAnswer {
+  subject: string;
+  text: string;
+}
+
+/** A batch as the island shows it: its counts and what goes on in it. */
+export interface BackgroundInfo extends BackgroundCounts {
+  /** What the running sessions are about (subjectOf their prompt), oldest first; "" where nothing could be told. */
+  subjects: string[];
+  /** The most sessions running at once in this batch. */
+  peak: number;
+  /** The agent they run: "Claude Code", "Codex"… */
+  agent: string;
+  last: BackgroundAnswer | null;
+  lastFailed: BackgroundAnswer | null;
+}
+
 /** What an event is for the group's count. */
 export type BackgroundEvent = "busy" | "done" | "failed" | "end";
 
+/** What an event says besides its kind. */
+export interface BackgroundDetail {
+  /** What the session is about, from its prompt. */
+  subject?: string;
+  /** The answer, or the error. */
+  text?: string;
+  agent?: string;
+}
+
 interface Group {
-  /** Running sessions and when each was last heard from. */
-  running: Map<string, number>;
+  /** Running sessions: when each was last heard from, and what it is about. */
+  running: Map<string, { at: number; subject: string }>;
   done: number;
   failed: number;
+  peak: number;
+  agent: string;
+  last: BackgroundAnswer | null;
+  lastFailed: BackgroundAnswer | null;
 }
 
 export class BackgroundRuns {
@@ -71,21 +102,29 @@ export class BackgroundRuns {
    * One event of a session of `id`'s. True when it starts a batch: the group
    * was not there, or had finished.
    */
-  event(id: string, session: string, kind: BackgroundEvent, now: number): boolean {
+  event(id: string, session: string, kind: BackgroundEvent, now: number, detail: BackgroundDetail = {}): boolean {
     let g = this.groups.get(id);
     const started = !g;
-    if (!g) this.groups.set(id, (g = { running: new Map(), done: 0, failed: 0 }));
+    if (!g) {
+      g = { running: new Map(), done: 0, failed: 0, peak: 0, agent: "", last: null, lastFailed: null };
+      this.groups.set(id, g);
+    }
+    if (detail.agent) g.agent = detail.agent;
+    const subject = detail.subject || g.running.get(session)?.subject || "";
     switch (kind) {
       case "busy":
-        g.running.set(session, now);
+        g.running.set(session, { at: now, subject });
+        g.peak = Math.max(g.peak, g.running.size);
         break;
       case "done":
         g.running.delete(session);
         g.done++;
+        g.last = { subject, text: detail.text ?? "" };
         break;
       case "failed":
         g.running.delete(session);
         g.failed++;
+        g.lastFailed = { subject, text: detail.text ?? "" };
         break;
       case "end":
         g.running.delete(session);
@@ -99,13 +138,23 @@ export class BackgroundRuns {
     return g ? { running: g.running.size, done: g.done, failed: g.failed } : null;
   }
 
+  info(id: string): BackgroundInfo | null {
+    const g = this.groups.get(id);
+    if (!g) return null;
+    return {
+      running: g.running.size, done: g.done, failed: g.failed, peak: g.peak, agent: g.agent,
+      subjects: [...g.running.values()].map((r) => r.subject),
+      last: g.last, lastFailed: g.lastFailed,
+    };
+  }
+
   /** Forgets the sessions silent for STALE_MS; the groups that lost one. */
   sweep(now: number): string[] {
     const changed: string[] = [];
     for (const [id, g] of this.groups) {
       let lost = false;
-      for (const [session, at] of g.running) {
-        if (now - at >= STALE_MS) {
+      for (const [session, r] of g.running) {
+        if (now - r.at >= STALE_MS) {
           g.running.delete(session);
           lost = true;
         }
@@ -115,11 +164,11 @@ export class BackgroundRuns {
     return changed;
   }
 
-  /** The batch is over: its counts (nothing running any more), and the group starts afresh next time. */
-  close(id: string): BackgroundCounts | null {
-    const counts = this.counts(id);
+  /** The batch is over: how it went (nothing running any more), and the group starts afresh next time. */
+  close(id: string): BackgroundInfo | null {
+    const info = this.info(id);
     this.groups.delete(id);
-    return counts && { ...counts, running: 0 };
+    return info && { ...info, running: 0, subjects: [] };
   }
 
   /** Forgets every group (tests). */
@@ -128,21 +177,75 @@ export class BackgroundRuns {
   }
 }
 
+/**
+ * What a prompt is about, in a word or two: the last part of the first path in
+ * it (`Folder: %LOCALAPPDATA%\Discord` → "Discord", `C:\x\notes.txt` →
+ * "notes.txt"), else "" — a long prompt has no title to give.
+ */
+export function subjectOf(prompt: unknown): string {
+  if (typeof prompt !== "string") return "";
+  const path = prompt.match(/(?:%[A-Za-z_]+%|[A-Za-z]:|\\\\[^\s\\]+)(?:\\[^\\\r\n"'`,;<>|]+)+|(?:^|\s)(?:\/[\w.@-]+){2,}/);
+  if (!path) return "";
+  const parts = path[0].trim().split(/[\\/]/).filter(Boolean);
+  // Folders may have spaces ("NVIDIA Corporation"); a file's name ends at its extension.
+  const last = (parts.at(-1) ?? "").trim().replace(/^(\S+\.[A-Za-z0-9]{1,8})\s.*$/, "$1");
+  return last.replace(/[.:?!]+$/, "").slice(0, 40);
+}
+
+/** Fields a JSON answer most likely says itself in, best first. */
+const ANSWER_FIELDS = ["summary", "what", "answer", "result", "message", "text", "label", "title"];
+
+/**
+ * An answer as one line. A program that asks for JSON gets JSON: the line is
+ * what it says in words (its summary, "what", answer…), not its braces.
+ */
+export function answerLine(text: unknown): string {
+  if (typeof text !== "string") return "";
+  const body = text.trim().replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/, "");
+  if (body.startsWith("{")) {
+    try {
+      const v = JSON.parse(body) as Record<string, unknown>;
+      const field = ANSWER_FIELDS.find((k) => typeof v[k] === "string" && (v[k] as string).trim());
+      const said = field ? v[field] : Object.values(v).find((x) => typeof x === "string" && x.trim());
+      if (typeof said === "string") return oneLine(said);
+    } catch {
+      // Not JSON after all: the text as it is.
+    }
+  }
+  return oneLine(text);
+}
+
+/** An answer without its subject in front ("Zoom: cache: safe to delete" about Zoom → "cache: safe to delete"). */
+export function answerText(answer: BackgroundAnswer): string {
+  const { subject, text } = answer;
+  if (!subject || text.slice(0, subject.length).toLowerCase() !== subject.toLowerCase()) return text;
+  const rest = text.slice(subject.length);
+  const cut = rest.replace(/^\s*[:\-–—·]\s*/, "");
+  return cut && cut !== rest ? cut : text;
+}
+
+function oneLine(text: string): string {
+  return text.replace(/\*\*|`/g, "").replace(/\s+/g, " ").trim().slice(0, 200);
+}
+
 export const BACKGROUND_TEXT = {
   /** The pill of sessions whose program the relay could not name. */
   unnamed: N_("In background"),
   /** Beside the program's name on the home. */
   inBackground: N_("in background"),
-  running: N_("Running: {count}"),
-  done: N_("Done: {count}"),
-  failed: N_("Failed: {count}"),
+  atATime: N_("up to {count} at a time"),
+  lastAnswer: N_("Last answer"),
+  stillAsks: N_("A permission request still comes up as a card, always with your click."),
 };
 
-/** "Running: 8 · Done: 37 · Failed: 2", leaving out what is nothing. */
+export const running = (n: number) => tn("{count} running", "{count} running", n);
+export const done = (n: number) => tn("{count} done", "{count} done", n);
+export const failed = (n: number) => tn("{count} failed", "{count} failed", n);
+
+/** "37 done · 8 running · 2 failed", leaving out what is nothing. */
 export function backgroundLine(c: BackgroundCounts): string {
-  const parts: string[] = [];
-  if (c.running > 0) parts.push(t(BACKGROUND_TEXT.running, { count: c.running }));
-  parts.push(t(BACKGROUND_TEXT.done, { count: c.done }));
-  if (c.failed > 0) parts.push(t(BACKGROUND_TEXT.failed, { count: c.failed }));
+  const parts = [done(c.done)];
+  if (c.running > 0) parts.push(running(c.running));
+  if (c.failed > 0) parts.push(failed(c.failed));
   return parts.join(" · ");
 }

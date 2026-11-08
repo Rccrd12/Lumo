@@ -22,8 +22,8 @@ import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import {
-  BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, backgroundGroupId, backgroundLine, launcherName,
-  parseBackgroundMode, type BackgroundEvent,
+  BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, backgroundLine,
+  launcherName, parseBackgroundMode, subjectOf, type BackgroundEvent,
 } from "../core/background";
 import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
 import { N_, t } from "../i18n/i18n";
@@ -1007,25 +1007,32 @@ export function handleBackground(island: Pick<Island, "reveal">, payload: HookPa
   // The end of a session nobody saw at work is nothing to show.
   if (kind === "end" && !backgroundRuns.counts(id)) return;
   clearTimer(backgroundTimers, id);
-  const started = backgroundRuns.event(id, payload.session_id ?? "", kind, now);
+  const said = kind === "failed" ? payload.error ?? "" : payload.last_assistant_message ?? payload.message ?? "";
+  const validAgent = validateAgent(payload.lumo_agent);
+  const started = backgroundRuns.event(id, payload.session_id ?? "", kind, now, {
+    subject: name === "UserPromptSubmit" ? subjectOf(payload.prompt) : undefined,
+    text: kind === "done" ? answerLine(said) : kind === "failed" ? toOneLine(said) : undefined,
+    agent: validAgent ? agentName(validAgent) : "Claude Code",
+  });
   // Sessions of any program gone silent for too long were killed: not running any more.
   for (const gid of backgroundRuns.sweep(now)) {
     const pill = State.tasks.find((x) => x.id === gid);
-    if (pill) pill.background = backgroundRuns.counts(gid);
+    if (pill) pill.background = backgroundRuns.info(gid);
     if (gid !== id && backgroundRuns.counts(gid)?.running === 0) waitForQuiet(gid);
   }
   State.upsertExternalAgent(id, launcher ?? t(BACKGROUND_TEXT.unnamed), BACKGROUND_COLOR);
   const task = State.tasks.find((x) => x.id === id);
   if (!task) return;
-  task.background = backgroundRuns.counts(id);
+  task.background = backgroundRuns.info(id);
   task.finalLine = null;
   task.pillBadge = null;
-  if (kind === "done") {
-    const said = payload.last_assistant_message ?? payload.message ?? "";
-    const line = toOneLine(said);
-    if (line) State.appendStep(id, line, fullTextDetail(said, line));
-  } else if (kind === "failed") {
-    State.appendStep(id, t("⚠ failed"), payload.error ? { text: payload.error } : null);
+  // Every answer, by what it was about, for the list of them (the detail's last answer opens it).
+  const answer = kind === "done" ? task.background?.last : kind === "failed" ? task.background?.lastFailed : null;
+  if (answer) {
+    const text = answerText(answer);
+    const what = kind === "done" ? text : `${t("⚠ failed")}${text ? ` · ${text}` : ""}`;
+    const line = answer.subject ? `${answer.subject}: ${what}` : what;
+    if (line) State.appendStep(id, line, said ? fullTextDetail(said, line) : null);
   }
   State.updateTask(id, "working");
   if (started) {

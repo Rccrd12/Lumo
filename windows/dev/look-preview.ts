@@ -108,19 +108,27 @@ if (params.has("busy")) {
 }
 
 // A program asking Claude Code about one folder after another, eight at a
-// time, with ?background (core/background.ts): 45 questions, 37 answered.
+// time, with ?background (core/background.ts): 36 answered, one failed, eight at work.
 if (params.has("background")) {
-  const answers = lang === "it"
-    ? ["Cache di Zoom: si può eliminare", "Dati di Discord: tienili", "Shader di NVIDIA: si ricreano da soli", "Log di Steam: si possono eliminare"]
-    : ["Zoom's cache: safe to delete", "Discord's data: keep it", "NVIDIA's shaders: rebuilt by themselves", "Steam's logs: safe to delete"];
+  const folders = ["Zoom", "Slack", "Dropbox", "OneDrive", "Teams", "Figma", "Notion", "Obsidian", "VLC", "GIMP",
+    "Blender", "Unity", "Epic Games", "Battle.net", "Origin", "Ubisoft", "WhatsApp", "Telegram", "Signal", "Skype",
+    "Opera", "Brave", "Vivaldi", "Firefox", "Thunderbird", "LibreOffice", "Audacity", "OBS", "Postman", "Docker",
+    "JetBrains", "Python", "Node", "Git", "PuTTY", "WinRAR", "7-Zip", "Discord", "Steam", "Spotify",
+    "NVIDIA Corporation", "Microsoft", "Adobe", "Google", "Logitech"];
+  const said = lang === "it"
+    ? ["cache: si può eliminare", "dati dell'app: tienili", "log: si possono eliminare", "si ricrea da sola"]
+    : ["cache: safe to delete", "the app's data: keep it", "logs: safe to delete", "rebuilt by itself"];
   const bg = (event: string, session: string, extra: Record<string, unknown> = {}) => hook({
     hook_event_name: event, session_id: session, cwd: `C:\\Temp\\easy-uninstaller-ai\\4242-${session}`,
     lumo_background: true, lumo_launcher: "Easy Uninstaller", ...extra,
   });
-  for (let i = 0; i < 45; i++) {
+  const end = (i: number) => i === 12
+    ? bg("StopFailure", `q${i}`, { error: "timeout" })
+    : bg("Stop", `q${i}`, { last_assistant_message: JSON.stringify({ what: `${folders[i]}: ${said[i % said.length]}`, safe: i % 4 !== 1 }) });
+  for (let i = 0; i < folders.length; i++) {
+    if (i >= 8) end(i - 8);
     bg("SessionStart", `q${i}`);
-    bg("UserPromptSubmit", `q${i}`, { prompt: "What is this folder?" });
-    if (i < 37) bg("Stop", `q${i}`, { last_assistant_message: answers[i % answers.length] });
+    bg("UserPromptSubmit", `q${i}`, { prompt: `Folder: %LOCALAPPDATA%\\${folders[i]}\nSize: 1.2 GB\nWhat is it, and can it be deleted?` });
   }
 }
 

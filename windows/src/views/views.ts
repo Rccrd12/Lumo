@@ -29,6 +29,7 @@ import { TOOLS_STRINGS, buildTools } from "./tools";
 import { isWorkshopChat } from "../core/tools";
 import { Live } from "../live/session";
 import { buildHome } from "./home";
+import { buildBackgroundDetail } from "./background";
 import { showGitHubSection } from "./github";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
 import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
@@ -352,7 +353,7 @@ function buildOverview(actions: ViewActions): ViewHost {
   let pillOrder: string[] = [];
   let detailOpen = false;
   let lastFocus: string | null = null;
-  let mode: "ticker" | "steps" | "card" | "plan" | "diff" | null = null;
+  let mode: "ticker" | "steps" | "card" | "plan" | "diff" | "background" | null = null;
   let cardKey = "";
 
   // Leaving the overview or folding the island closes the diff.
@@ -469,6 +470,21 @@ function buildOverview(actions: ViewActions): ViewHost {
             open: (path) => void Bridge.openFileInVSCode(path),
           }));
         }
+      } else if (task?.background && !stepsOpen) {
+        // A program's sessions in the background: what runs, the last answer, the errors.
+        const info = task.background;
+        const key = `bg~${language()}~${task.id}~${task.name}~${task.state}~${JSON.stringify(info)}`;
+        if (key !== cardKey || mode !== "background") {
+          cardKey = key;
+          mode = "background";
+          clear(leftBody);
+          leftBody.append(buildBackgroundDetail(task, info, () => {
+            actions.blip();
+            stepsOpen = true;
+            steps.show(task, task.stepSeq ?? task.steps.length - 1);
+            State.notify();
+          }));
+        }
       } else if (task && sessionActive && stepsOpen && task.steps.length > 0) {
         if (mode !== "steps") {
           clear(leftBody);
@@ -516,7 +532,7 @@ function buildOverview(actions: ViewActions): ViewHost {
         }
       }
 
-      jump.style.display = detailOpen || mode === "plan" || mode === "diff" ? "none" : "";
+      jump.style.display = detailOpen || mode === "plan" || mode === "diff" || mode === "background" ? "none" : "";
 
       // Each pill stays in its place when another goes to the card.
       const others = keepPillPlaces(pillOrder, State.otherTasks);
