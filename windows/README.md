@@ -474,7 +474,7 @@ is fetched from the provider only once you pick it and it has a key. Switching
 mid-conversation carries the conversation over as plain text, so nothing in one
 provider's format is ever sent to another. These providers get the island's
 tools, the email and listening tools and your own tools. With **Lumo's web search** turned on they can also
-search the web (DuckDuckGo, Mojeek, Wikipedia) and read a page; it is off
+search the web (DuckDuckGo, Bing, Mojeek, with Bing News for the latest; Wikipedia only when none answers) and read a page; it is off
 until you turn it on. `/compact` summarises a long chat into a short one.
 
 **Local models**: **Settings… → Chat → Local models** connects **Ollama** or **LM

@@ -264,6 +264,8 @@ fn short(description: &str) -> String {
 /// `catalog`: the tools it can load; `mail`: what the email tools may do.
 pub struct Prompt<'a> {
     pub first_name: Option<&'a str>,
+    /// Today's date, as `today` writes it.
+    pub today: &'a str,
     pub tools: bool,
     pub web: bool,
     pub timer: bool,
@@ -275,6 +277,23 @@ pub struct Prompt<'a> {
     pub workshop: bool,
 }
 
+/// Today on the user's computer, as "Sunday 8 November 2026".
+pub fn today() -> String {
+    let t = crate::platform::local_time();
+    date_words(i64::from(t.year), t.month, t.day)
+}
+
+fn date_words(year: i64, month: u32, day: u32) -> String {
+    const MONTHS: [&str; 12] = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+    const DAYS: [&str; 7] = ["Sunday", "Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday"];
+    let Some(name) = month.checked_sub(1).and_then(|m| MONTHS.get(m as usize)) else { return String::new() };
+    // Sakamoto's day of the week.
+    const T: [i64; 12] = [0, 3, 2, 5, 0, 3, 5, 1, 4, 6, 2, 4];
+    let y = if month < 3 { year - 1 } else { year };
+    let weekday = (y + y.div_euclid(4) - y.div_euclid(100) + y.div_euclid(400) + T[(month - 1) as usize] + day as i64).rem_euclid(7);
+    format!("{} {day} {name} {year}", DAYS[weekday as usize])
+}
+
 pub fn system_prompt(p: &Prompt) -> String {
     let who = match p.first_name {
         Some(name) => format!("You are Lumo, {name}'s assistant at the top of their screen."),
@@ -284,8 +303,12 @@ pub fn system_prompt(p: &Prompt) -> String {
         "{who} Answer in the user's language, with light Markdown (short paragraphs, lists, **bold**, `code`, fenced code); no tables or big headings, the window is small. \
 Lumo may give you the windows and documents open on the user's computer: use them. Write math as $…$ or $$…$$."
     );
+    // A local model knows only up to its training: "yesterday" means nothing to it otherwise.
+    if !p.today.is_empty() {
+        out.push_str(&format!(" Today is {}.", p.today));
+    }
     if p.web {
-        out.push_str(" web_search searches the web and web_fetch reads a page: use them for current or specific facts instead of guessing, and give the links you used.");
+        out.push_str(" web_search searches the web and web_fetch reads a page: use them for current or specific facts instead of guessing, and give the links you used. Your own knowledge stops before today: for news and anything recent, search, with the dates in the query when they matter. Never say you searched, or what a search found, without calling web_search.");
     } else {
         out.push_str(" You have no web access: say so when something needs current information.");
     }
@@ -334,6 +357,14 @@ Lumo may give you the windows and documents open on the user's computer: use the
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn today_is_said_with_its_day_of_the_week() {
+        assert_eq!(date_words(2026, 11, 8), "Sunday 8 November 2026");
+        assert_eq!(date_words(2024, 2, 29), "Thursday 29 February 2024");
+        assert_eq!(date_words(2000, 1, 1), "Saturday 1 January 2000");
+        assert_eq!(date_words(2026, 13, 1), "");
+    }
 
     fn tool(id: &str) -> (String, String, Value) {
         (id.to_string(), "Does it.".to_string(), json!({}))

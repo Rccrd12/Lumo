@@ -36,6 +36,9 @@ pub fn claims_done(text: &str) -> bool {
             "ho impostato", "ho attivato", "ho messo", "ho creato", "ho programmato", "ho iniziato", "ho avviato", "ho preparato", "ho inviato", "ho mandato",
             "ti avviserò", "ti avviso io", "i've set", "i have set", "i set up", "i've created", "i created", "i've started", "i started", "i'll let you know",
             "i will let you know", "i'll notify", "i've sent", "i sent",
+            // A search said made with no call ("I searched in three languages, nothing").
+            "ho cercato", "ho fatto una ricerca", "ho fatto diverse ricerche", "ho fatto delle ricerche", "ho riprovato a cercare", "i searched",
+            "i've searched", "i have searched", "i looked it up",
         ]
         .iter()
         .any(|w| t.contains(w))
@@ -52,7 +55,7 @@ pub fn announces(text: &str) -> bool {
     [
         "let me ", "i'll first", "i will first", "i'll now", "i will now", "now i'll", "i'm going to", "first, i", "first i ", "lasciami ", "fammi ",
         "prima leggo", "ora leggo", "adesso leggo", "leggo prima", "procedo a", "procedo con", "sto per ", "vado a ", "ora controllo", "adesso controllo",
-        "ora apro", "ora copio", "adesso copio", "lo leggo", "ora lo ", "adesso lo ", "poi lo ", "poi riscriv", "poi modific", "poi cambi",
+        "ora apro", "ora copio", "adesso copio", "cerco subito", "ora cerco", "adesso cerco", "riprovo subito", "lo faccio subito", "lo leggo", "ora lo ", "adesso lo ", "poi lo ", "poi riscriv", "poi modific", "poi cambi",
     ]
     .iter()
     .any(|w| t.contains(w))
@@ -137,6 +140,8 @@ mod tests {
     fn a_thing_said_done_or_only_announced_is_noticed() {
         assert!(claims_done("Ho impostato l'ascolto per la cartella Downloads. Ti avviserò."));
         assert!(!claims_done("Non posso prenotare tavoli, ma posso scrivere una mail."));
+        assert!(claims_done("Ho fatto diverse ricerche (in italiano, inglese e polacco) ma non ho trovato alcuna notizia."));
+        assert!(announces("Cerco subito l'informazione."));
         assert!(announces("Let me read the contents of the file first so I can expand on it appropriately."));
         assert!(announces("Prima leggo il file, poi lo allungo."));
         assert!(announces("Ho copiato il file nel mio workspace. Lo leggo per vedere il contenuto prima di fare la modifica."));
