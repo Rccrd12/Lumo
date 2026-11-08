@@ -65,7 +65,7 @@ A program that starts agents on its own, not a person in a terminal (a tool aski
 `claude -p` about every file, eight at a time, an app built on the Agent SDK), would
 otherwise get a sound and an alert for every answer. The relay marks such sessions with
 `"lumo_background": true`, and by default the island groups them: one pill per program,
-"Running: 8 · Done: 37" on the home, one sound when a batch starts and one when it is
+"37 done · 8 running" on the home, one sound when a batch starts and one when it is
 over, no alert. Permission requests still come up as cards. Settings → Agents →
 Background sessions shows them grouped, one by one (as any session) or not at all.
 
