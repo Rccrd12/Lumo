@@ -86,6 +86,7 @@ function betaFrom(value: unknown): BetaInfo | null {
             title: typeof p.title === "string" ? p.title : "",
             updatedAt: typeof p.updatedAt === "string" ? p.updatedAt : "",
             ...(typeof p.with === "string" ? { with: p.with } : {}),
+            ...(typeof p.reason === "string" ? { reason: p.reason } : {}),
           }))
       : [];
   return {

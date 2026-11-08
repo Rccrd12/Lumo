@@ -85,12 +85,14 @@ export interface BetaInfo {
   excluded: BetaPull[];
 }
 
-/** A pull request in the beta, or left out of it with what it conflicts with ("main" or a number). */
+/** A pull request in the beta, or left out of it: why, and what it conflicts with ("main" or a number). */
 export interface BetaPull {
   number: number;
   title: string;
   updatedAt: string;
   with?: string;
+  /** "conflict", "checks" (its Windows CI failed) or "pending" (still running). */
+  reason?: string;
 }
 
 /** Page pixels the island is drawn off its usual place: a floating island kept on its display. */

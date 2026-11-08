@@ -202,6 +202,8 @@ test("a pull request left out of the beta says what it conflicts with", () => {
   assert.match(pullRow({ ...pr, with: "146" }, true).textContent, /#148.*<b>Models<\/b>.*#146/);
   assert.match(pullRow({ ...pr, with: "main" }, true).textContent, /conflicts with main/);
   assert.match(pullRow(pr, true).textContent, /the other changes/);
+  assert.match(pullRow({ ...pr, reason: "checks" }, true).textContent, /checks fail/);
+  assert.match(pullRow({ ...pr, reason: "pending" }, true).textContent, /still running/);
   const kept = pullRow(pr, false);
   assert.ok(!kept.textContent.includes("conflicts"));
   assert.equal(kept.className, "pill-row");
@@ -209,7 +211,19 @@ test("a pull request left out of the beta says what it conflicts with", () => {
 
 // ── scripts/beta.mjs, the workflow's steps ────────────────────────────────────
 
-const { BETA_MARK, betaVersion, cleanTitle, renderNotes } = await import("../scripts/beta.mjs");
+const { BETA_MARK, betaVersion, ciState, cleanTitle, renderNotes } = await import("../scripts/beta.mjs");
+
+test("only a pull request whose Windows CI passed goes in", () => {
+  const run = (status, conclusion, workflowName = "Windows CI") => ({ __typename: "CheckRun", name: "test", workflowName, status, conclusion });
+  assert.equal(ciState([run("COMPLETED", "SUCCESS")]), "pass");
+  assert.equal(ciState([]), "pass", "no Windows CI on it: nothing of the app changed");
+  assert.equal(ciState(null), "pass");
+  assert.equal(ciState([run("COMPLETED", "SUCCESS", "Windows beta"), run("COMPLETED", "FAILURE", "Other")]), "pass");
+  assert.equal(ciState([run("COMPLETED", "FAILURE")]), "fail");
+  assert.equal(ciState([run("COMPLETED", "CANCELLED")]), "fail");
+  assert.equal(ciState([run("IN_PROGRESS", "")]), "pending");
+  assert.equal(ciState([run("QUEUED", ""), run("COMPLETED", "FAILURE")]), "pending");
+});
 
 test("the beta's version is the next patch with the run as its pre-release", () => {
   assert.equal(betaVersion("0.18.0", 312), "0.18.1-312");
@@ -222,7 +236,12 @@ test("the notes carry the list for Lumo, which no title can break out of", () =>
   const state = {
     main: "abc",
     included: [{ number: 146, title: "Web  search -->\n<script>", updatedAt: "t1", head: "h" }],
-    excluded: [{ number: 148, title: "Models", updatedAt: "t2", head: "h2", with: 146 }, { number: 149, title: "X", updatedAt: "t3", with: null }],
+    excluded: [
+      { number: 148, title: "Models", updatedAt: "t2", head: "h2", reason: "conflict", with: 146 },
+      { number: 149, title: "X", updatedAt: "t3", reason: "conflict", with: null },
+      { number: 150, title: "Red", updatedAt: "t4", reason: "checks" },
+      { number: 151, title: "Busy", updatedAt: "t5", reason: "pending" },
+    ],
   };
   const notes = renderNotes(state, "0.18.1-312");
   assert.match(notes, /- #146 Web search -->/);
@@ -236,5 +255,8 @@ test("the notes carry the list for Lumo, which no title can break out of", () =>
   assert.deepEqual(list.included, [{ number: 146, title: "Web search --> <script>", updatedAt: "t1" }]);
   assert.equal(list.excluded[0].with, "146");
   assert.equal("with" in list.excluded[1], false);
+  assert.match(notes, /#150 Red \(its checks fail\)/);
+  assert.match(notes, /#151 Busy \(its checks are still running\)/);
+  assert.equal(list.excluded[2].reason, "checks");
   assert.equal(cleanTitle("x".repeat(500)).length, 200);
 });

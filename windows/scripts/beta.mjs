@@ -5,9 +5,12 @@
 //
 //   node scripts/beta.mjs merge <state.json>
 //       main, then every open pull request of this repository merged into it
-//       one at a time, oldest first. One that does not merge is left out and
-//       the state says what it conflicts with (main, another pull request, or
-//       the other changes together). Pull requests from forks never take part.
+//       one at a time, oldest first. Only those whose own Windows CI passed on
+//       their latest commit (or that it does not run on) go in: one whose
+//       checks fail or are still running is left out this time, with why. One
+//       that does not merge is left out and the state says what it conflicts
+//       with (main, another pull request, or the other changes together).
+//       Pull requests from forks never take part.
 //   node scripts/beta.mjs version <run number>
 //       the beta's version, the next patch with the run as its pre-release
 //       (0.18.0 → 0.18.1-312), written in the three files that carry it. The
@@ -31,6 +34,9 @@ export const BETA_MARK = "<!-- lumo-beta ";
 /** The .msi's version holds a number up to this as its fourth part. */
 const MAX_RUN = 65535;
 
+/** The workflow whose result decides whether a pull request goes in (windows-ci.yml). */
+export const CI_WORKFLOW = "Windows CI";
+
 /** Titles longer than this are cut. */
 const MAX_TITLE = 200;
 
@@ -41,6 +47,19 @@ export function betaVersion(base, run) {
   const n = Number(run);
   if (!Number.isInteger(n) || n < 1 || n > MAX_RUN) throw new Error(`run number out of range: ${run}`);
   return `${m[1]}.${m[2]}.${Number(m[3]) + 1}-${n}`;
+}
+
+/**
+ * Whether a pull request's latest commit passed Windows CI, from GitHub's
+ * statusCheckRollup: "pass" (passed, or the CI does not run on it), "fail",
+ * or "pending".
+ */
+export function ciState(rollup) {
+  const runs = (Array.isArray(rollup) ? rollup : []).filter((c) => c && c.workflowName === CI_WORKFLOW);
+  if (runs.length === 0) return "pass";
+  if (runs.some((c) => c.status !== "COMPLETED")) return "pending";
+  const ok = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
+  return runs.every((c) => ok.has(c.conclusion)) ? "pass" : "fail";
 }
 
 /** A title on one line, cut to a readable length. */
@@ -56,8 +75,12 @@ export function cleanTitle(title) {
  */
 export function renderNotes(state, version) {
   const line = (pr) => `- #${pr.number} ${cleanTitle(pr.title)}`;
-  const left = (pr) =>
-    `- #${pr.number} ${cleanTitle(pr.title)} (conflicts with ${pr.with === "main" ? "main" : pr.with ? `#${pr.with}` : "the other changes"})`;
+  const why = (pr) => {
+    if (pr.reason === "checks") return "its checks fail";
+    if (pr.reason === "pending") return "its checks are still running";
+    return `conflicts with ${pr.with === "main" ? "main" : pr.with ? `#${pr.with}` : "the other changes"}`;
+  };
+  const left = (pr) => `- #${pr.number} ${cleanTitle(pr.title)} (${why(pr)})`;
   const parts = [
     `Lumo for Windows beta ${version}: main with every open pull request, to try them before they are released.`,
     "Install it from Lumo: Settings → Updates → Beta versions.",
@@ -75,6 +98,7 @@ export function renderNotes(state, version) {
       title: cleanTitle(pr.title),
       updatedAt: pr.updatedAt,
       ...(pr.with ? { with: String(pr.with) } : {}),
+      ...(pr.reason ? { reason: pr.reason } : {}),
     })),
   };
   const json = JSON.stringify(manifest).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
@@ -113,7 +137,7 @@ function openPullRequests() {
   const out = execFileSync(
     "gh",
     ["pr", "list", "--repo", repo, "--base", "main", "--state", "open", "--limit", "100",
-      "--json", "number,title,updatedAt,headRefOid,isCrossRepository"],
+      "--json", "number,title,updatedAt,headRefOid,isCrossRepository,statusCheckRollup"],
     { encoding: "utf8" },
   );
   return JSON.parse(out)
@@ -130,6 +154,12 @@ function merge(statePath) {
     git(["fetch", "--no-tags", "origin", `+refs/pull/${pr.number}/head:${ref}`]);
     const head = git(["rev-parse", ref]).trim();
     const entry = { number: pr.number, title: pr.title, updatedAt: pr.updatedAt, head };
+    const ci = ciState(pr.statusCheckRollup);
+    if (ci !== "pass") {
+      excluded.push({ ...entry, reason: ci === "fail" ? "checks" : "pending" });
+      console.log(`#${pr.number} left out (Windows CI: ${ci})`);
+      continue;
+    }
     if (tryGit(["merge", "--no-ff", "--no-edit", "-m", `beta: #${pr.number}`, ref])) {
       included.push(entry);
       console.log(`#${pr.number} merged`);
@@ -139,7 +169,7 @@ function merge(statePath) {
     let withWhat = null;
     if (!mergesCleanly(main, head)) withWhat = "main";
     else withWhat = included.find((other) => !mergesCleanly(other.head, head))?.number ?? null;
-    excluded.push({ ...entry, with: withWhat });
+    excluded.push({ ...entry, reason: "conflict", with: withWhat });
     console.log(`#${pr.number} left out (conflicts with ${withWhat ?? "the other changes"})`);
   }
   writeFileSync(statePath, JSON.stringify({ main, included, excluded }, null, 2));
