@@ -71,8 +71,6 @@ export interface BackgroundAnswer {
 export interface BackgroundInfo extends BackgroundCounts {
   /** What the running sessions are about (subjectOf their prompt), oldest first; "" where nothing could be told. */
   subjects: string[];
-  /** The most sessions running at once in this batch. */
-  peak: number;
   /** The agent they run: "Claude Code", "Codex"… */
   agent: string;
   last: BackgroundAnswer | null;
@@ -98,7 +96,6 @@ interface Group {
   running: Map<string, { at: number; subject: string }>;
   done: number;
   failed: number;
-  peak: number;
   agent: string;
   total: number | null;
   last: BackgroundAnswer | null;
@@ -116,7 +113,7 @@ export class BackgroundRuns {
     let g = this.groups.get(id);
     const started = !g;
     if (!g) {
-      g = { running: new Map(), done: 0, failed: 0, peak: 0, agent: "", total: null, last: null, lastFailed: null };
+      g = { running: new Map(), done: 0, failed: 0, agent: "", total: null, last: null, lastFailed: null };
       this.groups.set(id, g);
     }
     if (detail.agent) g.agent = detail.agent;
@@ -125,7 +122,6 @@ export class BackgroundRuns {
     switch (kind) {
       case "busy":
         g.running.set(session, { at: now, subject });
-        g.peak = Math.max(g.peak, g.running.size);
         break;
       case "done":
         g.running.delete(session);
@@ -153,7 +149,7 @@ export class BackgroundRuns {
     const g = this.groups.get(id);
     if (!g) return null;
     return {
-      running: g.running.size, done: g.done, failed: g.failed, total: g.total, peak: g.peak, agent: g.agent,
+      running: g.running.size, done: g.done, failed: g.failed, total: g.total, agent: g.agent,
       subjects: [...g.running.values()].map((r) => r.subject),
       last: g.last, lastFailed: g.lastFailed,
     };
@@ -250,7 +246,6 @@ export const BACKGROUND_TEXT = {
   unnamed: N_("In background"),
   /** Beside the program's name on the home. */
   inBackground: N_("in background"),
-  atATime: N_("max {count} in parallel"),
   lastAnswer: N_("Last answer"),
   stillAsks: N_("A permission request still comes up as a card, always with your click."),
 };

@@ -110,13 +110,12 @@ test("what each session is about, and its answer in words", () => {
   assert.equal(answerText({ subject: "", text: "Done" }), "Done");
 });
 
-test("a batch remembers the most at once, what runs, and the last answer", () => {
+test("a batch remembers what runs and the last answer", () => {
   bg("UserPromptSubmit", "a", { prompt: "Folder: %APPDATA%\\Zoom" });
   bg("UserPromptSubmit", "b", { prompt: "Folder: %APPDATA%\\Steam" });
   bg("Stop", "a", { last_assistant_message: '{"what": "Zoom: cache, safe to delete"}' });
   bg("UserPromptSubmit", "c", { prompt: "Folder: %APPDATA%\\Adobe" });
   const info = task().background;
-  assert.equal(info.peak, 2);
   assert.deepEqual(info.subjects, ["Steam", "Adobe"]);
   assert.deepEqual(info.last, { subject: "Zoom", text: "Zoom: cache, safe to delete" });
   assert.equal(info.agent, "Claude Code");

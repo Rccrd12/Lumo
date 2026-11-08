@@ -63,7 +63,7 @@ function said(prefix: string, answer: BackgroundAnswer): string {
 export function buildBackgroundDetail(task: AgentTask, info: BackgroundInfo, openAnswers: () => void): HTMLElement {
   const over = task.state === "finished" || task.state === "error";
   const top = info.running > 0
-    ? row(task.color, running(info.running), [info.agent, info.peak > 1 ? t(BACKGROUND_TEXT.atATime, { count: info.peak }) : ""].filter(Boolean).join(" · "),
+    ? row(task.color, running(info.running), info.agent,
       info.subjects.filter(Boolean).join(" · ") || backgroundLine(info), "", lanes(info.running), undefined, progressBar(info))
     : row(over && info.done === 0 ? "var(--red)" : "var(--green)", over ? t("Done") : done(info.done), info.agent, backgroundLine(info), "", null,
       undefined, progressBar(info));

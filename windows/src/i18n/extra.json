@@ -16671,18 +16671,6 @@
     "other": "{count} errori"
    }
   },
-  "max {count} in parallel": {
-   "zh-Hans": "最多 {count} 个并行",
-   "hi": "अधिकतम {count} समानांतर",
-   "es": "máx. {count} en paralelo",
-   "ar": "حتى {count} بالتوازي",
-   "fr": "max {count} en parallèle",
-   "bn": "সর্বোচ্চ {count}টি সমান্তরালে",
-   "pt-BR": "máx. {count} em paralelo",
-   "ru": "макс. {count} параллельно",
-   "id": "maks. {count} paralel",
-   "it": "max {count} in parallelo"
-  },
   "Last answer": {
    "zh-Hans": "最新回答",
    "hi": "आख़िरी जवाब",
