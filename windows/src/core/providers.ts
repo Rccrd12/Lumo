@@ -212,13 +212,20 @@ export function withModel(settings: Settings, provider: ProviderId, model: strin
 export function visibleProviders(settings: Settings, ready: ReadonlySet<string> | null = null): ProviderDef[] {
   return PROVIDERS.filter((p) => {
     if (p.urlField) return settings[p.urlField] !== "" || settings.chatProvider === p.id;
+    // A CLI the user took out of the chat (Settings → Chat → Show in the chat) stays out, unless in use.
+    if (isHidden(settings, p.id) && settings.chatProvider !== p.id) return false;
     return ready == null || ready.has(p.id) || settings.chatProvider === p.id;
   });
 }
 
+/** Settings → Chat → "Show in the chat" turned off for this provider. */
+export function isHidden(settings: Settings, id: string): boolean {
+  return Array.isArray(settings.hiddenChatProviders) && settings.hiddenChatProviders.includes(id);
+}
+
 /** Whether any provider at all is set up, by the same rules (the active one aside). */
 export function anyProviderReady(settings: Settings, ready: ReadonlySet<string>): boolean {
-  return PROVIDERS.some((p) => (p.urlField ? settings[p.urlField] !== "" : ready.has(p.id)));
+  return PROVIDERS.some((p) => (p.urlField ? settings[p.urlField] !== "" : ready.has(p.id) && !isHidden(settings, p.id)));
 }
 
 /** The model to keep once the list arrives: the saved one if offered, else a sensible one. */

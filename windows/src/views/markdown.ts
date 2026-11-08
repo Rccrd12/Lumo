@@ -201,10 +201,12 @@ export function safeWebUrl(raw: string): string | null {
 /**
  * Math is found with the rest, whichever comes first: $$…$$, \(…\), \[…\]
  * and $…$. A $…$ needs no space just inside its dollars and no digit just
- * after, so "$5 and $10" stays text.
+ * after, so "$5 and $10" stays text. An escaped dollar, \$, is a dollar sign
+ * and never opens or closes a formula (inside one it stays TeX's \$), and a
+ * $…$ never runs across bold's **, so prices like "\$0,20 … **\$ 130**" stay text.
  */
-const MATH = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$([^$\n]+?)\$/;
-const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}`, "g");
+const MATH = /\$\$([^$]+?)\$\$|\\\(([\s\S]+?)\\\)|\\\[([\s\S]+?)\\\]|\$((?:\\.|[^$\\\n])+?)\$/;
+const ALL = new RegExp(`(\`[^\`\n]+\`)|${MATH.source}|${INLINE.source.slice(INLINE.source.indexOf("|") + 1)}|(\\\\\\$)`, "g");
 
 export function parseInline(text: string): Inline[] {
   const out: Inline[] = [];
@@ -217,9 +219,9 @@ export function parseInline(text: string): Inline[] {
   const re = new RegExp(ALL.source, "g");
   let at = 0;
   let m: RegExpExecArray | null;
-  // Groups: 1 code; 2 $$, 3 \(, 4 \[, 5 $; 6 **, 7 __, 8 *, 9 _; 10 link text, 11 its address.
+  // Groups: 1 code; 2 $$, 3 \(, 4 \[, 5 $; 6 **, 7 __, 8 *, 9 _; 10 link text, 11 its address; 12 \$.
   while ((m = re.exec(text))) {
-    if (m[5] != null && (/^\s|\s$/.test(m[5]) || /\d/.test(text[m.index + m[0].length] ?? ""))) {
+    if (m[5] != null && (/^\s|\s$/.test(m[5]) || m[5].includes("**") || /\d/.test(text[m.index + m[0].length] ?? ""))) {
       re.lastIndex = m.index + 1;
       continue;
     }
@@ -230,7 +232,8 @@ export function parseInline(text: string): Inline[] {
     }
     pushText(text.slice(at, m.index));
     at = m.index + m[0].length;
-    if (m[1] != null) out.push({ kind: "code", text: m[1].slice(1, -1) });
+    if (m[12] != null) pushText("$");
+    else if (m[1] != null) out.push({ kind: "code", text: m[1].slice(1, -1) });
     else if (m[2] != null || m[3] != null || m[4] != null || m[5] != null) {
       out.push({ kind: "math", tex: m[2] ?? m[3] ?? m[4] ?? m[5], display: m[2] != null || m[4] != null });
     } else if (m[10] != null) out.push({ kind: "link", url: safeWebUrl(m[11]), children: parseInline(m[10]) });

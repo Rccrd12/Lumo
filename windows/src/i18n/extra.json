@@ -16079,6 +16079,30 @@
    "id": "Paling banyak {count} akun: hapus satu dulu.",
    "it": "Al massimo {count} account: rimuovine prima uno."
   },
+  "Show in the chat": {
+   "zh-Hans": "在聊天中显示",
+   "hi": "चैट में दिखाएँ",
+   "es": "Mostrar en el chat",
+   "ar": "إظهار في الدردشة",
+   "fr": "Afficher dans le chat",
+   "bn": "চ্যাটে দেখান",
+   "pt-BR": "Mostrar no chat",
+   "ru": "Показывать в чате",
+   "id": "Tampilkan di obrolan",
+   "it": "Mostra nella chat"
+  },
+  "Off, it leaves the chat's list of providers. Nothing is uninstalled.": {
+   "zh-Hans": "关闭后，它会从聊天的提供方列表中移除。不会卸载任何内容。",
+   "hi": "बंद होने पर यह चैट की प्रदाता सूची से हट जाता है। कुछ भी अनइंस्टॉल नहीं होता।",
+   "es": "Desactivado, sale de la lista de proveedores del chat. No se desinstala nada.",
+   "ar": "عند إيقافه يخرج من قائمة مزوّدي الدردشة. لا يُزال تثبيت أي شيء.",
+   "fr": "Désactivé, il quitte la liste des fournisseurs du chat. Rien n'est désinstallé.",
+   "bn": "বন্ধ থাকলে এটি চ্যাটের প্রদানকারীর তালিকা থেকে সরে যায়। কিছুই আনইনস্টল হয় না।",
+   "pt-BR": "Desligado, sai da lista de provedores do chat. Nada é desinstalado.",
+   "ru": "Если выключить, он пропадёт из списка провайдеров чата. Ничего не удаляется.",
+   "id": "Jika dimatikan, ia keluar dari daftar penyedia obrolan. Tidak ada yang dicopot.",
+   "it": "Spento, sparisce dall'elenco dei provider della chat. Non viene disinstallato niente."
+  },
   "Lumo only starts Unsloth Studio on this computer.": {
    "zh-Hans": "Lumo 只会在这台电脑上启动 Unsloth Studio。",
    "hi": "Lumo केवल इसी कंप्यूटर पर Unsloth Studio शुरू करता है।",

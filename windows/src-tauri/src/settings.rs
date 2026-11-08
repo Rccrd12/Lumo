@@ -124,6 +124,9 @@ pub struct Settings {
     /// Settings → Pills → Email → IMAP: the accounts the user paused with
     /// their switch, by address (mail.rs): kept, not read. None until then.
     pub mail_paused: Vec<String>,
+    /// Settings → Chat: the CLIs the user took out of the chat's provider
+    /// list with "Show in the chat" (src/core/providers.ts). None until then.
+    pub hidden_chat_providers: Vec<String>,
     /// Settings → General → Energy (energy.rs): "none" (near real time),
     /// "light" (as Lumo always was), "auto" (saving on battery) or "saver".
     pub energy_mode: String,
@@ -339,6 +342,7 @@ impl Default for Settings {
             mail_outlook: false,
             outlook_start: false,
             mail_paused: Vec::new(),
+            hidden_chat_providers: Vec::new(),
             energy_mode: "auto".into(),
             energy_on_power: "light".into(),
             context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),
@@ -683,6 +687,7 @@ mod tests {
   "mailOutlook": true,
   "outlookStart": true,
   "mailPaused": ["old@icloud.com"],
+  "hiddenChatProviders": ["copilot-cli"],
   "energyMode": "saver",
   "energyOnPower": "none",
   "contextMenu": ["settings"],
@@ -1177,6 +1182,7 @@ mod tests {
                 "mailOutlook",
                 "outlookStart",
                 "mailPaused",
+                "hiddenChatProviders",
                 "energyMode",
                 "energyOnPower",
                 "contextMenu",
