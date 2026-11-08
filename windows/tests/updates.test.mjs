@@ -228,6 +228,7 @@ test("only a pull request whose Windows CI passed goes in", () => {
 test("the beta's version is the next patch with the run as its pre-release", () => {
   assert.equal(betaVersion("0.18.0", 312), "0.18.1-312");
   assert.equal(betaVersion("0.18.1-40", "7"), "0.18.2-7");
+  assert.equal(betaVersion("0.19.1", 25, false), "0.19.1-25", "a version not released yet keeps its patch, so its release is newer");
   assert.throws(() => betaVersion("0.18.0", 70000), /range/, "the .msi takes up to 65535");
   assert.throws(() => betaVersion("latest", 1));
 });

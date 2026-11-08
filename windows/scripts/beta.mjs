@@ -16,7 +16,8 @@
 //       the workflow takes the beta down instead of publishing one.
 //   node scripts/beta.mjs version <run number>
 //       the beta's version, the next patch with the run as its pre-release
-//       (0.18.0 → 0.18.1-312), written in the three files that carry it. The
+//       (0.18.0 → 0.18.1-312), or main's own while it is not released yet
+//       (0.19.1 before its tag → 0.19.1-312), written in the three files that carry it. The
 //       pre-release is a number only: the .msi takes nothing else.
 //   node scripts/beta.mjs notes <state.json> <version>
 //       the release's notes: a list people read on GitHub, and the same list
@@ -56,13 +57,18 @@ export const APP_PATHS = [
 /** Titles longer than this are cut. */
 const MAX_TITLE = 200;
 
-/** The beta's version: the next patch after `base`, `run` as its pre-release. */
-export function betaVersion(base, run) {
+/**
+ * The beta's version: the next patch after `base`, `run` as its pre-release.
+ * When `base` is not released yet (main already says 0.19.1 and its tag is
+ * still to come), `base` itself with `run`: 0.19.1-312 is older than 0.19.1, so
+ * the release still comes as an update to whoever installed the beta.
+ */
+export function betaVersion(base, run, released = true) {
   const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(base).trim());
   if (!m) throw new Error(`not a version: ${base}`);
   const n = Number(run);
   if (!Number.isInteger(n) || n < 1 || n > MAX_RUN) throw new Error(`run number out of range: ${run}`);
-  return `${m[1]}.${m[2]}.${Number(m[3]) + 1}-${n}`;
+  return `${m[1]}.${m[2]}.${Number(m[3]) + (released ? 1 : 0)}-${n}`;
 }
 
 /**
@@ -214,7 +220,8 @@ function merge(statePath) {
 function setVersion(run) {
   const confPath = join(root, "src-tauri", "tauri.conf.json");
   const base = mainVersion();
-  const version = betaVersion(base, run);
+  const released = tryGit(["rev-parse", "--verify", "--quiet", `refs/tags/windows-v${base}`]);
+  const version = betaVersion(base, run, released);
   const swapJson = (path) => {
     const text = readFileSync(path, "utf8");
     writeFileSync(path, text.replace(/("version"\s*:\s*")[^"]*(")/, `$1${version}$2`));

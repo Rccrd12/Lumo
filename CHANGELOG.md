@@ -1,5 +1,10 @@
 # Changelog
 
+## Windows 0.19.1 — November 8, 2026
+
+- **Menus with their text centred**: every row of Lumo's menus has its text in the middle of the row, instead of sitting low on it
+- **No beta that is the release again**: with Beta versions on, Lumo offers a beta only when it holds something the last release does not; a pull request that changes only tests, screenshots or notes no longer makes one
+
 ## Windows 0.19.0 — November 8, 2026
 
 - **The chat reads your GitHub**: with the GitHub pill set up and Settings → General → Security → **GitHub** on Read only, every chat provider (local models too) can read your pull requests with their checks and reviews, issues, repositories, commits and GitHub Actions runs. It is off until you turn it on, so no repository reaches an AI without your yes
