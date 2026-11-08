@@ -29,6 +29,7 @@ import { TOOLS_STRINGS, buildTools } from "./tools";
 import { isWorkshopChat } from "../core/tools";
 import { Live } from "../live/session";
 import { buildHome } from "./home";
+import { showGitHubSection } from "./github";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
 import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
@@ -278,6 +279,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
+/** A pill whose card opens on its detail once it is in front (the home's row of open PRs). */
+let detailOnFocus: string | null = null;
+
 function buildOverview(actions: ViewActions): ViewHost {
   /** The diff open in the left card (a FileDiff id). */
   let activeDiffId: number | null = null;
@@ -411,6 +415,11 @@ function buildOverview(actions: ViewActions): ViewHost {
         stepsOpen = false;
         cardKey = "";
         mode = null;
+      }
+      if (detailOnFocus != null && task?.id === detailOnFocus) {
+        detailOnFocus = null;
+        detailOpen = true;
+        cardKey = "";
       }
 
       // A workspace or agent pill with a live session keeps the ticker; every
@@ -993,6 +1002,13 @@ function buildHomeView(actions: ViewActions): ViewHost {
     openSession: (id) => {
       actions.blip();
       actions.setFocus(id);
+      actions.setView("overview");
+    },
+    openGitHubPRs: () => {
+      showGitHubSection("myPRs");
+      detailOnFocus = "integration_github";
+      actions.blip();
+      actions.setFocus("integration_github");
       actions.setView("overview");
     },
     openRequest: () => {

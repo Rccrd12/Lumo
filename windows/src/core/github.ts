@@ -91,6 +91,7 @@ export const GH_STRINGS = {
   contributions: (n: number) => tn("{count} contribution", "{count} contributions", n),
   pastYear: (total: string) => t("{total} past year", { total }),
   repos: (n: number) => tn("{count} repo", "{count} repos", n),
+  openPRs: (n: number) => tn("{count} open PR", "{count} open PRs", n),
 };
 
 export const CI_COLORS: Record<CIState, string> = {

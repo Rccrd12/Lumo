@@ -20,6 +20,12 @@ const GITHUB_RED = "#F4505E";
 /** Which list the detail view shows; kept across re-renders of the card. */
 let openSection: GitHubSection = "myPRs";
 
+/** The detail view's next list (the home's row of open PRs opens on my PRs). */
+export function showGitHubSection(section: GitHubSection): void {
+  openSection = section;
+  void Bridge.githubRefresh(section === "activity" ? "activity" : "pulse");
+}
+
 function open(url: string) {
   const safe = safeGitHubUrl(url);
   if (safe) void Bridge.openUrl(safe);
@@ -53,8 +59,7 @@ export function githubPulseCard(
   openDetail: () => void,
 ): HTMLElement {
   const show = (section: GitHubSection) => {
-    openSection = section;
-    void Bridge.githubRefresh(section === "activity" ? "activity" : "pulse");
+    showGitHubSection(section);
     openDetail();
   };
 

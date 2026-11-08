@@ -3239,6 +3239,52 @@
     "other": "{count} contributi"
    }
   },
+  "{count} open PRs": {
+   "zh-Hans": {
+    "other": "{count} 个未关闭的 PR"
+   },
+   "hi": {
+    "one": "{count} खुला PR",
+    "other": "{count} खुले PR"
+   },
+   "es": {
+    "one": "{count} PR abierta",
+    "other": "{count} PRs abiertas"
+   },
+   "ar": {
+    "zero": "{count} طلب سحب مفتوح",
+    "one": "طلب سحب مفتوح واحد",
+    "two": "طلبا سحب مفتوحان",
+    "few": "{count} طلبات سحب مفتوحة",
+    "many": "{count} طلب سحب مفتوحًا",
+    "other": "{count} طلب سحب مفتوح"
+   },
+   "fr": {
+    "one": "{count} PR ouverte",
+    "other": "{count} PRs ouvertes"
+   },
+   "bn": {
+    "one": "{count}টি খোলা PR",
+    "other": "{count}টি খোলা PR"
+   },
+   "pt-BR": {
+    "one": "{count} PR aberto",
+    "other": "{count} PRs abertos"
+   },
+   "ru": {
+    "one": "{count} открытый PR",
+    "few": "{count} открытых PR",
+    "many": "{count} открытых PR",
+    "other": "{count} открытых PR"
+   },
+   "id": {
+    "other": "{count} PR terbuka"
+   },
+   "it": {
+    "one": "{count} PR aperta",
+    "other": "{count} PR aperte"
+   }
+  },
   "{count} models": {
    "zh-Hans": {
     "other": "{count} 个模型"
