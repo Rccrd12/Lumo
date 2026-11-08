@@ -166,7 +166,7 @@ The plugin maps OpenCode event types to canonical Lumo names and forwards them f
 Permission requests are the exception: the plugin's `permission.ask` sends a `PermissionRequest` and waits for the island's
 Allow / Deny card (OpenCode's permission `type` as `tool_name`, its `metadata` with `command` and `description` as
 `tool_input`). Allow and Deny set `allow` or `deny`; anything else (no click, Lumo closed) leaves `ask`, and OpenCode
-prompts as usual. Plugins installed before 0.21.0 need **Reinstall…** to get it.
+prompts as usual. Plugins installed before 0.20.0 need **Reinstall…** to get it.
 
 | OpenCode event | Canonical event |
 |---|---|
