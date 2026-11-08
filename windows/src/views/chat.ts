@@ -1,9 +1,10 @@
 // Chat view: the prompt box, the bubbles, the typing dots and the model picker.
 //
-// Answers are rendered as Markdown (markdown.ts). A local model streams its
-// answer: Rust sends `chat-delta` events with the text visible so far. The
-// model name above the text field opens the picker: provider chips, then the
-// models of the chosen provider, asked for only once it is picked.
+// Answers, and questions once sent, are rendered as Markdown (markdown.ts).
+// A local model streams its answer: Rust sends `chat-delta` events with the
+// text visible so far. The model name above the text field opens the picker:
+// provider chips, then the models of the chosen provider, asked for only once
+// it is picked.
 //
 // Until the text shows, a quiet line next to the typing dots says what the
 // answer is doing: Claude Code's tool calls as it makes them (`chat-activity`
@@ -265,8 +266,9 @@ interface BubbleOptions {
 }
 
 /**
- * One message. Its Copy (and, on a question, Edit) buttons show under the
- * mouse; Copy takes the text as it was written, Markdown included.
+ * One message, rendered as Markdown on both sides. Its Copy (and, on a
+ * question, Edit) buttons show under the mouse; Copy takes the text as it was
+ * written, Markdown included.
  */
 function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   const actions = h("div", { class: "msg-actions" }, copyButton(message.content, "msg-action"));
@@ -285,7 +287,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
       "div",
       { class: `chat-row user with-actions${state}` },
       actions,
-      h("div", { class: "bubble", text: message.content }),
+      sentBubble(message.content),
     );
   }
   // The answer failed: what went wrong stays under the question.
@@ -308,6 +310,16 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     : h("div", { class: "reply-foot floating" }, actions);
   const copies = message.copies?.length ? copiesBox(message.copies) : null;
   return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, foot));
+}
+
+/**
+ * A question as sent: Markdown and TeX as in the answers, inside its bubble.
+ * The prompt box stays plain text; Copy and Edit take what was written.
+ */
+function sentBubble(text: string): HTMLElement {
+  const el = h("div", { class: "bubble md" });
+  renderMarkdown(el, text);
+  return el;
 }
 
 /** What the copies' box under an answer says (workspace.rs). */

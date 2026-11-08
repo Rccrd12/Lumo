@@ -485,6 +485,42 @@ test("Copy takes a question or an answer as written, Markdown included", async (
   }
 });
 
+test("a question, once sent, is Markdown and TeX like the answers; Copy and Edit take it as written", async () => {
+  const copied = [];
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    value: { writeText: async (text) => copied.push(text) },
+    configurable: true,
+  });
+  try {
+    const question = "Why is $\\int_0^1 x^2\\,dx$ **a third**?\n\n$$\\frac{1}{3}$$";
+    answers.chat_send = { text: "Because of $x^3/3$.", turns: 2 };
+    await ask(question);
+    const bubble = rows()[0].querySelector(".bubble");
+    assert.ok(bubble.classList.contains("md"));
+    assert.equal(bubble.find("strong")[0].textContent, "a third");
+    assert.equal(bubble.find("math").length, 2, "the formula in the line and the one on its own");
+    assert.ok(bubble.querySelector(".md-math"));
+    assert.doesNotMatch(bubble.textContent, /\$|\\int|\*\*/, "no TeX or Markdown left as text");
+
+    rows()[0].find(".msg-action")[0].fire("click");
+    await flush();
+    assert.deepEqual(copied, [question]);
+    editOf(0).fire("click");
+    view.sync();
+    assert.equal($(".chat-input").value, question);
+  } finally {
+    delete globalThis.navigator.clipboard;
+  }
+});
+
+test("plain words in a question are one paragraph, as they were written", async () => {
+  answers.chat_send = { text: "ok", turns: 2 };
+  await ask("fix the export button\non Safari");
+  const bubble = rows()[0].querySelector(".bubble");
+  assert.equal(bubble.find(".md-p").length, 1);
+  assert.equal(bubble.textContent, "fix the export button\non Safari");
+});
+
 test("Edit puts a question back; sending it replaces it and drops what followed", async () => {
   let n = 0;
   answers.chat_send = () => {
