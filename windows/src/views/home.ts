@@ -20,7 +20,7 @@ import { TOOLS_STRINGS } from "./tools";
 import { planFinished, planKey, planProgress, type AgentPlan } from "../core/agent-plan";
 import { stripStep } from "./plan-strip";
 import {
-  CI_COLORS, GH_STRINGS, actionsUrl, ciWord, readPulse, safeGitHubUrl, shortRepo,
+  CI_COLORS, GH_STRINGS, actionsUrl, ciWord, readPulse, safeGitHubUrl, shortRepo, type GitHubPR,
 } from "../core/github";
 import {
   activeWatches, firedTitle, onGitHub, untilText, watchColor, type ListenWatch,
@@ -72,13 +72,15 @@ export interface HomeActions {
   /** A chat's row on the home: opens that chat on screen. */
   openChatPlan(chatId: string): void;
   openUrl?(url: string): void;
+  /** The open PRs that wait, in one row: opens the GitHub card on its list of my PRs. */
+  openGitHubPRs?(): void;
   makeTool(): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
   blip(): void;
 }
 
-/** One GitHub item (running/failing CI, review request, or open PR) shown on the home. */
+/** One GitHub item (running/failing CI, review request, open PR, or the open PRs that wait) shown on the home. */
 export interface HomeGitHubItem {
   key: string;
   color: string;
@@ -87,6 +89,8 @@ export interface HomeGitHubItem {
   failed: boolean;
   badge: string;
   url: string | null;
+  /** The row of the open PRs that wait: a click opens the GitHub card's list of them. */
+  list?: true;
 }
 
 /** How long a request that just came up ignores clicks on N and Y (views.ts CLICK_GUARD_MS). */
@@ -150,7 +154,7 @@ export function homeActiveChats(chatPlans: AgentPlan[] = homeChatPlans()): Activ
   return State.activeChats.filter((c) => !chatPlans.some((p) => p.key === planKey("chat", c.chatId)));
 }
 
-/** Active GitHub CI runs/failures, review requests and open PRs from the GitHub pulse. */
+/** Active GitHub CI runs/failures, review requests and open PRs from the GitHub pulse (the waiting ones in one row). */
 export function homeGitHubItems(): HomeGitHubItem[] {
   const info = State.integrations["integration_github"];
   if (!info || (State.tasks.length > 0 && !State.tasks.some((x) => x.id === "integration_github"))) return [];
@@ -187,11 +191,17 @@ export function homeGitHubItems(): HomeGitHubItem[] {
       url: safeGitHubUrl(pr.url),
     });
   }
+  // My PRs whose checks run or fail have a row each; the others (checks
+  // passed, no checks) only wait for a merge or a close: two or more of them
+  // share one row, which opens the GitHub card.
   const myPRs = pulse.myPRs
     .filter((pr) => !seenPRs.has(pr.id))
     .slice()
     .sort((a, b) => ciOrder[a.ci] - ciOrder[b.ci]);
-  for (const pr of myPRs) {
+  const moving = (pr: GitHubPR) => pr.ci === "pending" || pr.ci === "failure";
+  const still = myPRs.filter((pr) => !moving(pr));
+  const gathered = still.length >= 2;
+  for (const pr of gathered ? myPRs.filter(moving) : myPRs) {
     items.push({
       key: `pr:${pr.id}:${pr.ci}:${pr.isDraft}:${pr.title}`,
       color: CI_COLORS[pr.ci],
@@ -200,6 +210,18 @@ export function homeGitHubItems(): HomeGitHubItem[] {
       failed: pr.ci === "failure",
       badge: pr.isDraft ? GH_STRINGS.draft : (ciWord(pr.ci) ?? GH_STRINGS.myPRs),
       url: safeGitHubUrl(pr.url),
+    });
+  }
+  if (gathered) {
+    items.push({
+      key: `prs:${still.map((pr) => `${pr.id}:${pr.ci}:${pr.isDraft}`).join(",")}`,
+      color: CI_COLORS.unknown,
+      sub: GH_STRINGS.openPRs(still.length),
+      line: still.map((pr) => `${shortRepo(pr.repo)}#${pr.number}`).join(" · "),
+      failed: false,
+      badge: GH_STRINGS.myPRs,
+      url: null,
+      list: true,
     });
   }
   return items;
@@ -386,7 +408,9 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   /** A GitHub CI run/failure, review request or open PR; a click opens it on GitHub (or the GitHub card). */
   function gitHubRow(item: HomeGitHubItem): HTMLElement {
     const open = () => {
-      if (item.url) {
+      if (item.list && actions.openGitHubPRs) {
+        actions.openGitHubPRs();
+      } else if (item.url) {
         actions.blip();
         if (actions.openUrl) actions.openUrl(item.url);
         else void Bridge.openUrl(item.url);

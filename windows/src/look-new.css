@@ -1995,3 +1995,118 @@ html.look-new .usage-ask-context.small {
   padding: 0 10px;
   font-size: 11px;
 }
+
+/* ── GitHub's lists (views/github.ts listDetail): rows like the home's ──────
+   The usual look's lists are three 20 px rows in a small card; here they fill
+   the card, each PR on a row of its own, its reference over its title and how
+   its checks went on the right, and scroll past what fits. */
+
+/* As wide as the island, whatever a title's length: a long one is cut short with "…". */
+html.look-new .overview > .left:has(.gh-list) {
+  min-width: 0;
+}
+
+html.look-new .overview .left .card:has(> .left-body > .int-card > .gh-list) {
+  display: flex;
+  flex-direction: column;
+}
+
+html.look-new .overview .left .card:has(> .left-body > .int-card > .gh-list) > .left-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.look-new .int-card:has(> .gh-list) {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 12px 12px 12px 16px;
+}
+
+html.look-new .int-card:has(> .gh-list) .gh-back {
+  gap: 6px;
+  font: 600 13px var(--font);
+}
+
+html.look-new .gh-list {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: none;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+html.look-new .gh-list.fade {
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 24px), transparent 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, #000 calc(100% - 24px), transparent 100%);
+}
+
+html.look-new .gh-row {
+  flex: 0 0 54px;
+  height: 54px;
+  width: 100%;
+  gap: 10px;
+  padding: 0 12px 0 14px;
+  border-radius: 14px;
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .gh-row:hover {
+  background: #222328;
+}
+
+html.look-new .gh-row > .dot {
+  width: 8px !important;
+  height: 8px !important;
+  /* The usual look hides a PR's dot when it has no checks; here it is grey, as on the home. */
+  opacity: 1 !important;
+  align-self: flex-start;
+  margin-top: 13px;
+}
+
+html.look-new .gh-gap {
+  width: 8px;
+  flex: 0 0 8px;
+}
+
+html.look-new .gh-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+html.look-new .gh-ref {
+  font: 600 13px var(--font);
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .gh-title {
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+html.look-new .gh-draft,
+html.look-new .gh-pr-word,
+html.look-new .gh-word {
+  flex: none;
+  margin-left: 0;
+  padding-left: 0;
+  font: 400 12px var(--font);
+  color: var(--dim-3);
+}
+
+/* (The default branch's word keeps its colour: it is set on the element.) */
+html.look-new .gh-pr-word {
+  display: inline;
+}
+
+html.look-new .gh-empty {
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}

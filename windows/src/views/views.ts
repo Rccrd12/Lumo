@@ -29,6 +29,7 @@ import { TOOLS_STRINGS, buildTools } from "./tools";
 import { isWorkshopChat } from "../core/tools";
 import { Live } from "../live/session";
 import { buildHome } from "./home";
+import { showGitHubSection } from "./github";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
 import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
@@ -278,6 +279,16 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
 // ── Overview ──────────────────────────────────────────────────────────────────
 
+/** A pill whose card opens on its detail once it is in front (the home's row of open PRs). */
+let detailOnFocus: string | null = null;
+/** The pill whose card shows its detail on the overview. */
+let detailShownFor: string | null = null;
+
+/** The pill whose card shows its detail, or is about to: the new look's island grows for GitHub's lists (island.ts). */
+export function overviewDetailFor(): string | null {
+  return detailOnFocus ?? detailShownFor;
+}
+
 function buildOverview(actions: ViewActions): ViewHost {
   /** The diff open in the left card (a FileDiff id). */
   let activeDiffId: number | null = null;
@@ -369,11 +380,13 @@ function buildOverview(actions: ViewActions): ViewHost {
     },
     openDetail() {
       detailOpen = true;
+      detailShownFor = State.focusTask?.id ?? null;
       cardKey = "";
       State.notify();
     },
     closeDetail() {
       detailOpen = false;
+      detailShownFor = null;
       cardKey = "";
       State.notify();
     },
@@ -407,10 +420,17 @@ function buildOverview(actions: ViewActions): ViewHost {
       if (task?.id !== lastFocus) {
         lastFocus = task?.id ?? null;
         detailOpen = false;
+        detailShownFor = null;
         activeDiffId = null;
         stepsOpen = false;
         cardKey = "";
         mode = null;
+      }
+      if (detailOnFocus != null && task?.id === detailOnFocus) {
+        detailOnFocus = null;
+        detailOpen = true;
+        detailShownFor = task.id;
+        cardKey = "";
       }
 
       // A workspace or agent pill with a live session keeps the ticker; every
@@ -1008,6 +1028,13 @@ function buildHomeView(actions: ViewActions): ViewHost {
     openSession: (id) => {
       actions.blip();
       actions.setFocus(id);
+      actions.setView("overview");
+    },
+    openGitHubPRs: () => {
+      showGitHubSection("myPRs");
+      detailOnFocus = "integration_github";
+      actions.blip();
+      actions.setFocus("integration_github");
       actions.setView("overview");
     },
     openRequest: () => {

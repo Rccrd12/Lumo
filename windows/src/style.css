@@ -5749,6 +5749,16 @@ img.zoomable {
   min-width: 0;
 }
 
+/* The reference and the title, side by side on the row's one line (two lines in the new look). */
+.gh-text {
+  display: contents;
+}
+
+/* How the checks went: said in the new look only (look-new.css). */
+.gh-pr-word {
+  display: none;
+}
+
 .gh-draft {
   font: 400 9.5px var(--font);
   color: var(--dim-3);

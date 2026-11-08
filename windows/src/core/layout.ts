@@ -352,6 +352,8 @@ export const NEW_LOOK_COMPACT_DIAMETER = 40;
 export const NEW_LOOK_SESSION_ALLOW_H = 30;
 /** The new look's overview while a plan's usage card is open in it (views/usage.ts PlanCard): its limits whole. */
 export const NEW_LOOK_PLAN_CARD_H = 252;
+/** The new look's overview while the GitHub card shows a list (views/github.ts listDetail): three rows whole, the fourth showing. */
+export const NEW_LOOK_GH_LIST_H = 304;
 
 /** The steps a plan asking to start shows before its list scrolls (look-new.css .plan-ask-steps). */
 export const PLAN_ASK_MAX_STEPS = 8;

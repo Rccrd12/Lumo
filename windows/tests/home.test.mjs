@@ -57,8 +57,10 @@ function makeHome() {
   const openedChats = [];
   const openedUrls = [];
   const openedSessions = [];
+  const openedLists = [];
   const home = buildHome({
     openSession: (id) => openedSessions.push(id),
+    openGitHubPRs: () => openedLists.push("myPRs"),
     openRequest: () => {},
     decide: () => {},
     openChat: () => {},
@@ -70,7 +72,7 @@ function makeHome() {
     activity: () => {},
     blip: () => {},
   }, (task) => task.state === "working" || task.state === "thinking");
-  return { home, openedChats, openedUrls, openedSessions };
+  return { home, openedChats, openedUrls, openedSessions, openedLists };
 }
 
 beforeEach(resetState);
@@ -234,4 +236,63 @@ test("GitHub CI runs, review requests, open PRs and watches populate Home In pro
     "https://github.com/Rccrd12/Lumo/pull/21",
   ]);
   assert.deepEqual(openedChats, ["chat-watch"]);
+});
+
+test("my PRs that only wait (checks passed, no checks, draft) share one Home row; running and failing ones keep theirs", () => {
+  const { home, openedUrls, openedSessions, openedLists } = makeHome();
+  const pr = (repo, number, ci, isDraft = false) => ({
+    id: `${repo}#${number}`,
+    title: `PR ${number}`,
+    url: `https://github.com/${repo}/pull/${number}`,
+    repo,
+    number,
+    isDraft,
+    ci,
+    review: "pending",
+    headSha: String(number),
+  });
+  const pulse = (myPRs) => ({
+    configured: true,
+    loaded: true,
+    data: { pulse: { login: "Rccrd12", fetchedAt: 1, toReview: [], mainCI: [], myPRs } },
+  });
+  State.integrations["integration_github"] = pulse([
+    pr("Rccrd12/Lumo", 160, "pending"),
+    pr("Rccrd12/Lumo", 159, "success"),
+    pr("Rccrd12/Easy-Uninstaller", 8, "unknown"),
+    pr("Rccrd12/Easy-Uninstaller", 6, "unknown", true),
+    pr("Rccrd12/Lumo", 150, "failure"),
+  ]);
+
+  // 1 failing + 1 running, each on its own row, then the 3 that wait in one.
+  assert.equal(homeGitHubItems().length, 3);
+  assert.equal(homeInProgressCount(0), 3);
+  home.sync();
+  const rows = home.el.find(".home-row");
+  assert.equal(rows.length, 3);
+  assert.match(rows[0].textContent, /Lumo#150/);
+  assert.match(rows[0].textContent, /failing/);
+  assert.match(rows[1].textContent, /Lumo#160/);
+  assert.match(rows[1].textContent, /running/);
+  assert.match(rows[2].textContent, /3 open PRs/);
+  assert.match(rows[2].textContent, /Lumo#159 · Easy-Uninstaller#8 · Easy-Uninstaller#6/);
+  assert.match(rows[2].textContent, /My PRs/);
+
+  // The shared row opens the GitHub card's list of my PRs, not a pull request.
+  rows[2].fire("click");
+  assert.deepEqual(openedUrls, []);
+  assert.deepEqual(openedSessions, []);
+  assert.deepEqual(openedLists, ["myPRs"]);
+
+  // A single PR that waits keeps its own row, as before.
+  State.integrations["integration_github"] = pulse([
+    pr("Rccrd12/Lumo", 160, "pending"),
+    pr("Rccrd12/Lumo", 159, "success"),
+  ]);
+  home.sync();
+  const two = home.el.find(".home-row");
+  assert.equal(two.length, 2);
+  assert.match(two[1].textContent, /Lumo#159/);
+  assert.match(two[1].textContent, /passing/);
+  assert.doesNotMatch(home.el.textContent, /open PR/);
 });
