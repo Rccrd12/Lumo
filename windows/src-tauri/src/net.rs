@@ -151,18 +151,21 @@ pub async fn read_capped(mut response: reqwest::Response, limit: usize) -> Resul
 pub fn error_detail(body: &[u8]) -> String {
     let text = String::from_utf8_lossy(body);
     if let Ok(v) = serde_json::from_str::<serde_json::Value>(&text) {
-        if let Some(m) = v.pointer("/error/message").and_then(|m| m.as_str()) {
-            return m.to_string();
-        }
-        if let Some(m) = v.get("error").and_then(|m| m.as_str()) {
-            return m.to_string();
-        }
-        if let Some(m) = v.get("message").and_then(|m| m.as_str()) {
-            return m.to_string();
-        }
-        // Gemini answers some errors as a one-element array.
-        if let Some(m) = v.pointer("/0/error/message").and_then(|m| m.as_str()) {
-            return m.to_string();
+        for ptr in [
+            "/error/message",
+            "/_deferred_error/detail/error/message",
+            "/_deferred_error/detail/message",
+            "/_deferred_error/detail",
+            "/detail/error/message",
+            "/detail/message",
+            "/detail",
+            "/error",
+            "/message",
+            "/0/error/message",
+        ] {
+            if let Some(m) = v.pointer(ptr).and_then(|m| m.as_str()) {
+                return m.to_string();
+            }
         }
     }
     text.trim().chars().take(200).collect()
@@ -242,6 +245,8 @@ pub(crate) mod tests {
     fn error_details_come_from_the_usual_places() {
         assert_eq!(error_detail(br#"{"error":{"message":"bad key"}}"#), "bad key");
         assert_eq!(error_detail(br#"{"error":"model 'x' not found"}"#), "model 'x' not found");
+        assert_eq!(error_detail(br#"{"detail":"Model not found: qwen3"}"#), "Model not found: qwen3");
+        assert_eq!(error_detail(br#"{"_deferred_error":{"status_code":400,"detail":"Out of memory"}}"#), "Out of memory");
         assert_eq!(error_detail(br#"[{"error":{"message":"quota"}}]"#), "quota");
         assert_eq!(error_detail(b"  plain text  "), "plain text");
         assert_eq!(error_detail("x".repeat(500).as_bytes()).len(), 200);

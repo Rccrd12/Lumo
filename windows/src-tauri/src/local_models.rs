@@ -164,10 +164,28 @@ async fn post_json(server: &Server, base: &Url, path: &str, body: Value, timeout
     if status.as_u16() == 404 && server.id == "lmstudio" {
         return Err(t("This needs LM Studio 0.4 or later."));
     }
+    if matches!(status.as_u16(), 401 | 403) && server.id == "unsloth" {
+        return Err(format!(
+            "{} — {}",
+            t("The server refused the key. Check it, then connect again."),
+            t("Its key, sk-unsloth-… (Unsloth Studio → Settings → API)")
+        ));
+    }
     if !status.is_success() {
         return Err(tf("{name}: {error}", &[("name", server.name), ("error", &net::error_detail(&bytes))]));
     }
-    Ok(serde_json::from_slice(&bytes).unwrap_or(Value::Null))
+    let value: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+    if value.get("_deferred_error").is_some() || value["status"].as_str() == Some("error") {
+        if value.pointer("/_deferred_error/status_code").and_then(Value::as_u64).is_some_and(|c| matches!(c, 401 | 403)) && server.id == "unsloth" {
+            return Err(format!(
+                "{} — {}",
+                t("The server refused the key. Check it, then connect again."),
+                t("Its key, sk-unsloth-… (Unsloth Studio → Settings → API)")
+            ));
+        }
+        return Err(tf("{name}: {error}", &[("name", server.name), ("error", &net::error_detail(&bytes))]));
+    }
+    Ok(value)
 }
 
 /// The models `provider` holds in memory now.
@@ -192,7 +210,7 @@ pub async fn unload_all(provider: &str) -> Result<usize, String> {
             // Unloaded at once: no prompt, kept alive for no time at all.
             post_json(&server, &base, "api/generate", json!({ "model": m.handle, "keep_alive": 0 }), UNLOAD).await?;
         } else if server.id == "unsloth" {
-            post_json(&server, &base, "api/inference/unload", json!({ "model_path": m.handle }), UNLOAD).await?;
+            unload_unsloth(&server, &base, &m.handle).await?;
         } else {
             post_json(&server, &base, "api/v1/models/unload", json!({ "instance_id": m.handle }), UNLOAD).await?;
         }
@@ -308,8 +326,7 @@ pub async fn unload(provider: &str, model: &str) -> Result<(), String> {
     if server.id == "ollama" {
         post_json(&server, &base, "api/generate", json!({ "model": model, "keep_alive": 0 }), UNLOAD).await?;
     } else if server.id == "unsloth" {
-        let path = unsloth_load_body(model)["model_path"].as_str().unwrap_or(model).to_string();
-        post_json(&server, &base, "api/inference/unload", json!({ "model_path": path }), UNLOAD).await?;
+        unload_unsloth(&server, &base, model).await?;
     } else {
         let body = get_json(&server, &base, "api/v1/models").await?;
         let ids: Vec<String> = lmstudio_entry(model, &body)
@@ -641,11 +658,19 @@ fn unsloth_is_active(model: &str, status: &Value) -> bool {
 }
 
 /// What Unsloth Studio's `/api/inference/load` takes for `model`: its id,
-/// and the quant when the id pins one (`repo:Q4_K_M`).
-fn unsloth_load_body(model: &str) -> Value {
-    let quant = model.rsplit_once(':').filter(|(base, q)| base.contains('/') && !q.is_empty() && !q.contains('/'));
-    match quant {
-        Some((base, q)) => json!({ "model_path": base, "gguf_variant": q, "max_seq_length": 0 }),
+/// and the quant when the id pins one (`repo:Q4_K_M`) or when `/v1/models`
+/// names the on-disk `quant` for the base entry.
+fn unsloth_load_body(model: &str, models: Option<&Value>) -> Value {
+    let pinned = model.rsplit_once(':').filter(|(base, q)| base.contains('/') && !q.is_empty() && !q.contains('/'));
+    if let Some((base, q)) = pinned {
+        return json!({ "model_path": base, "gguf_variant": q, "max_seq_length": 0 });
+    }
+    let catalog_quant = models
+        .and_then(|m| unsloth_entry(model, m))
+        .and_then(|e| e["quant"].as_str())
+        .filter(|q| !q.is_empty());
+    match catalog_quant {
+        Some(q) => json!({ "model_path": model, "gguf_variant": q, "max_seq_length": 0 }),
         None => json!({ "model_path": model, "max_seq_length": 0 }),
     }
 }
@@ -657,17 +682,47 @@ fn unsloth_progress(v: &Value) -> Option<u8> {
     Some((v["fraction"].as_f64()?.clamp(0.0, 1.0) * 100.0).round() as u8)
 }
 
-async fn load_unsloth(server: &Server, base: &Url, model: &str, on_progress: &mut impl FnMut(u8)) -> Result<(), String> {
-    // The load answers once the model is in; how far it is, asked meanwhile.
-    let mut load = std::pin::pin!(post_json(server, base, "api/inference/load", unsloth_load_body(model), LOAD));
+async fn unsloth_load_step(
+    server: &Server,
+    base: &Url,
+    path: &str,
+    body: Value,
+    on_progress: &mut impl FnMut(u8),
+) -> (Result<(), String>, bool) {
+    let mut load = std::pin::pin!(post_json(server, base, path, body, LOAD));
+    let mut saw_progress = false;
     loop {
         if let Ok(done) = tokio::time::timeout(Duration::from_millis(700), &mut load).await {
-            return done.map(|_| ());
+            return (done.map(|_| ()), saw_progress);
         }
         if let Some(p) = get_json(server, base, "api/inference/load-progress").await.ok().as_ref().and_then(unsloth_progress) {
+            saw_progress = true;
             on_progress(p);
         }
     }
+}
+
+async fn load_unsloth(server: &Server, base: &Url, model: &str, on_progress: &mut impl FnMut(u8)) -> Result<(), String> {
+    // First try `/models/load`, which resolves `/v1/models` catalog ids to their
+    // local files, quants (HF cache, ./models, LM Studio, Ollama, scan folders)
+    // and saved overrides. Fall back to `/api/inference/load` (with the catalog
+    // entry's `quant`) for non-GGUF models or older Unsloth Studio builds.
+    let (first, saw_progress) = unsloth_load_step(server, base, "models/load", json!({ "model": model }), on_progress).await;
+    if first.is_ok() || saw_progress {
+        return first;
+    }
+    let models = get_json(server, base, "v1/models").await.ok();
+    let (second, _) = unsloth_load_step(server, base, "api/inference/load", unsloth_load_body(model, models.as_ref()), on_progress).await;
+    second.or(first)
+}
+
+async fn unload_unsloth(server: &Server, base: &Url, model: &str) -> Result<(), String> {
+    let by_id = post_json(server, base, "models/unload", json!({ "model": model }), UNLOAD).await;
+    if by_id.as_ref().ok().and_then(|v| v["unloaded"].as_bool()) == Some(true) {
+        return Ok(());
+    }
+    let path = unsloth_load_body(model, None)["model_path"].as_str().unwrap_or(model).to_string();
+    post_json(server, base, "api/inference/unload", json!({ "model_path": path }), UNLOAD).await.map(|_| ())
 }
 
 fn parse_lmstudio_caps(model: &str, body: &Value) -> Caps {
@@ -1046,8 +1101,10 @@ mod tests {
         let always = json!({ "active_model": "unsloth/gemma-4-26b-GGUF", "supports_reasoning": true, "reasoning_always_on": true });
         assert!(parse_unsloth_caps("unsloth/gemma-4-26b-GGUF", &models, Some(&always)).reasoning.is_empty());
         assert_eq!(unsloth_loaded(&models), vec!["unsloth/gemma-4-26b-GGUF"]);
-        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF:Q4_K_M"), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "gguf_variant": "Q4_K_M", "max_seq_length": 0 }));
-        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF"), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "max_seq_length": 0 }));
+        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF:Q4_K_M", None), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "gguf_variant": "Q4_K_M", "max_seq_length": 0 }));
+        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF", None), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "max_seq_length": 0 }));
+        let with_quant = json!({ "object": "list", "data": [{ "id": "unsloth/Qwen3-8B-GGUF", "quant": "UD-Q4_K_XL" }] });
+        assert_eq!(unsloth_load_body("unsloth/Qwen3-8B-GGUF", Some(&with_quant)), json!({ "model_path": "unsloth/Qwen3-8B-GGUF", "gguf_variant": "UD-Q4_K_XL", "max_seq_length": 0 }));
         assert_eq!(unsloth_progress(&json!({ "phase": "mmap", "fraction": 0.42 })), Some(42));
         assert_eq!(unsloth_progress(&json!({ "phase": null, "bytes_loaded": 0 })), None);
     }
