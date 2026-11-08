@@ -280,7 +280,9 @@ export const Bridge = {
   /** Puts the island back at the top centre of its display. */
   islandRecenter: () => call<void>("island_recenter"),
   /** Drag on a grip of the island (see layout.gripFactors); Rust follows the mouse until it is let go. */
-  islandResize: (fx: number, fy: number, height: number) => call<void>("island_resize", { fx, fy, height }),
+  /** `minWidth`: a view that goes narrower than the others (the new look's home), else none. */
+  islandResize: (fx: number, fy: number, height: number, minWidth: number | null = null) =>
+    call<void>("island_resize", { fx, fy, height, minWidth }),
   /** Double click on a grip: the usual width, height, or both. */
   islandResetSize: (width: boolean, height: boolean) => call<void>("island_reset_size", { width, height }),
   /** Reopens a chat from the history, and the Claude Code session that answered it. */

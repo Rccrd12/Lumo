@@ -76,6 +76,8 @@ import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
+import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
+import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
   Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
@@ -85,7 +87,7 @@ import {
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, type ChatMessage } from "../core/state";
+import { State, planAskInChat, type ChatMessage } from "../core/state";
 import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
@@ -103,7 +105,7 @@ import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } 
 import { COMPUTER_TEXT } from "../core/computer";
 import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
-import { N_, t, tl } from "../i18n/i18n";
+import { N_, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
@@ -112,6 +114,9 @@ import { buildListeningPanel, listeningButtonTitle } from "./listening";
 import { blocksOf, draftIn, draftKey, draftOf, isWorkshopChat, latestDraft, stripDraft, type ToolDraft, type ToolInfo } from "../core/tools";
 import { CONTEXT_STRINGS } from "../core/context-usage";
 import { FORGE_STRINGS, buildForgePanel, draftChip, linkSaved, savedLink } from "./forge";
+import { buildPlanStrip } from "./plan-strip";
+import { planAskSteps } from "./plan-ask";
+import { planKey } from "../core/agent-plan";
 import {
   SLASH_STRINGS, lumoCommand, slashCommands, slashMatches, slashQuery, toolAsk, toolCommand, type SlashAction, type SlashCommand,
 } from "../core/slash";
@@ -119,6 +124,9 @@ import {
 const STRINGS = {
   placeholderFirst: N_("Ask me anything…"),
   placeholderNext: N_("Continue…"),
+  planKeep: N_("Keep planning"),
+  planApprove: N_("Approve the plan"),
+  planChange: N_("Or write what to change…"),
   send: N_("Send"),
   toEnd: N_("Go to the bottom"),
   switchModel: N_("Switch provider or model"),
@@ -235,6 +243,9 @@ let nextId = 1;
 
 /** The folder open in File Explorer is asked again at most this often while the field takes focus. */
 const PEEK_EVERY_MS = 1500;
+
+/** How long a plan that just came up over the field ignores clicks (as the permission card). */
+const PLAN_ASK_GUARD_MS = 600;
 /**
  * The screen menu waits at most this long for the browsers' tabs (read from
  * their windows on Windows); a slow browser adds its entry when it answers.
@@ -1376,6 +1387,7 @@ export function buildPrompt(
   showPlan: () => void = () => {},
   chatDeleted: (chatId: string) => void = () => {},
   openTools: () => void = () => {},
+  decide: (d: "allow" | "deny", requestId: string) => void = () => {},
 ): ViewHost {
   // Copies no past chat names any more (deleted before Lumo released them,
   // or gone past the history's end) leave the inbox once a day old.
@@ -1501,10 +1513,56 @@ export function buildPrompt(
     onclick: () => showPlan(),
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
+  // The new look's plan: a chip beside the model in place of the icon, its
+  // steps rising over the chat from this row (plan-strip.ts). Hidden in the usual look.
+  const planStrip = buildPlanStrip(() => showPlan());
+  // The new look's plan asking to start, from this chat (concept C1): its steps
+  // over the field, Approve and Keep planning; what is typed in the field
+  // instead says what to change (the plan is declined, the text goes next).
+  const planAskTitle = h("span", { class: "plan-ask-title" });
+  const planAskWho = h("span", { class: "plan-ask-who" });
+  const planAskList = h("div", { class: "plan-ask-list" });
+  let planAskFor: string | null = null;
+  let planAskAt = 0;
+  const planDecide = (d: "allow" | "deny") => () => {
+    // A click meant for something else, as the card came up, answers nothing.
+    if (planAskFor == null || performance.now() - planAskAt < PLAN_ASK_GUARD_MS) return;
+    decide(d, planAskFor);
+  };
+  const planAsk = h("div", { class: "plan-ask" },
+    h("div", { class: "plan-ask-head" }, planAskTitle, planAskWho),
+    planAskList,
+    h("div", { class: "plan-ask-actions" },
+      h("button", { class: "plan-ask-btn keep", type: "button", onclick: planDecide("deny") }, h("span", { text: tl(STRINGS.planKeep) })),
+      h("button", { class: "plan-ask-btn approve", type: "button", onclick: planDecide("allow") }, h("span", { text: tl(STRINGS.planApprove) }))));
+  planAsk.hidden = true;
+  /** The plan this chat asks to start, if one is waiting for an answer. */
+  const planAsking = () => {
+    const req = State.pendingApproval;
+    return State.chatSlot !== "forge" && planAskInChat(req, State.settings.islandNewLook === true) ? req : null;
+  };
+  function drawPlanAsk() {
+    const req = planAsking();
+    planStrip.ask(req?.plan ?? null);
+    const id = req?.requestId ?? null;
+    if (id === planAskFor) return;
+    planAskFor = id;
+    planAskAt = performance.now();
+    planAsk.hidden = !req;
+    clear(planAskList);
+    if (req?.plan) {
+      planAskTitle.textContent = tn("{agent} has a plan · {count} step", "{agent} has a plan · {count} steps", req.plan.length,
+        { agent: t(providerDef(State.settings.chatProvider).name) });
+      planAskWho.textContent = activeModel(State.settings) || "";
+      planAskList.append(planAskSteps(req.plan));
+    }
+    onHeightChange();
+  }
   // The ring sits right before the model it measures.
   const modelRow = h("div", { class: "model-row" },
+    planStrip.el,
     h("div", { class: "chat-tools" }, newBtn, historyBtn, filesBtn, listenBtn),
-    h("div", { class: "model-side" }, planBtn, usageEl, modelBtn));
+    h("div", { class: "model-side" }, planBtn, planStrip.chip, usageEl, modelBtn));
 
   const body = h("div", { class: "chat-body" });
   const picker = buildPicker(() => {
@@ -1526,9 +1584,13 @@ export function buildPrompt(
   function panelChanged() {
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
-    if (open === State.chatPanelOpen && hearing === State.listeningOpen) return;
+    // The new look's usage menu holds the context and the limits: as much room as Listening.
+    const tall = State.settings.islandNewLook === true && ((body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
+      || body.classList.contains("screening"));
+    if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
+    State.chatPanelTall = tall;
     onHeightChange();
   }
   const historyList = h("div", { class: "picker-list" });
@@ -1594,7 +1656,7 @@ export function buildPrompt(
     },
     back: () => openTools(),
   });
-  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, modelRow, bar, toEnd);
+  body.append(forge.head, chipRow, log, picker.el, historyEl, filesEl, listening.el, screenEl, permEl, usagePanel, slashEl, queueEl, planAsk, modelRow, bar, toEnd);
 
   // A picture in a preview, clicked: it fills the whole open island, with
   // Lumo out of its way, until a click or Esc (views/picture.ts, island.ts).
@@ -1709,11 +1771,32 @@ export function buildPrompt(
     usageTitle.textContent = line && local ? line.title : line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
-    if (line.rows.length === 0) {
+    // The new look: the context as one split bar, then the limits as bars (views/usage-panel.ts).
+    const newLook = State.settings.islandNewLook === true;
+    usagePanel.classList.toggle("usage-new", newLook);
+    if (newLook) {
+      usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
+      const report = lastContextReport(State.chatHistory);
+      // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
+      const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
+      // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
+      const agy = State.settings.chatProvider === "antigravity-cli";
+      const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
+      const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
+      drawNewUsage(usageList, {
+        line, local, report, fill,
+        askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
+          closeUsage();
+          void submit("/context");
+        } : null,
+      });
+      // Taller while it holds the context (the menu may be open as /context lands).
+      if (body.classList.contains("metering")) panelChanged();
+    } else if (line.rows.length === 0) {
       usageList.append(h("div", { class: "picker-status", text: line.text }));
       return;
     }
-    for (const [i, row] of line.rows.entries()) {
+    if (!newLook) for (const [i, row] of line.rows.entries()) {
       const fill = h("i", { class: "usage-fill" });
       fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
       fill.style.background = row.pct == null ? "" : planColor(row.pct);
@@ -1772,6 +1855,8 @@ export function buildPrompt(
     if (!u || typeof u.provider !== "string") return;
     seenUsage.set(u.provider, { ...u, at: Date.now() });
     if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
+    // The usage menu open on this chat shows how full it now is.
+    if (body.classList.contains("metering")) drawUsageMenu();
     State.notify();
   }
 
@@ -2342,6 +2427,24 @@ export function buildPrompt(
     const tabList = await Promise.race([tabs, late]);
     window.clearTimeout(timer);
     if (ticket !== screenTicket) return;
+    // The new look: pills and tiles (views/share-panel.ts), with the windows listed too.
+    if (State.settings.islandNewLook === true) {
+      let windows: OpenWindow[] = [];
+      try {
+        windows = (await Bridge.screenWindows()) ?? [];
+      } catch {
+        // The Windows pill then says none is open.
+      }
+      if (ticket !== screenTicket) return;
+      drawShareTiles(displays, explorer, tabList ?? [], windows, problem);
+      // Drawn without the tabs: they join once they come, if the menu is still there.
+      if (tabList === null) {
+        void tabs.then((list) => {
+          if (ticket === screenTicket && list.length > 0) drawShareTiles(displays, explorer, list, windows, problem);
+        });
+      }
+      return;
+    }
     drawScreenEntries(displays, explorer, tabList ?? [], problem);
     // Drawn without them: they join the menu once they come, if it is still there.
     if (tabList === null) {
@@ -2379,6 +2482,29 @@ export function buildPrompt(
     if (problem) screenStatus(problem);
     else if (displays.length > 0 && !images) screenStatus(noImagesReason(providerDef(State.settings.chatProvider)));
     screenStatus(t(SCREEN_STRINGS.nothingYet));
+  }
+
+  /** The kind of things the new look's Share menu shows: the last one picked. */
+  let shareKind: ShareKindId = "windows";
+
+  function drawShareTiles(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], windows: OpenWindow[], problem: string) {
+    const images = seesImages(providerDef(State.settings.chatProvider));
+    const fromPicks = (picks: PickEntry[], go: (pick: PickEntry) => void): ShareItem[] =>
+      picks.map((pick) => ({ key: String(pick.id), label: pick.label, detail: pick.detail, title: [pick.title || pick.label, pick.detail].filter(Boolean).join("\n"), all: pick.id == null, go: () => go(pick) }));
+    const screens: ShareItem[] = displays.map((d) => ({
+      key: `d${d.index}`, label: screenLabel(d.index), detail: `${d.width} × ${d.height}`, title: `${screenLabel(d.index)} · ${d.width} × ${d.height}`, disabled: !images,
+      go: () => void pickEntry({ kind: "display", index: d.index, width: d.width, height: d.height }),
+    }));
+    if (displays.length > 1) screens.unshift({ key: "all", label: t(SCREEN_STRINGS.allScreens), title: t(SCREEN_STRINGS.allScreens), all: true, disabled: !images, go: () => void pickEntry({ kind: "all" }) });
+    const folders = explorer.problem ? [] : explorer.folders;
+    const kinds: ShareKind[] = [
+      { id: "windows", count: windows.length, items: fromPicks(windowPicks(windows), (pick) => void shareWindows(pick, windows)), empty: t(SCREEN_STRINGS.noWindows) },
+      ...(displays.length ? [{ id: "screens" as const, count: displays.length, items: screens }] : []),
+      ...(tabList.length ? [{ id: "tabs" as const, count: tabList.length, items: fromPicks(tabPicks(tabList), (pick) => void shareTabs(pick)) }] : []),
+      ...(folders.length ? [{ id: "folders" as const, count: folders.length, items: fromPicks(folderPicks(folders), (pick) => void shareFolders(typeof pick.id === "string" ? [pick.id] : [])) }] : []),
+    ];
+    const notes = problem ? [problem] : displays.length > 0 && !images ? [noImagesReason(providerDef(State.settings.chatProvider))] : [];
+    drawShareGrid(screenList, kinds, shareKind, (id) => { shareKind = id; }, notes, t(SCREEN_STRINGS.nothingYet));
   }
 
   /** The second list: "All …", then each window or tab, under a way back. */
@@ -3267,6 +3393,10 @@ export function buildPrompt(
       runLumo(own);
       return;
     }
+    // A plan asking to start (concept C1): what is typed says what to change.
+    // The plan is declined, so Claude keeps planning, and the text goes next.
+    const asking = typed ? planAsking() : null;
+    if (asking) decide("deny", asking.requestId);
     // The chat on screen is being answered: the next question waits above the
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
@@ -3859,13 +3989,30 @@ export function buildPrompt(
       }
       micBtn.hidden = workshop;
       takeShare();
-      if (State.planIcon && planBtn.style.display === "none") {
+      // The new look: only this chat's own plan, as a chip while it is open,
+      // as the icon once put away; another chat's or a terminal's plan is not
+      // this chat's (they show on the home).
+      const newLook = State.settings.islandNewLook === true;
+      const ownPlan = newLook && !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
+      drawPlanAsk();
+      planStrip.sync(State.planOpen ? ownPlan : null);
+      const planIconShown = (newLook ? ownPlan != null : State.planIcon) && planStrip.chip.hidden;
+      // The home asked for a chat (its plan's row): that one comes on screen.
+      if (State.chatToOpen != null) {
+        const id = State.chatToOpen;
+        State.chatToOpen = null;
+        if (id !== State.chatId) {
+          const saved = loadChats().find((c) => c.id === id);
+          if (saved) queueMicrotask(() => openChat(saved));
+        }
+      }
+      if (planIconShown && planBtn.style.display === "none") {
         // It just landed: a little pop.
         planBtn.classList.remove("pop");
         void planBtn.offsetWidth;
         planBtn.classList.add("pop");
       }
-      planBtn.style.display = State.planIcon ? "" : "none";
+      planBtn.style.display = planIconShown ? "" : "none";
       planBtn.classList.toggle("open", State.planOpen);
       // Another chat came on screen (here, or a new chat from the menu or a
       // shortcut): the log is drawn again, with its answer if one is coming.
@@ -4038,6 +4185,7 @@ export function buildPrompt(
 
       input.placeholder = workshop
         ? t(FORGE_STRINGS.placeholder)
+        : planAsking() ? t(STRINGS.planChange)
         : t(State.chatHistory.length === 0 ? STRINGS.placeholderFirst : STRINGS.placeholderNext);
     },
     focus() {

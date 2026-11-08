@@ -234,6 +234,16 @@ pub struct Settings {
     /// When Lumo opens, ask GitHub once whether a newer Windows release is out
     /// (updater.rs) and say so on the island. Settings → Updates turns it off.
     pub update_check_on_open: bool,
+    /// The new look (src/look-new.css): Lumo in the open island's top bar, his
+    /// light along its edge. On by default since 0.18.0, a file from before
+    /// included; Settings → Island → Previous look turns it off.
+    pub island_new_look: bool,
+    /// The new look's light along the island's edge, picked in the wardrobe:
+    /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
+    pub island_edge_light: String,
+    /// The new look's home shows the live activities as tiles; its "⋯" menu
+    /// puts them away. Apart from the usual look's panel (`activities_folded`).
+    pub home_activities: bool,
 }
 
 /// A little bigger than their design size, since a PC's screen sits further away.
@@ -332,6 +342,9 @@ impl Default for Settings {
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
+            island_new_look: true,
+            island_edge_light: "full".into(),
+            home_activities: true,
         }
     }
 }
@@ -664,7 +677,10 @@ mod tests {
   "computerAim": false,
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
-  "updateCheckOnOpen": false
+  "updateCheckOnOpen": false,
+  "islandNewLook": true,
+  "islandEdgeLight": "soft",
+  "homeActivities": false
 }"##;
 
     fn custom() -> Value {
@@ -842,6 +858,28 @@ mod tests {
         assert!(parse(&custom_with("updateCheckOnOpen", None)).unwrap().update_check_on_open);
         assert!(!parse(CUSTOM.as_bytes()).unwrap().update_check_on_open);
         assert!(Settings::default().update_check_on_open);
+    }
+
+    #[test]
+    fn the_new_look_is_on_until_the_previous_one_is_picked() {
+        assert!(parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
+        assert!(Settings::default().island_new_look);
+        assert!(parse(CUSTOM.as_bytes()).unwrap().island_new_look);
+        assert!(!parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap().island_new_look);
+    }
+
+    #[test]
+    fn the_edge_light_is_full_until_one_is_picked() {
+        assert_eq!(parse(&custom_with("islandEdgeLight", None)).unwrap().island_edge_light, "full");
+        assert_eq!(Settings::default().island_edge_light, "full");
+        assert_eq!(parse(CUSTOM.as_bytes()).unwrap().island_edge_light, "soft");
+    }
+
+    #[test]
+    fn the_home_shows_the_live_activities_until_they_are_put_away() {
+        assert!(parse(&custom_with("homeActivities", None)).unwrap().home_activities);
+        assert!(Settings::default().home_activities);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().home_activities);
     }
 
     #[test]
@@ -1124,6 +1162,9 @@ mod tests {
                 "pillColors",
                 "language",
                 "updateCheckOnOpen",
+                "islandNewLook",
+                "islandEdgeLight",
+                "homeActivities",
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);

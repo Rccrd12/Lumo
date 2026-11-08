@@ -22,10 +22,15 @@ import { clear, dot, h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { language, t, tl } from "../i18n/i18n";
 
+/** Where the pills are: the overview; in the new look the home too, beside the services (views/home.ts). */
+function pillView(): boolean {
+  return State.view === "overview" || (State.settings.islandNewLook === true && State.view === "home");
+}
+
 /** The Claude pill is in the header: overview, turned on, relay in. */
 export function claudePillVisible(): boolean {
   const s = State.settings;
-  return State.view === "overview" && s.showPlanInNotch && s.planRelayInstalled;
+  return pillView() && s.showPlanInNotch && s.planRelayInstalled;
 }
 
 /** Codex or agy has its pill: turned on, or the agent was added and the pill not turned off. */
@@ -35,12 +40,12 @@ export function agentPlanWanted(kind: "codex" | "antigravity"): boolean {
 
 /** The Codex pill is in the header: overview, wanted (nothing to install). */
 export function codexPillVisible(): boolean {
-  return State.view === "overview" && agentPlanWanted("codex");
+  return pillView() && agentPlanWanted("codex");
 }
 
 /** The Antigravity CLI pill is in the header: overview, wanted (nothing to install). */
 export function antigravityPillVisible(): boolean {
-  return State.view === "overview" && agentPlanWanted("antigravity");
+  return pillView() && agentPlanWanted("antigravity");
 }
 
 /** Whether `kind`'s pill is in the header. */
@@ -287,6 +292,24 @@ export function buildPlanPill(kind: PlanKind): PlanPill {
       label.textContent = pillLabel(PILL_NAME[kind], usageOf(kind));
     },
   };
+}
+
+/** The pills shown now, Claude first (the new look's home lists them). */
+export function visiblePlanKinds(): PlanKind[] {
+  return (["claude", "codex", "antigravity"] as const).filter((kind) => planPillVisible(kind));
+}
+
+/** What the new look's home writes for `kind`: its name, how much is used, the colour of that. */
+export function planPillParts(kind: PlanKind): { name: string; value: string; color: string } {
+  const pct = dominantPct(usageOf(kind), Date.now());
+  return { name: PILL_NAME[kind], value: pct == null ? PLAN_TEXT.none : `${Math.round(pct)}%`, color: colorOf(kind) };
+}
+
+/** Opens `kind`'s card, as a click on its pill does (the island then shows the overview). */
+export function openPlanCard(kind: PlanKind): void {
+  State.planDetail = kind;
+  State.showingPlanDetail = true;
+  refreshPlanUsage(kind);
 }
 
 // ── Card ──────────────────────────────────────────────────────────────────────

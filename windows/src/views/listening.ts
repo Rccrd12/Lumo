@@ -671,6 +671,40 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     return open ? h("div", { class: "listen-row-wrap open" }, el, rowActions(w)) : el;
   }
 
+  /**
+   * The new look's card (concepts/redesign, Listening B): the source's tile,
+   * what it listens to, what happens then and how it stands. A click opens it
+   * across the row, as the usual row with its buttons.
+   */
+  function watchCard(w: ListenWatch): HTMLElement {
+    if (openRow === w.id) return h("div", { class: "listen-card-open" }, watchRow(w));
+    const every = w.mode === "every";
+    const status = w.paused
+      ? t(LISTENING_STRINGS.paused)
+      : every && (w.fired ?? 0) > 0 ? t(LISTENING_STRINGS.fired, { count: w.fired ?? 0 }) : listenedFor(w.startedAt);
+    const label = watchLabel(w);
+    const event = untilText(w);
+    const then = w.task || t(LISTENING_STRINGS.onlyTell);
+    const el = h("div", { class: `listen-card${w.paused ? " paused" : ""}`, title: `${label} · ${event}\n${then}` },
+      h("span", { class: "listen-card-top" }, tile(w), every ? pill(t(LISTENING_STRINGS.every), "every") : null),
+      h("span", { class: "listen-card-name", text: label }),
+      h("span", { class: "listen-card-line", text: event }),
+      h("span", { class: "listen-card-line dim", text: `${then} · ${status}` }));
+    onPress(el, () => {
+      openRow = w.id;
+      draw();
+    });
+    return el;
+  }
+
+  /** The last card: "+ Listen for something", the sources' menu. */
+  function addCard(): HTMLElement {
+    const el = h("div", { class: "listen-card add" },
+      svg(ICONS.plus, 12), h("span", { text: t(LISTENING_STRINGS.add) }));
+    onPress(el, () => showCatalog());
+    return el;
+  }
+
   function pastRow(p: ListenPast): HTMLElement {
     const w = p.watch;
     const el = row(w, "past", p.summary, p.summary, thenAndChat(w.task, w.chatId),
@@ -691,8 +725,11 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     const adding = view !== "list";
     pauseAllBtn.hidden = tab !== "active" || adding || watches.length === 0;
     clearBtn.hidden = tab !== "history" || past.length === 0;
-    addBtn.hidden = tab !== "active" || adding;
-    foot.hidden = adding || (tab === "history" && past.length === 0);
+    // The new look shows what listens as cards, the last one adding another.
+    const cards = State.settings.islandNewLook === true;
+    activeList.classList.toggle("listen-cards", cards);
+    addBtn.hidden = tab !== "active" || adding || cards;
+    foot.hidden = adding || (tab === "history" && past.length === 0) || (cards && tab === "active" && watches.length === 0);
     form.hidden = view !== "form";
     catalog.hidden = view !== "catalog";
     activeList.hidden = tab !== "active" || adding;
@@ -701,8 +738,14 @@ export function buildListeningPanel(opts: { goToChat: (chatId: string) => void; 
     if (tab === "active" && !adding) {
       clear(activeList);
       if (openRow != null && !watches.some((w) => w.id === openRow)) openRow = null;
-      for (const w of watches) activeList.append(watchRow(w));
-      if (watches.length === 0) activeList.append(empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint)));
+      if (cards) {
+        for (const w of watches) activeList.append(watchCard(w));
+        if (watches.length === 0) activeList.append(h("div", { class: "listen-cards-empty" }, empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint))));
+        activeList.append(addCard());
+      } else {
+        for (const w of watches) activeList.append(watchRow(w));
+        if (watches.length === 0) activeList.append(empty(t(LISTENING_STRINGS.emptyTitle), t(LISTENING_STRINGS.emptyHint)));
+      }
     }
     if (tab === "history") {
       clear(historyList);

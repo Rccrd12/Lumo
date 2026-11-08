@@ -1002,3 +1002,150 @@ html[dir="rtl"] :is(.diff, .path, .keycap, input[type="password"], input[type="t
   font-variant-numeric: tabular-nums;
   color: var(--dim);
 }
+
+/* ── Inside the island, in the new look (off with Settings → Island → Previous look) ──────
+   main.ts applyLook puts html.look-new on this page while the island wears
+   it: the list a little wider, so the search field is whole, and the
+   sections as the island's own blocks, without a frame. */
+
+html.look-new body.embedded #settings-root {
+  grid-template-columns: 212px minmax(0, 1fr);
+}
+
+html.look-new body.embedded .sidebar {
+  padding-left: 14px;
+}
+
+html.look-new body.embedded .settings-search {
+  background: #111214;
+  border-color: transparent;
+  padding: 7px 10px;
+}
+
+html.look-new body.embedded section {
+  background: #111214;
+  border-color: transparent;
+}
+
+html.look-new body.embedded .nav-item.on,
+html.look-new body.embedded .nav-item.on:hover:not(:disabled) {
+  background: #1a1b1f;
+}
+
+@media (max-width: 560px) {
+  html.look-new body.embedded #settings-root {
+    grid-template-columns: 168px minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 400px) {
+  html.look-new body.embedded #settings-root {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+/* ── Sections on top (concepts/redesign, Settings A) ───────────────────────
+   No column on the left: the search and the sections as pills at the top,
+   staying there while the page scrolls under them, and the settings below
+   at the whole width. Only inside the island, in the new look. */
+
+html.look-new body.embedded #settings-root,
+html.look-new body.embedded.searching #settings-root {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+html.look-new body.embedded .sidebar {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  height: auto;
+  overflow: visible;
+  padding: 2px 16px 10px;
+  gap: 8px;
+  border-inline-end: 0;
+  background: #000;
+  box-shadow: 0 6px 10px -6px rgba(0, 0, 0, 0.9);
+}
+
+html.look-new body.embedded .sidebar h1 {
+  display: none;
+}
+
+html.look-new body.embedded .settings-search {
+  height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+}
+
+html.look-new body.embedded .nav {
+  flex-direction: row;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+html.look-new body.embedded .nav-item {
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: #17181b;
+  color: var(--dim);
+  font-size: 11.5px;
+  white-space: nowrap;
+}
+
+html.look-new body.embedded .nav-item:hover:not(:disabled) {
+  background: #1f2024;
+  color: var(--ink);
+}
+
+html.look-new body.embedded .nav-item.on,
+html.look-new body.embedded .nav-item.on:hover:not(:disabled) {
+  background: #26272c;
+  color: var(--ink);
+}
+
+html.look-new body.embedded .page {
+  max-width: none;
+  padding-top: 4px;
+}
+
+html.look-new body.embedded .search-none {
+  padding-top: 4px;
+}
+
+/* The page's scrollbar, in the new look inside the island: a thin rounded
+   bar with no track and no arrows, clear of the island's edge, that lights up
+   a little under the mouse. */
+html.look-new body.embedded::-webkit-scrollbar,
+html.look-new:has(body.embedded)::-webkit-scrollbar {
+  width: 12px;
+  background: transparent;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-track,
+html.look-new:has(body.embedded)::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-thumb,
+html.look-new:has(body.embedded)::-webkit-scrollbar-thumb {
+  border: 4px solid transparent;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.14) padding-box;
+  min-height: 40px;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-thumb:hover,
+html.look-new:has(body.embedded)::-webkit-scrollbar-thumb:hover {
+  background: rgba(255, 255, 255, 0.28) padding-box;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-button,
+html.look-new:has(body.embedded)::-webkit-scrollbar-button {
+  display: none;
+  height: 0;
+}
+
+html.look-new body.embedded::-webkit-scrollbar-corner,
+html.look-new:has(body.embedded)::-webkit-scrollbar-corner {
+  background: transparent;
+}

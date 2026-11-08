@@ -330,6 +330,13 @@ export class BotEngine {
   }
 
   /** Drawn as a round look (looks.ts) rather than the firefly. */
+  /**
+   * The new look (off with Settings → Island → Previous look) in the open island's top bar:
+   * no body, hands, outfit, badge or particles — the island is his body and
+   * its edge his light — only his eyes, lit, in the state's colour.
+   */
+  eyesOnly = false;
+
   get round(): boolean {
     return !this.isMini && this.look !== "lucciola";
   }
@@ -519,6 +526,8 @@ export class BotEngine {
   }
 
   animateMorph(target: number, durationMs?: number) {
+    // The new look's two eyes never turn into the box (the drop flies the file up to them).
+    if (this.eyesOnly) target = 0;
     const dur = durationMs ?? (target > 0.5 ? 550 : 650);
     this.anim("morph", [[target, dur, Ease.inOut]]);
   }
@@ -818,6 +827,11 @@ export class BotEngine {
    * `w`×`h` CSS pixels (the caller has already applied the DPR transform).
    */
   draw(x: CanvasRenderingContext2D, W: number, H: number) {
+    // The new look's notch: whatever his look, only Filo's lit eyes.
+    if (this.eyesOnly) {
+      this.drawRound(x, W, H, "filo");
+      return;
+    }
     if (this.round) {
       this.drawRound(x, W, H, this.look as RoundLook);
       return;
@@ -1221,7 +1235,8 @@ export class BotEngine {
       x.translate(-cx, -cy);
     }
 
-    this.drawHandsBehind(x, R, R, R, cx, cy, this.glow);
+    const bare = this.eyesOnly;
+    if (!bare) this.drawHandsBehind(x, R, R, R, cx, cy, this.glow);
 
     x.save();
     x.translate(cx, cy);
@@ -1246,15 +1261,17 @@ export class BotEngine {
     const lx = Math.max(-1.2, Math.min(1.2, this.yaw / 0.62));
     const ly = Math.max(-1.2, Math.min(1.2, -this.pitch / 0.5));
 
-    const dressed = this.outfit !== "none";
+    const dressed = !bare && this.outfit !== "none";
     const head = dressed ? roundHead(look, R, this.yaw, this.pitch, this.physDx, this.physDy, { lx, ly, es: this.es }) : null;
     const outfitState = { presence: this.outfitPresence, morph: this.morph };
     if (head) drawOutfitBehind(x, this.outfit, head, outfitState);
 
-    drawLookBehind(x, look, P);
     const body = this.roundBodyPath(look, R);
-    drawLookBody(x, look, P, body);
-    drawLookBlush(x, look, P, body, this.blush * (1 - this.morph));
+    if (!bare) {
+      drawLookBehind(x, look, P);
+      drawLookBody(x, look, P, body);
+      drawLookBlush(x, look, P, body, this.blush * (1 - this.morph));
+    }
     drawLookEyes(x, look, P, {
       shape: this.eyeShape(), lx, ly, open: this.open, es: this.es,
       roll: this.rigidRoll ? 0 : this.roll, morph: this.morph,
@@ -1266,6 +1283,7 @@ export class BotEngine {
     x.restore();
     x.restore();
 
+    if (bare) return;
     if (this.badge && this.badgeS > 0.01 && this.morph < 0.25) {
       this.drawBadge(x, this.badge, R, cx, cy);
     }

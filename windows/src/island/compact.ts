@@ -187,7 +187,7 @@ export class CompactStrip {
     this.el.classList.add("measure");
     const natural = this.el.scrollWidth;
     this.el.classList.remove("measure");
-    return { w: Math.round(Math.min(most.w, natural + 2 * SIDE_ROOM + 4)), h: most.h };
+    return { w: Math.round(Math.min(most.w, natural + 2 * SIDE_ROOM + 4 + newLookEyesRoom())), h: most.h };
   }
 
   /** The simple request on show, if any. */
@@ -530,6 +530,16 @@ function itemKey(item: CompactItem, now: number): string {
 
 /** Lumo's room on each side of what the closed island says (#compact left and right). */
 const SIDE_ROOM = 36;
+/**
+ * The new look, on the top or bottom edge: a little more room after Lumo's
+ * eyes, as much as between them and the island's end (look-new.css #compact).
+ */
+const NEW_LOOK_EYES_ROOM = 5;
+
+function newLookEyesRoom(): number {
+  const dock = State.settings.islandDock;
+  return State.settings.islandNewLook === true && dock !== "left" && dock !== "right" ? NEW_LOOK_EYES_ROOM : 0;
+}
 
 /** Sizes within a pixel are the same: a timer's digits do not resize the island. */
 function sameSize(a: { w: number; h: number } | null, b: { w: number; h: number } | null): boolean {

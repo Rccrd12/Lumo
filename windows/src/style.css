@@ -7714,3 +7714,13 @@ html[data-dir="rtl"] .ctx-more.open .ctx-toggle svg {
     transform: translateY(4px);
   }
 }
+
+/* The line under a tool's name holds only its description in this look
+   (look-new.css writes what the tool uses after it). */
+.tool-sub {
+  display: contents;
+}
+
+.tool-needs-text {
+  display: none;
+}

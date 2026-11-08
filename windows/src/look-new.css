@@ -1,0 +1,1980 @@
+/* The new look, on by default (Settings → Island → Previous look turns it
+   off). Everything here hangs on the
+   `look-new` class island.ts puts on <html> while it is on, so turning it off
+   is the usual look again, as it ships: this file changes nothing else.
+
+   The idea (concepts/redesign): Lumo leaves the left column for the middle of
+   the top bar (layout.ts newLookBot), the views take the whole width on one
+   black surface, the colour is Lumo's own — a thin light along the island's
+   free edge — and the top bar's right end folds into a "⋯" menu. */
+
+/* ── Lumo's light along the island's edge (--lumo-light, island.ts) ──────────
+   Four ways to draw it, picked in the wardrobe (html[data-edge], island.ts):
+   a line and its glow as it was ("full"), both softer ("soft"), the line
+   alone ("line"), the glow alone ("glow"). The wardrobe's swatches take the
+   same values from their own class. */
+
+html.look-new #island,
+html.look-new .edge-swatch.full {
+  --edge-w: 1.5px;
+  --edge-line: var(--lumo-light, transparent);
+  --edge-y: 8px;
+  --edge-blur: 24px;
+  --edge-spread: -8px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 60%, transparent);
+}
+
+html.look-new[data-edge="soft"] #island,
+html.look-new .edge-swatch.soft {
+  --edge-w: 1px;
+  --edge-line: color-mix(in srgb, var(--lumo-light, transparent) 75%, transparent);
+  --edge-y: 6px;
+  --edge-blur: 18px;
+  --edge-spread: -8px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 32%, transparent);
+}
+
+html.look-new[data-edge="line"] #island,
+html.look-new .edge-swatch.line {
+  --edge-w: 1px;
+  --edge-line: color-mix(in srgb, var(--lumo-light, transparent) 55%, transparent);
+  --edge-y: 0px;
+  --edge-blur: 0px;
+  --edge-spread: 0px;
+  --edge-glow: transparent;
+}
+
+html.look-new[data-edge="glow"] #island,
+html.look-new .edge-swatch.glow {
+  --edge-w: 0px;
+  --edge-line: transparent;
+  --edge-y: 10px;
+  --edge-blur: 28px;
+  --edge-spread: -12px;
+  --edge-glow: color-mix(in srgb, var(--lumo-light, transparent) 38%, transparent);
+}
+
+html.look-new #island {
+  transition: box-shadow 0.4s ease-out;
+}
+
+html.look-new .dock-top #island,
+html.look-new .edge-swatch {
+  box-shadow: 0 var(--edge-w) 0 0 var(--edge-line),
+    0 var(--edge-y) var(--edge-blur) var(--edge-spread) var(--edge-glow);
+}
+
+html.look-new .dock-bottom #island {
+  box-shadow: 0 calc(-1 * var(--edge-w)) 0 0 var(--edge-line),
+    0 calc(-1 * var(--edge-y)) var(--edge-blur) var(--edge-spread) var(--edge-glow);
+}
+
+html.look-new .dock-left #island {
+  box-shadow: var(--edge-w) 0 0 0 var(--edge-line),
+    var(--edge-y) 0 var(--edge-blur) var(--edge-spread) var(--edge-glow);
+}
+
+html.look-new .dock-right #island {
+  box-shadow: calc(-1 * var(--edge-w)) 0 0 0 var(--edge-line),
+    calc(-1 * var(--edge-y)) 0 var(--edge-blur) var(--edge-spread) var(--edge-glow);
+}
+
+/* ── The opening (greeting.ts lightGreetFrame): the island is the light ──────
+   A spark, then a line, then the black body unrolling under it: --greet (1…0)
+   is how much of the island is still light. */
+
+html.look-new #island.greet-light {
+  transition: none;
+}
+
+html.look-new #island.greet-light::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  /* The light rides on the edge as the body unrolls above it. */
+  height: min(100%, 10px);
+  border-radius: inherit;
+  background: color-mix(in srgb, var(--lumo-light, #ffd68c) 70%, #fff);
+  box-shadow: 0 0 14px 3px var(--lumo-light, #ffd68c);
+  opacity: var(--greet, 0);
+  pointer-events: none;
+}
+
+/* ── Top bar: tabs, Lumo in the middle, "⋯" ────────────────────────────────── */
+
+.more-btn {
+  display: none !important;
+}
+
+html.look-new .more-btn {
+  display: grid !important;
+}
+
+html.look-new .header-actions > button:not(.more-btn) {
+  display: none;
+}
+
+html.look-new .tab.on {
+  background: #1a1b1f;
+}
+
+/* ── One surface: the cards lose their fill, edge and coloured wash ────────── */
+
+html.look-new .card {
+  background: transparent;
+  border-color: transparent;
+  border-radius: 14px;
+}
+
+html.look-new .card.wash::after {
+  display: none;
+}
+
+/* ── The room Lumo's column took goes back to the views ────────────────────── */
+
+html.look-new .who,
+html.look-new .plan-head {
+  padding-left: 16px;
+}
+
+html.look-new .ticker {
+  margin-left: 16px;
+}
+
+html.look-new .steps-card,
+html.look-new .diff-card,
+html.look-new .int-card,
+html.look-new .int-card.tool-card,
+html.look-new .plan-rows,
+html.look-new .plan-foot,
+html.look-new .recap-stack,
+html.look-new .recap-share,
+html.look-new .wardrobe-stack {
+  padding-left: 16px;
+}
+
+html.look-new .stack {
+  padding-left: 16px !important;
+}
+
+html.look-new .chat-body,
+html.look-new .tools-body {
+  padding-left: 16px;
+}
+
+html.look-new .slash-menu {
+  left: 16px;
+}
+
+/* The tool workshop's guide: no room left for Lumo, he is in the top bar. */
+html.look-new .chat-card.forge.guiding .forge-guide {
+  left: 10px;
+}
+
+/* ── Home: one list instead of the tabs (views/home.ts) ──────────────────────
+   Wide rather than tall: what waits for you and the sessions on the left,
+   the live activities as tiles and the other pills on the right, the field
+   to the chat under both. The overview is now a session's own card. */
+
+.back-btn,
+.ask-field,
+.home {
+  display: none !important;
+}
+
+html.look-new .tabs > .tab:not(.back-btn) {
+  display: none;
+}
+
+html.look-new .tabs > .back-btn.away {
+  display: grid !important;
+}
+
+html.look-new .home {
+  display: flex !important;
+  flex-direction: column;
+  gap: 12px;
+  padding: 2px 6px 2px;
+}
+
+html.look-new .home-cols {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  gap: 14px;
+}
+
+html.look-new .home-left {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+html.look-new .home-right {
+  flex: 0 0 340px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+html.look-new .home-right[hidden],
+html.look-new .home-tiles[hidden],
+html.look-new .home-chips[hidden] {
+  display: none;
+}
+
+html.look-new .home-label {
+  height: 24px;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 4px;
+  font: 700 10.5px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--dim-4);
+}
+
+html.look-new .home-label .c {
+  color: var(--dim-2);
+  letter-spacing: 0;
+}
+
+html.look-new .home-rows {
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  overflow-y: auto;
+}
+
+html.look-new .home-row + .home-label {
+  margin-top: 12px;
+}
+
+html.look-new .home-row {
+  flex: 0 0 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 12px 0 14px;
+  border: 0;
+  border-radius: 14px;
+  background: #111214;
+  color: var(--ink);
+  text-align: left;
+  font: inherit;
+  cursor: default;
+}
+
+html.look-new button.home-row:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .home-row.hot {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
+}
+
+html.look-new .home-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+html.look-new .home-who {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font: 400 13px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+}
+
+html.look-new .home-who .s {
+  margin-left: -3px;
+}
+
+html.look-new .home-who .n {
+  font-weight: 600;
+  color: var(--ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .home-line {
+  padding-left: 15px;
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .home-line code {
+  font: 400 12px var(--mono);
+  color: #d6d8dc;
+  background: #1a1b1f;
+  padding: 1px 6px;
+  border-radius: 5px;
+}
+
+html.look-new .home-line.ok {
+  color: #5ae6a0;
+}
+
+html.look-new .home-line.err {
+  color: var(--red-text);
+}
+
+html.look-new .home-count {
+  flex: none;
+  font: 400 12px var(--font);
+  color: var(--dim-3);
+}
+
+html.look-new .home-btn {
+  flex: none;
+  min-width: 32px;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 9px;
+  background: #1a1b1f;
+  color: var(--ink);
+  font: 700 12.5px var(--font);
+  cursor: default;
+}
+
+html.look-new .home-btn:hover {
+  background: #26282d;
+}
+
+html.look-new .home-btn.acc {
+  background: var(--amber);
+  color: #1a1206;
+}
+
+html.look-new .home-btn.acc:hover {
+  background: #ffb63d;
+}
+
+html.look-new .home-empty {
+  /* As tall as a session's row; taller when its line wraps on a narrow home. */
+  min-height: 54px;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 3px;
+  padding: 8px 14px;
+  border-radius: 14px;
+  background: #111214;
+}
+
+html.look-new .home-empty .n {
+  font: 600 13px var(--font);
+}
+
+html.look-new .home-empty .s {
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+/* The live activities, as tiles: two to a row. */
+html.look-new .home-tiles {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  grid-auto-rows: 82px;
+  gap: 8px;
+}
+
+html.look-new .home-tile {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  border-radius: 14px;
+  background: #111214;
+  overflow: hidden;
+}
+
+html.look-new .home-tile.link:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .tile-kick {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font: 600 11.5px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+html.look-new .tile-big {
+  margin-top: 2px;
+  font: 700 24px var(--font);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+html.look-new .tile-title {
+  font: 600 13px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .tile-sub {
+  font: 400 12px var(--font);
+  color: var(--dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+html.look-new .tile-ctls {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: -6px;
+  min-width: 0;
+}
+
+html.look-new .tile-ctl {
+  flex: none;
+  width: 24px;
+  height: 22px;
+  display: grid;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: default;
+}
+
+html.look-new .tile-ctl:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .tile-ctls .tile-sub {
+  margin-left: 4px;
+}
+
+/* The other pills: one line of names under both columns, each with its colour in a dot. */
+html.look-new .home-chips {
+  flex: 0 0 34px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  padding-left: 4px;
+}
+
+html.look-new .home-chips-name {
+  flex: none;
+  font: 400 12.5px var(--font);
+  color: var(--dim-3);
+}
+
+html.look-new .home-chip-row {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  overflow: hidden;
+  /* More than fit: the last fade out rather than being cut. */
+  mask-image: linear-gradient(to right, #000 calc(100% - 40px), transparent);
+}
+
+html.look-new .home-chip {
+  flex: none;
+}
+
+html.look-new .home-chip {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 11px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: #111214;
+  color: #b0b5be;
+  font: 500 12px var(--font);
+  cursor: default;
+}
+
+html.look-new .home-chip:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .home-chip.badge-approval {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 55%, transparent);
+}
+
+html.look-new .home-chip.badge-error {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--red) 55%, transparent);
+}
+
+/* The plans' usage at the end of the line: names and numbers, numbers only,
+   or nothing, whichever fits after the services (views/home.ts fitUsage). */
+html.look-new .home-usage {
+  flex: none;
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+
+html.look-new .home-usage.none {
+  display: none;
+}
+
+html.look-new .home-plan {
+  height: 28px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 11px 0 10px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  box-shadow: inset 0 0 0 1px #26282d;
+  color: #b0b5be;
+  font: 500 12px var(--font);
+  white-space: nowrap;
+  cursor: default;
+}
+
+html.look-new .home-plan:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .home-plan-pct {
+  font-variant-numeric: tabular-nums;
+  color: var(--ink);
+}
+
+html.look-new .home-usage.short .home-plan-name {
+  display: none;
+}
+
+/* The field to the chat, and the way to make a tool beside it. */
+html.look-new .home-ask {
+  flex: 0 0 40px;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+html.look-new .home-ask .ask-field {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+html.look-new .home-make-tool {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #111214;
+  color: var(--dim);
+  font: 500 12.5px var(--font);
+  white-space: nowrap;
+  cursor: default;
+}
+
+html.look-new .home-make-tool:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .home-make-tool svg {
+  color: var(--amber);
+}
+
+
+html.look-new .ask-field {
+  display: flex !important;
+  flex: 0 0 40px;
+  align-items: center;
+  gap: 10px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 12px;
+  background: #111214;
+  color: var(--dim-2);
+  font: 400 13px var(--font);
+  text-align: left;
+  cursor: text;
+}
+
+html.look-new .ask-field:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .ask-field .ph {
+  flex: 1 1 auto;
+}
+
+/* A session's own card: the whole width, the other pills are on the home. */
+html.look-new .overview {
+  padding: 2px 6px 0;
+}
+
+html.look-new .overview > .left {
+  flex: 1 1 auto;
+  width: auto;
+}
+
+html.look-new .overview > .right {
+  display: none;
+}
+
+html.look-new .overview .left .card {
+  background: #111214;
+}
+
+/* ── Tools: one block per tool, its colour in the icon, what it uses in words ─ */
+
+html.look-new .tool-row {
+  background: #111214;
+  border-color: transparent;
+  border-radius: 14px;
+}
+
+html.look-new .tool-row:hover,
+html.look-new .tool-row.open {
+  background: #1a1b1f;
+  border-color: transparent;
+}
+
+html.look-new .tool-row-head {
+  display: grid;
+  grid-template-columns: 34px auto 1fr auto;
+  align-items: center;
+  column-gap: 12px;
+  row-gap: 1px;
+  padding: 7px 12px;
+}
+
+html.look-new .tool-row-head > .tool-tile {
+  grid-row: 1 / 3;
+  width: 34px !important;
+  height: 34px !important;
+  border-radius: 10px;
+  color: var(--tile, #f5a524);
+  background: #1a1b1f;
+  box-shadow: none;
+}
+
+html.look-new .tool-row.open .tool-row-head > .tool-tile {
+  background: #26282d;
+}
+
+html.look-new .tool-row-head > .tool-text {
+  display: contents;
+}
+
+html.look-new .tool-name {
+  grid-row: 1;
+  grid-column: 2;
+  font-size: 14px;
+}
+
+html.look-new .tool-row-head > .review-badge {
+  grid-row: 1;
+  grid-column: 3;
+  justify-self: start;
+}
+
+html.look-new .tool-row-head > .tool-needs {
+  display: none;
+}
+
+html.look-new .tool-row-head > .switch {
+  grid-row: 1 / 3;
+  grid-column: 4;
+}
+
+html.look-new .tool-sub {
+  display: block;
+  grid-row: 2;
+  grid-column: 2 / 4;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 400 12.5px var(--font);
+  color: var(--dim);
+}
+
+html.look-new .tool-sub > .tool-desc {
+  display: inline;
+  font: inherit;
+  color: inherit;
+}
+
+html.look-new .tool-sub > .tool-desc.missing {
+  color: var(--red-text);
+}
+
+html.look-new .tool-needs-text:not(:empty) {
+  display: inline;
+}
+
+html.look-new .tool-needs-text:not(:empty)::before {
+  content: " · ";
+}
+
+html.look-new .tools-add {
+  border: 1px solid #26282d;
+  background: transparent;
+}
+
+html.look-new .tools-add:hover {
+  border-color: #3a3d44;
+  background: #111214;
+}
+
+html.look-new .tools-add-plus {
+  color: #f5f6f8;
+  background: #1a1b1f;
+  box-shadow: none;
+}
+
+/* A click leaves no ring; the keyboard still shows where it is. */
+html.look-new .more-btn:focus:not(:focus-visible) {
+  outline: none;
+}
+
+/* ── Permission: what it is for, the command, two big buttons ───────────────
+   As on the board: Deny and Allow side by side, Allow twice as wide and in
+   Lumo's amber; "Allow for this session" a quiet line under them, so it is
+   never the button the cursor lands on. */
+
+html.look-new .approval-actions {
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+html.look-new .approval-actions .btn {
+  justify-content: center;
+  height: 34px;
+  border-radius: 10px;
+  font: 600 13px var(--font);
+}
+
+html.look-new .approval-actions .deny-btn {
+  flex: 1 1 0;
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .approval-actions .deny-btn:hover {
+  background: #26282d;
+}
+
+html.look-new .approval-actions .allow-btn {
+  flex: 2 1 0;
+  background: var(--amber);
+  color: #1a1206;
+}
+
+html.look-new .approval-actions .allow-btn:hover {
+  background: #ffb63d;
+}
+
+html.look-new .approval-actions .session-allow {
+  order: 3;
+  flex: 1 0 100%;
+  height: 26px;
+  background: transparent;
+  color: var(--dim);
+  font: 500 12px var(--font);
+}
+
+html.look-new .approval-actions .session-allow:hover {
+  background: transparent;
+  color: var(--ink);
+}
+
+html.look-new .approval-actions .kbd {
+  border-color: currentColor;
+}
+
+html.look-new .who-row,
+html.look-new .who-row .n {
+  font-size: 13px;
+}
+
+html.look-new .approval-about {
+  font-size: 13px;
+  color: #b0b5be;
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+html.look-new .stack > .code {
+  font-size: 13px;
+  padding: 8px 12px;
+  background: #111214;
+  border-color: #26282d;
+}
+
+html.look-new .code-tool {
+  color: var(--amber);
+  font-weight: 700;
+  margin-right: 8px;
+}
+
+/* ── A question: its options one under the other, each with its description ─ */
+
+.q-desc {
+  display: none;
+}
+
+html.look-new .question-options {
+  flex-direction: column;
+  align-items: stretch;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+html.look-new .question-options .q-option {
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  min-height: 40px;
+  padding: 7px 14px;
+  border-radius: 10px;
+  background: #111214;
+  color: var(--ink);
+  font: 600 13px var(--font);
+  text-align: left;
+}
+
+html.look-new .question-options .q-option:hover {
+  background: #1a1b1f;
+}
+
+html.look-new .question-options .q-option.primary {
+  background: #1a1b1f;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 60%, transparent);
+}
+
+html.look-new .q-option .q-desc {
+  display: block;
+  font: 400 12px var(--font);
+  color: var(--dim);
+}
+
+html.look-new .question-options > .btn:not(.q-option) {
+  align-self: flex-start;
+}
+
+html.look-new .question-options > .link-btn {
+  align-self: flex-start;
+  padding: 4px 2px;
+}
+
+html.look-new .stack > :not(.mail-slot) {
+  flex-shrink: 0;
+}
+
+html.look-new .question-text {
+  font-size: 15px;
+  line-height: 1.35;
+  margin-top: 2px;
+}
+
+/* ── One island: the Plan inside it, beside the chat ────────────────────────
+   island.ts sideInside puts it in the island's right-hand side, under the
+   top bar, and says how much room it takes in --side-room. (The live
+   activities are the home's tiles, views/home.ts.) */
+
+html.look-new .chat-body {
+  margin-right: var(--side-room, 0px);
+}
+
+html.look-new #plan.agent-plan {
+  background: #111214;
+  border-radius: 14px;
+  box-shadow: none;
+}
+
+/* Drawn before the island in the page (island.ts), so lifted above it. */
+html.look-new #plan {
+  z-index: 3;
+}
+
+/* No grips: inside the island it is not moved or resized. */
+html.look-new #plan .act-grip,
+html.look-new #plan [class*="grip"] {
+  display: none;
+}
+
+html.look-new #plan .plan-head {
+  cursor: default;
+}
+
+/* No timer running: three to start. */
+html.look-new .tile-chips {
+  display: flex;
+  gap: 6px;
+  margin-top: auto;
+}
+
+html.look-new .tile-chip {
+  flex: 1 1 0;
+  height: 26px;
+  border: 0;
+  border-radius: 8px;
+  background: #1a1b1f;
+  color: var(--ink);
+  font: 600 12px var(--font);
+  cursor: default;
+}
+
+html.look-new .tile-chip:hover {
+  background: #26282d;
+}
+
+/* The timer to type ("15m pasta", Enter), above the three to click. */
+html.look-new .tile-field {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 0 8px;
+  border-radius: 8px;
+  background: #1a1b1f;
+  color: var(--dim);
+  cursor: text;
+}
+
+html.look-new .tile-field:focus-within {
+  box-shadow: inset 0 0 0 1px #3a3d44;
+}
+
+html.look-new .tile-input {
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 100%;
+  padding: 0;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--ink);
+  font: 500 12.5px var(--font);
+}
+
+html.look-new .tile-input::placeholder {
+  color: var(--dim-3);
+}
+
+html.look-new .tile-input.bad {
+  color: var(--red);
+}
+
+/* A running timer: the time on the left, what is left as a line running
+   round the tile's edge (views/home.ts edgePath), the island's own light in
+   small; on the right two round buttons, pause (or go on) and ×. */
+html.look-new .tile-timer {
+  position: relative;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+}
+
+html.look-new .tile-edge {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+html.look-new .tile-edge-track,
+html.look-new .tile-edge-fill {
+  fill: none;
+  stroke-width: 2;
+}
+
+html.look-new .tile-edge-track {
+  stroke: #1f2125;
+}
+
+html.look-new .tile-edge-fill {
+  stroke: var(--amber);
+  stroke-linecap: round;
+  filter: drop-shadow(0 0 3px color-mix(in srgb, var(--amber) 55%, transparent));
+}
+
+html.look-new .tile-timer.paused .tile-edge-fill {
+  stroke: #5b6069;
+  filter: none;
+}
+
+html.look-new .tile-timer-text {
+  position: relative;
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+html.look-new .tile-timer.paused .tile-big {
+  color: var(--dim);
+}
+
+html.look-new .tile-timer-ctls {
+  position: relative;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+html.look-new .tile-timer .tile-kick span {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.look-new .tile-timer-btn {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: #1c1d21;
+  color: var(--ink);
+  cursor: pointer;
+  transition: background 0.15s ease-out, color 0.15s ease-out, transform 0.1s ease-out;
+}
+
+html.look-new .tile-timer-btn:hover {
+  background: #26272c;
+}
+
+html.look-new .tile-timer-btn:active {
+  transform: scale(0.94);
+}
+
+/* Going: pause in the timer's amber; paused: go on, in plain white. */
+html.look-new .tile-timer-btn.pause {
+  background: color-mix(in srgb, var(--amber) 16%, #111214);
+  color: var(--amber);
+}
+
+html.look-new .tile-timer-btn.pause:hover {
+  background: color-mix(in srgb, var(--amber) 26%, #111214);
+}
+
+html.look-new .tile-timer.paused .tile-timer-btn.pause {
+  background: #26272c;
+  color: var(--ink);
+}
+
+html.look-new .tile-timer-btn.stop {
+  color: var(--dim);
+}
+
+html.look-new .tile-timer-btn.stop:hover {
+  background: color-mix(in srgb, var(--red) 18%, #111214);
+  color: var(--red);
+}
+
+/* Three tiles: side by side in one row, so the home stays low. */
+html.look-new .home-right.three {
+  flex-basis: 480px;
+}
+
+html.look-new .home-right.three .home-tiles {
+  grid-template-columns: 1fr 1fr 1fr;
+}
+
+/* ── Wardrobe: the island's edge instead of Lumo's outfits and style ────────
+   (views/wardrobe.ts). The new look draws Lumo as two eyes, so what is left
+   to dress is the light along the island; Claude's mouse stays under it. */
+
+.wardrobe-edges {
+  display: none;
+}
+
+html.look-new .wardrobe-parts {
+  display: none;
+}
+
+html.look-new .wardrobe-edges {
+  display: block;
+}
+
+html.look-new .edge-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+}
+
+html.look-new .edge-item {
+  height: 66px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  background: #111214;
+  color: var(--dim);
+  font: 500 12px var(--font);
+  cursor: default;
+}
+
+html.look-new .edge-item:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .edge-item.on {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+  color: var(--ink);
+}
+
+/* A little island with that light under it: the same light, its glow
+   scaled down to the swatch's size. */
+html.look-new .edge-swatch {
+  width: 72px;
+  height: 18px;
+  border-radius: 0 0 8px 8px;
+  background: #000;
+}
+
+html.look-new .edge-swatch.full {
+  --edge-y: 5px;
+  --edge-blur: 12px;
+  --edge-spread: -3px;
+}
+
+html.look-new .edge-swatch.soft {
+  --edge-y: 4px;
+  --edge-blur: 9px;
+  --edge-spread: -3px;
+}
+
+html.look-new .edge-swatch.glow {
+  --edge-y: 6px;
+  --edge-blur: 14px;
+  --edge-spread: -4px;
+}
+
+/* ── The chat's panels (past chats, files, sharing, permissions, usage,
+   Listening): the island's blocks, without a frame, the scroll bar hidden
+   (the wheel still scrolls them). */
+
+html.look-new .chat-body .picker {
+  background: #111214;
+  border-color: transparent;
+  border-radius: 14px;
+}
+
+html.look-new .chat-body .picker,
+html.look-new .chat-body .picker * {
+  scrollbar-width: none;
+}
+
+html.look-new .chat-body .picker ::-webkit-scrollbar {
+  display: none;
+}
+
+/* ── The plan in the chat: a chip beside the model (views/plan-strip.ts) ──────
+   Folded it takes no row of its own; open, the steps rise over the chat from
+   the model row. The usual look keeps the Plan island beside the island, so
+   none of this shows there. */
+
+.plan-chip,
+.plan-strip-list {
+  display: none;
+}
+
+html.look-new .plan-chip:not([hidden]) {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  width: auto;
+  height: 24px;
+  padding: 0 9px;
+  border-radius: 12px;
+  background: #17181b;
+  color: var(--ink-2);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+html.look-new .plan-chip:hover,
+html.look-new .plan-chip.open {
+  background: #1f2024;
+  color: var(--ink);
+}
+
+html.look-new .plan-chip-segs {
+  display: inline-flex;
+  gap: 3px;
+}
+
+html.look-new .plan-chip-segs i {
+  width: 8px;
+  height: 4px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+html.look-new .plan-chip-segs i.done {
+  background: var(--green);
+}
+
+html.look-new .plan-chip-segs i.skipped {
+  background: var(--dim-4);
+}
+
+/* As in the concept (piano-e-apertura): done in green, the step under way
+   in the island's working blue, here and in the list of steps. */
+html.look-new .plan-chip-segs i.active {
+  background: #3b9eff;
+}
+
+html.look-new .plan-strip-list .plan-lit-ring {
+  stroke: #3b9eff;
+}
+
+html.look-new .plan-strip-list .plan-lit-dot {
+  fill: #3b9eff;
+}
+
+html.look-new .plan-strip-list .plan-step.done .plan-text {
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--dim) 60%, transparent);
+}
+
+html.look-new .plan-chip-segs.bar i.fill {
+  width: 40px;
+  background: linear-gradient(to right, var(--green) calc(var(--k, 0) * 100%), rgba(255, 255, 255, 0.14) 0);
+}
+
+html.look-new .model-row {
+  position: relative;
+}
+
+html.look-new .plan-strip-list {
+  position: absolute;
+  z-index: 3;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 6px);
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-height: 220px;
+  padding: 10px 8px 8px;
+  border-radius: 12px;
+  background: #111214;
+  box-shadow: 0 -8px 24px rgba(0, 0, 0, 0.6);
+  font-size: 11.5px;
+  opacity: 0;
+  transform: translateY(6px);
+  visibility: hidden;
+  pointer-events: none;
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1), visibility 0s 0.2s;
+}
+
+html.look-new .plan-strip-list.open {
+  opacity: 1;
+  transform: none;
+  visibility: visible;
+  pointer-events: auto;
+  transition: opacity 0.16s ease, transform 0.2s cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+html.look-new .plan-strip-list .agent-plan {
+  width: auto;
+  height: auto;
+  background: transparent;
+  border-radius: 0;
+  transition: none;
+  will-change: auto;
+  font-size: 11.5px;
+}
+
+html.look-new .plan-strip-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px 0 6px;
+}
+
+html.look-new .plan-strip-head-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+html.look-new .plan-strip-head-count {
+  flex: none;
+  color: var(--dim);
+  font-variant-numeric: tabular-nums;
+}
+
+html.look-new .plan-strip-fold {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+
+html.look-new .plan-strip-fold:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--ink);
+}
+
+html.look-new .plan-strip-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  scrollbar-width: none;
+}
+
+html.look-new .plan-strip-steps .plan-mark:not(.done) {
+  background: #111214;
+}
+
+/* ── The closed island: as much room between Lumo's eyes and what follows as
+   between his eyes and the island's end (#compact, style.css). ─────────── */
+html.look-new :is(.dock-top, .dock-bottom) #compact {
+  left: 41px;
+}
+
+/* A plan's segments on a home row (views/home.ts planEnds), as on its chip. */
+html.look-new .home-plan-segs {
+  display: inline-flex;
+  flex: none;
+}
+
+/* ── A plan asking to start (concepts/redesign, C1 and C2) ──────────────────
+   Its steps numbered, one per line; the buttons say what they do to the plan.
+   Each button carries both its words and the plan's, and shows one. */
+
+.words-plan {
+  display: none;
+}
+
+html.look-new .plan-ask-on .words-plan {
+  display: inline;
+}
+
+html.look-new .plan-ask-on .words-usual {
+  display: none;
+}
+
+html.look-new .plan-ask-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+html.look-new .plan-ask-step {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  min-width: 0;
+  padding: 4px 6px;
+  border-radius: 8px;
+  color: #c9c9cc;
+  font-size: 13px;
+  line-height: 1.35;
+}
+
+html.look-new .plan-ask-n {
+  flex: none;
+  width: 14px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+
+html.look-new .plan-ask-text {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.look-new .plan-ask-slot .plan-ask-steps {
+  max-height: calc(8 * 28px);
+  overflow-y: auto;
+  padding: 6px;
+  border-radius: 12px;
+  background: #111214;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 35%, transparent);
+}
+
+html.look-new .plan-ask-slot .plan-ask-step {
+  height: 28px;
+  padding-block: 0;
+}
+
+/* C1: in the chat, over the field, in Lumo's amber; the chip beside the model pulses. */
+
+.plan-ask {
+  display: none;
+}
+
+html.look-new .plan-ask:not([hidden]) {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: none;
+  margin: 0 0 8px;
+  padding: 12px;
+  border-radius: 14px;
+  background: #111214;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--amber) 45%, transparent);
+}
+
+html.look-new .plan-ask-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  min-width: 0;
+}
+
+html.look-new .plan-ask-title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font: 600 13px var(--font);
+}
+
+html.look-new .plan-ask-who {
+  flex: none;
+  max-width: 45%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+html.look-new .plan-ask .plan-ask-steps {
+  max-height: calc(5 * 26px);
+  overflow-y: auto;
+}
+
+html.look-new .plan-ask .plan-ask-step {
+  min-height: 26px;
+}
+
+html.look-new .plan-ask-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+html.look-new .plan-ask-btn {
+  height: 30px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  font: 600 12px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html.look-new .plan-ask-btn.keep {
+  background: transparent;
+  color: #c9c9cc;
+  box-shadow: inset 0 0 0 1px #2a2b30;
+}
+
+html.look-new .plan-ask-btn.keep:hover {
+  background: #1a1b1f;
+  color: var(--ink);
+}
+
+html.look-new .plan-ask-btn.approve {
+  background: var(--amber);
+  color: #1b1305;
+}
+
+html.look-new .plan-ask-btn.approve:hover {
+  background: #ffb63d;
+}
+
+html.look-new .plan-chip.asking:not([hidden]) {
+  background: color-mix(in srgb, var(--amber) 18%, #111214);
+  color: var(--amber);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  html.look-new .plan-chip.asking:not([hidden]) {
+    animation: plan-chip-ask 1.6s ease-in-out infinite;
+  }
+}
+
+@keyframes plan-chip-ask {
+  50% {
+    box-shadow: 0 0 0 4px color-mix(in srgb, var(--amber) 22%, transparent);
+  }
+}
+
+/* ── Listening as cards (concepts/redesign, Listening B) ────────────────────
+   What listens, three to a row; the last card adds another. A card opened
+   takes the whole row, as the usual row with its buttons. */
+
+html.look-new .picker-list.listen-list.listen-cards {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: min-content;
+  align-content: start;
+  gap: 8px;
+}
+
+html.look-new .listen-cards > .listen-card-open,
+html.look-new .listen-cards > .listen-cards-empty {
+  grid-column: 1 / -1;
+}
+
+html.look-new .listen-card {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  min-height: 96px;
+  padding: 10px;
+  border-radius: 12px;
+  background: #18191d;
+  cursor: pointer;
+  outline: none;
+  transition: background 0.15s ease-out;
+}
+
+html.look-new .listen-card:hover {
+  background: #1e1f24;
+}
+
+html.look-new .listen-card:focus-visible {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+
+html.look-new .listen-card.paused {
+  opacity: 0.55;
+}
+
+html.look-new .listen-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+html.look-new .listen-card .listen-tile {
+  width: 26px;
+  height: 26px;
+}
+
+html.look-new .listen-card-name {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--ink);
+  font: 600 12px var(--font);
+}
+
+html.look-new .listen-card-line {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: #b0b5be;
+  font-size: 11px;
+}
+
+html.look-new .listen-card-line.dim {
+  color: var(--dim);
+}
+
+html.look-new .listen-card.add {
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  flex-direction: row;
+  background: transparent;
+  border: 1px dashed #2f3136;
+  color: var(--dim);
+  font-size: 12px;
+  text-align: center;
+}
+
+html.look-new .listen-card.add:hover {
+  border-color: #464950;
+  color: var(--ink);
+  background: transparent;
+}
+
+html.look-new .listen-card-line.dim {
+  white-space: normal;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+/* ── Usage (concepts/redesign, Usage A) ─────────────────────────────────────
+   The context as one bar split by what fills it, its legend in two columns,
+   then the plan's limits as bars, each with how much is used and when it
+   resets. */
+
+html.look-new .usage-new .picker-list.usage-list {
+  gap: 10px;
+}
+
+html.look-new .usage-ctx {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+html.look-new .usage-ctx-head,
+html.look-new .usage-limit-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  min-width: 0;
+}
+
+html.look-new .usage-ctx-title {
+  color: var(--ink);
+  font: 600 12.5px var(--font);
+}
+
+html.look-new .usage-ctx-numbers,
+html.look-new .usage-limit-value {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: var(--dim);
+  font: 400 11.5px var(--font);
+  font-variant-numeric: tabular-nums;
+}
+
+html.look-new .usage-ctx .ctx-bar {
+  height: 8px;
+  border-radius: 4px;
+  gap: 2px;
+  background: #1f2125;
+}
+
+html.look-new .usage-ctx .ctx-legend {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 14px;
+}
+
+html.look-new .usage-ctx .ctx-key {
+  min-width: 0;
+  font-size: 11.5px;
+  color: #c9c9cc;
+}
+
+html.look-new .usage-ctx .ctx-key i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+}
+
+html.look-new .usage-ctx .ctx-key-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.look-new .usage-ctx .ctx-key-tokens {
+  margin-left: auto;
+  color: var(--dim);
+}
+
+html.look-new .usage-kick {
+  margin-top: 6px;
+  padding: 0 2px;
+  color: var(--dim);
+  font: 600 10.5px var(--font);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+html.look-new .usage-limit {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+html.look-new .usage-limit-label {
+  color: var(--ink-2);
+  font: 500 11.5px var(--font);
+}
+
+html.look-new .usage-limit-bar {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: #1f2125;
+  overflow: hidden;
+}
+
+html.look-new .usage-limit-fill {
+  display: block;
+  height: 100%;
+  border-radius: 4px;
+  transition: width 0.5s cubic-bezier(0.3, 0.8, 0.3, 1);
+}
+
+html.look-new .usage-ask-context {
+  align-self: flex-start;
+  height: 26px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 999px;
+  background: #1f2024;
+  color: var(--ink-2);
+  font: 500 11.5px var(--font);
+  cursor: pointer;
+}
+
+html.look-new .usage-ask-context:hover {
+  background: #26282d;
+  color: var(--ink);
+}
+
+/* ── Share (concepts/redesign, Share A) ─────────────────────────────────────
+   The kinds as pills with how many, the things of one kind as tiles, Send. */
+
+html.look-new .share-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  flex: none;
+}
+
+html.look-new .share-kind {
+  height: 26px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 999px;
+  background: #17181b;
+  color: var(--dim);
+  font: 500 11.5px var(--font);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html.look-new .share-kind:hover {
+  color: var(--ink);
+}
+
+html.look-new .share-kind.on {
+  background: #26272c;
+  color: var(--ink);
+}
+
+html.look-new .share-tiles {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-auto-rows: min-content;
+  align-content: start;
+  gap: 8px;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+html.look-new .share-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+  padding: 6px;
+  border: 0;
+  border-radius: 10px;
+  background: #18191d;
+  color: var(--ink-2);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease-out, box-shadow 0.15s ease-out;
+}
+
+html.look-new .share-tile:hover:not(:disabled) {
+  background: #1e1f24;
+}
+
+html.look-new .share-tile.on {
+  box-shadow: inset 0 0 0 1.5px #3b9eff;
+}
+
+html.look-new .share-tile:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+html.look-new .share-thumb {
+  display: grid;
+  place-items: center;
+  height: 62px;
+  border-radius: 6px;
+  background: linear-gradient(135deg, #2a3346, #1a1f2b);
+  color: rgba(255, 255, 255, 0.4);
+}
+
+html.look-new .share-tile.all .share-thumb {
+  background: #1f2125;
+}
+
+html.look-new .share-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  padding: 0 2px;
+  font-size: 11.5px;
+}
+
+html.look-new .share-label svg {
+  flex: none;
+  color: var(--dim);
+}
+
+html.look-new .share-name {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+html.look-new .share-empty {
+  grid-column: 1 / -1;
+}
+
+html.look-new .share-foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex: none;
+}
+
+html.look-new .share-hint {
+  min-width: 0;
+  color: var(--dim);
+  font-size: 11px;
+}
+
+html.look-new .share-send {
+  flex: none;
+  height: 28px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: 999px;
+  background: #f5f6f8;
+  color: #0b0c0e;
+  font: 600 12px var(--font);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+html.look-new .share-send:disabled {
+  background: #1f2024;
+  color: var(--dim);
+  cursor: default;
+}
+
+html.look-new .share-thumb {
+  grid-auto-flow: row;
+  align-content: center;
+  gap: 4px;
+  padding: 0 8px;
+}
+
+html.look-new .share-thumb svg {
+  justify-self: center;
+}
+
+html.look-new .share-detail {
+  max-width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 10.5px;
+  text-align: center;
+}
+
+/* The plan's words are longer than Deny and Allow: the two buttons share the row evenly. */
+html.look-new .plan-ask-on .approval-actions .deny-btn,
+html.look-new .plan-ask-on .approval-actions .allow-btn {
+  flex: 1 1 0;
+  white-space: nowrap;
+}
+
+html.look-new .usage-ask-context.small {
+  height: 22px;
+  margin-top: 2px;
+  padding: 0 10px;
+  font-size: 11px;
+}

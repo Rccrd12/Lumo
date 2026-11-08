@@ -72,6 +72,8 @@ function afterPaint(fn: () => void) {
 
 export class IslandPlan {
   readonly book = new PlanBook();
+  /** What State.plans was last set to (sync). */
+  private nowKey = "";
   readonly view: PlanPanel;
   /** The plans done or whose session ended, the newest first. */
   private past: AgentPlan[] = [];
@@ -98,10 +100,12 @@ export class IslandPlan {
     this.view = host.makeView({
       act: (a) => this.act(a),
       drag: () => {
+        // In the new look it is part of the island: it stays in it.
+        if (State.settings.islandNewLook === true) return;
         const r = this.view.el.getBoundingClientRect();
         void Bridge.planDrag([parseFloat(this.view.el.style.left) || r.left, parseFloat(this.view.el.style.top) || r.top, r.width, r.height]);
       },
-      resize: (fx, fy) => void Bridge.planResize(fx, fy, this.view.el.getBoundingClientRect().height),
+      resize: (fx, fy) => State.settings.islandNewLook !== true && void Bridge.planResize(fx, fy, this.view.el.getBoundingClientRect().height),
       iconPoint: () => host.iconPoint(),
       movable: host.movable,
     }, () => host.side(), () => this.followsIsland);
@@ -318,7 +322,7 @@ export class IslandPlan {
    * Beside the island at (x, y), `height` tall, or hidden; in its own window,
    * shown or hidden. Called every frame the island moves.
    */
-  place(show: boolean, x: number, y: number, height: number) {
+  place(show: boolean, x: number, y: number, height: number, instantHide = false) {
     const el = this.view.el;
     const besideIsland = show && !this.detached;
     if (besideIsland) {
@@ -351,7 +355,7 @@ export class IslandPlan {
         this.handingOff = window.setTimeout(() => this.handedOff(), HAND_OFF_MS);
       } else {
         this.cancelHandOff();
-        this.setShown(false, false);
+        this.setShown(false, instantHide);
       }
     }
     if (inWindow !== this.windowShown) {
@@ -404,6 +408,14 @@ export class IslandPlan {
       this.viewing = null;
     }
     const open = this.wanted;
+    // The new look draws each chat's plan in that chat, and those under way on the home.
+    const all = this.plans();
+    const nowKey = JSON.stringify(all.map((p) => [planId(p), p.updatedAt, p.steps]));
+    if (nowKey !== this.nowKey) {
+      this.nowKey = nowKey;
+      State.plans = all;
+      queueMicrotask(() => State.notify());
+    }
     if (State.planIcon !== any || State.planOpen !== open) {
       State.planIcon = any;
       State.planOpen = open;

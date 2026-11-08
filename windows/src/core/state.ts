@@ -13,6 +13,7 @@ import type { ProviderId } from "./providers";
 import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
+import type { EdgeLight } from "./layout";
 import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
@@ -94,6 +95,16 @@ export interface ApprovalInfo {
   project?: string;
   /** An email the AI wants to send (mail.rs, `mail_send`): shown whole, sent only with a click on Send. */
   email?: OutgoingEmail;
+  /** The plan Claude Code asks to start (ExitPlanMode), as steps: the new look draws them as a list. */
+  plan?: import("./agent-plan").PlanStep[];
+}
+
+/**
+ * A plan the island's own chat asks to start, in the new look: it is asked in
+ * the chat, over the field, rather than on the permission card.
+ */
+export function planAskInChat(req: ApprovalInfo | null | undefined, newLook: boolean): boolean {
+  return newLook && req?.fromChat === true && (req.plan?.length ?? 0) > 0;
 }
 
 /** An email on its card: from the Email pill's account, to whom, what. */
@@ -350,6 +361,18 @@ export interface Settings {
   language: string;
   /** When Lumo opens, one look at GitHub for a newer release (Settings → Updates). */
   updateCheckOnOpen: boolean;
+  /** The new look: Lumo in the open island's top bar, one surface, his light
+   * along the island's edge (src/look-new.css). On by default (Rust's
+   * settings.rs decides it, before the island first draws); Settings → Island
+   * → Previous look brings the usual look back as it was. Off here only for
+   * the tests, which are of the usual look unless they say. */
+  islandNewLook: boolean;
+  /** The new look's light along the island's edge, picked in the wardrobe:
+   * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */
+  islandEdgeLight: string;
+  /** The new look's home shows the live activities (its "⋯" menu puts them
+   * away), whether or not the usual look's panel is folded. */
+  homeActivities: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
   /** Extended Thinking's level: "low", "medium" or "high". */
@@ -443,6 +466,9 @@ export const DEFAULT_SETTINGS: Settings = {
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
+  islandNewLook: false,
+  islandEdgeLight: "full",
+  homeActivities: true,
   liveModel: "gemini-3.8-live",
   liveThinking: "medium",
   liveVoice: "",
@@ -498,6 +524,14 @@ class AppState {
   planIcon = false;
   /** The Plan island is open (its icon in the chat looks pressed). */
   planOpen = false;
+  /**
+   * Every plan the Plan island holds, the newest first, those under way then
+   * those done (island/plan.ts): the new look draws a chat's own in that chat
+   * (views/plan-strip.ts) and the ones under way on the home.
+   */
+  plans: import("./agent-plan").AgentPlan[] = [];
+  /** A chat the home asked the chat to open (a plan's row): the chat opens it and clears this. */
+  chatToOpen: string | null = null;
 
   /** Cursor in logical screen pixels, origin top-left (like AppState.mousePosition). */
   mouse = { x: 0, y: 0 };
@@ -537,6 +571,8 @@ class AppState {
   /** The model picker or the past chats are open: the chat takes its full height. */
   chatPanelOpen = false;
   /** The open list is the Listening panel, which wants more room (core/layout.ts CHAT_LISTENING). */
+  /** A chat panel that wants the most room, the Listening one aside: the new look's usage menu. */
+  chatPanelTall = false;
   listeningOpen = false;
   /**
    * A picture of the chat's previews, opened big: it fills the whole open
@@ -594,6 +630,8 @@ class AppState {
   wardrobePreview: Outfit | null = null;
   /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
   lookPreview: LumoLook | null = null;
+  /** The new look's edge light tried on in the wardrobe; null = the chosen one. */
+  edgePreview: EdgeLight | null = null;
 
   settings: Settings = { ...DEFAULT_SETTINGS };
 
@@ -902,15 +940,18 @@ class AppState {
    * on the list.
    */
   private toolsInWorkshop = false;
+  /** A tab's view was open since launch: the new look reopens there rather than on its list. */
+  private tabNoted = false;
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
+    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "empty" || view === "home") this.tabNoted = true;
     if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
       this.lastTab = "tools";
       this.toolsInWorkshop = view === "prompt";
     }
     else if (view === "prompt" || view === "live") this.lastTab = "chat";
-    else if (view === "overview" || view === "empty") this.lastTab = "agents";
+    else if (view === "overview" || view === "empty" || view === "home") this.lastTab = "agents";
   }
 
   /**
@@ -919,7 +960,16 @@ class AppState {
    * tab it was left on, Chat or Agents.
    */
   defaultView(): IslandViewName {
-    if (this.pendingApproval) return this.pendingApproval.questions ? "question" : "approval";
+    if (this.pendingApproval) {
+      if (planAskInChat(this.pendingApproval, this.settings.islandNewLook === true)) return "prompt";
+      return this.pendingApproval.questions ? "question" : "approval";
+    }
+    // The new look: a file dropped and not yet asked about waits in the chat,
+    // so the island opens there rather than on the home.
+    if (this.settings.islandNewLook === true && this.droppedFile && !this.droppedFile.sent) return "prompt";
+    // The new look has no tabs: until a view of its own was open, it opens on
+    // the list (what waits for you, the sessions); then where it was left.
+    if (this.settings.islandNewLook === true && !this.tabNoted) return this.liveActive ? "live" : this.agentsView();
     if (this.lastTab === "agents") return this.agentsView();
     if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
@@ -927,6 +977,8 @@ class AppState {
 
   /** The Agents tab: the coding sessions and pills, or the empty card. */
   agentsView(): IslandViewName {
+    // The new look's list holds the sessions, the empty case and the rest.
+    if (this.settings.islandNewLook === true) return "home";
     return this.tasks.length === 0 ? "empty" : "overview";
   }
 

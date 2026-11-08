@@ -67,6 +67,7 @@ export interface ActivitiesData {
 export type ActivitiesAction =
   | { kind: "timer"; ms: number; label: string }
   | { kind: "cancelTimer"; id: number }
+  | { kind: "pauseTimer"; id: number }
   | { kind: "media"; action: "toggle" | "next" | "previous" }
   | { kind: "mail"; id: string; what: "summary" | "reply" | "ignore" | "open" }
   | { kind: "inbox" }

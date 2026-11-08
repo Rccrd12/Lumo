@@ -15000,6 +15000,340 @@
    "ru": "Модель потратила всё место на рассуждения и не написала ответ: спросите снова или уменьшите рассуждение.",
    "id": "Model menghabiskan semua ruangnya untuk bernalar dan tidak menulis jawaban: tanyakan lagi, atau turunkan penalaran.",
    "it": "Il modello ha usato tutto lo spazio per ragionare e non ha scritto una risposta: richiedi, o abbassa il reasoning."
+  },
+  "Needs you": {
+   "zh-Hans": "需要你",
+   "hi": "आपकी ज़रूरत है",
+   "es": "Te necesita",
+   "ar": "يحتاج إليك",
+   "fr": "A besoin de vous",
+   "bn": "আপনাকে দরকার",
+   "pt-BR": "Precisa de você",
+   "ru": "Ждёт вас",
+   "id": "Butuh kamu",
+   "it": "Ha bisogno di te"
+  },
+  "Island edge": {
+   "zh-Hans": "岛屿边缘",
+   "hi": "आइलैंड का किनारा",
+   "es": "Borde de la isla",
+   "ar": "حافة الجزيرة",
+   "fr": "Bord de l’île",
+   "bn": "আইল্যান্ডের প্রান্ত",
+   "pt-BR": "Borda da ilha",
+   "ru": "Край острова",
+   "id": "Tepi pulau",
+   "it": "Bordo dell’isola"
+  },
+  "Full light": {
+   "zh-Hans": "完整光",
+   "hi": "पूरी रोशनी",
+   "es": "Luz completa",
+   "ar": "ضوء كامل",
+   "fr": "Lumière pleine",
+   "bn": "পূর্ণ আলো",
+   "pt-BR": "Luz completa",
+   "ru": "Полный свет",
+   "id": "Cahaya penuh",
+   "it": "Luce piena"
+  },
+  "Soft light": {
+   "zh-Hans": "柔和光",
+   "hi": "हल्की रोशनी",
+   "es": "Luz suave",
+   "ar": "ضوء خافت",
+   "fr": "Lumière douce",
+   "bn": "নরম আলো",
+   "pt-BR": "Luz suave",
+   "ru": "Мягкий свет",
+   "id": "Cahaya lembut",
+   "it": "Luce tenue"
+  },
+  "Line only": {
+   "zh-Hans": "仅线条",
+   "hi": "केवल रेखा",
+   "es": "Solo la línea",
+   "ar": "الخط فقط",
+   "fr": "Ligne seule",
+   "bn": "শুধু রেখা",
+   "pt-BR": "Só a linha",
+   "ru": "Только линия",
+   "id": "Hanya garis",
+   "it": "Solo il filo"
+  },
+  "Glow only": {
+   "zh-Hans": "仅光晕",
+   "hi": "केवल चमक",
+   "es": "Solo el halo",
+   "ar": "التوهج فقط",
+   "fr": "Halo seul",
+   "bn": "শুধু আভা",
+   "pt-BR": "Só o brilho",
+   "ru": "Только сияние",
+   "id": "Hanya pendar",
+   "it": "Solo l’alone"
+  },
+  "Stop the timer": {
+   "zh-Hans": "停止计时器",
+   "hi": "टाइमर रोकें",
+   "es": "Detener el temporizador",
+   "ar": "إيقاف المؤقت",
+   "fr": "Arrêter le minuteur",
+   "bn": "টাইমার বন্ধ করুন",
+   "pt-BR": "Parar o timer",
+   "ru": "Остановить таймер",
+   "id": "Hentikan timer",
+   "it": "Ferma il timer"
+  },
+  "More": {
+   "zh-Hans": "更多",
+   "hi": "और",
+   "es": "Más",
+   "ar": "المزيد",
+   "fr": "Plus",
+   "bn": "আরও",
+   "pt-BR": "Mais",
+   "ru": "Ещё",
+   "id": "Lainnya",
+   "it": "Altro"
+  },
+  "wants to start the plan": {
+   "zh-Hans": "想开始执行计划",
+   "hi": "योजना शुरू करना चाहता है",
+   "es": "quiere empezar el plan",
+   "ar": "يريد بدء الخطة",
+   "fr": "veut commencer le plan",
+   "bn": "পরিকল্পনা শুরু করতে চায়",
+   "pt-BR": "quer começar o plano",
+   "ru": "хочет начать план",
+   "id": "ingin memulai rencana",
+   "it": "vuole iniziare il piano"
+  },
+  "No, keep planning": {
+   "zh-Hans": "不，继续规划",
+   "hi": "नहीं, योजना बनाते रहो",
+   "es": "No, sigue planificando",
+   "ar": "لا، تابع التخطيط",
+   "fr": "Non, continue de planifier",
+   "bn": "না, পরিকল্পনা চালিয়ে যাও",
+   "pt-BR": "Não, continue planejando",
+   "ru": "Нет, продолжай планировать",
+   "id": "Tidak, lanjutkan merencanakan",
+   "it": "No, continua a pianificare"
+  },
+  "Approve": {
+   "zh-Hans": "批准",
+   "hi": "स्वीकृत करें",
+   "es": "Aprobar",
+   "ar": "موافقة",
+   "fr": "Approuver",
+   "bn": "অনুমোদন",
+   "pt-BR": "Aprovar",
+   "ru": "Одобрить",
+   "id": "Setujui",
+   "it": "Approva"
+  },
+  "waiting for you": {
+   "zh-Hans": "等你确认",
+   "hi": "आपका इंतज़ार",
+   "es": "te espera",
+   "ar": "بانتظارك",
+   "fr": "vous attend",
+   "bn": "আপনার অপেক্ষায়",
+   "pt-BR": "esperando você",
+   "ru": "ждёт вас",
+   "id": "menunggumu",
+   "it": "aspetta te"
+  },
+  "Keep planning": {
+   "zh-Hans": "继续规划",
+   "hi": "योजना बनाते रहो",
+   "es": "Seguir planificando",
+   "ar": "تابع التخطيط",
+   "fr": "Continuer à planifier",
+   "bn": "পরিকল্পনা চালিয়ে যাও",
+   "pt-BR": "Continuar planejando",
+   "ru": "Продолжить планирование",
+   "id": "Lanjutkan merencanakan",
+   "it": "Continua a pianificare"
+  },
+  "Approve the plan": {
+   "zh-Hans": "批准计划",
+   "hi": "योजना स्वीकृत करें",
+   "es": "Aprobar el plan",
+   "ar": "الموافقة على الخطة",
+   "fr": "Approuver le plan",
+   "bn": "পরিকল্পনা অনুমোদন করুন",
+   "pt-BR": "Aprovar o plano",
+   "ru": "Одобрить план",
+   "id": "Setujui rencana",
+   "it": "Approva il piano"
+  },
+  "Or write what to change…": {
+   "zh-Hans": "或写下要修改的地方…",
+   "hi": "या लिखें क्या बदलना है…",
+   "es": "O escribe qué cambiar…",
+   "ar": "أو اكتب ما يجب تغييره…",
+   "fr": "Ou écrivez ce qu'il faut changer…",
+   "bn": "অথবা লিখুন কী বদলাতে হবে…",
+   "pt-BR": "Ou escreva o que mudar…",
+   "ru": "Или напишите, что изменить…",
+   "id": "Atau tulis apa yang perlu diubah…",
+   "it": "Oppure scrivi cosa cambiare…"
+  },
+  "{agent} has a plan · {count} steps": {
+   "zh-Hans": {
+    "other": "{agent} 有一个计划 · {count} 步"
+   },
+   "hi": {
+    "one": "{agent} के पास एक योजना है · {count} चरण",
+    "other": "{agent} के पास एक योजना है · {count} चरण"
+   },
+   "es": {
+    "one": "{agent} tiene un plan · {count} paso",
+    "other": "{agent} tiene un plan · {count} pasos"
+   },
+   "ar": {
+    "zero": "لدى {agent} خطة · {count} خطوة",
+    "one": "لدى {agent} خطة · خطوة واحدة",
+    "two": "لدى {agent} خطة · خطوتان",
+    "few": "لدى {agent} خطة · {count} خطوات",
+    "many": "لدى {agent} خطة · {count} خطوة",
+    "other": "لدى {agent} خطة · {count} خطوة"
+   },
+   "fr": {
+    "one": "{agent} a un plan · {count} étape",
+    "other": "{agent} a un plan · {count} étapes"
+   },
+   "bn": {
+    "one": "{agent}-এর একটি পরিকল্পনা আছে · {count}টি ধাপ",
+    "other": "{agent}-এর একটি পরিকল্পনা আছে · {count}টি ধাপ"
+   },
+   "pt-BR": {
+    "one": "{agent} tem um plano · {count} passo",
+    "other": "{agent} tem um plano · {count} passos"
+   },
+   "ru": {
+    "one": "У {agent} есть план · {count} шаг",
+    "few": "У {agent} есть план · {count} шага",
+    "many": "У {agent} есть план · {count} шагов",
+    "other": "У {agent} есть план · {count} шага"
+   },
+   "id": {
+    "other": "{agent} punya rencana · {count} langkah"
+   },
+   "it": {
+    "one": "{agent} ha un piano · {count} passo",
+    "other": "{agent} ha un piano · {count} passi"
+   }
+  },
+  "See what fills the context": {
+   "zh-Hans": "查看上下文里有什么",
+   "hi": "देखें संदर्भ में क्या भरा है",
+   "es": "Ver qué llena el contexto",
+   "ar": "اعرض ما يملأ السياق",
+   "fr": "Voir ce qui remplit le contexte",
+   "bn": "দেখুন প্রসঙ্গে কী আছে",
+   "pt-BR": "Ver o que ocupa o contexto",
+   "ru": "Посмотреть, чем занят контекст",
+   "id": "Lihat apa yang mengisi konteks",
+   "it": "Vedi cosa riempie il contesto"
+  },
+  "As of the last /context in this chat": {
+   "zh-Hans": "截至此聊天中最近一次 /context",
+   "hi": "इस चैट के पिछले /context के अनुसार",
+   "es": "Según el último /context de este chat",
+   "ar": "حسب آخر /context في هذه الدردشة",
+   "fr": "D'après le dernier /context de ce chat",
+   "bn": "এই চ্যাটের শেষ /context অনুযায়ী",
+   "pt-BR": "Conforme o último /context deste chat",
+   "ru": "По последнему /context в этом чате",
+   "id": "Menurut /context terakhir di chat ini",
+   "it": "All'ultimo /context di questa chat"
+  },
+  "Screens": {
+   "zh-Hans": "屏幕",
+   "hi": "स्क्रीन",
+   "es": "Pantallas",
+   "ar": "الشاشات",
+   "fr": "Écrans",
+   "bn": "স্ক্রিন",
+   "pt-BR": "Telas",
+   "ru": "Экраны",
+   "id": "Layar",
+   "it": "Schermi"
+  },
+  "Tabs": {
+   "zh-Hans": "标签页",
+   "hi": "टैब",
+   "es": "Pestañas",
+   "ar": "علامات التبويب",
+   "fr": "Onglets",
+   "bn": "ট্যাব",
+   "pt-BR": "Abas",
+   "ru": "Вкладки",
+   "id": "Tab",
+   "it": "Schede"
+  },
+  "Folders": {
+   "zh-Hans": "文件夹",
+   "hi": "फ़ोल्डर",
+   "es": "Carpetas",
+   "ar": "المجلدات",
+   "fr": "Dossiers",
+   "bn": "ফোল্ডার",
+   "pt-BR": "Pastas",
+   "ru": "Папки",
+   "id": "Folder",
+   "it": "Cartelle"
+  },
+  "Send to the chat": {
+   "zh-Hans": "发送到聊天",
+   "hi": "चैट में भेजें",
+   "es": "Enviar al chat",
+   "ar": "أرسل إلى الدردشة",
+   "fr": "Envoyer dans le chat",
+   "bn": "চ্যাটে পাঠান",
+   "pt-BR": "Enviar para o chat",
+   "ru": "Отправить в чат",
+   "id": "Kirim ke chat",
+   "it": "Invia alla chat"
+  },
+  "about {used} of {total}": {
+   "zh-Hans": "约 {used} / {total}",
+   "hi": "लगभग {used} / {total}",
+   "es": "unos {used} de {total}",
+   "ar": "حوالي {used} من {total}",
+   "fr": "environ {used} sur {total}",
+   "bn": "প্রায় {used} / {total}",
+   "pt-BR": "cerca de {used} de {total}",
+   "ru": "около {used} из {total}",
+   "id": "sekitar {used} dari {total}",
+   "it": "circa {used} su {total}"
+  },
+  "Previous look": {
+   "zh-Hans": "旧外观",
+   "hi": "पुराना रूप",
+   "es": "Aspecto anterior",
+   "ar": "المظهر السابق",
+   "fr": "Ancien look",
+   "bn": "আগের চেহারা",
+   "pt-BR": "Visual anterior",
+   "ru": "Прежний вид",
+   "id": "Tampilan sebelumnya",
+   "it": "Look precedente"
+  },
+  "Lumo in the open island's left column, with the tabs, as before 0.18.0.": {
+   "zh-Hans": "Lumo 在展开岛的左栏，带标签页，和 0.18.0 之前一样。",
+   "hi": "Lumo खुले आइलैंड के बाएँ कॉलम में, टैब के साथ, जैसा 0.18.0 से पहले था।",
+   "es": "Lumo en la columna izquierda de la isla abierta, con las pestañas, como antes de la 0.18.0.",
+   "ar": "يكون Lumo في العمود الأيسر للجزيرة المفتوحة، مع علامات التبويب، كما كان قبل 0.18.0.",
+   "fr": "Lumo dans la colonne de gauche de l'île ouverte, avec les onglets, comme avant la 0.18.0.",
+   "bn": "Lumo খোলা আইল্যান্ডের বাঁ কলামে, ট্যাবসহ, যেমন 0.18.0-এর আগে ছিল।",
+   "pt-BR": "O Lumo na coluna esquerda da ilha aberta, com as abas, como antes da 0.18.0.",
+   "ru": "Lumo в левой колонке открытого острова, с вкладками, как до 0.18.0.",
+   "id": "Lumo di kolom kiri pulau yang terbuka, dengan tab, seperti sebelum 0.18.0.",
+   "it": "Lumo nella colonna a sinistra dell'isola aperta, con le schede, come prima della 0.18.0."
   }
  }
 }

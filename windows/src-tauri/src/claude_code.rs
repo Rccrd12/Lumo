@@ -683,6 +683,24 @@ struct Run {
     commands: Option<Vec<String>>,
     /// The conversation was compacted (`/compact`, or Claude Code doing it by itself).
     compacted: bool,
+    /// How many tokens the conversation fills, as its last message counted them
+    /// (what it was given, cached or not, and what it wrote): the chat's usage menu.
+    context_used: Option<u64>,
+    /// The model's context window, as the turn's result says (`modelUsage`).
+    context_total: Option<u64>,
+}
+
+/// The tokens a message's `usage` says the conversation fills: what the model
+/// read (fresh, written to the cache or read from it) and what it wrote.
+fn context_of(usage: &Value) -> Option<u64> {
+    let n = |k: &str| usage[k].as_u64().unwrap_or(0);
+    let total = n("input_tokens") + n("cache_creation_input_tokens") + n("cache_read_input_tokens") + n("output_tokens");
+    (total > 0).then_some(total)
+}
+
+/// The largest context window the result's `modelUsage` names (a turn may use more than one model).
+fn context_window(model_usage: &Value) -> Option<u64> {
+    model_usage.as_object()?.values().filter_map(|m| m["contextWindow"].as_u64()).filter(|w| *w > 0).max()
 }
 
 /// One `rate_limit_event` of the stream, in the status line's shape — the
@@ -850,6 +868,9 @@ impl Run {
             // The whole message, with the tool inputs complete.
             Some("assistant") if top_level(&v) => {
                 self.files_of(&v);
+                if let Some(used) = context_of(&v["message"]["usage"]) {
+                    self.context_used = Some(used);
+                }
                 for block in v["message"]["content"].as_array().into_iter().flatten() {
                     if matches!(block["type"].as_str(), Some("tool_use" | "server_tool_use")) {
                         let name = block["name"].as_str().unwrap_or("");
@@ -910,6 +931,9 @@ impl Run {
                 false
             }
             Some("result") => {
+                if let Some(window) = context_window(&v["modelUsage"]) {
+                    self.context_total = Some(window);
+                }
                 let text = v["result"].as_str().unwrap_or("").to_string();
                 let is_error = v["is_error"].as_bool().unwrap_or(false) || v["subtype"].as_str().is_some_and(|s| s != "success");
                 self.result = Some(if is_error {
@@ -1440,6 +1464,7 @@ pub async fn send(
     let events = chat.events();
     let stop = chat.stopper();
     let chat_id = chat.id().to_string();
+    let usage_chat = chat_id.clone();
     let resumed = session.clone();
     let state = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
@@ -1475,6 +1500,17 @@ pub async fn send(
     // chat's usage line) need not wait for a terminal session's status line.
     if !state.rate_limits.is_empty() {
         let _ = app.emit_to(WINDOW_LABEL, "chat-plan-usage", Value::Object(state.rate_limits.clone()));
+    }
+    // How full the conversation is, for the chat's usage menu (the new look's context bar).
+    if let (Some(used), Some(total)) = (state.context_used, state.context_total) {
+        let usage = crate::chat_usage::ChatUsage {
+            provider: "claude-code".to_string(),
+            context: Some(crate::chat_usage::ContextUse { chat: usage_chat, used, total }),
+            tokens: None,
+            requests: None,
+            credits: None,
+        };
+        let _ = app.emit("chat-usage", usage);
     }
     // A stopped turn keeps its session too: Claude Code has the question and
     // what it wrote, as the island does.
@@ -1808,6 +1844,24 @@ mod tests {
         assert!(!HELPER_PROMPT.contains(['%', '"', '&', '|', '<', '>', '^', '`', '(', ')']));
         assert!(APPEND_PROMPT.contains("press the screen button"), "Claude asks, never captures");
         assert!(APPEND_PROMPT.contains("Always share the folder open in File Explorer"), "names the Settings switch");
+    }
+
+    #[test]
+    fn how_full_the_context_is_comes_from_the_last_message_and_the_result() {
+        let mut run = Run::default();
+        run.feed(br#"{"type":"assistant","message":{"content":[],"usage":{"input_tokens":3,"cache_creation_input_tokens":1200,"cache_read_input_tokens":40000,"output_tokens":300}}}"#);
+        assert_eq!(run.context_used, Some(41503));
+        // A later message counts the whole conversation again: it replaces the first.
+        run.feed(br#"{"type":"assistant","message":{"content":[],"usage":{"input_tokens":5,"cache_read_input_tokens":42000,"output_tokens":120}}}"#);
+        assert_eq!(run.context_used, Some(42125));
+        // A message with no usage leaves it as it was.
+        run.feed(br#"{"type":"assistant","message":{"content":[]}}"#);
+        assert_eq!(run.context_used, Some(42125));
+        run.feed(br#"{"type":"result","subtype":"success","is_error":false,"result":"ok","modelUsage":{"claude-haiku-5-5":{"contextWindow":200000},"claude-opus-5-5":{"contextWindow":1000000}}}"#);
+        assert_eq!(run.context_total, Some(1000000));
+        let mut bare = Run::default();
+        bare.feed(br#"{"type":"result","subtype":"success","is_error":false,"result":"ok"}"#);
+        assert_eq!(bare.context_total, None);
     }
 
     #[test]

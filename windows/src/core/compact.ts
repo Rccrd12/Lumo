@@ -34,6 +34,8 @@ export interface TimerActivity {
   endsAt: number;
   /** Its length, ms: the ring round Lumo fills with it. */
   total: number;
+  /** Paused (the new look's home), with this much left: `endsAt` then stays that far ahead. */
+  pausedLeft?: number;
 }
 
 /** What a media player says it plays (media.rs). */
@@ -328,6 +330,26 @@ export class CompactFeed {
     const before = this.timers.length;
     this.timers = this.timers.filter((x) => x.id !== id);
     return this.timers.length !== before;
+  }
+
+  /**
+   * Pauses a timer, or starts it again. Paused, its `endsAt` keeps moving
+   * with the clock, always `pausedLeft` ahead: it never rings, and whatever
+   * shows what is left (the closed island, the panel, Gemini) shows it still.
+   */
+  toggleTimerPause(id: number, now: number): boolean {
+    const timer = this.timers.find((x) => x.id === id);
+    if (!timer) return false;
+    if (timer.pausedLeft != null) {
+      const left = timer.pausedLeft;
+      Object.defineProperty(timer, "endsAt", { value: now + left, writable: true, configurable: true, enumerable: true });
+      delete timer.pausedLeft;
+    } else {
+      const left = Math.max(0, timer.endsAt - now);
+      timer.pausedLeft = left;
+      Object.defineProperty(timer, "endsAt", { get: () => Date.now() + left, configurable: true, enumerable: true });
+    }
+    return true;
   }
 
   /** The timers that rang by `now`, taken off the list. */

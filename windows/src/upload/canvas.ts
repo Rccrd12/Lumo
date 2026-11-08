@@ -6,6 +6,7 @@
 // canvas draws its own.
 
 import { lerp } from "../core/anim";
+import { NEW_LOOK_BOT } from "../core/layout";
 import { fileCells, fileProgress, uploadingLabel } from "./files";
 import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
@@ -271,8 +272,14 @@ export class UploadCanvas {
     if (f.zoneAlpha > 0 && f.textAlpha > 0) this.drawDropText(ctx, f);
     if (f.barAlpha > 0 || f.barReveal > 0) this.drawProgressBar(ctx, f);
 
-    this.drawLumo(ctx, f);
-    if (f.fileVisible) this.drawFile(ctx, f);
+    // The new look: Lumo stays in the top bar, two eyes, and the file goes up
+    // into them; the island draws him (island.ts), this canvas does not.
+    if (State.settings.islandNewLook === true) {
+      if (f.fileVisible) this.drawFileToEyes(ctx, f);
+    } else {
+      this.drawLumo(ctx, f);
+      if (f.fileVisible) this.drawFile(ctx, f);
+    }
     ctx.restore();
   }
 
@@ -536,6 +543,38 @@ export class UploadCanvas {
   }
 
   // ── The file, and the suction ─────────────────────────────────────────────
+
+  /**
+   * The new look's file: under the cursor until the drop, then drawn up to
+   * Lumo's eyes in the middle of the top bar (layout.ts NEW_LOOK_BOT),
+   * smaller and fainter on the way, as if he breathed it in.
+   */
+  private drawFileToEyes(ctx: CanvasRenderingContext2D, f: UploadFrame) {
+    const cx = f.cursorX;
+    const cy = f.cursorY + 14;
+    if (f.suck <= 0) {
+      ctx.save();
+      ctx.globalAlpha = 0.92;
+      drawDoc(ctx, cx, cy, 1, 1);
+      ctx.restore();
+      return;
+    }
+    const st = this.stage;
+    const tx = (st.w / 2 - st.ox) / st.s;
+    const ty = (NEW_LOOK_BOT.cy - st.oy) / st.s;
+    const p = eIn(f.suck);
+    // A little arc: out to the side it came from, then in.
+    const x = lerp(cx, tx, eInOut(f.suck)) + Math.sin(Math.PI * f.suck) * (cx < tx ? -14 : 14);
+    const y = lerp(cy, ty, p);
+    const sc = lerp(1, 0.18, p);
+    ctx.save();
+    ctx.globalAlpha = 0.92 * (1 - Math.max(0, (f.suck - 0.7) / 0.3));
+    ctx.translate(x, y);
+    ctx.rotate((cx < tx ? 1 : -1) * 0.35 * Math.sin(Math.PI * f.suck));
+    ctx.translate(-x, -y);
+    drawDoc(ctx, x, y, sc, sc);
+    ctx.restore();
+  }
 
   private drawFile(ctx: CanvasRenderingContext2D, f: UploadFrame) {
     const cx = f.cursorX;

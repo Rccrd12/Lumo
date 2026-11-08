@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Lumo — new look preview</title>
+    <script>
+      // A stand-in for what Tauri injects (as tests/tauri.mjs): the island's
+      // commands go nowhere, and the page can fire the events Rust would.
+      window.__lumoListeners = new Map();
+      window.__TAURI_INTERNALS__ = {
+        metadata: { currentWindow: { label: "main" }, currentWebview: { windowLabel: "main", label: "main" } },
+        transformCallback: (cb) => cb,
+        invoke: async (cmd, args) => {
+          if (cmd === "plugin:event|listen") { window.__lumoListeners.set(args.event, args.handler); return window.__lumoListeners.size; }
+          // A dropped file lands in the inbox as itself.
+          if (cmd === "ingest_file") return { name: args.path.split(/[\\/]/).pop(), path: args.path };
+          // What a page sets for a command, to show a view with its data (?view=… scripts).
+          if (window.__lumoMock && cmd in window.__lumoMock) return window.__lumoMock[cmd](args);
+          return null;
+        },
+      };
+    </script>
+    <style>
+      html, body { background: #2a3140 !important; }
+      #bar { position: fixed; bottom: 0; left: 0; right: 0; z-index: 99; display: flex; gap: 6px; flex-wrap: wrap; padding: 10px; background: #111; font: 12px system-ui; }
+      #bar button { background: #222; color: #ddd; border: 1px solid #333; border-radius: 6px; padding: 5px 9px; cursor: pointer; }
+      #bar button.on { background: #ddd; color: #111; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    <div id="bar"></div>
+    <script type="module" src="./look-preview.ts"></script>
+  </body>
+</html>

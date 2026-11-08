@@ -169,7 +169,24 @@ const BOTTOM_ROOM: f64 = 20.0;
 const PANEL_STEP: f64 = 40.0;
 
 pub fn clamp_width(w: f64) -> f64 {
-    if w.is_finite() { w.clamp(MIN_WIDTH, MAX_WIDTH) } else { DEFAULT_WIDTH }
+    clamp_width_to(w, MIN_WIDTH)
+}
+
+/// How narrow a view that asks for it lets a drag make the width: the new
+/// look's home, which is wider than the width by 240 (src/core/layout.ts
+/// NEW_LOOK_HOME_MIN_W). Every other view stays `MIN_WIDTH` wide at least,
+/// whatever was kept.
+const NARROWEST: f64 = 440.0;
+
+/// The narrowest a drag may make the island: `MIN_WIDTH`, or what the view
+/// asks for down to `NARROWEST`.
+pub fn min_width_of(asked: Option<f64>) -> f64 {
+    asked.filter(|m| m.is_finite()).map_or(MIN_WIDTH, |m| m.clamp(NARROWEST, MIN_WIDTH))
+}
+
+/// A width as kept, with `min` at its narrow end (`min_width_of`).
+pub fn clamp_width_to(w: f64, min: f64) -> f64 {
+    if w.is_finite() { w.clamp(min, MAX_WIDTH) } else { DEFAULT_WIDTH }
 }
 
 pub fn clamp_height(h: f64) -> f64 {
@@ -692,12 +709,13 @@ struct SizePayload {
 /// the grip moves the size: 2 for a side whose opposite side follows it (the
 /// island stays centred), 1 or −1 for a free edge, 0 when it leaves that size
 /// alone. `height` is the height drawn when the drag started; `room` is how
-/// much the display allows, in page pixels.
-fn resized(p: Placement, f: (f64, f64), height: f64, d: (f64, f64), room: (f64, f64)) -> Placement {
+/// much the display allows, in page pixels. `min` is the narrowest width
+/// (`min_width_of`).
+fn resized(p: Placement, min: f64, f: (f64, f64), height: f64, d: (f64, f64), room: (f64, f64)) -> Placement {
     let mut next = p;
     if f.0 != 0.0 {
         let max = (room.0 - SIDE_ROOM).clamp(MIN_WIDTH, MAX_WIDTH);
-        next.width = (clamp_width(p.width) + f.0 * d.0).clamp(MIN_WIDTH, max).round();
+        next.width = (clamp_width_to(p.width, min) + f.0 * d.0).clamp(min, max).round();
     }
     if f.1 != 0.0 {
         let ends = if p.dock.upright() { SIDE_ROOM } else { BOTTOM_ROOM + p.gap };
@@ -711,8 +729,9 @@ fn resized(p: Placement, f: (f64, f64), height: f64, d: (f64, f64), room: (f64, 
 /// its grips (see `resized`). The page hears each new size (`island-resize`)
 /// and springs to it; the window only grows meanwhile, so the island is never
 /// cut, and fits it again once the button is let go. Returns the size it ended
-/// at. Needs the cursor poll (Windows): elsewhere it returns at once.
-pub fn resize(app: &AppHandle, pref: &str, start: Placement, f: (f64, f64), height: f64) -> Option<Placement> {
+/// at. Needs the cursor poll (Windows): elsewhere it returns at once. `min` is
+/// the narrowest width (`min_width_of`).
+pub fn resize(app: &AppHandle, pref: &str, start: Placement, min: f64, f: (f64, f64), height: f64) -> Option<Placement> {
     let win = window(app)?;
     let m = target_monitor(app, pref)?;
     let area = area_of(&m);
@@ -728,7 +747,7 @@ pub fn resize(app: &AppHandle, pref: &str, start: Placement, f: (f64, f64), heig
     while left_button_down() {
         std::thread::sleep(Duration::from_millis(8));
         let Some((cx, cy)) = cursor_physical() else { break };
-        let next = resized(start, f, height, ((cx - sx) / k, (cy - sy) / k), room);
+        let next = resized(start, min, f, height, ((cx - sx) / k, (cy - sy) / k), room);
         if next == p {
             continue;
         }
@@ -744,7 +763,7 @@ pub fn resize(app: &AppHandle, pref: &str, start: Placement, f: (f64, f64), heig
             let _ = win.set_size(PhysicalSize::new(w, h));
             let _ = win.set_position(PhysicalPosition::new(x, y));
         }
-        let _ = app.emit_to(WINDOW_LABEL, "island-resize", SizePayload { width: clamp_width(p.width), height: p.height });
+        let _ = app.emit_to(WINDOW_LABEL, "island-resize", SizePayload { width: clamp_width_to(p.width, min), height: p.height });
     }
     Some(p)
 }
@@ -1136,22 +1155,40 @@ mod placement_tests {
     fn a_grip_moves_the_size_it_holds_and_stops_at_the_limits() {
         let room = (1920.0, 1080.0);
         // A side whose opposite follows: 30 px out is 60 px wider.
-        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (30.0, 0.0), room).width, 700.0);
+        assert_eq!(resized(HOME, MIN_WIDTH, (2.0, 0.0), 300.0, (30.0, 0.0), room).width, 700.0);
         // A left grip: moving left (negative) widens.
-        assert_eq!(resized(HOME, (-2.0, 0.0), 300.0, (-30.0, 0.0), room).width, 700.0);
-        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (-500.0, 0.0), room).width, MIN_WIDTH);
-        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (5000.0, 0.0), room).width, MAX_WIDTH);
+        assert_eq!(resized(HOME, MIN_WIDTH, (-2.0, 0.0), 300.0, (-30.0, 0.0), room).width, 700.0);
+        assert_eq!(resized(HOME, MIN_WIDTH, (2.0, 0.0), 300.0, (-500.0, 0.0), room).width, MIN_WIDTH);
+        assert_eq!(resized(HOME, MIN_WIDTH, (2.0, 0.0), 300.0, (5000.0, 0.0), room).width, MAX_WIDTH);
         // A small display keeps the island inside it.
-        assert_eq!(resized(HOME, (2.0, 0.0), 300.0, (5000.0, 0.0), (1000.0, 700.0)).width, 920.0);
+        assert_eq!(resized(HOME, MIN_WIDTH, (2.0, 0.0), 300.0, (5000.0, 0.0), (1000.0, 700.0)).width, 920.0);
         // The bottom starts from the height drawn and leaves the width alone.
-        let tall = resized(HOME, (0.0, 1.0), 280.0, (400.0, 50.0), room);
+        let tall = resized(HOME, MIN_WIDTH, (0.0, 1.0), 280.0, (400.0, 50.0), room);
         assert_eq!((tall.width, tall.height), (DEFAULT_WIDTH, 330.0));
-        assert_eq!(resized(HOME, (0.0, 1.0), 280.0, (0.0, 900.0), (1920.0, 500.0)).height, 470.0);
+        assert_eq!(resized(HOME, MIN_WIDTH, (0.0, 1.0), 280.0, (0.0, 900.0), (1920.0, 500.0)).height, 470.0);
         // A corner does both.
-        let both = resized(HOME, (2.0, 1.0), 160.0, (20.0, 40.0), room);
+        let both = resized(HOME, MIN_WIDTH, (2.0, 1.0), 160.0, (20.0, 40.0), room);
         assert_eq!((both.width, both.height), (680.0, 200.0));
         // Never shorter than the smallest view.
-        assert_eq!(resized(HOME, (0.0, 1.0), 160.0, (0.0, -100.0), room).height, MIN_HEIGHT);
+        assert_eq!(resized(HOME, MIN_WIDTH, (0.0, 1.0), 160.0, (0.0, -100.0), room).height, MIN_HEIGHT);
+    }
+
+    #[test]
+    fn the_new_look_home_goes_narrower_and_the_other_views_do_not() {
+        let room = (1920.0, 1080.0);
+        let home = min_width_of(Some(440.0));
+        assert_eq!(resized(HOME, home, (2.0, 0.0), 300.0, (-500.0, 0.0), room).width, 440.0);
+        // A width kept that narrow is where the home's drag starts; anywhere else it is MIN_WIDTH.
+        let narrow = Placement { width: 460.0, ..HOME };
+        assert_eq!(resized(narrow, home, (2.0, 0.0), 300.0, (10.0, 0.0), room).width, 480.0);
+        assert_eq!(resized(narrow, MIN_WIDTH, (2.0, 0.0), 300.0, (10.0, 0.0), room).width, MIN_WIDTH + 20.0);
+        // Never narrower than NARROWEST, never wider than MIN_WIDTH at the narrow end; nothing asked is MIN_WIDTH.
+        assert_eq!(min_width_of(Some(100.0)), NARROWEST);
+        assert_eq!(min_width_of(Some(900.0)), MIN_WIDTH);
+        assert_eq!(min_width_of(Some(f64::NAN)), MIN_WIDTH);
+        assert_eq!(min_width_of(None), MIN_WIDTH);
+        assert_eq!(clamp_width_to(460.0, home), 460.0);
+        assert_eq!(clamp_width(460.0), MIN_WIDTH);
     }
 
     #[test]

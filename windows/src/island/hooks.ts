@@ -12,7 +12,8 @@ import { buildFileDiff, fileName, makeDiffStep, toOneLine } from "../core/diff";
 import { failureDetail, fullTextDetail, toolStepDetail } from "../core/step-detail";
 import { Sound } from "../core/sound";
 import { PillSessions } from "../core/pill-sessions";
-import { State, type ApprovalInfo, type AskedQuestion, type OutgoingEmail } from "../core/state";
+import { State, planAskInChat, type ApprovalInfo, type AskedQuestion, type OutgoingEmail } from "../core/state";
+import { stepsFromMarkdown } from "../core/agent-plan";
 import { pillDefinition } from "../core/pills";
 import { APPROVAL_AGENTS, agentColor, agentName, validateAgent } from "./agents";
 import type { Island } from "./island";
@@ -81,7 +82,7 @@ export function presentApproval(island: Pick<Island, "alert" | "quickApproval">)
     return;
   }
   if (req.quick) req.quick = false;
-  island.alert(req.questions ? "question" : "approval");
+  island.alert(planAskInChat(req, State.settings.islandNewLook === true) ? "prompt" : req.questions ? "question" : "approval");
 }
 
 /**
@@ -826,6 +827,8 @@ function handleHook(island: Island, payload: HookPayload) {
       // Code asks questions this way.
       const questions = isExternalAgent ? null : askedQuestions(tool, input);
       const view = questions ? "question" : "approval";
+      const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
+        ? stepsFromMarkdown(input.plan) : [];
       const info: ApprovalInfo = {
         requestId,
         sessionId,
@@ -840,6 +843,8 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(payload.lumo_session_allow === true && !questions ? { sessionAllow: true } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
+        // The plan Claude Code asks to start, step by step, for the new look's card and chat.
+        ...(planSteps.length ? { plan: planSteps } : {}),
       };
       // Lumo answers within 108 s (DECISION_TIMEOUT in pipe.rs) or not at all.
       // For the chat's Antigravity CLI and Claude Code runs, the relay says how
@@ -875,7 +880,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // one stays on the closed island, if it can show it.
       if (!quick || !island.quickApproval()) {
         if (State.pendingApproval?.quick) State.pendingApproval.quick = false;
-        island.alert(view);
+        island.alert(planAskInChat(State.pendingApproval, State.settings.islandNewLook === true) ? "prompt" : view);
       }
       armCardTimer(island, requestId, cardMs);
       break;

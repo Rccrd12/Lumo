@@ -302,12 +302,14 @@ fn island_drag(app: AppHandle, island: Option<(f64, f64, f64, f64)>) {
 
 /// A drag on one of the island's grips: it follows the mouse until the button
 /// is let go. `fx`/`fy` say how the grip changes the width and height (see
-/// island::resized); `height` is the island's height as drawn.
+/// island::resized); `height` is the island's height as drawn. `min_width`:
+/// a view that may go narrower than the others (the new look's home), else none.
 #[tauri::command]
-fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64) {
+fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64, min_width: Option<f64>) {
     std::thread::spawn(move || {
         let (pref, start) = placement(&app.state::<Shared>());
-        let Some(p) = island::resize(&app, &pref, start, (fx, fy), height) else { return };
+        let min = island::min_width_of(min_width);
+        let Some(p) = island::resize(&app, &pref, start, min, (fx, fy), height) else { return };
         // Unchanged (a click, or the first half of a double click): nothing to
         // save, and nothing to undo a reset with. The window only grows when
         // the size does.
@@ -315,7 +317,7 @@ fn island_resize(app: AppHandle, fx: f64, fy: f64, height: f64) {
             return;
         }
         update_island(&app, |s| {
-            s.island_width = island::clamp_width(p.width);
+            s.island_width = island::clamp_width_to(p.width, min);
             s.island_height = island::clamp_height(p.height);
         });
     });

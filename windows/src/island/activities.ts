@@ -186,10 +186,12 @@ export class IslandActivities {
     this.view = new ActivitiesView({
       act: (a) => this.act(a),
       drag: () => {
+        // In the new look they are part of the island: they stay in it.
+        if (State.settings.islandNewLook === true) return;
         const r = this.view.el.getBoundingClientRect();
         void Bridge.activitiesDrag([parseFloat(this.view.el.style.left) || r.left, parseFloat(this.view.el.style.top) || r.top, r.width, r.height]);
       },
-      resize: (fx, fy) => void Bridge.activitiesResize(fx, fy, this.view.el.getBoundingClientRect().height),
+      resize: (fx, fy) => State.settings.islandNewLook !== true && void Bridge.activitiesResize(fx, fy, this.view.el.getBoundingClientRect().height),
       focus: () => void Bridge.focusWindow(true),
       iconPoint: () => host.iconPoint(),
       movable: host.movable,
@@ -272,6 +274,9 @@ export class IslandActivities {
       case "cancelTimer":
         Feed.cancelTimer(a.id);
         break;
+      case "pauseTimer":
+        Feed.toggleTimerPause(a.id, Date.now());
+        break;
       case "media":
         void Bridge.mediaControl(a.action);
         if (a.action === "toggle" && Feed.media) Feed.media = { ...Feed.media, playing: !Feed.media.playing };
@@ -324,7 +329,7 @@ export class IslandActivities {
    * Beside the island at (x, y), `height` tall, or hidden; in their own
    * window, shown or hidden. Called every frame the island moves.
    */
-  place(show: boolean, x: number, y: number, height: number) {
+  place(show: boolean, x: number, y: number, height: number, instantHide = false) {
     const el = this.view.el;
     const besideIsland = show && !this.detached;
     if (besideIsland) {
@@ -358,7 +363,7 @@ export class IslandActivities {
         this.handingOff = window.setTimeout(() => this.handedOff(), HAND_OFF_MS);
       } else {
         this.cancelHandOff();
-        this.setShown(false, false);
+        this.setShown(false, instantHide);
         this.view.stop();
       }
     }

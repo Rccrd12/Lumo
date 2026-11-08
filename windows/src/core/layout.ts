@@ -5,6 +5,8 @@ export type IslandMode = "hidden" | "compact" | "expanded";
 
 export type IslandViewName =
   | "overview"
+  /** The new look's list (views/home.ts): what waits for you, the sessions, the live activities, the field. */
+  | "home"
   | "empty"
   | "approval"
   | "question"
@@ -126,6 +128,8 @@ export function edgeGap(name: string | undefined): number {
 
 export const VIEW_LAYOUTS: Record<IslandViewName, ViewLayout> = {
   overview: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "pills" },
+  // Only in the new look, whose geometry is its own (island.ts targetSize, homeHeight).
+  home: { height: 160, botX: 68, botY: null, botDiameter: 58, agentMode: "none" },
   empty: { height: 160, botX: 70, botY: null, botDiameter: 62, agentMode: "none" },
   approval: { height: 160, botX: 62, botY: null, botDiameter: 56, agentMode: "column" },
   question: { height: 160, botX: 62, botY: null, botDiameter: 56, agentMode: "column" },
@@ -330,6 +334,92 @@ export function botPosition(
       return { cx: layout.botX, cy, diameter: layout.botDiameter, opacity: 1 };
     }
   }
+}
+
+/**
+ * The new look (off with Settings → Island → Previous look): Lumo leaves the open island's
+ * left column for the middle of its top bar (8 pt inset + 34 pt header), as his
+ * eyes alone (engine.ts eyesOnly: the diameter sizes them), and the views take
+ * the whole width. Null where he stays where he is: the drop
+ * sequence draws its own Lumo, the greeting and the Settings frame have none.
+ */
+export const NEW_LOOK_BOT = { cy: 25, diameter: 64 } as const;
+/** In the new look the closed island shows his eyes alone, bigger than the whole ring was. */
+export const NEW_LOOK_COMPACT_DIAMETER = 40;
+
+/** In the new look a few views take more height, for what the board gives them (look-new.css). */
+/** Plus the line "Allow for this session" under the permission's two buttons. */
+export const NEW_LOOK_SESSION_ALLOW_H = 30;
+/** The new look's overview while a plan's usage card is open in it (views/usage.ts PlanCard): its limits whole. */
+export const NEW_LOOK_PLAN_CARD_H = 252;
+
+/** The steps a plan asking to start shows before its list scrolls (look-new.css .plan-ask-steps). */
+export const PLAN_ASK_MAX_STEPS = 8;
+
+/**
+ * How much taller than a permission card the new look's card for a plan is:
+ * its steps (28 px each, up to PLAN_ASK_MAX_STEPS, in a box) take the place of
+ * the command and of the line saying what it is for.
+ */
+export function planAskExtra(steps: number): number {
+  return Math.min(steps, PLAN_ASK_MAX_STEPS) * 28 + 12 - 62;
+}
+
+export const NEW_LOOK_HEIGHT: Partial<Record<IslandViewName, number>> = { approval: 196, overview: 184, tools: 372, wardrobe: 236 };
+
+/** The new look's question card: its options one under the other, each this tall with its description. */
+export const NEW_LOOK_OPTION_H = 46;
+export function newLookQuestionHeight(options: number, multiSelect: boolean): number {
+  return 156 + (options + (multiSelect ? 1 : 0)) * NEW_LOOK_OPTION_H;
+}
+
+/**
+ * The new look's column inside the island (island.ts sideInside): the Plan
+ * beside the chat. The island grows by
+ * its width less what the view gives up, and is at least this tall for it.
+ */
+export const NEW_LOOK_SIDE_GIVE = 96;
+export const NEW_LOOK_SIDE_MIN_H = 250;
+/** The new look's home is this much wider than the other views (880 at the usual width): wider rather than taller (views/home.ts). */
+export const NEW_LOOK_HOME_W = 880;
+/**
+ * How narrow the new look's home goes: its grips take the width below the
+ * other views' narrowest (Rust island.rs NARROWEST), the tiles two to a row
+ * still whole and the sessions' column room for its lines. Three tiles side
+ * by side need more, and keep the home at NEW_LOOK_HOME_THREE_MIN_W.
+ */
+export const NEW_LOOK_HOME_MIN_W = 680;
+export const NEW_LOOK_HOME_THREE_MIN_W = 800;
+/** The narrowest the shared width goes on the new look's home (island_resize's minWidth). */
+export const NEW_LOOK_HOME_MIN_SHARED = NEW_LOOK_HOME_MIN_W - (NEW_LOOK_HOME_W - EXPANDED_W);
+
+/** The new look's home's width for the shared one: as much wider as ever, down to its own narrowest. */
+export function homeWidth(shape: IslandShape, threeTiles: boolean): number {
+  const shared = Number.isFinite(shape.width) ? Math.min(MAX_ISLAND_W, Math.max(NEW_LOOK_HOME_MIN_SHARED, shape.width)) : EXPANDED_W;
+  return Math.max(shared + NEW_LOOK_HOME_W - EXPANDED_W, threeTiles ? NEW_LOOK_HOME_THREE_MIN_W : 0);
+}
+/** Below the top bar, in from the right edge, and between it and the view. */
+export const NEW_LOOK_SIDE_TOP = 44;
+export const NEW_LOOK_SIDE_PAD = 10;
+export const NEW_LOOK_SIDE_GAP = 10;
+
+export function newLookBot(view: IslandViewName, islandW: number): BotPlacement | null {
+  // (A drop keeps him there: the file flies up to him, upload/canvas.ts.)
+  if (view === "greeting") return null;
+  return { cx: islandW / 2, cy: NEW_LOOK_BOT.cy, diameter: NEW_LOOK_BOT.diameter, opacity: 1 };
+}
+
+/** The new look's light along the island's edge (wardrobe, look-new.css): as it was, softer, a line, a glow. */
+export const EDGE_LIGHTS = ["full", "soft", "line", "glow"] as const;
+export type EdgeLight = (typeof EDGE_LIGHTS)[number];
+
+export function parseEdgeLight(raw: unknown): EdgeLight {
+  return (EDGE_LIGHTS as readonly unknown[]).includes(raw) ? (raw as EdgeLight) : "full";
+}
+
+/** The new look's light along the island's edge: Lumo's colour, warm at rest. */
+export function edgeLightColor(s: BotStateName): string {
+  return s === "idle" || s === "sleeping" || s === "dizzy" ? "#FFD68C" : botGlowColor(s);
 }
 
 export function botGlowColor(s: BotStateName): string {

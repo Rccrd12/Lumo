@@ -7,12 +7,13 @@ import { StepsCard } from "./steps";
 import { State, keepPillPlaces, type AgentTask, type OutgoingEmail } from "../core/state";
 import { washRGBA, type IslandViewName, type Wash } from "../core/layout";
 import { createMiniBot, pruneMiniBots } from "../character/minibots";
+import { planAskSteps } from "./plan-ask";
 import { buildPrompt } from "./chat";
 import { buildUpload, buildUploading } from "./upload";
 import { idleCardKey, renderIntegrationCard, type IntegrationCardHooks } from "./integrations";
 import { pillDefinition, sessionSubtitle } from "../core/pills";
 import {
-  PlanCard, buildPlanPill, claudePillVisible, codexPillVisible, antigravityPillVisible, planCardOpen, refreshCodexPlanUsage,
+  PlanCard, buildPlanPill, openPlanCard, claudePillVisible, codexPillVisible, antigravityPillVisible, planCardOpen, refreshCodexPlanUsage,
   refreshAntigravityPlanUsage,
 } from "./usage";
 import { buildDiffCard } from "./diff";
@@ -26,6 +27,8 @@ import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
 import { TOOLS_STRINGS, buildTools } from "./tools";
 import { Live } from "../live/session";
+import { buildHome } from "./home";
+import type { ActivitiesAction, ActivitiesData } from "./activities-view";
 import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 
@@ -73,6 +76,12 @@ export interface ViewActions {
   showPlan(): void;
   /** A chat deleted from Past chats: its plans go too. */
   forgetChatPlan(chatId: string): void;
+  /** The new look's "⋯" (off with Settings → Island → Previous look): settings, sound, hide and quit in one menu, at (x, y). */
+  moreMenu(x: number, y: number): void;
+  /** The live activities as they stand, for the new look's home tiles. */
+  activityData(): ActivitiesData;
+  /** A click on a home tile: as on the live activities' own card. */
+  activity(a: ActivitiesAction): void;
 }
 
 export interface ViewHost {
@@ -104,6 +113,12 @@ function btn(
     h("span", { text: label }),
     kbd ? h("span", { class: "kbd", text: kbd }) : null,
   );
+}
+
+/** A hook for the new look's stylesheet (look-new.css), which only it reads. */
+function withClass<T extends HTMLElement>(el: T, cls: string): T {
+  el.classList.add(cls);
+  return el;
 }
 
 /** AgentWho — coloured dot + task name + grey label. */
@@ -173,6 +188,17 @@ export function buildHeader(actions: ViewActions): ViewHost {
   // Closes Lumo altogether; it opens again from the Start menu.
   const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
     svg(ICONS.power, 13, { stroke: 2 }));
+  // The new look gathers the four above in a menu (look-new.css shows it, hides them).
+  const moreBtn = h("button", {
+    class: "more-btn", title: tl("More"),
+    onclick: (e: Event) => {
+      const r = (e.currentTarget as HTMLElement).getBoundingClientRect();
+      actions.moreMenu(r.right, r.bottom + 4);
+    },
+  }, svg(ICONS.ellipsis, 16));
+  // The new look has no tabs: away from home, this goes back to it (look-new.css shows it).
+  const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.agentsView()) },
+    svg(ICONS.chevronLeft, 14, { stroke: 2 }));
   // Plan usage pills (off by default): before the gear, Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
@@ -189,8 +215,8 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
-    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn),
+    h("div", { class: "tabs" }, backBtn, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
+    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn, moreBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
 
@@ -205,6 +231,7 @@ export function buildHeader(actions: ViewActions): ViewHost {
       const activity = State.agentsActivity;
       agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
       tabDrop.classList.toggle("on", v === "upload");
+      backBtn.classList.toggle("away", v !== "home");
       const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
       if (folded && tabActivities.style.display === "none") {
         // It just landed: a little pop.
@@ -229,7 +256,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
     claudePill.el.style.display = claudeOn ? "" : "none";
     codexPill.el.style.display = codexOn ? "" : "none";
     antigravityPill.el.style.display = antigravityOn ? "" : "none";
-    planPills.classList.toggle("on", claudeOn || codexOn || antigravityOn);
+    // The new look's home has them beside the services (views/home.ts), not up here.
+    const onHome = State.view === "home";
+    planPills.classList.toggle("on", (claudeOn || codexOn || antigravityOn) && !onHome);
     // Two pills or more: the right side tightens so it still clears the screen edge.
     headerActions.classList.toggle("both-plans", Number(claudeOn) + Number(codexOn) + Number(antigravityOn) >= 2);
     if (claudeOn) claudePill.sync();
@@ -506,6 +535,7 @@ function buildPill(task: AgentTask, actions: ViewActions): HTMLElement {
     h("span", { class: "pill-end" }),
   );
   pill.style.borderColor = `${task.color}24`;
+  pill.style.setProperty("--pill-color", task.color);
   pill.addEventListener("mouseenter", () => {
     pill.style.background = `${task.color}2e`;
     pill.style.borderColor = `${task.color}8c`;
@@ -617,16 +647,36 @@ function emailBlock(email: OutgoingEmail): HTMLElement {
   );
 }
 
+/** The new look's card for a plan Claude Code asks to start (concept C2). */
+const PLAN_ASK_TEXT = {
+  wants: N_("wants to start the plan"),
+  keepPlanning: N_("No, keep planning"),
+  approve: N_("Approve"),
+};
+
+/**
+ * A button's words for a plan asking to start, next to its usual ones: the
+ * stylesheet shows one or the other (look-new.css, .plan-ask-on), so the
+ * button is never rebuilt under the cursor.
+ */
+function planWords(button: HTMLElement, words: string): HTMLElement {
+  button.firstElementChild?.classList.add("words-usual");
+  button.insertBefore(h("span", { class: "words-plan", text: tl(words) }), button.children[1] ?? null);
+  return button;
+}
+
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const about = h("div", { class: "approval-about" });
+  const planSlot = h("div", { class: "plan-ask-slot" });
   const code = h("div", { class: "code" });
   const mail = h("div", { class: "mail-slot" });
-  const row = h("div", { class: "actions" });
+  const row = h("div", { class: "actions approval-actions" });
   // An email's card has its own buttons, Send and Discard, and no keys: only a click sends.
   const mailRow = h("div", { class: "actions" });
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
-  const body = stack(116, 16, who, about, code, mail, row, mailRow);
+  const body = stack(116, 16, who, about, planSlot, code, mail, row, mailRow);
+  let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
   let mailFor: string | null = null;
   let rowKey = "";
@@ -688,8 +738,17 @@ function buildApproval(actions: ViewActions): ViewHost {
       }
       const pending = State.pendingApproval;
       const email = pending?.email ?? null;
+      // The new look draws a plan asking to start as its steps, with its own words on the buttons.
+      const plan = !email && State.settings.islandNewLook === true && pending?.plan?.length ? pending.plan : null;
       clear(who);
-      who.append(requestWho(email ? t(EMAIL_TEXT.wants) : t("needs permission")));
+      who.append(requestWho(email ? t(EMAIL_TEXT.wants) : plan ? t(PLAN_ASK_TEXT.wants) : t("needs permission")));
+      if ((plan ? req : null) !== planFor) {
+        planFor = plan ? req : null;
+        clear(planSlot);
+        if (plan) planSlot.append(planAskSteps(plan));
+      }
+      planSlot.hidden = !plan;
+      body.classList.toggle("plan-ask-on", !!plan);
       // An email to send: the whole email, and Send or Discard.
       if ((email ? req : null) !== mailFor) {
         mailFor = email ? req : null;
@@ -699,22 +758,31 @@ function buildApproval(actions: ViewActions): ViewHost {
       mail.hidden = !email;
       // The email fills the card from the top, clear of the fold button and of its edges.
       body.classList.toggle("mail-on", !!email);
-      code.hidden = !!email;
+      code.hidden = !!email || !!plan;
       row.hidden = !!email;
       mailRow.hidden = !email;
       // The whole point of approving here rather than in the terminal: this line
       // is the command, the file path or the URL being authorised, not just the
       // name of the tool asking.
-      code.textContent = pending?.command || pending?.tool || "…";
-      code.title = code.textContent;
+      const target = pending?.command || pending?.tool || "…";
+      const tool = pending?.tool ?? "";
+      // In the new look the tool's name stands apart, in Lumo's amber, from what it runs on.
+      if (State.settings.islandNewLook === true && tool && target.startsWith(`${tool} · `)) {
+        clear(code);
+        code.append(h("span", { class: "code-tool", text: tool }), target.slice(tool.length + 3));
+      } else {
+        code.textContent = target;
+      }
+      code.title = target;
       // What it is for: the agent's own words, else what the request does.
       const text = email ? "" : pending?.reason ?? (pending?.kind ? t(pending.kind.text, pending.kind.vars) : "");
       about.textContent = text;
       about.title = text;
-      about.hidden = !text;
+      about.hidden = !text || !!plan;
       // "Allow for this session" only where the request has a session to be
       // kept for (session_rules.rs): shown or hidden, never rebuilt.
-      sessionAllow.style.display = pending?.sessionAllow === true ? "" : "none";
+      sessionAllow.style.display = pending?.sessionAllow === true && !plan ? "" : "none";
+
       sessionAllow.title = t("Allowed again without asking until this session ends");
       // The buttons are built once. Rebuilding them between a mouse-down and a
       // mouse-up would swallow the click.
@@ -722,9 +790,9 @@ function buildApproval(actions: ViewActions): ViewHost {
       rowKey = "built";
       clear(row);
       row.append(
-        btn(tl("Deny"), "secondary", guarded("deny"), "N"),
-        sessionAllow,
-        btn(tl("Allow"), "primary", guarded("allow"), "Y"),
+        withClass(planWords(btn(tl("Deny"), "secondary", guarded("deny"), "N"), PLAN_ASK_TEXT.keepPlanning), "deny-btn"),
+        withClass(sessionAllow, "session-allow"),
+        withClass(planWords(btn(tl("Allow"), "primary", guarded("allow"), "Y"), PLAN_ASK_TEXT.approve), "allow-btn"),
       );
       clear(mailRow);
       mailRow.append(
@@ -740,7 +808,7 @@ function buildApproval(actions: ViewActions): ViewHost {
 function buildQuestion(actions: ViewActions): ViewHost {
   const who = h("div");
   const title = h("div", { class: "title question-text" });
-  const row = h("div", { class: "actions options" });
+  const row = h("div", { class: "actions options question-options" });
   const fold = foldButton(actions);
   const el = h("div", { class: "view" }, card("cyan", stack(116, 16, who, title, row), fold));
 
@@ -812,7 +880,12 @@ function buildQuestion(actions: ViewActions): ViewHost {
           else picked.add(option.label);
           State.notify();
         });
-        if (option.description) button.title = option.description;
+        if (option.description) {
+          button.title = option.description;
+          // Under the label in the new look (look-new.css); the usual one keeps it in the tooltip.
+          button.append(h("span", { class: "q-desc", text: option.description }));
+        }
+        button.classList.add("q-option");
         row.append(button);
       }
       if (q.multiSelect) {
@@ -909,6 +982,51 @@ function buildNote(actions: ViewActions): ViewHost {
 
 // ── Registry ──────────────────────────────────────────────────────────────────
 
+/** The new look's home (views/home.ts), on the island's actions. */
+function buildHomeView(actions: ViewActions): ViewHost {
+  const openChat = () => {
+    State.useSlot("chat");
+    actions.setView("prompt");
+  };
+  const home = buildHome({
+    openSession: (id) => {
+      actions.blip();
+      actions.setFocus(id);
+      actions.setView("overview");
+    },
+    openRequest: () => {
+      const req = State.pendingApproval;
+      if (req) actions.setView(req.questions ? "question" : "approval");
+    },
+    decide: (d, requestId) => actions.decide(d, requestId),
+    openChat,
+    // The tool workshop, as Tools' "Add a tool" opens it (views/tools.ts openWorkshop).
+    makeTool: () => {
+      actions.blip();
+      State.forgeAsk = { edit: null };
+      State.useSlot("forge");
+      actions.setView("prompt");
+    },
+    // A chat's plan on the home: that chat, its plan open in it.
+    openChatPlan: (chatId) => {
+      actions.blip();
+      State.useSlot("chat");
+      State.chatToOpen = chatId;
+      actions.setView("prompt");
+    },
+    // A plan's usage on the home opens its card, as its pill does on the overview.
+    openPlan: (kind) => {
+      actions.blip();
+      openPlanCard(kind);
+      actions.setView("overview");
+    },
+    activityData: () => actions.activityData(),
+    activity: (a) => actions.activity(a),
+    blip: () => actions.blip(),
+  }, hasSessionTicker);
+  return { el: home.el, sync: () => home.sync(), tick: () => home.tick() };
+}
+
 export function buildViews(
   actions: ViewActions,
   onChatHeightChange: () => void,
@@ -931,12 +1049,13 @@ export function buildViews(
   }, (chatId) => actions.forgetChatPlan(chatId), () => {
     actions.blip();
     actions.setView("tools");
-  }));
+  }, (d, requestId) => actions.decide(d, requestId)));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("recap", buildRecap(actions));
   map.set("wardrobe", buildWardrobe(actions));
   map.set("live", buildLive(() => openVoiceSettings(actions.setView)));
   map.set("tools", buildTools(actions));
+  map.set("home", buildHomeView(actions));
   return map;
 }
