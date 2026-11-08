@@ -680,6 +680,10 @@ function buildApproval(actions: ViewActions): ViewHost {
   const sessionAllow = btn(tl("Allow for this session"), "secondary", () => guarded("always")());
   // A plan Claude Code asks to start: approved, and then it edits files without asking (its acceptEdits, for the session).
   const planEdits = btn(tl(PLAN_ASK_TEXT.approveEdits), "secondary", () => guarded("edits")());
+  // An agent that can ask in its own window (Antigravity): the request goes back there, unanswered.
+  const answerThere = btn("", "secondary", () => {
+    if (performance.now() - shownAt >= CLICK_GUARD_MS) actions.answerInTerminal();
+  });
   const body = stack(116, 16, who, about, planSlot, code, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
@@ -789,6 +793,9 @@ function buildApproval(actions: ViewActions): ViewHost {
       sessionAllow.style.display = pending?.sessionAllow === true && !plan ? "" : "none";
       // In its place on a plan asking to start, from a session (the island's chat has its own way).
       planEdits.style.display = plan && !pending?.fromChat ? "" : "none";
+      answerThere.style.display = pending?.answerIn && !plan ? "" : "none";
+      const answerWords = pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : "";
+      if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
       sessionAllow.title = t("Allowed again without asking until this session ends");
       // The buttons are built once. Rebuilding them between a mouse-down and a
@@ -800,6 +807,7 @@ function buildApproval(actions: ViewActions): ViewHost {
         withClass(planWords(btn(tl("Deny"), "secondary", guarded("deny"), "N"), PLAN_ASK_TEXT.keepPlanning), "deny-btn"),
         withClass(sessionAllow, "session-allow"),
         withClass(planEdits, "session-allow"),
+        withClass(answerThere, "session-allow"),
         withClass(planWords(btn(tl("Allow"), "primary", guarded("allow"), "Y"), PLAN_ASK_TEXT.approve), "allow-btn"),
       );
       clear(mailRow);

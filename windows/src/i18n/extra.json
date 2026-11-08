@@ -15610,6 +15610,18 @@
    "ru": "Скачанный установщик не совпадает с опубликованным на GitHub.",
    "id": "Penginstal yang diunduh tidak cocok dengan yang dipublikasikan di GitHub.",
    "it": "L'installer scaricato non corrisponde a quello pubblicato su GitHub."
+  },
+  "Reply in {agent}": {
+   "zh-Hans": "在 {agent} 中回复",
+   "hi": "{agent} में जवाब दें",
+   "es": "Responder en {agent}",
+   "ar": "الرد في {agent}",
+   "fr": "Répondre dans {agent}",
+   "bn": "{agent}-এ উত্তর দাও",
+   "pt-BR": "Responder no {agent}",
+   "ru": "Ответить в {agent}",
+   "id": "Balas di {agent}",
+   "it": "Rispondi in {agent}"
   }
  }
 }

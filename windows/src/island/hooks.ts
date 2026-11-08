@@ -262,6 +262,8 @@ interface HookPayload {
   lumo_session_allow?: boolean;
   /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
   lumo_title?: string;
+  /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
+  lumo_agy_gate?: boolean;
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
   /** An email the AI wants to send, on a card of its own (mail.rs send). */
@@ -807,13 +809,17 @@ function handleHook(island: Island, payload: HookPayload) {
       break;
 
     case "PermissionRequest": {
-      // Only Claude Code (in a terminal or in the Claude app) and the agents the
-      // relay can answer for (Codex, Copilot CLI, Muse Code) get a card. Anyone else's request is
+      // Only Claude Code (in a terminal or in the Claude app), the agents the
+      // relay can answer for (Codex, Copilot CLI, Muse Code, OpenCode) and an
+      // Antigravity command no rule of its own covers get a card. Anyone else's request is
       // declined at once, so the agent asks in its own terminal. And a shell
       // command of the chat's own Antigravity CLI run (antigravity_cli.rs), which
       // the relay turns into a request: headless agy has no terminal to ask in.
       const chatAgy = payload.lumo_island === true && validAgent === "antigravity";
-      if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!) && !chatAgy) {
+      // A command of your own Antigravity session none of its rules covers:
+      // Allow, Deny, or back to Antigravity's own prompt.
+      const agyGate = payload.lumo_island !== true && validAgent === "antigravity" && payload.lumo_agy_gate === true;
+      if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!) && !chatAgy && !agyGate) {
         if (payload.request_id) void Bridge.approvalDecline(payload.request_id);
         break;
       }
@@ -876,7 +882,8 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(email ? { email } : change ? { reason: change.reason } : userTool ? (userTool.summary ? { reason: userTool.summary } : {}) : approvalAbout(tool, input)),
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
-        ...(payload.lumo_session_allow === true && !questions ? { sessionAllow: true } : {}),
+        ...(payload.lumo_session_allow === true && !questions && !agyGate ? { sessionAllow: true } : {}),
+        ...(agyGate ? { answerIn: agentName("antigravity") } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
         // The plan Claude Code asks to start, step by step, for the new look's card and chat.

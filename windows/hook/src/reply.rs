@@ -9,11 +9,11 @@
 use serde_json::{json, Map, Value};
 
 /// The agents whose permission requests the island can answer: Claude Code
-/// (no `--agent`, in a terminal or in the Claude app), Codex, Copilot CLI and
-/// Muse Code. Any decision for another agent is ignored here too, whatever the
-/// app sent.
+/// (no `--agent`, in a terminal or in the Claude app), Codex, Copilot CLI,
+/// Muse Code and OpenCode (its plugin's `permission.ask`, agents.rs). Any
+/// decision for another agent is ignored here too, whatever the app sent.
 pub fn takes_decisions(agent: &str) -> bool {
-    matches!(agent, "" | "claude-desktop" | "codex" | "copilot" | "muse")
+    matches!(agent, "" | "claude-desktop" | "codex" | "copilot" | "muse" | "opencode")
 }
 
 /// Agents that read a JSON object on stdout after every hook and get `{}` —
@@ -201,6 +201,18 @@ pub fn antigravity_island(decision: Option<&str>) -> String {
         Some("allow" | "always") => r#"{"decision":"allow"}"#.to_string(),
         Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
         _ => r#"{"decision":"deny","reason":"Nobody approved it in Lumo"}"#.to_string(),
+    }
+}
+
+/// Antigravity's PreToolUse reply to the card of a command in your own session
+/// (main.rs): `allow` only after a click on Allow, `deny` after one on Deny.
+/// Anything else (Reply in Antigravity, no click in time, Lumo closed) is
+/// "ask": Antigravity asks in its own window, as if Lumo were not there.
+pub fn antigravity_gate(decision: Option<&str>) -> String {
+    match decision.map(str::trim) {
+        Some("allow" | "always" | "edits") => r#"{"decision":"allow"}"#.to_string(),
+        Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
+        _ => r#"{"decision":"ask"}"#.to_string(),
     }
 }
 
@@ -419,7 +431,7 @@ mod tests {
     fn each_agent_gets_its_own_reply_shape() {
         let allow = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#;
         let deny = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Lumo"}}}"#;
-        for agent in ["", "claude-desktop", "codex"] {
+        for agent in ["", "claude-desktop", "codex", "opencode"] {
             assert_eq!(stdout(agent, "PermissionRequest", Some("allow"), None).unwrap(), allow);
             assert_eq!(stdout(agent, "PermissionRequest", Some("always"), None).unwrap(), allow);
             assert_eq!(stdout(agent, "PermissionRequest", Some("deny"), None).unwrap(), deny);

@@ -294,7 +294,7 @@ test("silence ends neither another agent's run nor an Antigravity run that stopp
 });
 
 test("an agent's permission request is declined, never shown as Claude Code's", () => {
-  for (const agent of ["gemini", "antigravity", "cursor", "opencode", "amp", "hermes", "my-tool"]) {
+  for (const agent of ["gemini", "antigravity", "cursor", "amp", "hermes", "my-tool"]) {
     calls.length = 0;
     hook({ hook_event_name: "PermissionRequest", request_id: "r1", lumo_agent: agent, tool_name: "Bash" });
     assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }], agent);
@@ -303,8 +303,8 @@ test("an agent's permission request is declined, never shown as Claude Code's", 
   }
 });
 
-test("Codex, Copilot CLI and Muse Code get the card on their own pill", () => {
-  for (const agent of ["codex", "copilot", "muse"]) {
+test("Codex, Copilot CLI, Muse Code and OpenCode get the card on their own pill", () => {
+  for (const agent of ["codex", "copilot", "muse", "opencode"]) {
     State.pendingApproval = null;
     State.focusId = CLAUDE;
     calls.length = 0;
@@ -871,7 +871,7 @@ test("a shell command of the chat's Antigravity CLI run is a card over the chat,
   assert.equal(State.pendingApproval, null);
 });
 
-test("an Antigravity session outside the chat still keeps its approvals in the agent", () => {
+test("an Antigravity request the relay did not hold for a card stays in the agent", () => {
   hook({ hook_event_name: "PermissionRequest", request_id: "a2", lumo_agent: "antigravity", tool_name: "run_command" });
   assert.deepEqual(sent("approval_decline"), [{ requestId: "a2" }]);
   assert.equal(State.pendingApproval, null);
@@ -1191,4 +1191,27 @@ test("another agent's title is not taken, Claude Desktop's is", () => {
   assert.equal(task("agent_codex").sessionTitle ?? null, null);
   hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\x", session_id: "d1", lumo_agent: "claude-desktop", lumo_title: "Plan the trip" });
   assert.equal(task("agent_claude-desktop").sessionTitle, "Plan the trip");
+});
+
+// ── Antigravity commands no rule of its own covers ────────────────────────────
+
+test("an Antigravity command no rule covers gets a card that can go back to Antigravity", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\site", session_id: "a1", lumo_agent: "antigravity" });
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "g1", session_id: "a1", cwd: "C:\\p\\site",
+    lumo_agent: "antigravity", lumo_agy_gate: true, lumo_card_secs: 100,
+    lumo_session_allow: true, tool_name: "run_command", tool_input: { command: "npm install" },
+  });
+  const card = State.pendingApproval;
+  assert.equal(card?.requestId, "g1");
+  assert.equal(card?.pillId, "agent_antigravity");
+  assert.equal(card?.answerIn, "Antigravity");
+  // Antigravity keeps its own "always": no "Allow for this session" here.
+  assert.equal(card?.sessionAllow, undefined);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "g1" }]);
+  // It goes a second before the relay stops waiting (100 s).
+  seconds(98);
+  assert.equal(State.pendingApproval?.requestId, "g1");
+  seconds(2);
+  assert.equal(State.pendingApproval, null);
 });
