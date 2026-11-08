@@ -176,6 +176,46 @@ pub fn codex_candidates() -> Vec<PathBuf> {
     out
 }
 
+/// Where GitHub Copilot CLI (`copilot`) may be, best first: %PATH%, then
+/// npm's global `copilot.cmd` and WinGet's link. Only fixed arguments and the
+/// model and effort Lumo checked go on its command line (acp_chat.rs).
+pub fn copilot_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = find_on_path("copilot").into_iter().collect();
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
+    if let Some(appdata) = var("APPDATA") {
+        out.push(appdata.join("npm").join("copilot.cmd"));
+    }
+    if let Some(local) = var("LOCALAPPDATA") {
+        out.push(local.join("Microsoft").join("WinGet").join("Links").join("copilot.exe"));
+        out.push(local.join("pnpm").join("copilot.cmd"));
+    }
+    out.retain(|p| p.is_file());
+    out
+}
+
+/// Where Cursor's CLI (`cursor-agent`, also installed as `agent`) may be, best
+/// first: `cursor-agent` on %PATH%, then the install script's
+/// `%LOCALAPPDATA%\cursor-agent` and `~\.local\bin`. A bare `agent` on %PATH%
+/// counts only in a folder of Cursor's, the name being too common.
+pub fn cursor_candidates() -> Vec<PathBuf> {
+    let mut out: Vec<PathBuf> = find_on_path("cursor-agent").into_iter().collect();
+    let var = |k: &str| std::env::var_os(k).map(PathBuf::from).filter(|p| p.is_absolute());
+    if let Some(local) = var("LOCALAPPDATA") {
+        let dir = local.join("cursor-agent");
+        out.push(dir.join("cursor-agent.cmd"));
+        out.push(dir.join("cursor-agent.exe"));
+        out.push(dir.join("agent.cmd"));
+        out.push(dir.join("agent.exe"));
+    }
+    if let Some(home) = var("USERPROFILE") {
+        out.push(home.join(".local").join("bin").join("cursor-agent.exe"));
+        out.push(home.join(".local").join("bin").join("cursor-agent.cmd"));
+    }
+    out.extend(find_on_path("agent").filter(|p| p.to_string_lossy().to_lowercase().contains("cursor")));
+    out.retain(|p| p.is_file());
+    out
+}
+
 /// Where the Claude Code CLI may be, best first: %PATH%, the native installer's
 /// `~\.local\bin\claude.exe`, then npm's global `claude.cmd`. The prompt goes
 /// on stdin (claude_code.rs), never as an argument a `.cmd` would interpret.

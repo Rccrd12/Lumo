@@ -871,6 +871,21 @@ test("a shell command of the chat's Antigravity CLI run is a card over the chat,
   assert.equal(State.pendingApproval, null);
 });
 
+test("a request of the chat's own Cursor CLI is a card over the chat; Cursor's own sessions still ask in Cursor", () => {
+  hook({
+    hook_event_name: "PermissionRequest", request_id: "k1", session_id: "s1", cwd: "C:\\Users\\me\\Lumo",
+    lumo_island: true, lumo_agent: "cursor", tool_name: "Bash", tool_input: { command: "npm test" },
+  });
+  assert.equal(State.pendingApproval?.fromChat, true);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "k1" }]);
+  assert.deepEqual(sent("approval_decline"), []);
+  assert.equal(task("agent_cursor"), undefined, "no session pill for the chat's own run");
+  State.pendingApproval = null;
+  calls.length = 0;
+  hook({ hook_event_name: "PermissionRequest", request_id: "k2", lumo_agent: "cursor", tool_name: "Bash" });
+  assert.deepEqual(sent("approval_decline"), [{ requestId: "k2" }]);
+});
+
 test("an Antigravity request the relay did not hold for a card stays in the agent", () => {
   hook({ hook_event_name: "PermissionRequest", request_id: "a2", lumo_agent: "antigravity", tool_name: "run_command" });
   assert.deepEqual(sent("approval_decline"), [{ requestId: "a2" }]);

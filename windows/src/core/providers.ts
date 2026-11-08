@@ -6,7 +6,7 @@ import type { Settings } from "./state";
 import { N_ } from "../i18n/i18n";
 
 export type ProviderId =
-  | "anthropic" | "claude-code" | "antigravity-cli" | "codex" | "openai" | "google" | "openrouter"
+  | "anthropic" | "claude-code" | "antigravity-cli" | "codex" | "copilot-cli" | "cursor-cli" | "openai" | "google" | "openrouter"
   | "ollama" | "lmstudio" | "unsloth" | "custom";
 
 export interface ProviderDef {
@@ -33,6 +33,11 @@ export const PROVIDERS: readonly ProviderDef[] = [
   // Codex (`codex app-server`), signed in with the user's ChatGPT account: no
   // key (codex_chat.rs). The Codex pill's colour.
   { id: "codex", name: "Codex", accent: "#2DD4BF", key: null, urlField: null, defaultModel: "default", prefer: null },
+  // GitHub Copilot CLI and Cursor's CLI, signed in with the user's own
+  // accounts, over their Agent Client Protocol servers: no key (acp_chat.rs).
+  // Their pills' colours.
+  { id: "copilot-cli", name: "Copilot CLI", accent: "#818CF8", key: null, urlField: null, defaultModel: "default", prefer: null },
+  { id: "cursor-cli", name: "Cursor CLI", accent: "#C0C4CC", key: null, urlField: null, defaultModel: "default", prefer: null },
   { id: "google", name: "Google", accent: "#4285F4", key: "google-api-key", urlField: null, defaultModel: "gemini-2.0-flash", prefer: "flash" },
   { id: "openai", name: "OpenAI", accent: "#10A37F", key: "openai-api-key", urlField: null, defaultModel: "gpt-4o", prefer: "mini" },
   { id: "openrouter", name: "OpenRouter", accent: "#6467F2", key: "openrouter-api-key", urlField: null, defaultModel: "openrouter/auto", prefer: null },
@@ -46,17 +51,20 @@ export const PROVIDERS: readonly ProviderDef[] = [
 /** Claude Code's effort levels (claude --effort), "" for its own default. */
 export const EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
 
+/** Copilot CLI's efforts (acp_chat.rs COPILOT_EFFORTS, `--effort`), "" for its own default. */
+export const COPILOT_EFFORTS = ["", "low", "medium", "high", "xhigh", "max"] as const;
+
 /** Codex's reasoning efforts (codex_chat.rs EFFORTS), "" for its own default. */
 export const CODEX_EFFORTS = ["", "low", "medium", "high", "xhigh"] as const;
 
 
 /**
  * The providers that run a signed-in CLI on this computer (claude_code.rs,
- * antigravity_cli.rs, codex_chat.rs): they say what they are doing as they go, and read a
+ * antigravity_cli.rs, codex_chat.rs, acp_chat.rs): they say what they are doing as they go, and read a
  * file added mid-conversation from its path.
  */
 export function isCliProvider(id: string): boolean {
-  return id === "claude-code" || id === "antigravity-cli" || id === "codex";
+  return id === "claude-code" || id === "antigravity-cli" || id === "codex" || id === "copilot-cli" || id === "cursor-cli";
 }
 
 /**
@@ -160,6 +168,7 @@ export function capsContext(caps: LocalCaps | undefined): string {
 export function effortsFor(id: string): readonly string[] {
   if (id === "claude-code") return EFFORTS;
   if (id === "codex") return CODEX_EFFORTS;
+  if (id === "copilot-cli") return COPILOT_EFFORTS;
   const local = localCaps.get(id);
   if (local && local.reasoning.length > 0) return ["", ...local.reasoning];
   return [];

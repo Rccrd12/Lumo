@@ -625,7 +625,7 @@ for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its
 permission requests do, as a card over the chat.
 
-**The shield** next to the screen button (Claude Code, Antigravity CLI and Codex only)
+**The shield** next to the screen button (Claude Code, Antigravity CLI, Codex, Copilot CLI and Cursor CLI only)
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
@@ -692,6 +692,41 @@ ask), **Plan only** runs in its read-only sandbox and declines whatever it
 would ask, without a card. Codex never gets full access from Lumo. Lumo's
 timer and GitHub tools reach it as an MCP server of the chat's thread only;
 your Codex configuration is never touched.
+
+### Chat with GitHub Copilot or Cursor (Copilot CLI, Cursor CLI)
+
+Pick **Copilot CLI** or **Cursor CLI** above the chat box and the island talks
+to that CLI, signed in with your own GitHub Copilot or Cursor plan: no API key
+in Lumo. Lumo runs the unmodified CLI's own Agent Client Protocol server
+(`copilot --acp`, `cursor-agent acp`), one per chat while it is in use (ended
+after 10 minutes idle, or by **New chat**), in the same folder as Claude Code;
+it never reads, stores or forwards any GitHub or Cursor credential. Install
+Copilot CLI with `npm install -g @github/copilot` and run `copilot` once in a
+terminal to sign in (`/login`); install Cursor CLI from
+[cursor.com/cli](https://cursor.com/cli) and run `cursor-agent login` once.
+**Settings… → Chat** says how while one isn't on the PC yet. Lumo looks for
+them on `PATH`, then in npm's and WinGet's folders (Copilot) and in
+`%LOCALAPPDATA%\cursor-agent` (Cursor).
+
+Like Codex, each reads the files you drop or attach and the folder you share,
+says what it is doing next to the typing dots (a command, a file it reads or
+changes, a search), shows its plan (Cursor's to-dos) on the Plan island, stops
+on **Stop** (`session/cancel`) and continues the same session until **New
+chat**. Their models are those a new session offers (**Default** leaves the
+CLI's own choice), in the picker and in **Settings… → Chat**; Copilot CLI also
+takes an effort (low to max, `--effort`). What the CLI would ask you in a
+terminal is a **Deny / Allow** card over the chat, sent to Lumo by the CLI's
+server: no hooks are needed, Lumo's hooks of these CLIs stay out of the
+chat's runs, and only a click allows it. The shield: **Ask every time** answers
+a click with the CLI's "allow once"; **Auto** with its "always allow", so the
+same thing isn't asked again in that chat; **Plan only** switches the session
+to the CLI's own plan mode and declines whatever it would ask, without a card.
+Lumo's timer, GitHub and email tools (and yours, while one is on) reach
+Copilot as MCP servers of the chat's session; Cursor only reads MCP servers
+from a `.cursor/mcp.json`, so Lumo keeps its entries in the one of its own
+folder (`~\Lumo\.cursor`, with `.cursor\cli.json` allowing them), keeping
+whatever else is there, and starts Cursor with `--approve-mcps`. Your own
+Copilot and Cursor configurations are never touched.
 
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are

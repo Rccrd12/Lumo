@@ -819,7 +819,10 @@ function handleHook(island: Island, payload: HookPayload) {
       // A command of your own Antigravity session none of its rules covers:
       // Allow, Deny, or back to Antigravity's own prompt.
       const agyGate = payload.lumo_island !== true && validAgent === "antigravity" && payload.lumo_agy_gate === true;
-      if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!) && !chatAgy && !agyGate) {
+      // A request of the chat's own Cursor CLI, which Lumo answers over ACP
+      // (acp_chat.rs): Cursor's hooks stay out of the chat's runs.
+      const chatCursor = payload.lumo_island === true && validAgent === "cursor";
+      if (isExternalAgent && !APPROVAL_AGENTS.has(validAgent!) && !chatAgy && !agyGate && !chatCursor) {
         if (payload.request_id) void Bridge.approvalDecline(payload.request_id);
         break;
       }

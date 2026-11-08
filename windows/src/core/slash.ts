@@ -65,12 +65,12 @@ export interface CommandTool {
 
 /**
  * The providers the user's tools go to (claude.rs, openai_compat.rs,
- * claude_code.rs, codex_chat.rs, antigravity_cli.rs, local_chat.rs): every
+ * claude_code.rs, codex_chat.rs, antigravity_cli.rs, acp_chat.rs, local_chat.rs): every
  * one, but a local model its server says takes no tools.
  */
 export function usesYourTools(provider: string): boolean {
   if (["ollama", "lmstudio", "unsloth", "custom"].includes(provider)) return localCapsOf(provider)?.tools !== false;
-  return ["", "anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli"].includes(provider);
+  return ["", "anthropic", "openai", "google", "openrouter", "claude-code", "codex", "antigravity-cli", "copilot-cli", "cursor-cli"].includes(provider);
 }
 
 const LUMO: readonly SlashCommand[] = [

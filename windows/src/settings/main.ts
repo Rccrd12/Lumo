@@ -452,16 +452,26 @@ function apiSection(hasKey: boolean): HTMLElement {
   );
 }
 
-// ── Antigravity CLI and Codex sections ────────────────────────────────────────
+// ── Antigravity CLI, Codex, Copilot CLI and Cursor CLI sections ──────────────
+
+/** How to get Copilot CLI and Cursor CLI, while they aren't on this PC (acp_chat.rs). */
+const COPILOT_MISSING = N_("Not on this PC yet: install it with npm install -g @github/copilot, then run copilot once in a terminal to sign in.");
+const CURSOR_MISSING = N_("Not on this PC yet: install it from cursor.com/cli, then run cursor-agent login once in a terminal to sign in.");
 
 /**
- * Antigravity CLI and Codex need no key either: each runs with the account
- * signed in to it, Google's for `agy` (antigravity_cli.rs), ChatGPT's for
- * `codex` (codex_chat.rs). Their models come from the CLI itself (`agy
- * models`, Codex's `model/list`), asked only once the list is opened.
+ * Antigravity CLI, Codex, Copilot CLI and Cursor CLI need no key either:
+ * each runs with the account signed in to it, Google's for `agy`
+ * (antigravity_cli.rs), ChatGPT's for `codex` (codex_chat.rs), GitHub's for
+ * `copilot` and Cursor's for `cursor-agent` (acp_chat.rs). Their models come
+ * from the CLI itself (`agy models`, Codex's `model/list`, what a new ACP
+ * session offers), asked only once the list is opened.
  */
-function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement {
+function cliSection(id: "antigravity-cli" | "codex" | "copilot-cli" | "cursor-cli", note: string, missing?: string): HTMLElement {
   const p = providerDef(id);
+  // Copilot CLI and Cursor CLI say how to get them while they aren't on this PC.
+  const absent = h("p", { class: "hint", text: missing ? t(missing) : "" });
+  absent.hidden = true;
+  if (missing) Bridge.chatProviders().then((ready) => { if (ready) absent.hidden = ready.includes(id); }, () => {});
   const model = h("select", {}) as HTMLSelectElement;
   const fill = (offered: { id: string; label: string }[]) => {
     const saved = settings.chatModels[p.id] || "default";
@@ -491,6 +501,7 @@ function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement 
     {},
     ...sectionHead(p.name, null, accentDot(p.accent)),
     setting(t("Model"), t(note), model),
+    absent,
   );
 }
 
@@ -2167,7 +2178,7 @@ async function render() {
   const pages: Record<PageId, HTMLElement[]> = {
     general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
+    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), cliSection("copilot-cli", N_("Uses your GitHub Copilot plan. No key needed."), COPILOT_MISSING), cliSection("cursor-cli", N_("Uses your Cursor plan. No key needed."), CURSOR_MISSING), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],

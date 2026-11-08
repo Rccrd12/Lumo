@@ -18,6 +18,7 @@ mod chat_usage;
 mod claude;
 mod claude_code;
 mod clipboard;
+mod acp_chat;
 mod codex_chat;
 mod codex_plan;
 mod computer;
@@ -756,6 +757,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     // Its Claude Code, waiting for a message of the conversation before, goes.
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
@@ -1029,6 +1031,11 @@ async fn chat_providers() -> Vec<String> {
         }
         if codex_chat::ready() {
             ready.push("codex".to_string());
+        }
+        for provider in [acp_chat::COPILOT, acp_chat::CURSOR] {
+            if acp_chat::ready(provider) {
+                ready.push(provider.to_string());
+            }
         }
         ready
     })

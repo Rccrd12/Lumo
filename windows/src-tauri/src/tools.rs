@@ -1080,6 +1080,8 @@ fn plan_speaker(provider: &str) -> (String, &'static str) {
         "claude-code" => ("Claude Code".into(), "#D97757"),
         "antigravity-cli" => ("Antigravity CLI".into(), "#E879F9"),
         "codex" => ("Codex".into(), "#2DD4BF"),
+        "copilot-cli" => ("Copilot CLI".into(), "#818CF8"),
+        "cursor-cli" => ("Cursor CLI".into(), "#C0C4CC"),
         "google" => ("Google".into(), "#4285F4"),
         "openai" => ("OpenAI".into(), "#10A37F"),
         "openrouter" => ("OpenRouter".into(), "#6467F2"),

@@ -164,6 +164,13 @@ fn main() {
         // Anything else is not ours to show: Claude Code goes on as its mode says.
         std::process::exit(0);
     }
+    // The island's Copilot CLI and Cursor CLI chats (acp_chat.rs) ask Lumo
+    // over ACP themselves: Lumo's hooks of those CLIs stay out of them, with
+    // the usual "no opinion", so a request never comes up twice.
+    if from_island && is_acp_run(&env) {
+        print(reply::stdout(&args.agent, normalize::event(&args.event), None, None));
+        std::process::exit(0);
+    }
     let prepared = prepare(&raw, &args, &env, &cwd).filter(|e| !from_island || e.name == "PermissionRequest");
     let Some(event) = prepared else {
         // Nothing we could forward. An agent that needs JSON still gets its
@@ -382,6 +389,13 @@ fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
 /// Set by the app on the `claude -p` and headless `agy` runs of its chat; hooks inherit it.
 const ISLAND_RUN_VAR: &str = "LUMO_ISLAND_RUN";
 
+/// Set by the app, with ISLAND_RUN_VAR, on the CLIs its chat talks to over ACP.
+const ACP_RUN_VAR: &str = "LUMO_ACP_RUN";
+
+fn is_acp_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
+    env(ACP_RUN_VAR).as_deref() == Some("1")
+}
+
 /// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
 /// a Claude Code session started from the Claude desktop app, which says so in
 /// CLAUDE_CODE_ENTRYPOINT. Nothing
@@ -556,6 +570,8 @@ mod tests {
         let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap();
         assert!(ev.line.contains(r#""lumo_island":true"#));
         assert!(is_island_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));
+        assert!(is_acp_run(&env_of(&[("LUMO_ACP_RUN", "1")])));
+        assert!(!is_acp_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
         assert!(!ev.line.contains("lumo_island"));
         assert!(!is_island_run(&|_| None));
