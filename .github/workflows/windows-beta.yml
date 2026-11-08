@@ -5,8 +5,10 @@ name: Windows beta
 # as the one `windows-beta` pre-release, which replaces the one before. Lumo
 # offers it only to whoever turned Beta versions on.
 #
-# It runs each time Windows CI ends (on main or on a pull request), when a
-# pull request is closed, and by hand. Only pull requests whose own Windows
+# It runs each time Windows CI ends (on main or on a pull request), and by
+# hand. A pull request merged into main comes back with main's CI; one closed
+# without merging leaves the beta at the next build. It never runs on a
+# pull_request event: the token GitHub gives those may not publish a release. Only pull requests whose own Windows
 # CI passed on their latest commit go in: one that fails, or whose checks are
 # still running, is left out this time and says so, so a broken pull request
 # never holds the others back. One that does not merge is left out too, and
@@ -19,8 +21,6 @@ on:
   workflow_run:
     workflows: ["Windows CI"]
     types: [completed]
-  pull_request:
-    types: [closed]
   workflow_dispatch:
 
 permissions:
@@ -37,9 +37,7 @@ concurrency:
 
 jobs:
   beta:
-    if: >-
-      (github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository) &&
-      (github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped'))
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped')
     runs-on: windows-latest
     defaults:
       run:
