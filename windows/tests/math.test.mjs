@@ -22,6 +22,24 @@ test("formulas are found among the text, and money is not one", () => {
   assert.equal(parseInline("**sia $x$ reale**")[0].children[1].kind, "math");
 });
 
+test("an escaped dollar is a dollar sign, and prices around bold stay text", () => {
+  // As an answer wrote them: \$ opened a formula that \$ closed, eating the bold.
+  const nodes = parseInline("**Cache Read** (~650M token a \\$0,20/MTok): **\\$ 130**");
+  assert.deepEqual(nodes, [
+    { kind: "strong", children: [{ kind: "text", text: "Cache Read" }] },
+    { kind: "text", text: " (~650M token a $0,20/MTok): " },
+    { kind: "strong", children: [{ kind: "text", text: "$ 130" }] },
+  ]);
+  assert.deepEqual(parseInline("Input standard: ~1 \\$"), [{ kind: "text", text: "Input standard: ~1 $" }]);
+  // Unescaped, a $…$ still never runs across bold's **.
+  assert.deepEqual(parseInline("a $0,20/MTok): **$ 130**").map((n) => n.kind), ["text", "strong"]);
+  // Inside a formula \$ stays TeX's dollar, and formulas next to prices still are formulas.
+  const mixed = parseInline("costa \\$25 e $R = p \\cdot q$, cioè $\\$5 + x$");
+  assert.deepEqual(mixed.map((n) => n.kind), ["text", "math", "text", "math"]);
+  assert.equal(mixed[0].text, "costa $25 e ");
+  assert.equal(mixed[3].tex, "\\$5 + x");
+});
+
 test("a formula on lines of its own is a block", () => {
   const blocks = parseMarkdown("Ecco:\n$$\nH = \\begin{pmatrix} a & b \\\\ c & d \\end{pmatrix}\n$$\nfine");
   assert.deepEqual(blocks.map((b) => b.kind), ["paragraph", "math", "paragraph"]);
