@@ -2109,7 +2109,7 @@ checksum = "4050469837a6ff301cd14c1f8f24f88549e6d548f24f64e2148eb0f72cebc51f"
 
 [[package]]
 name = "lumo"
-version = "0.19.1"
+version = "0.20.0"
 dependencies = [
  "auto-launch",
  "keyring",
@@ -2133,7 +2133,7 @@ dependencies = [
 
 [[package]]
 name = "lumo-hook"
-version = "0.19.1"
+version = "0.20.0"
 dependencies = [
  "serde_json",
  "windows 0.61.3",
@@ -2141,7 +2141,7 @@ dependencies = [
 
 [[package]]
 name = "lumo-local"
-version = "0.19.1"
+version = "0.20.0"
 dependencies = [
  "reqwest 0.12.28",
  "serde_json",

@@ -33,8 +33,8 @@ export type PillSupport = "yes" | "no";
 export type PillConnect =
   /** Hook events: connected once the hooks are installed. */
   | { kind: "hooks" }
-  /** A key in the credential store. */
-  | { kind: "key"; key: string }
+  /** A key in the credential store (or, for Email, Outlook on this PC turned on). */
+  | { kind: "key"; key: string; orSetting?: "mailOutlook" }
   /** A model server the chat is connected to (Settings → Local models). */
   | { kind: "server"; field: "ollamaUrl" | "lmstudioUrl" | "unslothUrl" }
   /** Nothing to set up. */
@@ -130,10 +130,10 @@ export const PILL_CATALOG: readonly PillDefinition[] = [
     subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("stripe-api-key") },
   { id: "integration_music", name: "Apple Music", color: "#FA2D48", category: "service",
     subtitle: N_("Integration"), source: "n8n", support: "no", connect: none },
-  // New emails over IMAP, for the
-  // closed island's preview (mail.rs).
+  // New emails over IMAP or from the classic Outlook on this PC, for the
+  // closed island's preview (mail.rs, outlook.rs).
   { id: "integration_mail", name: "Email", color: "#EA4335", category: "service",
-    subtitle: N_("Integration"), source: "n8n", support: "yes", connect: key("mail-app-password") },
+    subtitle: N_("Integration"), source: "n8n", support: "yes", connect: { kind: "key", key: "mail-app-password", orSetting: "mailOutlook" } },
 ];
 
 /** The always-on pill unless the user picks another workspace tool. */

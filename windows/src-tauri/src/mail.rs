@@ -1,7 +1,9 @@
 // The Email pill: new messages in the user's inbox, read over IMAP with an app
 // password (Gmail, Outlook, iCloud, any IMAP server), for the closed island's
 // email preview and the pill's card. The server says when one arrives (IDLE),
-// so it shows within seconds.
+// so it shows within seconds. The classic Outlook on this PC can be a source
+// too, alone or with IMAP (Settings → Pills → Email, outlook.rs): the island
+// and the agents get both, the emails of each kept by their own ids.
 //
 // The pill itself only reads: the inbox is opened with EXAMINE (the server
 // refuses any change to it) and message bodies are fetched with BODY.PEEK
@@ -16,13 +18,14 @@
 // files, to read), the list of folders. They answer only while an agent of
 // the island is at work (`agent_turn`), each on a short connection of its own.
 //
-// What more they may do is Settings → General → Security → Email's: with
+// What more they may do is Settings → Security → Email's: with
 // "Read and send", send, reply in the conversation and forward with the files
 // (each email on its card, gone only when the user clicks Send; smtp.rs),
 // and save drafts in the mailbox's Drafts; with "Read, send and manage",
 // also mark read or unread, star, move, archive and trash one email, each on
 // a card of its own. Nothing here ever deletes an email for good.
 
+use std::collections::BTreeMap;
 use std::sync::atomic::{AtomicU64, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
@@ -46,6 +49,188 @@ pub const ID: &str = "integration_mail";
 pub const ADDRESS_KEY: &str = "mail-address";
 pub const SERVER_KEY: &str = "mail-imap-server";
 pub const PASSWORD_KEY: &str = "mail-app-password";
+/// At most this many IMAP accounts. The first (the default: a new email goes
+/// out of it) keeps the keys above; the others add their number to them
+/// ("mail-address-2"…). Removing one moves the ones after it up, so the first
+/// is always there while any is.
+pub const MAX_ACCOUNTS: usize = 5;
+
+/// The credential store's key of field `base` for account `slot` (1 = the first).
+pub fn slot_key(base: &str, slot: usize) -> String {
+    if slot <= 1 { base.to_string() } else { format!("{base}-{slot}") }
+}
+
+/// One IMAP account, as stored.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Account {
+    pub slot: usize,
+    pub address: String,
+    /// What the user typed, maybe nothing (then found from the address).
+    pub server: String,
+    pub(crate) password: String,
+}
+
+impl Account {
+    fn host(&self) -> (String, u16) {
+        server_of(&self.server, &self.address)
+    }
+}
+
+/// Account `slot`, if it has its address and password.
+fn account(slot: usize) -> Option<Account> {
+    let address = secrets::get(&slot_key(ADDRESS_KEY, slot))?;
+    let password = secrets::get(&slot_key(PASSWORD_KEY, slot))?;
+    let server = secrets::get(&slot_key(SERVER_KEY, slot)).unwrap_or_default();
+    Some(Account { slot, address, server, password })
+}
+
+/// Every account stored, the first (the default) first.
+pub fn accounts() -> Vec<Account> {
+    (1..=MAX_ACCOUNTS).filter_map(account).collect()
+}
+
+// ── Settings → Pills → Email → IMAP: the accounts ─────────────────────────────
+
+/// One account as Settings lists it: never its password.
+#[derive(Serialize, Clone, Debug, PartialEq)]
+pub struct AccountRow {
+    pub slot: usize,
+    pub address: String,
+    /// The server it reads, typed or found from the address.
+    pub host: String,
+    /// "ok" (read), "error", "paused", or "connecting".
+    pub state: &'static str,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub error: Option<String>,
+}
+
+/// The accounts, the first (the default) first, each with how it is going.
+#[tauri::command(async)]
+pub fn mail_accounts(app: AppHandle) -> Vec<AccountRow> {
+    let off = !imap_on(&app);
+    accounts()
+        .into_iter()
+        .map(|a| {
+            let host = a.host().0;
+            let (state, error) = if off || is_paused(&app, &a.address) {
+                ("paused", None)
+            } else {
+                match account_state(a.slot) {
+                    Some(Ok(())) => ("ok", None),
+                    Some(Err(e)) => ("error", Some(e)),
+                    None => ("connecting", None),
+                }
+            };
+            AccountRow { slot: a.slot, address: a.address.trim().to_string(), host, state, error }
+        })
+        .collect()
+}
+
+/// The server an address is read from when the user types none.
+#[tauri::command]
+pub fn mail_server_for(address: String) -> String {
+    if address.contains('@') { server_of("", &address).0 } else { String::new() }
+}
+
+/// Adds an account, once its server took the address and the password: what
+/// the user typed is tried first, and nothing is kept when it fails.
+#[tauri::command(async)]
+pub async fn mail_account_add(address: String, password: String, server: String) -> Result<String, String> {
+    let (address, password, server) = (address.trim().to_string(), password.trim().to_string(), server.trim().to_string());
+    if !crate::smtp::valid_address(&address) {
+        return Err(t("This isn't an email address."));
+    }
+    if password.is_empty() {
+        return Err(t("Paste the account's app password."));
+    }
+    if server.chars().any(|c| c.is_whitespace() || c.is_control()) {
+        return Err(t("The IMAP server is a name like imap.example.com, with no spaces."));
+    }
+    compact();
+    let stored = accounts();
+    if stored.iter().any(|a| a.address.trim().eq_ignore_ascii_case(&address)) {
+        return Err(t("This account is already in the list."));
+    }
+    if stored.len() >= MAX_ACCOUNTS {
+        return Err(tf("At most {count} accounts: remove one first.", &[("count", &MAX_ACCOUNTS.to_string())]));
+    }
+    let host = try_account(&address, &password, &server).await?;
+    let slot = stored.len() + 1;
+    let saved = secrets::set(&slot_key(ADDRESS_KEY, slot), &address)
+        .and_then(|_| secrets::set(&slot_key(PASSWORD_KEY, slot), &password))
+        .and_then(|_| secrets::set(&slot_key(SERVER_KEY, slot), &server));
+    if let Err(e) = saved {
+        for base in [ADDRESS_KEY, PASSWORD_KEY, SERVER_KEY] {
+            let _ = secrets::clear(&slot_key(base, slot));
+        }
+        return Err(e);
+    }
+    log::line(format!("[mail] account {slot} added ({host})"));
+    keys_changed();
+    Ok(host)
+}
+
+/// Removes the account of `address` from the credential store; the ones
+/// after it move up. By its address, so a list shown before a change can't
+/// remove another.
+#[tauri::command(async)]
+pub fn mail_account_remove(address: String) -> Result<(), String> {
+    let slot = accounts()
+        .into_iter()
+        .find(|a| a.address.trim().eq_ignore_ascii_case(address.trim()))
+        .map(|a| a.slot)
+        .ok_or_else(|| format!("no account {address}"))?;
+    for base in [ADDRESS_KEY, PASSWORD_KEY, SERVER_KEY] {
+        secrets::clear(&slot_key(base, slot))?;
+    }
+    compact();
+    log::line(format!("[mail] account {slot} removed"));
+    keys_changed();
+    Ok(())
+}
+
+/// The accounts with no gap between them: one missing (removed, or only half
+/// stored) lets the ones after it move up, so the first is there while any is.
+fn compact() {
+    let mut to = 1;
+    for from in 1..=MAX_ACCOUNTS {
+        let address = secrets::get(&slot_key(ADDRESS_KEY, from));
+        let password = secrets::get(&slot_key(PASSWORD_KEY, from));
+        let (Some(address), Some(password)) = (address, password) else { continue };
+        if from != to {
+            let server = secrets::get(&slot_key(SERVER_KEY, from)).unwrap_or_default();
+            let moved = secrets::set(&slot_key(ADDRESS_KEY, to), &address)
+                .and_then(|_| secrets::set(&slot_key(PASSWORD_KEY, to), &password))
+                .and_then(|_| secrets::set(&slot_key(SERVER_KEY, to), &server));
+            if let Err(e) = moved {
+                log::line(format!("[mail] account {from} couldn't move up: {e}"));
+                return;
+            }
+            for base in [ADDRESS_KEY, PASSWORD_KEY, SERVER_KEY] {
+                let _ = secrets::clear(&slot_key(base, from));
+            }
+        }
+        to += 1;
+    }
+}
+
+/// Settings → Pills → Email: the user paused this account (its switch).
+fn paused(settings: &Settings, address: &str) -> bool {
+    settings.mail_paused.iter().any(|a| a.trim().eq_ignore_ascii_case(address.trim()))
+}
+
+fn is_paused(app: &AppHandle, address: &str) -> bool {
+    app.try_state::<crate::Shared>().is_some_and(|s| paused(&s.settings.lock().unwrap(), address))
+}
+
+/// The accounts Lumo reads: IMAP on, each not paused. The first of them is
+/// the one a new email goes out of.
+fn live_accounts(app: &AppHandle) -> Vec<Account> {
+    if !imap_on(app) {
+        return Vec::new();
+    }
+    accounts().into_iter().filter(|a| !is_paused(app, &a.address)).collect()
+}
 
 /// One step with the server: connect and sign in, or look.
 const TIMEOUT: Duration = Duration::from_secs(25);
@@ -57,10 +242,10 @@ const IDLE_ANSWER: Duration = Duration::from_secs(10);
 const MAX_READ: usize = 4 * 1024 * 1024;
 /// The newest unread messages kept: the island shows three, and the next ones
 /// move up when one is ignored.
-const FETCH: usize = 8;
+pub(crate) const FETCH: usize = 8;
 /// Of each message's body, enough for a preview and for the AI to answer it.
 const BODY_BYTES: usize = 24 * 1024;
-const BODY_CHARS: usize = 6000;
+pub(crate) const BODY_CHARS: usize = 6000;
 const PREVIEW_CHARS: usize = 180;
 
 #[derive(Serialize, Clone, Debug, Default, PartialEq)]
@@ -78,14 +263,23 @@ pub struct Message {
     pub link: Option<String>,
 }
 
-/// The highest UID seen per account: what is above it is new. The first
-/// check only takes note, so what was already unread is not announced.
-static LAST_UID: Mutex<Option<(String, u32)>> = Mutex::new(None);
+/// The highest UID seen per account (by its number): what is above it is new.
+/// The first check only takes note, so what was already unread is not announced.
+static LAST_UID: Mutex<BTreeMap<usize, (String, u32)>> = Mutex::new(BTreeMap::new());
 /// What the island was last sent, so an unchanged inbox sends nothing.
 static LAST_SENT: Mutex<Option<String>> = Mutex::new(None);
-/// The inbox as last read (unread count, newest unread emails), for the chat
-/// (chat.rs): any provider can say what the newest emails are.
-static INBOX: Mutex<Option<(usize, Vec<Message>)>> = Mutex::new(None);
+/// What each source last read, or why it couldn't: the island and the chat
+/// (chat.rs) get them together. IMAP's by account number.
+static IMAP_NOW: Mutex<BTreeMap<usize, Result<Read, String>>> = Mutex::new(BTreeMap::new());
+static OUTLOOK_NOW: Mutex<Option<Result<Read, String>>> = Mutex::new(None);
+
+/// One source's inbox: how many unread, the newest unread, where to open it.
+#[derive(Clone)]
+struct Read {
+    unread: usize,
+    messages: Vec<Message>,
+    inbox: Option<String>,
+}
 
 // ── Watching the inbox ────────────────────────────────────────────────────────
 
@@ -97,13 +291,14 @@ static GENERATION: AtomicU64 = AtomicU64::new(0);
 /// Look again now (Refresh).
 pub fn wake() {
     *LAST_SENT.lock().unwrap() = None;
-    WAKE.notify_one();
+    WAKE.notify_waiters();
+    crate::outlook::wake();
 }
 
 /// Whether a change of settings concerns the Email pill: turned on or off (its
 /// connection opens or closes now), its promotions filter, or the language its
 /// errors are written in. Any other change leaves the inbox alone.
-/// What the AI may do with the email (Settings → General → Security): "none",
+/// What the AI may do with the email (Settings → Security): "none",
 /// "read", "send" (read, and send what the user approves on a card), or
 /// "manage" (and mark, move, archive and trash, each on a card).
 /// Anything else reads as "read", as before the setting.
@@ -140,13 +335,29 @@ pub fn for_ai(app: &AppHandle) -> bool {
 
 pub fn concerned(before: &Settings, after: &Settings) -> bool {
     let on = |s: &Settings| s.active_integrations.iter().any(|id| id == ID);
-    on(before) != on(after) || before.mail_hide_promotions != after.mail_hide_promotions || before.language != after.language
+    on(before) != on(after)
+        || before.mail_hide_promotions != after.mail_hide_promotions
+        || before.language != after.language
+        || before.mail_imap != after.mail_imap
+        || before.mail_outlook != after.mail_outlook
+        || before.outlook_start != after.outlook_start
+        || before.mail_paused != after.mail_paused
+}
+
+/// Settings → Pills → Email → "IMAP": on unless the user turned it off.
+fn imap_on(app: &AppHandle) -> bool {
+    app.try_state::<crate::Shared>().is_some_and(|s| s.settings.lock().unwrap().mail_imap)
+}
+
+/// IMAP is on and has an account to read.
+fn imap_ready(app: &AppHandle) -> bool {
+    !live_accounts(app).is_empty()
 }
 
 /// The keys changed: sign in again with the new ones.
 pub fn keys_changed() {
     GENERATION.fetch_add(1, Ordering::Relaxed);
-    WAKE.notify_one();
+    WAKE.notify_waiters();
 }
 
 /// The server tells Lumo about a new email as it arrives (IMAP IDLE), on one
@@ -159,19 +370,24 @@ pub fn keys_changed() {
 /// refusal from the server) is redone within seconds, and the emails already
 /// read stay on screen: the error shows only after a few failures in a row
 /// (`shows_error`), or at the second when nothing was read yet.
+///
+/// Each account has a connection of its own; their emails come together.
 pub async fn run(app: AppHandle) {
     tokio::time::sleep(Duration::from_secs(4)).await;
+    let each: Vec<_> = (1..=MAX_ACCOUNTS).map(|slot| tauri::async_runtime::spawn(run_account(app.clone(), slot))).collect();
+    for one in each {
+        let _ = one.await;
+    }
+}
+
+/// The connection of account `slot`, while it is there and on.
+async fn run_account(app: AppHandle, slot: usize) {
     let mut health = Health::default();
     let mut generation = GENERATION.load(Ordering::Relaxed);
     loop {
-        if !crate::integrations::enabled(&app, ID) || crate::integrations::PAUSED.load(Ordering::Relaxed) {
-            *INBOX.lock().unwrap() = None;
-            health = Health::default();
-            let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
-            continue;
-        }
-        let Some((address, password)) = secrets::get(ADDRESS_KEY).zip(secrets::get(PASSWORD_KEY)) else {
-            *INBOX.lock().unwrap() = None;
+        let on = crate::integrations::enabled(&app, ID) && !crate::integrations::PAUSED.load(Ordering::Relaxed) && imap_on(&app);
+        let Some(acct) = account(slot).filter(|a| on && !is_paused(&app, &a.address)) else {
+            clear_imap(&app, slot);
             health = Health::default();
             let _ = tokio::time::timeout(Duration::from_secs(60), WAKE.notified()).await;
             continue;
@@ -182,12 +398,10 @@ pub async fn run(app: AppHandle) {
             generation = now;
             health = Health::default();
         }
-        let server = secrets::get(SERVER_KEY).unwrap_or_default();
-        let (host, port) = server_of(&server, &address);
-        if let Err(error) = watch(&app, &host, port, &address, &password, &mut health).await {
+        if let Err(error) = watch(&app, &acct, &mut health).await {
             health.failures += 1;
             if shows_error(health.failures, health.has_read) {
-                fail(&app, error);
+                fail(&app, slot, error);
             } else {
                 log::line(format!("[mail] {error} (trying again)"));
             }
@@ -242,11 +456,13 @@ fn poll_every() -> Duration {
 
 /// One connection: sign in, then look each time the server says something
 /// changed. Returns Ok when it should be redone (keys changed, pill off).
-async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: &str, health: &mut Health) -> Result<(), String> {
+async fn watch(app: &AppHandle, acct: &Account, health: &mut Health) -> Result<(), String> {
     let generation = GENERATION.load(Ordering::Relaxed);
-    let mut imap = timed(host, sign_in(host, port, address, password)).await?;
+    let (host, port) = acct.host();
+    let host = host.as_str();
+    let mut imap = timed(host, sign_in(host, port, &acct.address, &acct.password)).await?;
     let idle = imap.capabilities.iter().any(|c| c == "IDLE");
-    let account = format!("{address}@{host}");
+    let account = format!("{}@{host}", acct.address);
     let mut known = std::collections::HashMap::new();
     let mut hiding = hides_promotions(app);
     loop {
@@ -254,17 +470,20 @@ async fn watch(app: &AppHandle, host: &str, port: u16, address: &str, password: 
         let hide = hides_promotions(app);
         if hide != hiding {
             // The filter changed: what it lets through now is not news.
-            *LAST_UID.lock().unwrap() = None;
+            LAST_UID.lock().unwrap().remove(&acct.slot);
             hiding = hide;
         }
         let (unread, messages) = timed(host, look(&mut imap, host, hide, &mut known)).await?;
-        report(app, &account, host, unread, messages);
+        let messages = messages.into_iter().map(|m| of_account(m, acct)).collect();
+        report(app, acct, &account, host, unread, messages);
         health.failures = 0;
         health.has_read = true;
         let stop = || {
             GENERATION.load(Ordering::Relaxed) != generation
                 || !crate::integrations::enabled(app, ID)
                 || crate::integrations::PAUSED.load(Ordering::Relaxed)
+                || !imap_on(app)
+                || is_paused(app, &acct.address)
         };
         if stop() {
             let _ = tokio::time::timeout(Duration::from_secs(5), imap.run("LOGOUT")).await;
@@ -294,11 +513,11 @@ async fn timed_for<T>(wait: Duration, host: &str, step: impl std::future::Future
 }
 
 /// What the island gets: the newest unread emails, and the ones that are new.
-fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: Vec<Message>) {
+fn report(app: &AppHandle, acct: &Account, account: &str, host: &str, unread: usize, messages: Vec<Message>) {
     let newest = messages.iter().filter_map(|m| uid_of(&m.id)).max().unwrap_or(0);
     let fresh: Vec<Message> = {
         let mut last = LAST_UID.lock().unwrap();
-        let seen = match last.as_ref() {
+        let seen = match last.get(&acct.slot) {
             Some((a, seen)) if a == account => Some(*seen),
             _ => None,
         };
@@ -306,12 +525,93 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
             Some(seen) => messages.iter().filter(|m| uid_of(&m.id).is_some_and(|u| u > seen)).cloned().collect(),
             None => Vec::new(),
         };
-        *last = Some((account.to_string(), newest.max(seen.unwrap_or(0))));
+        last.insert(acct.slot, (account.to_string(), newest.max(seen.unwrap_or(0))));
         fresh
     };
-    *INBOX.lock().unwrap() = Some((unread, messages.clone()));
-    // Only what changed reaches the island: a quiet inbox wakes nothing.
-    let data = json!({ "messages": messages, "unread": unread, "inbox": inbox_link(host) });
+    let inbox = inbox_link(host).map(|l| gmail_user(l, acct));
+    IMAP_NOW.lock().unwrap().insert(acct.slot, Ok(Read { unread, messages, inbox }));
+    publish(app);
+    announce(app, fresh);
+}
+
+/// An email of account `acct` as the island keeps it: the first account's as
+/// before, another's id with its address (two Gmail accounts share a server,
+/// not their UIDs), and its Gmail link to that account.
+fn of_account(mut m: Message, acct: &Account) -> Message {
+    if acct.slot > 1 {
+        m.id = format!("{}/{}", acct.address.to_ascii_lowercase(), m.id);
+        m.link = m.link.map(|l| gmail_user(l, acct));
+    }
+    m
+}
+
+/// A Gmail link (".../mail/u/0/...") to the account it is of, when that is
+/// not the first: Gmail takes the address in place of the number.
+fn gmail_user(link: String, acct: &Account) -> String {
+    if acct.slot > 1 && link.starts_with("https://mail.google.com/mail/u/0/") {
+        link.replacen("/mail/u/0/", &format!("/mail/u/{}/", acct.address.trim()), 1)
+    } else {
+        link
+    }
+}
+
+/// Emails that just arrived: on the closed island, and to Gemini Live.
+fn announce(app: &AppHandle, fresh: Vec<Message>) {
+    if !fresh.is_empty() {
+        crate::listen_events::heard_mail(app, &fresh);
+        let _ = app.emit_to(WINDOW_LABEL, "mail-new", &fresh);
+    }
+}
+
+fn fail(app: &AppHandle, slot: usize, error: String) {
+    log::line(format!("[mail] {error}"));
+    IMAP_NOW.lock().unwrap().insert(slot, Err(error));
+    publish(app);
+}
+
+/// The account off, or gone: the others' emails, and Outlook's, stay.
+fn clear_imap(app: &AppHandle, slot: usize) {
+    let was = IMAP_NOW.lock().unwrap().remove(&slot);
+    LAST_UID.lock().unwrap().remove(&slot);
+    if was.is_some() {
+        publish(app);
+    }
+}
+
+/// What account `slot`'s connection says now, for Settings: Ok when it read
+/// the inbox, the error shown, or None (off, or not connected yet).
+pub fn account_state(slot: usize) -> Option<Result<(), String>> {
+    IMAP_NOW.lock().unwrap().get(&slot).map(|r| r.as_ref().map(|_| ()).map_err(Clone::clone))
+}
+
+/// What Outlook's side read (outlook.rs): its inbox, why not (closed), or
+/// nothing (off); with the emails that just arrived.
+pub fn from_outlook(app: &AppHandle, read: Option<Result<(usize, Vec<Message>), String>>, fresh: Vec<Message>) {
+    let inbox = Some(format!("{}inbox", crate::outlook::LINK_PREFIX));
+    *OUTLOOK_NOW.lock().unwrap() = read.map(|r| r.map(|(unread, messages)| Read { unread, messages, inbox: inbox.clone() }));
+    publish(app);
+    announce(app, fresh);
+}
+
+/// The island gets the two sources together: an error only when neither has
+/// emails to show. Only what changed reaches it: a quiet inbox wakes nothing.
+fn publish(app: &AppHandle) {
+    let mut sources: Vec<Result<Read, String>> = IMAP_NOW.lock().unwrap().values().cloned().collect();
+    sources.extend(OUTLOOK_NOW.lock().unwrap().clone());
+    let read: Vec<Read> = sources.iter().filter_map(|s| s.as_ref().ok().cloned()).collect();
+    if read.is_empty() {
+        let error = sources.iter().find_map(|s| s.as_ref().err().cloned());
+        let shown = LAST_SENT.lock().unwrap().take().is_some();
+        match error {
+            Some(error) => emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None }),
+            None if shown => emit(app, IntegrationUpdate { id: ID, data: json!({ "messages": [], "unread": 0 }), error: None, event: None }),
+            None => {}
+        }
+        return;
+    }
+    let inbox = read.iter().find_map(|r| r.inbox.clone());
+    let (unread, messages) = together(read);
+    let data = json!({ "messages": messages, "unread": unread, "inbox": inbox });
     let text = data.to_string();
     let changed = {
         let mut sent = LAST_SENT.lock().unwrap();
@@ -322,17 +622,19 @@ fn report(app: &AppHandle, account: &str, host: &str, unread: usize, messages: V
     if changed {
         emit(app, IntegrationUpdate { id: ID, data, error: None, event: None });
     }
-    if !fresh.is_empty() {
-        crate::listen_events::heard_mail(app, &fresh);
-        let _ = app.emit_to(WINDOW_LABEL, "mail-new", &fresh);
-    }
 }
 
-fn fail(app: &AppHandle, error: String) {
-    *LAST_SENT.lock().unwrap() = None;
-    *INBOX.lock().unwrap() = None;
-    log::line(format!("[mail] {error}"));
-    emit(app, IntegrationUpdate { id: ID, data: json!({}), error: Some(error), event: None });
+/// The sources' unread emails as one inbox: newest first, the unread added up.
+fn together(read: Vec<Read>) -> (usize, Vec<Message>) {
+    let unread = read.iter().map(|r| r.unread).sum();
+    if read.len() == 1 {
+        let one = read.into_iter().next().map(|r| r.messages).unwrap_or_default();
+        return (unread, one);
+    }
+    let mut all: Vec<Message> = read.into_iter().flat_map(|r| r.messages).collect();
+    all.sort_by_key(|m| std::cmp::Reverse(date_key(&m.date)));
+    all.truncate(FETCH);
+    (unread, all)
 }
 
 // ── For the chat ──────────────────────────────────────────────────────────────
@@ -342,7 +644,9 @@ const CHAT_BODY_CHARS: usize = 1500;
 
 /// The inbox as last read, while the pill is on and signed in.
 pub fn inbox() -> Option<(usize, Vec<Message>)> {
-    INBOX.lock().unwrap().clone()
+    let mut read: Vec<Read> = IMAP_NOW.lock().unwrap().values().filter_map(|r| r.as_ref().ok().cloned()).collect();
+    read.extend(OUTLOOK_NOW.lock().unwrap().clone().and_then(Result::ok));
+    (!read.is_empty()).then(|| together(read))
 }
 
 /// Whether `query` speaks of email ("le ultime email", "any new mail?",
@@ -390,11 +694,11 @@ pub fn context_text(unread: usize, messages: &[Message]) -> String {
 // ── For the agents ────────────────────────────────────────────────────────────
 
 /// What the agents' tools give at most, and by default.
-const MOST: usize = 25;
+pub(crate) const MOST: usize = 25;
 const DEFAULT_COUNT: usize = 10;
 /// Of an email read in full: what is fetched, and what the agent reads.
 const FULL_BYTES: usize = 256 * 1024;
-const FULL_CHARS: usize = 20_000;
+pub(crate) const FULL_CHARS: usize = 20_000;
 /// Of each email in a list: the start of its text.
 const LIST_CHARS: usize = 400;
 /// Of the email answered, what is quoted under a reply.
@@ -405,6 +709,8 @@ const MOST_FOLDERS: usize = 60;
 const SLOW_TIMEOUT: Duration = Duration::from_secs(55);
 /// The most a file attached to an email may weigh as it comes (in base64).
 const MAX_ATTACHMENT_READ: usize = 32 * 1024 * 1024;
+/// The same, decoded: what an Outlook file may weigh (outlook.rs).
+pub(crate) const MAX_ATTACHMENT_BYTES: usize = MAX_ATTACHMENT_READ / 4 * 3;
 /// How long the chat waits for the newest emails before it makes do with the unread ones.
 const CHAT_WAIT: Duration = Duration::from_secs(12);
 
@@ -477,20 +783,118 @@ fn seen(unit: &[Part]) -> bool {
     })
 }
 
-/// A short connection for an agent: the Email pill must be on, and signed in.
-async fn open(app: &AppHandle) -> Result<(Imap, String), String> {
+/// The IMAP accounts an agent may use: the Email pill on, IMAP on, each
+/// account not paused. The first is the one a new email goes out of.
+fn tool_accounts(app: &AppHandle) -> Result<Vec<Account>, String> {
     if !crate::integrations::enabled(app, ID) {
-        return Err("The Email pill is off in Lumo: the user can turn it on in Lumo's Settings.".into());
+        return Err(PILL_OFF.into());
     }
-    let (address, password) = secrets::get(ADDRESS_KEY)
-        .zip(secrets::get(PASSWORD_KEY))
-        .ok_or_else(|| NO_ACCOUNT.to_string())?;
-    let server = secrets::get(SERVER_KEY).unwrap_or_default();
-    let (host, port) = server_of(&server, &address);
-    let imap = timed(&host, sign_in(&host, port, &address, &password)).await?;
+    if !imap_on(app) {
+        return Err("IMAP is off in Lumo's Settings (the Email pill): Lumo reads only Outlook.".into());
+    }
+    let live = live_accounts(app);
+    if live.is_empty() {
+        return Err(if accounts().is_empty() { NO_ACCOUNT.into() } else { "The user paused their email accounts in Lumo's Settings (the Email pill).".into() });
+    }
+    Ok(live)
+}
+
+/// The account email `id` is of, and the id without it: "work@x.it:inbox:12"
+/// names its account; a plain "inbox:12" is of the first.
+fn account_for(app: &AppHandle, id: &str) -> Result<(Account, String), String> {
+    let live = tool_accounts(app)?;
+    let id = id.trim();
+    if let Some((head, rest)) = id.split_once(':') {
+        if head.contains('@') {
+            if let Some(a) = live.iter().find(|a| a.address.trim().eq_ignore_ascii_case(head.trim())) {
+                return Ok((a.clone(), rest.to_string()));
+            }
+            if accounts().iter().any(|a| a.address.trim().eq_ignore_ascii_case(head.trim())) {
+                return Err(format!("The user paused the account {head} in Lumo's Settings: its emails can't be used now."));
+            }
+            // "who@x.it:inbox:12" of an account no longer there; "a@b:12" is folder a@b's.
+            if rest.contains(':') {
+                return Err(format!("Lumo has no email account {head} now: use an id mail_recent or mail_search gives."));
+            }
+        }
+    }
+    Ok((live[0].clone(), id.to_string()))
+}
+
+/// The ids an agent gets: with their account's address when there are more
+/// than one ("work@x.it:inbox:12"), so the next tool finds the right one.
+fn of_account_found(found: Vec<Found>, acct: &Account, many: bool) -> Vec<Found> {
+    found
+        .into_iter()
+        .map(|mut f| {
+            if many {
+                f.id = format!("{}:{}", acct.address.trim(), f.id);
+            }
+            f.message.link = f.message.link.map(|l| gmail_user(l, acct));
+            f
+        })
+        .collect()
+}
+
+/// `step` on each account at once; each answer with its account.
+async fn each_account<T, F, Fut>(accounts: Vec<Account>, step: F) -> Vec<(Account, Result<T, String>)>
+where
+    T: Send + 'static,
+    F: Fn(Account) -> Fut,
+    Fut: std::future::Future<Output = Result<T, String>> + Send + 'static,
+{
+    let started: Vec<_> = accounts.into_iter().map(|a| (a.clone(), tauri::async_runtime::spawn(step(a)))).collect();
+    let mut out = Vec::new();
+    for (a, task) in started {
+        out.push((a, task.await.unwrap_or_else(|e| Err(e.to_string()))));
+    }
+    out
+}
+
+/// The accounts' emails as one list, newest first: an account that fails
+/// (a folder it hasn't) leaves the others'; all failing, the first's error.
+fn merged(results: Vec<(Account, Result<Vec<Found>, String>)>, count: usize) -> Result<Vec<Found>, String> {
+    let many = results.len() > 1;
+    let mut all = Vec::new();
+    let mut first_error = None;
+    let mut any = false;
+    for (acct, result) in results {
+        match result {
+            Ok(found) => {
+                any = true;
+                all.extend(of_account_found(found, &acct, many));
+            }
+            Err(e) => {
+                log::line(format!("[mail] one account: {e}"));
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    if !any {
+        return Err(first_error.unwrap_or_else(|| NO_ACCOUNT.into()));
+    }
+    all.sort_by_key(|f| std::cmp::Reverse(date_key(&f.message.date)));
+    all.truncate(count);
+    Ok(all)
+}
+
+/// A short connection to account `acct`, signed in.
+async fn open(acct: &Account) -> Result<(Imap, String), String> {
+    let (host, port) = acct.host();
+    let imap = timed(&host, sign_in(&host, port, &acct.address, &acct.password)).await?;
     Ok((imap, host))
 }
 
+/// Settings → Email → Add an account: signs in with what the user typed, and
+/// says why not in their words. Nothing is saved here.
+pub async fn try_account(address: &str, password: &str, server: &str) -> Result<String, String> {
+    let (host, port) = server_of(server, address);
+    let imap = timed(&host, sign_in(&host, port, address, password)).await?;
+    close(imap).await;
+    Ok(host)
+}
+
+const PILL_OFF: &str = "The Email pill is off in Lumo: the user can turn it on in Lumo's Settings.";
 const NO_ACCOUNT: &str = "Lumo has no email account yet: the user adds one in Lumo's Settings, under the Email pill.";
 
 /// Ends a short connection, without waiting long for the server's goodbye.
@@ -573,6 +977,11 @@ impl Role {
             Role::All => &["all mail"],
         }
     }
+}
+
+/// Whether a folder's name says it is the archive (an Outlook folder, outlook.rs).
+pub(crate) fn is_archive_name(name: &str) -> bool {
+    Role::Archive.names().contains(&name.trim().to_lowercase().as_str())
 }
 
 fn role_of(b: &Mailbox) -> Option<Role> {
@@ -705,7 +1114,35 @@ async fn enter(imap: &mut Imap, folder: &Folder, change: bool) -> Result<String,
 
 /// `mail_folders`: every folder, what it is for, and how many emails it holds.
 async fn folders(app: &AppHandle) -> Result<String, String> {
-    let (mut imap, host) = open(app).await?;
+    let live = tool_accounts(app)?;
+    if live.len() == 1 {
+        return folders_of(live[0].clone()).await;
+    }
+    let mut out = String::new();
+    let mut first_error = None;
+    let mut any = false;
+    for (acct, listed) in each_account(live, folders_of).await {
+        match listed {
+            Ok(list) => {
+                any = true;
+                out.push_str(&format!("Account {}:\n{list}\n", acct.address.trim()));
+            }
+            Err(e) => {
+                out.push_str(&format!("Account {}: it didn't answer ({e}).\n\n", acct.address.trim()));
+                first_error.get_or_insert(e);
+            }
+        }
+    }
+    if !any {
+        return Err(first_error.unwrap_or_else(|| NO_ACCOUNT.into()));
+    }
+    out.push_str("A folder's name is the same for every account: mail_recent and mail_search look in each account that has it.\n");
+    Ok(out)
+}
+
+/// One account's folders.
+async fn folders_of(acct: Account) -> Result<String, String> {
+    let (mut imap, host) = open(&acct).await?;
     let listed = timed_for(SLOW_TIMEOUT, &host, async {
         let boxes = mailboxes(&mut imap).await?;
         let mut out = String::from("The mailbox's folders (give the name as mail_recent's or mail_search's folder, or mail_move's):\n");
@@ -800,7 +1237,19 @@ fn header_and_body(unit: &[Part]) -> (&[u8], &[u8]) {
 
 /// The newest `count` emails of the inbox (or of `folder`), read or not (or only the unread ones).
 pub async fn newest(app: &AppHandle, count: usize, unread_only: bool, folder: Option<&str>) -> Result<Vec<Found>, String> {
-    let (mut imap, host) = open(app).await?;
+    let count = count.clamp(1, MOST);
+    let folder = folder.map(str::to_string);
+    let results = each_account(tool_accounts(app)?, move |a| {
+        let folder = folder.clone();
+        async move { newest_in(&a, count, unread_only, folder.as_deref()).await }
+    })
+    .await;
+    merged(results, count)
+}
+
+/// `newest`, of one account.
+async fn newest_in(acct: &Account, count: usize, unread_only: bool, folder: Option<&str>) -> Result<Vec<Found>, String> {
+    let (mut imap, host) = open(acct).await?;
     let found = timed(&host, async {
         let folder = match folder {
             Some(asked) => folder_named(&mut imap, &host, asked).await?,
@@ -853,7 +1302,19 @@ pub async fn search(app: &AppHandle, query: &str, count: usize, folder: Option<&
         return Err("Say what to search for.".into());
     }
     let count = count.clamp(1, MOST);
-    let (mut imap, host) = open(app).await?;
+    let query = query.to_string();
+    let folder = folder.map(str::to_string);
+    let results = each_account(tool_accounts(app)?, move |a| {
+        let (query, folder) = (query.clone(), folder.clone());
+        async move { search_in(&a, &query, count, folder.as_deref()).await }
+    })
+    .await;
+    merged(results, count)
+}
+
+/// `search`, in one account.
+async fn search_in(acct: &Account, query: &str, count: usize, folder: Option<&str>) -> Result<Vec<Found>, String> {
+    let (mut imap, host) = open(acct).await?;
     let found = timed_for(SLOW_TIMEOUT, &host, async {
         let one = match folder {
             Some(asked) => Some(folder_named(&mut imap, &host, asked).await?),
@@ -894,8 +1355,9 @@ pub async fn search(app: &AppHandle, query: &str, count: usize, folder: Option<&
 
 /// One email in full, by the id `newest` or `search` gave, with its attachments.
 pub async fn read(app: &AppHandle, id: &str) -> Result<(Found, Vec<Attached>), String> {
-    let (folder, uid) = parse_id(id).ok_or_else(|| bad_id(id))?;
-    let (mut imap, host) = open(app).await?;
+    let (acct, plain) = account_for(app, id)?;
+    let (folder, uid) = parse_id(&plain).ok_or_else(|| bad_id(id))?;
+    let (mut imap, host) = open(&acct).await?;
     let found = timed(&host, async {
         if folder != Folder::Inbox {
             enter(&mut imap, &folder, false).await?;
@@ -907,7 +1369,9 @@ pub async fn read(app: &AppHandle, id: &str) -> Result<(Found, Vec<Attached>), S
     .await;
     close(imap).await;
     let (found, files) = found?;
-    let found = found.into_iter().next().ok_or_else(|| gone(id))?;
+    let mut found = found.into_iter().next().ok_or_else(|| gone(id))?;
+    found.id = id.trim().to_string();
+    found.message.link = found.message.link.map(|l| gmail_user(l, &acct));
     Ok((found, files))
 }
 
@@ -921,7 +1385,7 @@ fn gone(id: &str) -> String {
 
 /// An email's Date header as seconds since 1970 (UTC), to put the emails of
 /// several folders in order; 0 when it can't be read.
-fn date_key(date: &str) -> i64 {
+pub(crate) fn date_key(date: &str) -> i64 {
     const MONTHS: [&str; 12] = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"];
     let words: Vec<&str> = date.split(|c: char| c.is_whitespace() || c == ',').filter(|w| !w.is_empty()).collect();
     let month = |w: &str| MONTHS.iter().position(|m| w.get(..3).is_some_and(|p| p.eq_ignore_ascii_case(m)));
@@ -1250,8 +1714,9 @@ fn pick<'a>(files: &'a [Attached], which: Option<&serde_json::Value>) -> Result<
 /// attached to the chat, where the agent can read it.
 async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
     let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("");
-    let (folder, uid) = parse_id(id).ok_or_else(|| bad_id(id))?;
-    let (mut imap, host) = open(app).await?;
+    let (acct, plain) = account_for(app, id)?;
+    let (folder, uid) = parse_id(&plain).ok_or_else(|| bad_id(id))?;
+    let (mut imap, host) = open(&acct).await?;
     let got = timed_for(SLOW_TIMEOUT, &host, async {
         if folder != Folder::Inbox {
             enter(&mut imap, &folder, false).await?;
@@ -1270,7 +1735,7 @@ async fn save_attachment(app: &AppHandle, input: &serde_json::Value) -> Result<S
 }
 
 /// "120 KB", "3.4 MB".
-fn size_text(bytes: usize) -> String {
+pub(crate) fn size_text(bytes: usize) -> String {
     if bytes >= 1024 * 1024 {
         format!("{:.1} MB", bytes as f64 / (1024.0 * 1024.0))
     } else {
@@ -1326,7 +1791,7 @@ pub fn recent_text(found: &[Found], unread: Option<usize>) -> String {
 /// not, or, when the server is slow or says no, the unread ones last read.
 pub async fn for_chat(app: &AppHandle) -> Option<String> {
     let cached = inbox();
-    match tokio::time::timeout(CHAT_WAIT, newest(app, DEFAULT_COUNT, false, None)).await {
+    match tokio::time::timeout(CHAT_WAIT, newest_anywhere(app, DEFAULT_COUNT, false, None)).await {
         Ok(Ok(found)) => Some(recent_text(&found, cached.map(|(n, _)| n))),
         Ok(Err(e)) => {
             log::line(format!("[mail] for the chat: {e}"));
@@ -1349,15 +1814,24 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     }
     let level = access(&app.state::<crate::Shared>().settings.lock().unwrap());
     if level == "none" {
-        return refuse("The user turned off the AI's access to their email in Lumo (Settings → General → Security).".into());
+        return refuse("The user turned off the AI's access to their email in Lumo (Settings → Security).".into());
     }
     let tool = request.get("tool").and_then(|v| v.as_str()).unwrap_or("");
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
     if SEND_TOOLS.contains(&tool) {
         if level == "read" {
-            return refuse("The user lets the AI only read their email (Lumo's Settings → General → Security): write a draft for them to send instead.".into());
+            return refuse("The user lets the AI only read their email (Lumo's Settings → Security): write a draft for them to send instead.".into());
         }
+        // A reply, a forward go out of the email's own mailbox; a new email
+        // out of Outlook when it is on.
+        let about = |key: &str| input.get(key).and_then(|v| v.as_str()).is_some_and(crate::outlook::is_id);
+        let answers = input.get("reply_to").and_then(|v| v.as_str()).is_some_and(|r| !r.trim().is_empty());
+        let new_in_outlook = (tool == "mail_send" || (tool == "mail_draft" && !answers)) && sends_from_outlook(app).await;
         let done = match tool {
+            "mail_reply" if about("id") => outlook_reply(app, &input).await,
+            "mail_forward" if about("id") => outlook_forward(app, &input).await,
+            "mail_draft" if about("reply_to") || new_in_outlook => outlook_draft(&input).await,
+            "mail_send" if new_in_outlook => outlook_send(app, &input).await,
             "mail_send" => send(app, &input).await,
             "mail_reply" => reply(app, &input).await,
             "mail_forward" => forward(app, &input).await,
@@ -1370,9 +1844,11 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
     }
     if MANAGE_TOOLS.contains(&tool) {
         if level != "manage" {
-            return refuse("The user doesn't let the AI change their mailbox (Lumo's Settings → General → Security → Email): tell them what you would do instead.".into());
+            return refuse("The user doesn't let the AI change their mailbox (Lumo's Settings → Security → Email): tell them what you would do instead.".into());
         }
-        return match manage(app, tool, &input).await {
+        let outlook = input.get("id").and_then(|v| v.as_str()).is_some_and(crate::outlook::is_id);
+        let done = if outlook { outlook_manage(app, tool, &input).await } else { manage(app, tool, &input).await };
+        return match done {
             Ok(text) => json!({ "text": text }),
             Err(e) => refuse(e),
         };
@@ -1383,7 +1859,7 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         "mail_recent" => {
             let unread_only = input.get("unread_only").and_then(|v| v.as_bool()).unwrap_or(false);
             let place = folder.unwrap_or("inbox");
-            newest(app, count, unread_only, folder).await.map(|found| {
+            newest_anywhere(app, count, unread_only, folder).await.map(|found| {
                 if found.is_empty() {
                     if unread_only { format!("No unread email in {place}.") } else { format!("No email in {place}.") }
                 } else {
@@ -1393,7 +1869,7 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         }
         "mail_search" => {
             let query = input.get("query").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            search(app, &query, count, folder).await.map(|found| {
+            search_anywhere(app, &query, count, folder).await.map(|found| {
                 if found.is_empty() {
                     format!("No email matches {query}.")
                 } else {
@@ -1403,32 +1879,288 @@ pub async fn serve(app: &AppHandle, request: &serde_json::Value) -> serde_json::
         }
         "mail_read" => {
             let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-            read(app, &id).await.map(|(f, files)| {
-                let m = &f.message;
-                let state = if f.unread { "unread" } else { "read" };
-                let mut text = format!("From: {} <{}>\nDate: {}\nSubject: {}\nState: {state}\n", m.from, m.address, m.date, m.subject);
-                if let Some(link) = &m.link {
-                    text.push_str(&format!("Link: {link}\n"));
-                }
-                if !files.is_empty() {
-                    text.push_str("Files attached (mail_attachment saves one where you can read it):\n");
-                    for (n, file) in files.iter().enumerate() {
-                        text.push_str(&format!("  {}. {} ({}, {})\n", n + 1, file.name, file.mime, size_text(file.file_size())));
-                    }
-                }
-                text.push('\n');
-                text.push_str(if m.body.trim().is_empty() { &m.preview } else { &m.body });
-                text
-            })
+            if crate::outlook::is_id(&id) {
+                crate::outlook::read(id, FULL_CHARS)
+                    .await
+                    .map(|(f, files)| read_text(&f, files.iter().map(|x| (x.name.as_str(), x.mime, x.size)).collect()))
+            } else {
+                read(app, &id).await.map(|(f, files)| read_text(&f, files.iter().map(|x| (x.name.as_str(), x.mime.as_str(), x.file_size())).collect()))
+            }
         }
-        "mail_folders" => folders(app).await,
-        "mail_attachment" => save_attachment(app, &input).await,
+        "mail_folders" => folders_anywhere(app).await,
+        "mail_attachment" => {
+            let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if crate::outlook::is_id(&id) {
+                crate::outlook::save_attachment(id, input.get("attachment").cloned()).await
+            } else {
+                save_attachment(app, &input).await
+            }
+        }
         _ => Err(format!("Lumo has no email tool called {tool}.")),
     };
     match answer {
         Ok(text) => json!({ "text": text }),
         Err(e) => refuse(e),
     }
+}
+
+/// `mail_read`'s answer: the email's header lines, its files, its text.
+fn read_text(f: &Found, files: Vec<(&str, &str, usize)>) -> String {
+    let m = &f.message;
+    let state = if f.unread { "unread" } else { "read" };
+    let mut text = format!("From: {} <{}>\nDate: {}\nSubject: {}\nState: {state}\n", m.from, m.address, m.date, m.subject);
+    if let Some(link) = m.link.as_ref().filter(|l| l.starts_with("http")) {
+        text.push_str(&format!("Link: {link}\n"));
+    }
+    if !files.is_empty() {
+        text.push_str("Files attached (mail_attachment saves one where you can read it):\n");
+        for (n, (name, mime, size)) in files.iter().enumerate() {
+            text.push_str(&format!("  {}. {name} ({mime}, {})\n", n + 1, size_text(*size)));
+        }
+    }
+    text.push('\n');
+    text.push_str(if m.body.trim().is_empty() { &m.preview } else { &m.body });
+    text
+}
+
+// ── IMAP, Outlook or both ─────────────────────────────────────────────────────
+
+/// Which source a reading tool asks.
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Sources {
+    Imap,
+    Outlook,
+    Both,
+}
+
+/// The folder names both sources understand, each its own way.
+fn shared_folder(asked: &str) -> bool {
+    ["inbox", "sent", "drafts", "archive", "trash", "spam", "junk", "deleted"].iter().any(|w| asked.trim().eq_ignore_ascii_case(w))
+}
+
+/// IMAP for its own folders, Outlook for its own ("outlook:…"), both for the
+/// inbox, the sent, the trash… when both are on.
+fn sources_for(imap: bool, outlook: bool, folder: Option<&str>) -> Result<Sources, String> {
+    let either = match (imap, outlook) {
+        (true, true) => Sources::Both,
+        (true, false) => Sources::Imap,
+        (false, true) => Sources::Outlook,
+        (false, false) => return Err(NO_ACCOUNT.into()),
+    };
+    Ok(match folder {
+        Some(f) if crate::outlook::is_folder(f) => {
+            if !outlook {
+                return Err("Outlook is off in Lumo's Settings (the Email pill): its folders can't be read.".into());
+            }
+            Sources::Outlook
+        }
+        Some(f) if !shared_folder(f) => {
+            if imap {
+                Sources::Imap
+            } else {
+                Sources::Outlook
+            }
+        }
+        _ => either,
+    })
+}
+
+async fn which(app: &AppHandle, folder: Option<&str>) -> Result<Sources, String> {
+    if !crate::integrations::enabled(app, ID) {
+        return Err(PILL_OFF.into());
+    }
+    sources_for(imap_ready(app), crate::outlook::on(app), folder)
+}
+
+/// The two answers as one list, newest first; one source failing leaves the other's.
+fn both_found(imap: Result<Vec<Found>, String>, outlook: Result<Vec<Found>, String>, count: usize) -> Result<Vec<Found>, String> {
+    let mut all: Vec<Found> = match (imap, outlook) {
+        (Ok(a), Ok(b)) => a.into_iter().chain(b).collect(),
+        (Ok(a), Err(e)) | (Err(e), Ok(a)) => {
+            log::line(format!("[mail] one source: {e}"));
+            a
+        }
+        (Err(a), Err(_)) => return Err(a),
+    };
+    all.sort_by_key(|f| std::cmp::Reverse(date_key(&f.message.date)));
+    all.truncate(count);
+    Ok(all)
+}
+
+/// `newest`, from IMAP, Outlook or both.
+async fn newest_anywhere(app: &AppHandle, count: usize, unread_only: bool, folder: Option<&str>) -> Result<Vec<Found>, String> {
+    let count = count.clamp(1, MOST);
+    let owned = folder.map(str::to_string);
+    match which(app, folder).await? {
+        Sources::Imap => newest(app, count, unread_only, folder).await,
+        Sources::Outlook => crate::outlook::newest(count, unread_only, owned).await,
+        Sources::Both => {
+            let (a, b) = both(newest(app, count, unread_only, folder), crate::outlook::newest(count, unread_only, owned)).await;
+            both_found(a, b, count)
+        }
+    }
+}
+
+/// `search`, in IMAP, Outlook or both.
+async fn search_anywhere(app: &AppHandle, query: &str, count: usize, folder: Option<&str>) -> Result<Vec<Found>, String> {
+    let count = count.clamp(1, MOST);
+    let owned = folder.map(str::to_string);
+    match which(app, folder).await? {
+        Sources::Imap => search(app, query, count, folder).await,
+        Sources::Outlook => crate::outlook::search(query.to_string(), count, owned).await,
+        Sources::Both => {
+            let (a, b) = both(search(app, query, count, folder), crate::outlook::search(query.to_string(), count, owned)).await;
+            both_found(a, b, count)
+        }
+    }
+}
+
+/// `mail_folders`, of each source on.
+async fn folders_anywhere(app: &AppHandle) -> Result<String, String> {
+    let outlook_list = || async {
+        crate::outlook::folders()
+            .await
+            .map(|list| format!("Outlook's folders, on this PC (give the name as it is, with outlook:, to mail_recent's, mail_search's or mail_move's folder):\n{list}"))
+    };
+    match which(app, None).await? {
+        Sources::Imap => folders(app).await,
+        Sources::Outlook => outlook_list().await,
+        Sources::Both => {
+            let (a, b) = both(folders(app), outlook_list()).await;
+            match (a, b) {
+                (Ok(a), Ok(b)) => Ok(format!("{a}\n{b}\ninbox, sent, drafts, archive, trash and spam name both mailboxes' own.")),
+                (Ok(one), Err(e)) | (Err(e), Ok(one)) => Ok(format!("{one}\n(The other mailbox didn't answer: {e})")),
+                (Err(a), Err(_)) => Err(a),
+            }
+        }
+    }
+}
+
+/// A new email goes out of Outlook when it is on and running, else over SMTP.
+async fn sends_from_outlook(app: &AppHandle) -> bool {
+    crate::outlook::on(app) && (!imap_ready(app) || crate::outlook::running().await)
+}
+
+/// `mail_send` out of Outlook.
+async fn outlook_send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let (mail, paths) = outgoing(input)?;
+    let draft = crate::outlook::Draft::New { to: mail.to, cc: mail.cc };
+    outlook_deliver(app, "mail_send", draft, mail.subject, mail.body, paths).await
+}
+
+/// `mail_reply` to an Outlook email: Outlook's own reply, in its conversation.
+async fn outlook_reply(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let (_, body) = subject_and_body(input)?;
+    let all = input.get("reply_all").and_then(|v| v.as_bool()).unwrap_or(false);
+    let cc = addresses(input.get("cc"), "cc")?;
+    let (_, paths): (Vec<_>, Vec<_>) = attachments(input.get("attachments"))?.into_iter().unzip();
+    let draft = crate::outlook::Draft::Reply { id, all, cc };
+    outlook_deliver(app, "mail_reply", draft, String::new(), body, paths).await
+}
+
+/// `mail_forward` of an Outlook email, with its files unless `with_files` is false.
+async fn outlook_forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let to = addresses(input.get("to"), "to")?;
+    let cc = addresses(input.get("cc"), "cc")?;
+    if to.is_empty() {
+        return Err("Say who to forward the email to (to).".into());
+    }
+    let note = input.get("body").and_then(|v| v.as_str()).unwrap_or("").to_string();
+    if note.len() > crate::smtp::MAX_BODY / 2 {
+        return Err("The email's text is too long.".into());
+    }
+    let with_files = input.get("with_files").and_then(|v| v.as_bool()).unwrap_or(true);
+    let draft = crate::outlook::Draft::Forward { id, to, cc, with_files };
+    outlook_deliver(app, "mail_forward", draft, String::new(), note, Vec::new()).await
+}
+
+/// `mail_draft` in Outlook's Drafts: nothing is sent, no card.
+async fn outlook_draft(input: &serde_json::Value) -> Result<String, String> {
+    let (mail, paths) = outgoing_for(input, false)?;
+    let draft = match input.get("reply_to").and_then(|v| v.as_str()).map(str::trim).filter(|r| !r.is_empty()) {
+        Some(id) if crate::outlook::is_id(id) => crate::outlook::Draft::Reply { id: id.to_string(), all: false, cc: mail.cc },
+        _ => crate::outlook::Draft::New { to: mail.to, cc: mail.cc },
+    };
+    let made = crate::outlook::make(draft, mail.subject, mail.body, paths).await?;
+    let place = crate::outlook::keep_draft(&made).await?;
+    log::line("[outlook] a draft saved");
+    Ok(format!("Saved in Outlook's {place}: the user finds it among their drafts, to read, finish and send themselves. It was not sent."))
+}
+
+/// Any email the AI sends out of Outlook: made in Outlook, shown whole on its
+/// card, and sent only once the user clicks Send; thrown away otherwise.
+async fn outlook_deliver(
+    app: &AppHandle,
+    tool: &str,
+    draft: crate::outlook::Draft,
+    subject: String,
+    text: String,
+    paths: Vec<String>,
+) -> Result<String, String> {
+    let made = crate::outlook::make(draft, subject, text, paths).await?;
+    let names: Vec<String> = made.files.iter().filter_map(|f| f.get("name").and_then(|n| n.as_str()).map(str::to_string)).collect();
+    let card = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": format!("mcp__lumo__{tool}"),
+        "tool_input": { "to": made.to, "cc": made.cc, "subject": made.subject, "attachments": names },
+        "lumo_mail_send": { "from": made.from, "to": made.to, "cc": made.cc, "subject": made.subject, "body": made.body, "attachments": made.files },
+    });
+    let answer = crate::pipe::ask(app, card).await;
+    let send = answer.as_deref() == Some("allow");
+    let done = crate::outlook::finish(&made, send).await;
+    match answer.as_deref() {
+        Some("allow") => {}
+        Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
+        None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
+    }
+    done.inspect_err(|e| log::line(format!("[outlook] send: {e}")))?;
+    log::line(format!("[outlook] sent to {} people", made.to.len() + made.cc.len()));
+    wake();
+    Ok(format!("Sent from Outlook to {}.", made.to.iter().chain(&made.cc).cloned().collect::<Vec<_>>().join(", ")))
+}
+
+/// `mail_mark`, `mail_move`, `mail_archive`, `mail_trash` on an Outlook
+/// email: on its card first, done only on the user's click. The trash is
+/// Deleted Items: nothing is deleted for good.
+async fn outlook_manage(app: &AppHandle, tool: &str, input: &serde_json::Value) -> Result<String, String> {
+    use crate::outlook::Change as OutlookChange;
+    let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+    let (change, words) = match tool {
+        "mail_mark" => {
+            let (_, words) = marks(input)?;
+            let flag = |key: &str| input.get(key).and_then(|v| v.as_bool());
+            (OutlookChange::Mark { read: flag("read"), starred: flag("starred") }, words)
+        }
+        "mail_move" => {
+            let asked = input.get("folder").and_then(|v| v.as_str()).unwrap_or("").trim().to_string();
+            if asked.is_empty() {
+                return Err("Say which folder to move it to (mail_folders lists them).".into());
+            }
+            (OutlookChange::Move(asked), vec!["move"])
+        }
+        "mail_archive" => (OutlookChange::Archive, vec!["archive"]),
+        _ => (OutlookChange::Trash, vec!["trash"]),
+    };
+    let (planned, change) = crate::outlook::plan(id.clone(), change).await?;
+    let card = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": format!("mcp__lumo__{tool}"),
+        "tool_input": { "id": id },
+        "lumo_mail_action": { "actions": words, "folder": planned.folder, "from": planned.from, "subject": planned.subject, "date": planned.date },
+    });
+    match crate::pipe::ask(app, card).await.as_deref() {
+        Some("allow") => {}
+        Some(_) => return Err("The user said no: the email was left as it is.".into()),
+        None => return Err("Lumo couldn't show the card to the user (the island is paused or busy): nothing was changed.".into()),
+    }
+    let done = crate::outlook::apply(id, change).await.inspect_err(|e| log::line(format!("[outlook] {tool}: {e}")))?;
+    log::line(format!("[outlook] {tool} done"));
+    wake();
+    Ok(if tool == "mail_mark" { format!("Done: the email is marked {}.", words.join(", ")) } else { done })
 }
 
 /// The addresses of `mail_send`'s `to` or `cc`: a list or one string, each checked.
@@ -1499,7 +2231,7 @@ fn attachments(v: Option<&serde_json::Value>) -> Result<Vec<(crate::smtp::Attach
     Ok(out)
 }
 
-fn too_heavy() -> String {
+pub(crate) fn too_heavy() -> String {
     format!("The files attached weigh more than {} MB together.", crate::smtp::MAX_ATTACHED_BYTES / (1024 * 1024))
 }
 
@@ -1544,7 +2276,8 @@ fn outgoing_for(input: &serde_json::Value, needs_to: bool) -> Result<(crate::smt
 async fn send(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
     let (mail, paths) = outgoing(input)?;
     let files = card_files(&mail, &paths);
-    deliver(app, "mail_send", mail, files).await
+    let from = tool_accounts(app)?.remove(0);
+    deliver(app, "mail_send", mail, files, &from).await
 }
 
 /// The files of an email as its card lists them: name, size, and the path it came from (none for an email's own).
@@ -1559,9 +2292,9 @@ fn card_files(mail: &crate::smtp::Outgoing, paths: &[String]) -> Vec<serde_json:
 /// Any email the AI sends (a new one, a reply, a forward): on its card, whole,
 /// and sent only once the user clicks Send. Then a copy in Sent, where the
 /// server keeps none itself.
-async fn deliver(app: &AppHandle, tool: &str, mail: crate::smtp::Outgoing, files: Vec<serde_json::Value>) -> Result<String, String> {
+async fn deliver(app: &AppHandle, tool: &str, mail: crate::smtp::Outgoing, files: Vec<serde_json::Value>, acct: &Account) -> Result<String, String> {
     let names: Vec<&str> = mail.attachments.iter().map(|f| f.name.as_str()).collect();
-    let from = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
+    let from = acct.address.trim().to_string();
     let card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
@@ -1574,9 +2307,9 @@ async fn deliver(app: &AppHandle, tool: &str, mail: crate::smtp::Outgoing, files
         Some(_) => return Err("The user discarded the email: it was not sent. Ask them what to change if they want it sent.".into()),
         None => return Err("Lumo couldn't show the email to the user (the island is paused or busy): it was not sent.".into()),
     }
-    let sent = crate::smtp::send(&mail).await.inspect_err(|e| log::line(format!("[mail] send: {e}")))?;
+    let sent = crate::smtp::send(&mail, acct).await.inspect_err(|e| log::line(format!("[mail] send: {e}")))?;
     log::line(format!("[mail] sent through {} to {} people", sent.host, mail.to.len() + mail.cc.len()));
-    keep_copy(app, sent);
+    keep_copy(sent, acct.clone());
     Ok(format!("Sent to {}.", mail.to.iter().chain(&mail.cc).cloned().collect::<Vec<_>>().join(", ")))
 }
 
@@ -1585,16 +2318,13 @@ const SENT_COPY_AFTER: Duration = Duration::from_secs(10);
 
 /// Gmail keeps in Sent what it sends, and so do most servers; for one that
 /// didn't, a copy goes there over IMAP, a little later, once.
-fn keep_copy(app: &AppHandle, sent: crate::smtp::Sent) {
-    let address = secrets::get(ADDRESS_KEY).unwrap_or_default();
-    let (host, _) = server_of(&secrets::get(SERVER_KEY).unwrap_or_default(), &address);
-    if is_gmail(&host) {
+fn keep_copy(sent: crate::smtp::Sent, acct: Account) {
+    if is_gmail(&acct.host().0) {
         return;
     }
-    let app = app.clone();
     tauri::async_runtime::spawn(async move {
         tokio::time::sleep(SENT_COPY_AFTER).await;
-        match sent_copy(&app, &sent).await {
+        match sent_copy(&acct, &sent).await {
             Ok(true) => log::line("[mail] a copy of the email sent put in Sent"),
             Ok(false) => {}
             Err(e) => log::line(format!("[mail] no copy in Sent: {e}")),
@@ -1603,8 +2333,8 @@ fn keep_copy(app: &AppHandle, sent: crate::smtp::Sent) {
 }
 
 /// Puts the email sent in Sent, unless the server already did. Whether it did.
-async fn sent_copy(app: &AppHandle, sent: &crate::smtp::Sent) -> Result<bool, String> {
-    let (mut imap, host) = open(app).await?;
+async fn sent_copy(acct: &Account, sent: &crate::smtp::Sent) -> Result<bool, String> {
+    let (mut imap, host) = open(acct).await?;
     let done = timed_for(SLOW_TIMEOUT, &host, async {
         let boxes = mailboxes(&mut imap).await?;
         let place = find_role(&boxes, Role::Sent).ok_or_else(|| "the mailbox has no Sent folder".to_string())?.wire.clone();
@@ -1686,9 +2416,11 @@ fn original_of(unit: &[Part]) -> Original {
 }
 
 /// Email `id`, with its files when `with_files` (a forward).
-async fn fetch_original(app: &AppHandle, id: &str, with_files: bool) -> Result<(Original, Vec<crate::smtp::Attachment>), String> {
-    let (folder, uid) = parse_id(id).ok_or_else(|| bad_id(id))?;
-    let (mut imap, host) = open(app).await?;
+/// The account it is of answers it.
+async fn fetch_original(app: &AppHandle, id: &str, with_files: bool) -> Result<(Original, Vec<crate::smtp::Attachment>, Account), String> {
+    let (acct, plain) = account_for(app, id)?;
+    let (folder, uid) = parse_id(&plain).ok_or_else(|| bad_id(id))?;
+    let (mut imap, host) = open(&acct).await?;
     let got = timed_for(SLOW_TIMEOUT, &host, async {
         if folder != Folder::Inbox {
             enter(&mut imap, &folder, false).await?;
@@ -1712,7 +2444,7 @@ async fn fetch_original(app: &AppHandle, id: &str, with_files: bool) -> Result<(
     })
     .await;
     close(imap).await;
-    got
+    got.map(|(original, files)| (original, files, acct))
 }
 
 /// "Re: Lunch", once.
@@ -1777,9 +2509,8 @@ async fn reply(app: &AppHandle, input: &serde_json::Value) -> Result<String, Str
     let all = input.get("reply_all").and_then(|v| v.as_bool()).unwrap_or(false);
     let more_cc = addresses(input.get("cc"), "cc")?;
     let (files, paths): (Vec<_>, Vec<_>) = attachments(input.get("attachments"))?.into_iter().unzip();
-    let me = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
-    let (original, _) = fetch_original(app, &id, false).await?;
-    let (to, mut cc) = reply_people(&original, &me, all);
+    let (original, _, acct) = fetch_original(app, &id, false).await?;
+    let (to, mut cc) = reply_people(&original, &acct.address, all);
     if to.is_empty() {
         return Err("Lumo can't tell who sent this email: use mail_send with their address.".into());
     }
@@ -1801,7 +2532,7 @@ async fn reply(app: &AppHandle, input: &serde_json::Value) -> Result<String, Str
         references: Some(thread_of(&original)).filter(|r| !r.is_empty()),
     };
     let files = card_files(&mail, &paths);
-    deliver(app, "mail_reply", mail, files).await
+    deliver(app, "mail_reply", mail, files, &acct).await
 }
 
 /// The email forwarded, under the user's words: its header lines, then its text.
@@ -1849,7 +2580,7 @@ async fn forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, S
         return Err("The email's text is too long.".into());
     }
     let with_files = input.get("with_files").and_then(|v| v.as_bool()).unwrap_or(true);
-    let (original, files) = fetch_original(app, &id, with_files).await?;
+    let (original, files, acct) = fetch_original(app, &id, with_files).await?;
     let mail = crate::smtp::Outgoing {
         to,
         cc,
@@ -1859,7 +2590,7 @@ async fn forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, S
         ..Default::default()
     };
     let files = card_files(&mail, &[]);
-    deliver(app, "mail_forward", mail, files).await
+    deliver(app, "mail_forward", mail, files, &acct).await
 }
 
 /// `mail_draft`: an email saved in the mailbox's Drafts (IMAP APPEND), for the
@@ -1867,11 +2598,12 @@ async fn forward(app: &AppHandle, input: &serde_json::Value) -> Result<String, S
 /// reply to that email, in its conversation.
 async fn draft(app: &AppHandle, input: &serde_json::Value) -> Result<String, String> {
     let (mut mail, _) = outgoing_for(input, false)?;
+    let mut acct = tool_accounts(app)?.remove(0);
     if let Some(id) = input.get("reply_to").and_then(|v| v.as_str()).filter(|i| !i.trim().is_empty()) {
-        let me = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
-        let (original, _) = fetch_original(app, id, false).await?;
+        let (original, _, of) = fetch_original(app, id, false).await?;
+        acct = of;
         if mail.to.is_empty() {
-            mail.to = reply_people(&original, &me, false).0;
+            mail.to = reply_people(&original, &acct.address, false).0;
         }
         if mail.subject.is_empty() {
             mail.subject = re_subject(&original.subject);
@@ -1880,10 +2612,10 @@ async fn draft(app: &AppHandle, input: &serde_json::Value) -> Result<String, Str
         mail.in_reply_to = Some(original.message_id.clone()).filter(|m| !m.is_empty());
         mail.references = Some(thread_of(&original)).filter(|r| !r.is_empty());
     }
-    let from = secrets::get(ADDRESS_KEY).ok_or_else(|| NO_ACCOUNT.to_string())?;
+    let from = acct.address.trim().to_string();
     let (left, secs) = crate::smtp::new_id();
     let data = crate::smtp::message(&from, &mail, secs, &left);
-    let (mut imap, host) = open(app).await?;
+    let (mut imap, host) = open(&acct).await?;
     let saved = timed_for(SLOW_TIMEOUT, &host, async {
         let boxes = mailboxes(&mut imap).await?;
         let place = find_role(&boxes, Role::Drafts).ok_or_else(|| "The mailbox has no Drafts folder: write the draft in the answer instead.".to_string())?.clone();
@@ -1961,8 +2693,9 @@ fn moving(to: &Mailbox, from: &Folder) -> Result<Change, String> {
 /// deleted for good: the trash is a folder like the others.
 async fn manage(app: &AppHandle, tool: &str, input: &serde_json::Value) -> Result<String, String> {
     let id = input.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
-    let (folder, uid) = parse_id(&id).ok_or_else(|| bad_id(&id))?;
-    let (mut imap, host) = open(app).await?;
+    let (acct, plain) = account_for(app, &id)?;
+    let (folder, uid) = parse_id(&plain).ok_or_else(|| bad_id(&id))?;
+    let (mut imap, host) = open(&acct).await?;
     // The email, for its card, and what to do to it.
     let planned = timed(&host, async {
         if folder != Folder::Inbox {
@@ -2032,7 +2765,7 @@ async fn manage(app: &AppHandle, tool: &str, input: &serde_json::Value) -> Resul
         Some(_) => return Err("The user said no: the email was left as it is.".into()),
         None => return Err("Lumo couldn't show the card to the user (the island is paused or busy): nothing was changed.".into()),
     }
-    let (mut imap, host) = open(app).await?;
+    let (mut imap, host) = open(&acct).await?;
     let done = timed(&host, async {
         enter(&mut imap, &folder, true).await?;
         apply(&mut imap, uid, &change).await
@@ -2351,6 +3084,32 @@ async fn first_of<A: std::future::Future, B: std::future::Future>(a: A, b: B) ->
     .await
 }
 
+/// Both futures, run together, and both their outputs.
+async fn both<A: std::future::Future, B: std::future::Future>(a: A, b: B) -> (A::Output, B::Output) {
+    let mut a = std::pin::pin!(a);
+    let mut b = std::pin::pin!(b);
+    let (mut got_a, mut got_b) = (None, None);
+    std::future::poll_fn(|cx| {
+        if got_a.is_none() {
+            if let std::task::Poll::Ready(v) = a.as_mut().poll(cx) {
+                got_a = Some(v);
+            }
+        }
+        if got_b.is_none() {
+            if let std::task::Poll::Ready(v) = b.as_mut().poll(cx) {
+                got_b = Some(v);
+            }
+        }
+        if got_a.is_some() && got_b.is_some() {
+            if let (Some(a), Some(b)) = (got_a.take(), got_b.take()) {
+                return std::task::Poll::Ready((a, b));
+            }
+        }
+        std::task::Poll::Pending
+    })
+    .await
+}
+
 /// `{123}` at the end of a line announces 123 bytes that follow it.
 fn literal_size(line: &str) -> Option<usize> {
     let open = line.strip_suffix('}')?.rfind('{')?;
@@ -2400,7 +3159,7 @@ fn sign_in_error(host: &str, why: &str) -> String {
 }
 
 /// Settings → Pills → Email: the promotional emails are left out.
-fn hides_promotions(app: &AppHandle) -> bool {
+pub(crate) fn hides_promotions(app: &AppHandle) -> bool {
     app.try_state::<crate::Shared>()
         .map(|shared| shared.settings.lock().unwrap().mail_hide_promotions)
         .unwrap_or(false)
@@ -2999,7 +3758,7 @@ pub fn entities(text: &str) -> String {
 }
 
 /// Lines trimmed, runs of blank lines down to one, quoted replies cut off.
-fn tidy(text: &str) -> String {
+pub(crate) fn tidy(text: &str) -> String {
     let mut out: Vec<&str> = Vec::new();
     for line in text.lines() {
         let line = line.trim();
@@ -3018,7 +3777,7 @@ fn tidy(text: &str) -> String {
     out.join("\n")
 }
 
-fn preview(text: &str) -> String {
+pub(crate) fn preview(text: &str) -> String {
     let flat = text.split_whitespace().collect::<Vec<_>>().join(" ");
     if flat.chars().count() <= PREVIEW_CHARS {
         return flat;
@@ -3030,6 +3789,96 @@ fn preview(text: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn acct(slot: usize, address: &str) -> Account {
+        Account { slot, address: address.into(), server: String::new(), password: "pw".into() }
+    }
+
+    fn found(id: &str, date: &str, link: Option<&str>) -> Found {
+        Found {
+            id: id.into(),
+            message: Message { id: id.into(), date: date.into(), link: link.map(String::from), ..Default::default() },
+            unread: false,
+        }
+    }
+
+    #[test]
+    fn the_first_account_keeps_the_keys_of_before_the_others_are_numbered() {
+        assert_eq!(slot_key(ADDRESS_KEY, 1), "mail-address");
+        assert_eq!(slot_key(PASSWORD_KEY, 1), "mail-app-password");
+        assert_eq!(slot_key(SERVER_KEY, 3), "mail-imap-server-3");
+        assert_eq!(slot_key(ADDRESS_KEY, MAX_ACCOUNTS), "mail-address-5");
+    }
+
+    #[test]
+    fn a_paused_account_is_known_by_its_address_whatever_its_case() {
+        let mut settings = Settings::default();
+        assert!(!paused(&settings, "a@x.it"));
+        settings.mail_paused = vec!["A@X.it".into()];
+        assert!(paused(&settings, " a@x.it "));
+        assert!(!paused(&settings, "b@x.it"));
+    }
+
+    #[test]
+    fn the_island_keeps_the_first_accounts_ids_and_tells_the_others_apart() {
+        let m = Message { id: "imap.gmail.com:7".into(), link: Some("https://mail.google.com/mail/u/0/#inbox".into()), ..Default::default() };
+        assert_eq!(of_account(m.clone(), &acct(1, "me@gmail.com")), m);
+        let other = of_account(m, &acct(2, "Work@Gmail.com"));
+        assert_eq!(other.id, "work@gmail.com/imap.gmail.com:7");
+        assert_eq!(uid_of(&other.id), Some(7));
+        assert_eq!(other.link.as_deref(), Some("https://mail.google.com/mail/u/Work@Gmail.com/#inbox"));
+        let outlook = "https://outlook.live.com/mail/0/inbox".to_string();
+        assert_eq!(gmail_user(outlook.clone(), &acct(2, "a@b.it")), outlook);
+    }
+
+    #[test]
+    fn the_accounts_emails_come_as_one_list_each_id_with_its_account() {
+        let one = vec![(acct(1, "me@gmail.com"), Ok(vec![found("inbox:5", "Mon, 3 Nov 2025 10:00:00 +0000", None)]))];
+        assert_eq!(merged(one, 10).unwrap()[0].id, "inbox:5");
+
+        let two = vec![
+            (acct(1, "me@gmail.com"), Ok(vec![found("inbox:5", "Mon, 3 Nov 2025 10:00:00 +0000", None)])),
+            (acct(2, "work@x.it"), Ok(vec![found("Sent:9", "Tue, 4 Nov 2025 10:00:00 +0000", None)])),
+            (acct(3, "old@y.it"), Err("The mailbox has no folder called Sent".into())),
+        ];
+        let all = merged(two, 10).unwrap();
+        let ids: Vec<&str> = all.iter().map(|f| f.id.as_str()).collect();
+        assert_eq!(ids, ["work@x.it:Sent:9", "me@gmail.com:inbox:5"]);
+        assert_eq!(parse_id(all[0].id.split_once(':').unwrap().1), Some((Folder::Named("Sent".into()), 9)));
+
+        let none = vec![(acct(1, "a@x.it"), Err::<Vec<Found>, _>("first".to_string())), (acct(2, "b@x.it"), Err("second".into()))];
+        assert_eq!(merged(none, 10), Err("first".into()));
+    }
+
+    #[test]
+    fn imap_folders_go_to_imap_outlook_folders_to_outlook_the_shared_ones_to_both() {
+        assert_eq!(sources_for(true, true, None), Ok(Sources::Both));
+        assert_eq!(sources_for(true, true, Some("Sent")), Ok(Sources::Both));
+        assert_eq!(sources_for(true, true, Some("Archivio/2025")), Ok(Sources::Imap));
+        assert_eq!(sources_for(true, true, Some("outlook:ada@outlook.it/Inbox")), Ok(Sources::Outlook));
+        assert_eq!(sources_for(false, true, Some("Lavoro")), Ok(Sources::Outlook));
+        assert_eq!(sources_for(true, false, None), Ok(Sources::Imap));
+        assert!(sources_for(true, false, Some("outlook:ada@outlook.it/Inbox")).is_err());
+        assert_eq!(sources_for(false, false, None), Err(NO_ACCOUNT.to_string()));
+    }
+
+    #[test]
+    fn two_inboxes_are_one_newest_first_and_their_unread_add_up() {
+        let mail = |id: &str, date: &str| Message { id: id.into(), date: date.into(), ..Default::default() };
+        let imap = Read { unread: 3, messages: vec![mail("imap:9", "Sun, 8 Nov 2026 10:00:00 +0100"), mail("imap:8", "Sat, 7 Nov 2026 10:00:00 +0100")], inbox: None };
+        let outlook = Read { unread: 1, messages: vec![mail("outlook-1", "Sun, 8 Nov 2026 09:30:00 +0000")], inbox: None };
+        let (unread, messages) = together(vec![imap.clone(), outlook]);
+        assert_eq!(unread, 4);
+        let ids: Vec<&str> = messages.iter().map(|m| m.id.as_str()).collect();
+        assert_eq!(ids, ["outlook-1", "imap:9", "imap:8"], "09:30 UTC is after 10:00 in +01:00");
+        // One source keeps its own order.
+        assert_eq!(together(vec![imap]).1.len(), 2);
+    }
+
+    #[test]
+    fn an_outlook_folder_named_archive_in_any_language_is_the_archive() {
+        assert!(is_archive_name("Archive") && is_archive_name(" archivio ") && !is_archive_name("Lavoro"));
+    }
 
     #[test]
     fn the_ai_reads_the_email_unless_security_says_none() {

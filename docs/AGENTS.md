@@ -35,7 +35,7 @@ The relay adds `lumo_agent` to the JSON it forwards. You can also add it yoursel
 }
 ```
 
-Send newline-terminated JSON to the named pipe `\\.\pipe\lumo-<user-SID>`. The pipe name carries your Windows account's SID, so each user has their own.
+Send newline-terminated JSON to the named pipe `\\.\pipe\lumo-<user-SID>`. The pipe name carries your Windows account's SID, so each user has their own, and only that account can open it.
 
 ## Supported events
 
@@ -106,7 +106,14 @@ island's `tool_name` / `session_id`.
 | `Stop` | `Stop` |
 
 The relay answers `PreToolUse` with `{"decision":"ask"}`, so Antigravity's own permission
-rules decide. One exception: the island's own chat with **Antigravity
+rules decide, with one exception for your own sessions (the Antigravity app or `agy` in a
+terminal): a `run_command` that none of Antigravity's `command(...)` rules covers (its CLI
+settings, its global grants, and the grants of the project holding the working directory)
+is forwarded as a `PermissionRequest` tagged `lumo_agy_gate`. The island shows Allow, Deny
+and **Reply in Antigravity**: Allow prints `{"decision":"allow"}`, Deny
+`{"decision":"deny"}`, and Reply in Antigravity, no click, Lumo closed or a command too long
+to forward whole print `{"decision":"ask"}`. This needs the `PreToolUse` hook with `--wait`
+(below); hooks installed without it never wait. The other exception: the island's own chat with **Antigravity
 CLI** runs `agy` headless (stream-json on stdin) with `LUMO_ISLAND_RUN=1`, where nothing can prompt. For that
 run only, a shell command's `PreToolUse` (a tool name containing `command`, `shell` or
 `terminal`) is forwarded as a `PermissionRequest`, shown as an Allow / Deny card over the
@@ -156,6 +163,10 @@ Muse uses PascalCase event names. Lumo shows a real Allow / Deny card for Muse a
 Lumo supports OpenCode via **Settings → Agents → OpenCode**.
 The installer writes a JS plugin to `~/.config/opencode/plugins/lumo.js`, which starts the relay directly.
 The plugin maps OpenCode event types to canonical Lumo names and forwards them fire-and-forget; OpenCode is never blocked.
+Permission requests are the exception: the plugin's `permission.ask` sends a `PermissionRequest` and waits for the island's
+Allow / Deny card (OpenCode's permission `type` as `tool_name`, its `metadata` with `command` and `description` as
+`tool_input`). Allow and Deny set `allow` or `deny`; anything else (no click, Lumo closed) leaves `ask`, and OpenCode
+prompts as usual. Plugins installed before 0.20.0 need **Reinstall…** to get it.
 
 | OpenCode event | Canonical event |
 |---|---|
@@ -165,7 +176,7 @@ The plugin maps OpenCode event types to canonical Lumo names and forwards them f
 | `session.deleted` | `SessionEnd` |
 | `tool.execute.before` | `PreToolUse` |
 | `tool.execute.after` | `PostToolUse` |
-| `permission.asked` | `PermissionRequest` |
+| `permission.ask` (plugin hook) | `PermissionRequest` |
 
 ### Amp
 

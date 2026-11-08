@@ -16,7 +16,7 @@
 //! `--tools=computer,mail` both): the user's mailbox, as the Email pill reads
 //! it (`{"lumo_mail": {"tool": …, "input": …}}`, mail.rs). With `mailsend`
 //! also sending, replying, forwarding and drafts, with `mailmanage` marking,
-//! moving, archiving and trashing: what Settings → General → Security lets
+//! moving, archiving and trashing: what Settings → Security lets
 //! the AI do, each email sent and each change on a card of Lumo's first.
 //! Without `--tools`, the computer.
 //!
@@ -624,7 +624,8 @@ fn call(params: &Value, kit: Kit, lumo: &dyn Fn(&Value) -> Result<Value, String>
         return json!({ "content": [{ "type": "text", "text": plan_answer(&input) }] });
     }
     if ISLAND_NAMES.contains(&name) {
-        let chat = std::env::var("LUMO_CHAT_ID").unwrap_or_default();
+        // A `${env:…}` Cursor's mcp.json left as it was (acp_chat.rs) names no chat.
+        let chat = std::env::var("LUMO_CHAT_ID").ok().filter(|c| !c.starts_with("${")).unwrap_or_default();
         return answer(lumo(&json!({ "lumo_island": { "tool": name, "input": input, "chat": chat } })));
     }
     let key = if mail_tool(name) { "lumo_mail" } else { "lumo_computer" };
@@ -685,7 +686,7 @@ fn call_lumo(request: &Value) -> Result<Value, String> {
     } else if request.get("lumo_island").is_some() {
         "Lumo isn't running: write the line for Lumo in your answer instead."
     } else {
-        "Lumo isn't running, or its computer use is off. Ask the user to open Lumo and turn on Let Claude use the computer in Settings, under General → Security."
+        "Lumo isn't running, or its computer use is off. Ask the user to open Lumo and turn on Let Claude use the computer in Settings, under Security."
     };
     let closed = || why.to_string();
     let line = format!("{request}\n");

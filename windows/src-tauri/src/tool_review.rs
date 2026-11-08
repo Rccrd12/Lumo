@@ -139,6 +139,10 @@ async fn ask(prompt: String) -> Result<(String, String), String> {
         let question = format!("{SYSTEM}\n\n{prompt}");
         let m = model.clone();
         tauri::async_runtime::spawn_blocking(move || crate::codex_chat::complete(&m, &question)).await.map_err(|e| e.to_string())??
+    } else if crate::acp_chat::Agent::of(&provider).is_some() {
+        let question = format!("{SYSTEM}\n\n{prompt}");
+        let (m, p) = (model.clone(), provider.clone());
+        tauri::async_runtime::spawn_blocking(move || crate::acp_chat::complete(&p, &m, &question)).await.map_err(|e| e.to_string())??
     } else if let Some(p) = openai_compat::provider(&provider) {
         openai_compat::complete(p, &model, SYSTEM, &prompt).await?
     } else if let Some(server) = local_chat::server(&settings, &provider) {

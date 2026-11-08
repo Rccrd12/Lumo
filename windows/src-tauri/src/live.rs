@@ -723,7 +723,7 @@ pub async fn use_computer(app: &AppHandle, task: String) -> Result<String, Strin
     .await
     .unwrap_or(false);
     if !ready {
-        return Err("Using the screen needs Claude Code set up in Lumo, with its hooks, and Let Claude use the computer on in Settings, under General → Security.".into());
+        return Err("Using the screen needs Claude Code set up in Lumo, with its hooks, and Let Claude use the computer on in Settings, under Security.".into());
     }
     let stop = Arc::new(Stop::default());
     if let Some(old) = HELPING.lock().unwrap_or_else(|e| e.into_inner()).replace(stop.clone()) {

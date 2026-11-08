@@ -227,6 +227,8 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
 
 /** Auto with Antigravity CLI: agy's own Turbo preset (antigravity_cli.rs). */
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
+/** Auto with Copilot CLI or Cursor CLI: an action allowed once is allowed for the rest of the chat (acp_chat.rs). */
+const ACP_AUTO_NOTE = N_("Asks when the CLI asks. What you allow is allowed for the rest of the chat.");
 /** The modes with a local model, whose only actions are the user's tools (local_chat.rs). */
 const LOCAL_NOTES: Record<PermissionMode, string> = {
   default: N_("Asks before each of your tools runs, even one you trust."),
@@ -2002,7 +2004,10 @@ export function buildPrompt(
           h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
           h("span", {
             class: "perm-note",
-            text: t(p.urlField ? LOCAL_NOTES[mode] : mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE : PERMISSION_TEXT[mode].note),
+            text: t(p.urlField ? LOCAL_NOTES[mode]
+              : mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE
+              : mode === "auto" && (p.id === "copilot-cli" || p.id === "cursor-cli") ? ACP_AUTO_NOTE
+              : PERMISSION_TEXT[mode].note),
           }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,

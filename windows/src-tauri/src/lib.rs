@@ -18,6 +18,7 @@ mod chat_usage;
 mod claude;
 mod claude_code;
 mod clipboard;
+mod acp_chat;
 mod codex_chat;
 mod codex_plan;
 mod computer;
@@ -49,6 +50,7 @@ mod migrate;
 mod net;
 mod notifications;
 mod openai_compat;
+mod outlook;
 mod pc_status;
 mod pdf_pages;
 mod pdf_text;
@@ -74,6 +76,7 @@ mod typing;
 mod updater;
 mod web_search;
 mod webview_drop;
+mod webview_memory;
 mod window_control;
 mod workspace;
 
@@ -359,6 +362,11 @@ fn list_monitors(app: AppHandle) -> Vec<island::MonitorChoice> {
 
 #[tauri::command]
 fn open_url(url: String) {
+    // An Outlook email on the island, or its inbox: shown in Outlook (outlook.rs).
+    if url.starts_with(outlook::LINK_PREFIX) {
+        outlook::open(&url);
+        return;
+    }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return;
     }
@@ -749,6 +757,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     // Its Claude Code, waiting for a message of the conversation before, goes.
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
@@ -1023,6 +1032,11 @@ async fn chat_providers() -> Vec<String> {
         if codex_chat::ready() {
             ready.push("codex".to_string());
         }
+        for provider in [acp_chat::COPILOT, acp_chat::CURSOR] {
+            if acp_chat::ready(provider) {
+                ready.push(provider.to_string());
+            }
+        }
         ready
     })
     .await
@@ -1166,8 +1180,12 @@ fn create_settings_window(app: &AppHandle) {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = hidden.hide();
+                    // Hidden, it keeps only what it needs to come back (webview_memory.rs).
+                    webview_memory::set_low(&hidden, true);
                 }
             });
+            // Made hidden: small until it is first shown.
+            webview_memory::set_low(&win, true);
         }
         Err(err) => log::line(format!("settings window failed: {err}")),
     }
@@ -1178,6 +1196,7 @@ fn show_settings_window(app: &AppHandle) {
         log::line("settings window missing");
         return;
     };
+    webview_memory::set_low(&win, false);
     let _ = win.unminimize();
     let _ = win.show();
     let _ = win.set_focus();
@@ -1227,6 +1246,11 @@ pub fn run() {
             reposition,
             list_monitors,
             open_url,
+            outlook::outlook_status,
+            mail::mail_accounts,
+            mail::mail_server_for,
+            mail::mail_account_add,
+            mail::mail_account_remove,
             open_in_vscode,
             open_session,
             open_claude_desktop,

@@ -318,7 +318,7 @@ impl Recap {
             return;
         }
         let word = match decision {
-            "allow" | "always" => "allow",
+            "allow" | "always" | "edits" => "allow",
             "deny" => "deny",
             _ => return,
         };

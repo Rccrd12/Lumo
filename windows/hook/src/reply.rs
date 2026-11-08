@@ -9,10 +9,11 @@
 use serde_json::{json, Map, Value};
 
 /// The agents whose permission requests the island can answer: Claude Code
-/// (no `--agent`), Codex, Copilot CLI and Muse Code. Any decision for another
-/// agent is ignored here too, whatever the app sent.
+/// (no `--agent`, in a terminal or in the Claude app), Codex, Copilot CLI,
+/// Muse Code and OpenCode (its plugin's `permission.ask`, agents.rs). Any
+/// decision for another agent is ignored here too, whatever the app sent.
 pub fn takes_decisions(agent: &str) -> bool {
-    matches!(agent, "" | "codex" | "copilot" | "muse")
+    matches!(agent, "" | "claude-desktop" | "codex" | "copilot" | "muse" | "opencode")
 }
 
 /// Agents that read a JSON object on stdout after every hook and get `{}` —
@@ -46,12 +47,15 @@ pub fn stdout_with(
         return wants_json(agent).then(|| "{}".to_string());
     }
     let decision = decision.filter(|_| takes_decisions(agent));
+    // "Approve and let it edit files" is Claude Code's alone (its plan mode):
+    // for anyone else it is the plain allow it also is.
+    let decision = decision.map(|d| if d.trim() == "edits" && !matches!(agent, "" | "claude-desktop") { "allow" } else { d });
     match agent {
         // Copilot CLI and Muse Code read a bare permissionDecision. Copilot is
         // fail-closed: it must always get valid JSON, so silence is an "ask".
         "copilot" | "muse" => {
             let word = match decision.map(str::trim) {
-                Some("allow" | "always") => Some("allow"),
+                Some("allow" | "always" | "edits") => Some("allow"),
                 Some("deny") => Some("deny"),
                 _ => None,
             };
@@ -62,8 +66,8 @@ pub fn stdout_with(
             }
         }
         // Claude Code and Codex share the documented hookSpecificOutput. Only
-        // Claude Code asks questions.
-        "" => decision.and_then(|d| decision_json_with(d, question, suggestions)),
+        // Claude Code asks questions, in a terminal or in the Claude app.
+        "" | "claude-desktop" => decision.and_then(|d| decision_json_with(d, question, suggestions)),
         _ => decision.and_then(|d| decision_json(d, None)),
     }
 }
@@ -200,6 +204,18 @@ pub fn antigravity_island(decision: Option<&str>) -> String {
     }
 }
 
+/// Antigravity's PreToolUse reply to the card of a command in your own session
+/// (main.rs): `allow` only after a click on Allow, `deny` after one on Deny.
+/// Anything else (Reply in Antigravity, no click in time, Lumo closed) is
+/// "ask": Antigravity asks in its own window, as if Lumo were not there.
+pub fn antigravity_gate(decision: Option<&str>) -> String {
+    match decision.map(str::trim) {
+        Some("allow" | "always" | "edits") => r#"{"decision":"allow"}"#.to_string(),
+        Some("deny") => r#"{"decision":"deny","reason":"Denied from Lumo"}"#.to_string(),
+        _ => r#"{"decision":"ask"}"#.to_string(),
+    }
+}
+
 /// The documented PermissionRequest output. Anything we do not recognise prints
 /// nothing at all rather than guessing — silence is the safe answer.
 /// See https://code.claude.com/docs/en/hooks
@@ -218,6 +234,23 @@ pub fn decision_json(decision: &str, question: Option<&Value>) -> Option<String>
 /// asking for the same thing. Nothing is ever written to a settings file, and
 /// no other kind of suggestion (a mode, a directory) is passed on.
 pub fn decision_json_with(decision: &str, question: Option<&Value>, suggestions: Option<&Value>) -> Option<String> {
+    // A plan approved with "let it edit files without asking": allowed, and
+    // Claude Code goes on in acceptEdits for this session only, exactly as its
+    // own prompt's option does. Never written to a settings file.
+    if decision.trim() == "edits" {
+        return Some(
+            json!({
+                "hookSpecificOutput": {
+                    "hookEventName": "PermissionRequest",
+                    "decision": {
+                        "behavior": "allow",
+                        "updatedPermissions": [{ "type": "setMode", "mode": "acceptEdits", "destination": "session" }],
+                    },
+                }
+            })
+            .to_string(),
+        );
+    }
     if decision.trim() == "always" {
         let rules = session_rules(suggestions);
         if !rules.is_empty() {
@@ -398,7 +431,7 @@ mod tests {
     fn each_agent_gets_its_own_reply_shape() {
         let allow = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"allow"}}}"#;
         let deny = r#"{"hookSpecificOutput":{"hookEventName":"PermissionRequest","decision":{"behavior":"deny","message":"Denied from Lumo"}}}"#;
-        for agent in ["", "codex"] {
+        for agent in ["", "claude-desktop", "codex", "opencode"] {
             assert_eq!(stdout(agent, "PermissionRequest", Some("allow"), None).unwrap(), allow);
             assert_eq!(stdout(agent, "PermissionRequest", Some("always"), None).unwrap(), allow);
             assert_eq!(stdout(agent, "PermissionRequest", Some("deny"), None).unwrap(), deny);
@@ -513,6 +546,9 @@ mod tests {
         assert_eq!(decision["behavior"], "allow");
         assert_eq!(decision["updatedInput"]["questions"], question["questions"]);
         assert_eq!(decision["updatedInput"]["answers"]["Which one?"], "B");
+        // Claude Code in the Claude app asks the same way.
+        let desktop = stdout("claude-desktop", "PermissionRequest", Some(r#"{"answers":{"Which one?":"B"}}"#), Some(&question));
+        assert_eq!(desktop.as_deref(), Some(out.as_str()));
         // Only Claude Code asks questions: an answer for anyone else is nothing.
         assert!(stdout("codex", "PermissionRequest", Some(r#"{"answers":{"Which one?":"B"}}"#), Some(&question)).is_none());
     }
@@ -542,5 +578,22 @@ mod tests {
         assert!(!ok(r#"{"answers":{"Which one?":"A","Extras?":"Tests"}}"#));
         assert!(!ok(r#"{"answers":{"Which one?":"A","Extras?":[]}}"#));
         assert!(!ok(r#"{"answers":{"Which one?":"A","Extras?":["Tests","Tests"]}}"#));
+    }
+
+    #[test]
+    fn a_plan_approved_to_edit_freely_switches_claude_code_to_accept_edits_for_the_session() {
+        for agent in ["", "claude-desktop"] {
+            let out = stdout(agent, "PermissionRequest", Some("edits"), None).unwrap();
+            let v: Value = serde_json::from_str(&out).unwrap();
+            let decision = &v["hookSpecificOutput"]["decision"];
+            assert_eq!(decision["behavior"], "allow");
+            assert_eq!(decision["updatedPermissions"], json!([{ "type": "setMode", "mode": "acceptEdits", "destination": "session" }]));
+        }
+        // For any other agent it is a plain allow, never a mode.
+        let allow = stdout("codex", "PermissionRequest", Some("allow"), None);
+        assert_eq!(stdout("codex", "PermissionRequest", Some("edits"), None), allow);
+        assert_eq!(stdout("copilot", "PermissionRequest", Some("edits"), None).unwrap(), r#"{"permissionDecision":"allow"}"#);
+        // And it only ever answers a permission request.
+        assert!(stdout("", "PreToolUse", Some("edits"), None).is_none());
     }
 }

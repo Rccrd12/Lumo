@@ -50,6 +50,8 @@ export interface AgentTask {
   sessionId?: string | null;
   /** Claude's final message after Stop, one line; cleared when a new turn starts. */
   finalLine?: string | null;
+  /** The title of the session the pill shows (/rename, else Claude Code's own): its name, with the folder beside it. */
+  sessionTitle?: string | null;
 }
 
 /**
@@ -87,6 +89,8 @@ export interface ApprovalInfo {
   fromChat?: boolean;
   /** "Allow for this session" can be offered: the same request is then allowed without a card until the session ends (session_rules.rs). */
   sessionAllow?: boolean;
+  /** The agent whose own window can take the request instead ("Reply in Antigravity"): no click there leaves it to the agent. */
+  answerIn?: string;
   /** Simple (a read, a command that only looks): answered on the closed island (core/approvals.ts). */
   quick?: boolean;
   /** Simple enough for the closed island, for a request waiting in line: whether it goes there is decided when it comes up. */
@@ -206,12 +210,12 @@ export function parseMotion(v: unknown): LumoMotion {
 }
 
 /** The engine's ambient amount for a motion setting. */
-/** Settings → General → Security lets the AI read the email or the calendar: anything but "none". */
+/** Settings → Security lets the AI read the email or the calendar: anything but "none". */
 export function aiReads(v: unknown): boolean {
   return v !== "none";
 }
 
-/** Settings → General → Security → Email lets the AI send email: "Read and send", or "Read, send and manage". */
+/** Settings → Security → Email lets the AI send email: "Read and send", or "Read, send and manage". */
 export function aiSends(v: unknown): boolean {
   return v === "send" || v === "manage";
 }
@@ -301,6 +305,13 @@ export interface Settings {
   activitiesFollowIsland: boolean;
   /** The Email pill leaves out the promotional emails (mail.rs). */
   mailHidePromotions: boolean;
+  /** The Email pill's sources: the server over IMAP (mail.rs), the classic Outlook on this PC (outlook.rs). */
+  mailImap: boolean;
+  mailOutlook: boolean;
+  /** Settings → Security: Lumo starts Outlook in the background once, when it starts (outlook.rs). */
+  outlookStart: boolean;
+  /** Settings → Pills → Email → IMAP: the accounts paused with their switch, by address (mail.rs). */
+  mailPaused: string[];
   /** Settings → General → Energy (core/energy.ts): "none", "light", "auto" or "saver". */
   energyMode: string;
   /** With "auto" on mains power: "none" or "light". */
@@ -319,7 +330,7 @@ export interface Settings {
   chatShowUsage: boolean;
   /**
    * Every chat message carries the folder open in File Explorer, as if picked
-   * from the screen button. Off until the user turns it on in Settings → Chat.
+   * from the screen button. Off until the user turns it on in Settings → Security.
    */
   chatShareExplorer: boolean;
   /** Every message carries the open windows and their documents (desk.rs). */
@@ -332,7 +343,7 @@ export interface Settings {
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
-  /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
+  /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;
@@ -457,6 +468,10 @@ export const DEFAULT_SETTINGS: Settings = {
   quickApprovals: true,
   activitiesFollowIsland: true,
   mailHidePromotions: false,
+  mailImap: true,
+  mailOutlook: false,
+  outlookStart: false,
+  mailPaused: [],
   energyMode: "auto",
   energyOnPower: "light",
   contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],
