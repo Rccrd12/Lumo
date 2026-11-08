@@ -254,6 +254,6 @@ test("Settings → Security keeps the email and the calendar from Gemini when th
   for (const topic of ["all", "email", "calendar"]) {
     const out = JSON.stringify(L.lumoStatus(shut, topic));
     assert.doesNotMatch(out, /Invoice|Dentist|Ada/, topic);
-    assert.match(out, /Settings → General → Security/, topic);
+    assert.match(out, /Settings → Security/, topic);
   }
 });

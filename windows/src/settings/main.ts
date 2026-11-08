@@ -697,24 +697,30 @@ function chatUsageSection(): HTMLElement {
 const SECURITY = {
   get title() { return t("Security"); },
   get intro() { return t("What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click."); },
+  get onItsOwn() { return t("What it may do on its own"); },
   get permissions() { return t("Default permissions"); },
-  get permissionsHint() { return t("What Claude Code, Codex and Antigravity CLI may do without asking, in the chat and for Gemini Live's helper. The shield in the chat changes it too."); },
-  get everyMessage() { return t("With every message"); },
-  get folders() { return t("Share the folders open in File Explorer"); },
-  get foldersHint() { return t("Every message carries the folders open in File Explorer and the list of their files, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
-  get tabs() { return t("Share the open browser tabs"); },
-  get tabsHint() { return t("Every message carries the tabs open in your browsers, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
-  get mailAndCalendar() { return t("Email and calendar"); },
-  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it, also send, answer and forward emails, also manage them (read or unread, star, move, archive, trash), or nothing at all. Each email is sent only when you click Send on its card, which shows it whole, and each change is a card too. Nothing is ever deleted for good."); },
+  get permissionsHint() { return t("How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too."); },
+  get computerHint() { return t("Only while it answers: the screen it uses glows, and Esc stops it. With Ask every time, each click waits for yours."); },
+  get webHint() { return t("For the models that can't search on their own. Free, no account: only the useful passages reach the model."); },
+  get sees() { return t("What it sees with every message"); },
+  get seesHint() { return t("Only the chat's AI gets them. The × on a chip leaves one out of a single message."); },
+  get windows() { return t("Open windows"); },
+  get windowsHint() { return t("Their titles and the documents they show."); },
+  get folders() { return t("File Explorer folders"); },
+  get foldersHint() { return t("The open folders and the list of their files."); },
+  get tabs() { return t("Browser tabs"); },
+  get tabsHint() { return t("The tabs open in your browsers."); },
+  get accounts() { return t("Your accounts"); },
+  get mailHint() { return t("At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good."); },
+  get calendarHint() { return t("Read your coming events, or nothing."); },
+  get githubHint() { return t("Read your pull requests, issues and checks when you ask. Off until you turn it on."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
-  get calendarHint() { return t("What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all."); },
-  get githubHint() { return t("What the AI may do with the GitHub account set in Lumo: read your pull requests, issues, repositories and checks when you ask about them, or nothing at all. Off until you turn it on, also for cloud AIs."); },
   get readOnly() { return t("Read only"); },
   get noAccess() { return t("No access"); },
-  get other() { return t("Other"); },
-  get keys() { return t("Keys and passwords"); },
-  get keysHint() { return t("API keys and passwords stay in Windows Credential Manager, never in a file. Lumo talks only to the services you set up, and sends no usage data."); },
+  get alwaysOn() { return t("Always on"); },
+  get keys() { return t("Keys and passwords stay in Windows Credential Manager, never in a file."); },
+  get noData() { return t("No usage data: Lumo talks only to the services you set up."); },
 };
 
 /** The chat's permission modes, by the names its shield gives them (views/chat.ts). */
@@ -724,21 +730,19 @@ const PERMISSION_NAMES: Record<string, string> = {
 
 /** Lumo's own web search (web_search.rs), for the providers that have none. */
 const WEB_SETTINGS = {
-  get group() { return t("Web search"); },
   get label() { return t("Search the web for the AI"); },
-  get hint() { return t("For local models, OpenAI, Google and OpenRouter. The question goes to DuckDuckGo (else Mojeek or Wikipedia) without an account, the pages open from this computer, and only the passages that answer reach the model. Free, no key."); },
 };
 
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
-  get hint() { return t("Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back."); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
 };
 
 /**
- * Settings → General → Security: what the chat's agents may do without
- * asking, what goes with every message, what the AI may read of the email
- * and the calendar, and computer use.
+ * Settings → Security: what the chat's agents may do on their own (the
+ * permissions, computer use, web search), what goes with every message,
+ * what the AI may do with the email, the calendar and GitHub, and what Lumo
+ * always does without a switch.
  */
 function securitySection(): HTMLElement {
   // The one mode every CLI starts from.
@@ -771,10 +775,22 @@ function securitySection(): HTMLElement {
     "section",
     {},
     ...sectionHead(SECURITY.title, SECURITY.intro),
+    group(SECURITY.onItsOwn),
     setting(SECURITY.permissions, SECURITY.permissionsHint, permissions),
-    group(SECURITY.everyMessage),
-    setting(t("Tell the AI what's open"),
-      t("With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them."),
+    setting(COMPUTER_SETTINGS.label, SECURITY.computerHint,
+      toggle(settings.chatComputerUse === true, (on) => {
+        settings.chatComputerUse = on;
+        showNote();
+        void save();
+      }),
+    ),
+    note,
+    setting(WEB_SETTINGS.label, SECURITY.webHint,
+      toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
+    ),
+    group(SECURITY.sees),
+    h("p", { class: "hint group-hint", text: SECURITY.seesHint }),
+    setting(SECURITY.windows, SECURITY.windowsHint,
       toggle(settings.chatShareOpen !== false, (on) => { settings.chatShareOpen = on; void save(); }),
     ),
     setting(SECURITY.folders, SECURITY.foldersHint,
@@ -783,26 +799,15 @@ function securitySection(): HTMLElement {
     setting(SECURITY.tabs, SECURITY.tabsHint,
       toggle(settings.chatShareTabs === true, (on) => { settings.chatShareTabs = on; void save(); }),
     ),
-    group(SECURITY.mailAndCalendar),
+    group(SECURITY.accounts),
     setting(t("Email"), SECURITY.mailHint, mailAccess),
     setting(t("Calendar"), SECURITY.calendarHint, calendarAccess),
-    group("GitHub"),
     setting("GitHub", SECURITY.githubHint, githubAccess),
-    group(t("Computer use")),
-    setting(COMPUTER_SETTINGS.label, COMPUTER_SETTINGS.hint,
-      toggle(settings.chatComputerUse === true, (on) => {
-        settings.chatComputerUse = on;
-        showNote();
-        void save();
-      }),
+    group(SECURITY.alwaysOn),
+    h("ul", { class: "always-on" },
+      h("li", { text: SECURITY.keys }),
+      h("li", { text: SECURITY.noData }),
     ),
-    note,
-    group(WEB_SETTINGS.group),
-    setting(WEB_SETTINGS.label, WEB_SETTINGS.hint,
-      toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
-    ),
-    group(SECURITY.other),
-    setting(SECURITY.keys, SECURITY.keysHint),
   );
 }
 
@@ -1930,6 +1935,7 @@ const PAGES = [
   { id: "agents", label: N_("Agents") },
   { id: "pills", label: N_("Pills & integrations") },
   { id: "shortcuts", label: N_("Shortcuts") },
+  { id: "security", label: N_("Security") },
   { id: "updates", label: N_("Updates") },
 ] as const;
 
@@ -2101,13 +2107,14 @@ async function render() {
   // Every section is built, so what one redraws (declaredViews, the local
   // models, the shortcuts) works as before; only the selected one shows.
   const pages: Record<PageId, HTMLElement[]> = {
-    general: [generalSection(), securitySection()],
+    general: [generalSection()],
     island: [islandSection()],
     chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],
     shortcuts: [shortcutsSection(shortcutReport)],
+    security: [securitySection()],
     updates: [
       updatesSection(version, setting(t("Check when Lumo opens"),
         t("Each time Lumo opens, it asks GitHub once whether a newer version is out, and says so on the island."),

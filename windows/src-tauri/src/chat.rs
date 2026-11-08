@@ -818,7 +818,7 @@ async fn dispatch(
     let command = (settings.chat_provider == claude_code::PROVIDER && claude_code::is_command(&query))
         || (settings.chat_provider == antigravity_cli::PROVIDER && antigravity_cli::is_command(&query));
     let mut screen = if command { None } else { screen.map(checked_screen).transpose()? };
-    // Settings → Chat → "Tell the AI what's open": the windows and their
+    // Settings → Security → "Open windows": the windows and their
     // documents go with every question (desk.rs).
     if settings.chat_share_open && !command {
         let (windows, documents) = tauri::async_runtime::spawn_blocking(crate::desk::now).await.unwrap_or_default();
@@ -845,7 +845,7 @@ async fn dispatch(
     }
     // The Email pill: a question about email gets the newest emails, read or
     // not, so every provider can answer it, not only those with a mail tool of
-    // their own. Not when Settings → General → Security keeps the email from the AI.
+    // their own. Not when Settings → Security keeps the email from the AI.
     if !command && crate::mail::asks_about(&query) && crate::mail::for_ai(app) {
         if let Some(text) = crate::mail::for_chat(app).await {
             screen.get_or_insert_with(ScreenContext::default).mail = text;

@@ -4255,90 +4255,6 @@
    "id": "Izin bawaan",
    "it": "Permessi predefiniti"
   },
-  "What Claude Code, Codex and Antigravity CLI may do without asking, in the chat and for Gemini Live's helper. The shield in the chat changes it too.": {
-   "zh-Hans": "Claude Code、Codex 和 Antigravity CLI 在聊天中以及作为 Gemini Live 的助手时，无需询问即可执行的操作。聊天中的盾牌图标也可以更改它。",
-   "hi": "Claude Code, Codex और Antigravity CLI बिना पूछे क्या कर सकते हैं, चैट में और Gemini Live के सहायक के रूप में। चैट की ढाल भी इसे बदलती है।",
-   "es": "Lo que Claude Code, Codex y Antigravity CLI pueden hacer sin preguntar, en el chat y como ayudante de Gemini Live. El escudo del chat también lo cambia.",
-   "ar": "ما يمكن لـ Claude Code وCodex وAntigravity CLI فعله دون سؤال، في الدردشة وكمساعد لـ Gemini Live. يغيّره الدرع في الدردشة أيضًا.",
-   "fr": "Ce que Claude Code, Codex et Antigravity CLI peuvent faire sans demander, dans le chat et comme assistant de Gemini Live. Le bouclier du chat le change aussi.",
-   "bn": "Claude Code, Codex ও Antigravity CLI জিজ্ঞাসা না করে কী করতে পারে, চ্যাটে এবং Gemini Live-এর সহকারী হিসেবে। চ্যাটের ঢালটিও এটি বদলায়।",
-   "pt-BR": "O que o Claude Code, o Codex e o Antigravity CLI podem fazer sem perguntar, no chat e como ajudante do Gemini Live. O escudo do chat também muda isso.",
-   "ru": "Что Claude Code, Codex и Antigravity CLI могут делать без вопроса — в чате и как помощник Gemini Live. Щит в чате тоже меняет это.",
-   "id": "Apa yang boleh dilakukan Claude Code, Codex, dan Antigravity CLI tanpa bertanya, di chat dan sebagai pembantu Gemini Live. Perisai di chat juga mengubahnya.",
-   "it": "Cosa possono fare Claude Code, Codex e Antigravity CLI senza chiedere, nella chat e come aiutante di Gemini Live. Lo cambia anche lo scudo nella chat."
-  },
-  "With every message": {
-   "zh-Hans": "随每条消息",
-   "hi": "हर संदेश के साथ",
-   "es": "Con cada mensaje",
-   "ar": "مع كل رسالة",
-   "fr": "Avec chaque message",
-   "bn": "প্রতিটি বার্তার সাথে",
-   "pt-BR": "Com cada mensagem",
-   "ru": "С каждым сообщением",
-   "id": "Bersama setiap pesan",
-   "it": "Con ogni messaggio"
-  },
-  "Share the folders open in File Explorer": {
-   "zh-Hans": "共享在文件资源管理器中打开的文件夹",
-   "hi": "फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर साझा करें",
-   "es": "Compartir las carpetas abiertas en el Explorador de archivos",
-   "ar": "مشاركة المجلدات المفتوحة في مستكشف الملفات",
-   "fr": "Partager les dossiers ouverts dans l'Explorateur de fichiers",
-   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডারগুলো শেয়ার করুন",
-   "pt-BR": "Compartilhar as pastas abertas no Explorador de Arquivos",
-   "ru": "Передавать папки, открытые в Проводнике",
-   "id": "Bagikan folder yang terbuka di File Explorer",
-   "it": "Condividi le cartelle aperte in Esplora file"
-  },
-  "Every message carries the folders open in File Explorer and the list of their files, as if you shared them from the screen button. The × on a chip leaves it out of one message.": {
-   "zh-Hans": "每条消息都会带上在文件资源管理器中打开的文件夹及其文件列表，就像你从屏幕按钮共享一样。点击标签上的 × 可在某条消息中省略它。",
-   "hi": "हर संदेश फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर और उनकी फ़ाइलों की सूची साथ ले जाता है, जैसे आपने उन्हें स्क्रीन बटन से साझा किया हो। चिप पर × उसे एक संदेश से बाहर रखता है।",
-   "es": "Cada mensaje lleva las carpetas abiertas en el Explorador de archivos y la lista de sus archivos, como si las compartieras con el botón de pantalla. La × de una etiqueta la deja fuera de un mensaje.",
-   "ar": "تحمل كل رسالة المجلدات المفتوحة في مستكشف الملفات وقائمة ملفاتها، كما لو شاركتها من زر الشاشة. علامة × على الشريحة تستبعدها من رسالة واحدة.",
-   "fr": "Chaque message emporte les dossiers ouverts dans l'Explorateur de fichiers et la liste de leurs fichiers, comme si vous les partagiez depuis le bouton écran. Le × d'une puce l'exclut d'un message.",
-   "bn": "প্রতিটি বার্তা ফাইল এক্সপ্লোরারে খোলা ফোল্ডার ও তাদের ফাইলের তালিকা সঙ্গে নেয়, যেন আপনি স্ক্রিন বোতাম থেকে শেয়ার করেছেন। চিপের × সেটিকে একটি বার্তা থেকে বাদ দেয়।",
-   "pt-BR": "Cada mensagem leva as pastas abertas no Explorador de Arquivos e a lista dos seus arquivos, como se você as compartilhasse pelo botão de tela. O × de um chip a deixa de fora de uma mensagem.",
-   "ru": "Каждое сообщение несёт папки, открытые в Проводнике, и список их файлов, как если бы вы поделились ими кнопкой экрана. × на метке убирает её из одного сообщения.",
-   "id": "Setiap pesan membawa folder yang terbuka di File Explorer dan daftar filenya, seolah Anda membagikannya dari tombol layar. Tanda × pada chip mengecualikannya dari satu pesan.",
-   "it": "Ogni messaggio porta con sé le cartelle aperte in Esplora file e l'elenco dei loro file, come se le condividessi dal pulsante dello schermo. La × su un'etichetta la toglie da un messaggio."
-  },
-  "Share the open browser tabs": {
-   "zh-Hans": "共享打开的浏览器标签页",
-   "hi": "खुले ब्राउज़र टैब साझा करें",
-   "es": "Compartir las pestañas abiertas del navegador",
-   "ar": "مشاركة علامات تبويب المتصفح المفتوحة",
-   "fr": "Partager les onglets ouverts du navigateur",
-   "bn": "খোলা ব্রাউজার ট্যাব শেয়ার করুন",
-   "pt-BR": "Compartilhar as abas abertas do navegador",
-   "ru": "Передавать открытые вкладки браузера",
-   "id": "Bagikan tab browser yang terbuka",
-   "it": "Condividi le schede aperte del browser"
-  },
-  "Every message carries the tabs open in your browsers, as if you shared them from the screen button. The × on a chip leaves it out of one message.": {
-   "zh-Hans": "每条消息都会带上浏览器中打开的标签页，就像你从屏幕按钮共享一样。点击标签上的 × 可在某条消息中省略它。",
-   "hi": "हर संदेश आपके ब्राउज़रों में खुले टैब साथ ले जाता है, जैसे आपने उन्हें स्क्रीन बटन से साझा किया हो। चिप पर × उसे एक संदेश से बाहर रखता है।",
-   "es": "Cada mensaje lleva las pestañas abiertas en tus navegadores, como si las compartieras con el botón de pantalla. La × de una etiqueta la deja fuera de un mensaje.",
-   "ar": "تحمل كل رسالة علامات التبويب المفتوحة في متصفحاتك، كما لو شاركتها من زر الشاشة. علامة × على الشريحة تستبعدها من رسالة واحدة.",
-   "fr": "Chaque message emporte les onglets ouverts dans vos navigateurs, comme si vous les partagiez depuis le bouton écran. Le × d'une puce l'exclut d'un message.",
-   "bn": "প্রতিটি বার্তা আপনার ব্রাউজারে খোলা ট্যাবগুলো সঙ্গে নেয়, যেন আপনি স্ক্রিন বোতাম থেকে শেয়ার করেছেন। চিপের × সেটিকে একটি বার্তা থেকে বাদ দেয়।",
-   "pt-BR": "Cada mensagem leva as abas abertas nos seus navegadores, como se você as compartilhasse pelo botão de tela. O × de um chip a deixa de fora de uma mensagem.",
-   "ru": "Каждое сообщение несёт вкладки, открытые в ваших браузерах, как если бы вы поделились ими кнопкой экрана. × на метке убирает её из одного сообщения.",
-   "id": "Setiap pesan membawa tab yang terbuka di browser Anda, seolah Anda membagikannya dari tombol layar. Tanda × pada chip mengecualikannya dari satu pesan.",
-   "it": "Ogni messaggio porta con sé le schede aperte nei tuoi browser, come se le condividessi dal pulsante dello schermo. La × su un'etichetta la toglie da un messaggio."
-  },
-  "Email and calendar": {
-   "zh-Hans": "电子邮件和日历",
-   "hi": "ईमेल और कैलेंडर",
-   "es": "Correo y calendario",
-   "ar": "البريد الإلكتروني والتقويم",
-   "fr": "E-mail et calendrier",
-   "bn": "ইমেল ও ক্যালেন্ডার",
-   "pt-BR": "E-mail e calendário",
-   "ru": "Почта и календарь",
-   "id": "Email dan kalender",
-   "it": "Email e calendario"
-  },
   "Read and send": {
    "zh-Hans": "读取和发送",
    "hi": "पढ़ना और भेजना",
@@ -4399,18 +4315,6 @@
    "id": "Buang",
    "it": "Scarta"
   },
-  "What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all.": {
-   "zh-Hans": "AI 可以对 Lumo 中设置的日历做什么：读取即将到来的日程（Gemini Live），或者什么都不做。",
-   "hi": "Lumo में सेट कैलेंडर के साथ AI क्या कर सकता है: उसके आने वाले कार्यक्रम पढ़ना (Gemini Live), या कुछ भी नहीं।",
-   "es": "Lo que la IA puede hacer con el calendario configurado en Lumo: leer sus próximos eventos (Gemini Live) o nada en absoluto.",
-   "ar": "ما يمكن للذكاء الاصطناعي فعله بالتقويم المضبوط في Lumo: قراءة أحداثه القادمة (Gemini Live)، أو لا شيء على الإطلاق.",
-   "fr": "Ce que l'IA peut faire du calendrier réglé dans Lumo : lire ses prochains événements (Gemini Live), ou rien du tout.",
-   "bn": "Lumo-তে সেট করা ক্যালেন্ডার নিয়ে AI কী করতে পারে: এর আসন্ন ইভেন্টগুলো পড়া (Gemini Live), অথবা কিছুই না।",
-   "pt-BR": "O que a IA pode fazer com o calendário definido no Lumo: ler os próximos eventos (Gemini Live) ou nada.",
-   "ru": "Что ИИ может делать с календарём, заданным в Lumo: читать ближайшие события (Gemini Live) или ничего.",
-   "id": "Apa yang boleh dilakukan AI dengan kalender yang diatur di Lumo: membaca acara mendatangnya (Gemini Live), atau tidak sama sekali.",
-   "it": "Cosa può fare l'IA con il calendario impostato in Lumo: leggerne i prossimi eventi (Gemini Live), oppure niente."
-  },
   "Read only": {
    "zh-Hans": "仅读取",
    "hi": "केवल पढ़ना",
@@ -4434,42 +4338,6 @@
    "ru": "Нет доступа",
    "id": "Tanpa akses",
    "it": "Nessun accesso"
-  },
-  "Other": {
-   "zh-Hans": "其他",
-   "hi": "अन्य",
-   "es": "Otros",
-   "ar": "أخرى",
-   "fr": "Autres",
-   "bn": "অন্যান্য",
-   "pt-BR": "Outros",
-   "ru": "Прочее",
-   "id": "Lainnya",
-   "it": "Altro"
-  },
-  "Keys and passwords": {
-   "zh-Hans": "密钥和密码",
-   "hi": "कुंजियाँ और पासवर्ड",
-   "es": "Claves y contraseñas",
-   "ar": "المفاتيح وكلمات المرور",
-   "fr": "Clés et mots de passe",
-   "bn": "কী ও পাসওয়ার্ড",
-   "pt-BR": "Chaves e senhas",
-   "ru": "Ключи и пароли",
-   "id": "Kunci dan kata sandi",
-   "it": "Chiavi e password"
-  },
-  "API keys and passwords stay in Windows Credential Manager, never in a file. Lumo talks only to the services you set up, and sends no usage data.": {
-   "zh-Hans": "API 密钥和密码保存在 Windows 凭据管理器中，绝不写入文件。Lumo 只与你设置的服务通信，不发送任何使用数据。",
-   "hi": "API कुंजियाँ और पासवर्ड Windows Credential Manager में रहते हैं, कभी किसी फ़ाइल में नहीं। Lumo केवल आपकी सेट की गई सेवाओं से बात करता है, और कोई उपयोग डेटा नहीं भेजता।",
-   "es": "Las claves de API y las contraseñas quedan en el Administrador de credenciales de Windows, nunca en un archivo. Lumo solo habla con los servicios que configuras y no envía datos de uso.",
-   "ar": "تبقى مفاتيح API وكلمات المرور في مدير بيانات الاعتماد في Windows، ولا تُكتب في ملف أبدًا. لا يتواصل Lumo إلا مع الخدمات التي تضبطها، ولا يرسل أي بيانات استخدام.",
-   "fr": "Les clés d'API et les mots de passe restent dans le Gestionnaire d'identification de Windows, jamais dans un fichier. Lumo ne parle qu'aux services que vous configurez et n'envoie aucune donnée d'utilisation.",
-   "bn": "API কী ও পাসওয়ার্ড Windows Credential Manager-এ থাকে, কখনো কোনো ফাইলে নয়। Lumo শুধু আপনার সেট করা সেবাগুলোর সাথে যোগাযোগ করে এবং কোনো ব্যবহারের তথ্য পাঠায় না।",
-   "pt-BR": "Chaves de API e senhas ficam no Gerenciador de Credenciais do Windows, nunca em um arquivo. O Lumo só fala com os serviços que você configura e não envia dados de uso.",
-   "ru": "Ключи API и пароли хранятся в диспетчере учётных данных Windows, никогда в файле. Lumo обращается только к настроенным вами службам и не отправляет данные об использовании.",
-   "id": "Kunci API dan kata sandi disimpan di Windows Credential Manager, tidak pernah di file. Lumo hanya berbicara dengan layanan yang Anda atur, dan tidak mengirim data penggunaan.",
-   "it": "Chiavi API e password restano in Gestione credenziali di Windows, mai in un file. Lumo parla solo con i servizi che hai configurato e non invia dati d'uso."
   },
   "Open windows": {
    "zh-Hans": "打开的窗口",
@@ -6739,18 +6607,6 @@
    "id": "Buka email ini",
    "it": "Apri questa email"
   },
-  "Tell the AI what's open": {
-   "zh-Hans": "告诉 AI 打开了什么",
-   "hi": "AI को बताएँ क्या खुला है",
-   "es": "Decir a la IA qué está abierto",
-   "ar": "أخبر الذكاء الاصطناعي بما هو مفتوح",
-   "fr": "Dire à l'IA ce qui est ouvert",
-   "bn": "AI-কে জানান কী খোলা আছে",
-   "pt-BR": "Dizer à IA o que está aberto",
-   "ru": "Сообщать ИИ, что открыто",
-   "id": "Beri tahu AI apa yang terbuka",
-   "it": "Di' all'IA cosa è aperto"
-  },
   "{pct}% used": {
    "zh-Hans": "已用 {pct}%",
    "hi": "{pct}% उपयोग हुआ",
@@ -8451,18 +8307,6 @@
    "id": "Cincin di samping obrolan sebelumnya menunjukkan pemakaian penyedia yang digunakan; klik untuk melihat setiap batas dan kapan direset. Untuk Claude Code perlu relay dari {path}. Tidak ada yang ditampilkan untuk Google atau model lokal.",
    "it": "Un anello accanto alle chat passate mostra quanto ha usato il provider in uso; un clic mostra ogni limite e quando si azzera. Per Claude Code serve il relay da {path}. Niente per Google e per i modelli locali."
   },
-  "Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back.": {
-   "zh-Hans": "仅在代理回答时：它使用的屏幕会发光，鼠标变为橙色。每次询问时，每个操作都会先在岛上显示为卡片。按 Esc 可停止并交还鼠标。",
-   "hi": "सिर्फ़ तब जब एजेंट जवाब दे रहा हो: जिस स्क्रीन का वह इस्तेमाल करता है वह चमकती है और माउस नारंगी हो जाता है। हर बार पूछने पर, हर क्रिया पहले आइलैंड पर एक कार्ड होती है। Esc उसे रोकता है और माउस वापस देता है।",
-   "es": "Solo mientras el agente responde: la pantalla que usa se ilumina y el ratón se vuelve naranja. Preguntando siempre, cada acción es primero una tarjeta en la isla. Esc lo detiene y te devuelve el ratón.",
-   "ar": "فقط أثناء إجابة الوكيل: تتوهج الشاشة التي يستخدمها ويصبح المؤشر برتقاليًا. عند السؤال في كل مرة، يكون كل إجراء بطاقة في الجزيرة أولًا. يوقفه Esc ويعيد إليك الفأرة.",
-   "fr": "Seulement pendant que l'agent répond : l'écran qu'il utilise s'illumine et la souris devient orange. En demandant à chaque fois, chaque action est d'abord une carte sur l'île. Échap l'arrête et vous rend la souris.",
-   "bn": "শুধু এজেন্ট উত্তর দেওয়ার সময়: যে স্ক্রিন সে ব্যবহার করে তা জ্বলে ওঠে আর মাউস কমলা হয়ে যায়। প্রতিবার জিজ্ঞেস করলে, প্রতিটি কাজ আগে আইল্যান্ডে একটি কার্ড হয়। Esc তাকে থামায় ও মাউস ফিরিয়ে দেয়।",
-   "pt-BR": "Só enquanto o agente responde: a tela que ele usa brilha e o mouse fica laranja. Perguntando sempre, cada ação é antes um cartão na ilha. Esc o interrompe e devolve o mouse.",
-   "ru": "Только пока агент отвечает: используемый экран подсвечивается, а курсор становится оранжевым. В режиме «спрашивать каждый раз» каждое действие сначала появляется карточкой на острове. Esc останавливает его и возвращает мышь.",
-   "id": "Hanya saat agen menjawab: layar yang dipakainya menyala dan mouse berubah oranye. Jika selalu bertanya, setiap tindakan muncul dulu sebagai kartu di pulau. Esc menghentikannya dan mengembalikan mouse.",
-   "it": "Solo mentre l'agente risponde: lo schermo che usa si illumina e il mouse diventa arancione. Con Chiedi ogni volta, ogni azione passa prima da una scheda sull'isola. Esc lo ferma e ti ridà il mouse."
-  },
   "Talk with Gemini from the island, with the microphone next to the chat box or {keys}. It answers out loud, looks at your screen when that helps and hands the rest to the helper below. It uses your Google AI key, billed by the minute; a call ends after 5 minutes of silence.": {
    "zh-Hans": "在岛上与 Gemini 对话：使用聊天框旁的麦克风或 {keys}。它会语音回答，需要时查看你的屏幕，其余交给下方的助手。使用你的 Google AI 密钥，按分钟计费；静音 5 分钟后通话结束。",
    "hi": "आइलैंड से Gemini से बात करें, चैट बॉक्स के पास वाले माइक्रोफ़ोन या {keys} से। वह बोलकर जवाब देता है, ज़रूरत पड़ने पर आपकी स्क्रीन देखता है और बाकी काम नीचे दिए सहायक को सौंपता है। यह आपकी Google AI कुंजी इस्तेमाल करता है, प्रति मिनट बिल होता है; 5 मिनट की चुप्पी के बाद कॉल खत्म हो जाती है।",
@@ -8582,18 +8426,6 @@
    "ru": "Общайтесь с моделью, которую запускаете сами: Ollama, LM Studio или любой сервер, совместимый с OpenAI (vLLM, llama.cpp…). Оставьте адрес пустым для обычного адреса на этом компьютере.",
    "id": "Mengobrol dengan model yang Anda jalankan sendiri: Ollama, LM Studio, atau server apa pun yang kompatibel dengan OpenAI (vLLM, llama.cpp…). Kosongkan alamat untuk alamat biasa di komputer ini.",
    "it": "Chatta con un modello che fai girare tu: Ollama, LM Studio o un server compatibile con OpenAI (vLLM, llama.cpp…). Lascia vuoto l'indirizzo per quello solito su questo computer."
-  },
-  "With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them.": {
-   "zh-Hans": "每条消息都会附带打开窗口的标题及其显示的文档，以便 AI 读取你询问的那个。只有聊天的提供商会收到它们。",
-   "hi": "हर संदेश के साथ खुली विंडो के शीर्षक और उनमें दिख रहे दस्तावेज़, ताकि AI वह पढ़ सके जिसके बारे में आप पूछें। इन्हें सिर्फ़ चैट का प्रोवाइडर पाता है।",
-   "es": "Con cada mensaje, los títulos de las ventanas abiertas y los documentos que muestran, para que la IA pueda leer el que preguntas. Solo los recibe el proveedor del chat.",
-   "ar": "مع كل رسالة، عناوين النوافذ المفتوحة والمستندات التي تعرضها، ليتمكن الذكاء الاصطناعي من قراءة ما تسأل عنه. لا يتلقاها إلا مزوّد المحادثة.",
-   "fr": "Avec chaque message, les titres des fenêtres ouvertes et les documents qu'elles affichent, pour que l'IA puisse lire celui dont vous parlez. Seul le fournisseur du chat les reçoit.",
-   "bn": "প্রতিটি বার্তার সঙ্গে খোলা উইন্ডোর শিরোনাম ও সেগুলোতে দেখানো নথি, যাতে AI আপনার জিজ্ঞাসিত নথিটি পড়তে পারে। শুধু চ্যাটের প্রোভাইডার এগুলো পায়।",
-   "pt-BR": "Com cada mensagem, os títulos das janelas abertas e os documentos que elas mostram, para que a IA possa ler o que você perguntar. Só o provedor do chat os recebe.",
-   "ru": "С каждым сообщением — заголовки открытых окон и показанные в них документы, чтобы ИИ мог прочитать тот, о котором вы спрашиваете. Их получает только провайдер чата.",
-   "id": "Bersama setiap pesan, judul jendela yang terbuka dan dokumen yang ditampilkannya, agar AI bisa membaca yang Anda tanyakan. Hanya penyedia obrolan yang menerimanya.",
-   "it": "Con ogni messaggio, i titoli delle finestre aperte e i documenti che mostrano, così l'IA può leggere quello di cui chiedi. Li riceve solo il provider della chat."
   },
   "The agent Gemini hands what it can't do itself. It follows the chat's permissions: anything else is a card in the island for you to allow or deny.": {
    "zh-Hans": "Gemini 将自己做不到的事交给这个代理。它遵循聊天的权限设置：其他操作会在岛上显示为卡片，由你允许或拒绝。",
@@ -12229,18 +12061,6 @@
    "id": "mis. pindahkan ke Dokumen. Biarkan kosong untuk hanya diberi tahu.",
    "it": "per esempio: spostalo in Documenti. Lascia vuoto per essere solo avvisato."
   },
-  "What the AI may do with the Email pill's mailbox: read it when you ask about it, also send, answer and forward emails, also manage them (read or unread, star, move, archive, trash), or nothing at all. Each email is sent only when you click Send on its card, which shows it whole, and each change is a card too. Nothing is ever deleted for good.": {
-   "zh-Hans": "AI 可以对“邮件”胶囊的邮箱做什么：在你询问时读取，也可以发送、回复和转发邮件，还可以管理邮件（已读或未读、加星标、移动、归档、移到废纸篓），或者什么都不做。每封邮件只有在你点击其卡片上的“发送”后才会发出，卡片会完整显示邮件，每项更改也都有一张卡片。任何内容都不会被永久删除。",
-   "hi": "Email पिल के मेलबॉक्स के साथ AI क्या कर सकता है: आपके पूछने पर उसे पढ़ना, ईमेल भेजना, जवाब देना और फ़ॉरवर्ड करना भी, उन्हें प्रबंधित करना भी (पढ़ा या अनपढ़ा, स्टार, ले जाना, संग्रहित करना, ट्रैश), या कुछ भी नहीं। हर ईमेल तभी जाता है जब आप उसके कार्ड पर भेजें पर क्लिक करते हैं, जो उसे पूरा दिखाता है, और हर बदलाव का भी एक कार्ड होता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
-   "es": "Lo que la IA puede hacer con el buzón de la píldora Correo: leerlo cuando se lo pidas, también enviar, responder y reenviar correos, también gestionarlos (leído o no leído, estrella, mover, archivar, papelera), o nada. Cada correo se envía solo cuando haces clic en Enviar en su tarjeta, que lo muestra entero, y cada cambio también es una tarjeta. Nunca se borra nada definitivamente.",
-   "ar": "ما يمكن للذكاء الاصطناعي فعله بصندوق بريد كبسولة البريد: قراءته عندما تسأل عنه، وأيضًا إرسال الرسائل والرد عليها وإعادة توجيهها، وأيضًا إدارتها (مقروءة أو غير مقروءة، نجمة، نقل، أرشفة، سلة المهملات)، أو لا شيء على الإطلاق. لا تُرسل أي رسالة إلا عند النقر على إرسال في بطاقتها التي تعرضها كاملة، ولكل تغيير بطاقة أيضًا. لا يُحذف أي شيء نهائيًا أبدًا.",
-   "fr": "Ce que l'IA peut faire avec la boîte de la pastille E-mail : la lire quand vous le demandez, aussi envoyer, répondre et transférer des e-mails, aussi les gérer (lu ou non lu, étoile, déplacer, archiver, corbeille), ou rien du tout. Chaque e-mail ne part que lorsque vous cliquez sur Envoyer sur sa carte, qui l'affiche en entier, et chaque modification est aussi une carte. Rien n'est jamais supprimé définitivement.",
-   "bn": "ইমেল পিলের মেইলবক্স দিয়ে AI কী করতে পারবে: আপনি জিজ্ঞেস করলে সেটি পড়া, ইমেল পাঠানো, উত্তর দেওয়া ও ফরোয়ার্ড করাও, সেগুলি পরিচালনাও (পঠিত বা অপঠিত, তারা, সরানো, আর্কাইভ, ট্র্যাশ), অথবা কিছুই না। প্রতিটি ইমেল কেবল তখনই যায় যখন আপনি তার কার্ডে পাঠান-এ ক্লিক করেন, যা সেটি পুরোটা দেখায়, আর প্রতিটি পরিবর্তনেরও একটি কার্ড থাকে। কিছুই কখনো চিরতরে মোছা হয় না।",
-   "pt-BR": "O que a IA pode fazer com a caixa da pílula E-mail: ler quando você pedir, também enviar, responder e encaminhar e-mails, também gerenciá-los (lido ou não lido, estrela, mover, arquivar, lixeira), ou nada. Cada e-mail só é enviado quando você clica em Enviar no cartão dele, que o mostra inteiro, e cada alteração também é um cartão. Nada é excluído para sempre.",
-   "ru": "Что ИИ может делать с почтовым ящиком пилюли «Почта»: читать его, когда вы спрашиваете, а также отправлять письма, отвечать на них и пересылать, а также управлять ими (прочитано или нет, звёздочка, перемещение, архив, корзина), или ничего. Каждое письмо уходит, только когда вы нажмёте «Отправить» на его карточке, где оно показано целиком, и для каждого изменения тоже есть карточка. Ничего не удаляется навсегда.",
-   "id": "Apa yang boleh dilakukan AI dengan kotak surat pil Email: membacanya saat Anda bertanya, juga mengirim, membalas, dan meneruskan email, juga mengelolanya (dibaca atau belum, bintang, pindahkan, arsipkan, sampah), atau tidak sama sekali. Setiap email hanya terkirim saat Anda mengklik Kirim di kartunya, yang menampilkannya utuh, dan setiap perubahan juga berupa kartu. Tidak ada yang dihapus permanen.",
-   "it": "Cosa può fare l'IA con la casella della pillola Email: leggerla quando glielo chiedi, anche inviare, rispondere e inoltrare email, anche gestirle (letta o non letta, stella, sposta, archivia, cestino), oppure niente. Ogni email parte solo quando fai clic su Invia nella sua scheda, che la mostra per intero, e anche ogni modifica è una scheda. Niente viene mai eliminato definitivamente."
-  },
   "Read, send and manage": {
    "zh-Hans": "读取、发送和管理",
    "hi": "पढ़ना, भेजना और प्रबंधित करना",
@@ -14425,18 +14245,6 @@
    "id": "Model tidak memberi ringkasan. Coba lagi.",
    "it": "Il modello non ha dato un riassunto. Riprova."
   },
-  "Web search": {
-   "zh-Hans": "网页搜索",
-   "hi": "वेब खोज",
-   "es": "Búsqueda web",
-   "ar": "البحث في الويب",
-   "fr": "Recherche web",
-   "bn": "ওয়েব অনুসন্ধান",
-   "pt-BR": "Pesquisa na web",
-   "ru": "Поиск в интернете",
-   "id": "Pencarian web",
-   "it": "Ricerca web"
-  },
   "Search the web for the AI": {
    "zh-Hans": "为 AI 搜索网页",
    "hi": "AI के लिए वेब पर खोजें",
@@ -14447,19 +14255,7 @@
    "pt-BR": "Pesquisar na web para a IA",
    "ru": "Искать в интернете для ИИ",
    "id": "Cari di web untuk AI",
-   "it": "Cerca sul web per l'AI"
-  },
-  "For local models, OpenAI, Google and OpenRouter. The question goes to DuckDuckGo (else Mojeek or Wikipedia) without an account, the pages open from this computer, and only the passages that answer reach the model. Free, no key.": {
-   "zh-Hans": "适用于本地模型、OpenAI、Google 和 OpenRouter。问题会发送到 DuckDuckGo（否则为 Mojeek 或维基百科），无需账号；网页从这台电脑打开，只有回答问题的段落会发给模型。免费，无需密钥。",
-   "hi": "लोकल मॉडल, OpenAI, Google और OpenRouter के लिए। सवाल बिना खाते के DuckDuckGo (वरना Mojeek या Wikipedia) पर जाता है, पेज इसी कंप्यूटर से खुलते हैं, और सिर्फ़ जवाब देने वाले हिस्से मॉडल तक पहुँचते हैं। मुफ़्त, बिना कुंजी।",
-   "es": "Para modelos locales, OpenAI, Google y OpenRouter. La pregunta va a DuckDuckGo (si no, a Mojeek o Wikipedia) sin cuenta, las páginas se abren desde este ordenador y al modelo solo le llegan los fragmentos que responden. Gratis, sin clave.",
-   "ar": "للنماذج المحلية وOpenAI وGoogle وOpenRouter. يذهب السؤال إلى DuckDuckGo (وإلا فإلى Mojeek أو ويكيبيديا) دون حساب، وتُفتح الصفحات من هذا الحاسوب، ولا يصل إلى النموذج إلا المقاطع التي تجيب. مجاني، بلا مفتاح.",
-   "fr": "Pour les modèles locaux, OpenAI, Google et OpenRouter. La question part vers DuckDuckGo (sinon Mojeek ou Wikipédia) sans compte, les pages s'ouvrent depuis cet ordinateur et seuls les passages qui répondent arrivent au modèle. Gratuit, sans clé.",
-   "bn": "লোকাল মডেল, OpenAI, Google ও OpenRouter-এর জন্য। প্রশ্নটি অ্যাকাউন্ট ছাড়াই DuckDuckGo-তে (নইলে Mojeek বা Wikipedia-তে) যায়, পেজগুলো এই কম্পিউটার থেকে খোলে, আর শুধু উত্তর দেওয়া অংশগুলোই মডেলের কাছে যায়। বিনামূল্যে, কোনো কী লাগে না।",
-   "pt-BR": "Para modelos locais, OpenAI, Google e OpenRouter. A pergunta vai para o DuckDuckGo (senão Mojeek ou Wikipédia) sem conta, as páginas abrem deste computador e só os trechos que respondem chegam ao modelo. Grátis, sem chave.",
-   "ru": "Для локальных моделей, OpenAI, Google и OpenRouter. Вопрос уходит в DuckDuckGo (иначе в Mojeek или Википедию) без аккаунта, страницы открываются с этого компьютера, а модели достаются только отрывки с ответом. Бесплатно, без ключа.",
-   "id": "Untuk model lokal, OpenAI, Google, dan OpenRouter. Pertanyaan dikirim ke DuckDuckGo (atau Mojeek atau Wikipedia) tanpa akun, halaman dibuka dari komputer ini, dan hanya bagian yang menjawab yang sampai ke model. Gratis, tanpa kunci.",
-   "it": "Per i modelli locali, OpenAI, Google e OpenRouter. La domanda va a DuckDuckGo (altrimenti Mojeek o Wikipedia) senza account, le pagine si aprono da questo PC e al modello arrivano solo i passaggi che rispondono. Gratis, senza chiave."
+   "it": "Cerca sul web per l'IA"
   },
   "Its key, sk-unsloth-… (Unsloth Studio → Settings → API)": {
    "zh-Hans": "它的密钥，sk-unsloth-…（Unsloth Studio → Settings → API）",
@@ -15335,18 +15131,6 @@
    "id": "Lumo di kolom kiri pulau yang terbuka, dengan tab, seperti sebelum 0.18.0.",
    "it": "Lumo nella colonna a sinistra dell'isola aperta, con le schede, come prima della 0.18.0."
   },
-  "What the AI may do with the GitHub account set in Lumo: read your pull requests, issues, repositories and checks when you ask about them, or nothing at all. Off until you turn it on, also for cloud AIs.": {
-   "zh-Hans": "AI 可以对 Lumo 中设置的 GitHub 账户做什么：在你询问时读取你的拉取请求、议题、仓库和检查，或者什么都不做。在你开启之前保持关闭，云端 AI 也一样。",
-   "hi": "Lumo में सेट किए गए GitHub खाते के साथ AI क्या कर सकता है: जब आप पूछें तो आपके पुल रिक्वेस्ट, इश्यू, रिपॉज़िटरी और चेक पढ़ना, या कुछ भी नहीं। जब तक आप इसे चालू न करें, बंद रहता है, क्लाउड AI के लिए भी।",
-   "es": "Lo que la IA puede hacer con la cuenta de GitHub configurada en Lumo: leer tus pull requests, issues, repositorios y comprobaciones cuando preguntes por ellos, o nada en absoluto. Desactivado hasta que lo actives, también para las IA en la nube.",
-   "ar": "ما يمكن للذكاء الاصطناعي فعله بحساب GitHub المضبوط في Lumo: قراءة طلبات السحب والمشكلات والمستودعات والفحوصات عندما تسأل عنها، أو لا شيء على الإطلاق. متوقف حتى تشغّله، حتى للذكاء الاصطناعي السحابي.",
-   "fr": "Ce que l'IA peut faire avec le compte GitHub configuré dans Lumo : lire vos pull requests, issues, dépôts et vérifications quand vous les demandez, ou rien du tout. Désactivé tant que vous ne l'activez pas, aussi pour les IA dans le cloud.",
-   "bn": "Lumo-তে সেট করা GitHub অ্যাকাউন্ট দিয়ে AI কী করতে পারে: আপনি জিজ্ঞেস করলে আপনার পুল রিকোয়েস্ট, ইস্যু, রিপোজিটরি ও চেক পড়া, অথবা কিছুই না। আপনি চালু না করা পর্যন্ত বন্ধ থাকে, ক্লাউড AI-এর জন্যও।",
-   "pt-BR": "O que a IA pode fazer com a conta do GitHub configurada no Lumo: ler seus pull requests, issues, repositórios e verificações quando você perguntar, ou nada. Desligado até você ligar, também para IAs na nuvem.",
-   "ru": "Что ИИ может делать с аккаунтом GitHub, настроенным в Lumo: читать ваши пул-реквесты, задачи, репозитории и проверки, когда вы о них спрашиваете, или ничего. Выключено, пока вы не включите, в том числе для облачных ИИ.",
-   "id": "Apa yang boleh dilakukan AI dengan akun GitHub yang diatur di Lumo: membaca pull request, issue, repositori, dan pemeriksaan saat Anda menanyakannya, atau tidak sama sekali. Mati sampai Anda menyalakannya, juga untuk AI cloud.",
-   "it": "Cosa può fare l'IA con l'account GitHub impostato in Lumo: leggere le tue pull request, issue, repository e controlli quando li chiedi, oppure niente. Spento finché non lo accendi, anche per le IA nel cloud."
-  },
   "Beta versions": {
    "zh-Hans": "测试版",
    "hi": "बीटा संस्करण",
@@ -15622,6 +15406,210 @@
    "ru": "Ответить в {agent}",
    "id": "Balas di {agent}",
    "it": "Rispondi in {agent}"
+  },
+  "What it may do on its own": {
+   "zh-Hans": "它可以自行做什么",
+   "hi": "यह अपने आप क्या कर सकता है",
+   "es": "Lo que puede hacer por su cuenta",
+   "ar": "ما يمكنه فعله بنفسه",
+   "fr": "Ce qu'elle peut faire seule",
+   "bn": "এটি নিজে থেকে কী করতে পারে",
+   "pt-BR": "O que ela pode fazer sozinha",
+   "ru": "Что он может делать сам",
+   "id": "Yang boleh dilakukannya sendiri",
+   "it": "Cosa può fare da sola"
+  },
+  "How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too.": {
+   "zh-Hans": "Claude Code、Codex 和 Antigravity CLI 在聊天中有多大自由。聊天中的盾牌图标也可以更改它。",
+   "hi": "चैट में Claude Code, Codex और Antigravity CLI कितने स्वतंत्र हैं। चैट की ढाल भी इसे बदलती है।",
+   "es": "Cuánta libertad tienen Claude Code, Codex y Antigravity CLI en el chat. El escudo del chat también lo cambia.",
+   "ar": "مدى حرية Claude Code وCodex وAntigravity CLI في الدردشة. يغيّره الدرع في الدردشة أيضًا.",
+   "fr": "La liberté de Claude Code, Codex et Antigravity CLI dans le chat. Le bouclier du chat la change aussi.",
+   "bn": "চ্যাটে Claude Code, Codex ও Antigravity CLI কতটা স্বাধীন। চ্যাটের ঢালও এটি বদলায়।",
+   "pt-BR": "Quanta liberdade Claude Code, Codex e Antigravity CLI têm no chat. O escudo do chat também muda isso.",
+   "ru": "Насколько свободны Claude Code, Codex и Antigravity CLI в чате. Щит в чате тоже это меняет.",
+   "id": "Seberapa bebas Claude Code, Codex, dan Antigravity CLI di obrolan. Perisai di obrolan juga mengubahnya.",
+   "it": "Quanta libertà hanno Claude Code, Codex e Antigravity CLI nella chat. Lo cambia anche lo scudo nella chat."
+  },
+  "Only while it answers: the screen it uses glows, and Esc stops it. With Ask every time, each click waits for yours.": {
+   "zh-Hans": "仅在它回答时：它使用的屏幕会发光，按 Esc 即可停止。选择“每次都询问”时，它的每次点击都会先等你确认。",
+   "hi": "केवल जवाब देते समय: जिस स्क्रीन का यह उपयोग करता है वह चमकती है, और Esc इसे रोक देता है। “हर बार पूछें” के साथ, इसका हर क्लिक आपके क्लिक का इंतज़ार करता है।",
+   "es": "Solo mientras responde: la pantalla que usa se ilumina y Esc lo detiene. Con Preguntar siempre, cada clic suyo espera el tuyo.",
+   "ar": "فقط أثناء الإجابة: تتوهج الشاشة التي يستخدمها، ويوقفه Esc. مع «السؤال في كل مرة»، تنتظر كل نقرة منه نقرتك.",
+   "fr": "Seulement pendant qu'il répond : l'écran qu'il utilise s'illumine, et Échap l'arrête. Avec Demander à chaque fois, chacun de ses clics attend le vôtre.",
+   "bn": "শুধু উত্তর দেওয়ার সময়: এটি যে স্ক্রিন ব্যবহার করে তা জ্বলে ওঠে, আর Esc এটি থামায়। “প্রতিবার জিজ্ঞাসা করুন” থাকলে এর প্রতিটি ক্লিক আপনার ক্লিকের অপেক্ষা করে।",
+   "pt-BR": "Só enquanto responde: a tela que ele usa brilha, e Esc o interrompe. Com Perguntar sempre, cada clique dele espera o seu.",
+   "ru": "Только пока он отвечает: экран, которым он пользуется, светится, а Esc его останавливает. С «Спрашивать каждый раз» каждый его щелчок ждёт вашего.",
+   "id": "Hanya saat menjawab: layar yang dipakainya menyala, dan Esc menghentikannya. Dengan Selalu tanya, setiap kliknya menunggu klik Anda.",
+   "it": "Solo mentre risponde: lo schermo che usa si illumina ed Esc lo ferma. Con Chiedi ogni volta, ogni suo clic aspetta il tuo."
+  },
+  "For the models that can't search on their own. Free, no account: only the useful passages reach the model.": {
+   "zh-Hans": "适用于无法自行搜索的模型。免费，无需帐户：只有有用的段落会发送给模型。",
+   "hi": "उन मॉडलों के लिए जो खुद खोज नहीं सकते। मुफ़्त, बिना खाते के: मॉडल तक केवल उपयोगी अंश पहुँचते हैं।",
+   "es": "Para los modelos que no pueden buscar por sí solos. Gratis y sin cuenta: al modelo solo llegan los pasajes útiles.",
+   "ar": "للنماذج التي لا تستطيع البحث بنفسها. مجاني وبلا حساب: لا تصل إلى النموذج إلا المقاطع المفيدة.",
+   "fr": "Pour les modèles qui ne savent pas chercher seuls. Gratuit, sans compte : seuls les passages utiles parviennent au modèle.",
+   "bn": "যে মডেলগুলো নিজে খুঁজতে পারে না তাদের জন্য। বিনামূল্যে, অ্যাকাউন্ট ছাড়া: মডেলের কাছে শুধু কাজের অংশগুলো পৌঁছায়।",
+   "pt-BR": "Para os modelos que não sabem pesquisar sozinhos. Grátis e sem conta: só os trechos úteis chegam ao modelo.",
+   "ru": "Для моделей, которые не умеют искать сами. Бесплатно, без учётной записи: модели достаются только полезные отрывки.",
+   "id": "Untuk model yang tidak bisa mencari sendiri. Gratis, tanpa akun: hanya bagian yang berguna yang sampai ke model.",
+   "it": "Per i modelli che non sanno cercare da soli. Gratis e senza account: al modello arrivano solo i passaggi utili."
+  },
+  "What it sees with every message": {
+   "zh-Hans": "每条消息附带的内容",
+   "hi": "हर संदेश के साथ यह क्या देखता है",
+   "es": "Lo que ve con cada mensaje",
+   "ar": "ما يراه مع كل رسالة",
+   "fr": "Ce qu'elle voit à chaque message",
+   "bn": "প্রতিটি বার্তার সাথে এটি কী দেখে",
+   "pt-BR": "O que ela vê a cada mensagem",
+   "ru": "Что он видит с каждым сообщением",
+   "id": "Yang dilihatnya di setiap pesan",
+   "it": "Cosa vede a ogni messaggio"
+  },
+  "Only the chat's AI gets them. The × on a chip leaves one out of a single message.": {
+   "zh-Hans": "只有聊天所用的 AI 会收到。点击标签上的 × 可在某条消息中省略它。",
+   "hi": "इन्हें केवल चैट का AI पाता है। चिप पर × उसे एक संदेश से बाहर रखता है।",
+   "es": "Solo los recibe la IA del chat. La × de una etiqueta la deja fuera de un solo mensaje.",
+   "ar": "لا يتلقاها إلا ذكاء الدردشة الاصطناعي. علامة × على الشريحة تستبعدها من رسالة واحدة.",
+   "fr": "Seule l'IA du chat les reçoit. Le × d'une puce l'exclut d'un seul message.",
+   "bn": "শুধু চ্যাটের AI এগুলো পায়। চিপের × সেটিকে একটি বার্তা থেকে বাদ দেয়।",
+   "pt-BR": "Só a IA do chat os recebe. O × de um chip o deixa de fora de uma única mensagem.",
+   "ru": "Их получает только ИИ чата. × на метке убирает её из одного сообщения.",
+   "id": "Hanya AI obrolan yang menerimanya. Tanda × pada chip mengecualikannya dari satu pesan.",
+   "it": "Le riceve solo l'IA della chat. La × su un'etichetta la toglie da un solo messaggio."
+  },
+  "Their titles and the documents they show.": {
+   "zh-Hans": "它们的标题以及显示的文档。",
+   "hi": "उनके शीर्षक और वे जो दस्तावेज़ दिखाती हैं।",
+   "es": "Sus títulos y los documentos que muestran.",
+   "ar": "عناوينها والمستندات التي تعرضها.",
+   "fr": "Leurs titres et les documents qu'elles affichent.",
+   "bn": "সেগুলোর শিরোনাম ও সেগুলো যে নথি দেখায়।",
+   "pt-BR": "Os títulos delas e os documentos que mostram.",
+   "ru": "Их заголовки и документы, которые они показывают.",
+   "id": "Judulnya dan dokumen yang ditampilkannya.",
+   "it": "I loro titoli e i documenti che mostrano."
+  },
+  "File Explorer folders": {
+   "zh-Hans": "文件资源管理器中的文件夹",
+   "hi": "फ़ाइल एक्सप्लोरर के फ़ोल्डर",
+   "es": "Carpetas del Explorador de archivos",
+   "ar": "مجلدات مستكشف الملفات",
+   "fr": "Dossiers de l'Explorateur de fichiers",
+   "bn": "ফাইল এক্সপ্লোরারের ফোল্ডার",
+   "pt-BR": "Pastas do Explorador de Arquivos",
+   "ru": "Папки Проводника",
+   "id": "Folder File Explorer",
+   "it": "Cartelle di Esplora file"
+  },
+  "The open folders and the list of their files.": {
+   "zh-Hans": "打开的文件夹及其文件列表。",
+   "hi": "खुले फ़ोल्डर और उनकी फ़ाइलों की सूची।",
+   "es": "Las carpetas abiertas y la lista de sus archivos.",
+   "ar": "المجلدات المفتوحة وقائمة ملفاتها.",
+   "fr": "Les dossiers ouverts et la liste de leurs fichiers.",
+   "bn": "খোলা ফোল্ডার ও তাদের ফাইলের তালিকা।",
+   "pt-BR": "As pastas abertas e a lista dos seus arquivos.",
+   "ru": "Открытые папки и список их файлов.",
+   "id": "Folder yang terbuka dan daftar filenya.",
+   "it": "Le cartelle aperte e l'elenco dei loro file."
+  },
+  "The tabs open in your browsers.": {
+   "zh-Hans": "你的浏览器中打开的标签页。",
+   "hi": "आपके ब्राउज़रों में खुले टैब।",
+   "es": "Las pestañas abiertas en tus navegadores.",
+   "ar": "علامات التبويب المفتوحة في متصفحاتك.",
+   "fr": "Les onglets ouverts dans vos navigateurs.",
+   "bn": "আপনার ব্রাউজারগুলোতে খোলা ট্যাব।",
+   "pt-BR": "As abas abertas nos seus navegadores.",
+   "ru": "Вкладки, открытые в ваших браузерах.",
+   "id": "Tab yang terbuka di browser Anda.",
+   "it": "Le schede aperte nei tuoi browser."
+  },
+  "Your accounts": {
+   "zh-Hans": "你的帐户",
+   "hi": "आपके खाते",
+   "es": "Tus cuentas",
+   "ar": "حساباتك",
+   "fr": "Vos comptes",
+   "bn": "আপনার অ্যাকাউন্ট",
+   "pt-BR": "Suas contas",
+   "ru": "Ваши учётные записи",
+   "id": "Akun Anda",
+   "it": "I tuoi account"
+  },
+  "At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good.": {
+   "zh-Hans": "默认情况下 AI 只能读取。如果你允许它发送，每封邮件都会等你在其卡片上点击。任何内容都不会被永久删除。",
+   "hi": "शुरू में AI केवल पढ़ सकता है। अगर आप इसे भेजने दें, तो हर ईमेल उसके कार्ड पर आपके क्लिक का इंतज़ार करता है। कुछ भी हमेशा के लिए नहीं मिटाया जाता।",
+   "es": "De entrada, la IA solo puede leer. Si la dejas enviar, cada correo espera tu clic en su tarjeta. Nada se borra nunca para siempre.",
+   "ar": "في البداية لا يمكن للذكاء الاصطناعي إلا القراءة. إذا سمحت له بالإرسال، تنتظر كل رسالة نقرتك على بطاقتها. لا يُحذف أي شيء نهائيًا أبدًا.",
+   "fr": "Au départ, l'IA peut seulement lire. Si vous la laissez envoyer, chaque e-mail attend votre clic sur sa carte. Rien n'est jamais supprimé définitivement.",
+   "bn": "শুরুতে AI শুধু পড়তে পারে। পাঠাতে দিলে প্রতিটি ইমেল তার কার্ডে আপনার ক্লিকের অপেক্ষা করে। কিছুই কখনো চিরতরে মোছা হয় না।",
+   "pt-BR": "De início, a IA só pode ler. Se você deixar que ela envie, cada e-mail espera o seu clique no cartão dele. Nada é apagado para sempre.",
+   "ru": "Сначала ИИ может только читать. Если вы разрешите отправку, каждое письмо ждёт вашего щелчка на его карточке. Ничто никогда не удаляется навсегда.",
+   "id": "Awalnya AI hanya boleh membaca. Jika Anda mengizinkannya mengirim, setiap email menunggu klik Anda di kartunya. Tidak ada yang dihapus permanen.",
+   "it": "Di base l'IA può solo leggere. Se le permetti di inviare, ogni email aspetta il tuo clic sulla sua scheda. Niente viene mai cancellato per sempre."
+  },
+  "Read your coming events, or nothing.": {
+   "zh-Hans": "读取你即将到来的日程，或什么都不做。",
+   "hi": "आपके आने वाले इवेंट पढ़ना, या कुछ नहीं।",
+   "es": "Leer tus próximos eventos, o nada.",
+   "ar": "قراءة أحداثك القادمة، أو لا شيء.",
+   "fr": "Lire vos prochains événements, ou rien.",
+   "bn": "আপনার আসন্ন ইভেন্ট পড়া, অথবা কিছুই না।",
+   "pt-BR": "Ler seus próximos eventos, ou nada.",
+   "ru": "Читать ваши ближайшие события или ничего.",
+   "id": "Membaca acara Anda berikutnya, atau tidak sama sekali.",
+   "it": "Leggere i prossimi eventi, oppure niente."
+  },
+  "Read your pull requests, issues and checks when you ask. Off until you turn it on.": {
+   "zh-Hans": "在你询问时读取你的拉取请求、议题和检查。在你开启之前保持关闭。",
+   "hi": "आपके पूछने पर आपके pull request, issue और check पढ़ना। जब तक आप चालू न करें, बंद।",
+   "es": "Leer tus pull requests, issues y comprobaciones cuando lo pidas. Apagado hasta que lo actives.",
+   "ar": "قراءة طلبات السحب والمشكلات والفحوصات عندما تطلب. متوقف حتى تشغّله.",
+   "fr": "Lire vos pull requests, issues et vérifications quand vous le demandez. Désactivé tant que vous ne l'activez pas.",
+   "bn": "আপনি চাইলে আপনার pull request, issue ও check পড়া। আপনি চালু না করা পর্যন্ত বন্ধ।",
+   "pt-BR": "Ler seus pull requests, issues e verificações quando você pede. Desligado até você ligar.",
+   "ru": "Читать ваши pull request, issue и проверки, когда вы просите. Выключено, пока вы не включите.",
+   "id": "Membaca pull request, issue, dan pemeriksaan Anda saat Anda minta. Mati sampai Anda menyalakannya.",
+   "it": "Leggere pull request, issue e controlli quando lo chiedi. Spento finché non lo accendi."
+  },
+  "Always on": {
+   "zh-Hans": "始终开启",
+   "hi": "हमेशा चालू",
+   "es": "Siempre activo",
+   "ar": "مفعّل دائمًا",
+   "fr": "Toujours actif",
+   "bn": "সবসময় চালু",
+   "pt-BR": "Sempre ativo",
+   "ru": "Всегда включено",
+   "id": "Selalu aktif",
+   "it": "Sempre attivo"
+  },
+  "Keys and passwords stay in Windows Credential Manager, never in a file.": {
+   "zh-Hans": "密钥和密码保存在 Windows 凭据管理器中，绝不写入文件。",
+   "hi": "कुंजियाँ और पासवर्ड Windows Credential Manager में रहते हैं, कभी किसी फ़ाइल में नहीं।",
+   "es": "Las claves y las contraseñas quedan en el Administrador de credenciales de Windows, nunca en un archivo.",
+   "ar": "تبقى المفاتيح وكلمات المرور في مدير بيانات الاعتماد في Windows، ولا تُكتب في ملف أبدًا.",
+   "fr": "Les clés et les mots de passe restent dans le Gestionnaire d'identification de Windows, jamais dans un fichier.",
+   "bn": "কী ও পাসওয়ার্ড Windows Credential Manager-এ থাকে, কখনো কোনো ফাইলে নয়।",
+   "pt-BR": "Chaves e senhas ficam no Gerenciador de Credenciais do Windows, nunca em um arquivo.",
+   "ru": "Ключи и пароли хранятся в диспетчере учётных данных Windows, никогда в файле.",
+   "id": "Kunci dan kata sandi disimpan di Windows Credential Manager, tidak pernah di file.",
+   "it": "Chiavi e password restano in Gestione credenziali di Windows, mai in un file."
+  },
+  "No usage data: Lumo talks only to the services you set up.": {
+   "zh-Hans": "不发送使用数据：Lumo 只与你设置的服务通信。",
+   "hi": "कोई उपयोग डेटा नहीं: Lumo केवल आपकी सेट की गई सेवाओं से बात करता है।",
+   "es": "Sin datos de uso: Lumo solo habla con los servicios que configuras.",
+   "ar": "لا بيانات استخدام: لا يتواصل Lumo إلا مع الخدمات التي تضبطها.",
+   "fr": "Aucune donnée d'utilisation : Lumo ne parle qu'aux services que vous configurez.",
+   "bn": "কোনো ব্যবহারের তথ্য নয়: Lumo শুধু আপনার সেট করা সেবাগুলোর সাথে যোগাযোগ করে।",
+   "pt-BR": "Nenhum dado de uso: o Lumo só fala com os serviços que você configura.",
+   "ru": "Никаких данных об использовании: Lumo обращается только к настроенным вами службам.",
+   "id": "Tanpa data penggunaan: Lumo hanya berbicara dengan layanan yang Anda atur.",
+   "it": "Nessun dato d'uso: Lumo parla solo con i servizi che hai impostato."
   }
  }
 }

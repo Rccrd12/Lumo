@@ -210,12 +210,12 @@ export function parseMotion(v: unknown): LumoMotion {
 }
 
 /** The engine's ambient amount for a motion setting. */
-/** Settings → General → Security lets the AI read the email or the calendar: anything but "none". */
+/** Settings → Security lets the AI read the email or the calendar: anything but "none". */
 export function aiReads(v: unknown): boolean {
   return v !== "none";
 }
 
-/** Settings → General → Security → Email lets the AI send email: "Read and send", or "Read, send and manage". */
+/** Settings → Security → Email lets the AI send email: "Read and send", or "Read, send and manage". */
 export function aiSends(v: unknown): boolean {
   return v === "send" || v === "manage";
 }
@@ -323,7 +323,7 @@ export interface Settings {
   chatShowUsage: boolean;
   /**
    * Every chat message carries the folder open in File Explorer, as if picked
-   * from the screen button. Off until the user turns it on in Settings → Chat.
+   * from the screen button. Off until the user turns it on in Settings → Security.
    */
   chatShareExplorer: boolean;
   /** Every message carries the open windows and their documents (desk.rs). */
@@ -336,7 +336,7 @@ export interface Settings {
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
-  /** What the AI may do with the email, from Settings → General → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
+  /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;
