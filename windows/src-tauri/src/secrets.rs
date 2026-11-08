@@ -12,6 +12,9 @@ pub const KNOWN_KEYS: &[&str] = &[
     "google-api-key",
     "openrouter-api-key",
     "openai-compatible-key",
+    // Unsloth Studio's own key, sk-unsloth-… (local_chat.rs): without it here
+    // it was refused, and the settings page never said so.
+    "unsloth-studio-key",
     "n8n-url",
     "n8n-api-key",
     "vercel-token",
@@ -58,4 +61,15 @@ pub fn clear(key: &str) -> Result<(), String> {
 
 pub fn present(key: &str) -> bool {
     get(key).is_some()
+}
+
+#[cfg(test)]
+mod tests {
+    #[test]
+    fn every_local_server_key_can_be_stored() {
+        for id in ["custom", "unsloth"] {
+            let entry = crate::local_chat::key_entry(id).unwrap();
+            assert!(super::KNOWN_KEYS.contains(&entry), "{entry}");
+        }
+    }
 }
