@@ -42,10 +42,16 @@ export const CI_WORKFLOW = "Windows CI";
 
 /**
  * What makes up the installed app, as paths under windows/: everything but the
- * tests, the screenshots and the notes. A change outside it is not a reason
- * for a beta.
+ * tests, the screenshots, the notes and this script. A change outside it is
+ * not a reason for a beta.
  */
-export const APP_PATHS = [".", ":(exclude)tests", ":(exclude)screenshots", ":(exclude,glob)**/*.md"];
+export const APP_PATHS = [
+  ".",
+  ":(exclude)tests",
+  ":(exclude)screenshots",
+  ":(exclude,glob)**/*.md",
+  ":(exclude)scripts/beta.mjs",
+];
 
 /** Titles longer than this are cut. */
 const MAX_TITLE = 200;
