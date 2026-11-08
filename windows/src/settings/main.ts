@@ -1125,13 +1125,17 @@ function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
       clear(status);
       status.append(h("div", { class: "hint", text: CHAT_STRINGS.connecting }));
       try {
-        if ((id === "custom" || id === "unsloth") && key.value.trim()) {
+        const keyed = id === "custom" || id === "unsloth" ? id : undefined;
+        const typedKey = keyed ? key.value.trim() : "";
+        if (keyed && typedKey) {
           // Stored with this address: the key is only ever sent there.
-          await Bridge.localSetKey(input.value || def.usual, key.value.trim(), id);
+          await Bridge.localSetKey(input.value || def.usual, typedKey, keyed);
           key.value = "";
           keys[id] = true;
         }
         const server = await Bridge.localConnect(id, input.value);
+        // Found at another address (Unsloth Studio on its other port): the key goes with it.
+        if (keyed && typedKey && server.models.length) await Bridge.localSetKey(server.url, typedKey, keyed);
         if (!server.models.length) {
           clear(status);
           status.append(h("div", { class: "notice err", text: CHAT_STRINGS.noModels(t(def.name)) }));

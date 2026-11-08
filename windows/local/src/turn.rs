@@ -173,7 +173,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     let mut used = None;
     let mut rounds = 0;
     // Each check sends the model back once a turn.
-    let (mut written, mut claimed, mut stopped) = (false, false, false);
+    let (mut written, mut claimed, mut stopped, mut silent) = (false, false, false, false);
     // A copy changed by a tool in this turn.
     let mut changed = false;
     // A workspace tool ran in this turn: the model is at work on a file.
@@ -330,6 +330,16 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             push(body, [json!({ "role": "assistant", "content": answer.text }), json!({ "role": "user", "content": note })]);
             hooks.shown(&before);
             next = Some(Doing::Correcting(if said_done { Correction::SaidDone } else { Correction::Stopped }));
+            continue;
+        }
+        // Nothing written after the tools' results (Gemma, at times, with a
+        // long search result): the model is asked once for the answer.
+        if answer.calls.is_empty() && rounds > 0 && !silent && !answer.cut && answer.text.trim().is_empty() {
+            silent = true;
+            fixes.push("no answer after the tools");
+            push(body, [json!({ "role": "user", "content": "(Lumo: you wrote nothing after the tool results. Answer the user now from what the tools returned; if they didn't answer the question, say so.)" })]);
+            hooks.shown(&before);
+            next = Some(Doing::Correcting(Correction::Stopped));
             continue;
         }
         if answer.calls.is_empty() || !tools || rounds == rules.max_rounds {

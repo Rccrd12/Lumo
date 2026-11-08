@@ -492,6 +492,21 @@ fn a_thing_said_done_with_no_tool_or_only_announced_goes_back_once() {
 }
 
 #[test]
+fn nothing_written_after_the_tools_asks_once_for_the_answer() {
+    let mut island = Island::default();
+    let replies = vec![calls("c1", "web_search", "{\"query\":\"Cracovia\"}"), answer(""), answer("Ecco le notizie.")];
+    let (outcome, requests) = turn(replies, &mut question("Cerca Cracovia", &["web_search"]), &rules("silent", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!((outcome.text.as_str(), outcome.fixes.as_slice()), ("Ecco le notizie.", ["no answer after the tools"].as_slice()));
+    assert!(requests[2]["messages"].to_string().contains("you wrote nothing after the tool results"));
+    // Silent a second time: that is the answer (the chat says there was no text).
+    let replies = vec![calls("c1", "web_search", "{\"query\":\"x\"}"), answer(""), answer("")];
+    let (outcome, requests) = turn(replies, &mut question("Cerca x", &["web_search"]), &rules("silent-twice", ""), &mut Island::default());
+    assert_eq!(outcome.unwrap().text, "");
+    assert_eq!(requests.len(), 3);
+}
+
+#[test]
 fn a_gemma_call_left_in_the_text_is_made() {
     let mut island = Island::default();
     let gemma = "<|tool_call>call:workspace_write{content:<|\"|>Mele\nPere\nBanane\n<|\"|>,path:<|\"|>frutti.txt<|\"|>}<tool_call|>";

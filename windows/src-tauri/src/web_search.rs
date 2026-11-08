@@ -2,9 +2,12 @@
 // own (the local servers, OpenAI, Google, OpenRouter): Settings → General →
 // Security → Web search, off until the user turns it on.
 //
-// No key, no account, nothing to pay. The question goes to DuckDuckGo (its
-// HTML page), else Mojeek, else Wikipedia; the pages found are read from this
-// computer, their text pulled out of the HTML, cut into passages and ranked
+// No key, no account, nothing to pay. The question goes to Bing, with Bing
+// News' latest next to it; Wikipedia only when neither answers, and said so
+// to the model (a page asking to prove one isn't a robot is an error, in the
+// log, not an empty search). A chat with Unsloth Studio searches with Unsloth
+// Studio's own web search instead, when it can (unsloth_search). The pages
+// found are read from this computer, their text pulled out of the HTML, cut into passages and ranked
 // against the question here (BM25, and the embedding model of the chat's
 // Ollama or LM Studio when it has one). The model gets only the best
 // passages, each with its page's title and link, so a small local context
@@ -46,8 +49,9 @@ const CHUNK: usize = 700;
 const FETCH_MAX: usize = 15_000;
 /// The same question within this long is answered from what was found.
 const FRESH: Duration = Duration::from_secs(10 * 60);
-/// What the pages and the search engines are told is asking.
-const AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0 Safari/537.36 Lumo";
+/// What the pages and the search engines are told is asking: a browser's
+/// words, as the engines block whatever else (Lumo's name in it included).
+const AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
 static CACHE: Mutex<Option<HashMap<String, (Instant, String)>>> = Mutex::new(None);
 
@@ -122,11 +126,13 @@ pub async fn call(id: &str, input: &Value, provider: &str) -> (String, bool) {
 
 // ── Search ─────────────────────────────────────────────────────────────────
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Default)]
 struct Hit {
     title: String,
     url: String,
     snippet: String,
+    /// When it was published, as the engine says (the news).
+    date: String,
 }
 
 async fn search(query: &str, range: &str, sites: &[String], provider: &str) -> Result<String, String> {
@@ -147,7 +153,18 @@ async fn search(query: &str, range: &str, sites: &[String], provider: &str) -> R
     } else {
         format!("{query} {}", sites.iter().map(|s| format!("site:{s}")).collect::<Vec<_>>().join(" OR "))
     };
-    let (engine, hits) = find(&asked, &query, range).await?;
+    // A chat with Unsloth Studio: its own search first, Lumo's if it can't.
+    if provider == "unsloth" {
+        match crate::local_chat::unsloth_search(&asked, range).await {
+            Ok(text) => {
+                crate::log::line("[web] searched by Unsloth Studio");
+                remember(key, &text);
+                return Ok(text);
+            }
+            Err(e) => crate::log::line(format!("[web] Unsloth Studio's search: {e}; Lumo's own instead")),
+        }
+    }
+    let (engine, hits, failed) = find(&asked, &query, range).await?;
     let hits: Vec<Hit> = dedupe(hits).into_iter().take(10).collect();
     if hits.is_empty() {
         return Ok(format!("No web results for \"{query}\". Try other words."));
@@ -175,38 +192,84 @@ async fn search(query: &str, range: &str, sites: &[String], provider: &str) -> R
         }
     }
     let picked = rank(&query, &chunks, provider).await;
-    let text = format_search(&query, engine, &hits, &pages, &chunks, &picked);
-    remember(key, &text);
+    let mut text = format_search(&query, engine, &hits, &pages, &chunks, &picked);
+    if engine == "Wikipedia" {
+        // Not the web: the model is told, so it says the search didn't work
+        // rather than that nothing happened.
+        text = format!(
+            "Only Wikipedia answered: the web search engines gave nothing ({}). These are encyclopedia articles, not the web or the news: if they don't answer, tell the user the web search didn't work this time, and don't say nothing exists.\n\n{text}",
+            failed.join("; ")
+        );
+    } else {
+        remember(key, &text);
+    }
     Ok(text)
 }
 
-/// The results, from the first engine that gives any.
-async fn find(asked: &str, query: &str, range: &str) -> Result<(&'static str, Vec<Hit>), String> {
-    let mut failed = Vec::new();
-    match duckduckgo(asked, range).await {
-        Ok(hits) if !hits.is_empty() => return Ok(("DuckDuckGo", hits)),
-        Ok(_) => {}
-        Err(e) => failed.push(e),
+/// The results, from the first engine that gives any, with the news of the
+/// last days next to them (Bing News, read at the same time). Why each engine
+/// gave nothing goes to the log, and the reasons come back too, for when only
+/// Wikipedia answered.
+async fn find(asked: &str, query: &str, range: &str) -> Result<(&'static str, Vec<Hit>, Vec<String>), String> {
+    let news = {
+        let (asked, range) = (asked.to_string(), range.to_string());
+        tauri::async_runtime::spawn(async move { bing_news(&asked, &range).await })
+    };
+    let (web, mut failed) = find_web(asked, range).await;
+    let news = match news.await.map_err(|e| e.to_string()).and_then(|r| r) {
+        Ok(news) => news,
+        Err(e) => {
+            failed.push(e);
+            Vec::new()
+        }
+    };
+    for e in &failed {
+        crate::log::line(format!("[web] {e}"));
     }
-    match duckduckgo_lite(asked, range).await {
-        Ok(hits) if !hits.is_empty() => return Ok(("DuckDuckGo", hits)),
-        Ok(_) => {}
-        Err(e) => failed.push(e),
+    let recent = matches!(range, "day" | "week" | "month");
+    if !web.is_empty() || !news.is_empty() {
+        let engine = match (web.is_empty(), news.is_empty()) {
+            (true, _) => "Bing News",
+            (false, true) => "Bing",
+            (false, false) => "Bing and Bing News",
+        };
+        return Ok((engine, merge(web, news, recent), failed));
     }
-    match mojeek(asked).await {
-        Ok(hits) if !hits.is_empty() => return Ok(("Mojeek", hits)),
-        Ok(_) => {}
-        Err(e) => failed.push(e),
+    // Wikipedia knows nothing of the last days: no use for news.
+    if !matches!(range, "day" | "week") {
+        match wikipedia(query).await {
+            Ok(hits) if !hits.is_empty() => return Ok(("Wikipedia", hits, failed)),
+            Ok(_) => {}
+            Err(e) => failed.push(e),
+        }
     }
-    match wikipedia(query).await {
-        Ok(hits) if !hits.is_empty() => return Ok(("Wikipedia", hits)),
-        Ok(_) => {}
-        Err(e) => failed.push(e),
+    // Every engine failed (none said it simply had nothing): the search didn't work.
+    if !failed.is_empty() && !failed.iter().any(|e| e.ends_with("gave no results")) {
+        return Err(format!("The web search engines gave no results ({}). Tell the user the web search didn't work this time, not that nothing exists.", failed.join("; ")));
     }
-    if failed.len() == 4 {
-        return Err(format!("The web search engines could not be reached ({}). Tell the user the search failed.", failed.join("; ")));
+    Ok(("", Vec::new(), failed))
+}
+
+/// The web results (Bing's), and why it gave none. DuckDuckGo, Brave and
+/// Mojeek were tried too: they took Lumo for a robot (202, 429) or gave
+/// nothing, every time.
+async fn find_web(asked: &str, range: &str) -> (Vec<Hit>, Vec<String>) {
+    match bing(asked, range).await {
+        Ok(hits) if !hits.is_empty() => (hits, Vec::new()),
+        Ok(_) => (Vec::new(), vec!["Bing gave no results".to_string()]),
+        Err(e) => (Vec::new(), vec![e]),
     }
-    Ok(("", Vec::new()))
+}
+
+/// The web's results and the news, together: for a recent period the news
+/// first, else the first web results, then the news, then the rest.
+fn merge(web: Vec<Hit>, news: Vec<Hit>, recent: bool) -> Vec<Hit> {
+    if recent {
+        return news.into_iter().chain(web).collect();
+    }
+    let mut web = web.into_iter();
+    let first: Vec<Hit> = web.by_ref().take(3).collect();
+    first.into_iter().chain(news.into_iter().take(3)).chain(web).collect()
 }
 
 fn client(redirects: bool) -> Result<reqwest::Client, String> {
@@ -240,35 +303,62 @@ async fn engine_page(url: Url) -> Result<String, String> {
         .send()
         .await
         .map_err(|_| format!("{host} didn't answer"))?;
-    if !response.status().is_success() {
-        return Err(format!("{host} answered {}", response.status().as_u16()));
-    }
-    Ok(String::from_utf8_lossy(&read_some(response, MAX_PAGE).await).into_owned())
+    engine_text(&host, response).await
 }
 
-async fn duckduckgo(query: &str, range: &str) -> Result<Vec<Hit>, String> {
-    let mut params = vec![("q", query)];
-    let df = range.get(..1).unwrap_or("");
-    if !df.is_empty() {
-        params.push(("df", df));
+/// An engine's answer as text: only a page of results, never one that asks
+/// to prove one isn't a robot.
+async fn engine_text(host: &str, response: reqwest::Response) -> Result<String, String> {
+    let status = response.status().as_u16();
+    // DuckDuckGo answers 202 with a page asking to prove it's not a robot.
+    if status != 200 {
+        return Err(format!("{host} answered {status}{}", if status == 202 || status == 403 || status == 429 { " (it took Lumo for a robot)" } else { "" }));
     }
-    let url = Url::parse_with_params("https://html.duckduckgo.com/html/", &params).map_err(|e| e.to_string())?;
-    Ok(parse_duckduckgo(&engine_page(url).await?))
+    let page = String::from_utf8_lossy(&read_some(response, MAX_PAGE).await).into_owned();
+    if is_challenge(&page) {
+        return Err(format!("{host} asked to prove it's not a robot"));
+    }
+    Ok(page)
 }
 
-async fn duckduckgo_lite(query: &str, range: &str) -> Result<Vec<Hit>, String> {
-    let mut params = vec![("q", query)];
-    let df = range.get(..1).unwrap_or("");
-    if !df.is_empty() {
-        params.push(("df", df));
-    }
-    let url = Url::parse_with_params("https://lite.duckduckgo.com/lite/", &params).map_err(|e| e.to_string())?;
-    Ok(parse_duckduckgo_lite(&engine_page(url).await?))
+/// A page that asks to prove one isn't a robot instead of giving results.
+fn is_challenge(page: &str) -> bool {
+    let head: String = page.chars().take(200_000).collect::<String>().to_ascii_lowercase();
+    ["anomaly-modal", "challenge-form", "g-recaptcha", "h-captcha", "cf-challenge", "/captcha", "id=\"captcha"].iter().any(|m| head.contains(m))
 }
 
-async fn mojeek(query: &str) -> Result<Vec<Hit>, String> {
-    let url = Url::parse_with_params("https://www.mojeek.com/search", &[("q", query)]).map_err(|e| e.to_string())?;
-    Ok(parse_mojeek(&engine_page(url).await?))
+async fn bing(query: &str, range: &str) -> Result<Vec<Hit>, String> {
+    let lang = crate::i18n::current().split('-').next().unwrap_or("en").to_lowercase();
+    let mut params = vec![("q", query.to_string()), ("setlang", lang)];
+    // Bing's own filter for a recent period.
+    let filter = match range {
+        "day" => "ex1:\"ez1\"",
+        "week" => "ex1:\"ez2\"",
+        "month" => "ex1:\"ez3\"",
+        _ => "",
+    };
+    if !filter.is_empty() {
+        params.push(("filters", filter.to_string()));
+    }
+    let url = Url::parse_with_params("https://www.bing.com/search", &params).map_err(|e| e.to_string())?;
+    Ok(parse_bing(&engine_page(url).await?))
+}
+
+/// The news of the last days on the question (Bing News' RSS), with their date.
+async fn bing_news(query: &str, range: &str) -> Result<Vec<Hit>, String> {
+    let lang = crate::i18n::current().split('-').next().unwrap_or("en").to_lowercase();
+    let mut params = vec![("q", query.to_string()), ("format", "rss".to_string()), ("setlang", lang)];
+    let interval = match range {
+        "day" => "7",
+        "week" => "8",
+        "month" => "9",
+        _ => "",
+    };
+    if !interval.is_empty() {
+        params.push(("qft", format!("interval=\"{interval}\"")));
+    }
+    let url = Url::parse_with_params("https://www.bing.com/news/search", &params).map_err(|e| e.to_string())?;
+    Ok(parse_news_rss(&engine_page(url).await.map_err(|e| format!("Bing News: {e}"))?).into_iter().take(6).collect())
 }
 
 async fn wikipedia(query: &str) -> Result<Vec<Hit>, String> {
@@ -281,89 +371,86 @@ async fn wikipedia(query: &str) -> Result<Vec<Hit>, String> {
     Ok(parse_wikipedia(&body, &lang))
 }
 
-fn parse_duckduckgo(html: &str) -> Vec<Hit> {
-    let mut hits: Vec<Hit> = Vec::new();
-    for (tag, start, end) in tags(html, "a") {
-        let class = attr(tag, "class").unwrap_or_default();
-        if class.split_whitespace().any(|c| c == "result__a") {
-            let Some(url) = attr(tag, "href").and_then(|h| duckduckgo_target(&h)) else { continue };
-            hits.push(Hit { title: inline_text(&html[start..end]), url, snippet: String::new() });
-        } else if class.split_whitespace().any(|c| c == "result__snippet") {
-            if let Some(last) = hits.last_mut().filter(|h| h.snippet.is_empty()) {
-                last.snippet = inline_text(&html[start..end]);
-            }
-        }
+/// Bing's results: each `b_algo` block, its link in the `h2`, its snippet in the first paragraph.
+fn parse_bing(html: &str) -> Vec<Hit> {
+    let mut hits = Vec::new();
+    let mut blocks: Vec<&str> = html.split("class=\"b_algo").skip(1).collect();
+    if blocks.is_empty() {
+        blocks = html.split("class=\"b_algo ").skip(1).collect();
+    }
+    for block in blocks {
+        let block = block.split("class=\"b_algo").next().unwrap_or(block);
+        let Some((_, h2, h2_end)) = tags(block, "h2").into_iter().next() else { continue };
+        let Some((tag, start, end)) = tags(&block[h2..h2_end], "a").into_iter().next() else { continue };
+        let Some(url) = attr(tag, "href").and_then(|h| bing_target(&decode_entities(&h))) else { continue };
+        let title = inline_text(&block[h2..h2_end][start..end]);
+        let snippet = tags(&block[h2_end..], "p").into_iter().next().map(|(_, s, e)| inline_text(&block[h2_end..][s..e])).unwrap_or_default();
+        hits.push(Hit { title, url, snippet, date: String::new() });
     }
     hits
 }
 
-/// DuckDuckGo Lite's table: a `result-link` for each result, its `result-snippet` after it.
-fn parse_duckduckgo_lite(html: &str) -> Vec<Hit> {
-    let mut marks: Vec<(usize, Option<Hit>, String)> = Vec::new();
-    for (tag, start, end) in tags(html, "a") {
-        if attr(tag, "class").unwrap_or_default().split_whitespace().any(|c| c == "result-link") {
-            if let Some(url) = attr(tag, "href").and_then(|h| duckduckgo_target(&h)) {
-                marks.push((start, Some(Hit { title: inline_text(&html[start..end]), url, snippet: String::new() }), String::new()));
-            }
-        }
-    }
-    for (tag, start, end) in tags(html, "td") {
-        if attr(tag, "class").unwrap_or_default().split_whitespace().any(|c| c == "result-snippet") {
-            marks.push((start, None, inline_text(&html[start..end])));
-        }
-    }
-    marks.sort_by_key(|m| m.0);
-    let mut hits: Vec<Hit> = Vec::new();
-    for (_, hit, snippet) in marks {
-        match hit {
-            Some(hit) => hits.push(hit),
-            None => {
-                if let Some(last) = hits.last_mut().filter(|h| h.snippet.is_empty()) {
-                    last.snippet = snippet;
-                }
-            }
-        }
-    }
-    hits
-}
-
-/// The page a DuckDuckGo result leads to (its links go through /l/?uddg=); none for its ads.
-fn duckduckgo_target(href: &str) -> Option<String> {
-    let href = decode_entities(href);
-    let full = if href.starts_with("//") { format!("https:{href}") } else { href };
-    let url = Url::parse(&full).ok()?;
+/// The page a Bing result leads to: its links may go through bing.com/ck/a,
+/// the address in `u` as "a1" and base64.
+fn bing_target(href: &str) -> Option<String> {
+    let url = Url::parse(href).ok()?;
     let host = url.host_str()?.to_lowercase();
-    let target = if host.ends_with("duckduckgo.com") {
-        if url.path() != "/l/" {
-            return None;
-        }
-        url.query_pairs().find(|(k, _)| k == "uddg").map(|(_, v)| v.into_owned())?
-    } else {
-        full
-    };
-    page_url(&target)
+    if host.ends_with("bing.com") || host.ends_with("microsoft.com") {
+        let u = url.query_pairs().find(|(k, _)| k == "u").map(|(_, v)| v.into_owned())?;
+        let decoded = base64url(u.strip_prefix("a1")?)?;
+        return page_url(&String::from_utf8(decoded).ok()?);
+    }
+    page_url(href)
 }
 
-fn parse_mojeek(html: &str) -> Vec<Hit> {
-    let mut hits: Vec<Hit> = Vec::new();
-    for (tag, start, end) in tags(html, "a") {
-        let class = attr(tag, "class").unwrap_or_default();
-        if !class.split_whitespace().any(|c| c == "title") {
-            continue;
+/// Base64 in its URL alphabet (or the usual one), padding or not.
+fn base64url(text: &str) -> Option<Vec<u8>> {
+    let mut out = Vec::new();
+    let (mut acc, mut bits) = (0u32, 0u32);
+    for c in text.trim_end_matches('=').bytes() {
+        let v = match c {
+            b'A'..=b'Z' => c - b'A',
+            b'a'..=b'z' => c - b'a' + 26,
+            b'0'..=b'9' => c - b'0' + 52,
+            b'-' | b'+' => 62,
+            b'_' | b'/' => 63,
+            _ => return None,
+        } as u32;
+        acc = (acc << 6) | v;
+        bits += 6;
+        if bits >= 8 {
+            bits -= 8;
+            out.push((acc >> bits) as u8);
+            acc &= (1 << bits) - 1;
         }
-        let Some(url) = attr(tag, "href").and_then(|h| page_url(&decode_entities(&h))) else { continue };
-        // The snippet: the <p class="s"> after the title.
-        let rest = &html[end..];
-        let next = rest.find("class=\"title\"").unwrap_or(rest.len());
-        let snippet = rest[..next]
-            .find("<p class=\"s\"")
-            .and_then(|at| {
-                let from = at + rest[at..].find('>')? + 1;
-                let to = from + rest[from..].find("</p>")?;
-                Some(inline_text(&rest[from..to]))
-            })
-            .unwrap_or_default();
-        hits.push(Hit { title: inline_text(&html[start..end]), url, snippet });
+    }
+    Some(out)
+}
+
+/// A news RSS: each item's title, the article it leads to, and its date before its summary.
+fn parse_news_rss(xml: &str) -> Vec<Hit> {
+    let field = |item: &str, name: &str| {
+        tags(item, name).into_iter().next().map(|(_, s, e)| {
+            let raw = item[s..e].trim();
+            let raw = raw.strip_prefix("<![CDATA[").and_then(|r| r.strip_suffix("]]>")).unwrap_or(raw);
+            inline_text(&decode_entities(raw))
+        })
+    };
+    let mut hits = Vec::new();
+    for (_, start, end) in tags(xml, "item") {
+        let item = &xml[start..end];
+        let Some(link) = field(item, "link") else { continue };
+        // Bing News' links go through apiclick.aspx, the article in `url`.
+        let target = Url::parse(&link)
+            .ok()
+            .filter(|u| u.host_str().is_some_and(|h| h.to_lowercase().ends_with("bing.com")))
+            .and_then(|u| u.query_pairs().find(|(k, _)| k == "url").map(|(_, v)| v.into_owned()))
+            .unwrap_or(link);
+        let Some(url) = page_url(&target) else { continue };
+        let title = field(item, "title").unwrap_or_default();
+        let date = field(item, "pubdate").unwrap_or_default();
+        let snippet = field(item, "description").unwrap_or_default();
+        hits.push(Hit { title, url, snippet, date });
     }
     hits
 }
@@ -377,7 +464,7 @@ fn parse_wikipedia(body: &Value, lang: &str) -> Vec<Hit> {
                     let title = r["title"].as_str()?;
                     let mut url = Url::parse(&format!("https://{lang}.wikipedia.org/wiki/")).ok()?;
                     url.path_segments_mut().ok()?.pop().push(&title.replace(' ', "_"));
-                    Some(Hit { title: title.to_string(), url: url.to_string(), snippet: inline_text(r["snippet"].as_str().unwrap_or("")) })
+                    Some(Hit { title: title.to_string(), url: url.to_string(), snippet: inline_text(r["snippet"].as_str().unwrap_or("")), date: String::new() })
                 })
                 .collect()
         })
@@ -974,7 +1061,8 @@ fn format_search(query: &str, engine: &str, hits: &[Hit], pages: &[Option<Page>]
         shown_pages.insert(p);
         let page = pages.get(p).and_then(Option::as_ref);
         let title = page.map(|pg| pg.title.as_str()).filter(|t| !t.is_empty()).unwrap_or(&hit.title);
-        out.push_str(&format!("\n[{n}] {title}\n{}\n", page.map(|pg| pg.url.as_str()).unwrap_or(&hit.url)));
+        let date = if hit.date.is_empty() { String::new() } else { format!("Published: {}\n", hit.date) };
+        out.push_str(&format!("\n[{n}] {title}\n{}\n{date}", page.map(|pg| pg.url.as_str()).unwrap_or(&hit.url)));
         for passage in mine {
             out.push_str(&format!("{passage}\n…\n"));
         }
@@ -984,7 +1072,8 @@ fn format_search(query: &str, engine: &str, hits: &[Hit], pages: &[Option<Page>]
         out.push_str(if n == 0 { "\nResults (their pages could not be read; web_fetch one to read it):\n" } else { "\nOther results:\n" });
         for hit in others {
             let snippet = if hit.snippet.is_empty() { String::new() } else { format!(": {}", clip(&hit.snippet, 300)) };
-            out.push_str(&format!("- {} — {}{snippet}\n", hit.title, hit.url));
+            let date = if hit.date.is_empty() { String::new() } else { format!(" ({})", hit.date) };
+            out.push_str(&format!("- {}{date} — {}{snippet}\n", hit.title, hit.url));
         }
     }
     out
@@ -995,46 +1084,62 @@ mod tests {
     use super::*;
 
     #[test]
-    fn duckduckgo_results_lead_to_their_pages_and_its_ads_are_left_out() {
-        let html = r#"
-<div class="result results_links results_links_deep web-result">
-  <h2 class="result__title"><a rel="nofollow" class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fexample.com%2Fpasta%3Fa%3D1&amp;rut=abc">How to cook <b>pasta</b></a></h2>
-  <a class="result__snippet" href="//duckduckgo.com/l/?uddg=x">Boil water &amp; add <b>salt</b>.</a>
-</div>
-<div class="result result--ad"><a class="result__a" href="https://duckduckgo.com/y.js?ad_domain=shop.com">Buy pasta</a></div>
-<div class="result"><a class="result__a" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fwiki.org%2FPasta%23top">Pasta - Wiki</a></div>"#;
-        let hits = parse_duckduckgo(html);
-        assert_eq!(hits.len(), 2, "{hits:?}");
-        assert_eq!(hits[0], Hit { title: "How to cook pasta".into(), url: "https://example.com/pasta?a=1".into(), snippet: "Boil water & add salt.".into() });
-        assert_eq!(hits[1].url, "https://wiki.org/Pasta");
-    }
-
-    #[test]
-    fn duckduckgo_lite_results_are_read_with_their_snippets() {
-        let html = r#"<table><tr><td>1.&nbsp;</td><td><a rel="nofollow" href="https://example.com/a" class='result-link'>Example <b>A</b></a></td></tr>
-<tr><td></td><td class='result-snippet'>The <b>first</b> one.</td></tr>
-<tr><td>2.&nbsp;</td><td><a rel="nofollow" href="//duckduckgo.com/l/?uddg=https%3A%2F%2Fb.org%2F" class='result-link'>B</a></td></tr>
-<tr><td></td><td class='result-snippet'>Second.</td></tr></table>"#;
-        let hits = parse_duckduckgo_lite(html);
-        assert_eq!(hits.iter().map(|h| (h.title.as_str(), h.url.as_str(), h.snippet.as_str())).collect::<Vec<_>>(), vec![
-            ("Example A", "https://example.com/a", "The first one."),
-            ("B", "https://b.org/", "Second."),
-        ]);
-    }
-
-    #[test]
-    fn mojeek_and_wikipedia_results_are_read() {
-        let html = r#"<ul class="results-standard"><li class="r1"><a class="ob" href="https://a.com/x"><p class="i">a.com</p></a><h2><a class="title" href="https://a.com/x">Alpha &ndash; page</a></h2><p class="s">The first <strong>result</strong>.</p></li>
-<li><h2><a class="title" href="https://b.org/">Beta</a></h2><p class="s">Second.</p></li></ul>"#;
-        let hits = parse_mojeek(html);
-        assert_eq!(hits.iter().map(|h| (h.title.as_str(), h.url.as_str(), h.snippet.as_str())).collect::<Vec<_>>(), vec![
-            ("Alpha – page", "https://a.com/x", "The first result."),
-            ("Beta", "https://b.org/", "Second."),
-        ]);
+    fn wikipedia_results_are_read() {
         let body = json!({ "query": { "search": [{ "title": "Leonardo da Vinci", "snippet": "<span class=\"searchmatch\">Leonardo</span> was" }] } });
         let hits = parse_wikipedia(&body, "it");
         assert_eq!(hits[0].url, "https://it.wikipedia.org/wiki/Leonardo_da_Vinci");
         assert_eq!(hits[0].snippet, "Leonardo was");
+    }
+
+    #[test]
+    fn bing_results_lead_to_their_pages_through_its_redirects() {
+        // https://example.com/news?id=1 as Bing writes it: "a1" and base64 without padding.
+        let html = r#"<ol id="b_results"><li class="b_algo" data-id=""><div class="b_tpcn"><a class="tilk" href="https://example.com/news?id=1"><div class="tptt">Example</div></a></div>
+<h2><a href="https://www.bing.com/ck/a?!&amp;&amp;p=abc&amp;u=a1aHR0cHM6Ly9leGFtcGxlLmNvbS9uZXdzP2lkPTE&amp;ntb=1" h="ID=SERP,1">Shooting in <strong>Kraków</strong></a></h2>
+<div class="b_caption"><p class="b_lineclamp2"><span class="news_dt">7 Nov 2026</span> &#0183; Police said two people were hurt.</p></div></li>
+<li class="b_algo"><h2><a href="https://b.org/page">B page</a></h2><div class="b_caption"><p>Second one.</p><ul><li>deep link</li></ul></div></li>
+<li class="b_ad"><h2><a href="https://ads.example/">Ad</a></h2></li></ol>"#;
+        let hits = parse_bing(html);
+        assert_eq!(hits.iter().map(|h| (h.title.as_str(), h.url.as_str())).collect::<Vec<_>>(), vec![
+            ("Shooting in Kraków", "https://example.com/news?id=1"),
+            ("B page", "https://b.org/page"),
+        ]);
+        assert!(hits[0].snippet.ends_with("Police said two people were hurt."), "{}", hits[0].snippet);
+        assert_eq!(hits[1].snippet, "Second one.");
+        assert_eq!(base64url("aGk").as_deref(), Some(&b"hi"[..]));
+        assert_eq!(bing_target("https://www.bing.com/ck/a?u=zz"), None);
+    }
+
+    #[test]
+    fn news_come_with_their_article_and_date() {
+        let xml = r#"<?xml version="1.0" encoding="utf-8"?><rss version="2.0"><channel><title>Bing</title><link>https://www.bing.com/news</link>
+<item><title>Sparatoria a Cracovia, due feriti</title><link>http://www.bing.com/news/apiclick.aspx?ref=FexRss&amp;aid=&amp;tid=x&amp;url=https%3a%2f%2fwww.ansa.it%2fsito%2fnotizie%2fmondo%2f1.html&amp;c=1&amp;mkt=it-it</link><description>La polizia &lt;b&gt;polacca&lt;/b&gt; ha arrestato un uomo.</description><pubDate>Sat, 07 Nov 2026 18:20:00 GMT</pubDate><News:Source>ANSA</News:Source></item>
+<item><title>Senza link</title></item>
+</channel></rss>"#;
+        let hits = parse_news_rss(xml);
+        assert_eq!(hits.len(), 1);
+        assert_eq!(hits[0].title, "Sparatoria a Cracovia, due feriti");
+        assert_eq!(hits[0].url, "https://www.ansa.it/sito/notizie/mondo/1.html");
+        assert_eq!(hits[0].snippet, "La polizia polacca ha arrestato un uomo.");
+        assert_eq!(hits[0].date, "Sat, 07 Nov 2026 18:20:00 GMT");
+        let text = format_search("cracovia", "Bing News", &hits, &[None], &[], &[]);
+        assert!(text.contains("Sparatoria a Cracovia, due feriti (Sat, 07 Nov 2026 18:20:00 GMT) — https://www.ansa.it/"), "{text}");
+    }
+
+    #[test]
+    fn a_page_that_asks_to_prove_one_is_not_a_robot_is_no_results_page() {
+        assert!(is_challenge(r#"<html><body><div class="anomaly-modal__title">Unfortunately, bots use DuckDuckGo too.</div><form id="challenge-form"></form>"#));
+        assert!(!is_challenge(r#"<li class="b_algo"><h2><a href="https://a.com/">Pasta</a></h2></li>"#));
+    }
+
+    #[test]
+    fn the_news_come_first_for_a_recent_period_and_after_the_first_results_else() {
+        let hit = |t: &str| Hit { title: t.into(), url: format!("https://{t}.com/"), ..Default::default() };
+        let web = vec![hit("w1"), hit("w2"), hit("w3"), hit("w4")];
+        let news = vec![hit("n1"), hit("n2")];
+        let titles = |h: Vec<Hit>| h.into_iter().map(|h| h.title).collect::<Vec<_>>().join(" ");
+        assert_eq!(titles(merge(web.clone(), news.clone(), true)), "n1 n2 w1 w2 w3 w4");
+        assert_eq!(titles(merge(web, news, false)), "w1 w2 w3 n1 n2 w4");
     }
 
     #[test]
@@ -1103,9 +1208,9 @@ mod tests {
         assert_eq!(best, vec![1, 3]);
         assert!(!order.contains(&2), "nothing in common: left out");
         let hits = vec![
-            Hit { title: "Recipes".into(), url: "https://a.com/".into(), snippet: String::new() },
-            Hit { title: "Pork".into(), url: "https://b.com/".into(), snippet: String::new() },
-            Hit { title: "Unread".into(), url: "https://c.com/".into(), snippet: "A snippet.".into() },
+            Hit { title: "Recipes".into(), url: "https://a.com/".into(), snippet: String::new(), date: String::new() },
+            Hit { title: "Pork".into(), url: "https://b.com/".into(), snippet: String::new(), date: String::new() },
+            Hit { title: "Unread".into(), url: "https://c.com/".into(), snippet: "A snippet.".into(), date: String::new() },
         ];
         let pages = vec![Some(Page { title: "Recipes from Rome".into(), url: "https://a.com/".into(), text: String::new() }), None, None];
         let text = format_search("carbonara guanciale", "DuckDuckGo", &hits, &pages, &chunks, &order);

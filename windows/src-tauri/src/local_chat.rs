@@ -439,6 +439,8 @@ struct Island<'a, P> {
     events: &'a chat::ChatEvents,
     /// What the island shows: kept if Stop is pressed mid-answer.
     shown: &'a mut String,
+    /// The tools called in this answer, for the conversation to keep (`ran_note`).
+    ran: &'a mut Vec<String>,
     all: &'a [(String, String, Value)],
     /// The system message, for the tools loaded (and none, for a model that takes none).
     prompt_for: &'a P,
@@ -520,8 +522,35 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         } else {
             Activity::new("tool", crate::claude_code::pretty_tool(name))
         });
+        self.ran.push(if name == crate::web_search::SEARCH {
+            let query = input.get("query").and_then(Value::as_str).unwrap_or("").trim().chars().take(120).collect::<String>();
+            format!("{name} \"{query}\"")
+        } else {
+            name.to_string()
+        });
         let (app, chat, always_ask, name) = (self.app, self.chat.id().to_string(), self.always_ask, name.to_string());
         async move { crate::tools::call_for_chat(app, &chat, &name, input, always_ask).await }
+    }
+}
+
+/// What stays in the conversation of the tools an answer called: their
+/// results don't (they would fill a small context), so without it the model
+/// takes its earlier searches for never made, and agrees when told so.
+fn ran_note(ran: &[String]) -> String {
+    let mut seen = std::collections::HashSet::new();
+    let calls: Vec<&str> = ran.iter().filter(|c| seen.insert(c.as_str())).map(String::as_str).take(10).collect();
+    if calls.is_empty() {
+        String::new()
+    } else {
+        format!("\n\n(Lumo's note, not shown to the user: tools called for this answer: {}.)", calls.join(", "))
+    }
+}
+
+/// An answer without a note like `ran_note`'s, should a model copy it from the conversation.
+fn without_note(answer: &str) -> String {
+    match answer.find("(Lumo's note, not shown to the user") {
+        Some(at) => answer[..at].trim_end().to_string(),
+        None => answer.to_string(),
     }
 }
 
@@ -592,12 +621,14 @@ pub async fn send(
     let web = web && tools.iter().any(|(id, _, _)| crate::web_search::NAMES.contains(&id.as_str()));
     let always_ask = mode == "default";
     let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
+    let today = profile::today();
     // What the model is told, for the tools it has loaded (and none, when the server takes none).
     let prompt_for = |loaded: &[String], tools: bool| {
         let groups: Vec<profile::Group> = profile::Group::ALL.into_iter().filter(|g| loaded.iter().any(|id| profile::group_of(id) == Some(*g))).collect();
         let catalog = profile::catalog(&all, loaded);
         profile::system_prompt(&profile::Prompt {
             first_name: crate::identity::first_name(),
+            today: &today,
             tools,
             web: web && tools,
             timer: tools,
@@ -617,6 +648,7 @@ pub async fn send(
     // What the island shows so far: kept if Stop is pressed mid-answer. What
     // was said before each round of tools stays above the round after it.
     let mut shown = String::new();
+    let mut ran: Vec<String> = Vec::new();
     let events = chat.events();
     let answer = async {
         // A model not in memory is loaded first, so the island can say so
@@ -697,7 +729,7 @@ pub async fn send(
             pause: Duration::from_secs(1),
             text_only: (text_only != user).then_some(text_only),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, prompt_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))
@@ -712,7 +744,7 @@ pub async fn send(
     let Some(outcome) = streamed else {
         // The connection is closed. What was written stays in the conversation.
         if !shown.is_empty() {
-            chat.commit(&turn, user, json!({ "role": "assistant", "content": shown }), &plain, &shown);
+            chat.commit(&turn, user, json!({ "role": "assistant", "content": format!("{shown}{}", ran_note(&ran)) }), &plain, &shown);
         }
         return Ok(ChatReply::stopped(shown, None));
     };
@@ -731,7 +763,7 @@ pub async fn send(
     }
     // After the tools, what was said before each call comes first; an answer
     // stopped at the length limit says so under it.
-    let mut answer = outcome.answer();
+    let mut answer = without_note(&outcome.answer());
     if outcome.end == End::Cut {
         // Cut before a word of it: the context was full, or its reasoning took all the room.
         let full = usage.as_ref().and_then(|u| u.context.as_ref()).is_some_and(|c| c.total > 0 && c.used * 10 >= c.total * 9);
@@ -747,8 +779,54 @@ pub async fn send(
     if answer.is_empty() {
         return Err(t("No response text."));
     }
-    chat.commit(&turn, user, json!({ "role": "assistant", "content": answer }), &plain, &answer);
+    chat.commit(&turn, user, json!({ "role": "assistant", "content": format!("{answer}{}", ran_note(&ran)) }), &plain, &answer);
     Ok(ChatReply::answer(answer, None))
+}
+
+/// A web search made by Unsloth Studio itself (its `web_search` tool, with
+/// the model it has in memory), for a chat with it: its engines answer where
+/// Lumo's own are taken for a robot. Only with a key: a caller without one
+/// gets no tools, and its model would answer from memory. An answer with no
+/// link is taken for a search that didn't happen.
+pub async fn unsloth_search(query: &str, range: &str) -> Result<String, String> {
+    let settings = crate::settings::load();
+    let server = server(&settings, "unsloth").ok_or_else(|| "Unsloth Studio isn't connected".to_string())?;
+    if server.key.is_none() {
+        // Why, for the log: no key at all, or one kept for another address.
+        let why = match secrets::get(UNSLOTH_KEY).and_then(|s| serde_json::from_str::<BoundKey>(&s).ok()) {
+            None => "no key is stored".to_string(),
+            Some(b) if b.key.is_empty() => "the stored key is empty".to_string(),
+            Some(b) => format!("the key is stored for {} and Unsloth Studio is at {}", b.url, settings.unsloth_url.trim()),
+        };
+        return Err(format!("Unsloth Studio gives its tools only with a key, and {why}"));
+    }
+    let base = base_url(&server)?;
+    let model = crate::local_models::loaded("unsloth").await?.into_iter().next().map(|m| m.handle).ok_or_else(|| "no model in memory".to_string())?;
+    let when = match range {
+        "day" => " Only pages from the last day.",
+        "week" => " Only pages from the last week.",
+        "month" => " Only pages from the last month.",
+        "year" => " Only pages from the last year.",
+        _ => "",
+    };
+    let system = format!(
+        "Today is {}. Search the web with web_search for what the user writes, then report what the pages found say: the facts, names, numbers and dates, each with the link of its page as a Markdown link. Only what the pages say, nothing from memory; if they don't answer, say so. No introduction.",
+        profile::today()
+    );
+    let user = json!({ "role": "user", "content": format!("{query}{when}") });
+    let mut body = request_body(&model, &system, &[], &user);
+    body["enable_tools"] = json!(true);
+    body["enabled_tools"] = json!(["web_search"]);
+    body["permission_mode"] = json!("off");
+    body["enable_thinking"] = json!(false);
+    body["max_tokens"] = json!(2_048);
+    let to = endpoint(&server, &base)?;
+    let answer = lumo_local::transport::stream(&to, &body, |_| {}).await.map_err(|f| failure(&server, &model, &base, f))?.text;
+    let answer = answer.trim();
+    if !answer.contains("http") {
+        return Err("it answered with no link: no search was made".into());
+    }
+    Ok(format!("Web search by Unsloth Studio for \"{query}\" (its engines, its summary of the pages):\n\n{answer}"))
 }
 
 /// One question with no conversation: the supervisor's review of a tool
@@ -772,6 +850,14 @@ pub async fn complete(server: &Server, model: &str, system: &str, prompt: &str) 
 mod tests {
     use super::*;
     use crate::net::tests::serve_once;
+
+    #[test]
+    fn the_conversation_keeps_which_tools_an_answer_called() {
+        assert_eq!(ran_note(&[]), "");
+        let ran = ["web_search \"a\"".to_string(), "web_fetch".into(), "web_search \"a\"".into()];
+        assert_eq!(ran_note(&ran), "\n\n(Lumo's note, not shown to the user: tools called for this answer: web_search \"a\", web_fetch.)");
+        assert_eq!(without_note(&format!("Found it.{}", ran_note(&ran))), "Found it.");
+    }
 
     #[test]
     fn a_file_s_text_takes_up_to_60_percent_of_the_context() {
