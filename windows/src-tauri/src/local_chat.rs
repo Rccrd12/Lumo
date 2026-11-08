@@ -792,7 +792,13 @@ pub async fn unsloth_search(query: &str, range: &str) -> Result<String, String> 
     let settings = crate::settings::load();
     let server = server(&settings, "unsloth").ok_or_else(|| "Unsloth Studio isn't connected".to_string())?;
     if server.key.is_none() {
-        return Err("Unsloth Studio has no key in Lumo, and gives its tools only with one".into());
+        // Why, for the log: no key at all, or one kept for another address.
+        let why = match secrets::get(UNSLOTH_KEY).and_then(|s| serde_json::from_str::<BoundKey>(&s).ok()) {
+            None => "no key is stored".to_string(),
+            Some(b) if b.key.is_empty() => "the stored key is empty".to_string(),
+            Some(b) => format!("the key is stored for {} and Unsloth Studio is at {}", b.url, settings.unsloth_url.trim()),
+        };
+        return Err(format!("Unsloth Studio gives its tools only with a key, and {why}"));
     }
     let base = base_url(&server)?;
     let model = crate::local_models::loaded("unsloth").await?.into_iter().next().map(|m| m.handle).ok_or_else(|| "no model in memory".to_string())?;
