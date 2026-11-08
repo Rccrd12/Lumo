@@ -6,7 +6,7 @@ import "../core/legacy";
 import "./settings.css";
 import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport } from "../core/bridge";
 import {
-  CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, providerDef, urlExposure,
+  CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, isHidden, providerDef, urlExposure, visibleProviders,
 } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
@@ -495,11 +495,23 @@ function cliSection(id: "antigravity-cli" | "codex" | "copilot-cli" | "cursor-cl
     settings.chatModels = { ...settings.chatModels, [p.id]: model.value };
     void save();
   });
+  // Off, the CLI leaves the chat's providers; the chat in use moves to another one.
+  const shown = toggle(!isHidden(settings, p.id), async (on) => {
+    const rest = (settings.hiddenChatProviders ?? []).filter((x) => x !== p.id);
+    settings.hiddenChatProviders = on ? rest : [...rest, p.id];
+    if (!on && settings.chatProvider === p.id) {
+      const ready = await Bridge.chatProviders();
+      const next = visibleProviders(settings, Array.isArray(ready) ? new Set(ready) : null).find((x) => x.id !== p.id);
+      if (next) settings.chatProvider = next.id;
+    }
+    void save();
+  });
 
   return h(
     "section",
     {},
     ...sectionHead(p.name, null, accentDot(p.accent)),
+    setting(t("Show in the chat"), t("Off, it leaves the chat's list of providers. Nothing is uninstalled."), shown),
     setting(t("Model"), t(note), model),
     absent,
   );
