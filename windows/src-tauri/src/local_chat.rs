@@ -202,11 +202,11 @@ pub struct Connected {
 pub async fn connect(id: &str, typed: &str) -> Result<Connected, String> {
     let raw = if typed.trim().is_empty() { usual_address(id).unwrap_or_default() } else { typed.to_string() };
     let mut url = net::normalise_server_url(&raw)?;
-    let mut models = list(&url, key_of(id, &url).as_deref()).await;
+    let mut models = list(id, &url, key_of(id, &url).as_deref()).await;
     // Unsloth Studio on its other usual port.
     if id == "unsloth" && typed.trim().is_empty() && models.is_err() {
         let other = net::normalise_server_url("http://127.0.0.1:8000")?;
-        if let Ok(found) = list(&other, key_of(id, &other).as_deref()).await {
+        if let Ok(found) = list(id, &other, key_of(id, &other).as_deref()).await {
             url = other;
             models = Ok(found);
         }
@@ -214,7 +214,7 @@ pub async fn connect(id: &str, typed: &str) -> Result<Connected, String> {
     let models = models?;
     Ok(Connected {
         url: url.as_str().trim_end_matches('/').to_string(),
-        models,
+        models: models.into_iter().map(|m| m.id).collect(),
         loopback: net::is_loopback_url(&url),
     })
 }
@@ -222,15 +222,15 @@ pub async fn connect(id: &str, typed: &str) -> Result<Connected, String> {
 /// The models of a connected server, for the picker in the chat view.
 pub async fn models(server: &Server) -> Result<Vec<ModelInfo>, String> {
     let url = base_url(server)?;
-    let models = list(&url, server.key.as_deref()).await?;
+    let models = list(server.id, &url, server.key.as_deref()).await?;
     if models.is_empty() {
         return Err(tf("No models yet. Download one in {name} first.", &[("name", &t(server.name))]));
     }
-    Ok(models.into_iter().map(|id| ModelInfo { label: id.clone(), id }).collect())
+    Ok(models)
 }
 
 /// `GET /v1/models`, chat models only, or why the server can't be reached.
-async fn list(base: &Url, key: Option<&str>) -> Result<Vec<String>, String> {
+async fn list(id: &str, base: &Url, key: Option<&str>) -> Result<Vec<ModelInfo>, String> {
     let response = net::client(base, Duration::from_secs(5))?
         .get(net::join(base, "v1/models"))
         .header("Authorization", bearer(key))
@@ -245,21 +245,55 @@ async fn list(base: &Url, key: Option<&str>) -> Result<Vec<String>, String> {
     }
     let bytes = net::read_capped(response, net::MAX_BODY).await?;
     let body: Value = serde_json::from_slice(&bytes).map_err(|_| unreachable(base))?;
-    parse_models(&body).ok_or_else(|| unreachable(base))
+    let models = parse_models(&body).ok_or_else(|| unreachable(base))?;
+    Ok(if id == "unsloth" { unsloth_models(models) } else { models.into_iter().map(|(id, _)| ModelInfo { label: id.clone(), id }).collect() })
 }
 
-fn parse_models(body: &Value) -> Option<Vec<String>> {
+/// The chat models of a `/v1/models` answer: each id, with its row.
+fn parse_models(body: &Value) -> Option<Vec<(String, Value)>> {
     let items = body.get("data")?.as_array()?;
     Some(
         items
             .iter()
             // Unsloth Studio names its speech and music models' `task`: they don't chat.
             .filter(|m| m.get("task").is_none_or(Value::is_null))
-            .filter_map(|m| m.get("id").and_then(Value::as_str))
-            .filter(|id| !NOT_CHAT.iter().any(|n| id.to_lowercase().contains(n)))
-            .map(str::to_string)
+            .filter_map(|m| Some((m.get("id")?.as_str()?.to_string(), m.clone())))
+            .filter(|(id, _)| !NOT_CHAT.iter().any(|n| id.to_lowercase().contains(n)))
             .collect(),
     )
+}
+
+/// Unsloth Studio lists a repo with several quants once bare (its default
+/// quant) and once per quant (`repo:Q4_K_M`), so the same file can come
+/// twice. One row per repo and `quant`, the first listed (the bare id, which
+/// a model picked before still names), shown as "display_name · quant".
+fn unsloth_models(models: Vec<(String, Value)>) -> Vec<ModelInfo> {
+    let mut seen = std::collections::HashSet::new();
+    let mut out = Vec::new();
+    for (id, row) in models {
+        let quant = row.get("quant").and_then(Value::as_str).map(str::trim).filter(|q| !q.is_empty());
+        let repo = quant
+            .and_then(|q| {
+                let (base, pinned) = id.rsplit_once(':')?;
+                pinned.eq_ignore_ascii_case(q).then_some(base)
+            })
+            .unwrap_or(&id);
+        if !seen.insert((repo.to_lowercase(), quant.map(str::to_lowercase))) {
+            continue;
+        }
+        let name = row
+            .get("display_name")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|n| !n.is_empty())
+            .unwrap_or_else(|| repo.rsplit('/').next().unwrap_or(repo));
+        let label = match quant {
+            Some(q) => format!("{name} · {q}"),
+            None => name.to_string(),
+        };
+        out.push(ModelInfo { label, id });
+    }
+    out
 }
 
 // ── Messages ──────────────────────────────────────────────────────────────────
@@ -971,15 +1005,52 @@ mod tests {
     fn the_model_list_leaves_out_embedding_models_and_says_when_nothing_answers() {
         let body = br#"{"data":[{"id":"llama3.2"},{"id":"nomic-embed-text"},{"id":"BGE-large"},{"id":"qwen2.5-coder"}]}"#;
         let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
-        assert_eq!(block_on(list(&url(&u), None)).unwrap(), vec!["llama3.2", "qwen2.5-coder"]);
+        let ids: Vec<String> = block_on(list("ollama", &url(&u), None)).unwrap().into_iter().map(|m| m.id).collect();
+        assert_eq!(ids, vec!["llama3.2", "qwen2.5-coder"]);
 
         let u = serve_once("500 Internal Server Error", "Content-Length: 2\r\n", b"{}".to_vec());
-        assert!(block_on(list(&url(&u), None)).unwrap_err().starts_with("Cannot reach"));
+        assert!(block_on(list("ollama", &url(&u), None)).unwrap_err().starts_with("Cannot reach"));
         let u = serve_once("200 OK", "Content-Length: 8\r\n", b"not json".to_vec());
-        assert!(block_on(list(&url(&u), None)).unwrap_err().starts_with("Cannot reach"));
-        assert!(block_on(list(&url("http://127.0.0.1:1"), None)).unwrap_err().starts_with("Cannot reach"));
+        assert!(block_on(list("ollama", &url(&u), None)).unwrap_err().starts_with("Cannot reach"));
+        assert!(block_on(list("ollama", &url("http://127.0.0.1:1"), None)).unwrap_err().starts_with("Cannot reach"));
         let u = serve_once("401 Unauthorized", "Content-Length: 2\r\n", b"{}".to_vec());
-        assert!(block_on(list(&url(&u), Some("bad"))).unwrap_err().contains("refused the key"));
+        assert!(block_on(list("ollama", &url(&u), Some("bad"))).unwrap_err().contains("refused the key"));
+    }
+
+    #[test]
+    fn unsloth_studio_lists_each_file_once_by_its_name_and_quant() {
+        // Two quants of Ornith on disk: the bare id is the default one (Q4_K_M),
+        // then one row per quant; plus a video model and a model without a quant.
+        let body = json!({ "data": [
+            { "id": "AtomicChat/Ornith-1.5-35B-A3B-GGUF", "quant": "Q4_K_M", "display_name": "Ornith-1.5-35B-A3B-GGUF" },
+            { "id": "QuantStack/Wan2.2-TI2V-5B-GGUF", "task": "text-to-video", "quant": "Q4_K_M" },
+            { "id": "unsloth/gemma-4-26b-GGUF", "quant": "UD-Q4_K_XL", "loaded": true },
+            { "id": "AtomicChat/Ornith-1.5-35B-A3B-GGUF:Q4_K_M", "quant": "Q4_K_M", "display_name": "Ornith-1.5-35B-A3B-GGUF" },
+            { "id": "AtomicChat/Ornith-1.5-35B-A3B-GGUF:Q4_K", "quant": "Q4_K", "display_name": "Ornith-1.5-35B-A3B-GGUF" },
+            { "id": "my-finetune", "display_name": " " },
+            { "id": "unsloth/embeddinggemma-300m-GGUF", "quant": "Q8_0" }
+        ] });
+        let rows = unsloth_models(parse_models(&body).unwrap());
+        let shown: Vec<(&str, &str)> = rows.iter().map(|m| (m.id.as_str(), m.label.as_str())).collect();
+        assert_eq!(shown, [
+            ("AtomicChat/Ornith-1.5-35B-A3B-GGUF", "Ornith-1.5-35B-A3B-GGUF · Q4_K_M"),
+            ("unsloth/gemma-4-26b-GGUF", "gemma-4-26b-GGUF · UD-Q4_K_XL"),
+            ("AtomicChat/Ornith-1.5-35B-A3B-GGUF:Q4_K", "Ornith-1.5-35B-A3B-GGUF · Q4_K"),
+            ("my-finetune", "my-finetune"),
+        ]);
+        // Same repo and quant in another case is still the same file.
+        let cased = json!({ "data": [{ "id": "o/m:q4_k_m", "quant": "q4_k_m" }, { "id": "O/M", "quant": "Q4_K_M" }] });
+        assert_eq!(unsloth_models(parse_models(&cased).unwrap()).len(), 1);
+    }
+
+    #[test]
+    fn the_list_names_unsloth_models_and_leaves_the_others_as_they_are() {
+        let body = br#"{"data":[{"id":"o/m","quant":"Q4_K_M","display_name":"M"},{"id":"o/m:Q4_K_M","quant":"Q4_K_M","display_name":"M"}]}"#;
+        let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
+        assert_eq!(block_on(list("unsloth", &url(&u), None)).unwrap(), vec![ModelInfo { id: "o/m".into(), label: "M · Q4_K_M".into() }]);
+        let u = serve_once("200 OK", &format!("Content-Length: {}\r\n", body.len()), body.to_vec());
+        let ids: Vec<String> = block_on(list("custom", &url(&u), None)).unwrap().into_iter().map(|m| m.label).collect();
+        assert_eq!(ids, ["o/m", "o/m:Q4_K_M"]);
     }
 
     #[test]

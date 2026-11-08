@@ -4264,6 +4264,42 @@ textarea.chat-input {
   overflow-wrap: anywhere;
 }
 
+/* A question once sent is Markdown too (views/chat.ts sentBubble), in its
+   bubble's own colour, size and line height: plain words read as before. */
+.bubble.md {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.bubble.md .md-p,
+.bubble.md .md-bullet,
+.bubble.md .md-h {
+  color: inherit;
+  font-size: inherit;
+  line-height: inherit;
+}
+
+.bubble.md strong {
+  color: var(--ink);
+  font-weight: 600;
+}
+
+.chat-log .bubble.md .md-math {
+  padding: 4px 0;
+}
+
+/* The message has its own Copy: a formula in it needs none. */
+.bubble.md .md-math .md-copy {
+  display: none;
+}
+
+html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
 /* The question being edited, and what sending it would drop. */
 .chat-row.editing .bubble {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.3);
