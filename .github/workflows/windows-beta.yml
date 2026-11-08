@@ -107,13 +107,15 @@ jobs:
           VERSION: ${{ steps.version.outputs.version }}
         run: |
           node scripts/beta.mjs notes "$RUNNER_TEMP/beta.json" "$VERSION" > "$RUNNER_TEMP/notes.md"
-          main=$(node -p "require(process.env.RUNNER_TEMP + '/beta.json').main")
-          gh release delete windows-beta --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag || true
+          # The windows-beta tag stays where it is: GitHub refuses this token
+          # the creation of a tag (HTTP 403), so it was pushed once by hand and
+          # only the release on it is replaced. The notes name main's commit.
+          gh release delete windows-beta --repo "$GITHUB_REPOSITORY" --yes || true
           gh release create windows-beta \
             "release/Lumo-Windows-$VERSION-setup.exe" \
             "release/Lumo-Windows-$VERSION.msi" \
             --repo "$GITHUB_REPOSITORY" \
-            --target "$main" \
+            --verify-tag \
             --prerelease \
             --latest=false \
             --title "Lumo for Windows beta $VERSION" \
