@@ -1070,7 +1070,7 @@ test("a tool's command is in the menu, and what follows it goes to the AI as a r
   State.tools = [];
 });
 
-test("State.activeChats tracks live chat turns from Thinking through Writes until done", async () => {
+test("State.activeChats tracks live chat turns from Thinking through Writes and holds Done briefly", async () => {
   State.settings = { ...State.settings, chatProvider: "unsloth", chatModels: { ...State.settings.chatModels, unsloth: "qwen3-8b" } };
   const pending = heldAnswers();
   await ask("Check my GitHub PRs");
@@ -1088,6 +1088,9 @@ test("State.activeChats tracks live chat turns from Thinking through Writes unti
   pending[0]({ text: "Here are your open PRs: #21.", turns: 2 });
   await flush();
   view.sync();
-  assert.equal(State.activeChats.length, 0);
+  assert.equal(State.activeChats.length, 1);
+  assert.equal(State.activeChats[0].line, "Done");
+  assert.equal(State.activeChats[0].done, true);
 });
+
 

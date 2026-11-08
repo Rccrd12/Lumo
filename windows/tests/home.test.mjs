@@ -134,6 +134,23 @@ test("active chats writing or thinking appear in Home In progress and open on cl
 
   rows[1].fire("click");
   assert.deepEqual(openedChats, ["chat-1"]);
+
+  // When a chat finishes, its row stays briefly with "Done" (.home-line.ok).
+  State.activeChats = [
+    {
+      chatId: "chat-1",
+      who: "Unsloth Studio",
+      color: "#34D399",
+      title: "Spiegami le PR aperte",
+      line: "Done",
+      done: true,
+    },
+  ];
+  State.plans = [];
+  home.sync();
+  const doneLine = home.el.querySelector(".ok");
+  assert.ok(doneLine, "expected .home-line.ok when a chat just finished");
+  assert.equal(doneLine.textContent, "Done");
 });
 
 test("GitHub CI runs, review requests, open PRs and watches populate Home In progress and open their links", () => {

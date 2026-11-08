@@ -2820,7 +2820,8 @@ export function buildPrompt(
         // So does its folder of copies (workspace.rs).
         void Bridge.workspaceDelete(c.id);
         if (copies.length > 0) void Bridge.inboxRelease(copies, [...keptCopies(), ...fieldCopies()]);
-        // Being answered in the background: that answer ends with it.
+        // Being answered in the background (or just finished): that entry ends with it.
+        clearFinishedChat(c.id);
         const run = runs.get(c.id);
         if (run) {
           run.forgotten = true;
@@ -3183,6 +3184,28 @@ export function buildPrompt(
   /** The chat is being compacted: what the closed island says meanwhile. */
   let compactingLabel: string | null = null;
   let activeChatsKey = "";
+  /** How long a finished chat stays on the home with "Done" before leaving the list (matches hooks.ts). */
+  const CHAT_DONE_HOLD_MS = 5200;
+  const finishedChats = new Map<string, { provider: string; model: string; title: string; timer: ReturnType<typeof setTimeout> }>();
+
+  function clearFinishedChat(chatId: string) {
+    const prev = finishedChats.get(chatId);
+    if (!prev) return;
+    clearTimeout(prev.timer);
+    finishedChats.delete(chatId);
+    drawIslandActivity();
+  }
+
+  function noteFinishedChat(run: Run) {
+    clearFinishedChat(run.chatId);
+    const title = chatTitle(run.history);
+    const timer = setTimeout(() => {
+      finishedChats.delete(run.chatId);
+      drawIslandActivity();
+    }, CHAT_DONE_HOLD_MS);
+    (timer as { unref?: () => void }).unref?.();
+    finishedChats.set(run.chatId, { provider: run.provider, model: run.model, title, timer });
+  }
 
   function drawIslandActivity() {
     const liveRuns = [...runs.values()].filter((r) => !r.forgotten);
@@ -3211,7 +3234,19 @@ export function buildPrompt(
         line: compactingLabel,
       });
     }
-    const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}`).join("\n");
+    for (const [chatId, fin] of finishedChats) {
+      if (nextChats.some((c) => c.chatId === chatId)) continue;
+      const p = providerDef(fin.provider);
+      nextChats.push({
+        chatId,
+        who: speakerName(p.id, t(p.name), fin.model),
+        color: p.accent,
+        title: fin.title || t("Chat"),
+        line: t("Done"),
+        done: true,
+      });
+    }
+    const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}\t${c.done ? 1 : 0}`).join("\n");
     const now = State.chatActivity;
     const sameActivity = next == null ? now == null : now != null && now.label === next.label;
     if (sameActivity && nextKey === activeChatsKey) return;
@@ -3532,6 +3567,7 @@ export function buildPrompt(
       };
       const started = run;
       if (activity !== THINKING) run.timer = setTimeout(() => showActivity(started, THINKING), FIRST_ACTIVITY_MS);
+      clearFinishedChat(chatId);
       runs.set(chatId, run);
     } finally {
       preparing = false;
@@ -3612,6 +3648,7 @@ export function buildPrompt(
     } finally {
       clearTimeout(run.timer);
       runs.delete(run.chatId);
+      if (outcome === "finished" && !run.forgotten) noteFinishedChat(run);
       // A local model the answer loaded: what it can do (reasoning, context) is known only now.
       const caps = localCapsOf(run.provider);
       if (providerDef(run.provider).urlField && run.provider === State.settings.chatProvider && (!caps || caps.loadedContext === 0)) {

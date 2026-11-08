@@ -140,7 +140,7 @@ export interface ChatMessage {
   copies?: { chat: string; path: string; made?: boolean }[];
 }
 
-/** A chat currently answering, thinking, calling tools or compacting, for the home's list. */
+/** A chat currently answering, thinking, calling tools, compacting, or just finished, for the home's list. */
 export interface ActiveChatRun {
   chatId: string;
   /** Who answers ("Claude Code", "Unsloth Studio", "Sonnet 4.5"…). */
@@ -148,8 +148,12 @@ export interface ActiveChatRun {
   color: string;
   /** The chat's title (first question, shortened). */
   title: string;
-  /** What the chat is doing right now ("Writes…", "Thinking…", "Reading main.ts"…). */
+  /** What the chat is doing right now ("Writes…", "Thinking…", "Done"…). */
   line: string;
+  /** True for a few seconds right after the chat finished answering. */
+  done?: boolean;
+  /** True for a few seconds right after the chat failed with an error. */
+  failed?: boolean;
 }
 
 export type PromptContext =

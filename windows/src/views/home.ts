@@ -371,15 +371,16 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       ...planEnds(plan));
   }
 
-  /** An island chat currently writing, thinking, calling tools or compacting; a click opens it. */
+  /** An island chat currently writing, thinking, calling tools, compacting, or just finished; a click opens it. */
   function activeChatRow(c: ActiveChatRun): HTMLElement {
+    const cls = c.done ? " ok" : c.failed ? " err" : "";
     return h("button", { class: "home-row", onclick: () => actions.openChatPlan(c.chatId) },
       h("div", { class: "home-text" },
         h("div", { class: "home-who" },
           dot(c.color, 8),
           h("span", { class: "n", text: c.who }),
           c.title && c.title !== c.who ? h("span", { class: "s", text: `· ${c.title}` }) : null),
-        h("div", { class: "home-line", text: c.line })));
+        h("div", { class: `home-line${cls}`, text: c.line })));
   }
 
   /** A GitHub CI run/failure, review request or open PR; a click opens it on GitHub (or the GitHub card). */
@@ -624,7 +625,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         language(), id, req?.command, req?.questions?.[0]?.question, req?.email?.subject, State.approvalQueue.length,
         ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}`),
         ...State.plans.map((p) => `${p.key}:${p.updatedAt}:${p.steps.map((s) => s.status).join(",")}`),
-        ...State.activeChats.map((c) => `${c.chatId}:${c.who}:${c.color}:${c.title}:${c.line}`),
+        ...State.activeChats.map((c) => `${c.chatId}:${c.who}:${c.color}:${c.title}:${c.line}:${c.done ? 1 : 0}:${c.failed ? 1 : 0}`),
         ...ghItems.map((g) => g.key),
         ...watches.map((w) => `${w.id}:${w.source ?? ""}:${w.repo}:${w.number}:${w.target ?? ""}:${w.until}:${w.task}`),
       ].join("~");
