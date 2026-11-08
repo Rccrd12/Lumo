@@ -4,10 +4,10 @@
 //
 // No key, no account, nothing to pay. The question goes at once to
 // DuckDuckGo (its HTML form), Brave, Bing and Mojeek, with Bing News' latest
-// next to them, as Unsloth Studio's search does; Wikipedia only when none of
-// them answers, and said so to the model (an engine that takes Lumo for a
-// robot gives a page with no results: an error, in the log, not an empty
-// search). The pages found are read from this
+// next to them, as Unsloth Studio's search does; one that takes Lumo for a
+// robot is asked again through WebView2, a real browser (web_browser.rs).
+// Wikipedia only when none of them answers, and said so to the model (a
+// robot check is an error, in the log, not an empty search). The pages found are read from this
 // computer, their text pulled out of the HTML, cut into passages and ranked
 // against the question here (BM25, and the embedding model of the chat's
 // Ollama or LM Studio when it has one). The model gets only the best
@@ -33,6 +33,8 @@ pub const NAMES: [&str; 2] = [SEARCH, FETCH];
 
 /// How long a search engine may take.
 const TIMEOUT: Duration = Duration::from_secs(6);
+/// How long an engine's page may take in the browser.
+const BROWSER_WAIT: Duration = Duration::from_secs(8);
 /// How long a page may take, redirects and all: the search goes on with the
 /// pages that came, and a slow one's snippet stands for it.
 const PAGE_TIMEOUT: Duration = Duration::from_millis(3_500);
@@ -254,10 +256,36 @@ async fn find_web(asked: &str, range: &str) -> (&'static str, Vec<Hit>, Vec<Stri
     ];
     let mut failed = Vec::new();
     let mut found: Vec<(&'static str, Vec<Hit>)> = Vec::new();
+    let mut blocked = Vec::new();
     for (name, job) in jobs {
         match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
             Ok(hits) if !hits.is_empty() => found.push((name, hits)),
             Ok(_) => failed.push(format!("{name} gave no results")),
+            Err(e) => {
+                if e.contains("robot") && matches!(name, "DuckDuckGo" | "Brave") {
+                    blocked.push(name);
+                }
+                failed.push(e);
+            }
+        }
+    }
+    // Those that took Lumo for a robot, asked again by WebView2, a real browser, at once.
+    let again: Vec<_> = blocked
+        .into_iter()
+        .map(|name| {
+            let (q, r) = (asked.to_string(), range.to_string());
+            (name, tauri::async_runtime::spawn(async move { in_browser(name, &q, &r).await }))
+        })
+        .collect();
+    for (name, job) in again {
+        match job.await.map_err(|e| e.to_string()).and_then(|r| r) {
+            Ok(hits) if !hits.is_empty() => {
+                crate::log::line(format!("[web] {name} answered in the browser"));
+                // In its place among the others: DuckDuckGo first, then Brave.
+                let at = if name == "DuckDuckGo" { 0 } else { found.iter().take_while(|(n, _)| *n == "DuckDuckGo").count() };
+                found.insert(at, (name, hits));
+            }
+            Ok(_) => failed.push(format!("{name} gave no results in the browser")),
             Err(e) => failed.push(e),
         }
     }
@@ -343,7 +371,7 @@ async fn engine_text(host: &str, response: reqwest::Response) -> Result<String, 
 }
 
 /// A page that asks to prove one isn't a robot instead of giving results.
-fn is_challenge(page: &str) -> bool {
+pub(crate) fn is_challenge(page: &str) -> bool {
     let head: String = page.chars().take(200_000).collect::<String>().to_ascii_lowercase();
     ["anomaly-modal", "challenge-form", "g-recaptcha", "h-captcha", "cf-challenge", "/captcha", "id=\"captcha"].iter().any(|m| head.contains(m))
 }
@@ -375,6 +403,19 @@ async fn duckduckgo(query: &str, range: &str) -> Result<Vec<Hit>, String> {
 
 /// Brave Search's page (its own index, not Bing's or Google's).
 async fn brave(query: &str, range: &str) -> Result<Vec<Hit>, String> {
+    let url = brave_url(query, range)?;
+    let response = client(true)?
+        .get(url)
+        .header("Accept", "text/html")
+        .header("Accept-Language", language())
+        .header("Cookie", "useLocation=0")
+        .send()
+        .await
+        .map_err(|_| "search.brave.com didn't answer".to_string())?;
+    Ok(parse_brave(&engine_text("search.brave.com", response).await?))
+}
+
+fn brave_url(query: &str, range: &str) -> Result<Url, String> {
     let mut params = vec![("q", query), ("source", "web")];
     let tf = match range {
         "day" => "pd",
@@ -386,16 +427,27 @@ async fn brave(query: &str, range: &str) -> Result<Vec<Hit>, String> {
     if !tf.is_empty() {
         params.push(("tf", tf));
     }
-    let url = Url::parse_with_params("https://search.brave.com/search", &params).map_err(|e| e.to_string())?;
-    let response = client(true)?
-        .get(url)
-        .header("Accept", "text/html")
-        .header("Accept-Language", language())
-        .header("Cookie", "useLocation=0")
-        .send()
-        .await
-        .map_err(|_| "search.brave.com didn't answer".to_string())?;
-    Ok(parse_brave(&engine_text("search.brave.com", response).await?))
+    Url::parse_with_params("https://search.brave.com/search", &params).map_err(|e| e.to_string())
+}
+
+/// DuckDuckGo's HTML page as a link, for the browser.
+fn duckduckgo_url(query: &str, range: &str) -> Result<Url, String> {
+    let mut params = vec![("q", query)];
+    let df = range.get(..1).unwrap_or("");
+    if !df.is_empty() {
+        params.push(("df", df));
+    }
+    Url::parse_with_params("https://html.duckduckgo.com/html/", &params).map_err(|e| e.to_string())
+}
+
+/// An engine that took Lumo for a robot, asked again through WebView2 (web_browser.rs).
+async fn in_browser(name: &str, query: &str, range: &str) -> Result<Vec<Hit>, String> {
+    let (url, parse): (Url, fn(&str) -> Vec<Hit>) = match name {
+        "DuckDuckGo" => (duckduckgo_url(query, range)?, parse_duckduckgo),
+        "Brave" => (brave_url(query, range)?, parse_brave),
+        _ => return Err(format!("{name} isn't read in the browser")),
+    };
+    Ok(parse(&crate::web_browser::page(url, BROWSER_WAIT).await?))
 }
 
 async fn mojeek(query: &str) -> Result<Vec<Hit>, String> {
