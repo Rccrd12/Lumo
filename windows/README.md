@@ -344,7 +344,8 @@ two sources, each with its switch, one or both on:
   closed only pauses its emails. The new Outlook for Windows can't be read by
   other apps: with it, use IMAP. If Windows' antivirus isn't one Outlook
   knows, Outlook may ask once whether to let a program read the mail.
-- **IMAP** (on as before):
+- **IMAP** (on as before): one or more accounts, up to five, listed under
+  the switch.
 
 The rest of this section is about IMAP; Outlook's emails come with it to the
 island, the chat and the email tools (their ids start with `outlook-`, their
@@ -362,6 +363,20 @@ shows on the closed island (see [The closed island](#the-closed-island)).
 The pill only reads: the inbox is opened read only, emails stay unread, and
 nothing is ever deleted for good. An email is sent, or one changed, only as
 below, each time with your click. The address, the server and the app password are in the system keychain.
+
+**Several accounts**: each account in the list has a dot (green when it read
+the inbox, red with the server's reason when it was refused, grey while
+paused), a switch that pauses it without removing it, and **Remove**.
+**+ Add an account** opens one form (address, app password, and the IMAP
+server, found from the address when left empty): **Check and save** signs in
+first and keeps the account only if the server takes it; otherwise it says
+why and saves nothing. The emails of every account on come together on the
+island, in the chat and in the email tools, whose ids then start with the
+account's address (`work@example.com:inbox:12`) so each tool reaches the
+right mailbox. The first account is the **Default**: a new email goes out of
+it; a reply, a forward or a draft in reply goes out of the account the email
+came to. The account set up before this list became the first one, with
+nothing to type again.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the

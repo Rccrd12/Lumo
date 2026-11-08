@@ -4,7 +4,7 @@
 
 import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport } from "../core/bridge";
 import {
   CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, providerDef, urlExposure,
 } from "../core/providers";
@@ -21,7 +21,7 @@ import {
 import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
-import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
+import { accentDot, errorText, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
@@ -1225,13 +1225,10 @@ const INTEGRATIONS: IntegrationDef[] = [
     fields: [{ key: "notion-api-key", label: N_("Integration token"), placeholder: "ntn_…", secret: true }] },
   { id: "integration_calcom", name: "Cal.com", color: "#C9956A",
     fields: [{ key: "calcom-api-key", label: N_("API key"), placeholder: "cal_…", secret: true }] },
-  // The inbox over IMAP (mail.rs), and the classic Outlook on this PC (outlook.rs): mailSourceRows.
+  // The inbox over IMAP (mail.rs), and the classic Outlook on this PC (outlook.rs): mailSourceRows,
+  // with the IMAP accounts listed by imapAccounts rather than these fields.
   { id: "integration_mail", name: N_("Email"), color: "#EA4335",
-    fields: [
-      { key: "mail-address", label: N_("Address"), placeholder: "you@gmail.com", secret: false },
-      { key: "mail-app-password", label: N_("App password"), placeholder: "abcd efgh ijkl mnop", secret: true },
-      { key: "mail-imap-server", label: N_("IMAP server"), placeholder: N_("found from the address"), secret: false },
-    ],
+    fields: [],
     hint: N_("New emails show on the closed island. You can use Outlook, IMAP or both together.") },
 ];
 
@@ -1331,7 +1328,7 @@ function integrationsSection(
           def.hint ? t(def.hint) : null,
           sw,
         ),
-        ...(def.id === "integration_mail" ? mailSourceRows(rows) : [rows]),
+        ...(def.id === "integration_mail" ? mailSourceRows(imapAccounts(keyChanged)) : [rows]),
         def.id === "integration_mail" ? promotionsRow() : null,
       ),
     );
@@ -1386,6 +1383,160 @@ function mailSourceRows(imapFields: HTMLElement): HTMLElement[] {
       toggle(settings.mailImap, (v) => { settings.mailImap = v; showImap(); void save(); })),
     imapFields,
   ];
+}
+
+/** Settings → Pills → Email → IMAP's words. */
+const IMAP_ACCOUNTS = {
+  get add() { return t("+ Add an account"); },
+  get title() { return t("New IMAP account"); },
+  get check() { return t("Check and save"); },
+  get checking() { return t("Checking…"); },
+  get notSaved() { return t("Nothing was saved."); },
+  get defaultTip() { return t("New emails go out from this account. A reply goes out from the account the email came to."); },
+  found: (server: string) => t("found from the address: {server}", { server }),
+};
+
+/** As many IMAP accounts as mail.rs keeps (MAX_ACCOUNTS). */
+const MAX_MAIL_ACCOUNTS = 5;
+
+/** An account's dot: read, refused, paused, or not connected yet. */
+const ACCOUNT_DOT: Record<MailAccount["state"], string> = {
+  ok: "#22c55e", error: "#f4505e", paused: "#8a8f98", connecting: "#f5a524",
+};
+
+/**
+ * Settings → Pills → Email → IMAP: the accounts stored (mail.rs), each with
+ * its state, a switch that pauses it and Remove; under them, one form to add
+ * another, saved only once its server took the address and the password.
+ * The first account is the default: a new email goes out of it.
+ */
+function imapAccounts(keyChanged: (key: string, on: boolean) => void): HTMLElement {
+  const box = h("div", { class: "mail-accounts" });
+  const list = h("div", { class: "mail-account-list" });
+  const addBtn = h("button", { text: IMAP_ACCOUNTS.add });
+  const addRow = h("div", { class: "mail-account-add" }, addBtn);
+  let shown: MailAccount[] = [];
+
+  const address = h("input", { type: "text", placeholder: "you@gmail.com", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const password = h("input", { type: "password", placeholder: "abcd efgh ijkl mnop", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const server = h("input", { type: "text", placeholder: t("found from the address"), autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const problem = h("div", { class: "mail-account-error" });
+  const cancel = h("button", { text: t("Cancel") }) as HTMLButtonElement;
+  const checkBtn = h("button", { class: "primary", text: IMAP_ACCOUNTS.check }) as HTMLButtonElement;
+  const field = (label: string, input: HTMLElement) => h("div", { class: "field-row" }, h("label", { text: label }), input);
+  const form = h("div", { class: "mail-account-form" },
+    h("div", { class: "mail-account-form-title", text: IMAP_ACCOUNTS.title }),
+    field(t("Address"), address),
+    field(t("App password"), password),
+    field(t("IMAP server"), server),
+    problem,
+    h("div", { class: "mail-account-actions" }, cancel, checkBtn),
+  );
+  form.hidden = true;
+  problem.hidden = true;
+
+  const paused = (a: string) => settings.mailPaused.some((p) => p.toLowerCase() === a.toLowerCase());
+  const setPaused = (a: string, on: boolean) => {
+    const rest = settings.mailPaused.filter((p) => p.toLowerCase() !== a.toLowerCase());
+    settings.mailPaused = on ? [...rest, a.toLowerCase()] : rest;
+    void save();
+  };
+
+  const row = (a: MailAccount, first: boolean): HTMLElement => {
+    const line = a.state === "error" && a.error ? `${a.host} · ${a.error}`
+      : a.state === "paused" ? `${a.host} · ${t("Paused")}`
+      : a.state === "connecting" ? `${a.host} · ${t("Connecting…")}`
+      : a.host;
+    const chip = first ? h("span", { class: "mail-account-default", text: t("Default"), title: IMAP_ACCOUNTS.defaultTip }) : null;
+    const remove = h("button", { class: "danger", text: CHAT_STRINGS.remove }) as HTMLButtonElement;
+    remove.addEventListener("click", async () => {
+      remove.disabled = true;
+      try {
+        await Bridge.mailAccountRemove(a.address);
+        if (paused(a.address)) setPaused(a.address, false);
+      } catch {
+        remove.disabled = false;
+        return;
+      }
+      await refresh();
+    });
+    const on = !paused(a.address);
+    return h("div", { class: on ? "mail-account" : "mail-account off" },
+      h("i", { class: "dot", style: `background:${ACCOUNT_DOT[a.state] ?? ACCOUNT_DOT.connecting}` }),
+      h("div", { class: "mail-account-text" },
+        h("div", { class: "mail-account-name" }, h("span", { class: "mail-account-address", text: a.address, title: a.address }), chip),
+        h("span", { class: a.state === "error" ? "mail-account-line bad" : "mail-account-line", text: line, title: line }),
+      ),
+      toggle(on, (v) => { setPaused(a.address, !v); later(); }),
+      remove,
+    );
+  };
+
+  async function refresh() {
+    const accounts = (await Bridge.mailAccounts()) ?? [];
+    const had = shown.length > 0;
+    shown = accounts;
+    list.replaceChildren(...accounts.map((a, i) => row(a, i === 0)));
+    list.hidden = accounts.length === 0;
+    addRow.hidden = !form.hidden || accounts.length >= MAX_MAIL_ACCOUNTS;
+    if (had !== accounts.length > 0) keyChanged("mail-app-password", accounts.length > 0);
+  }
+  /** The state of a connection that just started, a few seconds on. */
+  let timers: number[] = [];
+  const later = () => {
+    for (const id of timers) clearTimeout(id);
+    timers = [1500, 6000, 15000].map((ms) => window.setTimeout(() => void refresh(), ms));
+    void refresh();
+  };
+
+  const close = () => {
+    form.hidden = true;
+    problem.hidden = true;
+    address.value = password.value = server.value = "";
+    server.placeholder = t("found from the address");
+    addRow.hidden = shown.length >= MAX_MAIL_ACCOUNTS;
+  };
+  addBtn.addEventListener("click", () => {
+    form.hidden = false;
+    addRow.hidden = true;
+    address.focus();
+  });
+  cancel.addEventListener("click", close);
+  address.addEventListener("input", async () => {
+    const typed = address.value.trim();
+    const found = typed.includes("@") ? (await Bridge.mailServerFor(typed)) ?? "" : "";
+    if (address.value.trim() !== typed) return;
+    server.placeholder = found ? IMAP_ACCOUNTS.found(found) : t("found from the address");
+  });
+  const submit = async () => {
+    if (checkBtn.disabled) return;
+    if (!address.value.trim() || !password.value.trim()) {
+      (address.value.trim() ? password : address).focus();
+      return;
+    }
+    checkBtn.disabled = cancel.disabled = true;
+    checkBtn.textContent = IMAP_ACCOUNTS.checking;
+    problem.hidden = true;
+    try {
+      await Bridge.mailAccountAdd(address.value.trim(), password.value.trim(), server.value.trim());
+      close();
+      later();
+    } catch (err) {
+      problem.replaceChildren(h("i", { class: "dot", style: "background:#f4505e" }), h("span", { text: `${errorText(err)} ${IMAP_ACCOUNTS.notSaved}` }));
+      problem.hidden = false;
+    } finally {
+      checkBtn.disabled = cancel.disabled = false;
+      checkBtn.textContent = IMAP_ACCOUNTS.check;
+    }
+  };
+  checkBtn.addEventListener("click", () => void submit());
+  for (const input of [address, password, server]) {
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") void submit(); });
+  }
+  window.addEventListener("focus", () => void refresh());
+  void refresh();
+  box.append(list, form, addRow);
+  return box;
 }
 
 /** Settings → Pills → Email: the promotional emails left out of the island (mail.rs). */

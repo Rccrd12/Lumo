@@ -121,6 +121,9 @@ pub struct Settings {
     /// Outlook in the background once, when it starts (outlook.rs). Off
     /// until the user turns it on.
     pub outlook_start: bool,
+    /// Settings → Pills → Email → IMAP: the accounts the user paused with
+    /// their switch, by address (mail.rs): kept, not read. None until then.
+    pub mail_paused: Vec<String>,
     /// Settings → General → Energy (energy.rs): "none" (near real time),
     /// "light" (as Lumo always was), "auto" (saving on battery) or "saver".
     pub energy_mode: String,
@@ -327,6 +330,7 @@ impl Default for Settings {
             mail_imap: true,
             mail_outlook: false,
             outlook_start: false,
+            mail_paused: Vec::new(),
             energy_mode: "auto".into(),
             energy_on_power: "light".into(),
             context_menu: DEFAULT_CONTEXT_MENU.iter().map(|s| s.to_string()).collect(),
@@ -668,6 +672,7 @@ mod tests {
   "mailImap": false,
   "mailOutlook": true,
   "outlookStart": true,
+  "mailPaused": ["old@icloud.com"],
   "energyMode": "saver",
   "energyOnPower": "none",
   "contextMenu": ["settings"],
@@ -1159,6 +1164,7 @@ mod tests {
                 "mailImap",
                 "mailOutlook",
                 "outlookStart",
+                "mailPaused",
                 "energyMode",
                 "energyOnPower",
                 "contextMenu",

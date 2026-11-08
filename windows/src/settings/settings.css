@@ -408,6 +408,117 @@ section > h2 + div > .setting:first-child {
   gap: 8px;
 }
 
+/* Settings → Pills → Email → IMAP: the accounts, one row each, and the
+   form that adds one (imapAccounts in main.ts). */
+.mail-accounts,
+.mail-account-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.mail-accounts[hidden],
+.mail-accounts [hidden] {
+  display: none;
+}
+
+.mail-account {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.mail-account-text {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.mail-account-name {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.mail-account-address,
+.mail-account-line {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mail-account-address {
+  font: 500 13px var(--font);
+  color: var(--ink);
+}
+
+.mail-account.off .mail-account-address {
+  opacity: 0.55;
+}
+
+.mail-account-default {
+  flex: 0 0 auto;
+  font: 500 10.5px var(--font);
+  color: var(--dim);
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.mail-account-line {
+  font: 400 11.5px var(--font);
+  color: var(--dim);
+}
+
+.mail-account-line.bad {
+  color: #ff8d97;
+}
+
+.mail-account-add {
+  display: flex;
+  justify-content: flex-start;
+  padding-top: 4px;
+}
+
+.mail-account-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  margin-top: 4px;
+}
+
+.mail-account-form .field-row {
+  grid-template-columns: 120px minmax(0, 1fr);
+}
+
+.mail-account-form-title {
+  font: 600 13px var(--font);
+  color: var(--ink);
+}
+
+.mail-account-error {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font: 400 12px var(--font);
+  color: #ff8d97;
+}
+
+.mail-account-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+}
+
 .field-row > label {
   font: 400 12.5px var(--font);
   color: var(--dim);

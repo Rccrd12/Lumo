@@ -310,6 +310,8 @@ export interface Settings {
   mailOutlook: boolean;
   /** Settings → Security: Lumo starts Outlook in the background once, when it starts (outlook.rs). */
   outlookStart: boolean;
+  /** Settings → Pills → Email → IMAP: the accounts paused with their switch, by address (mail.rs). */
+  mailPaused: string[];
   /** Settings → General → Energy (core/energy.ts): "none", "light", "auto" or "saver". */
   energyMode: string;
   /** With "auto" on mains power: "none" or "light". */
@@ -469,6 +471,7 @@ export const DEFAULT_SETTINGS: Settings = {
   mailImap: true,
   mailOutlook: false,
   outlookStart: false,
+  mailPaused: [],
   energyMode: "auto",
   energyOnPower: "light",
   contextMenu: ["newChat", "pin", "sound", "activities", "center", "settings"],

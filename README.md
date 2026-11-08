@@ -112,7 +112,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
-| [0.20.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.0) | Nov 8, 2026 | A card answered in the terminal goes away, Claude Desktop's, Antigravity's and OpenCode's requests on the island, email from the classic Outlook on the PC with no password, Copilot CLI and Cursor CLI in the chat, Security in a tab of its own, sessions by their title, approve a plan and let it edit files, `CLAUDE_CONFIG_DIR`, updates checked against GitHub's SHA-256 |
+| [0.20.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.0) | Nov 8, 2026 | A card answered in the terminal goes away, Claude Desktop's, Antigravity's and OpenCode's requests on the island, email from the classic Outlook on the PC with no password and from several IMAP accounts, Copilot CLI and Cursor CLI in the chat, Security in a tab of its own, sessions by their title, approve a plan and let it edit files, `CLAUDE_CONFIG_DIR`, updates checked against GitHub's SHA-256 |
 | [0.19.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.19.1) | Nov 8, 2026 | Menus with their text centred, and no beta offered when it holds nothing the release does not |
 | [0.19.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.19.0) | Nov 8, 2026 | The chat reads your GitHub (off until turned on in Security), the Plan island for every provider, chats at work on the home, Unsloth Studio loads and frees its models better, beta versions in Settings → Updates |
 | [0.18.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.18.0) | Nov 8, 2026 | A new look (the previous one a switch away in Settings): Lumo's eyes in the top bar, one home instead of the tabs, plans that show their steps when they ask to start, usage and sharing as bars and tiles |
@@ -198,7 +198,7 @@ Click the Lumo icon in the system tray → **Settings…**
 | **Anthropic API key** | chat and questions about files | Settings → Chat → Claude · Windows Credential Manager |
 | **Google AI, OpenAI, OpenRouter keys** | chat with other providers | Settings → Chat → Chat providers · Windows Credential Manager |
 | **Local models** | chat with Ollama, LM Studio or an OpenAI-compatible server | Settings → Chat → Local models |
-| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: **Outlook on this PC** (the classic Outlook, nothing to type) and/or **IMAP** with address, IMAP server and an app password · Windows Credential Manager |
+| **Email** | new emails on the island, the newest in the live activities | Settings → Pills & integrations → Email: **Outlook on this PC** (the classic Outlook, nothing to type) and/or **IMAP**, one or more accounts, each with address, IMAP server and an app password · Windows Credential Manager |
 | **Calendar** | the next events in the live activities and on the closed island | Settings → Island → Calendar: your calendar's secret iCal address · Windows Credential Manager |
 | Stripe, n8n, GitHub, Vercel, Resend, Notion, Cal.com | the service pills | Settings → Pills & integrations · Windows Credential Manager, all optional |
 

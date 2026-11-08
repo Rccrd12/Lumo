@@ -63,6 +63,16 @@ async function call<T>(cmd: string, args?: Record<string, unknown>): Promise<T |
 }
 
 /** Settings → Pills → Email: the classic Outlook on this PC (outlook.rs). */
+/** One IMAP account of the Email pill as Settings lists it (mail.rs): never its password. */
+export interface MailAccount {
+  slot: number;
+  address: string;
+  /** The server it reads, typed or found from the address. */
+  host: string;
+  state: "ok" | "error" | "paused" | "connecting";
+  error?: string;
+}
+
 export interface OutlookStatus {
   installed: boolean;
   running: boolean;
@@ -444,6 +454,13 @@ export const Bridge = {
   clipboardText: () => call<string | null>("clipboard_text"),
   /** Whether Outlook runs and its accounts: asked only if it runs, never started (outlook.rs). */
   outlookStatus: () => call<OutlookStatus>("outlook_status"),
+  /** The Email pill's IMAP accounts, the first (the default) first (mail.rs). */
+  mailAccounts: () => call<MailAccount[]>("mail_accounts"),
+  /** The IMAP server an address is read from when none is typed. */
+  mailServerFor: (address: string) => call<string>("mail_server_for", { address }),
+  /** Signs in with what was typed and stores the account only if the server took it: the server read, or why not. */
+  mailAccountAdd: (address: string, password: string, server: string) => callOrThrow<string>("mail_account_add", { address, password, server }),
+  mailAccountRemove: (address: string) => callOrThrow<void>("mail_account_remove", { address }),
   /** Only ever tells you whether a key exists — never its value. */
   secretPresent: (key: string) => call<boolean>("secret_present", { key }),
   /** The chat providers that are set up: a key stored, or the CLI installed with Lumo's hooks (lib.rs). */
