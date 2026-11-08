@@ -216,6 +216,14 @@ pub struct Settings {
     pub custom_url: String,
     /// Unsloth Studio's address once connected (local_chat.rs), "" before.
     pub unsloth_url: String,
+    /// Lumo starts Unsloth Studio when the chat needs it and it is installed
+    /// on this computer, and stops it again (unsloth_studio.rs). On by default:
+    /// it does nothing until Unsloth Studio is connected at a loopback address.
+    pub unsloth_auto_start: bool,
+    /// When the Unsloth Studio Lumo started stops: after that many minutes
+    /// with no question ("5", "15", "60"), when Lumo quits ("exit"), or
+    /// "never". One the user opened is never stopped.
+    pub unsloth_stop_after: String,
     /// Global shortcuts the user changed, by action id; the others keep their
     /// default (see shortcuts.rs).
     pub shortcuts: crate::shortcuts::Bindings,
@@ -359,6 +367,8 @@ impl Default for Settings {
             lmstudio_url: String::new(),
             custom_url: String::new(),
             unsloth_url: String::new(),
+            unsloth_auto_start: true,
+            unsloth_stop_after: "15".into(),
             shortcuts: Default::default(),
             lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
@@ -701,6 +711,8 @@ mod tests {
   "lmstudioUrl": "http://127.0.0.1:1234",
   "customUrl": "https://llm.example.com",
   "unslothUrl": "http://127.0.0.1:8888",
+  "unslothAutoStart": false,
+  "unslothStopAfter": "exit",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
   "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
@@ -1193,6 +1205,8 @@ mod tests {
                 "lmstudioUrl",
                 "customUrl",
                 "unslothUrl",
+                "unslothAutoStart",
+                "unslothStopAfter",
                 "shortcuts",
                 "lumoOutfit",
                 "lumoMotion",
@@ -1209,6 +1223,16 @@ mod tests {
             ]
         );
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn a_file_from_before_unsloth_studio_started_by_lumo_starts_it() {
+        let s: Settings = serde_json::from_str(r#"{"unslothUrl":"http://127.0.0.1:8888"}"#).unwrap();
+        assert!(s.unsloth_auto_start);
+        assert_eq!(s.unsloth_stop_after, "15");
+        let custom = parse(CUSTOM.as_bytes()).unwrap();
+        assert!(!custom.unsloth_auto_start);
+        assert_eq!(custom.unsloth_stop_after, "exit");
     }
 
     #[test]

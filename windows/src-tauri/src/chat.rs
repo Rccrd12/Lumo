@@ -894,6 +894,18 @@ async fn send_to(
 ) -> Result<ChatReply, String> {
     let provider = settings.chat_provider.as_str();
     let model = model_for(settings, provider);
+    // Unsloth Studio off: started first, when Lumo may (unsloth_studio.rs), and
+    // not stopped while this answer is written.
+    let _unsloth = if provider == "unsloth" {
+        let events = chat.events();
+        crate::unsloth_studio::ensure(app, settings, |seconds| {
+            events.activity(app, crate::claude_code::Activity::new("starting", seconds.to_string()));
+        })
+        .await?;
+        Some(crate::unsloth_studio::busy())
+    } else {
+        None
+    };
     // A local model: what its server says it can do decides what goes with the question.
     let local = local_chat::server(settings, provider);
     let caps = match &local {

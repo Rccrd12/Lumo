@@ -73,6 +73,7 @@ mod tool_review;
 mod tools;
 mod tray;
 mod typing;
+mod unsloth_studio;
 mod updater;
 mod web_search;
 mod webview_drop;
@@ -668,8 +669,12 @@ async fn chat_send(
 /// The models a provider offers, for the picker in the chat view. Only asked
 /// once the user picked that provider, and only with its key or address.
 #[tauri::command]
-async fn chat_models(shared: State<'_, Shared>, provider: String) -> Result<Vec<ModelInfo>, String> {
+async fn chat_models(app: AppHandle, shared: State<'_, Shared>, provider: String) -> Result<Vec<ModelInfo>, String> {
     let settings = shared.settings.lock().unwrap().clone();
+    // Unsloth Studio picked while it is off: started first, when Lumo may.
+    if provider == "unsloth" {
+        unsloth_studio::ensure(&app, &settings, |_| {}).await?;
+    }
     chat::models(&settings, &provider).await
 }
 
@@ -740,6 +745,26 @@ async fn local_unload(provider: String) -> Result<usize, String> {
 #[tauri::command]
 async fn local_pull(app: AppHandle, provider: String, model: String) -> Result<(), String> {
     local_models::pull(&app, &provider, &model).await
+}
+
+/// Settings → Local models → Unsloth Studio: installed, off, starting or on, and who started it.
+#[tauri::command]
+async fn unsloth_studio_status(shared: State<'_, Shared>) -> Result<unsloth_studio::Status, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(unsloth_studio::status(&settings).await)
+}
+
+/// Settings → Local models → Start now: Unsloth Studio started in the background.
+#[tauri::command]
+async fn unsloth_studio_start(app: AppHandle, shared: State<'_, Shared>) -> Result<(), String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    unsloth_studio::start_now(&app, &settings).await
+}
+
+/// Settings → Local models → Stop now: the Unsloth Studio Lumo started stops.
+#[tauri::command]
+async fn unsloth_studio_stop(app: AppHandle) -> Result<bool, String> {
+    Ok(unsloth_studio::stop_owned(&app).await)
 }
 
 /// Stores the custom server's key for the address typed next to it; it is only
@@ -1286,6 +1311,9 @@ pub fn run() {
             local_unload,
             local_pull,
             local_set_key,
+            unsloth_studio_status,
+            unsloth_studio_start,
+            unsloth_studio_stop,
             chat_reset,
             chat_restore,
             chat_compact,
@@ -1447,10 +1475,13 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running Lumo")
-        .run(|_, event| {
+        .run(|app, event| {
             // Quit while Claude used the computer: the system's own arrow again.
             if let tauri::RunEvent::Exit = event {
                 computer::recover();
+                // The Unsloth Studio Lumo started goes with it (unless "Stop after" is Never).
+                let settings = app.state::<Shared>().settings.lock().map(|s| s.clone()).unwrap_or_default();
+                unsloth_studio::on_exit(&settings);
             }
         });
 }

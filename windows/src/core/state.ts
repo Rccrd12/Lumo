@@ -355,6 +355,10 @@ export interface Settings {
   customUrl: string;
   /** Unsloth Studio's address once connected, "" before. */
   unslothUrl: string;
+  /** Lumo starts Unsloth Studio when the chat needs it, and stops it again (unsloth_studio.rs). */
+  unslothAutoStart: boolean;
+  /** When the Unsloth Studio Lumo started stops: minutes with no question ("5", "15", "60"), "exit" or "never". */
+  unslothStopAfter: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
   /**
@@ -493,6 +497,8 @@ export const DEFAULT_SETTINGS: Settings = {
   lmstudioUrl: "",
   customUrl: "",
   unslothUrl: "",
+  unslothAutoStart: true,
+  unslothStopAfter: "15",
   shortcuts: {},
   lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",

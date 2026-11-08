@@ -80,7 +80,7 @@ import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
   Bridge, onEvent, type BrowserTab, type ChatActivity, type LocalLoad, type ChatContext, type ChatFileEvent, type ExplorerFolder, type ModelInfo,
-  type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot,
+  type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
   activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
@@ -471,7 +471,9 @@ const ACTIVITY_STRINGS = {
   screen: N_("Looking at the screen"),
   computer: COMPUTER_TEXT.using,
   tool: N_("Using {tool}"),
-  // A local model (local_chat.rs): loading it, then reading the prompt.
+  // A local model (local_chat.rs): its server started (Unsloth Studio, unsloth_studio.rs),
+  // loading it, then reading the prompt.
+  starting: N_("Starting Unsloth Studio…"),
   loading: N_("Loading the model…"),
   loadingAt: N_("Loading the model: {percent}%"),
   prompt: N_("Processing the prompt…"),
@@ -493,7 +495,7 @@ const ISLAND_ACTIVITY_STRINGS = {
 };
 
 /** What is timed next to the dots: the seconds it has been at it. */
-const TIMED = new Set(["prompt", "reasoning", "thinking", "retry"]);
+const TIMED = new Set(["starting", "prompt", "reasoning", "thinking", "retry"]);
 
 const THINKING: ChatActivity = { kind: "thinking", detail: "" };
 
@@ -591,6 +593,8 @@ export function activityLabel(activity: ChatActivity | null): string {
       return t(ACTIVITY_STRINGS.computer);
     case "tool":
       return detail ? t(ACTIVITY_STRINGS.tool, { tool: detail }) : t(ACTIVITY_STRINGS.thinking);
+    case "starting":
+      return t(ACTIVITY_STRINGS.starting);
     case "loading":
       return /^\d{1,3}$/.test(detail) ? t(ACTIVITY_STRINGS.loadingAt, { percent: detail }) : t(ACTIVITY_STRINGS.loading);
     case "prompt":
@@ -644,6 +648,7 @@ export function islandActivityLabel(activity: ChatActivity | null): string {
     case "plan":
     case "screen":
     case "computer":
+    case "starting":
     case "loading":
     case "prompt":
       return activityLabel(activity);
@@ -1260,8 +1265,16 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
     }
     if (ticket !== request) return;
     status(t(STRINGS.loading));
+    // Unsloth Studio off: Lumo starts it before it lists the models, and says so.
+    const starting = p.id === "unsloth"
+      ? await onEvent<UnslothStudio>(UNSLOTH_STUDIO_EVENT, (s) => {
+          if (ticket !== request || s.state !== "starting") return;
+          const seconds = s.seconds >= 2 ? ` ${t(ACTIVITY_STRINGS.seconds, { seconds: s.seconds })}` : "";
+          status(`${t(ACTIVITY_STRINGS.starting)}${seconds}`);
+        })
+      : null;
     try {
-      const models = await Bridge.chatModels(p.id);
+      const models = await Bridge.chatModels(p.id).finally(() => starting?.());
       if (ticket !== request) return;
       if (!p.urlField) cache.set(p.id, models);
       const keep = pickModel(p, models.map((m) => m.id), activeModel(State.settings));

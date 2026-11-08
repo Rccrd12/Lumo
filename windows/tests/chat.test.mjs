@@ -803,7 +803,9 @@ test("each activity has its words, with a file name, a host or a tool", () => {
     [{ kind: "screen", detail: "" }, "Looking at the screen"],
     [{ kind: "tool", detail: "create issue (github)" }, "Using create issue (github)"],
     [{ kind: "tool", detail: "" }, "Thinking…"],
-    // A local model: loading it (with how far, when the server tells), then reading the prompt.
+    // A local model: its server started by Lumo (Unsloth Studio), loading it
+    // (with how far, when the server tells), then reading the prompt.
+    [{ kind: "starting", detail: "3" }, "Starting Unsloth Studio…"],
     [{ kind: "loading", detail: "" }, "Loading the model…"],
     [{ kind: "loading", detail: "42" }, "Loading the model: 42%"],
     [{ kind: "loading", detail: "<b>" }, "Loading the model…"],
@@ -827,6 +829,7 @@ test("each activity has its words, with a file name, a host or a tool", () => {
   assert.equal(timedLabel("Processing the prompt…", "lmstudio", prompt, 0, 14_500), "Processing the prompt… 14 s");
   assert.equal(timedLabel("Processing the prompt…", "lmstudio", prompt, 0, 1_500), "Processing the prompt…");
   assert.equal(timedLabel("Thinking…", "anthropic", { kind: "thinking", detail: "" }, 0, 9_000), "Thinking… 9 s");
+  assert.equal(timedLabel("Starting Unsloth Studio…", "unsloth", { kind: "starting", detail: "6" }, 0, 6_200), "Starting Unsloth Studio… 6 s");
   assert.equal(timedLabel("Thinking…", "claude-code", { kind: "thinking", detail: "" }, 0, 9_000), "Thinking… 9 s");
   assert.equal(timedLabel("Using x", "ollama", { kind: "calling", detail: "x" }, 0, 9_000), "Using x");
 
