@@ -25,7 +25,7 @@ import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSett
 import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
-import { changelogSection, updatesSection } from "./updates";
+import { betaChanged, changelogSection, updatesSection } from "./updates";
 import { localModelsBlock } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
@@ -2108,7 +2108,10 @@ async function render() {
       updatesSection(version, setting(t("Check when Lumo opens"),
         t("Each time Lumo opens, it asks GitHub once whether a newer version is out, and says so on the island."),
         toggle(settings.updateCheckOnOpen !== false, (v) => { settings.updateCheckOnOpen = v; void save(); }),
-      )),
+      ), setting(t("Beta versions"),
+        t("One build with every change not released yet, to try them before they come out. It can have bugs."),
+        toggle(settings.updateBeta === true, (v) => { settings.updateBeta = v; void save(); betaChanged(); }),
+      ), () => settings.updateBeta === true),
       changelogSection(version),
     ],
   };

@@ -1,0 +1,176 @@
+// The beta channel (Settings → Updates → Beta versions): one build holding
+// every change not released yet, so it can be tried with a click instead of a
+// terminal. The "Windows beta" workflow (.github/workflows/windows-beta.yml)
+// runs it in three steps:
+//
+//   node scripts/beta.mjs merge <state.json>
+//       main, then every open pull request of this repository merged into it
+//       one at a time, oldest first. One that does not merge is left out and
+//       the state says what it conflicts with (main, another pull request, or
+//       the other changes together). Pull requests from forks never take part.
+//   node scripts/beta.mjs version <run number>
+//       the beta's version, the next patch with the run as its pre-release
+//       (0.18.0 → 0.18.1-312), written in the three files that carry it. The
+//       pre-release is a number only: the .msi takes nothing else.
+//   node scripts/beta.mjs notes <state.json> <version>
+//       the release's notes: a list people read on GitHub, and the same list
+//       for Lumo in a comment, which src-tauri/src/updater.rs reads.
+//
+// The pull requests' titles are only ever shown as text in Lumo.
+
+import { execFileSync } from "node:child_process";
+import { readFileSync, writeFileSync } from "node:fs";
+import { dirname, join, resolve } from "node:path";
+import { fileURLToPath, pathToFileURL } from "node:url";
+
+const root = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+/** Where Lumo finds the list in the release's notes (updater.rs BETA_MARK). */
+export const BETA_MARK = "<!-- lumo-beta ";
+
+/** The .msi's version holds a number up to this as its fourth part. */
+const MAX_RUN = 65535;
+
+/** Titles longer than this are cut. */
+const MAX_TITLE = 200;
+
+/** The beta's version: the next patch after `base`, `run` as its pre-release. */
+export function betaVersion(base, run) {
+  const m = /^(\d+)\.(\d+)\.(\d+)/.exec(String(base).trim());
+  if (!m) throw new Error(`not a version: ${base}`);
+  const n = Number(run);
+  if (!Number.isInteger(n) || n < 1 || n > MAX_RUN) throw new Error(`run number out of range: ${run}`);
+  return `${m[1]}.${m[2]}.${Number(m[3]) + 1}-${n}`;
+}
+
+/** A title on one line, cut to a readable length. */
+export function cleanTitle(title) {
+  const one = String(title ?? "").replace(/\s+/g, " ").trim();
+  return one.length > MAX_TITLE ? `${one.slice(0, MAX_TITLE - 1).trimEnd()}…` : one;
+}
+
+/**
+ * The release's notes for `state` (what `merge` wrote) and `version`.
+ * The list for Lumo is JSON with `<` and `>` escaped, so no title can end the
+ * comment it sits in.
+ */
+export function renderNotes(state, version) {
+  const line = (pr) => `- #${pr.number} ${cleanTitle(pr.title)}`;
+  const left = (pr) =>
+    `- #${pr.number} ${cleanTitle(pr.title)} (conflicts with ${pr.with === "main" ? "main" : pr.with ? `#${pr.with}` : "the other changes"})`;
+  const parts = [
+    `Lumo for Windows beta ${version}: main with every open pull request, to try them before they are released.`,
+    "Install it from Lumo: Settings → Updates → Beta versions.",
+    "",
+    state.included.length ? "In this beta:" : "No pull request is open: this is main, with what has not been released yet.",
+    ...state.included.map(line),
+  ];
+  if (state.excluded.length) parts.push("", "Left out:", ...state.excluded.map(left));
+  const manifest = {
+    version,
+    main: state.main,
+    included: state.included.map((pr) => ({ number: pr.number, title: cleanTitle(pr.title), updatedAt: pr.updatedAt })),
+    excluded: state.excluded.map((pr) => ({
+      number: pr.number,
+      title: cleanTitle(pr.title),
+      updatedAt: pr.updatedAt,
+      ...(pr.with ? { with: String(pr.with) } : {}),
+    })),
+  };
+  const json = JSON.stringify(manifest).replace(/</g, "\\u003c").replace(/>/g, "\\u003e");
+  parts.push("", `${BETA_MARK}${json} -->`);
+  return parts.join("\n");
+}
+
+// ── The steps, run by the workflow ────────────────────────────────────────────
+
+function git(args, opts = {}) {
+  return execFileSync("git", ["-c", "user.name=Lumo beta", "-c", "user.email=beta@lumo.invalid", ...args], {
+    cwd: root,
+    encoding: "utf8",
+    stdio: ["ignore", "pipe", "pipe"],
+    ...opts,
+  });
+}
+
+function tryGit(args) {
+  try {
+    git(args);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+/** True when `a` and `b` merge without a conflict (nothing is checked out). */
+function mergesCleanly(a, b) {
+  return tryGit(["merge-tree", "--write-tree", "--quiet", a, b]);
+}
+
+function openPullRequests() {
+  const repo = process.env.GITHUB_REPOSITORY;
+  if (!repo) throw new Error("GITHUB_REPOSITORY is not set");
+  const out = execFileSync(
+    "gh",
+    ["pr", "list", "--repo", repo, "--base", "main", "--state", "open", "--limit", "100",
+      "--json", "number,title,updatedAt,headRefOid,isCrossRepository"],
+    { encoding: "utf8" },
+  );
+  return JSON.parse(out)
+    .filter((pr) => !pr.isCrossRepository)
+    .sort((a, b) => a.number - b.number);
+}
+
+function merge(statePath) {
+  const main = git(["rev-parse", "HEAD"]).trim();
+  const included = [];
+  const excluded = [];
+  for (const pr of openPullRequests()) {
+    const ref = `refs/beta/pr-${pr.number}`;
+    git(["fetch", "--no-tags", "origin", `+refs/pull/${pr.number}/head:${ref}`]);
+    const head = git(["rev-parse", ref]).trim();
+    const entry = { number: pr.number, title: pr.title, updatedAt: pr.updatedAt, head };
+    if (tryGit(["merge", "--no-ff", "--no-edit", "-m", `beta: #${pr.number}`, ref])) {
+      included.push(entry);
+      console.log(`#${pr.number} merged`);
+      continue;
+    }
+    tryGit(["merge", "--abort"]);
+    let withWhat = null;
+    if (!mergesCleanly(main, head)) withWhat = "main";
+    else withWhat = included.find((other) => !mergesCleanly(other.head, head))?.number ?? null;
+    excluded.push({ ...entry, with: withWhat });
+    console.log(`#${pr.number} left out (conflicts with ${withWhat ?? "the other changes"})`);
+  }
+  writeFileSync(statePath, JSON.stringify({ main, included, excluded }, null, 2));
+}
+
+function setVersion(run) {
+  const confPath = join(root, "src-tauri", "tauri.conf.json");
+  const base = JSON.parse(readFileSync(confPath, "utf8")).version;
+  const version = betaVersion(base, run);
+  const swapJson = (path) => {
+    const text = readFileSync(path, "utf8");
+    writeFileSync(path, text.replace(/("version"\s*:\s*")[^"]*(")/, `$1${version}$2`));
+  };
+  swapJson(confPath);
+  swapJson(join(root, "package.json"));
+  const cargo = join(root, "Cargo.toml");
+  writeFileSync(cargo, readFileSync(cargo, "utf8").replace(/^version\s*=\s*"[^"]*"/m, `version = "${version}"`));
+  console.log(version);
+}
+
+function notes(statePath, version) {
+  process.stdout.write(renderNotes(JSON.parse(readFileSync(statePath, "utf8")), version));
+}
+
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  const [step, ...args] = process.argv.slice(2);
+  if (step === "merge" && args[0]) merge(args[0]);
+  else if (step === "version" && args[0]) setVersion(args[0]);
+  else if (step === "notes" && args[0] && args[1]) notes(args[0], args[1]);
+  else {
+    console.error("usage: beta.mjs merge <state.json> | version <run> | notes <state.json> <version>");
+    process.exit(2);
+  }
+}

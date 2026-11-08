@@ -379,6 +379,8 @@ export interface Settings {
   language: string;
   /** When Lumo opens, one look at GitHub for a newer release (Settings → Updates). */
   updateCheckOnOpen: boolean;
+  /** Settings → Updates → Beta versions: the check looks at the beta build too. Off unless turned on. */
+  updateBeta: boolean;
   /** The new look: Lumo in the open island's top bar, one surface, his light
    * along the island's edge (src/look-new.css). On by default (Rust's
    * settings.rs decides it, before the island first draws); Settings → Island
@@ -485,6 +487,7 @@ export const DEFAULT_SETTINGS: Settings = {
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
+  updateBeta: false,
   islandNewLook: false,
   islandEdgeLight: "full",
   homeActivities: true,

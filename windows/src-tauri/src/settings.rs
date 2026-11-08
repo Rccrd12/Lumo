@@ -239,6 +239,10 @@ pub struct Settings {
     /// When Lumo opens, ask GitHub once whether a newer Windows release is out
     /// (updater.rs) and say so on the island. Settings → Updates turns it off.
     pub update_check_on_open: bool,
+    /// Settings → Updates → Beta versions: the check also looks at the beta
+    /// channel's build (updater.rs), main with every open pull request. Off
+    /// unless turned on.
+    pub update_beta: bool,
     /// The new look (src/look-new.css): Lumo in the open island's top bar, his
     /// light along its edge. On by default since 0.18.0, a file from before
     /// included; Settings → Island → Previous look turns it off.
@@ -348,6 +352,7 @@ impl Default for Settings {
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
+            update_beta: false,
             island_new_look: true,
             island_edge_light: "full".into(),
             home_activities: true,
@@ -685,6 +690,7 @@ mod tests {
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "updateCheckOnOpen": false,
+  "updateBeta": true,
   "islandNewLook": true,
   "islandEdgeLight": "soft",
   "homeActivities": false
@@ -865,6 +871,8 @@ mod tests {
         assert!(parse(&custom_with("updateCheckOnOpen", None)).unwrap().update_check_on_open);
         assert!(!parse(CUSTOM.as_bytes()).unwrap().update_check_on_open);
         assert!(Settings::default().update_check_on_open);
+        assert!(!parse(&custom_with("updateBeta", None)).unwrap().update_beta, "beta versions stay off");
+        assert!(parse(CUSTOM.as_bytes()).unwrap().update_beta);
     }
 
     #[test]
@@ -1170,6 +1178,7 @@ mod tests {
                 "pillColors",
                 "language",
                 "updateCheckOnOpen",
+                "updateBeta",
                 "islandNewLook",
                 "islandEdgeLight",
                 "homeActivities",

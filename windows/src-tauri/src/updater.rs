@@ -12,6 +12,15 @@
 // install would leave a second Lumo beside the first. Lumo quits right after
 // starting the installer so its files can be replaced, and the installer opens
 // the new Lumo when it is done.
+//
+// The beta channel (Settings → Updates → Beta versions, off unless turned on)
+// is one more release, the `windows-beta` pre-release that
+// .github/workflows/windows-beta.yml publishes: main with every open pull
+// request merged in, versioned as the next patch with the build's number
+// (0.18.1-312). Its notes carry the list of what is in it, which Settings
+// shows. A beta never takes the place of a newer release: 0.18.1 is newer than
+// 0.18.1-312, so the release comes as a plain update. Going back from a beta
+// to the release before it is the one install of an older version allowed.
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
@@ -29,6 +38,13 @@ pub const UPDATE_REPO: &str = "Rccrd12/Lumo";
 /// Windows releases are tagged `windows-v0.2.1` (the `windows-latest` rolling
 /// release does not match, and neither does any other tag, like a plain `v*`).
 const TAG_PREFIX: &str = "windows-v";
+
+/// The beta channel's one pre-release, replaced by every beta build.
+const BETA_TAG: &str = "windows-beta";
+
+/// Where the beta's notes hold the list of what is in it, as JSON, up to ` -->`
+/// (scripts/beta.mjs BETA_MARK).
+const BETA_MARK: &str = "<!-- lumo-beta ";
 
 /// Hosts a release download may come from: github.com, then the CDN it redirects to.
 const DOWNLOAD_HOSTS: [&str; 3] = [
@@ -105,6 +121,50 @@ pub struct UpdateInfo {
     /// The release's installer of the kind this copy came from:
     /// `Lumo-Windows-<latest>-setup.exe` or `Lumo-Windows-<latest>.msi`.
     asset_url: Option<String>,
+    /// This build is a beta (its version has a pre-release part).
+    current_beta: bool,
+    /// The beta channel's build, when it was asked for and one is published.
+    beta: Option<BetaInfo>,
+}
+
+/// The beta channel's build, for Settings.
+#[derive(Serialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BetaInfo {
+    /// `0.18.1-312`.
+    version: String,
+    /// True when it is newer than this build.
+    newer: bool,
+    /// When GitHub published it.
+    published_at: String,
+    /// Its installer of the kind this copy came from.
+    asset_url: Option<String>,
+    /// The pull requests merged into it.
+    included: Vec<BetaPull>,
+    /// The open pull requests left out, with what each conflicts with.
+    excluded: Vec<BetaPull>,
+}
+
+/// One pull request in (or left out of) the beta, as its notes list it.
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct BetaPull {
+    number: u64,
+    #[serde(default)]
+    title: String,
+    #[serde(default)]
+    updated_at: String,
+    /// What a pull request left out conflicts with: "main", or another one's number.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    with: Option<String>,
+}
+
+#[derive(Deserialize, Default)]
+struct BetaManifest {
+    #[serde(default)]
+    included: Vec<BetaPull>,
+    #[serde(default)]
+    excluded: Vec<BetaPull>,
 }
 
 #[derive(Deserialize)]
@@ -118,6 +178,8 @@ struct Release {
     #[serde(default)]
     body: Option<String>,
     #[serde(default)]
+    published_at: Option<String>,
+    #[serde(default)]
     assets: Vec<Asset>,
 }
 
@@ -129,9 +191,11 @@ struct Asset {
     browser_download_url: String,
 }
 
-/// A version as the release tags and Cargo write it: `1.2.3`, `1.2.3-beta.1`.
-/// A pre-release sorts before the release it leads to.
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+/// A version as the release tags and Cargo write it: `1.2.3`, `1.2.3-beta.1`,
+/// `1.2.3-312`. A pre-release sorts before the release it leads to, and
+/// pre-releases sort as semver says: part by part, numbers as numbers
+/// (`-312` before `-1000`), a number before a word.
+#[derive(Debug, Clone, PartialEq, Eq)]
 struct Version {
     major: u64,
     minor: u64,
@@ -157,6 +221,50 @@ fn parse_version(text: &str) -> Option<Version> {
         return None;
     }
     Some(Version { major, minor, patch, release: pre.is_empty(), pre })
+}
+
+impl Version {
+    fn is_beta(&self) -> bool {
+        !self.release
+    }
+}
+
+impl Ord for Version {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        (self.major, self.minor, self.patch, self.release)
+            .cmp(&(other.major, other.minor, other.patch, other.release))
+            .then_with(|| compare_pre(&self.pre, &other.pre))
+    }
+}
+
+impl PartialOrd for Version {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+fn compare_pre(a: &str, b: &str) -> std::cmp::Ordering {
+    use std::cmp::Ordering;
+    let mut a = a.split('.');
+    let mut b = b.split('.');
+    loop {
+        match (a.next(), b.next()) {
+            (None, None) => return Ordering::Equal,
+            (None, Some(_)) => return Ordering::Less,
+            (Some(_), None) => return Ordering::Greater,
+            (Some(x), Some(y)) => {
+                let order = match (x.parse::<u64>(), y.parse::<u64>()) {
+                    (Ok(x), Ok(y)) => x.cmp(&y),
+                    (Ok(_), Err(_)) => Ordering::Less,
+                    (Err(_), Ok(_)) => Ordering::Greater,
+                    (Err(_), Err(_)) => x.cmp(y),
+                };
+                if order != Ordering::Equal {
+                    return order;
+                }
+            }
+        }
+    }
 }
 
 /// The newest published Windows release in GitHub's list, with its version.
@@ -201,29 +309,79 @@ fn short_notes(body: Option<&str>) -> String {
     format!("{}…", cut.trim_end())
 }
 
-fn compare(current: &str, releases: Vec<Release>, kind: Kind) -> Result<UpdateInfo, String> {
-    let Some((latest, raw, release)) = newest_windows_release(releases) else {
-        return Err(t("No Windows release has been published yet."));
-    };
-    let newer = parse_version(current).is_none_or(|mine| latest > mine);
-    let name = installer_name(&raw, kind);
-    let asset_url = release
+/// The download address of `release`'s asset named `name`, when it is one
+/// `update_install` accepts.
+fn asset_url(release: &Release, name: &str) -> Option<String> {
+    release
         .assets
         .iter()
         .find(|a| a.name == name)
         .map(|a| a.browser_download_url.clone())
-        .filter(|u| Url::parse(u).is_ok_and(|u| is_release_download(&u)));
+        .filter(|u| Url::parse(u).is_ok_and(|u| is_release_download(&u)))
+}
+
+/// The beta channel's build in GitHub's list, when one is published.
+fn beta_build(releases: &[Release], mine: Option<&Version>, kind: Kind) -> Option<BetaInfo> {
+    let release = releases.iter().find(|r| r.tag_name == BETA_TAG && !r.draft)?;
+    // Its version is in its installers' names (scripts/pack.mjs); a beta's has a pre-release.
+    let (version, raw) = release
+        .assets
+        .iter()
+        .filter_map(|a| {
+            let (middle, k) = installer_middle(&a.name)?;
+            let version = parse_version(middle).filter(|v| v.is_beta())?;
+            (k == kind && installer_kind(&a.name).is_some()).then(|| (version, middle.to_string()))
+        })
+        .max_by(|a, b| a.0.cmp(&b.0))?;
+    let manifest = beta_manifest(release.body.as_deref().unwrap_or(""));
+    Some(BetaInfo {
+        newer: mine.is_none_or(|mine| version > *mine),
+        asset_url: asset_url(release, &installer_name(&raw, kind)),
+        version: raw,
+        published_at: release.published_at.clone().unwrap_or_default(),
+        included: manifest.included,
+        excluded: manifest.excluded,
+    })
+}
+
+/// The list in a beta's notes; an empty one when there is none or it cannot be read.
+fn beta_manifest(body: &str) -> BetaManifest {
+    let Some(start) = body.find(BETA_MARK) else {
+        return BetaManifest::default();
+    };
+    let rest = &body[start + BETA_MARK.len()..];
+    let Some(end) = rest.find("-->") else {
+        return BetaManifest::default();
+    };
+    let mut manifest: BetaManifest = serde_json::from_str(rest[..end].trim()).unwrap_or_default();
+    const MAX: usize = 100;
+    manifest.included.truncate(MAX);
+    manifest.excluded.truncate(MAX);
+    manifest
+}
+
+fn compare(current: &str, releases: Vec<Release>, kind: Kind, beta: bool) -> Result<UpdateInfo, String> {
+    let mine = parse_version(current);
+    let beta = if beta { beta_build(&releases, mine.as_ref(), kind) } else { None };
+    let Some((latest, raw, release)) = newest_windows_release(releases) else {
+        return Err(t("No Windows release has been published yet."));
+    };
+    let newer = mine.as_ref().is_none_or(|mine| latest > *mine);
+    let asset_url = asset_url(&release, &installer_name(&raw, kind));
     Ok(UpdateInfo {
         current: current.to_string(),
         latest: raw,
         newer,
         notes: short_notes(release.body.as_deref()),
         asset_url,
+        current_beta: mine.is_some_and(|v| v.is_beta()),
+        beta,
     })
 }
 
 /// True for `https://github.com/<UPDATE_REPO>/releases/download/<tag>/Lumo-Windows-<v>-setup.exe`
 /// (or `….msi`): the only addresses `update_install` starts a download from.
+/// The tag is `windows-v<v>`, or `windows-beta` for a beta's installer.
 fn is_release_download(url: &Url) -> bool {
     if url.scheme() != "https" || url.host_str() != Some("github.com") || url.port().is_some() {
         return false;
@@ -245,6 +403,9 @@ fn is_release_download(url: &Url) -> bool {
     let Some(kind) = installer_kind(file) else {
         return false;
     };
+    if tag == BETA_TAG {
+        return installer_middle(file).and_then(|(middle, _)| parse_version(middle)).is_some_and(|v| v.is_beta());
+    }
     tag.starts_with(TAG_PREFIX) && installer_name(&tag[TAG_PREFIX.len()..], kind) == file
 }
 
@@ -273,9 +434,10 @@ fn user_agent(app: &AppHandle) -> String {
 
 /// Settings → Updates → Check for updates, and the check when Lumo opens. Asks GitHub for the repository's
 /// releases (one anonymous request, nothing about this computer in it) and
-/// compares the newest Windows one with this build.
+/// compares the newest Windows one with this build; with `beta`, the beta
+/// channel's build too.
 #[tauri::command]
-pub async fn update_check(app: AppHandle) -> Result<UpdateInfo, String> {
+pub async fn update_check(app: AppHandle, beta: Option<bool>) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
     let url = Url::parse(&format!("https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=30"))
         .map_err(|e| e.to_string())?;
@@ -302,8 +464,14 @@ pub async fn update_check(app: AppHandle) -> Result<UpdateInfo, String> {
     let releases: Vec<Release> = serde_json::from_slice(&body)
         .map_err(|_| t("GitHub's answer could not be read."))?;
     let kind = installed_kind();
-    let info = compare(&current, releases, kind)?;
-    log::line(format!("update check: current {} latest {} newer {} ({kind:?})", info.current, info.latest, info.newer));
+    let info = compare(&current, releases, kind, beta == Some(true))?;
+    log::line(format!(
+        "update check: current {} latest {} newer {} beta {} ({kind:?})",
+        info.current,
+        info.latest,
+        info.newer,
+        info.beta.as_ref().map_or("-", |b| b.version.as_str())
+    ));
     Ok(info)
 }
 
@@ -317,20 +485,20 @@ struct Progress {
     total: u64,
 }
 
-/// Settings → Updates → Update now. Downloads the installer `update_check`
-/// found into a temporary folder, starts it, then quits so it can replace
-/// Lumo's files; the installer opens Lumo again. Only GitHub release downloads
-/// of this repository are accepted.
+/// Settings → Updates → Update now (and Install the beta, Back to the
+/// release). Downloads the installer `update_check` found into a temporary
+/// folder, starts it, then quits so it can replace Lumo's files; the installer
+/// opens Lumo again. Only GitHub release downloads of this repository are
+/// accepted.
 #[tauri::command]
 pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
     let url = Url::parse(url.trim()).map_err(|_| t("Only installers from Lumo's GitHub releases can be installed."))?;
     if !is_release_download(&url) {
         return Err(t("Only installers from Lumo's GitHub releases can be installed."));
     }
-    // Never an older (or the same) build than the one running.
     let current = parse_version(&app.package_info().version.to_string());
     if let (Some(offered), Some(current)) = (installer_version(&url), current) {
-        if offered <= current {
+        if !may_install(&current, &offered) {
             return Err(t("That version is not newer than the one installed."));
         }
     }
@@ -354,6 +522,12 @@ pub async fn update_install(app: AppHandle, url: String) -> Result<(), String> {
             Err(err)
         }
     }
+}
+
+/// Never an older (or the same) build than the one running, but for going
+/// back from a beta to a release.
+fn may_install(current: &Version, offered: &Version) -> bool {
+    offered > current || (current.is_beta() && !offered.is_beta())
 }
 
 async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
@@ -473,6 +647,7 @@ mod tests {
             draft: false,
             prerelease: false,
             body: Some("Notes\r\n".into()),
+            published_at: None,
             assets: assets
                 .iter()
                 .map(|name| Asset {
@@ -510,7 +685,7 @@ mod tests {
             release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"]),
             beta,
         ];
-        let info = compare("0.2.0", releases, Kind::Setup).unwrap();
+        let info = compare("0.2.0", releases, Kind::Setup, false).unwrap();
         assert_eq!(info.latest, "0.3.1");
         assert!(info.newer);
         assert_eq!(info.notes, "Notes");
@@ -523,13 +698,13 @@ mod tests {
     #[test]
     fn an_msi_install_is_offered_the_msi() {
         let releases = vec![release("windows-v0.3.1", &["Lumo-Windows-0.3.1-setup.exe", "Lumo-Windows-0.3.1.msi"])];
-        let info = compare("0.2.0", releases, Kind::Msi).unwrap();
+        let info = compare("0.2.0", releases, Kind::Msi, false).unwrap();
         assert_eq!(
             info.asset_url.as_deref(),
             Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.3.1/Lumo-Windows-0.3.1.msi").as_str())
         );
         // A release without its .msi offers nothing rather than the setup.exe.
-        let info = compare("0.2.0", vec![release("windows-v0.3.1", &["Lumo-Windows-0.3.1-setup.exe"])], Kind::Msi).unwrap();
+        let info = compare("0.2.0", vec![release("windows-v0.3.1", &["Lumo-Windows-0.3.1-setup.exe"])], Kind::Msi, false).unwrap();
         assert!(info.newer);
         assert_eq!(info.asset_url, None);
     }
@@ -543,13 +718,13 @@ mod tests {
 
     #[test]
     fn the_same_or_an_older_release_is_not_newer() {
-        let info = compare("0.3.0", vec![release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"])], Kind::Setup).unwrap();
+        let info = compare("0.3.0", vec![release("windows-v0.3.0", &["Lumo-Windows-0.3.0-setup.exe"])], Kind::Setup, false).unwrap();
         assert!(!info.newer);
-        let info = compare("0.4.0", vec![release("windows-v0.3.0", &[])], Kind::Setup).unwrap();
+        let info = compare("0.4.0", vec![release("windows-v0.3.0", &[])], Kind::Setup, false).unwrap();
         assert!(!info.newer);
         assert_eq!(info.asset_url, None);
-        assert!(compare("0.2.0", vec![release("windows-latest", &[])], Kind::Setup).is_err());
-        assert!(compare("0.2.0", vec![], Kind::Setup).is_err());
+        assert!(compare("0.2.0", vec![release("windows-latest", &[])], Kind::Setup, false).is_err());
+        assert!(compare("0.2.0", vec![], Kind::Setup, false).is_err());
     }
 
     #[test]
@@ -593,6 +768,106 @@ mod tests {
         assert!(!ok("http://objects.githubusercontent.com/x"));
         assert!(!ok("https://objects.githubusercontent.com.evil.example/x"));
         assert!(!ok("https://example.com/x"));
+    }
+
+    fn beta(version: &str, body: &str) -> Release {
+        let mut r = release(BETA_TAG, &[&format!("Lumo-Windows-{version}-setup.exe"), &format!("Lumo-Windows-{version}.msi")]);
+        r.prerelease = true;
+        r.body = Some(body.into());
+        r.published_at = Some("2026-11-08T11:00:00Z".into());
+        r
+    }
+
+    const BETA_BODY: &str = "In this beta:\n- #146 Web search\n\n<!-- lumo-beta {\"version\":\"0.18.1-312\",\"included\":[{\"number\":146,\"title\":\"Web search \\u003c/b\\u003e --\\u003e\",\"updatedAt\":\"2026-11-08T10:00:00Z\"}],\"excluded\":[{\"number\":148,\"title\":\"Models\",\"updatedAt\":\"x\",\"with\":\"146\"}]} -->";
+
+    #[test]
+    fn pre_releases_order_part_by_part() {
+        let v = |s: &str| parse_version(s).unwrap();
+        assert!(v("0.18.1-1000") > v("0.18.1-312"));
+        assert!(v("0.18.1-312") > v("0.18.1-99"));
+        assert!(v("0.18.1") > v("0.18.1-65535"));
+        assert!(v("0.18.1-312") > v("0.18.0"));
+        assert!(v("1.0.0-beta") > v("1.0.0-2"));
+        assert!(v("1.0.0-beta.11") > v("1.0.0-beta.2"));
+        assert!(v("1.0.0-alpha.1") > v("1.0.0-alpha"));
+    }
+
+    #[test]
+    fn the_beta_is_read_only_when_asked_for() {
+        let releases = || vec![release("windows-v0.18.0", &["Lumo-Windows-0.18.0-setup.exe"]), beta("0.18.1-312", BETA_BODY)];
+        let info = compare("0.18.0", releases(), Kind::Setup, false).unwrap();
+        assert_eq!(info.latest, "0.18.0", "the beta is never the release");
+        assert!(!info.newer);
+        assert_eq!(info.beta, None);
+        assert!(!info.current_beta);
+
+        let info = compare("0.18.0", releases(), Kind::Setup, true).unwrap();
+        let b = info.beta.unwrap();
+        assert_eq!(b.version, "0.18.1-312");
+        assert!(b.newer);
+        assert_eq!(b.published_at, "2026-11-08T11:00:00Z");
+        assert_eq!(
+            b.asset_url.as_deref(),
+            Some(format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta/Lumo-Windows-0.18.1-312-setup.exe").as_str())
+        );
+        assert_eq!(b.included.len(), 1);
+        assert_eq!(b.included[0].number, 146);
+        assert_eq!(b.included[0].title, "Web search </b> -->");
+        assert_eq!(b.excluded[0].with.as_deref(), Some("146"));
+
+        let msi = compare("0.18.0", releases(), Kind::Msi, true).unwrap().beta.unwrap();
+        assert!(msi.asset_url.unwrap().ends_with("/windows-beta/Lumo-Windows-0.18.1-312.msi"));
+    }
+
+    #[test]
+    fn on_a_beta_the_release_after_it_is_an_update() {
+        let releases = vec![release("windows-v0.18.1", &["Lumo-Windows-0.18.1-setup.exe"]), beta("0.18.1-312", "")];
+        let info = compare("0.18.1-312", releases, Kind::Setup, true).unwrap();
+        assert!(info.current_beta);
+        assert!(info.newer, "0.18.1 is newer than its beta");
+        let b = info.beta.unwrap();
+        assert!(!b.newer);
+        assert!(b.included.is_empty(), "notes without the list read as an empty one");
+
+        // The release before the beta: offered to go back to, never as newer.
+        let info = compare("0.18.1-312", vec![release("windows-v0.18.0", &["Lumo-Windows-0.18.0-setup.exe"])], Kind::Setup, true).unwrap();
+        assert!(!info.newer);
+        assert!(info.asset_url.is_some());
+        assert_eq!(info.beta, None);
+    }
+
+    #[test]
+    fn only_going_back_from_a_beta_installs_an_older_version() {
+        let v = |s: &str| parse_version(s).unwrap();
+        assert!(may_install(&v("0.18.0"), &v("0.18.1")));
+        assert!(may_install(&v("0.18.0"), &v("0.18.1-312")));
+        assert!(may_install(&v("0.18.1-312"), &v("0.18.1-318")));
+        assert!(may_install(&v("0.18.1-312"), &v("0.18.0")), "back to the release");
+        assert!(!may_install(&v("0.18.0"), &v("0.18.0")));
+        assert!(!may_install(&v("0.18.1"), &v("0.18.0")));
+        assert!(!may_install(&v("0.18.1"), &v("0.18.1-312")));
+        assert!(!may_install(&v("0.18.1-318"), &v("0.18.1-312")), "an older beta, no");
+    }
+
+    #[test]
+    fn beta_installers_come_only_from_the_beta_release() {
+        let ok = |s: &str| is_release_download(&Url::parse(s).unwrap());
+        assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta/Lumo-Windows-0.18.1-312-setup.exe")));
+        assert!(ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta/Lumo-Windows-0.18.1-312.msi")));
+        // A release's installer is not a beta's, and the other way round.
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta/Lumo-Windows-0.18.1-setup.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-v0.18.1/Lumo-Windows-0.18.1-312-setup.exe")));
+        assert!(!ok("https://github.com/someone/else/releases/download/windows-beta/Lumo-Windows-0.18.1-312-setup.exe"));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta/payload.exe")));
+        assert!(!ok(&format!("https://github.com/{UPDATE_REPO}/releases/download/windows-beta-2/Lumo-Windows-0.18.1-312-setup.exe")));
+    }
+
+    #[test]
+    fn a_broken_list_in_the_notes_reads_as_empty() {
+        assert!(beta_manifest("").included.is_empty());
+        assert!(beta_manifest("<!-- lumo-beta {not json -->").included.is_empty());
+        assert!(beta_manifest("<!-- lumo-beta {\"included\":[]}").included.is_empty());
+        assert_eq!(beta_manifest(BETA_BODY).included.len(), 1);
     }
 
     #[test]
