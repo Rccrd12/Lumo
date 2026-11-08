@@ -227,6 +227,10 @@ pub struct Settings {
     /// with no question ("5", "15", "60"), when Lumo quits ("exit"), or
     /// "never". One the user opened is never stopped.
     pub unsloth_stop_after: String,
+    /// Sessions another program starts on its own (hook/src/background.rs):
+    /// "grouped" (one pill per program, src/core/background.ts), "single"
+    /// (each its own, as any session) or "hidden".
+    pub background_sessions: String,
     /// Global shortcuts the user changed, by action id; the others keep their
     /// default (see shortcuts.rs).
     pub shortcuts: crate::shortcuts::Bindings,
@@ -373,6 +377,7 @@ impl Default for Settings {
             unsloth_url: String::new(),
             unsloth_auto_start: true,
             unsloth_stop_after: "15".into(),
+            background_sessions: "grouped".into(),
             shortcuts: Default::default(),
             lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
@@ -718,6 +723,7 @@ mod tests {
   "unslothUrl": "http://127.0.0.1:8888",
   "unslothAutoStart": false,
   "unslothStopAfter": "exit",
+  "backgroundSessions": "hidden",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
   "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
@@ -1213,6 +1219,7 @@ mod tests {
                 "unslothUrl",
                 "unslothAutoStart",
                 "unslothStopAfter",
+                "backgroundSessions",
                 "shortcuts",
                 "lumoOutfit",
                 "lumoMotion",
@@ -1239,6 +1246,13 @@ mod tests {
         let custom = parse(CUSTOM.as_bytes()).unwrap();
         assert!(!custom.unsloth_auto_start);
         assert_eq!(custom.unsloth_stop_after, "exit");
+    }
+
+    #[test]
+    fn a_file_from_before_background_sessions_groups_them() {
+        let s: Settings = serde_json::from_str("{}").unwrap();
+        assert_eq!(s.background_sessions, "grouped");
+        assert_eq!(parse(CUSTOM.as_bytes()).unwrap().background_sessions, "hidden");
     }
 
     #[test]

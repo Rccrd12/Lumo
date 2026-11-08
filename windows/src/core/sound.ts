@@ -12,6 +12,14 @@ export const SOUND_NAMES = [
 
 export type SoundName = (typeof SOUND_NAMES)[number];
 
+/**
+ * The sounds of what agents do, which can come in bursts nobody clicked for:
+ * eight sessions finishing in the same second. Each plays at most once in
+ * SPACING_MS; the sounds of the user's own clicks always play.
+ */
+export const SPACED_SOUNDS: ReadonlySet<string> = new Set(["work", "finish", "error", "approval", "question", "rate"]);
+export const SPACING_MS = 1500;
+
 class SoundEngine {
   enabled = true;
   volume = 0.12;
@@ -23,6 +31,17 @@ class SoundEngine {
   private idleTimer: number | null = null;
   /** Sounds still playing, by name, so one can be faded out (the greeting). */
   private playing = new Map<string, Set<{ src: AudioBufferSourceNode; gain: GainNode }>>();
+  /** When each of SPACED_SOUNDS last played. */
+  private lastPlayed = new Map<string, number>();
+
+  /** False when `name` played less than SPACING_MS ago and is one to space out; true (and noted) otherwise. */
+  spaced(name: string, now: number): boolean {
+    if (!SPACED_SOUNDS.has(name)) return true;
+    const last = this.lastPlayed.get(name);
+    if (last != null && now - last < SPACING_MS) return false;
+    this.lastPlayed.set(name, now);
+    return true;
+  }
 
   /** Creates the context and decodes every WAV. Safe to call more than once. */
   preload(): Promise<void> {
@@ -92,6 +111,7 @@ class SoundEngine {
     const master = this.master;
     const buf = this.buffers.get(name);
     if (!ctx || !master || !buf) return;
+    if (!this.spaced(name, performance.now())) return;
     if (this.idleTimer != null) {
       window.clearTimeout(this.idleTimer);
       this.idleTimer = null;

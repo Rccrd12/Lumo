@@ -10,6 +10,7 @@ import { ICONS } from "./icons";
 import { State, type ActiveChatRun, type AgentTask } from "../core/state";
 import { sessionSubtitle } from "../core/pills";
 import { lastTextStep } from "../core/diff";
+import { BACKGROUND_TEXT, backgroundLine, type BackgroundCounts } from "../core/background";
 import { ACTIVITIES_TEXT, eventWhen, type ActivitiesAction, type ActivitiesData } from "./activities-view";
 import { N_, language, t, tl } from "../i18n/i18n";
 import { Bridge, type Decision } from "../core/bridge";
@@ -231,6 +232,9 @@ export function homeGitHubItems(): HomeGitHubItem[] {
 export function homeWatches(): ListenWatch[] {
   return activeWatches(State.listening);
 }
+
+/** The most sessions of one program in the background shown as dots on its row. */
+const MAX_LANES = 8;
 
 /** Total rows shown under "In progress" on the left side of the home. */
 export function homeInProgressCount(sessionsCount: number): number {
@@ -457,6 +461,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   }
 
   function sessionRow(task: AgentTask): HTMLElement {
+    if (task.background) return backgroundRow(task, task.background);
     const done = task.state === "finished";
     const failed = task.state === "error";
     const step = done ? task.finalLine || lastTextStep(task.steps) : lastTextStep(task.steps);
@@ -475,6 +480,27 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
             : t(sessionSubtitle(task.id)) !== task.name ? h("span", { class: "s", text: `· ${t(sessionSubtitle(task.id))}` }) : null),
         h("div", { class: `home-line${done ? " ok" : failed ? " err" : ""}`, text: line })),
       ...(plan ? planEnds(plan) : [count ? h("span", { class: "home-count", text: count }) : null]));
+  }
+
+  /**
+   * A program's sessions in the background, on one row: how many run (a dot
+   * each, up to eight), have answered and failed; a click opens their answers.
+   */
+  function backgroundRow(task: AgentTask, c: BackgroundCounts): HTMLElement {
+    const done = task.state === "finished";
+    const failed = task.state === "error";
+    const counts = backgroundLine(c);
+    const line = done ? `${t("Done")} · ${counts}` : failed ? `${t("Error")} · ${counts}` : counts;
+    const lanes = h("span", { class: "home-lanes", "aria-hidden": "true" });
+    for (let i = 0; i < Math.min(c.running, MAX_LANES); i++) lanes.append(h("i", {}));
+    return h("button", { class: "home-row", onclick: () => actions.openSession(task.id) },
+      h("div", { class: "home-text" },
+        h("div", { class: "home-who" },
+          dot(task.color, 8),
+          h("span", { class: "n", text: task.name }),
+          h("span", { class: "s", text: `· ${t(BACKGROUND_TEXT.inBackground)}` })),
+        h("div", { class: `home-line${done ? " ok" : failed ? " err" : ""}`, text: line })),
+      c.running > 0 ? lanes : null);
   }
 
   function label(text: string, n?: number): HTMLElement {
@@ -649,7 +675,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       // and its mouse-up would swallow the click.
       const lk = [
         language(), id, req?.command, req?.questions?.[0]?.question, req?.email?.subject, State.approvalQueue.length,
-        ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}`),
+        ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}:${x.background ? `${x.background.running}/${x.background.done}/${x.background.failed}` : ""}`),
         ...State.plans.map((p) => `${p.key}:${p.updatedAt}:${p.steps.map((s) => s.status).join(",")}`),
         ...State.activeChats.map((c) => `${c.chatId}:${c.who}:${c.color}:${c.title}:${c.line}:${c.done ? 1 : 0}:${c.failed ? 1 : 0}`),
         ...ghItems.map((g) => g.key),

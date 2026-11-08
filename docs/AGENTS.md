@@ -59,6 +59,25 @@ The pill lifecycle:
 | `SessionEnd` | Active declared pills (catalog + checked in Settings) reset to idle — all others are removed |
 | `SubagentStart` / `SubagentStop` | Step added to ticker |
 
+## Sessions in the background
+
+A program that starts agents on its own, not a person in a terminal (a tool asking
+`claude -p` about every file, eight at a time, an app built on the Agent SDK), would
+otherwise get a sound and an alert for every answer. The relay marks such sessions with
+`"lumo_background": true`, and by default the island groups them: one pill per program,
+"Running: 8 · Done: 37" on the home, one sound when a batch starts and one when it is
+over, no alert. Permission requests still come up as cards. Settings → Agents →
+Background sessions shows them grouped, one by one (as any session) or not at all.
+
+- **Claude Code** is recognised by itself: `-p` and the Agent SDKs set
+  `CLAUDE_CODE_ENTRYPOINT` to `sdk-cli`, `sdk-ts` or `sdk-py`.
+- **Any agent**: start it with `LUMO_BACKGROUND=1` in its environment (`0` shows a
+  headless Claude Code one by one after all).
+- **The program's name** (`lumo_launcher`) is the first process above the agent that is
+  neither the agent, its runtime (Node, Bun…) nor a shell, so `easy-uninstaller.exe`
+  shows as "Easy Uninstaller". Set `LUMO_LAUNCHER` to give it yourself. Started from a
+  terminal or an editor, it has no name and shows as "In background".
+
 ## Declared pills
 
 A **declared pill** is a catalog entry (`windows/src/core/pills.ts`) that has been enabled in **Settings → Active pills**. When a session ends for a declared pill, the pill stays visible and resets to idle instead of disappearing.

@@ -192,7 +192,10 @@ impl Recap {
 
     /// One hook event, as the relay delivered it.
     pub fn observe(&mut self, payload: &Value, now: i64) {
-        if !self.history.prefs.enabled {
+        // A session another program started on its own (a tool asking
+        // `claude -p` about every file, hook/src/background.rs) is not the
+        // user's work: a hundred of them would be a hundred turns.
+        if !self.history.prefs.enabled || payload.get("lumo_background") == Some(&Value::Bool(true)) {
             return;
         }
         self.close_stale(now);
@@ -791,6 +794,17 @@ mod tests {
 
     fn on_disk(path: &Path) -> Value {
         serde_json::from_slice(&std::fs::read(path).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn sessions_another_program_started_are_not_counted() {
+        let dir = scratch("background");
+        let mut r = Recap::load(dir.join("recap.json"), T0);
+        let bg = json!({ "lumo_background": true, "lumo_launcher": "Easy Uninstaller" });
+        r.observe(&event("UserPromptSubmit", "b1", bg.clone()), T0);
+        r.observe(&event("Stop", "b1", bg), T0 + 30);
+        assert!(r.view(0).turns.is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

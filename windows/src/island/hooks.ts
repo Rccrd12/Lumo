@@ -21,6 +21,10 @@ import { restorePlanUsage } from "../core/plan";
 import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
+import {
+  BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, backgroundGroupId, backgroundLine, launcherName,
+  parseBackgroundMode, type BackgroundEvent,
+} from "../core/background";
 import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
 import { N_, t } from "../i18n/i18n";
 
@@ -272,6 +276,10 @@ interface HookPayload {
   lumo_mail_action?: { actions?: unknown; folder?: unknown; from?: unknown; subject?: unknown; date?: unknown };
   /** Gemini Live wants to read or open a file the user didn't give it (live.rs may_use). */
   lumo_live_file?: { action?: unknown };
+  /** Another program started this session on its own (hook/src/background.rs). */
+  lumo_background?: boolean;
+  /** That program's name, when the relay could tell. */
+  lumo_launcher?: string;
 }
 
 const LIVE_FILE = {
@@ -520,6 +528,17 @@ function handleHook(island: Island, payload: HookPayload) {
   // The island's own chat is not a session: the relay only lets its permission
   // requests through, and anything else that slips by is ignored here too.
   if (payload.lumo_island === true && name !== "PermissionRequest") return;
+  // A session another program started on its own: on that program's pill with
+  // the others (core/background.ts), not at all, or — "single" — as any
+  // session. A permission request always comes up as its card.
+  if (payload.lumo_background === true && name !== "PermissionRequest") {
+    const mode = parseBackgroundMode(State.settings.backgroundSessions);
+    if (mode === "hidden") return;
+    if (mode === "grouped") {
+      handleBackground(island, payload, name);
+      return;
+    }
+  }
   const cwd = payload.cwd ?? "";
   const projectName = lastPathComponent(cwd) || "Session";
 
@@ -940,4 +959,112 @@ function handleHook(island: Island, payload: HookPayload) {
   const pill = isClaude && payload.lumo_island !== true ? State.tasks.find((x) => x.id === agentId) : undefined;
   if (pill) pill.sessionTitle = liveSessions.owner(agentId)?.title ?? null;
   State.notify();
+}
+
+// ── Sessions in the background ────────────────────────────────────────────────
+
+/** The background sessions of every program, counted (core/background.ts). */
+export const backgroundRuns = new BackgroundRuns();
+/** Per group: the wait for a quiet moment, then the one that takes the finished pill away. */
+const backgroundTimers = new Map<string, number>();
+/**
+ * Per group: a batch nothing was heard from for STALE_MS is over, its
+ * sessions killed before they could say so (a tool's own timeout).
+ */
+const backgroundWatchdogs = new Map<string, number>();
+
+/** Forgets every group and its timers, as at start (tests: a new clock reuses timer ids). */
+export function resetBackground(): void {
+  backgroundRuns.clear();
+  backgroundTimers.clear();
+  backgroundWatchdogs.clear();
+}
+
+/** What ends a session's turn, or the session; anything else is work. */
+const BACKGROUND_EVENTS: Record<string, BackgroundEvent> = {
+  Stop: "done",
+  StopFailure: "failed",
+  Interrupt: "end",
+  SessionEnd: "end",
+};
+
+function clearTimer(timers: Map<string, number>, id: string): void {
+  const timer = timers.get(id);
+  if (timer == null) return;
+  window.clearTimeout(timer);
+  timers.delete(id);
+}
+
+/**
+ * One event of a background session: the program's pill counts it. One sound
+ * when a batch starts and one when it is over; no alert, no folder remembered,
+ * no plan followed, whatever the number of sessions.
+ */
+export function handleBackground(island: Pick<Island, "reveal">, payload: HookPayload, name: string, now = Date.now()): void {
+  const launcher = launcherName(payload.lumo_launcher);
+  const id = backgroundGroupId(launcher);
+  const kind: BackgroundEvent = BACKGROUND_EVENTS[name] ?? "busy";
+  // The end of a session nobody saw at work is nothing to show.
+  if (kind === "end" && !backgroundRuns.counts(id)) return;
+  clearTimer(backgroundTimers, id);
+  const started = backgroundRuns.event(id, payload.session_id ?? "", kind, now);
+  // Sessions of any program gone silent for too long were killed: not running any more.
+  for (const gid of backgroundRuns.sweep(now)) {
+    const pill = State.tasks.find((x) => x.id === gid);
+    if (pill) pill.background = backgroundRuns.counts(gid);
+    if (gid !== id && backgroundRuns.counts(gid)?.running === 0) waitForQuiet(gid);
+  }
+  State.upsertExternalAgent(id, launcher ?? t(BACKGROUND_TEXT.unnamed), BACKGROUND_COLOR);
+  const task = State.tasks.find((x) => x.id === id);
+  if (!task) return;
+  task.background = backgroundRuns.counts(id);
+  task.finalLine = null;
+  task.pillBadge = null;
+  if (kind === "done") {
+    const said = payload.last_assistant_message ?? payload.message ?? "";
+    const line = toOneLine(said);
+    if (line) State.appendStep(id, line, fullTextDetail(said, line));
+  } else if (kind === "failed") {
+    State.appendStep(id, t("⚠ failed"), payload.error ? { text: payload.error } : null);
+  }
+  State.updateTask(id, "working");
+  if (started) {
+    Sound.play("work");
+    if (State.mode === "hidden" && !State.paused) island.reveal();
+  }
+  if (task.background?.running === 0) waitForQuiet(id);
+  clearTimer(backgroundWatchdogs, id);
+  backgroundWatchdogs.set(id, window.setTimeout(() => {
+    backgroundWatchdogs.delete(id);
+    finishBackground(id);
+  }, STALE_MS));
+}
+
+/** Nothing running: if nothing starts again soon, the batch is over. */
+function waitForQuiet(id: string): void {
+  clearTimer(backgroundTimers, id);
+  backgroundTimers.set(id, window.setTimeout(() => {
+    backgroundTimers.delete(id);
+    if (backgroundRuns.counts(id)?.running === 0) finishBackground(id);
+  }, QUIET_MS));
+}
+
+/** The batch is over: said once, on the pill and on the closed island, then the pill goes. */
+export function finishBackground(id: string): void {
+  clearTimer(backgroundTimers, id);
+  clearTimer(backgroundWatchdogs, id);
+  const counts = backgroundRuns.close(id);
+  const task = State.tasks.find((x) => x.id === id);
+  if (!counts || !task) return;
+  task.background = counts;
+  const failedOnly = counts.done === 0 && counts.failed > 0;
+  const summary = backgroundLine(counts);
+  task.finalLine = summary;
+  State.updateTask(id, failedOnly ? "error" : "finished");
+  Sound.play(failedOnly ? "error" : "finish");
+  if (State.mode !== "expanded") compactNotice(`${t(COMPACT_TEXT.finished, { helper: task.name })} · ${summary}`, task.color);
+  backgroundTimers.set(id, window.setTimeout(() => {
+    backgroundTimers.delete(id);
+    if (!backgroundRuns.counts(id)) State.removeTask(id);
+  }, 5200));
 }

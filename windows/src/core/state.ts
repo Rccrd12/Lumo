@@ -14,6 +14,7 @@ import type { FileDiff } from "./diff";
 import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
+import type { BackgroundCounts } from "./background";
 import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
@@ -52,6 +53,8 @@ export interface AgentTask {
   finalLine?: string | null;
   /** The title of the session the pill shows (/rename, else Claude Code's own): its name, with the folder beside it. */
   sessionTitle?: string | null;
+  /** A program's sessions in the background, grouped on this pill (core/background.ts): how many run, answered, failed. */
+  background?: BackgroundCounts | null;
 }
 
 /**
@@ -361,6 +364,8 @@ export interface Settings {
   unslothAutoStart: boolean;
   /** When the Unsloth Studio Lumo started stops: minutes with no question ("5", "15", "60"), "exit" or "never". */
   unslothStopAfter: string;
+  /** Sessions another program starts on its own: "grouped" (one pill per program), "single" or "hidden" (core/background.ts). */
+  backgroundSessions: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
   /**
@@ -502,6 +507,7 @@ export const DEFAULT_SETTINGS: Settings = {
   unslothUrl: "",
   unslothAutoStart: true,
   unslothStopAfter: "15",
+  backgroundSessions: "grouped",
   shortcuts: {},
   lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",

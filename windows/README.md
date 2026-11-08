@@ -456,6 +456,17 @@ in time, Lumo stays quiet and Claude Code asks in the terminal as usual.
 
 It works from any terminal — Windows Terminal, PowerShell, VS Code, Git Bash.
 
+### Sessions in the background
+
+A program that starts Claude Code on its own (`claude -p`, the Agent SDK), say a
+tool asking about a hundred files eight at a time, gets one row on the home for
+all of them: "Running: 8 · Done: 37", with one sound when it starts and one notice
+when it is done, instead of a sound and an alert for every answer. The row is named
+after the program; a click shows the answers. Permission requests still come up as
+cards. **Settings → Agents → Background sessions** shows them grouped, one by one or
+not at all. Any other agent can be counted in with `LUMO_BACKGROUND=1` (see
+[`docs/AGENTS.md`](../docs/AGENTS.md)).
+
 ### Plan usage
 
 The island's header can show your plan limits: a small pill

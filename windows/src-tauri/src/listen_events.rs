@@ -128,9 +128,13 @@ pub fn heard_service(app: &AppHandle, pill: &str, data: &Value, failed: bool, ev
 // ── Agents ────────────────────────────────────────────────────────────────────
 
 /// An agent's hook event (pipe.rs), for the watches on agents. The island's
-/// own chat is not one of them.
+/// own chat is not one of them, nor a session another program started on its
+/// own (hook/src/background.rs), unless it asks for a permission.
 pub fn heard_hook(app: &AppHandle, event: &str, payload: &Value) {
     if payload.get("lumo_island") == Some(&Value::Bool(true)) {
+        return;
+    }
+    if payload.get("lumo_background") == Some(&Value::Bool(true)) && event != "PermissionRequest" {
         return;
     }
     let text = |key: &str| payload.get(key).and_then(Value::as_str).unwrap_or("");

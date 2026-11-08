@@ -10,6 +10,7 @@
 
 import type { AgentSource } from "./state";
 import { N_ } from "../i18n/i18n";
+import { BACKGROUND_TEXT, isBackgroundGroup } from "./background";
 
 export type PillCategory = "workspace" | "agent" | "ai" | "service";
 
@@ -163,6 +164,8 @@ export function mainPillChoices(): PillDefinition[] {
 
 /** PillDefinition.sessionSubtitle — next to the name in a live session's card. */
 export function sessionSubtitle(id: string): string {
+  // A program's sessions in the background (core/background.ts).
+  if (isBackgroundGroup(id)) return BACKGROUND_TEXT.inBackground;
   switch (id) {
     case "integration_claude": return "Claude Code";
     case "agent_cursor": return "Cursor";

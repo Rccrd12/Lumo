@@ -16436,6 +16436,138 @@
    "ru": "Запущен Lumo: продолжит работать.",
    "id": "Dimulai oleh Lumo: tetap menyala.",
    "it": "Avviato da Lumo: resta acceso."
+  },
+  "In background": {
+   "zh-Hans": "后台",
+   "hi": "बैकग्राउंड में",
+   "es": "En segundo plano",
+   "ar": "في الخلفية",
+   "fr": "En arrière-plan",
+   "bn": "ব্যাকগ্রাউন্ডে",
+   "pt-BR": "Em segundo plano",
+   "ru": "В фоне",
+   "id": "Di latar belakang",
+   "it": "In background"
+  },
+  "in background": {
+   "zh-Hans": "后台",
+   "hi": "बैकग्राउंड में",
+   "es": "en segundo plano",
+   "ar": "في الخلفية",
+   "fr": "en arrière-plan",
+   "bn": "ব্যাকগ্রাউন্ডে",
+   "pt-BR": "em segundo plano",
+   "ru": "в фоне",
+   "id": "di latar belakang",
+   "it": "in background"
+  },
+  "Running: {count}": {
+   "zh-Hans": "进行中：{count}",
+   "hi": "चल रहे: {count}",
+   "es": "En curso: {count}",
+   "ar": "قيد التشغيل: {count}",
+   "fr": "En cours : {count}",
+   "bn": "চলছে: {count}",
+   "pt-BR": "Em andamento: {count}",
+   "ru": "Выполняется: {count}",
+   "id": "Berjalan: {count}",
+   "it": "In corso: {count}"
+  },
+  "Done: {count}": {
+   "zh-Hans": "已完成：{count}",
+   "hi": "पूरे: {count}",
+   "es": "Terminadas: {count}",
+   "ar": "اكتمل: {count}",
+   "fr": "Terminées : {count}",
+   "bn": "শেষ: {count}",
+   "pt-BR": "Concluídas: {count}",
+   "ru": "Готово: {count}",
+   "id": "Selesai: {count}",
+   "it": "Finite: {count}"
+  },
+  "Failed: {count}": {
+   "zh-Hans": "失败：{count}",
+   "hi": "विफल: {count}",
+   "es": "Con error: {count}",
+   "ar": "فشل: {count}",
+   "fr": "En échec : {count}",
+   "bn": "ব্যর্থ: {count}",
+   "pt-BR": "Com erro: {count}",
+   "ru": "С ошибкой: {count}",
+   "id": "Gagal: {count}",
+   "it": "Errori: {count}"
+  },
+  "Background sessions": {
+   "zh-Hans": "后台会话",
+   "hi": "बैकग्राउंड सत्र",
+   "es": "Sesiones en segundo plano",
+   "ar": "الجلسات في الخلفية",
+   "fr": "Sessions en arrière-plan",
+   "bn": "ব্যাকগ্রাউন্ড সেশন",
+   "pt-BR": "Sessões em segundo plano",
+   "ru": "Фоновые сеансы",
+   "id": "Sesi latar belakang",
+   "it": "Sessioni in background"
+  },
+  "Show them": {
+   "zh-Hans": "显示方式",
+   "hi": "कैसे दिखाएँ",
+   "es": "Mostrarlas",
+   "ar": "طريقة العرض",
+   "fr": "Les afficher",
+   "bn": "কীভাবে দেখাবে",
+   "pt-BR": "Mostrar",
+   "ru": "Показывать",
+   "id": "Tampilkan",
+   "it": "Mostrale"
+  },
+  "Grouped": {
+   "zh-Hans": "分组",
+   "hi": "समूह में",
+   "es": "Agrupadas",
+   "ar": "مجمّعة",
+   "fr": "Groupées",
+   "bn": "একসাথে",
+   "pt-BR": "Agrupadas",
+   "ru": "Группой",
+   "id": "Dikelompokkan",
+   "it": "Raggruppate"
+  },
+  "One by one": {
+   "zh-Hans": "逐个显示",
+   "hi": "एक-एक करके",
+   "es": "Una por una",
+   "ar": "واحدة تلو الأخرى",
+   "fr": "Une par une",
+   "bn": "একটি একটি করে",
+   "pt-BR": "Uma a uma",
+   "ru": "По одному",
+   "id": "Satu per satu",
+   "it": "Una per una"
+  },
+  "Hidden": {
+   "zh-Hans": "隐藏",
+   "hi": "छिपे हुए",
+   "es": "Ocultas",
+   "ar": "مخفية",
+   "fr": "Masquées",
+   "bn": "লুকানো",
+   "pt-BR": "Ocultas",
+   "ru": "Скрыты",
+   "id": "Disembunyikan",
+   "it": "Nascoste"
+  },
+  "Sessions another program starts on its own, not you: Claude Code run with ‑p or through the Agent SDK, or any agent started with LUMO_BACKGROUND=1. Grouped, each program gets one row, with no sound or alert for every answer and one notice when it is done. Permission requests always come up.": {
+   "zh-Hans": "由其他程序自行启动、而不是由你启动的会话：用 ‑p 或通过 Agent SDK 运行的 Claude Code，或任何以 LUMO_BACKGROUND=1 启动的代理。分组时，每个程序只占一行，每次回答都不会有声音或提醒，完成时只通知一次。权限请求总会显示。",
+   "hi": "वे सत्र जो कोई दूसरा प्रोग्राम खुद शुरू करता है, आप नहीं: ‑p के साथ या Agent SDK से चलने वाला Claude Code, या LUMO_BACKGROUND=1 के साथ शुरू किया गया कोई भी एजेंट। समूह में, हर प्रोग्राम की एक पंक्ति होती है, हर जवाब पर न आवाज़ न अलर्ट, और पूरा होने पर एक सूचना। अनुमति के अनुरोध हमेशा दिखते हैं।",
+   "es": "Sesiones que inicia otro programa por su cuenta, no tú: Claude Code ejecutado con ‑p o mediante el Agent SDK, o cualquier agente iniciado con LUMO_BACKGROUND=1. Agrupadas, cada programa tiene una sola fila, sin sonido ni aviso por cada respuesta y con un único aviso al terminar. Las solicitudes de permiso siempre aparecen.",
+   "ar": "جلسات يبدؤها برنامج آخر من تلقاء نفسه، لا أنت: Claude Code المشغَّل باستخدام ‑p أو عبر Agent SDK، أو أي وكيل بُدئ مع LUMO_BACKGROUND=1. عند تجميعها، يحصل كل برنامج على صف واحد، بلا صوت أو تنبيه لكل إجابة، وإشعار واحد عند الانتهاء. تظهر طلبات الإذن دائمًا.",
+   "fr": "Les sessions qu'un autre programme lance de lui-même, pas vous : Claude Code lancé avec ‑p ou via l'Agent SDK, ou tout agent démarré avec LUMO_BACKGROUND=1. Groupées, chaque programme a une seule ligne, sans son ni alerte à chaque réponse, et un seul avis à la fin. Les demandes d'autorisation s'affichent toujours.",
+   "bn": "যে সেশন অন্য কোনো প্রোগ্রাম নিজে থেকে শুরু করে, আপনি নন: ‑p দিয়ে বা Agent SDK দিয়ে চালানো Claude Code, অথবা LUMO_BACKGROUND=1 দিয়ে শুরু করা যেকোনো এজেন্ট। একসাথে থাকলে প্রতিটি প্রোগ্রাম একটি সারি পায়, প্রতিটি উত্তরে কোনো শব্দ বা সতর্কতা নেই, শেষ হলে একটি বিজ্ঞপ্তি। অনুমতির অনুরোধ সবসময় দেখা যায়।",
+   "pt-BR": "Sessões que outro programa inicia sozinho, não você: Claude Code executado com ‑p ou pelo Agent SDK, ou qualquer agente iniciado com LUMO_BACKGROUND=1. Agrupadas, cada programa tem uma só linha, sem som nem alerta a cada resposta e um único aviso ao terminar. Pedidos de permissão sempre aparecem.",
+   "ru": "Сеансы, которые другая программа запускает сама, а не вы: Claude Code с ‑p или через Agent SDK, либо любой агент, запущенный с LUMO_BACKGROUND=1. Группой — у каждой программы одна строка, без звука и оповещения на каждый ответ и с одним уведомлением в конце. Запросы разрешений приходят всегда.",
+   "id": "Sesi yang dimulai program lain dengan sendirinya, bukan oleh Anda: Claude Code yang dijalankan dengan ‑p atau lewat Agent SDK, atau agen apa pun yang dimulai dengan LUMO_BACKGROUND=1. Jika dikelompokkan, setiap program mendapat satu baris, tanpa suara atau peringatan untuk setiap jawaban, dan satu pemberitahuan saat selesai. Permintaan izin selalu muncul.",
+   "it": "Sessioni che un altro programma avvia da solo, non tu: Claude Code lanciato con ‑p o tramite l'Agent SDK, o qualsiasi agente avviato con LUMO_BACKGROUND=1. Raggruppate, ogni programma ha una riga sola, senza suoni né avvisi a ogni risposta e con un solo avviso quando ha finito. Le richieste di permesso arrivano sempre."
   }
  }
 }

@@ -107,6 +107,23 @@ if (params.has("busy")) {
   } as unknown as typeof State.integrations.integration_mail;
 }
 
+// A program asking Claude Code about one folder after another, eight at a
+// time, with ?background (core/background.ts): 45 questions, 37 answered.
+if (params.has("background")) {
+  const answers = lang === "it"
+    ? ["Cache di Zoom: si può eliminare", "Dati di Discord: tienili", "Shader di NVIDIA: si ricreano da soli", "Log di Steam: si possono eliminare"]
+    : ["Zoom's cache: safe to delete", "Discord's data: keep it", "NVIDIA's shaders: rebuilt by themselves", "Steam's logs: safe to delete"];
+  const bg = (event: string, session: string, extra: Record<string, unknown> = {}) => hook({
+    hook_event_name: event, session_id: session, cwd: `C:\\Temp\\easy-uninstaller-ai\\4242-${session}`,
+    lumo_background: true, lumo_launcher: "Easy Uninstaller", ...extra,
+  });
+  for (let i = 0; i < 45; i++) {
+    bg("SessionStart", `q${i}`);
+    bg("UserPromptSubmit", `q${i}`, { prompt: "What is this folder?" });
+    if (i < 37) bg("Stop", `q${i}`, { last_assistant_message: answers[i % answers.length] });
+  }
+}
+
 // A short chat.
 State.chatHistory = lang === "it" ? [
   { id: 1, role: "user", content: "Aggiungi l'interruttore del nuovo look" },
