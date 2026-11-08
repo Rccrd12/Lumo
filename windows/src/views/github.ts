@@ -20,6 +20,11 @@ const GITHUB_RED = "#F4505E";
 /** Which list the detail view shows; kept across re-renders of the card. */
 let openSection: GitHubSection = "myPRs";
 
+/** Whether the detail view shows a list (my PRs, to review, CI) rather than the activity grid. */
+export function gitHubListSection(): boolean {
+  return openSection !== "activity";
+}
+
 /** The detail view's next list (the home's row of open PRs opens on my PRs). */
 export function showGitHubSection(section: GitHubSection): void {
   openSection = section;
@@ -111,14 +116,20 @@ function ciDot(ci: GitHubPR["ci"]): HTMLElement {
   return el;
 }
 
+// A row's reference and title sit in .gh-text: one line in the usual look
+// (display: contents), two in the new look, like the home's rows (look-new.css).
+// The new look also says how the checks went (.gh-pr-word), as the home does.
 function prRow(pr: GitHubPR, showCI: boolean): HTMLElement {
+  const word = showCI && !pr.isDraft ? ciWord(pr.ci) : null;
   return h(
     "button",
     { class: "gh-row", onclick: () => open(pr.url) },
     showCI ? ciDot(pr.ci) : h("i", { class: "gh-gap" }),
-    h("span", { class: "gh-ref", text: `${shortRepo(pr.repo)}#${pr.number}` }),
-    h("span", { class: "gh-title", text: pr.title }),
+    h("span", { class: "gh-text" },
+      h("span", { class: "gh-ref", text: `${shortRepo(pr.repo)}#${pr.number}` }),
+      h("span", { class: "gh-title", text: pr.title })),
     pr.isDraft ? h("span", { class: "gh-draft", text: GH_STRINGS.draft }) : null,
+    word ? h("span", { class: "gh-pr-word", text: word }) : null,
   );
 }
 
@@ -128,8 +139,9 @@ function repoRow(repo: GitHubRepoCI): HTMLElement {
     "button",
     { class: "gh-row", onclick: () => open(actionsUrl(repo.url)) },
     ciDot(repo.ci),
-    h("span", { class: "gh-ref", text: shortRepo(repo.repo) }),
-    h("span", { class: "gh-title", text: repo.branch }),
+    h("span", { class: "gh-text" },
+      h("span", { class: "gh-ref", text: shortRepo(repo.repo) }),
+      h("span", { class: "gh-title", text: repo.branch })),
     word ? h("span", { class: "gh-word", style: `color:${CI_COLORS[repo.ci]}`, text: word }) : null,
   );
 }

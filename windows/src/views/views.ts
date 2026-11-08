@@ -281,6 +281,13 @@ export function buildHeader(actions: ViewActions): ViewHost {
 
 /** A pill whose card opens on its detail once it is in front (the home's row of open PRs). */
 let detailOnFocus: string | null = null;
+/** The pill whose card shows its detail on the overview. */
+let detailShownFor: string | null = null;
+
+/** The pill whose card shows its detail, or is about to: the new look's island grows for GitHub's lists (island.ts). */
+export function overviewDetailFor(): string | null {
+  return detailOnFocus ?? detailShownFor;
+}
 
 function buildOverview(actions: ViewActions): ViewHost {
   /** The diff open in the left card (a FileDiff id). */
@@ -373,11 +380,13 @@ function buildOverview(actions: ViewActions): ViewHost {
     },
     openDetail() {
       detailOpen = true;
+      detailShownFor = State.focusTask?.id ?? null;
       cardKey = "";
       State.notify();
     },
     closeDetail() {
       detailOpen = false;
+      detailShownFor = null;
       cardKey = "";
       State.notify();
     },
@@ -411,6 +420,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       if (task?.id !== lastFocus) {
         lastFocus = task?.id ?? null;
         detailOpen = false;
+        detailShownFor = null;
         activeDiffId = null;
         stepsOpen = false;
         cardKey = "";
@@ -419,6 +429,7 @@ function buildOverview(actions: ViewActions): ViewHost {
       if (detailOnFocus != null && task?.id === detailOnFocus) {
         detailOnFocus = null;
         detailOpen = true;
+        detailShownFor = task.id;
         cardKey = "";
       }
 
