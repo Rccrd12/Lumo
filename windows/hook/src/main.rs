@@ -615,8 +615,11 @@ mod tests {
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
 
-        // Outside the island's chat, Antigravity's own prompt keeps the command.
-        let ev = prepare(command, &agy, &|_| None, "/p").unwrap();
+        // Outside the island's chat, with hooks that give the relay no time to
+        // wait, Antigravity's own prompt keeps the command (with time, it is
+        // the gate's card: an_antigravity_command_no_rule_covers_…).
+        let no_wait = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: None, chat_guard: false };
+        let ev = prepare(command, &no_wait, &|_| None, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
         // And no other agent's PreToolUse turns into a request.
