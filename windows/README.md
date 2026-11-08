@@ -465,7 +465,8 @@ when it is done, instead of a sound and an alert for every answer. The row is na
 after the program. A click shows what runs (what each session is about, from the
 path in its prompt), the last answer and the errors; the last answer opens them all. Permission requests still come up as
 cards. **Settings → Agents → Background sessions** shows them grouped, one by one or
-not at all. Any other agent can be counted in with `LUMO_BACKGROUND=1` (see
+not at all. A program that sets `LUMO_BATCH_TOTAL` (how many questions in all) gets
+"37 of 120 done" and a progress bar. Any other agent can be counted in with `LUMO_BACKGROUND=1` (see
 [`docs/AGENTS.md`](../docs/AGENTS.md)).
 
 ### Plan usage

@@ -108,7 +108,7 @@ if (params.has("busy")) {
 }
 
 // A program asking Claude Code about one folder after another, eight at a
-// time, with ?background (core/background.ts): 36 answered, one failed, eight at work.
+// time, with ?background (core/background.ts): 36 of 120 answered, one failed, eight at work.
 if (params.has("background")) {
   const folders = ["Zoom", "Slack", "Dropbox", "OneDrive", "Teams", "Figma", "Notion", "Obsidian", "VLC", "GIMP",
     "Blender", "Unity", "Epic Games", "Battle.net", "Origin", "Ubisoft", "WhatsApp", "Telegram", "Signal", "Skype",
@@ -120,7 +120,7 @@ if (params.has("background")) {
     : ["cache: safe to delete", "the app's data: keep it", "logs: safe to delete", "rebuilt by itself"];
   const bg = (event: string, session: string, extra: Record<string, unknown> = {}) => hook({
     hook_event_name: event, session_id: session, cwd: `C:\\Temp\\easy-uninstaller-ai\\4242-${session}`,
-    lumo_background: true, lumo_launcher: "Easy Uninstaller", ...extra,
+    lumo_background: true, lumo_launcher: "Easy Uninstaller", lumo_batch_total: 120, ...extra,
   });
   const end = (i: number) => i === 12
     ? bg("StopFailure", `q${i}`, { error: "timeout" })

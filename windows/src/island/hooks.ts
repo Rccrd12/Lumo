@@ -22,7 +22,7 @@ import { isSimpleRequest, requestKind, requestReason } from "../core/approvals";
 import { parsePermissionMode } from "../core/providers";
 import { rememberFolder } from "../core/sessions";
 import {
-  BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, backgroundLine,
+  BACKGROUND_COLOR, BACKGROUND_TEXT, BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, batchTotal, backgroundLine,
   launcherName, parseBackgroundMode, subjectOf, type BackgroundEvent,
 } from "../core/background";
 import { keepPlanUsage, startPlanUsagePolling, storedClaudePlanUsage } from "../views/usage";
@@ -280,6 +280,8 @@ interface HookPayload {
   lumo_background?: boolean;
   /** That program's name, when the relay could tell. */
   lumo_launcher?: string;
+  /** How many questions the program asks in all (LUMO_BATCH_TOTAL), when it says. */
+  lumo_batch_total?: number;
 }
 
 const LIVE_FILE = {
@@ -1013,6 +1015,7 @@ export function handleBackground(island: Pick<Island, "reveal">, payload: HookPa
     subject: name === "UserPromptSubmit" ? subjectOf(payload.prompt) : undefined,
     text: kind === "done" ? answerLine(said) : kind === "failed" ? toOneLine(said) : undefined,
     agent: validAgent ? agentName(validAgent) : "Claude Code",
+    total: batchTotal(payload.lumo_batch_total),
   });
   // Sessions of any program gone silent for too long were killed: not running any more.
   for (const gid of backgroundRuns.sweep(now)) {

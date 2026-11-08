@@ -11,7 +11,7 @@ import { State, type ActiveChatRun, type AgentTask } from "../core/state";
 import { sessionSubtitle } from "../core/pills";
 import { lastTextStep } from "../core/diff";
 import { BACKGROUND_TEXT, backgroundLine, type BackgroundCounts } from "../core/background";
-import { lanes } from "./background";
+import { lanes, progressBar } from "./background";
 import { ACTIVITIES_TEXT, eventWhen, type ActivitiesAction, type ActivitiesData } from "./activities-view";
 import { N_, language, t, tl } from "../i18n/i18n";
 import { Bridge, type Decision } from "../core/bridge";
@@ -496,7 +496,8 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
           h("span", { class: "n", text: task.name }),
           h("span", { class: "s", text: `· ${t(BACKGROUND_TEXT.inBackground)}` })),
         h("div", { class: `home-line${done ? " ok" : failed ? " err" : ""}`, text: line })),
-      lanes(c.running));
+      lanes(c.running),
+      done || failed ? null : progressBar(c));
   }
 
   function label(text: string, n?: number): HTMLElement {
@@ -671,7 +672,7 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       // and its mouse-up would swallow the click.
       const lk = [
         language(), id, req?.command, req?.questions?.[0]?.question, req?.email?.subject, State.approvalQueue.length,
-        ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}:${x.background ? `${x.background.running}/${x.background.done}/${x.background.failed}` : ""}`),
+        ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}:${x.background ? `${x.background.running}/${x.background.done}/${x.background.failed}/${x.background.total ?? ""}` : ""}`),
         ...State.plans.map((p) => `${p.key}:${p.updatedAt}:${p.steps.map((s) => s.status).join(",")}`),
         ...State.activeChats.map((c) => `${c.chatId}:${c.who}:${c.color}:${c.title}:${c.line}:${c.done ? 1 : 0}:${c.failed ? 1 : 0}`),
         ...ghItems.map((g) => g.key),

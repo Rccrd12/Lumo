@@ -16706,6 +16706,52 @@
    "ru": "Запрос разрешения всё равно приходит карточкой и всегда ждёт вашего клика.",
    "id": "Permintaan izin tetap muncul sebagai kartu, selalu dengan klik Anda.",
    "it": "Una richiesta di permesso arriva comunque come card, sempre con il tuo clic."
+  },
+  "{count} of {total} done": {
+   "zh-Hans": {
+    "other": "{count}/{total} 个已完成"
+   },
+   "hi": {
+    "one": "{total} में से {count} पूरा",
+    "other": "{total} में से {count} पूरे"
+   },
+   "es": {
+    "one": "{count} de {total} terminada",
+    "other": "{count} de {total} terminadas"
+   },
+   "ar": {
+    "zero": "{count} من {total} مكتملة",
+    "one": "{count} من {total} مكتملة",
+    "two": "{count} من {total} مكتملة",
+    "few": "{count} من {total} مكتملة",
+    "many": "{count} من {total} مكتملة",
+    "other": "{count} من {total} مكتملة"
+   },
+   "fr": {
+    "one": "{count} sur {total} terminée",
+    "other": "{count} sur {total} terminées"
+   },
+   "bn": {
+    "one": "{total}টির মধ্যে {count}টি শেষ",
+    "other": "{total}টির মধ্যে {count}টি শেষ"
+   },
+   "pt-BR": {
+    "one": "{count} de {total} concluída",
+    "other": "{count} de {total} concluídas"
+   },
+   "ru": {
+    "one": "{count} из {total} готова",
+    "few": "{count} из {total} готовы",
+    "many": "{count} из {total} готово",
+    "other": "{count} из {total} готово"
+   },
+   "id": {
+    "other": "{count} dari {total} selesai"
+   },
+   "it": {
+    "one": "{count} di {total} finita",
+    "other": "{count} di {total} finite"
+   }
   }
  }
 }

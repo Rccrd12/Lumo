@@ -279,6 +279,9 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         if let Some(name) = background::launcher(env, chain) {
             map.insert("lumo_launcher".into(), Value::String(name));
         }
+        if let Some(total) = background::batch_total(env) {
+            map.insert("lumo_batch_total".into(), Value::from(total));
+        }
     }
     // Claude Code in Cursor's terminal goes on the Cursor pill.
     if !map.contains_key("term_editor") {
@@ -591,14 +594,20 @@ mod tests {
     fn a_session_another_program_started_is_marked_with_its_name() {
         let args = Args { agent: String::new(), event: String::new(), wait: None, chat_guard: false };
         let raw = br#"{"hook_event_name":"Stop","session_id":"s"}"#;
-        let headless = env_of(&[("CLAUDE_CODE_ENTRYPOINT", "sdk-cli"), ("LUMO_LAUNCHER", "Easy Uninstaller")]);
+        let headless = env_of(&[
+            ("CLAUDE_CODE_ENTRYPOINT", "sdk-cli"),
+            ("LUMO_LAUNCHER", "Easy Uninstaller"),
+            ("LUMO_BATCH_TOTAL", "120"),
+        ]);
         let v: Value = serde_json::from_str(prepare(raw, &args, &headless, "/p").unwrap().line.trim_end()).unwrap();
         assert_eq!(v["lumo_background"], true);
         assert_eq!(v["lumo_launcher"], "Easy Uninstaller");
+        assert_eq!(v["lumo_batch_total"], 120);
         // No name to give: still in the background.
         let v: Value = serde_json::from_str(prepare(raw, &args, &env_of(&[("CLAUDE_CODE_ENTRYPOINT", "sdk-cli")]), "/p").unwrap().line.trim_end()).unwrap();
         assert_eq!(v["lumo_background"], true);
         assert!(v.get("lumo_launcher").is_none());
+        assert!(v.get("lumo_batch_total").is_none());
         // The island's own chat runs with -p too: it stays the island's.
         let own = env_of(&[("CLAUDE_CODE_ENTRYPOINT", "sdk-cli"), ("LUMO_ISLAND_RUN", "1")]);
         assert!(!prepare(raw, &args, &own, "/p").unwrap().line.contains("lumo_background"));

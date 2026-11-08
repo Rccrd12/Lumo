@@ -28,6 +28,11 @@ export const STALE_MS = 10 * 60_000;
 /** Nothing running for this long and the batch is over: a lane picks up its next question in far less. */
 export const QUIET_MS = 4_000;
 
+/** How many questions in all the relay passed on, if a count. */
+export function batchTotal(raw: unknown): number | undefined {
+  return typeof raw === "number" && Number.isInteger(raw) && raw > 0 ? raw : undefined;
+}
+
 /** The program's name the relay gave, if it is one to show. */
 export function launcherName(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -52,6 +57,8 @@ export interface BackgroundCounts {
   done: number;
   /** Turns that ended on an error (StopFailure). */
   failed: number;
+  /** How many questions the program said it asks in all (LUMO_BATCH_TOTAL), if it did. */
+  total?: number | null;
 }
 
 /** One session's answer, or its error, and what it was about. */
@@ -82,6 +89,8 @@ export interface BackgroundDetail {
   /** The answer, or the error. */
   text?: string;
   agent?: string;
+  /** How many questions in all, as the program said. */
+  total?: number;
 }
 
 interface Group {
@@ -91,6 +100,7 @@ interface Group {
   failed: number;
   peak: number;
   agent: string;
+  total: number | null;
   last: BackgroundAnswer | null;
   lastFailed: BackgroundAnswer | null;
 }
@@ -106,10 +116,11 @@ export class BackgroundRuns {
     let g = this.groups.get(id);
     const started = !g;
     if (!g) {
-      g = { running: new Map(), done: 0, failed: 0, peak: 0, agent: "", last: null, lastFailed: null };
+      g = { running: new Map(), done: 0, failed: 0, peak: 0, agent: "", total: null, last: null, lastFailed: null };
       this.groups.set(id, g);
     }
     if (detail.agent) g.agent = detail.agent;
+    if (detail.total) g.total = detail.total;
     const subject = detail.subject || g.running.get(session)?.subject || "";
     switch (kind) {
       case "busy":
@@ -142,7 +153,7 @@ export class BackgroundRuns {
     const g = this.groups.get(id);
     if (!g) return null;
     return {
-      running: g.running.size, done: g.done, failed: g.failed, peak: g.peak, agent: g.agent,
+      running: g.running.size, done: g.done, failed: g.failed, total: g.total, peak: g.peak, agent: g.agent,
       subjects: [...g.running.values()].map((r) => r.subject),
       last: g.last, lastFailed: g.lastFailed,
     };
@@ -216,6 +227,12 @@ export function answerLine(text: unknown): string {
 }
 
 /** An answer without its subject in front ("Zoom: cache: safe to delete" about Zoom → "cache: safe to delete"). */
+/** How far along the batch is, 0 to 1 (answers and errors of the total); null when the program did not say. */
+export function progress(c: BackgroundCounts): number | null {
+  if (!c.total) return null;
+  return Math.min(1, (c.done + c.failed) / c.total);
+}
+
 export function answerText(answer: BackgroundAnswer): string {
   const { subject, text } = answer;
   if (!subject || text.slice(0, subject.length).toLowerCase() !== subject.toLowerCase()) return text;
@@ -242,9 +259,11 @@ export const running = (n: number) => tn("{count} running", "{count} running", n
 export const done = (n: number) => tn("{count} done", "{count} done", n);
 export const failed = (n: number) => tn("{count} failed", "{count} failed", n);
 
-/** "37 done · 8 running · 2 failed", leaving out what is nothing. */
+export const doneOf = (n: number, total: number) => tn("{count} of {total} done", "{count} of {total} done", n, { total });
+
+/** "37 done · 8 running · 2 failed" ("37 of 120 done…" when the program said how many), leaving out what is nothing. */
 export function backgroundLine(c: BackgroundCounts): string {
-  const parts = [done(c.done)];
+  const parts = [c.total ? doneOf(c.done, c.total) : done(c.done)];
   if (c.running > 0) parts.push(running(c.running));
   if (c.failed > 0) parts.push(failed(c.failed));
   return parts.join(" · ");

@@ -8,7 +8,7 @@ import assert from "node:assert/strict";
 import { calls, emit } from "./tauri.mjs";
 import { liveSessions, registerHookHandlers, resetBackground } from "../src/island/hooks.ts";
 import {
-  BackgroundRuns, QUIET_MS, STALE_MS, answerLine, answerText, backgroundGroupId, backgroundLine, launcherName,
+  BackgroundRuns, QUIET_MS, STALE_MS, answerLine, progress, answerText, backgroundGroupId, backgroundLine, launcherName,
   parseBackgroundMode, subjectOf,
 } from "../src/core/background.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
@@ -121,6 +121,16 @@ test("a batch remembers the most at once, what runs, and the last answer", () =>
   assert.deepEqual(info.last, { subject: "Zoom", text: "Zoom: cache, safe to delete" });
   assert.equal(info.agent, "Claude Code");
   assert.equal(task().steps.at(-1), "Zoom: cache, safe to delete", "the subject once");
+});
+
+test("a program that says how many questions in all shows how far along it is", () => {
+  assert.equal(progress({ running: 8, done: 37, failed: 0 }), null, "no total, no share");
+  assert.equal(progress({ running: 8, done: 36, failed: 1, total: 74 }), 0.5);
+  assert.equal(progress({ running: 0, done: 130, failed: 0, total: 120 }), 1);
+  assert.equal(backgroundLine({ running: 8, done: 37, failed: 0, total: 120 }), "37 of 120 done · 8 running");
+  bg("UserPromptSubmit", "a", { lumo_batch_total: 120 });
+  bg("UserPromptSubmit", "b", { lumo_batch_total: "lots" });
+  assert.equal(task().background.total, 120, "a total once said stays");
 });
 
 // ── On the island ─────────────────────────────────────────────────────────────

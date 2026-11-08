@@ -77,6 +77,10 @@ Background sessions shows them grouped, one by one (as any session) or not at al
   neither the agent, its runtime (Node, Bun…) nor a shell, so `easy-uninstaller.exe`
   shows as "Easy Uninstaller". Set `LUMO_LAUNCHER` to give it yourself. Started from a
   terminal or an editor, it has no name and shows as "In background".
+- **How many in all**: a program that knows how many questions a batch asks sets
+  `LUMO_BATCH_TOTAL` (say `120`) for every agent it starts. The relay passes it on as
+  `lumo_batch_total`, and the island shows "37 of 120 done" with a bar of how far along
+  it is. Without it, the bar is a light running along while anything is at work.
 
 ## Declared pills
 

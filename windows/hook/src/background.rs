@@ -9,6 +9,8 @@
 //! * Any program can say so for any agent with `LUMO_BACKGROUND=1` (and `0`
 //!   to have its sessions shown one by one after all), and give its own name
 //!   with `LUMO_LAUNCHER`.
+//! * A program that knows how many questions it will ask in all says so with
+//!   `LUMO_BATCH_TOTAL`, and the island shows how far along it is.
 //! * Otherwise the name is the first process above the relay that is neither
 //!   the agent, its runtime nor a shell. A terminal or an editor up there means
 //!   a person started it: no name, the island says "In background".
@@ -49,6 +51,14 @@ pub fn is_background(agent: &str, env: &dyn Fn(&str) -> Option<String>) -> bool 
     // a headless Claude Code happened to start is not taken for one.
     agent.is_empty()
         && env("CLAUDE_CODE_ENTRYPOINT").is_some_and(|e| HEADLESS_ENTRYPOINTS.contains(&e.trim()))
+}
+
+/// Most questions a batch may say it has.
+const MAX_TOTAL: u32 = 1_000_000;
+
+/// How many questions the program will ask in all, when it says (LUMO_BATCH_TOTAL).
+pub fn batch_total(env: &dyn Fn(&str) -> Option<String>) -> Option<u32> {
+    env("LUMO_BATCH_TOTAL")?.trim().parse::<u32>().ok().filter(|n| (1..=MAX_TOTAL).contains(n))
 }
 
 /// The program's name: LUMO_LAUNCHER, else read from `chain` (the executables
@@ -154,6 +164,15 @@ mod tests {
         assert_eq!(from_chain(&chain(&["claude.exe", "pwsh.exe", "WindowsTerminal.exe"])), None);
         assert_eq!(from_chain(&chain(&["claude.exe", "Code.exe"])), None);
         assert_eq!(from_chain(&[]), None);
+    }
+
+    #[test]
+    fn the_program_may_say_how_many_questions_in_all() {
+        assert_eq!(batch_total(&env_of(&[("LUMO_BATCH_TOTAL", " 120 ")])), Some(120));
+        assert_eq!(batch_total(&env_of(&[("LUMO_BATCH_TOTAL", "0")])), None);
+        assert_eq!(batch_total(&env_of(&[("LUMO_BATCH_TOTAL", "-3")])), None);
+        assert_eq!(batch_total(&env_of(&[("LUMO_BATCH_TOTAL", "lots")])), None);
+        assert_eq!(batch_total(&|_| None), None);
     }
 
     #[test]
