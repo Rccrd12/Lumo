@@ -1,5 +1,14 @@
 # Changelog
 
+## Windows 0.19.0 — November 8, 2026
+
+- **The chat reads your GitHub**: with the GitHub pill set up and Settings → General → Security → **GitHub** on Read only, every chat provider (local models too) can read your pull requests with their checks and reviews, issues, repositories, commits and GitHub Actions runs. It is off until you turn it on, so no repository reaches an AI without your yes
+- **The Plan island follows every provider**: the API providers and local models show their steps on it as they work, as Claude Code, Codex and Antigravity CLI do
+- **Chats at work on the home**: the new look's home lists the chats answering in the background with what each is doing, and a finished one stays a few seconds with a green Done; a click opens it. The home's GitHub items refresh when it comes on screen, and long chat titles shorten before the model's name
+- **Unsloth Studio loads and frees its models better**: Lumo loads them by the name Unsloth Studio lists (its quant and local files included) and falls back to the older call for older builds; Settings → Local models shows what it holds in memory with Free memory; its errors say what went wrong, a refused key included
+- **Beta versions**: Settings → Updates → Beta versions (off unless turned on) offers one beta build, main with every open pull request merged in, to try changes before they are released
+- **Fixed**: a pull request or a github.com link in a question brings in the listening tools again for local models
+
 ## Windows 0.18.0 — November 8, 2026
 
 - **A new look**: Lumo is two eyes in the open island's top bar and on the closed island, and the island's light runs along its edge, in a colour picked in the wardrobe. It is on for everyone; Settings → Island → **Previous look** brings back the look of 0.17, exactly as it was
