@@ -1,5 +1,12 @@
 # Changelog
 
+## Windows 0.20.1 — November 9, 2026
+
+- **Sessions another program starts share one row**: when a program asks Claude Code many questions on its own (with `claude -p`, or any agent run with `LUMO_BACKGROUND=1`), the home shows one row for that program, named after it, with how many are done, running and failed and a bar along its foot, which fills as the batch goes when the program sets `LUMO_BATCH_TOTAL`. A click opens what each running session is about, the last answer and the errors. "Work" plays once when the batch starts and "finish" once when it ends, the island never opens on its own for them, and they stay out of the folder history, the Plan island and the weekly recap; their permission requests still come up as cards. Settings → Agents → **Background sessions** has Grouped, One by one (as before) and Hidden
+- **No sounds in a burst**: work, finish, error, approval, question and rate play at most once every 1.5 s; the sounds of your own clicks always play
+- **Your questions as Markdown and formulas**: a question, once sent, is drawn like the answers, with its bold, lists, code and TeX formulas. The box stays plain text while you write, and Copy and Edit take the text as you wrote it
+- **Fixed**: each Unsloth Studio model shows once in the chat's picker, by its name and quant, instead of twice
+
 ## Windows 0.20.0 — November 8, 2026
 
 - **A card answered in the terminal goes away**: when you answer a permission request in the terminal (or in the Claude app) instead of on the island, its card leaves at once, and so does one whose command has already run. A relay left behind by a closed shell now ends too, so it no longer keeps a card up
