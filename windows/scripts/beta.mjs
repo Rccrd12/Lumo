@@ -10,7 +10,10 @@
 //       checks fail or are still running is left out this time, with why. One
 //       that does not merge is left out and the state says what it conflicts
 //       with (main, another pull request, or the other changes together).
-//       Pull requests from forks never take part.
+//       Pull requests from forks never take part, nor those that change nothing
+//       in the app (only its tests, screenshots or notes). When nothing is
+//       left that the release does not have, the step says so (`changes`) and
+//       the workflow takes the beta down instead of publishing one.
 //   node scripts/beta.mjs version <run number>
 //       the beta's version, the next patch with the run as its pre-release
 //       (0.18.0 → 0.18.1-312), written in the three files that carry it. The
@@ -22,7 +25,7 @@
 // The pull requests' titles are only ever shown as text in Lumo.
 
 import { execFileSync } from "node:child_process";
-import { readFileSync, writeFileSync } from "node:fs";
+import { appendFileSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
@@ -36,6 +39,13 @@ const MAX_RUN = 65535;
 
 /** The workflow whose result decides whether a pull request goes in (windows-ci.yml). */
 export const CI_WORKFLOW = "Windows CI";
+
+/**
+ * What makes up the installed app, as paths under windows/: everything but the
+ * tests, the screenshots and the notes. A change outside it is not a reason
+ * for a beta.
+ */
+export const APP_PATHS = [".", ":(exclude)tests", ":(exclude)screenshots", ":(exclude,glob)**/*.md"];
 
 /** Titles longer than this are cut. */
 const MAX_TITLE = 200;
@@ -126,6 +136,16 @@ function tryGit(args) {
   }
 }
 
+/** True when `range` (as git diff takes it) changes the app; true too when git cannot tell. */
+function changesApp(range) {
+  return !tryGit(["diff", "--quiet", ...range, "--", ...APP_PATHS]);
+}
+
+/** The version main carries, which is the last release or the one about to be. */
+function mainVersion() {
+  return JSON.parse(readFileSync(join(root, "src-tauri", "tauri.conf.json"), "utf8")).version;
+}
+
 /** True when `a` and `b` merge without a conflict (nothing is checked out). */
 function mergesCleanly(a, b) {
   return tryGit(["merge-tree", "--write-tree", "--quiet", a, b]);
@@ -153,6 +173,10 @@ function merge(statePath) {
     const ref = `refs/beta/pr-${pr.number}`;
     git(["fetch", "--no-tags", "origin", `+refs/pull/${pr.number}/head:${ref}`]);
     const head = git(["rev-parse", ref]).trim();
+    if (!changesApp([`${main}...${head}`])) {
+      console.log(`#${pr.number} skipped (changes nothing in the app)`);
+      continue;
+    }
     const entry = { number: pr.number, title: pr.title, updatedAt: pr.updatedAt, head };
     const ci = ciState(pr.statusCheckRollup);
     if (ci !== "pass") {
@@ -172,12 +196,18 @@ function merge(statePath) {
     excluded.push({ ...entry, reason: "conflict", with: withWhat });
     console.log(`#${pr.number} left out (conflicts with ${withWhat ?? "the other changes"})`);
   }
-  writeFileSync(statePath, JSON.stringify({ main, included, excluded }, null, 2));
+  // Without a pull request, the beta is main: worth it only when main changed
+  // the app since its release (a tag that does not exist yet counts as changed).
+  const release = `windows-v${mainVersion()}`;
+  const changes = included.length > 0 || changesApp([release, main]);
+  if (!changes) console.log(`nothing the release ${release} does not have: no beta`);
+  writeFileSync(statePath, JSON.stringify({ main, included, excluded, changes }, null, 2));
+  if (process.env.GITHUB_OUTPUT) appendFileSync(process.env.GITHUB_OUTPUT, `changes=${changes}\n`);
 }
 
 function setVersion(run) {
   const confPath = join(root, "src-tauri", "tauri.conf.json");
-  const base = JSON.parse(readFileSync(confPath, "utf8")).version;
+  const base = mainVersion();
   const version = betaVersion(base, run);
   const swapJson = (path) => {
     const text = readFileSync(path, "utf8");

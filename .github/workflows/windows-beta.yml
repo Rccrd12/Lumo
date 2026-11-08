@@ -5,8 +5,8 @@ name: Windows beta
 # as the one `windows-beta` pre-release, which replaces the one before. Lumo
 # offers it only to whoever turned Beta versions on.
 #
-# It runs each time Windows CI ends (on main or on a pull request), and by
-# hand. A pull request merged into main comes back with main's CI; one closed
+# It runs each time Windows CI ends (on main or on a pull request), after
+# each release (the Windows workflow), and by hand. A pull request merged into main comes back with main's CI; one closed
 # without merging leaves the beta at the next build. It never runs on a
 # pull_request event: the token GitHub gives those may not publish a release. Only pull requests whose own Windows
 # CI passed on their latest commit go in: one that fails, or whose checks are
@@ -15,11 +15,13 @@ name: Windows beta
 # the release's notes say what it conflicts with (scripts/beta.mjs). When the
 # tests of the whole fail, nothing is published and the beta before stays.
 # Pull requests from forks never take part: their code is never checked out
-# here.
+# here. Nor do those that change nothing in the app (only tests, screenshots
+# or notes); when the beta would hold nothing the last release does not, it is
+# taken down instead, so Lumo offers no beta that is the release again.
 
 on:
   workflow_run:
-    workflows: ["Windows CI"]
+    workflows: ["Windows CI", "Windows"]
     types: [completed]
   workflow_dispatch:
 
@@ -73,35 +75,44 @@ jobs:
       # The script is read before anything is merged: a pull request cannot
       # change how it is merged.
       - name: Merge the open pull requests into main
+        id: merge
         env:
           GH_TOKEN: ${{ github.token }}
         run: node scripts/beta.mjs merge "$RUNNER_TEMP/beta.json"
 
       - name: Install dependencies
+        if: steps.merge.outputs.changes == 'true'
         run: npm ci
 
       - name: Type check
+        if: steps.merge.outputs.changes == 'true'
         run: npx tsc --noEmit
 
       - name: Island tests
+        if: steps.merge.outputs.changes == 'true'
         run: npm test
 
       - name: Build the relay
+        if: steps.merge.outputs.changes == 'true'
         run: cargo build --release -p lumo-hook
 
       - name: Rust tests
+        if: steps.merge.outputs.changes == 'true'
         run: cargo test --workspace --locked
 
       - name: Set the beta's version
+        if: steps.merge.outputs.changes == 'true'
         id: version
         run: echo "version=$(node scripts/beta.mjs version ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
 
       - name: Build and pack the installer
+        if: steps.merge.outputs.changes == 'true'
         run: |
           npm run pack
           ls -l release
 
       - name: Publish the beta
+        if: steps.merge.outputs.changes == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
@@ -120,3 +131,9 @@ jobs:
             --latest=false \
             --title "Lumo for Windows beta $VERSION" \
             --notes-file "$RUNNER_TEMP/notes.md"
+
+      - name: Take the beta down, it holds nothing new
+        if: steps.merge.outputs.changes == 'false'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release delete windows-beta --repo "$GITHUB_REPOSITORY" --yes || true
