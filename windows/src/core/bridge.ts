@@ -69,6 +69,28 @@ export interface UpdateInfo {
   notes: string;
   /** Lumo-Windows-<latest>-setup.exe of that release, when it has one. */
   assetUrl: string | null;
+  /** This build is a beta (its version has a pre-release part, 0.18.1-312). */
+  currentBeta?: boolean;
+  /** The beta channel's build, when it was asked for and one is published. */
+  beta?: BetaInfo | null;
+}
+
+/** The beta channel's build: main with every open pull request (updater.rs BetaInfo). */
+export interface BetaInfo {
+  version: string;
+  newer: boolean;
+  publishedAt: string;
+  assetUrl: string | null;
+  included: BetaPull[];
+  excluded: BetaPull[];
+}
+
+/** A pull request in the beta, or left out of it with what it conflicts with ("main" or a number). */
+export interface BetaPull {
+  number: number;
+  title: string;
+  updatedAt: string;
+  with?: string;
 }
 
 /** Page pixels the island is drawn off its usual place: a floating island kept on its display. */
@@ -526,8 +548,8 @@ export const Bridge = {
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
 
   // ── Updates (src-tauri/src/updater.rs), only ever on a click in Settings ──
-  /** Asks GitHub for the newest Windows release and compares it with this build. */
-  updateCheck: () => callOrThrow<UpdateInfo>("update_check"),
+  /** Asks GitHub for the newest Windows release (and, with `beta`, the beta build) and compares it with this build. */
+  updateCheck: (beta = false) => callOrThrow<UpdateInfo>("update_check", { beta }),
   /** Downloads that release's installer, starts it and quits Lumo. */
   updateInstall: (url: string) => callOrThrow<void>("update_install", { url }),
 };
