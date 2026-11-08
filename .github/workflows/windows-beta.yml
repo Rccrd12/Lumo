@@ -25,10 +25,10 @@ on:
     types: [completed]
   workflow_dispatch:
 
+# Read-only by default: only the publish job, which runs none of the pull
+# requests' code, may write (the release).
 permissions:
-  contents: write
-  pull-requests: read
-  checks: read
+  contents: read
 
 # One build at a time, each to its end; a newer request waits for it (and
 # replaces any other that was waiting), so busy pull requests never keep the
@@ -41,6 +41,14 @@ jobs:
   beta:
     if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion != 'cancelled' && github.event.workflow_run.conclusion != 'skipped')
     runs-on: windows-latest
+    # Merges, tests and packs the pull requests' code: it can read, never write.
+    permissions:
+      contents: read
+      pull-requests: read
+      checks: read
+    outputs:
+      changes: ${{ steps.merge.outputs.changes }}
+      version: ${{ steps.version.outputs.version }}
     defaults:
       run:
         working-directory: windows
@@ -111,13 +119,43 @@ jobs:
           npm run pack
           ls -l release
 
-      - name: Publish the beta
+      - name: Write the beta's notes
         if: steps.merge.outputs.changes == 'true'
         env:
-          GH_TOKEN: ${{ github.token }}
           VERSION: ${{ steps.version.outputs.version }}
+        run: node scripts/beta.mjs notes "$RUNNER_TEMP/beta.json" "$VERSION" > release/beta-notes.md
+
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: steps.merge.outputs.changes == 'true'
+        with:
+          name: windows-beta
+          path: |
+            windows/release/Lumo-Windows-${{ steps.version.outputs.version }}-setup.exe
+            windows/release/Lumo-Windows-${{ steps.version.outputs.version }}.msi
+            windows/release/beta-notes.md
+          retention-days: 1
+
+  # The only job that may write: it publishes what the beta job packed, or
+  # takes the beta down, and runs nothing from the pull requests.
+  publish:
+    needs: beta
+    if: needs.beta.result == 'success'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: needs.beta.outputs.changes == 'true'
+        with:
+          name: windows-beta
+          path: release
+
+      - name: Publish the beta
+        if: needs.beta.outputs.changes == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.beta.outputs.version }}
         run: |
-          node scripts/beta.mjs notes "$RUNNER_TEMP/beta.json" "$VERSION" > "$RUNNER_TEMP/notes.md"
           # The windows-beta tag stays where it is: GitHub refuses this token
           # the creation of a tag (HTTP 403), so it was pushed once by hand and
           # only the release on it is replaced. The notes name main's commit.
@@ -130,10 +168,10 @@ jobs:
             --prerelease \
             --latest=false \
             --title "Lumo for Windows beta $VERSION" \
-            --notes-file "$RUNNER_TEMP/notes.md"
+            --notes-file release/beta-notes.md
 
       - name: Take the beta down, it holds nothing new
-        if: steps.merge.outputs.changes == 'false'
+        if: needs.beta.outputs.changes == 'false'
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release delete windows-beta --repo "$GITHUB_REPOSITORY" --yes || true

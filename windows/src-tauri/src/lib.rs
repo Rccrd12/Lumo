@@ -74,6 +74,7 @@ mod typing;
 mod updater;
 mod web_search;
 mod webview_drop;
+mod webview_memory;
 mod window_control;
 mod workspace;
 
@@ -1166,8 +1167,12 @@ fn create_settings_window(app: &AppHandle) {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = hidden.hide();
+                    // Hidden, it keeps only what it needs to come back (webview_memory.rs).
+                    webview_memory::set_low(&hidden, true);
                 }
             });
+            // Made hidden: small until it is first shown.
+            webview_memory::set_low(&win, true);
         }
         Err(err) => log::line(format!("settings window failed: {err}")),
     }
@@ -1178,6 +1183,7 @@ fn show_settings_window(app: &AppHandle) {
         log::line("settings window missing");
         return;
     };
+    webview_memory::set_low(&win, false);
     let _ = win.unminimize();
     let _ = win.show();
     let _ = win.set_focus();

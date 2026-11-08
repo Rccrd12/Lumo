@@ -50,6 +50,8 @@ export interface AgentTask {
   sessionId?: string | null;
   /** Claude's final message after Stop, one line; cleared when a new turn starts. */
   finalLine?: string | null;
+  /** The title of the session the pill shows (/rename, else Claude Code's own): its name, with the folder beside it. */
+  sessionTitle?: string | null;
 }
 
 /**

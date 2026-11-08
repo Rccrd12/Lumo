@@ -16,7 +16,8 @@ import type { ToolDraft, ToolInfo, ToolRun } from "./tools";
 import type { LocalCaps } from "./providers";
 
 /** An answer to a permission card: `always` allows it for the rest of the session. */
-export type Decision = "allow" | "deny" | "always";
+/** `edits`: a plan approved with "let it edit files without asking" (Claude Code's acceptEdits, for the session). */
+export type Decision = "allow" | "deny" | "always" | "edits";
 
 /**
  * Settings open inside the island (an iframe of settings.html, see

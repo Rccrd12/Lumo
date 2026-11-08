@@ -55,7 +55,8 @@ with its own progress bar (`/passive`), after Windows asks for an
 administrator's consent, since the .msi installs for every user. Either way
 Lumo quits so the installer can replace it, and the installer opens the new
 Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
-repository's GitHub releases are accepted.
+repository's GitHub releases are accepted, and only one that matches, byte for
+byte, the SHA-256 GitHub published for it is run.
 
 **Beta versions** (off unless you turn it on) also offers the beta: one build
 with main and every open pull request of the repository merged into it, so

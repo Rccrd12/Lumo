@@ -1,5 +1,15 @@
 # Changelog
 
+## Windows 0.20.0 — November 8, 2026
+
+- **A card answered in the terminal goes away**: when you answer a permission request in the terminal (or in the Claude app) instead of on the island, its card leaves at once, and so does one whose command has already run. A relay left behind by a closed shell now ends too, so it no longer keeps a card up
+- **Claude Desktop on the island**: permission requests and questions from Claude Code sessions in the Claude desktop app come up on the island, with Deny and Allow or the choices, like a terminal's
+- **Sessions go by their title**: a Claude Code session shows the title Claude Code gave it (or yours, from `/rename`), with its folder beside it; until it has one, the folder as before
+- **Approve a plan and let it edit files**: under the buttons of a plan asking to start, **Approve and let it edit files without asking** starts it in Claude Code's accept-edits mode for that session only
+- **Your Claude Code folder, wherever it is**: with `CLAUDE_CONFIG_DIR` set, the hooks go in the settings Claude Code really reads there
+- **Less memory**: the Settings window keeps only what it needs while it is hidden
+- **Safer**: only your Windows account can open the pipe the hooks talk to Lumo on; the relay Lumo installs is checked byte for byte, not by size and date; an update's installer must match the SHA-256 GitHub published for it, or it is not run; and the release workflows give write access only to the step that publishes
+
 ## Windows 0.19.1 — November 8, 2026
 
 - **Menus with their text centred**: every row of Lumo's menus has its text in the middle of the row, instead of sitting low on it
