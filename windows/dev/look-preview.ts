@@ -107,6 +107,31 @@ if (params.has("busy")) {
   } as unknown as typeof State.integrations.integration_mail;
 }
 
+// A program asking Claude Code about one folder after another, eight at a
+// time, with ?background (core/background.ts): 36 of 120 answered, one failed, eight at work.
+if (params.has("background")) {
+  const folders = ["Zoom", "Slack", "Dropbox", "OneDrive", "Teams", "Figma", "Notion", "Obsidian", "VLC", "GIMP",
+    "Blender", "Unity", "Epic Games", "Battle.net", "Origin", "Ubisoft", "WhatsApp", "Telegram", "Signal", "Skype",
+    "Opera", "Brave", "Vivaldi", "Firefox", "Thunderbird", "LibreOffice", "Audacity", "OBS", "Postman", "Docker",
+    "JetBrains", "Python", "Node", "Git", "PuTTY", "WinRAR", "7-Zip", "Discord", "Steam", "Spotify",
+    "NVIDIA Corporation", "Microsoft", "Adobe", "Google", "Logitech"];
+  const said = lang === "it"
+    ? ["cache: si può eliminare", "dati dell'app: tienili", "log: si possono eliminare", "si ricrea da sola"]
+    : ["cache: safe to delete", "the app's data: keep it", "logs: safe to delete", "rebuilt by itself"];
+  const bg = (event: string, session: string, extra: Record<string, unknown> = {}) => hook({
+    hook_event_name: event, session_id: session, cwd: `C:\\Temp\\easy-uninstaller-ai\\4242-${session}`,
+    lumo_background: true, lumo_launcher: "Easy Uninstaller", lumo_batch_total: 120, ...extra,
+  });
+  const end = (i: number) => i === 12
+    ? bg("StopFailure", `q${i}`, { error: "timeout" })
+    : bg("Stop", `q${i}`, { last_assistant_message: JSON.stringify({ what: `${folders[i]}: ${said[i % said.length]}`, safe: i % 4 !== 1 }) });
+  for (let i = 0; i < folders.length; i++) {
+    if (i >= 8) end(i - 8);
+    bg("SessionStart", `q${i}`);
+    bg("UserPromptSubmit", `q${i}`, { prompt: `Folder: %LOCALAPPDATA%\\${folders[i]}\nSize: 1.2 GB\nWhat is it, and can it be deleted?` });
+  }
+}
+
 // A short chat.
 State.chatHistory = lang === "it" ? [
   { id: 1, role: "user", content: "Aggiungi l'interruttore del nuovo look" },

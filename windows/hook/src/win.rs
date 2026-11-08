@@ -160,3 +160,42 @@ pub fn parent() -> Option<Parent> {
         Some(Parent(handle))
     }
 }
+
+/// The executables above the relay, nearest first (Claude Code, the shell it
+/// ran us through, the program that started it…), at most
+/// background::MAX_DEPTH of them. Empty if the snapshot can't be taken.
+pub fn ancestry() -> Vec<String> {
+    use std::collections::HashMap;
+    use windows::Win32::System::Diagnostics::ToolHelp::{
+        CreateToolhelp32Snapshot, Process32FirstW, Process32NextW, PROCESSENTRY32W, TH32CS_SNAPPROCESS,
+    };
+    use windows::Win32::System::Threading::GetCurrentProcessId;
+    let mut procs: HashMap<u32, (u32, String)> = HashMap::new();
+    unsafe {
+        let Ok(snapshot) = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0) else { return Vec::new() };
+        let mut entry = PROCESSENTRY32W { dwSize: std::mem::size_of::<PROCESSENTRY32W>() as u32, ..Default::default() };
+        let mut more = Process32FirstW(snapshot, &mut entry).is_ok();
+        while more {
+            let len = entry.szExeFile.iter().position(|&c| c == 0).unwrap_or(entry.szExeFile.len());
+            let exe = String::from_utf16_lossy(&entry.szExeFile[..len]);
+            procs.insert(entry.th32ProcessID, (entry.th32ParentProcessID, exe));
+            more = Process32NextW(snapshot, &mut entry).is_ok();
+        }
+        let _ = CloseHandle(snapshot);
+        let mut out = Vec::new();
+        let mut seen = vec![GetCurrentProcessId()];
+        let mut pid = procs.get(&seen[0]).map(|p| p.0);
+        while let Some(id) = pid {
+            // A parent that is gone may have left its number to another process:
+            // a loop, or a chain past the limit, ends the walk.
+            if id == 0 || seen.contains(&id) || out.len() >= crate::background::MAX_DEPTH {
+                break;
+            }
+            seen.push(id);
+            let Some((parent, exe)) = procs.get(&id) else { break };
+            out.push(exe.clone());
+            pid = Some(*parent);
+        }
+        out
+    }
+}

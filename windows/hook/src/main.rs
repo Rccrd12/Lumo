@@ -30,6 +30,7 @@ use std::time::{Duration, Instant};
 use serde_json::Value;
 
 mod agy_rules;
+mod background;
 mod mail_tools;
 mod mcp;
 mod normalize;
@@ -73,7 +74,7 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
 
 mod win;
-use win::{connect, parent};
+use win::{ancestry, connect, parent};
 
 /// What the command line says: `--agent <name>`, the event name, and
 /// `--wait <seconds>`: how long the agent lets this hook run (Antigravity's
@@ -269,6 +270,18 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
     }
     if is_island_run(env) {
         map.insert("lumo_island".into(), Value::Bool(true));
+    } else if background::is_background(&args.agent, env) {
+        // Started by another program, on its own (background.rs): the island
+        // groups it under that program. The process chain is only read in the
+        // app, never in tests.
+        map.insert("lumo_background".into(), Value::Bool(true));
+        let chain = || if cfg!(test) { Vec::new() } else { ancestry() };
+        if let Some(name) = background::launcher(env, chain) {
+            map.insert("lumo_launcher".into(), Value::String(name));
+        }
+        if let Some(total) = background::batch_total(env) {
+            map.insert("lumo_batch_total".into(), Value::from(total));
+        }
     }
     // Claude Code in Cursor's terminal goes on the Cursor pill.
     if !map.contains_key("term_editor") {
@@ -575,6 +588,32 @@ mod tests {
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
         assert!(!ev.line.contains("lumo_island"));
         assert!(!is_island_run(&|_| None));
+    }
+
+    #[test]
+    fn a_session_another_program_started_is_marked_with_its_name() {
+        let args = Args { agent: String::new(), event: String::new(), wait: None, chat_guard: false };
+        let raw = br#"{"hook_event_name":"Stop","session_id":"s"}"#;
+        let headless = env_of(&[
+            ("CLAUDE_CODE_ENTRYPOINT", "sdk-cli"),
+            ("LUMO_LAUNCHER", "Easy Uninstaller"),
+            ("LUMO_BATCH_TOTAL", "120"),
+        ]);
+        let v: Value = serde_json::from_str(prepare(raw, &args, &headless, "/p").unwrap().line.trim_end()).unwrap();
+        assert_eq!(v["lumo_background"], true);
+        assert_eq!(v["lumo_launcher"], "Easy Uninstaller");
+        assert_eq!(v["lumo_batch_total"], 120);
+        // No name to give: still in the background.
+        let v: Value = serde_json::from_str(prepare(raw, &args, &env_of(&[("CLAUDE_CODE_ENTRYPOINT", "sdk-cli")]), "/p").unwrap().line.trim_end()).unwrap();
+        assert_eq!(v["lumo_background"], true);
+        assert!(v.get("lumo_launcher").is_none());
+        assert!(v.get("lumo_batch_total").is_none());
+        // The island's own chat runs with -p too: it stays the island's.
+        let own = env_of(&[("CLAUDE_CODE_ENTRYPOINT", "sdk-cli"), ("LUMO_ISLAND_RUN", "1")]);
+        assert!(!prepare(raw, &args, &own, "/p").unwrap().line.contains("lumo_background"));
+        // A session in a terminal is not.
+        let typed = env_of(&[("CLAUDE_CODE_ENTRYPOINT", "cli")]);
+        assert!(!prepare(raw, &args, &typed, "/p").unwrap().line.contains("lumo_background"));
     }
 
     #[test]

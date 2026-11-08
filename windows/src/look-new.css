@@ -2110,3 +2110,12 @@ html.look-new .gh-empty {
   font: 400 12.5px var(--font);
   color: var(--dim);
 }
+
+/* A program's sessions in the background: its rows straight on the island, as on the home. */
+html.look-new .overview .left .card:has(> .left-body > .bg-detail) {
+  background: transparent;
+}
+
+html.look-new .bg-detail {
+  padding: 0;
+}

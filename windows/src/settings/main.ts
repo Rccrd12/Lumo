@@ -25,6 +25,7 @@ import { accentDot, errorText, group, renderDiff, sectionHead, setting, statusDo
 import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
+import { parseBackgroundMode } from "../core/background";
 import { betaChanged, changelogSection, updatesSection } from "./updates";
 import { localModelsBlock, type UnslothMemory } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
@@ -240,6 +241,35 @@ function claudeSection(status: HookStatus): HTMLElement {
 
   draw();
   return section;
+}
+
+// ── Background sessions section ───────────────────────────────────────────────
+
+/** Sessions another program starts on its own (core/background.ts). */
+const BACKGROUND_SETTINGS_TEXT = {
+  get title() { return t("Background sessions"); },
+  get intro() {
+    return t("Sessions another program starts on its own, not you: Claude Code run with ‑p or through the Agent SDK, or any agent started with LUMO_BACKGROUND=1. Grouped, each program gets one row, with no sound or alert for every answer and one notice when it is done. Permission requests always come up.");
+  },
+  get show() { return t("Show them"); },
+  get grouped() { return t("Grouped"); },
+  get single() { return t("One by one"); },
+  get hidden() { return t("Hidden"); },
+};
+
+function backgroundSection(): HTMLElement {
+  const menu = select(
+    [
+      ["grouped", BACKGROUND_SETTINGS_TEXT.grouped],
+      ["single", BACKGROUND_SETTINGS_TEXT.single],
+      ["hidden", BACKGROUND_SETTINGS_TEXT.hidden],
+    ],
+    parseBackgroundMode(settings.backgroundSessions),
+    (v) => { settings.backgroundSessions = v; void save(); },
+  );
+  return h("section", {},
+    ...sectionHead(BACKGROUND_SETTINGS_TEXT.title, BACKGROUND_SETTINGS_TEXT.intro),
+    h("div", { class: "setting-list" }, setting(BACKGROUND_SETTINGS_TEXT.show, null, menu)));
 }
 
 // ── Plan usage section ────────────────────────────────────────────────────────
@@ -2433,7 +2463,7 @@ async function render() {
     island: [islandSection()],
     chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), cliSection("copilot-cli", N_("Uses your GitHub Copilot plan. No key needed."), COPILOT_MISSING), cliSection("cursor-cli", N_("Uses your Cursor plan. No key needed."), CURSOR_MISSING), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
-    agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
+    agents: [claudeSection(status), agentsSection(agents), backgroundSection(), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],
     shortcuts: [shortcutsSection(shortcutReport)],
     security: [securitySection()],
