@@ -250,7 +250,7 @@ export const BACKGROUND_TEXT = {
   unnamed: N_("In background"),
   /** Beside the program's name on the home. */
   inBackground: N_("in background"),
-  atATime: N_("up to {count} at a time"),
+  atATime: N_("max {count} in parallel"),
   lastAnswer: N_("Last answer"),
   stillAsks: N_("A permission request still comes up as a card, always with your click."),
 };

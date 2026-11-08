@@ -16671,17 +16671,17 @@
     "other": "{count} errori"
    }
   },
-  "up to {count} at a time": {
-   "zh-Hans": "最多同时 {count} 个",
-   "hi": "एक साथ {count} तक",
-   "es": "hasta {count} a la vez",
-   "ar": "حتى {count} في وقت واحد",
-   "fr": "jusqu'à {count} à la fois",
-   "bn": "একসাথে {count}টি পর্যন্ত",
-   "pt-BR": "até {count} de cada vez",
-   "ru": "до {count} одновременно",
-   "id": "hingga {count} sekaligus",
-   "it": "fino a {count} alla volta"
+  "max {count} in parallel": {
+   "zh-Hans": "最多 {count} 个并行",
+   "hi": "अधिकतम {count} समानांतर",
+   "es": "máx. {count} en paralelo",
+   "ar": "حتى {count} بالتوازي",
+   "fr": "max {count} en parallèle",
+   "bn": "সর্বোচ্চ {count}টি সমান্তরালে",
+   "pt-BR": "máx. {count} em paralelo",
+   "ru": "макс. {count} параллельно",
+   "id": "maks. {count} paralel",
+   "it": "max {count} in parallelo"
   },
   "Last answer": {
    "zh-Hans": "最新回答",
