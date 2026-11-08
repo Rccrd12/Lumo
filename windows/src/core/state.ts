@@ -140,6 +140,18 @@ export interface ChatMessage {
   copies?: { chat: string; path: string; made?: boolean }[];
 }
 
+/** A chat currently answering, thinking, calling tools or compacting, for the home's list. */
+export interface ActiveChatRun {
+  chatId: string;
+  /** Who answers ("Claude Code", "Unsloth Studio", "Sonnet 4.5"…). */
+  who: string;
+  color: string;
+  /** The chat's title (first question, shortened). */
+  title: string;
+  /** What the chat is doing right now ("Writes…", "Thinking…", "Reading main.ts"…). */
+  line: string;
+}
+
 export type PromptContext =
   | { kind: "window"; appName: string; title: string; url?: string }
   | { kind: "file"; name: string; path?: string };
@@ -514,6 +526,8 @@ class AppState {
    * null once the answer is being written. For the closed island (core/compact.ts).
    */
   chatActivity: { label: string | null } | null = null;
+  /** Every chat currently answering, thinking, calling tools or compacting, for the home's list. */
+  activeChats: ActiveChatRun[] = [];
   /** A question the chat asks as soon as it is on screen (an email's buttons). */
   chatAsk: string | null = null;
   /** The pull requests Lumo listens to for the chat (core/listen.ts, listen.rs). */

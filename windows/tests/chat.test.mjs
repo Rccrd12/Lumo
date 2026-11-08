@@ -1069,3 +1069,25 @@ test("a tool's command is in the menu, and what follows it goes to the AI as a r
   setLocalCaps("ollama", null);
   State.tools = [];
 });
+
+test("State.activeChats tracks live chat turns from Thinking through Writes until done", async () => {
+  State.settings = { ...State.settings, chatProvider: "unsloth", chatModels: { ...State.settings.chatModels, unsloth: "qwen3-8b" } };
+  const pending = heldAnswers();
+  await ask("Check my GitHub PRs");
+  assert.equal(State.activeChats.length, 1);
+  assert.equal(State.activeChats[0].chatId, State.chatId);
+  assert.equal(State.activeChats[0].title, "Check my GitHub PRs");
+  assert.equal(State.activeChats[0].line, "Thinking…");
+
+  emit("chat-activity", { chat: State.chatId, activity: { kind: "tool", detail: "GitHub" } });
+  assert.equal(State.activeChats[0].line, "Using GitHub");
+
+  emit("chat-delta", { chat: State.chatId, text: "Here are your open PRs:" });
+  assert.equal(State.activeChats[0].line, "Writes…");
+
+  pending[0]({ text: "Here are your open PRs: #21.", turns: 2 });
+  await flush();
+  view.sync();
+  assert.equal(State.activeChats.length, 0);
+});
+

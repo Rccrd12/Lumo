@@ -7,7 +7,7 @@
 
 import { h, svg, clear, dot } from "./dom";
 import { ICONS } from "./icons";
-import { State, type AgentTask } from "../core/state";
+import { State, type ActiveChatRun, type AgentTask } from "../core/state";
 import { sessionSubtitle } from "../core/pills";
 import { lastTextStep } from "../core/diff";
 import { ACTIVITIES_TEXT, eventWhen, type ActivitiesAction, type ActivitiesData } from "./activities-view";
@@ -17,8 +17,14 @@ import { parseDuration, type TimerActivity } from "../core/compact";
 import type { PlanKind } from "../core/plan";
 import { planPillParts, visiblePlanKinds } from "./usage";
 import { TOOLS_STRINGS } from "./tools";
-import { planFinished, planProgress, type AgentPlan } from "../core/agent-plan";
+import { planFinished, planKey, planProgress, type AgentPlan } from "../core/agent-plan";
 import { stripStep } from "./plan-strip";
+import {
+  CI_COLORS, GH_STRINGS, actionsUrl, ciWord, readPulse, safeGitHubUrl, shortRepo,
+} from "../core/github";
+import {
+  activeWatches, firedTitle, onGitHub, untilText, watchColor, type ListenWatch,
+} from "../core/listen";
 
 export const HOME_TEXT = {
   needsYou: N_("Needs you"),
@@ -63,12 +69,24 @@ export interface HomeActions {
   decide(d: Decision, requestId: string): void;
   openChat(): void;
   openPlan(kind: PlanKind): void;
-  /** A chat's plan row: that chat, with its plan. */
+  /** A chat's row on the home: opens that chat on screen. */
   openChatPlan(chatId: string): void;
+  openUrl?(url: string): void;
   makeTool(): void;
   activityData(): ActivitiesData;
   activity(a: ActivitiesAction): void;
   blip(): void;
+}
+
+/** One GitHub item (running/failing CI, review request, or open PR) shown on the home. */
+export interface HomeGitHubItem {
+  key: string;
+  color: string;
+  sub: string;
+  line: string;
+  failed: boolean;
+  badge: string;
+  url: string | null;
 }
 
 /** How long a request that just came up ignores clicks on N and Y (views.ts CLICK_GUARD_MS). */
@@ -125,6 +143,81 @@ export function homeChatPlans(): AgentPlan[] {
     seen.add(p.key);
     return p.steps.length > 0 && !planFinished(p.steps);
   });
+}
+
+/** Chats currently writing, thinking or calling tools without an active plan row of their own. */
+export function homeActiveChats(chatPlans: AgentPlan[] = homeChatPlans()): ActiveChatRun[] {
+  return State.activeChats.filter((c) => !chatPlans.some((p) => p.key === planKey("chat", c.chatId)));
+}
+
+/** Active GitHub CI runs/failures, review requests and open PRs from the GitHub pulse. */
+export function homeGitHubItems(): HomeGitHubItem[] {
+  const info = State.integrations["integration_github"];
+  if (!info || (State.tasks.length > 0 && !State.tasks.some((x) => x.id === "integration_github"))) return [];
+  const pulse = readPulse(info.data ?? {});
+  if (!pulse) return [];
+  const items: HomeGitHubItem[] = [];
+  const ciOrder = { failure: 0, pending: 1, success: 2, unknown: 3 } as const;
+  const activeCI = pulse.mainCI
+    .filter((r) => r.ci === "pending" || r.ci === "failure")
+    .slice()
+    .sort((a, b) => ciOrder[a.ci] - ciOrder[b.ci]);
+  for (const repo of activeCI) {
+    const word = ciWord(repo.ci) ?? "";
+    items.push({
+      key: `ci:${repo.repo}:${repo.branch}:${repo.ci}`,
+      color: CI_COLORS[repo.ci],
+      sub: `${shortRepo(repo.repo)} (${repo.branch})`,
+      line: word ? `${GH_STRINGS.mainCI} · ${word}` : GH_STRINGS.mainCI,
+      failed: repo.ci === "failure",
+      badge: word,
+      url: safeGitHubUrl(actionsUrl(repo.url)),
+    });
+  }
+  const seenPRs = new Set<string>();
+  for (const pr of pulse.toReview) {
+    seenPRs.add(pr.id);
+    items.push({
+      key: `rev:${pr.id}:${pr.ci}:${pr.title}`,
+      color: pr.ci === "failure" || pr.ci === "pending" ? CI_COLORS[pr.ci] : "#8AB4F8",
+      sub: `${shortRepo(pr.repo)}#${pr.number}`,
+      line: pr.title,
+      failed: pr.ci === "failure",
+      badge: GH_STRINGS.toReview,
+      url: safeGitHubUrl(pr.url),
+    });
+  }
+  const myPRs = pulse.myPRs
+    .filter((pr) => !seenPRs.has(pr.id))
+    .slice()
+    .sort((a, b) => ciOrder[a.ci] - ciOrder[b.ci]);
+  for (const pr of myPRs) {
+    items.push({
+      key: `pr:${pr.id}:${pr.ci}:${pr.isDraft}:${pr.title}`,
+      color: CI_COLORS[pr.ci],
+      sub: `${shortRepo(pr.repo)}#${pr.number}`,
+      line: pr.title,
+      failed: pr.ci === "failure",
+      badge: pr.isDraft ? GH_STRINGS.draft : (ciWord(pr.ci) ?? GH_STRINGS.myPRs),
+      url: safeGitHubUrl(pr.url),
+    });
+  }
+  return items;
+}
+
+/** Active watches Lumo is currently listening to (GitHub PRs or local triggers). */
+export function homeWatches(): ListenWatch[] {
+  return activeWatches(State.listening);
+}
+
+/** Total rows shown under "In progress" on the left side of the home. */
+export function homeInProgressCount(sessionsCount: number): number {
+  const chatPlans = homeChatPlans();
+  return sessionsCount
+    + chatPlans.length
+    + homeActiveChats(chatPlans).length
+    + homeGitHubItems().length
+    + homeWatches().length;
 }
 
 /** A session's plan under way, if it follows one. */
@@ -266,14 +359,76 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
   /** A chat's plan under way: whose, its step now, its segments; a click opens that chat. */
   function chatPlanRow(plan: AgentPlan): HTMLElement {
     const chatId = plan.key.slice(plan.key.indexOf("|") + 1);
+    const liveRun = State.activeChats.find((c) => c.chatId === chatId);
+    const stepText = stripStep(plan.steps)?.text || liveRun?.line || "";
     return h("button", { class: "home-row", onclick: () => actions.openChatPlan(chatId) },
       h("div", { class: "home-text" },
         h("div", { class: "home-who" },
           dot(plan.color, 8),
           h("span", { class: "n", text: plan.agent }),
           h("span", { class: "s", text: `· ${plan.project}` })),
-        h("div", { class: "home-line", text: stripStep(plan.steps)?.text ?? "" })),
+        h("div", { class: "home-line", text: stepText })),
       ...planEnds(plan));
+  }
+
+  /** An island chat currently writing, thinking, calling tools or compacting; a click opens it. */
+  function activeChatRow(c: ActiveChatRun): HTMLElement {
+    return h("button", { class: "home-row", onclick: () => actions.openChatPlan(c.chatId) },
+      h("div", { class: "home-text" },
+        h("div", { class: "home-who" },
+          dot(c.color, 8),
+          h("span", { class: "n", text: c.who }),
+          c.title && c.title !== c.who ? h("span", { class: "s", text: `· ${c.title}` }) : null),
+        h("div", { class: "home-line", text: c.line })));
+  }
+
+  /** A GitHub CI run/failure, review request or open PR; a click opens it on GitHub (or the GitHub card). */
+  function gitHubRow(item: HomeGitHubItem): HTMLElement {
+    const open = () => {
+      if (item.url) {
+        actions.blip();
+        if (actions.openUrl) actions.openUrl(item.url);
+        else void Bridge.openUrl(item.url);
+      } else {
+        actions.openSession("integration_github");
+      }
+    };
+    return h("button", { class: "home-row", onclick: open },
+      h("div", { class: "home-text" },
+        h("div", { class: "home-who" },
+          dot(item.color, 8),
+          h("span", { class: "n", text: GH_STRINGS.title }),
+          item.sub ? h("span", { class: "s", text: `· ${item.sub}` }) : null),
+        h("div", { class: `home-line${item.failed ? " err" : ""}`, text: item.line })),
+      item.badge ? h("span", { class: "home-count", text: item.badge }) : null);
+  }
+
+  /** An active watch Lumo is listening to; a click opens its chat or its GitHub PR. */
+  function watchRow(w: ListenWatch): HTMLElement {
+    const gh = onGitHub(w);
+    const open = () => {
+      if (w.chatId) {
+        actions.openChatPlan(w.chatId);
+        return;
+      }
+      const url = gh ? safeGitHubUrl(`https://github.com/${w.repo}/pull/${w.number}`) : null;
+      if (url) {
+        actions.blip();
+        if (actions.openUrl) actions.openUrl(url);
+        else void Bridge.openUrl(url);
+      }
+    };
+    const sub = gh ? `${shortRepo(w.repo)}#${w.number}` : "";
+    const when = untilText(w);
+    const line = w.task ? `${when} · ${w.task}` : when;
+    return h("button", { class: "home-row", onclick: open },
+      h("div", { class: "home-text" },
+        h("div", { class: "home-who" },
+          dot(watchColor(w), 8),
+          h("span", { class: "n", text: firedTitle(w) }),
+          sub ? h("span", { class: "s", text: `· ${sub}` }) : null),
+        h("div", { class: "home-line", text: line })),
+      h("span", { class: "home-count", text: t("Listening") }));
   }
 
   function sessionRow(task: AgentTask): HTMLElement {
@@ -459,6 +614,9 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       const data = actions.activityData();
       const { sessions, others } = homeLists(active, data);
       const chatPlans = homeChatPlans();
+      const chatRuns = homeActiveChats(chatPlans);
+      const ghItems = homeGitHubItems();
+      const watches = homeWatches();
 
       // Rebuilt only when what they show changes: a rebuild between a mouse-down
       // and its mouse-up would swallow the click.
@@ -466,17 +624,26 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
         language(), id, req?.command, req?.questions?.[0]?.question, req?.email?.subject, State.approvalQueue.length,
         ...sessions.map((x) => `${x.id}:${x.name}:${x.color}:${x.state}:${x.stepIndex}:${x.steps.length}:${lastTextStep(x.steps)}:${x.finalLine ?? ""}`),
         ...State.plans.map((p) => `${p.key}:${p.updatedAt}:${p.steps.map((s) => s.status).join(",")}`),
+        ...State.activeChats.map((c) => `${c.chatId}:${c.who}:${c.color}:${c.title}:${c.line}`),
+        ...ghItems.map((g) => g.key),
+        ...watches.map((w) => `${w.id}:${w.source ?? ""}:${w.repo}:${w.number}:${w.target ?? ""}:${w.until}:${w.task}`),
       ].join("~");
       if (lk !== leftKey) {
         leftKey = lk;
         clear(left);
         const waiting = waitingCard();
         if (waiting) left.append(label(t(HOME_TEXT.needsYou), 1 + State.approvalQueue.length), waiting);
-        if (sessions.length || chatPlans.length) {
-          left.append(label(t("In progress"), sessions.length + chatPlans.length),
-            h("div", { class: "home-rows" }, ...sessions.map(sessionRow), ...chatPlans.map(chatPlanRow)));
+        const runningCount = sessions.length + chatPlans.length + chatRuns.length + ghItems.length + watches.length;
+        if (runningCount > 0) {
+          left.append(label(t("In progress"), runningCount),
+            h("div", { class: "home-rows" },
+              ...sessions.map(sessionRow),
+              ...chatPlans.map(chatPlanRow),
+              ...chatRuns.map(activeChatRow),
+              ...ghItems.map(gitHubRow),
+              ...watches.map(watchRow)));
         }
-        if (!waiting && !sessions.length && !chatPlans.length) {
+        if (!waiting && runningCount === 0) {
           left.append(h("div", { class: "home-empty" },
             h("div", { class: "n", text: t("Nothing running right now.") }),
             h("div", { class: "s", text: t("Drop a file or window, or ask me anything.") })));

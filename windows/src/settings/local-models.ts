@@ -9,7 +9,7 @@ import { N_, t } from "../i18n/i18n";
 import { h, clear } from "../views/dom";
 import { errorText, setting, wideSetting } from "./parts";
 
-export type ModelServerId = "ollama" | "lmstudio";
+export type ModelServerId = "ollama" | "lmstudio" | "unsloth";
 
 const STRINGS = {
   inMemory: N_("In memory"),
@@ -54,7 +54,7 @@ export function pullPercent(p: Pick<LocalPull, "completed" | "total">): number |
   return p.total > 0 ? Math.min(100, Math.floor((p.completed / p.total) * 100)) : null;
 }
 
-/** The memory and download rows of a connected Ollama or LM Studio. */
+/** The memory and download rows of a connected Ollama, LM Studio or Unsloth Studio. */
 export function localModelsBlock(id: ModelServerId): HTMLElement {
   listen();
   const block = h("div", {});
@@ -87,6 +87,13 @@ export function localModelsBlock(id: ModelServerId): HTMLElement {
     await refresh();
   });
   const memoryRow = setting(t(STRINGS.inMemory), memory, free);
+  void refresh();
+
+  // Unsloth Studio reports what is in memory and unloads it, without a pull endpoint.
+  if (id === "unsloth") {
+    block.append(memoryRow, memoryStatus);
+    return block;
+  }
 
   // ── Download a model ──
   const input = h("input", {
@@ -143,7 +150,6 @@ export function localModelsBlock(id: ModelServerId): HTMLElement {
 
   shown.set(id, drawProgress);
   drawProgress();
-  void refresh();
   block.append(memoryRow, memoryStatus, downloadRow, progress);
   return block;
 }

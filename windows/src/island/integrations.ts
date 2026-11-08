@@ -44,9 +44,12 @@ export function handleGitHubAlerts(events: GitHubEvent[]) {
 
 let gitHubShown = false;
 
-/** The GitHub card just came on screen (focused, island opened): refresh it if stale. */
+/** The GitHub card (or the new look's home) just came on screen: refresh it if stale. */
 function refreshGitHubWhenShown() {
-  const shown = State.mode === "expanded" && State.focusTask?.id === GITHUB;
+  const onHome = State.settings.islandNewLook === true && State.view === "home"
+    && State.tasks.some((t) => t.id === GITHUB)
+    && State.integrations[GITHUB]?.configured === true;
+  const shown = State.mode === "expanded" && (State.focusTask?.id === GITHUB || onHome);
   if (shown && !gitHubShown) void Bridge.githubRefresh("pulse");
   gitHubShown = shown;
 }

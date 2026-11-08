@@ -395,3 +395,28 @@ test("the island chat's Claude Code sends its plan through the chat, and it open
   mock.timers.tick(8_000);
   assert.equal(beside(), false);
 });
+
+test("a local or API model's update_plan carries its own chat id and speaker", () => {
+  State.chatId = "foreground-chat";
+  emit("chat-plan", {
+    chat: "bg-chat-99",
+    tool: "update_plan",
+    input: {
+      plan: [
+        { step: "Read open PRs", status: "in_progress" },
+        { step: "Check Actions CI", status: "pending" },
+      ],
+    },
+    agent: "Unsloth Studio",
+    color: "#34D399",
+  });
+  assert.equal(beside(), true);
+  assert.equal(island.plan.current.key, "chat|bg-chat-99");
+  assert.equal(island.plan.current.agent, "Unsloth Studio");
+  assert.equal(island.plan.current.color, "#34D399");
+  assert.deepEqual(island.plan.current.steps, [
+    { text: "Read open PRs", status: "active" },
+    { text: "Check Actions CI", status: "pending" },
+  ]);
+});
+

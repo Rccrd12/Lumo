@@ -262,7 +262,14 @@ pub async fn send(
                 let name = call.pointer("/function/name").and_then(Value::as_str).unwrap_or_default();
                 let input = call.pointer("/function/arguments").and_then(Value::as_str).and_then(|a| serde_json::from_str(a).ok()).unwrap_or_else(|| json!({}));
                 // The island says which tool runs, in place of Thinking….
-                chat.events().activity(app, if crate::web_search::NAMES.contains(&name) { crate::web_search::activity(name) } else { crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)) });
+                let act = if crate::web_search::NAMES.contains(&name) {
+                    crate::web_search::activity(name)
+                } else if crate::github_tools::NAMES.contains(&name) {
+                    crate::github_tools::activity(name, &input)
+                } else {
+                    crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
+                };
+                chat.events().activity(app, act);
                 let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, false).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }

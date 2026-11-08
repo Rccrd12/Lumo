@@ -26,6 +26,7 @@ import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
 import { TOOLS_STRINGS, buildTools } from "./tools";
+import { isWorkshopChat } from "../core/tools";
 import { Live } from "../live/session";
 import { buildHome } from "./home";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
@@ -1007,13 +1008,14 @@ function buildHomeView(actions: ViewActions): ViewHost {
       State.useSlot("forge");
       actions.setView("prompt");
     },
-    // A chat's plan on the home: that chat, its plan open in it.
+    // A chat's row on the home: that chat (or workshop chat) open on screen.
     openChatPlan: (chatId) => {
       actions.blip();
-      State.useSlot("chat");
+      State.useSlot(isWorkshopChat(chatId) ? "forge" : "chat");
       State.chatToOpen = chatId;
       actions.setView("prompt");
     },
+    openUrl: (url) => actions.openUrl(url),
     // A plan's usage on the home opens its card, as its pill does on the overview.
     openPlan: (kind) => {
       actions.blip();

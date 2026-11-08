@@ -1041,20 +1041,29 @@ pub fn is_mail_tool(id: &str) -> bool {
 /// reads, and the JSON schema of the input.
 pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String, Value)> {
     let mut all = crate::island_tools::api_tools(true);
+    all.push(crate::island_tools::plan_tool());
     all.extend(mail_api_tools(mail));
+    if crate::github_tools::enabled() {
+        all.extend(crate::github_tools::api_tools());
+    }
     if web {
         all.extend(crate::web_search::api_tools());
     }
     if workspace {
         all.extend(crate::workspace::api_tools());
     }
-    // Never one of the user's with the name of the island's own, the email's or the web search's.
+    // Never one of the user's with the name of Lumo's built-in tools.
     all.extend(
         offered()
             .iter()
             .filter(|t| {
                 let id = t.manifest.id.as_str();
-                !crate::island_tools::NAMES.contains(&id) && !is_mail_tool(id) && !crate::web_search::NAMES.contains(&id) && !crate::workspace::NAMES.contains(&id)
+                !crate::island_tools::NAMES.contains(&id)
+                    && id != crate::island_tools::UPDATE_PLAN
+                    && !is_mail_tool(id)
+                    && !crate::github_tools::NAMES.contains(&id)
+                    && !crate::web_search::NAMES.contains(&id)
+                    && !crate::workspace::NAMES.contains(&id)
             })
             .map(|t| {
                 let v = mcp_tool(&t.manifest);
@@ -1064,6 +1073,24 @@ pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String
     all
 }
 
+/// Name and accent colour of a chat provider for the Plan island (`src/core/providers.ts`).
+fn plan_speaker(provider: &str) -> (String, &'static str) {
+    match provider {
+        "anthropic" => ("Anthropic".into(), "#E07950"),
+        "claude-code" => ("Claude Code".into(), "#D97757"),
+        "antigravity-cli" => ("Antigravity CLI".into(), "#E879F9"),
+        "codex" => ("Codex".into(), "#2DD4BF"),
+        "google" => ("Google".into(), "#4285F4"),
+        "openai" => ("OpenAI".into(), "#10A37F"),
+        "openrouter" => ("OpenRouter".into(), "#6467F2"),
+        "ollama" => ("Ollama".into(), "#FACC15"),
+        "lmstudio" => ("LM Studio".into(), "#A3E635"),
+        "unsloth" => ("Unsloth Studio".into(), "#34D399"),
+        "custom" => (t("Custom server"), "#C0C4CC"),
+        _ => ("Lumo".into(), "#F5F6F8"),
+    }
+}
+
 /// A call from the chat `chat_id`'s API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
 /// it failed. `always_ask`: a card even for a tool the user trusts (a local
@@ -1071,6 +1098,22 @@ pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String
 pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, always_ask: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
+    }
+    if id == crate::island_tools::UPDATE_PLAN {
+        let (text, failed) = crate::island_tools::plan_answer(&input);
+        if !failed {
+            let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
+            let (agent, color) = plan_speaker(&provider);
+            let _ = app.emit_to(
+                WINDOW_LABEL,
+                "chat-plan",
+                json!({ "chat": chat_id, "tool": id, "input": input, "agent": agent, "color": color }),
+            );
+        }
+        return (text, failed);
+    }
+    if crate::github_tools::NAMES.contains(&id) {
+        return crate::github_tools::call(id, &input).await;
     }
     // The chat's own folder of copies (a local model's): nothing outside it,
     // so no card; what it touched joins the chat's files.

@@ -25,7 +25,7 @@ import { buildPicture } from "../views/picture";
 import { USC, UploadSeq, progressAt } from "../upload/sequence";
 import { closePlanCard, openPlanColor, planCardOpen, visiblePlanKinds } from "../views/usage";
 import { buildHeader, buildViews, hasSessionTicker, type ViewActions, type ViewHost } from "../views/views";
-import { homeChatPlans, homeHeight, homeLists, homeTilesInARow } from "../views/home";
+import { homeHeight, homeInProgressCount, homeLists, homeTilesInARow } from "../views/home";
 import { h, svg } from "../views/dom";
 import { ICONS } from "../views/icons";
 import { IslandStateMachine, type LeaveHold } from "./fsm";
@@ -1351,7 +1351,7 @@ export class Island {
       const data = this.activities.data();
       const { sessions, others } = homeLists(hasSessionTicker, data);
       w = Math.min(homeWidth(this.shape, homeTilesInARow(data)), window.innerWidth - 40);
-      h = Math.max(homeHeight(sessions.length + homeChatPlans().length, State.pendingApproval != null, data, others.length + visiblePlanKinds().length),
+      h = Math.max(homeHeight(homeInProgressCount(sessions.length), State.pendingApproval != null, data, others.length + visiblePlanKinds().length),
         pickedHeight(this.shape));
     }
     const asked = State.pendingApproval?.questions?.[0];

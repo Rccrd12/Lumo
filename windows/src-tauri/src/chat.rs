@@ -535,6 +535,10 @@ pub(crate) use listen_tool_note;
 /// tools when Security lets the AI have them (`mail`, mail.rs ai_tools).
 pub fn api_tools_note(mail: &str) -> String {
     let mut note = listen_tool_note!().to_string();
+    note.push_str(" Before starting a task of more than one step, call update_plan with the steps (first step in_progress, the rest pending), and call update_plan again as each step finishes so Lumo's Plan island tracks your progress.");
+    if crate::github_tools::enabled() {
+        note.push_str(crate::github_tools::NOTE);
+    }
     if !mail.is_empty() {
         note.push_str(" The user's email: Lumo's email tools (mail_recent, mail_search, mail_read, mail_attachment, mail_folders) read their mailbox, every folder, read or unread mail alike, and the files attached; Lumo may also list their newest emails in the message. Use them for any question about email, and never say there is no email before looking.");
         if mail.contains("mailsend") {

@@ -87,7 +87,7 @@ import {
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
 } from "../core/providers";
 import { Sound } from "../core/sound";
-import { State, planAskInChat, type ChatMessage } from "../core/state";
+import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
@@ -506,6 +506,7 @@ interface Run {
   /** The CLI session the chat continues (State.chatSession while on screen). */
   session: string | null;
   provider: string;
+  model: string;
   /** The turn the question is in Rust's conversation (chat.rs), for the files it uses. */
   turn: number;
   /** The answer's text so far: "" until it shows. */
@@ -2825,6 +2826,7 @@ export function buildPrompt(
           run.forgotten = true;
           if (!run.stopping) void Bridge.chatStop(c.id);
           run.stopping = true;
+          drawIslandActivity();
         }
         // The chat on screen is gone: so is it from the screen.
         if (c.id === State.chatId) {
@@ -3180,15 +3182,42 @@ export function buildPrompt(
    */
   /** The chat is being compacted: what the closed island says meanwhile. */
   let compactingLabel: string | null = null;
+  let activeChatsKey = "";
 
   function drawIslandActivity() {
-    const run = answering() ?? [...runs.values()].pop();
+    const liveRuns = [...runs.values()].filter((r) => !r.forgotten);
+    const current = answering();
+    const run = (current && !current.forgotten ? current : undefined) ?? liveRuns.at(-1);
     const next = run
       ? { label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
       : compactingLabel != null ? { label: compactingLabel } : null;
+    const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
+      const p = providerDef(r.provider);
+      return {
+        chatId: r.chatId,
+        who: speakerName(p.id, t(p.name), r.model),
+        color: p.accent,
+        title: chatTitle(r.history) || t("Chat"),
+        line: r.text === "" || r.dots ? runLabel(r) : t(COMPACT_TEXT.writing),
+      };
+    });
+    if (compacting && compactingLabel != null && !nextChats.some((c) => c.chatId === State.chatId)) {
+      const { who, color } = chatSpeaker();
+      nextChats.push({
+        chatId: State.chatId,
+        who,
+        color,
+        title: chatTitle(State.chatHistory) || t("Chat"),
+        line: compactingLabel,
+      });
+    }
+    const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}`).join("\n");
     const now = State.chatActivity;
-    if (next == null ? now == null : now != null && now.label === next.label) return;
+    const sameActivity = next == null ? now == null : now != null && now.label === next.label;
+    if (sameActivity && nextKey === activeChatsKey) return;
+    activeChatsKey = nextKey;
     State.chatActivity = next;
+    State.activeChats = nextChats;
     State.notify();
   }
 
@@ -3492,6 +3521,7 @@ export function buildPrompt(
         history,
         session: State.chatSession,
         provider: State.settings.chatProvider,
+        model: activeModel(State.settings),
         turn,
         text: "",
         activity,
@@ -4003,7 +4033,16 @@ export function buildPrompt(
         State.chatToOpen = null;
         if (id !== State.chatId) {
           const saved = loadChats().find((c) => c.id === id);
-          if (saved) queueMicrotask(() => openChat(saved));
+          const inFlight = !saved ? runs.get(id) : undefined;
+          const target = saved ?? (inFlight ? {
+            id,
+            title: chatTitle(inFlight.history),
+            updatedAt: Date.now(),
+            provider: inFlight.provider,
+            session: inFlight.session,
+            turns: [],
+          } : undefined);
+          if (target) queueMicrotask(() => openChat(target));
         }
       }
       if (planIconShown && planBtn.style.display === "none") {

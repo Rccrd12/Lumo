@@ -1085,8 +1085,8 @@ function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
       );
       exposure.append(exposureNotice(settings[field], keys[id] === true) ?? "");
       block.append(exposure);
-      // What Ollama and LM Studio hold in memory, and a model to download.
-      if (id === "ollama" || id === "lmstudio") block.append(localModelsBlock(id));
+      // What Ollama, LM Studio and Unsloth Studio hold in memory (and a model to download where offered).
+      if (id === "ollama" || id === "lmstudio" || id === "unsloth") block.append(localModelsBlock(id));
       return block;
     }
 

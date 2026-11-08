@@ -348,7 +348,12 @@ fn tools_for_mode(all: Vec<(String, String, Value)>, mode: &str) -> Vec<(String,
         return all;
     }
     let reads = |id: &str| {
-        crate::island_tools::NAMES.contains(&id) || crate::mail_tool_defs::MAIL_NAMES.contains(&id) || crate::web_search::NAMES.contains(&id) || crate::workspace::READS.contains(&id)
+        crate::island_tools::NAMES.contains(&id)
+            || id == crate::island_tools::UPDATE_PLAN
+            || crate::mail_tool_defs::MAIL_NAMES.contains(&id)
+            || crate::github_tools::NAMES.contains(&id)
+            || crate::web_search::NAMES.contains(&id)
+            || crate::workspace::READS.contains(&id)
     };
     all.into_iter().filter(|(id, _, _)| reads(id)).collect()
 }
@@ -510,6 +515,8 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
             crate::web_search::activity(name)
         } else if crate::workspace::NAMES.contains(&name) {
             crate::workspace::activity(name, &input)
+        } else if crate::github_tools::NAMES.contains(&name) {
+            crate::github_tools::activity(name, &input)
         } else {
             Activity::new("tool", crate::claude_code::pretty_tool(name))
         });
@@ -574,6 +581,9 @@ pub async fn send(
     };
     let user_tools: Vec<_> = all.iter().filter(|(id, _, _)| profile::group_of(id) == Some(profile::Group::User)).cloned().collect();
     let mut named = profile::named_groups(&query, &user_tools);
+    if mode == "plan" && !named.contains(&profile::Group::Plan) {
+        named.push(profile::Group::Plan);
+    }
     if chat.is_workshop() {
         named.push(profile::Group::User);
     }
@@ -794,11 +804,28 @@ mod tests {
     #[test]
     fn plan_only_keeps_the_tools_that_only_look_and_none_of_the_users() {
         let tool = |id: &str| (id.to_string(), String::new(), json!({}));
-        let all = vec![tool(crate::island_tools::SET_TIMER), tool("pdfcraft"), tool(crate::island_tools::LISTEN), tool("mail_read"), tool("mail_send")];
+        let all = vec![
+            tool(crate::island_tools::SET_TIMER),
+            tool(crate::island_tools::UPDATE_PLAN),
+            tool("pdfcraft"),
+            tool(crate::island_tools::LISTEN),
+            tool(crate::github_tools::OVERVIEW),
+            tool("mail_read"),
+            tool("mail_send"),
+        ];
         let ids = |v: Vec<(String, String, Value)>| v.into_iter().map(|t| t.0).collect::<Vec<_>>();
-        assert_eq!(ids(tools_for_mode(all.clone(), "plan")), vec![crate::island_tools::SET_TIMER, crate::island_tools::LISTEN, "mail_read"]);
-        assert_eq!(ids(tools_for_mode(all.clone(), "default")).len(), 5);
-        assert_eq!(ids(tools_for_mode(all, "auto")).len(), 5);
+        assert_eq!(
+            ids(tools_for_mode(all.clone(), "plan")),
+            vec![
+                crate::island_tools::SET_TIMER,
+                crate::island_tools::UPDATE_PLAN,
+                crate::island_tools::LISTEN,
+                crate::github_tools::OVERVIEW,
+                "mail_read",
+            ]
+        );
+        assert_eq!(ids(tools_for_mode(all.clone(), "default")).len(), 7);
+        assert_eq!(ids(tools_for_mode(all, "auto")).len(), 7);
     }
 
     #[test]

@@ -75,3 +75,25 @@ test("a download shows its progress, then how it ended", async () => {
   assert.equal(block.querySelector(".notice.ok").textContent, "openai/gpt-oss-20b is downloaded.");
   assert.equal(start.disabled, false);
 });
+
+test("Unsloth Studio shows what is in memory and Free memory, with no download row", async () => {
+  let inMemory = [{ name: "unsloth/Qwen3-8B-GGUF", size: 0, vram: 0 }];
+  answers.local_loaded = () => inMemory;
+  answers.local_unload = () => {
+    inMemory = [];
+    return 1;
+  };
+  const block = localModelsBlock("unsloth");
+  await flush();
+  assert.equal(sent("local_loaded").at(-1)?.provider, "unsloth");
+  assert.equal(block.querySelector(".setting-hint").textContent, "unsloth/Qwen3-8B-GGUF");
+  assert.equal(block.find("INPUT").length, 0, "no download input for Unsloth Studio");
+  const buttons = block.find("BUTTON");
+  assert.equal(buttons.length, 1, "only Free memory button");
+  buttons[0].fire("click");
+  await flush();
+  await flush();
+  assert.equal(sent("local_unload").at(-1)?.provider, "unsloth");
+  assert.equal(block.querySelector(".setting-hint").textContent, "No model in memory.");
+  assert.equal(buttons[0].disabled, true);
+});

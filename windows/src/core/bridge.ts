@@ -357,8 +357,8 @@ export const Bridge = {
 
   localConnect: (provider: "ollama" | "lmstudio" | "unsloth" | "custom", url: string) =>
     callOrThrow<LocalServer>("local_connect", { provider, url }),
-  /** Settings → Local models: the models Ollama or LM Studio holds in memory now. */
-  localLoaded: (provider: "ollama" | "lmstudio") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
+  /** Settings → Local models: the models Ollama, LM Studio or Unsloth Studio holds in memory now. */
+  localLoaded: (provider: "ollama" | "lmstudio" | "unsloth") => callOrThrow<LocalLoaded[]>("local_loaded", { provider }),
   /** What a local model can do (pictures, tools, reasoning, its context), as its server says. */
   localCaps: (provider: string, model: string) => callOrThrow<LocalCaps>("local_caps", { provider, model }),
   /** The chat picker: which of `models` the server holds in memory now. */
@@ -368,7 +368,7 @@ export const Bridge = {
   /** The chat picker's −: the model leaves the server's memory. */
   localUnloadModel: (provider: string, model: string) => callOrThrow<void>("local_unload_model", { provider, model }),
   /** Settings → Local models → Free memory: unloads every model the server holds; how many were. */
-  localUnload: (provider: "ollama" | "lmstudio") => callOrThrow<number>("local_unload", { provider }),
+  localUnload: (provider: "ollama" | "lmstudio" | "unsloth") => callOrThrow<number>("local_unload", { provider }),
   /** Settings → Local models → Download: resolves once the model is there (progress: `local-pull` events). */
   localPull: (provider: "ollama" | "lmstudio", model: string) => callOrThrow<void>("local_pull", { provider, model }),
   /** Copies a dropped file into the inbox. */

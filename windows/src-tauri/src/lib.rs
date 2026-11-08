@@ -28,6 +28,7 @@ mod explorer;
 mod file_moves;
 mod files;
 mod github;
+mod github_tools;
 mod hooks;
 mod i18n;
 mod identity;

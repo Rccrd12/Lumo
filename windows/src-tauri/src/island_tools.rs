@@ -30,7 +30,9 @@ pub const LISTEN: &str = "listen";
 pub const LISTEN_PULL_REQUEST: &str = "listen_pull_request";
 pub const UNLISTEN: &str = "stop_listening";
 pub const LIST: &str = "list_listening";
-/// Every one offered.
+/// Plan island checklist tool for the chat's API and local providers (matching hook/src/mcp.rs).
+pub const UPDATE_PLAN: &str = "update_plan";
+/// Every timer/listening tool offered (Claude Code allows these on mcp__lumo__).
 pub const NAMES: &[&str] = &[SET_TIMER, LISTEN, UNLISTEN, LIST];
 
 /// The longest timer: a day.
@@ -49,6 +51,62 @@ fn with<T>(f: impl FnOnce(&mut HashMap<String, Vec<String>>) -> T) -> T {
 fn tool(name: &str, description: &str, properties: Value, required: &[&str]) -> (String, String, Value) {
     let schema = json!({ "type": "object", "properties": properties, "required": required, "additionalProperties": false });
     (name.to_string(), description.to_string(), schema)
+}
+
+/// The Plan island tool for API and local providers: same schema as lumo-hook's `update_plan`.
+pub fn plan_tool() -> (String, String, Value) {
+    tool(
+        UPDATE_PLAN,
+        "Shows the user your plan on Lumo's Plan island. Before starting a job of more than one step, call it \
+with every step (the first one in_progress, the others pending); then call it again with the whole list each \
+time a step is done (completed) and the next one starts (in_progress). Keep steps short.",
+        json!({
+            "explanation": { "type": "string", "description": "Optional: a short note on the plan or what changed." },
+            "plan": {
+                "type": "array",
+                "minItems": 1,
+                "maxItems": 30,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "step": { "type": "string", "minLength": 1 },
+                        "status": { "type": "string", "enum": ["pending", "in_progress", "completed"] },
+                    },
+                    "required": ["step", "status"],
+                    "additionalProperties": false,
+                },
+            },
+        }),
+        &["plan"],
+    )
+}
+
+/// Validates and answers an `update_plan` call (matching hook/src/mcp.rs `plan_answer`).
+pub fn plan_answer(input: &Value) -> (String, bool) {
+    let Some(steps) = input.get("plan").or_else(|| input.get("steps")).and_then(Value::as_array) else {
+        return ("Give `plan` as a non-empty array of `{ step, status }` objects.".into(), true);
+    };
+    if steps.is_empty() {
+        return ("`plan` must contain at least one step.".into(), true);
+    }
+    let status = |s: &Value| s["status"].as_str().unwrap_or("").to_ascii_lowercase();
+    if steps.iter().all(|s| status(s) == "completed") {
+        return ("Plan shown to the user: every step is done.".into(), false);
+    }
+    let now = steps
+        .iter()
+        .find(|s| status(s) == "in_progress")
+        .or_else(|| steps.iter().find(|s| status(s) != "completed"))
+        .and_then(|s| s["step"].as_str().or_else(|| s["text"].as_str()))
+        .unwrap_or("");
+    (
+        format!(
+            "Plan shown to the user. Work on this step only now: \"{now}\". As soon as it is done, call update_plan \
+again with it completed and the next one in_progress, before any tool of the next step: the user follows \
+the plan step by step and must see each one move on, not all of them at the end."
+        ),
+        false,
+    )
 }
 
 /// The tools, as the chat's API providers take them: name, the words the

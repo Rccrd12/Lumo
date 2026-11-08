@@ -130,7 +130,12 @@ async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<V
         let id = b["id"].as_str().unwrap_or_default();
         let name = b["name"].as_str().unwrap_or_default();
         // The island says which tool runs, in place of Thinking….
-        chat.events().activity(app, crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name)));
+        let act = if crate::github_tools::NAMES.contains(&name) {
+            crate::github_tools::activity(name, &b["input"])
+        } else {
+            crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
+        };
+        chat.events().activity(app, act);
         let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone(), false).await;
         results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
     }

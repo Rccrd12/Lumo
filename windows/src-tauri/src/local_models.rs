@@ -763,6 +763,9 @@ impl Drop for PullGuard {
 pub async fn pull(app: &AppHandle, provider: &str, model: &str) -> Result<(), String> {
     let model = safe_name(model).ok_or_else(|| t("Type the model's name as the server writes it, such as llama3.2 or openai/gpt-oss-20b."))?.to_string();
     let (server, base) = server_for(provider)?;
+    if server.id != "ollama" && server.id != "lmstudio" {
+        return Err(tf("{name}: {error}", &[("name", server.name), ("error", "download is not offered by this server")]));
+    }
     let _guard = PullGuard::take(provider).ok_or_else(|| t("A download is already running."))?;
     let mut last = std::time::Instant::now() - PROGRESS_INTERVAL;
     let mut tell = |completed: u64, total: u64, force: bool| {
