@@ -15371,6 +15371,30 @@
    "id": "tidak disertakan: pemeriksaannya masih berjalan",
    "it": "esclusa: i controlli sono ancora in corso"
   },
+  "Approve and let it edit files without asking": {
+   "zh-Hans": "批准，并允许它直接编辑文件而不再询问",
+   "hi": "स्वीकृत करें और बिना पूछे फ़ाइलें बदलने दें",
+   "es": "Aprobar y dejar que edite archivos sin preguntar",
+   "ar": "وافق واسمح له بتعديل الملفات دون أن يسأل",
+   "fr": "Approuver et le laisser modifier les fichiers sans demander",
+   "bn": "অনুমোদন করো এবং জিজ্ঞেস না করেই ফাইল বদলাতে দাও",
+   "pt-BR": "Aprovar e deixar editar arquivos sem perguntar",
+   "ru": "Одобрить и разрешить менять файлы без вопросов",
+   "id": "Setujui dan biarkan mengedit file tanpa bertanya",
+   "it": "Approva e lascia modificare i file senza chiedere"
+  },
+  "The downloaded installer does not match the one GitHub published.": {
+   "zh-Hans": "下载的安装程序与 GitHub 发布的不一致。",
+   "hi": "डाउनलोड किया गया इंस्टॉलर GitHub पर प्रकाशित इंस्टॉलर से मेल नहीं खाता।",
+   "es": "El instalador descargado no coincide con el que publicó GitHub.",
+   "ar": "المثبّت الذي تم تنزيله لا يطابق المثبّت المنشور على GitHub.",
+   "fr": "Le programme d'installation téléchargé ne correspond pas à celui publié sur GitHub.",
+   "bn": "ডাউনলোড করা ইনস্টলারটি GitHub-এ প্রকাশিত ইনস্টলারের সঙ্গে মেলে না।",
+   "pt-BR": "O instalador baixado não corresponde ao publicado no GitHub.",
+   "ru": "Скачанный установщик не совпадает с опубликованным на GitHub.",
+   "id": "Penginstal yang diunduh tidak cocok dengan yang dipublikasikan di GitHub.",
+   "it": "L'installer scaricato non corrisponde a quello pubblicato su GitHub."
+  },
   "What it may do on its own": {
    "zh-Hans": "它可以自行做什么",
    "hi": "यह अपने आप क्या कर सकता है",

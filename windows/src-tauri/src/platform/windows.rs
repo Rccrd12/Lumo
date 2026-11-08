@@ -217,9 +217,66 @@ pub fn agy_candidates() -> Vec<PathBuf> {
 
 /// The SID of the account this process runs as, as `S-1-5-21-…`.
 pub fn current_user_sid() -> Option<String> {
+    unsafe { token_sid(GetCurrentProcess()) }
+}
+
+/// The SID of the account the process on the other end of a relay connection
+/// runs as. None when it cannot be read: an elevated relay's token is closed
+/// to a Lumo that is not, and the pipe's own access list already keeps every
+/// other account out (relay_pipe_attributes).
+pub fn pipe_client_sid(handle: RawHandle) -> Option<String> {
+    use ::windows::Win32::System::Threading::{OpenProcess, PROCESS_QUERY_LIMITED_INFORMATION};
+    let pid = pipe_client_pid(handle)?;
+    unsafe {
+        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+        let sid = token_sid(process);
+        let _ = CloseHandle(process);
+        sid
+    }
+}
+
+/// The relay pipe's security: only this account (and the system) may open it,
+/// where the default would let every account on the machine read it. Made
+/// once and kept for the life of the app; its address, for
+/// `ServerOptions::create_with_security_attributes_raw`. None if it cannot be
+/// made: the pipe then has the default, and the SID in its name and the
+/// relay's own check of the server still stand.
+pub fn relay_pipe_attributes() -> Option<usize> {
+    use std::sync::OnceLock;
+    use ::windows::Win32::Security::Authorization::{ConvertStringSecurityDescriptorToSecurityDescriptorW, SDDL_REVISION_1};
+    use ::windows::Win32::Security::{PSECURITY_DESCRIPTOR, SECURITY_ATTRIBUTES};
+    static ATTRIBUTES: OnceLock<Option<usize>> = OnceLock::new();
+    *ATTRIBUTES.get_or_init(|| {
+        let sid = current_user_sid()?;
+        // Protected (no inherited entries), full access for us and for the system.
+        let sddl: Vec<u16> = format!("D:P(A;;GA;;;{sid})(A;;GA;;;SY)").encode_utf16().chain([0]).collect();
+        let mut descriptor = PSECURITY_DESCRIPTOR::default();
+        unsafe {
+            ConvertStringSecurityDescriptorToSecurityDescriptorW(PCWSTR(sddl.as_ptr()), SDDL_REVISION_1, &mut descriptor, None).ok()?;
+        }
+        // Never freed: every pipe instance Lumo makes uses it.
+        let attributes = Box::leak(Box::new(SECURITY_ATTRIBUTES {
+            nLength: std::mem::size_of::<SECURITY_ATTRIBUTES>() as u32,
+            lpSecurityDescriptor: descriptor.0,
+            bInheritHandle: false.into(),
+        }));
+        Some(attributes as *mut SECURITY_ATTRIBUTES as usize)
+    })
+}
+
+/// The SHA-256 of `bytes`, in lower-case hex, from Windows' own cryptography.
+pub fn sha256_hex(bytes: &[u8]) -> Option<String> {
+    use ::windows::Win32::Security::Cryptography::{BCryptHash, BCRYPT_SHA256_ALG_HANDLE};
+    let mut out = [0u8; 32];
+    unsafe { BCryptHash(BCRYPT_SHA256_ALG_HANDLE, None, bytes, &mut out).ok().ok()? };
+    Some(out.iter().map(|b| format!("{b:02x}")).collect())
+}
+
+/// The user SID behind a process handle. `process` is borrowed, never closed.
+unsafe fn token_sid(process: HANDLE) -> Option<String> {
     unsafe {
         let mut token = HANDLE::default();
-        OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token).ok()?;
+        OpenProcessToken(process, TOKEN_QUERY, &mut token).ok()?;
 
         // First call sizes the buffer, second fills it.
         let mut needed = 0u32;

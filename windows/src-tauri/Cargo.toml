@@ -67,6 +67,8 @@ windows = { version = "0.61", features = [
   "Win32_Graphics_Imaging",
   "Win32_Security",
   "Win32_Security_Authorization",
+  # An update's installer checked against the SHA-256 GitHub published (updater.rs).
+  "Win32_Security_Cryptography",
   # The chat's screen button, a window by itself: PrintWindow (share.rs, screen.rs).
   "Win32_Storage_Xps",
   # "Tell the AI what's open" (desk.rs): where the Recent folder's shortcuts point.

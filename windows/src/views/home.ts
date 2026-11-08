@@ -444,9 +444,11 @@ export function buildHome(actions: HomeActions, active: (t: AgentTask) => boolea
       h("div", { class: "home-text" },
         h("div", { class: "home-who" },
           dot(task.color, 8),
-          h("span", { class: "n", text: task.name }),
-          // An agent's pill is named after it: no need to say it twice.
-          t(sessionSubtitle(task.id)) !== task.name ? h("span", { class: "s", text: `· ${t(sessionSubtitle(task.id))}` }) : null),
+          // A titled session goes by its title, with the pill's name (its folder) beside it.
+          h("span", { class: "n", text: task.sessionTitle || task.name }),
+          task.sessionTitle ? h("span", { class: "s", text: `· ${task.name}` })
+            // An agent's pill is named after it: no need to say it twice.
+            : t(sessionSubtitle(task.id)) !== task.name ? h("span", { class: "s", text: `· ${t(sessionSubtitle(task.id))}` }) : null),
         h("div", { class: `home-line${done ? " ok" : failed ? " err" : ""}`, text: line })),
       ...(plan ? planEnds(plan) : [count ? h("span", { class: "home-count", text: count }) : null]));
   }

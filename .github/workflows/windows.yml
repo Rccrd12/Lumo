@@ -9,8 +9,10 @@ on:
       - 'windows-v*'
   workflow_dispatch:
 
+# Read-only by default: only the publish job, which builds nothing, may write
+# (the release and the windows-latest tag).
 permissions:
-  contents: write
+  contents: read
 
 # Publishing is on: Microsoft reviewed the Defender false positive
 # (Trojan:Win32/Wacatac.H!ml) and removed the detection. Before pushing a
@@ -23,6 +25,10 @@ env:
 jobs:
   build:
     runs-on: windows-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.pack.outputs.version }}
     defaults:
       run:
         working-directory: windows
@@ -116,13 +122,47 @@ jobs:
             windows/target/release/lumo-hook.exe
           retention-days: 3
 
-      - name: Publish the release
+      # What the publish job puts on the release: the installers under their
+      # versioned names and the rolling windows-latest ones.
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         if: env.PUBLISH == 'true' && startsWith(github.ref, 'refs/tags/windows-v')
+        with:
+          name: Lumo-Windows-release
+          path: |
+            windows/release/Lumo-Windows-${{ steps.pack.outputs.version }}-setup.exe
+            windows/release/Lumo-Windows-${{ steps.pack.outputs.version }}.msi
+            windows/release/Lumo-Windows-setup.exe
+            windows/release/Lumo-Windows.msi
+          retention-days: 1
+
+  # The only job that may write: it publishes what the build job made, and
+  # compiles or runs nothing of its own.
+  publish:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/windows-v')
+    runs-on: windows-latest
+    permissions:
+      contents: write
+    defaults:
+      run:
+        working-directory: windows
+
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+
+      - uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        if: env.PUBLISH == 'true'
+        with:
+          name: Lumo-Windows-release
+          path: windows/release
+
+      - name: Publish the release
+        if: env.PUBLISH == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $v = "${{ steps.pack.outputs.version }}"
+          $v = "${{ needs.build.outputs.version }}"
           $notes = @"
           Lumo for Windows $v — a small ring of light at the top of your screen.
 
@@ -158,12 +198,12 @@ jobs:
           }
 
       - name: Update the rolling windows-latest release
-        if: env.PUBLISH == 'true' && startsWith(github.ref, 'refs/tags/windows-v')
+        if: env.PUBLISH == 'true'
         shell: pwsh
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $v = "${{ steps.pack.outputs.version }}"
+          $v = "${{ needs.build.outputs.version }}"
           $exists = gh release view windows-latest 2>$null
           if ($LASTEXITCODE -eq 0) {
             # The tag has to follow the release, or windows-latest keeps pointing

@@ -1360,7 +1360,7 @@ export class Island {
     } else if (State.mode === "expanded" && State.settings.islandNewLook === true && !State.pendingApproval?.email) {
       const planSteps = State.view === "approval" ? State.pendingApproval?.plan?.length ?? 0 : 0;
       // A plan asking to start: its steps take the place of the command and of what it is for.
-      const extra = planSteps ? planAskExtra(planSteps)
+      const extra = planSteps ? planAskExtra(planSteps) + (State.pendingApproval?.fromChat ? 0 : NEW_LOOK_SESSION_ALLOW_H)
         : State.view === "approval" && State.pendingApproval?.sessionAllow === true ? NEW_LOOK_SESSION_ALLOW_H
         : 0;
       h = Math.max(h, (NEW_LOOK_HEIGHT[State.view] ?? 0) + extra);

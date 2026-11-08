@@ -406,9 +406,27 @@ test("a Claude Desktop session gets the Claude Desktop pill, in its colour", () 
   assert.equal(desktop.color, "#D97757");
   assert.equal(desktop.sessionId, "d1");
   assert.equal(task().state, "idle");
-  // Its permission requests are answered in the app.
-  hook({ hook_event_name: "PermissionRequest", request_id: "r1", lumo_agent: "claude-desktop", tool_name: "Bash" });
-  assert.deepEqual(sent("approval_decline"), [{ requestId: "r1" }]);
+  // Its permission requests get a card on the island, like a terminal's.
+  hook({ hook_event_name: "PermissionRequest", request_id: "r1", session_id: "d1", lumo_agent: "claude-desktop", tool_name: "Bash", tool_input: { command: "npm test" } });
+  assert.equal(State.pendingApproval?.requestId, "r1");
+  assert.equal(State.pendingApproval?.pillId, "agent_claude-desktop");
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "r1" }]);
+  assert.deepEqual(sent("approval_decline"), []);
+});
+
+test("a Claude Desktop question gets a question card on the island", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\proj", session_id: "d2", lumo_agent: "claude-desktop" });
+  hook({
+    hook_event_name: "PermissionRequest",
+    request_id: "q1",
+    session_id: "d2",
+    lumo_agent: "claude-desktop",
+    tool_name: "AskUserQuestion",
+    tool_input: { questions: [{ question: "Proceed?", options: [{ label: "Yes" }, { label: "No" }] }] },
+  });
+  assert.equal(State.pendingApproval?.requestId, "q1");
+  assert.ok(State.pendingApproval?.questions?.length);
+  assert.deepEqual(sent("approval_ack"), [{ requestId: "q1" }]);
 });
 
 // ── Main tool and Cursor ──────────────────────────────────────────────────────
@@ -1150,4 +1168,27 @@ test("a change to an email is a card of its own, saying what and to which email,
     lumo_mail_action: { actions: ["move"], folder: "Clienti", from: "bob@example.com", subject: "Offerta" },
   });
   assert.equal(State.pendingApproval.command, "Move to Clienti");
+});
+
+// ── Session titles ────────────────────────────────────────────────────────────
+
+test("a Claude Code session goes by its title once it has one, and loses it when it ends", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\lumo", session_id: "s1" });
+  assert.equal(task().name, "lumo");
+  assert.equal(task().sessionTitle ?? null, null);
+  hook({ hook_event_name: "Stop", cwd: "C:\\p\\lumo", session_id: "s1", lumo_title: "Dark theme in settings" });
+  assert.equal(task().sessionTitle, "Dark theme in settings");
+  assert.equal(task().name, "lumo");
+  // A later event without one keeps it.
+  hook({ hook_event_name: "PreToolUse", cwd: "C:\\p\\lumo", session_id: "s1", tool_name: "Bash", tool_input: { command: "ls" } });
+  assert.equal(task().sessionTitle, "Dark theme in settings");
+  hook({ hook_event_name: "SessionEnd", cwd: "C:\\p\\lumo", session_id: "s1" });
+  assert.equal(task()?.sessionTitle ?? null, null);
+});
+
+test("another agent's title is not taken, Claude Desktop's is", () => {
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\x", session_id: "c1", lumo_agent: "codex", lumo_title: "Nope" });
+  assert.equal(task("agent_codex").sessionTitle ?? null, null);
+  hook({ hook_event_name: "SessionStart", cwd: "C:\\p\\x", session_id: "d1", lumo_agent: "claude-desktop", lumo_title: "Plan the trip" });
+  assert.equal(task("agent_claude-desktop").sessionTitle, "Plan the trip");
 });

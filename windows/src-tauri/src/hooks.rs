@@ -109,8 +109,21 @@ pub struct HookPreview {
     pub fingerprint: String,
 }
 
+/// Claude Code's folder: $CLAUDE_CONFIG_DIR when it is set to a full path,
+/// else ~/.claude. Claude Code reads its settings, credentials and sessions
+/// there, so the hooks must go there too.
+pub fn claude_dir() -> PathBuf {
+    claude_dir_from(std::env::var_os("CLAUDE_CONFIG_DIR"))
+}
+
+fn claude_dir_from(var: Option<std::ffi::OsString>) -> PathBuf {
+    var.map(PathBuf::from)
+        .filter(|p| p.is_absolute())
+        .unwrap_or_else(|| platform::home_dir().join(".claude"))
+}
+
 pub fn settings_path() -> PathBuf {
-    platform::home_dir().join(".claude").join("settings.json")
+    claude_dir().join("settings.json")
 }
 
 /// The settings as they are, or an empty object when we cannot tell. Only for
@@ -443,11 +456,7 @@ pub fn ensure_hook_exe(app: &AppHandle) {
 }
 
 fn install_relay(src: &Path, dest: &Path) {
-    let same = match (std::fs::metadata(src), std::fs::metadata(dest)) {
-        (Ok(a), Ok(b)) => a.len() == b.len() && a.modified().ok() == b.modified().ok(),
-        _ => false,
-    };
-    if same {
+    if same_bytes(src, dest) {
         return;
     }
     // A hook may be running right now and hold the file open; keeping the old
@@ -459,9 +468,38 @@ fn install_relay(src: &Path, dest: &Path) {
     }
 }
 
+/// Whether the installed relay is byte for byte the one Lumo ships. Its size
+/// and date alone would let a changed copy with the same ones stay in place,
+/// and every agent runs it. The relay is small: reading both costs nothing.
+fn same_bytes(a: &Path, b: &Path) -> bool {
+    match (std::fs::metadata(a), std::fs::metadata(b)) {
+        (Ok(x), Ok(y)) if x.len() == y.len() => {}
+        _ => return false,
+    }
+    matches!((std::fs::read(a), std::fs::read(b)), (Ok(x), Ok(y)) if x == y)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_relay_copy_that_was_changed_is_put_back() {
+        let dir = std::env::temp_dir().join(format!("lumo-relay-copy-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let (src, dest) = (dir.join("src.exe"), dir.join("dest.exe"));
+        std::fs::write(&src, b"MZ the relay").unwrap();
+        install_relay(&src, &dest);
+        assert!(same_bytes(&src, &dest));
+        // Same size, other bytes: replaced.
+        std::fs::write(&dest, b"MZ bad relay").unwrap();
+        assert!(!same_bytes(&src, &dest));
+        install_relay(&src, &dest);
+        assert_eq!(std::fs::read(&dest).unwrap(), b"MZ the relay");
+        assert!(!same_bytes(&src, &dir.join("missing.exe")));
+        let _ = std::fs::remove_dir_all(dir);
+    }
 
     #[test]
     fn the_relay_is_known_by_its_name() {
@@ -594,6 +632,17 @@ mod tests {
         assert_eq!(without_ours(&kept).unwrap(), kept);
     }
 
+    #[test]
+    fn claude_config_dir_moves_the_settings_when_it_is_a_full_path() {
+        let custom = if cfg!(windows) { r"D:\claude-work" } else { "/claude-work" };
+        assert_eq!(claude_dir_from(Some(custom.into())), PathBuf::from(custom));
+        // Unset, empty or relative: Claude Code's own default.
+        let cases: [Option<std::ffi::OsString>; 3] = [None, Some("".into()), Some("relative\\dir".into())];
+        for var in cases {
+            assert!(claude_dir_from(var).ends_with(".claude"));
+        }
+    }
+
     /// Everything filesystem-shaped lives in one test on purpose: it points
     /// the home directory at a temp directory, and that is process-wide.
     #[test]
@@ -602,6 +651,7 @@ mod tests {
         let _ = std::fs::remove_dir_all(&tmp);
         std::fs::create_dir_all(tmp.join(".claude")).unwrap();
         std::env::set_var(platform::HOME_VAR, &tmp);
+        std::env::remove_var("CLAUDE_CONFIG_DIR");
 
         let path = settings_path();
         assert!(path.starts_with(&tmp), "the test must not touch the real home");

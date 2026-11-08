@@ -6,6 +6,10 @@
 // decision and writes it back on the same connection, which is how approving
 // from the island works.
 //
+// Only this account can open the pipe (its access list, platform::
+// relay_pipe_attributes), and a connection known to come from another account
+// is dropped unheard.
+//
 // Claude Code is never blocked by us. Three things guarantee it:
 //   * lumo-hook gives the connection 300 ms and exits cleanly if we are closed;
 //   * we only wait for a human once the island has *confirmed* the card is on
@@ -83,7 +87,7 @@ pub fn start(app: AppHandle) {
         let name = pipe_name();
         // first_pipe_instance also means we refuse to join a pipe somebody else
         // already owns under our name, rather than serving on top of it.
-        let mut server = match ServerOptions::new().first_pipe_instance(true).create(&name) {
+        let mut server = match create_instance(&name, true) {
             Ok(s) => s,
             Err(err) => {
                 log::line(format!("cannot open the relay pipe: {err}"));
@@ -104,7 +108,7 @@ pub fn start(app: AppHandle) {
             // up would leave every hook unheard until Lumo restarts.
             let mut failed = false;
             let next = loop {
-                match ServerOptions::new().create(&name) {
+                match create_instance(&name, false) {
                     Ok(s) => break s,
                     Err(err) => {
                         if !std::mem::replace(&mut failed, true) {
@@ -121,6 +125,18 @@ pub fn start(app: AppHandle) {
     });
 }
 
+/// A pipe instance only this account can open (platform::relay_pipe_attributes),
+/// or one with the default security if that cannot be made.
+fn create_instance(name: &str, first: bool) -> std::io::Result<NamedPipeServer> {
+    let mut options = ServerOptions::new();
+    options.first_pipe_instance(first);
+    match crate::platform::relay_pipe_attributes() {
+        // SAFETY: a SECURITY_ATTRIBUTES made once and never freed.
+        Some(attributes) => unsafe { options.create_with_security_attributes_raw(name, attributes as *mut std::ffi::c_void) },
+        None => options.create(name),
+    }
+}
+
 /// One accepted relay connection, whatever carries it.
 trait Relay: AsyncRead + AsyncWrite + Unpin {
     /// Ends the conversation once everything has been written.
@@ -128,6 +144,12 @@ trait Relay: AsyncRead + AsyncWrite + Unpin {
     /// The relay process on the other end, where the OS says.
     fn client_pid(&self) -> Option<u32> {
         None
+    }
+    /// False only when the process on the other end is known to run as
+    /// another account. One that cannot be read (an elevated relay) passes:
+    /// the pipe's access list already let only this account in.
+    fn client_is_ours(&self) -> bool {
+        true
     }
 }
 
@@ -139,9 +161,22 @@ impl Relay for NamedPipeServer {
         use std::os::windows::io::AsRawHandle;
         crate::platform::pipe_client_pid(self.as_raw_handle())
     }
+    fn client_is_ours(&self) -> bool {
+        use std::os::windows::io::AsRawHandle;
+        match crate::platform::pipe_client_sid(self.as_raw_handle()) {
+            Some(theirs) => crate::platform::current_user_sid().is_some_and(|mine| mine == theirs),
+            None => true,
+        }
+    }
 }
 
 async fn handle(app: AppHandle, mut pipe: impl Relay) {
+    // Another account's process on our pipe gets nothing, and is heard from in nothing.
+    if !pipe.client_is_ours() {
+        log::line("relay connection from another account refused");
+        pipe.finish();
+        return;
+    }
     let mut buf = Vec::new();
     let mut chunk = [0u8; 4096];
     loop {
@@ -254,7 +289,22 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
 
     // While Claude uses the computer, the hand gets its mouse back to answer.
     crate::computer::card_up(&app);
-    let decision = wait_for_decision(&id, &mut rx).await;
+    // Answered in the terminal (or in the Claude app) instead: Claude Code ends
+    // the relay, its end of the connection closes, and the island drops the
+    // card at once rather than keep offering a question already settled.
+    let decided = async { Some(wait_for_decision(&id, &mut rx).await) };
+    let gone = async {
+        client_gone(&mut pipe).await;
+        None
+    };
+    let decision = match first_of(decided, gone).await {
+        Some(d) => d,
+        None => {
+            log::line(format!("hook id={id} answered elsewhere"));
+            let _ = app.emit_to(WINDOW_LABEL, "hook-settled", id.clone());
+            None
+        }
+    };
     crate::computer::card_down(&app);
     app.state::<Pending>().0.lock().unwrap().remove(&id);
     with_auto_allowable(|set| set.remove(&id));
@@ -262,7 +312,7 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
 
     // Allowed on the card for one of the user's tools: that click is the one
     // its call needs (tools.rs), not a second card.
-    if matches!(decision.as_deref(), Some("allow" | "always")) {
+    if matches!(decision.as_deref(), Some("allow" | "always" | "edits")) {
         if let Some(tool) = &tool_name {
             crate::tools::note_allowed(tool);
         }
@@ -274,6 +324,32 @@ async fn handle(app: AppHandle, mut pipe: impl Relay) {
         let _ = pipe.flush().await;
     }
     pipe.finish();
+}
+
+/// Resolves once the relay has gone (end of stream or a broken pipe). It sends
+/// nothing after its one line, so any read result means it is done.
+async fn client_gone(pipe: &mut impl Relay) {
+    let mut probe = [0u8; 64];
+    loop {
+        match pipe.read(&mut probe).await {
+            Ok(0) | Err(_) => return,
+            Ok(_) => {}
+        }
+    }
+}
+
+/// Whichever of two futures finishes first; `a` when both are ready.
+async fn first_of<T>(a: impl std::future::Future<Output = T>, b: impl std::future::Future<Output = T>) -> T {
+    use std::task::Poll;
+    let mut a = std::pin::pin!(a);
+    let mut b = std::pin::pin!(b);
+    std::future::poll_fn(|cx| {
+        if let Poll::Ready(v) = a.as_mut().poll(cx) {
+            return Poll::Ready(v);
+        }
+        b.as_mut().poll(cx)
+    })
+    .await
 }
 
 /// A new request id, waiting for the island's replies.
@@ -390,13 +466,15 @@ pub fn decline(app: &AppHandle, request_id: &str) {
 }
 
 /// Called by the island's buttons. Only ever a bare word — `allow`, `always`
-/// (allowed for this session, session_rules.rs) or `deny`: turning it into the
-/// agent's JSON is lumo-hook's job, and every agent's reply there reads
-/// `always` as an allow.
+/// (allowed for this session, session_rules.rs), `edits` (a plan approved with
+/// "let it edit files without asking") or `deny`: turning it into the agent's
+/// JSON is lumo-hook's job, and every agent's reply there reads `always` and
+/// `edits` as an allow.
 pub fn answer(app: &AppHandle, request_id: &str, decision: &str) {
     let word = match decision {
         "allow" => "allow",
         "always" => "always",
+        "edits" => "edits",
         _ => "deny",
     };
     log::line(format!("decision id={request_id} {word}"));
@@ -421,4 +499,41 @@ pub fn answer_question(app: &AppHandle, request_id: &str, answers: &HashMap<Stri
     // One line: the relay reads up to the first newline.
     let line = json!({ "answers": answers }).to_string();
     send(app, request_id, Reply::Decision(line), false);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    impl Relay for tokio::io::DuplexStream {}
+
+    fn block_on<T>(f: impl std::future::Future<Output = T>) -> T {
+        tokio::runtime::Builder::new_current_thread().enable_all().build().unwrap().block_on(f)
+    }
+
+    /// A card answered in the terminal: the relay hanging up is seen at once,
+    /// and a relay that is still waiting is not mistaken for one that left.
+    #[test]
+    fn a_relay_that_hangs_up_is_seen_at_once() {
+        block_on(async {
+            let (mut ours, theirs) = tokio::io::duplex(64);
+            let waiting = tokio::time::timeout(Duration::from_millis(50), client_gone(&mut ours)).await;
+            assert!(waiting.is_err(), "a live relay must not count as gone");
+            drop(theirs);
+            let gone = tokio::time::timeout(Duration::from_millis(50), client_gone(&mut ours)).await;
+            assert!(gone.is_ok(), "a closed relay must be seen at once");
+        });
+    }
+
+    #[test]
+    fn first_of_takes_whichever_ends_first() {
+        block_on(async {
+            let slow = async {
+                tokio::time::sleep(Duration::from_secs(5)).await;
+                "slow"
+            };
+            assert_eq!(first_of(slow, async { "fast" }).await, "fast");
+            assert_eq!(first_of(async { "a" }, async { "b" }).await, "a");
+        });
+    }
 }

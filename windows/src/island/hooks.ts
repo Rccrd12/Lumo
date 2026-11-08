@@ -181,6 +181,47 @@ const TURN_OVER = new Set(["Stop", "StopFailure", "UserPromptSubmit", "SessionEn
 /** Notifications that mean the agent waits for you (Claude Code's `notification_type`). */
 const NEEDS_YOU = new Set(["agent_needs_input", "elicitation_dialog", "elicitation_url_dialog"]);
 
+/**
+ * True when `name` (from `agentId`'s session `sessionId`) shows the request
+ * `q` was settled somewhere else: the turn is over (interrupted, a new prompt,
+ * the session ended), or the very tool call it asked about has run or failed,
+ * so it was answered in the terminal or the Claude app. Another call's result
+ * (a subagent working alongside) does not count. The relay hanging up is the
+ * fastest sign of all; it comes as `hook-settled`.
+ */
+export function settledElsewhere(
+  q: Pick<ApprovalInfo, "pillId" | "sessionId" | "tool" | "command">,
+  name: string,
+  agentId: string,
+  sessionId: string,
+  tool: string | undefined,
+  input: Record<string, unknown> | undefined,
+): boolean {
+  if (q.pillId !== agentId || q.sessionId !== sessionId) return false;
+  if (TURN_OVER.has(name)) return true;
+  if (name !== "PostToolUse" && name !== "PostToolUseFailure") return false;
+  const t = tool ?? "Tool";
+  return t === q.tool && approvalTarget(t, input ?? {}) === q.command;
+}
+
+/**
+ * The relay of request `requestId` hung up without a decision: Claude Code
+ * ended it because the prompt was answered in the terminal (or the Claude
+ * app). Its card goes at once, or it leaves the line. Nobody is left to
+ * release, so nothing is declined.
+ */
+export function settleRequest(island: Island, requestId: string): void {
+  clearCardTimer(requestId);
+  const card = State.pendingApproval;
+  if (card?.requestId === requestId) {
+    const stillAsking = State.approvalQueue.some((q) => q.pillId === card.pillId);
+    if (!card.fromChat && !stillAsking) State.updateTask(card.pillId, "working");
+    dropPendingCard(island);
+    return;
+  }
+  expireQueued(requestId);
+}
+
 interface HookPayload {
   hook_event_name?: string;
   request_id?: string;
@@ -219,6 +260,8 @@ interface HookPayload {
   lumo_task_id?: string;
   /** The card may offer "Allow for this session" (session_rules.rs): the request has a session to keep it for. */
   lumo_session_allow?: boolean;
+  /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
+  lumo_title?: string;
   /** A call of one of the user's tools, asked for by Lumo itself (tools.rs approve). */
   lumo_user_tool?: { name?: string; summary?: string };
   /** An email the AI wants to send, on a card of its own (mail.rs send). */
@@ -416,6 +459,7 @@ function clearSession(id: string) {
   t.name = pillDefinition(id)?.name ?? t.name;
   t.pillBadge = null;
   t.sessionId = null;
+  t.sessionTitle = null;
   t.finalLine = null;
 }
 
@@ -444,6 +488,8 @@ export function registerHookHandlers(island: Island) {
   // The last plan numbers seen survive a restart.
   State.planUsage ??= restorePlanUsage(storedClaudePlanUsage());
   void onEvent<HookPayload>("hook", (payload) => handleHook(island, payload));
+  // A request answered in the terminal instead: the relay hung up (pipe.rs).
+  void onEvent<string>("hook-settled", (requestId) => settleRequest(island, requestId));
   // The same numbers from a chat answer of Claude Code (claude_code.rs), which
   // may report one window only: the other one is kept.
   void onEvent<unknown>("chat-plan-usage", (rateLimits) => keepPlanUsage(rateLimits));
@@ -482,6 +528,8 @@ function handleHook(island: Island, payload: HookPayload) {
   const workspaceId = payload.term_editor === "cursor" ? CURSOR_ID : CLAUDE_ID;
   const agentId = validAgent ? `agent_${validAgent}` : workspaceId;
   const isExternalAgent = validAgent !== null;
+  /** Claude Code, in a terminal or in the Claude app: it asks questions and titles its sessions. */
+  const isClaude = !isExternalAgent || validAgent === "claude-desktop";
   const sessionId = payload.session_id ?? "";
 
   /** Alerts force the island open; work events only reveal the compact island. */
@@ -498,7 +546,8 @@ function handleHook(island: Island, payload: HookPayload) {
   // Every session behind the pill is known, so that one of them stopping or
   // ending leaves the others' work alone. The chat's own runs are not sessions.
   if (name && name !== "SessionEnd" && payload.lumo_island !== true) {
-    liveSessions.touch(agentId, sessionId, cwd, projectName, name);
+    const title = isClaude && typeof payload.lumo_title === "string" ? payload.lumo_title.trim() : "";
+    liveSessions.touch(agentId, sessionId, cwd, projectName, name, title || undefined);
   }
 
   /**
@@ -531,18 +580,15 @@ function handleHook(island: Island, payload: HookPayload) {
     if (cancelStopTimer(agentId)) State.setPillBadge(agentId, null);
   };
 
-  // The turn that asked for a permission is over — answered in the terminal,
-  // interrupted, or a new prompt — so the card would be lying. It goes, and the
-  // relay is released without a decision.
-  // Requests of that turn waiting in line go first, so none of them takes the card.
-  if (TURN_OVER.has(name)) withdrawQueued((q) => q.pillId === agentId && q.sessionId === sessionId);
+  // The request was settled somewhere else — the turn is over (interrupted, a
+  // new prompt) or the very call it asked about ran, so it was answered in the
+  // terminal — and the card would be lying. It goes, and the relay is released
+  // without a decision.
+  // Requests waiting in line go first, so none of them takes the card.
+  const settled = (q: ApprovalInfo) => settledElsewhere(q, name, agentId, sessionId, payload.tool_name, payload.tool_input);
+  withdrawQueued(settled);
   const pending = State.pendingApproval;
-  if (
-    pending &&
-    TURN_OVER.has(name) &&
-    pending.pillId === agentId &&
-    pending.sessionId === sessionId
-  ) {
+  if (pending && settled(pending)) {
     clearCardTimer(pending.requestId);
     if (pending.requestId) void Bridge.approvalDecline(pending.requestId);
     dropPendingCard(island);
@@ -610,18 +656,8 @@ function handleHook(island: Island, payload: HookPayload) {
 
     case "PostToolUse":
       supersedeStop();
-      // The question was answered in the terminal: the card would be lying,
-      // and the relay is released without a decision.
-      if (payload.tool_name === "AskUserQuestion") {
-        const asks = (q: ApprovalInfo) => q.questions != null && q.pillId === agentId && q.sessionId === sessionId;
-        withdrawQueued(asks);
-        const card = State.pendingApproval;
-        if (card && asks(card)) {
-          clearCardTimer(card.requestId);
-          if (card.requestId) void Bridge.approvalDecline(card.requestId);
-          dropPendingCard(island);
-        }
-      }
+      // A question answered in the terminal already took its card down above
+      // (settledElsewhere).
       State.updateTask(agentId, "working");
       recordDiff(agentId, payload);
       followPlan(true);
@@ -771,8 +807,8 @@ function handleHook(island: Island, payload: HookPayload) {
       break;
 
     case "PermissionRequest": {
-      // Only Claude Code and the agents the relay can answer for (Codex, Copilot
-      // CLI, Muse Code) get a card. Anyone else's request is
+      // Only Claude Code (in a terminal or in the Claude app) and the agents the
+      // relay can answer for (Codex, Copilot CLI, Muse Code) get a card. Anyone else's request is
       // declined at once, so the agent asks in its own terminal. And a shell
       // command of the chat's own Antigravity CLI run (antigravity_cli.rs), which
       // the relay turns into a request: headless agy has no terminal to ask in.
@@ -824,8 +860,8 @@ function handleHook(island: Island, payload: HookPayload) {
       const userTool = payload.lumo_user_tool ?? null;
       // Claude Code asking a question is not a permission to grant: the island
       // shows the options and sends back the one that was picked. Only Claude
-      // Code asks questions this way.
-      const questions = isExternalAgent ? null : askedQuestions(tool, input);
+      // Code asks questions this way, in a terminal or in the Claude app.
+      const questions = isClaude ? askedQuestions(tool, input) : null;
       const view = questions ? "question" : "approval";
       const planSteps = !questions && !email && !change && /^exit_?plan_?mode$/i.test(tool) && typeof input.plan === "string"
         ? stepsFromMarkdown(input.plan) : [];
@@ -890,5 +926,8 @@ function handleHook(island: Island, payload: HookPayload) {
       break;
   }
   if (validAgent === "antigravity" && payload.lumo_island !== true && name) watchSilence(island, agentId, name);
+  // The pill's session goes by its title, when Claude Code has given it one.
+  const pill = isClaude && payload.lumo_island !== true ? State.tasks.find((x) => x.id === agentId) : undefined;
+  if (pill) pill.sessionTitle = liveSessions.owner(agentId)?.title ?? null;
   State.notify();
 }

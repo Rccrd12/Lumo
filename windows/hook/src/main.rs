@@ -25,7 +25,7 @@
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -33,6 +33,7 @@ mod mail_tools;
 mod mcp;
 mod normalize;
 mod reply;
+mod title;
 
 /// Budget for getting a pipe connection. Beyond this the agent wins, always.
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
@@ -40,6 +41,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const FIRE_AND_FORGET_BUDGET: Duration = Duration::from_secs(2);
 /// How long a permission prompt may stay on screen before the terminal takes over.
 const DECISION_BUDGET: Duration = Duration::from_secs(110);
+/// How often a waiting relay checks that the process that ran it is still there.
+const PARENT_POLL: Duration = Duration::from_millis(100);
 /// A card of the island's Antigravity CLI chat must be answered before
 /// Antigravity gives up on the hook: the hook's `timeout` in hooks.json, which
 /// Lumo's own hooks pass on as `--wait`. Without it (hooks installed before
@@ -49,6 +52,8 @@ const ANTIGRAVITY_SHORT_WAIT: u64 = 8;
 /// Fields that are pointless to forward and can be enormous (a whole file read,
 /// a full command output). The island never shows them.
 const DROPPED_FIELDS: &[&str] = &["tool_response", "tool_output", "transcript_path"];
+/// The events that carry a Claude Code session's title (title.rs).
+const TITLE_EVENTS: &[&str] = &["SessionStart", "UserPromptSubmit", "Stop"];
 /// Longest string forwarded for any single field; the island truncates to far
 /// less than this anyway.
 const MAX_FIELD_LEN: usize = 2_000;
@@ -67,7 +72,7 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
 
 mod win;
-use win::connect;
+use win::{connect, parent};
 
 /// What the command line says: `--agent <name>`, the event name, and
 /// `--wait <seconds>`: how long the agent lets this hook run (Antigravity's
@@ -121,6 +126,9 @@ struct Event {
     /// A shell command of the island's own Antigravity CLI chat, forwarded as
     /// a permission request (see `prepare`).
     island_card: bool,
+    /// Claude Code asking to leave plan mode (ExitPlanMode): the only request
+    /// "Approve and let it edit files" may answer (reply::decision_json_with).
+    plan: bool,
 }
 
 fn main() {
@@ -180,13 +188,37 @@ fn main() {
         let _ = tx.send(talk(&line, waits_for_answer));
     });
 
-    let decision = rx.recv_timeout(budget).ok().flatten();
+    // Claude Code ends the relay when its prompt is answered in the terminal,
+    // and the app sees the pipe close at once. A shell between them (Git Bash,
+    // cmd) can be the one ended, leaving us orphaned: its going ends us too.
+    let parent = if waits_for_answer { parent() } else { None };
+    let decision = wait(&rx, budget, || parent.as_ref().is_some_and(|p| p.gone()));
+    // Letting it edit freely is for a plan only: on anything else it is the allow it also is.
+    let decision = decision.map(|d| if d.trim() == "edits" && !event.plan { "allow".to_string() } else { d });
     if event.island_card {
         print(Some(reply::antigravity_island(decision.as_deref())));
     } else {
         print(reply::stdout_with(&args.agent, &event.name, decision.as_deref(), event.question.as_ref(), event.suggestions.as_ref()));
     }
     std::process::exit(0);
+}
+
+/// The worker's answer, or None once `budget` runs out or `gone()` says the
+/// process that ran us has gone.
+fn wait(rx: &mpsc::Receiver<Option<String>>, budget: Duration, gone: impl Fn() -> bool) -> Option<String> {
+    let deadline = Instant::now() + budget;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        match rx.recv_timeout(left.min(PARENT_POLL)) {
+            Ok(decision) => return decision,
+            Err(mpsc::RecvTimeoutError::Timeout) if gone() => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+        }
+    }
 }
 
 /// A PreToolUse of a shell command that would wait (reply::blocking_wait).
@@ -265,6 +297,15 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
             map.insert("lumo_task_id".into(), Value::String(id));
         }
     }
+    // A Claude Code session's title, for the island to name it by (title.rs).
+    // Only where it can change: a session (re)starts, a prompt (after a
+    // /rename), a turn ends (Claude Code titles a session after its first one).
+    if args.agent.is_empty() && TITLE_EVENTS.contains(&name.as_str()) {
+        let title = map.get("transcript_path").and_then(Value::as_str).filter(|p| !p.is_empty()).and_then(|p| title::session_title(std::path::Path::new(p)));
+        if let Some(title) = title {
+            map.insert("lumo_title".into(), Value::String(title));
+        }
+    }
     for field in DROPPED_FIELDS {
         map.remove(*field);
     }
@@ -279,6 +320,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         .then(|| map.get("tool_input").cloned())
         .flatten();
     let suggestions = (name == "PermissionRequest").then(|| map.get("permission_suggestions").cloned()).flatten();
+    let plan = name == "PermissionRequest" && map.get("tool_name").and_then(Value::as_str) == Some("ExitPlanMode");
 
     // Every string is capped, except the edit text of a finished Edit /
     // MultiEdit / Write, which the live diff needs whole (within its own limits).
@@ -286,7 +328,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some(Event { line, name, question, suggestions, island_card })
+    Some(Event { line, name, question, suggestions, island_card, plan })
 }
 
 /// Antigravity's `workspacePaths`: the folders its run may change.
@@ -711,5 +753,26 @@ mod tests {
         truncate_payload(&mut multi, "PostToolUse");
         assert!(multi.to_string().len() < MAX_DIFF_TOTAL + 64 * 1024);
         assert_eq!(multi["lumo_diff_truncated"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn a_waiting_relay_gives_up_as_soon_as_its_parent_is_gone() {
+        let (tx, rx) = mpsc::channel::<Option<String>>();
+        let started = Instant::now();
+        let checks = std::cell::Cell::new(0);
+        let gone = || {
+            checks.set(checks.get() + 1);
+            checks.get() >= 2
+        };
+        assert_eq!(wait(&rx, Duration::from_secs(5), gone), None);
+        assert!(started.elapsed() < Duration::from_secs(1), "{:?}", started.elapsed());
+        // An answer still wins while the parent is there.
+        tx.send(Some("allow".into())).unwrap();
+        assert_eq!(wait(&rx, Duration::from_secs(5), || false).as_deref(), Some("allow"));
+        // And the budget still ends a wait nobody answers.
+        let started = Instant::now();
+        assert_eq!(wait(&rx, Duration::from_millis(150), || false), None);
+        assert!(started.elapsed() >= Duration::from_millis(150));
+        drop(tx);
     }
 }

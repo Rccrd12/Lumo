@@ -35,7 +35,7 @@ The relay adds `lumo_agent` to the JSON it forwards. You can also add it yoursel
 }
 ```
 
-Send newline-terminated JSON to the named pipe `\\.\pipe\lumo-<user-SID>`. The pipe name carries your Windows account's SID, so each user has their own.
+Send newline-terminated JSON to the named pipe `\\.\pipe\lumo-<user-SID>`. The pipe name carries your Windows account's SID, so each user has their own, and only that account can open it.
 
 ## Supported events
 
