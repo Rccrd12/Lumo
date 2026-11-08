@@ -15,7 +15,7 @@ Approve Claude Code permissions, watch your session work, drop a file, chat with
 
 </div>
 
-<img src="screenshots/greeting.png" width="640" alt="Lumo lighting up at launch">
+<img src="screenshots/home.png" width="760" alt="Lumo's home: a permission waiting with N and Y, two sessions at work, a timer, the music, the next meeting and the newest email as tiles, the services and the field to the chat">
 
 ---
 
@@ -92,13 +92,24 @@ the exe it runs from.
 
 ## Using it
 
-<img src="screenshots/compact.png" width="292" alt="The compact island">
-<img src="screenshots/compact-activities.png" width="480" alt="The closed island: the next meeting, a timer and the music playing, side by side">
-<img src="screenshots/mail.png" width="468" alt="A new email peeking out of the closed island, with Summarize and Draft a reply">
-<img src="screenshots/overview.png" width="640" alt="The overview: the focused integration on the left, the other pills on the right">
-<img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny, Allow for this session and Allow">
+<img src="screenshots/closed.png" width="326" alt="The closed island: Lumo's eyes, Codex writing main.py and a timer">
+<img src="screenshots/approval.png" width="640" alt="A Claude Code permission request, with Deny and Allow as two big buttons and Allow for this session under them">
 <img src="screenshots/chat.png" width="640" alt="Chatting with Claude from the island">
-<img src="screenshots/drop.png" width="640" alt="Lumo turned into a box, waiting for a file">
+<img src="screenshots/drop.png" width="640" alt="The island ready for a file: Drop your files here">
+
+Since 0.18 Lumo is two eyes in the open island's top bar and on the closed
+island, and the island's light runs along its edge, in the colour of what is
+going on (picked in the wardrobe). Open it and **the home** holds everything
+that used to sit in tabs: what waits for you (with `N` and `Y` right on it),
+the sessions at work and the chats answering in the background, the plans
+under way, the live activities as tiles (the timer with its ring round the
+tile's edge, the music, the calendar, the email), the services and the plans'
+usage, and the field to the chat. The chat is one field, with **+** for the
+rest and past chats in the top bar; **…** at the top right holds Settings,
+Sounds, Keep the island open, Wardrobe, Hide in the edge of the screen and
+Quit. **Settings → Island → Previous look** brings back the look of 0.17,
+with the ring of light and the tabs, exactly as it was. Most of what follows
+works the same in both looks.
 
 | What you do | What happens |
 |---|---|
@@ -106,7 +117,7 @@ the exe it runs from.
 | Click the small island | It opens |
 | Click Lumo | It gets annoyed for a moment |
 | Rest the pointer on Lumo for two seconds | Hearts |
-| Right-click Lumo | The wardrobe: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). Next to the outfits, **Lumo's style** picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
+| Right-click Lumo | The wardrobe. In the new look it picks the light along the island's edge (**Full light**, **Soft light**, **Line only**, **Glow only**) and Claude's mouse for computer use. In the previous look: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). Next to the outfits, **Lumo's style** picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
@@ -189,7 +200,9 @@ always the mains-power choice.
 
 ### Live activities
 
-<img src="screenshots/activities.png" width="640" alt="The open island with the live activities beside it">
+<img src="screenshots/activities.png" width="640" alt="The previous look: the open island with the live activities beside it">
+
+In the new look they are tiles on the home instead; what follows is the previous look.
 
 Beside the open island (on the top and bottom edges) a second island holds
 what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
@@ -390,7 +403,7 @@ only and No access.
 
 ## Claude Code
 
-<img src="screenshots/settings.png" width="640" alt="The settings window, on Chat: Claude, Antigravity CLI and Codex">
+<img src="screenshots/settings.png" width="640" alt="Settings inside the island: the search and the sections on top, General below">
 
 Open **Settings… → Agents → Claude Code → Install hooks…**. You get the exact diff of what
 will change in `%USERPROFILE%\.claude\settings.json`, the path of the dated backup
