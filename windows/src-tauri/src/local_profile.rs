@@ -79,7 +79,7 @@ const GITHUB_WORDS: &[&str] = &["pr", "prs", "ci", "repo", "repos", "issue", "is
 const LISTEN_WORDS: &[&str] = &[
     "avvisami", "avvertimi", "dimmi quando", "fammi sapere quando", "appena finisce", "appena arriva", "notificami",
     "monitora", "tieni d'occhio", "ascolta", "tell me when", "let me know when", "notify me", "alert me", "ping me",
-    "once it", "avísame", "préviens-moi", "listen",
+    "once it", "pull request", "github.com/", "avísame", "préviens-moi", "listen",
 ];
 const PLAN_PHRASES: &[&str] = &[
     "pianifica", "passo dopo passo", "step by step", "step-by-step", "multi-step", "roadmap", "checklist", "update_plan",
@@ -348,6 +348,9 @@ mod tests {
         assert_eq!(named_groups("Controlla le ultime issue del mio repo", &user), vec![Group::GitHub]);
         assert_eq!(named_groups("Avvisami quando finiscono i check", &user), vec![Group::Listen]);
         assert_eq!(named_groups("Avvisami quando la pull request passa", &user), vec![Group::GitHub, Group::Listen]);
+        // A pull request or its link still brings in the listening tools, as before GitHub's own.
+        assert_eq!(named_groups("Segui https://github.com/Rccrd12/Lumo/pull/3", &user), vec![Group::GitHub, Group::Listen]);
+        assert_eq!(named_groups("Quando la pull request viene approvata?", &user), vec![Group::GitHub, Group::Listen]);
         assert_eq!(named_groups("Ei, mi dici se la cartella download cambia?", &user), vec![Group::Listen]);
         assert_eq!(named_groups("Fammi un piano passo dopo passo", &user), vec![Group::Plan]);
         assert_eq!(named_groups("Unisci questi pdf con pdfcraft", &user), vec![Group::User]);

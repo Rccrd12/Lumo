@@ -15334,6 +15334,18 @@
    "ru": "Lumo в левой колонке открытого острова, с вкладками, как до 0.18.0.",
    "id": "Lumo di kolom kiri pulau yang terbuka, dengan tab, seperti sebelum 0.18.0.",
    "it": "Lumo nella colonna a sinistra dell'isola aperta, con le schede, come prima della 0.18.0."
+  },
+  "What the AI may do with the GitHub account set in Lumo: read your pull requests, issues, repositories and checks when you ask about them, or nothing at all. Off until you turn it on, also for cloud AIs.": {
+   "zh-Hans": "AI 可以对 Lumo 中设置的 GitHub 账户做什么：在你询问时读取你的拉取请求、议题、仓库和检查，或者什么都不做。在你开启之前保持关闭，云端 AI 也一样。",
+   "hi": "Lumo में सेट किए गए GitHub खाते के साथ AI क्या कर सकता है: जब आप पूछें तो आपके पुल रिक्वेस्ट, इश्यू, रिपॉज़िटरी और चेक पढ़ना, या कुछ भी नहीं। जब तक आप इसे चालू न करें, बंद रहता है, क्लाउड AI के लिए भी।",
+   "es": "Lo que la IA puede hacer con la cuenta de GitHub configurada en Lumo: leer tus pull requests, issues, repositorios y comprobaciones cuando preguntes por ellos, o nada en absoluto. Desactivado hasta que lo actives, también para las IA en la nube.",
+   "ar": "ما يمكن للذكاء الاصطناعي فعله بحساب GitHub المضبوط في Lumo: قراءة طلبات السحب والمشكلات والمستودعات والفحوصات عندما تسأل عنها، أو لا شيء على الإطلاق. متوقف حتى تشغّله، حتى للذكاء الاصطناعي السحابي.",
+   "fr": "Ce que l'IA peut faire avec le compte GitHub configuré dans Lumo : lire vos pull requests, issues, dépôts et vérifications quand vous les demandez, ou rien du tout. Désactivé tant que vous ne l'activez pas, aussi pour les IA dans le cloud.",
+   "bn": "Lumo-তে সেট করা GitHub অ্যাকাউন্ট দিয়ে AI কী করতে পারে: আপনি জিজ্ঞেস করলে আপনার পুল রিকোয়েস্ট, ইস্যু, রিপোজিটরি ও চেক পড়া, অথবা কিছুই না। আপনি চালু না করা পর্যন্ত বন্ধ থাকে, ক্লাউড AI-এর জন্যও।",
+   "pt-BR": "O que a IA pode fazer com a conta do GitHub configurada no Lumo: ler seus pull requests, issues, repositórios e verificações quando você perguntar, ou nada. Desligado até você ligar, também para IAs na nuvem.",
+   "ru": "Что ИИ может делать с аккаунтом GitHub, настроенным в Lumo: читать ваши пул-реквесты, задачи, репозитории и проверки, когда вы о них спрашиваете, или ничего. Выключено, пока вы не включите, в том числе для облачных ИИ.",
+   "id": "Apa yang boleh dilakukan AI dengan akun GitHub yang diatur di Lumo: membaca pull request, issue, repositori, dan pemeriksaan saat Anda menanyakannya, atau tidak sama sekali. Mati sampai Anda menyalakannya, juga untuk AI cloud.",
+   "it": "Cosa può fare l'IA con l'account GitHub impostato in Lumo: leggere le tue pull request, issue, repository e controlli quando li chiedi, oppure niente. Spento finché non lo accendi, anche per le IA nel cloud."
   }
  }
 }

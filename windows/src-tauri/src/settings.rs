@@ -169,6 +169,11 @@ pub struct Settings {
     pub ai_mail_access: String,
     /// The same for the calendar's events: "read" or "none".
     pub ai_calendar_access: String,
+    /// The same for the GitHub account set in Lumo (github_tools.rs): "read"
+    /// (the chat's providers get the read-only GitHub tools) or "none". Off
+    /// until the user turns it on: a token saved for the GitHub pill is not a
+    /// yes to hand its private repositories to an AI.
+    pub ai_github_access: String,
     /// Gemini Live, the voice conversation (live.rs, src/live): the model,
     /// "gemini-3.8-live" or "gemini-3.8-live-extended-thinking". Kept as it
     /// comes; src/live/protocol.ts reads anything else as "gemini-3.8-live".
@@ -322,6 +327,7 @@ impl Default for Settings {
             chat_auto_compact: true,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
+            ai_github_access: "none".into(),
             live_model: "gemini-3.8-live".into(),
             live_thinking: "medium".into(),
             live_voice: String::new(),
@@ -658,6 +664,7 @@ mod tests {
   "chatAutoCompact": false,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
+  "aiGithubAccess": "read",
   "liveModel": "gemini-3.8-live-extended-thinking",
   "liveThinking": "high",
   "liveVoice": "Kore",
@@ -1142,6 +1149,7 @@ mod tests {
                 "chatAutoCompact",
                 "aiMailAccess",
                 "aiCalendarAccess",
+                "aiGithubAccess",
                 "liveModel",
                 "liveThinking",
                 "liveVoice",

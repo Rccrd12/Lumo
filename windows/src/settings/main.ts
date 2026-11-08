@@ -709,6 +709,7 @@ const SECURITY = {
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
   get calendarHint() { return t("What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all."); },
+  get githubHint() { return t("What the AI may do with the GitHub account set in Lumo: read your pull requests, issues, repositories and checks when you ask about them, or nothing at all. Off until you turn it on, also for cloud AIs."); },
   get readOnly() { return t("Read only"); },
   get noAccess() { return t("No access"); },
   get other() { return t("Other"); },
@@ -758,8 +759,9 @@ function securitySection(): HTMLElement {
   );
   const mailAccess = access(settings.aiMailAccess, (v) => { settings.aiMailAccess = v; void save(); }, true);
   const calendarAccess = access(settings.aiCalendarAccess, (v) => { settings.aiCalendarAccess = v; void save(); });
-  // The section's three menus, one width, one under the other.
-  for (const menu of [permissions, mailAccess, calendarAccess]) menu.classList.add("security-select");
+  const githubAccess = access(settings.aiGithubAccess === "read" ? "read" : "none", (v) => { settings.aiGithubAccess = v; void save(); });
+  // The section's menus, one width, one under the other.
+  for (const menu of [permissions, mailAccess, calendarAccess, githubAccess]) menu.classList.add("security-select");
   const note = h("p", { class: "hint", text: COMPUTER_SETTINGS.claudeOnly });
   const showNote = () => {
     note.hidden = !(settings.chatComputerUse && settings.chatProvider !== "claude-code");
@@ -784,6 +786,8 @@ function securitySection(): HTMLElement {
     group(SECURITY.mailAndCalendar),
     setting(t("Email"), SECURITY.mailHint, mailAccess),
     setting(t("Calendar"), SECURITY.calendarHint, calendarAccess),
+    group("GitHub"),
+    setting("GitHub", SECURITY.githubHint, githubAccess),
     group(t("Computer use")),
     setting(COMPUTER_SETTINGS.label, COMPUTER_SETTINGS.hint,
       toggle(settings.chatComputerUse === true, (on) => {

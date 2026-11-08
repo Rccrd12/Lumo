@@ -336,6 +336,8 @@ export interface Settings {
   aiMailAccess: string;
   /** The same for the calendar's events. */
   aiCalendarAccess: string;
+  /** Whether the chat's AI may read the GitHub account set in Lumo: "read" or "none" (github_tools.rs). Off until turned on. */
+  aiGithubAccess: string;
   /** Model server addresses once connected; empty means not connected. */
   ollamaUrl: string;
   lmstudioUrl: string;
@@ -469,6 +471,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatAutoCompact: true,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
+  aiGithubAccess: "none",
   ollamaUrl: "",
   lmstudioUrl: "",
   customUrl: "",

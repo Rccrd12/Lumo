@@ -1,8 +1,10 @@
 // Built-in read-only GitHub tools for the chat's API and local model providers
 // (claude.rs, openai_compat.rs, local_chat.rs).
 //
-// Offered only when the user has saved a GitHub token in Lumo's credential
-// store (`secrets::present("github-token")`) and Lumo is not paused. Every
+// Offered only when the user lets the AI read GitHub (Settings → General →
+// Security → GitHub, `ai_github_access`, off until turned on), has saved a
+// GitHub token in Lumo's credential store (`secrets::present("github-token")`)
+// and Lumo is not paused. Every
 // response is formatted concisely so small local models get the facts they need
 // (PR status, CI checks, files changed, issues, commits, workflow runs) without
 // drowning their context window.
@@ -35,12 +37,20 @@ const API_BASE: &str = "https://api.github.com";
 
 /// Whether GitHub tools may be offered and called right now.
 pub fn enabled() -> bool {
-    !PAUSED.load(Ordering::Relaxed) && secrets::present("github-token")
+    !PAUSED.load(Ordering::Relaxed) && allowed(&crate::settings::load()) && secrets::present("github-token")
+}
+
+/// Whether Security lets the AI read GitHub: only a plain "read" does.
+pub fn allowed(settings: &crate::settings::Settings) -> bool {
+    settings.ai_github_access == "read"
 }
 
 fn token() -> Result<String, String> {
     if PAUSED.load(Ordering::Relaxed) {
         return Err("Lumo is paused.".into());
+    }
+    if !allowed(&crate::settings::load()) {
+        return Err("The user doesn't let the AI read GitHub (Lumo's Settings → General → Security → GitHub).".into());
     }
     secrets::get("github-token").ok_or_else(|| "GitHub is not connected in Lumo (no GitHub token configured).".into())
 }
@@ -817,6 +827,15 @@ async fn ci_runs(token: &str, input: &Value) -> Result<String, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_plain_read_lets_the_ai_read_github_and_it_starts_off() {
+        let with = |v: &str| crate::settings::Settings { ai_github_access: v.into(), ..crate::settings::Settings::default() };
+        assert!(!allowed(&crate::settings::Settings::default()));
+        assert!(allowed(&with("read")));
+        assert!(!allowed(&with("none")));
+        assert!(!allowed(&with("anything")));
+    }
 
     #[test]
     fn parses_repositories_and_pull_or_issue_references() {
