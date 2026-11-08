@@ -247,10 +247,17 @@ html.look-new .home-label .c {
 
 html.look-new .home-rows {
   min-height: 0;
+  min-width: 0;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  overflow-x: hidden;
   overflow-y: auto;
+  scrollbar-width: none;
+}
+
+html.look-new .home-rows::-webkit-scrollbar {
+  display: none;
 }
 
 html.look-new .home-row + .home-label {
@@ -260,6 +267,8 @@ html.look-new .home-row + .home-label {
 html.look-new .home-row {
   flex: 0 0 54px;
   height: 54px;
+  width: 100%;
+  min-width: 0;
   display: flex;
   align-items: center;
   gap: 10px;
@@ -270,6 +279,7 @@ html.look-new .home-row {
   color: var(--ink);
   text-align: left;
   font: inherit;
+  overflow: hidden;
   cursor: default;
 }
 
@@ -294,16 +304,23 @@ html.look-new .home-who {
   align-items: center;
   gap: 7px;
   min-width: 0;
+  overflow: hidden;
   font: 400 13px var(--font);
   color: var(--dim);
   white-space: nowrap;
 }
 
 html.look-new .home-who .s {
+  flex: 0 1 auto;
+  min-width: 0;
   margin-left: -3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 html.look-new .home-who .n {
+  flex: 0 0 auto;
+  max-width: calc(100% - 15px);
   font-weight: 600;
   color: var(--ink);
   overflow: hidden;
