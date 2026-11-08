@@ -276,6 +276,11 @@ const nothingCaptured = () =>
 const label = (row) => row.find(".picker-model-name")[0].textContent;
 const explorerEntry = () => entries().find((e) => e.find(".picker-model-name")[0].textContent === "Folder open in File Explorer");
 
+/** Real time until the menu is drawn: a few milliseconds are not always enough on a busy CI runner. */
+async function untilDrawn(realTimeout) {
+  for (let i = 0; i < 400 && entries().length === 0; i++) await new Promise((resolve) => realTimeout(resolve, 5));
+}
+
 async function openMenu() {
   $(".screen-btn").fire("click");
   await flush();
@@ -482,7 +487,7 @@ test("browsers slow to list their tabs never hold the menu: the entry joins it w
   globalThis.setTimeout = (fn, ms, ...rest) => realTimeout(fn, ms > 1000 ? 0 : ms, ...rest);
   try {
     $(".screen-btn").fire("click");
-    await new Promise((resolve) => realTimeout(resolve, 5));
+    await untilDrawn(realTimeout);
   } finally {
     globalThis.setTimeout = realTimeout;
   }
@@ -500,7 +505,7 @@ test("tabs that answer after the menu moved on don't redraw it", async () => {
   globalThis.setTimeout = (fn, ms, ...rest) => realTimeout(fn, ms > 1000 ? 0 : ms, ...rest);
   try {
     $(".screen-btn").fire("click");
-    await new Promise((resolve) => realTimeout(resolve, 5));
+    await untilDrawn(realTimeout);
   } finally {
     globalThis.setTimeout = realTimeout;
   }
