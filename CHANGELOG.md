@@ -2,7 +2,7 @@
 
 ## Windows 0.18.0 — November 8, 2026
 
-- **A new look, to try** (Settings → Island → New look, off by default): Lumo is two eyes in the open island's top bar and on the closed island, and the island's light runs along its edge, in a colour picked in the wardrobe. With it off, Lumo is exactly as before
+- **A new look**: Lumo is two eyes in the open island's top bar and on the closed island, and the island's light runs along its edge, in a colour picked in the wardrobe. It is on for everyone; Settings → Island → **Previous look** brings back the look of 0.17, exactly as it was
 - **One home instead of the tabs**: what waits for you, the sessions at work, the plans under way, the live activities as tiles (the timer with its ring round the tile's edge, the music, the calendar, the email), the services and the plans' usage, and the field to the chat. It resizes like the rest of the island, and goes narrower than the other views
 - **The chat in one field**, with "+" for the rest and past chats in the top bar; the plan is a chip beside the model, its steps rising over the chat
 - **A plan asking to start shows its steps**: in the chat, above the field, with Keep planning and Approve (or write what to change), and on the permission card as a numbered list

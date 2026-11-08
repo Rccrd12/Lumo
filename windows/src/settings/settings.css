@@ -1003,7 +1003,7 @@ html[dir="rtl"] :is(.diff, .path, .keycap, input[type="password"], input[type="t
   color: var(--dim);
 }
 
-/* ── Inside the island, in the new look (Settings → Island → New look) ──────
+/* ── Inside the island, in the new look (off with Settings → Island → Previous look) ──────
    main.ts applyLook puts html.look-new on this page while the island wears
    it: the list a little wider, so the search field is whole, and the
    sections as the island's own blocks, without a frame. */

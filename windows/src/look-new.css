@@ -1,4 +1,5 @@
-/* Settings → Island → New look (preview). Everything here hangs on the
+/* The new look, on by default (Settings → Island → Previous look turns it
+   off). Everything here hangs on the
    `look-new` class island.ts puts on <html> while it is on, so turning it off
    is the usual look again, as it ships: this file changes nothing else.
 

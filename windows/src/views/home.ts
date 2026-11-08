@@ -1,4 +1,4 @@
-// The new look's home (Settings → Island → New look): one list, as on the
+// The new look's home (off with Settings → Island → Previous look): one list, as on the
 // concept's board, laid out wide rather than tall. On the left what waits for
 // you and the sessions at work; on the right the live activities as small
 // tiles and the other pills as a row of names; the field to the chat under

@@ -470,7 +470,7 @@ export interface LightGreetFrame {
 }
 
 /**
- * Settings → Island → New look: Lumo is the island's light and his eyes, so
+ * The new look (off with Settings → Island → Previous look): Lumo is the island's light and his eyes, so
  * the opening is that light coming on (concept A). A spark on the edge of the
  * screen stretches into a line, the island unrolls under it, his eyes open in
  * the middle and smile; at T.end it folds into the closed island like any

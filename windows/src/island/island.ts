@@ -2301,7 +2301,7 @@ export class Island {
     Sound.setVolume(State.settings.soundVolume);
     this.applyBehaviour();
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
-    // Settings → Island → New look: one class, so turning it off is the usual look again.
+    // The new look (off with Settings → Island → Previous look): one class, so turning it off is the usual look again.
     const look = State.settings.islandNewLook === true;
     document.documentElement.classList.toggle("look-new", look);
     // Turned on or off with the island open: to the look's size at once.

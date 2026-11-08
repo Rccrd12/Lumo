@@ -337,7 +337,7 @@ export function botPosition(
 }
 
 /**
- * The new look (Settings → Island → New look): Lumo leaves the open island's
+ * The new look (off with Settings → Island → Previous look): Lumo leaves the open island's
  * left column for the middle of its top bar (8 pt inset + 34 pt header), as his
  * eyes alone (engine.ts eyesOnly: the diameter sizes them), and the views take
  * the whole width. Null where he stays where he is: the drop

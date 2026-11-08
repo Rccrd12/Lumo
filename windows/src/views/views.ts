@@ -76,7 +76,7 @@ export interface ViewActions {
   showPlan(): void;
   /** A chat deleted from Past chats: its plans go too. */
   forgetChatPlan(chatId: string): void;
-  /** The new look's "⋯" (Settings → Island → New look): settings, sound, hide and quit in one menu, at (x, y). */
+  /** The new look's "⋯" (off with Settings → Island → Previous look): settings, sound, hide and quit in one menu, at (x, y). */
   moreMenu(x: number, y: number): void;
   /** The live activities as they stand, for the new look's home tiles. */
   activityData(): ActivitiesData;

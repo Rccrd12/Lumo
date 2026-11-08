@@ -361,9 +361,11 @@ export interface Settings {
   language: string;
   /** When Lumo opens, one look at GitHub for a newer release (Settings → Updates). */
   updateCheckOnOpen: boolean;
-  /** Settings → Island → New look (preview): Lumo in the open island's top
-   * bar, one surface, his light along the island's edge (src/look-new.css).
-   * Off by default; turning it off brings the usual look back as it was. */
+  /** The new look: Lumo in the open island's top bar, one surface, his light
+   * along the island's edge (src/look-new.css). On by default (Rust's
+   * settings.rs decides it, before the island first draws); Settings → Island
+   * → Previous look brings the usual look back as it was. Off here only for
+   * the tests, which are of the usual look unless they say. */
   islandNewLook: boolean;
   /** The new look's light along the island's edge, picked in the wardrobe:
    * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */

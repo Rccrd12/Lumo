@@ -234,8 +234,9 @@ pub struct Settings {
     /// When Lumo opens, ask GitHub once whether a newer Windows release is out
     /// (updater.rs) and say so on the island. Settings → Updates turns it off.
     pub update_check_on_open: bool,
-    /// Settings → Island → New look (preview): Lumo in the open island's top
-    /// bar, his light along its edge (src/look-new.css). Off by default.
+    /// The new look (src/look-new.css): Lumo in the open island's top bar, his
+    /// light along its edge. On by default since 0.18.0, a file from before
+    /// included; Settings → Island → Previous look turns it off.
     pub island_new_look: bool,
     /// The new look's light along the island's edge, picked in the wardrobe:
     /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
@@ -341,7 +342,7 @@ impl Default for Settings {
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
-            island_new_look: false,
+            island_new_look: true,
             island_edge_light: "full".into(),
             home_activities: true,
         }
@@ -860,10 +861,11 @@ mod tests {
     }
 
     #[test]
-    fn a_file_from_before_the_new_look_keeps_the_usual_one() {
-        assert!(!parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
-        assert!(!Settings::default().island_new_look);
+    fn the_new_look_is_on_until_the_previous_one_is_picked() {
+        assert!(parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
+        assert!(Settings::default().island_new_look);
         assert!(parse(CUSTOM.as_bytes()).unwrap().island_new_look);
+        assert!(!parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap().island_new_look);
     }
 
     #[test]

@@ -331,7 +331,7 @@ export class BotEngine {
 
   /** Drawn as a round look (looks.ts) rather than the firefly. */
   /**
-   * The new look (Settings → Island → New look) in the open island's top bar:
+   * The new look (off with Settings → Island → Previous look) in the open island's top bar:
    * no body, hands, outfit, badge or particles — the island is his body and
    * its edge his light — only his eyes, lit, in the state's colour.
    */
