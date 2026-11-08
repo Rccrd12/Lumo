@@ -157,6 +157,10 @@ pub struct BetaPull {
     /// What a pull request left out conflicts with: "main", or another one's number.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     with: Option<String>,
+    /// Why it was left out: "conflict", "checks" (its Windows CI failed) or
+    /// "pending" (its checks were still running).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
 }
 
 #[derive(Deserialize, Default)]
@@ -778,7 +782,7 @@ mod tests {
         r
     }
 
-    const BETA_BODY: &str = "In this beta:\n- #146 Web search\n\n<!-- lumo-beta {\"version\":\"0.18.1-312\",\"included\":[{\"number\":146,\"title\":\"Web search \\u003c/b\\u003e --\\u003e\",\"updatedAt\":\"2026-11-08T10:00:00Z\"}],\"excluded\":[{\"number\":148,\"title\":\"Models\",\"updatedAt\":\"x\",\"with\":\"146\"}]} -->";
+    const BETA_BODY: &str = "In this beta:\n- #146 Web search\n\n<!-- lumo-beta {\"version\":\"0.18.1-312\",\"included\":[{\"number\":146,\"title\":\"Web search \\u003c/b\\u003e --\\u003e\",\"updatedAt\":\"2026-11-08T10:00:00Z\"}],\"excluded\":[{\"number\":148,\"title\":\"Models\",\"updatedAt\":\"x\",\"reason\":\"conflict\",\"with\":\"146\"},{\"number\":149,\"title\":\"Red\",\"updatedAt\":\"y\",\"reason\":\"checks\"}]} -->";
 
     #[test]
     fn pre_releases_order_part_by_part() {
@@ -814,6 +818,8 @@ mod tests {
         assert_eq!(b.included[0].number, 146);
         assert_eq!(b.included[0].title, "Web search </b> -->");
         assert_eq!(b.excluded[0].with.as_deref(), Some("146"));
+        assert_eq!(b.excluded[1].reason.as_deref(), Some("checks"));
+        assert_eq!(b.excluded[1].with, None);
 
         let msi = compare("0.18.0", releases(), Kind::Msi, true).unwrap().beta.unwrap();
         assert!(msi.asset_url.unwrap().ends_with("/windows-beta/Lumo-Windows-0.18.1-312.msi"));

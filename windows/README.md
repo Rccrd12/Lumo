@@ -62,10 +62,12 @@ with main and every open pull request of the repository merged into it, so
 changes can be tried before they are released, with no terminal and no
 branch to check out. The **Windows beta** workflow
 (`.github/workflows/windows-beta.yml`, steps in `windows/scripts/beta.mjs`)
-rebuilds it whenever main moves or a pull request is opened, updated or
-closed: it merges the pull requests one at a time, leaves out any that
-conflicts (Settings says with what), runs the tests, and publishes the
-`windows-beta` pre-release in place of the one before. Nothing is published
+rebuilds it each time Windows CI ends, on main or on a pull request, and when
+a pull request is closed. It merges the pull requests whose own CI passed one
+at a time, leaves out any that fails its checks, is still being checked or
+conflicts (Settings says why), runs the tests, and publishes the
+`windows-beta` pre-release in place of the one before. A build under way is
+never cancelled: a newer one waits for it. Nothing is published
 when the tests fail. Its version is the next patch with the build's number
 (`0.18.1-312`), so the release that follows is newer and comes as a plain
 update. Settings lists the pull requests in the beta, with **Install the

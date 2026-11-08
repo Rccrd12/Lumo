@@ -15550,6 +15550,30 @@
    "ru": "Доступна бета Lumo {version}",
    "id": "Lumo beta {version} tersedia",
    "it": "Lumo beta {version} disponibile"
+  },
+  "left out: its checks fail": {
+   "zh-Hans": "未包含：检查未通过",
+   "hi": "शामिल नहीं: इसकी जाँच विफल है",
+   "es": "excluida: sus comprobaciones fallan",
+   "ar": "مستبعد: فشلت فحوصاته",
+   "fr": "exclue : ses vérifications échouent",
+   "bn": "বাদ: এর পরীক্ষা ব্যর্থ",
+   "pt-BR": "excluída: as verificações dela falham",
+   "ru": "не вошёл: проверки не пройдены",
+   "id": "tidak disertakan: pemeriksaannya gagal",
+   "it": "esclusa: i controlli falliscono"
+  },
+  "left out: its checks are still running": {
+   "zh-Hans": "未包含：检查仍在运行",
+   "hi": "शामिल नहीं: इसकी जाँच अभी चल रही है",
+   "es": "excluida: sus comprobaciones aún están en curso",
+   "ar": "مستبعد: لا تزال فحوصاته قيد التشغيل",
+   "fr": "exclue : ses vérifications sont en cours",
+   "bn": "বাদ: এর পরীক্ষা এখনও চলছে",
+   "pt-BR": "excluída: as verificações dela ainda estão rodando",
+   "ru": "не вошёл: проверки ещё идут",
+   "id": "tidak disertakan: pemeriksaannya masih berjalan",
+   "it": "esclusa: i controlli sono ancora in corso"
   }
  }
 }

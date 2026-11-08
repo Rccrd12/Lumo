@@ -22,7 +22,9 @@ export function isBetaVersion(version: string): boolean {
 /** One pull request of the beta's list; one left out says what it conflicts with. */
 export function pullRow(pr: BetaPull, left: boolean): HTMLElement {
   let state = ago(pr.updatedAt);
-  if (left && pr.with === "main") state = t("left out: conflicts with main");
+  if (left && pr.reason === "checks") state = t("left out: its checks fail");
+  else if (left && pr.reason === "pending") state = t("left out: its checks are still running");
+  else if (left && pr.with === "main") state = t("left out: conflicts with main");
   else if (left && pr.with) state = t("left out: conflicts with #{number}", { number: pr.with });
   else if (left) state = t("left out: conflicts with the other changes");
   return h("div", { class: left ? "pill-row full" : "pill-row" },
