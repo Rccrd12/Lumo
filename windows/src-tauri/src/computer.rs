@@ -880,7 +880,7 @@ pub async fn serve(app: &AppHandle, request: &Value) -> Value {
     let input = request.get("input").cloned().unwrap_or_else(|| json!({}));
     let on = app.state::<crate::Shared>().settings.lock().unwrap().chat_computer_use;
     if !on {
-        return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under General → Security: Let Claude use the computer.");
+        return refuse("Computer use is off in Lumo. The user can turn it on in Lumo's Settings, under Security: Let Claude use the computer.");
     }
     if !(TURN.load(Ordering::SeqCst) > 0) {
         return refuse("Lumo lets Claude use the computer only while it answers in the island's chat.");

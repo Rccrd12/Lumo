@@ -12,13 +12,15 @@ import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 const settings = (over = {}) => ({ ...DEFAULT_SETTINGS, ...over });
 
 test("the ids and key names match the Rust side", () => {
-  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama", "lmstudio", "unsloth", "custom"]);
+  assert.deepEqual(PROVIDERS.map((p) => p.id), ["anthropic", "claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli", "google", "openai", "openrouter", "ollama", "lmstudio", "unsloth", "custom"]);
   assert.equal(providerDef("google").key, "google-api-key");
   assert.equal(providerDef("openai").key, "openai-api-key");
   assert.equal(providerDef("openrouter").key, "openrouter-api-key");
   assert.equal(providerDef("ollama").key, null);
   assert.equal(providerDef("claude-code").key, null);
   assert.equal(providerDef("codex").key, null);
+  assert.equal(providerDef("copilot-cli").key, null);
+  assert.equal(providerDef("cursor-cli").key, null);
   // An unknown id (an older or newer settings.json) falls back to Claude.
   assert.equal(providerDef("nope").id, "anthropic");
 });
@@ -39,9 +41,9 @@ test("Claude's model is the existing setting; the others are kept per provider",
 
 test("model servers show in the picker once connected, or while in use", () => {
   const ids = (s) => visibleProviders(s).map((p) => p.id);
-  assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter"]);
-  assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "ollama"]);
-  assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "antigravity-cli", "codex", "google", "openai", "openrouter", "custom"]);
+  assert.deepEqual(ids(settings()), ["anthropic", "claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli", "google", "openai", "openrouter"]);
+  assert.deepEqual(ids(settings({ ollamaUrl: "http://127.0.0.1:11434" })), ["anthropic", "claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli", "google", "openai", "openrouter", "ollama"]);
+  assert.deepEqual(ids(settings({ chatProvider: "custom" })), ["anthropic", "claude-code", "antigravity-cli", "codex", "copilot-cli", "cursor-cli", "google", "openai", "openrouter", "custom"]);
 });
 
 test("once Rust says which are set up, only those show (and the active one)", () => {
@@ -55,6 +57,14 @@ test("once Rust says which are set up, only those show (and the active one)", ()
   assert.equal(anyProviderReady(settings(), ready), true);
   assert.equal(anyProviderReady(settings(), new Set()), false);
   assert.equal(anyProviderReady(settings({ ollamaUrl: "http://127.0.0.1:11434" }), new Set()), true);
+});
+
+test("a CLI taken out with Show in the chat leaves the picker, unless the chat is on it", () => {
+  const ready = new Set(["claude-code", "copilot-cli", "cursor-cli"]);
+  const ids = (s) => visibleProviders(s, ready).map((p) => p.id);
+  assert.deepEqual(ids(settings({ chatProvider: "claude-code", hiddenChatProviders: ["copilot-cli"] })), ["claude-code", "cursor-cli"]);
+  assert.deepEqual(ids(settings({ chatProvider: "copilot-cli", hiddenChatProviders: ["copilot-cli"] })), ["claude-code", "copilot-cli", "cursor-cli"]);
+  assert.equal(anyProviderReady(settings({ hiddenChatProviders: ["copilot-cli"] }), new Set(["copilot-cli"])), false);
 });
 
 test("the saved model is kept when offered, else a sensible one is picked", () => {
@@ -101,6 +111,10 @@ test("Codex is a keyless CLI with its own efforts, and never Turbo", () => {
   assert.equal(codex.accent, "#2DD4BF", "the Codex pill's colour");
   assert.ok(isCliProvider("codex"));
   assert.deepEqual(effortsFor("codex"), ["", "low", "medium", "high", "xhigh"]);
+  // Copilot CLI and Cursor CLI are CLIs too: Copilot takes --effort, Cursor's models carry theirs.
+  assert.ok(isCliProvider("copilot-cli") && isCliProvider("cursor-cli"));
+  assert.deepEqual(effortsFor("copilot-cli"), ["", "low", "medium", "high", "xhigh", "max"]);
+  assert.deepEqual(effortsFor("cursor-cli"), []);
   assert.equal(effortFor("codex", "max"), "", "Claude Code's Max is no Codex effort");
   assert.equal(effortFor("codex", "xhigh"), "xhigh");
   assert.deepEqual(permissionModesFor("codex"), ["default", "auto", "plan"]);

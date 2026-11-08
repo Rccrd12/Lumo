@@ -27,6 +27,19 @@ pub const KNOWN_KEYS: &[&str] = &[
     "mail-address",
     "mail-imap-server",
     "mail-app-password",
+    // The other IMAP accounts (mail.rs MAX_ACCOUNTS): the same three, numbered.
+    "mail-address-2",
+    "mail-imap-server-2",
+    "mail-app-password-2",
+    "mail-address-3",
+    "mail-imap-server-3",
+    "mail-app-password-3",
+    "mail-address-4",
+    "mail-imap-server-4",
+    "mail-app-password-4",
+    "mail-address-5",
+    "mail-imap-server-5",
+    "mail-app-password-5",
     // The live activities' calendar (calendar.rs): its iCal address, secret by nature.
     "calendar-ics-url",
 ];
@@ -65,6 +78,16 @@ pub fn present(key: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn every_mail_account_can_be_stored() {
+        use crate::mail::{slot_key, ADDRESS_KEY, MAX_ACCOUNTS, PASSWORD_KEY, SERVER_KEY};
+        for slot in 1..=MAX_ACCOUNTS {
+            for base in [ADDRESS_KEY, SERVER_KEY, PASSWORD_KEY] {
+                assert!(super::KNOWN_KEYS.contains(&slot_key(base, slot).as_str()), "{base} {slot}");
+            }
+        }
+    }
+
     #[test]
     fn every_local_server_key_can_be_stored() {
         for id in ["custom", "unsloth"] {

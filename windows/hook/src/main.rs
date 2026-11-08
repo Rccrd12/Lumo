@@ -25,14 +25,16 @@
 
 use std::io::{Read, Write};
 use std::sync::mpsc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+mod agy_rules;
 mod mail_tools;
 mod mcp;
 mod normalize;
 mod reply;
+mod title;
 
 /// Budget for getting a pipe connection. Beyond this the agent wins, always.
 const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
@@ -40,6 +42,8 @@ const CONNECT_TIMEOUT: Duration = Duration::from_millis(300);
 const FIRE_AND_FORGET_BUDGET: Duration = Duration::from_secs(2);
 /// How long a permission prompt may stay on screen before the terminal takes over.
 const DECISION_BUDGET: Duration = Duration::from_secs(110);
+/// How often a waiting relay checks that the process that ran it is still there.
+const PARENT_POLL: Duration = Duration::from_millis(100);
 /// A card of the island's Antigravity CLI chat must be answered before
 /// Antigravity gives up on the hook: the hook's `timeout` in hooks.json, which
 /// Lumo's own hooks pass on as `--wait`. Without it (hooks installed before
@@ -49,6 +53,8 @@ const ANTIGRAVITY_SHORT_WAIT: u64 = 8;
 /// Fields that are pointless to forward and can be enormous (a whole file read,
 /// a full command output). The island never shows them.
 const DROPPED_FIELDS: &[&str] = &["tool_response", "tool_output", "transcript_path"];
+/// The events that carry a Claude Code session's title (title.rs).
+const TITLE_EVENTS: &[&str] = &["SessionStart", "UserPromptSubmit", "Stop"];
 /// Longest string forwarded for any single field; the island truncates to far
 /// less than this anyway.
 const MAX_FIELD_LEN: usize = 2_000;
@@ -67,7 +73,7 @@ const MAX_DIFF_FIELD_LEN: usize = 256 * 1024;
 const MAX_DIFF_TOTAL: usize = 512 * 1024;
 
 mod win;
-use win::connect;
+use win::{connect, parent};
 
 /// What the command line says: `--agent <name>`, the event name, and
 /// `--wait <seconds>`: how long the agent lets this hook run (Antigravity's
@@ -121,6 +127,12 @@ struct Event {
     /// A shell command of the island's own Antigravity CLI chat, forwarded as
     /// a permission request (see `prepare`).
     island_card: bool,
+    /// A shell command of an Antigravity session that none of its rules covers,
+    /// forwarded as a permission request (see `prepare`): no click is "ask".
+    agy_gate: bool,
+    /// Claude Code asking to leave plan mode (ExitPlanMode): the only request
+    /// "Approve and let it edit files" may answer (reply::decision_json_with).
+    plan: bool,
 }
 
 fn main() {
@@ -152,6 +164,13 @@ fn main() {
         // Anything else is not ours to show: Claude Code goes on as its mode says.
         std::process::exit(0);
     }
+    // The island's Copilot CLI and Cursor CLI chats (acp_chat.rs) ask Lumo
+    // over ACP themselves: Lumo's hooks of those CLIs stay out of them, with
+    // the usual "no opinion", so a request never comes up twice.
+    if from_island && is_acp_run(&env) {
+        print(reply::stdout(&args.agent, normalize::event(&args.event), None, None));
+        std::process::exit(0);
+    }
     let prepared = prepare(&raw, &args, &env, &cwd).filter(|e| !from_island || e.name == "PermissionRequest");
     let Some(event) = prepared else {
         // Nothing we could forward. An agent that needs JSON still gets its
@@ -163,8 +182,8 @@ fn main() {
 
     // Only an agent whose decisions the island can give waits for one; any other
     // would be held for nothing, its decision being thrown away (reply.rs).
-    let waits_for_answer = event.name == "PermissionRequest" && (event.island_card || reply::takes_decisions(&args.agent));
-    let budget = match (waits_for_answer, event.island_card) {
+    let waits_for_answer = event.name == "PermissionRequest" && (event.island_card || event.agy_gate || reply::takes_decisions(&args.agent));
+    let budget = match (waits_for_answer, event.island_card || event.agy_gate) {
         (true, true) => card_budget(args.wait),
         (true, false) => DECISION_BUDGET,
         _ => FIRE_AND_FORGET_BUDGET,
@@ -180,13 +199,39 @@ fn main() {
         let _ = tx.send(talk(&line, waits_for_answer));
     });
 
-    let decision = rx.recv_timeout(budget).ok().flatten();
+    // Claude Code ends the relay when its prompt is answered in the terminal,
+    // and the app sees the pipe close at once. A shell between them (Git Bash,
+    // cmd) can be the one ended, leaving us orphaned: its going ends us too.
+    let parent = if waits_for_answer { parent() } else { None };
+    let decision = wait(&rx, budget, || parent.as_ref().is_some_and(|p| p.gone()));
+    // Letting it edit freely is for a plan only: on anything else it is the allow it also is.
+    let decision = decision.map(|d| if d.trim() == "edits" && !event.plan { "allow".to_string() } else { d });
     if event.island_card {
         print(Some(reply::antigravity_island(decision.as_deref())));
+    } else if event.agy_gate {
+        print(Some(reply::antigravity_gate(decision.as_deref())));
     } else {
         print(reply::stdout_with(&args.agent, &event.name, decision.as_deref(), event.question.as_ref(), event.suggestions.as_ref()));
     }
     std::process::exit(0);
+}
+
+/// The worker's answer, or None once `budget` runs out or `gone()` says the
+/// process that ran us has gone.
+fn wait(rx: &mpsc::Receiver<Option<String>>, budget: Duration, gone: impl Fn() -> bool) -> Option<String> {
+    let deadline = Instant::now() + budget;
+    loop {
+        let left = deadline.saturating_duration_since(Instant::now());
+        if left.is_zero() {
+            return None;
+        }
+        match rx.recv_timeout(left.min(PARENT_POLL)) {
+            Ok(decision) => return decision,
+            Err(mpsc::RecvTimeoutError::Timeout) if gone() => return None,
+            Err(mpsc::RecvTimeoutError::Timeout) => {}
+            Err(mpsc::RecvTimeoutError::Disconnected) => return None,
+        }
+    }
 }
 
 /// A PreToolUse of a shell command that would wait (reply::blocking_wait).
@@ -250,8 +295,21 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         && name == "PreToolUse"
         && args.agent == "antigravity"
         && (reply::island_card(tool, map.get("tool_input")) || reply::writes_outside(tool, map.get("tool_input"), &workspaces(map)));
-    let name = if island_card { "PermissionRequest".to_string() } else { name };
-    if island_card {
+    // A shell command Antigravity is about to run in your own session (IDE or
+    // CLI) that none of its rules covers: the island's Allow / Deny card, with
+    // "Reply in Antigravity" to leave it to Antigravity's own prompt. Only with
+    // hooks that give the relay time to wait (`--wait`).
+    let agy_gate = !island_card && !is_island_run(env) && name == "PreToolUse" && args.agent == "antigravity" && args.wait.is_some() && {
+        let command = shell_command(tool, map.get("tool_input"));
+        let cwd = map.get("cwd").and_then(Value::as_str).unwrap_or(cwd);
+        command.is_some_and(|c| agy_rules::AgyRules::load(&home_dir(env), cwd).verdict(c) == agy_rules::Verdict::Unknown)
+    };
+    if agy_gate {
+        map.insert("lumo_agy_gate".into(), Value::Bool(true));
+    }
+    let island_card_like = island_card || agy_gate;
+    let name = if island_card_like { "PermissionRequest".to_string() } else { name };
+    if island_card_like {
         // The island takes the card down just before the relay stops waiting.
         map.insert("lumo_card_secs".into(), Value::from(card_budget(args.wait).as_secs()));
     }
@@ -263,6 +321,15 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         let id = map.get("tool_response").and_then(|r| r.pointer("/task/id")).and_then(Value::as_str).map(str::to_string);
         if let Some(id) = id {
             map.insert("lumo_task_id".into(), Value::String(id));
+        }
+    }
+    // A Claude Code session's title, for the island to name it by (title.rs).
+    // Only where it can change: a session (re)starts, a prompt (after a
+    // /rename), a turn ends (Claude Code titles a session after its first one).
+    if args.agent.is_empty() && TITLE_EVENTS.contains(&name.as_str()) {
+        let title = map.get("transcript_path").and_then(Value::as_str).filter(|p| !p.is_empty()).and_then(|p| title::session_title(std::path::Path::new(p)));
+        if let Some(title) = title {
+            map.insert("lumo_title".into(), Value::String(title));
         }
     }
     for field in DROPPED_FIELDS {
@@ -279,6 +346,7 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
         .then(|| map.get("tool_input").cloned())
         .flatten();
     let suggestions = (name == "PermissionRequest").then(|| map.get("permission_suggestions").cloned()).flatten();
+    let plan = name == "PermissionRequest" && map.get("tool_name").and_then(Value::as_str) == Some("ExitPlanMode");
 
     // Every string is capped, except the edit text of a finished Edit /
     // MultiEdit / Write, which the live diff needs whole (within its own limits).
@@ -286,7 +354,23 @@ fn prepare(raw: &[u8], args: &Args, env: &dyn Fn(&str) -> Option<String>, cwd: &
 
     let mut line = payload.to_string();
     line.push('\n');
-    Some(Event { line, name, question, suggestions, island_card })
+    Some(Event { line, name, question, suggestions, island_card, agy_gate, plan })
+}
+
+/// The shell command of an Antigravity `run_command` call, when it reached
+/// the relay whole: a command too long to forward whole is not one to approve
+/// without seeing it, nor one its rules could read.
+fn shell_command<'a>(tool: &str, input: Option<&'a Value>) -> Option<&'a str> {
+    if tool != "run_command" && !tool.ends_with(":run_command") {
+        return None;
+    }
+    let command = input?.get("command")?.as_str()?.trim();
+    (!command.is_empty() && command.chars().count() <= MAX_FIELD_LEN).then_some(command)
+}
+
+/// The user's home folder, where Antigravity keeps its rules (`.gemini`).
+fn home_dir(env: &dyn Fn(&str) -> Option<String>) -> std::path::PathBuf {
+    env("USERPROFILE").or_else(|| env("HOME")).map(std::path::PathBuf::from).unwrap_or_default()
 }
 
 /// Antigravity's `workspacePaths`: the folders its run may change.
@@ -304,6 +388,13 @@ fn is_island_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
 
 /// Set by the app on the `claude -p` and headless `agy` runs of its chat; hooks inherit it.
 const ISLAND_RUN_VAR: &str = "LUMO_ISLAND_RUN";
+
+/// Set by the app, with ISLAND_RUN_VAR, on the CLIs its chat talks to over ACP.
+const ACP_RUN_VAR: &str = "LUMO_ACP_RUN";
+
+fn is_acp_run(env: &dyn Fn(&str) -> Option<String>) -> bool {
+    env(ACP_RUN_VAR).as_deref() == Some("1")
+}
 
 /// The `lumo_agent` tag: `--agent` when given, otherwise `claude-desktop` for
 /// a Claude Code session started from the Claude desktop app, which says so in
@@ -479,6 +570,8 @@ mod tests {
         let ev = prepare(raw, &args, &env_of(&[("LUMO_ISLAND_RUN", "1")]), "/p").unwrap();
         assert!(ev.line.contains(r#""lumo_island":true"#));
         assert!(is_island_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));
+        assert!(is_acp_run(&env_of(&[("LUMO_ACP_RUN", "1")])));
+        assert!(!is_acp_run(&env_of(&[("LUMO_ISLAND_RUN", "1")])));
         let ev = prepare(raw, &args, &|_| None, "/p").unwrap();
         assert!(!ev.line.contains("lumo_island"));
         assert!(!is_island_run(&|_| None));
@@ -538,8 +631,11 @@ mod tests {
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
 
-        // Outside the island's chat, Antigravity's own prompt keeps the command.
-        let ev = prepare(command, &agy, &|_| None, "/p").unwrap();
+        // Outside the island's chat, with hooks that give the relay no time to
+        // wait, Antigravity's own prompt keeps the command (with time, it is
+        // the gate's card: an_antigravity_command_no_rule_covers_…).
+        let no_wait = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: None, chat_guard: false };
+        let ev = prepare(command, &no_wait, &|_| None, "/p").unwrap();
         assert!(!ev.island_card);
         assert_eq!(ev.name, "PreToolUse");
         // And no other agent's PreToolUse turns into a request.
@@ -711,5 +807,72 @@ mod tests {
         truncate_payload(&mut multi, "PostToolUse");
         assert!(multi.to_string().len() < MAX_DIFF_TOTAL + 64 * 1024);
         assert_eq!(multi["lumo_diff_truncated"], serde_json::Value::Bool(true));
+    }
+
+    #[test]
+    fn a_waiting_relay_gives_up_as_soon_as_its_parent_is_gone() {
+        let (tx, rx) = mpsc::channel::<Option<String>>();
+        let started = Instant::now();
+        let checks = std::cell::Cell::new(0);
+        let gone = || {
+            checks.set(checks.get() + 1);
+            checks.get() >= 2
+        };
+        assert_eq!(wait(&rx, Duration::from_secs(5), gone), None);
+        assert!(started.elapsed() < Duration::from_secs(1), "{:?}", started.elapsed());
+        // An answer still wins while the parent is there.
+        tx.send(Some("allow".into())).unwrap();
+        assert_eq!(wait(&rx, Duration::from_secs(5), || false).as_deref(), Some("allow"));
+        // And the budget still ends a wait nobody answers.
+        let started = Instant::now();
+        assert_eq!(wait(&rx, Duration::from_millis(150), || false), None);
+        assert!(started.elapsed() >= Duration::from_millis(150));
+        drop(tx);
+    }
+
+    #[test]
+    fn an_antigravity_command_no_rule_covers_is_a_card_that_otherwise_asks() {
+        let home = std::env::temp_dir().join(format!("lumo-agy-gate-{}", std::process::id()));
+        let settings = home.join(".gemini").join("antigravity-cli");
+        std::fs::create_dir_all(&settings).unwrap();
+        std::fs::write(settings.join("settings.json"), r#"{"permissions":{"allow":["command(ls)"],"deny":["command(rm -rf)"]}}"#).unwrap();
+        let home_str = home.to_string_lossy().to_string();
+        let env = |k: &str| (k == "USERPROFILE").then(|| home_str.clone());
+        let agy = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: Some(100), chat_guard: false };
+        let run = |cmd: &str| format!(r#"{{"hook_event_name":"PreToolUse","conversationId":"c1","workspacePaths":["/w"],"toolCall":{{"name":"run_command","args":{{"CommandLine":"{cmd}"}}}}}}"#);
+
+        let ev = prepare(run("npm install").as_bytes(), &agy, &env, "/p").unwrap();
+        assert!(ev.agy_gate && !ev.island_card);
+        assert_eq!(ev.name, "PermissionRequest");
+        let v: Value = serde_json::from_str(ev.line.trim_end()).unwrap();
+        assert_eq!(v["lumo_agy_gate"], true);
+        assert_eq!(v["lumo_card_secs"], 100);
+        assert!(v.get("lumo_island").is_none());
+
+        // Antigravity's own rules decide these: no card, PreToolUse as before.
+        for cmd in ["ls -la", "rm -rf build"] {
+            let ev = prepare(run(cmd).as_bytes(), &agy, &env, "/p").unwrap();
+            assert!(!ev.agy_gate, "{cmd}");
+            assert_eq!(ev.name, "PreToolUse");
+        }
+        // Hooks that give no time to wait, another tool, or the island's own chat: no gate.
+        let short = Args { agent: "antigravity".into(), event: "PreToolUse".into(), wait: None, chat_guard: false };
+        assert!(!prepare(run("npm install").as_bytes(), &short, &env, "/p").unwrap().agy_gate);
+        let read = br#"{"hook_event_name":"PreToolUse","toolCall":{"name":"view_file","args":{"AbsolutePath":"/a"}}}"#;
+        assert!(!prepare(read, &agy, &env, "/p").unwrap().agy_gate);
+        let island = |k: &str| match k {
+            "USERPROFILE" => Some(home_str.clone()),
+            "LUMO_ISLAND_RUN" => Some("1".to_string()),
+            _ => None,
+        };
+        let ev = prepare(run("npm install").as_bytes(), &agy, &island, "/p").unwrap();
+        assert!(ev.island_card && !ev.agy_gate);
+
+        // Only a click allows; anything else hands it back to Antigravity.
+        assert_eq!(reply::antigravity_gate(Some("allow")), r#"{"decision":"allow"}"#);
+        assert_eq!(reply::antigravity_gate(Some("deny")), r#"{"decision":"deny","reason":"Denied from Lumo"}"#);
+        assert_eq!(reply::antigravity_gate(None), r#"{"decision":"ask"}"#);
+        assert_eq!(reply::antigravity_gate(Some("maybe")), r#"{"decision":"ask"}"#);
+        let _ = std::fs::remove_dir_all(home);
     }
 }

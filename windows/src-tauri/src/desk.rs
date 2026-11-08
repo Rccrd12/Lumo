@@ -1,5 +1,5 @@
-// What is open on the user's computer, for the chat (Settings → Chat →
-// "Tell the AI what's open"): the windows, front to back, and the documents
+// What is open on the user's computer, for the chat (Settings → Security →
+// "Open windows"): the windows, front to back, and the documents
 // they show, found on disk from their titles ("Report.pdf - Adobe Acrobat").
 //
 // Only the chat's own provider hears it, with the question it goes with;

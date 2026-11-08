@@ -18,7 +18,6 @@
 // `seven_day` → `used_percentage`, `resets_at` in epoch seconds), which the
 // island already reads (core/plan.ts parseClaudePlan).
 
-use std::path::PathBuf;
 use std::time::Duration;
 
 use serde_json::{json, Map, Value};
@@ -29,13 +28,6 @@ const USAGE_URL: &str = "https://api.anthropic.com/api/oauth/usage";
 const TIMEOUT: Duration = Duration::from_secs(15);
 const MAX_BODY: usize = 64 * 1024;
 
-/// Claude Code's folder: $CLAUDE_CONFIG_DIR when set, else ~/.claude.
-fn claude_dir() -> PathBuf {
-    std::env::var_os("CLAUDE_CONFIG_DIR")
-        .map(PathBuf::from)
-        .filter(|p| p.is_absolute())
-        .unwrap_or_else(|| crate::platform::home_dir().join(".claude"))
-}
 
 /// The access token in Claude Code's credentials, if it is still valid.
 fn token_from(credentials: &Value, now_ms: i64) -> Result<String, String> {
@@ -54,7 +46,7 @@ fn token_from(credentials: &Value, now_ms: i64) -> Result<String, String> {
 }
 
 fn read_token() -> Result<String, String> {
-    let path = claude_dir().join(".credentials.json");
+    let path = crate::hooks::claude_dir().join(".credentials.json");
     let bytes = std::fs::read(&path).map_err(|_| t("Claude Code is not signed in with a Claude plan."))?;
     let value: Value = serde_json::from_slice(&bytes).map_err(|_| t("Claude Code is not signed in with a Claude plan."))?;
     let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map(|d| d.as_millis() as i64).unwrap_or(0);

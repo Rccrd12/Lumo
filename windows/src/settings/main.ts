@@ -4,9 +4,9 @@
 
 import "../core/legacy";
 import "./settings.css";
-import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type ModelInfo, type ShortcutsReport } from "../core/bridge";
+import { Bridge, EMBEDDED, onEvent, type HookPreview, type HookStatus, type MailAccount, type ModelInfo, type ShortcutsReport, type UnslothStudio } from "../core/bridge";
 import {
-  CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, providerDef, urlExposure,
+  CUSTOM_SERVER_KEY, UNSLOTH_SERVER_KEY, effortFor, effortsFor, parsePermissionMode, permissionModesFor, isHidden, providerDef, urlExposure, visibleProviders,
 } from "../core/providers";
 import {
   ISLAND_SHORTCUTS, SHORTCUTS, SHORTCUT_TEXT, activeKeys, displayKeys, duplicates, effective,
@@ -21,12 +21,12 @@ import {
 import { h, clear } from "../views/dom";
 import { agentsSection } from "./agents";
 import { colorDot } from "./colors";
-import { accentDot, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
+import { accentDot, errorText, group, renderDiff, sectionHead, setting, statusDot, wideSetting } from "./parts";
 import { SEARCH_STRINGS, applySearch } from "./search";
 import { ENERGY_MODES, ENERGY_ON_POWER, effectiveEffort, parseEnergyMode, parseOnPower } from "../core/energy";
 import { PLAN_AGENT, agentPlanOn } from "../core/plan";
 import { betaChanged, changelogSection, updatesSection } from "./updates";
-import { localModelsBlock } from "./local-models";
+import { localModelsBlock, type UnslothMemory } from "./local-models";
 import { MENU_ITEMS, pickedItems, withItem } from "../core/context-menu";
 import { installTextMenu } from "../views/context-menu";
 import { FRAME_CLOSE, FRAME_READY } from "../views/settings-frame";
@@ -452,16 +452,26 @@ function apiSection(hasKey: boolean): HTMLElement {
   );
 }
 
-// ── Antigravity CLI and Codex sections ────────────────────────────────────────
+// ── Antigravity CLI, Codex, Copilot CLI and Cursor CLI sections ──────────────
+
+/** How to get Copilot CLI and Cursor CLI, while they aren't on this PC (acp_chat.rs). */
+const COPILOT_MISSING = N_("Not on this PC yet: install it with npm install -g @github/copilot, then run copilot once in a terminal to sign in.");
+const CURSOR_MISSING = N_("Not on this PC yet: install it from cursor.com/cli, then run cursor-agent login once in a terminal to sign in.");
 
 /**
- * Antigravity CLI and Codex need no key either: each runs with the account
- * signed in to it, Google's for `agy` (antigravity_cli.rs), ChatGPT's for
- * `codex` (codex_chat.rs). Their models come from the CLI itself (`agy
- * models`, Codex's `model/list`), asked only once the list is opened.
+ * Antigravity CLI, Codex, Copilot CLI and Cursor CLI need no key either:
+ * each runs with the account signed in to it, Google's for `agy`
+ * (antigravity_cli.rs), ChatGPT's for `codex` (codex_chat.rs), GitHub's for
+ * `copilot` and Cursor's for `cursor-agent` (acp_chat.rs). Their models come
+ * from the CLI itself (`agy models`, Codex's `model/list`, what a new ACP
+ * session offers), asked only once the list is opened.
  */
-function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement {
+function cliSection(id: "antigravity-cli" | "codex" | "copilot-cli" | "cursor-cli", note: string, missing?: string): HTMLElement {
   const p = providerDef(id);
+  // Copilot CLI and Cursor CLI say how to get them while they aren't on this PC.
+  const absent = h("p", { class: "hint", text: missing ? t(missing) : "" });
+  absent.hidden = true;
+  if (missing) Bridge.chatProviders().then((ready) => { if (ready) absent.hidden = ready.includes(id); }, () => {});
   const model = h("select", {}) as HTMLSelectElement;
   const fill = (offered: { id: string; label: string }[]) => {
     const saved = settings.chatModels[p.id] || "default";
@@ -485,12 +495,25 @@ function cliSection(id: "antigravity-cli" | "codex", note: string): HTMLElement 
     settings.chatModels = { ...settings.chatModels, [p.id]: model.value };
     void save();
   });
+  // Off, the CLI leaves the chat's providers; the chat in use moves to another one.
+  const shown = toggle(!isHidden(settings, p.id), async (on) => {
+    const rest = (settings.hiddenChatProviders ?? []).filter((x) => x !== p.id);
+    settings.hiddenChatProviders = on ? rest : [...rest, p.id];
+    if (!on && settings.chatProvider === p.id) {
+      const ready = await Bridge.chatProviders();
+      const next = visibleProviders(settings, Array.isArray(ready) ? new Set(ready) : null).find((x) => x.id !== p.id);
+      if (next) settings.chatProvider = next.id;
+    }
+    void save();
+  });
 
   return h(
     "section",
     {},
     ...sectionHead(p.name, null, accentDot(p.accent)),
+    setting(t("Show in the chat"), t("Off, it leaves the chat's list of providers. Nothing is uninstalled."), shown),
     setting(t("Model"), t(note), model),
+    absent,
   );
 }
 
@@ -517,7 +540,9 @@ function activePillsSection(connected: Record<string, boolean>): HTMLElement {
   /** Why a pill would show nothing yet. */
   function hint(def: PillDefinition): string | null {
     if (def.connect.kind === "hooks" && !connected[def.id]) return t("Hooks not installed");
-    if (def.connect.kind === "key" && !connected[def.id]) return t("Key not configured");
+    if (def.connect.kind === "key" && !connected[def.id] && !(def.connect.orSetting && settings[def.connect.orSetting])) {
+      return t("Key not configured");
+    }
     if (def.connect.kind === "server" && !settings[def.connect.field]) return t("Not connected");
     return null;
   }
@@ -697,24 +722,34 @@ function chatUsageSection(): HTMLElement {
 const SECURITY = {
   get title() { return t("Security"); },
   get intro() { return t("What the AI may see and do on its own. Lumo never approves a permission or sends anything for you without your click."); },
+  get onItsOwn() { return t("What it may do on its own"); },
   get permissions() { return t("Default permissions"); },
-  get permissionsHint() { return t("What Claude Code, Codex and Antigravity CLI may do without asking, in the chat and for Gemini Live's helper. The shield in the chat changes it too."); },
-  get everyMessage() { return t("With every message"); },
-  get folders() { return t("Share the folders open in File Explorer"); },
-  get foldersHint() { return t("Every message carries the folders open in File Explorer and the list of their files, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
-  get tabs() { return t("Share the open browser tabs"); },
-  get tabsHint() { return t("Every message carries the tabs open in your browsers, as if you shared them from the screen button. The × on a chip leaves it out of one message."); },
-  get mailAndCalendar() { return t("Email and calendar"); },
-  get mailHint() { return t("What the AI may do with the Email pill's mailbox: read it when you ask about it, also send, answer and forward emails, also manage them (read or unread, star, move, archive, trash), or nothing at all. Each email is sent only when you click Send on its card, which shows it whole, and each change is a card too. Nothing is ever deleted for good."); },
+  get permissionsHint() { return t("How free Claude Code, Codex and Antigravity CLI are in the chat. The shield in the chat changes it too."); },
+  get computerHint() { return t("Only while it answers: the screen it uses glows, and Esc stops it. With Ask every time, each click waits for yours."); },
+  get webHint() { return t("For the models that can't search on their own. Free, no account: only the useful passages reach the model."); },
+  get sees() { return t("What it sees with every message"); },
+  get seesHint() { return t("Only the chat's AI gets them. The × on a chip leaves one out of a single message."); },
+  get windows() { return t("Open windows"); },
+  get windowsHint() { return t("Their titles and the documents they show."); },
+  get folders() { return t("File Explorer folders"); },
+  get foldersHint() { return t("The open folders and the list of their files."); },
+  get tabs() { return t("Browser tabs"); },
+  get tabsHint() { return t("The tabs open in your browsers."); },
+  get accounts() { return t("Your accounts"); },
+  get mailHint() { return t("At first the AI may only read. If you let it send, each email waits for your click on its card. Nothing is ever deleted for good."); },
+  get calendarHint() { return t("Read your coming events, or nothing."); },
+  get outlookStart() { return t("Open Outlook if it's closed"); },
+  get outlookStartHint() { return t("When Lumo starts, it opens classic Outlook in the background, with no window. If you close it yourself, Lumo doesn't open it again until it next starts."); },
+  get githubHint() { return t("Read your pull requests, issues and checks when you ask. Off until you turn it on."); },
   get readAndSend() { return t("Read and send"); },
   get readSendManage() { return t("Read, send and manage"); },
-  get calendarHint() { return t("What the AI may do with the calendar set in Lumo: read its coming events (Gemini Live), or nothing at all."); },
-  get githubHint() { return t("What the AI may do with the GitHub account set in Lumo: read your pull requests, issues, repositories and checks when you ask about them, or nothing at all. Off until you turn it on, also for cloud AIs."); },
   get readOnly() { return t("Read only"); },
   get noAccess() { return t("No access"); },
-  get other() { return t("Other"); },
-  get keys() { return t("Keys and passwords"); },
-  get keysHint() { return t("API keys and passwords stay in Windows Credential Manager, never in a file. Lumo talks only to the services you set up, and sends no usage data."); },
+  get alwaysOn() { return t("Always on"); },
+  get keys() { return t("Keys and passwords stay in Windows Credential Manager, never in a file."); },
+  get noData() { return t("No usage data: Lumo talks only to the services you set up."); },
+  get pipe() { return t("Only your Windows account can talk to Lumo through the pipe the agents' hooks use."); },
+  get updates() { return t("An update is installed only if it matches the one GitHub published."); },
 };
 
 /** The chat's permission modes, by the names its shield gives them (views/chat.ts). */
@@ -724,21 +759,19 @@ const PERMISSION_NAMES: Record<string, string> = {
 
 /** Lumo's own web search (web_search.rs), for the providers that have none. */
 const WEB_SETTINGS = {
-  get group() { return t("Web search"); },
   get label() { return t("Search the web for the AI"); },
-  get hint() { return t("For local models, OpenAI, Google and OpenRouter. The question goes to DuckDuckGo (else Mojeek or Wikipedia) without an account, the pages open from this computer, and only the passages that answer reach the model. Free, no key."); },
 };
 
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
-  get hint() { return t("Only while the agent answers: the screen it uses glows and the mouse turns orange. Asking every time, each action is a card on the island first. Esc stops it and gives the mouse back."); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
 };
 
 /**
- * Settings → General → Security: what the chat's agents may do without
- * asking, what goes with every message, what the AI may read of the email
- * and the calendar, and computer use.
+ * Settings → Security: what the chat's agents may do on their own (the
+ * permissions, computer use, web search), what goes with every message,
+ * what the AI may do with the email, the calendar and GitHub, and what Lumo
+ * always does without a switch.
  */
 function securitySection(): HTMLElement {
   // The one mode every CLI starts from.
@@ -771,10 +804,22 @@ function securitySection(): HTMLElement {
     "section",
     {},
     ...sectionHead(SECURITY.title, SECURITY.intro),
+    group(SECURITY.onItsOwn),
     setting(SECURITY.permissions, SECURITY.permissionsHint, permissions),
-    group(SECURITY.everyMessage),
-    setting(t("Tell the AI what's open"),
-      t("With every message, the open windows' titles and the documents they show, so the AI can read the one you ask about. Only the chat's provider gets them."),
+    setting(COMPUTER_SETTINGS.label, SECURITY.computerHint,
+      toggle(settings.chatComputerUse === true, (on) => {
+        settings.chatComputerUse = on;
+        showNote();
+        void save();
+      }),
+    ),
+    note,
+    setting(WEB_SETTINGS.label, SECURITY.webHint,
+      toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
+    ),
+    group(SECURITY.sees),
+    h("p", { class: "hint group-hint", text: SECURITY.seesHint }),
+    setting(SECURITY.windows, SECURITY.windowsHint,
       toggle(settings.chatShareOpen !== false, (on) => { settings.chatShareOpen = on; void save(); }),
     ),
     setting(SECURITY.folders, SECURITY.foldersHint,
@@ -783,26 +828,20 @@ function securitySection(): HTMLElement {
     setting(SECURITY.tabs, SECURITY.tabsHint,
       toggle(settings.chatShareTabs === true, (on) => { settings.chatShareTabs = on; void save(); }),
     ),
-    group(SECURITY.mailAndCalendar),
+    group(SECURITY.accounts),
     setting(t("Email"), SECURITY.mailHint, mailAccess),
+    setting(SECURITY.outlookStart, SECURITY.outlookStartHint,
+      toggle(settings.outlookStart === true, (on) => { settings.outlookStart = on; void save(); }),
+    ),
     setting(t("Calendar"), SECURITY.calendarHint, calendarAccess),
-    group("GitHub"),
     setting("GitHub", SECURITY.githubHint, githubAccess),
-    group(t("Computer use")),
-    setting(COMPUTER_SETTINGS.label, COMPUTER_SETTINGS.hint,
-      toggle(settings.chatComputerUse === true, (on) => {
-        settings.chatComputerUse = on;
-        showNote();
-        void save();
-      }),
+    group(SECURITY.alwaysOn),
+    h("ul", { class: "always-on" },
+      h("li", { text: SECURITY.keys }),
+      h("li", { text: SECURITY.noData }),
+      h("li", { text: SECURITY.pipe }),
+      h("li", { text: SECURITY.updates }),
     ),
-    note,
-    group(WEB_SETTINGS.group),
-    setting(WEB_SETTINGS.label, WEB_SETTINGS.hint,
-      toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
-    ),
-    group(SECURITY.other),
-    setting(SECURITY.keys, SECURITY.keysHint),
   );
 }
 
@@ -1035,6 +1074,92 @@ const AUTO_COMPACT = {
   get hint() { return t("Over 80 %, before the question goes: the model starts again from a summary of the chat."); },
 };
 
+/** Unsloth Studio started and stopped by Lumo (unsloth_studio.rs). */
+const UNSLOTH_START = {
+  label: N_("Start and stop it by itself"),
+  hint: N_("When you pick it in the chat, Lumo starts Unsloth Studio in the background, with no window."),
+  notInstalled: N_("Not found on this computer: install Unsloth Studio first."),
+  notHere: N_("Only for Unsloth Studio on this computer."),
+  stopAfter: N_("Stop after"),
+  stopAfterHint: N_("Only if Lumo started it: an Unsloth Studio you opened stays on."),
+  minutes5: N_("5 minutes with no question"),
+  minutes15: N_("15 minutes with no question"),
+  hour: N_("1 hour with no question"),
+  exit: N_("When Lumo quits"),
+  never: N_("Never"),
+  off: N_("Off: it starts when you use it in the chat."),
+  offPlain: N_("Off."),
+  start: N_("Start now"),
+  stop: N_("Stop now"),
+  starting: N_("Starting Unsloth Studio…"),
+  seconds: N_("{seconds} s"),
+  ownedAfter: N_("Started by Lumo: it stops after {minutes} minutes with no question."),
+  ownedExit: N_("Started by Lumo: it stops when Lumo quits."),
+  ownedNever: N_("Started by Lumo: it stays on."),
+};
+
+/** Unsloth Studio's address is this computer: the only one Lumo starts. */
+function unslothHere(): boolean {
+  return urlExposure(settings.unslothUrl) === "local";
+}
+
+/** "Start and stop it by itself" and "Stop after", under a connected Unsloth Studio. */
+function unslothStartBlock(): HTMLElement {
+  const block = h("div", {});
+  const hint = h("span", { text: t(UNSLOTH_START.hint) });
+  const stopAfter = select(
+    [
+      ["5", t(UNSLOTH_START.minutes5)],
+      ["15", t(UNSLOTH_START.minutes15)],
+      ["60", t(UNSLOTH_START.hour)],
+      ["exit", t(UNSLOTH_START.exit)],
+      ["never", t(UNSLOTH_START.never)],
+    ],
+    settings.unslothStopAfter || "15",
+    (v) => { settings.unslothStopAfter = v; void save().then(() => unslothMemory.refresh()); },
+  );
+  block.append(
+    setting(t(UNSLOTH_START.label), hint, toggle(settings.unslothAutoStart !== false, (on) => {
+      settings.unslothAutoStart = on;
+      void save().then(() => unslothMemory.refresh());
+    })),
+    setting(t(UNSLOTH_START.stopAfter), t(UNSLOTH_START.stopAfterHint), stopAfter),
+  );
+  // Not installed, or connected at another computer's address: said in place of the hint.
+  if (!unslothHere()) hint.textContent = t(UNSLOTH_START.notHere);
+  else void Bridge.unslothStudioStatus().then((s) => { if (s && !s.installed) hint.textContent = t(UNSLOTH_START.notInstalled); });
+  return block;
+}
+
+/**
+ * The In memory row of Unsloth Studio, while it is off, starting, or on and
+ * started by Lumo (local-models.ts asks this for the words and the buttons).
+ */
+const unslothMemory: UnslothMemory = {
+  refresh: () => {},
+  async describe(reachable: boolean, live?: UnslothStudio) {
+    const s = live ?? (await Bridge.unslothStudioStatus());
+    if (!s) return null;
+    if (s.state === "starting") {
+      const seconds = s.seconds >= 2 ? t(UNSLOTH_START.seconds, { seconds: s.seconds }) : "";
+      return { starting: t(UNSLOTH_START.starting), seconds };
+    }
+    if (reachable) {
+      if (!s.owned) return null;
+      const after = settings.unslothStopAfter || "15";
+      const line = after === "exit" ? t(UNSLOTH_START.ownedExit)
+        : after === "never" ? t(UNSLOTH_START.ownedNever)
+        : t(UNSLOTH_START.ownedAfter, { minutes: after });
+      return { line, stop: t(UNSLOTH_START.stop) };
+    }
+    // Off, and Lumo can start it: no error, only what happens next.
+    if (!s.installed || !unslothHere()) return null;
+    return { off: t(settings.unslothAutoStart !== false ? UNSLOTH_START.off : UNSLOTH_START.offPlain), start: t(UNSLOTH_START.start) };
+  },
+  start: () => Bridge.unslothStudioStart(),
+  stop: () => Bridge.unslothStudioStop().then(() => {}),
+};
+
 function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
   const body = h("div", { class: "setting-list" });
   const section = h(
@@ -1089,8 +1214,12 @@ function localSection(keys: Partial<Record<LocalId, boolean>>): HTMLElement {
       );
       exposure.append(exposureNotice(settings[field], keys[id] === true) ?? "");
       block.append(exposure);
+      // Unsloth Studio on this computer: Lumo starts it when the chat needs it, and stops it.
+      if (id === "unsloth") block.append(unslothStartBlock());
       // What Ollama, LM Studio and Unsloth Studio hold in memory (and a model to download where offered).
-      if (id === "ollama" || id === "lmstudio" || id === "unsloth") block.append(localModelsBlock(id));
+      if (id === "ollama" || id === "lmstudio" || id === "unsloth") {
+        block.append(localModelsBlock(id, id === "unsloth" ? unslothMemory : undefined));
+      }
       return block;
     }
 
@@ -1198,14 +1327,11 @@ const INTEGRATIONS: IntegrationDef[] = [
     fields: [{ key: "notion-api-key", label: N_("Integration token"), placeholder: "ntn_…", secret: true }] },
   { id: "integration_calcom", name: "Cal.com", color: "#C9956A",
     fields: [{ key: "calcom-api-key", label: N_("API key"), placeholder: "cal_…", secret: true }] },
-  // The inbox over IMAP (mail.rs): read only, never sends.
+  // The inbox over IMAP (mail.rs), and the classic Outlook on this PC (outlook.rs): mailSourceRows,
+  // with the IMAP accounts listed by imapAccounts rather than these fields.
   { id: "integration_mail", name: N_("Email"), color: "#EA4335",
-    fields: [
-      { key: "mail-address", label: N_("Address"), placeholder: "you@gmail.com", secret: false },
-      { key: "mail-app-password", label: N_("App password"), placeholder: "abcd efgh ijkl mnop", secret: true },
-      { key: "mail-imap-server", label: N_("IMAP server"), placeholder: N_("found from the address"), secret: false },
-    ],
-    hint: N_("New emails show on the closed island. Lumo only reads: it never sends, deletes or marks anything as read. Gmail needs an app password (myaccount.google.com/apppasswords), with 2-Step Verification on.") },
+    fields: [],
+    hint: N_("New emails show on the closed island. You can use Outlook, IMAP or both together.") },
 ];
 
 const MAX_ACTIVE = MAX_DECLARED;
@@ -1304,7 +1430,7 @@ function integrationsSection(
           def.hint ? t(def.hint) : null,
           sw,
         ),
-        rows,
+        ...(def.id === "integration_mail" ? mailSourceRows(imapAccounts(keyChanged)) : [rows]),
         def.id === "integration_mail" ? promotionsRow() : null,
       ),
     );
@@ -1312,6 +1438,207 @@ function integrationsSection(
 
   updateNote();
   return h("section", {}, ...sectionHead(t("Integrations")), note, list);
+}
+
+const MAIL_SOURCES = {
+  get outlook() { return t("Outlook on this PC"); },
+  get outlookHint() { return t("Classic Outlook, already set up: no password."); },
+  get account() { return t("Account"); },
+  get imapHint() { return t("Gmail, iCloud or another server, with an app password. Gmail's is made at myaccount.google.com/apppasswords, with 2-Step Verification on."); },
+  get closed() { return t("Outlook is closed: the emails come back as soon as you open it."); },
+  get missing() { return t("Classic Outlook isn't installed on this PC. The new Outlook can't be read by other apps: use IMAP."); },
+};
+
+/**
+ * Settings → Pills → Email's two sources, one switch each: the classic
+ * Outlook on this PC with the accounts it has (outlook.rs), and IMAP with its
+ * address, app password and server (mail.rs). Both can be on.
+ */
+function mailSourceRows(imapFields: HTMLElement): HTMLElement[] {
+  const found = h("span", { style: "flex:1 1 auto;min-width:0;opacity:.9" });
+  const dot = statusDot(false);
+  const account = h("div", { class: "field-rows" },
+    h("div", { class: "field-row" }, h("label", { text: MAIL_SOURCES.account }), found, dot));
+  // What Outlook says now: asked only while it runs, it is never started from here.
+  const showOutlook = async () => {
+    account.hidden = !settings.mailOutlook;
+    if (!settings.mailOutlook) return;
+    const status = await Bridge.outlookStatus();
+    if (!status) return;
+    const running = status.installed && status.running;
+    found.textContent = !status.installed ? MAIL_SOURCES.missing
+      : !status.running ? MAIL_SOURCES.closed
+      : status.accounts.join(", ") || "Outlook";
+    found.title = found.textContent;
+    found.style.opacity = running ? ".9" : ".6";
+    dot.style.background = running ? "#22c55e" : status.installed ? "#8a8f98" : "#f4505e";
+  };
+  const showImap = () => { imapFields.hidden = !settings.mailImap; };
+  void showOutlook();
+  showImap();
+  window.addEventListener("focus", () => void showOutlook());
+  return [
+    setting(MAIL_SOURCES.outlook, MAIL_SOURCES.outlookHint,
+      toggle(settings.mailOutlook, (v) => { settings.mailOutlook = v; void showOutlook(); void save(); })),
+    account,
+    setting("IMAP", MAIL_SOURCES.imapHint,
+      toggle(settings.mailImap, (v) => { settings.mailImap = v; showImap(); void save(); })),
+    imapFields,
+  ];
+}
+
+/** Settings → Pills → Email → IMAP's words. */
+const IMAP_ACCOUNTS = {
+  get add() { return t("+ Add an account"); },
+  get title() { return t("New IMAP account"); },
+  get check() { return t("Check and save"); },
+  get checking() { return t("Checking…"); },
+  get notSaved() { return t("Nothing was saved."); },
+  get defaultTip() { return t("New emails go out from this account. A reply goes out from the account the email came to."); },
+  found: (server: string) => t("found from the address: {server}", { server }),
+};
+
+/** As many IMAP accounts as mail.rs keeps (MAX_ACCOUNTS). */
+const MAX_MAIL_ACCOUNTS = 5;
+
+/** An account's dot: read, refused, paused, or not connected yet. */
+const ACCOUNT_DOT: Record<MailAccount["state"], string> = {
+  ok: "#22c55e", error: "#f4505e", paused: "#8a8f98", connecting: "#f5a524",
+};
+
+/**
+ * Settings → Pills → Email → IMAP: the accounts stored (mail.rs), each with
+ * its state, a switch that pauses it and Remove; under them, one form to add
+ * another, saved only once its server took the address and the password.
+ * The first account is the default: a new email goes out of it.
+ */
+function imapAccounts(keyChanged: (key: string, on: boolean) => void): HTMLElement {
+  const box = h("div", { class: "mail-accounts" });
+  const list = h("div", { class: "mail-account-list" });
+  const addBtn = h("button", { text: IMAP_ACCOUNTS.add });
+  const addRow = h("div", { class: "mail-account-add" }, addBtn);
+  let shown: MailAccount[] = [];
+
+  const address = h("input", { type: "text", placeholder: "you@gmail.com", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const password = h("input", { type: "password", placeholder: "abcd efgh ijkl mnop", autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const server = h("input", { type: "text", placeholder: t("found from the address"), autocomplete: "off", spellcheck: "false" }) as HTMLInputElement;
+  const problem = h("div", { class: "mail-account-error" });
+  const cancel = h("button", { text: t("Cancel") }) as HTMLButtonElement;
+  const checkBtn = h("button", { class: "primary", text: IMAP_ACCOUNTS.check }) as HTMLButtonElement;
+  const field = (label: string, input: HTMLElement) => h("div", { class: "field-row" }, h("label", { text: label }), input);
+  const form = h("div", { class: "mail-account-form" },
+    h("div", { class: "mail-account-form-title", text: IMAP_ACCOUNTS.title }),
+    field(t("Address"), address),
+    field(t("App password"), password),
+    field(t("IMAP server"), server),
+    problem,
+    h("div", { class: "mail-account-actions" }, cancel, checkBtn),
+  );
+  form.hidden = true;
+  problem.hidden = true;
+
+  const paused = (a: string) => settings.mailPaused.some((p) => p.toLowerCase() === a.toLowerCase());
+  const setPaused = (a: string, on: boolean) => {
+    const rest = settings.mailPaused.filter((p) => p.toLowerCase() !== a.toLowerCase());
+    settings.mailPaused = on ? [...rest, a.toLowerCase()] : rest;
+    void save();
+  };
+
+  const row = (a: MailAccount, first: boolean): HTMLElement => {
+    const line = a.state === "error" && a.error ? `${a.host} · ${a.error}`
+      : a.state === "paused" ? `${a.host} · ${t("Paused")}`
+      : a.state === "connecting" ? `${a.host} · ${t("Connecting…")}`
+      : a.host;
+    const chip = first ? h("span", { class: "mail-account-default", text: t("Default"), title: IMAP_ACCOUNTS.defaultTip }) : null;
+    const remove = h("button", { class: "danger", text: CHAT_STRINGS.remove }) as HTMLButtonElement;
+    remove.addEventListener("click", async () => {
+      remove.disabled = true;
+      try {
+        await Bridge.mailAccountRemove(a.address);
+        if (paused(a.address)) setPaused(a.address, false);
+      } catch {
+        remove.disabled = false;
+        return;
+      }
+      await refresh();
+    });
+    const on = !paused(a.address);
+    return h("div", { class: on ? "mail-account" : "mail-account off" },
+      h("i", { class: "dot", style: `background:${ACCOUNT_DOT[a.state] ?? ACCOUNT_DOT.connecting}` }),
+      h("div", { class: "mail-account-text" },
+        h("div", { class: "mail-account-name" }, h("span", { class: "mail-account-address", text: a.address, title: a.address }), chip),
+        h("span", { class: a.state === "error" ? "mail-account-line bad" : "mail-account-line", text: line, title: line }),
+      ),
+      toggle(on, (v) => { setPaused(a.address, !v); later(); }),
+      remove,
+    );
+  };
+
+  async function refresh() {
+    const accounts = (await Bridge.mailAccounts()) ?? [];
+    const had = shown.length > 0;
+    shown = accounts;
+    list.replaceChildren(...accounts.map((a, i) => row(a, i === 0)));
+    list.hidden = accounts.length === 0;
+    addRow.hidden = !form.hidden || accounts.length >= MAX_MAIL_ACCOUNTS;
+    if (had !== accounts.length > 0) keyChanged("mail-app-password", accounts.length > 0);
+  }
+  /** The state of a connection that just started, a few seconds on. */
+  let timers: number[] = [];
+  const later = () => {
+    for (const id of timers) clearTimeout(id);
+    timers = [1500, 6000, 15000].map((ms) => window.setTimeout(() => void refresh(), ms));
+    void refresh();
+  };
+
+  const close = () => {
+    form.hidden = true;
+    problem.hidden = true;
+    address.value = password.value = server.value = "";
+    server.placeholder = t("found from the address");
+    addRow.hidden = shown.length >= MAX_MAIL_ACCOUNTS;
+  };
+  addBtn.addEventListener("click", () => {
+    form.hidden = false;
+    addRow.hidden = true;
+    address.focus();
+  });
+  cancel.addEventListener("click", close);
+  address.addEventListener("input", async () => {
+    const typed = address.value.trim();
+    const found = typed.includes("@") ? (await Bridge.mailServerFor(typed)) ?? "" : "";
+    if (address.value.trim() !== typed) return;
+    server.placeholder = found ? IMAP_ACCOUNTS.found(found) : t("found from the address");
+  });
+  const submit = async () => {
+    if (checkBtn.disabled) return;
+    if (!address.value.trim() || !password.value.trim()) {
+      (address.value.trim() ? password : address).focus();
+      return;
+    }
+    checkBtn.disabled = cancel.disabled = true;
+    checkBtn.textContent = IMAP_ACCOUNTS.checking;
+    problem.hidden = true;
+    try {
+      await Bridge.mailAccountAdd(address.value.trim(), password.value.trim(), server.value.trim());
+      close();
+      later();
+    } catch (err) {
+      problem.replaceChildren(h("i", { class: "dot", style: "background:#f4505e" }), h("span", { text: `${errorText(err)} ${IMAP_ACCOUNTS.notSaved}` }));
+      problem.hidden = false;
+    } finally {
+      checkBtn.disabled = cancel.disabled = false;
+      checkBtn.textContent = IMAP_ACCOUNTS.check;
+    }
+  };
+  checkBtn.addEventListener("click", () => void submit());
+  for (const input of [address, password, server]) {
+    input.addEventListener("keydown", (e) => { if (e.key === "Enter") void submit(); });
+  }
+  window.addEventListener("focus", () => void refresh());
+  void refresh();
+  box.append(list, form, addRow);
+  return box;
 }
 
 /** Settings → Pills → Email: the promotional emails left out of the island (mail.rs). */
@@ -1930,6 +2257,7 @@ const PAGES = [
   { id: "agents", label: N_("Agents") },
   { id: "pills", label: N_("Pills & integrations") },
   { id: "shortcuts", label: N_("Shortcuts") },
+  { id: "security", label: N_("Security") },
   { id: "updates", label: N_("Updates") },
 ] as const;
 
@@ -2101,13 +2429,14 @@ async function render() {
   // Every section is built, so what one redraws (declaredViews, the local
   // models, the shortcuts) works as before; only the selected one shows.
   const pages: Record<PageId, HTMLElement[]> = {
-    general: [generalSection(), securitySection()],
+    general: [generalSection()],
     island: [islandSection()],
-    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
+    chat: [apiSection(hasKey), cliSection("antigravity-cli", N_("Uses your Google account. No key needed.")), cliSection("codex", N_("Uses your ChatGPT account. No key needed.")), cliSection("copilot-cli", N_("Uses your GitHub Copilot plan. No key needed."), COPILOT_MISSING), cliSection("cursor-cli", N_("Uses your Cursor plan. No key needed."), CURSOR_MISSING), chatProvidersSection(chatKeys, keyChanged), localSection(serverKeys), chatUsageSection()],
     voice: [voiceSection(chatKeys, keyChanged, shortcutReport)],
     agents: [claudeSection(status), agentsSection(agents), planSection(status, connected)],
     pills: [activePillsSection(connected), integrationsSection(present, keyChanged)],
     shortcuts: [shortcutsSection(shortcutReport)],
+    security: [securitySection()],
     updates: [
       updatesSection(version, setting(t("Check when Lumo opens"),
         t("Each time Lumo opens, it asks GitHub once whether a newer version is out, and says so on the island."),

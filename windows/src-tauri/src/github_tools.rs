@@ -50,7 +50,7 @@ fn token() -> Result<String, String> {
         return Err("Lumo is paused.".into());
     }
     if !allowed(&crate::settings::load()) {
-        return Err("The user doesn't let the AI read GitHub (Lumo's Settings → General → Security → GitHub).".into());
+        return Err("The user doesn't let the AI read GitHub (Lumo's Settings → Security → GitHub).".into());
     }
     secrets::get("github-token").ok_or_else(|| "GitHub is not connected in Lumo (no GitHub token configured).".into())
 }

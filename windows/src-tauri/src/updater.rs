@@ -22,7 +22,9 @@
 // 0.18.1-312, so the release comes as a plain update. Going back from a beta
 // to the release before it is the one install of an older version allowed.
 
+use std::collections::HashMap;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
 use reqwest::Url;
@@ -193,6 +195,33 @@ struct Asset {
     name: String,
     #[serde(default)]
     browser_download_url: String,
+    /// What GitHub computed of the file when it was published: `sha256:<hex>`.
+    #[serde(default)]
+    digest: Option<String>,
+}
+
+/// The SHA-256 GitHub published for each installer the last check offered,
+/// by download address: the downloaded file must match it (download_and_run).
+static DIGESTS: Mutex<Option<HashMap<String, String>>> = Mutex::new(None);
+
+/// The hex of a `sha256:<hex>` digest, lower case; None for anything else.
+fn sha256_of(digest: &str) -> Option<String> {
+    let hex = digest.trim().strip_prefix("sha256:")?.to_ascii_lowercase();
+    (hex.len() == 64 && hex.bytes().all(|b| b.is_ascii_hexdigit())).then_some(hex)
+}
+
+/// Keeps the digests of every installer in `releases`.
+fn remember_digests(releases: &[Release]) {
+    let found: HashMap<String, String> = releases
+        .iter()
+        .flat_map(|r| r.assets.iter())
+        .filter_map(|a| Some((a.browser_download_url.clone(), sha256_of(a.digest.as_deref()?)?)))
+        .collect();
+    DIGESTS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new).extend(found);
+}
+
+fn expected_digest(url: &Url) -> Option<String> {
+    DIGESTS.lock().unwrap_or_else(|e| e.into_inner()).as_ref()?.get(url.as_str()).cloned()
 }
 
 /// A version as the release tags and Cargo write it: `1.2.3`, `1.2.3-beta.1`,
@@ -467,6 +496,7 @@ pub async fn update_check(app: AppHandle, beta: Option<bool>) -> Result<UpdateIn
     let body = net::read_capped(response, net::MAX_BODY).await?;
     let releases: Vec<Release> = serde_json::from_slice(&body)
         .map_err(|_| t("GitHub's answer could not be read."))?;
+    remember_digests(&releases);
     let kind = installed_kind();
     let info = compare(&current, releases, kind, beta == Some(true))?;
     log::line(format!(
@@ -606,6 +636,17 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     if !bytes.starts_with(signature) {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
+    // Byte for byte the file GitHub published, when it said what that is
+    // (every release since GitHub computes it): a changed file is never run.
+    match expected_digest(&url) {
+        Some(expected) => {
+            if crate::platform::sha256_hex(&bytes).as_deref() != Some(expected.as_str()) {
+                log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
+                return Err(t("The downloaded installer does not match the one GitHub published."));
+            }
+        }
+        None => log::line(format!("update: GitHub gave no SHA-256 for {file_name}")),
+    }
     let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 
     // %TEMP%\Lumo-update\Lumo-Windows-<v>-setup.exe (or .msi); installers from
@@ -657,9 +698,26 @@ mod tests {
                 .map(|name| Asset {
                     name: (*name).into(),
                     browser_download_url: format!("https://github.com/{UPDATE_REPO}/releases/download/{tag}/{name}"),
+                    digest: None,
                 })
                 .collect(),
         }
+    }
+
+    #[test]
+    fn an_installer_is_checked_against_githubs_sha256() {
+        let hex = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad";
+        // Windows' own SHA-256 gives the standard answer ("abc").
+        assert_eq!(crate::platform::sha256_hex(b"abc").as_deref(), Some(hex));
+        assert_eq!(sha256_of(&format!("sha256:{}", hex.to_uppercase())).as_deref(), Some(hex));
+        assert_eq!(sha256_of("sha512:abc"), None);
+        assert_eq!(sha256_of("sha256:1234"), None);
+        let mut r = release("v9.9.9", &["Lumo-Windows-9.9.9-setup.exe", "Lumo-Windows-9.9.9.msi"]);
+        r.assets[0].digest = Some(format!("sha256:{hex}"));
+        remember_digests(&[r]);
+        let url = |name: &str| Url::parse(&format!("https://github.com/{UPDATE_REPO}/releases/download/v9.9.9/{name}")).unwrap();
+        assert_eq!(expected_digest(&url("Lumo-Windows-9.9.9-setup.exe")).as_deref(), Some(hex));
+        assert_eq!(expected_digest(&url("Lumo-Windows-9.9.9.msi")), None);
     }
 
     #[test]

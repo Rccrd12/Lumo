@@ -65,7 +65,8 @@ export async function refreshConfigured() {
     let configured: boolean;
     switch (def.connect.kind) {
       case "key":
-        configured = (await Bridge.secretPresent(def.connect.key)) ?? false;
+        configured = (def.connect.orSetting !== undefined && State.settings[def.connect.orSetting] === true)
+          || ((await Bridge.secretPresent(def.connect.key)) ?? false);
         break;
       case "hooks":
         // Without an answer from Rust (a plain browser), the Claude Code pill

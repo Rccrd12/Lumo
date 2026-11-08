@@ -18,6 +18,7 @@ mod chat_usage;
 mod claude;
 mod claude_code;
 mod clipboard;
+mod acp_chat;
 mod codex_chat;
 mod codex_plan;
 mod computer;
@@ -49,6 +50,7 @@ mod migrate;
 mod net;
 mod notifications;
 mod openai_compat;
+mod outlook;
 mod pc_status;
 mod pdf_pages;
 mod pdf_text;
@@ -71,9 +73,11 @@ mod tool_review;
 mod tools;
 mod tray;
 mod typing;
+mod unsloth_studio;
 mod updater;
 mod web_search;
 mod webview_drop;
+mod webview_memory;
 mod window_control;
 mod workspace;
 
@@ -359,6 +363,11 @@ fn list_monitors(app: AppHandle) -> Vec<island::MonitorChoice> {
 
 #[tauri::command]
 fn open_url(url: String) {
+    // An Outlook email on the island, or its inbox: shown in Outlook (outlook.rs).
+    if url.starts_with(outlook::LINK_PREFIX) {
+        outlook::open(&url);
+        return;
+    }
     if !(url.starts_with("http://") || url.starts_with("https://")) {
         return;
     }
@@ -660,8 +669,12 @@ async fn chat_send(
 /// The models a provider offers, for the picker in the chat view. Only asked
 /// once the user picked that provider, and only with its key or address.
 #[tauri::command]
-async fn chat_models(shared: State<'_, Shared>, provider: String) -> Result<Vec<ModelInfo>, String> {
+async fn chat_models(app: AppHandle, shared: State<'_, Shared>, provider: String) -> Result<Vec<ModelInfo>, String> {
     let settings = shared.settings.lock().unwrap().clone();
+    // Unsloth Studio picked while it is off: started first, when Lumo may.
+    if provider == "unsloth" {
+        unsloth_studio::ensure(&app, &settings, |_| {}).await?;
+    }
     chat::models(&settings, &provider).await
 }
 
@@ -734,6 +747,26 @@ async fn local_pull(app: AppHandle, provider: String, model: String) -> Result<(
     local_models::pull(&app, &provider, &model).await
 }
 
+/// Settings → Local models → Unsloth Studio: installed, off, starting or on, and who started it.
+#[tauri::command]
+async fn unsloth_studio_status(shared: State<'_, Shared>) -> Result<unsloth_studio::Status, String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    Ok(unsloth_studio::status(&settings).await)
+}
+
+/// Settings → Local models → Start now: Unsloth Studio started in the background.
+#[tauri::command]
+async fn unsloth_studio_start(app: AppHandle, shared: State<'_, Shared>) -> Result<(), String> {
+    let settings = shared.settings.lock().unwrap().clone();
+    unsloth_studio::start_now(&app, &settings).await
+}
+
+/// Settings → Local models → Stop now: the Unsloth Studio Lumo started stops.
+#[tauri::command]
+async fn unsloth_studio_stop(app: AppHandle) -> Result<bool, String> {
+    Ok(unsloth_studio::stop_owned(&app).await)
+}
+
 /// Stores the custom server's key for the address typed next to it; it is only
 /// ever sent to that address.
 #[tauri::command(async)]
@@ -749,6 +782,7 @@ fn chat_reset(chats: State<Chats>, chat_id: String) {
     // Its Claude Code, waiting for a message of the conversation before, goes.
     claude_code::close(&chat_id);
     codex_chat::close(&chat_id);
+    acp_chat::close(&chat_id);
 }
 
 /// The chat's Stop button: ends the answer being written. `chat_send` then
@@ -1023,6 +1057,11 @@ async fn chat_providers() -> Vec<String> {
         if codex_chat::ready() {
             ready.push("codex".to_string());
         }
+        for provider in [acp_chat::COPILOT, acp_chat::CURSOR] {
+            if acp_chat::ready(provider) {
+                ready.push(provider.to_string());
+            }
+        }
         ready
     })
     .await
@@ -1166,8 +1205,12 @@ fn create_settings_window(app: &AppHandle) {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
                     let _ = hidden.hide();
+                    // Hidden, it keeps only what it needs to come back (webview_memory.rs).
+                    webview_memory::set_low(&hidden, true);
                 }
             });
+            // Made hidden: small until it is first shown.
+            webview_memory::set_low(&win, true);
         }
         Err(err) => log::line(format!("settings window failed: {err}")),
     }
@@ -1178,6 +1221,7 @@ fn show_settings_window(app: &AppHandle) {
         log::line("settings window missing");
         return;
     };
+    webview_memory::set_low(&win, false);
     let _ = win.unminimize();
     let _ = win.show();
     let _ = win.set_focus();
@@ -1227,6 +1271,11 @@ pub fn run() {
             reposition,
             list_monitors,
             open_url,
+            outlook::outlook_status,
+            mail::mail_accounts,
+            mail::mail_server_for,
+            mail::mail_account_add,
+            mail::mail_account_remove,
             open_in_vscode,
             open_session,
             open_claude_desktop,
@@ -1262,6 +1311,9 @@ pub fn run() {
             local_unload,
             local_pull,
             local_set_key,
+            unsloth_studio_status,
+            unsloth_studio_start,
+            unsloth_studio_stop,
             chat_reset,
             chat_restore,
             chat_compact,
@@ -1423,10 +1475,13 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while running Lumo")
-        .run(|_, event| {
+        .run(|app, event| {
             // Quit while Claude used the computer: the system's own arrow again.
             if let tauri::RunEvent::Exit = event {
                 computer::recover();
+                // The Unsloth Studio Lumo started goes with it (unless "Stop after" is Never).
+                let settings = app.state::<Shared>().settings.lock().map(|s| s.clone()).unwrap_or_default();
+                unsloth_studio::on_exit(&settings);
             }
         });
 }

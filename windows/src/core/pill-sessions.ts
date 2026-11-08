@@ -32,6 +32,8 @@ export interface LiveSession {
   started: number;
   seen: number;
   midTurn: boolean;
+  /** Its title (/rename, else Claude Code's own), once one was heard. */
+  title?: string;
 }
 
 export class PillSessions {
@@ -42,8 +44,8 @@ export class PillSessions {
     this.now = now;
   }
 
-  /** An event of `session` on `pill`. SessionEnd is `end`, not this. */
-  touch(pill: string, session: string, cwd: string, project: string, event: string): void {
+  /** An event of `session` on `pill`, with its `title` when the event carried one. SessionEnd is `end`, not this. */
+  touch(pill: string, session: string, cwd: string, project: string, event: string, title?: string): void {
     if (!session) return;
     const list = this.live(pill);
     let s = list.find((x) => x.id === session);
@@ -56,6 +58,7 @@ export class PillSessions {
     s.seen = at;
     s.project = project;
     if (cwd) s.cwd = cwd;
+    if (title) s.title = title;
     if (MID_TURN.has(event)) s.midTurn = true;
     else if (TURN_ENDS.has(event)) s.midTurn = false;
   }

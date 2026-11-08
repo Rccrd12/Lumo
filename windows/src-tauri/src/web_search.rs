@@ -55,7 +55,7 @@ const AGENT: &str = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.3
 
 static CACHE: Mutex<Option<HashMap<String, (Instant, String)>>> = Mutex::new(None);
 
-/// Whether the user turned the search on (Settings → General → Security).
+/// Whether the user turned the search on (Settings → Security).
 pub fn enabled() -> bool {
     crate::settings::load().chat_web_search
 }

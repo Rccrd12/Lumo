@@ -35,7 +35,7 @@ export function parseTopic(v: unknown): LumoTopic {
 /** Everything `lumoStatus` reads, collected at one moment. */
 export interface LumoFacts {
   now: number;
-  /** Settings → General → Security keeps the email, or the calendar, from the AI. */
+  /** Settings → Security keeps the email, or the calendar, from the AI. */
   mailOff?: boolean;
   calendarOff?: boolean;
   tasks: AgentTask[];
@@ -290,7 +290,7 @@ function github(f: LumoFacts, full: boolean): Json {
 }
 
 /** What a section says when the user keeps it from the AI. */
-const KEPT_FROM_AI = "The user doesn't let the AI read this in Lumo (Settings → General → Security). Say so if asked.";
+const KEPT_FROM_AI = "The user doesn't let the AI read this in Lumo (Settings → Security). Say so if asked.";
 
 function email(f: LumoFacts, full: boolean): Json {
   if (f.mailOff) return { off: KEPT_FROM_AI };

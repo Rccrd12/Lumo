@@ -55,7 +55,8 @@ with its own progress bar (`/passive`), after Windows asks for an
 administrator's consent, since the .msi installs for every user. Either way
 Lumo quits so the installer can replace it, and the installer opens the new
 Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
-repository's GitHub releases are accepted.
+repository's GitHub releases are accepted, and only one that matches, byte for
+byte, the SHA-256 GitHub published for it is run.
 
 **Beta versions** (off unless you turn it on) also offers the beta: one build
 with main and every open pull request of the repository merged into it, so
@@ -328,7 +329,31 @@ declare still shows up, for as long as it runs.
 
 ### Email
 
-The **Email** pill (Settings… → Pills & integrations) reads your inbox over
+The **Email** pill (Settings… → Pills & integrations) reads your inbox from
+two sources, each with its switch, one or both on:
+
+- **Outlook on this PC**: the classic Outlook (Office, Microsoft 365) already
+  set up on the computer, every account in it, through Outlook's own
+  automation (COM): no password, nothing typed, nothing sent on the network by
+  Lumo. Lumo asks Outlook what the inboxes hold as often as it looks at IMAP
+  (every 20 seconds as usual, see Energy), and the row under the switch shows
+  the accounts it found. Lumo never starts Outlook, unless **Settings →
+  Security → Open Outlook if it's closed** is on (off by default): then it
+  starts it once, in the background with no window, when Lumo starts; if you
+  close Outlook, Lumo doesn't start it again until it next starts. Outlook
+  closed only pauses its emails. The new Outlook for Windows can't be read by
+  other apps: with it, use IMAP. If Windows' antivirus isn't one Outlook
+  knows, Outlook may ask once whether to let a program read the mail.
+- **IMAP** (on as before): one or more accounts, up to five, listed under
+  the switch.
+
+The rest of this section is about IMAP; Outlook's emails come with it to the
+island, the chat and the email tools (their ids start with `outlook-`, their
+folders with `outlook:`), and a reply, a forward, a move or a trash goes to
+the mailbox the email is in. A new email goes out of Outlook when it is on
+(into its Sent Items), over SMTP otherwise. Open on an Outlook email of the
+island shows it in Outlook.
+
 IMAP: Gmail, Outlook, iCloud, Yahoo or any IMAP server, with an **app
 password**. The connection stays open and the server says when an email
 arrives (IMAP IDLE); Lumo also looks every 20 seconds in case the server is
@@ -338,6 +363,20 @@ shows on the closed island (see [The closed island](#the-closed-island)).
 The pill only reads: the inbox is opened read only, emails stay unread, and
 nothing is ever deleted for good. An email is sent, or one changed, only as
 below, each time with your click. The address, the server and the app password are in the system keychain.
+
+**Several accounts**: each account in the list has a dot (green when it read
+the inbox, red with the server's reason when it was refused, grey while
+paused), a switch that pauses it without removing it, and **Remove**.
+**+ Add an account** opens one form (address, app password, and the IMAP
+server, found from the address when left empty): **Check and save** signs in
+first and keeps the account only if the server takes it; otherwise it says
+why and saves nothing. The emails of every account on come together on the
+island, in the chat and in the email tools, whose ids then start with the
+account's address (`work@example.com:inbox:12`) so each tool reaches the
+right mailbox. The first account is the **Default**: a new email goes out of
+it; a reply, a forward or a draft in reply goes out of the account the email
+came to. The account set up before this list became the first one, with
+nothing to type again.
 
 **Hide promotional emails** (under the Email pill's fields, off by default)
 leaves the promotions out of the card and the closed island: on Gmail, the
@@ -371,7 +410,7 @@ other entries kept, taken out when the pill is off), and they answer only
 while an agent answers in the island, in the chat or for Gemini Live. They
 only read, so they need no card.
 
-**Settings… → General → Security → Email** says what the AI may do with
+**Settings… → Security → Email** says what the AI may do with
 it: **Read only** (the default, as above), **No access** (nothing of the
 mailbox reaches any AI: no emails with the question, no email tools, nothing
 for Gemini Live), **Read and send** or **Read, send and manage**. With Read
@@ -510,7 +549,12 @@ until you turn it on. `/compact` summarises a long chat into a short one.
 Studio** (leave the address empty for the usual one on this PC; Ollama's
 `OLLAMA_HOST` is honoured) or any server that speaks the OpenAI API (vLLM,
 llama.cpp…), with an optional key kept in the credential store, and **Unsloth
-Studio** as a server of its own, with its key. Answers stream in as they are
+Studio** as a server of its own, with its key. Installed on this PC, Unsloth
+Studio needn't be open: when you pick it in the chat or write to it, Lumo starts
+it in the background, with no window, and stops it again after 15 minutes with
+no question (**Start and stop it by itself** and **Stop after**, which also
+offers 5 minutes, 1 hour, when Lumo quits or never). Lumo only ever stops one it
+started: an Unsloth Studio you opened stays on. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
@@ -601,7 +645,7 @@ for the level its model is made for; it goes to Claude Code as `--effort`.
 Claude Code's own run never shows up as a session in the island: only its
 permission requests do, as a card over the chat.
 
-**The shield** next to the screen button (Claude Code, Antigravity CLI and Codex only)
+**The shield** next to the screen button (Claude Code, Antigravity CLI, Codex, Copilot CLI and Cursor CLI only)
 says what the CLI may do without a card, from the next message on: **Ask every
 time** (the default), **Auto** (the AI decides what is safe to do without
 asking, and asks for the rest: Claude Code's own auto mode) or **Plan only**
@@ -669,6 +713,41 @@ would ask, without a card. Codex never gets full access from Lumo. Lumo's
 timer and GitHub tools reach it as an MCP server of the chat's thread only;
 your Codex configuration is never touched.
 
+### Chat with GitHub Copilot or Cursor (Copilot CLI, Cursor CLI)
+
+Pick **Copilot CLI** or **Cursor CLI** above the chat box and the island talks
+to that CLI, signed in with your own GitHub Copilot or Cursor plan: no API key
+in Lumo. Lumo runs the unmodified CLI's own Agent Client Protocol server
+(`copilot --acp`, `cursor-agent acp`), one per chat while it is in use (ended
+after 10 minutes idle, or by **New chat**), in the same folder as Claude Code;
+it never reads, stores or forwards any GitHub or Cursor credential. Install
+Copilot CLI with `npm install -g @github/copilot` and run `copilot` once in a
+terminal to sign in (`/login`); install Cursor CLI from
+[cursor.com/cli](https://cursor.com/cli) and run `cursor-agent login` once.
+**Settings… → Chat** says how while one isn't on the PC yet. Lumo looks for
+them on `PATH`, then in npm's and WinGet's folders (Copilot) and in
+`%LOCALAPPDATA%\cursor-agent` (Cursor).
+
+Like Codex, each reads the files you drop or attach and the folder you share,
+says what it is doing next to the typing dots (a command, a file it reads or
+changes, a search), shows its plan (Cursor's to-dos) on the Plan island, stops
+on **Stop** (`session/cancel`) and continues the same session until **New
+chat**. Their models are those a new session offers (**Default** leaves the
+CLI's own choice), in the picker and in **Settings… → Chat**; Copilot CLI also
+takes an effort (low to max, `--effort`). What the CLI would ask you in a
+terminal is a **Deny / Allow** card over the chat, sent to Lumo by the CLI's
+server: no hooks are needed, Lumo's hooks of these CLIs stay out of the
+chat's runs, and only a click allows it. The shield: **Ask every time** answers
+a click with the CLI's "allow once"; **Auto** with its "always allow", so the
+same thing isn't asked again in that chat; **Plan only** switches the session
+to the CLI's own plan mode and declines whatever it would ask, without a card.
+Lumo's timer, GitHub and email tools (and yours, while one is on) reach
+Copilot as MCP servers of the chat's session; Cursor only reads MCP servers
+from a `.cursor/mcp.json`, so Lumo keeps its entries in the one of its own
+folder (`~\Lumo\.cursor`, with `.cursor\cli.json` allowing them), keeping
+whatever else is there, and starts Cursor with `--approve-mcps`. Your own
+Copilot and Cursor configurations are never touched.
+
 Next to the model name, **+** starts a new chat and the clock lists your past
 chats, to reopen (a Claude Code chat continues its session) or delete; they are
 kept on this computer only, 40 at most. The paperclip in the text field opens
@@ -681,7 +760,7 @@ several). Text pastes as usual.
 
 ### The chat knows what's open
 
-With **Settings → General → Security → Tell the AI what's open** (on by default), every
+With **Settings → Security → Open windows** (on by default), every
 message carries the titles of the open windows and the documents they show:
 Lumo reads file names from the titles ("Contract.pdf - Adobe Acrobat",
 "Budget - Excel") and finds them on disk, from Windows' recent files or a
@@ -766,7 +845,7 @@ to this setting.
 
 ### Let Claude use the computer
 
-**Settings… → General → Security → Let Claude use the computer** (off by
+**Settings… → Security → Let Claude use the computer** (off by
 default, Windows only) lets Claude Code, as the chat's provider or for Gemini
 Live, see your screen and use it — click, type, press keys, scroll and drag — for what a
 command or a file can't do: an app with no command line, a website, a form.
