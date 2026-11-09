@@ -1,27 +1,55 @@
 /* The ```lumo-steps card (views/rich/steps.ts): one step at a time, the
    formula large in the middle, the one before it small above, a bar of
-   segments at the bottom. The stage keeps one height while stepping, so the
-   chat doesn't jump under the pointer. */
+   segments at the bottom. Every step is laid out in the same grid cell and
+   only the current one shows, so the card keeps its tallest step's height
+   while stepping and the chat doesn't jump under the pointer. A shorter
+   step sits at the top, where it would be alone, the room left over above
+   the bar. */
 
 .rc-steps:focus-visible {
   outline: 1px solid rgba(143, 199, 255, 0.45);
   outline-offset: 1px;
 }
 
-/* The copy button sits with the card's buttons, their shape. */
-.rc-steps .rc-head .md-copy {
+/* The copy button: after the title, shown while the pointer is over the card,
+   as a formula's is in the chat. At rest it is only room on the top line, so
+   it covers nothing of the steps or the list. */
+.rc-steps-copy.md-copy {
   flex: none;
   border-radius: 7px;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.rc-steps:hover .rc-steps-copy,
+.rc-steps-copy:focus-visible,
+.rc-steps-copy.done {
+  opacity: 1;
+}
+
+/* Every step in one cell, the current one shown. */
+.rc-steps-deck {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  min-width: 0;
+}
+
+.rc-steps-deck > .rc-steps-stage {
+  grid-area: 1 / 1;
+  visibility: hidden;
+}
+
+.rc-steps-deck > .rc-steps-stage.on {
+  visibility: visible;
 }
 
 .rc-steps-stage {
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start;
   gap: 2px;
-  min-height: 112px;
-  padding: 6px 14px 2px;
+  padding: 6px 14px 4px;
   min-width: 0;
 }
 
@@ -32,12 +60,20 @@
   display: flex;
   align-items: center;
   overflow: hidden;
-  font: 400 11px var(--font);
+  font: 400 12.5px var(--font);
   color: var(--dim-4);
 }
 
 .rc-steps-prev math.mx {
   color: var(--dim-4);
+}
+
+.rc-steps-prev-tex {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .rc-steps-start {
@@ -51,7 +87,7 @@
   align-items: center;
   gap: 2px;
   max-width: 100%;
-  min-height: 44px;
+  min-height: 40px;
   justify-content: center;
 }
 
@@ -64,8 +100,21 @@
   scrollbar-color: rgba(255, 255, 255, 0.18) transparent;
 }
 
+/* Wider than the card: it fades at the edge it goes on past. */
+.rc-steps-formula.fade-end,
+.rc-steps-prev-tex.fade-end {
+  mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent);
+}
+
+.rc-steps-formula.fade-start {
+  mask-image: linear-gradient(to left, #000 calc(100% - 24px), transparent);
+}
+
+.rc-steps-formula.fade-start.fade-end {
+  mask-image: linear-gradient(to right, transparent, #000 24px, #000 calc(100% - 24px), transparent);
+}
+
 .rc-steps-formula math.mx-display {
-  font-size: 20px;
   color: var(--ink-2);
 }
 
@@ -106,7 +155,7 @@
   align-items: center;
   gap: 7px;
   max-width: 100%;
-  margin-top: 4px;
+  margin-top: 2px;
   font: 400 12px var(--font);
   color: var(--dim);
 }
@@ -130,10 +179,11 @@
 
 /* The bar: a segment per step, the ones behind half lit, the current one lit.
    Each segment is a button a little taller than it looks, to be easy to hit. */
+/* 8px above the line and 10px below it, the segment's 5px each side included. */
 .rc-bar {
   display: flex;
   gap: 4px;
-  padding: 2px 12px 4px;
+  padding: 3px 12px 5px;
 }
 
 .rc-bar[hidden] {
@@ -193,7 +243,7 @@
   gap: 10px;
   min-width: 0;
   min-height: 26px;
-  padding: 4px 8px;
+  padding: 5px 8px;
   border: 0;
   border-radius: 8px;
   background: none;
@@ -226,9 +276,18 @@
   color: var(--card-flat);
 }
 
+.rc-steps-row-body {
+  flex: 1 1 0;
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 12px;
+}
+
 .rc-steps-row-label {
-  flex: 0 1 34%;
-  max-width: 180px;
+  flex: none;
+  width: 150px;
+  max-width: 40%;
   min-width: 0;
   font: 400 11.5px var(--font);
   color: var(--dim-2);
@@ -247,7 +306,11 @@
   color: #e8e9ec;
 }
 
+/* A formula, a size up (math.mx is 1.21em of it). */
+.rc-steps-row-what.tex {
+  font-size: 14px;
+}
+
 .rc-steps-row-what math.mx {
-  font-size: 13.5px;
   color: #e8e9ec;
 }

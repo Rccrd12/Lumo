@@ -1,6 +1,7 @@
 // The images in the chat's answers (views/rich/image.ts): a line that is
-// only `![alt](https://…)` shows the picture once the user lets its site in,
-// for that image or for good (Settings → Security → Images from the web).
+// only `![alt](https://…)` shows the picture at once. The user chose this over
+// asking site by site; Settings → Security → Images from the web turns it off,
+// and then nothing is downloaded here either.
 //
 // The island never reaches the site itself: its CSP lets images in only from
 // the app, data: and blob:. Lumo downloads the bytes here and hands them over
@@ -11,7 +12,8 @@
 //   the URL names the address or a name resolves to it. The name is resolved
 //   here and the connection goes to the very addresses checked, so a name that
 //   answers a public address to the check and 127.0.0.1 to the connection (DNS
-//   rebinding) reaches nothing. Redirects are followed by hand, at most three,
+//   rebinding) reaches nothing. The request names the host exactly as it was
+//   pinned (`example.com.` goes out as `example.com`). Redirects are followed by hand, at most three,
 //   each checked again the same way;
 // - no proxy (it would resolve the name itself), no cookies, nothing about the
 //   user: the site is told only "Lumo";
@@ -40,6 +42,9 @@ const PORT: u16 = 443;
 /// their type from their first bytes, as `sniff` does here).
 #[tauri::command]
 pub async fn web_image(url: String) -> Result<tauri::ipc::Response, String> {
+    if !crate::settings::load().web_images {
+        return Err("Images from the web are turned off in Settings.".into());
+    }
     let bytes = tokio::time::timeout(TIMEOUT, download(&url))
         .await
         .map_err(|_| "The image took too long.".to_string())??;
@@ -50,6 +55,7 @@ async fn download(raw: &str) -> Result<Vec<u8>, String> {
     let mut url = parse(raw)?;
     for _ in 0..=MAX_REDIRECTS {
         let host = check_url(&url)?;
+        url = as_pinned(&url, &host)?;
         let addrs = resolve(&host).await?;
         let client = pinned_client(&host, &addrs)?;
         let response = client
@@ -108,6 +114,26 @@ fn pinned_client(host: &Host, addrs: &[SocketAddr]) -> Result<reqwest::Client, S
         builder = builder.resolve_to_addrs(name, addrs);
     }
     builder.build().map_err(|e| e.to_string())
+}
+
+/// The URL as it is requested: its host written exactly as the name checked
+/// and pinned. The URL parser keeps a final dot (`example.com.`) and the
+/// client looks the pin up by the host as written, so a name with the dot
+/// would miss its pin and be resolved again, out of reach of the check (DNS
+/// rebinding). Written as the pinned name, the request can only use the pin.
+fn as_pinned(url: &Url, host: &Host) -> Result<Url, String> {
+    let Host::Name(name) = host else {
+        return Ok(url.clone());
+    };
+    let mut pinned = url.clone();
+    if pinned.host_str() != Some(name.as_str()) {
+        pinned.set_host(Some(name)).map_err(|_| "Not a web address.".to_string())?;
+    }
+    if pinned.host_str() == Some(name.as_str()) {
+        Ok(pinned)
+    } else {
+        Err(format!("{name} is not a public https address."))
+    }
 }
 
 // ── Addresses ───────────────────────────────────────────────────────────────
@@ -304,6 +330,30 @@ mod tests {
         assert_eq!(check_url(&url("https://upload.wikimedia.org/a/b.png")), Ok(Host::Name("upload.wikimedia.org".into())));
         assert_eq!(check_url(&url("https://Upload.Wikimedia.ORG./a.png")), Ok(Host::Name("upload.wikimedia.org".into())));
         assert_eq!(check_url(&url("https://example.com:443/a.png")), Ok(Host::Name("example.com".into())));
+    }
+
+    #[test]
+    fn the_request_names_the_host_exactly_as_it_was_pinned() {
+        for (raw, host, requested) in [
+            ("https://example.com./a.png?x=1#f", "example.com", "https://example.com/a.png?x=1#f"),
+            ("https://Upload.Wikimedia.ORG./a.png", "upload.wikimedia.org", "https://upload.wikimedia.org/a.png"),
+            ("https://example.com/a.png", "example.com", "https://example.com/a.png"),
+        ] {
+            let from = url(raw);
+            let checked = check_url(&from).unwrap();
+            assert_eq!(checked, Host::Name(host.into()));
+            let pinned = as_pinned(&from, &checked).unwrap();
+            assert_eq!(pinned.as_str(), requested);
+            // The key pinned_client gives resolve_to_addrs is the request's host.
+            assert_eq!(pinned.host_str(), Some(checked.name().as_str()));
+        }
+        // An address is connected to as is: nothing to pin.
+        let literal = url("https://93.184.216.34/a.png");
+        assert_eq!(as_pinned(&literal, &check_url(&literal).unwrap()).unwrap(), literal);
+        // A redirect to a name with the dot is pinned the same way.
+        let next = next_hop(&url("https://example.com/a.png"), "https://cdn.example.org./b.png").unwrap();
+        let checked = check_url(&next).unwrap();
+        assert_eq!(as_pinned(&next, &checked).unwrap().as_str(), "https://cdn.example.org/b.png");
     }
 
     #[test]

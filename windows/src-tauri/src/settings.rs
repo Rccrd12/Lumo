@@ -177,11 +177,12 @@ pub struct Settings {
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
-    /// The sites whose images the chat's answers show without asking first
-    /// (web_image.rs): exact host names, lowercase, each added by the user's
-    /// "Always from …" on an image's card and removed in Settings → Security.
-    /// Empty: every image asks before anything is downloaded.
-    pub web_image_sites: Vec<String>,
+    /// Whether an image line in the chat's answers (`![alt](https://…)`) is
+    /// downloaded and shown at once (web_image.rs, with its checks). Off, the
+    /// card shows only the site and a way to open it in the browser, and
+    /// nothing is downloaded. On by default (Settings → Security). A file from
+    /// before keeps its old `webImageSites` list unread: it no longer matters.
+    pub web_images: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -366,7 +367,7 @@ impl Default for Settings {
             chat_computer_use: false,
             chat_web_search: false,
             chat_auto_compact: true,
-            web_image_sites: Vec::new(),
+            web_images: true,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             ai_github_access: "none".into(),
@@ -713,7 +714,7 @@ mod tests {
   "chatComputerUse": true,
   "chatWebSearch": true,
   "chatAutoCompact": false,
-  "webImageSites": ["upload.wikimedia.org"],
+  "webImages": false,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "aiGithubAccess": "read",
@@ -948,10 +949,25 @@ mod tests {
     }
 
     #[test]
-    fn a_file_from_before_web_images_lets_no_site_in() {
-        assert!(parse(&custom_with("webImageSites", None)).unwrap().web_image_sites.is_empty());
-        assert!(Settings::default().web_image_sites.is_empty());
-        assert_eq!(parse(CUSTOM.as_bytes()).unwrap().web_image_sites, ["upload.wikimedia.org"]);
+    fn images_from_the_web_show_until_they_are_turned_off() {
+        assert!(parse(&custom_with("webImages", None)).unwrap().web_images);
+        assert!(Settings::default().web_images);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().web_images);
+    }
+
+    #[test]
+    fn a_file_with_the_old_list_of_image_sites_still_loads_whole() {
+        // Before images loaded by themselves, each site was let in by hand.
+        let mut object = custom().as_object().unwrap().clone();
+        object.remove("webImages");
+        object.insert("webImageSites".into(), json!(["upload.wikimedia.org"]));
+        let mut s = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
+        // The old list is dropped, the new switch takes its default (on), and
+        // every other setting is the file's own.
+        assert!(s.web_images);
+        assert_eq!(shown(&s).get("webImageSites"), None);
+        s.web_images = false;
+        assert_eq!(shown(&s), shown(&parse(CUSTOM.as_bytes()).unwrap()));
     }
 
     #[test]
@@ -1217,7 +1233,7 @@ mod tests {
                 "chatComputerUse",
                 "chatWebSearch",
                 "chatAutoCompact",
-                "webImageSites",
+                "webImages",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "aiGithubAccess",

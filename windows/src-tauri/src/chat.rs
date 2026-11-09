@@ -604,16 +604,20 @@ macro_rules! math_note {
 }
 pub(crate) use math_note;
 
-/// The chat's rich blocks, for every provider that answers in the chat:
-/// GitHub alerts, the ```lumo-steps, lumo-cards, lumo-calc and lumo-plot
-/// cards and a line that is only an image (src/views/markdown.ts and
-/// src/views/rich read them). Short, since it goes with every message, and
-/// plain words only, so the syntax is said in words where it needs `|`, `>`
-/// or `^`: it also goes on Claude Code's command line when its instructions
-/// can't go in a file.
+/// The chat's rich blocks, for every provider that answers in the chat
+/// (src/views/markdown.ts and src/views/rich read them): GitHub alerts and
+/// task lists, diff blocks, the lumo-checklist, lumo-steps, lumo-cards,
+/// lumo-calc, lumo-plot, lumo-quiz, lumo-chart and lumo-timeline blocks, and
+/// a line that is only an image. It goes with every message, so it says each
+/// syntax once and as briefly as the parsers allow (about 1 800 characters,
+/// some 480 tokens): what models know already (alerts, task lists, diffs,
+/// images) in a few words, and the rest by its keys. Plain words only, the
+/// syntax said in words where it needs `|`, `>` or `^` (`**` stands for
+/// powers, which core/expr.ts reads too): it also goes on Claude Code's
+/// command line when its instructions can't go in a file.
 macro_rules! rich_note {
     () => {
-        " Lumo's chat also draws rich blocks: use them sparingly, only where one clearly helps, at most one or two in an answer, never one inside another. A callout is a GitHub alert, a Markdown quote whose first line is [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], with an optional title after it, and its text on the next quoted lines: for a key rule, a tip or a warning. The others are fenced code blocks whose language is lumo-steps, lumo-cards, lumo-calc or lumo-plot, then a space and a short title on the same line. lumo-steps, for a derivation or a procedure best seen one step at a time: per step a line ## step name, then its Markdown, usually one $$…$$ line. lumo-cards, to compare 2 to 6 things side by side: per card a line ## name, optionally sub: subtitle and icon: an emoji or 1-2 letters and a colour (or icon: planet and a colour; colours are blue green amber red pink indigo cyan gray or #hex), lines - key: value, and one short line of text. lumo-calc, for a formula the user can play with: optionally formula: TeX, then lines input: symbol, name, min..max, value, unit and lines output: symbol, name, expression, unit, their fields separated by vertical bars, not commas; expressions use numbers, + - * / and a caret for powers, parentheses, sin cos tan sqrt exp ln log abs min max, pi, e, the inputs and earlier outputs. lumo-plot, to show how a function changes with its parameters: optionally formula: TeX, one to three lines y: an expression in x, x: min..max, optionally yrange: min..max, and input lines as in lumo-calc. For a picture, a line of its own ![what it shows](https://…) with the real https address of an image file, preferably from Wikimedia Commons or Wikipedia, only when sure it exists: never make one up."
+        " Lumo draws rich blocks: use one only where it clearly helps, at most two per answer, never one inside another. Callouts: GitHub alerts, [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], a title optional after it. Checklists: GitHub task lists, titled in a lumo-checklist block; to update one, write it again with the same title; what the user ticked comes with their next message. Code changes: diff blocks, the file path after diff. Then fenced blocks whose language is one of these, a title after it. lumo-steps, a derivation or procedure step by step: per step ## step name, then its Markdown, often one $$…$$ line. lumo-cards, 2 to 8 things side by side: per card ## name, optional sub: subtitle and icon: an emoji or 1-2 letters and a colour (blue green amber red pink indigo cyan gray #hex) or icon: planet colour, lines - key: value, a short line of text. lumo-calc, a formula to play with: formula: TeX, lines input: symbol, name, min..max, value, unit and output: symbol, name, expression, unit, fields separated by vertical bars; step s may follow a range; expressions like V/R or A*sin(w*x)+x**2. lumo-plot: formula: TeX, one to three y: expressions in x, x: min..max, optional yrange: min..max, inputs as in lumo-calc. lumo-quiz, at most 10 questions: per question a line ? question, lines - wrong answer and + right answer (one right), a quote line explaining it, = a few words naming it. lumo-chart, bar or line before the title: optional unit: and series: A, B, then lines label: value, a value per series. lumo-timeline: lines date name: detail, dates as 1947, 1971-11 or 2026-11-08; a from..to range makes it a plan, its single dates deadlines. A picture: a line ![what it shows](https://…), the real address of an image file, preferably on Wikimedia Commons, only when sure it exists: never make one up."
     };
 }
 pub(crate) use rich_note;
@@ -1388,23 +1392,53 @@ mod tests {
             assert!(p.contains("Avoid tables and big headings: the chat window is small."));
         }
         let note = rich_note!();
-        // The syntaxes src/views/markdown.ts and src/views/rich read.
+        // The syntaxes src/views/markdown.ts and src/views/rich read, every
+        // card's, by the keys a model copies.
         for kind in ["[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"] {
             assert!(note.contains(kind), "{kind}");
         }
-        for fence in ["lumo-steps", "lumo-cards", "lumo-calc", "lumo-plot"] {
+        for fence in ["lumo-checklist", "lumo-steps", "lumo-cards", "lumo-calc", "lumo-plot", "lumo-quiz", "lumo-chart", "lumo-timeline"] {
             assert!(note.contains(fence), "{fence}");
         }
-        for key in ["## step name", "sub:", "icon:", "- key: value", "formula:", "input:", "output:", "y:", "x: min..max", "yrange:", "vertical bars", "![what it shows](https://"] {
+        for key in [
+            "task lists",
+            "same title",
+            "diff blocks, the file path after diff",
+            "## step name",
+            "sub:",
+            "icon:",
+            "- key: value",
+            "formula:",
+            "input: symbol, name, min..max, value, unit",
+            "output: symbol, name, expression, unit",
+            "vertical bars",
+            "step s",
+            "x**2",
+            "y:",
+            "x: min..max",
+            "yrange:",
+            "? question",
+            "- wrong answer and + right answer",
+            "a quote line",
+            "= a few words",
+            "bar or line",
+            "unit:",
+            "series:",
+            "label: value",
+            "date name: detail",
+            "from..to",
+            "![what it shows](https://",
+        ] {
             assert!(note.contains(key), "{key}");
         }
-        assert!(note.contains("sparingly") && note.contains("never make one up"));
+        assert!(note.contains("clearly helps") && note.contains("never make one up"));
         // It goes on Claude Code's command line too (claude_code.rs): nothing
         // cmd.exe reads as syntax, and on one line.
         assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']));
         assert!(note.starts_with(' '), "it follows the note before it");
-        // Short: it goes with every message.
-        assert!(note.split_whitespace().count() < 330, "{} words", note.split_whitespace().count());
+        // Light: it goes with every message, about 480 tokens at four
+        // characters a token, all the cards included.
+        assert!(note.len() < 2000, "{} bytes", note.len());
     }
 
     #[test]

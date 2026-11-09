@@ -4,9 +4,12 @@
 //   and `> [!CAUTION]`, an optional title after the kind (callout.ts);
 // - the ```lumo-… blocks Lumo's system prompt teaches (chat.rs rich_note):
 //   lumo-steps (steps.ts), lumo-cards (cards.ts), lumo-calc and lumo-plot
-//   (calc.ts, their formulas read by core/expr.ts, never run as code);
-// - a line that is only an image (image.ts), fetched by Rust once the user
-//   lets its site in.
+//   (calc.ts, their formulas read by core/expr.ts, never run as code),
+//   lumo-quiz (quiz.ts), lumo-chart (chart.ts), lumo-timeline (timeline.ts)
+//   and lumo-checklist (checklist.ts);
+// - GitHub's task lists, `- [ ] text`, as a checklist (checklist.ts);
+// - a ```diff block (diff-card.ts);
+// - a line that is only an image (image.ts).
 //
 // Each card is built from DOM nodes and text only, never HTML. A block a card
 // can't read comes back as null, and markdown.ts shows it as the code it was
@@ -21,17 +24,20 @@ import { parseCalc, parsePlot, renderCalc, renderPlot } from "./calc";
 import { parseQuiz, renderQuiz } from "./quiz";
 import { parseChart, renderChart } from "./chart";
 import { parseTimeline, renderTimeline } from "./timeline";
+import { renderChecklist } from "./checklist";
+import { parseChecklist } from "../../core/checklists";
 import "./rich.css";
 
 export { renderCallout } from "./callout";
 export { renderImage } from "./image";
 export { renderDiffCard } from "./diff-card";
+export { renderChecklist } from "./checklist";
 
 export const CALLOUT_TYPES = ["note", "tip", "important", "warning", "caution"] as const;
 export type CalloutType = (typeof CALLOUT_TYPES)[number];
 
 /** The ```lumo-<kind> blocks with a card of their own. */
-export const RICH_KINDS = ["steps", "cards", "calc", "plot", "quiz", "chart", "timeline"] as const;
+export const RICH_KINDS = ["steps", "cards", "calc", "plot", "quiz", "chart", "timeline", "checklist"] as const;
 export type RichKind = (typeof RICH_KINDS)[number];
 
 /** What the cards borrow from markdown.ts, which hands it over (no import back). */
@@ -44,6 +50,18 @@ export interface RichContext {
   math(tex: string, display?: boolean): Element;
   /** Markdown's copy button, for `text`. */
   copyButton(text: string): HTMLElement;
+  /**
+   * The block's identity beyond its text: the message it is in and its place
+   * there. keyOf(block, ctx) puts it in the key, so the same block in two
+   * messages keeps two states.
+   */
+  scope?: string;
+  /** The message's own scope, as chat.ts gave it to renderMarkdown ("" when none). */
+  message?: string;
+  /** A checklist's place among its message's checklists, from 0. */
+  list?: number;
+  /** Sends a message in the chat as if typed (markdown.ts MarkdownOptions.send); absent while streaming. */
+  send?(text: string): void;
 }
 
 export interface RichBlock {
@@ -62,43 +80,53 @@ export const RICH_STRINGS = {
   quiz: N_("Quiz"),
   chart: N_("Chart"),
   timeline: N_("Timeline"),
+  checklist: N_("Checklist"),
   writing: N_("Writing it…"),
 };
 
-/** The card for a ```lumo-… block, a placeholder while it streams, or null when it can't be read. */
+/**
+ * The card for a ```lumo-… block, a placeholder while it streams, or null
+ * when it can't be read. markdown.ts hands an unclosed block of a finished
+ * answer over as closed: only the answer being written shows the placeholder.
+ */
 export function renderRich(block: RichBlock, ctx: RichContext): HTMLElement | null {
   const kind = block.type as RichKind;
   if (!RICH_KINDS.includes(kind)) return null;
   if (block.open) return pending(kind, block.title);
+  const key = keyOf(block, ctx);
   try {
     switch (kind) {
       case "steps": {
         const steps = parseSteps(block.title, block.body);
-        return steps && renderSteps(steps, ctx, keyOf(block));
+        return steps && renderSteps(steps, ctx, key);
       }
       case "cards": {
         const cards = parseCards(block.title, block.body);
-        return cards && renderCards(cards, ctx, keyOf(block));
+        return cards && renderCards(cards, ctx, key);
       }
       case "calc": {
         const calc = parseCalc(block.title, block.body);
-        return calc && renderCalc(calc, ctx, keyOf(block));
+        return calc && renderCalc(calc, ctx, key);
       }
       case "plot": {
         const plot = parsePlot(block.title, block.body);
-        return plot && renderPlot(plot, ctx, keyOf(block));
+        return plot && renderPlot(plot, ctx, key);
       }
       case "quiz": {
         const quiz = parseQuiz(block.title, block.body);
-        return quiz && renderQuiz(quiz, ctx, keyOf(block));
+        return quiz && renderQuiz(quiz, ctx, key);
       }
       case "chart": {
         const chart = parseChart(block.title, block.body);
-        return chart && renderChart(chart, ctx, keyOf(block));
+        return chart && renderChart(chart, ctx, key);
       }
       case "timeline": {
         const timeline = parseTimeline(block.title, block.body);
-        return timeline && renderTimeline(timeline, ctx, keyOf(block));
+        return timeline && renderTimeline(timeline, ctx, key);
+      }
+      case "checklist": {
+        const list = parseChecklist(block.title, block.body);
+        return list && renderChecklist(list, ctx);
       }
     }
   } catch {
@@ -131,14 +159,15 @@ export function head(kind: RichKind, title: string, ...right: (Node | null | fal
 //
 // The chat redraws its answers often (each streamed word, the finished answer
 // replacing the streamed one, coming back to a chat): a card keeps the step it
-// is on or where its sliders are by its block's text, not by its nodes.
+// is on or where its sliders are by its block's text and its place (the
+// message, and the block's place in it), not by its nodes.
 
 const MEMORY_LIMIT = 300;
 const memory = new Map<string, unknown>();
 
-/** The block's identity across redraws: its kind, title and lines. */
-export function keyOf(block: Pick<RichBlock, "type" | "title" | "body">): string {
-  return `${block.type}\u0000${block.title}\u0000${block.body}`;
+/** The block's identity across redraws: its place (ctx.scope), kind, title and lines. */
+export function keyOf(block: Pick<RichBlock, "type" | "title" | "body">, ctx?: Pick<RichContext, "scope">): string {
+  return `${ctx?.scope ?? ""}\u0000${block.type}\u0000${block.title}\u0000${block.body}`;
 }
 
 /** The state kept for `key`, made by `init` the first time. */

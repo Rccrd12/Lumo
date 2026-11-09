@@ -1,0 +1,142 @@
+/* The checklist card (views/rich/checklist.ts): a box per line, the lines
+   done faded and struck through, the next one lit, a bar under the list; a
+   finished list folds into one green line. */
+
+/* The top line's right end: its pieces sit in the line as if it weren't there. */
+.rc-check-tools {
+  display: contents;
+}
+
+/* The copy button sits with the card's buttons, their shape. */
+.rc-check .rc-head .md-copy {
+  flex: none;
+  border-radius: 7px;
+  color: #c9ccd2;
+}
+
+.rc-check .rc-head .md-copy:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.rc-check .rc-head .md-copy.done {
+  color: var(--green);
+}
+
+/* svg() sizes its icons inline, so the card's 12px glyph has to insist. */
+.rc-check .rc-head .md-copy svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+.rc-check-list {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 6px 4px;
+}
+
+.rc-check-row {
+  display: flex;
+  /* The box sits on the first line (its 15px are the line's height), so a
+     line that wraps keeps it at the top, as a list's bullet. */
+  align-items: flex-start;
+  gap: 10px;
+  padding: 4px 8px;
+  border-radius: 8px;
+  font: 400 12.5px var(--font);
+  color: #e8e9ec;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.rc-check-text {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.rc-box {
+  flex: none;
+  width: 15px;
+  height: 15px;
+  /* Centred on the first line, whatever height the system font gives it. */
+  font: inherit;
+  margin-top: max(0px, calc((1lh - 15px) / 2));
+  padding: 0;
+  border-radius: 5px;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  box-sizing: border-box;
+  background: transparent;
+  display: grid;
+  place-items: center;
+  color: #0e0f11;
+  cursor: pointer;
+}
+
+.rc-box:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 1px;
+}
+
+.rc-check-row:hover .rc-box {
+  border-color: rgba(255, 255, 255, 0.4);
+}
+
+.rc-check-row.on .rc-box {
+  background: #8fc7ff;
+  border-color: #8fc7ff;
+}
+
+.rc-check-row.on .rc-check-text {
+  color: #6b7079;
+  text-decoration: line-through;
+  text-decoration-color: rgba(255, 255, 255, 0.25);
+}
+
+.rc-check-row.on .md-code {
+  opacity: 0.6;
+}
+
+.rc-check-row.next {
+  background: rgba(143, 199, 255, 0.06);
+}
+
+.rc-check-prog {
+  margin: 4px 12px 10px;
+  height: 3px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.08);
+}
+
+.rc-check-prog i {
+  display: block;
+  height: 100%;
+  border-radius: 2px;
+  background: #8fc7ff;
+  box-shadow: 0 0 6px rgba(143, 199, 255, 0.6);
+}
+
+/* Finished, or written again below: one line. */
+.rc-check.folded {
+  padding-bottom: 8px;
+}
+
+.rc-check-ok {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 500 11px var(--font);
+  color: #34d399;
+}
+
+.rc-check-moved {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  font: 500 11px var(--font);
+  color: var(--dim-3);
+}
+
+.rc-check-fold.up svg {
+  transform: rotate(180deg);
+}

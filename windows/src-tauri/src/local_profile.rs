@@ -303,7 +303,8 @@ pub fn system_prompt(p: &Prompt) -> String {
         "{who} Answer in the user's language, with light Markdown (short paragraphs, lists, **bold**, `code`, fenced code); no tables or big headings, the window is small. \
 Lumo may give you the windows and documents open on the user's computer: use them. Write math as $…$ or $$…$$."
     );
-    // The chat's callouts, cards and images, as every provider is told them.
+    // The chat's rich blocks, as every provider is told them: the calculator
+    // and the plot too, which a local model can fill in as well as any.
     out.push_str(crate::chat::rich_note!());
     // A local model knows only up to its training: "yesterday" means nothing to it otherwise.
     if !p.today.is_empty() {
@@ -384,6 +385,8 @@ mod tests {
             workshop: false,
         });
         assert!(p.contains(crate::chat::rich_note!()));
+        // The calculator and the plot included: the user wants them here too.
+        assert!(p.contains("lumo-calc") && p.contains("lumo-plot"));
     }
 
     fn tool(id: &str) -> (String, String, Value) {

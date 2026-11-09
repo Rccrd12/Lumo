@@ -14,6 +14,9 @@
 //   …
 //   ```
 //
+// "sub:" may be left out: a plain line right under the name, with rows after
+// it, is the subtitle too.
+//
 // The icon is drawn in code: a letter or an emoji in a small tinted square,
 // or a planet (a lit sphere, with a ring if asked). Its colour is one of a
 // few names or a #hex, checked strictly since it ends up in a style. The
@@ -150,6 +153,8 @@ const BULLET = /^[-*+•]\s+(.*)$/;
 export function parseCards(title: string, body: string): Cards | null {
   const cards: Card[] = [];
   let card: Card | null = null;
+  // The cards whose first line, right under the name, was plain text.
+  const led = new Set<Card>();
   for (const raw of body.split(/\r?\n/)) {
     const line = raw.trim();
     if (!line) continue;
@@ -179,7 +184,14 @@ export function parseCards(title: string, body: string): Cards | null {
     // "**Key:** value" without a bullet is a row too; "Note: …" stays a sentence.
     const strong = line.startsWith("**") ? field(line) : null;
     if (strong) card.fields.push(strong);
-    else card.text.push(line);
+    else {
+      if (!card.sub && !card.fields.length && !card.text.length) led.add(card);
+      card.text.push(line);
+    }
+  }
+  // That first line is the subtitle when rows come after it ("sub:" left out).
+  for (const c of led) {
+    if (c.fields.length && !c.sub) c.sub = bare(c.text.shift() ?? "");
   }
   const kept = cards.filter((c) => c.title || c.sub || c.fields.length || c.text.length);
   if (kept.length < MIN_CARDS || kept.length > MAX_CARDS) return null;
@@ -220,9 +232,10 @@ function miniCard(card: Card, ctx: RichContext): HTMLElement {
     sub = h("span", { class: "rc-mini-sub" });
     ctx.inline(sub, card.sub);
   }
+  // The card's frame, and inside it what it holds, which scrolls when taller than the row allows.
   const el = h(
     "div",
-    { class: "rc-mini", role: "listitem" },
+    { class: "rc-mini-in" },
     h("div", { class: "rc-mini-top" }, card.icon && iconNode(card.icon), h("div", { class: "rc-mini-titles" }, title, sub)),
   );
   for (const [key, value] of card.fields) {
@@ -239,13 +252,19 @@ function miniCard(card: Card, ctx: RichContext): HTMLElement {
     }
     el.append(text);
   }
-  return el;
+  return h("div", { class: "rc-mini", role: "listitem" }, el);
+}
+
+/** Marks a card whose inside scrolls and isn't at its bottom yet, for its fade. */
+function clipped(card: HTMLElement) {
+  const inside = card.firstChild as HTMLElement;
+  card.classList.toggle("clipped", inside.scrollTop + inside.clientHeight < inside.scrollHeight - 1);
 }
 
 /** Whether `target`, inside a card of the row, scrolls that card itself that way. */
 function cardScrolls(target: EventTarget | null, row: HTMLElement, down: boolean): boolean {
   for (let n = (target as Node | null)?.nodeType === 1 ? (target as Element) : null; n && n !== row; n = n.parentElement) {
-    if (!n.classList.contains("rc-mini")) continue;
+    if (!n.classList.contains("rc-mini-in")) continue;
     if (n.scrollHeight <= n.clientHeight + 1) return false;
     return down ? n.scrollTop + n.clientHeight < n.scrollHeight - 1 : n.scrollTop > 0;
   }
@@ -290,7 +309,10 @@ export function renderCards(cards: Cards, ctx: RichContext, key: string): HTMLEl
     el.classList.toggle("more", max > 1);
     clip.classList.toggle("at-start", row.scrollLeft <= 1);
     clip.classList.toggle("at-end", row.scrollLeft >= max - 1);
+    for (const c of row.children) clipped(c as HTMLElement);
   };
+  // A card taller than the row allows fades at the bottom while there is more below.
+  for (const c of row.children) c.firstChild!.addEventListener("scroll", () => clipped(c as HTMLElement));
   row.addEventListener("scroll", () => {
     sync();
     state.left = row.scrollLeft;

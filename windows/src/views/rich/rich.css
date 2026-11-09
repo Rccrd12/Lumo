@@ -1,6 +1,15 @@
 /* The rich cards in the chat's answers (views/rich): what they share, and
    GitHub's alerts. Each card's own rules are in its stylesheet beside it. */
 
+/* An answer with a card or an alert takes the chat's whole width, and so do
+   they, whatever the length of its text: a card that changed width as it
+   changed would move its buttons from under the pointer. The answer being
+   written sits in its row without a .reply-wrap. */
+.chat-row > .reply-wrap:has(.rc-card, .rc-callout),
+.chat-row > .reply:has(.rc-card, .rc-callout) {
+  flex: 1 1 auto;
+}
+
 .rc-card {
   --rc-accent: #8fc7ff;
   background: var(--card-flat);

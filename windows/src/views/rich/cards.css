@@ -38,29 +38,44 @@
   display: none;
 }
 
+/* The card's frame; what it holds scrolls inside it when taller than the row allows. */
 .rc-mini {
   flex: 1 0 176px;
   min-width: 0;
   max-height: 180px;
   box-sizing: border-box;
-  overflow-y: auto;
-  scrollbar-width: none;
+  overflow: hidden;
   scroll-snap-align: start;
   background: var(--card);
   border: 1px solid rgba(255, 255, 255, 0.06);
   border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rc-mini-in {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
   padding: 10px 11px;
   display: flex;
   flex-direction: column;
   gap: 5px;
 }
 
-.rc-mini::-webkit-scrollbar {
+.rc-mini-in::-webkit-scrollbar {
   display: none;
 }
 
-/* A card taller than the row allows scrolls inside: its parts never squeeze. */
-.rc-mini > * {
+/* More below than shows: what the card holds fades out at its bottom, as the
+   row does at its edges; the card's frame stays. */
+.rc-mini.clipped .rc-mini-in {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+
+/* Its parts never squeeze: past the room there is, they scroll. */
+.rc-mini-in > * {
   flex: none;
 }
 
@@ -79,14 +94,14 @@
 }
 
 .rc-mini-title {
-  font: 600 12.5px/1.3 var(--font);
+  font: 600 12.5px var(--font);
   color: var(--ink-2);
   overflow-wrap: anywhere;
   unicode-bidi: plaintext;
 }
 
 .rc-mini-sub {
-  font: 400 10.5px/1.35 var(--font);
+  font: 400 10.5px var(--font);
   color: var(--dim-3);
   overflow-wrap: anywhere;
   unicode-bidi: plaintext;
@@ -96,9 +111,8 @@
 .rc-field {
   display: flex;
   justify-content: space-between;
-  align-items: baseline;
   gap: 8px;
-  font: 400 11.5px/1.4 var(--font);
+  font: 400 11.5px var(--font);
   padding-top: 4px;
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }

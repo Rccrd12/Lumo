@@ -162,9 +162,10 @@ export const Bridge = {
   openUrl: (url: string) => call<void>("open_url", { url }),
 
   /**
-   * An image of a chat answer, downloaded by Rust once the user let its site
-   * in (web_image.rs: https and public addresses only, PNG, JPEG, GIF, WebP or
-   * AVIF, 8 MB at most): its bytes as they came, null when it could not be.
+   * An image of a chat answer, downloaded by Rust unless Settings → Security
+   * → Images from the web is off (web_image.rs: https and public addresses
+   * only, PNG, JPEG, GIF, WebP or AVIF, 8 MB at most): its bytes as they
+   * came, null when it could not be.
    */
   webImage: (url: string) => call<ArrayBuffer>("web_image", { url }),
 

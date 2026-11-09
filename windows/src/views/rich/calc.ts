@@ -22,8 +22,9 @@
 // `symbol | name | expression | unit`, its expression over the inputs and
 // the outputs above it. A chart draws one to three `y:` curves of x over
 // `x: min..max` (else -10..10), between `yrange: min..max` or, without one,
-// what its curves span at the inputs' first values, so a slider's change
-// shows against a fixed frame. The formulas are read by core/expr.ts.
+// what its curves span wherever its sliders go (see autoRange), so a
+// slider's change shows against a fixed frame. The formulas are read by
+// core/expr.ts.
 //
 // Forgiving where models slip (a key's case, `$ω$` for omega, a unit written
 // into the value, `y: -1..1` for the range), but a block whose formulas can't
@@ -133,12 +134,23 @@ export function parseRange(text: string): { min: number; max: number; step: numb
   return { min, max, step: step !== null && step > 0 ? step : null };
 }
 
-/** A step of 1, 2 or 5 times a power of ten, about a hundredth of the range. */
-export function niceStep(span: number): number {
-  const raw = span / 100;
+/** 1, 2 or 5 times a power of ten, the nearest to `raw`. */
+export function roundStep(raw: number): number {
   const p = 10 ** Math.floor(Math.log10(raw));
   const m = raw / p;
   return (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+}
+
+/**
+ * A slider's step when the model gave none: about a hundredth of the range,
+ * so it moves finely. A range of a few units to a few tens (an amplitude of
+ * 0..2, a voltage of 0..24), the kind most played with, moves by tenths
+ * instead: its value reads with one decimal (1.4, not 1.40) and still has
+ * twenty stops or more.
+ */
+export function niceStep(span: number): number {
+  if (span >= 2 && span < 50) return 0.1;
+  return roundStep(span / 100);
 }
 
 /** `V | voltage | 0..24 | 12 | V`, and the shapes near it; null when it has no name or range. */
@@ -283,9 +295,21 @@ export function parsePlot(title: string, body: string): Plot | null {
   }
   if (!curves.length || curves.length > MAX_CURVES) return null;
   const plot: Plot = { title: title.trim(), formula, curves, x, y: y ?? [-1, 1], inputs };
-  if (!y) plot.y = autoRange(plot, startValues(inputs));
+  if (!y) {
+    // The chat reads a block again at each redraw: its frame is worked out once.
+    let frame = FRAMES.get(body);
+    if (!frame) {
+      frame = autoRange(plot, startValues(inputs));
+      if (FRAMES.size >= 64) FRAMES.delete(FRAMES.keys().next().value!);
+      FRAMES.set(body, frame);
+    }
+    plot.y = [...frame];
+  }
   return plot;
 }
+
+/** The auto frames of the charts read lately, by their block's text. */
+const FRAMES = new Map<string, [number, number]>();
 
 /** The inputs' first values, by name. */
 function startValues(inputs: Input[]): Record<string, number> {
@@ -295,34 +319,117 @@ function startValues(inputs: Input[]): Record<string, number> {
 }
 
 /**
- * What the curves span over x, padded a tenth on each side. A curve that
- * shoots off (tan near its poles) would flatten the rest to a line: past
- * the hundredth at each end the far values are left out when they are far.
+ * The frame a chart is drawn in when the model gave none: what its curves
+ * span over x for every place its sliders can take them (each at its
+ * start, its least and its most), so the curve never leaves the frame as a
+ * slider moves, padded a twentieth on each side. When that is far wider
+ * than the curves at the sliders' start (exp(k·x) with a large k), the
+ * curves at the start would be a flat line: the frame is theirs instead.
+ * A curve that shoots off (tan near its poles) would flatten the rest too:
+ * when its values beyond the middle nine tenths reach more than four times
+ * as far as the middle does, and they rise there without end, they are left
+ * out. A bounded curve (a sine at any of its sliders' places, a resonance's
+ * sharp peak) keeps its whole height.
  */
-export function autoRange(plot: Pick<Plot, "curves" | "x">, values: Record<string, number>): [number, number] {
-  const seen: number[] = [];
-  const scope: Record<string, number> = { ...values, x: 0 };
-  const n = 240;
-  for (const curve of plot.curves) {
-    for (let i = 0; i <= n; i++) {
-      scope.x = plot.x[0] + ((plot.x[1] - plot.x[0]) * i) / n;
-      const v = safe(curve.expr, scope);
-      if (Number.isFinite(v)) seen.push(v);
+export function autoRange(plot: Pick<Plot, "curves" | "x"> & { inputs?: Input[] }, values: Record<string, number>): [number, number] {
+  const start = spanOf(plot, [values], 240);
+  if (!start) return [-1, 1];
+  const inputs = plot.inputs ?? [];
+  let frame = start;
+  if (inputs.length) {
+    let scopes: Record<string, number>[] = [{ ...values }];
+    for (const i of inputs) {
+      const at = [...new Set([i.min, values[i.name] ?? i.value, i.max])];
+      scopes = scopes.flatMap((scope) => at.map((v) => ({ ...scope, [i.name]: v })));
     }
+    // Some 10,000 points at most: four sliders make 81 places.
+    const n = Math.max(40, Math.min(240, Math.round(10000 / (scopes.length * plot.curves.length))));
+    const all = spanOf(plot, scopes, n);
+    // A curve flat at the start (A·sin x with A at 0) has no span to compare
+    // with: the sliders alone make its shape, so the frame is theirs.
+    const flat = start[1] - start[0] < 1e-9 * Math.max(1, Math.abs(start[1]));
+    if (all && (flat || all[1] - all[0] <= 20 * (start[1] - start[0]))) frame = all;
   }
-  if (!seen.length) return [-1, 1];
-  seen.sort((a, b) => a - b);
-  let lo = seen[0];
-  let hi = seen[seen.length - 1];
-  const qlo = seen[Math.floor(seen.length * 0.01)];
-  const qhi = seen[Math.ceil(seen.length * 0.99) - 1];
-  if (hi - lo > 10 * (qhi - qlo) && qhi > qlo) [lo, hi] = [qlo, qhi];
+  const [lo, hi] = frame;
   if (hi - lo < 1e-9 * Math.max(1, Math.abs(hi))) {
     const pad = Math.abs(hi) / 2 || 1;
     return [lo - pad, hi + pad];
   }
-  const pad = (hi - lo) / 10;
+  const pad = (hi - lo) / 20;
   return [lo - pad, hi + pad];
+}
+
+/**
+ * The least and most the curves take over x in these scopes, null when none
+ * is a number. Each curve at each place is measured on its own, so a pole in
+ * one curve never cuts the peaks of another. A far value is left out (see
+ * autoRange) only when it is a pole, one that grows without end between its
+ * samples: a sharp peak (a resonance) is high but ends, and is kept.
+ */
+function spanOf(plot: Pick<Plot, "curves" | "x">, scopes: Record<string, number>[], n: number): [number, number] | null {
+  const [x0, x1] = plot.x;
+  const at = (i: number) => x0 + ((x1 - x0) * i) / n;
+  let lo = Infinity;
+  let hi = -Infinity;
+  const values = new Float64Array(n + 1);
+  const seen: number[] = [];
+  for (const place of scopes) {
+    const scope: Record<string, number> = { ...place, x: 0 };
+    for (const curve of plot.curves) {
+      seen.length = 0;
+      let top = -1;
+      let bottom = -1;
+      for (let i = 0; i <= n; i++) {
+        scope.x = at(i);
+        const v = safe(curve.expr, scope);
+        values[i] = v;
+        if (!Number.isFinite(v)) continue;
+        seen.push(v);
+        if (top < 0 || v > values[top]) top = i;
+        if (bottom < 0 || v < values[bottom]) bottom = i;
+      }
+      if (!seen.length) continue;
+      seen.sort((a, b) => a - b);
+      let least = seen[0];
+      let most = seen[seen.length - 1];
+      const qlo = seen[Math.floor(seen.length * 0.05)];
+      const qhi = seen[Math.ceil(seen.length * 0.95) - 1];
+      if (most - least > 4 * (qhi - qlo) && qhi > qlo) {
+        const near = (i: number): [number, number] => [at(Math.max(0, i - 1)), at(Math.min(n, i + 1))];
+        if (pole(curve.expr, scope, ...near(top), 1, most)) most = qhi;
+        if (pole(curve.expr, scope, ...near(bottom), -1, least)) least = qlo;
+      }
+      lo = Math.min(lo, least);
+      hi = Math.max(hi, most);
+    }
+  }
+  return lo <= hi ? [lo, hi] : null;
+}
+
+/**
+ * Whether a curve's highest sample (`sign` 1) or lowest (-1), `seen`, is
+ * the edge of a pole between the samples around it, a to b: the most it
+ * takes there, found by narrowing in, is a thousand times further out, or
+ * no number at all (1/0).
+ */
+function pole(expr: Expr, scope: Record<string, number>, a: number, b: number, sign: 1 | -1, seen: number): boolean {
+  const f = (x: number) => {
+    scope.x = x;
+    const v = safe(expr, scope) * sign;
+    return Number.isNaN(v) ? -Infinity : v;
+  };
+  let most = seen * sign;
+  for (let k = 0; k < 48 && b - a > 1e-12 * Math.max(1, Math.abs(a)); k++) {
+    const m1 = a + (b - a) / 3;
+    const m2 = b - (b - a) / 3;
+    const f1 = f(m1);
+    const f2 = f(m2);
+    most = Math.max(most, f1, f2);
+    if (most === Infinity) return true;
+    if (f1 < f2) a = m1;
+    else b = m2;
+  }
+  return most - seen * sign > 1000 * Math.max(Math.abs(seen), 1e-300);
 }
 
 /** A formula's value, NaN when it throws. */
@@ -338,7 +445,7 @@ function safe(expr: Expr, scope: Record<string, number>): number {
 
 const formats = new Map<string, Intl.NumberFormat>();
 
-function format(options: Intl.NumberFormatOptions, n: number): string {
+function formatter(options: Intl.NumberFormatOptions): Intl.NumberFormat {
   const id = `${language()}|${JSON.stringify(options)}`;
   let f = formats.get(id);
   if (!f) {
@@ -349,27 +456,65 @@ function format(options: Intl.NumberFormatOptions, n: number): string {
     }
     formats.set(id, f);
   }
-  return f.format(n);
+  return f;
 }
 
-/** A result in the app's language: three or four significant digits; "—" when it is no number. */
+function format(options: Intl.NumberFormatOptions, n: number): string {
+  return formatter(options).format(n);
+}
+
+const SUPERSCRIPT: Record<string, string> = { "-": "⁻", "−": "⁻", "0": "⁰", "1": "¹", "2": "²", "3": "³", "4": "⁴", "5": "⁵", "6": "⁶", "7": "⁷", "8": "⁸", "9": "⁹" };
+
+/**
+ * A number in scientific notation as it is written by hand, 1.2 × 10⁻⁴,
+ * rather than 1.2E-4, whose minus the tabular digits set far apart. Where
+ * the language writes its own digits (Arabic), which have no superscript
+ * forms, it stays as the language writes it.
+ */
+function scientific(options: Intl.NumberFormatOptions, n: number): string {
+  const parts = formatter({ ...options, notation: "scientific" }).formatToParts(n);
+  const at = parts.findIndex((p) => p.type === "exponentSeparator");
+  if (at < 0) return parts.map((p) => p.value).join("");
+  const mantissa = parts.slice(0, at).map((p) => p.value).join("");
+  const exponent = parts.slice(at + 1).map((p) => p.value).join("");
+  const sup = [...exponent].map((c) => SUPERSCRIPT[c] ?? "");
+  if (sup.some((c) => !c)) return parts.map((p) => p.value).join("");
+  if (exponent === "0") return mantissa;
+  // Narrow no-break spaces: the number never breaks over two lines.
+  return `${mantissa}\u202f×\u202f${format({ maximumFractionDigits: 0 }, 10)}${sup.join("")}`;
+}
+
+/**
+ * A result in the app's language: three or four significant digits; "—"
+ * when it is no number. From a ten-thousandth down, or from a million up,
+ * in scientific notation, so the ones a slider moves through on their way
+ * (0.00012 next to 0.00144) read alike.
+ */
 export function formatNumber(n: number): string {
   if (!Number.isFinite(n)) return "—";
   if (n === 0) return format({ maximumFractionDigits: 0 }, 0);
   const a = Math.abs(n);
-  if (a >= 1e6 || a < 1e-3) return format({ notation: "scientific", maximumSignificantDigits: 3 }, n);
+  if (a >= 1e6 || a < 1e-4) return scientific({ minimumSignificantDigits: 3, maximumSignificantDigits: 3 }, n);
   if (a >= 1000) return format({ maximumFractionDigits: 0 }, n);
   return format({ minimumSignificantDigits: 3, maximumSignificantDigits: 4 }, n);
 }
 
 /**
  * A slider's value, with as many decimals as its step has, or as the value
- * itself has when it starts off the step's grid (9.81 on a step of 0.2).
+ * itself has when it starts off the step's grid (9.81 on a step of 0.2). A
+ * step finer than a millionth (a charge in coulombs, a wavelength in metres)
+ * would need more decimals than a chip holds: such a value is written in
+ * scientific notation, with the digits that tell one step from the next.
  */
-export function formatValue(n: number, step: number): string {
-  const decimals = Math.min(6, Math.max(0, -Math.floor(Math.log10(step) + 1e-9)));
-  const own = /\.(\d{1,4})$/.exec(String(n))?.[1].length ?? 0;
-  const shown = Math.max(decimals, own);
+export function formatValue(n: number, step: number, own = true): string {
+  const need = Math.max(0, -Math.floor(Math.log10(step) + 1e-9));
+  if (need > 6) {
+    if (n === 0) return format({ maximumFractionDigits: 0 }, 0);
+    const digits = Math.min(21, Math.max(1, Math.floor(Math.log10(Math.abs(n)) + 1e-9) + need + 1));
+    return scientific({ minimumSignificantDigits: digits, maximumSignificantDigits: digits }, n);
+  }
+  const mine = own ? (/\.(\d{1,4})$/.exec(String(n))?.[1].length ?? 0) : 0;
+  const shown = Math.min(6, Math.max(need, mine));
   return format({ minimumFractionDigits: shown, maximumFractionDigits: shown }, n);
 }
 
@@ -405,13 +550,19 @@ function headFormula(formula: string, ctx: RichContext): HTMLElement | null {
  */
 function slider(input: Input, values: Record<string, number>, ctx: RichContext, changed: () => void): HTMLElement {
   const chip = h("span", { class: "rc-slider-val" });
+  // A range input only stops on min + k·step: when the span is no multiple
+  // of the step (1..100000 by 1000) its last stop would fall short of max.
+  // Its end goes up to the next stop, and that stop reads as max.
+  const stops = (input.max - input.min) / input.step;
+  const whole = Math.abs(stops - Math.round(stops)) < 1e-6;
+  const end = whole ? input.max : Number((input.min + Math.ceil(stops) * input.step).toPrecision(12));
   const range = h("input", {
     class: "rc-range",
     type: "range",
     // The track fills from the left, in Arabic too, as a scale of numbers does.
     dir: "ltr",
     min: input.min,
-    max: input.max,
+    max: end,
     step: input.step,
     value: values[input.name],
     "aria-label": input.label || input.name,
@@ -427,7 +578,7 @@ function slider(input: Input, values: Record<string, number>, ctx: RichContext, 
   range.addEventListener("input", () => {
     const v = Number(range.value);
     if (!Number.isFinite(v)) return;
-    values[input.name] = v;
+    values[input.name] = Math.min(input.max, v);
     show();
     changed();
   });
@@ -469,7 +620,7 @@ export function renderCalc(calc: Calc, ctx: RichContext, key: string): HTMLEleme
     const name = h("div", { class: "rc-out-name" }, h("span", { class: "rc-out-sym" }, ctx.math(texName(o.name))));
     if (o.label) name.append(h("span", { class: "rc-out-label", text: o.label, title: o.label }));
     const row = h("div", { class: "rc-out-row" }, num);
-    if (o.unit) row.append(h("span", { class: "rc-out-unit", text: o.unit }));
+    if (o.unit) row.append(h("span", { class: "rc-out-unit", text: o.unit, title: o.unit }));
     return h("div", { class: "rc-out" }, name, row);
   });
   const update = () => {
@@ -531,17 +682,17 @@ export function tracePlot(plot: Plot, values: Record<string, number>, width: num
 
 /** Grid lines at a round step, about `count` of them over the span. */
 function ticks(lo: number, hi: number, count: number): number[] {
-  const raw = (hi - lo) / count;
-  const p = 10 ** Math.floor(Math.log10(raw));
-  const m = raw / p;
-  const step = (m < 1.5 ? 1 : m < 3.5 ? 2 : m < 7.5 ? 5 : 10) * p;
+  const step = roundStep((hi - lo) / count);
   const out: number[] = [];
   for (let v = Math.ceil(lo / step) * step; v <= hi + step * 1e-9 && out.length < 50; v += step) out.push(v);
   return out;
 }
 
-/** Draws the chart on `canvas`, `width` CSS pixels wide. */
-function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, number>, width: number) {
+/**
+ * Draws the chart on `canvas`, `width` CSS pixels wide, with what the curves
+ * are at `hover` (CSS pixels from the left) while the pointer is on it.
+ */
+function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, number>, width: number, hover: number | null) {
   const g = canvas.getContext?.("2d");
   if (!g || width <= 0) return;
   const H = PLOT_HEIGHT;
@@ -558,17 +709,13 @@ function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, 
   const Y = (y: number) => H - ((y - y0) / (y1 - y0)) * H;
   const crisp = (v: number) => Math.round(v) + 0.5;
 
-  // A light grid, and the axes where they fall in the frame.
+  // A light line at each round x, and the axes where they fall inside the frame.
   g.lineWidth = 1;
-  g.strokeStyle = "rgba(255, 255, 255, 0.05)";
+  g.strokeStyle = "rgba(255, 255, 255, 0.06)";
   g.beginPath();
   for (const t of ticks(x0, x1, 10)) {
     g.moveTo(crisp(X(t)), 0);
     g.lineTo(crisp(X(t)), H);
-  }
-  for (const t of ticks(y0, y1, 3)) {
-    g.moveTo(0, crisp(Y(t)));
-    g.lineTo(width, crisp(Y(t)));
   }
   g.stroke();
   g.strokeStyle = "rgba(255, 255, 255, 0.16)";
@@ -577,7 +724,7 @@ function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, 
     g.moveTo(0, crisp(Y(0)));
     g.lineTo(width, crisp(Y(0)));
   }
-  if (x0 <= 0 && x1 >= 0) {
+  if (x0 < 0 && x1 > 0) {
     g.moveTo(crisp(X(0)), 0);
     g.lineTo(crisp(X(0)), H);
   }
@@ -588,7 +735,7 @@ function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, 
   // A faint area between the first curve and the x axis (or the frame's edge).
   const base = Y(Math.min(y1, Math.max(y0, 0)));
   const fade = g.createLinearGradient(0, 0, 0, H);
-  fade.addColorStop(0, "rgba(143, 199, 255, 0.18)");
+  fade.addColorStop(0, "rgba(143, 199, 255, 0.2)");
   fade.addColorStop(1, "rgba(143, 199, 255, 0)");
   g.fillStyle = fade;
   for (const piece of traces[0] ?? []) {
@@ -619,22 +766,94 @@ function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, 
   }
   g.shadowBlur = 0;
 
-  // The frame's ends, small and dim in its corners.
-  g.fillStyle = "rgba(255, 255, 255, 0.32)";
-  g.font = "500 9px system-ui, 'Segoe UI', sans-serif";
-  g.textBaseline = "top";
+  if (hover !== null) drawReading(g, plot, values, traces, width, Math.min(width, Math.max(0, hover)));
+}
+
+/**
+ * Under the pointer: a thin line, a dot where each curve crosses it, and
+ * the values there in a small label beside it (x, then each curve's y in
+ * its colour), so the chart reads without numbers on its edges. x has the
+ * decimals one pixel tells apart, and every y the same ones as each other,
+ * so the numbers keep their shape as the pointer moves. The label sits at
+ * the top, or at the bottom when the curves run more through the top there.
+ */
+function drawReading(g: CanvasRenderingContext2D, plot: Plot, values: Record<string, number>, traces: [number, number][][][], width: number, px: number) {
+  const H = PLOT_HEIGHT;
+  const [x0, x1] = plot.x;
+  const [y0, y1] = plot.y;
+  const x = x0 + ((x1 - x0) * px) / width;
+  const scope: Record<string, number> = Object.create(null);
+  for (const i of plot.inputs) scope[i.name] = values[i.name] ?? i.value;
+  scope.x = x;
+  const ys = plot.curves.map((c) => safe(c.expr, scope));
+
+  g.strokeStyle = "rgba(255, 255, 255, 0.22)";
+  g.lineWidth = 1;
+  g.beginPath();
+  g.moveTo(Math.round(px) + 0.5, 0);
+  g.lineTo(Math.round(px) + 0.5, H);
+  g.stroke();
+  ys.forEach((v, c) => {
+    if (!Number.isFinite(v) || v < y0 || v > y1) return;
+    g.beginPath();
+    g.arc(px, H - ((v - y0) / (y1 - y0)) * H, 3.5, 0, 2 * Math.PI);
+    g.fillStyle = CURVE_COLORS[c % CURVE_COLORS.length];
+    g.fill();
+    g.lineWidth = 1.5;
+    g.strokeStyle = "#0e0f11";
+    g.stroke();
+  });
+
+  // The label: `x = 3.20   y = 1.12`, beside the line on its roomier side.
+  const xStep = roundStep((x1 - x0) / width);
+  const yStep = roundStep((y1 - y0) / H);
+  // Rounded first, so a value just under zero reads 0.00, not -0.00.
+  const fixed = (v: number, step: number) => formatValue(Math.round(v / step) * step || 0, step, false);
+  const parts: { text: string; color: string }[] = [{ text: `x = ${fixed(x, xStep)}`, color: "rgba(255, 255, 255, 0.6)" }];
+  ys.forEach((v, c) =>
+    parts.push({
+      text: `y = ${Number.isFinite(v) ? fixed(v, yStep) : "—"}`,
+      color: plot.curves.length > 1 ? CURVE_COLORS[c % CURVE_COLORS.length] : "#e8e9ec",
+    }),
+  );
+  let family = "system-ui, 'Segoe UI', sans-serif";
+  try {
+    family = getComputedStyle(g.canvas).fontFamily || family;
+  } catch {
+    // No styles to read (a canvas outside the page): the fallback.
+  }
+  g.font = `500 10px ${family}`;
+  g.textBaseline = "middle";
   g.textAlign = "left";
-  g.fillText(formatNumber(y1), 3, 2);
-  g.textBaseline = "bottom";
-  g.fillText(formatNumber(y0), 3, H - 2);
-  g.textAlign = "right";
-  g.fillText(formatNumber(x1), width - 3, H - 2);
+  const gap = 8;
+  const widths = parts.map((p) => g.measureText(p.text).width);
+  const w = Math.ceil(widths.reduce((a, b) => a + b, 0) + gap * (parts.length - 1) + 12);
+  const left = px + 8 + w <= width ? px + 8 : Math.max(0, px - 8 - w);
+  let crossing = 0;
+  for (const pieces of traces)
+    for (const piece of pieces)
+      for (const [qx, qy] of piece) if (qx >= left - 2 && qx <= left + w + 2) crossing += qy <= 23 ? 1 : qy >= H - 23 ? -1 : 0;
+  const top = crossing > 0 ? H - 20 : 4;
+  g.fillStyle = "#0e0f11";
+  g.strokeStyle = "rgba(255, 255, 255, 0.08)";
+  g.lineWidth = 1;
+  g.beginPath();
+  if (g.roundRect) g.roundRect(Math.round(left) + 0.5, top + 0.5, w, 16, 5);
+  else g.rect(Math.round(left) + 0.5, top + 0.5, w, 16);
+  g.fill();
+  g.stroke();
+  let at = Math.round(left) + 6.5;
+  parts.forEach((p, i) => {
+    g.fillStyle = p.color;
+    g.fillText(p.text, at, top + 8.5);
+    at += widths[i] + gap;
+  });
 }
 
 /**
  * The chart, sliders in a row under it. It is drawn when its width is known
- * or changes (a ResizeObserver, quiet while nothing moves) and when a slider
- * moves; nothing runs in between.
+ * or changes (a ResizeObserver, quiet while nothing moves), when a slider
+ * moves and when the pointer moves over it; nothing runs in between.
  */
 export function renderPlot(plot: Plot, ctx: RichContext, key: string): HTMLElement {
   const values = valuesFor(key, plot.inputs);
@@ -646,8 +865,20 @@ export function renderPlot(plot: Plot, ctx: RichContext, key: string): HTMLEleme
   }) as HTMLCanvasElement;
   const frame = h("div", { class: "rc-plot-frame" }, canvas);
   let width = 0;
-  const draw = () => drawPlot(canvas, plot, values, width);
+  let hover: number | null = null;
+  const draw = () => drawPlot(canvas, plot, values, width, hover);
   const sliders = plot.inputs.map((i) => slider(i, values, ctx, draw));
+  // The values under the pointer, drawn as it moves and gone when it leaves.
+  const point = (e: PointerEvent) => {
+    hover = e.clientX - canvas.getBoundingClientRect().left;
+    draw();
+  };
+  canvas.addEventListener("pointermove", point);
+  canvas.addEventListener("pointerdown", point);
+  canvas.addEventListener("pointerleave", () => {
+    hover = null;
+    draw();
+  });
   if (typeof ResizeObserver !== "undefined") {
     new ResizeObserver((entries) => {
       const w = Math.floor(entries[entries.length - 1].contentRect.width);

@@ -69,6 +69,11 @@ test("the Unicode a model writes", () => {
   assert.deepEqual(omega.vars, ["A", "omega", "t"]);
   close(omega.evaluate({ A: 2, omega: 3, t: 0.5 }), 2 * Math.sin(1.5));
   assert.deepEqual(compile("Δx + µ0 + ω_0").vars, ["Deltax", "mu0", "omega_0"]);
+  // A Greek letter inside a name stays in it, as normalizeName reads the input's symbol.
+  assert.deepEqual(compile("r * Δθ + x_θ").vars, ["r", "Deltatheta", "x_theta"]);
+  assert.equal(normalizeName("Δθ"), "Deltatheta");
+  assert.equal(normalizeName("x_θ"), "x_theta");
+  assert.deepEqual(compile("ωt").vars, [normalizeName("ωt")]);
 });
 
 test("functions and their arguments", () => {

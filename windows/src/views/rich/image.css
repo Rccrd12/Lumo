@@ -1,35 +1,35 @@
 /* An image in an answer (views/rich/image.ts): one frame height whatever it
-   shows (the question, the download, the image or the failure), then its
-   source, its caption and the way to the browser. */
+   shows (the download, the image or the failure), then its source, its
+   caption and the way to the browser. With images off, that last row alone. */
 
 .rc-image {
   overflow: hidden;
 }
 
 .rc-image-frame {
-  height: 160px;
+  height: 150px;
   display: grid;
   place-items: center;
   min-width: 0;
   overflow: hidden;
 }
 
-/* Before the user says yes: stripes, so it reads as "not loaded" at once. */
-.rc-image-frame.ask,
+/* Not there yet, or not at all: stripes, so it reads as "no image" at once. */
 .rc-image-frame.loading,
 .rc-image-frame.error {
   background: repeating-linear-gradient(135deg, #111214 0 10px, #0e0f11 10px 20px);
 }
 
-/* Diagrams are often drawn on a transparent ground: a light neutral one shows them as meant. */
+/* Diagrams are often drawn on a transparent ground: a white one shows them as meant. */
 .rc-image-frame.shown {
-  background: #f4f5f7;
+  background: #fff;
 }
 
 .rc-image-frame img {
   display: block;
-  max-width: 100%;
-  max-height: 160px;
+  /* The same 6px of white on every side, whether the picture is wide or tall. */
+  max-width: calc(100% - 12px);
+  max-height: 138px;
   object-fit: contain;
   cursor: pointer;
   -webkit-user-drag: none;
@@ -87,15 +87,6 @@
   background: rgba(255, 255, 255, 0.13);
 }
 
-.rc-image-btn.primary {
-  background: #f1f2f4;
-  color: #000;
-}
-
-.rc-image-btn.primary:hover {
-  background: #ffffff;
-}
-
 .rc-image-btn:focus-visible {
   outline: 1px solid var(--rc-accent);
   outline-offset: 1px;
@@ -141,4 +132,9 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+/* Images off: the row is the whole card, so it has no line above it. */
+.rc-image.off .rc-image-foot {
+  border-top: 0;
 }

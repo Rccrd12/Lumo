@@ -1,10 +1,10 @@
 // An image in an answer: a line that is only `![alt](https://…)`, as
-// markdown.ts finds it. Lumo talks only to the services the user set up, so
-// a site the model links to is not reached until the user says so: first the
-// card asks ("This answer has an image from upload.wikimedia.org"), with Show
-// for this image and "Always from …" for every image of that site, the site
-// then kept in the settings (webImageSites, Settings → Security → Images from
-// the web, where it can be forgotten).
+// markdown.ts finds it. The image is downloaded and shown at once (the user's
+// choice: asking site by site was too much), from a frame of one height
+// whatever it shows, so nothing in the chat jumps when the image comes: the
+// download, the image, or the failure with Try again. Settings → Security →
+// Images from the web turns it off: the card is then one row, the site, the
+// alt text and the way to the browser, and nothing is downloaded.
 //
 // The island never fetches the image itself (its CSP lets images in only from
 // the app, data: and blob:): Rust downloads it with its own checks
@@ -13,10 +13,9 @@
 //
 // The chat redraws its answers often, so what a card shows comes from what
 // this module remembers for the session, by URL: the images loaded (their
-// blob: URLs, the 40 most recent), the ones that could not be, the ones
-// shown once, and the downloads under way. A card drawn again while its image
-// downloads waits for the same download. The frame keeps one height whatever
-// it shows, so nothing in the chat jumps when the image comes.
+// blob: URLs, the 40 most recent), the ones that could not be, and the
+// downloads under way. A card drawn again while its image downloads waits for
+// the same download.
 
 import { h, svg } from "../dom";
 import { ICONS } from "../icons";
@@ -26,17 +25,13 @@ import { State } from "../../core/state";
 import "./image.css";
 
 export const IMAGE_STRINGS = {
-  ask: N_("This answer has an image from {site}"),
-  askHint: N_("Lumo downloads it only if you want: the site will know you opened it."),
-  show: N_("Show"),
-  showTip: N_("Show this image only"),
-  always: N_("Always from {site}"),
-  alwaysTip: N_("Show the images from {site} without asking. You can change this in Settings → Security."),
   loading: N_("Loading the image…"),
   failed: N_("Couldn't load the image"),
   retry: N_("Try again"),
   open: N_("Open in the browser"),
   alt: N_("Image from {site}"),
+  /** The row's caption when images are off and the line gives no alt text. */
+  image: N_("Image"),
 };
 
 /** The blob: URLs kept at most; the least recently shown goes first. */
@@ -48,19 +43,16 @@ const loaded = new Map<string, string>();
 const pending = new Map<string, Promise<void>>();
 /** Images that could not be loaded this session (Try again clears it). */
 const failed = new Set<string>();
-/** Images the user let in with Show, this session only. */
-const shownOnce = new Set<string>();
 
-/** The cards on screen and how to draw each again (when a site is let in, or an image comes). */
+/** The cards on screen and how to draw each again (Try again reaches every card of that image). */
 interface Live {
   url: string;
-  site: string;
   draw: () => void;
 }
 const cards = new Set<WeakRef<HTMLElement>>();
 const liveOf = new WeakMap<HTMLElement, Live>();
 
-/** The site an image comes from: its exact host name, lowercase, as Settings keeps it. */
+/** The site an image comes from, as its card shows it: its host name, lowercase. */
 export function siteOf(url: string): string {
   try {
     return new URL(url).hostname.toLowerCase().replace(/\.$/, "");
@@ -69,15 +61,9 @@ export function siteOf(url: string): string {
   }
 }
 
-/** The sites whose images are shown without asking. */
-function allowedSites(): string[] {
-  const sites = State.settings.webImageSites;
-  return Array.isArray(sites) ? sites : [];
-}
-
-/** Whether the image may be downloaded: its site is let in, or the user asked for this one. */
-export function imageAllowed(url: string): boolean {
-  return shownOnce.has(url) || allowedSites().includes(siteOf(url));
+/** Whether images from the web are on (Settings → Security; on unless turned off). */
+export function webImagesOn(): boolean {
+  return State.settings.webImages !== false;
 }
 
 /**
@@ -160,7 +146,7 @@ function redraw(match: (live: Live) => boolean) {
   }
 }
 
-/** Remembers a card drawn, so letting its site in reaches it too. */
+/** Remembers a card drawn, so Try again on another card of its image reaches it too. */
 function track(card: HTMLElement, live: Live) {
   liveOf.set(card, live);
   cards.add(new WeakRef(card));
@@ -168,37 +154,24 @@ function track(card: HTMLElement, live: Live) {
   if (cards.size > 200) redraw(() => false);
 }
 
-/** "Always from …": the site goes into the settings, and every card of it loads. */
-function allowSite(site: string) {
-  if (!site || allowedSites().includes(site)) return;
-  State.settings = { ...State.settings, webImageSites: [...allowedSites(), site] };
-  void Bridge.saveSettings(State.settings);
-  redraw((live) => live.site === site);
-}
-
-function button(label: string, tip: string, primary: boolean, onClick: () => void): HTMLButtonElement {
-  const el = h("button", { class: primary ? "rc-image-btn primary" : "rc-image-btn", type: "button", text: label, title: tip, "aria-label": tip });
-  el.addEventListener("click", (e) => {
-    e.stopPropagation();
-    onClick();
-  });
-  return el;
-}
-
-/** The card for an image line: it asks first, then shows the image with its source. */
+/** The card for an image line: the image with its source, or, images off, the source alone. */
 export function renderImage(alt: string, url: string): HTMLElement {
   const site = siteOf(url);
-  const frame = h("div", { class: "rc-image-frame" });
   const openBtn = h("button", { class: "rc-nav", type: "button", title: t(IMAGE_STRINGS.open), "aria-label": t(IMAGE_STRINGS.open) }, svg(ICONS.arrowUpRight, 12));
   openBtn.addEventListener("click", () => void Bridge.openUrl(url));
+  const caption = alt || (webImagesOn() ? "" : t(IMAGE_STRINGS.image));
   const foot = h(
     "div",
     { class: "rc-image-foot" },
     h("span", { class: "rc-image-src", title: url }, svg(ICONS.globe, 10, { stroke: 1.8 }), h("span", { text: site })),
-    alt ? h("span", { class: "rc-image-cap", text: alt, title: alt }) : null,
+    caption ? h("span", { class: "rc-image-cap", text: caption, title: caption }) : null,
     h("span", { class: "rc-sp" }),
     openBtn,
   );
+  // Off (or an address with no host to show): one row, nothing downloaded.
+  if (!webImagesOn() || site === "") return h("div", { class: "rc-card rc-image off" }, foot);
+
+  const frame = h("div", { class: "rc-image-frame" });
   const card = h("div", { class: "rc-card rc-image" }, frame, foot);
 
   const show = (state: string, ...children: Node[]) => {
@@ -207,14 +180,12 @@ export function renderImage(alt: string, url: string): HTMLElement {
   };
 
   const draw = () => {
-    // A site forgotten in Settings asks again, even for an image already here.
-    const allowed = imageAllowed(url) && site !== "";
-    const blob = allowed ? cached(url) : undefined;
+    const blob = cached(url);
     if (blob !== undefined) {
       const img = h("img", { src: blob, alt: alt || t(IMAGE_STRINGS.alt, { site }), title: alt || site, draggable: "false" });
       img.addEventListener("click", () => void Bridge.openUrl(url));
-      // Its blob: URL went with the oldest of the cache: download it again.
-      // Otherwise the bytes themselves would not draw.
+      // Its blob: URL went with the oldest of the cache: drawn again, the card
+      // downloads it again. Still in the cache, the bytes themselves don't draw.
       img.addEventListener("error", () => {
         if (loaded.get(url) === blob) {
           loaded.delete(url);
@@ -224,7 +195,13 @@ export function renderImage(alt: string, url: string): HTMLElement {
         draw();
       });
       show("shown", img);
-    } else if (allowed && failed.has(url)) {
+    } else if (failed.has(url)) {
+      const retry = h("button", { class: "rc-image-btn", type: "button", text: t(IMAGE_STRINGS.retry), title: t(IMAGE_STRINGS.retry), "aria-label": t(IMAGE_STRINGS.retry) });
+      retry.addEventListener("click", (e) => {
+        e.stopPropagation();
+        failed.delete(url);
+        redraw((live) => live.url === url);
+      });
       show(
         "error",
         h(
@@ -232,41 +209,16 @@ export function renderImage(alt: string, url: string): HTMLElement {
           { class: "rc-image-msg" },
           h("span", { class: "rc-image-title", text: t(IMAGE_STRINGS.failed) }),
           h("span", { class: "rc-image-hint", text: site }),
-          h("div", { class: "rc-image-btns" }, button(t(IMAGE_STRINGS.retry), t(IMAGE_STRINGS.retry), false, () => {
-            failed.delete(url);
-            redraw((live) => live.url === url);
-          })),
+          h("div", { class: "rc-image-btns" }, retry),
         ),
       );
-    } else if (allowed) {
+    } else {
       show("loading", h("div", { class: "rc-pending-line" }, h("i"), h("i"), h("i"), h("span", { text: t(IMAGE_STRINGS.loading) })));
       void load(url).then(draw);
-    } else {
-      show(
-        "ask",
-        h(
-          "div",
-          { class: "rc-image-msg" },
-          svg(ICONS.globe, 18, { stroke: 1.6 }),
-          h("span", { class: "rc-image-title", text: t(IMAGE_STRINGS.ask, { site }) }),
-          h("span", { class: "rc-image-hint", text: t(IMAGE_STRINGS.askHint) }),
-          site
-            ? h(
-                "div",
-                { class: "rc-image-btns" },
-                button(t(IMAGE_STRINGS.show), t(IMAGE_STRINGS.showTip), true, () => {
-                  shownOnce.add(url);
-                  redraw((live) => live.url === url);
-                }),
-                button(t(IMAGE_STRINGS.always, { site }), t(IMAGE_STRINGS.alwaysTip, { site }), false, () => allowSite(site)),
-              )
-            : null,
-        ),
-      );
     }
   };
 
-  track(card, { url, site, draw });
+  track(card, { url, draw });
   draw();
   return card;
 }
@@ -277,6 +229,5 @@ export function resetImages() {
   loaded.clear();
   pending.clear();
   failed.clear();
-  shownOnce.clear();
   cards.clear();
 }

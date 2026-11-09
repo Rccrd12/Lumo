@@ -142,9 +142,16 @@ function tokenize(source: string): Token[] {
       continue;
     }
     if (isLatin(c) || GREEK[c]) {
+      // A Greek letter goes on a name as well as starting one (Δθ, x_θ), as
+      // normalizeName reads the symbol the input declared.
       let name = GREEK[c] ?? c;
       let j = i + 1;
-      while (j < source.length && NAME_REST.test(source[j])) name += source[j++];
+      for (; j < source.length; j++) {
+        const g = GREEK[source[j]];
+        if (g) name += g;
+        else if (NAME_REST.test(source[j])) name += source[j];
+        else break;
+      }
       tokens.push({ t: "name", v: name, at });
       i = j;
       continue;

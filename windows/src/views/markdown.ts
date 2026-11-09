@@ -3,9 +3,9 @@
 // links inside the text, and — on Windows only — tables (Claude Code's
 // commands, /doctor among them, answer with them) — and TeX math ($…$, $$…$$, \(…\), \[…\]), drawn
 // by math.ts. Also on Windows only, the rich cards of views/rich: GitHub's
-// alerts (`> [!NOTE]`…), the ```lumo-steps, lumo-cards, lumo-calc and
-// lumo-plot blocks Lumo's system prompt teaches (chat.rs), and a line that
-// is only an image, shown once the user lets its site in.
+// alerts (`> [!NOTE]`…), the ```lumo-… blocks Lumo's system prompt teaches
+// (chat.rs), GitHub's task lists (`- [ ] text`) as a checklist to tick,
+// a ```diff block and a line that is only an image.
 //
 // Everything is built as DOM nodes with textContent, never as HTML, so nothing
 // a model writes can inject markup. Links open only when they are http(s), and
@@ -15,7 +15,10 @@ import { Bridge } from "../core/bridge";
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { renderMath } from "./math";
-import { CALLOUT_TYPES, RICH_KINDS, renderCallout, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext } from "./rich/index";
+import {
+  CALLOUT_TYPES, RICH_KINDS, renderCallout, renderChecklist, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext,
+} from "./rich/index";
+import { checklistsEpoch, parseChecklist, taskItem, type Checklist, type ChecklistItem } from "../core/checklists";
 import { N_, t } from "../i18n/i18n";
 
 const STRINGS = {
@@ -41,6 +44,8 @@ export type Block =
    * fence line and its lines; `open` while its closing fence has not come yet.
    */
   | { kind: "rich"; type: string; title: string; body: string; open: boolean }
+  /** List items that are all GitHub task items, `- [ ] text` / `- [x] text`: one checklist. */
+  | { kind: "checklist"; items: ChecklistItem[] }
   /** A line that is only an image: `![alt](https://…)`. */
   | { kind: "image"; alt: string; url: string };
 
@@ -51,10 +56,19 @@ const isQuote = (s: string) => s.startsWith("> ") || s === ">";
 const isTableRow = (s: string) => s.startsWith("|") && s.length > 1;
 /** `> [!TIP]`, `>[!warning] A title`: the alert's kind and title. */
 const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)$`, "i");
-/** ```lumo-steps A title: one of the rich cards' fences. */
-const RICH_FENCE = new RegExp(`^\`\`\`[ \\t]*lumo-(${RICH_KINDS.join("|")})\\b[ \\t]*(.*)$`);
-/** A line that is only an image. */
-const IMAGE_LINE = /^!\[([^\]\n]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)$/;
+/**
+ * ```lumo-steps A title: one of the rich cards' fences. Four backticks or
+ * more (````lumo-steps) let the block hold ``` code blocks of its own.
+ */
+const RICH_FENCE = new RegExp(`^(\`{3,})[ \\t]*lumo-(${RICH_KINDS.join("|")})\\b[ \\t]*(.*)$`);
+/** A fence line: its backticks and what follows them. */
+const FENCE_LINE = /^[ \t]*(`{3,})(.*)$/;
+/**
+ * A line that is only an image: `![alt](https://…)`, `![alt](<https://…>)`,
+ * a "title" after it or not. Parentheses in the address are fine when they
+ * pair up, as in Wikimedia's "Saturn_(cropped).jpg".
+ */
+const IMAGE_LINE = /^!\[([^\]\n]*)\]\(\s*(?:<([^>\s]+)>|((?:[^()\s]|\([^()\s]*\))+|[^)\s>]+))(?:\s+"[^"]*")?\s*\)$/;
 /** The line under a table's header: `|---|:--:|`. */
 const isTableRule = (s: string | undefined) => s != null && /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(s.trim()) && s.includes("-");
 /** A table starts at `i`: a row, and the rule right under it. */
@@ -81,19 +95,70 @@ function tableCells(line: string): string[] {
   return cells;
 }
 
+/** A list item line, bullet or numbered, at any depth. */
+const isItem = (line: string) => isBullet(line.trim()) || ordered(line.trim()) != null;
+
+/**
+ * The list that starts at `i`: its lines up to `end`, items apart or not by
+ * a blank line, and its items when every one is a task item (`- [ ] …`). A
+ * wrapped item's indented lines join it.
+ */
+function listAt(lines: string[], i: number): { end: number; tasks: ChecklistItem[] | null } {
+  const tasks: ChecklistItem[] = [];
+  let mixed = false;
+  let j = i;
+  while (j < lines.length) {
+    const line = lines[j];
+    if (!line.trim()) {
+      let k = j;
+      while (k < lines.length && !lines[k].trim()) k++;
+      if (k >= lines.length || !isItem(lines[k])) break;
+      j = k;
+      continue;
+    }
+    const task = taskItem(line);
+    if (task) tasks.push(task);
+    else if (isItem(line)) mixed = true;
+    else if (/^[ \t]/.test(line) && tasks.length && !mixed && !FENCE_LINE.test(line)) tasks[tasks.length - 1].text += ` ${line.trim()}`;
+    else break;
+    j++;
+  }
+  return { end: j, tasks: mixed || !tasks.length ? null : tasks };
+}
+
 /** Parses the blocks, line by line. */
 export function parseMarkdown(input: string): Block[] {
   const blocks: Block[] = [];
   const lines = input.replace(/\r\n?/g, "\n").split("\n");
+  // The lines of a list with task and plain items mixed: a plain list.
+  let plainList = -1;
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
 
     const rich = RICH_FENCE.exec(line);
     if (rich) {
+      // Only a bare fence of at least as many backticks closes the block, and
+      // not inside a code block of its own (```bash … ```); one indented a
+      // little closes it as well.
+      const fence = rich[1].length;
       const body: string[] = [];
-      for (i++; i < lines.length && !lines[i].startsWith("```"); i++) body.push(lines[i]);
-      blocks.push({ kind: "rich", type: rich[1], title: rich[2].trim(), body: body.join("\n"), open: i >= lines.length });
+      let inner = 0;
+      let closed = false;
+      for (i++; i < lines.length; i++) {
+        const m = FENCE_LINE.exec(lines[i]);
+        if (m) {
+          const bare = m[2].trim() === "";
+          if (!inner && bare && m[1].length >= fence) {
+            closed = true;
+            break;
+          }
+          if (!inner) inner = m[1].length;
+          else if (bare && m[1].length >= inner) inner = 0;
+        }
+        body.push(lines[i]);
+      }
+      blocks.push({ kind: "rich", type: rich[2], title: rich[3].trim(), body: body.join("\n"), open: !closed });
       i++;
       continue;
     }
@@ -162,8 +227,9 @@ export function parseMarkdown(input: string): Block[] {
       continue;
     }
     const image = IMAGE_LINE.exec(stripped);
-    if (image && safeWebUrl(image[2])?.startsWith("https:")) {
-      blocks.push({ kind: "image", alt: image[1].trim(), url: safeWebUrl(image[2])! });
+    const imageUrl = image ? safeWebUrl(image[2] ?? image[3]) : null;
+    if (image && imageUrl?.startsWith("https:")) {
+      blocks.push({ kind: "image", alt: image[1].trim(), url: imageUrl });
       i++;
       continue;
     }
@@ -176,6 +242,17 @@ export function parseMarkdown(input: string): Block[] {
       blocks.push({ kind: "quote", text: stripped.startsWith("> ") ? stripped.slice(2) : "" });
       i++;
       continue;
+    }
+
+    // A list whose items are all task items is a checklist (views/rich/checklist.ts).
+    if (i > plainList && isItem(line)) {
+      const list = listAt(lines, i);
+      if (list.tasks) {
+        blocks.push({ kind: "checklist", items: list.tasks });
+        i = list.end;
+        continue;
+      }
+      plainList = list.end - 1;
     }
 
     const indent = Math.floor((line.length - line.trimStart().length) / 2);
@@ -200,7 +277,7 @@ export function parseMarkdown(input: string): Block[] {
     for (i++; i < lines.length; i++) {
       const next = lines[i];
       const s = next.trim();
-      if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || isBullet(s) || isRule(s) || ordered(s)) break;
+      if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || CALLOUT.test(s) || isBullet(s) || isRule(s) || ordered(s)) break;
       if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i) || IMAGE_LINE.test(s)) break;
       para.push(next);
     }
@@ -222,10 +299,10 @@ export type Inline =
 
 /**
  * `code`, **bold**, __bold__, *italic*, _italic_ and [text](url), whichever
- * comes first. No lookbehind: one regex literal an engine rejects would take
+ * comes first; the url's parentheses are kept when they pair up. No lookbehind: one regex literal an engine rejects would take
  * the whole island down with it.
  */
-const INLINE = /`([^`\n]+)`|\*\*([^*]+?)\*\*|__([^_]+?)__|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_(?!\w)|\[([^\]\n]+)\]\(([^)\s]+)\)/g;
+const INLINE = /`([^`\n]+)`|\*\*([^*]+?)\*\*|__([^_]+?)__|\*([^*\s][^*]*?)\*|_([^_\s][^_]*?)_(?!\w)|\[([^\]\n]+)\]\(((?:[^()\s]|\([^()\s]*\))+|[^)\s]+)\)/g;
 
 const isWordChar = (c: string | undefined) => c != null && /\w/.test(c);
 
@@ -367,7 +444,20 @@ export function copyButton(text: string, cls = "md-copy"): HTMLElement {
 /** More columns than this and a table is drawn row by row instead. */
 const WIDE_TABLE = 3;
 
-function render(block: Block): HTMLElement {
+/** How one renderMarkdown call draws, and where the block being drawn is in it. */
+interface Pass {
+  streaming: boolean;
+  /** renderMarkdown's scope: the message. */
+  scope: string;
+  /** The block's place among the message's cards, images and callouts. */
+  n: number;
+  /** A checklist's place among the message's checklists. */
+  list: number;
+  /** MarkdownOptions.send. */
+  send?: (text: string) => void;
+}
+
+function render(block: Block, pass: Pass): HTMLElement {
   switch (block.kind) {
     case "heading": {
       const el = h("div", { class: block.level <= 2 ? "md-h md-h1" : "md-h" });
@@ -381,7 +471,7 @@ function render(block: Block): HTMLElement {
     }
     case "code": {
       // A ```diff block (its info may name the file: ```diff src/a.ts:12) is the diff card.
-      const diff = /^diff(?:\s|$)/.test(block.lang) ? renderDiffCard(block.code, block.lang.slice(4).trim(), RICH) : null;
+      const diff = /^diff(?:\s|$)/.test(block.lang) ? renderDiffCard(block.code, block.lang.slice(4).trim(), richContext(pass)) : null;
       return diff ?? h("div", { class: "md-pre" }, h("pre", { text: block.code }), copyButton(block.code));
     }
     case "item": {
@@ -436,24 +526,55 @@ function render(block: Block): HTMLElement {
       return mathBlock(block.tex);
     case "callout": {
       const body = h("div", { class: "rc-callout-body" });
-      renderMarkdown(body, block.body);
+      renderMarkdown(body, block.body, { streaming: pass.streaming, scope: `${pass.scope}>${pass.n}` });
       return renderCallout(block.type, block.title, body);
     }
-    case "rich":
+    case "rich": {
+      // A block whose fence never closed in a finished (or stopped) answer is
+      // read as if it had; only the answer being written shows a placeholder.
+      const done = block.open && !pass.streaming ? { ...block, open: false } : block;
       // A block the card can't read stays what it was written as: code.
-      return renderRich(block, RICH) ?? render({ kind: "code", lang: `lumo-${block.type}`, code: block.body });
+      return renderRich(done, richContext(pass)) ?? render({ kind: "code", lang: `lumo-${block.type}`, code: block.body }, pass);
+    }
+    case "checklist":
+      return renderChecklist({ title: "", items: block.items }, richContext(pass));
     case "image":
       return renderImage(block.alt, block.url);
   }
 }
 
 /** What the rich cards borrow from the Markdown, handed over so views/rich never imports it back. */
-const RICH: RichContext = {
-  markdown: (into, text) => renderMarkdown(into, text),
-  inline: (into, text) => inline(text, into),
-  math: (tex, display) => renderMath(tex, display),
-  copyButton: (text) => copyButton(text),
-};
+function richContext(pass: Pass): RichContext {
+  return {
+    markdown: (into, text) => renderMarkdown(into, text, { scope: `${pass.scope}>${pass.n}`, send: pass.send }),
+    inline: (into, text) => inline(text, into),
+    math: (tex, display) => renderMath(tex, display),
+    copyButton: (text) => copyButton(text),
+    scope: `${pass.scope}\u0000${pass.n}`,
+    message: pass.scope,
+    list: pass.list,
+    send: pass.send,
+  };
+}
+
+/** The checklist a block is, if it is one: a task list, or a ```lumo-checklist block that has been closed. */
+function checklistOf(block: Block, streaming: boolean): Checklist | null {
+  if (block.kind === "checklist") return { title: "", items: block.items };
+  if (block.kind !== "rich" || block.type !== "checklist" || (block.open && streaming)) return null;
+  return parseChecklist(block.title, block.body);
+}
+
+/**
+ * The checklists in an answer, in the order renderMarkdown draws them (chat.ts
+ * tells core/checklists.ts which lists each answer holds).
+ */
+export function checklistsIn(markdown: string, streaming = false): Checklist[] {
+  // Most answers have none: no parsing for them.
+  if (!/\[[ xX]\]|lumo-checklist/.test(markdown)) return [];
+  return parseMarkdown(markdown)
+    .map((b) => checklistOf(b, streaming))
+    .filter((c): c is Checklist => c != null);
+}
 
 /**
  * A formula on a line of its own: a size up, centred on the chat,
@@ -482,14 +603,80 @@ function quoteRun(lines: string[]): HTMLElement {
   return h("div", { class: "md-quote" }, h("i"), body);
 }
 
-/** Replaces what `into` shows with the Markdown rendered. */
-export function renderMarkdown(into: HTMLElement, markdown: string) {
+export interface MarkdownOptions {
+  /**
+   * The answer is still being written (chat.ts's live row): a ```lumo-…
+   * block whose fence has not come yet shows a placeholder. Otherwise it is
+   * read as if closed, or shown as the code it is.
+   */
+  streaming?: boolean;
+  /**
+   * Which message this is (chat.ts: the chat and the message's place), so
+   * two cards from the same text in two messages keep their own state.
+   */
+  scope?: string;
+  /**
+   * Sends a message in this chat as if the user had typed it (chat.ts), for
+   * a card's button that asks the AI for more (the quiz's next questions).
+   * Only a finished answer gets it.
+   */
+  send?: (text: string) => void;
+}
+
+/** The finished cards each container shows, by identity, kept for its next redraw. */
+const shown = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
+
+/**
+ * What identifies a card, image or callout across redraws of the same
+ * container: its place and its text. Null for anything drawn again each time,
+ * and for a block still being written.
+ */
+function identity(block: Block, n: number, streaming: boolean): string | null {
+  switch (block.kind) {
+    case "rich": {
+      if (block.open && streaming) return null;
+      // A checklist is drawn again when a list is written again further down.
+      const lists = block.type === "checklist" ? checklistsEpoch() : "";
+      return `rich\u0000${n}\u0000${lists}\u0000${block.type}\u0000${block.title}\u0000${block.body}\u0000${block.open}`;
+    }
+    case "image":
+      return `image\u0000${n}\u0000${block.url}\u0000${block.alt}`;
+    case "callout":
+      return `callout\u0000${n}\u0000${block.type}\u0000${block.title}\u0000${block.body}`;
+    case "checklist":
+      return `checklist\u0000${n}\u0000${checklistsEpoch()}\u0000${block.items.map((i) => `${i.done ? "x" : " "}${i.indent}${i.text}`).join("\n")}`;
+    case "code":
+      return /^diff(?:\s|$)/.test(block.lang) ? `diff\u0000${n}\u0000${block.lang}\u0000${block.code}` : null;
+    default:
+      return null;
+  }
+}
+
+/**
+ * Replaces what `into` shows with the Markdown rendered. A card, image or
+ * callout already shown in `into` with the same text stays the same node, so
+ * an answer still being written doesn't rebuild the cards above its end (a
+ * slider being dragged, a button being pressed, the focus all stay).
+ */
+export function renderMarkdown(into: HTMLElement, markdown: string, opts: MarkdownOptions = {}) {
   const blocks = parseMarkdown(markdown);
+  const streaming = opts.streaming === true;
+  const before = shown.get(into);
+  const kept = new Map<string, HTMLElement>();
+  let n = 0;
+  let list = 0;
   const out: HTMLElement[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     if (block.kind !== "quote") {
-      out.push(render(block));
+      const placed = identity(block, n, streaming);
+      const counted = placed != null || block.kind === "rich";
+      const pass: Pass = { streaming, scope: opts.scope ?? "", n, list, send: opts.send };
+      if (checklistOf(block, streaming)) list++;
+      if (counted) n++;
+      const el = (placed != null ? before?.get(placed) : undefined) ?? render(block, pass);
+      if (placed != null) kept.set(placed, el);
+      out.push(el);
       continue;
     }
     const lines: string[] = [];
@@ -501,4 +688,6 @@ export function renderMarkdown(into: HTMLElement, markdown: string) {
     if (lines.length) out.push(quoteRun(lines));
   }
   into.replaceChildren(...out);
+  if (kept.size) shown.set(into, kept);
+  else shown.delete(into);
 }

@@ -629,7 +629,10 @@ goes where you told Lumo to send it. The gateway's host is written to the log
 once; the key never is.
 
 No telemetry. The only network requests Lumo makes are to the services you
-configure yourself.
+configure yourself, and to the sites of the images in chat answers: Lumo
+downloads such an image at once (https and public addresses only, image files
+only, 8 MB at most), so its site sees your IP address. **Settings → Security →
+Images from the web** turns it off.
 
 ### Chat with your Claude plan (Claude Code)
 
@@ -794,25 +797,45 @@ and matrices. "$5 and $10" stays money.
 
 Where it helps, and sparingly, an answer can hold a card instead of plain
 text, laid out wide and low for the island. Every provider is told the
-formats (`rich_note` in `src-tauri/src/chat.rs`), and the chat draws them
-(`src/views/rich/`):
+formats in about 480 tokens (`rich_note` in `src-tauri/src/chat.rs`), local
+models included, and the chat draws them (`src/views/rich/`):
 
 - **Callouts**: a quote that starts `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
   `[!WARNING]` or `[!CAUTION]`, as on GitHub, for a key rule or a warning.
+- **Checklists**: a task list (`- [ ] item`), or a ` ```lumo-checklist `
+  block that gives it a title. Tick the boxes as you go: the ticks are saved
+  with the chat, and the assistant learns what you ticked with your next
+  message. When it writes the list again with the same title, the new one is
+  the list you tick and the old one shows as updated.
+- **Code changes**: a ` ```diff ` block, with the file's path after `diff`,
+  drawn as the agents' diffs are: lines added and removed, in one column or
+  before and after side by side, and a button that copies the new version.
+  Lumo never writes the file.
 - **Steps** (` ```lumo-steps `): a derivation or a procedure one step at a
   time, with buttons to go back and forth and a list of every step.
-- **Comparison cards** (` ```lumo-cards `): two to six things side by side,
+- **Comparison cards** (` ```lumo-cards `): two to eight things side by side,
   each with its icon, a few values and a line of text.
 - **Calculator** (` ```lumo-calc `): a formula with its inputs on sliders and
   its results worked out as you move them.
-- **Chart** (` ```lumo-plot `): one to three curves that follow the sliders of
-  their parameters.
-- **Images from the web**: a line that is only `![alt](https://…)`. Lumo
-  reaches only the services you set up, so it asks first: **Show** for this
-  image, or **Always from** its site, kept in **Settings → Security → Images
-  from the web**, where you can forget it. The image is downloaded by Lumo
-  itself (https and public addresses only, PNG, JPEG, GIF, WebP or AVIF, 8 MB
-  at most), never by the island.
+- **Function plot** (` ```lumo-plot `): one to three curves that follow the
+  sliders of their parameters, their values under the pointer.
+- **Quiz** (` ```lumo-quiz `): up to ten multiple-choice questions, one at a
+  time. Answer with a click or the keys 1 to 6; Lumo marks it at once and
+  explains, then gives the score and asks the missed ones again if you like.
+- **Data chart** (` ```lumo-chart `): numbers as horizontal bars or as lines,
+  up to four series, each value under the pointer, and the same numbers as a
+  table one click away.
+- **Timeline** (` ```lumo-timeline `): dates from left to right. Single dates
+  are events, each opened with a click or the arrow keys; date ranges make a
+  plan, its phases done, current or to do against today's date on your PC,
+  with its deadlines and the days left.
+- **Images from the web**: a line that is only `![alt](https://…)` shows
+  the image at once, with its site, its alt text and a button to open it in
+  the browser. The image is downloaded by Lumo itself, never by the island:
+  https and public addresses only (never this PC or the local network,
+  redirects checked the same way), PNG, JPEG, GIF, WebP or AVIF, 8 MB at most.
+  **Settings → Security → Images from the web** turns it off: the card then
+  shows only the site and the button, and nothing is downloaded.
 
 A block the chat can't read is shown as it was written, as code.
 

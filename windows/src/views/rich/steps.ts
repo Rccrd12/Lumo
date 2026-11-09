@@ -11,10 +11,13 @@
 // Each heading starts a step and names it; the lines under it are its
 // Markdown, its first display formula drawn large in the middle of the card.
 // A block with no heading at all is read line by line, each line a step. The
-// card keeps one height as it steps: the formula it comes from small and dim
-// above, the current one large, its number and name under it, and a bar of
-// segments at the bottom, one per step. The list button shows every step at
-// once; a row of the list goes back to that step.
+// card keeps one height as it steps, its tallest step's (every step is laid
+// out in the same place, only the current one shown): the formula it comes
+// from small and dim above, the current one large, its number and name under
+// it, and a bar of segments at the bottom, one per step. The list button shows
+// every step at once; a row of the list goes back to that step. The copy
+// button, after the title, shows when the pointer is over the card, as a
+// formula's does, so it covers nothing of the steps.
 
 import { h, svg } from "../dom";
 import { ICONS } from "../icons";
@@ -187,7 +190,18 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
     show();
   });
   const copy = ctx.copyButton(stepsMarkdown(steps));
+  copy.classList.add("rc-steps-copy");
+  const top = head("steps", steps.title, count, prev, next, toggle);
+  // After the title: hidden at rest, it takes the title's room, not the buttons'.
+  const parts = [...top.childNodes];
+  parts.splice(parts.findIndex((n) => (n as Element).classList?.contains("rc-sp")), 0, copy);
+  top.replaceChildren(...parts);
   const body = h("div", { class: "rc-steps-body" });
+  /** The list's rows while it shows. */
+  let listed: HTMLElement[] = [];
+  // Every step built once, one over the other: the card is as tall as the tallest.
+  const stages = list.map((_, i) => stage(i));
+  const deck = h("div", { class: "rc-steps-deck" }, ...stages);
   const segments = list.map((_, i) => {
     const label = t(STEPS_STRINGS.step, { n: i + 1 });
     // Out of the Tab order: the arrows and the buttons above already move.
@@ -197,7 +211,7 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
   const card = h(
     "div",
     { class: "rc-card rc-steps", tabindex: 0, role: "group", "aria-label": steps.title || t(RICH_STRINGS.steps) },
-    head("steps", steps.title, count, prev, next, toggle, copy),
+    top,
     body,
     bar,
   );
@@ -205,7 +219,12 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
   card.addEventListener("keydown", (e) => {
     const k = e as KeyboardEvent;
     if (k.ctrlKey || k.altKey || k.metaKey || k.shiftKey) return;
-    const to = k.key === "ArrowLeft" ? place.at - 1 : k.key === "ArrowRight" ? place.at + 1 : k.key === "Home" ? 0 : k.key === "End" ? last : null;
+    // In the list, the arrows go from the row the focus is on, up and down as well.
+    const row = place.all ? listed.indexOf(document.activeElement as HTMLElement) : -1;
+    const from = row >= 0 ? row : place.at;
+    const back = k.key === "ArrowLeft" || (place.all && k.key === "ArrowUp");
+    const ahead = k.key === "ArrowRight" || (place.all && k.key === "ArrowDown");
+    const to = back ? from - 1 : ahead ? from + 1 : k.key === "Home" ? 0 : k.key === "End" ? last : null;
     if (to == null) return;
     k.preventDefault();
     k.stopPropagation();
@@ -214,7 +233,11 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
 
   function go(i: number) {
     const to = Math.min(Math.max(i, 0), last);
-    if (to === place.at) return;
+    if (to === place.at) {
+      // The focus on another row of the list still comes to the current one.
+      if (place.all && holdsFocus(body)) listed[to]?.focus();
+      return;
+    }
     place.at = to;
     show();
   }
@@ -222,6 +245,7 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
   /** Brings the card to where it is; only what changes is redrawn, so the buttons keep the focus. */
   function show() {
     const { at, all } = place;
+    const hadFocus = holdsFocus(body);
     count.textContent = `${at + 1} / ${list.length}`;
     prev.disabled = at === 0;
     next.disabled = at === last;
@@ -233,23 +257,38 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
       else s.removeAttribute("aria-current");
     });
     bar.hidden = all;
-    body.replaceChildren(all ? rows() : stage());
+    stages.forEach((s, i) => {
+      s.classList.toggle("on", i === at);
+      if (i === at) s.removeAttribute("aria-hidden");
+      else s.setAttribute("aria-hidden", "true");
+      s.inert = i !== at;
+    });
+    if (all) body.replaceChildren(rows());
+    else if (body.firstChild !== deck) {
+      listed = [];
+      body.replaceChildren(deck);
+    }
+    // The focus was on a row of the list, or a link of a step, that has just
+    // gone: it moves to the current row, or to the card, so the arrow keys go on.
+    if (hadFocus && !holdsFocus(body)) {
+      (all ? listed[at] : card).focus();
+    }
     // A button that just turned off would drop the focus to the page: the card keeps it.
     const focused = typeof document !== "undefined" ? document.activeElement : null;
     if ((focused === prev && prev.disabled) || (focused === next && next.disabled)) card.focus();
   }
 
-  /** One step: the formula it comes from, its own large, its number and name. */
-  function stage(): HTMLElement {
-    const cur = list[place.at];
-    const before = list[place.at - 1];
+  /** Step `at`: the formula it comes from, its own large, its number and name. */
+  function stage(at: number): HTMLElement {
+    const cur = list[at];
+    const before = list[at - 1];
     const from = h("div", { class: "rc-steps-prev" });
     if (!before) from.append(h("span", { class: "rc-steps-start", text: t(STEPS_STRINGS.start) }));
-    else if (before.tex) from.append(ctx.math(before.tex));
+    else if (before.tex) from.append(fadeWhenWide(h("span", { class: "rc-steps-prev-tex" }, ctx.math(before.tex))));
     else from.append(oneLine(before.label || before.text));
 
     const main = h("div", { class: "rc-steps-cur" });
-    if (cur.tex) main.append(h("div", { class: "rc-steps-formula" }, ctx.math(cur.tex, true)));
+    if (cur.tex) main.append(fadeWhenWide(h("div", { class: "rc-steps-formula" }, ctx.math(cur.tex, true))));
     // A step that is only a name says it here, large, and not again under it.
     const nameOnly = !cur.tex && !cur.text;
     if (cur.text) {
@@ -262,7 +301,7 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
       main.append(text);
     }
 
-    const name = h("div", { class: "rc-steps-label" }, h("span", { class: "rc-num", text: String(place.at + 1) }));
+    const name = h("div", { class: "rc-steps-label" }, h("span", { class: "rc-num", text: String(at + 1) }));
     if (cur.label && !nameOnly) {
       const span = h("span", { class: "rc-steps-name" });
       ctx.inline(span, cur.label);
@@ -274,33 +313,33 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
   /** Every step at once, a row each; a row goes back to that step. */
   function rows(): HTMLElement {
     const named = list.some((s) => s.label);
-    return h(
-      "div",
-      { class: "rc-steps-list" },
-      ...list.map((s, i) => {
-        const row = h(
-          "button",
-          { class: i === place.at ? "rc-steps-row cur" : "rc-steps-row" },
-          h("span", { class: "rc-num", text: String(i + 1) }),
-        );
-        if (named) {
-          const label = h("span", { class: "rc-steps-row-label" });
-          ctx.inline(label, s.label);
-          row.append(label);
-        }
-        const what = h("span", { class: "rc-steps-row-what" });
-        if (s.tex) what.append(ctx.math(s.tex));
-        else if (s.text) what.append(oneLine(s.text));
-        row.append(what);
-        row.addEventListener("click", () => {
-          place.at = i;
-          place.all = false;
-          show();
-          card.focus();
-        });
-        return row;
-      }),
-    );
+    listed = list.map((s, i) => {
+      const row = h(
+        "button",
+        { class: i === place.at ? "rc-steps-row cur" : "rc-steps-row" },
+        h("span", { class: "rc-num", text: String(i + 1) }),
+      );
+      // The name and the formula share a baseline, the formula a size up.
+      const line = h("span", { class: "rc-steps-row-body" });
+      if (named) {
+        const label = h("span", { class: "rc-steps-row-label" });
+        ctx.inline(label, s.label);
+        line.append(label);
+      }
+      const what = h("span", { class: s.tex ? "rc-steps-row-what tex" : "rc-steps-row-what" });
+      if (s.tex) what.append(ctx.math(s.tex));
+      else if (s.text) what.append(oneLine(s.text));
+      line.append(what);
+      row.append(line);
+      row.addEventListener("click", () => {
+        place.at = i;
+        place.all = false;
+        show();
+        card.focus();
+      });
+      return row;
+    });
+    return h("div", { class: "rc-steps-list" }, ...listed);
   }
 
   /** The first line of some Markdown, inline, cut short by the stylesheet. */
@@ -312,6 +351,29 @@ export function renderSteps(steps: Steps, ctx: RichContext, key: string): HTMLEl
 
   show();
   return card;
+}
+
+/**
+ * Fades `el`, a formula wider than the card, at the edge it goes on past, so a
+ * cut one shows there is more. Checked when it is laid out or resized and
+ * when it is scrolled: nothing runs while it is left alone.
+ */
+function fadeWhenWide(el: HTMLElement): HTMLElement {
+  const sync = () => {
+    const max = el.scrollWidth - el.clientWidth;
+    el.classList.toggle("fade-start", max > 1 && el.scrollLeft > 1);
+    el.classList.toggle("fade-end", max > 1 && el.scrollLeft < max - 1);
+  };
+  el.addEventListener("scroll", sync, { passive: true });
+  if (typeof ResizeObserver !== "undefined") new ResizeObserver(sync).observe(el);
+  return el;
+}
+
+/** Whether the focus is on `el` or inside it. */
+function holdsFocus(el: HTMLElement): boolean {
+  if (typeof document === "undefined") return false;
+  for (let n: Element | null = document.activeElement ?? null; n; n = n.parentElement) if (n === el) return true;
+  return false;
 }
 
 /** A small square button of the card's top line. */

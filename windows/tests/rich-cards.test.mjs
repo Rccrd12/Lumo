@@ -112,6 +112,36 @@ test("what models write a little wrong still reads", () => {
   });
 });
 
+test("a plain line right under the name, with rows after it, is the subtitle", () => {
+  const cards = parseCards(
+    "",
+    [
+      "## Mercurio",
+      "Il più vicino al Sole",
+      "- Distanza: 58 mln km",
+      "Di giorno **430 °C**.",
+      "## Venere",
+      "sub: Il più caldo",
+      "A second plain line stays text",
+      "- Lune: 0",
+      "## Terra",
+      "Only a line of text, no rows",
+      "## Marte",
+      "- Lune: 2",
+      "A line after the rows is text",
+    ].join("\n"),
+  );
+  assert.deepEqual(
+    cards.cards.map((c) => [c.sub, c.text]),
+    [
+      ["Il più vicino al Sole", ["Di giorno **430 °C**."]],
+      ["Il più caldo", ["A second plain line stays text"]],
+      ["", ["Only a line of text, no rows"]],
+      ["", ["A line after the rows is text"]],
+    ],
+  );
+});
+
 test("a heading's own hashes are part of its title, closing ones are not", () => {
   const cards = parseCards("", "## C#\n## F# ##\n##\n- a: b");
   assert.deepEqual(
@@ -245,6 +275,28 @@ test("the scroll shows the fades and buttons it calls for, and is remembered", (
   layout(row2, 400, 800, 0);
   row2.fire("scroll");
   assert.equal(row2.scrollLeft, 150);
+});
+
+test("a card taller than the row allows fades at its bottom while there is more below", () => {
+  const el = renderCards(parseCards("", PLANETS), ctx, "k-clipped");
+  const row = el.querySelector(".rc-cards-row");
+  const [tall, short] = el.find(".rc-mini");
+  // What a card holds scrolls inside its frame.
+  const [inTall, inShort] = el.find(".rc-mini-in");
+  assert.equal(inTall.parentElement, tall);
+  Object.assign(inTall, { clientHeight: 178, scrollHeight: 260, scrollTop: 0 });
+  Object.assign(inShort, { clientHeight: 150, scrollHeight: 150, scrollTop: 0 });
+  layout(row, 400, 800, 0);
+  row.fire("scroll");
+  assert.ok(tall.classList.contains("clipped"));
+  assert.ok(!short.classList.contains("clipped"));
+  // Scrolled to its bottom, nothing more to hint at.
+  inTall.scrollTop = 82;
+  inTall.fire("scroll");
+  assert.ok(!tall.classList.contains("clipped"));
+  inTall.scrollTop = 20;
+  inTall.fire("scroll");
+  assert.ok(tall.classList.contains("clipped"));
 });
 
 test("the wheel moves the row sideways only while it can go that way", () => {

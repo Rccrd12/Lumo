@@ -52,7 +52,7 @@ test("a calculator: its formula, inputs and outputs", () => {
   assert.equal(calc.title, "Ohm's law");
   assert.equal(calc.formula, "I = \\frac{V}{R}");
   assert.deepEqual(calc.inputs, [
-    { name: "V", label: "voltage", min: 0, max: 24, step: 0.2, value: 12, unit: "V" },
+    { name: "V", label: "voltage", min: 0, max: 24, step: 0.1, value: 12, unit: "V" },
     { name: "R", label: "resistance", min: 1, max: 100, step: 1, value: 10, unit: "Ω" },
   ]);
   assert.deepEqual(calc.outputs.map(strip), [
@@ -79,16 +79,24 @@ test("ranges as models write them", () => {
   assert.equal(parseRange("12"), null);
 });
 
-test("a nice step, about a hundredth of the range", () => {
-  assert.equal(niceStep(24), 0.2);
+test("a nice step, about a hundredth of the range, tenths for a few units to a few tens", () => {
+  assert.equal(niceStep(24), 0.1);
   assert.equal(niceStep(99), 1);
-  assert.equal(niceStep(2), 0.02);
-  assert.equal(niceStep(3.5), 0.05);
+  assert.equal(niceStep(2), 0.1);
+  assert.equal(niceStep(3.5), 0.1);
+  assert.equal(niceStep(49), 0.1);
+  assert.equal(niceStep(1), 0.01);
+  assert.equal(niceStep(0.5), 0.005);
   assert.equal(niceStep(1000), 10);
+  // The card's design: 12.0 V, 10 Ω, 1.4 and 1.6 rad/s, with no step written.
+  assert.equal(formatValue(12, parseInput("V | 0..24 | 12").step), "12.0");
+  assert.equal(formatValue(10, parseInput("R | 1..100 | 10").step), "10");
+  assert.equal(formatValue(1.4, parseInput("A | 0..2 | 1.4").step), "1.4");
+  assert.equal(formatValue(1.6, parseInput("omega | 0.5..4 | 1.6").step), "1.6");
 });
 
 test("an input forgives: a unit with its value, no value, a step, Greek and TeX names", () => {
-  assert.deepEqual(parseInput("V | voltage | 0..24 | 12 V"), { name: "V", label: "voltage", min: 0, max: 24, step: 0.2, value: 12, unit: "V" });
+  assert.deepEqual(parseInput("V | voltage | 0..24 | 12 V"), { name: "V", label: "voltage", min: 0, max: 24, step: 0.1, value: 12, unit: "V" });
   assert.deepEqual(parseInput("R | 1..100"), { name: "R", label: "", min: 1, max: 100, step: 1, value: 50.5, unit: "" });
   assert.deepEqual(parseInput("R | resistance | 1..100 | Ω"), { name: "R", label: "resistance", min: 1, max: 100, step: 1, value: 50.5, unit: "Ω" });
   assert.equal(parseInput("n | count | 0..10 step 1 | 3").step, 1);
@@ -144,9 +152,9 @@ test("a chart: its curves, ranges and inputs", () => {
   assert.deepEqual(plot.x, [0, 12]);
   assert.deepEqual(plot.curves.map((c) => c.source), ["A * sin(omega * x)"]);
   assert.deepEqual(plot.inputs.map((i) => [i.name, i.value, i.unit]), [["A", 1.4, ""], ["omega", 1.6, "rad/s"]]);
-  // Auto range: what the curve spans at the first values (about ±1.4), padded.
-  assert.ok(plot.y[0] < -1.4 && plot.y[0] > -1.8, String(plot.y));
-  assert.ok(plot.y[1] > 1.4 && plot.y[1] < 1.8, String(plot.y));
+  // Auto range: what the curve spans wherever the sliders go (±2, A at its
+  // most), padded a twentieth: the curve never leaves the frame.
+  assert.ok(Math.abs(plot.y[0] + 2.2) < 0.01 && Math.abs(plot.y[1] - 2.2) < 0.01, String(plot.y));
 });
 
 test("a chart forgives: no x range, `y = …`, `y: a..b` as the range, no inputs", () => {
@@ -174,6 +182,30 @@ test("the auto range leaves out a curve shooting off at its poles", () => {
   const plot = parsePlot("", "y: tan(x)\nx: -1.5..1.5");
   const [lo, hi] = plot.y;
   assert.ok(hi < 60 && lo > -60, String(plot.y));
+  // Across several poles, the frame is the curve's middle, not its spikes.
+  for (const body of ["y: tan(x)\nx: -6..6", "y: tan(x)\nx: -3..3", "y: 1/x\nx: -5..5"]) {
+    const [a, b] = parsePlot("", body).y;
+    assert.ok(a > -10 && b < 10 && b - a > 2, `${body}: ${a}, ${b}`);
+  }
+  // A sharp peak is no pole: a resonance keeps its top.
+  assert.ok(parsePlot("", "y: 1 / sqrt((1 - x^2)^2 + (0.02 * x)^2)\nx: 0..3").y[1] > 50);
+  assert.ok(parsePlot("", "y: exp(-50 * x^2)\nx: -10..10").y[1] > 1);
+  // Curves that only grow keep their whole span.
+  assert.ok(parsePlot("", "y: exp(x)\nx: 0..10").y[1] > 22000);
+  assert.ok(parsePlot("", "y: x^2\nx: -10..10").y[1] > 100);
+  // A slider that would make the frame far wider than the curve at its start
+  // (exp(k·x) up to k = 3) leaves the frame to the start.
+  const grow = parsePlot("", "y: exp(k * x)\nx: 0..5\ninput: k | 0.1..3 | 1");
+  assert.ok(grow.y[1] > 148 && grow.y[1] < 170, String(grow.y));
+  // A curve flat at the start takes the frame its sliders give it.
+  const still = parsePlot("", "y: A * sin(x)\nx: 0..12\ninput: A | 0..2 | 0");
+  assert.ok(Math.abs(still.y[0] + 2.2) < 0.01 && Math.abs(still.y[1] - 2.2) < 0.01, String(still.y));
+  const line = parsePlot("", "y: k * x\nx: 0..2\ninput: k | 0..5 | 0");
+  assert.ok(line.y[1] >= 10 && line.y[1] < 11, String(line.y));
+  // A pole next to curves the sliders stretch: the pole is cut, the curves'
+  // reach kept (A·sin x with A at 3 stays inside the frame).
+  const mixed = parsePlot("", "y: A*sin(x)\ny: A*cos(x)\ny: 1/x\nx: -5..5\ninput: A | 0..3 | 1");
+  assert.ok(mixed.y[1] >= 3 && mixed.y[1] < 6 && mixed.y[0] <= -3 && mixed.y[0] > -6, String(mixed.y));
   // A flat curve still gets a frame.
   assert.deepEqual(autoRange({ curves: parsePlot("", "y: 0").curves, x: [0, 1] }, {}), [-1, 1]);
   assert.deepEqual(autoRange({ curves: parsePlot("", "y: 4").curves, x: [0, 1] }, {}), [2, 6]);
@@ -212,8 +244,11 @@ test("numbers in three or four significant digits, — for no number", () => {
   assert.equal(formatNumber(12345.6), "12,346");
   assert.equal(formatNumber(0), "0");
   assert.equal(formatNumber(-2.5), "-2.50");
-  assert.equal(formatNumber(2.5e7), "2.5E7");
-  assert.equal(formatNumber(0.0001234), "1.23E-4");
+  assert.equal(formatNumber(2.5e7), "2.50\u202f×\u202f10⁷");
+  assert.equal(formatNumber(0.00001234), "1.23\u202f×\u202f10⁻⁵");
+  // Down to a ten-thousandth as plain decimals, as its neighbours read.
+  assert.equal(formatNumber(0.00012), "0.000120");
+  assert.equal(formatNumber(0.00144), "0.00144");
   assert.equal(formatNumber(NaN), "—");
   assert.equal(formatNumber(Infinity), "—");
   assert.equal(formatValue(12, 0.2), "12.0");
@@ -222,6 +257,11 @@ test("numbers in three or four significant digits, — for no number", () => {
   assert.equal(formatValue(100, 10), "100");
   assert.equal(formatValue(9.81, 0.2), "9.81", "a first value off the step's grid keeps its decimals");
   assert.equal(formatValue(0.1 + 0.2, 0.1), "0.3", "not a float's long tail");
+  // A step finer than a millionth: scientific notation, never 0.000000.
+  assert.equal(formatValue(1e-7, parseInput("q | charge | 1e-9..1e-6 | 1e-7 | C").step), "1.0\u202f×\u202f10⁻⁷");
+  assert.equal(formatValue(1.5e-7, 1e-8), "1.5\u202f×\u202f10⁻⁷");
+  assert.equal(formatValue(550e-9, parseInput("l | wavelength | 380e-9..750e-9 | 550e-9 | m").step), "5.50\u202f×\u202f10⁻⁷");
+  assert.equal(formatValue(0, 1e-8), "0");
 });
 
 test("names as TeX", () => {
@@ -247,11 +287,12 @@ test("the calculator: sliders, results, and both following each other", () => {
   assert.equal(el.querySelector(".rc-title").textContent, "Ohm's law");
   assert.equal(el.querySelector(".rc-head-tex").textContent, "I = \\frac{V}{R}");
   const [v, r] = ranges(el);
-  assert.deepEqual([v.getAttribute("min"), v.getAttribute("max"), v.getAttribute("step"), v.getAttribute("value")], ["0", "24", "0.2", "12"]);
+  assert.deepEqual([v.getAttribute("min"), v.getAttribute("max"), v.getAttribute("step"), v.getAttribute("value")], ["0", "24", "0.1", "12"]);
   assert.equal(v.getAttribute("aria-label"), "voltage");
   assert.equal(v.style["--p"], "50%");
   assert.deepEqual(results(el), ["1.20", "14.4"]);
   assert.deepEqual(el.find(".rc-out-unit").map((u) => u.textContent), ["A", "W"]);
+  assert.deepEqual(el.find(".rc-out-unit").map((u) => u.getAttribute("title")), ["A", "W"], "a unit cut short reads whole on hover");
   assert.deepEqual(el.find(".rc-slider-val").map((c) => c.textContent), ["12.0 V", "10 Ω"]);
 
   v.value = "24";
@@ -271,6 +312,26 @@ test("the calculator: sliders, results, and both following each other", () => {
   assert.equal(results(el)[0], "—", "dividing by zero shows no number");
 });
 
+test("a slider reaches its max when the span is no multiple of its step", () => {
+  const body = "input: R | resistance | 1..100000 | 10 | Ω\noutput: I | current | 12 / R | A";
+  const el = renderCalc(parseCalc("", body), ctx, keyOf({ type: "calc", title: "", body }));
+  const [r] = ranges(el);
+  // Stops at 1, 1001, …, 99001: the end goes one stop further, read as the max.
+  assert.equal(r.getAttribute("step"), "1000");
+  assert.equal(r.getAttribute("max"), "100001");
+  r.value = "100001";
+  r.fire("input");
+  assert.equal(el.find(".rc-slider-val")[0].textContent, "100,000 Ω");
+  assert.equal(r.style["--p"], "100%");
+  assert.equal(results(el)[0], "0.000120");
+  // A span the step divides keeps its own max.
+  const ohm = renderCalc(parseCalc("", OHM), ctx, "ohm-max");
+  assert.equal(ranges(ohm)[0].getAttribute("max"), "24");
+  assert.equal(ranges(ohm)[1].getAttribute("max"), "100");
+  const turn = renderCalc(parseCalc("", "input: t | 0..2pi | 1\noutput: s | sin(t)"), ctx, "turn");
+  assert.equal(ranges(turn)[0].getAttribute("max"), "6.3");
+});
+
 test("many results lie in two columns, so the card stays low", () => {
   const body = "input: a | 0..1 | 0.5\n" + ["b", "c", "d", "f"].map((n) => `output: ${n} | a`).join("\n");
   const el = renderCalc(parseCalc("", body), ctx, keyOf({ type: "calc", title: "", body }));
@@ -288,7 +349,7 @@ test("the chart: a canvas over its sliders, quiet without a 2D context", () => {
   const [a] = ranges(el);
   a.value = "2";
   a.fire("input");
-  assert.equal(el.find(".rc-slider-val")[0].textContent, "2.00");
+  assert.equal(el.find(".rc-slider-val")[0].textContent, "2.0");
   const again = renderPlot(parsePlot("Sine wave", SINE), ctx, key);
   assert.equal(ranges(again)[0].getAttribute("value"), "2");
 });
