@@ -1416,23 +1416,24 @@ fn take_allowed(id: &str) -> bool {
     }
 }
 
-/// When a call of one of the user's tools needs a card. A local model's chat
-/// asks as its permission mode says (local_chat.rs); the API providers and
-/// Claude Code's relay as before: no card for a tool the user trusts.
+/// When a call of one of the user's tools needs a card. A tool the user
+/// didn't trust (Ask every time, in its detail) always asks, whoever calls it:
+/// a local model's permission mode (local_chat.rs) only decides for the tools
+/// they trust, and never asks less than the tool says. The API providers and
+/// Claude Code's relay ask as before: no card for a tool the user trusts.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Asking {
     /// Ask for approval: a card for every call, even of a tool the user trusts.
     Always,
     /// No card for a tool the user trusts (and Lumo can hold to what it declared), a card for the others.
     Untrusted,
-    /// Approve for me: no card for a tool the user trusts, nor for one that
-    /// stays in its own folder; a card for one that reaches out (the
-    /// internet, writing, the system), that the supervisor said to be careful
-    /// with, or that does what it didn't declare.
+    /// Approve for me: a trusted tool asks only when it is risky (it reaches
+    /// the internet, writes or touches the system, or the supervisor said to
+    /// be careful with it).
     Risky,
-    /// Run automatically: no card for a tool that runs in the Windows sandbox
-    /// (Sandbox High, and a tool that can run there); for the others, as
-    /// Approve for me.
+    /// Run automatically: a trusted tool doesn't ask when it runs in the
+    /// Windows sandbox (Sandbox High, and a tool that can run there); outside
+    /// it, as Approve for me.
     Sandboxed,
 }
 
@@ -1453,24 +1454,26 @@ impl Asking {
 /// What a tool may do that reaches past its own folder, of what it declares.
 const REACHING_OUT: [&str; 3] = ["network", "write", "system"];
 
-/// Whether a call of `tool` is one Approve for me asks for: one the user
-/// doesn't trust that reaches out, that the supervisor said to be careful
-/// with, or that does what it didn't declare.
+/// Whether a call of `tool` is one Approve for me asks for, trusted or not:
+/// one that reaches out, that the supervisor said to be careful with, or that
+/// does what it didn't declare.
 pub fn risky(tool: &ToolInfo) -> bool {
     let m = &tool.manifest;
     let careful = m.review.as_ref().is_none_or(|r| r.verdict != "ok");
     let reaches_out = m.permissions.iter().any(|p| REACHING_OUT.contains(&p.as_str()));
-    !(m.trust && tool.may_trust) && (!tool.may_trust || careful || reaches_out)
+    !tool.may_trust || careful || reaches_out
 }
 
 /// Whether a call of `tool` needs a card, `asking` as it does; `sandboxed`:
 /// it will run in the Windows sandbox (Sandbox High, a tool that can run
-/// there, on a Windows that lets Lumo make it).
+/// there, on a Windows that lets Lumo make it). A tool the user didn't trust
+/// always asks.
 pub fn needs_card(tool: &ToolInfo, asking: Asking, sandboxed: bool) -> bool {
-    let m = &tool.manifest;
+    let trusted = tool.manifest.trust && tool.may_trust;
     match asking {
         Asking::Always => true,
-        Asking::Untrusted => !(m.trust && tool.may_trust),
+        _ if !trusted => true,
+        Asking::Untrusted => false,
         Asking::Risky => risky(tool),
         Asking::Sandboxed => !sandboxed && risky(tool),
     }
@@ -1939,36 +1942,48 @@ mod tests {
 
     #[test]
     fn each_permission_mode_of_the_local_chat_asks_for_what_it_says() {
-        let plain = reviewed("x.py", &[], "ok", false);
-        let online = reviewed("x.py", &["network"], "ok", false);
-        let writes = reviewed("x.py", &["write"], "ok", false);
-        let system = reviewed("x.py", &["system"], "ok", false);
-        let careful = reviewed("x.py", &[], "caution", false);
-        let trusted = reviewed("x.py", &["network"], "ok", true);
-        let mut overreaching = reviewed("x.py", &[], "ok", false);
-        overreaching.may_trust = false;
+        // The tools the user trusts: what the chat's mode decides for.
+        let plain = reviewed("x.py", &[], "ok", true);
+        let online = reviewed("x.py", &["network"], "ok", true);
+        let writes = reviewed("x.py", &["write"], "ok", true);
+        let system = reviewed("x.py", &["system"], "ok", true);
+        let careful = reviewed("x.py", &[], "caution", true);
         assert_eq!(Asking::for_local("default"), Asking::Always);
         assert_eq!(Asking::for_local("auto"), Asking::Risky);
         assert_eq!(Asking::for_local("off"), Asking::Sandboxed);
         assert_eq!(Asking::for_local("plan"), Asking::Risky);
         // Ask for approval: every call, even of a tool the user trusts.
-        for tool in [&plain, &trusted] {
+        for tool in [&plain, &online] {
             assert!(needs_card(tool, Asking::Always, false) && needs_card(tool, Asking::Always, true));
         }
-        // Approve for me: only what reaches out, what the supervisor warned of, what overreaches.
+        // Approve for me: only what reaches out and what the supervisor warned of.
         assert!(!needs_card(&plain, Asking::Risky, false));
-        for tool in [&online, &writes, &system, &careful, &overreaching] {
+        for tool in [&online, &writes, &system, &careful] {
             assert!(needs_card(tool, Asking::Risky, false), "{:?}", tool.manifest.permissions);
             assert!(needs_card(tool, Asking::Risky, true), "the sandbox changes nothing for Approve for me");
         }
-        assert!(!needs_card(&trusted, Asking::Risky, false), "a tool the user trusts runs");
         // Run automatically: nothing in the Windows sandbox, as Approve for me out of it.
         for tool in [&plain, &online, &careful] {
             assert!(!needs_card(tool, Asking::Sandboxed, true));
         }
         assert!(needs_card(&online, Asking::Sandboxed, false) && !needs_card(&plain, Asking::Sandboxed, false));
         // The API providers and Claude Code's relay: as before, trust alone.
-        assert!(needs_card(&plain, Asking::Untrusted, false) && !needs_card(&trusted, Asking::Untrusted, false));
+        assert!(!needs_card(&online, Asking::Untrusted, false));
+    }
+
+    #[test]
+    fn a_tool_set_to_ask_every_time_asks_whatever_the_chat_says() {
+        let plain = reviewed("x.py", &[], "ok", false);
+        let online = reviewed("x.py", &["network"], "ok", false);
+        let mut overreaching = reviewed("x.py", &[], "ok", true);
+        overreaching.may_trust = false;
+        for tool in [&plain, &online, &overreaching] {
+            for asking in [Asking::Always, Asking::Untrusted, Asking::Risky, Asking::Sandboxed] {
+                for sandboxed in [false, true] {
+                    assert!(needs_card(tool, asking, sandboxed), "{asking:?} {sandboxed}");
+                }
+            }
+        }
     }
 
     #[test]

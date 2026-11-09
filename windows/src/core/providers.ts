@@ -71,9 +71,10 @@ export function isCliProvider(id: string): boolean {
  * Whether the chat's shield is offered with `id`: the CLIs, and the model
  * servers, whose tools the modes hold too (local_chat.rs: Ask for approval
  * asks for every call of the user's tools and every web search or page read,
- * Approve for me asks only for risky calls, Run automatically never asks for
- * what can run in the Windows sandbox and otherwise asks as Approve for me
- * does, Plan only gives none; see permissionModesFor).
+ * Approve for me asks for a trusted tool only when it is risky, Run
+ * automatically never asks for a trusted tool that can run in the Windows
+ * sandbox and otherwise asks as Approve for me does, Plan only gives none; a
+ * tool on Ask every time always asks; see permissionModesFor).
  */
 export function hasPermissions(id: string): boolean {
   return isCliProvider(id) || PROVIDERS.some((p) => p.id === id && p.urlField !== null);

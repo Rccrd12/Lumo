@@ -24,11 +24,12 @@
 // The chat's permission modes hold here too, as Unsloth Studio names them
 // (tools.rs Asking): Ask for approval is a card for each call of the user's
 // tools, even one they trust, and for each web search or page read; Approve
-// for me asks only for what looks risky (a tool that reaches the internet,
-// writes or touches the system, that the supervisor said to be careful with,
-// or that does what it didn't declare), a tool they trust never; Plan only
-// gives the model none of the user's tools, only the island's timer and
-// listening.
+// for me asks for a tool they trust only when it looks risky (it reaches the
+// internet, writes or touches the system, or the supervisor said to be
+// careful with it); Run automatically doesn't ask for one that runs in the
+// Windows sandbox; Plan only gives the model none of the user's tools, only
+// the island's timer and listening. A tool they didn't trust (Ask every time)
+// always asks.
 //
 // Nothing leaves the machine unless the user pointed the server address
 // somewhere else: that address is the only place this module talks to.
