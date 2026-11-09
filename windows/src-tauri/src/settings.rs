@@ -151,6 +151,11 @@ pub struct Settings {
     /// change nothing). Picked from the chat's field; anything else reads as
     /// "default".
     pub chat_permission_mode: String,
+    /// How the local chat's Run automatically and the user's tools are held
+    /// (the shield's Sandbox): "high" also runs a tool in the Windows sandbox
+    /// when it can (sandbox.rs), "low" under Lumo's guard only. Anything else
+    /// reads as "high".
+    pub local_sandbox: String,
     /// A quiet line next to the chat's model picker with what the provider has
     /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits
     /// Anthropic and OpenAI answer with, OpenRouter's key credits. Off until
@@ -354,6 +359,7 @@ impl Default for Settings {
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
             chat_permission_mode: "default".into(),
+            local_sandbox: "high".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
             chat_share_open: true,
@@ -700,6 +706,7 @@ mod tests {
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
   "chatPermissionMode": "plan",
+  "localSandbox": "low",
   "chatShowUsage": true,
   "chatShareExplorer": true,
   "chatShareOpen": false,
@@ -1196,6 +1203,7 @@ mod tests {
                 "chatModels",
                 "chatEffort",
                 "chatPermissionMode",
+                "localSandbox",
                 "chatShowUsage",
                 "chatShareExplorer",
                 "chatShareOpen",

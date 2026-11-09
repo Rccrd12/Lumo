@@ -3542,6 +3542,58 @@ math.mx .mx-cancel.mx-sout {
   color: #5c6370;
 }
 
+/* A local model's permissions: the sandbox's chip beside the title, and the
+   way back from its levels. */
+.perm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.sandbox-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #d6d9df;
+  font: 600 11px var(--font);
+  cursor: default;
+}
+
+.sandbox-chip:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.sandbox-chip svg,
+.perm-back svg {
+  opacity: 0.6;
+}
+
+.perm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.perm-back:hover {
+  color: #c8cdd4;
+}
+
 /* The commands' menu: "/" first in the field (views/chat.ts, core/slash.ts).
    Over the log, just above the field, in the right-click menu's dark card. */
 .slash-menu {

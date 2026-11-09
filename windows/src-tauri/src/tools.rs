@@ -820,9 +820,92 @@ fn cut(text: &str) -> String {
     format!("{}\n…", &text[..end])
 }
 
+/// Where a run happens (the local chat's Sandbox, sandbox.rs).
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Contain {
+    /// Under Lumo's guard only (Sandbox Low, and every run outside the local chat).
+    Guard,
+    /// In the Windows sandbox too when the tool can run there (Sandbox High);
+    /// when Windows won't start it there, under the guard alone.
+    Sandbox,
+    /// In the Windows sandbox or not at all: a call no card was asked for
+    /// because it would run there (Run automatically).
+    SandboxOnly,
+}
+
+/// The programs a tool's file runs with that the Windows sandbox can hold:
+/// Python and Node under their guards, and a program of its own.
+const CONTAINABLE: [&str; 6] = ["py", "pyw", "js", "mjs", "cjs", "exe"];
+
+/// Whether `m` can run in the Windows sandbox: a file it can run, and nothing
+/// declared but the internet (reading or writing the user's files, or the
+/// system, is exactly what the sandbox keeps a tool from).
+pub fn containable(dir: &Path, m: &Manifest) -> bool {
+    CONTAINABLE.contains(&extension(&entry_path(dir, &m.entry)).as_str()) && m.permissions.iter().all(|p| p == "network")
+}
+
+/// The folder a program found on the PATH runs from, for the sandbox to read:
+/// none for Windows' own (System32's py.exe, say), which it reads already.
+fn program_dir(exe: &Path) -> Option<PathBuf> {
+    let dir = exe.parent()?.to_path_buf();
+    let windows = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
+    // The Microsoft Store's python.exe is a link into WindowsApps, which no
+    // sandbox reads: Windows won't start it there, and its folder keeps no grant.
+    let store = dir.components().any(|c| c.as_os_str().eq_ignore_ascii_case("WindowsApps"));
+    (!dir.starts_with(&windows) && !store).then_some(dir)
+}
+
+/// What a run of `m` from `dir`, its program `exe`, may read in the Windows
+/// sandbox: the tool's own folder, the guard, the program's folder and
+/// Python's packages for the user.
+fn sandbox_reads(dir: &Path, path: &Path, exe: &Path) -> Vec<PathBuf> {
+    let mut read = vec![dir.to_path_buf()];
+    // A script that was already on the computer runs where it is: that file alone.
+    if !path.starts_with(dir) {
+        read.push(path.to_path_buf());
+    }
+    if matches!(extension(path).as_str(), "py" | "pyw") {
+        read.push(platform::local_dir().join(GUARD_FILE));
+        if let Some(user) = std::env::var_os("APPDATA").map(|a| PathBuf::from(a).join("Python")).filter(|p| p.is_dir()) {
+            read.push(user);
+        }
+    }
+    read.extend(program_dir(exe));
+    read
+}
+
+/// A run's stdin, stdout and stderr, wherever it was started.
+type Pipes = (Option<Box<dyn Write>>, Option<Box<dyn Read + Send>>, Option<Box<dyn Read + Send>>);
+
+/// A run under way, wherever it was started.
+enum Running {
+    Plain(std::process::Child),
+    Contained(crate::sandbox::Contained),
+}
+
+impl Running {
+    /// Some(exit code) once it ended (None for a code Windows didn't give), None while it runs.
+    fn try_wait(&mut self) -> std::io::Result<Option<Option<i32>>> {
+        match self {
+            Running::Plain(c) => c.try_wait().map(|s| s.map(|s| s.code())),
+            Running::Contained(c) => c.try_wait().map(|s| s.map(Some)),
+        }
+    }
+
+    fn kill(&mut self) {
+        match self {
+            Running::Plain(c) => {
+                let _ = c.kill();
+                let _ = c.wait();
+            }
+            Running::Contained(c) => c.kill(),
+        }
+    }
+}
+
 /// Runs the file at `entry` (in `dir` unless absolute) with `input`, within
-/// its time. Blocking.
-pub fn run_in(dir: &Path, m: &Manifest, input: &Value) -> RunResult {
+/// its time, where `contain` says. Blocking.
+pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunResult {
     let started = Instant::now();
     let done = |ok: bool, output: String| RunResult { ok, output, ms: started.elapsed().as_millis() as u64 };
     let path = entry_path(dir, &m.entry);
@@ -836,33 +919,80 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value) -> RunResult {
     };
     words.extend(fill_args(&m.args, input));
     let input_text = input.to_string();
-    let mut cmd = Command::new(exe);
-    cmd.args(&words)
-        .current_dir(path.parent().unwrap_or(dir))
-        .env("LUMO_TOOL_INPUT", &input_text)
-        .env("LUMO_TOOL_DIR", dir)
-        .env("LUMO_TOOL_WORK", &work)
-        .env("LUMO_TOOL_ALLOW", m.permissions.join(","))
-        .env("TEMP", &work)
-        .env("TMP", &work)
-        .env("PYTHONIOENCODING", "utf-8")
-        .stdin(Stdio::piped())
-        .stdout(Stdio::piped())
-        .stderr(Stdio::piped());
+    let cwd = path.parent().unwrap_or(dir).to_path_buf();
+    let mut env: Vec<(String, String)> = vec![
+        ("LUMO_TOOL_INPUT".into(), input_text.clone()),
+        ("LUMO_TOOL_DIR".into(), dir.to_string_lossy().to_string()),
+        ("LUMO_TOOL_WORK".into(), work.to_string_lossy().to_string()),
+        ("LUMO_TOOL_ALLOW".into(), m.permissions.join(",")),
+        ("TEMP".into(), work.to_string_lossy().to_string()),
+        ("TMP".into(), work.to_string_lossy().to_string()),
+        ("PYTHONIOENCODING".into(), "utf-8".into()),
+    ];
     // No internet declared: what honours a proxy (curl, .NET, Python, many
-    // others) is pointed at one that isn't there. Python is stopped anyway.
-    if !m.permissions.iter().any(|p| p == "network") {
+    // others) is pointed at one that isn't there. Python is stopped anyway,
+    // and so is everything in the Windows sandbox.
+    let network = m.permissions.iter().any(|p| p == "network");
+    if !network {
         for var in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"] {
-            cmd.env(var, "http://127.0.0.1:9");
+            env.push((var.into(), "http://127.0.0.1:9".into()));
         }
-        cmd.env("NO_PROXY", "").env("no_proxy", "");
+        env.push(("NO_PROXY".into(), String::new()));
+        env.push(("no_proxy".into(), String::new()));
     }
-    platform::no_console(&mut cmd);
-    let mut child = match cmd.spawn() {
-        Ok(c) => c,
-        Err(e) => return done(false, e.to_string()),
+    let mut child = None;
+    if contain != Contain::Guard {
+        let reason = if !containable(dir, m) {
+            Some("it reads, writes or changes what the Windows sandbox keeps a tool from".to_string())
+        } else if !crate::sandbox::available() {
+            Some("Windows didn't let Lumo make its sandbox".to_string())
+        } else {
+            let read = sandbox_reads(dir, &path, &exe);
+            let launch = crate::sandbox::Launch { exe: &exe, args: &words, cwd: &cwd, env: &env, read: &read, write: std::slice::from_ref(&work), network };
+            match crate::sandbox::spawn(&launch) {
+                Ok(c) => {
+                    child = Some(Running::Contained(c));
+                    None
+                }
+                Err(e) => Some(e),
+            }
+        };
+        if let Some(reason) = reason {
+            if contain == Contain::SandboxOnly {
+                // For the model, as the other answers of a chat's call (serve_call).
+                return done(false, format!("{} didn't run: it can't run in the Windows sandbox ({reason}), and Run automatically runs a tool like it only there. The user can run it with the chat on Ask for approval or Approve for me.", m.name));
+            }
+            crate::log::line(format!("[tools] {} runs under the guard only: {reason}", m.id));
+        }
+    }
+    let mut child = match child {
+        Some(c) => c,
+        None => {
+            let mut cmd = Command::new(&exe);
+            cmd.args(&words).current_dir(&cwd).stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped());
+            for (k, v) in &env {
+                cmd.env(k, v);
+            }
+            platform::no_console(&mut cmd);
+            match cmd.spawn() {
+                Ok(c) => Running::Plain(c),
+                Err(e) => return done(false, e.to_string()),
+            }
+        }
     };
-    if let Some(mut stdin) = child.stdin.take() {
+    let (stdin, stdout, stderr): Pipes = match &mut child {
+        Running::Plain(c) => (
+            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write>),
+            c.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+            c.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+        ),
+        Running::Contained(c) => (
+            c.stdin.take().map(|s| Box::new(s) as Box<dyn Write>),
+            c.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+            c.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>),
+        ),
+    };
+    if let Some(mut stdin) = stdin {
         let _ = stdin.write_all(input_text.as_bytes());
     }
     let pipe = |r: Option<Box<dyn Read + Send>>| {
@@ -876,30 +1006,34 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value) -> RunResult {
             String::from_utf8_lossy(&buf).to_string()
         })
     };
-    let out = pipe(child.stdout.take().map(|s| Box::new(s) as Box<dyn Read + Send>));
-    let err = pipe(child.stderr.take().map(|s| Box::new(s) as Box<dyn Read + Send>));
+    let out = pipe(stdout);
+    let err = pipe(stderr);
     let limit = Duration::from_secs(if m.timeout == 0 { DEFAULT_TIMEOUT_S } else { m.timeout.clamp(5, MAX_TIMEOUT_S) });
     let status = loop {
         match child.try_wait() {
-            Ok(Some(status)) => break Some(status),
+            Ok(Some(code)) => break Some(code),
             Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(40)),
             _ => {
-                let _ = child.kill();
-                let _ = child.wait();
+                child.kill();
                 break None;
             }
         }
     };
+    // In the sandbox, what the tool started and left running ends with it
+    // (its job), so nothing keeps the output open.
+    if let Running::Contained(c) = &mut child {
+        c.kill();
+    }
     let stdout = out.join().unwrap_or_default();
     let stderr = err.join().unwrap_or_default();
     match status {
         None => done(false, tf("The tool took more than {seconds} s and was stopped.", &[("seconds", &limit.as_secs().to_string())])),
-        Some(s) if s.success() => {
+        Some(Some(0)) => {
             let text = if stdout.trim().is_empty() { stderr.trim().to_string() } else { stdout.trim().to_string() };
             done(true, cut(&text))
         }
-        Some(s) => {
-            let code = s.code().map(|c| c.to_string()).unwrap_or_else(|| "?".into());
+        Some(code) => {
+            let code = code.map(|c| c.to_string()).unwrap_or_else(|| "?".into());
             let mut text = format!("exit code {code}");
             for part in [stderr.trim(), stdout.trim()].into_iter().filter(|p| !p.is_empty()) {
                 text.push('\n');
@@ -944,7 +1078,7 @@ pub fn try_draft(draft: &Draft, input: &Value) -> Result<RunResult, String> {
         review: None,
         command: String::new(),
     };
-    Ok(run_in(&dir, &m, input))
+    Ok(run_in(&dir, &m, input, Contain::Guard))
 }
 
 // ── For the agents (lumo-hook --mcp --tools=user) ─────────────────────────────
@@ -1004,7 +1138,7 @@ pub fn listenable(id: &str) -> Result<ToolInfo, String> {
 /// One run of a tool Listening listens to, with nothing given (blocking).
 pub fn run_listened(id: &str) -> Result<RunResult, String> {
     let tool = listenable(id)?;
-    Ok(run_in(Path::new(&tool.dir), &tool.manifest, &json!({})))
+    Ok(run_in(Path::new(&tool.dir), &tool.manifest, &json!({}), Contain::Guard))
 }
 
 /// Lumo's email tools for `mail` (mail.rs ai_tools: "", "mail",
@@ -1095,9 +1229,10 @@ fn plan_speaker(provider: &str) -> (String, &'static str) {
 
 /// A call from the chat `chat_id`'s API providers (claude.rs,
 /// openai_compat.rs, local_chat.rs): what goes back to the model, and whether
-/// it failed. `always_ask`: a card even for a tool the user trusts (a local
-/// model's chat on Ask every time).
-pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, always_ask: bool) -> (String, bool) {
+/// it failed. `asking`: when one of the user's tools needs a card (a local
+/// model's chat asks as its permission mode says); `sandbox_high`: they run
+/// in the Windows sandbox when they can (the local chat's Sandbox High).
+pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> (String, bool) {
     if crate::island_tools::NAMES.contains(&id) {
         return crate::island_tools::call(chat_id, id, &input);
     }
@@ -1130,8 +1265,14 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
         }
         return (text, failed);
     }
-    // Lumo's web search, read-only: no card, as for a search engine's own.
+    // Lumo's web search, read-only: no card, as for a search engine's own,
+    // but with Ask for approval, which asks before the internet too.
     if crate::web_search::NAMES.contains(&id) {
+        if asking == Asking::Always {
+            if let Err(e) = approve_web(app, id, &input).await {
+                return (e, true);
+            }
+        }
         let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
         return crate::web_search::call(id, &input, &provider).await;
     }
@@ -1139,7 +1280,7 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
     let answer = if is_mail_tool(id) {
         crate::mail::serve(app, &json!({ "tool": id, "input": input })).await
     } else {
-        serve_call(app, &json!({ "tool": id, "input": input, "always_ask": always_ask })).await
+        serve_call(app, &json!({ "tool": id, "input": input, "asking": asking.id(), "sandbox": if sandbox_high { "high" } else { "low" } })).await
     };
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
@@ -1177,15 +1318,91 @@ fn take_allowed(id: &str) -> bool {
     }
 }
 
-/// The user's go-ahead for one call: none needed for a tool they trust (and
-/// Lumo can hold to what it declared) unless `always_ask`, the click on
-/// Claude Code's own card when there was one, else an Allow / Deny card on
-/// the island.
-async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value, always_ask: bool) -> Result<(), String> {
-    let m = &tool.manifest;
-    if m.trust && tool.may_trust && !always_ask {
-        return Ok(());
+/// When a call of one of the user's tools needs a card. A local model's chat
+/// asks as its permission mode says (local_chat.rs); the API providers and
+/// Claude Code's relay as before: no card for a tool the user trusts.
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Asking {
+    /// Ask for approval: a card for every call, even of a tool the user trusts.
+    Always,
+    /// No card for a tool the user trusts (and Lumo can hold to what it declared), a card for the others.
+    Untrusted,
+    /// Approve for me: no card for a tool the user trusts, nor for one that
+    /// stays in its own folder; a card for one that reaches out (the
+    /// internet, writing, the system), that the supervisor said to be careful
+    /// with, or that does what it didn't declare.
+    Risky,
+    /// Run automatically: no card for a tool that runs in the Windows sandbox
+    /// (Sandbox High, and a tool that can run there); for the others, as
+    /// Approve for me.
+    Sandboxed,
+}
+
+impl Asking {
+    /// How a local model's chat asks in permission `mode` ("default", "auto",
+    /// "off" or "plan", as the chat's shield sets it). Plan only has none of
+    /// the user's tools, so asks as Approve for me for the web.
+    pub fn for_local(mode: &str) -> Asking {
+        match mode {
+            "default" => Asking::Always,
+            "off" => Asking::Sandboxed,
+            _ => Asking::Risky,
+        }
     }
+
+    fn id(self) -> &'static str {
+        match self {
+            Asking::Always => "always",
+            Asking::Untrusted => "untrusted",
+            Asking::Risky => "risky",
+            Asking::Sandboxed => "sandboxed",
+        }
+    }
+
+    /// The `asking` of a `{"lumo_tool": …}` request; one without it (Claude
+    /// Code's relay) asks as before, and so does one with `always_ask` alone.
+    fn of_request(request: &Value) -> Asking {
+        match request.get("asking").and_then(Value::as_str) {
+            Some("always") => Asking::Always,
+            Some("risky") => Asking::Risky,
+            Some("sandboxed") => Asking::Sandboxed,
+            Some(_) => Asking::Untrusted,
+            None if request.get("always_ask").and_then(Value::as_bool) == Some(true) => Asking::Always,
+            None => Asking::Untrusted,
+        }
+    }
+}
+
+/// What a tool may do that reaches past its own folder, of what it declares.
+const REACHING_OUT: [&str; 3] = ["network", "write", "system"];
+
+/// Whether a call of `tool` is one Approve for me asks for: one the user
+/// doesn't trust that reaches out, that the supervisor said to be careful
+/// with, or that does what it didn't declare.
+pub fn risky(tool: &ToolInfo) -> bool {
+    let m = &tool.manifest;
+    let careful = m.review.as_ref().is_none_or(|r| r.verdict != "ok");
+    let reaches_out = m.permissions.iter().any(|p| REACHING_OUT.contains(&p.as_str()));
+    !(m.trust && tool.may_trust) && (!tool.may_trust || careful || reaches_out)
+}
+
+/// Whether a call of `tool` needs a card, `asking` as it does; `sandboxed`:
+/// it will run in the Windows sandbox (Sandbox High, a tool that can run
+/// there, on a Windows that lets Lumo make it).
+pub fn needs_card(tool: &ToolInfo, asking: Asking, sandboxed: bool) -> bool {
+    let m = &tool.manifest;
+    match asking {
+        Asking::Always => true,
+        Asking::Untrusted => !(m.trust && tool.may_trust),
+        Asking::Risky => risky(tool),
+        Asking::Sandboxed => !sandboxed && risky(tool),
+    }
+}
+
+/// The user's go-ahead for one call that needs a card: the click on Claude
+/// Code's own card when there was one, else an Allow / Deny card on the island.
+async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value) -> Result<(), String> {
+    let m = &tool.manifest;
     if take_allowed(&m.id) {
         return Ok(());
     }
@@ -1200,6 +1417,24 @@ async fn approve(app: &AppHandle, tool: &ToolInfo, input: &Value, always_ask: bo
     match crate::pipe::ask(app, payload).await.as_deref() {
         Some("allow") => Ok(()),
         Some(_) => Err(format!("The user said no to running {} this time.", m.name)),
+        None => Err("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment.".into()),
+    }
+}
+
+/// The user's go-ahead for a web search or a page read, on the card Claude
+/// Code's own WebSearch and WebFetch get (what is searched, the page).
+async fn approve_web(app: &AppHandle, id: &str, input: &Value) -> Result<(), String> {
+    let text = |key: &str| input.get(key).and_then(Value::as_str).unwrap_or("").trim().to_string();
+    let (tool, field) = if id == crate::web_search::SEARCH { ("WebSearch", "query") } else { ("WebFetch", "url") };
+    let payload = json!({
+        "hook_event_name": "PermissionRequest",
+        "lumo_island": true,
+        "tool_name": tool,
+        "tool_input": { field: text(field) },
+    });
+    match crate::pipe::ask(app, payload).await.as_deref() {
+        Some("allow") => Ok(()),
+        Some(_) => Err("The user said no to going on the internet this time.".into()),
         None => Err("Lumo couldn't ask the user (the island is paused or busy). Try again in a moment.".into()),
     }
 }
@@ -1220,13 +1455,29 @@ pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
     if !tool.reviewed {
         return json!({ "error": format!("The tool {} changed since it was reviewed. The user can review it again in Lumo's Tools tab.", m.name) });
     }
-    let always_ask = request.get("always_ask").and_then(Value::as_bool).unwrap_or(false);
-    if let Err(e) = approve(app, &tool, &input, always_ask).await {
-        return json!({ "error": e });
+    // The local chat's Sandbox High: the tool runs in the Windows sandbox
+    // when it can, and Run automatically asks nothing for one that does.
+    let asking = Asking::of_request(request);
+    let high = request.get("sandbox").and_then(Value::as_str) == Some("high");
+    let dir = PathBuf::from(&tool.dir);
+    let sandboxed = high && containable(&dir, m) && tauri::async_runtime::spawn_blocking(crate::sandbox::available).await.unwrap_or(false);
+    let card = needs_card(&tool, asking, sandboxed);
+    if card {
+        if let Err(e) = approve(app, &tool, &input).await {
+            return json!({ "error": e });
+        }
     }
+    let contain = if !high {
+        Contain::Guard
+    } else if !card && risky(&tool) {
+        // No card because it would run in the sandbox: there or not at all.
+        Contain::SandboxOnly
+    } else {
+        Contain::Sandbox
+    };
     let name = m.name.clone();
-    let (dir, m) = (PathBuf::from(&tool.dir), tool.manifest.clone());
-    let result = tauri::async_runtime::spawn_blocking(move || run_in(&dir, &m, &input))
+    let m = tool.manifest.clone();
+    let result = tauri::async_runtime::spawn_blocking(move || run_in(&dir, &m, &input, contain))
         .await
         .unwrap_or_else(|e| RunResult { ok: false, output: e.to_string(), ms: 0 });
     let _ = app.emit_to(WINDOW_LABEL, "tool-ran", json!({ "name": name, "ok": result.ok }));
@@ -1583,5 +1834,71 @@ mod tests {
         assert!(take_allowed("bench_card"));
         assert!(!take_allowed("bench_card"), "once");
         assert!(!take_allowed("other_card"));
+    }
+
+    /// A reviewed tool as the chat sees it: `verdict` from the supervisor, `trust` from the user.
+    fn reviewed(entry: &str, permissions: &[&str], verdict: &str, trust: bool) -> ToolInfo {
+        let mut m = manifest(entry, permissions);
+        m.trust = trust;
+        m.review = Some(Review { verdict: verdict.into(), ..Review::default() });
+        ToolInfo { manifest: m, dir: String::new(), files: vec![], missing: false, reviewed: true, unguarded: vec![], may_trust: verdict != "danger" }
+    }
+
+    #[test]
+    fn each_permission_mode_of_the_local_chat_asks_for_what_it_says() {
+        let plain = reviewed("x.py", &[], "ok", false);
+        let online = reviewed("x.py", &["network"], "ok", false);
+        let writes = reviewed("x.py", &["write"], "ok", false);
+        let system = reviewed("x.py", &["system"], "ok", false);
+        let careful = reviewed("x.py", &[], "caution", false);
+        let trusted = reviewed("x.py", &["network"], "ok", true);
+        let mut overreaching = reviewed("x.py", &[], "ok", false);
+        overreaching.may_trust = false;
+        assert_eq!(Asking::for_local("default"), Asking::Always);
+        assert_eq!(Asking::for_local("auto"), Asking::Risky);
+        assert_eq!(Asking::for_local("off"), Asking::Sandboxed);
+        assert_eq!(Asking::for_local("plan"), Asking::Risky);
+        // Ask for approval: every call, even of a tool the user trusts.
+        for tool in [&plain, &trusted] {
+            assert!(needs_card(tool, Asking::Always, false) && needs_card(tool, Asking::Always, true));
+        }
+        // Approve for me: only what reaches out, what the supervisor warned of, what overreaches.
+        assert!(!needs_card(&plain, Asking::Risky, false));
+        for tool in [&online, &writes, &system, &careful, &overreaching] {
+            assert!(needs_card(tool, Asking::Risky, false), "{:?}", tool.manifest.permissions);
+            assert!(needs_card(tool, Asking::Risky, true), "the sandbox changes nothing for Approve for me");
+        }
+        assert!(!needs_card(&trusted, Asking::Risky, false), "a tool the user trusts runs");
+        // Run automatically: nothing in the Windows sandbox, as Approve for me out of it.
+        for tool in [&plain, &online, &careful] {
+            assert!(!needs_card(tool, Asking::Sandboxed, true));
+        }
+        assert!(needs_card(&online, Asking::Sandboxed, false) && !needs_card(&plain, Asking::Sandboxed, false));
+        // The API providers and Claude Code's relay: as before, trust alone.
+        assert!(needs_card(&plain, Asking::Untrusted, false) && !needs_card(&trusted, Asking::Untrusted, false));
+    }
+
+    #[test]
+    fn a_request_says_how_it_asks_and_old_ones_ask_as_before() {
+        assert_eq!(Asking::of_request(&json!({ "tool": "t" })), Asking::Untrusted);
+        assert_eq!(Asking::of_request(&json!({ "always_ask": true })), Asking::Always);
+        for asking in [Asking::Always, Asking::Untrusted, Asking::Risky, Asking::Sandboxed] {
+            assert_eq!(Asking::of_request(&json!({ "asking": asking.id() })), asking);
+        }
+        assert_eq!(Asking::of_request(&json!({ "asking": "full" })), Asking::Untrusted, "nothing unknown asks less");
+    }
+
+    #[test]
+    fn only_a_tool_that_needs_nothing_but_the_internet_runs_in_the_windows_sandbox() {
+        let dir = Path::new("tools");
+        assert!(containable(dir, &manifest("x.py", &[])));
+        assert!(containable(dir, &manifest("x.mjs", &["network"])));
+        assert!(containable(dir, &manifest("x.exe", &[])));
+        for permission in ["read", "write", "system"] {
+            assert!(!containable(dir, &manifest("x.py", &["network", permission])), "{permission}");
+        }
+        for entry in ["x.ps1", "x.bat", "x.cmd"] {
+            assert!(!containable(dir, &manifest(entry, &[])), "{entry}");
+        }
     }
 }

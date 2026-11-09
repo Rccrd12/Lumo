@@ -13,10 +13,14 @@
 // reasons. A server that says nothing is sent the tools all the same, and a
 // model that refuses them is asked again without.
 //
-// The chat's permission modes hold here too: Ask every time is a card for
-// each call of the user's tools, even one they trust; Auto lets the tools
-// they trust run without asking (the others ask); Plan only gives the model
-// none of the user's tools, only the island's timer and listening.
+// The chat's permission modes hold here too, as Unsloth Studio names them
+// (tools.rs Asking): Ask for approval is a card for each call of the user's
+// tools, even one they trust, and for each web search or page read; Approve
+// for me asks only for what looks risky (a tool that reaches the internet,
+// writes or touches the system, that the supervisor said to be careful with,
+// or that does what it didn't declare), a tool they trust never; Plan only
+// gives the model none of the user's tools, only the island's timer and
+// listening.
 //
 // Nothing leaves the machine unless the user pointed the server address
 // somewhere else: that address is the only place this module talks to.
@@ -478,7 +482,9 @@ struct Island<'a, P> {
     all: &'a [(String, String, Value)],
     /// The system message, for the tools loaded (and none, for a model that takes none).
     prompt_for: &'a P,
-    always_ask: bool,
+    asking: crate::tools::Asking,
+    /// The user's tools run in the Windows sandbox when they can (Sandbox High).
+    sandbox_high: bool,
     /// The server's id, as the ring knows it.
     server: &'static str,
     /// The context the model is loaded with, in tokens (0: not said), for the ring.
@@ -562,8 +568,8 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         } else {
             name.to_string()
         });
-        let (app, chat, always_ask, name) = (self.app, self.chat.id().to_string(), self.always_ask, name.to_string());
-        async move { crate::tools::call_for_chat(app, &chat, &name, input, always_ask).await }
+        let (app, chat, asking, high, name) = (self.app, self.chat.id().to_string(), self.asking, self.sandbox_high, name.to_string());
+        async move { crate::tools::call_for_chat(app, &chat, &name, input, asking, high).await }
     }
 }
 
@@ -617,6 +623,7 @@ pub async fn send(
     caps: &Caps,
     effort: &str,
     mode: &str,
+    sandbox: &str,
     query: String,
     context: Option<ChatContext>,
     shared: &[String],
@@ -628,7 +635,8 @@ pub async fn send(
     }
     let turn = chat.begin(server.id);
     // The tools, unless the server says the model takes none.
-    let mode = crate::claude_code::permission_mode(mode);
+    // Run automatically ("off") is the local chat's own mode; the rest read as the CLIs'.
+    let mode = if mode.trim() == "off" { "off" } else { crate::claude_code::permission_mode(mode) };
     // Lumo's email tools, usable only while this turn runs.
     let mail = if caps.tools == Some(false) { "" } else { crate::mail::ai_tools(app) };
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
@@ -653,7 +661,8 @@ pub async fn send(
     let loaded = profile::loaded(chat.id(), &profile::in_groups(&all, &named));
     let tools = profile::pick(&all, &loaded);
     let web = web && tools.iter().any(|(id, _, _)| crate::web_search::NAMES.contains(&id.as_str()));
-    let always_ask = mode == "default";
+    let asking = crate::tools::Asking::for_local(mode);
+    let sandbox_high = sandbox != "low";
     let workspace = tools.iter().any(|(id, _, _)| id == crate::workspace::COPY);
     let today = profile::today();
     // What the model is told, for the tools it has loaded (and none, when the server takes none).
@@ -763,7 +772,7 @@ pub async fn send(
             pause: Duration::from_secs(1),
             text_only: (text_only != user).then_some(text_only),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, asking, sandbox_high, server: server.id, context: context_size };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, prompt_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))
