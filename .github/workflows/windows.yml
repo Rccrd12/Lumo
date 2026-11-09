@@ -14,10 +14,9 @@ on:
 permissions:
   contents: read
 
-# Publishing is on: Microsoft reviewed the Defender false positive
-# (Trojan:Win32/Wacatac.H!ml) and removed the detection. Before pushing a
-# windows-v* tag, run this workflow by hand and scan the artifacts with Defender:
-# a new unsigned build can still trip its machine-learning model. Set this to
+# Publishing is on. A new unsigned build can trip Defender's machine-learning
+# model (Trojan:Win32/Wacatac.H!ml, then Trojan:Win32/Bearfoos.A!ml): the build
+# job scans what ships with Defender and stops on a detection. Set this to
 # 'false' to build tags without publishing.
 env:
   PUBLISH: 'true'
@@ -86,6 +85,31 @@ jobs:
           $version = (Get-Content src-tauri/tauri.conf.json | ConvertFrom-Json).version
           "version=$version" >> $env:GITHUB_OUTPUT
           Get-ChildItem release | Format-Table Name, Length
+
+      # Defender's machine-learning model has flagged unsigned builds before
+      # (Trojan:Win32/Wacatac.H!ml, Trojan:Win32/Bearfoos.A!ml). What ships is
+      # scanned here with Defender's newest definitions, and a detection stops
+      # the job: nothing Defender flags is published. Its cloud model can still
+      # flag a build later on a PC: then the file goes to Microsoft for review.
+      - name: Scan with Microsoft Defender
+        shell: pwsh
+        run: |
+          $mp = Join-Path $env:ProgramFiles 'Windows Defender\MpCmdRun.exe'
+          if (-not (Test-Path $mp)) { throw "Microsoft Defender is not on this runner" }
+          & $mp -SignatureUpdate | Out-Host
+          if ($LASTEXITCODE -ne 0) { Write-Warning "Defender's definitions were not updated (exit $LASTEXITCODE): the runner's own are used" }
+          $files = @(Get-Item target/release/lumo.exe, target/release/lumo-hook.exe) +
+            @(Get-ChildItem release -File | Where-Object { $_.Extension -in '.exe', '.msi' })
+          $flagged = @()
+          foreach ($f in $files) {
+            & $mp -Scan -ScanType 3 -File $f.FullName -DisableRemediation | Out-Host
+            if ($LASTEXITCODE -eq 2) { $flagged += $f.Name }
+            elseif ($LASTEXITCODE -ne 0) { throw "Defender could not scan $($f.Name) (exit $LASTEXITCODE)" }
+          }
+          if ($flagged) {
+            throw "Microsoft Defender flags $($flagged -join ', '): not published. Send the file to https://www.microsoft.com/en-us/wdsi/filesubmission (Software developer, Incorrectly detected)."
+          }
+          "Microsoft Defender: $($files.Count) files clean"
 
       # Upload only on a manual run or when publishing a release.
       # The repo is public, so artifacts are downloadable by any signed-in GitHub
