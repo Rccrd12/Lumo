@@ -81,6 +81,31 @@ time a step is done (completed) and the next one starts (in_progress). Keep step
     )
 }
 
+/// Each chat's plan as its model last showed it (`update_plan`'s input), so
+/// a local model's next question can say where it stands (local_chat.rs).
+/// Forgotten when the chat starts over or goes back to an edited question.
+static PLANS: Mutex<Option<HashMap<String, Value>>> = Mutex::new(None);
+
+fn with_plans<T>(f: impl FnOnce(&mut HashMap<String, Value>) -> T) -> T {
+    f(PLANS.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(HashMap::new))
+}
+
+/// The plan chat `chat_id`'s model showed last.
+pub fn remember_plan(chat_id: &str, input: &Value) {
+    if !chat_id.is_empty() {
+        with_plans(|plans| plans.insert(chat_id.to_string(), input.clone()));
+    }
+}
+
+/// Chat `chat_id`'s plan, when it isn't done.
+pub fn open_plan(chat_id: &str) -> Option<lumo_local::Plan> {
+    with_plans(|plans| plans.get(chat_id).and_then(lumo_local::Plan::from_input)).filter(lumo_local::Plan::open)
+}
+
+pub fn forget_plan(chat_id: &str) {
+    with_plans(|plans| plans.remove(chat_id));
+}
+
 /// Validates and answers an `update_plan` call (matching hook/src/mcp.rs `plan_answer`).
 pub fn plan_answer(input: &Value) -> (String, bool) {
     let Some(steps) = input.get("plan").or_else(|| input.get("steps")).and_then(Value::as_array) else {
@@ -422,6 +447,21 @@ pub fn take(chat_id: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_chat_s_plan_is_kept_until_it_is_done_or_forgotten() {
+        let chat = "plans-test";
+        assert!(open_plan(chat).is_none());
+        remember_plan(chat, &json!({ "plan": [{ "step": "A", "status": "completed" }, { "step": "B", "status": "in_progress" }] }));
+        assert_eq!(open_plan(chat).unwrap().current(), Some((2, "B")));
+        remember_plan(chat, &json!({ "plan": [{ "step": "A", "status": "completed" }, { "step": "B", "status": "completed" }] }));
+        assert!(open_plan(chat).is_none(), "done");
+        remember_plan(chat, &json!({ "plan": [{ "step": "C", "status": "pending" }] }));
+        forget_plan(chat);
+        assert!(open_plan(chat).is_none());
+        remember_plan("", &json!({ "plan": [{ "step": "C", "status": "pending" }] }));
+        assert!(open_plan("").is_none());
+    }
 
     #[test]
     fn each_call_becomes_the_line_the_island_already_reads() {

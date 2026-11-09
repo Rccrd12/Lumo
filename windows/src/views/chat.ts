@@ -490,6 +490,7 @@ const ACTIVITY_STRINGS = {
   correctWritten: N_("It wrote the tool instead of using it: asking again…"),
   correctDone: N_("It said it was done without doing it: asking again…"),
   correctStopped: N_("It stopped halfway: asking again…"),
+  correctPlan: N_("The plan wasn't up to date: asking again…"),
   seconds: N_("{seconds} s"),
 };
 
@@ -613,7 +614,15 @@ export function activityLabel(activity: ChatActivity | null): string {
       return attempt && of ? t(ACTIVITY_STRINGS.retry, { name, attempt, of }) : t(ACTIVITY_STRINGS.thinking);
     }
     case "correcting":
-      return t(detail === "written" ? ACTIVITY_STRINGS.correctWritten : detail === "done" ? ACTIVITY_STRINGS.correctDone : ACTIVITY_STRINGS.correctStopped);
+      return t(
+        detail === "written"
+          ? ACTIVITY_STRINGS.correctWritten
+          : detail === "done"
+            ? ACTIVITY_STRINGS.correctDone
+            : detail === "plan"
+              ? ACTIVITY_STRINGS.correctPlan
+              : ACTIVITY_STRINGS.correctStopped,
+      );
     default:
       return t(ACTIVITY_STRINGS.thinking);
   }

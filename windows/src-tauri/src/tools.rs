@@ -1073,6 +1073,18 @@ pub fn chat_tools(mail: &str, web: bool, workspace: bool) -> Vec<(String, String
     all
 }
 
+/// Shows chat `chat_id`'s plan (`update_plan`'s input) on the Plan island,
+/// in the name and colour of `provider`, and keeps it for the chat's next question.
+pub fn show_plan(app: &AppHandle, chat_id: &str, provider: &str, input: &Value) {
+    crate::island_tools::remember_plan(chat_id, input);
+    let (agent, color) = plan_speaker(provider);
+    let _ = app.emit_to(
+        WINDOW_LABEL,
+        "chat-plan",
+        json!({ "chat": chat_id, "tool": crate::island_tools::UPDATE_PLAN, "input": input, "agent": agent, "color": color }),
+    );
+}
+
 /// Name and accent colour of a chat provider for the Plan island (`src/core/providers.ts`).
 fn plan_speaker(provider: &str) -> (String, &'static str) {
     match provider {
@@ -1105,12 +1117,7 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
         let (text, failed) = crate::island_tools::plan_answer(&input);
         if !failed {
             let provider = tauri::async_runtime::spawn_blocking(|| crate::settings::load().chat_provider).await.unwrap_or_default();
-            let (agent, color) = plan_speaker(&provider);
-            let _ = app.emit_to(
-                WINDOW_LABEL,
-                "chat-plan",
-                json!({ "chat": chat_id, "tool": id, "input": input, "agent": agent, "color": color }),
-            );
+            show_plan(app, chat_id, &provider, &input);
         }
         return (text, failed);
     }

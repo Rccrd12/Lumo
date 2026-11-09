@@ -191,6 +191,7 @@ impl Chat {
     }
 
     pub fn reset(&self) {
+        crate::island_tools::forget_plan(&self.id);
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
         *c = Conversation { epoch, ..Default::default() };
@@ -215,6 +216,7 @@ impl Chat {
     /// Puts a chat from the history back: its turns as plain text, and the
     /// session to continue, if a CLI answered it (as `cli_session` gave it).
     pub fn restore(&self, turns: Vec<(String, String)>, cli_session: Option<String>, compact: Option<(usize, String)>) {
+        crate::island_tools::forget_plan(&self.id);
         let mut c = self.inner.lock().unwrap();
         let epoch = c.epoch + 1;
         let plain: Vec<Value> = turns
@@ -236,6 +238,8 @@ impl Chat {
     /// afresh with the kept turns carried as text. The folders and files that
     /// came with the dropped turns go with them; those of the kept ones stay.
     pub fn rewind(&self, keep: usize) {
+        // The island drops the plan the dropped answers made (src/island/plan.ts).
+        crate::island_tools::forget_plan(&self.id);
         let mut c = self.inner.lock().unwrap();
         c.epoch += 1;
         c.files.retain(|(_, _, turn)| *turn < keep);

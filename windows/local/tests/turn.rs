@@ -6,13 +6,13 @@ mod fake;
 use std::time::{Duration, Instant};
 
 use fake::*;
-use lumo_local::{run, Correction, Doing, End, Failure, Outcome, Rules, MORE};
+use lumo_local::{run, Correction, Doing, End, Failure, Outcome, Plan, Rules, MORE};
 use serde_json::{json, Value};
 
 const CHANGES: &[&str] = &["workspace_write", "workspace_edit", "workspace_delete"];
 
 fn rules<'a>(key: &str, query: &'a str) -> Rules<'a> {
-    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO, text_only: None }
+    Rules { key: key.to_string(), query, workspace: true, changes: CHANGES, max_rounds: 8, pause: Duration::ZERO, text_only: None, plan: None }
 }
 
 /// Runs a turn of `body` on a server with `replies`.
@@ -534,4 +534,104 @@ fn the_same_change_asked_twice_is_made_once_and_said_once() {
     assert_eq!(outcome.fixes, ["same call again"]);
     assert!(last_said(&requests[2]).contains("already ran"));
     assert_eq!(outcome.answer(), "Ho riscritto il file.");
+}
+
+// ── The plan (plan.rs) ───────────────────────────────────────────────────────
+
+const PLAN_ABC: &str = r#"{"plan":[{"step":"A","status":"in_progress"},{"step":"B","status":"pending"},{"step":"C","status":"pending"}]}"#;
+const PLAN_DONE: &str = r#"{"plan":[{"step":"A","status":"completed"},{"step":"B","status":"completed"},{"step":"C","status":"completed"}]}"#;
+
+#[test]
+fn a_plan_left_behind_the_work_is_reminded_then_checked_at_the_end() {
+    let mut island = Island::default();
+    let replies = vec![
+        calls("c1", "update_plan", PLAN_ABC),
+        calls("c2", "workspace_write", "{\"path\":\"a\"}"),
+        calls("c3", "workspace_write", "{\"path\":\"b\"}"),
+        answer("Fatto!"),
+        calls("c4", "update_plan", PLAN_DONE),
+        answer("Fatto, tutti e tre i passi."),
+    ];
+    let mut body = question("Fai A, B e C", &["update_plan", "workspace_write"]);
+    let (outcome, requests) = turn(replies, &mut body, &rules("plan-behind", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.fixes, ["plan reminded", "plan behind the work"]);
+    // One round of other tools: nothing yet; two: the reminder, under the result.
+    assert_eq!(last_said(&requests[2]), "workspace_write done");
+    let reminded = last_said(&requests[3]);
+    assert!(reminded.starts_with("workspace_write done\n\n(Lumo: your plan on the Plan island shows step 1 \"A\" in progress"), "{reminded}");
+    // The answer with the plan behind: sent back once, and said so.
+    assert!(last_said(&requests[4]).contains("still shows 3 of 3 steps not completed"), "{}", last_said(&requests[4]));
+    assert!(island.doing.contains(&Doing::Correcting(Correction::Plan)));
+    assert_eq!(outcome.answer(), "Fatto, tutti e tre i passi.");
+    assert_eq!(requests.len(), 6);
+}
+
+#[test]
+fn a_plan_kept_up_to_date_is_left_alone() {
+    let mut island = Island::default();
+    let a_done = r#"{"plan":[{"step":"A","status":"completed"},{"step":"B","status":"in_progress"}]}"#;
+    let replies = vec![
+        calls("c1", "update_plan", PLAN_ABC),
+        calls("c2", "workspace_write", "{\"path\":\"a\"}"),
+        calls("c3", "update_plan", a_done),
+        answer("Ho fatto A, B te lo lascio."),
+    ];
+    let (outcome, requests) = turn(replies, &mut question("Fai A e B", &["update_plan", "workspace_write"]), &rules("plan-ok", ""), &mut island);
+    assert!(outcome.unwrap().fixes.is_empty());
+    assert_eq!(requests.len(), 4);
+    // A question with no tools in a chat whose plan is under way: nothing about it.
+    let earlier = Plan::from_input(&serde_json::from_str::<Value>(PLAN_ABC).unwrap());
+    let r = Rules { plan: earlier, ..rules("plan-earlier", "") };
+    let (outcome, requests) = turn(vec![answer("Sono le 15.")], &mut question("Che ore sono?", &["update_plan"]), &r, &mut Island::default());
+    assert!(outcome.unwrap().fixes.is_empty());
+    assert_eq!(requests.len(), 1);
+}
+
+#[test]
+fn a_plan_from_an_earlier_question_left_behind_is_reminded_too() {
+    let earlier = Plan::from_input(&serde_json::from_str::<Value>(PLAN_ABC).unwrap());
+    let r = Rules { plan: earlier, ..rules("plan-earlier-behind", "") };
+    let replies = vec![calls("c1", "workspace_write", "{\"path\":\"a\"}"), answer("Fatto A."), calls("c2", "update_plan", PLAN_DONE), answer("Fatto A.")];
+    let (outcome, requests) = turn(replies, &mut question("Continua", &["update_plan", "workspace_write"]), &r, &mut Island::default());
+    assert_eq!(outcome.unwrap().fixes, ["plan behind the work"]);
+    assert!(last_said(&requests[2]).contains("step 1 \"A\" in progress"));
+}
+
+#[test]
+fn a_list_of_steps_before_the_first_tools_is_shown_as_the_plan() {
+    // The plan tool isn't loaded: it is, so the model can tick the list off.
+    let mut island = Island { catalog: vec!["update_plan".into()], ..Island::default() };
+    let first = Reply::Events(vec![
+        text("Ecco come procedo:\n\n1. Creare la cartella\n2. Scrivere index.html\n\nInizio."),
+        call("c1", "workspace_write", "{\"path\":\"a\"}"),
+        finish("tool_calls"),
+        DONE.into(),
+    ]);
+    let ticked = r#"{"plan":[{"step":"Creare la cartella","status":"completed"},{"step":"Scrivere index.html","status":"completed"}]}"#;
+    let replies = vec![first, answer("Fatto."), calls("c2", "update_plan", ticked), answer("Fatto.")];
+    let (outcome, requests) = turn(replies, &mut question("Fammi un sito", &["workspace_write"]), &rules("plan-list", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.fixes, ["list shown as the plan", "plan behind the work"]);
+    assert_eq!(island.plans, [json!({ "plan": [{ "step": "Creare la cartella", "status": "in_progress" }, { "step": "Scrivere index.html", "status": "pending" }] })]);
+    assert_eq!(offered(&requests[1]), ["workspace_write", "update_plan"]);
+    assert!(last_said(&requests[1]).contains("is now shown to the user as your plan on the Plan island, step 1 \"Creare la cartella\" in progress"), "{}", last_said(&requests[1]));
+    assert_eq!(island.ran.last().unwrap().0, "update_plan");
+}
+
+#[test]
+fn a_list_is_no_plan_when_the_tool_can_t_be_had_or_a_plan_was_made() {
+    // No plan tool to load: the list stays text.
+    let mut island = Island::default();
+    let first = Reply::Events(vec![text("1. A\n2. B"), call("c1", "workspace_write", "{\"path\":\"a\"}"), finish("tool_calls"), DONE.into()]);
+    let (outcome, requests) = turn(vec![first, answer("Ok.")], &mut question("Fai", &["workspace_write"]), &rules("plan-list-none", ""), &mut island);
+    assert!(outcome.unwrap().fixes.is_empty());
+    assert!(island.plans.is_empty());
+    assert_eq!(last_said(&requests[1]), "workspace_write done");
+    // Made with the tool in the same answer: the tool's plan is the plan.
+    let mut island = Island::default();
+    let first = Reply::Events(vec![text("1. A\n2. B"), call("c1", "update_plan", PLAN_ABC), finish("tool_calls"), DONE.into()]);
+    let (_, requests) = turn(vec![first, answer("Ok.")], &mut question("Fai", &["update_plan"]), &rules("plan-list-tool", ""), &mut island);
+    assert!(island.plans.is_empty());
+    assert_eq!(last_said(&requests[1]), "update_plan done");
 }
