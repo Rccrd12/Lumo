@@ -304,6 +304,63 @@ pub fn relay_pipe_attributes() -> Option<usize> {
     })
 }
 
+/// The job the processes Lumo must not outlive go in (unsloth_studio.rs): Windows
+/// ends everything in it when its last handle closes, which is when Lumo's
+/// process ends, a crash or the Task Manager included. Made once; its handle
+/// is kept for the life of the app and never closed by hand.
+fn lumo_job() -> Option<HANDLE> {
+    use std::sync::OnceLock;
+    use ::windows::Win32::System::JobObjects::{
+        CreateJobObjectW, JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+        JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+    };
+    static JOB: OnceLock<Option<usize>> = OnceLock::new();
+    let raw = (*JOB.get_or_init(|| unsafe {
+        let job = CreateJobObjectW(None, PCWSTR::null()).ok()?;
+        let mut limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+        limits.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let set = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+        if set.is_err() {
+            let _ = CloseHandle(job);
+            return None;
+        }
+        Some(job.0 as usize)
+    }))?;
+    Some(HANDLE(raw as *mut std::ffi::c_void))
+}
+
+/// Puts `child` (and what it starts from now on) in Lumo's job: it ends with
+/// Lumo. False when Windows refused, and the child then runs as before.
+pub fn end_with_lumo(child: &std::process::Child) -> bool {
+    use std::os::windows::io::AsRawHandle;
+    use ::windows::Win32::System::JobObjects::AssignProcessToJobObject;
+    let Some(job) = lumo_job() else { return false };
+    unsafe { AssignProcessToJobObject(job, HANDLE(child.as_raw_handle())).is_ok() }
+}
+
+/// Lumo quits and leaves what is in its job running ("Stop after: Never"):
+/// the job no longer ends it when Lumo's handle closes.
+pub fn let_job_outlive_lumo() {
+    use ::windows::Win32::System::JobObjects::{
+        JobObjectExtendedLimitInformation, SetInformationJobObject, JOBOBJECT_EXTENDED_LIMIT_INFORMATION,
+    };
+    let Some(job) = lumo_job() else { return };
+    let limits = JOBOBJECT_EXTENDED_LIMIT_INFORMATION::default();
+    unsafe {
+        let _ = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &limits as *const _ as *const std::ffi::c_void,
+            std::mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+    }
+}
+
 /// The SHA-256 of `bytes`, in lower-case hex, from Windows' own cryptography.
 pub fn sha256_hex(bytes: &[u8]) -> Option<String> {
     use ::windows::Win32::Security::Cryptography::{BCryptHash, BCRYPT_SHA256_ALG_HANDLE};

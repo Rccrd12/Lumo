@@ -58,6 +58,10 @@ test("without them, what the request does is read off the request", () => {
   assert.equal(requestKind("run_command", { CommandLine: "npm install" })?.text, "Runs a command that can change things.");
   assert.equal(requestKind("Write", { file_path: "a" })?.text, "Changes a file.");
   assert.equal(requestKind("WebFetch", {})?.text, "Reads a web page.");
+  // Copilot CLI's and Cursor CLI's cards name a deletion and a move as such (acp_chat.rs).
+  assert.equal(requestKind("Delete", { file_path: "C:\\p\\old.ts" })?.text, "Deletes a file.");
+  assert.equal(requestKind("Move", { file_path: "a → b" })?.text, "Moves or renames a file.");
+  assert.equal(isSimpleRequest("Delete", { file_path: "a" }), false, "a deletion never only looks");
   assert.deepEqual(requestKind("mcp__github__create_issue", {}), { text: "Uses a tool of {server} (MCP).", vars: { server: "github" } });
   assert.equal(requestKind("Task", {}), null);
 });

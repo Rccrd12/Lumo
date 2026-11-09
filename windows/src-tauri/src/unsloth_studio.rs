@@ -11,7 +11,8 @@
 // open it in a browser while it runs.
 //
 // Lumo only ever stops a server it started itself: one the user opened stays
-// as it is. Nothing runs while Unsloth Studio isn't wanted: no watcher until
+// as it is. The one it started is in Lumo's job (platform::end_with_lumo), so
+// it ends with Lumo even after a crash, unless "Stop after" is Never. Nothing runs while Unsloth Studio isn't wanted: no watcher until
 // Lumo has started it, and the watcher ends with it.
 
 use std::path::PathBuf;
@@ -297,7 +298,13 @@ fn spawn(python: &std::path::Path, port: u16) -> std::io::Result<Child> {
         cmd.current_dir(home);
     }
     platform::no_console(&mut cmd);
-    cmd.spawn()
+    let child = cmd.spawn()?;
+    // Ends with Lumo even when Lumo itself doesn't get to stop it (a crash, the
+    // Task Manager): no server left holding the GPU's memory that no Lumo knows.
+    if !platform::end_with_lumo(&child) {
+        crate::log::line("[unsloth] not in Lumo's job: a crash of Lumo would leave it running");
+    }
+    Ok(child)
 }
 
 // ── Stopping it ───────────────────────────────────────────────────────────────
@@ -353,6 +360,8 @@ pub async fn stop_owned(app: &AppHandle) -> bool {
 pub fn on_exit(settings: &Settings) {
     let Some(mut own) = owned(Option::take) else { return };
     if settings.unsloth_stop_after == "never" {
+        // Out of the job's reach too, or it would end with Lumo after all.
+        platform::let_job_outlive_lumo();
         crate::log::line("[unsloth] left running (never stopped)");
         return;
     }

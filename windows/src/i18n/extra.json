@@ -8317,6 +8317,30 @@
    "id": "Mengubah sebuah file.",
    "it": "Modifica un file."
   },
+  "Deletes a file.": {
+   "zh-Hans": "删除一个文件。",
+   "hi": "एक फ़ाइल हटाता है।",
+   "es": "Elimina un archivo.",
+   "ar": "يحذف ملفًا.",
+   "fr": "Supprime un fichier.",
+   "bn": "একটি ফাইল মুছে ফেলে।",
+   "pt-BR": "Exclui um arquivo.",
+   "ru": "Удаляет файл.",
+   "id": "Menghapus sebuah file.",
+   "it": "Elimina un file."
+  },
+  "Moves or renames a file.": {
+   "zh-Hans": "移动或重命名一个文件。",
+   "hi": "एक फ़ाइल को ले जाता है या उसका नाम बदलता है।",
+   "es": "Mueve o cambia el nombre de un archivo.",
+   "ar": "ينقل ملفًا أو يعيد تسميته.",
+   "fr": "Déplace ou renomme un fichier.",
+   "bn": "একটি ফাইল সরায় বা তার নাম বদলায়।",
+   "pt-BR": "Move ou renomeia um arquivo.",
+   "ru": "Перемещает или переименовывает файл.",
+   "id": "Memindahkan atau mengganti nama sebuah file.",
+   "it": "Sposta o rinomina un file."
+  },
   "Reads a web page.": {
    "zh-Hans": "读取一个网页。",
    "hi": "एक वेब पेज पढ़ता है।",
@@ -16740,6 +16764,30 @@
     "one": "{count} di {total} finita",
     "other": "{count} di {total} finite"
    }
+  },
+  "In Auto, Allow counts for the rest of the chat": {
+   "zh-Hans": "在自动模式下，“允许”对本次聊天的剩余部分都有效",
+   "hi": "ऑटो में, अनुमति बाकी पूरी चैट के लिए मान्य है",
+   "es": "En Auto, Permitir vale para el resto del chat",
+   "ar": "في الوضع التلقائي، يسري السماح على بقية المحادثة",
+   "fr": "En Auto, Autoriser vaut pour le reste du chat",
+   "bn": "অটোতে, অনুমতি দিন বাকি চ্যাটের জন্য প্রযোজ্য",
+   "pt-BR": "No Auto, Permitir vale para o resto do chat",
+   "ru": "В режиме «Авто» разрешение действует до конца чата",
+   "id": "Di Otomatis, Izinkan berlaku untuk sisa obrolan",
+   "it": "In Auto, Consenti vale per il resto della chat"
+  },
+  "GitHub gave no SHA-256 for this installer, so Lumo did not install it.": {
+   "zh-Hans": "GitHub 没有提供此安装程序的 SHA-256，因此 Lumo 没有安装它。",
+   "hi": "GitHub ने इस इंस्टॉलर का SHA-256 नहीं दिया, इसलिए Lumo ने इसे इंस्टॉल नहीं किया।",
+   "es": "GitHub no dio el SHA-256 de este instalador, así que Lumo no lo instaló.",
+   "ar": "لم يقدّم GitHub قيمة SHA-256 لهذا المثبّت، لذا لم يثبّته Lumo.",
+   "fr": "GitHub n'a pas donné le SHA-256 de cet installateur : Lumo ne l'a pas installé.",
+   "bn": "GitHub এই ইনস্টলারের SHA-256 দেয়নি, তাই Lumo এটি ইনস্টল করেনি।",
+   "pt-BR": "O GitHub não informou o SHA-256 deste instalador, então o Lumo não o instalou.",
+   "ru": "GitHub не указал SHA-256 этого установщика, поэтому Lumo его не установил.",
+   "id": "GitHub tidak memberikan SHA-256 untuk penginstal ini, jadi Lumo tidak memasangnya.",
+   "it": "GitHub non ha indicato lo SHA-256 di questo programma di installazione, quindi Lumo non l'ha installato."
   }
  }
 }

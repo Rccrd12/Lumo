@@ -836,6 +836,16 @@ html.look-new .approval-actions .session-allow:hover {
   color: var(--ink);
 }
 
+/* Copilot CLI and Cursor CLI in Auto: a line that says Allow is kept, not a button. */
+html.look-new .approval-actions .session-note,
+html.look-new .approval-actions .session-note:hover {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--amber);
+  cursor: default;
+}
+
 html.look-new .approval-actions .kbd {
   border-color: currentColor;
 }

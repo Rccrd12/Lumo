@@ -785,8 +785,16 @@ pub fn install(app: &AppHandle) {
 /// Folders and files no voice request reads, lists or opens, card or not:
 /// keys, credentials, browser profiles.
 pub fn is_sensitive(path: &Path) -> bool {
-    const DIRS: &[&str] = &[".ssh", ".aws", ".azure", ".gnupg", ".claude", ".kube", ".docker", ".password-store"];
-    const NAMES: &[&str] = &["credentials", "credentials.json", ".netrc", "_netrc", ".git-credentials", "id_rsa", "id_ed25519", "id_ecdsa"];
+    // The agents' own folders too, where their sign-ins live: Codex's auth.json,
+    // Gemini CLI's oauth_creds.json, Copilot CLI's and Cursor CLI's sessions.
+    const DIRS: &[&str] = &[
+        ".ssh", ".aws", ".azure", ".gnupg", ".claude", ".kube", ".docker", ".password-store", ".codex", ".gemini", ".copilot",
+        ".cursor",
+    ];
+    const NAMES: &[&str] = &[
+        "credentials", "credentials.json", ".credentials.json", ".netrc", "_netrc", ".git-credentials", "id_rsa", "id_ed25519",
+        "id_ecdsa", "auth.json", "oauth_creds.json",
+    ];
     const ENDINGS: &[&str] = &[".pem", ".key", ".pfx", ".p12", ".kdbx", ".ppk", ".gpg", ".asc"];
     // Codes that open an account by themselves (GitHub's, Google's…), a wallet's words, passwords.
     const WORDS: &[&str] = &[
@@ -803,6 +811,8 @@ pub fn is_sensitive(path: &Path) -> bool {
         "\\appdata\\local\\bravesoftware\\brave-browser\\user data",
         "\\appdata\\roaming\\mozilla\\firefox\\profiles",
         "\\appdata\\roaming\\opera software",
+        // GitHub CLI's hosts.yml, with its token when no credential store holds it.
+        "\\appdata\\roaming\\github cli",
     ];
     let whole = path.to_string_lossy().replace('/', "\\").to_lowercase();
     let parts: Vec<&str> = whole.split('\\').filter(|p| !p.is_empty()).collect();
@@ -814,6 +824,15 @@ pub fn is_sensitive(path: &Path) -> bool {
         || name == ".env"
         || name.starts_with(".env.")
         || PLACES.iter().any(|p| whole.contains(p))
+        || in_claude_dir(&whole, &crate::hooks::claude_dir())
+}
+
+/// Inside Claude Code's folder, wherever CLAUDE_CONFIG_DIR puts it: its
+/// sign-in (`.credentials.json`) and its sessions are there. `whole` is
+/// lower case with backslashes, as is_sensitive makes it.
+fn in_claude_dir(whole: &str, dir: &Path) -> bool {
+    let dir = dir.to_string_lossy().replace('/', "\\").trim_end_matches('\\').to_lowercase();
+    !dir.is_empty() && (whole == dir || whole.starts_with(&format!("{dir}\\")))
 }
 
 /// The files the user said yes to in this run of Lumo, so a second look at
@@ -1118,6 +1137,22 @@ mod tests {
         }
         assert!(under(Path::new(r"C:\Users\Me\Downloads\a.pdf"), Path::new(r"c:\users\me\downloads\")));
         assert!(!under(Path::new(r"C:\Users\me\Downloads2\a.pdf"), Path::new(r"C:\Users\me\Downloads")));
+    }
+
+    /// The sign-ins of the agents Lumo talks to: Codex, Gemini CLI, Copilot CLI,
+    /// Cursor CLI, GitHub CLI, and Claude Code's wherever CLAUDE_CONFIG_DIR puts it.
+    #[test]
+    fn the_agents_sign_ins_are_never_the_voices() {
+        for p in [r"C:\Users\me\.codex\auth.json", r"C:\Users\me\.gemini\oauth_creds.json", r"C:\Users\me\.copilot\config.json",
+            r"C:\Users\me\.cursor\cli-config.json", r"C:\Users\me\AppData\Roaming\GitHub CLI\hosts.yml",
+            r"D:\claude-cfg\.credentials.json", r"C:\Users\me\proj\auth.json"] {
+            assert!(is_sensitive(Path::new(p)), "{p}");
+        }
+        // An inventory named hosts.yml outside GitHub CLI's folder is a plain file.
+        assert!(!is_sensitive(Path::new(r"C:\Users\me\ansible\hosts.yml")));
+        assert!(in_claude_dir(r"d:\claude-cfg\projects\a.jsonl", Path::new(r"D:\Claude-Cfg\")));
+        assert!(in_claude_dir(r"d:\claude-cfg", Path::new(r"D:\claude-cfg")));
+        assert!(!in_claude_dir(r"d:\claude-cfg2\a.txt", Path::new(r"D:\claude-cfg")));
     }
 
     #[test]

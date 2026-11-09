@@ -627,19 +627,20 @@ fn call_command(call: &Value) -> String {
 /// permission request of the CLI's own sessions (src/island/hooks.ts): a
 /// command as `Bash`, a change to files as `Edit` with their paths, a page
 /// as `WebFetch`. `calls`: what the CLI said of each tool call so far.
-fn card(agent: Agent, params: &Value, cwd: &Path, calls: &HashMap<String, Value>) -> Value {
+fn card(agent: Agent, params: &Value, cwd: &Path, calls: &HashMap<String, Value>, remembered: bool) -> Value {
     let mut call = params["toolCall"]["toolCallId"].as_str().and_then(|id| calls.get(id)).cloned().unwrap_or_else(|| json!({}));
     merge(&mut call, &params["toolCall"]);
     let input = &call["rawInput"];
     let title = call["title"].as_str().unwrap_or("").trim().to_string();
-    let paths = || {
-        let listed: Vec<&str> = call["locations"].as_array().into_iter().flatten().filter_map(|l| l["path"].as_str()).collect();
-        if listed.is_empty() { call_path(&call) } else { listed.join(", ") }
-    };
+    let listed: Vec<&str> = call["locations"].as_array().into_iter().flatten().filter_map(|l| l["path"].as_str()).collect();
+    let paths = |between: &str| if listed.is_empty() { call_path(&call) } else { listed.join(between) };
+    // Each by its own name: a deletion or a move never reads as an edit.
     let (tool, tool_input) = match call["kind"].as_str().unwrap_or("other") {
         "execute" => ("Bash".to_string(), json!({ "command": call_command(&call), "description": input["description"].as_str().unwrap_or("") })),
-        "edit" | "delete" | "move" => ("Edit".to_string(), json!({ "file_path": paths() })),
-        "read" => ("Read".to_string(), json!({ "file_path": paths() })),
+        "edit" => ("Edit".to_string(), json!({ "file_path": paths(", ") })),
+        "delete" => ("Delete".to_string(), json!({ "file_path": paths(", ") })),
+        "move" => ("Move".to_string(), json!({ "file_path": paths(" → ") })),
+        "read" => ("Read".to_string(), json!({ "file_path": paths(", ") })),
         "fetch" => ("WebFetch".to_string(), json!({ "url": input["url"].as_str().unwrap_or(&title) })),
         _ => {
             let name = if title.is_empty() { "Tool".to_string() } else { short(&title) };
@@ -647,7 +648,7 @@ fn card(agent: Agent, params: &Value, cwd: &Path, calls: &HashMap<String, Value>
             (name, shown)
         }
     };
-    json!({
+    let mut card = json!({
         "hook_event_name": "PermissionRequest",
         "lumo_island": true,
         "lumo_agent": agent.tag(),
@@ -655,7 +656,12 @@ fn card(agent: Agent, params: &Value, cwd: &Path, calls: &HashMap<String, Value>
         "cwd": cwd.to_string_lossy(),
         "tool_name": tool,
         "tool_input": tool_input,
-    })
+    });
+    // In Auto the click is answered with the CLI's "always allow": the card says so.
+    if remembered {
+        card["lumo_remembered"] = json!(true);
+    }
+    card
 }
 
 /// The answer to a `session/request_permission`: the option the click stands
@@ -1316,7 +1322,7 @@ fn live_turn(
                     let stdin = live.stdin.clone();
                     let remember = mode == "auto";
                     ask(
-                        card(agent, params, &spec.dir, &state.calls),
+                        card(agent, params, &spec.dir, &state.calls, remember),
                         Box::new(move |allowed| {
                             write_line(&stdin, &json!({ "id": rid, "result": permission_answer(&options, allowed, remember) }));
                         }),
@@ -1696,24 +1702,51 @@ mod tests {
         let mut calls = HashMap::new();
         calls.insert("t1".to_string(), json!({ "toolCallId": "t1", "kind": "execute", "title": "Run tests", "rawInput": { "command": ["npm", "test"] } }));
         let params = json!({ "sessionId": "s1", "toolCall": { "toolCallId": "t1" }, "options": [] });
-        let c = card(Agent::Copilot, &params, Path::new(r"C:\Users\me\Lumo"), &calls);
+        let c = card(Agent::Copilot, &params, Path::new(r"C:\Users\me\Lumo"), &calls, false);
         assert_eq!(c["hook_event_name"], "PermissionRequest");
         assert_eq!(c["lumo_island"], true);
         assert_eq!(c["lumo_agent"], "copilot");
         assert_eq!(c["tool_name"], "Bash");
         assert_eq!(c["tool_input"]["command"], "npm test");
         assert_eq!(c["session_id"], "s1");
+        assert!(c.get("lumo_remembered").is_none(), "Ask every time: nothing remembered");
 
         let edit = json!({ "sessionId": "s1", "toolCall": { "toolCallId": "t2", "kind": "edit", "locations": [{ "path": "C:\\a.rs" }, { "path": "C:\\b.rs" }] } });
-        let c = card(Agent::Cursor, &edit, Path::new("C:\\p"), &HashMap::new());
+        let c = card(Agent::Cursor, &edit, Path::new("C:\\p"), &HashMap::new(), false);
         assert_eq!(c["lumo_agent"], "cursor");
         assert_eq!(c["tool_name"], "Edit");
         assert_eq!(c["tool_input"]["file_path"], "C:\\a.rs, C:\\b.rs");
 
         let other = json!({ "toolCall": { "toolCallId": "t3", "title": "lumo_tools: send_invoice", "rawInput": { "to": "x" } } });
-        let c = card(Agent::Copilot, &other, Path::new("C:\\p"), &HashMap::new());
+        let c = card(Agent::Copilot, &other, Path::new("C:\\p"), &HashMap::new(), false);
         assert_eq!(c["tool_name"], "lumo_tools: send_invoice");
         assert_eq!(c["tool_input"]["to"], "x");
+    }
+
+    /// A deletion or a move is never shown as an edit: the click says what it allows.
+    #[test]
+    fn a_deletion_and_a_move_are_named_on_the_card() {
+        let delete = json!({ "sessionId": "s1", "toolCall": { "toolCallId": "d1", "kind": "delete", "locations": [{ "path": "C:\\p\\old.ts" }] } });
+        let c = card(Agent::Copilot, &delete, Path::new("C:\\p"), &HashMap::new(), false);
+        assert_eq!(c["tool_name"], "Delete");
+        assert_eq!(c["tool_input"]["file_path"], "C:\\p\\old.ts");
+
+        let moved = json!({ "sessionId": "s1", "toolCall": { "toolCallId": "m1", "kind": "move", "locations": [{ "path": "C:\\p\\a.ts" }, { "path": "C:\\p\\b.ts" }] } });
+        let c = card(Agent::Cursor, &moved, Path::new("C:\\p"), &HashMap::new(), false);
+        assert_eq!(c["tool_name"], "Move");
+        assert_eq!(c["tool_input"]["file_path"], "C:\\p\\a.ts → C:\\p\\b.ts");
+
+        // Only an edit is an edit.
+        let edit = json!({ "toolCall": { "toolCallId": "e1", "kind": "edit", "rawInput": { "path": "C:\\p\\c.ts" } } });
+        assert_eq!(card(Agent::Copilot, &edit, Path::new("C:\\p"), &HashMap::new(), false)["tool_name"], "Edit");
+    }
+
+    /// In Auto the click stands for the rest of the chat, and the card says so.
+    #[test]
+    fn a_card_in_auto_says_its_allow_is_remembered() {
+        let params = json!({ "sessionId": "s1", "toolCall": { "toolCallId": "t1", "kind": "execute", "rawInput": { "command": "npm test" } } });
+        assert_eq!(card(Agent::Copilot, &params, Path::new("C:\\p"), &HashMap::new(), true)["lumo_remembered"], true);
+        assert!(card(Agent::Copilot, &params, Path::new("C:\\p"), &HashMap::new(), false).get("lumo_remembered").is_none());
     }
 
     #[test]
