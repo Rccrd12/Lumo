@@ -342,8 +342,13 @@ two sources, each with its switch, one or both on:
   starts it once, in the background with no window, when Lumo starts; if you
   close Outlook, Lumo doesn't start it again until it next starts. Outlook
   closed only pauses its emails. The new Outlook for Windows can't be read by
-  other apps: with it, use IMAP. If Windows' antivirus isn't one Outlook
-  knows, Outlook may ask once whether to let a program read the mail.
+  other apps: with it, use IMAP. The sender, the text and the headers, which
+  Outlook guards ("A program is trying to access e-mail address
+  information"), Lumo reads through MAPI, Outlook's own mail library, so
+  Outlook never asks; nothing of its security settings is touched. With a
+  32-bit Office, whose MAPI a 64-bit Lumo can't load, the island shows only
+  the subject of Outlook's emails, and Outlook may ask when an agent reads one
+  or when an email is written.
 - **IMAP** (on as before): one or more accounts, up to five, listed under
   the switch.
 

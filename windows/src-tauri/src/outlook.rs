@@ -18,6 +18,12 @@
 // email's card; marking, moving, archiving and trashing too, each on its own
 // card. Nothing here deletes an email for good: the trash is Deleted Items.
 //
+// What Outlook guards (the sender, the text, the headers) is read through
+// MAPI (outlook_mapi.rs), never through the automation, which would make
+// Outlook ask the user "A program is trying to access e-mail address
+// information" at each look. Writing an email still goes through the
+// automation: Outlook may ask then, only after the user's click.
+//
 // The "new Outlook" for Windows has no automation: with it, only IMAP works.
 
 use std::collections::HashMap;
@@ -43,6 +49,7 @@ use ::windows::Win32::System::Variant::{VARIANT, VT_DATE, VT_DISPATCH};
 
 use crate::log;
 use crate::mail::{Found, Message};
+use crate::outlook_mapi::{Guarded, Mapi};
 
 /// What the agents' ids of an Outlook email start with ("outlook-12"), what
 /// its folders' names start with ("outlook:ada@outlook.it/Inbox"), and the
@@ -78,8 +85,6 @@ const FORMAT_HTML: i32 = 2;
 const MARK_NO_DATE: i32 = 4;
 const DISCARD: i32 = 1;
 const PUBLIC_FOLDERS: i32 = 2;
-/// PR_TRANSPORT_MESSAGE_HEADERS, where List-Unsubscribe is.
-const HEADERS_PROP: &str = "http://schemas.microsoft.com/mapi/proptag/0x007D001F";
 /// The date Outlook gives for "none" (1 January 4501).
 const NO_DATE: f64 = 949_998.0;
 
@@ -233,7 +238,7 @@ pub async fn newest(count: usize, unread_only: bool, folder: Option<String>) -> 
         for place in &places {
             let items = place.folder.obj("Items")?;
             let items = if unread_only { items.call("Restrict", vec!["[UnRead] = True".into()])?.dispatch()? } else { items };
-            found.extend(newest_of(&items, count)?);
+            found.extend(newest_of(s, &items, count)?);
         }
         Ok(newest_first(found, count))
     })
@@ -258,7 +263,7 @@ pub async fn search(query: String, count: usize, folder: Option<String>) -> Resu
         for place in &places {
             let Ok(items) = place.folder.obj("Items") else { continue };
             let Ok(matched) = items.call("Restrict", vec![filter.as_str().into()]).and_then(|v| v.dispatch()) else { continue };
-            found.extend(newest_of(&matched, count)?);
+            found.extend(newest_of(s, &matched, count)?);
         }
         Ok(newest_first(found, count))
     })
@@ -277,7 +282,7 @@ pub async fn read(id: String, chars: usize) -> Result<(Found, Vec<File>), String
     with_outlook(STEP, move |s| {
         let app = s.running()?;
         let item = item_of(&app, &id)?;
-        let found = found_of(&item, &id, chars);
+        let found = found_of(s, &item, &id, chars);
         let files = files_of(&item)?;
         Ok((found, files))
     })
@@ -543,7 +548,7 @@ pub async fn plan(id: String, change: Change) -> Result<(Planned, Change), Strin
     with_outlook(SLOW_STEP, move |s| {
         let app = s.running()?;
         let item = item_of(&app, &id)?;
-        let found = found_of(&item, &id, 200);
+        let found = found_of(s, &item, &id, 200);
         let m = &found.message;
         let from = if m.from.is_empty() || m.from == m.address { m.address.clone() } else { format!("{} <{}>", m.from, m.address) };
         let folder = match &change {
@@ -675,6 +680,8 @@ async fn with_outlook<T: Send + 'static>(wait: Duration, job: impl FnOnce(&mut S
             return;
         }
         let out = std::panic::catch_unwind(std::panic::AssertUnwindSafe(|| job(s))).unwrap_or_else(|_| Err("Lumo's link to Outlook broke.".into()));
+        // MAPI's session lasts one job: nothing of it holds Outlook's profile in between.
+        s.mapi = None;
         if GONE.with(|g| g.replace(false)) {
             s.let_go();
         } else if !s.started {
@@ -722,6 +729,10 @@ struct Session {
     started: bool,
     /// Emails made and waiting for their card.
     pending: HashMap<u64, Disp>,
+    /// MAPI, during a job: not tried yet (None), or what logging on gave.
+    mapi: Option<Option<Mapi>>,
+    /// Whether each unread email (by its EntryID) is a promotion, as found.
+    promotions: HashMap<String, bool>,
 }
 
 impl Session {
@@ -766,8 +777,17 @@ impl Session {
         for (_, item) in self.pending.drain() {
             throw_away(&item);
         }
+        self.mapi = None;
         self.app = None;
         self.started = false;
+    }
+
+    /// What Outlook guards of an email, read through MAPI (no prompt): the
+    /// text up to `chars` characters, the headers when asked. None when MAPI
+    /// can't be had (a 32-bit Office).
+    fn guarded(&mut self, store_id: &str, entry_id: &str, chars: usize, headers: bool) -> Option<Guarded> {
+        let mapi = self.mapi.get_or_insert_with(Mapi::logon).as_mut()?;
+        mapi.read(store_id, entry_id, chars, headers)
     }
 
     /// The unread emails of every account's inbox; None while Outlook is closed.
@@ -787,23 +807,44 @@ impl Session {
             let look_at = if hide_promotions { listed.min(PROMO_LOOK) } else { listed.min(crate::mail::FETCH as i32) };
             let mut promotions = 0usize;
             let mut kept = 0usize;
+            let store = place.store_id.clone();
             for i in 1..=look_at {
                 let Ok(item) = items.call("Item", vec![i.into()]).and_then(|v| v.dispatch()) else { continue };
-                if hide_promotions && is_promotion(&item) {
-                    promotions += 1;
-                    continue;
+                let entry = item.text("EntryID");
+                let cached = known.get(&entry).map(|(m, _)| m.clone());
+                let mut read = None;
+                // Whether it's a promotion, from its headers through MAPI:
+                // without MAPI, none is (the automation would make Outlook ask).
+                if hide_promotions && cached.is_none() {
+                    let promotion = match self.promotions.get(&entry) {
+                        Some(known) => *known,
+                        None => {
+                            let chars = if kept < crate::mail::FETCH { RAW_BODY_CHARS } else { 0 };
+                            read = self.guarded(&store, &entry, chars, true);
+                            let promotion = read.as_ref().is_some_and(|g| has_unsubscribe(&g.headers));
+                            if read.is_some() {
+                                self.promotions.insert(entry.clone(), promotion);
+                            }
+                            promotion
+                        }
+                    };
+                    if promotion {
+                        promotions += 1;
+                        continue;
+                    }
                 }
                 if kept >= crate::mail::FETCH {
                     continue;
                 }
                 kept += 1;
-                let entry = item.text("EntryID");
-                let store = place.store_id.clone();
                 let id = book().lock().unwrap().id_for(&entry, &store);
                 let at = item.date("ReceivedTime").unwrap_or(0.0);
-                let message = match known.get(&entry) {
-                    Some((m, _)) => m.clone(),
-                    None => message_of(&item, &id, crate::mail::BODY_CHARS),
+                let message = match cached {
+                    Some(m) => m,
+                    None => {
+                        let guarded = read.filter(|g| !g.body.is_empty()).or_else(|| self.guarded(&store, &entry, RAW_BODY_CHARS, false));
+                        message_of(&item, &id, crate::mail::BODY_CHARS, guarded, Quiet::Yes)
+                    }
                 };
                 entries.insert(id, entry);
                 all.push((message, at));
@@ -812,6 +853,9 @@ impl Session {
         }
         all.sort_by(|a, b| b.1.total_cmp(&a.1));
         all.truncate(crate::mail::FETCH);
+        if self.promotions.len() > 2_000 {
+            self.promotions.clear();
+        }
         Ok(Some(Inbox { unread, messages: all, entries }))
     }
 }
@@ -971,7 +1015,9 @@ fn accounts(app: &Disp) -> Result<Vec<Account>, String> {
     let mut out = Vec::new();
     for i in 1..=list.int("Count")? {
         let Ok(account) = list.call("Item", vec![i.into()]).and_then(|v| v.dispatch()) else { continue };
-        let address = Some(account.text("SmtpAddress")).filter(|a| !a.is_empty()).unwrap_or_else(|| account.text("DisplayName"));
+        // Its name, which Outlook makes the address: SmtpAddress is guarded
+        // (Outlook would ask the user each time it's read).
+        let address = Some(account.text("DisplayName")).filter(|a| !a.trim().is_empty()).unwrap_or_else(|| account.text("UserName"));
         let store_id = account.obj("DeliveryStore").map(|s| s.text("StoreID")).unwrap_or_default();
         out.push(Account { address, store_id, disp: account });
     }
@@ -1192,7 +1238,7 @@ fn places_named(app: &Disp, asked: &str) -> Result<Vec<Place>, String> {
 }
 
 /// The newest `count` emails of a list of Outlook's items.
-fn newest_of(items: &Disp, count: usize) -> Result<Vec<(Found, f64)>, String> {
+fn newest_of(s: &mut Session, items: &Disp, count: usize) -> Result<Vec<(Found, f64)>, String> {
     items.call("Sort", vec!["[ReceivedTime]".into(), true.into()])?;
     let listed = items.int("Count")?.max(0) as usize;
     let mut out = Vec::new();
@@ -1201,7 +1247,7 @@ fn newest_of(items: &Disp, count: usize) -> Result<Vec<(Found, f64)>, String> {
         let store = item.obj("Parent").map(|p| p.text("StoreID")).unwrap_or_default();
         let id = book().lock().unwrap().id_for(&item.text("EntryID"), &store);
         let at = item.date("ReceivedTime").filter(|d| *d < NO_DATE).or_else(|| item.date("LastModificationTime")).unwrap_or(0.0);
-        out.push((found_of(&item, &id, crate::mail::BODY_CHARS), at));
+        out.push((found_of(s, &item, &id, crate::mail::BODY_CHARS), at));
     }
     Ok(out)
 }
@@ -1222,17 +1268,44 @@ fn item_of(app: &Disp, id: &str) -> Result<Disp, String> {
         .map_err(|_| format!("No email {id}: it may have been moved or deleted."))
 }
 
-fn found_of(item: &Disp, id: &str, chars: usize) -> Found {
-    Found { id: id.to_string(), unread: item.get("UnRead").ok().and_then(|v| bool::try_from(&v).ok()).unwrap_or(false), message: message_of(item, id, chars) }
+/// An email an agent asked for: what Outlook guards through MAPI, else
+/// through the automation (Outlook may ask the user then: they asked).
+fn found_of(s: &mut Session, item: &Disp, id: &str, chars: usize) -> Found {
+    let store = item.obj("Parent").map(|p| p.text("StoreID")).unwrap_or_default();
+    let guarded = s.guarded(&store, &item.text("EntryID"), raw_chars(chars), false);
+    let unread = item.get("UnRead").ok().and_then(|v| bool::try_from(&v).ok()).unwrap_or(false);
+    Found { id: id.to_string(), unread, message: message_of(item, id, chars, guarded, Quiet::No) }
 }
 
-fn message_of(item: &Disp, id: &str, chars: usize) -> Message {
-    let text = crate::mail::tidy(&item.text("Body"));
+/// Whether reading may fall back on the fields Outlook guards: never for
+/// the island's looks, which nobody asked for.
+#[derive(PartialEq)]
+enum Quiet {
+    Yes,
+    No,
+}
+
+/// How much of an email's text is read through MAPI: more than is kept,
+/// as the quoted emails below it are cut off.
+const RAW_BODY_CHARS: usize = 16_000;
+
+fn raw_chars(chars: usize) -> usize {
+    chars.saturating_mul(2).max(RAW_BODY_CHARS)
+}
+
+fn message_of(item: &Disp, id: &str, chars: usize, guarded: Option<Guarded>, quiet: Quiet) -> Message {
+    let (from, address, text) = match guarded {
+        Some(g) => (g.from, g.address, g.body),
+        // Without MAPI the island shows the subject alone, from "Outlook".
+        None if quiet == Quiet::Yes => ("Outlook".to_string(), String::new(), String::new()),
+        None => (item.text("SenderName").trim().to_string(), sender_address(item), item.text("Body")),
+    };
+    let text = crate::mail::tidy(&text);
     let at = item.date("ReceivedTime").filter(|d| *d < NO_DATE).or_else(|| item.date("LastModificationTime"));
     Message {
         id: id.to_string(),
-        from: item.text("SenderName").trim().to_string(),
-        address: sender_address(item),
+        from,
+        address,
         subject: item.text("Subject").trim().to_string(),
         preview: crate::mail::preview(&text),
         body: text.chars().take(chars).collect(),
@@ -1285,14 +1358,6 @@ fn files_of(item: &Disp) -> Result<Vec<File>, String> {
         out.push(File { mime: crate::smtp::mime_of(&name), size: a.int("Size").unwrap_or(0).max(0) as usize, name });
     }
     Ok(out)
-}
-
-/// An email with an unsubscribe link (List-Unsubscribe): a newsletter, an offer.
-fn is_promotion(item: &Disp) -> bool {
-    item.obj("PropertyAccessor")
-        .and_then(|p| p.call("GetProperty", vec![HEADERS_PROP.into()]))
-        .map(|v| has_unsubscribe(&v.string()))
-        .unwrap_or(false)
 }
 
 // ── Ids ───────────────────────────────────────────────────────────────────────
