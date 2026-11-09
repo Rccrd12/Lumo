@@ -321,7 +321,7 @@ pub fn stop<R: Runtime>(app: &AppHandle<R>) {
         return;
     }
     crate::log::line("computer use: stopped with Esc");
-    release_stop_key(app);
+    release_stop_key_later(app);
     // The mouse is the user's at once; the glow turns red, then goes.
     imp::take_mouse(false);
     fx(app, json!({ "kind": "stopped" }));
@@ -368,6 +368,25 @@ fn release_stop_key<R: Runtime>(app: &AppHandle<R>) {
     if STOP_KEY.swap(false, Ordering::SeqCst) {
         let _ = app.global_shortcut().unregister(stop_shortcut());
     }
+}
+
+/// Lets go of Esc from the shortcut's own handler (`stop`). The plugin calls
+/// its handler on the main thread while it holds its list of shortcuts, and
+/// `unregister` takes that list again on the same thread: done there, Lumo
+/// hangs for good (and Windows closes it). So Esc stops counting as the stop
+/// key at once, and is unregistered from another thread, once the handler has
+/// returned. Should a new action have taken Esc again meanwhile, it is kept.
+fn release_stop_key_later<R: Runtime>(app: &AppHandle<R>) {
+    use tauri_plugin_global_shortcut::GlobalShortcutExt;
+    if !STOP_KEY.swap(false, Ordering::SeqCst) {
+        return;
+    }
+    let app = app.clone();
+    std::thread::spawn(move || {
+        if !STOP_KEY.load(Ordering::SeqCst) {
+            let _ = app.global_shortcut().unregister(stop_shortcut());
+        }
+    });
 }
 
 // ── Pure parts ──────────────────────────────────────────────────────────────

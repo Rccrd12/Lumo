@@ -7,6 +7,7 @@
 - **No update without its fingerprint**: an installer is run only when it matches the SHA-256 GitHub published for it; when Lumo doesn't have it yet it asks GitHub again, and with none it installs nothing
 - **Unsloth Studio ends with Lumo**: the server Lumo started stops with it even after a crash or the Task Manager, instead of keeping the graphics card's memory; with Stop after set to Never it still keeps running
 - **Fixed**: a beta could take a pull request's newest commit before its checks had passed on it; it now waits for them
+- **Fixed**: pressing Esc to stop Claude using the computer froze Lumo until Windows closed it; Claude now stops, and Esc is yours again at once
 
 ## Windows 0.20.1 — November 9, 2026
 
