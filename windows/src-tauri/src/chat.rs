@@ -604,6 +604,20 @@ macro_rules! math_note {
 }
 pub(crate) use math_note;
 
+/// The chat's rich blocks, for every provider that answers in the chat:
+/// GitHub alerts, the ```lumo-steps, lumo-cards, lumo-calc and lumo-plot
+/// cards and a line that is only an image (src/views/markdown.ts and
+/// src/views/rich read them). Short, since it goes with every message, and
+/// plain words only, so the syntax is said in words where it needs `|`, `>`
+/// or `^`: it also goes on Claude Code's command line when its instructions
+/// can't go in a file.
+macro_rules! rich_note {
+    () => {
+        " Lumo's chat also draws rich blocks: use them sparingly, only where one clearly helps, at most one or two in an answer, never one inside another. A callout is a GitHub alert, a Markdown quote whose first line is [!NOTE], [!TIP], [!IMPORTANT], [!WARNING] or [!CAUTION], with an optional title after it, and its text on the next quoted lines: for a key rule, a tip or a warning. The others are fenced code blocks whose language is lumo-steps, lumo-cards, lumo-calc or lumo-plot, then a space and a short title on the same line. lumo-steps, for a derivation or a procedure best seen one step at a time: per step a line ## step name, then its Markdown, usually one $$…$$ line. lumo-cards, to compare 2 to 6 things side by side: per card a line ## name, optionally sub: subtitle and icon: an emoji or 1-2 letters and a colour (or icon: planet and a colour; colours are blue green amber red pink indigo cyan gray or #hex), lines - key: value, and one short line of text. lumo-calc, for a formula the user can play with: optionally formula: TeX, then lines input: symbol, name, min..max, value, unit and lines output: symbol, name, expression, unit, their fields separated by vertical bars, not commas; expressions use numbers, + - * / and a caret for powers, parentheses, sin cos tan sqrt exp ln log abs min max, pi, e, the inputs and earlier outputs. lumo-plot, to show how a function changes with its parameters: optionally formula: TeX, one to three lines y: an expression in x, x: min..max, optionally yrange: min..max, and input lines as in lumo-calc. For a picture, a line of its own ![what it shows](https://…) with the real https address of an image file, preferably from Wikimedia Commons or Wikipedia, only when sure it exists: never make one up."
+    };
+}
+pub(crate) use rich_note;
+
 /// The tool workshop's chats: their ids start so (src/core/tools.ts WORKSHOP_PREFIX).
 pub fn is_workshop(chat_id: &str) -> bool {
     chat_id.starts_with("forge-")
@@ -653,7 +667,7 @@ Respond in the user's language. Be thorough and complete — use as much detail 
 Use light Markdown when it helps: short paragraphs, bullet lists, **bold**, `inline code` and fenced code blocks. Avoid tables and big headings: the chat window is small. \
 Lumo may tell you which windows and documents are open on the user's computer, and attach the one in front when the question is about it: use them, and never say you can't see what they have open when it is there. {}{}",
         if timer_tool { timer_tool_note!() } else { timer_note!() },
-        math_note!()
+        concat!(math_note!(), rich_note!())
     )
 }
 
@@ -1360,6 +1374,37 @@ mod tests {
         // The timer: Lumo's tool where the provider has it, the line otherwise.
         assert!(system_prompt_for(None, false, true).contains("set_timer tool"));
         assert!(!p.contains("set_timer") && p.contains("[[timer 10m"));
+    }
+
+    #[test]
+    fn every_chat_is_told_the_rich_blocks_in_plain_words() {
+        // Every provider's instructions: the API chats' (claude.rs,
+        // openai_compat.rs, through system_prompt_in), whatever the timer and
+        // web search; the CLIs' and local models' are checked in their files.
+        for (web, timer) in [(true, true), (false, false), (true, false), (false, true)] {
+            let p = system_prompt_for(None, web, timer);
+            assert!(p.contains(rich_note!()), "{web} {timer}");
+            assert!(p.contains(math_note!()));
+            assert!(p.contains("Avoid tables and big headings: the chat window is small."));
+        }
+        let note = rich_note!();
+        // The syntaxes src/views/markdown.ts and src/views/rich read.
+        for kind in ["[!NOTE]", "[!TIP]", "[!IMPORTANT]", "[!WARNING]", "[!CAUTION]"] {
+            assert!(note.contains(kind), "{kind}");
+        }
+        for fence in ["lumo-steps", "lumo-cards", "lumo-calc", "lumo-plot"] {
+            assert!(note.contains(fence), "{fence}");
+        }
+        for key in ["## step name", "sub:", "icon:", "- key: value", "formula:", "input:", "output:", "y:", "x: min..max", "yrange:", "vertical bars", "![what it shows](https://"] {
+            assert!(note.contains(key), "{key}");
+        }
+        assert!(note.contains("sparingly") && note.contains("never make one up"));
+        // It goes on Claude Code's command line too (claude_code.rs): nothing
+        // cmd.exe reads as syntax, and on one line.
+        assert!(!note.contains(['%', '"', '&', '|', '<', '>', '^', '`', '\n']));
+        assert!(note.starts_with(' '), "it follows the note before it");
+        // Short: it goes with every message.
+        assert!(note.split_whitespace().count() < 330, "{} words", note.split_whitespace().count());
     }
 
     #[test]

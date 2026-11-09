@@ -152,3 +152,58 @@ test("a table: header, rows and pipes escaped in cells; a lone pipe line stays t
   assert.equal(table.find("TD").length, 4);
   assert.equal(table.find("STRONG").length, 1);
 });
+
+// ── Rich cards (views/rich) ──────────────────────────────────────────────────
+
+test("GitHub's alerts: the kind, an optional title, the quote lines under it as Markdown", () => {
+  assert.deepEqual(parseMarkdown("Intro\n> [!WARNING]\n> Careful **now**\n>\n> $$x$$\nafter"), [
+    { kind: "paragraph", text: "Intro" },
+    { kind: "callout", type: "warning", title: "", body: "Careful **now**\n\n$$x$$" },
+    { kind: "paragraph", text: "after" },
+  ]);
+  assert.deepEqual(parseMarkdown(">[!tip] First rule"), [{ kind: "callout", type: "tip", title: "First rule", body: "" }]);
+  // An unknown kind stays a quote.
+  assert.deepEqual(parseMarkdown("> [!SHOUT] hey"), [{ kind: "quote", text: "[!SHOUT] hey" }]);
+
+  const root = dom.root();
+  renderMarkdown(root, "> [!IMPORTANT] Prima regola\n> **Le tensioni** sono uguali.");
+  const card = root.querySelector(".rc-callout");
+  assert.ok(card);
+  assert.equal(card.className, "rc-callout rc-important");
+  assert.match(card.textContent, /^Prima regola/);
+  assert.equal(card.find("STRONG")[0].textContent, "Le tensioni");
+  renderMarkdown(root, "> [!NOTE]\n> text");
+  assert.match(root.querySelector(".rc-callout-head").textContent, /Note/);
+});
+
+test("a lumo- block is a rich card, open while its fence is still to come", () => {
+  assert.deepEqual(parseMarkdown("Here:\n```lumo-steps Integration by parts\n## One\n$$a$$\n```\nafter"), [
+    { kind: "paragraph", text: "Here:" },
+    { kind: "rich", type: "steps", title: "Integration by parts", body: "## One\n$$a$$", open: false },
+    { kind: "paragraph", text: "after" },
+  ]);
+  assert.deepEqual(parseMarkdown("```lumo-calc\ninput: V"), [{ kind: "rich", type: "calc", title: "", body: "input: V", open: true }]);
+  // The tool workshop's blocks, and kinds Lumo has no card for, stay code.
+  assert.equal(parseMarkdown("```lumo-tool\n{}\n```")[0].kind, "code");
+  assert.equal(parseMarkdown("```lumo-rocket\nx\n```")[0].kind, "code");
+
+  const root = dom.root();
+  renderMarkdown(root, "```lumo-steps Title\n## One\n$$a$$");
+  assert.ok(root.querySelector(".rc-pending"), "a block still being written shows its placeholder");
+  // A block the card can't read stays the code it was written as.
+  renderMarkdown(root, "```lumo-steps Title\n```");
+  assert.ok(root.querySelector(".md-pre"));
+  assert.equal(root.querySelector(".rc-card"), null);
+});
+
+test("a line that is only an https image is an image block; anything else stays text", () => {
+  assert.deepEqual(parseMarkdown("See:\n![Op-amp](https://upload.wikimedia.org/a.png)\nafter"), [
+    { kind: "paragraph", text: "See:" },
+    { kind: "image", alt: "Op-amp", url: "https://upload.wikimedia.org/a.png" },
+    { kind: "paragraph", text: "after" },
+  ]);
+  assert.deepEqual(parseMarkdown('![x](https://a.org/b.jpg "title")'), [{ kind: "image", alt: "x", url: "https://a.org/b.jpg" }]);
+  for (const md of ["![x](http://a.org/b.png)", "![x](file:///c:/a.png)", "![x](javascript:alert(1))", "text ![x](https://a.org/b.png)"]) {
+    assert.notEqual(parseMarkdown(md)[0].kind, "image", md);
+  }
+});

@@ -177,6 +177,11 @@ pub struct Settings {
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
+    /// The sites whose images the chat's answers show without asking first
+    /// (web_image.rs): exact host names, lowercase, each added by the user's
+    /// "Always from …" on an image's card and removed in Settings → Security.
+    /// Empty: every image asks before anything is downloaded.
+    pub web_image_sites: Vec<String>,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -361,6 +366,7 @@ impl Default for Settings {
             chat_computer_use: false,
             chat_web_search: false,
             chat_auto_compact: true,
+            web_image_sites: Vec::new(),
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             ai_github_access: "none".into(),
@@ -707,6 +713,7 @@ mod tests {
   "chatComputerUse": true,
   "chatWebSearch": true,
   "chatAutoCompact": false,
+  "webImageSites": ["upload.wikimedia.org"],
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "aiGithubAccess": "read",
@@ -938,6 +945,13 @@ mod tests {
         assert!(parse(&custom_with("homeActivities", None)).unwrap().home_activities);
         assert!(Settings::default().home_activities);
         assert!(!parse(CUSTOM.as_bytes()).unwrap().home_activities);
+    }
+
+    #[test]
+    fn a_file_from_before_web_images_lets_no_site_in() {
+        assert!(parse(&custom_with("webImageSites", None)).unwrap().web_image_sites.is_empty());
+        assert!(Settings::default().web_image_sites.is_empty());
+        assert_eq!(parse(CUSTOM.as_bytes()).unwrap().web_image_sites, ["upload.wikimedia.org"]);
     }
 
     #[test]
@@ -1203,6 +1217,7 @@ mod tests {
                 "chatComputerUse",
                 "chatWebSearch",
                 "chatAutoCompact",
+                "webImageSites",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "aiGithubAccess",

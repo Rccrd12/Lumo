@@ -2,7 +2,10 @@
 // bullet and numbered lists, quotes and rules, with bold, italic, `code` and
 // links inside the text, and — on Windows only — tables (Claude Code's
 // commands, /doctor among them, answer with them) — and TeX math ($…$, $$…$$, \(…\), \[…\]), drawn
-// by math.ts.
+// by math.ts. Also on Windows only, the rich cards of views/rich: GitHub's
+// alerts (`> [!NOTE]`…), the ```lumo-steps, lumo-cards, lumo-calc and
+// lumo-plot blocks Lumo's system prompt teaches (chat.rs), and a line that
+// is only an image, shown once the user lets its site in.
 //
 // Everything is built as DOM nodes with textContent, never as HTML, so nothing
 // a model writes can inject markup. Links open only when they are http(s), and
@@ -12,6 +15,7 @@ import { Bridge } from "../core/bridge";
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
 import { renderMath } from "./math";
+import { CALLOUT_TYPES, RICH_KINDS, renderCallout, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext } from "./rich/index";
 import { N_, t } from "../i18n/i18n";
 
 const STRINGS = {
@@ -29,13 +33,28 @@ export type Block =
   | { kind: "math"; tex: string }
   /** The header row, then the rows, as cells of inline text. */
   | { kind: "table"; head: string[]; rows: string[][] }
-  | { kind: "rule" };
+  | { kind: "rule" }
+  /** A GitHub alert: `> [!NOTE] Title` and the quote lines under it, their Markdown without the `>`. */
+  | { kind: "callout"; type: CalloutType; title: string; body: string }
+  /**
+   * A ```lumo-… block (views/rich): its kind after "lumo-", the title on its
+   * fence line and its lines; `open` while its closing fence has not come yet.
+   */
+  | { kind: "rich"; type: string; title: string; body: string; open: boolean }
+  /** A line that is only an image: `![alt](https://…)`. */
+  | { kind: "image"; alt: string; url: string };
 
 const isRule = (s: string) => s === "---" || s === "***" || s === "___";
 const isBullet = (s: string) => /^[-*+] /.test(s);
 const ordered = (s: string) => /^(\d+)\.\s+/.exec(s);
 const isQuote = (s: string) => s.startsWith("> ") || s === ">";
 const isTableRow = (s: string) => s.startsWith("|") && s.length > 1;
+/** `> [!TIP]`, `>[!warning] A title`: the alert's kind and title. */
+const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)$`, "i");
+/** ```lumo-steps A title: one of the rich cards' fences. */
+const RICH_FENCE = new RegExp(`^\`\`\`[ \\t]*lumo-(${RICH_KINDS.join("|")})\\b[ \\t]*(.*)$`);
+/** A line that is only an image. */
+const IMAGE_LINE = /^!\[([^\]\n]*)\]\(\s*<?([^)\s>]+)>?(?:\s+"[^"]*")?\s*\)$/;
 /** The line under a table's header: `|---|:--:|`. */
 const isTableRule = (s: string | undefined) => s != null && /^\|?\s*:?-+:?\s*(\|\s*:?-+:?\s*)*\|?$/.test(s.trim()) && s.includes("-");
 /** A table starts at `i`: a row, and the rule right under it. */
@@ -69,6 +88,15 @@ export function parseMarkdown(input: string): Block[] {
   let i = 0;
   while (i < lines.length) {
     const line = lines[i];
+
+    const rich = RICH_FENCE.exec(line);
+    if (rich) {
+      const body: string[] = [];
+      for (i++; i < lines.length && !lines[i].startsWith("```"); i++) body.push(lines[i]);
+      blocks.push({ kind: "rich", type: rich[1], title: rich[2].trim(), body: body.join("\n"), open: i >= lines.length });
+      i++;
+      continue;
+    }
 
     if (line.startsWith("```")) {
       const lang = line.slice(3).trim();
@@ -126,6 +154,19 @@ export function parseMarkdown(input: string): Block[] {
     }
 
     const stripped = line.trim();
+    const alert = CALLOUT.exec(stripped);
+    if (alert) {
+      const body: string[] = [];
+      for (i++; i < lines.length && lines[i].trim().startsWith(">"); i++) body.push(lines[i].trim().replace(/^> ?/, ""));
+      blocks.push({ kind: "callout", type: alert[1].toLowerCase() as CalloutType, title: alert[2].trim(), body: body.join("\n") });
+      continue;
+    }
+    const image = IMAGE_LINE.exec(stripped);
+    if (image && safeWebUrl(image[2])?.startsWith("https:")) {
+      blocks.push({ kind: "image", alt: image[1].trim(), url: safeWebUrl(image[2])! });
+      i++;
+      continue;
+    }
     if (isRule(stripped)) {
       blocks.push({ kind: "rule" });
       i++;
@@ -160,7 +201,7 @@ export function parseMarkdown(input: string): Block[] {
       const next = lines[i];
       const s = next.trim();
       if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || isBullet(s) || isRule(s) || ordered(s)) break;
-      if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i)) break;
+      if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i) || IMAGE_LINE.test(s)) break;
       para.push(next);
     }
     blocks.push({ kind: "paragraph", text: para.join("\n") });
@@ -338,8 +379,11 @@ function render(block: Block): HTMLElement {
       inline(block.text, el);
       return el;
     }
-    case "code":
-      return h("div", { class: "md-pre" }, h("pre", { text: block.code }), copyButton(block.code));
+    case "code": {
+      // A ```diff block (its info may name the file: ```diff src/a.ts:12) is the diff card.
+      const diff = /^diff(?:\s|$)/.test(block.lang) ? renderDiffCard(block.code, block.lang.slice(4).trim(), RICH) : null;
+      return diff ?? h("div", { class: "md-pre" }, h("pre", { text: block.code }), copyButton(block.code));
+    }
     case "item": {
       const text = h("span", { class: "md-p" });
       inline(block.text, text);
@@ -390,8 +434,26 @@ function render(block: Block): HTMLElement {
       return h("hr", { class: "md-rule" });
     case "math":
       return mathBlock(block.tex);
+    case "callout": {
+      const body = h("div", { class: "rc-callout-body" });
+      renderMarkdown(body, block.body);
+      return renderCallout(block.type, block.title, body);
+    }
+    case "rich":
+      // A block the card can't read stays what it was written as: code.
+      return renderRich(block, RICH) ?? render({ kind: "code", lang: `lumo-${block.type}`, code: block.body });
+    case "image":
+      return renderImage(block.alt, block.url);
   }
 }
+
+/** What the rich cards borrow from the Markdown, handed over so views/rich never imports it back. */
+const RICH: RichContext = {
+  markdown: (into, text) => renderMarkdown(into, text),
+  inline: (into, text) => inline(text, into),
+  math: (tex, display) => renderMath(tex, display),
+  copyButton: (text) => copyButton(text),
+};
 
 /**
  * A formula on a line of its own: a size up, centred on the chat,

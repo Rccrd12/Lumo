@@ -790,6 +790,32 @@ and `\(…\)` inside the text, `$$…$$` and `\[…\]` on lines of their own,
 with Greek letters, fractions, roots, vectors, ℝ and friends, sums, integrals
 and matrices. "$5 and $10" stays money.
 
+### Rich cards in answers
+
+Where it helps, and sparingly, an answer can hold a card instead of plain
+text, laid out wide and low for the island. Every provider is told the
+formats (`rich_note` in `src-tauri/src/chat.rs`), and the chat draws them
+(`src/views/rich/`):
+
+- **Callouts**: a quote that starts `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
+  `[!WARNING]` or `[!CAUTION]`, as on GitHub, for a key rule or a warning.
+- **Steps** (` ```lumo-steps `): a derivation or a procedure one step at a
+  time, with buttons to go back and forth and a list of every step.
+- **Comparison cards** (` ```lumo-cards `): two to six things side by side,
+  each with its icon, a few values and a line of text.
+- **Calculator** (` ```lumo-calc `): a formula with its inputs on sliders and
+  its results worked out as you move them.
+- **Chart** (` ```lumo-plot `): one to three curves that follow the sliders of
+  their parameters.
+- **Images from the web**: a line that is only `![alt](https://…)`. Lumo
+  reaches only the services you set up, so it asks first: **Show** for this
+  image, or **Always from** its site, kept in **Settings → Security → Images
+  from the web**, where you can forget it. The image is downloaded by Lumo
+  itself (https and public addresses only, PNG, JPEG, GIF, WebP or AVIF, 8 MB
+  at most), never by the island.
+
+A block the chat can't read is shown as it was written, as code.
+
 ### Show the chat your screen
 
 The screen button next to the paperclip lets the assistant see what you have

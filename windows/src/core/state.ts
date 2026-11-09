@@ -350,6 +350,12 @@ export interface Settings {
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
+  /**
+   * The sites whose images the chat's answers show without asking (web_image.rs,
+   * views/rich/image.ts): exact host names, lowercase, added by "Always from …"
+   * on an image's card, removed in Settings → Security. Empty: every image asks.
+   */
+  webImageSites: string[];
   /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -500,6 +506,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatComputerUse: false,
   chatWebSearch: false,
   chatAutoCompact: true,
+  webImageSites: [],
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   aiGithubAccess: "none",

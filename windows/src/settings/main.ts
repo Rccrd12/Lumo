@@ -792,6 +792,46 @@ const WEB_SETTINGS = {
   get label() { return t("Search the web for the AI"); },
 };
 
+/** The sites whose images the chat shows without asking (views/rich/image.ts, web_image.rs). */
+const WEB_IMAGES = {
+  get label() { return t("Images from the web"); },
+  get hint() { return t("An image in an answer is downloaded only after you say so. These sites' images show without asking: remove one and its images ask again."); },
+  get none() { return t("No sites yet: every image asks first."); },
+  get remove() { return t("Remove"); },
+  removeTip: (site: string) => t("Stop showing the images from {site} without asking", { site }),
+};
+
+/**
+ * Settings → Security → Images from the web: the sites let in with "Always
+ * from …" on an image's card, each with Remove. Drawn again when the island
+ * adds one (settings-changed redraws the declaredViews).
+ */
+function webImageSites(): HTMLElement {
+  const list = h("div", { class: "mail-account-list" });
+  const draw = () => {
+    const sites = Array.isArray(settings.webImageSites) ? settings.webImageSites : [];
+    if (sites.length === 0) {
+      list.replaceChildren(h("p", { class: "hint", text: WEB_IMAGES.none }));
+      return;
+    }
+    list.replaceChildren(...sites.map((site) => {
+      const remove = h("button", { class: "danger", text: WEB_IMAGES.remove, title: WEB_IMAGES.removeTip(site), "aria-label": WEB_IMAGES.removeTip(site) });
+      remove.addEventListener("click", () => {
+        settings.webImageSites = sites.filter((s) => s !== site);
+        draw();
+        void save();
+      });
+      return h("div", { class: "mail-account", style: "grid-template-columns: minmax(0, 1fr) auto" },
+        h("div", { class: "mail-account-text" }, h("span", { class: "mail-account-address", text: site, title: site })),
+        remove,
+      );
+    }));
+  };
+  declaredViews.push(draw);
+  draw();
+  return wideSetting(WEB_IMAGES.label, WEB_IMAGES.hint, list);
+}
+
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
@@ -847,6 +887,7 @@ function securitySection(): HTMLElement {
     setting(WEB_SETTINGS.label, SECURITY.webHint,
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
     ),
+    webImageSites(),
     group(SECURITY.sees),
     h("p", { class: "hint group-hint", text: SECURITY.seesHint }),
     setting(SECURITY.windows, SECURITY.windowsHint,
