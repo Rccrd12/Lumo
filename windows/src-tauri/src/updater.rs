@@ -472,12 +472,28 @@ fn user_agent(app: &AppHandle) -> String {
 #[tauri::command]
 pub async fn update_check(app: AppHandle, beta: Option<bool>) -> Result<UpdateInfo, String> {
     let current = app.package_info().version.to_string();
+    let releases = fetch_releases(&app).await?;
+    let kind = installed_kind();
+    let info = compare(&current, releases, kind, beta == Some(true))?;
+    log::line(format!(
+        "update check: current {} latest {} newer {} beta {} ({kind:?})",
+        info.current,
+        info.latest,
+        info.newer,
+        info.beta.as_ref().map_or("-", |b| b.version.as_str())
+    ));
+    Ok(info)
+}
+
+/// GitHub's list of the repository's releases, with the SHA-256 of each
+/// installer kept for the download that may follow (remember_digests).
+async fn fetch_releases(app: &AppHandle) -> Result<Vec<Release>, String> {
     let url = Url::parse(&format!("https://api.github.com/repos/{UPDATE_REPO}/releases?per_page=30"))
         .map_err(|e| e.to_string())?;
     let client = net::client(&url, Duration::from_secs(20))?;
     let response = client
         .get(url)
-        .header("User-Agent", user_agent(&app))
+        .header("User-Agent", user_agent(app))
         .header("Accept", "application/vnd.github+json")
         .header("X-GitHub-Api-Version", "2022-11-28")
         .send()
@@ -497,16 +513,7 @@ pub async fn update_check(app: AppHandle, beta: Option<bool>) -> Result<UpdateIn
     let releases: Vec<Release> = serde_json::from_slice(&body)
         .map_err(|_| t("GitHub's answer could not be read."))?;
     remember_digests(&releases);
-    let kind = installed_kind();
-    let info = compare(&current, releases, kind, beta == Some(true))?;
-    log::line(format!(
-        "update check: current {} latest {} newer {} beta {} ({kind:?})",
-        info.current,
-        info.latest,
-        info.newer,
-        info.beta.as_ref().map_or("-", |b| b.version.as_str())
-    ));
-    Ok(info)
+    Ok(releases)
 }
 
 /// One install at a time: a second click while downloading does nothing.
@@ -572,6 +579,18 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
         .to_string();
     let kind = installer_kind(&file_name)
         .ok_or_else(|| t("Only installers from Lumo's GitHub releases can be installed."))?;
+    // What GitHub says the file is, before anything is downloaded: asked again
+    // when this run of Lumo has not read it yet. No SHA-256, no install.
+    let expected = match expected_digest(&url) {
+        Some(d) => d,
+        None => {
+            fetch_releases(app).await?;
+            expected_digest(&url).ok_or_else(|| {
+                log::line(format!("update: GitHub gave no SHA-256 for {file_name}, not installed"));
+                t("GitHub gave no SHA-256 for this installer, so Lumo did not install it.")
+            })?
+        }
+    };
 
     // Redirects stay on GitHub and its download CDN.
     let policy = reqwest::redirect::Policy::custom(|attempt| {
@@ -636,16 +655,10 @@ async fn download_and_run(app: &AppHandle, url: Url) -> Result<(), String> {
     if !bytes.starts_with(signature) {
         return Err(tf("The download failed: {error}", &[("error", "not an installer")]));
     }
-    // Byte for byte the file GitHub published, when it said what that is
-    // (every release since GitHub computes it): a changed file is never run.
-    match expected_digest(&url) {
-        Some(expected) => {
-            if crate::platform::sha256_hex(&bytes).as_deref() != Some(expected.as_str()) {
-                log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
-                return Err(t("The downloaded installer does not match the one GitHub published."));
-            }
-        }
-        None => log::line(format!("update: GitHub gave no SHA-256 for {file_name}")),
+    // Byte for byte the file GitHub published: a changed file is never run.
+    if crate::platform::sha256_hex(&bytes).as_deref() != Some(expected.as_str()) {
+        log::line(format!("update: {file_name} does not match GitHub's SHA-256, not installed"));
+        return Err(t("The downloaded installer does not match the one GitHub published."));
     }
     let _ = app.emit("update-progress", Progress { received: bytes.len() as u64, total: bytes.len() as u64 });
 

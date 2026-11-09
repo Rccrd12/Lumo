@@ -704,6 +704,9 @@ function planWords(button: HTMLElement, words: string): HTMLElement {
   return button;
 }
 
+/** Under the buttons of a card whose Allow is kept for the rest of the chat. */
+const REMEMBERED_TEXT = N_("In Auto, Allow counts for the rest of the chat");
+
 function buildApproval(actions: ViewActions): ViewHost {
   const who = h("div");
   const about = h("div", { class: "approval-about" });
@@ -720,6 +723,8 @@ function buildApproval(actions: ViewActions): ViewHost {
   const answerThere = btn("", "secondary", () => {
     if (performance.now() - shownAt >= CLICK_GUARD_MS) actions.answerInTerminal();
   });
+  // Copilot CLI and Cursor CLI in Auto: Allow stands for the rest of the chat, and the card says so (new look only).
+  const rememberedNote = h("div", { class: "session-allow session-note", text: tl(REMEMBERED_TEXT) });
   const body = stack(116, 16, who, about, planSlot, code, mail, row, mailRow);
   let planFor: string | null = null;
   const el = h("div", { class: "view" }, card("amber", body, foldButton(actions)));
@@ -830,6 +835,7 @@ function buildApproval(actions: ViewActions): ViewHost {
       // In its place on a plan asking to start, from a session (the island's chat has its own way).
       planEdits.style.display = plan && !pending?.fromChat ? "" : "none";
       answerThere.style.display = pending?.answerIn && !plan ? "" : "none";
+      rememberedNote.style.display = pending?.remembered === true && !plan && State.settings.islandNewLook === true ? "" : "none";
       const answerWords = pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
@@ -844,6 +850,7 @@ function buildApproval(actions: ViewActions): ViewHost {
         withClass(sessionAllow, "session-allow"),
         withClass(planEdits, "session-allow"),
         withClass(answerThere, "session-allow"),
+        rememberedNote,
         withClass(planWords(btn(tl("Allow"), "primary", guarded("allow"), "Y"), PLAN_ASK_TEXT.approve), "allow-btn"),
       );
       clear(mailRow);

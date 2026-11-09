@@ -6,7 +6,8 @@
 //   node scripts/beta.mjs merge <state.json>
 //       main, then every open pull request of this repository merged into it
 //       one at a time, oldest first. Only those whose own Windows CI passed on
-//       their latest commit (or that it does not run on) go in: one whose
+//       their latest commit (or that it does not run on) go in, and only that
+//       very commit (one pushed in between waits for its checks): one whose
 //       checks fail or are still running is left out this time, with why. One
 //       that does not merge is left out and the state says what it conflicts
 //       with (main, another pull request, or the other changes together).
@@ -82,6 +83,16 @@ export function ciState(rollup) {
   if (runs.some((c) => c.status !== "COMPLETED")) return "pending";
   const ok = new Set(["SUCCESS", "NEUTRAL", "SKIPPED"]);
   return runs.every((c) => ok.has(c.conclusion)) ? "pass" : "fail";
+}
+
+/**
+ * Whether the commit fetched is the one whose checks `ciState` read
+ * (`headRefOid`): a push in between brings a commit no CI has passed yet.
+ */
+export function sameHead(fetched, headRefOid) {
+  const a = String(fetched ?? "").trim().toLowerCase();
+  const b = String(headRefOid ?? "").trim().toLowerCase();
+  return /^[0-9a-f]{40}$/.test(a) && a === b;
 }
 
 /** A title on one line, cut to a readable length. */
@@ -194,6 +205,12 @@ function merge(statePath) {
     if (ci !== "pass") {
       excluded.push({ ...entry, reason: ci === "fail" ? "checks" : "pending" });
       console.log(`#${pr.number} left out (Windows CI: ${ci})`);
+      continue;
+    }
+    // Pushed again after its checks were read: the new commit waits for its own.
+    if (!sameHead(head, pr.headRefOid)) {
+      excluded.push({ ...entry, reason: "pending" });
+      console.log(`#${pr.number} left out (pushed again since its checks were read)`);
       continue;
     }
     if (tryGit(["merge", "--no-ff", "--no-edit", "-m", `beta: #${pr.number}`, ref])) {

@@ -94,6 +94,8 @@ windows = { version = "0.61", features = [
   # Gemini Live's control_computer: locking the computer.
   "Win32_System_Shutdown",
   "Win32_System_SystemInformation",
+  # The Unsloth Studio Lumo starts ends with Lumo, a crash included (unsloth_studio.rs).
+  "Win32_System_JobObjects",
   "Win32_System_Threading",
   # The Email pill's Outlook (outlook.rs): its dates are local times.
   "Win32_System_Time",

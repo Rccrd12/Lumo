@@ -1,5 +1,13 @@
 # Changelog
 
+## Windows 0.20.2 — November 9, 2026
+
+- **A deletion says so**: on the cards of Copilot CLI and Cursor CLI in the chat, a file to delete is **Delete** ("Deletes a file.") and one to move or rename is **Move**, with where it goes, instead of Edit. In Auto, the new look's card says that Allow counts for the rest of the chat
+- **The agents' sign-ins stay out**: Gemini Live never reads, and a chat's folder of copies never takes, the sign-ins of Codex, Gemini CLI, Copilot CLI, Cursor CLI and GitHub CLI, nor Claude Code's folder where `CLAUDE_CONFIG_DIR` puts it
+- **No update without its fingerprint**: an installer is run only when it matches the SHA-256 GitHub published for it; when Lumo doesn't have it yet it asks GitHub again, and with none it installs nothing
+- **Unsloth Studio ends with Lumo**: the server Lumo started stops with it even after a crash or the Task Manager, instead of keeping the graphics card's memory; with Stop after set to Never it still keeps running
+- **Fixed**: a beta could take a pull request's newest commit before its checks had passed on it; it now waits for them
+
 ## Windows 0.20.1 — November 9, 2026
 
 - **Sessions another program starts share one row**: when a program asks Claude Code many questions on its own (with `claude -p`, or any agent run with `LUMO_BACKGROUND=1`), the home shows one row for that program, named after it, with how many are done, running and failed and a bar along its foot, which fills as the batch goes when the program sets `LUMO_BATCH_TOTAL`. A click opens what each running session is about, the last answer and the errors. "Work" plays once when the batch starts and "finish" once when it ends, the island never opens on its own for them, and they stay out of the folder history, the Plan island and the weekly recap; their permission requests still come up as cards. Settings → Agents → **Background sessions** has Grouped, One by one (as before) and Hidden

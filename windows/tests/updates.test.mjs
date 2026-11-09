@@ -211,7 +211,7 @@ test("a pull request left out of the beta says what it conflicts with", () => {
 
 // ── scripts/beta.mjs, the workflow's steps ────────────────────────────────────
 
-const { BETA_MARK, betaVersion, ciState, cleanTitle, renderNotes } = await import("../scripts/beta.mjs");
+const { BETA_MARK, betaVersion, ciState, cleanTitle, renderNotes, sameHead } = await import("../scripts/beta.mjs");
 
 test("only a pull request whose Windows CI passed goes in", () => {
   const run = (status, conclusion, workflowName = "Windows CI") => ({ __typename: "CheckRun", name: "test", workflowName, status, conclusion });
@@ -260,4 +260,13 @@ test("the notes carry the list for Lumo, which no title can break out of", () =>
   assert.match(notes, /#151 Busy \(its checks are still running\)/);
   assert.equal(list.excluded[2].reason, "checks");
   assert.equal(cleanTitle("x".repeat(500)).length, 200);
+});
+
+test("the beta merges only the commit whose checks were read", () => {
+  const sha = "a5b2ace1dd833274469114fde9ace4829bf9cbce";
+  assert.equal(sameHead(sha, sha), true);
+  assert.equal(sameHead(`${sha}\n`, sha.toUpperCase()), true, "as git and GitHub write it");
+  assert.equal(sameHead("62248ea19dbe2fe5071e2d00923bb23ebffd5051", sha), false, "pushed again since");
+  assert.equal(sameHead(sha, undefined), false, "GitHub said nothing: left out");
+  assert.equal(sameHead("", ""), false);
 });

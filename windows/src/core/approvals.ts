@@ -125,12 +125,18 @@ export const REQUEST_KINDS = {
   looks: N_("Only looks: changes nothing."),
   command: N_("Runs a command that can change things."),
   edit: N_("Changes a file."),
+  delete: N_("Deletes a file."),
+  move: N_("Moves or renames a file."),
   web: N_("Reads a web page."),
   mcp: N_("Uses a tool of {server} (MCP)."),
 } as const;
 
 /** Tools that change a file (Claude Code's and Antigravity's). */
 const EDIT_TOOLS = new Set(["write", "edit", "multiedit", "notebookedit", "write_to_file", "replace_file_content", "multi_replace_file_content", "write_file", "replace"]);
+
+/** A deletion and a move, as the cards of Copilot CLI and Cursor CLI name them (acp_chat.rs card). */
+const DELETE_TOOLS = new Set(["delete"]);
+const MOVE_TOOLS = new Set(["move"]);
 
 /** Tools that read a web page. */
 const WEB_TOOLS = new Set(["webfetch", "read_url_content", "web_fetch"]);
@@ -145,6 +151,8 @@ export function requestKind(tool: string, input: Record<string, unknown>): { tex
   if (isSimpleRequest(tool, input)) return { text: REQUEST_KINDS.looks };
   if (SHELL_TOOLS.has(name)) return { text: REQUEST_KINDS.command };
   if (EDIT_TOOLS.has(name)) return { text: REQUEST_KINDS.edit };
+  if (DELETE_TOOLS.has(name)) return { text: REQUEST_KINDS.delete };
+  if (MOVE_TOOLS.has(name)) return { text: REQUEST_KINDS.move };
   if (WEB_TOOLS.has(name)) return { text: REQUEST_KINDS.web };
   const mcp = /^mcp__(.+?)__/.exec(tool);
   if (mcp) return { text: REQUEST_KINDS.mcp, vars: { server: mcp[1] } };

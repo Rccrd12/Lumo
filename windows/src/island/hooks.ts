@@ -264,6 +264,8 @@ interface HookPayload {
   lumo_task_id?: string;
   /** The card may offer "Allow for this session" (session_rules.rs): the request has a session to keep it for. */
   lumo_session_allow?: boolean;
+  /** A card of the chat's Copilot CLI or Cursor CLI in Auto: Allow is answered with the CLI's "always allow" (acp_chat.rs card). */
+  lumo_remembered?: boolean;
   /** The Claude Code session's title (/rename, else Claude Code's own), read from its transcript by the relay (hook/src/title.rs). */
   lumo_title?: string;
   /** A command of an Antigravity session that none of its rules covers (hook/src/main.rs): a card, else Antigravity asks. */
@@ -907,6 +909,7 @@ function handleHook(island: Island, payload: HookPayload) {
         ...(questions ? { questions } : {}),
         ...(fromChat ? { fromChat } : {}),
         ...(payload.lumo_session_allow === true && !questions && !agyGate ? { sessionAllow: true } : {}),
+        ...(payload.lumo_remembered === true && !questions ? { remembered: true } : {}),
         ...(agyGate ? { answerIn: agentName("antigravity") } : {}),
         // A pill named after a project can carry two sessions: the card says whose request it is.
         ...(liveFile ? { project: "Gemini Live" } : !fromChat && !isExternalAgent ? { project: projectName } : {}),
