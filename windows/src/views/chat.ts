@@ -77,6 +77,7 @@ import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
+import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
@@ -295,14 +296,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
   }
   const reply = h("div", { class: "reply" });
-  if (opts.workshop) {
-    const shown = stripDraft(message.content);
-    renderMarkdown(reply, shown.text);
-    const draft = shown.draft ? draftIn(message.content) : null;
-    if (draft) reply.append(draftChip(draft.name));
-  } else {
-    renderAnswer(reply, message.content);
-  }
+  drawReply(reply, message.content, !!opts.workshop);
   // A stopped answer says so on a line of its own, Copy beside it; otherwise
   // Copy floats over the answer's bottom right corner and takes no room.
   const foot = message.stopped
@@ -696,6 +690,18 @@ function typingDots(label: string): HTMLElement {
  * An answer as far as it is written, without Lumo's lines; in the tool
  * workshop, the tool's blocks give way to a line saying it is being written.
  */
+/** A finished answer's text, in its bubble. */
+function drawReply(reply: HTMLElement, content: string, workshop: boolean) {
+  if (workshop) {
+    const shown = stripDraft(content);
+    renderMarkdown(reply, shown.text);
+    const draft = shown.draft ? draftIn(content) : null;
+    if (draft) reply.append(draftChip(draft.name));
+  } else {
+    renderAnswer(reply, content);
+  }
+}
+
 function drawAnswer(into: HTMLElement, text: string, workshop: boolean) {
   const shown = takeListens(takeTimers(text).text).text;
   if (!workshop) {
@@ -1750,6 +1756,41 @@ export function buildPrompt(
   let screenTicket = 0;
   // An answer comes token by token: where the on-screen chat's text so far is shown.
   let live: HTMLElement | null = null;
+  /**
+   * The on-screen answer, written in ink (views/ink.ts): at a steady pace,
+   * behind a soft edge. It goes on into the finished answer's bubble until
+   * what arrived is all uncovered.
+   */
+  let ink: Ink | null = null;
+  let inkChat = "";
+  /**
+   * Shows `text`, the answer of `chat` so far, in `into`. `fresh`: its first
+   * words, written from the start; otherwise an answer already under way
+   * shows as far as it got at once, and only what comes next is written.
+   */
+  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean) {
+    const workshop = isWorkshopChat(chat);
+    if (!inkWorks()) {
+      drawAnswer(into, text, workshop);
+      return;
+    }
+    if (fresh || !ink || inkChat !== chat) {
+      ink?.stop();
+      ink = new Ink((el, words) => drawAnswer(el, words, workshop));
+      inkChat = chat;
+      ink.update(text);
+      if (!fresh) ink.skip();
+      ink.mount(into);
+      return;
+    }
+    ink.update(text);
+    if (ink.target !== into) ink.mount(into);
+  }
+  function dropInk() {
+    ink?.stop();
+    ink = null;
+    inkChat = "";
+  }
   /** The question being edited (its id): sending replaces it and drops what follows. */
   let editing: number | null = null;
   /** What the send button shows now: "send" or "stop". */
@@ -3289,6 +3330,7 @@ export function buildPrompt(
   void onEvent<{ chat: string; text: string }>("chat-delta", ({ chat, text }) => {
     const run = runs.get(chat);
     if (!run || !text) return; // nothing visible yet: the dots stay
+    const fresh = !run.text;
     run.text = text;
     run.dots = false;
     // The closed island says it is writing now.
@@ -3301,7 +3343,7 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    drawAnswer(live, text, isWorkshopChat(chat));
+    writeAnswer(chat, live, text, fresh);
     follow();
   });
 
@@ -4125,6 +4167,7 @@ export function buildPrompt(
       if (State.chatId !== shownChat) {
         shownChat = State.chatId;
         live = null;
+        dropInk();
         renderedCount = -1;
         openedChat = true;
         drawIslandActivity();
@@ -4262,11 +4305,19 @@ export function buildPrompt(
         State.chatHistory.forEach((m, i) => {
           log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop }));
         });
+        // An answer just finished: the ink goes on in its bubble until all is uncovered.
+        const last = State.chatHistory[State.chatHistory.length - 1];
+        const inked = ink && !run && inkChat === State.chatId && ink.behind ? ink : null;
+        const lastReply = log.lastElementChild?.querySelector<HTMLElement>(".reply");
+        if (inked && last?.role === "assistant" && !last.failed && lastReply) {
+          inked.update(last.content, true);
+          inked.mount(lastReply, (el, words) => drawReply(el, words, workshop));
+        } else if (!run) dropInk();
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          drawAnswer(live, run.text, workshop);
+          writeAnswer(run.chatId, live, run.text, false);
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
         // The chat stays where it was read, or at its end when it is stuck
