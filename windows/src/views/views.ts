@@ -79,6 +79,8 @@ export interface ViewActions {
   showPlan(): void;
   /** A chat deleted from Past chats: its plans go too. */
   forgetChatPlan(chatId: string): void;
+  /** A question of the chat edited: the plan its dropped answers made goes. */
+  restartChatPlan(chatId: string): void;
   /** The new look's "⋯" (off with Settings → Island → Previous look): settings, sound, hide and quit in one menu, at (x, y). */
   moreMenu(x: number, y: number): void;
   /** The live activities as they stand, for the new look's home tiles. */
@@ -1116,7 +1118,7 @@ export function buildViews(
   }, (chatId) => actions.forgetChatPlan(chatId), () => {
     actions.blip();
     actions.setView("tools");
-  }, (d, requestId) => actions.decide(d, requestId)));
+  }, (d, requestId) => actions.decide(d, requestId), (chatId) => actions.restartChatPlan(chatId)));
   map.set("upload", buildUpload());
   map.set("uploading", buildUploading());
   map.set("recap", buildRecap(actions));

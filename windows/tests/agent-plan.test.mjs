@@ -121,6 +121,30 @@ test("TaskCreate with the id its result gave: TaskUpdate finds the step by it", 
   assert.equal(book.apply(owner("x"), readPlanUpdate("TaskUpdate", { taskId: "1", status: "completed" }), 4), null);
 });
 
+test("a TaskCreate id the plan already has starts a new plan: the session counts from 1 again", () => {
+  const book = new PlanBook();
+  const chat = { ...owner("c1"), pillId: "chat" };
+  book.apply(chat, readPlanUpdate("TaskCreate", { subject: "Take a screenshot", taskId: "1" }), 1);
+  book.apply(chat, readPlanUpdate("TaskCreate", { subject: "Search for Chrome", taskId: "2" }), 2);
+  book.apply(chat, readPlanUpdate("TaskUpdate", { taskId: "1", status: "completed" }), 3);
+  // The chat went on in a new Claude Code session: its task #1 is not a third step.
+  assert.equal(book.apply(chat, readPlanUpdate("TaskCreate", { subject: "Open Chrome", taskId: "1" }), 4), "new");
+  assert.equal(book.apply(chat, readPlanUpdate("TaskCreate", { subject: "Check it opened", taskId: "2" }), 5), "changed");
+  assert.equal(book.apply(chat, readPlanUpdate("TaskUpdate", { taskId: "1", status: "in_progress" }), 6), "changed");
+  assert.deepEqual(book.current().steps, [{ text: "Open Chrome", status: "active" }, { text: "Check it opened", status: "pending" }]);
+});
+
+test("a session starting over: its plan goes and its task ids count from 1 again", () => {
+  const book = new PlanBook();
+  book.apply(owner(), readPlanUpdate("TaskCreate", { subject: "First" }), 1);
+  book.apply(owner(), readPlanUpdate("TaskCreate", { subject: "Second" }), 2);
+  assert.equal(book.restart(book.current().key), true);
+  assert.equal(book.size, 0);
+  assert.equal(book.apply(owner(), readPlanUpdate("TaskCreate", { subject: "Again" }), 3), "new");
+  assert.equal(book.apply(owner(), readPlanUpdate("TaskUpdate", { taskId: "1", status: "in_progress" }), 4), "changed");
+  assert.deepEqual(book.current().steps, [{ text: "Again", status: "active" }]);
+});
+
 test("a new plan, or the same one moving on", () => {
   const a = [{ text: "One", status: "pending" }, { text: "Two", status: "pending" }];
   const aMoved = [{ text: "One", status: "done" }, { text: "Two", status: "active" }];
@@ -394,6 +418,25 @@ test("the island chat's Claude Code sends its plan through the chat, and it open
   emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "completed"], ["Write game.py", "completed"]) });
   mock.timers.tick(8_000);
   assert.equal(beside(), false);
+});
+
+test("a question of the chat edited: the plan its answer made goes, and the next one starts alone", () => {
+  const send = (tool, input) => emit("chat-plan", { chat: "edited-chat", tool, input });
+  send("TaskCreate", { subject: "Take a screenshot of the desktop", taskId: "1" });
+  send("TaskCreate", { subject: "Open Chrome", taskId: "2" });
+  send("TaskUpdate", { taskId: "1", status: "in_progress" });
+  assert.equal(beside(), true);
+  island.plan.restartChat("edited-chat");
+  assert.equal(island.plan.book.get("chat|edited-chat"), undefined);
+  assert.equal(beside(), false);
+  // Not kept with those done: the answer that made it is gone.
+  assert.equal(island.plan.plans().some((p) => p.key === "chat|edited-chat"), false);
+  // The new answer's plan opens on its own.
+  send("TaskCreate", { subject: "Open Chrome and check it", taskId: "1" });
+  send("TaskUpdate", { taskId: "1", status: "in_progress" });
+  assert.equal(beside(), true);
+  assert.deepEqual(island.plan.current.steps, [{ text: "Open Chrome and check it", status: "active" }]);
+  island.plan.forgetChat("edited-chat");
 });
 
 test("a local or API model's update_plan carries its own chat id and speaker", () => {

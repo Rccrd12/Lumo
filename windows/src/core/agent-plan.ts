@@ -249,13 +249,18 @@ export class PlanBook {
         else if (fresh) note = undefined;
         break;
       case "add": {
-        fresh = !before || planFinished(before.steps);
+        const tasks = this.taskIds.get(key) ?? { next: 1, ids: [] };
+        // An id the plan already has: the agent's tasks count from 1 again, so
+        // this is a new session's plan (the island chat after an edited
+        // question, a compacted chat), never more steps of the one shown.
+        const restarted = update.id !== undefined && tasks.ids.includes(update.id);
+        fresh = !before || planFinished(before.steps) || restarted;
         const kept = fresh ? [] : before!.steps;
         if (kept.length >= MAX_STEPS) return null;
         steps = [...kept, update.step];
         if (fresh) note = undefined;
-        const tasks = this.taskIds.get(key) ?? { next: 1, ids: [] };
         if (fresh) tasks.ids = [];
+        if (restarted) tasks.next = 1;
         if (update.id !== undefined) {
           // The id its result gave: the next ones follow it.
           tasks.ids.push(update.id);
@@ -289,6 +294,15 @@ export class PlanBook {
 
   /** The session is over: its plan goes. */
   drop(key: string): boolean {
+    return this.plans.delete(key);
+  }
+
+  /**
+   * The session behind the key starts over (the island chat went back to an
+   * edited question): its plan goes, and its task ids count from 1 again.
+   */
+  restart(key: string): boolean {
+    this.taskIds.delete(key);
     return this.plans.delete(key);
   }
 
