@@ -130,7 +130,7 @@ export function parseQuiz(title: string, body: string): Quiz | null {
       cur = start(question[1].trim().replace(NUMBERED, ""));
     } else if (ticked || option) {
       cur ??= start("");
-      const text = [(ticked ?? option)![2].replace(LETTERED, "").trim()];
+      const text = [(ticked ?? option)![2].trim()];
       cur.options.push({ text, right: ticked ? ticked[1] !== " " : option![1] === "+" });
       last = text;
     } else if (why) {
@@ -153,11 +153,25 @@ export function parseQuiz(title: string, body: string): Quiz | null {
   }
   const questions: QuizQuestion[] = [];
   for (const d of drafts) {
+    unletter(d);
     const q = questionOf(d);
     if (q) questions.push(q);
   }
   if (questions.length === 0 || questions.length > MAX_QUESTIONS) return null;
   return { title: title.trim(), questions };
+}
+
+/**
+ * Takes the letters or numbers off a question's answers, only when every one
+ * has one and they run in order (A, B, C… in either case, or 1, 2, 3…): an
+ * answer that starts with an initial, "E. coli" or "F. Scott Fitzgerald",
+ * keeps it.
+ */
+function unletter(d: Draft): void {
+  const marks = d.options.map((o) => LETTERED.exec(o.text[0])?.[0].trim()[0].toUpperCase());
+  const inOrder = (first: string) => marks.every((m, i) => m === String.fromCharCode(first.charCodeAt(0) + i));
+  if (marks.length === 0 || !(inOrder("A") || inOrder("1"))) return;
+  for (const o of d.options) o.text[0] = o.text[0].replace(LETTERED, "").trim();
 }
 
 /** A draft as a question the card can mark, or null. */

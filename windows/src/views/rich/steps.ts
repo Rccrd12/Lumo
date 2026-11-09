@@ -53,6 +53,8 @@ export interface Steps {
 
 /** `## Product rule`, and the other heading levels models reach for. */
 const HEADING = /^ {0,3}#{1,6}(?!#)[ \t]*(.*)$/;
+/** A code fence line, ``` or ~~~: its marker. */
+const FENCE = /^[ \t]*(`{3,}|~{3,})(.*)$/;
 /** A display formula: `$$…$$` or `\[…\]`, on one line or several. */
 const DISPLAY = /\$\$([\s\S]+?)\$\$|\\\[([\s\S]+?)\\\]/;
 /** A line that is only an inline formula, `$…$`, written where a display one was meant. */
@@ -70,13 +72,30 @@ const MARKER = /^(?:[-*+•]|\d+[.)])[ \t]+/;
  */
 export function parseSteps(title: string, body: string): Steps | null {
   const lines = body.replace(/\r\n?/g, "\n").split("\n");
-  const steps = lines.some((l) => HEADING.test(l)) ? byHeadings(lines) : byLines(lines);
+  const code = inCode(lines);
+  const steps = lines.some((l, i) => !code[i] && HEADING.test(l)) ? byHeadings(lines, code) : byLines(lines);
   if (steps.length < MIN_STEPS || steps.length > MAX_STEPS) return null;
   return { title: title.trim(), steps };
 }
 
+/**
+ * Which lines are a code block's, its fences included: a `# comment` in a
+ * step's bash or Python is no heading. A fence is closed by a bare one of the
+ * same character, at least as long, as markdown.ts reads them.
+ */
+function inCode(lines: string[]): boolean[] {
+  let open = "";
+  return lines.map((line) => {
+    const m = FENCE.exec(line);
+    if (!m) return open !== "";
+    if (!open) open = m[1];
+    else if (m[2].trim() === "" && m[1][0] === open[0] && m[1].length >= open.length) open = "";
+    return true;
+  });
+}
+
 /** A step per heading, its lines under it; what comes before the first heading is left out. */
-function byHeadings(lines: string[]): Step[] {
+function byHeadings(lines: string[], code: boolean[]): Step[] {
   const steps: Step[] = [];
   let label: string | null = null;
   let under: string[] = [];
@@ -85,8 +104,8 @@ function byHeadings(lines: string[]): Step[] {
     const step = stepOf(label, under.join("\n"));
     if (step) steps.push(step);
   };
-  for (const line of lines) {
-    const m = HEADING.exec(line);
+  for (const [i, line] of lines.entries()) {
+    const m = code[i] ? null : HEADING.exec(line);
     if (m) {
       flush();
       label = cleanLabel(m[1]);

@@ -9,8 +9,9 @@ import assert from "node:assert/strict";
 import { installFakeDom } from "./fakedom.mjs";
 import { calls, internals, sent } from "./tauri.mjs";
 
-installFakeDom();
-const { renderImage, imageType, siteOf, resetImages } = await import("../src/views/rich/image.ts");
+const { root } = installFakeDom();
+const { renderMarkdown } = await import("../src/views/markdown.ts");
+const { renderImage, imageType, siteOf, resetImages, MAX_PER_ANSWER } = await import("../src/views/rich/image.ts");
 const { State, DEFAULT_SETTINGS } = await import("../src/core/state.ts");
 
 const PNG = [0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13];
@@ -19,10 +20,17 @@ const URL_B = "https://upload.wikimedia.org/wikipedia/commons/b/b2/Other.png";
 
 /** What Rust answers to web_image, by URL: bytes, or an error. */
 let answers = new Map();
+/** Downloads under way in Rust, and the most at once; `slow` makes each one last a turn of the event loop. */
+let inFlight = 0;
+let peak = 0;
+let slow = false;
 const realInvoke = internals.invoke;
 internals.invoke = async (cmd, args) => {
   if (cmd === "web_image") {
     calls.push([cmd, args]);
+    peak = Math.max(peak, ++inFlight);
+    if (slow) await new Promise((r) => setTimeout(r, 0));
+    inFlight--;
     const answer = answers.get(args.url);
     if (answer instanceof Error) throw answer;
     return answer ? new Uint8Array(answer).buffer : null;
@@ -40,6 +48,9 @@ const openButton = (card) => buttons(card).find((b) => b.getAttribute("aria-labe
 
 beforeEach(() => {
   calls.length = 0;
+  inFlight = 0;
+  peak = 0;
+  slow = false;
   answers = new Map();
   resetImages();
   State.settings = { ...State.settings, webImages: true };
@@ -165,4 +176,93 @@ test("markdown turns a line that is only an image into the card", async () => {
   renderMarkdown(root, `The circuit:\n\n![Op-amp](${URL_A})`);
   assert.equal(root.find(".rc-image").length, 1);
   assert.deepEqual(sent("web_image"), [{ url: URL_A }]);
+});
+
+/** `count` distinct image URLs, each answered with a small PNG. */
+function many(count) {
+  return Array.from({ length: count }, (_, i) => {
+    const url = `https://upload.wikimedia.org/wikipedia/commons/x/x${i}.png`;
+    answers.set(url, PNG);
+    return url;
+  });
+}
+
+test("at most 4 images download at once; the others wait their turn", async () => {
+  slow = true;
+  const urls = many(10);
+  const cards = urls.map((url) => renderImage("", url));
+  assert.equal(sent("web_image").length, 4, "the first four start at once, the others on their turn");
+  for (let i = 0; i < 20 && cards.some((c) => state(c) !== "shown"); i++) await settle();
+  assert.ok(cards.every((c) => state(c) === "shown"));
+  assert.equal(sent("web_image").length, 10);
+  assert.equal(peak, 4);
+});
+
+test("an answer shows its first images only; the ones after are the one row, not downloaded", async () => {
+  const urls = many(MAX_PER_ANSWER + 3);
+  const cards = urls.map((url, i) => renderImage(i === MAX_PER_ANSWER ? "Last" : "", url, i));
+  await settle();
+  assert.equal(sent("web_image").length, MAX_PER_ANSWER);
+  assert.equal(state(cards[MAX_PER_ANSWER - 1]), "shown");
+  const past = cards[MAX_PER_ANSWER];
+  assert.match(past.className, /\boff\b/);
+  assert.equal(frame(past), null);
+  assert.equal(past.querySelector(".rc-image-cap").textContent, "Last");
+  assert.equal(cards[MAX_PER_ANSWER + 1].querySelector(".rc-image-cap").textContent, "Image");
+  openButton(past).fire("click");
+  assert.deepEqual(sent("open_url"), [{ url: urls[MAX_PER_ANSWER] }]);
+});
+
+test("a long chat of small images is drawn again from memory, not downloaded again", async () => {
+  // The chat draws its whole log again whenever a message comes: 60 images
+  // drawn twice are 60 downloads, not 60 and then the oldest again.
+  const urls = many(60);
+  for (const url of urls) renderImage("", url);
+  for (let i = 0; i < 5; i++) await settle();
+  assert.equal(sent("web_image").length, 60);
+  const again = urls.map((url) => renderImage("", url));
+  assert.ok(again.every((c) => state(c) === "shown"));
+  assert.equal(sent("web_image").length, 60);
+});
+
+test("big images go from memory past 64 MB, the least recently shown first", async () => {
+  const big = new Uint8Array(8 * 1024 * 1024);
+  big.set(PNG);
+  const urls = many(9);
+  for (const url of urls) answers.set(url, big);
+  for (const url of urls) {
+    renderImage("", url);
+    await settle();
+  }
+  assert.equal(sent("web_image").length, 9);
+  // Eight fit in 64 MB: the first went when the ninth came, the others stay.
+  assert.equal(state(renderImage("", urls[8])), "shown");
+  assert.equal(state(renderImage("", urls[1])), "shown");
+  assert.equal(state(renderImage("", urls[0])), "loading");
+  assert.equal(sent("web_image").length, 10);
+});
+
+test("an answer's images are counted through its Markdown, a callout's included: past the first ones, nothing is downloaded", async () => {
+  const urls = many(MAX_PER_ANSWER + 3);
+  const line = (url) => `![](${url})`;
+  const answer = [
+    ...urls.slice(0, 8).map(line),
+    `> [!NOTE] Pictures\n${urls.slice(8, 11).map((u) => `> ${line(u)}`).join("\n>\n")}`,
+    ...urls.slice(11).map(line),
+  ].join("\n\n");
+  const into = root();
+  renderMarkdown(into, answer);
+  for (let i = 0; i < 5; i++) await settle();
+  assert.deepEqual(sent("web_image").map((c) => c.url), urls.slice(0, MAX_PER_ANSWER));
+  const cards = into.find(".rc-image");
+  assert.equal(cards.length, MAX_PER_ANSWER + 3);
+  assert.equal(cards.filter((c) => /\boff\b/.test(c.className)).length, 3);
+  // Drawn again (the chat redraws its log), the same ones stay off.
+  renderMarkdown(into, answer);
+  await settle();
+  assert.equal(sent("web_image").length, MAX_PER_ANSWER);
+  // Another answer counts its own.
+  renderMarkdown(root(), line(urls[MAX_PER_ANSWER + 2]));
+  await settle();
+  assert.equal(sent("web_image").length, MAX_PER_ANSWER + 1);
 });

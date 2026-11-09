@@ -69,6 +69,35 @@ test("forgiving: no ?, numbers and letters written in, * for wrong, - [x] for ri
   assert.equal(parseQuiz("", "? 1. First?\n- a\n+ b").questions[0].text, "First?");
 });
 
+test("an answer's letter goes only when every answer has one, in order: initials stay", () => {
+  const quiz = parseQuiz("", [
+    "? Which bacterium?",
+    "+ E. coli",
+    "- C. elegans",
+    "- B. subtilis",
+    "? Author?",
+    "+ F. Scott Fitzgerald",
+    "- 1. Hemingway",
+    "? Lower case, numbers?",
+    "- a. one",
+    "+ b) two",
+    "? Numbered?",
+    "- 1) one",
+    "+ 2. two",
+    "- 3) three",
+    "? Not all lettered?",
+    "- A. first",
+    "+ second",
+  ].join("\n"));
+  assert.deepEqual(quiz.questions.map((q) => q.options), [
+    ["E. coli", "C. elegans", "B. subtilis"],
+    ["F. Scott Fitzgerald", "1. Hemingway"],
+    ["one", "two"],
+    ["one", "two", "three"],
+    ["A. first", "second"],
+  ]);
+});
+
 test("questions that can't be marked are left out; null when none is left or too many", () => {
   const good = "? Good?\n- a\n+ b";
   const quiz = parseQuiz("", [

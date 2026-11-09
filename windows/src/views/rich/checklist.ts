@@ -23,7 +23,7 @@ import { ICONS } from "../icons";
 import { N_, t } from "../../i18n/i18n";
 import { head, keyOf, remember, RICH_STRINGS, type RichContext } from "./index";
 import { chatChecklists, setChatChecklists } from "../../core/chats";
-import { itemsDone, scopeMessage, slotOf, withTick, type Checklist } from "../../core/checklists";
+import { itemsDone, scopeMessage, slotOf, tickKey, withTick, type Checklist } from "../../core/checklists";
 import "./checklist.css";
 
 export const CHECKLIST_STRINGS = {
@@ -74,7 +74,7 @@ export function renderChecklist(list: Checklist, ctx: RichContext): HTMLElement 
       done: () => itemsDone(list, slot.message, chatChecklists(chatId)[slot.id]),
       set: (i, done) => {
         const all = chatChecklists(chatId);
-        all[slot.id] = withTick(all[slot.id], list.items[i].text, done, slot.message);
+        all[slot.id] = withTick(all[slot.id], tickKey(list, i), done, slot.message);
         setChatChecklists(chatId, all);
       },
     };

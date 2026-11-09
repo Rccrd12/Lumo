@@ -18,7 +18,7 @@ globalThis.localStorage = {
 const dom = installFakeDom();
 const {
   parseChecklist, taskItem, itemKey, resolveChecklists, itemsDone, withTick, checklistNote, stateLine, listsInChat, nextMessage,
-  withTold, cleanChecklists, noteChatChecklists, messageScope, scopeMessage,
+  withTold, tickKey, cleanChecklists, noteChatChecklists, messageScope, scopeMessage,
 } = await import("../src/core/checklists.ts");
 const { chatChecklists, setChatChecklists, saveChat, loadChats, deleteChat } = await import("../src/core/chats.ts");
 const { checklistsIn, renderMarkdown } = await import("../src/views/markdown.ts");
@@ -162,8 +162,6 @@ test("the AI is told only what differs from what it last wrote, and only once", 
   // Told once: not again, until a tick changes.
   memory = withTold(memory, note.told);
   assert.equal(checklistNote(lineages, memory).text, "");
-  memory["u:0"] = withTick(memory["u:0"], "y", false, 3);
-  assert.equal(checklistNote(lineages, memory).text, "");
   memory["t:release"] = withTick(memory["t:release"], "c", true, 1);
   assert.equal(checklistNote(lineages, memory).text, 'Checklist "Release": done: a; b; c. To do: none.');
   // The AI wrote it again with the same ticks: nothing to tell.
@@ -171,6 +169,38 @@ test("the AI is told only what differs from what it last wrote, and only once", 
   assert.equal(checklistNote(again.lineages, memory).text, "");
   // A message being written counts as the next one.
   assert.deepEqual(listsInChat(history, (t) => checklistsIn(t), [{ title: "", items: items("q") }]).at(-1).message, 4);
+});
+
+test("a tick taken back off after the AI was told of it is told too, then not again", () => {
+  const found = [{ message: 1, lists: [{ title: "Release", items: items("a", "b") }] }];
+  const { lineages } = resolveChecklists(found);
+  let memory = { "t:release": withTick(undefined, "a", true, 1) };
+  let note = checklistNote(lineages, memory);
+  assert.equal(note.text, 'Checklist "Release": done: a. To do: b.');
+  memory = withTold(memory, note.told);
+  // Back as the AI wrote it: the AI still thinks a is done, so it is told.
+  memory["t:release"] = withTick(memory["t:release"], "a", false, 1);
+  note = checklistNote(lineages, memory);
+  assert.equal(note.text, 'Checklist "Release": done: none. To do: a; b.');
+  memory = withTold(memory, note.told);
+  assert.equal(checklistNote(lineages, memory).text, "");
+  // Told of an older version: the AI's own marks on the new one need no line.
+  const again = resolveChecklists([...found, { message: 3, lists: [{ title: "Release", items: items("a", done("b")) }] }]);
+  assert.equal(checklistNote(again.lineages, withTold(memory, { "t:release": "1|10" })).text, "");
+});
+
+test("two items with the same text are ticked one at a time", () => {
+  const list = parseChecklist("Release", "- [ ] Frontend\n  - [ ] Run the tests\n- [ ] Backend\n  - [ ] Run the `tests`");
+  assert.equal(tickKey(list, 1), "run the tests");
+  assert.notEqual(tickKey(list, 3), tickKey(list, 1));
+  let memory = withTick(undefined, tickKey(list, 1), true, 3);
+  assert.deepEqual(itemsDone(list, 3, memory), [false, true, false, false]);
+  memory = withTick(memory, tickKey(list, 3), true, 3);
+  assert.deepEqual(itemsDone(list, 3, memory), [false, true, false, true]);
+  memory = withTick(memory, tickKey(list, 1), false, 3);
+  assert.deepEqual(itemsDone(list, 3, memory), [false, false, false, true]);
+  // A tick saved by the text alone is the first one's.
+  assert.deepEqual(itemsDone(list, 3, withTick(undefined, "Run the tests", true, 3)), [false, true, false, false]);
 });
 
 // ── The card ──────────────────────────────────────────────────────────────────
@@ -268,4 +298,16 @@ test("Copy takes the list as GitHub writes it, with the ticks as they are", () =
   const list = { title: "R", items: [{ text: "a", done: false, indent: 0 }, { text: "b", done: false, indent: 1 }] };
   assert.equal(listMarkdown(list, [true, false]), "R\n- [x] a\n  - [ ] b");
   assert.equal(listMarkdown({ ...list, title: "" }, [false, false]), "- [ ] a\n  - [ ] b");
+});
+
+test("in a chat, a click on the second of two same lines ticks that one only", () => {
+  saveChat({ id: "chat-dup", title: "t", updatedAt: 1, provider: "claude-code", session: null, turns: [] });
+  const text = "- [ ] Frontend\n  - [ ] Run the tests\n- [ ] Backend\n  - [ ] Run the tests";
+  noteChatChecklists("chat-dup", listsInChat([{ role: "user", content: "q" }, { role: "assistant", content: text }], (t) => checklistsIn(t)));
+  const root = dom.root();
+  renderMarkdown(root, text, { scope: messageScope("chat-dup", 1) });
+  const card = root.querySelector(".rc-check");
+  rows(card)[3].fire("click", { target: null });
+  assert.deepEqual(rows(card).map((r) => r.classList.contains("on")), [false, false, false, true]);
+  assert.equal(card.find(".rc-count")[0].textContent, "1 / 4");
 });

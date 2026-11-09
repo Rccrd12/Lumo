@@ -57,6 +57,13 @@ test("plot", () => {
   const r = rich(`${F}lumo-plot Sine wave\nformula: y = A\\sin(\\omega x)\ny: A*sin(w*x)\ny: x**2/10\nx: 0..12\nyrange: -2..2\ninput: A | amplitude | 0..2 | 1.4\ninput: w | angular frequency | 0.5..4 | 1.6 | rad/s\n${F}`);
   const p = parsePlot(r.title, r.body); assert.ok(p); assert.equal(p.curves.length, 2); assert.deepEqual(p.y, [-2, 2]);
 });
+test("calc and plot, fields separated by commas as the note's template spells them", () => {
+  const c = parseCalc("Ohm", "formula: I = V/R\ninput: V, voltage, 0..24, 12, V\ninput: R, resistance, 1..100, 10, Ω\noutput: I, current, V/R, A");
+  assert.ok(c); assert.equal(c.inputs.length, 2); assert.equal(c.inputs[1].unit, "Ω");
+  assert.equal(c.outputs[0].label, "current"); assert.equal(c.outputs[0].unit, "A");
+  const p = parsePlot("Sine", "formula: y = A\\sin(x)\ny: A*sin(x)\nx: 0..12\ninput: A, amplitude, 0..2, 1.4");
+  assert.ok(p); assert.equal(p.inputs[0].value, 1.4);
+});
 test("quiz", () => {
   const r = rich(`${F}lumo-quiz Op-amp\n? What is the gain of an inverting amplifier?\n- $R_2/R_1$\n+ $-R_2/R_1$\n- $1 + R_2/R_1$\n> The minus sign means the output is inverted.\n= Inverting gain\n? Ideal input current?\n+ Zero\n- Infinite\n${F}`);
   const q = parseQuiz(r.title, r.body); assert.ok(q); assert.equal(q.questions.length, 2);

@@ -141,6 +141,35 @@ test("numbers as models write them", () => {
   assert.equal(parseNumber("1.2e-3").decimals, 4);
 });
 
+test("a decimal comma after a leading zero is a decimal, never a thousands group", () => {
+  const v = (s) => parseNumber(s)?.value ?? null;
+  assert.equal(v("0,001"), 0.001);
+  assert.equal(v("0,250"), 0.25);
+  assert.equal(v("-0,500"), -0.5);
+  assert.equal(v("1,250"), 1250);
+  const chart = parseChart("bar Concentrazione", "unit: mol/L\nA: 0,001\nB: 0,005\nC: 0,010");
+  assert.deepEqual(chart.series[0].values, [0.001, 0.005, 0.01]);
+  assert.equal(chart.digits, 3);
+});
+
+test("a data row named like a key stays data when its value doesn't fit the key", () => {
+  const social = parseChart("bar Monthly active users", "unit: million\nFacebook: 3070\nInstagram: 2000\nX: 550\nThreads: 275");
+  assert.deepEqual(social.labels, ["Facebook", "Instagram", "X", "Threads"]);
+  assert.deepEqual(social.series[0].values, [3070, 2000, 550, 275]);
+  assert.equal(social.unit, "million");
+  const scores = parseChart("bar Scores", "A: 1\nB: 2\nLabel: 3\nC: 4");
+  assert.deepEqual(scores.labels, ["A", "B", "Label", "C"]);
+  const first = parseChart("bar Counts", "Unit: 5\nSeries: 3\nOther: 2");
+  assert.deepEqual(first.labels, ["Unit", "Series", "Other"]);
+  assert.equal(first.unit, "");
+  // Keys that fit still work: a unit with a number in it, numeric labels, numeric series names.
+  assert.equal(parseChart("bar R", RHO).unit, "10⁻⁸ Ω·m");
+  const years = parseChart("line Sales", "x: 2021 2022 2023\nA: 1 2 3");
+  assert.deepEqual(years.labels, ["2021", "2022", "2023"]);
+  const named = parseChart("bar Sales", "series: 2023, 2024\nA: 1, 2\nB: 3, 4");
+  assert.deepEqual(named.series.map((s) => s.name), ["2023", "2024"]);
+});
+
 // ── Numbers shown ─────────────────────────────────────────────────────────────
 
 test("the value axis: round steps, room beyond the values, a line at each round number", () => {
@@ -149,6 +178,19 @@ test("the value axis: round steps, room beyond the values, a line at each round 
   assert.ok(flat.min < 5 && flat.max > 5 && flat.ticks.length >= 1);
   const small = valueAxis(0.1, 0.4);
   assert.ok(small.ticks.every((t) => t >= small.min && t <= small.max));
+});
+
+test("the value axis ends when the values are a hair apart (adjacent doubles)", () => {
+  for (const [lo, hi] of [[1, 1.0000000000000002], [1e20, 1e20 + 16384], [123456789.123, 123456789.12300001], [-1e-300, -1e-300 * (1 - 2 ** -52)]]) {
+    const started = Date.now();
+    const axis = valueAxis(lo, hi);
+    assert.ok(Date.now() - started < 200, `${lo} ${hi}`);
+    assert.ok(axis.ticks.length >= 1 && axis.ticks.length < 50, `${lo} ${hi}`);
+    assert.ok(axis.min <= lo && axis.max >= hi && axis.step > 0, `${lo} ${hi}`);
+  }
+  const into = document.createElement("div");
+  renderMarkdown(into, "```lumo-chart line Big\na: 100000000000000000000\nb: 100000000000000016384\n```\n");
+  assert.ok(into.querySelector(".rc-lines"));
 });
 
 test("values in the app's language, with the chart's decimals", () => {
@@ -236,6 +278,21 @@ test("lines: SVG nodes, a line per series, a legend, the values beside the point
   assert.equal(frame.querySelector(".rc-chart-tip"), null);
   assert.equal(frame.find("CIRCLE").length, 0);
   setLanguage("en");
+});
+
+test("lines: Escape clears the picked point, and with none picked it reaches the island", () => {
+  const el = renderChart(parseChart("line T", "x: a b c\nS: 1 2 3"), ctx, "k-esc");
+  const frame = el.querySelector(".rc-lines");
+  let stopped = false;
+  const free = frame.fire("keydown", { key: "Escape", stopPropagation() { stopped = true; } });
+  assert.equal(free.defaultPrevented, false);
+  assert.equal(stopped, false);
+  frame.fire("keydown", { key: "ArrowRight" });
+  assert.ok(frame.querySelector(".rc-chart-tip"));
+  const taken = frame.fire("keydown", { key: "Escape", stopPropagation() { stopped = true; } });
+  assert.equal(taken.defaultPrevented, true);
+  assert.equal(stopped, true);
+  assert.equal(frame.querySelector(".rc-chart-tip"), null);
 });
 
 test("a model's labels reach the page as text only", () => {

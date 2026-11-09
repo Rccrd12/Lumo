@@ -61,6 +61,30 @@ test("forgiving: numbers in the names, formulas over several lines, \\[…\\] an
   assert.equal(steps[3].text, "Weigh it.");
 });
 
+test("a # comment in a step's code block is no heading: the block stays whole", () => {
+  const body = [
+    "## Install the dependencies",
+    "```bash",
+    "# from the project folder",
+    "npm install",
+    "```",
+    "## Edit config",
+    "~~~python",
+    "# settings.py",
+    "DEBUG = False",
+    "~~~",
+    "## Run the tests",
+    "npm test",
+  ].join("\n");
+  const steps = parseSteps("Set up", body).steps;
+  assert.deepEqual(steps.map((s) => s.label), ["Install the dependencies", "Edit config", "Run the tests"]);
+  assert.equal(steps[0].text, "```bash\n# from the project folder\nnpm install\n```");
+  assert.equal(steps[1].text, "~~~python\n# settings.py\nDEBUG = False\n~~~");
+  // A longer fence holds a shorter one, closed only by one as long.
+  const nested = parseSteps("t", "## A\n````md\n```\n# not a step\n```\n````\n## B\nb").steps;
+  assert.deepEqual(nested.map((s) => s.label), ["A", "B"]);
+});
+
 test("no heading at all: a step per line, a formula line without a name", () => {
   const steps = parseSteps("Solve", "$$2x + 3 = 7$$\n\n- Subtract 3: $$2x = 4$$\n2. $$x = 2$$\nCheck it in the first line.").steps;
   assert.deepEqual(steps, [

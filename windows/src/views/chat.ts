@@ -323,13 +323,54 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
 }
 
 /**
- * A question as sent: Markdown and TeX as in the answers, inside its bubble.
- * The prompt box stays plain text; Copy and Edit take what was written.
+ * A question as sent: Markdown and TeX as in the answers, inside its bubble,
+ * but none of the answers' cards (plainQuestion). The prompt box stays plain
+ * text; Copy and Edit take what was written.
  */
 function sentBubble(text: string): HTMLElement {
   const el = h("div", { class: "bubble md" });
-  renderMarkdown(el, text);
+  renderMarkdown(el, plainQuestion(text));
+  unmark(el);
   return el;
+}
+
+/** Takes plainQuestion's marks back out of the drawn text, so a selection copies what was written. */
+function unmark(node: Node): void {
+  if (node.nodeType === 3) {
+    const text = node as Text;
+    if (text.data.includes(NOT_A_CARD)) text.data = text.data.split(NOT_A_CARD).join("");
+    return;
+  }
+  for (const child of Array.from(node.childNodes)) unmark(child);
+}
+
+/** An invisible mark that keeps a line from being read as a card. */
+const NOT_A_CARD = "\u2060";
+
+/**
+ * A question's Markdown with what would make a card in an answer kept as
+ * the text it was before the cards: a task list (`- [ ] a`) stays a list of
+ * bullets, an image line (`![a](https://…)`) a line of text, never fetched,
+ * an alert (`> [!NOTE]`) a quote, and a ```diff or ```lumo-… block code. An
+ * invisible mark goes before what the cards look for, outside code blocks.
+ */
+export function plainQuestion(text: string): string {
+  let code = false;
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("```")) {
+        code = !code;
+        return code ? `\`\`\`${NOT_A_CARD}${line.slice(3)}` : line;
+      }
+      if (code) return line;
+      return line
+        .replace(/^(\s*)(?=!\[)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*>\s*)(?=\[!)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*[-*+][ \t]+)(?=\[[ xX]\])/, `$1${NOT_A_CARD}`);
+    })
+    .join("\n");
 }
 
 /** What the copies' box under an answer says (workspace.rs). */
@@ -738,23 +779,30 @@ function listsOfAnswer(text: string): Checklist[] {
 /**
  * Tells core/checklists.ts which checklists `chatId`'s answers hold, the one
  * being written included, before they are drawn: a list written again
- * further down shows as updated there.
+ * further down shows as updated there. In the tool workshop, only from what
+ * its answers show: the tool's blocks are not drawn.
  */
 function noteChecklists(chatId: string, history: ChatMessage[], writing?: string) {
-  noteChatChecklists(chatId, listsInChat(history, listsOfAnswer, writing ? checklistsIn(writing, true) : undefined));
+  const workshop = isWorkshopChat(chatId);
+  const shown = (text: string) => (workshop ? stripDraft(text).text : text);
+  const writ = writing ? checklistsIn(shown(writing), true) : undefined;
+  noteChatChecklists(chatId, listsInChat(history, (text) => listsOfAnswer(shown(text)), writ));
 }
 
 /**
  * What the user ticked in `chatId`'s checklists, when it differs from what
  * the AI last wrote and it was not told yet: lines to send with the question
- * (never shown in its bubble, nor in Copy or Edit).
+ * (never shown in its bubble, nor in Copy or Edit), and what to remember as
+ * told once the question went (checklistsTold).
  */
-function checklistsToTell(chatId: string, history: ChatMessage[]): string {
+function checklistsToTell(chatId: string, history: ChatMessage[]): { text: string; told: Record<string, string> } {
   noteChecklists(chatId, history);
-  const memory = chatChecklists(chatId);
-  const note = checklistNote(lineagesOf(chatId), memory);
-  if (note.text) setChatChecklists(chatId, withTold(memory, note.told));
-  return note.text;
+  return checklistNote(lineagesOf(chatId), chatChecklists(chatId));
+}
+
+/** The AI got the question and its checklist lines: they are not sent again. */
+function checklistsTold(chatId: string, told: Record<string, string>) {
+  if (Object.keys(told).length) setChatChecklists(chatId, withTold(chatChecklists(chatId), told));
 }
 
 /** A chip above the chat (the message being edited), with a way to leave it. */
@@ -3429,10 +3477,11 @@ export function buildPrompt(
   let queueShown = "";
 
   /** The question leaves the field and waits above it; a second one joins it. */
-  function enqueue(run: Run, text: string) {
+  function enqueue(run: Run, text: string, typed: boolean) {
     const before = queued.get(run.chatId);
     queued.set(run.chatId, before ? `${before}\n${text}` : text);
-    setInput("");
+    // A card's button leaves what is being typed in the field.
+    if (typed) setInput("");
     Sound.play("blip");
     drawQueue();
     drawSend();
@@ -3511,7 +3560,14 @@ export function buildPrompt(
    * and the screen alone. `queuedText`: the question that waited above the
    * field, sent as if typed, leaving what is typed now where it is.
    */
-  sendFromCard = (text) => void submit(text);
+  sendFromCard = (text) => {
+    // Not while a question is edited: sending it drops what follows it.
+    if (editing != null || preparing) return;
+    // While an answer is written, it waits above the field like a question typed.
+    const current = answering();
+    if (current) enqueue(current, text, false);
+    else void submit(text);
+  };
 
   async function submit(auto?: string, queuedText?: string) {
     const query = auto ?? queuedText ?? input.value.trim();
@@ -3546,7 +3602,7 @@ export function buildPrompt(
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
     if (current) {
-      if (!auto && editing == null) enqueue(current, query);
+      if (!auto && editing == null) enqueue(current, query, typed);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;
@@ -3663,12 +3719,17 @@ export function buildPrompt(
 
     let outcome: "finished" | "error" | null = null;
     try {
-      // What the user ticked in the chat's checklists goes with the question, unseen.
-      const ticked = auto ? "" : checklistsToTell(run.chatId, run.history);
-      const reply = await Bridge.chatSend(run.chatId, ticked ? `${asked}\n\n${ticked}` : asked, context, screenContext);
+      // What the user ticked in the chat's checklists goes with the question,
+      // unseen. Not with a command the CLI runs (Claude Code's "/compact",
+      // agy's "/usage"), which would take it as its own words: it goes with
+      // the next question.
+      const command = !called && asked.trim().startsWith("/");
+      const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
+      if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       // A timer the answer asked for starts now; its line is not shown.
       const timed = takeTimers(reply.text);

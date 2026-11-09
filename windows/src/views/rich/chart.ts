@@ -126,8 +126,9 @@ export function parseNumber(text: string): Reading | null {
   else if (dot >= 0 || comma >= 0) {
     const mark = dot >= 0 ? "." : ",";
     const parts = digits.split(mark);
-    // 1,234 and 1.234.567 group thousands; 1,59 and 1.59 have decimals.
-    const grouped = parts.length > 2 || (mark === "," && parts[0].length > 0 && parts[0].length <= 3 && parts[1].length === 3);
+    // 1,234 and 1.234.567 group thousands; 1,59 and 1.59 have decimals, and
+    // so has 0,250: a group of thousands never follows a leading zero.
+    const grouped = parts.length > 2 || (mark === "," && parts[0].length > 0 && parts[0].length <= 3 && !parts[0].startsWith("0") && parts[1].length === 3);
     decimal = grouped ? "" : mark;
     if (parts.length > 2 && parts.slice(1).some((p) => p.length !== 3)) return null;
   }
@@ -210,10 +211,12 @@ export function parseChart(title: string, body: string): Chart | null {
     const row = splitLine(line);
     if (!row) continue;
     const key = keyName(row.label);
-    if (UNIT_KEYS.has(key) && !unit) unit = plain(row.value);
+    // A key only when its value fits it: `X: 550` (the network) and `Unit: 5` are data.
+    const bare = parseNumber(row.value)?.unit === "";
+    if (UNIT_KEYS.has(key) && !unit && !bare) unit = plain(row.value);
     else if (TYPE_KEYS.has(key) && kindOf(row.value)) kind = kindOf(row.value);
-    else if (SERIES_KEYS.has(key) && !seriesNames) seriesNames = splitLabels(row.value);
-    else if (X_KEYS.has(key) && !xLabels) xLabels = splitLabels(row.value);
+    else if (SERIES_KEYS.has(key) && !seriesNames && !bare) seriesNames = splitLabels(row.value);
+    else if (X_KEYS.has(key) && !xLabels && splitLabels(row.value).length >= MIN_LABELS) xLabels = splitLabels(row.value);
     else rows.push({ label: plain(row.label), value: row.value });
   }
 
@@ -290,7 +293,9 @@ const minus = (s: string) => s.replace(/-/g, "\u2212");
 
 /** The value axis of the line chart: round steps, half a step of room beyond the values, the lines at round numbers. */
 export function valueAxis(lo: number, hi: number): { min: number; max: number; ticks: number[]; step: number } {
-  if (lo === hi) {
+  // Values a few units in the last place apart (or the same) are one value: a
+  // step smaller than that would never move the ticks along.
+  if (!(hi - lo > Math.max(Math.abs(lo), Math.abs(hi)) * 1e-12)) {
     const pad = Math.abs(lo) || 1;
     lo -= pad / 2;
     hi += pad / 2;
@@ -303,7 +308,7 @@ export function valueAxis(lo: number, hi: number): { min: number; max: number; t
   const min = Math.floor((lo - step / 4) / half) * half;
   const max = Math.ceil((hi + step / 4) / half) * half;
   const ticks: number[] = [];
-  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) ticks.push(Math.abs(v) < step * 1e-9 ? 0 : v);
+  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9 && ticks.length < 50; v += step) ticks.push(Math.abs(v) < step * 1e-9 ? 0 : v);
   return { min, max, ticks, step };
 }
 
@@ -596,7 +601,7 @@ function renderLines(chart: Chart): HTMLElement {
   frame.addEventListener("keydown", (e) => {
     const k = e as KeyboardEvent;
     if (k.ctrlKey || k.altKey || k.metaKey) return;
-    const to = k.key === "ArrowLeft" ? Math.max(0, (hover < 0 ? n : hover) - 1) : k.key === "ArrowRight" ? Math.min(n - 1, hover + 1) : k.key === "Escape" ? -1 : null;
+    const to = k.key === "ArrowLeft" ? Math.max(0, (hover < 0 ? n : hover) - 1) : k.key === "ArrowRight" ? Math.min(n - 1, hover + 1) : k.key === "Escape" && hover >= 0 ? -1 : null;
     if (to == null) return;
     k.preventDefault();
     k.stopPropagation();

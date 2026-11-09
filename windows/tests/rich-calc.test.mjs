@@ -123,6 +123,22 @@ test("keys in any case, list markers, and outputs written as `I = V / R`", () =>
   assert.equal(parseCalc("", OHM.replace("formula: I = \\frac{V}{R}", "formula: $I = \\frac{V}{R}$")).formula, "I = \\frac{V}{R}");
 });
 
+test("fields separated by commas, as the system prompt spells the template", () => {
+  const commas = OHM.replaceAll(" | ", ", ");
+  const calc = parseCalc("Ohm's law", commas);
+  const bars = parseCalc("Ohm's law", OHM);
+  assert.deepEqual(calc.inputs, bars.inputs);
+  assert.deepEqual(calc.outputs.map(strip), bars.outputs.map(strip));
+  assert.equal(calc.outputs[0].expr.evaluate({ V: 12, R: 10 }), 1.2);
+  assert.deepEqual(parsePlot("", SINE.replaceAll(" | ", ", ")).inputs, parsePlot("", SINE).inputs);
+  // A comma inside parentheses is the formula's, not a field's.
+  const max = parseCalc("", "input: a, 0..10, 2\ninput: b, 0..10, 7\noutput: m, larger, max(a, b), cm").outputs[0];
+  assert.deepEqual(strip(max), { name: "m", label: "larger", unit: "cm" });
+  assert.equal(max.expr.evaluate({ a: 2, b: 7 }), 7);
+  // A line with a bar splits on bars only: its commas are words.
+  assert.equal(parseInput("V | voltage, in volts | 0..24 | 12 | V").label, "voltage, in volts");
+});
+
 test("a calculator that can't be read is no card", () => {
   // No input, no output.
   assert.equal(parseCalc("", "output: I | current | 1 / 2 | A"), null);

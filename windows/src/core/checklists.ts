@@ -7,9 +7,10 @@
 //   title, or, untitled, most of the same lines. The newest is the live one,
 //   the older ones show as "Updated below";
 // - what is ticked: the user's ticks (saved with the chat, core/chats.ts) by
-//   the item's text, and the items the AI marked [x];
+//   the item's text (and its number, for a text written twice in one list),
+//   and the items the AI marked [x];
 // - the line that tells the AI what the user ticked, sent with the next
-//   question when it differs from what the AI last wrote.
+//   question when it differs from what the AI last wrote or was last told.
 
 export interface ChecklistItem {
   /** Its inline Markdown, as written. */
@@ -179,22 +180,38 @@ export interface ChecklistMemory {
 export type ChatChecklists = Record<string, ChecklistMemory>;
 
 /**
+ * Where the tick of the list's `i`-th item is kept: its text, and for a
+ * text the list has already had (each part's "Run the tests"), its number
+ * among them, so that ticking one doesn't tick the others. The first keeps
+ * its text alone, as ticks were saved before.
+ */
+export function tickKey(list: Checklist, i: number): string {
+  const key = itemKey(list.items[i].text);
+  let n = 0;
+  for (let j = 0; j < i; j++) if (itemKey(list.items[j].text) === key) n++;
+  return n ? `${key}\u0000${n}` : key;
+}
+
+/**
  * Each item of the version in message `at`, ticked or not. A tick given on
  * this version stands; otherwise an item the AI marked [x] is ticked, and
  * the user's tick from an earlier version carries over to the same text.
  */
 export function itemsDone(list: Checklist, at: number, memory?: ChecklistMemory | null): boolean[] {
-  return list.items.map((item) => {
-    const tick = memory?.ticks[itemKey(item.text)];
+  return list.items.map((item, i) => {
+    const tick = memory?.ticks[tickKey(list, i)];
     if (tick && tick.at >= at) return tick.done;
     if (item.done) return true;
     return tick?.done ?? false;
   });
 }
 
-/** `memory` with the item `text` ticked (or not) on the version in message `at`. */
-export function withTick(memory: ChecklistMemory | undefined, text: string, done: boolean, at: number): ChecklistMemory {
-  return { ...memory, ticks: { ...memory?.ticks, [itemKey(text)]: { done, at } } };
+/**
+ * `memory` with an item ticked (or not) on the version in message `at`.
+ * `item`: its tickKey, or its text for the first item with that text.
+ */
+export function withTick(memory: ChecklistMemory | undefined, item: string, done: boolean, at: number): ChecklistMemory {
+  return { ...memory, ticks: { ...memory?.ticks, [itemKey(item)]: { done, at } } };
 }
 
 /** Keeps only well-formed lists from what storage gave back. */
@@ -228,17 +245,20 @@ export function stateLine(list: Checklist, done: boolean[]): string {
 
 /**
  * What to tell the AI with the next question: a line for each live list
- * whose ticks differ from what the AI last wrote, unless it was told that
- * already. `told` is what to remember as told, by list.
+ * whose ticks differ from what the AI was last told of this version, or,
+ * told nothing of it yet, from what it wrote. A tick taken back off after
+ * the AI was told of it is told too. `told` is what to remember as told,
+ * by list.
  */
 export function checklistNote(lineages: Lineage[], memory: ChatChecklists): { text: string; told: Record<string, string> } {
   const lines: string[] = [];
   const told: Record<string, string> = {};
   for (const l of lineages) {
     const done = itemsDone(l.list, l.message, memory[l.id]);
-    if (done.every((d, i) => d === l.list.items[i].done)) continue;
     const said = `${l.message}|${done.map((d) => (d ? 1 : 0)).join("")}`;
-    if (memory[l.id]?.told === said) continue;
+    const before = memory[l.id]?.told;
+    const toldOfThis = before?.startsWith(`${l.message}|`);
+    if (toldOfThis ? before === said : done.every((d, i) => d === l.list.items[i].done)) continue;
     lines.push(stateLine(l.list, done));
     told[l.id] = said;
   }

@@ -631,8 +631,9 @@ once; the key never is.
 No telemetry. The only network requests Lumo makes are to the services you
 configure yourself, and to the sites of the images in chat answers: Lumo
 downloads such an image at once (https and public addresses only, image files
-only, 8 MB at most), so its site sees your IP address. **Settings → Security →
-Images from the web** turns it off.
+only, 8 MB at most), so its site sees your IP address and the image's full
+address, which the AI writes and could fill with words from your chat.
+**Settings → Security → Images from the web** turns it off.
 
 ### Chat with your Claude plan (Claude Code)
 
@@ -833,9 +834,12 @@ models included, and the chat draws them (`src/views/rich/`):
   the image at once, with its site, its alt text and a button to open it in
   the browser. The image is downloaded by Lumo itself, never by the island:
   https and public addresses only (never this PC or the local network,
-  redirects checked the same way), PNG, JPEG, GIF, WebP or AVIF, 8 MB at most.
-  **Settings → Security → Images from the web** turns it off: the card then
-  shows only the site and the button, and nothing is downloaded.
+  redirects checked the same way), PNG, JPEG, GIF, WebP or AVIF, 8 MB at most,
+  4 downloads at a time and the first 12 images of an answer (the ones after
+  are drawn as when images are off). The site receives the image's full
+  address, which the AI writes. **Settings → Security → Images from the
+  web** turns it off: the card then shows only the site and the button, and
+  nothing is downloaded.
 
 A block the chat can't read is shown as it was written, as code.
 

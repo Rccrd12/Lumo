@@ -153,9 +153,32 @@ export function niceStep(span: number): number {
   return roundStep(span / 100);
 }
 
+/**
+ * A line's fields: split on `|`, or, in a line with none, on the commas
+ * outside parentheses, the way the system prompt spells the template (it
+ * can't show a `|`), so `max(a, b)` stays one field.
+ */
+export function fieldsOf(text: string): string[] {
+  if (text.includes("|")) return text.split("|").map((f) => f.trim());
+  const fields: string[] = [];
+  let depth = 0;
+  let from = 0;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (c === "(" || c === "[" || c === "{") depth++;
+    else if ((c === ")" || c === "]" || c === "}") && depth > 0) depth--;
+    else if (c === "," && depth === 0) {
+      fields.push(text.slice(from, i).trim());
+      from = i + 1;
+    }
+  }
+  fields.push(text.slice(from).trim());
+  return fields;
+}
+
 /** `V | voltage | 0..24 | 12 | V`, and the shapes near it; null when it has no name or range. */
 export function parseInput(text: string): Input | null {
-  const fields = text.split("|").map((f) => f.trim());
+  const fields = fieldsOf(text);
   const name = normalizeName(fields[0] ?? "");
   if (!name) return null;
   const at = fields.findIndex((f, i) => i > 0 && parseRange(f) !== null);
@@ -195,7 +218,7 @@ export function parseInput(text: string): Input | null {
  * its formula read, null when it can't be.
  */
 function parseOutput(text: string): Output | null {
-  const fields = text.split("|").map((f) => f.trim());
+  const fields = fieldsOf(text);
   let name: string | null;
   let label = "";
   let source: string;

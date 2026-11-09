@@ -253,17 +253,20 @@ fn is_public(ip: IpAddr) -> bool {
             if first == 0x2002 {
                 return is_public(v4(seg[1], seg[2]));
             }
-            // Teredo (2001::/32), documentation (2001:db8::/32) and the old
-            // IPv4-compatible ::a.b.c.d (::/96, with :: and ::1).
-            if (first == 0x2001 && (seg[1] == 0 || seg[1] == 0x0db8)) || seg[..6] == [0, 0, 0, 0, 0, 0] {
+            // Teredo (2001::/32), benchmarking (2001:2::/48), documentation
+            // (2001:db8::/32) and the old IPv4-compatible ::a.b.c.d (::/96,
+            // with :: and ::1).
+            if (first == 0x2001 && (seg[1] == 0 || seg[1] == 0x0db8 || (seg[1] == 2 && seg[2] == 0)))
+                || seg[..6] == [0, 0, 0, 0, 0, 0]
+            {
                 return false;
             }
-            !(v6.is_loopback()
-                || v6.is_unspecified()
-                || v6.is_multicast()
-                || (first & 0xfe00) == 0xfc00
-                || (first & 0xffc0) == 0xfe80
-                || (first & 0xffc0) == 0xfec0)
+            // Past those, only global unicast (2000::/3) is on the internet.
+            // That leaves out loopback, multicast, unique local (fc00::/7),
+            // link-local, the discard prefix (100::/64) and the rest of
+            // 64:ff9b::/32, whose local-use NAT64 prefix (64:ff9b:1::/48)
+            // would carry a local network's address in a form not read here.
+            (first & 0xe000) == 0x2000
         }
     }
 }
@@ -457,6 +460,10 @@ mod tests {
             "::ffff:10.0.0.1",
             "::ffff:169.254.169.254",
             "2002:7f00:1::",
+            "64:ff9b:1::a00:1",
+            "64:ff9b:1:a00:1::",
+            "100::1",
+            "2001:2::1",
         ] {
             assert!(!is_public(ip(private)), "{private}");
         }

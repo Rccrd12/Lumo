@@ -13,9 +13,11 @@
 //
 // The chat redraws its answers often, so what a card shows comes from what
 // this module remembers for the session, by URL: the images loaded (their
-// blob: URLs, the 40 most recent), the ones that could not be, and the
-// downloads under way. A card drawn again while its image downloads waits for
-// the same download.
+// blob: URLs, the most recently shown up to 64 MB in all), the ones that could
+// not be, and the downloads under way. A card drawn again while its image
+// downloads waits for the same download. At most 4 images download at once,
+// the others wait their turn, and an answer shows its first 12 images: the
+// ones after are the one row of images turned off, with nothing downloaded.
 
 import { h, svg } from "../dom";
 import { ICONS } from "../icons";
@@ -34,11 +36,26 @@ export const IMAGE_STRINGS = {
   image: N_("Image"),
 };
 
-/** The blob: URLs kept at most; the least recently shown goes first. */
-const CACHE_LIMIT = 40;
+/**
+ * The bytes kept at most, all images together; the least recently shown goes
+ * first. Bounded by bytes, not by count, so a long chat of small images is
+ * drawn again from memory, not downloaded again at each redraw.
+ */
+const CACHE_BYTES = 64 * 1024 * 1024;
+/** The downloads run at once; the others wait their turn. */
+const MAX_DOWNLOADS = 4;
+/** The images an answer shows; the ones after it are drawn as images turned off. */
+export const MAX_PER_ANSWER = 12;
 
-/** Image URL → blob: URL of its bytes, the most recently shown last. */
-const loaded = new Map<string, string>();
+/** An image loaded: its blob: URL and its size. */
+interface Loaded {
+  blob: string;
+  size: number;
+}
+/** Image URL → its image loaded, the most recently shown last. */
+const loaded = new Map<string, Loaded>();
+/** The bytes of every image in `loaded`. */
+let loadedBytes = 0;
 /** Downloads under way, by image URL: every card of that image waits for the same one. */
 const pending = new Map<string, Promise<void>>();
 /** Images that could not be loaded this session (Try again clears it). */
@@ -88,25 +105,58 @@ export function imageType(bytes: Uint8Array): string | null {
   return null;
 }
 
+/** Forgets the image loaded for `url` and lets its blob: URL go. */
+function drop(url: string) {
+  const entry = loaded.get(url);
+  if (!entry) return;
+  loaded.delete(url);
+  loadedBytes -= entry.size;
+  URL.revokeObjectURL(entry.blob);
+}
+
 /** Keeps `blob` for `url`, letting the least recently shown go past the limit. */
-function keep(url: string, blob: string) {
-  loaded.set(url, blob);
-  while (loaded.size > CACHE_LIMIT) {
-    const [oldest, old] = loaded.entries().next().value as [string, string];
-    loaded.delete(oldest);
-    // A card still showing it notices (its <img> fails) and downloads it again.
-    URL.revokeObjectURL(old);
+function keep(url: string, blob: string, size: number) {
+  drop(url);
+  loaded.set(url, { blob, size });
+  loadedBytes += size;
+  // The image just kept stays, whatever its size.
+  while (loadedBytes > CACHE_BYTES && loaded.size > 1) {
+    // A card still showing the one that goes notices (its <img> fails) and downloads it again.
+    drop(loaded.keys().next().value as string);
   }
 }
 
 /** The blob: URL of a loaded image, marked as the most recently shown. */
 function cached(url: string): string | undefined {
-  const blob = loaded.get(url);
-  if (blob !== undefined) {
+  const entry = loaded.get(url);
+  if (entry !== undefined) {
     loaded.delete(url);
-    loaded.set(url, blob);
+    loaded.set(url, entry);
   }
-  return blob;
+  return entry?.blob;
+}
+
+/** The downloads running, and the ones waiting for a turn, first come first. */
+let running = 0;
+const waiting: (() => void)[] = [];
+
+/**
+ * Takes a turn to download: none to wait for while fewer than MAX_DOWNLOADS
+ * run (the download starts at once), otherwise the moment a turn comes.
+ */
+function turn(): Promise<void> | null {
+  if (running < MAX_DOWNLOADS) {
+    running++;
+    return null;
+  }
+  return new Promise((go) => waiting.push(go));
+}
+
+/** Hands the turn of a download done to the next one waiting. */
+function done() {
+  const next = waiting.shift();
+  if (next) next();
+  else running = Math.max(0, running - 1);
 }
 
 /** Downloads the image through Rust once, however many cards wait for it. */
@@ -114,6 +164,8 @@ function load(url: string): Promise<void> {
   let job = pending.get(url);
   if (job) return job;
   job = (async () => {
+    const wait = turn();
+    if (wait) await wait;
     try {
       const data = await Bridge.webImage(url);
       const bytes = data ? new Uint8Array(data) : null;
@@ -122,11 +174,12 @@ function load(url: string): Promise<void> {
         failed.add(url);
         return;
       }
-      keep(url, URL.createObjectURL(new Blob([bytes], { type })));
+      keep(url, URL.createObjectURL(new Blob([bytes], { type })), bytes.byteLength);
     } catch {
       failed.add(url);
     } finally {
       pending.delete(url);
+      done();
     }
   })();
   pending.set(url, job);
@@ -154,12 +207,17 @@ function track(card: HTMLElement, live: Live) {
   if (cards.size > 200) redraw(() => false);
 }
 
-/** The card for an image line: the image with its source, or, images off, the source alone. */
-export function renderImage(alt: string, url: string): HTMLElement {
+/**
+ * The card for an image line: the image with its source, or, images off, the
+ * source alone. `nth` is the image's place among its answer's images, from 0:
+ * past MAX_PER_ANSWER, the card is drawn as if images were off.
+ */
+export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
+  const off = !webImagesOn() || nth >= MAX_PER_ANSWER;
   const site = siteOf(url);
   const openBtn = h("button", { class: "rc-nav", type: "button", title: t(IMAGE_STRINGS.open), "aria-label": t(IMAGE_STRINGS.open) }, svg(ICONS.arrowUpRight, 12));
   openBtn.addEventListener("click", () => void Bridge.openUrl(url));
-  const caption = alt || (webImagesOn() ? "" : t(IMAGE_STRINGS.image));
+  const caption = alt || (off ? t(IMAGE_STRINGS.image) : "");
   const foot = h(
     "div",
     { class: "rc-image-foot" },
@@ -168,8 +226,9 @@ export function renderImage(alt: string, url: string): HTMLElement {
     h("span", { class: "rc-sp" }),
     openBtn,
   );
-  // Off (or an address with no host to show): one row, nothing downloaded.
-  if (!webImagesOn() || site === "") return h("div", { class: "rc-card rc-image off" }, foot);
+  // Off, past the answer's images (or an address with no host to show): one
+  // row, nothing downloaded.
+  if (off || site === "") return h("div", { class: "rc-card rc-image off" }, foot);
 
   const frame = h("div", { class: "rc-image-frame" });
   const card = h("div", { class: "rc-card rc-image" }, frame, foot);
@@ -187,9 +246,8 @@ export function renderImage(alt: string, url: string): HTMLElement {
       // Its blob: URL went with the oldest of the cache: drawn again, the card
       // downloads it again. Still in the cache, the bytes themselves don't draw.
       img.addEventListener("error", () => {
-        if (loaded.get(url) === blob) {
-          loaded.delete(url);
-          URL.revokeObjectURL(blob);
+        if (loaded.get(url)?.blob === blob) {
+          drop(url);
           failed.add(url);
         }
         draw();
@@ -225,9 +283,12 @@ export function renderImage(alt: string, url: string): HTMLElement {
 
 /** Forgets what the session remembers (tests). */
 export function resetImages() {
-  for (const blob of loaded.values()) URL.revokeObjectURL(blob);
+  for (const { blob } of loaded.values()) URL.revokeObjectURL(blob);
   loaded.clear();
+  loadedBytes = 0;
   pending.clear();
+  running = 0;
+  waiting.length = 0;
   failed.clear();
   cards.clear();
 }

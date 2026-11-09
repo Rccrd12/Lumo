@@ -295,6 +295,64 @@ test("a task list is a checklist; a list mixing task and plain items stays a lis
   assert.equal(root.find(".rc-check-row").length, 2);
 });
 
+test("a task list followed by a numbered list is still a checklist, the numbered list a list", () => {
+  const items = [
+    { text: "a", done: false, indent: 0 },
+    { text: "b", done: true, indent: 0 },
+  ];
+  assert.deepEqual(parseMarkdown("- [ ] a\n- [x] b\n\n1. Next\n2. Then"), [
+    { kind: "checklist", items },
+    { kind: "item", prefix: "1.", text: "Next", indent: 0 },
+    { kind: "item", prefix: "2.", text: "Then", indent: 0 },
+  ]);
+  assert.deepEqual(parseMarkdown("- [ ] a\n- [x] b\n1. Next"), [
+    { kind: "checklist", items },
+    { kind: "item", prefix: "1.", text: "Next", indent: 0 },
+  ]);
+  assert.deepEqual(parseMarkdown("1. Do this\n\n- [ ] a\n- [x] b"), [
+    { kind: "item", prefix: "1.", text: "Do this", indent: 0 },
+    { kind: "checklist", items },
+  ]);
+  // A numbered list nested under a task item still makes it a plain list.
+  assert.equal(parseMarkdown("- [ ] a\n  1. sub\n- [x] b")[0].kind, "item");
+});
+
+test("an image line that is not an https image stays in its paragraph", () => {
+  for (const img of ["![img](pic.png)", "![img](http://x.com/a.png)"]) {
+    assert.deepEqual(parseMarkdown(`Para\n${img}`), [{ kind: "paragraph", text: `Para\n${img}` }]);
+  }
+  assert.deepEqual(parseMarkdown("Para\n![img](https://x.com/a.png)"), [
+    { kind: "paragraph", text: "Para" },
+    { kind: "image", alt: "img", url: "https://x.com/a.png" },
+  ]);
+});
+
+test("an image line still being written loads nothing until its line is done", () => {
+  const url = "https://upload.wikimedia.org/wikipedia/commons/c/c7/Saturn_(cropped).jpg";
+  const cut = "Here:\n![Saturn](https://upload.wikimedia.org/wikipedia/commons/c/c7/Saturn_(cropped)";
+  assert.equal(parseMarkdown(cut).at(-1).kind, "image", "a finished text reads it as it is");
+  assert.deepEqual(parseMarkdown(cut, true).map((b) => b.kind), ["paragraph", "paragraph"]);
+  const root = dom.root();
+  renderMarkdown(root, cut, { streaming: true, scope: "c#1" });
+  renderMarkdown(root, `Here:\n![Saturn](${url})`, { streaming: true, scope: "c#1" });
+  assert.equal(root.querySelector(".rc-image"), null);
+  assert.equal(calls.filter(([cmd]) => cmd === "web_image").length, 0);
+  // The next line has started, or the answer is done: the image.
+  renderMarkdown(root, `Here:\n![Saturn](${url})\nMore`, { streaming: true, scope: "c#1" });
+  assert.ok(root.querySelector(".rc-image"));
+  const done = dom.root();
+  renderMarkdown(done, `Here:\n![Saturn](${url})`, { scope: "c#1" });
+  assert.ok(done.querySelector(".rc-image"));
+  // In an alert at the end of the text as well, and the alert is drawn again once its line is done.
+  const alert = dom.root();
+  renderMarkdown(alert, `> [!NOTE]\n> ![Saturn](${url})`, { streaming: true, scope: "c#2" });
+  assert.equal(alert.querySelector(".rc-image"), null);
+  renderMarkdown(alert, `> [!NOTE]\n> ![Saturn](${url})\n\nMore`, { streaming: true, scope: "c#2" });
+  assert.ok(alert.querySelector(".rc-image"));
+  renderMarkdown(alert, `> [!NOTE]\n> ![Saturn](${url})`, { scope: "c#2" });
+  assert.ok(alert.querySelector(".rc-image"));
+});
+
 test("a finished card stays the same node while the answer goes on being written", () => {
   const root = dom.root();
   const head = "Intro\n```lumo-steps T\n## A\n$$a$$\n## B\n$$b$$\n```\n";

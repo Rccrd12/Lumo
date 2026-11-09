@@ -18,6 +18,7 @@ import { renderMath } from "./math";
 import {
   CALLOUT_TYPES, RICH_KINDS, renderCallout, renderChecklist, renderDiffCard, renderImage, renderRich, type CalloutType, type RichContext,
 } from "./rich/index";
+import { MAX_PER_ANSWER } from "./rich/image";
 import { checklistsEpoch, parseChecklist, taskItem, type Checklist, type ChecklistItem } from "../core/checklists";
 import { N_, t } from "../i18n/i18n";
 
@@ -97,14 +98,20 @@ function tableCells(line: string): string[] {
 
 /** A list item line, bullet or numbered, at any depth. */
 const isItem = (line: string) => isBullet(line.trim()) || ordered(line.trim()) != null;
+/** A list item's depth, in spaces before its marker. */
+const depth = (line: string) => line.length - line.trimStart().length;
 
 /**
  * The list that starts at `i`: its lines up to `end`, items apart or not by
  * a blank line, and its items when every one is a task item (`- [ ] …`). A
- * wrapped item's indented lines join it.
+ * wrapped item's indented lines join it. A numbered item at the first item's
+ * depth after bullets, or a bullet after numbered items, starts another list,
+ * so a task list followed by numbered steps stays a checklist.
  */
 function listAt(lines: string[], i: number): { end: number; tasks: ChecklistItem[] | null } {
   const tasks: ChecklistItem[] = [];
+  const numbered = ordered(lines[i].trim()) != null;
+  const otherList = (line: string) => isItem(line) && depth(line) === depth(lines[i]) && (ordered(line.trim()) != null) !== numbered;
   let mixed = false;
   let j = i;
   while (j < lines.length) {
@@ -116,6 +123,7 @@ function listAt(lines: string[], i: number): { end: number; tasks: ChecklistItem
       j = k;
       continue;
     }
+    if (otherList(line)) break;
     const task = taskItem(line);
     if (task) tasks.push(task);
     else if (isItem(line)) mixed = true;
@@ -126,8 +134,18 @@ function listAt(lines: string[], i: number): { end: number; tasks: ChecklistItem
   return { end: j, tasks: mixed || !tasks.length ? null : tasks };
 }
 
-/** Parses the blocks, line by line. */
-export function parseMarkdown(input: string): Block[] {
+/** The image block a line is, when it is only an https image. */
+function imageAt(line: string): Extract<Block, { kind: "image" }> | null {
+  const image = IMAGE_LINE.exec(line);
+  const url = image ? safeWebUrl(image[2] ?? image[3]) : null;
+  return image && url?.startsWith("https:") ? { kind: "image", alt: image[1].trim(), url } : null;
+}
+
+/**
+ * Parses the blocks, line by line. `partial`: the text's last line may still
+ * be being written (an answer as it streams in).
+ */
+export function parseMarkdown(input: string, partial = false): Block[] {
   const blocks: Block[] = [];
   const lines = input.replace(/\r\n?/g, "\n").split("\n");
   // The lines of a list with task and plain items mixed: a plain list.
@@ -226,10 +244,11 @@ export function parseMarkdown(input: string): Block[] {
       blocks.push({ kind: "callout", type: alert[1].toLowerCase() as CalloutType, title: alert[2].trim(), body: body.join("\n") });
       continue;
     }
-    const image = IMAGE_LINE.exec(stripped);
-    const imageUrl = image ? safeWebUrl(image[2] ?? image[3]) : null;
-    if (image && imageUrl?.startsWith("https:")) {
-      blocks.push({ kind: "image", alt: image[1].trim(), url: imageUrl });
+    // The last line of a text still being written may be an address cut
+    // short at a ")" of its own: it becomes an image once its line is done.
+    const image = partial && i === lines.length - 1 ? null : imageAt(stripped);
+    if (image) {
+      blocks.push(image);
       i++;
       continue;
     }
@@ -278,7 +297,7 @@ export function parseMarkdown(input: string): Block[] {
       const next = lines[i];
       const s = next.trim();
       if (!s || next.startsWith("#") || next.startsWith("```") || isQuote(s) || CALLOUT.test(s) || isBullet(s) || isRule(s) || ordered(s)) break;
-      if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i) || IMAGE_LINE.test(s)) break;
+      if (s.startsWith("$$") || s.startsWith("\\[") || tableAt(lines, i) || imageAt(s)) break;
       para.push(next);
     }
     blocks.push({ kind: "paragraph", text: para.join("\n") });
@@ -455,6 +474,10 @@ interface Pass {
   list: number;
   /** MarkdownOptions.send. */
   send?: (text: string) => void;
+  /** The block holds the last line of a text still being written. */
+  tail: boolean;
+  /** The images drawn above the block in its answer (MarkdownOptions.imagesBefore). */
+  images: number;
 }
 
 function render(block: Block, pass: Pass): HTMLElement {
@@ -526,7 +549,7 @@ function render(block: Block, pass: Pass): HTMLElement {
       return mathBlock(block.tex);
     case "callout": {
       const body = h("div", { class: "rc-callout-body" });
-      renderMarkdown(body, block.body, { streaming: pass.streaming, scope: `${pass.scope}>${pass.n}` });
+      renderMarkdown(body, block.body, { streaming: pass.streaming, scope: `${pass.scope}>${pass.n}`, partial: pass.tail, imagesBefore: pass.images });
       return renderCallout(block.type, block.title, body);
     }
     case "rich": {
@@ -539,14 +562,14 @@ function render(block: Block, pass: Pass): HTMLElement {
     case "checklist":
       return renderChecklist({ title: "", items: block.items }, richContext(pass));
     case "image":
-      return renderImage(block.alt, block.url);
+      return renderImage(block.alt, block.url, pass.images);
   }
 }
 
 /** What the rich cards borrow from the Markdown, handed over so views/rich never imports it back. */
 function richContext(pass: Pass): RichContext {
   return {
-    markdown: (into, text) => renderMarkdown(into, text, { scope: `${pass.scope}>${pass.n}`, send: pass.send }),
+    markdown: (into, text) => renderMarkdown(into, text, { scope: `${pass.scope}>${pass.n}`, send: pass.send, imagesBefore: pass.images }),
     inline: (into, text) => inline(text, into),
     math: (tex, display) => renderMath(tex, display),
     copyButton: (text) => copyButton(text),
@@ -621,6 +644,26 @@ export interface MarkdownOptions {
    * Only a finished answer gets it.
    */
   send?: (text: string) => void;
+  /**
+   * The last line may still be being written. By default, while streaming,
+   * unless the text ends with a line break.
+   */
+  partial?: boolean;
+  /**
+   * The images drawn above this text in the same answer (a callout's or a
+   * card's text): an answer downloads its first MAX_PER_ANSWER images only.
+   */
+  imagesBefore?: number;
+}
+
+/**
+ * The images a block draws, or may: an image line, or the image lines in a
+ * callout's or a card's text, counted the same at each redraw.
+ */
+function imagesOf(block: Block): number {
+  if (block.kind === "image") return 1;
+  if (block.kind === "callout" || block.kind === "rich") return block.body.split("\n").filter((l) => imageAt(l.trim())).length;
+  return 0;
 }
 
 /** The finished cards each container shows, by identity, kept for its next redraw. */
@@ -631,7 +674,7 @@ const shown = new WeakMap<HTMLElement, Map<string, HTMLElement>>();
  * container: its place and its text. Null for anything drawn again each time,
  * and for a block still being written.
  */
-function identity(block: Block, n: number, streaming: boolean): string | null {
+function identity(block: Block, n: number, streaming: boolean, tail: boolean, images: number): string | null {
   switch (block.kind) {
     case "rich": {
       if (block.open && streaming) return null;
@@ -640,9 +683,9 @@ function identity(block: Block, n: number, streaming: boolean): string | null {
       return `rich\u0000${n}\u0000${lists}\u0000${block.type}\u0000${block.title}\u0000${block.body}\u0000${block.open}`;
     }
     case "image":
-      return `image\u0000${n}\u0000${block.url}\u0000${block.alt}`;
+      return `image\u0000${n}\u0000${images >= MAX_PER_ANSWER}\u0000${block.url}\u0000${block.alt}`;
     case "callout":
-      return `callout\u0000${n}\u0000${block.type}\u0000${block.title}\u0000${block.body}`;
+      return `callout\u0000${n}\u0000${tail}\u0000${block.type}\u0000${block.title}\u0000${block.body}`;
     case "checklist":
       return `checklist\u0000${n}\u0000${checklistsEpoch()}\u0000${block.items.map((i) => `${i.done ? "x" : " "}${i.indent}${i.text}`).join("\n")}`;
     case "code":
@@ -659,19 +702,23 @@ function identity(block: Block, n: number, streaming: boolean): string | null {
  * slider being dragged, a button being pressed, the focus all stay).
  */
 export function renderMarkdown(into: HTMLElement, markdown: string, opts: MarkdownOptions = {}) {
-  const blocks = parseMarkdown(markdown);
   const streaming = opts.streaming === true;
+  const partial = opts.partial ?? (streaming && !markdown.endsWith("\n"));
+  const blocks = parseMarkdown(markdown, partial);
   const before = shown.get(into);
   const kept = new Map<string, HTMLElement>();
   let n = 0;
   let list = 0;
+  let images = opts.imagesBefore ?? 0;
   const out: HTMLElement[] = [];
   for (let i = 0; i < blocks.length; i++) {
     const block = blocks[i];
     if (block.kind !== "quote") {
-      const placed = identity(block, n, streaming);
+      const tail = partial && i === blocks.length - 1;
+      const placed = identity(block, n, streaming, tail, images);
       const counted = placed != null || block.kind === "rich";
-      const pass: Pass = { streaming, scope: opts.scope ?? "", n, list, send: opts.send };
+      const pass: Pass = { streaming, scope: opts.scope ?? "", n, list, send: opts.send, tail, images };
+      images += imagesOf(block);
       if (checklistOf(block, streaming)) list++;
       if (counted) n++;
       const el = (placed != null ? before?.get(placed) : undefined) ?? render(block, pass);
