@@ -75,6 +75,13 @@ const STRAY_DRAG_MS = 300;
  * key typed in it gives it this long again.
  */
 const SHARE_GRACE = 10;
+/**
+ * An alert that opens the island on its own ("finished", an error, the recap…)
+ * finds the mouse elsewhere: it stays open this long, so it can be read, even
+ * set to close as soon as the mouse leaves (s). The mouse coming onto it ends
+ * the wait; leaving it then closes it as usual.
+ */
+const NOTICE_GRACE = 8;
 /** How close a dragged file comes to the island before it opens for the drop (page px). */
 const DRAG_NEAR = 120;
 /** "Open on hover": how long the mouse rests on the closed island before it opens (ms). */
@@ -716,8 +723,20 @@ export class Island {
   /** Alert from the hook server: open on this view. Pinned alerts never auto-close. */
   alert(view: IslandViewName) {
     this.fsm.pinned = State.isPinned;
+    this.giveReadingTime();
     this.fsm.forceHome();
     this.expand(view);
+  }
+
+  /**
+   * Something came up on the island while the mouse is elsewhere: it stays
+   * open NOTICE_GRACE, so the countdown of an island set to close as the
+   * mouse leaves does not fold it before it is read. A shortcut gives its own
+   * grace on top (holdOpen).
+   */
+  giveReadingTime() {
+    if (this.wasInIsland || this.fsm.pinned) return;
+    this.fsm.holdOpen(NOTICE_GRACE, false);
   }
 
   reveal() {
@@ -988,7 +1007,7 @@ export class Island {
   onOutsidePress() {
     // While a sharing shortcut holds it open, a click elsewhere closes it in
     // any mode: that is how the user says they are done.
-    if (parseCloseMode(State.settings.islandClose) !== "click" && !this.fsm.inGrace) return;
+    if (parseCloseMode(State.settings.islandClose) !== "click" && !this.fsm.clickEndsGrace) return;
     if (State.mode !== "expanded" || this.fsm.state !== "home") return;
     if (this.fsm.pinned || State.isPinned || State.pendingApproval || isDialogOpen()) return;
     if (this.moving || this.resizing || this.uploadActive) return;
@@ -2180,7 +2199,8 @@ export class Island {
       this.countdown.style.width = "0px";
       return;
     }
-    const autoClose = this.fsm.homeToPetitDelay;
+    // A grace longer than the delay (an alert waiting to be read) counts down over its own length.
+    const autoClose = this.fsm.homeCollapseSpan ?? this.fsm.homeToPetitDelay;
     const windowS = Math.min(10, autoClose * 0.6);
     const remaining = (dueAt - nowMs) / 1000;
     this.countdown.style.width =

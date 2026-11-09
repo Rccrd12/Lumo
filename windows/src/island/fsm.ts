@@ -83,19 +83,37 @@ export class IslandStateMachine {
   /**
    * Until when (performance.now() ms) the open island does not fold because
    * the mouse is elsewhere: a sharing shortcut opened it while the mouse is on
-   * the text just selected. The mouse coming onto the island ends it.
+   * the text just selected, or an alert opened it on its own while the mouse
+   * was somewhere else. The mouse coming onto the island ends it.
    */
   private graceUntil = 0;
+  /** How long the running grace was given for (s), for the countdown bar. */
+  private graceSpan = 0;
+  /** A click elsewhere ends the running grace (a shortcut's, not an alert's). */
+  private graceClick = true;
 
-  /** The open island stays open `seconds` with the mouse elsewhere (see graceUntil). */
-  holdOpen(seconds: number) {
+  /**
+   * The open island stays open `seconds` with the mouse elsewhere (see
+   * graceUntil). `clickCloses`: a click elsewhere closes it meanwhile, in any
+   * close mode — how the user says they are done with what a shortcut opened.
+   * An alert that opened on its own is not closed by a click meant for
+   * something else.
+   */
+  holdOpen(seconds: number, clickCloses = true) {
     this.graceUntil = performance.now() + seconds * 1000;
+    this.graceSpan = seconds;
+    this.graceClick = clickCloses;
     if (this.homeCollapse != null) this.scheduleHomeCollapse();
   }
 
   /** The grace of holdOpen is still running. */
   get inGrace(): boolean {
     return performance.now() < this.graceUntil;
+  }
+
+  /** The running grace is one a click elsewhere ends. */
+  get clickEndsGrace(): boolean {
+    return this.inGrace && this.graceClick;
   }
 
   /** The mouse is on the island, as the last enter/leave said. */
@@ -108,6 +126,11 @@ export class IslandStateMachine {
    * bar from it.
    */
   homeCollapseDueAt: number | null = null;
+  /**
+   * How long the running countdown lasts (s) when a grace made it longer than
+   * the auto-close delay; null otherwise. The countdown bar is drawn over it.
+   */
+  homeCollapseSpan: number | null = null;
 
   private homeDelay = 15;
   private leaveCloses = true;
@@ -227,11 +250,15 @@ export class IslandStateMachine {
     this.lastHold = hold;
     if (this.pinned || !this.leaveCloses || hold === "keep") return;
     const floor = hold === "linger" ? this.lingerDelay : 0;
-    const ms = Math.max(this.homeDelay * 1000, floor * 1000, this.graceUntil - performance.now());
+    const base = Math.max(this.homeDelay * 1000, floor * 1000);
+    const graceLeft = this.graceUntil - performance.now();
+    const ms = Math.max(base, graceLeft);
     this.homeCollapseDueAt = performance.now() + ms;
+    this.homeCollapseSpan = graceLeft > base ? this.graceSpan : null;
     this.homeCollapse = window.setTimeout(() => {
       this.homeCollapse = null;
       this.homeCollapseDueAt = null;
+      this.homeCollapseSpan = null;
       // An alert pinned while the countdown ran keeps the island open, and so
       // does a message being written that no event told us about.
       if (this.state !== "home" || this.pinned) return;
@@ -259,7 +286,10 @@ export class IslandStateMachine {
     const id = this[which];
     if (id != null) window.clearTimeout(id);
     this[which] = null;
-    if (which === "homeCollapse") this.homeCollapseDueAt = null;
+    if (which === "homeCollapse") {
+      this.homeCollapseDueAt = null;
+      this.homeCollapseSpan = null;
+    }
   }
 
   cancelTimers() {

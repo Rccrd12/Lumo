@@ -9,6 +9,7 @@
 - **Fixed**: a beta could take a pull request's newest commit before its checks had passed on it; it now waits for them
 - **Fixed**: pressing Esc to stop Claude using the computer froze Lumo until Windows closed it; Claude now stops, and Esc is yours again at once
 - **Fixed**: editing a question in the chat drops the plan its answer made from the Plan island, so the new answer's plan starts on its own instead of adding its steps (and ticks) to the old one
+- **Fixed**: when a notice opens the island on its own ("Claude Code finished", an error, the recap…) while the mouse is elsewhere, it stays open 8 seconds to be read, with its countdown bar, instead of closing at once when set to close as the mouse leaves. The mouse coming onto it keeps it open, and leaving it closes it as usual; a click in another window doesn't close it
 
 ## Windows 0.20.1 — November 9, 2026
 

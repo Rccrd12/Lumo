@@ -15,6 +15,7 @@ let asked;
 const island = {
   alert: (view) => asked.push(`alert:${view}`),
   setView: (view) => asked.push(`setView:${view}`),
+  giveReadingTime: () => asked.push("read"),
   reveal: () => asked.push("reveal"),
   dropPin: () => asked.push("dropPin"),
   quickApproval: () => {
@@ -187,10 +188,10 @@ test("a finished session opens the finished view, then goes idle after 5.2 s", (
   assert.equal(task().state, "idle");
 });
 
-test("an alert on an island that is already open only switches its view", () => {
+test("an alert on an island that is already open switches its view and waits for it to be read", () => {
   State.mode = "expanded";
   hook({ hook_event_name: "Stop" });
-  assert.deepEqual(asked, ["setView:finished"]);
+  assert.deepEqual(asked, ["setView:finished", "read"]);
 });
 
 test("a session finishing behind another pill only badges its own, for 5.2 s", () => {

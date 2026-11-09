@@ -560,7 +560,11 @@ function handleHook(island: Island, payload: HookPayload) {
   /** Alerts force the island open; work events only reveal the compact island. */
   const surface = (view: Parameters<Island["alert"]>[0], isAlert: boolean) => {
     if (State.mode === "expanded") {
-      if (isAlert) island.setView(view);
+      if (isAlert) {
+        island.setView(view);
+        // Already open with the mouse elsewhere: its countdown waits for this to be read.
+        island.giveReadingTime();
+      }
     } else if (isAlert) {
       island.alert(view);
     } else if (State.mode === "hidden") {
