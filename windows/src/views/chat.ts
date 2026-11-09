@@ -77,6 +77,7 @@ import { checklistsIn, copyButton, renderMarkdown, writeClipboard } from "./mark
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
+import { Ink, inkWorks } from "./ink";
 import { agyContextWindow, drawNewUsage, lastContextReport } from "./usage-panel";
 import { drawShareGrid, type ShareItem, type ShareKind, type ShareKindId } from "./share-panel";
 import {
@@ -305,14 +306,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
   }
   const reply = h("div", { class: "reply" });
-  if (opts.workshop) {
-    const shown = stripDraft(message.content);
-    renderMarkdown(reply, shown.text, { scope: opts.scope });
-    const draft = shown.draft ? draftIn(message.content) : null;
-    if (draft) reply.append(draftChip(draft.name));
-  } else {
-    renderAnswer(reply, message.content, { scope: opts.scope, send: sendFromCard });
-  }
+  drawReply(reply, message.content, !!opts.workshop, opts.scope);
   // A stopped answer says so on a line of its own, Copy beside it; otherwise
   // Copy floats over the answer's bottom right corner and takes no room.
   const foot = message.stopped
@@ -741,6 +735,22 @@ function typingDots(label: string): HTMLElement {
     h("div", { class: "typing" }, h("i"), h("i"), h("i")),
     h("span", { class: "typing-label", text: label }),
   );
+}
+
+/**
+ * A finished answer's text, in its bubble. `scope`: the message it is, so its
+ * cards keep their state. `streaming`: the ink is still uncovering it (the
+ * text is cut short), so a card not closed yet waits and none can send.
+ */
+function drawReply(reply: HTMLElement, content: string, workshop: boolean, scope?: string, streaming = false) {
+  if (workshop) {
+    const shown = stripDraft(content);
+    renderMarkdown(reply, shown.text, { scope, streaming });
+    const draft = shown.draft ? draftIn(content) : null;
+    if (draft) reply.append(draftChip(draft.name));
+  } else {
+    renderAnswer(reply, content, { scope, streaming, send: streaming ? undefined : sendFromCard });
+  }
 }
 
 /**
@@ -1512,6 +1522,7 @@ export function buildPrompt(
   chatDeleted: (chatId: string) => void = () => {},
   openTools: () => void = () => {},
   decide: (d: "allow" | "deny", requestId: string) => void = () => {},
+  chatRewound: (chatId: string) => void = () => {},
 ): ViewHost {
   // Copies no past chat names any more (deleted before Lumo released them,
   // or gone past the history's end) leave the inbox once a day old.
@@ -1846,6 +1857,41 @@ export function buildPrompt(
   let screenTicket = 0;
   // An answer comes token by token: where the on-screen chat's text so far is shown.
   let live: HTMLElement | null = null;
+  /**
+   * The on-screen answer, written in ink (views/ink.ts): at a steady pace,
+   * behind a soft edge. It goes on into the finished answer's bubble until
+   * what arrived is all uncovered.
+   */
+  let ink: Ink | null = null;
+  let inkChat = "";
+  /**
+   * Shows `text`, the answer of `chat` so far, in `into`. `fresh`: its first
+   * words, written from the start; otherwise an answer already under way
+   * shows as far as it got at once, and only what comes next is written.
+   */
+  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string) {
+    const workshop = isWorkshopChat(chat);
+    if (!inkWorks()) {
+      drawAnswer(into, text, workshop, scope);
+      return;
+    }
+    if (fresh || !ink || inkChat !== chat) {
+      ink?.stop();
+      ink = new Ink((el, words) => drawAnswer(el, words, workshop, scope));
+      inkChat = chat;
+      ink.update(text);
+      if (!fresh) ink.skip();
+      ink.mount(into);
+      return;
+    }
+    ink.update(text);
+    if (ink.target !== into) ink.mount(into);
+  }
+  function dropInk() {
+    ink?.stop();
+    ink = null;
+    inkChat = "";
+  }
   /** The question being edited (its id): sending replaces it and drops what follows. */
   let editing: number | null = null;
   /** What the send button shows now: "send" or "stop". */
@@ -2084,7 +2130,9 @@ export function buildPrompt(
    * Sending an edited question: it and everything after it leave the chat,
    * here and in Rust (chat.rs rewind), before the new text is sent. The Claude
    * Code session is left behind too: the next turn starts a fresh one with the
-   * kept turns carried as text, so the dropped ones are gone for it as well.
+   * kept turns carried as text, so the dropped ones are gone for it as well,
+   * and so is the plan they made: it leaves the Plan island, or the next
+   * answer's steps would be added to it as if the model still followed it.
    */
   async function rewindTo(id: number) {
     const at = State.chatHistory.findIndex((m) => m.id === id);
@@ -2102,6 +2150,7 @@ export function buildPrompt(
     rewindChatFiles(State.chatId, keep);
     presenceAsked = "";
     drawChatFiles();
+    if (State.chatId) chatRewound(State.chatId);
     await Bridge.chatRewind(State.chatId, keep);
   }
 
@@ -3385,6 +3434,7 @@ export function buildPrompt(
   void onEvent<{ chat: string; text: string }>("chat-delta", ({ chat, text }) => {
     const run = runs.get(chat);
     if (!run || !text) return; // nothing visible yet: the dots stay
+    const fresh = !run.text;
     run.text = text;
     run.dots = false;
     // The closed island says it is writing now.
@@ -3398,7 +3448,7 @@ export function buildPrompt(
       log.append(h("div", { class: "chat-row" }, live));
     }
     noteChecklists(chat, run.history, text);
-    drawAnswer(live, text, isWorkshopChat(chat), messageScope(chat, nextMessage(run.history)));
+    writeAnswer(chat, live, text, fresh, messageScope(chat, nextMessage(run.history)));
     follow();
   });
 
@@ -4239,6 +4289,7 @@ export function buildPrompt(
       if (State.chatId !== shownChat) {
         shownChat = State.chatId;
         live = null;
+        dropInk();
         renderedCount = -1;
         openedChat = true;
         drawIslandActivity();
@@ -4381,11 +4432,20 @@ export function buildPrompt(
           const scope = messageScope(State.chatId, m.failed ? -1 : place++);
           log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop, scope }));
         });
+        // An answer just finished: the ink goes on in its bubble until all is uncovered.
+        const last = State.chatHistory[State.chatHistory.length - 1];
+        const inked = ink && !run && inkChat === State.chatId && ink.behind ? ink : null;
+        const lastReply = log.lastElementChild?.querySelector<HTMLElement>(".reply");
+        if (inked && last?.role === "assistant" && !last.failed && lastReply) {
+          inked.update(last.content, true);
+          const scope = messageScope(State.chatId, place - 1);
+          inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
+        } else if (!run) dropInk();
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          drawAnswer(live, run.text, workshop, messageScope(State.chatId, place));
+          writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place));
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
         // The chat stays where it was read, or at its end when it is stuck

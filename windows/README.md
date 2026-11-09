@@ -342,8 +342,13 @@ two sources, each with its switch, one or both on:
   starts it once, in the background with no window, when Lumo starts; if you
   close Outlook, Lumo doesn't start it again until it next starts. Outlook
   closed only pauses its emails. The new Outlook for Windows can't be read by
-  other apps: with it, use IMAP. If Windows' antivirus isn't one Outlook
-  knows, Outlook may ask once whether to let a program read the mail.
+  other apps: with it, use IMAP. The sender, the text and the headers, which
+  Outlook guards ("A program is trying to access e-mail address
+  information"), Lumo reads through MAPI, Outlook's own mail library, so
+  Outlook never asks; nothing of its security settings is touched. With a
+  32-bit Office, whose MAPI a 64-bit Lumo can't load, the island shows only
+  the subject of Outlook's emails, and Outlook may ask when an agent reads one
+  or when an email is written.
 - **IMAP** (on as before): one or more accounts, up to five, listed under
   the switch.
 
@@ -600,7 +605,14 @@ version 0.4 or later (its REST API).
 
 Answers from every provider are shown as **Markdown**: headings, lists, bold,
 inline code, quotes, and code blocks with a copy button. It is built from text
-nodes, never parsed as HTML, and only `http`/`https` links open. Lumo greets
+nodes, never parsed as HTML, and only `http`/`https` links open. An answer is
+written in **ink** as it comes: at a steady pace instead of in the bursts the
+model sends, whole words at a time, uncovered letter by letter behind a soft
+edge. Nothing shows half-written: inline code, links and bold text come whole,
+and a formula waits until it is complete, then the edge sweeps across it; a
+code block flows like the text. The ink stays at most about a third of a
+second behind the model, stops working as soon as it has caught up, and is off
+when Windows is set to show fewer animations. Lumo greets
 you by your first name when your account has one (the Windows display name; a
 bare login name is not used).
 

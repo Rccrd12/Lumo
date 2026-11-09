@@ -51,6 +51,7 @@ mod net;
 mod notifications;
 mod openai_compat;
 mod outlook;
+mod outlook_mapi;
 mod pc_status;
 mod pdf_pages;
 mod pdf_text;
