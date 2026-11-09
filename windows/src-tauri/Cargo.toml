@@ -57,6 +57,9 @@ windows = { version = "0.61", features = [
   "Data_Pdf",
   "Storage",
   "Storage_Streams",
+  # The Email pill's Outlook (outlook_mapi.rs): what Outlook guards (the
+  # sender, the text, the headers) read through its MAPI, with no prompt.
+  "Win32_System_AddressBook",
   # Gemini Live's control_computer (system_control.rs): the speakers' volume.
   "Win32_Media_Audio",
   "Win32_Media_Audio_Endpoints",
