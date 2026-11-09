@@ -209,6 +209,10 @@ pub struct Island {
     pub failing: bool,
     /// What each request took, as the turn said it.
     pub used: Vec<u64>,
+    /// The plans Lumo made of a list in the answer.
+    pub plans: Vec<Value>,
+    /// When the island was hushed and when it spoke again.
+    pub hushed: Vec<bool>,
 }
 
 impl Hooks for Island {
@@ -248,6 +252,14 @@ impl Hooks for Island {
         self.ran.push((name.to_string(), input));
         let answer = (format!("{name} done"), self.failing);
         async move { answer }
+    }
+
+    fn show_plan(&mut self, input: &Value) {
+        self.plans.push(input.clone());
+    }
+
+    fn hush(&mut self, on: bool) {
+        self.hushed.push(on);
     }
 }
 
