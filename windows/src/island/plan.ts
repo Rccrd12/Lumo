@@ -228,6 +228,22 @@ export class IslandPlan {
     this.changed();
   }
 
+  /**
+   * A question of the island chat was edited: its answers from there on are
+   * gone, and the next one starts a new session that knows nothing of the
+   * plan they made. That plan goes, unkept, so the next plan starts on its
+   * own instead of adding its steps to it. Plans done before stay in the past.
+   */
+  restartChat(chatId: string) {
+    const key = planKey("chat", chatId);
+    const plan = this.book.get(key);
+    const followed = plan != null && this.current != null && planId(this.current) === planId(plan);
+    if (!this.book.restart(key)) return;
+    if (this.viewing && !this.plans().some((p) => planId(p) === this.viewing)) this.viewing = null;
+    if (followed && !this.book.list().some((p) => !planFinished(p.steps))) this.folded = true;
+    this.changed();
+  }
+
   /** The icon in the chat was clicked: open, the island folds; folded, it comes back. */
   toggle() {
     if (this.folded) {

@@ -1422,6 +1422,7 @@ export function buildPrompt(
   chatDeleted: (chatId: string) => void = () => {},
   openTools: () => void = () => {},
   decide: (d: "allow" | "deny", requestId: string) => void = () => {},
+  chatRewound: (chatId: string) => void = () => {},
 ): ViewHost {
   // Copies no past chat names any more (deleted before Lumo released them,
   // or gone past the history's end) leave the inbox once a day old.
@@ -2029,7 +2030,9 @@ export function buildPrompt(
    * Sending an edited question: it and everything after it leave the chat,
    * here and in Rust (chat.rs rewind), before the new text is sent. The Claude
    * Code session is left behind too: the next turn starts a fresh one with the
-   * kept turns carried as text, so the dropped ones are gone for it as well.
+   * kept turns carried as text, so the dropped ones are gone for it as well,
+   * and so is the plan they made: it leaves the Plan island, or the next
+   * answer's steps would be added to it as if the model still followed it.
    */
   async function rewindTo(id: number) {
     const at = State.chatHistory.findIndex((m) => m.id === id);
@@ -2047,6 +2050,7 @@ export function buildPrompt(
     rewindChatFiles(State.chatId, keep);
     presenceAsked = "";
     drawChatFiles();
+    if (State.chatId) chatRewound(State.chatId);
     await Bridge.chatRewind(State.chatId, keep);
   }
 
