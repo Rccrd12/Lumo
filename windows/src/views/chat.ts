@@ -568,11 +568,19 @@ export function chatSpeaker(): { who: string; color: string } {
   return { who: speakerName(p.id, t(p.name), activeModel(State.settings)), color: p.accent };
 }
 
+/**
+ * Who gives one answer: the provider and model it was asked of, kept with the
+ * answer, so picking another model while it is written doesn't rename it.
+ */
+function runSpeaker(run: { provider: string; model: string }): { who: string; color: string } {
+  const p = providerDef(run.provider);
+  return { who: speakerName(p.id, t(p.name), run.model), color: p.accent };
+}
+
 /** Says on the closed island how the answer went, unless the chat is on screen. */
-function noticeAway(text: string) {
+function noticeAway(text: string, speaker: { who: string; color: string }) {
   if (State.mode === "expanded" && State.view === "prompt") return;
-  const { who, color } = chatSpeaker();
-  compactNotice(t(text, { helper: who }), color);
+  compactNotice(t(text, { helper: speaker.who }), speaker.color);
 }
 
 /** The words for what the answer is doing; anything unknown is Thinking…. */
@@ -3287,14 +3295,14 @@ export function buildPrompt(
     const current = answering();
     const run = (current && !current.forgotten ? current : undefined) ?? liveRuns.at(-1);
     const next = run
-      ? { label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
-      : compactingLabel != null ? { label: compactingLabel } : null;
+      ? { ...runSpeaker(run), label: run.text === "" || run.dots ? timedLabel(islandActivityLabel(run.activity), run.provider, run.activity, run.since) : null }
+      : compactingLabel != null ? { ...chatSpeaker(), label: compactingLabel } : null;
     const nextChats: ActiveChatRun[] = liveRuns.map((r) => {
-      const p = providerDef(r.provider);
+      const { who, color } = runSpeaker(r);
       return {
         chatId: r.chatId,
-        who: speakerName(p.id, t(p.name), r.model),
-        color: p.accent,
+        who,
+        color,
         title: chatTitle(r.history) || t("Chat"),
         line: r.text === "" || r.dots ? runLabel(r) : t(COMPACT_TEXT.writing),
       };
@@ -3311,11 +3319,11 @@ export function buildPrompt(
     }
     for (const [chatId, fin] of finishedChats) {
       if (nextChats.some((c) => c.chatId === chatId)) continue;
-      const p = providerDef(fin.provider);
+      const { who, color } = runSpeaker(fin);
       nextChats.push({
         chatId,
-        who: speakerName(p.id, t(p.name), fin.model),
-        color: p.accent,
+        who,
+        color,
         title: fin.title || t("Chat"),
         line: t("Done"),
         done: true,
@@ -3323,7 +3331,7 @@ export function buildPrompt(
     }
     const nextKey = nextChats.map((c) => `${c.chatId}\t${c.who}\t${c.color}\t${c.title}\t${c.line}\t${c.done ? 1 : 0}`).join("\n");
     const now = State.chatActivity;
-    const sameActivity = next == null ? now == null : now != null && now.label === next.label;
+    const sameActivity = next == null ? now == null : now != null && now.label === next.label && now.who === next.who && now.color === next.color;
     if (sameActivity && nextKey === activeChatsKey) return;
     activeChatsKey = nextKey;
     State.chatActivity = next;
@@ -3707,12 +3715,12 @@ export function buildPrompt(
       if (antigravityUsage()) refreshAntigravityPlanUsage();
       outcome = reply.stopped ? null : "finished";
       Sound.play(reply.stopped ? "pop" : "finish");
-      if (!reply.stopped) noticeAway(COMPACT_TEXT.answered);
+      if (!reply.stopped) noticeAway(COMPACT_TEXT.answered, runSpeaker(run));
     } catch (err) {
       giveBack(true);
       outcome = "error";
-      noticeAway(COMPACT_TEXT.failed);
-      const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: chatSpeaker().who });
+      noticeAway(COMPACT_TEXT.failed, runSpeaker(run));
+      const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
       run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true });
