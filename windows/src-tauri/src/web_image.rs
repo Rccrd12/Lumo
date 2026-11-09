@@ -307,7 +307,7 @@ fn sniff(bytes: &[u8]) -> Option<&'static str> {
         let size = u32::from_be_bytes([bytes[0], bytes[1], bytes[2], bytes[3]]) as usize;
         let end = size.clamp(12, bytes.len().min(256));
         let avif = |brand: &[u8]| brand == b"avif" || brand == b"avis";
-        if avif(&bytes[8..12]) || bytes.get(16..end).is_some_and(|rest| rest.chunks_exact(4).any(avif)) {
+        if avif(&bytes[8..12]) || bytes.get(16..end).is_some_and(|rest| rest.as_chunks::<4>().0.iter().any(|brand| avif(brand))) {
             return Some("image/avif");
         }
     }
