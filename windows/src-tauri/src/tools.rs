@@ -844,23 +844,33 @@ pub fn containable(dir: &Path, m: &Manifest) -> bool {
     CONTAINABLE.contains(&extension(&entry_path(dir, &m.entry)).as_str()) && m.permissions.iter().all(|p| p == "network")
 }
 
-/// The folder a program found on the PATH runs from, for the sandbox to read:
-/// none for Windows' own (System32's py.exe, say), which it reads already.
-fn program_dir(exe: &Path) -> Option<PathBuf> {
-    let dir = exe.parent()?.to_path_buf();
+/// Whether an interpreter's folder needs a grant for the sandbox to read it:
+/// not Windows' own, which it reads already, nor WindowsApps, which keeps none.
+fn program_dir_readable(dir: &Path) -> bool {
     let windows = std::env::var_os("SystemRoot").map(PathBuf::from).unwrap_or_else(|| PathBuf::from(r"C:\Windows"));
-    // The Microsoft Store's python.exe is a link into WindowsApps, which no
-    // sandbox reads: Windows won't start it there, and its folder keeps no grant.
     let store = dir.components().any(|c| c.as_os_str().eq_ignore_ascii_case("WindowsApps"));
-    (!dir.starts_with(&windows) && !store).then_some(dir)
+    !dir.starts_with(&windows) && !store
 }
 
-/// What a run of `m` from `dir`, its program `exe`, may read in the Windows
-/// sandbox: the tool's own folder, the guard, the program's folder and
-/// Python's packages for the user.
-fn sandbox_reads(dir: &Path, path: &Path, exe: &Path) -> Vec<PathBuf> {
+/// Whether a run of `m` from `dir` would start in the Windows sandbox: it
+/// can run there, Windows lets Lumo make it, and Lumo can tell what its
+/// Python or Node really runs. Blocking.
+pub fn sandbox_ready(dir: &Path, m: &Manifest) -> bool {
+    if !containable(dir, m) || !crate::sandbox::available() {
+        return false;
+    }
+    let path = entry_path(dir, &m.entry);
+    let work = work_dir(&m.id);
+    runner(&path, &m.permissions, dir, &work).is_ok_and(|(exe, _)| interpreter(&exe, &path).is_some())
+}
+
+/// What a run of the file at `path` from `dir` may read in the Windows
+/// sandbox, besides its program's folders (`interpreter`): the tool's own
+/// folder, the guard, and Python's packages for the user.
+fn sandbox_reads(dir: &Path, path: &Path) -> Vec<PathBuf> {
     let mut read = vec![dir.to_path_buf()];
-    // A script that was already on the computer runs where it is: that file alone.
+    // A script that was already on the computer runs where it is: that file
+    // alone (a program of its own too: never the folder around it).
     if !path.starts_with(dir) {
         read.push(path.to_path_buf());
     }
@@ -870,8 +880,72 @@ fn sandbox_reads(dir: &Path, path: &Path, exe: &Path) -> Vec<PathBuf> {
             read.push(user);
         }
     }
-    read.extend(program_dir(exe));
     read
+}
+
+/// What the Python or Node found on the PATH (`exe`) really runs, asked
+/// outside the sandbox: the py launcher, a venv's python.exe and the shims of
+/// Scoop or Volta start another interpreter, from a folder the sandbox must
+/// read too. The program to start in the sandbox and the folders it reads;
+/// None when it can't be told, or it is the Microsoft Store's. A program of
+/// the tool's own is itself, and reads nothing more. Asked once per program
+/// while Lumo runs (blocking, up to 15 s the first time).
+fn interpreter(exe: &Path, path: &Path) -> Option<(PathBuf, Vec<PathBuf>)> {
+    type Found = Option<(PathBuf, Vec<PathBuf>)>;
+    static SEEN: Mutex<Vec<(PathBuf, Found)>> = Mutex::new(Vec::new());
+    let ask: &[&str] = match extension(path).as_str() {
+        "py" | "pyw" => &["-I", "-c", "import sys;print(sys.executable);print(sys.prefix);print(sys.base_prefix);print(getattr(sys,'_base_executable',sys.executable))"],
+        "js" | "mjs" | "cjs" => &["-e", "console.log(process.execPath)"],
+        _ => return Some((exe.to_path_buf(), Vec::new())),
+    };
+    if let Some((_, found)) = SEEN.lock().unwrap_or_else(|e| e.into_inner()).iter().find(|(e, _)| e == exe) {
+        return found.clone();
+    }
+    let found: Found = (|| {
+        let mut cmd = Command::new(exe);
+        cmd.args(ask).stdin(Stdio::null()).stdout(Stdio::piped()).stderr(Stdio::null());
+        platform::no_console(&mut cmd);
+        let mut child = cmd.spawn().ok()?;
+        let mut out = child.stdout.take()?;
+        let reader = std::thread::spawn(move || {
+            let mut text = String::new();
+            let _ = out.by_ref().take(16 * 1024).read_to_string(&mut text);
+            text
+        });
+        let asked = Instant::now();
+        loop {
+            match child.try_wait() {
+                Ok(Some(status)) if status.success() => break,
+                Ok(None) if asked.elapsed() < Duration::from_secs(15) => std::thread::sleep(Duration::from_millis(40)),
+                _ => {
+                    let _ = child.kill();
+                    let _ = child.wait();
+                    return None;
+                }
+            }
+        }
+        let text = reader.join().ok()?;
+        let mut lines = text.lines().map(str::trim).filter(|l| !l.is_empty()).map(PathBuf::from);
+        let start = lines.next().filter(|p| p.is_absolute() && p.is_file())?;
+        let mut read: Vec<PathBuf> = start.parent().map(Path::to_path_buf).into_iter().collect();
+        for p in lines.filter(|p| p.is_absolute()) {
+            read.push(if p.is_file() { p.parent().map(Path::to_path_buf).unwrap_or(p) } else { p });
+        }
+        let read: Vec<PathBuf> = read.into_iter().filter(|p| program_dir_readable(p)).fold(Vec::new(), |mut all, p| {
+            if !all.contains(&p) {
+                all.push(p);
+            }
+            all
+        });
+        // The Store's Python can't start in a sandbox.
+        let store = |p: &Path| p.components().any(|c| c.as_os_str().eq_ignore_ascii_case("WindowsApps"));
+        (!store(&start)).then_some((start, read))
+    })();
+    if found.is_none() {
+        crate::log::line(format!("[tools] couldn't tell what {} runs: its tools run under the guard only", exe.display()));
+    }
+    SEEN.lock().unwrap_or_else(|e| e.into_inner()).push((exe.to_path_buf(), found.clone()));
+    found
 }
 
 /// A run's stdin, stdout and stderr, wherever it was started.
@@ -946,9 +1020,9 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
             Some("it reads, writes or changes what the Windows sandbox keeps a tool from".to_string())
         } else if !crate::sandbox::available() {
             Some("Windows didn't let Lumo make its sandbox".to_string())
-        } else {
-            let read = sandbox_reads(dir, &path, &exe);
-            let launch = crate::sandbox::Launch { exe: &exe, args: &words, cwd: &cwd, env: &env, read: &read, write: std::slice::from_ref(&work), network };
+        } else if let Some((start, mut read)) = interpreter(&exe, &path) {
+            read.splice(0..0, sandbox_reads(dir, &path));
+            let launch = crate::sandbox::Launch { exe: &start, args: &words, cwd: &cwd, env: &env, read: &read, write: std::slice::from_ref(&work), network };
             match crate::sandbox::spawn(&launch) {
                 Ok(c) => {
                     child = Some(Running::Contained(c));
@@ -956,6 +1030,8 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
                 }
                 Err(e) => Some(e),
             }
+        } else {
+            Some("Lumo couldn't tell which Python or Node the tool runs on".to_string())
         };
         if let Some(reason) = reason {
             if contain == Contain::SandboxOnly {
@@ -996,6 +1072,7 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
         let _ = stdin.write_all(input_text.as_bytes());
     }
     let pipe = |r: Option<Box<dyn Read + Send>>| {
+        let (tx, rx) = std::sync::mpsc::channel();
         std::thread::spawn(move || {
             let mut buf = Vec::new();
             if let Some(mut r) = r {
@@ -1003,16 +1080,20 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
                 // Whatever else it prints is read and dropped, so it never blocks on a full pipe.
                 let _ = std::io::copy(&mut r, &mut std::io::sink());
             }
-            String::from_utf8_lossy(&buf).to_string()
-        })
+            let _ = tx.send(String::from_utf8_lossy(&buf).to_string());
+        });
+        rx
     };
     let out = pipe(stdout);
     let err = pipe(stderr);
+    // The tool's time starts once it runs: the sandbox's first grants (a
+    // Python folder, say) are Lumo's, not the tool's.
+    let running = Instant::now();
     let limit = Duration::from_secs(if m.timeout == 0 { DEFAULT_TIMEOUT_S } else { m.timeout.clamp(5, MAX_TIMEOUT_S) });
     let status = loop {
         match child.try_wait() {
             Ok(Some(code)) => break Some(code),
-            Ok(None) if started.elapsed() < limit => std::thread::sleep(Duration::from_millis(40)),
+            Ok(None) if running.elapsed() < limit => std::thread::sleep(Duration::from_millis(40)),
             _ => {
                 child.kill();
                 break None;
@@ -1020,12 +1101,22 @@ pub fn run_in(dir: &Path, m: &Manifest, input: &Value, contain: Contain) -> RunR
         }
     };
     // In the sandbox, what the tool started and left running ends with it
-    // (its job), so nothing keeps the output open.
-    if let Running::Contained(c) = &mut child {
-        c.kill();
-    }
-    let stdout = out.join().unwrap_or_default();
-    let stderr = err.join().unwrap_or_default();
+    // (its job). A program Lumo started elsewhere in the moment the sandbox's
+    // pipes could be inherited may still hold them: the output is waited
+    // for a little, never for good.
+    let deadline = match &mut child {
+        Running::Contained(c) => {
+            c.kill();
+            Some(Instant::now() + Duration::from_secs(2))
+        }
+        Running::Plain(_) => None,
+    };
+    let collect = |rx: std::sync::mpsc::Receiver<String>| match deadline {
+        Some(at) => rx.recv_timeout(at.saturating_duration_since(Instant::now())).unwrap_or_default(),
+        None => rx.recv().unwrap_or_default(),
+    };
+    let stdout = collect(out);
+    let stderr = collect(err);
     match status {
         None => done(false, tf("The tool took more than {seconds} s and was stopped.", &[("seconds", &limit.as_secs().to_string())])),
         Some(Some(0)) => {
@@ -1280,7 +1371,7 @@ pub async fn call_for_chat(app: &AppHandle, chat_id: &str, id: &str, input: Valu
     let answer = if is_mail_tool(id) {
         crate::mail::serve(app, &json!({ "tool": id, "input": input })).await
     } else {
-        serve_call(app, &json!({ "tool": id, "input": input, "asking": asking.id(), "sandbox": if sandbox_high { "high" } else { "low" } })).await
+        run_call(app, id, input, asking, sandbox_high).await
     };
     match answer.get("error").and_then(Value::as_str) {
         Some(e) => (e.to_string(), true),
@@ -1350,27 +1441,6 @@ impl Asking {
         }
     }
 
-    fn id(self) -> &'static str {
-        match self {
-            Asking::Always => "always",
-            Asking::Untrusted => "untrusted",
-            Asking::Risky => "risky",
-            Asking::Sandboxed => "sandboxed",
-        }
-    }
-
-    /// The `asking` of a `{"lumo_tool": …}` request; one without it (Claude
-    /// Code's relay) asks as before, and so does one with `always_ask` alone.
-    fn of_request(request: &Value) -> Asking {
-        match request.get("asking").and_then(Value::as_str) {
-            Some("always") => Asking::Always,
-            Some("risky") => Asking::Risky,
-            Some("sandboxed") => Asking::Sandboxed,
-            Some(_) => Asking::Untrusted,
-            None if request.get("always_ask").and_then(Value::as_bool) == Some(true) => Asking::Always,
-            None => Asking::Untrusted,
-        }
-    }
 }
 
 /// What a tool may do that reaches past its own folder, of what it declares.
@@ -1439,13 +1509,27 @@ async fn approve_web(app: &AppHandle, id: &str, input: &Value) -> Result<(), Str
     }
 }
 
-/// `{"lumo_tool": {"tool": …, "input": …}}`: runs a tool that is on and
-/// reviewed, once the user said yes, and tells the island it ran. The chat's
-/// API providers call it too.
+/// `{"lumo_tool": {"tool": …, "input": …}}` on Lumo's pipe (lumo-hook --mcp,
+/// for Claude Code and the other agents): runs a tool that is on and
+/// reviewed, once the user said yes, and tells the island it ran. What
+/// comes on the pipe never asks less than before, nor picks the sandbox:
+/// only the chat's own calls do (`call_for_chat`).
 pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
     let id = request.get("tool").and_then(Value::as_str).unwrap_or("").to_string();
     let input = request.get("input").cloned().filter(Value::is_object).unwrap_or_else(|| json!({}));
-    let Some(tool) = find(&id).map(|(dir, m)| info(&dir, m)) else {
+    run_call(app, &id, input, pipe_asking(request), false).await
+}
+
+/// How a call on the pipe asks: every time when it says `always_ask`,
+/// otherwise as trust says. Nothing else in the request asks less.
+fn pipe_asking(request: &Value) -> Asking {
+    if request.get("always_ask").and_then(Value::as_bool) == Some(true) { Asking::Always } else { Asking::Untrusted }
+}
+
+/// One call of the user's tool `id`, asked for as `asking` says, in the
+/// Windows sandbox when `sandbox_high` and it can run there.
+async fn run_call(app: &AppHandle, id: &str, input: Value, asking: Asking, sandbox_high: bool) -> Value {
+    let Some(tool) = find(id).map(|(dir, m)| info(&dir, m)) else {
         return json!({ "error": format!("Lumo has no tool called {id}.") });
     };
     let m = &tool.manifest;
@@ -1457,10 +1541,12 @@ pub async fn serve_call(app: &AppHandle, request: &Value) -> Value {
     }
     // The local chat's Sandbox High: the tool runs in the Windows sandbox
     // when it can, and Run automatically asks nothing for one that does.
-    let asking = Asking::of_request(request);
-    let high = request.get("sandbox").and_then(Value::as_str) == Some("high");
+    let high = sandbox_high;
     let dir = PathBuf::from(&tool.dir);
-    let sandboxed = high && containable(&dir, m) && tauri::async_runtime::spawn_blocking(crate::sandbox::available).await.unwrap_or(false);
+    let sandboxed = high && {
+        let (dir, m) = (dir.clone(), m.clone());
+        tauri::async_runtime::spawn_blocking(move || sandbox_ready(&dir, &m)).await.unwrap_or(false)
+    };
     let card = needs_card(&tool, asking, sandboxed);
     if card {
         if let Err(e) = approve(app, &tool, &input).await {
@@ -1879,13 +1965,12 @@ mod tests {
     }
 
     #[test]
-    fn a_request_says_how_it_asks_and_old_ones_ask_as_before() {
-        assert_eq!(Asking::of_request(&json!({ "tool": "t" })), Asking::Untrusted);
-        assert_eq!(Asking::of_request(&json!({ "always_ask": true })), Asking::Always);
-        for asking in [Asking::Always, Asking::Untrusted, Asking::Risky, Asking::Sandboxed] {
-            assert_eq!(Asking::of_request(&json!({ "asking": asking.id() })), asking);
+    fn a_call_on_the_pipe_never_asks_less_than_before() {
+        assert_eq!(pipe_asking(&json!({ "tool": "t" })), Asking::Untrusted);
+        assert_eq!(pipe_asking(&json!({ "always_ask": true })), Asking::Always);
+        for sneaky in [json!({ "asking": "off" }), json!({ "asking": "risky", "sandbox": "high" }), json!({ "always_ask": "yes" })] {
+            assert_eq!(pipe_asking(&sneaky), Asking::Untrusted, "{sneaky}");
         }
-        assert_eq!(Asking::of_request(&json!({ "asking": "full" })), Asking::Untrusted, "nothing unknown asks less");
     }
 
     #[test]
