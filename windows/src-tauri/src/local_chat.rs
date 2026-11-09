@@ -14,8 +14,8 @@
 // model that refuses them is asked again without.
 //
 // A plan the model shows on the Plan island (update_plan) is kept up to date:
-// lumo-local reminds the model when its tools go past it, sends it back once
-// when it answers with the plan behind, and shows a list of steps it wrote
+// lumo-local reminds the model when its tools go past it, sends it back once,
+// unseen, when it answers with the plan behind, and shows a list of steps it wrote
 // as the plan, and asks for one when a job takes several rounds of changes
 // with none (lumo_local::plan). The plan tool is always offered, so a plan
 // doesn't wait for the question to ask for one; each new question in a chat
@@ -491,6 +491,8 @@ struct Island<'a, P> {
     server: &'static str,
     /// The context the model is loaded with, in tokens (0: not said), for the ring.
     context: u64,
+    /// The model puts its plan right after its answer: its tools say nothing.
+    hushed: bool,
 }
 
 impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P> {
@@ -522,7 +524,6 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
                 lumo_local::Correction::Written => "written",
                 lumo_local::Correction::SaidDone => "done",
                 lumo_local::Correction::Stopped => "stopped",
-                lumo_local::Correction::Plan => "plan",
             }),
         });
     }
@@ -559,16 +560,22 @@ impl<P: Fn(&[String], bool) -> String + Sync> lumo_local::Hooks for Island<'_, P
         crate::tools::show_plan(self.app, self.chat.id(), self.server, input);
     }
 
+    fn hush(&mut self, on: bool) {
+        self.hushed = on;
+    }
+
     fn call(&mut self, name: &str, input: Value) -> impl std::future::Future<Output = (String, bool)> + Send {
-        self.events.activity(self.app, if crate::web_search::NAMES.contains(&name) {
-            crate::web_search::activity(name)
-        } else if crate::workspace::NAMES.contains(&name) {
-            crate::workspace::activity(name, &input)
-        } else if crate::github_tools::NAMES.contains(&name) {
-            crate::github_tools::activity(name, &input)
-        } else {
-            Activity::new("tool", crate::claude_code::pretty_tool(name))
-        });
+        if !self.hushed {
+            self.events.activity(self.app, if crate::web_search::NAMES.contains(&name) {
+                crate::web_search::activity(name)
+            } else if crate::workspace::NAMES.contains(&name) {
+                crate::workspace::activity(name, &input)
+            } else if crate::github_tools::NAMES.contains(&name) {
+                crate::github_tools::activity(name, &input)
+            } else {
+                Activity::new("tool", crate::claude_code::pretty_tool(name))
+            });
+        }
         self.ran.push(if name == crate::web_search::SEARCH {
             let query = input.get("query").and_then(Value::as_str).unwrap_or("").trim().chars().take(120).collect::<String>();
             format!("{name} \"{query}\"")
@@ -787,7 +794,7 @@ pub async fn send(
             text_only: (text_only != user).then_some(text_only),
             plan: open_plan.clone(),
         };
-        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size };
+        let mut island = Island { app, chat, events: &events, shown: &mut shown, ran: &mut ran, all: &all, prompt_for: &prompt_for, always_ask, server: server.id, context: context_size, hushed: false };
         let outcome = lumo_local::run(&to, &mut body, &rules, &mut island).await;
         log_turn(server, model, prompt_chars / 3, tools.len(), &outcome);
         outcome.map_err(|f| failure(server, model, &base, f))

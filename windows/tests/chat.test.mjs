@@ -855,7 +855,6 @@ test("each activity has its words, with a file name, a host or a tool", () => {
     [{ kind: "correcting", detail: "written" }, "It wrote the tool instead of using it: asking again…"],
     [{ kind: "correcting", detail: "done" }, "It said it was done without doing it: asking again…"],
     [{ kind: "correcting", detail: "stopped" }, "It stopped halfway: asking again…"],
-    [{ kind: "correcting", detail: "plan" }, "The plan wasn't up to date: asking again…"],
     [{ kind: "something new", detail: "x" }, "Thinking…"],
     [null, "Thinking…"],
   ];

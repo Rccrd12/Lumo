@@ -9,7 +9,8 @@
 // - while it works: after two rounds of other tools with the plan left as it
 //   was, a line under the last tool's result says which step it shows;
 // - at the end: an answer given with the plan still behind the work sends the
-//   model back once, to put each step where it really stands;
+//   model back once, to put each step where it really stands, unseen: the
+//   answer stays on the island as it was;
 // - a list of steps written in the answer, right before its first tools, is
 //   shown as the plan, and the model is told so, so it ticks it off;
 // - a job that goes on changing things for two rounds with no plan asks the
@@ -233,7 +234,7 @@ pub fn end_note(plan: &Plan) -> String {
     format!(
         "(Lumo: you answered, but your plan on the Plan island still shows {} of {} steps not completed{now}, and you didn't update it \
 after your last tools. Call update_plan now with the whole list and where each step really stands: completed only what you actually did. \
-Then give your answer again.)",
+Your answer has already been shown to the user: after update_plan, reply only OK.)",
         plan.left(),
         plan.steps.len()
     )

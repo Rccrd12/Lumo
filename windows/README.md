@@ -251,8 +251,8 @@ asks for a plan or the chat is on Plan only; the local models get it always,
 and are asked to make a plan for any job of more than one step (one that goes
 on changing files for two rounds with no plan is asked for one). A local
 model is kept at it: when its tools go past the step the plan shows, Lumo
-reminds it; when it answers with the plan behind the work, Lumo asks it once
-to put each step where it stands; a list of steps it writes right before its
+reminds it; when it answers with the plan behind the work, Lumo asks it once,
+unseen, to put each step where it stands (the answer stays as it was); a list of steps it writes right before its
 first tools becomes the plan, and it is told so; and each new question in a
 chat whose plan isn't done says where the plan stands.
 

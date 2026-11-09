@@ -549,8 +549,8 @@ fn a_plan_left_behind_the_work_is_reminded_then_checked_at_the_end() {
         calls("c2", "workspace_write", "{\"path\":\"a\"}"),
         calls("c3", "workspace_write", "{\"path\":\"b\"}"),
         answer("Fatto!"),
-        calls("c4", "update_plan", PLAN_DONE),
-        answer("Fatto, tutti e tre i passi."),
+        Reply::Events(vec![text("Aggiorno il piano."), call("c4", "update_plan", PLAN_DONE), finish("tool_calls"), DONE.into()]),
+        answer("OK"),
     ];
     let mut body = question("Fai A, B e C", &["update_plan", "workspace_write"]);
     let (outcome, requests) = turn(replies, &mut body, &rules("plan-behind", ""), &mut island);
@@ -560,10 +560,15 @@ fn a_plan_left_behind_the_work_is_reminded_then_checked_at_the_end() {
     assert_eq!(last_said(&requests[2]), "workspace_write done");
     let reminded = last_said(&requests[3]);
     assert!(reminded.starts_with("workspace_write done\n\n(Lumo: your plan on the Plan island shows step 1 \"A\" in progress"), "{reminded}");
-    // The answer with the plan behind: sent back once, and said so.
+    // The answer with the plan behind: sent back once, unseen. The answer
+    // stays as it was shown, and nothing more is shown or said meanwhile.
     assert!(last_said(&requests[4]).contains("still shows 3 of 3 steps not completed"), "{}", last_said(&requests[4]));
-    assert!(island.doing.contains(&Doing::Correcting(Correction::Plan)));
-    assert_eq!(outcome.answer(), "Fatto, tutti e tre i passi.");
+    assert_eq!(outcome.answer(), "Fatto!");
+    assert_eq!(island.shown.last().unwrap(), "Fatto!");
+    assert!(!island.shown.iter().any(|s| s.contains("Aggiorno") || s.contains("OK")));
+    assert_eq!(island.hushed, [true, false]);
+    assert_eq!(island.doing.last(), Some(&Doing::Prompt), "{:?}", island.doing);
+    assert_eq!(island.ran.last().unwrap(), &("update_plan".to_string(), serde_json::from_str::<Value>(PLAN_DONE).unwrap()));
     assert_eq!(requests.len(), 6);
 }
 

@@ -14735,18 +14735,6 @@
    "id": "Berhenti di tengah jalan: meminta lagi…",
    "it": "Si è fermato a metà: glielo richiedo…"
   },
-  "The plan wasn't up to date: asking again…": {
-   "zh-Hans": "计划没有更新：再次请求…",
-   "hi": "योजना अपडेट नहीं थी: फिर से कह रहा है…",
-   "es": "El plan no estaba al día: se lo pido de nuevo…",
-   "ar": "لم تكن الخطة محدّثة: أطلب مجددًا…",
-   "fr": "Le plan n'était pas à jour : je redemande…",
-   "bn": "পরিকল্পনা হালনাগাদ ছিল না: আবার বলছি…",
-   "pt-BR": "O plano não estava atualizado: pedindo de novo…",
-   "ru": "План не был обновлён: прошу снова…",
-   "id": "Rencananya belum diperbarui: meminta lagi…",
-   "it": "Il piano non era aggiornato: glielo richiedo…"
-  },
   "{seconds} s": {
    "zh-Hans": "{seconds} 秒",
    "hi": "{seconds} से.",

@@ -44,8 +44,6 @@ pub enum Correction {
     SaidDone,
     /// It stopped before the tool it announced, or left the change undone.
     Stopped,
-    /// It answered with its plan behind the work.
-    Plan,
 }
 
 /// How many times an engine that dropped a request is asked again.
@@ -80,6 +78,9 @@ pub trait Hooks {
     /// Shows a plan Lumo made of a list in the answer (`update_plan`'s input),
     /// as if the model had called the tool with it.
     fn show_plan(&mut self, _input: &Value) {}
+    /// While on, the tools called say nothing on the island: the model is
+    /// putting its plan right after its answer, which stays as it was.
+    fn hush(&mut self, _on: bool) {}
 }
 
 /// What a turn goes by.
@@ -201,13 +202,19 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
     // The plan as the island shows it, and how up to date it is.
     let mut plan = PlanState { shown: rules.plan.clone(), ..PlanState::default() };
     loop {
-        hooks.doing(next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt }));
+        // The plan's check after the answer is unseen: the answer stays on
+        // the island as it was, with nothing said about it.
+        let hushed = plan.checking.is_some();
+        let doing = next.take().unwrap_or(if whole { Doing::Thinking } else { Doing::Prompt });
+        if !hushed {
+            hooks.doing(doing);
+        }
         let before = said.join("\n\n");
         let after_before = |visible: &str| if before.is_empty() { visible.to_string() } else { format!("{before}\n\n{visible}") };
         let answer = if whole {
             let answer = ask_whole(to, body).await;
             if let Ok(a) = &answer {
-                if !a.text.is_empty() {
+                if !a.text.is_empty() && !hushed {
                     hooks.shown(&after_before(&progressive_filter(&a.text)));
                 }
             }
@@ -217,6 +224,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
                 // Nothing new yet in this round: the text so far isn't sent
                 // again, or the island would drop the dots that say what the
                 // answer is doing.
+                _ if hushed => {}
                 Seen::Text(visible) if visible.is_empty() => {}
                 Seen::Text(visible) => hooks.shown(&after_before(&visible)),
                 Seen::Reasoning => hooks.doing(Doing::Reasoning),
@@ -226,6 +234,13 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
         };
         if let Err(e) = &answer {
             notes.push(format!("{}{e:?}", if whole { "whole: " } else { "" }));
+        }
+        // The plan's check failing costs nothing: the answer was given.
+        if answer.is_err() {
+            if let Some(kept) = plan.checking.take() {
+                hooks.hush(false);
+                return Ok(Outcome { said, text: kept, end: End::Answer, used, rounds, whole, fixes, notes });
+            }
         }
         let answer = match answer {
             // A model that doesn't see refuses the pictures: once more with the text alone.
@@ -296,6 +311,19 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             hooks.used(tokens);
         }
         let tools = body.get("tools").is_some();
+        if hushed {
+            // Done with the plan: the answer is the one already shown.
+            if answer.calls.is_empty() || !tools {
+                hooks.hush(false);
+                let text = plan.checking.take().unwrap_or_default();
+                return Ok(Outcome { said, text, end: End::Answer, used, rounds, whole, fixes, notes });
+            }
+            // Back at work with other tools: no longer a check, said as any round.
+            if answer.calls.iter().any(|c| c["name"].as_str() != Some(plan::TOOL)) {
+                plan.checking = None;
+                hooks.hush(false);
+            }
+        }
         // A tool call written in the answer as text (`[[workspace_edit …]]`)
         // does nothing: the model is told so once, and what it wrote goes.
         if answer.calls.is_empty() && !written && tools {
@@ -354,18 +382,23 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             continue;
         }
         // An answer with the plan behind the work: the model puts each step
-        // where it stands, once, then answers again.
+        // where it stands, once and unseen; its answer stays as it was.
         if answer.calls.is_empty() && tools && !answer.cut && !plan.checked && plan.stale && names.iter().any(|n| n == plan::TOOL) {
             if let Some(note) = plan.shown.as_ref().filter(|p| p.under_way()).map(plan::end_note) {
                 plan.checked = true;
                 fixes.push("plan behind the work");
                 push(body, [json!({ "role": "assistant", "content": answer.text }), json!({ "role": "user", "content": note })]);
-                hooks.shown(&before);
-                next = Some(Doing::Correcting(Correction::Plan));
+                plan.checking = Some(answer.text);
+                hooks.hush(true);
                 continue;
             }
         }
         if answer.calls.is_empty() || !tools || rounds == rules.max_rounds {
+            // Still checking the plan at the last round: the answer given.
+            if let Some(kept) = plan.checking.take() {
+                hooks.hush(false);
+                return Ok(Outcome { said, text: kept, end: End::Answer, used, rounds, whole, fixes, notes });
+            }
             let end = if !answer.calls.is_empty() && tools {
                 End::Rounds
             } else if answer.cut {
@@ -376,7 +409,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             return Ok(Outcome { said, text: answer.text, end, used, rounds, whole, fixes, notes });
         }
         rounds += 1;
-        if !answer.text.is_empty() {
+        if !answer.text.is_empty() && plan.checking.is_none() {
             said.push(answer.text.clone());
         }
         // The plan tool called in this round, the other tools, and whether
@@ -480,6 +513,8 @@ struct PlanState {
     checked: bool,
     /// The model was asked for one (once a turn).
     asked: bool,
+    /// Its answer, kept while the model puts the plan right after it, unseen.
+    checking: Option<String>,
 }
 
 /// A round of tools, as far as the plan goes.
