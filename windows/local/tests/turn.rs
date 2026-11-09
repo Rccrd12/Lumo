@@ -635,3 +635,24 @@ fn a_list_is_no_plan_when_the_tool_can_t_be_had_or_a_plan_was_made() {
     assert!(island.plans.is_empty());
     assert_eq!(last_said(&requests[1]), "update_plan done");
 }
+
+#[test]
+fn a_job_of_several_changes_with_no_plan_is_asked_for_one_once() {
+    let mut island = Island { catalog: vec!["update_plan".into()], ..Island::default() };
+    let replies = vec![
+        calls("c1", "workspace_write", "{\"path\":\"a\"}"),
+        calls("c2", "workspace_write", "{\"path\":\"b\"}"),
+        calls("c3", "update_plan", PLAN_ABC),
+        answer("Fatto A."),
+    ];
+    let (outcome, requests) = turn(replies, &mut question("Fammi un sito", &["workspace_write"]), &rules("plan-ask", ""), &mut island);
+    let outcome = outcome.unwrap();
+    assert_eq!(outcome.fixes[0], "plan asked for");
+    assert_eq!(last_said(&requests[1]), "workspace_write done");
+    assert!(last_said(&requests[2]).starts_with("workspace_write done\n\n(Lumo: this job is taking several steps"), "{}", last_said(&requests[2]));
+    assert_eq!(offered(&requests[2]), ["workspace_write", "update_plan"]);
+    // Rounds that only read change nothing: no plan asked for.
+    let replies = vec![calls("c1", "web_search", "{\"q\":1}"), calls("c2", "web_search", "{\"q\":2}"), answer("Ecco.")];
+    let (outcome, _) = turn(replies, &mut question("Cerca", &["web_search", "update_plan"]), &rules("plan-ask-read", ""), &mut Island::default());
+    assert!(outcome.unwrap().fixes.is_empty());
+}

@@ -12,6 +12,9 @@
 //   model back once, to put each step where it really stands;
 // - a list of steps written in the answer, right before its first tools, is
 //   shown as the plan, and the model is told so, so it ticks it off;
+// - a job that goes on changing things for two rounds with no plan asks the
+//   model for one, once (the app offers the tool all the time, and the
+//   system prompt asks for a plan for any job of more than one step);
 // - each new question in a chat with a plan under way says where it stands
 //   (`turn_note`, sent by the app with the question).
 
@@ -22,6 +25,8 @@ pub const TOOL: &str = "update_plan";
 
 /// Rounds of other tools, with the plan left as it was, before the model is reminded.
 pub const QUIET_ROUNDS: usize = 2;
+/// Rounds of tools that changed something, with no plan, before the model is asked for one.
+pub const ASK_ROUNDS: usize = 2;
 
 /// Steps kept of one plan (the tool's own `maxItems`).
 const MAX_STEPS: usize = 30;
@@ -241,6 +246,13 @@ pub fn list_note(plan: &Plan) -> String {
         "(Lumo: the list of steps in your answer is now shown to the user as your plan on the Plan island{first}. Keep it up to date: \
 as each step finishes, call update_plan with the whole list, that step completed and the next one in_progress.)"
     )
+}
+
+/// After rounds of changes with no plan.
+pub fn ask_note() -> String {
+    "(Lumo: this job is taking several steps and the user can't see where you are. Call update_plan now with every step of it: \
+those already done completed, the current one in_progress, the rest pending. Then go on, and call update_plan again as each step finishes.)"
+        .to_string()
 }
 
 /// With a new question in a chat whose plan isn't done.

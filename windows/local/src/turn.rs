@@ -456,7 +456,7 @@ pub async fn run<H: Hooks>(to: &Endpoint, body: &mut Value, rules: &Rules<'_>, h
             }
             replies.push(reply(text));
         }
-        let round = Round { text: &answer.text, number: rounds, plan_called, after_plan, others };
+        let round = Round { text: &answer.text, number: rounds, plan_called, after_plan, others, changed };
         if let Some(note) = plan.after(&round, body, &mut names, hooks, &mut fixes) {
             if let Some(content) = replies.last_mut().filter(|r| r["role"] == "tool").and_then(|r| r.get_mut("content")) {
                 *content = json!(format!("{}\n\n{note}", content.as_str().unwrap_or_default()));
@@ -478,6 +478,8 @@ struct PlanState {
     planned: bool,
     /// The answer was checked against it (once a turn).
     checked: bool,
+    /// The model was asked for one (once a turn).
+    asked: bool,
 }
 
 /// A round of tools, as far as the plan goes.
@@ -490,14 +492,17 @@ struct Round<'a> {
     plan_called: bool,
     after_plan: bool,
     others: bool,
+    /// A tool changed something in this turn so far.
+    changed: bool,
 }
 
 impl PlanState {
     /// After a round of tools: what goes under its last result about the
     /// plan, if anything. A list of steps said before the first round's
     /// tools, with no plan made in this turn, is shown as the plan (its tool
-    /// loaded, if it wasn't); a plan under way, left as it was for
-    /// `QUIET_ROUNDS` rounds of other tools, gets a reminder.
+    /// loaded, if it wasn't); a job that changes things for `ASK_ROUNDS`
+    /// rounds with no plan is asked for one, once; a plan under way, left as
+    /// it was for `QUIET_ROUNDS` rounds of other tools, gets a reminder.
     fn after<H: Hooks>(&mut self, round: &Round, body: &mut Value, names: &mut Vec<String>, hooks: &mut H, fixes: &mut Vec<&'static str>) -> Option<String> {
         if round.plan_called {
             // Updated: up to date, unless other tools ran after it.
@@ -511,14 +516,8 @@ impl PlanState {
         }
         if round.number == 1 && !self.planned {
             if let Some(list) = Plan::from_list(round.text) {
-                if !names.iter().any(|n| n == plan::TOOL) {
-                    let loaded = hooks.load(plan::TOOL, &json!({}), names)?;
-                    body["tools"] = loaded.tools;
-                    body["messages"][0]["content"] = json!(loaded.system);
-                    *names = loaded.names;
-                    if !names.iter().any(|n| n == plan::TOOL) {
-                        return None;
-                    }
+                if !offer(body, names, hooks) {
+                    return None;
                 }
                 hooks.show_plan(&list.to_input());
                 let note = plan::list_note(&list);
@@ -531,6 +530,15 @@ impl PlanState {
                 return Some(note);
             }
         }
+        // Several rounds of changes and no plan to show for them.
+        if round.number >= plan::ASK_ROUNDS && round.changed && !self.planned && !self.asked && !self.shown.as_ref().is_some_and(Plan::open) {
+            self.asked = true;
+            if offer(body, names, hooks) {
+                fixes.push("plan asked for");
+                return Some(plan::ask_note());
+            }
+            return None;
+        }
         let shown = self.shown.as_ref().filter(|p| p.under_way() && names.iter().any(|n| n == plan::TOOL))?;
         self.stale = true;
         self.quiet += 1;
@@ -542,4 +550,18 @@ impl PlanState {
         fixes.push("plan reminded");
         Some(note)
     }
+}
+
+/// Whether the request offers the plan tool, loaded now if it wasn't.
+fn offer<H: Hooks>(body: &mut Value, names: &mut Vec<String>, hooks: &mut H) -> bool {
+    if names.iter().any(|n| n == plan::TOOL) {
+        return true;
+    }
+    let Some(loaded) = hooks.load(plan::TOOL, &json!({}), names) else {
+        return false;
+    };
+    body["tools"] = loaded.tools;
+    body["messages"][0]["content"] = json!(loaded.system);
+    *names = loaded.names;
+    names.iter().any(|n| n == plan::TOOL)
 }

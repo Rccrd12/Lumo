@@ -246,8 +246,10 @@ island's own chat, Claude Code (its task list) and Antigravity CLI (Lumo's own
 `update_plan` tool, which Lumo gives it) are asked to write their plan for any
 job of more than one step, and to move it on as each step starts and ends; the
 island shows it the same way. The chats with an API key (Anthropic,
-OpenAI, Google, OpenRouter) and the local models get the same `update_plan`
-tool, when the question asks for a plan or the chat is on Plan only. A local
+OpenAI, Google, OpenRouter) get the same `update_plan` tool when the question
+asks for a plan or the chat is on Plan only; the local models get it always,
+and are asked to make a plan for any job of more than one step (one that goes
+on changing files for two rounds with no plan is asked for one). A local
 model is kept at it: when its tools go past the step the plan shows, Lumo
 reminds it; when it answers with the plan behind the work, Lumo asks it once
 to put each step where it stands; a list of steps it writes right before its

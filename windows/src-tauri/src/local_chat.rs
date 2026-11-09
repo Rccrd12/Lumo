@@ -16,8 +16,10 @@
 // A plan the model shows on the Plan island (update_plan) is kept up to date:
 // lumo-local reminds the model when its tools go past it, sends it back once
 // when it answers with the plan behind, and shows a list of steps it wrote
-// as the plan (lumo_local::plan); each new question in a chat whose plan
-// isn't done says where it stands.
+// as the plan, and asks for one when a job takes several rounds of changes
+// with none (lumo_local::plan). The plan tool is always offered, so a plan
+// doesn't wait for the question to ask for one; each new question in a chat
+// whose plan isn't done says where it stands.
 //
 // The chat's permission modes hold here too: Ask every time is a card for
 // each call of the user's tools, even one they trust; Auto lets the tools
@@ -638,7 +640,7 @@ pub async fn send(
         return Err(t("Pick a model above the chat box first."));
     }
     let turn = chat.begin(server.id);
-    // The chat's plan, when it isn't done: said with the question, its tool loaded.
+    // The chat's plan, when it isn't done: said with the question.
     let open_plan = if caps.tools == Some(false) { None } else { crate::island_tools::open_plan(chat.id()) };
     // The tools, unless the server says the model takes none.
     let mode = crate::claude_code::permission_mode(mode);
@@ -657,7 +659,10 @@ pub async fn send(
     };
     let user_tools: Vec<_> = all.iter().filter(|(id, _, _)| profile::group_of(id) == Some(profile::Group::User)).cloned().collect();
     let mut named = profile::named_groups(&query, &user_tools);
-    if (mode == "plan" || open_plan.is_some()) && !named.contains(&profile::Group::Plan) {
+    // The plan tool always, for a model that takes tools: it makes a plan
+    // for a job of more than one step without being asked to (as Claude
+    // Code does), not only when the question says "plan".
+    if (mode == "plan" || caps.tools != Some(false)) && !named.contains(&profile::Group::Plan) {
         named.push(profile::Group::Plan);
     }
     if chat.is_workshop() {
