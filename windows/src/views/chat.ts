@@ -236,8 +236,8 @@ const ACP_AUTO_NOTE = N_("Asks when the CLI asks. What you allow is allowed for 
 /** The modes with a local model, whose actions are the user's tools and the web (local_chat.rs). */
 const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
   default: { name: N_("Ask for approval"), note: N_("Asks before using tools or the internet.") },
-  auto: { name: N_("Approve for me"), note: N_("Trusted tools ask only for risky actions.") },
-  off: { name: N_("Run automatically"), note: N_("Trusted tools run without asking, in the sandbox.") },
+  auto: { name: N_("Approve for me"), note: N_("Only asks for risky actions.") },
+  off: { name: N_("Run automatically"), note: N_("Never asks. Code stays in the sandbox.") },
   plan: { name: PERMISSION_TEXT.plan.name, note: N_("Gets none of your tools: it only answers and plans.") },
 };
 

@@ -14135,17 +14135,17 @@
    "id": "Setujui untuk saya",
    "it": "Approva per me"
   },
-  "Trusted tools ask only for risky actions.": {
-   "zh-Hans": "受信任的工具只在有风险的操作时询问。",
-   "hi": "भरोसेमंद टूल सिर्फ़ जोखिम भरे कामों के लिए पूछते हैं।",
-   "es": "Las herramientas de confianza solo preguntan en las acciones arriesgadas.",
-   "ar": "الأدوات الموثوقة تسأل عن الإجراءات الخطرة فقط.",
-   "fr": "Les outils de confiance ne demandent que pour les actions risquées.",
-   "bn": "বিশ্বস্ত টুল শুধু ঝুঁকিপূর্ণ কাজের জন্য জিজ্ঞাসা করে।",
-   "pt-BR": "As ferramentas confiáveis só perguntam nas ações arriscadas.",
-   "ru": "Доверенные инструменты спрашивают только о рискованных действиях.",
-   "id": "Alat tepercaya hanya bertanya untuk tindakan berisiko.",
-   "it": "I tool fidati chiedono solo per le azioni rischiose."
+  "Only asks for risky actions.": {
+   "zh-Hans": "只在有风险的操作时询问。",
+   "hi": "सिर्फ़ जोखिम भरे कामों के लिए पूछता है।",
+   "es": "Solo pregunta en las acciones arriesgadas.",
+   "ar": "يسأل عن الإجراءات الخطرة فقط.",
+   "fr": "Ne demande que pour les actions risquées.",
+   "bn": "শুধু ঝুঁকিপূর্ণ কাজের জন্য জিজ্ঞাসা করে।",
+   "pt-BR": "Só pergunta nas ações arriscadas.",
+   "ru": "Спрашивает только о рискованных действиях.",
+   "id": "Hanya bertanya untuk tindakan berisiko.",
+   "it": "Chiede solo per le azioni rischiose."
   },
   "Run automatically": {
    "zh-Hans": "自动运行",
@@ -14159,17 +14159,17 @@
    "id": "Jalankan otomatis",
    "it": "Esegui in automatico"
   },
-  "Trusted tools run without asking, in the sandbox.": {
-   "zh-Hans": "受信任的工具无需询问，在沙盒中运行。",
-   "hi": "भरोसेमंद टूल बिना पूछे, सैंडबॉक्स में चलते हैं।",
-   "es": "Las herramientas de confianza se ejecutan sin preguntar, en el sandbox.",
-   "ar": "تعمل الأدوات الموثوقة دون سؤال، داخل بيئة العزل.",
-   "fr": "Les outils de confiance s'exécutent sans demander, dans la sandbox.",
-   "bn": "বিশ্বস্ত টুল জিজ্ঞাসা না করে স্যান্ডবক্সে চলে।",
-   "pt-BR": "As ferramentas confiáveis rodam sem perguntar, na sandbox.",
-   "ru": "Доверенные инструменты работают без вопросов, в песочнице.",
-   "id": "Alat tepercaya berjalan tanpa bertanya, di sandbox.",
-   "it": "I tool fidati partono senza chiedere, nella sandbox."
+  "Never asks. Code stays in the sandbox.": {
+   "zh-Hans": "从不询问。代码留在沙盒中。",
+   "hi": "कभी नहीं पूछता। कोड सैंडबॉक्स में रहता है।",
+   "es": "Nunca pregunta. El código se queda en el sandbox.",
+   "ar": "لا يسأل أبدًا. تبقى الشيفرة داخل بيئة العزل.",
+   "fr": "Ne demande jamais. Le code reste dans la sandbox.",
+   "bn": "কখনো জিজ্ঞাসা করে না। কোড স্যান্ডবক্সেই থাকে।",
+   "pt-BR": "Nunca pergunta. O código fica na sandbox.",
+   "ru": "Никогда не спрашивает. Код остаётся в песочнице.",
+   "id": "Tidak pernah bertanya. Kode tetap di sandbox.",
+   "it": "Non chiede mai. Il codice resta nella sandbox."
   },
   "Gets none of your tools: it only answers and plans.": {
    "zh-Hans": "不使用你的任何工具：只回答和规划。",
