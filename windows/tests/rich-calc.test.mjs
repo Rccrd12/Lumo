@@ -413,4 +413,8 @@ test("a curve that spends its length in a band of the chart asks for more height
   const slid = want("formula: y = A \\sin(\\omega x)\ny: A*sin(w*x)\nx: -6.28..6.28\ninput: A | Ampiezza | 0..3 | 1\ninput: w | Frequenza | 0.5..3 | 1");
   assert.ok(slid > PLOT_HEIGHT && slid <= 1.75 * PLOT_HEIGHT, `${slid}`);
   assert.ok(want("y: sin(x)\nx: 0..12\nyrange: -10..10") <= 1.75 * PLOT_HEIGHT);
+  // An exponential whose slider can take it far higher asks for its own
+  // shape's height, not more for the room left above it.
+  const grows = want("y: exp(k*x)\nx: -2..3\ninput: k | rate | 0.5..1.5 | 1");
+  assert.equal(Math.round(grows), Math.round(want("y: exp(x)\nx: -2..3")));
 });

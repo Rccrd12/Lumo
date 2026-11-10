@@ -66,8 +66,8 @@ export function plotHeight(log: number, chrome: number, want = PLOT_MAX_HEIGHT):
  * more. The band is the middle half of where the curve's points fall, as a
  * share of the curve's own span, so a wave stays a wave however wide the
  * frame. A curve that fills only part of the frame (its sliders can take it
- * further: A·sin x with A at 1 of 3) asks for a little more, at most
- * MAX_ROOM_GROWTH times, so it isn't drawn tiny. The curve that wants the
+ * further: A·sin x with A at 1 of 3) asks for a little more, up to
+ * MAX_ROOM_GROWTH times the usual height, so it isn't drawn tiny. The curve that wants the
  * most decides; a flat line asks for nothing. Read at the inputs' first
  * values, so the card keeps its height while the sliders move.
  */
@@ -91,14 +91,17 @@ export function idealHeight(plot: Plot): number {
     if (!(span > 1e-9 * Math.max(1, Math.abs(at[0])))) continue;
     const band = Math.max(0.02, (at[Math.floor(at.length * 0.75)] - at[Math.floor(at.length * 0.25)]) / span);
     const share = span / (y1 - y0);
+    const shape = PLOT_HEIGHT * Math.max(1, (0.5 / band) ** 2);
+    // Only so far as a small curve isn't drawn tiny: a tall one (an
+    // exponential whose slider can take it ten times higher) keeps its own.
     const room = Math.min(MAX_ROOM_GROWTH, Math.max(1, FULL_SHARE / share));
-    want = Math.max(want, PLOT_HEIGHT * Math.max(1, (0.5 / band) ** 2) * room);
+    want = Math.max(want, shape, Math.min(shape * room, MAX_ROOM_GROWTH * PLOT_HEIGHT));
   }
   return want;
 }
 /** A curve filling at least this share of the frame is drawn at its own need. */
 const FULL_SHARE = 0.75;
-/** How much more a curve filling little of the frame may ask for. */
+/** How much more a curve filling little of the frame may ask for, as a multiple of PLOT_HEIGHT. */
 const MAX_ROOM_GROWTH = 1.75;
 /** The curves' colours, in order: the cards' accent, then green and amber. */
 export const CURVE_COLORS = ["#8fc7ff", "#34d399", "#f5a524"];
