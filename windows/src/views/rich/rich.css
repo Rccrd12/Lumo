@@ -10,6 +10,15 @@
   flex: 1 1 auto;
 }
 
+/* A card out of sight is not laid out again as the island opens, closes or
+   is pulled to another size: with many cards in a chat, that work at every
+   frame made the island stutter. Once drawn, it keeps its own height. */
+.rc-card,
+.rc-callout {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 180px;
+}
+
 .rc-card {
   --rc-accent: #8fc7ff;
   background: var(--card-flat);

@@ -36,13 +36,25 @@ import { compile, normalizeName, GREEK, type Expr } from "../../core/expr";
 import { language } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./calc.css";
+import { onResize } from "./resize";
 
 export const MAX_CALC_INPUTS = 6;
 export const MAX_CALC_OUTPUTS = 6;
 export const MAX_PLOT_INPUTS = 4;
 export const MAX_CURVES = 3;
-/** The chart's height, in CSS pixels: the island is low. */
+/** The chart's height, in CSS pixels, at the least: the island is low. */
 export const PLOT_HEIGHT = 92;
+/** The chart's height at the most, however tall the island is pulled. */
+export const PLOT_MAX_HEIGHT = 460;
+
+/**
+ * The chart's height for a chat log `log` CSS pixels high, with `chrome` of
+ * the card around the chart (its top line, the sliders): the whole card fits
+ * the log, so a taller island shows a taller chart; never under PLOT_HEIGHT.
+ */
+export function plotHeight(log: number, chrome: number): number {
+  return Math.round(Math.min(PLOT_MAX_HEIGHT, Math.max(PLOT_HEIGHT, log - chrome - 12)));
+}
 /** The curves' colours, in order: the cards' accent, then green and amber. */
 export const CURVE_COLORS = ["#8fc7ff", "#34d399", "#f5a524"];
 
@@ -715,10 +727,9 @@ function ticks(lo: number, hi: number, count: number): number[] {
  * Draws the chart on `canvas`, `width` CSS pixels wide, with what the curves
  * are at `hover` (CSS pixels from the left) while the pointer is on it.
  */
-function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, number>, width: number, hover: number | null) {
+function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, number>, width: number, H: number, hover: number | null) {
   const g = canvas.getContext?.("2d");
   if (!g || width <= 0) return;
-  const H = PLOT_HEIGHT;
   const dpr = Math.min(3, window.devicePixelRatio || 1);
   const pw = Math.round(width * dpr);
   const ph = Math.round(H * dpr);
@@ -789,7 +800,7 @@ function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, 
   }
   g.shadowBlur = 0;
 
-  if (hover !== null) drawReading(g, plot, values, traces, width, Math.min(width, Math.max(0, hover)));
+  if (hover !== null) drawReading(g, plot, values, traces, width, H, Math.min(width, Math.max(0, hover)));
 }
 
 /**
@@ -800,8 +811,7 @@ function drawPlot(canvas: HTMLCanvasElement, plot: Plot, values: Record<string, 
  * so the numbers keep their shape as the pointer moves. The label sits at
  * the top, or at the bottom when the curves run more through the top there.
  */
-function drawReading(g: CanvasRenderingContext2D, plot: Plot, values: Record<string, number>, traces: [number, number][][][], width: number, px: number) {
-  const H = PLOT_HEIGHT;
+function drawReading(g: CanvasRenderingContext2D, plot: Plot, values: Record<string, number>, traces: [number, number][][][], width: number, H: number, px: number) {
   const [x0, x1] = plot.x;
   const [y0, y1] = plot.y;
   const x = x0 + ((x1 - x0) * px) / width;
@@ -888,8 +898,9 @@ export function renderPlot(plot: Plot, ctx: RichContext, key: string): HTMLEleme
   }) as HTMLCanvasElement;
   const frame = h("div", { class: "rc-plot-frame" }, canvas);
   let width = 0;
+  let height = PLOT_HEIGHT;
   let hover: number | null = null;
-  const draw = () => drawPlot(canvas, plot, values, width, hover);
+  const draw = () => drawPlot(canvas, plot, values, width, height, hover);
   const sliders = plot.inputs.map((i) => slider(i, values, ctx, draw));
   // The values under the pointer, drawn as it moves and gone when it leaves.
   const point = (e: PointerEvent) => {
@@ -902,15 +913,30 @@ export function renderPlot(plot: Plot, ctx: RichContext, key: string): HTMLEleme
     hover = null;
     draw();
   });
-  if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver((entries) => {
-      const w = Math.floor(entries[entries.length - 1].contentRect.width);
-      if (w === width) return;
-      width = w;
-      draw();
-    }).observe(frame);
-  }
   const el = h("div", { class: "rc-card rc-plot" }, head("plot", plot.title, headFormula(plot.formula, ctx)), frame);
   if (sliders.length) el.append(h("div", { class: "rc-plot-in" + (sliders.length > 2 ? " many" : "") }, ...sliders));
+  // Drawn again when its width changes, or the chat's height (the island
+  // pulled taller or lower): the chart takes the height the card has room
+  // for. Nothing runs while neither changes; a card gone stops watching.
+  let log: Element | null = null;
+  const watch = onResize(frame, () => {
+    if (!el.isConnected) {
+      // Gone from the chat: the chat's height is no longer this card's business.
+      if (log) watch?.unobserve(log);
+      log = null;
+      return;
+    }
+    if (!log && (log = el.closest(".chat-log"))) watch?.observe(log);
+    const w = Math.floor(canvas.getBoundingClientRect().width);
+    const chrome = el.getBoundingClientRect().height - canvas.getBoundingClientRect().height;
+    const ht = log ? plotHeight(log.clientHeight, chrome) : PLOT_HEIGHT;
+    if (w === width && ht === height) return;
+    width = w;
+    if (ht !== height) {
+      height = ht;
+      canvas.style.height = `${ht}px`;
+    }
+    draw();
+  });
   return el;
 }

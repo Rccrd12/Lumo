@@ -58,6 +58,29 @@ const loaded = new Map<string, Loaded>();
 let loadedBytes = 0;
 /** Downloads under way, by image URL: every card of that image waits for the same one. */
 const pending = new Map<string, Promise<void>>();
+/** Whether each image shown has a see-through ground (a diagram), read once it is drawn. */
+const clear = new Map<string, boolean>();
+
+/**
+ * Whether `img`'s corners are see-through: a diagram drawn on nothing, shown
+ * on white as meant. A photo shows on dark, so its edges don't sit on a
+ * white box.
+ */
+function seeThrough(img: HTMLImageElement): boolean {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 8;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    if (!g) return false;
+    g.drawImage(img, 0, 0, 8, 8);
+    const d = g.getImageData(0, 0, 8, 8).data;
+    return [0, 7, 56, 63].some((i) => d[i * 4 + 3] < 250);
+  } catch {
+    return false;
+  }
+}
+
 /** Images that could not be loaded this session, and why (Try again clears it). */
 const failed = new Map<string, string>();
 
@@ -253,7 +276,15 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
         }
         draw();
       });
-      show("shown", img);
+      const ground = () => (clear.get(url) ? "shown clear" : "shown");
+      if (!clear.has(url)) {
+        img.addEventListener("load", () => {
+          clear.set(url, seeThrough(img));
+          if (clear.size > 400) clear.delete(clear.keys().next().value as string);
+          if (img.isConnected) frame.className = `rc-image-frame ${ground()}`;
+        });
+      }
+      show(ground(), img);
     } else if (failed.has(url)) {
       const retry = h("button", { class: "rc-image-btn", type: "button", text: t(IMAGE_STRINGS.retry), title: t(IMAGE_STRINGS.retry), "aria-label": t(IMAGE_STRINGS.retry) });
       retry.addEventListener("click", (e) => {
@@ -291,5 +322,6 @@ export function resetImages() {
   running = 0;
   waiting.length = 0;
   failed.clear();
+  clear.clear();
   cards.clear();
 }

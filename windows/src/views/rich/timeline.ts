@@ -40,6 +40,7 @@ import { ICONS } from "../icons";
 import { N_, dayMonth, language, t, tn } from "../../i18n/i18n";
 import { head, remember, RICH_STRINGS, type RichContext } from "./index";
 import "./timeline.css";
+import { onResize } from "./resize";
 
 export const TIMELINE_STRINGS = {
   hint: N_("Click a point to read what happened · ← → to move"),
@@ -429,7 +430,6 @@ function renderEvents(tl: Timeline, ctx: RichContext, key: string): HTMLElement 
       {
         class: `rc-tl-ev ${i % 2 === 0 ? "up" : "down"}`,
         style: `left:${at((it.from.start - lo) / span, EVENTS_LEFT, EVENTS_RIGHT)}`,
-        title: it.label || dates[i],
         "aria-label": it.label ? `${dates[i]} ${it.label}` : dates[i],
         onclick: () => open(place.at === i ? -1 : i),
       },
@@ -560,14 +560,12 @@ function renderEvents(tl: Timeline, ctx: RichContext, key: string): HTMLElement 
     }
   }
 
-  if (typeof ResizeObserver !== "undefined") {
-    let width = 0;
-    new ResizeObserver(() => {
-      if (track.clientWidth === width) return;
-      width = track.clientWidth;
-      fit();
-    }).observe(track);
-  }
+  let width = 0;
+  onResize(track, () => {
+    if (track.clientWidth === width) return;
+    width = track.clientWidth;
+    fit();
+  });
 
   show();
   return card;

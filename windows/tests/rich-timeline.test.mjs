@@ -165,7 +165,8 @@ test("events: points spaced by their dates, above and below in turn, the range i
   const points = card.find(".rc-tl-ev");
   assert.equal(points.length, 6);
   assert.deepEqual(points.map((p) => p.className.split(" ")[1]), ["up", "down", "up", "down", "up", "down"]);
-  assert.ok(points.every((p) => p.tagName === "BUTTON" && p.getAttribute("title")));
+  // Named for screen readers; no tooltip over the line, the panel below says it.
+  assert.ok(points.every((p) => p.tagName === "BUTTON" && p.getAttribute("aria-label") && !p.getAttribute("title")));
   // 1947 sits 2 years into the 43 the line shows.
   assert.match(points[0].getAttribute("style"), /^left:calc\(22px \+ 0\.046\d* \* \(100% - 32px\)\)$/);
   const detail = card.querySelector(".rc-tl-detail");

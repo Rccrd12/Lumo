@@ -20,14 +20,19 @@
   background: repeating-linear-gradient(135deg, #111214 0 10px, #0e0f11 10px 20px);
 }
 
-/* Diagrams are often drawn on a transparent ground: a white one shows them as meant. */
+/* A photo on dark, so its edges don't sit on a white box; a diagram drawn on
+   a see-through ground (image.ts seeThrough) on white, as it was meant. */
 .rc-image-frame.shown {
+  background: #000;
+}
+
+.rc-image-frame.shown.clear {
   background: #fff;
 }
 
 .rc-image-frame img {
   display: block;
-  /* The same 6px of white on every side, whether the picture is wide or tall. */
+  /* The same 6px of ground on every side, whether the picture is wide or tall. */
   max-width: calc(100% - 12px);
   max-height: 138px;
   object-fit: contain;

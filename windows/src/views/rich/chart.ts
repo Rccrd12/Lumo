@@ -36,6 +36,7 @@ import { h } from "../dom";
 import { N_, t, language } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./chart.css";
+import { onResize } from "./resize";
 
 export const CHART_STRINGS = {
   bars: N_("Bars"),
@@ -610,12 +611,12 @@ function renderLines(chart: Chart): HTMLElement {
 
   // Drawn when its width is known or changes; nothing runs in between.
   if (typeof ResizeObserver !== "undefined") {
-    new ResizeObserver((entries) => {
-      const w = Math.floor(entries[entries.length - 1].contentRect.width);
+    onResize(frame, (box) => {
+      const w = Math.floor(box.width);
       if (w === width) return;
       width = w;
       draw();
-    }).observe(frame);
+    });
   } else {
     width = 560;
     draw();

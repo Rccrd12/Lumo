@@ -28,6 +28,7 @@ import { ICONS } from "../icons";
 import { N_, t } from "../../i18n/i18n";
 import { head, remember, type RichContext } from "./index";
 import "./cards.css";
+import { onResize } from "./resize";
 
 export const CARDS_STRINGS = {
   count: N_("{count} cards"),
@@ -317,7 +318,7 @@ export function renderCards(cards: Cards, ctx: RichContext, key: string): HTMLEl
     sync();
     state.left = row.scrollLeft;
   });
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(sync).observe(row);
+  onResize(row, sync);
 
   // A mouse wheel turned over the row moves it sideways while it can go that
   // way; at its ends, and when every card fits, the chat scrolls as usual.

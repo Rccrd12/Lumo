@@ -382,3 +382,12 @@ test("through the Markdown: a card, or the block as code when it can't be read",
   assert.equal(bad.find(".rc-calc").length, 0);
   assert.ok(bad.textContent.includes("output: I | V / Q"));
 });
+
+test("the chart takes the height the chat has room for: never under its usual, never past its most", () => {
+  const { plotHeight, PLOT_HEIGHT, PLOT_MAX_HEIGHT } = calcModule;
+  // The usual island: the chat has no more room than the usual chart.
+  assert.equal(plotHeight(150, 96), PLOT_HEIGHT);
+  // Pulled taller: the whole card fits the chat, the chart taking the rest.
+  assert.equal(plotHeight(420, 96), 420 - 96 - 12);
+  assert.equal(plotHeight(5000, 96), PLOT_MAX_HEIGHT);
+});

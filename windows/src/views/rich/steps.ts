@@ -24,6 +24,7 @@ import { ICONS } from "../icons";
 import { N_, t } from "../../i18n/i18n";
 import { head, remember, RICH_STRINGS, type RichContext } from "./index";
 import "./steps.css";
+import { onResize } from "./resize";
 
 export const STEPS_STRINGS = {
   previous: N_("Previous step"),
@@ -384,7 +385,7 @@ function fadeWhenWide(el: HTMLElement): HTMLElement {
     el.classList.toggle("fade-end", max > 1 && el.scrollLeft < max - 1);
   };
   el.addEventListener("scroll", sync, { passive: true });
-  if (typeof ResizeObserver !== "undefined") new ResizeObserver(sync).observe(el);
+  onResize(el, sync);
   return el;
 }
 
