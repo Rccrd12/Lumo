@@ -377,9 +377,7 @@ export const Bridge = {
   screenCapture: (display: number | null) => callOrThrow<ScreenShot[]>("screen_capture", { display }),
   /** Deletes screenshots the user did not keep. */
   screenDiscard: (paths: string[]) => call<void>("screen_discard", { paths }),
-  /** The folder open in File Explorer, its name only, for the menu. Lists nothing. */
-  screenExplorerPeek: () => callOrThrow<ExplorerFolder | null>("screen_explorer_peek"),
-  /** That folder and what is in it, shared with the chat (explorer.rs). */
+  /** The folder open in File Explorer and what is in it, shared with the chat (explorer.rs). */
   screenExplorer: () => callOrThrow<ExplorerFolder | null>("screen_explorer"),
   /** Every folder open in File Explorer, names only, the front window's first. Lists nothing. */
   screenExplorerPeekAll: () => callOrThrow<ExplorerFolder[]>("screen_explorer_peek_all"),
@@ -442,7 +440,6 @@ export const Bridge = {
   workspaceDiff: (chat: string, path: string) => callOrThrow<CopyDiff>("workspace_diff", { chat, path }),
   /** The copy written over its original, after a click. */
   workspacePutBack: (chat: string, path: string) => callOrThrow<void>("workspace_put_back", { chat, path }),
-  workspaceReveal: (chat: string) => call<void>("workspace_reveal", { chat }),
   workspaceDelete: (chat: string) => call<void>("workspace_delete", { chat }),
   /** File Explorer on a chat's file, selected: "shown", "missing" or "refused". */
   chatFileReveal: (path: string) => call<string>("chat_file_reveal", { path }),

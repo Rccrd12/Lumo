@@ -17410,6 +17410,42 @@
    "ru": "Загрузка изображения…",
    "id": "Memuat gambar…",
    "it": "Carico l'immagine…"
+  },
+  "Lumo also writes the rest of the file in its own layout (indentation, spacing, line ends); the lines below show only what changes in the content.": {
+   "zh-Hans": "Lumo 还会按自己的格式重写文件的其余部分（缩进、空格、换行符）；下面各行只显示内容上的变化。",
+   "hi": "Lumo फ़ाइल का बाकी हिस्सा भी अपने ढंग (इंडेंटेशन, स्पेसिंग, लाइन के अंत) में लिखता है; नीचे की पंक्तियाँ केवल सामग्री में होने वाले बदलाव दिखाती हैं।",
+   "es": "Lumo también escribe el resto del archivo con su propio formato (sangría, espacios, finales de línea); las líneas de abajo solo muestran lo que cambia en el contenido.",
+   "ar": "يكتب Lumo أيضًا بقية الملف بتنسيقه الخاص (المسافات البادئة والمسافات ونهايات الأسطر)؛ الأسطر أدناه تعرض فقط ما يتغير في المحتوى.",
+   "fr": "Lumo réécrit aussi le reste du fichier à sa façon (indentation, espaces, fins de ligne) ; les lignes ci-dessous ne montrent que ce qui change dans le contenu.",
+   "bn": "Lumo ফাইলের বাকি অংশও নিজের বিন্যাসে (ইন্ডেন্টেশন, স্পেস, লাইনের শেষ) লেখে; নিচের লাইনগুলো শুধু বিষয়বস্তুর পরিবর্তন দেখায়।",
+   "pt-BR": "O Lumo também grava o resto do arquivo no próprio formato (recuo, espaços, finais de linha); as linhas abaixo mostram só o que muda no conteúdo.",
+   "ru": "Lumo также записывает остальную часть файла в своём формате (отступы, пробелы, концы строк); строки ниже показывают только изменения содержимого.",
+   "id": "Lumo juga menulis sisa file dengan tata letaknya sendiri (indentasi, spasi, akhir baris); baris di bawah hanya menunjukkan perubahan isi.",
+   "it": "Lumo riscrive anche il resto del file con la sua impaginazione (rientri, spazi, fine riga); le righe qui sotto mostrano solo ciò che cambia nel contenuto."
+  },
+  "This installer has no signature from Lumo, so Lumo did not install it.": {
+   "zh-Hans": "此安装程序没有 Lumo 的签名，因此 Lumo 没有安装它。",
+   "hi": "इस इंस्टॉलर पर Lumo का हस्ताक्षर नहीं है, इसलिए Lumo ने इसे इंस्टॉल नहीं किया।",
+   "es": "Este instalador no tiene la firma de Lumo, así que Lumo no lo instaló.",
+   "ar": "لا يحمل برنامج التثبيت هذا توقيع Lumo، لذلك لم يثبّته Lumo.",
+   "fr": "Ce programme d'installation n'a pas de signature de Lumo : Lumo ne l'a pas installé.",
+   "bn": "এই ইনস্টলারে Lumo-র স্বাক্ষর নেই, তাই Lumo এটি ইনস্টল করেনি।",
+   "pt-BR": "Este instalador não tem a assinatura do Lumo, então o Lumo não o instalou.",
+   "ru": "У этого установщика нет подписи Lumo, поэтому Lumo его не установил.",
+   "id": "Penginstal ini tidak punya tanda tangan Lumo, jadi Lumo tidak memasangnya.",
+   "it": "Questo programma di installazione non ha la firma di Lumo, quindi Lumo non l'ha installato."
+  },
+  "The installer is not signed with Lumo's key, so Lumo did not install it.": {
+   "zh-Hans": "此安装程序不是用 Lumo 的密钥签名的，因此 Lumo 没有安装它。",
+   "hi": "इंस्टॉलर Lumo की कुंजी से हस्ताक्षरित नहीं है, इसलिए Lumo ने इसे इंस्टॉल नहीं किया।",
+   "es": "El instalador no está firmado con la clave de Lumo, así que Lumo no lo instaló.",
+   "ar": "برنامج التثبيت غير موقّع بمفتاح Lumo، لذلك لم يثبّته Lumo.",
+   "fr": "Le programme d'installation n'est pas signé avec la clé de Lumo : Lumo ne l'a pas installé.",
+   "bn": "ইনস্টলারটি Lumo-র কী দিয়ে স্বাক্ষরিত নয়, তাই Lumo এটি ইনস্টল করেনি।",
+   "pt-BR": "O instalador não está assinado com a chave do Lumo, então o Lumo não o instalou.",
+   "ru": "Установщик не подписан ключом Lumo, поэтому Lumo его не установил.",
+   "id": "Penginstal tidak ditandatangani dengan kunci Lumo, jadi Lumo tidak memasangnya.",
+   "it": "Il programma di installazione non è firmato con la chiave di Lumo, quindi Lumo non l'ha installato."
   }
  }
 }

@@ -27,6 +27,9 @@ pub struct Change {
     pub before: String,
     /// The new contents, or `None` to remove the file.
     pub after: Option<String>,
+    /// The file's own layout (indentation, spacing, line ends, a BOM) is not
+    /// what is written back, which `before` (already in Lumo's layout) can't show.
+    pub reformatted: bool,
 }
 
 /// Computes the change for one file from its current bytes (`None`: no file).
@@ -104,7 +107,8 @@ pub fn json_edit<'a>(
         });
         // A file that is not there yet shows as all additions.
         let before = if bytes.is_some() { pretty(&current) } else { String::new() };
-        Ok(Change { before, after })
+        let reformatted = after.is_some() && bytes.is_some_and(|b| laid_out_otherwise(b, &before));
+        Ok(Change { before, after, reformatted })
     })
 }
 
@@ -123,8 +127,15 @@ pub fn text_edit<'a>(
             ),
         };
         let after = change(current)?;
-        Ok(Change { before: current.unwrap_or_default().to_string(), after })
+        Ok(Change { before: current.unwrap_or_default().to_string(), after, reformatted: false })
     })
+}
+
+/// True when the file's bytes are not `pretty` as Lumo writes it (its final
+/// line end aside): writing it back changes its layout too.
+fn laid_out_otherwise(bytes: &[u8], pretty: &str) -> bool {
+    let text = String::from_utf8_lossy(bytes);
+    text.trim_end_matches(['\n', '\r']) != pretty
 }
 
 // ── Preview and apply ─────────────────────────────────────────────────────────
@@ -164,6 +175,12 @@ pub fn preview(edits: &[FileEdit]) -> Result<Plan, String> {
             (Some(_), None) => diff = format!("{}\n{diff}", t("The file is removed.")),
             (None, None) => diff = t("No change."),
             _ => {}
+        }
+        if change.reformatted {
+            diff = format!(
+                "{}\n{diff}",
+                t("Lumo also writes the rest of the file in its own layout (indentation, spacing, line ends); the lines below show only what changes in the content.")
+            );
         }
         if edits.len() > 1 {
             diff = format!("── {}\n{diff}", file.path.display());
@@ -460,6 +477,21 @@ pub mod tests {
         assert_eq!(fingerprint(b"{}"), fingerprint(b"{}"));
         assert_ne!(fingerprint(b"{}"), fingerprint(b"{ }"));
         assert_ne!(fingerprint_of(None), fingerprint_of(Some(b"")));
+    }
+
+    #[test]
+    fn a_file_laid_out_otherwise_says_so_above_the_diff() {
+        let dir = scratch("layout");
+        let path = dir.join("settings.json");
+        let note = "in its own layout";
+        std::fs::write(&path, "{\n    \"model\": \"opus\"\n}\n").unwrap();
+        assert!(preview(&add_ours(&path)).unwrap().diff.contains(note), "four spaces become two");
+        std::fs::write(&path, "{\r\n  \"model\": \"opus\"\r\n}\r\n").unwrap();
+        assert!(preview(&add_ours(&path)).unwrap().diff.contains(note), "CRLF becomes LF");
+        std::fs::write(&path, format!("{}\n", pretty(&json!({ "model": "opus" })))).unwrap();
+        assert!(!preview(&add_ours(&path)).unwrap().diff.contains(note), "already Lumo's layout");
+        assert!(!preview(&remove_file_edit(&path)).unwrap().diff.contains(note), "nothing is written back");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

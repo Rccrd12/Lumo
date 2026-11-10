@@ -4,7 +4,7 @@
 ;
 ; The template remembers the install folder under Software\<publisher>\Lumo,
 ; and the publisher comes from the app identifier. Up to 0.4.0 that was another
-; one: its key is left behind with nothing reading it, so it goes.
+; one: Lumo removes its key itself at launch (src-tauri/src/migrate.rs).
 ;
 ; ── Uninstall ─────────────────────────────────────────────────────────────────
 ;
@@ -20,11 +20,6 @@
 ; not to do. So Lumo's hooks may outlive the app, and a missing relay would
 ; turn each of them into a "hook error" in Claude Code. The relay that stays
 ; finds no app on the other end and exits at once without printing anything.
-
-!macro NSIS_HOOK_POSTINSTALL
-  DeleteRegKey HKCU "Software\louisraille\${PRODUCTNAME}"
-  DeleteRegKey /ifempty HKCU "Software\louisraille"
-!macroend
 
 !macro NSIS_HOOK_PREUNINSTALL
   RMDir /r "$LOCALAPPDATA\com.rccrd12.lumo\inbox"

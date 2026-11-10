@@ -26,7 +26,6 @@ export const LISTEN_UNTILS: PrUntil[] = ["checks", "green", "approved", "ready",
 /** Where a watch listens (listen.rs SOURCES): GitHub, this PC, or what Lumo hears. */
 export type ListenSource = "github.pr" | "fs" | "process" | "web" | "email" | "service" | "windows" | "agent" | "webhook" | "tool";
 export type LocalSource = Exclude<ListenSource, "github.pr">;
-export const LOCAL_SOURCES: LocalSource[] = ["fs", "process", "web", "email", "service", "windows", "agent", "webhook", "tool"];
 
 /** What a watch on this PC waits for, by source (listen_local.rs). */
 export const LOCAL_UNTILS = {
