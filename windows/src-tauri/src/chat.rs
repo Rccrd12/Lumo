@@ -88,12 +88,22 @@ impl Stop {
     }
 }
 
-/// A model a provider offers, for the picker in the chat view.
-#[derive(Debug, Clone, PartialEq, Serialize)]
+/// A model a provider offers, for the picker in the chat view. A provider
+/// called by its API says, where its list does, the reasoning levels the
+/// model takes (the picker's effort) and its context in tokens (the ring).
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ModelInfo {
     pub id: String,
     pub label: String,
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub reasoning: Vec<String>,
+    #[serde(skip_serializing_if = "is_zero")]
+    pub context: u64,
+}
+
+fn is_zero(n: &u64) -> bool {
+    *n == 0
 }
 
 // ── Conversation ──────────────────────────────────────────────────────────────
@@ -972,7 +982,8 @@ async fn send_to(
     let sees = local.is_some() && caps.vision != Some(false);
     let (query, images) = with_screen(provider, sees, screen.as_ref(), query)?;
     if provider == ANTHROPIC || provider.is_empty() {
-        return claude::send(app, chat, &model, query, context, &images, usage).await;
+        let effort = settings.chat_effort.as_str();
+        return claude::send(app, chat, &model, effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage).await;
     }
     if is_cli(provider) {
         // A folder shared from File Explorer: the CLI may read the rest of it itself.
@@ -1009,7 +1020,8 @@ async fn send_to(
             .await;
     }
     if let Some(p) = openai_compat::provider(provider) {
-        return openai_compat::send(app, chat, p, &model, query, context, &images, usage).await;
+        let effort = settings.chat_effort.as_str();
+        return openai_compat::send(app, chat, p, &model, effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage).await;
     }
     if let Some(server) = local {
         return local_chat::send(app, chat, &server, &model, &caps, &settings.chat_effort, &settings.chat_permission_mode, &settings.local_sandbox, query, context, &images, usage).await;

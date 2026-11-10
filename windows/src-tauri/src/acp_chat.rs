@@ -1424,8 +1424,8 @@ pub async fn models(provider: &str) -> Result<Vec<ModelInfo>, String> {
     let agent = Agent::of(provider).ok_or_else(|| format!("Unknown chat provider: {provider}"))?;
     let exe = agent.exe().ok_or_else(|| agent.not_installed())?;
     let listed = tauri::async_runtime::spawn_blocking(move || list_models(agent, exe)).await.map_err(|e| e.to_string())?;
-    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default") }];
-    out.extend(listed.into_iter().filter(|(id, _)| id != DEFAULT_MODEL).map(|(id, label)| ModelInfo { id, label }));
+    let mut out = vec![ModelInfo { id: DEFAULT_MODEL.into(), label: t("Default"), ..Default::default() }];
+    out.extend(listed.into_iter().filter(|(id, _)| id != DEFAULT_MODEL).map(|(id, label)| ModelInfo { id, label, ..Default::default() }));
     Ok(out)
 }
 

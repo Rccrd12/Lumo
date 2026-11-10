@@ -9,13 +9,15 @@
 // - Anthropic and OpenAI: the rate limits read off the chat's own answers
 //   (src-tauri/src/chat_usage.rs, the `chat-usage` event). No call of their own.
 // - OpenRouter: the key's credits, from its key endpoint (Bridge.chatUsage).
-// - Google, the model servers and the custom one: nothing.
+// - Every provider called by its API (Google too): how full the chat's
+//   context is, read off each answer's own token count, next to those.
+// - The model servers: how full the chat's context is.
 
 import {
   PLAN_TEXT, ageLabel, antigravityGroupName, dominantPct, effectivePct, planColor, resetLabel,
   type AntigravityPlanUsage, type PlanUsage, type PlanWindow,
 } from "./plan";
-import { providerDef } from "./providers";
+import { isApiProvider, providerDef } from "./providers";
 import type { Settings } from "./state";
 import { language, t } from "../i18n/i18n";
 
@@ -101,6 +103,8 @@ export interface UsageLine {
   setup?: boolean;
   /** A line under the rows: how to have the 5 hours always up to date. */
   note?: string;
+  /** The line is the chat's context alone (no limits): its menu is a local model's. */
+  context?: boolean;
 }
 
 const isNum = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v);
@@ -277,6 +281,23 @@ function creditsLine(seen: SeenUsage, now: number): UsageLine | null {
 }
 
 /**
+ * A provider called by its API: its limits (rate limits, OpenRouter's
+ * credits) and how full the chat's context is. The ring shows whichever is
+ * nearer its end; the text says both.
+ */
+function apiLine(provider: string, seen: SeenUsage | undefined, context: SeenUsage | undefined, chatId: string, now: number): UsageLine | null {
+  const own = seen?.provider === provider ? seen : undefined;
+  // Google says nothing of its limits on its answers.
+  const limits = !own ? null : provider === "openrouter" ? creditsLine(own, now) : provider === "google" ? null : rateLine(own, now);
+  const filled = contextLine(context, provider, chatId);
+  if (!filled) return limits;
+  if (!limits) return { ...filled, context: true };
+  const pcts = [filled.pct, limits.pct].filter(isNum);
+  const pct = pcts.length ? Math.max(...pcts) : null;
+  return { ...limits, text: `${filled.text} · ${limits.text}`, color: pct == null ? null : planColor(pct), pct };
+}
+
+/**
  * The line for the chat's provider, or null when there is nothing to show:
  * the option is off, the provider tells nothing, or nothing has come back yet.
  */
@@ -287,15 +308,14 @@ export function usageLine(
   now = Date.now(),
   agy: AntigravityPlanUsage | null = null,
   chatId = "",
+  context?: SeenUsage,
 ): UsageLine | null {
   if (!settings.chatShowUsage) return null;
   const provider = providerDef(settings.chatProvider).id;
   if (providerDef(provider).urlField) return contextLine(seen, provider, chatId);
   if (provider === "claude-code") return planLine(settings, plan, now);
   if (provider === "antigravity-cli") return antigravityLine(agy, now);
-  if (!seen || seen.provider !== provider) return null;
-  if (provider === "anthropic" || provider === "openai") return rateLine(seen, now);
-  if (provider === "openrouter") return creditsLine(seen, now);
+  if (isApiProvider(provider)) return apiLine(provider, seen, context, chatId, now);
   return null;
 }
 

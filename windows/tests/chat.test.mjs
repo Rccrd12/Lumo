@@ -102,8 +102,13 @@ test("Claude Code's effort is one row: a filled slider, its level, and Auto at t
 });
 
 test("the shield picks what Claude Code and Antigravity CLI may do without asking", () => {
-  // The API providers run no tools: no shield.
-  assert.equal($(".perm-btn").hidden, true);
+  // An API provider runs Lumo's tools on this computer: the local models' shield, sandbox and all.
+  assert.equal($(".perm-btn").hidden, false);
+  $(".perm-btn").fire("click");
+  assert.deepEqual(view.el.find(".perm-row").map((r) => r.querySelector(".picker-model-name").textContent), ["Ask for approval", "Approve for me", "Run automatically", "Plan only"]);
+  assert.ok($(".sandbox-chip"), "the sandbox's level beside the title");
+  $(".perm-btn").fire("click");
+  assert.ok(!$(".chat-body").classList.contains("authorizing"));
   State.settings = { ...State.settings, chatProvider: "claude-code" };
   view.sync();
   const shield = $(".perm-btn");

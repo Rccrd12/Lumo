@@ -87,7 +87,7 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
-  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps,
+  activeModel, apiCaps, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isApiProvider, isCliProvider, localCapsOf, usesLumoTools, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps,
   anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
@@ -241,7 +241,10 @@ const PERMISSION_TEXT: Record<Exclude<PermissionMode, "off">, { name: string; no
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
 /** Auto with Copilot CLI or Cursor CLI: an action allowed once is allowed for the rest of the chat (acp_chat.rs). */
 const ACP_AUTO_NOTE = N_("Asks when the CLI asks. What you allow is allowed for the rest of the chat.");
-/** The modes with a local model, whose actions are the user's tools and the web (local_chat.rs). */
+/**
+ * The modes with a local model or a provider called by its API, whose actions
+ * are the user's tools and the web (local_chat.rs, tools.rs Asking).
+ */
 const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
   default: { name: N_("Ask for approval"), note: N_("Asks before using tools or the internet.") },
   auto: { name: N_("Approve for me"), note: N_("Only asks for risky actions.") },
@@ -251,7 +254,7 @@ const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
 
 /** A mode's name and note with `provider`. */
 function modeText(provider: ProviderDef, mode: PermissionMode): { name: string; note: string } {
-  if (provider.urlField || mode === "off") return LOCAL_TEXT[mode];
+  if (usesLumoTools(provider.id) || mode === "off") return LOCAL_TEXT[mode];
   const text = PERMISSION_TEXT[mode];
   if (mode === "auto" && provider.id === "antigravity-cli") return { ...text, note: AGY_AUTO_NOTE };
   if (mode === "auto" && (provider.id === "copilot-cli" || provider.id === "cursor-cli")) return { ...text, note: ACP_AUTO_NOTE };
@@ -1305,17 +1308,26 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
   /**
    * A local model's server is asked what the model picked can do (pictures,
    * tools, reasoning, its context) each time the model changes: the effort
-   * slider, the screenshots and the line next to the model follow.
+   * slider, the screenshots and the line next to the model follow. A provider
+   * called by its API says it in its model list, once the picker has it: no
+   * call of its own.
    */
   let capsKey = "";
   function refreshCaps(force = false) {
     if (force) capsKey = "";
     const p = providerDef(State.settings.chatProvider);
     const model = activeModel(State.settings);
-    const key = p.urlField && model ? `${p.id}|${model}` : "";
+    const api = isApiProvider(p.id);
+    const key = (p.urlField || api) && model ? `${p.id}|${model}|${api && cache.has(p.id) ? "listed" : ""}` : "";
     if (key === capsKey) return;
     capsKey = key;
     if (!key) return;
+    if (api) {
+      setLocalCaps(p.id, apiCaps(cache.get(p.id)?.find((m) => m.id === model)));
+      drawEfforts();
+      onChange();
+      return;
+    }
     setLocalCaps(p.id, null);
     void Bridge.localCaps(p.id, model)
       .then((caps) => {
@@ -1470,6 +1482,8 @@ function buildPicker(onChange: () => void, openSettings: () => void): Picker {
         saveSettings();
         onChange();
       }
+      // The list says what its models take: the effort slider follows.
+      if (isApiProvider(p.id)) refreshCaps();
       drawModels(p, models);
     } catch (err) {
       if (ticket === request) status(String(err).replace(/^Error:\s*/, ""), Boolean(p.key));
@@ -1789,10 +1803,10 @@ export function buildPrompt(
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
     // The usage menu holds the context and the limits: as much room as Listening.
-    // A local model's four modes want more room than the CLIs' three.
+    // A local model's four modes (an API provider's too) want more room than the CLIs' three.
     const tall = (body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
       || body.classList.contains("screening")
-      || (body.classList.contains("authorizing") && providerDef(State.settings.chatProvider).urlField !== null);
+      || (body.classList.contains("authorizing") && usesLumoTools(State.settings.chatProvider));
     if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
@@ -1989,7 +2003,9 @@ export function buildPrompt(
   function drawUsage(now = Date.now()) {
     const local = Boolean(providerDef(State.settings.chatProvider).urlField);
     const seen = local ? seenContext.get(State.chatId) : seenUsage.get(State.settings.chatProvider);
-    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId);
+    // A provider called by its API: this chat's context too, next to its limits.
+    const context = isApiProvider(State.settings.chatProvider) ? seenContext.get(State.chatId) : undefined;
+    const line = usageLine(State.settings, State.planUsage, seen, now, State.antigravityPlanUsage, State.chatId, context);
     // The countdowns move once a minute: the ring and its menu are redrawn when they do.
     const key = line ? `${JSON.stringify(line)}\t${Math.floor(now / 60_000)}` : "";
     if (key === usageKey) return;
@@ -2008,8 +2024,9 @@ export function buildPrompt(
   /** The menu: each limit with how much is used, its bar and when it resets. */
   function drawUsageMenu() {
     const line = usageLineShown;
-    // A local model's ring is its context: the menu says only that.
-    const local = providerDef(State.settings.chatProvider).urlField !== null;
+    // A local model's ring is its context: the menu says only that. So does
+    // an API provider's that tells no limits (Google's).
+    const local = providerDef(State.settings.chatProvider).urlField !== null || Boolean(line?.context);
     usageTitle.textContent = USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
@@ -2031,8 +2048,8 @@ export function buildPrompt(
     });
     // Taller while it holds the context (the menu may be open as /context lands).
     if (body.classList.contains("metering")) panelChanged();
-    // A local model's context: /compact from here, under its bar.
-    if (local && State.chatHistory.length > 0) {
+    // A local model's context, or an API provider's: /compact from here, under its bar.
+    if ((local || isApiProvider(State.settings.chatProvider)) && State.chatHistory.length > 0) {
       const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
         svg(COMPACT_ICON, 12, { stroke: 1.8 }), h("span", { text: t(COMPACT_STRINGS.action) }));
       usageList.append(h("div", { class: "usage-compact-row" }, compact));
@@ -2074,6 +2091,11 @@ export function buildPrompt(
 
   function keepUsage(u: ChatUsage | null | undefined) {
     if (!u || typeof u.provider !== "string") return;
+    // An API provider's model whose context Rust doesn't know: its list's, when the picker has it.
+    if (u.context && !(u.context.total > 0) && isApiProvider(u.provider)) {
+      const total = localCapsOf(u.provider)?.maxContext ?? 0;
+      if (total > 0) u = { ...u, context: { ...u.context, total } };
+    }
     seenUsage.set(u.provider, { ...u, at: Date.now() });
     if (u.context && typeof u.context.chat === "string") seenContext.set(u.context.chat, { ...u, at: Date.now() });
     // The usage menu open on this chat shows how full it now is.
@@ -2219,16 +2241,18 @@ export function buildPrompt(
   // ── Permissions ───────────────────────────────────────────────────────────
   //
   // What Claude Code or Antigravity CLI may do without a card, from the next
-  // message on: each turn starts the CLI again with that mode. A local model
-  // has a fourth mode, and its sandbox's level behind the chip in the title.
+  // message on: each turn starts the CLI again with that mode. A local model,
+  // and a provider called by its API, whose actions are Lumo's tools run on
+  // this computer, have a fourth mode, and the sandbox's level behind the
+  // chip in the title.
 
-  /** What the panel shows with a local model: the modes, or the sandbox's levels. */
+  /** What the panel shows with a local model or an API provider: the modes, or the sandbox's levels. */
   let permView: "modes" | "sandbox" = "modes";
 
   function drawPermissions() {
     clear(permList);
     const p = providerDef(State.settings.chatProvider);
-    if (p.urlField && permView === "sandbox") {
+    if (usesLumoTools(p.id) && permView === "sandbox") {
       drawSandbox(p);
       return;
     }
@@ -2263,10 +2287,10 @@ export function buildPrompt(
     }
   }
 
-  /** The panel's title: with a local model, the sandbox's chip beside it. */
+  /** The panel's title: with a local model or an API provider, the sandbox's chip beside it. */
   function drawPermHead(p: ProviderDef) {
     clear(permHead);
-    if (!p.urlField) {
+    if (!usesLumoTools(p.id)) {
       permHead.className = "picker-title";
       permHead.textContent = t(STRINGS.permissions);
       return;
@@ -2332,7 +2356,7 @@ export function buildPrompt(
     panelChanged();
   }
 
-  /** The shield: shown for the CLIs and the model servers, lit when they may do more than ask. */
+  /** The shield: shown for the CLIs, the model servers and the API providers, lit when they may do more than ask. */
   function drawPermButton() {
     const cli = hasPermissions(State.settings.chatProvider);
     permBtn.hidden = !cli;

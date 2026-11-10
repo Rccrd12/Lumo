@@ -141,7 +141,7 @@ fn with_user_tools(mut body: Value, tools: &[(String, String, Value)]) -> Value 
 
 /// The tool calls of an answer that stopped for them, as the next user turn's
 /// tool_result blocks: each call of the user's tools asks on the island (tools.rs).
-async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<Value> {
+async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value], asking: crate::tools::Asking, sandbox_high: bool) -> Vec<Value> {
     let mut results = Vec::new();
     for b in blocks.iter().filter(|b| b["type"] == "tool_use") {
         let id = b["id"].as_str().unwrap_or_default();
@@ -153,7 +153,7 @@ async fn run_user_tools(app: &AppHandle, chat: &Chat, blocks: &[Value]) -> Vec<V
             crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
         };
         chat.events().activity(app, act);
-        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone(), crate::tools::Asking::Untrusted, false).await;
+        let (text, failed) = crate::tools::call_for_chat(app, chat.id(), name, b["input"].clone(), asking, sandbox_high).await;
         results.push(json!({ "type": "tool_result", "tool_use_id": id, "content": text, "is_error": failed }));
     }
     results
@@ -211,11 +211,17 @@ fn with_cut_note(text: String, response: &Value) -> String {
 
 /// One chat turn. Returns the assistant's text, or a message the island shows
 /// in the note view. `usage` gets the rate limits the answer came back with
-/// (chat_usage.rs), a refused one included.
+/// (chat_usage.rs), a refused one included, and how full the context is.
+/// `effort`: the reasoning effort picked ("" the model's own); `mode` and
+/// `sandbox`: the chat's permissions, as with a local model (tools.rs Asking).
+#[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     model: &str,
+    effort: &str,
+    mode: &str,
+    sandbox: &str,
     query: String,
     context: Option<ChatContext>,
     images: &[String],
@@ -231,10 +237,21 @@ pub async fn send(
     // Lumo's email tools, usable only while this turn runs.
     let mail = crate::mail::ai_tools(app);
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
-    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, false, false)).await.unwrap_or_default();
-    let system = format!("{}{}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail));
-    let room = max_tokens_for(&endpoint, &key, model).await;
-    let mut body = with_user_tools(request_body(model, &system, &turn.history, &user, room), &tools);
+    let mode = crate::tools::chat_mode(mode);
+    let asking = crate::tools::Asking::for_local(mode);
+    let sandbox_high = sandbox != "low";
+    let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, false, false)).await.unwrap_or_default();
+    let tools = crate::tools::tools_for_mode(all, mode);
+    let plan = if mode == "plan" { crate::tools::PLAN_ONLY_NOTE } else { "" };
+    let system = format!("{}{}{plan}", chat::system_prompt_in(chat, true, true), chat::api_tools_note(mail));
+    let known = model_facts(&endpoint, &key, model).await;
+    let mut body = with_user_tools(request_body(model, &system, &turn.history, &user, known.max_tokens), &tools);
+    // The effort picked, when the model takes it (its list says which; one
+    // that refuses it after all is asked again at its own). One picked for
+    // another provider (Claude Code's) that this model doesn't take: its own.
+    if known.efforts.iter().any(|e| e == effort) {
+        body["output_config"] = json!({ "effort": effort });
+    }
 
     // Streamed: the text shows as it is written, and Stop keeps what showed.
     let shown = Mutex::new(String::new());
@@ -262,6 +279,11 @@ pub async fn send(
                     body["max_tokens"] = json!(SMALL_MAX_TOKENS);
                     continue;
                 }
+                // A model that takes no effort, or not this one: at its own.
+                Err(Failed::Status(400, e)) if body.get("output_config").is_some() && e.contains("effort") => {
+                    body.as_object_mut().map(|b| b.remove("output_config"));
+                    continue;
+                }
                 // The API failed on its side, or is overloaded (529): asked once more, a moment later.
                 Err(Failed::Status(500 | 502 | 503 | 504 | 529, _)) if !retried => {
                     retried = true;
@@ -270,6 +292,10 @@ pub async fn send(
                 }
                 Err(e) => return Err(e.to_string()),
             };
+            // How full the context is: this request and its answer, the last round's.
+            if let Some(n) = chat_usage::context_tokens(&response["usage"]) {
+                chat_usage::with_context(usage, chat::ANTHROPIC, chat.id(), n, known.context);
+            }
             let stop = response["stop_reason"].as_str().unwrap_or_default();
             let stopped_for_tools = stop == "tool_use" && !tools.is_empty();
             // A long web search hands the turn back halfway: sent again as it is, it goes on.
@@ -282,7 +308,7 @@ pub async fn send(
             if let Some(text) = response_text(&blocks) {
                 said.push(text);
             }
-            let results = if stopped_for_tools { run_user_tools(app, chat, &blocks).await } else { Vec::new() };
+            let results = if stopped_for_tools { run_user_tools(app, chat, &blocks, asking, sandbox_high).await } else { Vec::new() };
             if let Some(messages) = body["messages"].as_array_mut() {
                 messages.push(json!({ "role": "assistant", "content": blocks }));
                 if !results.is_empty() {
@@ -571,19 +597,36 @@ impl Assembly {
     }
 }
 
-/// The longest answer `model` may write, as the model list says (`max_tokens`),
-/// asked once per model: the whole of it is the answer's room.
-async fn max_tokens_for(endpoint: &Url, key: &str, model: &str) -> u64 {
-    static KNOWN: LazyLock<Mutex<HashMap<String, u64>>> = LazyLock::new(Default::default);
-    if let Some(n) = KNOWN.lock().unwrap_or_else(|p| p.into_inner()).get(model) {
-        return *n;
-    }
-    let Some(n) = model_max_tokens(endpoint, key, model).await else { return FALLBACK_MAX_TOKENS };
-    KNOWN.lock().unwrap_or_else(|p| p.into_inner()).insert(model.to_string(), n);
-    n
+/// What the model list says of `model`: the longest answer it may write
+/// (`max_tokens`, the whole of it is the answer's room), its context
+/// (`max_input_tokens`, 0 when not said) and the effort levels it takes,
+/// asked once per model.
+#[derive(Clone)]
+struct ModelFacts {
+    max_tokens: u64,
+    context: u64,
+    efforts: Vec<String>,
 }
 
-async fn model_max_tokens(endpoint: &Url, key: &str, model: &str) -> Option<u64> {
+impl ModelFacts {
+    fn unknown() -> Self {
+        ModelFacts { max_tokens: FALLBACK_MAX_TOKENS, context: 0, efforts: Vec::new() }
+    }
+}
+
+async fn model_facts(endpoint: &Url, key: &str, model: &str) -> ModelFacts {
+    static KNOWN: LazyLock<Mutex<HashMap<String, ModelFacts>>> = LazyLock::new(Default::default);
+    if let Some(facts) = KNOWN.lock().unwrap_or_else(|p| p.into_inner()).get(model) {
+        return facts.clone();
+    }
+    let Some(json) = model_entry(endpoint, key, model).await else { return ModelFacts::unknown() };
+    let Some(max_tokens) = json["max_tokens"].as_u64().filter(|n| *n >= 1024) else { return ModelFacts::unknown() };
+    let facts = ModelFacts { max_tokens, context: json["max_input_tokens"].as_u64().unwrap_or(0), efforts: efforts(&json) };
+    KNOWN.lock().unwrap_or_else(|p| p.into_inner()).insert(model.to_string(), facts.clone());
+    facts
+}
+
+async fn model_entry(endpoint: &Url, key: &str, model: &str) -> Option<Value> {
     let mut url = models_endpoint(endpoint);
     url.set_query(None);
     url.path_segments_mut().ok()?.push(model);
@@ -599,7 +642,7 @@ async fn model_max_tokens(endpoint: &Url, key: &str, model: &str) -> Option<u64>
         return None;
     }
     let bytes = net::read_capped(response, net::MAX_ERROR_BODY).await.ok()?;
-    serde_json::from_slice::<Value>(&bytes).ok()?["max_tokens"].as_u64().filter(|n| *n >= 1024)
+    serde_json::from_slice::<Value>(&bytes).ok()
 }
 
 /// The models on the user's Anthropic account, newest first, as the API lists them.
@@ -630,10 +673,22 @@ fn parse_models(json: &Value) -> Vec<ModelInfo> {
         .filter_map(|m| {
             let id = m.get("id")?.as_str()?.to_string();
             let label = m.get("display_name").and_then(Value::as_str).unwrap_or(&id).to_string();
-            Some(ModelInfo { id, label })
+            Some(ModelInfo { id, label, reasoning: efforts(m), context: m["max_input_tokens"].as_u64().unwrap_or(0) })
         })
         .collect()
 }
+
+/// The effort levels a model of the list takes (`capabilities.effort`), in order.
+fn efforts(m: &Value) -> Vec<String> {
+    let effort = &m["capabilities"]["effort"];
+    if effort["supported"].as_bool() != Some(true) {
+        return Vec::new();
+    }
+    EFFORTS.iter().filter(|level| effort[**level]["supported"].as_bool() == Some(true)).map(|level| level.to_string()).collect()
+}
+
+/// The Messages API's effort levels (`output_config.effort`), lowest first.
+const EFFORTS: [&str; 5] = ["low", "medium", "high", "xhigh", "max"];
 
 /// PDF → document block, image → image block, text/code → inline text.
 fn file_block(path: &str) -> Option<Value> {
@@ -882,9 +937,26 @@ mod tests {
         assert_eq!(
             parse_models(&list),
             vec![
-                ModelInfo { id: "claude-opus-5".into(), label: "Claude Opus 5".into() },
-                ModelInfo { id: "claude-x".into(), label: "claude-x".into() },
+                ModelInfo { id: "claude-opus-5".into(), label: "Claude Opus 5".into(), ..Default::default() },
+                ModelInfo { id: "claude-x".into(), label: "claude-x".into(), ..Default::default() },
             ]
         );
+    }
+
+    #[test]
+    fn the_list_says_each_models_efforts_and_context() {
+        let list = json!({"data":[
+            {"id":"claude-opus-5-5","display_name":"Claude Opus 5.5","max_input_tokens":1_000_000,"capabilities":{"effort":{"supported":true,
+                "low":{"supported":true},"medium":{"supported":true},"high":{"supported":true},"xhigh":{"supported":true},"max":{"supported":true}}}},
+            {"id":"claude-opus-4-6","max_input_tokens":1_000_000,"capabilities":{"effort":{"supported":true,
+                "low":{"supported":true},"medium":{"supported":true},"high":{"supported":true},"xhigh":{"supported":false},"max":{"supported":true}}}},
+            {"id":"claude-haiku-4-5","max_input_tokens":200_000,"capabilities":{"effort":{"supported":false}}}
+        ]});
+        let models = parse_models(&list);
+        assert_eq!(models[0].reasoning, ["low", "medium", "high", "xhigh", "max"]);
+        assert_eq!(models[0].context, 1_000_000);
+        assert_eq!(models[1].reasoning, ["low", "medium", "high", "max"], "only the levels it takes");
+        assert!(models[2].reasoning.is_empty(), "no effort: no slider");
+        assert_eq!(models[2].context, 200_000);
     }
 }

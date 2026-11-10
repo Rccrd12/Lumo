@@ -186,6 +186,92 @@ fn request_body(model: &str, system: &str, history: &[Value], user: &Value) -> V
     json!({ "model": model, "messages": messages })
 }
 
+/// The reasoning effort picked, as `p` takes it: OpenRouter's `reasoning`
+/// object, OpenAI's and Gemini's `reasoning_effort`. "" sends none: the
+/// model's own.
+fn with_effort(p: &Provider, body: &mut Value, model: &str, effort: &str) {
+    if !takes_effort(p, model, effort) {
+        return;
+    }
+    if p.id == "openrouter" {
+        body["reasoning"] = json!({ "effort": effort });
+    } else {
+        body["reasoning_effort"] = json!(effort);
+    }
+}
+
+/// Whether `effort` goes to `model`: a level the picker offers, to a model
+/// that reasons (OpenRouter's list is not at hand here: it passes the level
+/// on to a model that takes one). One picked for another provider
+/// (Claude Code's "max") doesn't go.
+fn takes_effort(p: &Provider, model: &str, effort: &str) -> bool {
+    if !REASONING_LEVELS.contains(&effort) {
+        return false;
+    }
+    p.id == "openrouter" || !reasoning_levels(p, &Value::Null, model).is_empty()
+}
+
+/// The reasoning levels offered with these providers, lowest first.
+const REASONING_LEVELS: [&str; 3] = ["low", "medium", "high"];
+
+fn has_effort(body: &Value) -> bool {
+    body.get("reasoning").is_some() || body.get("reasoning_effort").is_some()
+}
+
+fn without_effort(body: &mut Value) {
+    if let Some(b) = body.as_object_mut() {
+        b.remove("reasoning");
+        b.remove("reasoning_effort");
+    }
+}
+
+/// The reasoning levels the picker offers for a model of `p`'s list: what
+/// OpenRouter's list says (`supported_parameters`), and for OpenAI and Google,
+/// whose lists say nothing of it, the families that reason (o-series and
+/// GPT-5; Gemini 2.5 and later). A model that refuses the level after all is
+/// asked again at its own.
+fn reasoning_levels(p: &Provider, m: &Value, id: &str) -> Vec<String> {
+    let levels = || REASONING_LEVELS.map(String::from).to_vec();
+    let lower = id.to_lowercase();
+    let reasons = match p.id {
+        "openrouter" => m["supported_parameters"].as_array().is_some_and(|ps| ps.iter().any(|x| x == "reasoning")),
+        "openai" => {
+            let o_series = lower.len() > 1 && lower.starts_with('o') && lower.as_bytes()[1].is_ascii_digit();
+            (o_series || lower.starts_with("gpt-5")) && !lower.contains("chat")
+        }
+        "google" => gemini_version(&lower).is_some_and(|v| v >= 2.5) || lower.contains("thinking"),
+        _ => false,
+    };
+    if reasons { levels() } else { Vec::new() }
+}
+
+/// 2.5 for "gemini-2.5-flash", 3.0 for "gemini-3-pro-preview".
+fn gemini_version(id: &str) -> Option<f32> {
+    let rest = id.strip_prefix("gemini-")?;
+    let v: String = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '.').collect();
+    v.trim_end_matches('.').parse().ok()
+}
+
+/// A model's context in tokens, for the ring: OpenRouter's list says it
+/// (`context_length`); for Google and OpenAI, whose lists don't, the size of
+/// the families everyone knows. 0: not known.
+fn context_of(p: &Provider, m: &Value, id: &str) -> u64 {
+    if let Some(n) = m["context_length"].as_u64().or_else(|| m["input_token_limit"].as_u64()) {
+        return n;
+    }
+    let lower = id.to_lowercase();
+    match p.id {
+        "google" if lower.starts_with("gemini-") => 1_048_576,
+        "google" if lower.starts_with("gemma-3n") => 32_768,
+        "google" if lower.starts_with("gemma-") => 131_072,
+        "openai" if lower.starts_with("gpt-4.1") => 1_047_576,
+        "openai" if lower.starts_with("gpt-5") => 400_000,
+        "openai" if lower.starts_with("gpt-4o") => 128_000,
+        "openai" if lower.starts_with("o1") || lower.starts_with("o3") || lower.starts_with("o4") => 200_000,
+        _ => 0,
+    }
+}
+
 /// The answer's tokens OpenRouter says the credits pay for, when it refused
 /// the request for the model's whole ceiling ("…but can only afford 7461").
 fn affordable(error: &str) -> Option<u64> {
@@ -237,13 +323,18 @@ fn status_error(p: &Provider, status: u16, detail: &str) -> String {
 }
 
 /// One chat turn with a cloud provider. For OpenAI, `usage` gets the rate
-/// limits the answer came back with (chat_usage.rs).
+/// limits the answer came back with (chat_usage.rs); for each, how full the
+/// context is. `effort`: the reasoning effort picked ("" the model's own);
+/// `mode` and `sandbox`: the chat's permissions, as with a local model.
 #[allow(clippy::too_many_arguments)]
 pub async fn send(
     app: &AppHandle,
     chat: &Chat,
     p: &'static Provider,
     model: &str,
+    effort: &str,
+    mode: &str,
+    sandbox: &str,
     query: String,
     context: Option<ChatContext>,
     images: &[String],
@@ -261,12 +352,20 @@ pub async fn send(
     let _mail = (!mail.is_empty()).then(crate::mail::agent_turn);
     // Lumo's own web search, when the user turned it on (web_search.rs).
     let web = tauri::async_runtime::spawn_blocking(crate::web_search::enabled).await.unwrap_or(false);
-    let system = format!("{}{}{}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" });
+    let mode = crate::tools::chat_mode(mode);
+    let asking = crate::tools::Asking::for_local(mode);
+    let sandbox_high = sandbox != "low";
+    let plan = if mode == "plan" { crate::tools::PLAN_ONLY_NOTE } else { "" };
+    let system = format!("{}{}{}{plan}", chat::system_prompt_in(chat, web, true), chat::api_tools_note(mail), if web { crate::web_search::NOTE } else { "" });
     let mut body = request_body(model, &system, &turn.history, &user);
-    let tools = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false)).await.unwrap_or_default();
+    let all = tauri::async_runtime::spawn_blocking(move || crate::tools::chat_tools(mail, web, false)).await.unwrap_or_default();
+    let tools = crate::tools::tools_for_mode(all, mode);
     if !tools.is_empty() {
         body["tools"] = function_tools(&tools);
     }
+    with_effort(p, &mut body, model, effort);
+    // The tokens of each answer come with its last piece, for the ring.
+    body["stream_options"] = json!({ "include_usage": true });
     let endpoint = url(p, "chat/completions")?;
 
     // Streamed: the text shows as it is written, and Stop keeps what showed.
@@ -293,7 +392,18 @@ pub async fn send(
                 // A model this account may not stream (OpenAI asks some
                 // organisations to be verified first): the whole answer, at once.
                 Err((400, e)) if streaming && e.to_lowercase().contains("stream") => {
+                    // stream_options alone, when the server knows no such field: streamed all the same.
+                    if body.get("stream_options").is_some() && e.contains("stream_options") {
+                        body.as_object_mut().map(|b| b.remove("stream_options"));
+                        continue;
+                    }
                     streaming = false;
+                    body.as_object_mut().map(|b| b.remove("stream_options"));
+                    continue;
+                }
+                // A model that doesn't reason, or not at this level: at its own.
+                Err((400 | 422, e)) if has_effort(&body) && e.to_lowercase().contains("reasoning") => {
+                    without_effort(&mut body);
                     continue;
                 }
                 // The server failed on its side (Google AI's "Internal error
@@ -323,6 +433,10 @@ pub async fn send(
                 }
                 Ok(json) => json,
             };
+            // How full the context is: this request and its answer, the last round's.
+            if let Some(n) = chat_usage::context_tokens(&json["usage"]) {
+                chat_usage::with_context(usage, p.id, chat.id(), n, context_of(p, &Value::Null, model));
+            }
             // Reasoning written in the text (Gemma's `<thought>`) is never shown, nor sent back.
             if let Some(content) = json.pointer_mut("/choices/0/message/content").filter(|c| c.is_string()) {
                 *content = json!(filter_thinking_blocks(content.as_str().unwrap_or_default()));
@@ -349,7 +463,7 @@ pub async fn send(
                     crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
                 };
                 chat.events().activity(app, act);
-                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, crate::tools::Asking::Untrusted, false).await;
+                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, asking, sandbox_high).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }
             if let Some(messages) = body["messages"].as_array_mut() {
@@ -752,7 +866,9 @@ fn parse_models(p: &Provider, json: &Value) -> Vec<ModelInfo> {
             let free = p.id == "openrouter" && is_free(m, &id);
             let name = m.get("name").and_then(Value::as_str).unwrap_or(&id);
             let label = if free && !name.to_lowercase().contains("(free)") { format!("{name} (free)") } else { name.to_string() };
-            Some((ModelInfo { id, label }, created, free))
+            let reasoning = reasoning_levels(p, m, &id);
+            let context = context_of(p, m, &id);
+            Some((ModelInfo { id, label, reasoning, context }, created, free))
         })
         .collect();
     match p.id {
@@ -1177,5 +1293,59 @@ mod tests {
     #[test]
     fn an_unknown_answer_gives_an_empty_list() {
         assert!(parse_models(p("openai"), &json!({"nope":true})).is_empty());
+    }
+
+    #[test]
+    fn the_reasoning_levels_follow_the_list_or_the_family() {
+        let none = Value::Null;
+        for id in ["o3", "o4-mini", "gpt-5", "gpt-5.1-mini"] {
+            assert_eq!(reasoning_levels(p("openai"), &none, id), ["low", "medium", "high"], "{id}");
+        }
+        for id in ["gpt-4o", "gpt-4.1-mini", "gpt-5-chat-latest", "omni-moderation"] {
+            assert!(reasoning_levels(p("openai"), &none, id).is_empty(), "{id}");
+        }
+        for id in ["gemini-2.5-flash", "gemini-2.5-pro", "gemini-3-pro-preview", "gemini-3.1-flash"] {
+            assert_eq!(reasoning_levels(p("google"), &none, id).len(), 3, "{id}");
+        }
+        for id in ["gemini-2.0-flash", "gemma-3-27b-it", "gemini-1.5-pro"] {
+            assert!(reasoning_levels(p("google"), &none, id).is_empty(), "{id}");
+        }
+        let thinks = json!({"supported_parameters":["tools","reasoning","include_reasoning"]});
+        assert_eq!(reasoning_levels(p("openrouter"), &thinks, "x/y").len(), 3);
+        assert!(reasoning_levels(p("openrouter"), &json!({"supported_parameters":["tools"]}), "x/y").is_empty());
+    }
+
+    #[test]
+    fn the_effort_goes_as_each_provider_takes_it_and_only_where_it_is_taken() {
+        let mut body = json!({});
+        with_effort(p("google"), &mut body, "gemini-2.5-flash", "high");
+        assert_eq!(body["reasoning_effort"], "high");
+        let mut body = json!({});
+        with_effort(p("openrouter"), &mut body, "anthropic/claude-opus-5.5", "low");
+        assert_eq!(body["reasoning"], json!({"effort":"low"}));
+        assert!(body.get("reasoning_effort").is_none());
+        // A model that doesn't reason, Auto, or a level of another provider's (Claude Code's max): none.
+        for (provider, model, effort) in [("openai", "gpt-4o", "high"), ("google", "gemini-2.5-flash", ""), ("google", "gemini-2.5-flash", "max")] {
+            let mut body = json!({});
+            with_effort(p(provider), &mut body, model, effort);
+            assert!(!has_effort(&body), "{provider} {model} {effort}");
+        }
+        let mut body = json!({"reasoning":{"effort":"low"},"reasoning_effort":"low","model":"m"});
+        without_effort(&mut body);
+        assert_eq!(body, json!({"model":"m"}));
+    }
+
+    #[test]
+    fn a_models_context_comes_from_its_list_or_its_family() {
+        let none = Value::Null;
+        assert_eq!(context_of(p("openrouter"), &json!({"context_length":200_000}), "a/b"), 200_000);
+        assert_eq!(context_of(p("openrouter"), &none, "a/b"), 0, "not known");
+        assert_eq!(context_of(p("google"), &none, "gemini-2.5-flash"), 1_048_576);
+        assert_eq!(context_of(p("google"), &none, "gemma-3-27b-it"), 131_072);
+        assert_eq!(context_of(p("openai"), &none, "gpt-4o-mini"), 128_000);
+        assert_eq!(context_of(p("openai"), &none, "o3"), 200_000);
+        let list = json!({"data":[{"id":"x/think","name":"Think","context_length":64_000,"supported_parameters":["reasoning"]}]});
+        let models = parse_models(p("openrouter"), &list);
+        assert_eq!((models[0].reasoning.len(), models[0].context), (3, 64_000));
     }
 }

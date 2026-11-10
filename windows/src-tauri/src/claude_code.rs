@@ -231,7 +231,7 @@ pub fn work_dir() -> PathBuf {
 pub fn models() -> Vec<ModelInfo> {
     MODELS
         .iter()
-        .map(|(id, label)| ModelInfo { id: id.to_string(), label: t(label) })
+        .map(|(id, label)| ModelInfo { id: id.to_string(), label: t(label), ..Default::default() })
         .collect()
 }
 
