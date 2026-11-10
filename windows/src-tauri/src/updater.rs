@@ -55,7 +55,7 @@ const BETA_MARK: &str = "<!-- lumo-beta ";
 /// and publish the signature beside it as `<installer>.sig`; an installer
 /// whose signature does not hold is never run. GitHub's SHA-256 says the file
 /// is the one on the release; the signature says the key's holder put it there.
-const UPDATE_PUBLIC_KEY: &str = "PUBLIC_KEY_PENDING";
+const UPDATE_PUBLIC_KEY: &str = "1545faa835cd76587611e06399b6af1de7cee43a1e1c7e70dc806be5443e8cec";
 
 /// A signature file is one line of hex: anything longer is not one.
 const MAX_SIGNATURE: u64 = 1024;
