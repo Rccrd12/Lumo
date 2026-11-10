@@ -277,6 +277,7 @@ pub async fn send(
         let mut rounds = 0;
         let mut capped = false;
         let mut streaming = true;
+        let mut retried = false;
         loop {
             let before = said.join("\n\n");
             let show = |text: &str| {
@@ -293,6 +294,13 @@ pub async fn send(
                 // organisations to be verified first): the whole answer, at once.
                 Err((400, e)) if streaming && e.to_lowercase().contains("stream") => {
                     streaming = false;
+                    continue;
+                }
+                // The server failed on its side (Google AI's "Internal error
+                // encountered" now and then): asked once more, a moment later.
+                Err((500 | 502 | 503 | 504, _)) if !retried => {
+                    retried = true;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                     continue;
                 }
                 // The credits don't cover the model's whole ceiling: the answer

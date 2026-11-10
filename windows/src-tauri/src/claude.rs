@@ -243,6 +243,7 @@ pub async fn send(
     let answer = async {
         let mut rounds = 0;
         let mut smaller = false;
+        let mut retried = false;
         loop {
             let before = said.join("\n\n");
             let show = |text: &str| {
@@ -259,6 +260,12 @@ pub async fn send(
                 Err(Failed::Status(400, e)) if !smaller && e.contains("max_tokens") => {
                     smaller = true;
                     body["max_tokens"] = json!(SMALL_MAX_TOKENS);
+                    continue;
+                }
+                // The API failed on its side, or is overloaded (529): asked once more, a moment later.
+                Err(Failed::Status(500 | 502 | 503 | 504 | 529, _)) if !retried => {
+                    retried = true;
+                    tokio::time::sleep(Duration::from_secs(2)).await;
                     continue;
                 }
                 Err(e) => return Err(e.to_string()),
