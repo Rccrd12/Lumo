@@ -56,7 +56,13 @@ administrator's consent, since the .msi installs for every user. Either way
 Lumo quits so the installer can replace it, and the installer opens the new
 Lumo when it is done, a few seconds later. Nothing is downloaded without that click. Only installers from that
 repository's GitHub releases are accepted, and only one that matches, byte for
-byte, the SHA-256 GitHub published for it is run.
+byte, the SHA-256 GitHub published for it, and whose signature by Lumo's own
+key holds, is run. The release and beta workflows sign each installer with
+the `LUMO_UPDATE_KEY` secret and publish the signature beside it
+(`<installer>.sig`, `windows/scripts/sign-update.mjs`); the public half of the
+key is `UPDATE_PUBLIC_KEY` in `windows/src-tauri/src/updater.rs`.
+`node windows/scripts/update-key.mjs` makes a new pair; the Lumo builds already
+installed accept only the key they carry.
 
 **Beta versions** (off unless you turn it on) also offers the beta: one build
 with main and every open pull request the repository's owner opened from one
