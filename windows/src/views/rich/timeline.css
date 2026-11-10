@@ -3,9 +3,10 @@
    it; or a plan, a bar per phase under a row of dates, with its deadline and
    today's line. */
 
+/* Drawn over the card's own border: the chat log clips what goes past it. */
 .rc-tl:focus-visible {
   outline: 1px solid rgba(143, 199, 255, 0.45);
-  outline-offset: 1px;
+  outline-offset: -1px;
 }
 
 /* ── Events ──────────────────────────────────────────────────────────────── */

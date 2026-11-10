@@ -58,8 +58,34 @@ const loaded = new Map<string, Loaded>();
 let loadedBytes = 0;
 /** Downloads under way, by image URL: every card of that image waits for the same one. */
 const pending = new Map<string, Promise<void>>();
-/** Images that could not be loaded this session (Try again clears it). */
-const failed = new Set<string>();
+/** The images that have faded in once already. */
+const faded = new Set<string>();
+
+/** Whether each image shown has a see-through ground (a diagram), read once it is drawn. */
+const clear = new Map<string, boolean>();
+
+/**
+ * Whether `img`'s corners are see-through: a diagram drawn on nothing, shown
+ * on white as meant. A photo shows on dark, so its edges don't sit on a
+ * white box.
+ */
+function seeThrough(img: HTMLImageElement): boolean {
+  try {
+    const c = document.createElement("canvas");
+    c.width = 8;
+    c.height = 8;
+    const g = c.getContext("2d", { willReadFrequently: true });
+    if (!g) return false;
+    g.drawImage(img, 0, 0, 8, 8);
+    const d = g.getImageData(0, 0, 8, 8).data;
+    return [0, 7, 56, 63].some((i) => d[i * 4 + 3] < 250);
+  } catch {
+    return false;
+  }
+}
+
+/** Images that could not be loaded this session, and why (Try again clears it). */
+const failed = new Map<string, string>();
 
 /** The cards on screen and how to draw each again (Try again reaches every card of that image). */
 interface Live {
@@ -171,12 +197,13 @@ function load(url: string): Promise<void> {
       const bytes = data ? new Uint8Array(data) : null;
       const type = bytes && imageType(bytes);
       if (!bytes || !type) {
-        failed.add(url);
+        failed.set(url, "");
         return;
       }
       keep(url, URL.createObjectURL(new Blob([bytes], { type })), bytes.byteLength);
-    } catch {
-      failed.add(url);
+    } catch (err) {
+      // What went wrong, as web_image.rs says it (the site's answer, a timeout…).
+      failed.set(url, String(err).replace(/^Error:\s*/, ""));
     } finally {
       pending.delete(url);
       done();
@@ -215,23 +242,36 @@ function track(card: HTMLElement, live: Live) {
 export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
   const off = !webImagesOn() || nth >= MAX_PER_ANSWER;
   const site = siteOf(url);
-  const openBtn = h("button", { class: "rc-nav", type: "button", title: t(IMAGE_STRINGS.open), "aria-label": t(IMAGE_STRINGS.open) }, svg(ICONS.arrowUpRight, 12));
-  openBtn.addEventListener("click", () => void Bridge.openUrl(url));
-  const caption = alt || (off ? t(IMAGE_STRINGS.image) : "");
-  const foot = h(
-    "div",
-    { class: "rc-image-foot" },
-    h("span", { class: "rc-image-src", title: url }, svg(ICONS.globe, 10, { stroke: 1.8 }), h("span", { text: site })),
-    caption ? h("span", { class: "rc-image-cap", text: caption, title: caption }) : null,
-    h("span", { class: "rc-sp" }),
-    openBtn,
-  );
   // Off, past the answer's images (or an address with no host to show): one
   // row, nothing downloaded.
-  if (off || site === "") return h("div", { class: "rc-card rc-image off" }, foot);
+  if (off || site === "") {
+    const openBtn = h("button", { class: "rc-nav", type: "button", title: t(IMAGE_STRINGS.open), "aria-label": t(IMAGE_STRINGS.open) }, svg(ICONS.arrowUpRight, 12));
+    openBtn.addEventListener("click", () => void Bridge.openUrl(url));
+    const caption = alt || t(IMAGE_STRINGS.image);
+    const foot = h(
+      "div",
+      { class: "rc-image-foot" },
+      h("span", { class: "rc-image-src", title: url }, svg(ICONS.globe, 10, { stroke: 1.8 }), h("span", { text: site })),
+      h("span", { class: "rc-image-cap", text: caption, title: caption }),
+      h("span", { class: "rc-sp" }),
+      openBtn,
+    );
+    return h("div", { class: "rc-card rc-image off" }, foot);
+  }
 
+  // Shown, the picture itself, its corners rounded, with no box around it;
+  // under it what it shows and where it comes from, which opens it in the
+  // browser.
+  const src = h(
+    "button",
+    { class: "rc-image-src", type: "button", title: `${t(IMAGE_STRINGS.open)}\n${url}`, "aria-label": t(IMAGE_STRINGS.open) },
+    h("span", { text: site }),
+    svg(ICONS.arrowUpRight, 9, { stroke: 2 }),
+  );
+  src.addEventListener("click", () => void Bridge.openUrl(url));
+  const under = h("div", { class: "rc-image-under" }, alt ? h("span", { class: "rc-image-cap", text: alt, title: alt }) : null, src);
   const frame = h("div", { class: "rc-image-frame" });
-  const card = h("div", { class: "rc-card rc-image" }, frame, foot);
+  const card = h("div", { class: "rc-card rc-image" }, frame, under);
 
   const show = (state: string, ...children: Node[]) => {
     frame.className = `rc-image-frame ${state}`;
@@ -242,17 +282,35 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
     const blob = cached(url);
     if (blob !== undefined) {
       const img = h("img", { src: blob, alt: alt || t(IMAGE_STRINGS.alt, { site }), title: alt || site, draggable: "false" });
+      // The first time, it fades in once it is decoded rather than appearing
+      // in one jump; drawn again (the chat redrawn), it is simply there.
+      if (faded.has(url)) img.classList.add("in");
+      else {
+        img.addEventListener("load", () => {
+          img.classList.add("in");
+          faded.add(url);
+          if (faded.size > 400) faded.delete(faded.keys().next().value as string);
+        });
+      }
       img.addEventListener("click", () => void Bridge.openUrl(url));
       // Its blob: URL went with the oldest of the cache: drawn again, the card
       // downloads it again. Still in the cache, the bytes themselves don't draw.
       img.addEventListener("error", () => {
         if (loaded.get(url)?.blob === blob) {
           drop(url);
-          failed.add(url);
+          failed.set(url, "");
         }
         draw();
       });
-      show("shown", img);
+      const ground = () => (clear.get(url) ? "shown clear" : "shown");
+      if (!clear.has(url)) {
+        img.addEventListener("load", () => {
+          clear.set(url, seeThrough(img));
+          if (clear.size > 400) clear.delete(clear.keys().next().value as string);
+          if (img.isConnected) frame.className = `rc-image-frame ${ground()}`;
+        });
+      }
+      show(ground(), img);
     } else if (failed.has(url)) {
       const retry = h("button", { class: "rc-image-btn", type: "button", text: t(IMAGE_STRINGS.retry), title: t(IMAGE_STRINGS.retry), "aria-label": t(IMAGE_STRINGS.retry) });
       retry.addEventListener("click", (e) => {
@@ -264,7 +322,7 @@ export function renderImage(alt: string, url: string, nth = 0): HTMLElement {
         "error",
         h(
           "div",
-          { class: "rc-image-msg" },
+          { class: "rc-image-msg", title: failed.get(url) || undefined },
           h("span", { class: "rc-image-title", text: t(IMAGE_STRINGS.failed) }),
           h("span", { class: "rc-image-hint", text: site }),
           h("div", { class: "rc-image-btns" }, retry),
@@ -290,5 +348,7 @@ export function resetImages() {
   running = 0;
   waiting.length = 0;
   failed.clear();
+  clear.clear();
+  faded.clear();
   cards.clear();
 }

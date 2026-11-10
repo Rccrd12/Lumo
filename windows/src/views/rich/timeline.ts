@@ -40,6 +40,7 @@ import { ICONS } from "../icons";
 import { N_, dayMonth, language, t, tn } from "../../i18n/i18n";
 import { head, remember, RICH_STRINGS, type RichContext } from "./index";
 import "./timeline.css";
+import { onResize } from "./resize";
 
 export const TIMELINE_STRINGS = {
   hint: N_("Click a point to read what happened · ← → to move"),
@@ -345,7 +346,7 @@ interface Place {
 
 /** The card for `tl`; `key` keeps the open event. `now` stands for today (tests). */
 export function renderTimeline(tl: Timeline, ctx: RichContext, key: string, now: Date = new Date()): HTMLElement {
-  return tl.kind === "plan" ? renderPlan(tl, now) : renderEvents(tl, ctx, key);
+  return tl.kind === "plan" ? renderPlan(tl, now, ctx) : renderEvents(tl, ctx, key);
 }
 
 /** Where a position from 0 to 1 lies in a box `left` pixels in from its left side and `right` from its right. */
@@ -429,7 +430,6 @@ function renderEvents(tl: Timeline, ctx: RichContext, key: string): HTMLElement 
       {
         class: `rc-tl-ev ${i % 2 === 0 ? "up" : "down"}`,
         style: `left:${at((it.from.start - lo) / span, EVENTS_LEFT, EVENTS_RIGHT)}`,
-        title: it.label || dates[i],
         "aria-label": it.label ? `${dates[i]} ${it.label}` : dates[i],
         onclick: () => open(place.at === i ? -1 : i),
       },
@@ -449,7 +449,7 @@ function renderEvents(tl: Timeline, ctx: RichContext, key: string): HTMLElement 
   const card = h(
     "div",
     { class: "rc-card rc-tl", tabindex: 0, role: "group", "aria-label": tl.title || t(RICH_STRINGS.timeline) },
-    head("timeline", tl.title, h("span", { class: "rc-count", text: range })),
+    head("timeline", tl.title, ctx, h("span", { class: "rc-count", text: range })),
     track,
     detail,
   );
@@ -560,14 +560,12 @@ function renderEvents(tl: Timeline, ctx: RichContext, key: string): HTMLElement 
     }
   }
 
-  if (typeof ResizeObserver !== "undefined") {
-    let width = 0;
-    new ResizeObserver(() => {
-      if (track.clientWidth === width) return;
-      width = track.clientWidth;
-      fit();
-    }).observe(track);
-  }
+  let width = 0;
+  onResize(track, () => {
+    if (track.clientWidth === width) return;
+    width = track.clientWidth;
+    fit();
+  });
 
   show();
   return card;
@@ -584,7 +582,7 @@ function navButton(path: string, label: string, onClick: () => void): HTMLButton
 const ROW = 22;
 const TOP = 22;
 
-function renderPlan(tl: Timeline, now: Date): HTMLElement {
+function renderPlan(tl: Timeline, now: Date, ctx: RichContext): HTMLElement {
   const items = tl.items;
   const unit = finest(items);
   const phases = items.filter((i) => i.to);
@@ -697,7 +695,7 @@ function renderPlan(tl: Timeline, now: Date): HTMLElement {
   return h(
     "div",
     { class: "rc-card rc-tl", role: "group", "aria-label": tl.title || t(RICH_STRINGS.timeline) },
-    head("timeline", tl.title, h("span", { class: "rc-count", text: parts.join(" · ") })),
+    head("timeline", tl.title, ctx, h("span", { class: "rc-count", text: parts.join(" · ") })),
     area,
   );
 }

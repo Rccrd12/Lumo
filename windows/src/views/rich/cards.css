@@ -117,9 +117,11 @@
   border-top: 1px solid rgba(255, 255, 255, 0.05);
 }
 
+/* The name keeps its words whole (the value wraps instead), up to a little
+   over half the row, where a name too long for it breaks. */
 .rc-field-key {
-  flex: 0 1 auto;
-  min-width: 0;
+  flex: 0 0 auto;
+  max-width: 55%;
   color: var(--dim-3);
   overflow-wrap: anywhere;
 }

@@ -138,6 +138,8 @@ export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
+  /** When it was sent or answered (epoch ms), shown under it as "2 min ago"; none in chats saved before. */
+  at?: number;
   /** An answer cut short by the Stop button. */
   stopped?: boolean;
   /** No answer: what went wrong, said in the chat where it was asked (never saved). */

@@ -15,6 +15,9 @@
 // Each chat keeps its own Claude Code running between messages (`live_turn`,
 // `--input-format stream-json`): a message is a line on its stdin, Stop
 // interrupts the turn, and the process ends after a while without messages.
+// Between two messages its output is still read (`watch`): a turn Claude Code
+// takes by itself (a command it left running in the background finished, an
+// agent it started reported) joins the chat as an answer (`own_answer`).
 //
 // The prompt goes in on stdin, never on the command line: an npm install is a
 // `claude.cmd`, and cmd.exe would interpret what the user typed. Every argument
@@ -33,14 +36,15 @@
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{mpsc, Arc};
 use std::time::{Duration, Instant};
 
 use serde::Serialize;
 use serde_json::{json, Value};
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 
-use crate::chat::{self, Chat, ChatContext, ChatReply, ModelInfo, Stop};
+use crate::chat::{self, Chat, ChatContext, ChatReply, Chats, ModelInfo, Stop};
 use crate::i18n::{t, tf};
 use crate::island::WINDOW_LABEL;
 use crate::platform;
@@ -690,6 +694,12 @@ struct Run {
     context_used: Option<u64>,
     /// The model's context window, as the turn's result says (`modelUsage`).
     context_total: Option<u64>,
+    /// A turn began: its `init`, or the model writing (not only the lines
+    /// Claude Code writes between two turns, about its background tasks).
+    began: bool,
+    /// How many background tasks (commands, agents) Claude Code last said are
+    /// running (`background_tasks_changed`), if it said.
+    tasks: Option<usize>,
 }
 
 /// The tokens a message's `usage` says the conversation fills: what the model
@@ -807,6 +817,7 @@ impl Run {
                 if !top_level(&v) {
                     return false;
                 }
+                self.began = true;
                 let event = &v["event"];
                 let index = event["index"].as_u64().unwrap_or(0);
                 match event["type"].as_str() {
@@ -869,6 +880,7 @@ impl Run {
             }
             // The whole message, with the tool inputs complete.
             Some("assistant") if top_level(&v) => {
+                self.began = true;
                 self.files_of(&v);
                 if let Some(used) = context_of(&v["message"]["usage"]) {
                     self.context_used = Some(used);
@@ -923,9 +935,14 @@ impl Run {
                 false
             }
             Some("system") if v["subtype"] == "init" => {
+                self.began = true;
                 if let Some(list) = v["slash_commands"].as_array() {
                     self.commands = Some(command_names(list));
                 }
+                false
+            }
+            Some("system") if v["subtype"] == "background_tasks_changed" => {
+                self.tasks = Some(v["tasks"].as_array().map_or(0, Vec::len));
                 false
             }
             Some("system") if v["subtype"] == "compact_boundary" => {
@@ -1033,8 +1050,19 @@ pub(crate) fn read_stderr(child: &mut std::process::Child) -> Arc<std::sync::Mut
 
 /// `child`'s stdout, line by line, on a channel; at most `max_total` bytes in all.
 pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> Result<mpsc::Receiver<Vec<u8>>, String> {
-    let stdout = child.stdout.take().ok_or("no stdout")?;
     let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    read_lines_to(child, max_total, Arc::new(std::sync::Mutex::new(Some(tx))))?;
+    Ok(rx)
+}
+
+/// Where `read_lines_to` puts the lines: the channel's only sender, which it
+/// takes away once the output closed, so the channel says so even though the
+/// caller can put lines of its own on it while it is open.
+type Feed = Arc<std::sync::Mutex<Option<mpsc::Sender<Vec<u8>>>>>;
+
+/// `read_lines`, through `feed` (a line read is never empty).
+fn read_lines_to(child: &mut std::process::Child, max_total: usize, feed: Feed) -> Result<(), String> {
+    let stdout = child.stdout.take().ok_or("no stdout")?;
     std::thread::spawn(move || {
         let mut reader = BufReader::new(stdout);
         let mut total = 0usize;
@@ -1054,7 +1082,8 @@ pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> R
                         }
                         continue;
                     }
-                    if total > max_total || tx.send(line).is_err() {
+                    let sent = feed.lock().unwrap_or_else(|e| e.into_inner()).as_ref().is_some_and(|tx| tx.send(line).is_ok());
+                    if total > max_total || !sent {
                         break;
                     }
                 }
@@ -1063,8 +1092,9 @@ pub(crate) fn read_lines(child: &mut std::process::Child, max_total: usize) -> R
         // Whatever is left is read and dropped, so claude never blocks on a
         // full pipe while the turn winds down.
         let _ = std::io::copy(&mut reader, &mut std::io::sink());
+        feed.lock().unwrap_or_else(|e| e.into_inner()).take();
     });
-    Ok(rx)
+    Ok(())
 }
 
 /// How a turn read off the stream ended.
@@ -1198,21 +1228,49 @@ fn run(
 // process still there for the next one. MCP servers, plugins and the session
 // load once per chat, not once per message, and Stop interrupts the turn
 // (a `control_request` of subtype `interrupt`, as the Agent SDK sends) instead
-// of ending the process. A Claude Code idle for LIVE_IDLE is ended; one whose
-// settings changed (model, effort, mode, tools, folders) or whose session is not
-// the chat's any more (a new chat, an edited message) is ended and started
-// again, resuming the chat's session.
+// of ending the process. A Claude Code idle for LIVE_IDLE is ended (LIVE_BUSY
+// while it has work going on in the background); one whose settings changed
+// (model, effort, mode, tools, folders) or whose session is not the chat's any
+// more (a new chat, an edited message) is ended and started again, resuming the
+// chat's session.
+//
+// Claude Code also takes turns by itself, with no message: when a command it
+// left running in the background ends, or an agent it started reports, it is
+// told (`task_notification`) and answers in a turn of its own, `init` to
+// `result`, as for a message. Between two messages a thread reads its output
+// (`watch`), so that answer reaches the chat (`own_answer`) instead of being
+// left on the stream; the next message waits for such a turn to end.
 
 /// How long a chat's Claude Code waits for the next message before it is ended.
 const LIVE_IDLE: Duration = Duration::from_secs(10 * 60);
+/// How long it is kept with no message while it has commands or agents
+/// running in the background, or is answering by itself: ending it would end them.
+const LIVE_BUSY: Duration = Duration::from_secs(3 * 60 * 60);
 /// How long an interrupted turn may take to end before its Claude Code is ended.
 const INTERRUPT_GRACE: Duration = Duration::from_secs(5);
+
+/// What the thread reading a chat's Claude Code between two turns (`watch`)
+/// tells the rest, for the one ending idle ones.
+#[derive(Default)]
+struct Between {
+    /// The background tasks Claude Code last said are running.
+    tasks: AtomicUsize,
+    /// It is writing a turn of its own.
+    busy: AtomicBool,
+}
 
 /// A chat's Claude Code, between two turns.
 struct Live {
     child: std::process::Child,
     stdin: std::process::ChildStdin,
-    rx: mpsc::Receiver<Vec<u8>>,
+    /// Its output while a turn reads it; between two turns `idle` has it.
+    rx: Option<mpsc::Receiver<Vec<u8>>>,
+    /// Where its output goes (`read_lines_to`): an empty line put there (the
+    /// CLI never writes one) has `idle` give the output back.
+    feed: Feed,
+    /// The thread reading it between two turns (`watch`), which ends with the output.
+    idle: Option<std::thread::JoinHandle<mpsc::Receiver<Vec<u8>>>>,
+    between: Arc<Between>,
     stderr: Arc<std::sync::Mutex<String>>,
     /// What it was started with (`live_key`).
     key: String,
@@ -1229,10 +1287,95 @@ impl Drop for Live {
     }
 }
 
+impl Live {
+    /// Waits for the next message, in `chat_id`: its output is read meanwhile
+    /// (`watch`), and `own` gets each turn it takes by itself.
+    fn park(mut self, chat_id: &str, own: impl FnMut(Run) + Send + 'static) {
+        if let Some(rx) = self.rx.take() {
+            let between = self.between.clone();
+            self.idle = Some(std::thread::spawn(move || watch(rx, &between, own)));
+        }
+        self.used = Instant::now();
+        let old = lives(|all| all.insert(chat_id.to_string(), self));
+        drop(old);
+        reap_idle();
+    }
+
+    /// Its output back for a turn: at once, or once the turn Claude Code is
+    /// writing by itself ends. Stop meanwhile interrupts that turn (ending the
+    /// CLI if it can't be): false then. Without its output (the thread is
+    /// gone), `rx` stays None.
+    fn take_output(&mut self, stop: &Stop) -> bool {
+        let Some(idle) = self.idle.take() else { return true };
+        if let Some(tx) = self.feed.lock().unwrap_or_else(|e| e.into_inner()).as_ref() {
+            let _ = tx.send(Vec::new());
+        }
+        let mut interrupted: Option<Instant> = None;
+        let waiting = Instant::now();
+        while !idle.is_finished() {
+            if stop.is_stopped() && interrupted.is_none() {
+                interrupted = Some(Instant::now());
+                if self.stdin.write_all(interrupt_line(0).as_bytes()).and_then(|_| self.stdin.flush()).is_err() {
+                    kill_tree(&mut self.child);
+                }
+            }
+            if interrupted.is_some_and(|at| at.elapsed() > INTERRUPT_GRACE) {
+                kill_tree(&mut self.child);
+            }
+            // Mostly it gives it back at once: looked at often only at first.
+            std::thread::sleep(if waiting.elapsed() < STOP_POLL { Duration::from_millis(5) } else { STOP_POLL });
+        }
+        self.rx = idle.join().ok();
+        !stop.is_stopped()
+    }
+
+    /// Ended, or idle for too long.
+    fn done(&mut self) -> bool {
+        let busy = self.between.busy.load(Ordering::SeqCst) || self.between.tasks.load(Ordering::SeqCst) > 0;
+        !matches!(self.child.try_wait(), Ok(None)) || self.used.elapsed() > if busy { LIVE_BUSY } else { LIVE_IDLE }
+    }
+}
+
+/// Reads a chat's Claude Code between two turns. A turn it takes by itself is
+/// read like any other, and `own` gets it once its `result` comes; the lines
+/// it writes between turns (its background tasks starting and ending) are only
+/// noted. An empty line asks for the output back: given at once, or once the
+/// turn being read ends. The output closing gives it back too.
+fn watch(rx: mpsc::Receiver<Vec<u8>>, between: &Between, mut own: impl FnMut(Run)) -> mpsc::Receiver<Vec<u8>> {
+    let mut run = Run::default();
+    let mut wanted = false;
+    loop {
+        let Ok(line) = rx.recv() else { return rx };
+        if line.is_empty() {
+            if !run.began {
+                return rx;
+            }
+            wanted = true;
+            continue;
+        }
+        run.feed(&line);
+        if let Some(n) = run.tasks.take() {
+            between.tasks.store(n, Ordering::SeqCst);
+        }
+        between.busy.store(run.began, Ordering::SeqCst);
+        if run.result.is_some() {
+            let done = std::mem::take(&mut run);
+            between.busy.store(false, Ordering::SeqCst);
+            // A result with no turn before it (one left from an interrupt) says nothing new.
+            if done.began {
+                own(done);
+            }
+            if wanted {
+                return rx;
+            }
+        }
+    }
+}
+
 /// Every chat's Claude Code, by chat id, while it waits for a message.
 static LIVES: std::sync::Mutex<Option<std::collections::HashMap<String, Live>>> = std::sync::Mutex::new(None);
 /// Whether the thread that ends idle ones runs.
-static REAPING: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+static REAPING: AtomicBool = AtomicBool::new(false);
 
 fn lives<T>(f: impl FnOnce(&mut std::collections::HashMap<String, Live>) -> T) -> T {
     f(LIVES.lock().unwrap_or_else(|e| e.into_inner()).get_or_insert_with(Default::default))
@@ -1273,19 +1416,16 @@ fn interrupt_line(n: u64) -> String {
     format!("{}\n", json!({ "type": "control_request", "request_id": format!("lumo-interrupt-{n}"), "request": { "subtype": "interrupt" } }))
 }
 
-/// Ends the chats' Claude Codes idle for LIVE_IDLE, or ended already, once a
-/// minute while there is one; the thread goes when none is left.
+/// Ends the chats' Claude Codes idle for too long (`Live::done`), or ended
+/// already, once a minute while there is one; the thread goes when none is left.
 fn reap_idle() {
-    if REAPING.swap(true, std::sync::atomic::Ordering::SeqCst) {
+    if REAPING.swap(true, Ordering::SeqCst) {
         return;
     }
     std::thread::spawn(|| loop {
         std::thread::sleep(Duration::from_secs(60));
         let gone: Vec<Live> = lives(|all| {
-            let ids: Vec<String> = all
-                .iter_mut()
-                .filter_map(|(id, l)| (l.used.elapsed() > LIVE_IDLE || !matches!(l.child.try_wait(), Ok(None))).then(|| id.clone()))
-                .collect();
+            let ids: Vec<String> = all.iter_mut().filter_map(|(id, l)| l.done().then(|| id.clone())).collect();
             ids.iter().filter_map(|id| all.remove(id)).collect()
         });
         // Ended here, out of the lock (Drop ends each).
@@ -1293,7 +1433,7 @@ fn reap_idle() {
         let empty = lives(|all| {
             let empty = all.is_empty();
             if empty {
-                REAPING.store(false, std::sync::atomic::Ordering::SeqCst);
+                REAPING.store(false, Ordering::SeqCst);
             }
             empty
         });
@@ -1307,19 +1447,7 @@ fn reap_idle() {
 fn live_for(chat_id: &str, key: &str, session: Option<&str>, exe: &std::path::Path, args: &[String], dir: &std::path::Path) -> Result<Live, String> {
     if let Some(mut live) = lives(|all| all.remove(chat_id)) {
         let alive = matches!(live.child.try_wait(), Ok(None));
-        // Lines left from the turn before (after an interrupt) are not this turn's.
-        let mut open = true;
-        loop {
-            match live.rx.try_recv() {
-                Ok(_) => continue,
-                Err(mpsc::TryRecvError::Empty) => break,
-                Err(mpsc::TryRecvError::Disconnected) => {
-                    open = false;
-                    break;
-                }
-            }
-        }
-        if alive && open && live.key == key && live.session.as_deref() == session {
+        if alive && live.key == key && live.session.as_deref() == session {
             return Ok(live);
         }
         // Another model, mode or session: this one goes (Drop ends it).
@@ -1328,13 +1456,28 @@ fn live_for(chat_id: &str, key: &str, session: Option<&str>, exe: &std::path::Pa
     let mut child = spawn(exe, &live_args(args.to_vec()), dir, chat_id)?;
     let stdin = child.stdin.take().ok_or("no stdin")?;
     let stderr = read_stderr(&mut child);
-    let rx = read_lines(&mut child, usize::MAX)?;
-    Ok(Live { child, stdin, rx, stderr, key: key.to_string(), session: session.map(str::to_string), used: Instant::now() })
+    let (tx, rx) = mpsc::channel::<Vec<u8>>();
+    let feed: Feed = Arc::new(std::sync::Mutex::new(Some(tx)));
+    read_lines_to(&mut child, usize::MAX, feed.clone())?;
+    Ok(Live {
+        child,
+        stdin,
+        rx: Some(rx),
+        feed,
+        idle: None,
+        between: Arc::default(),
+        stderr,
+        key: key.to_string(),
+        session: session.map(str::to_string),
+        used: Instant::now(),
+    })
 }
 
 /// One turn of the chat `chat_id` through its own Claude Code (started, or
 /// started again, as needed), blocking. `session`: the chat's Claude Code
-/// session, resumed by `args` when a new process starts. As `run` otherwise.
+/// session, resumed by `args` when a new process starts. `own` gets each turn
+/// Claude Code takes by itself after this one, until the next message. As
+/// `run` otherwise.
 #[allow(clippy::too_many_arguments)]
 fn live_turn(
     exe: PathBuf,
@@ -1348,19 +1491,31 @@ fn live_turn(
     on_activity: impl FnMut(&Activity),
     on_file: impl FnMut(&FileTouch),
     on_plan: impl FnMut(&str, &Value),
+    own: impl FnMut(Run) + Send + 'static,
 ) -> Result<Run, String> {
     let key = live_key(&exe, &args);
     let mut live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
+    // Claude Code is answering by itself: the message goes once it is done.
+    if !live.take_output(&stop) {
+        // Stopped first: the message never went.
+        live.park(chat_id, own);
+        return Ok(Run { stopped: true, ..Run::default() });
+    }
+    if live.rx.is_none() {
+        drop(live);
+        live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
+    }
     if live.stdin.write_all(user_line(&input).as_bytes()).and_then(|_| live.stdin.flush()).is_err() {
         // It ended between two messages: once more, with a new one.
         drop(live);
         live = live_for(chat_id, &key, session.as_deref(), &exe, &args, &dir)?;
         live.stdin.write_all(user_line(&input).as_bytes()).and_then(|_| live.stdin.flush()).map_err(|e| e.to_string())?;
     }
+    let Some(rx) = live.rx.take() else { return Err("no stdout".into()) };
     let mut asked = 0u64;
     let stdin = &mut live.stdin;
     let (state, ended) = read_turn(
-        &live.rx,
+        &rx,
         &stop,
         || {
             asked += 1;
@@ -1371,15 +1526,16 @@ fn live_turn(
         on_file,
         on_plan,
     );
+    live.rx = Some(rx);
     match ended {
         Ended::Result => {
             if state.session.is_some() {
                 live.session = state.session.clone();
             }
-            live.used = Instant::now();
-            let old = lives(|all| all.insert(chat_id.to_string(), live));
-            drop(old);
-            reap_idle();
+            if let Some(n) = state.tasks {
+                live.between.tasks.store(n, Ordering::SeqCst);
+            }
+            live.park(chat_id, own);
             Ok(state)
         }
         // Not interrupted in time: ended, the run so far kept.
@@ -1394,6 +1550,34 @@ fn live_turn(
             Err(ended_without_answer(&stderr, status))
         }
     }
+}
+
+/// A turn Claude Code took by itself in the chat `chat_id`, between two
+/// messages (a command it left running in the background ended, an agent it
+/// started reported): its answer joins the chat's last one, here (chat.rs
+/// `add_own`) and on the island (the `chat-own-answer` event), which saves
+/// it and says so on the closed island. The files it used and its plan go
+/// as during a turn. Nothing when it wrote nothing.
+fn own_answer(app: &AppHandle, chat_id: &str, mut run: Run) {
+    let events = chat::ChatEvents::new(chat_id);
+    for file in run.take_files() {
+        events.file(app, &file);
+    }
+    for (tool, input) in run.take_plans() {
+        let _ = app.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
+    }
+    let text = match run.result.take() {
+        Some(Ok(text)) => chat::keep_lumo_lines(text, &run.said),
+        // Interrupted or failed: what it wrote before, if anything.
+        _ => run.visible.trim().to_string(),
+    };
+    if text.trim().is_empty() {
+        return;
+    }
+    if let Some(chat) = app.state::<Chats>().find(chat_id) {
+        chat.add_own(PROVIDER, run.session.as_deref(), &text);
+    }
+    let _ = app.emit_to(WINDOW_LABEL, "chat-own-answer", json!({ "chat": chat_id, "text": text, "session": run.session }));
 }
 
 /// Ends the chat's Claude Code, if one waits between two turns (the chat starts afresh).
@@ -1468,6 +1652,12 @@ pub async fn send(
     let chat_id = chat.id().to_string();
     let usage_chat = chat_id.clone();
     let resumed = session.clone();
+    // What Claude Code writes by itself after this turn, until the next message.
+    let own = {
+        let app = app.clone();
+        let chat_id = chat_id.clone();
+        move |run: Run| own_answer(&app, &chat_id, run)
+    };
     let state = tauri::async_runtime::spawn_blocking(move || {
         live_turn(
             exe,
@@ -1484,6 +1674,7 @@ pub async fn send(
             |tool, input| {
                 let _ = app3.emit_to(WINDOW_LABEL, "chat-plan", json!({ "tool": tool, "input": input }));
             },
+            own,
         )
     })
     .await
@@ -1720,6 +1911,65 @@ mod tests {
         let v: Value = serde_json::from_str(interrupt_line(3).trim_end()).unwrap();
         assert_eq!(v["request"]["subtype"], "interrupt");
         assert_eq!(v["type"], "control_request");
+    }
+
+    #[test]
+    fn a_turn_claude_code_takes_by_itself_between_two_messages_is_read_and_passed_on() {
+        // As Claude Code 2.1 writes it once a command it left in the background ends.
+        let ended = r#"{"type":"system","subtype":"task_notification","task_id":"b1","status":"completed"}"#;
+        let running = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[{"task_id":"b1","task_type":"local_bash"}]}"#;
+        let none = r#"{"type":"system","subtype":"background_tasks_changed","tasks":[]}"#;
+        let init = r#"{"type":"system","subtype":"init","slash_commands":[],"session_id":"0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"}"#;
+        let text = r#"{"type":"stream_event","parent_tool_use_id":null,"event":{"type":"content_block_delta","delta":{"type":"text_delta","text":"Done: 42 ms."}}}"#;
+        let result = r#"{"type":"result","subtype":"success","is_error":false,"result":"Done: 42 ms.","session_id":"0b5a8f2e-1c3d-4e5f-8a9b-0c1d2e3f4a5b"}"#;
+        let watching = |lines: &[&str], poke_after: Option<usize>| {
+            let (tx, rx) = mpsc::channel::<Vec<u8>>();
+            let between = Arc::new(Between::default());
+            let got = Arc::new(std::sync::Mutex::new(Vec::<Run>::new()));
+            let (b, g) = (between.clone(), got.clone());
+            let thread = std::thread::spawn(move || watch(rx, &b, move |run| g.lock().unwrap().push(run)));
+            for (i, l) in lines.iter().enumerate() {
+                if poke_after == Some(i) {
+                    tx.send(Vec::new()).unwrap();
+                }
+                tx.send(l.as_bytes().to_vec()).unwrap();
+            }
+            if poke_after == Some(lines.len()) {
+                tx.send(Vec::new()).unwrap();
+            }
+            (tx, thread, between, got)
+        };
+
+        // Nothing written by itself: the next message has the output at once,
+        // and what Claude Code said of its background tasks is kept.
+        let (tx, thread, between, got) = watching(&[running], Some(1));
+        let rx = thread.join().unwrap();
+        assert!(got.lock().unwrap().is_empty());
+        assert_eq!(between.tasks.load(Ordering::SeqCst), 1);
+        tx.send(b"next".to_vec()).unwrap();
+        assert_eq!(rx.try_recv().unwrap(), b"next", "the output comes back whole");
+
+        // The command ended: its turn is read, passed on whole, and the
+        // output comes back only once it is over.
+        let (_tx, thread, between, got) = watching(&[ended, none, init, text, result], Some(4));
+        let rx = thread.join().unwrap();
+        let runs = got.lock().unwrap();
+        assert_eq!(runs.len(), 1);
+        assert_eq!(runs[0].result, Some(Ok("Done: 42 ms.".to_string())));
+        assert_eq!(runs[0].session.as_deref(), Some(SID));
+        assert_eq!(between.tasks.load(Ordering::SeqCst), 0);
+        assert!(!between.busy.load(Ordering::SeqCst));
+        assert!(rx.try_recv().is_err(), "nothing of that turn is left for the next message");
+
+        // A result with no turn before it (left from an interrupt) says nothing.
+        let (_tx, thread, _, got) = watching(&[result], Some(1));
+        thread.join().unwrap();
+        assert!(got.lock().unwrap().is_empty());
+
+        // The CLI ended: the thread ends too.
+        let (tx, thread, _, _) = watching(&[init], None);
+        drop(tx);
+        thread.join().unwrap();
     }
 
     #[test]

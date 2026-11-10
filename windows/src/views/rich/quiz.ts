@@ -225,7 +225,7 @@ export function renderQuiz(quiz: Quiz, ctx: RichContext, key: string): HTMLEleme
   const card = h(
     "div",
     { class: "rc-card rc-quiz", tabindex: 0, role: "group", "aria-label": quiz.title || t(RICH_STRINGS.quiz) },
-    head("quiz", quiz.title, count),
+    head("quiz", quiz.title, ctx, count),
     deck,
     end,
     bar,

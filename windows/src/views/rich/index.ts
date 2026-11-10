@@ -92,7 +92,7 @@ export const RICH_STRINGS = {
 export function renderRich(block: RichBlock, ctx: RichContext): HTMLElement | null {
   const kind = block.type as RichKind;
   if (!RICH_KINDS.includes(kind)) return null;
-  if (block.open) return pending(kind, block.title);
+  if (block.open) return pending(kind, block.title, ctx);
   const key = keyOf(block, ctx);
   try {
     switch (kind) {
@@ -135,21 +135,31 @@ export function renderRich(block: RichBlock, ctx: RichContext): HTMLElement | nu
 }
 
 /** While the block is being written: its kind and title, and a line saying so. */
-function pending(kind: RichKind, title: string): HTMLElement {
+function pending(kind: RichKind, title: string, ctx: RichContext): HTMLElement {
   return h(
     "div",
     { class: "rc-card rc-pending" },
-    head(kind, title),
+    head(kind, title, ctx),
     h("div", { class: "rc-pending-line" }, h("i"), h("i"), h("i"), h("span", { text: t(RICH_STRINGS.writing) })),
   );
 }
 
 // ── Shared pieces ─────────────────────────────────────────────────────────────
 
-/** A card's top line: its kind as a small label, its title, then `right` (counters, buttons). */
-export function head(kind: RichKind, title: string, ...right: (Node | null | false | undefined)[]): HTMLElement {
+/**
+ * A card's top line: its kind as a small label, its title (its inline
+ * Markdown, **bold** or $math$, read through `ctx`), then `right` (counters,
+ * buttons).
+ */
+export function head(kind: RichKind, title: string, ctx: RichContext | null, ...right: (Node | null | false | undefined)[]): HTMLElement {
   const el = h("div", { class: "rc-head" }, h("span", { class: "rc-kind", text: t(RICH_STRINGS[kind]) }));
-  if (title) el.append(h("span", { class: "rc-title", text: title, title }));
+  if (title) {
+    const name = h("span", { class: "rc-title" });
+    if (ctx) ctx.inline(name, title);
+    else name.textContent = title;
+    name.setAttribute("title", name.textContent || title);
+    el.append(name);
+  }
   el.append(h("span", { class: "rc-sp" }));
   for (const r of right) if (r) el.append(r);
   return el;
