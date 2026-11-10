@@ -3948,7 +3948,7 @@ export function buildPrompt(
       if (body.classList.contains("browsing")) drawHistory();
     }
     Sound.play("finish");
-    noticeAway(COMPACT_TEXT.answered);
+    noticeAway(COMPACT_TEXT.answered, run ? runSpeaker(run) : chatSpeaker());
     State.notify();
   }
 

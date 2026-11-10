@@ -20,7 +20,6 @@
 - **Unsloth Studio ends with Lumo**: the server Lumo started stops with it even after a crash or the Task Manager, instead of keeping the graphics card's memory; with Stop after set to Never it still keeps running
 - **Fixed**: what Claude Code writes in the chat by itself, with no message of yours (when a command it left running in the background ends, or an agent it started reports), was lost: it now joins its last answer, is saved with the chat, and the closed island says it answered. Its process also stays, up to 3 hours, while such work runs, instead of ending it after 10 minutes
 - **Fixed**: a beta could take a pull request's newest commit before its checks had passed on it; it now waits for them
-- **Fixed**: picking another model while the chat answers renamed the answer on the closed island ("Haiku · Writes…", "Haiku answered" while Opus wrote it); the island now names the model, and its colour, the answer was asked of
 - **Fixed**: pressing Esc to stop Claude using the computer froze Lumo until Windows closed it; Claude now stops, and Esc is yours again at once
 - **Fixed**: editing a question in the chat drops the plan its answer made from the Plan island, so the new answer's plan starts on its own instead of adding its steps (and ticks) to the old one
 - **Fixed**: the seconds of "Starting Unsloth Studio…" in the chat's picker and in Settings go up one at a time, instead of two or three at once while Lumo waited for the server to answer
