@@ -1,8 +1,7 @@
 // Dev harness: the real island in a plain browser, with a Claude Code
-// session, a permission request, a chat and the tools, to compare the usual
-// look with the new one (Settings → Island → New look). `npm run dev`, then
-// open /dev/look-preview.html. `?view=approval&look=new` opens straight on a
-// view in a look. Not part of the app bundle.
+// session, a permission request, a chat and the tools. `npm run dev`, then
+// open /dev/look-preview.html. `?view=approval` opens straight on a view.
+// Not part of the app bundle.
 
 import "../src/style.css";
 import "../src/look-new.css";
@@ -31,7 +30,7 @@ const island = new Island(document.getElementById("root")!);
 (window as unknown as { State: typeof State }).State = State;
 (window as unknown as { Calendar: typeof Calendar }).Calendar = Calendar;
 await registerHookHandlers(island);
-State.settings = { ...State.settings, islandNewLook: params.get("look") === "new", soundEnabled: false, ...(lang ? { language: lang } : {}) } as typeof State.settings;
+State.settings = { ...State.settings, soundEnabled: false, ...(lang ? { language: lang } : {}) } as typeof State.settings;
 island.applySettings();
 State.loadIntegrationTasks();
 
@@ -198,22 +197,13 @@ const waitBtn = document.createElement("button");
 waitBtn.textContent = "Waiting";
 waitBtn.onclick = () => show("overview", true);
 bar.append(waitBtn);
-const lookBtn = document.createElement("button");
-lookBtn.onclick = () => {
-  State.settings = { ...State.settings, islandNewLook: !State.settings.islandNewLook };
-  island.applySettings();
-  State.notify();
-  sync();
-};
 const closeBtn = document.createElement("button");
 closeBtn.textContent = "Close";
 closeBtn.onclick = () => island.collapse();
-bar.append(lookBtn, closeBtn);
+bar.append(closeBtn);
 
 function sync() {
   for (const [view, b] of buttons) b.classList.toggle("on", State.view === view);
-  lookBtn.textContent = State.settings.islandNewLook ? "Look: new" : "Look: usual";
-  lookBtn.classList.toggle("on", State.settings.islandNewLook === true);
 }
 
 show((params.get("view") as IslandViewName | null) ?? "overview", params.has("wait") || params.get("view") === "approval");

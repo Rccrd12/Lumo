@@ -1,10 +1,9 @@
-// The new look's plan, in the chat (concepts/redesign, "piano-da-chiuso" 1).
+// The plan, in the chat (concepts/redesign, "piano-da-chiuso" 1).
 // Folded it takes no room of its own: the plan's icon beside the model turns
 // into a chip with a segment for each step, the done ones green, and how many
 // are done. A click on it opens the steps upwards over the chat; typing or a
 // click elsewhere folds them again, and their "–" puts the plan away into its
-// icon. The usual look keeps the Plan island beside the island
-// (island/plan.ts), so none of this shows there.
+// icon.
 
 import { planFinished, planProgress, type AgentPlan, type PlanStep } from "../core/agent-plan";
 import { N_, t, tl } from "../i18n/i18n";
@@ -14,8 +13,8 @@ import { ICONS } from "./icons";
 /** More steps than this and the segments become one bar that fills. */
 const MAX_SEGMENTS = 10;
 
-// The Plan island's own words (plan-view.ts PLAN_TEXT), which this cannot
-// import: that view brings its stylesheet, and the chat is tested without one.
+// The words the Plan island had (its panel is gone); its
+// stylesheet, views/plan.css, still draws the steps (island.ts imports it).
 const STRIP_TEXT = {
   title: N_("Plan"),
   done: N_("Done"),
@@ -26,7 +25,7 @@ const STRIP_TEXT = {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
-/** A step's marker, as the Plan island draws it (plan-view.ts): a ring, a lit ring, a check or a dash. */
+/** A step's marker, as the Plan island drew it: a ring, a lit ring, a check or a dash. */
 function planMarker(step: PlanStep): HTMLElement {
   const el = h("span", { class: `plan-mark ${step.status}` });
   if (step.status === "done") el.append(svg(ICONS.check, 10, { stroke: 2.6 }));

@@ -130,7 +130,9 @@ test("the chat and the tool workshop keep their own chats, files and all", () =>
   assert.equal(State.droppedFile.name, "a.txt");
   assert.ok(!isWorkshopChat(State.chatId));
 
-  // The Tools tab is where the island reopens after the Tools tab or the workshop.
+  // The Tools tab is where the island reopens after the Tools tab or the
+  // workshop (a file waiting in the chat would open the chat first).
+  State.droppedFile = null;
   State.noteTab("tools");
   assert.equal(State.defaultView(), "tools");
   State.useSlot("forge");
@@ -144,7 +146,6 @@ test("the chat and the tool workshop keep their own chats, files and all", () =>
   State.useSlot("chat");
   State.noteTab("prompt");
   assert.equal(State.lastTab, "chat");
-  State.droppedFile = null;
 });
 
 test("a tool's badge: reviewing, needing a review (none, or of an older version), or the supervisor's verdict", () => {

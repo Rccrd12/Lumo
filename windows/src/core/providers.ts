@@ -69,39 +69,65 @@ export function isCliProvider(id: string): boolean {
 
 /**
  * Whether the chat's shield is offered with `id`: the CLIs, and the model
- * servers, whose tools the modes hold too (local_chat.rs: Ask every time asks
- * even for a trusted tool, Auto runs the trusted ones, Plan only gives none).
+ * servers, whose tools the modes hold too (local_chat.rs: Ask for approval
+ * asks for every call of the user's tools and every web search or page read,
+ * Approve for me asks for a trusted tool only when it is risky, Run
+ * automatically never asks for a trusted tool that can run in the Windows
+ * sandbox and otherwise asks as Approve for me does, Plan only gives none; a
+ * tool on Ask every time always asks; see permissionModesFor).
  */
 export function hasPermissions(id: string): boolean {
   return isCliProvider(id) || PROVIDERS.some((p) => p.id === id && p.urlField !== null);
 }
 
 /**
- * What the chat's CLIs may do without asking (Settings.chatPermissionMode,
- * claude_code::permission_mode): ask for everything, let the AI decide what
- * is safe to do without asking (Claude Code's auto mode), or only plan. With
- * Antigravity CLI, Auto is Antigravity's own Turbo preset: everything runs
- * without asking (antigravity_cli.rs). Claude Code never gets a mode that
- * lets every action through.
+ * What the chat's CLIs and model servers may do without asking
+ * (Settings.chatPermissionMode, claude_code::permission_mode): ask for
+ * everything, let the AI decide what is safe to do without asking (Claude
+ * Code's auto mode), or only plan. With Antigravity CLI, Auto is Antigravity's
+ * own Turbo preset: everything runs without asking (antigravity_cli.rs).
+ * Claude Code never gets a mode that lets every action through. "off" is for
+ * the model servers only (local_chat.rs): it never asks for what can run in
+ * the Windows sandbox (Settings.localSandbox "high"), and otherwise asks as
+ * Auto does.
  */
-export const PERMISSION_MODES = ["default", "auto", "plan"] as const;
+export const PERMISSION_MODES = ["default", "auto", "off", "plan"] as const;
 export type PermissionMode = (typeof PERMISSION_MODES)[number];
 
-/** The modes the chat offers with `provider`: the same three with every CLI. */
-export function permissionModesFor(_provider: string): PermissionMode[] {
-  return [...PERMISSION_MODES];
+/**
+ * The modes the chat offers with `provider`: the same three with every CLI,
+ * and with a model server Run automatically ("off") too.
+ */
+export function permissionModesFor(provider: string): PermissionMode[] {
+  const local = PROVIDERS.some((p) => p.id === provider && p.urlField !== null);
+  return local ? [...PERMISSION_MODES] : ["default", "auto", "plan"];
 }
 
 /**
  * The mode `v` is with `provider`. "acceptEdits", picked before Auto took its
  * place, reads as Auto; so does "turbo", picked before Auto took its place with
- * Antigravity CLI, which with any other provider asks every time.
+ * Antigravity CLI, which with any other provider asks every time. A mode the
+ * provider does not offer ("off" with a CLI) asks every time.
  */
 export function parsePermissionMode(v: unknown, provider: string): PermissionMode {
   if (v === "acceptEdits") return "auto";
   if (v === "turbo") return provider === "antigravity-cli" ? "auto" : "default";
   const mode = PERMISSION_MODES.includes(v as PermissionMode) ? (v as PermissionMode) : "default";
   return permissionModesFor(provider).includes(mode) ? mode : "default";
+}
+
+/**
+ * How far a model server's tools are kept from the computer
+ * (Settings.localSandbox, local_chat.rs): "low" is only Lumo's own guards
+ * (tools.rs: Python's audit hook, Node's permission flags, no network
+ * without a proxy), "high" runs them in a Windows AppContainer as well.
+ */
+export const SANDBOX_LEVELS = ["low", "high"] as const;
+export type SandboxLevel = (typeof SANDBOX_LEVELS)[number];
+
+/** The level `v` is: anything but "low" is "high". */
+export function parseSandboxLevel(v: unknown): SandboxLevel {
+  return v === "low" ? "low" : "high";
 }
 
 /**

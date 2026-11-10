@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, copyFileSync, createR
 import { resolve, join, extname } from "node:path";
 
 // ───────────────────────────────────────────────────────────────────────────────
-// THE one and only place the sound folder is declared: the 23 WAVs in
+// THE one and only place the sound folder is declared: the 22 WAVs in
 // windows/assets/sounds/.
 export const SOUNDS_DIR = resolve(__dirname, "assets/sounds");
 // ───────────────────────────────────────────────────────────────────────────────
@@ -89,8 +89,6 @@ export default defineConfig({
       input: {
         island: resolve(__dirname, "index.html"),
         settings: resolve(__dirname, "settings.html"),
-        activities: resolve(__dirname, "activities.html"),
-        plan: resolve(__dirname, "plan.html"),
         computer: resolve(__dirname, "computer.html"),
       },
     },

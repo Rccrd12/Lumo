@@ -1,9 +1,8 @@
 // The upload canvas.
 //
 // While the sequence engine is active this canvas draws the whole island body:
-// card, dashed drop frame, drop text, progress bar, Lumo and the file being
-// sucked in. The island's own Lumo is hidden for the duration, because this
-// canvas draws its own.
+// card, dashed drop frame, drop text, progress bar and the file going up into
+// Lumo's eyes. The island draws Lumo himself, in the top bar.
 
 import { lerp } from "../core/anim";
 import { NEW_LOOK_BOT } from "../core/layout";
@@ -12,13 +11,8 @@ import { State } from "../core/state";
 import { SCRIPT_FONTS } from "../core/fonts";
 import { N_, isRtl, t } from "../i18n/i18n";
 import {
-  LUMO_BOTTOM, LUMO_EXP, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, type LumoPose, type RGB,
-} from "../character/lumo";
-import { drawLookDropping, isRoundLook } from "../character/looks";
-import { parseLook } from "../character/wardrobe";
-import {
-  USC, eIn, eInOut, eOut, progressAt,
-  type UploadEyeShape, type UploadFrame,
+  USC, eIn, eInOut, progressAt,
+  type UploadFrame,
 } from "./sequence";
 
 const FONT = `system-ui, "Segoe UI Variable Text", "Segoe UI", ${SCRIPT_FONTS}, sans-serif`;
@@ -38,28 +32,6 @@ function rr(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: n
   const rad = Math.max(0, Math.min(r, w / 2, h / 2));
   ctx.beginPath();
   ctx.roundRect(x, y, w, h, rad);
-}
-
-const css = (c: RGB) => `rgb(${Math.round(c[0] * 255)},${Math.round(c[1] * 255)},${Math.round(c[2] * 255)})`;
-
-/** Superellipse body — port of usBodyPath(m, R). */
-function bodyPath(ctx: CanvasRenderingContext2D, m: number, R: number): { rx: number; ry: number } {
-  const mc = Math.max(0, Math.min(m, 1));
-  const n = LUMO_EXP + (5.5 - LUMO_EXP) * mc;
-  const rx = R * (LUMO_RX + (1.0 - LUMO_RX) * mc);
-  const ry = R * (LUMO_RY + (0.94 - LUMO_RY) * mc);
-  ctx.beginPath();
-  for (let i = 0; i <= 96; i++) {
-    const a = (i / 96) * Math.PI * 2;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    const px = rx * Math.sign(ca) * Math.pow(Math.abs(ca), 2 / n);
-    const py = ry * Math.sign(sa) * Math.pow(Math.abs(sa), 2 / n);
-    if (i === 0) ctx.moveTo(px, py);
-    else ctx.lineTo(px, py);
-  }
-  ctx.closePath();
-  return { rx, ry };
 }
 
 function text(
@@ -272,14 +244,9 @@ export class UploadCanvas {
     if (f.zoneAlpha > 0 && f.textAlpha > 0) this.drawDropText(ctx, f);
     if (f.barAlpha > 0 || f.barReveal > 0) this.drawProgressBar(ctx, f);
 
-    // The new look: Lumo stays in the top bar, two eyes, and the file goes up
-    // into them; the island draws him (island.ts), this canvas does not.
-    if (State.settings.islandNewLook === true) {
-      if (f.fileVisible) this.drawFileToEyes(ctx, f);
-    } else {
-      this.drawLumo(ctx, f);
-      if (f.fileVisible) this.drawFile(ctx, f);
-    }
+    // Lumo stays in the top bar, two eyes, and the file goes up into them;
+    // the island draws him (island.ts), this canvas does not.
+    if (f.fileVisible) this.drawFileToEyes(ctx, f);
     ctx.restore();
   }
 
@@ -434,118 +401,10 @@ export class UploadCanvas {
     });
   }
 
-  // ── Lumo ──────────────────────────────────────────────────────────────────
-
-  private drawLumo(ctx: CanvasRenderingContext2D, f: UploadFrame) {
-    const look = State.lookPreview ?? parseLook(State.settings.lumoCharacter);
-    if (isRoundLook(look)) {
-      drawLookDropping(ctx, look, f);
-      return;
-    }
-    const R = f.d / 2 / 1.04;
-    const mc = Math.max(0, Math.min(f.morph, 1));
-
-    ctx.save();
-    ctx.translate(f.x, f.y + f.hop);
-    ctx.rotate(f.tilt);
-    ctx.scale(f.sx, f.sy);
-
-    // Lumo's wings and light, fading as he turns into a box.
-    const lumo: LumoPose = {
-      R,
-      rx: R * (LUMO_RX + (1.0 - LUMO_RX) * mc),
-      ry: R * (LUMO_RY + (0.94 - LUMO_RY) * mc),
-      t: f.t,
-      glow: LUMO_GLOW,
-      shine: 0.6,
-      flap: 0.6,
-      lagX: 0,
-      lagY: 0,
-      presence: 1 - Math.min(1, mc * 1.6),
-    };
-    drawLumoBehind(ctx, lumo);
-
-    const { rx, ry } = bodyPath(ctx, f.morph, R);
-
-    // Body.
-    const bg = ctx.createLinearGradient(rx * 0.7, -ry * 0.9, -rx * 0.8, ry * 0.9);
-    bg.addColorStop(0, css(LUMO_TOP));
-    bg.addColorStop(1, css(LUMO_BOTTOM));
-    ctx.fillStyle = bg;
-    ctx.fill();
-
-    // Edge shadow.
-    const sg = ctx.createRadialGradient(0, 0, R * 0.2, 0, 0, R * 1.3);
-    sg.addColorStop(0, "rgba(0,0,0,0)");
-    sg.addColorStop(0.62, "rgba(0,0,0,0)");
-    sg.addColorStop(1, "rgba(0,0,0,0.12)");
-    ctx.fillStyle = sg;
-    ctx.fill();
-
-    // The body path is reused as a clip for everything drawn inside it.
-    ctx.save();
-    bodyPath(ctx, f.morph, R);
-    ctx.clip();
-
-    // Top rim, once Lumo is box-shaped enough to have one.
-    if (mc > 0.3) {
-      const a = Math.max(0, Math.min(1, (mc - 0.3) / 0.7));
-      ctx.beginPath();
-      ctx.moveTo(-rx * 0.72, -ry + 0.9);
-      ctx.lineTo(rx * 0.72, -ry + 0.9);
-      ctx.strokeStyle = `rgba(255,255,255,${0.6 * a})`;
-      ctx.lineWidth = 1.2;
-      ctx.lineCap = "round";
-      ctx.stroke();
-    }
-
-    // Mouth hole.
-    const mh = f.mouth * R * mc;
-    if (mh > 0.3) {
-      const mw = 2 * rx - 0.24 * R;
-      const mx = -mw / 2;
-      const my = -ry + 0.1 * R;
-      const g = ctx.createLinearGradient(0, my, 0, my + mh);
-      g.addColorStop(0, "#030304");
-      g.addColorStop(1, "#101114");
-      ctx.fillStyle = g;
-      rr(ctx, mx, my, mw, mh, Math.min(mw / 2, mh / 2));
-      ctx.fill();
-      if (mh > 4) {
-        const r = Math.min(mw / 2, mh / 2);
-        ctx.beginPath();
-        ctx.moveTo(mx + r, my + mh + 0.5);
-        ctx.lineTo(mx + mw - r, my + mh + 0.5);
-        ctx.strokeStyle = "rgba(255,255,255,0.55)";
-        ctx.lineWidth = 1;
-        ctx.lineCap = "round";
-        ctx.stroke();
-      }
-    }
-
-    // Eyes.
-    const ew = R * 0.3;
-    const eh = R * (0.34 + 0.12 * mc);
-    const ey = R * (0.02 + 0.28 * mc);
-    const sp = R * 0.3;
-    const lx = f.lookX * R * (0.34 - 0.08 * mc);
-    const ly = f.lookY * R * (0.16 - 0.09 * mc);
-    for (const sd of [-1, 1]) {
-      ctx.save();
-      ctx.translate(sd * sp + lx, ey + ly);
-      drawEye(ctx, f.eye, ew, eh);
-      ctx.restore();
-    }
-
-    ctx.restore(); // body clip
-    drawLumoFront(ctx, lumo);
-    ctx.restore(); // transform
-  }
-
   // ── The file, and the suction ─────────────────────────────────────────────
 
   /**
-   * The new look's file: under the cursor until the drop, then drawn up to
+   * The file: under the cursor until the drop, then drawn up to
    * Lumo's eyes in the middle of the top bar (layout.ts NEW_LOOK_BOT),
    * smaller and fainter on the way, as if he breathed it in.
    */
@@ -574,120 +433,6 @@ export class UploadCanvas {
     ctx.translate(-x, -y);
     drawDoc(ctx, x, y, sc, sc);
     ctx.restore();
-  }
-
-  private drawFile(ctx: CanvasRenderingContext2D, f: UploadFrame) {
-    const cx = f.cursorX;
-    const cy = f.cursorY + 14;
-
-    if (f.suck <= 0) {
-      ctx.save();
-      ctx.globalAlpha = 0.92;
-      drawDoc(ctx, cx, cy, 1, 1);
-      ctx.restore();
-      return;
-    }
-
-    const m = f.mouthRect;
-    const W0 = 34;
-    const H0 = 42;
-    const p = eIn(f.suck);
-    // Lumo waits in his corner, so the file is usually beside him or below
-    // his mouth: it rises first, over him, then drops in from above.
-    const lift = Math.min(36, Math.max(0, cy - m.y) * 0.6);
-    const topY = lerp(cy - H0 / 2, m.y - 2, eOut(f.suck)) - lift * Math.sin(Math.PI * f.suck);
-    const hs = lerp(1.08, 0.55, eInOut(f.suck));
-    const Hh = H0 * hs;
-    const sc = lerp(1, 0.55, p);
-    const q = eOut(f.suck);
-    const fCx = lerp(cx, m.x + m.w / 2, eInOut(f.suck));
-    const wob = Math.sin(f.suck * Math.PI * 2) * 0.1 * (1 - p);
-    const clipY = m.y + m.h * 0.5;
-
-    // The sheet is drawn as 28 horizontal strips, each narrowed towards the
-    // mouth, so the page appears to funnel in. What goes below the mouth line
-    // right over the mouth is clipped away — that is what makes it look
-    // swallowed — and only there, so the file is whole on its way to him.
-    ctx.save();
-    ctx.beginPath();
-    const far = Math.max(this.stage.w, this.stage.h) / this.stage.s;
-    ctx.rect(-far, -far, 3 * far, 3 * far);
-    ctx.rect(m.x - 2, clipY, m.w + 4, far);
-    ctx.clip("evenodd");
-
-    for (let i = 0; i < 28; i++) {
-      const v0 = i / 28;
-      const wsc = lerp(1, lerp(0.92, (0.22 * m.w) / W0, Math.pow(v0, 1.2)), q) * sc;
-      const yy = topY + v0 * Hh;
-      const hh = Hh / 28 + 0.6;
-
-      ctx.save();
-      ctx.translate(fCx, yy);
-      ctx.rotate(wob);
-      ctx.beginPath();
-      ctx.rect((-W0 * wsc) / 2, 0, W0 * wsc, hh);
-      ctx.clip();
-      ctx.translate(-fCx, -yy);
-      drawDoc(ctx, fCx, topY + Hh / 2, wsc, hs);
-      ctx.restore();
-    }
-    ctx.restore();
-
-    // Green crumbs pulled in with the file.
-    for (let i = 0; i < 4; i++) {
-      const a = (i / 4) * Math.PI * 2 + 0.6;
-      const k = Math.max(0, Math.min(1, (f.suck - i * 0.08) / 0.7));
-      if (k <= 0 || k >= 1) continue;
-      const sx0 = cx + Math.cos(a) * 24;
-      const sy0 = cy + Math.sin(a) * 24;
-      const ex = m.x + m.w / 2;
-      const ey = m.y + m.h * 0.3;
-      const kk = Math.pow(k, 0.7);
-      const px = lerp(sx0, ex, kk);
-      const py = lerp(sy0, ey, kk) - Math.sin(Math.PI * k) * 6;
-      const rad = 2.2 * (1 - k * 0.5);
-      ctx.beginPath();
-      ctx.arc(px, py, rad, 0, Math.PI * 2);
-      ctx.fillStyle = `rgba(52,212,153,${1 - k})`;
-      ctx.fill();
-    }
-  }
-}
-
-// ── Eye shapes ──────────────────────────────────────────────────────────────
-
-const INK = "#0E0F12";
-
-function drawEye(ctx: CanvasRenderingContext2D, shape: UploadEyeShape, w: number, h: number) {
-  switch (shape) {
-    case "pill":
-      ctx.fillStyle = INK;
-      rr(ctx, -w / 2, -h / 2, w, h, w / 2);
-      ctx.fill();
-      break;
-
-    case "cup": {
-      // Flat top, semicircular bottom.
-      const hh = h * 0.55;
-      ctx.beginPath();
-      ctx.moveTo(-w / 2, -hh / 2);
-      ctx.lineTo(w / 2, -hh / 2);
-      ctx.lineTo(w / 2, hh / 2 - w / 2);
-      ctx.arc(0, hh / 2 - w / 2, w / 2, 0, Math.PI, false);
-      ctx.closePath();
-      ctx.fillStyle = INK;
-      ctx.fill();
-      break;
-    }
-
-    case "content":
-      ctx.beginPath();
-      ctx.arc(0, -h * 0.12, w * 0.85, Math.PI * 0.15, Math.PI * 0.85, false);
-      ctx.strokeStyle = INK;
-      ctx.lineWidth = w * 0.5;
-      ctx.lineCap = "round";
-      ctx.stroke();
-      break;
   }
 }
 

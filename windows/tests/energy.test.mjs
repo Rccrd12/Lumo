@@ -59,7 +59,6 @@ test("dozing still, Lumo eases into his sleep and asks for no more frames", (t) 
   t.after(() => Object.defineProperty(performance, "now", { value: realNow, configurable: true, writable: true }));
 
   const e = new BotEngine();
-  e.look = "punto";
   e.ambient = 1;
   e.setState("sleeping");
   step(e, 3);
@@ -72,7 +71,6 @@ test("dozing still, Lumo eases into his sleep and asks for no more frames", (t) 
 
   // At rest with the mouse still, awake: his idle hover stops too.
   const a = new BotEngine();
-  a.look = "punto";
   a.ambient = 1;
   a.setState("idle");
   step(a, 3);

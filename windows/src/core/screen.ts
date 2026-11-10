@@ -1,22 +1,18 @@
 // The chat's screen button — the island's side of screen.rs. Pure helpers, so
-// they can be tested without a webview: the menu's entries, what is waiting to
-// go with the next question, and the payload chat_send takes.
+// they can be tested without a webview: the Share menu's picks, what is
+// waiting to go with the next question, and the payload chat_send takes.
 //
-// Nothing is captured until the user clicks an entry; a screenshot is shown
+// Nothing is captured until the user clicks a tile; a screenshot is shown
 // first and only joins the chat on "Send". What was added goes with one
 // question, then the chat forgets it.
 //
-// "Open windows" and "Browser tabs" (Edge, Chrome) open a second list: one
-// window or tab, or all of them. Each goes with what it shows — a window's
-// text, a tab's page (share.rs) — and a single window also with a picture of
-// it, for the providers that see images. "Browser tabs" shows only when a
-// browser has tabs open.
-//
-// "Folder open in File Explorer" shares that folder's listing (explorer.rs);
-// the menu only asks its name, and shows it only when a folder is open. A file the question names is then attached
-// from it, as with the paperclip (views/chat.ts). With several folders open
-// (windows or tabs), "Folders open in File Explorer" opens a second list: one
-// folder, or all of them.
+// The menu (views/share-panel.ts) has a pill for each kind: the open windows,
+// the browser tabs (Edge, Chrome), the screens and the folders open in File
+// Explorer, each with a tile for one or all of them. Each goes with what it
+// shows — a window's text, a tab's page (share.rs) — and a single window also
+// with a picture of it, for the providers that see images. A folder shares
+// its listing (explorer.rs); a file the question names is then attached from
+// it, as with the paperclip (views/chat.ts).
 //
 // "Always share the folder open in File Explorer" (off by default) does the
 // same for every message, with every folder open: their names show in the
@@ -30,7 +26,7 @@
 // × and its own preview.
 
 import type {
-  BrowserTab, DroppedFile, ExplorerFolder, OpenWindow, ScreenContext, ScreenDisplay, ScreenShot, SelectedText,
+  BrowserTab, DroppedFile, ExplorerFolder, OpenWindow, ScreenContext, ScreenShot, SelectedText,
   SharedWindow,
 } from "./bridge";
 import { localCapsOf, type ProviderDef } from "./providers";
@@ -40,11 +36,8 @@ import { N_, t } from "../i18n/i18n";
 export const SCREEN_STRINGS = {
   button: N_("Share your screen or open windows"),
   title: N_("Share with the chat"),
-  windows: N_("Open windows"),
   allWindows: N_("All windows"),
-  tabs: N_("Browser tabs"),
   allTabs: N_("All tabs"),
-  back: N_("Back"),
   reading: N_("Reading what it shows…"),
   noWindows: N_("No window is open."),
   minimized: N_("minimized"),
@@ -58,8 +51,6 @@ export const SCREEN_STRINGS = {
   remove: N_("Remove"),
   selected: N_("Selected text"),
   selectedIn: N_("Text from {app}"),
-  explorer: N_("Folder open in File Explorer"),
-  explorers: N_("Folders open in File Explorer"),
   allFolders: N_("All folders"),
   noExplorer: N_("No folder is open in File Explorer."),
 };
@@ -103,31 +94,7 @@ export interface ExplorerPeek {
   problem: string;
 }
 
-export type MenuEntry =
-  | { kind: "windows" }
-  | { kind: "tabs"; count: number }
-  | { kind: "display"; index: number; width: number; height: number }
-  | { kind: "all" }
-  | { kind: "explorer"; folder: ExplorerFolder }
-  | { kind: "explorers"; folders: ExplorerFolder[] };
-
-/**
- * "Open windows", "Browser tabs" when a browser has some open, one entry per
- * display, "All screens" when there are several, then the folder open in File
- * Explorer — only when one is; the folders, when there are several.
- */
-export function menuEntries(displays: ScreenDisplay[], explorer?: ExplorerPeek, tabs?: BrowserTab[]): MenuEntry[] {
-  const out: MenuEntry[] = [{ kind: "windows" }];
-  if (tabs && tabs.length > 0) out.push({ kind: "tabs", count: tabs.length });
-  for (const d of displays) out.push({ kind: "display", index: d.index, width: d.width, height: d.height });
-  if (displays.length > 1) out.push({ kind: "all" });
-  const folders = explorer && !explorer.problem ? explorer.folders : [];
-  if (folders.length === 1) out.push({ kind: "explorer", folder: folders[0] });
-  else if (folders.length > 1) out.push({ kind: "explorers", folders });
-  return out;
-}
-
-/** One row of the second list: everything, or one window or tab. */
+/** One tile of the Share menu: everything, or one window, tab or folder. */
 export interface PickEntry {
   /** null: all of them. */
   id: number | string | null;
@@ -208,23 +175,6 @@ export function withTabs(list: BrowserTab[], next: BrowserTab[]): BrowserTab[] {
 /** "Screen 1", "Screen 2"… for the display at `index` (from 0). */
 export function screenLabel(index: number): string {
   return t(SCREEN_STRINGS.screen, { number: index + 1 });
-}
-
-export function entryLabel(entry: MenuEntry): string {
-  switch (entry.kind) {
-    case "windows":
-      return t(SCREEN_STRINGS.windows);
-    case "tabs":
-      return t(SCREEN_STRINGS.tabs);
-    case "display":
-      return screenLabel(entry.index);
-    case "all":
-      return t(SCREEN_STRINGS.allScreens);
-    case "explorer":
-      return t(SCREEN_STRINGS.explorer);
-    case "explorers":
-      return t(SCREEN_STRINGS.explorers);
-  }
 }
 
 /**

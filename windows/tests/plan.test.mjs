@@ -91,10 +91,11 @@ test("the dominant percentage is the higher window", () => {
 test("colours: grey, then green below 50, orange below 80, red", () => {
   assert.equal(planColor(null), "#6B7079");
   assert.equal(planColor(0), "#22C55E");
-  assert.equal(planColor(49), "#22C55E");
-  assert.equal(planColor(50), "#F59E0B");
-  assert.equal(planColor(79), "#F59E0B");
-  assert.equal(planColor(80), "#F4505E");
+  assert.equal(planColor(50), "#22C55E");
+  assert.equal(planColor(74), "#22C55E");
+  assert.equal(planColor(75), "#F59E0B");
+  assert.equal(planColor(89), "#F59E0B");
+  assert.equal(planColor(90), "#F4505E");
   assert.equal(planColor(100), "#F4505E");
 });
 
@@ -322,7 +323,7 @@ test("an open card follows its pill, and Lumo wears that plan's colour", () => {
   assert.equal(planCardOpen(), false);
   State.settings.showCodexPlanInNotch = true;
   assert.equal(planCardOpen(), true);
-  State.codexPlanUsage = { sevenDay: win(85, Date.now() / 1000 + 3600), updatedAt: Date.now() };
+  State.codexPlanUsage = { sevenDay: win(95, Date.now() / 1000 + 3600), updatedAt: Date.now() };
   assert.equal(openPlanColor(), "#F4505E");
   // The same for Antigravity CLI.
   State.planDetail = "antigravity";
@@ -330,7 +331,7 @@ test("an open card follows its pill, and Lumo wears that plan's colour", () => {
   State.settings.showAntigravityPlanInNotch = true;
   assert.equal(planCardOpen(), true);
   State.antigravityPlanUsage = parseAntigravityPlan({ groups: [{ name: "Gemini Models", buckets: [
-    { id: "gemini-weekly", window: "weekly", remainingFraction: 0.4, resetsAt: Date.now() / 1000 + 3600 },
+    { id: "gemini-weekly", window: "weekly", remainingFraction: 0.2, resetsAt: Date.now() / 1000 + 3600 },
   ] }] });
   assert.equal(openPlanColor(), "#F59E0B");
 });

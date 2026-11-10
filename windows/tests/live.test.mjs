@@ -371,7 +371,7 @@ test("Lumo speaks, thinks and works with the call; a waiting card shows over it"
   assert.equal(State.defaultView(), "live");
   State.liveActive = false;
   State.liveState = null;
-  assert.equal(State.defaultView(), "prompt");
+  assert.equal(State.defaultView(), "home");
 });
 
 test("the call view has the chat's room", () => {

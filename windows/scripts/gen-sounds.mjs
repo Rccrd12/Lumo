@@ -1,4 +1,4 @@
-// Synthesises Lumo's 23 sounds from code and writes them to assets/sounds/.
+// Synthesises Lumo's 22 sounds from code and writes them to assets/sounds/.
 // No dependencies, no samples: every sound is built here out of oscillators,
 // FM, Karplus-Strong plucks and filtered noise, with envelopes, an echo and a
 // small reverb written by hand. The noise comes from a seeded PRNG, so running
@@ -522,36 +522,7 @@ const SOUNDS = {
     reverb(tr, { mix: 0.2, size: 0.8 });
   }],
 
-  // The launch greeting. Lined up with the animation in src/character/greeting.ts:
-  // the light flies in (0–0.32), blooms into Lumo (0.32–0.6), "lu-mo" while he
-  // smiles (0.62, 0.78), a blink 0.95, the badge pops 1.0, the blue glow from
-  // 0.95 to 1.3, then a short ring-out.
-  greeting: [1.7, -6, (tr) => {
-    // The light zipping in: an airy whoosh and sparkles stepping up.
-    whoosh(tr, 0, 0.34, 900, 3200, 0.14, 0.2);
-    ["C6", "E6", "G6", "C7", "E7"].forEach((n, i) => chime(tr, 0.02 + i * 0.055, hz(n), 0.08 + i * 0.03, 0.05));
-    // Bloom: a soft swell and a bright bell.
-    for (const n of ["C5", "G5"]) tone(tr, { at: 0.32, len: 0.45, freq: hz(n), amp: 0.22, attack: 0.04, decay: 0.25 });
-    bubble(tr, 0.33, 300, 900, 0.06, 0.5, 0.05);
-    bell(tr, 0.36, hz("C7"), 0.5, 0.25);
-    // "Lu-mo": two bright notes, rising a fourth.
-    fmPluck(tr, 0.62, hz("G6"), 0.55, 0.14);
-    bell(tr, 0.62, hz("G6"), 0.9, 0.22);
-    fmPluck(tr, 0.78, hz("C7"), 0.5, 0.16);
-    bell(tr, 0.78, hz("C7"), 0.85, 0.28, { vib: 0.004, vibRate: 5, vibDelay: 0.08 });
-    // Blink.
-    tone(tr, { at: 0.95, len: 0.06, freq: hz("G6"), partials: MALLET, amp: 0.12, attack: 0.002, decay: 0.015 });
-    // Badge pops in.
-    bubble(tr, 1.0, 300, 950, 0.035, 0.55, 0.03);
-    chime(tr, 1.02, hz("C7"), 0.2, 0.06);
-    // Blue glow: a warm chord swelling in, bells on top.
-    for (const n of ["C5", "E5", "G5", "C6"]) tone(tr, { at: 0.95, freq: hz(n), amp: 0.09, env: swell(0.6, 0.3) });
-    bell(tr, 1.1, hz("E6"), 0.45, 0.3);
-    bell(tr, 1.14, hz("G6"), 0.4, 0.3);
-    reverb(tr, { mix: 0.22, size: 0.9 });
-  }],
-
-  // The new look's opening, the same voice lined up with its own animation
+  // The launch greeting, lined up with its animation
   // (greeting.ts lightGreetFrame): the spark (0–0.22), the line stretching
   // (0.18–0.5), the island unrolling (0.44–0.86), "lu-mo" as the eyes open
   // (0.74, 0.88), the smile 0.96, then a short ring-out.

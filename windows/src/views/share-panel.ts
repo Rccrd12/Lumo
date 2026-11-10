@@ -1,8 +1,7 @@
-// The chat's Share menu in the new look (concepts/redesign, Share A): the
-// kinds of things to share as pills with how many there are, the things of
-// the kind picked as tiles, and Send to the chat. Nothing is captured or read
-// until Send: a tile is only its icon and its name. The usual look keeps its
-// menu and second lists (views/chat.ts drawScreenEntries).
+// The chat's Share menu (concepts/redesign, Share A): the kinds of things to
+// share as pills with how many there are, the things of the kind picked as
+// tiles, and Send to the chat. Nothing is captured or read until Send: a tile
+// is only its icon and its name.
 
 import { clear, h, svg } from "./dom";
 import { ICONS } from "./icons";

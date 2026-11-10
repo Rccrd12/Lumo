@@ -122,29 +122,8 @@ body {
   cursor: grab;
 }
 
-/* The Agents tab's dot: blue while a session works, orange while one waits on you. */
 .tab {
   position: relative;
-}
-
-.tab-badge {
-  position: absolute;
-  top: 2px;
-  right: 4px;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  display: none;
-}
-
-.tab-badge.working {
-  display: block;
-  background: #60a5fa;
-}
-
-.tab-badge.waiting {
-  display: block;
-  background: #f5a524;
 }
 
 /* A new chat: a question and three ways to start. */
@@ -288,8 +267,7 @@ body {
   opacity: 0.9;
 }
 
-#bot-canvas,
-#greeting-canvas {
+#bot-canvas {
   position: absolute;
   pointer-events: none;
 }
@@ -647,40 +625,7 @@ body {
   color: var(--ink);
 }
 
-/* ── The live activities beside the open island (island/activities.ts; the
-   panel's own look is in views/activities.css) ── */
-
-#activities {
-  position: absolute;
-  top: 10px;
-  left: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#activities.shown {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* The Plan island beside the open island (island/plan.ts; its own look is
-   in views/plan.css), as the live activities. */
-
-#plan {
-  position: absolute;
-  top: 10px;
-  left: 0;
-  opacity: 0;
-  pointer-events: none;
-}
-
-#plan.shown {
-  opacity: 1;
-  pointer-events: auto;
-}
-
-/* The folded live activities' icon, landing in the top bar. */
-.tab-activities.pop,
+/* The plan's icon, landing in the chat. */
 .plan-btn.pop {
   animation: tab-pop 0.36s cubic-bezier(0.3, 1.6, 0.5, 1);
 }
@@ -778,10 +723,6 @@ body {
 
 .header-actions button.on {
   color: var(--ink);
-}
-
-.header-actions .quit-btn:hover {
-  color: #f4505e;
 }
 
 #views {
@@ -1764,8 +1705,10 @@ input[type="range"]::-webkit-slider-thumb {
   display: flex;
 }
 
+/* A question, its actions under it, on the right. */
 .chat-row.user {
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-end;
   padding-left: 32px;
 }
 
@@ -3542,6 +3485,58 @@ math.mx .mx-cancel.mx-sout {
   color: #5c6370;
 }
 
+/* A local model's permissions: the sandbox's chip beside the title, and the
+   way back from its levels. */
+.perm-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 22px;
+}
+
+.sandbox-chip {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px 0 10px;
+  border: 0;
+  border-radius: 11px;
+  background: rgba(255, 255, 255, 0.07);
+  color: #d6d9df;
+  font: 600 11px var(--font);
+  cursor: default;
+}
+
+.sandbox-chip:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.sandbox-chip svg,
+.perm-back svg {
+  opacity: 0.6;
+}
+
+.perm-back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: default;
+}
+
+.perm-back:hover {
+  color: #c8cdd4;
+}
+
 /* The commands' menu: "/" first in the field (views/chat.ts, core/slash.ts).
    Over the log, just above the field, in the right-click menu's dark card. */
 .slash-menu {
@@ -3979,51 +3974,64 @@ textarea.chat-input {
   background: rgba(255, 255, 255, 0.16);
 }
 
-/* ── Copy and Edit on a message, under the mouse (views/chat.ts) ─────────── */
-
-.chat-row.user.with-actions {
-  padding-left: 0;
-}
+/* ── Copy, Retry, Edit and when, on a line under a message (views/chat.ts) ── */
 
 .msg-actions {
   flex: 0 0 auto;
   display: flex;
   align-items: center;
-  gap: 2px;
+  gap: 1px;
+  height: 20px;
+  margin-top: 1px;
   opacity: 0;
   transition: opacity 0.12s ease-out;
 }
 
 .chat-row.user .msg-actions {
-  align-self: flex-end;
-  margin-right: 4px;
+  margin-right: -3px;
+}
+
+.reply-wrap .msg-actions {
+  margin-left: -4px;
 }
 
 .chat-row:hover .msg-actions,
-.chat-row:focus-within .msg-actions {
+.chat-row:focus-within .msg-actions,
+.msg-actions.shown {
   opacity: 1;
 }
 
 .msg-action {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   display: grid;
   place-items: center;
   padding: 0;
   border: 0;
-  border-radius: 4px;
+  border-radius: 5px;
   background: transparent;
   color: var(--dim-3);
   cursor: default;
 }
 
 .msg-action:hover {
-  background: rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.07);
   color: var(--dim);
 }
 
 .msg-action.done {
   color: var(--green);
+}
+
+.msg-time {
+  padding: 0 5px;
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  white-space: nowrap;
+}
+
+.msg-actions .msg-stopped {
+  padding-left: 4px;
 }
 
 .reply-wrap {
@@ -4034,31 +4042,12 @@ textarea.chat-input {
   min-width: 0;
 }
 
-.reply-foot {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  min-height: 18px;
-}
-
-.reply-foot.floating {
-  position: absolute;
-  right: 0;
-  bottom: 0;
-  min-height: 0;
-  border-radius: 5px;
-}
-
-.chat-row:hover .reply-foot.floating {
-  background: rgba(24, 25, 28, 0.92);
-}
-
 /* The copies a local model changed in its folder (workspace.rs), under its answer. */
 .reply-copies {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 8px 0 22px;
+  margin: 8px 0 2px;
   padding: 8px 10px;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 10px;
@@ -4327,29 +4316,6 @@ html[data-dir="rtl"] #views .bubble.md :is(.md-p, .md-h, .md-item, .md-quote) {
 .chat-body.screening .chat-log,
 .chat-body.screening .chip-row {
   display: none;
-}
-
-.screen-entry:disabled {
-  opacity: 0.4;
-}
-
-.screen-entry:disabled:hover {
-  background: transparent;
-}
-
-/* "Open windows" and "Browser tabs" open a second list: a chevron says so,
-   and that list starts with the way back. */
-.screen-entry > svg {
-  flex: 0 0 auto;
-  color: #5c6370;
-}
-
-.screen-back {
-  color: #8b929e;
-}
-
-.screen-pick-all .picker-model-name {
-  font-weight: 600;
 }
 
 .screen-shots {
@@ -5966,14 +5932,6 @@ img.zoomable {
   text-overflow: ellipsis;
 }
 
-/* Two parts side by side, each under its title: the outfits, and Lumo's style. */
-.wardrobe-parts {
-  display: flex;
-  align-items: stretch;
-  gap: 14px;
-  min-width: 0;
-}
-
 .wardrobe-part {
   display: flex;
   flex-direction: column;
@@ -5987,11 +5945,6 @@ img.zoomable {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.wardrobe-divider {
-  flex: 0 0 1px;
-  background: rgba(255, 255, 255, 0.07);
 }
 
 .wardrobe-grid {
@@ -6027,7 +5980,7 @@ img.zoomable {
   pointer-events: none;
 }
 
-/* Computer use, under the two parts: its title beside its buttons. */
+/* Computer use, under the edge lights: its title beside its buttons. */
 .wardrobe-extra {
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);
@@ -6186,10 +6139,6 @@ html[data-dir="rtl"] #views :is(.bubble, .reply .md-p, .reply .md-h, .reply .md-
 }
 
 /* ── Tools tab (views/tools.ts) ─────────────────────────────────────────── */
-
-.tab-tools.on {
-  color: #ffd27a;
-}
 
 .tools-body {
   position: relative;

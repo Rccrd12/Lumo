@@ -1,5 +1,5 @@
-// The plan an agent follows, step by step — what the Plan island shows
-// (island/plan.ts, plan.html). No DOM, so it can be tested on its own.
+// The plan an agent follows, step by step — what the chat's plan strip and
+// the home show (island/plan.ts). No DOM, so it can be tested on its own.
 //
 // Nothing is asked of the agents: the plan is read off the tool calls they
 // already send through the hooks. Claude Code's TodoWrite (and its newer

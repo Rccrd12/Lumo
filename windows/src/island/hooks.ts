@@ -86,7 +86,7 @@ export function presentApproval(island: Pick<Island, "alert" | "quickApproval">)
     return;
   }
   if (req.quick) req.quick = false;
-  island.alert(planAskInChat(req, State.settings.islandNewLook === true) ? "prompt" : req.questions ? "question" : "approval");
+  island.alert(planAskInChat(req) ? "prompt" : req.questions ? "question" : "approval");
 }
 
 /**
@@ -954,7 +954,7 @@ function handleHook(island: Island, payload: HookPayload) {
       // one stays on the closed island, if it can show it.
       if (!quick || !island.quickApproval()) {
         if (State.pendingApproval?.quick) State.pendingApproval.quick = false;
-        island.alert(planAskInChat(State.pendingApproval, State.settings.islandNewLook === true) ? "prompt" : view);
+        island.alert(planAskInChat(State.pendingApproval) ? "prompt" : view);
       }
       armCardTimer(island, requestId, cardMs);
       break;

@@ -1,75 +1,43 @@
-// The launch greeting (src/character/greeting.ts): Lumo must never be cut off by
-// the island while it grows, while he blooms and hovers, or while it shrinks
-// back to the compact island.
+// The launch greeting (src/character/greeting.ts): the island is Lumo's light,
+// so the opening is that light coming on — a spark, a line, the island
+// unrolling under it, his eyes opening in the middle.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { GREETING_END, GREETING_W, greetingPose, lumoBounds } from "../src/character/greeting.ts";
-import { Tracked } from "../src/core/anim.ts";
-import { COMPACT_BOT_X, COMPACT_W, NOTCH_H, NOTCH_W, VIEW_LAYOUTS } from "../src/core/layout.ts";
-
-const FRAME = 1 / 60;
-const SLACK = 0.5; // anti-aliasing
-
-/** Lumo's box against the island's, which is centred in the 640 px greeting canvas. */
-function assertInside(t, tc, w, h) {
-  const b = lumoBounds(greetingPose(t, tc));
-  if (!b) return;
-  const left = GREETING_W / 2 - w / 2;
-  const right = GREETING_W / 2 + w / 2;
-  const at = `t=${t.toFixed(3)} tc=${tc}`;
-  // No check on the top: his antennae may reach the top edge.
-  assert.ok(b.bottom <= h + SLACK, `${at}: bottom ${b.bottom.toFixed(1)} below the island (${h.toFixed(1)})`);
-  assert.ok(b.left >= left - SLACK, `${at}: left ${b.left.toFixed(1)} outside ${left.toFixed(1)}`);
-  assert.ok(b.right <= right + SLACK, `${at}: right ${b.right.toFixed(1)} outside ${right.toFixed(1)}`);
-}
-
-/** Runs the island geometry the way Island does: spring open, then the 340 ms close curve. */
-function run(tc) {
-  const width = new Tracked(NOTCH_W);
-  const height = new Tracked(0);
-  width.springTo(GREETING_W);
-  height.springTo(VIEW_LAYOUTS.greeting.height);
-  let collapsed = false;
-  const stop = Number.isFinite(tc) ? tc + 0.6 : GREETING_END + 0.5;
-  for (let t = 0; t <= stop; t += FRAME) {
-    const now = t * 1000;
-    if (!collapsed && t >= tc) {
-      collapsed = true;
-      width.curveTowards(COMPACT_W, 340, now);
-      height.curveTowards(NOTCH_H, 340, now);
-    }
-    width.step(FRAME, now);
-    height.step(FRAME, now);
-    assertInside(t, tc, width.value, height.value);
-  }
-}
-
-test("Lumo stays inside the island for the whole greeting", () => {
-  run(Number.POSITIVE_INFINITY);
-});
-
-test("Lumo stays inside the island when the greeting is cut short", () => {
-  for (let tc = 0.3; tc < GREETING_END + 0.4; tc += 0.05) run(tc);
-});
+import { GREETING_END, LIGHT_GREET_SMILE, lightGreetFrame } from "../src/character/greeting.ts";
+import { COMPACT_W } from "../src/core/layout.ts";
 
 test("the greeting is short", () => {
   assert.ok(GREETING_END <= 1.5, `ends at ${GREETING_END} s`);
+  assert.ok(LIGHT_GREET_SMILE < GREETING_END, "he smiles before it ends");
 });
 
-test("a light flies in, then blooms into Lumo", () => {
-  const early = greetingPose(0.1);
-  assert.equal(early.hb, 0);
-  assert.ok(early.spark > 0.9, "the light shows");
-  const out = greetingPose(0.8);
-  assert.ok(out.hb > 50, `grown to ${out.hb}`);
-  assert.equal(out.spark, 0);
-  assert.ok(Math.abs(out.x - 320) < 0.01);
+test("a spark, then a line, then the island unrolls under it", () => {
+  const spark = lightGreetFrame(0.1, COMPACT_W);
+  assert.ok(spark.w < 12 && spark.h < 12, `a spark: ${spark.w}×${spark.h}`);
+  assert.equal(spark.spark, 1, "all light");
+  assert.ok(Math.abs(spark.eyes) < 1e-9, "no eyes yet");
+
+  const line = lightGreetFrame(0.4, COMPACT_W);
+  assert.ok(line.w > 100 && line.h <= 10, `a line: ${line.w}×${line.h}`);
+
+  const end = lightGreetFrame(GREETING_END, COMPACT_W);
+  assert.ok(Math.abs(end.w - (COMPACT_W + 72)) < 0.5, `as wide as the closed island and a little more: ${end.w}`);
+  assert.ok(Math.abs(end.h - 64) < 0.5, `${end.h}`);
+  assert.ok(Math.abs(end.spark) < 1e-9, "its black body");
+  assert.ok(end.eyes > 0.99, "his eyes open");
 });
 
-test("he lands where the compact island's Lumo sits", () => {
-  const end = greetingPose(10, 5);
-  assert.equal(end.y, NOTCH_H / 2);
-  assert.equal(end.x, GREETING_W / 2 - COMPACT_W / 2 + COMPACT_BOT_X);
-  assert.ok(COMPACT_BOT_X <= 20, "close to the compact island's left end");
+test("its corner is never more than half its height", () => {
+  for (let t = 0; t <= GREETING_END; t += 1 / 60) {
+    const f = lightGreetFrame(t, COMPACT_W);
+    assert.ok(f.r <= f.h / 2 + 1e-9, `t=${t.toFixed(3)}: r ${f.r} for h ${f.h}`);
+    assert.ok(f.w > 0 && f.h > 0, `t=${t.toFixed(3)}`);
+  }
+});
+
+test("a narrower closed island makes a narrower opening", () => {
+  const wide = lightGreetFrame(GREETING_END, COMPACT_W);
+  const narrow = lightGreetFrame(GREETING_END, COMPACT_W - 80);
+  assert.ok(Math.abs(wide.w - narrow.w - 80) < 0.5);
 });

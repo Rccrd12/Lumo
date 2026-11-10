@@ -81,7 +81,8 @@ Lumo may also list the windows and the documents open on the user's computer, wi
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be Lumo's update_plan tool (from the lumo MCP server), with every step of your plan: the first in_progress, the others pending. Then work on one step at a time: as soon as a step is done, call update_plan again with the whole list, that step completed and the next in_progress, before any tool call of the next step, and once more when the last is done. Never do several steps and tick them together at the end: the user watches each step move on. Do this even for small jobs, and do not write the plan in your answer: the Plan island shows it. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
-    crate::chat::math_note!()
+    crate::chat::math_note!(),
+    crate::chat::rich_note!()
 );
 
 /// "default": no `--model`, whatever the user picked in agy itself.
@@ -1425,6 +1426,9 @@ mod tests {
         assert!(INSTRUCTIONS.contains("press the screen button"), "agy asks, never captures");
         assert!(INSTRUCTIONS.contains("Always share the folder open in File Explorer"), "names the Settings switch");
         assert!(INSTRUCTIONS.contains("never claim it ran"), "a soft-denied action is said, not hidden");
+        // The chat's rich blocks, in the workshop too.
+        assert!(content.contains(crate::chat::rich_note!()));
+        assert!(with_workshop_instructions("hi").contains(crate::chat::rich_note!()));
     }
 
     #[test]

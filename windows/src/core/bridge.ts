@@ -5,7 +5,7 @@ import type { ChatCompact } from "./chats";
 // `npm run dev` alone.
 
 import { invoke } from "@tauri-apps/api/core";
-import { emitTo, listen } from "@tauri-apps/api/event";
+import { listen } from "@tauri-apps/api/event";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import type { Settings } from "./state";
 import type { MailPeek, MediaActivity } from "./compact";
@@ -160,6 +160,14 @@ export const Bridge = {
   listMonitors: () => call<{ key: string; label: string }[]>("list_monitors"),
 
   openUrl: (url: string) => call<void>("open_url", { url }),
+
+  /**
+   * An image of a chat answer, downloaded by Rust unless Settings → Security
+   * → Images from the web is off (web_image.rs: https and public addresses
+   * only, PNG, JPEG, GIF, WebP or AVIF, 8 MB at most): its bytes as they
+   * came; it throws what went wrong when it could not be.
+   */
+  webImage: (url: string) => callOrThrow<ArrayBuffer>("web_image", { url }),
 
   /** "Open terminal" → opens the folder in VS Code when `code` is on PATH. */
   openInVSCode: (path: string | null) => call<boolean>("open_in_vscode", { path }),
@@ -554,32 +562,6 @@ export const Bridge = {
   mediaNow: () => call<MediaActivity | null>("media_now"),
   /** Play/pause, next or previous on that player. */
   mediaControl: (action: "toggle" | "next" | "previous") => call<boolean>("media_control", { action }),
-  // ── The live activities (src-tauri/src/activities.rs) ───────────────────
-  /** A grip beside the island: the size follows the mouse (`activities-resize`). */
-  activitiesResize: (fx: number, fy: number, height: number) => call<void>("activities_resize", { fx, fy, height }),
-  /** Their own window, shown or hidden. */
-  activitiesShow: (show: boolean) => call<void>("activities_show", { show }),
-  /** Makes their own window ahead, hidden, so it is ready when they are taken off the island. */
-  activitiesPrepare: () => call<void>("activities_prepare"),
-  /** Picked up by their top bar: from beside the island (x, y, w, h in page pixels) or from their window. */
-  activitiesDrag: (from: [number, number, number, number] | null) => call<void>("activities_drag", { from }),
-  /** A grip of their own window. */
-  activitiesWindowResize: (fx: number, fy: number) => call<void>("activities_window_resize", { fx, fy }),
-  /** Their own window takes the keyboard, or gives it back. */
-  activitiesFocus: (focused: boolean) => call<void>("activities_focus", { focused }),
-  // ── The Plan island (src-tauri/src/plan_island.rs) ───────────────────────
-  /** A grip beside the island: the size follows the mouse (`plan-resize`). */
-  planResize: (fx: number, fy: number, height: number) => call<void>("plan_resize", { fx, fy, height }),
-  /** Its own window, shown (where it was left) or hidden. */
-  planShow: (show: boolean) => call<void>("plan_show", { show }),
-  /** Makes its own window ahead, hidden, so it is ready when it is taken off the island. */
-  planPrepare: () => call<void>("plan_prepare"),
-  /** Picked up by its top bar: from beside the island (x, y, w, h in page pixels) or from its window. */
-  planDrag: (from: [number, number, number, number] | null) => call<void>("plan_drag", { from }),
-  /** A grip of its own window. */
-  planWindowResize: (fx: number, fy: number) => call<void>("plan_window_resize", { fx, fy }),
-  /** Where the island's middle is, in the page pixels of window `label` (the Plan island's, the live activities'), to fly to and from. */
-  towardIsland: (label: string) => call<[number, number] | null>("toward_island", { label }),
   /** The live activities' calendar file (calendar.rs), or null when no address is set. */
   calendarFetch: () => callOrThrow<string | null>("calendar_fetch"),
 
@@ -671,16 +653,6 @@ export type ShortcutStatus =
 
 export interface ShortcutsReport {
   actions: { id: string; status: ShortcutStatus; typed?: string }[];
-}
-
-/** An event for one window only (island ⇄ activities window). Never throws. */
-export async function emitToWindow(label: string, event: string, payload?: unknown) {
-  if (!IS_TAURI) return;
-  try {
-    await emitTo(label, event, payload);
-  } catch (err) {
-    console.error(`[lumo] emit ${event} failed`, err);
-  }
 }
 
 export interface IntegrationUpdate {

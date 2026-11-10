@@ -15,7 +15,7 @@ import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
 import type { BackgroundInfo } from "./background";
-import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
+import { DEFAULT_COMPUTER_CURSOR } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
 import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
@@ -104,16 +104,16 @@ export interface ApprovalInfo {
   project?: string;
   /** An email the AI wants to send (mail.rs, `mail_send`): shown whole, sent only with a click on Send. */
   email?: OutgoingEmail;
-  /** The plan Claude Code asks to start (ExitPlanMode), as steps: the new look draws them as a list. */
+  /** The plan Claude Code asks to start (ExitPlanMode), as steps: the card draws them as a list. */
   plan?: import("./agent-plan").PlanStep[];
 }
 
 /**
- * A plan the island's own chat asks to start, in the new look: it is asked in
- * the chat, over the field, rather than on the permission card.
+ * A plan the island's own chat asks to start: it is asked in the chat, over
+ * the field, rather than on the permission card.
  */
-export function planAskInChat(req: ApprovalInfo | null | undefined, newLook: boolean): boolean {
-  return newLook && req?.fromChat === true && (req.plan?.length ?? 0) > 0;
+export function planAskInChat(req: ApprovalInfo | null | undefined): boolean {
+  return req?.fromChat === true && (req.plan?.length ?? 0) > 0;
 }
 
 /** An email on its card: from the Email pill's account, to whom, what. */
@@ -138,6 +138,8 @@ export interface ChatMessage {
   id: number;
   role: "user" | "assistant";
   content: string;
+  /** When it was sent or answered (epoch ms), shown under it as "2 min ago"; none in chats saved before. */
+  at?: number;
   /** An answer cut short by the Stop button. */
   stopped?: boolean;
   /** No answer: what went wrong, said in the chat where it was asked (never saved). */
@@ -266,25 +268,6 @@ export interface Settings {
   compactActivity: boolean;
   /** The closed island shows the music playing (media.rs). */
   compactMedia: boolean;
-  /** The live activities (island/activities.ts) are on. */
-  activitiesPanel: boolean;
-  /** Folded into their icon in the open island's top bar. */
-  activitiesFolded: boolean;
-  /** Beside the island: "left" or "right". */
-  activitiesSide: string;
-  /** Their size; a height of 0 follows the island. */
-  activitiesWidth: number;
-  activitiesHeight: number;
-  /** In a window of their own (Windows), at this physical position. */
-  activitiesDetached: boolean;
-  activitiesX: number;
-  activitiesY: number;
-  /** The Plan island's window (plan_island.rs): moved by hand to this physical position, and its size (0 = default). Rust's. */
-  agentPlanMoved: boolean;
-  agentPlanX: number;
-  agentPlanY: number;
-  agentPlanWidth: number;
-  agentPlanHeight: number;
   autostart: boolean;
   hooksInstalled: boolean;
   /** Claude model used by the chat. */
@@ -306,8 +289,6 @@ export interface Settings {
   planUsageOnline: boolean;
   /** Simple permission requests are answered on the closed island (core/approvals.ts). */
   quickApprovals: boolean;
-  /** The live activities beside the island are as tall as it, and follow its resizes. */
-  activitiesFollowIsland: boolean;
   /** The Email pill leaves out the promotional emails (mail.rs). */
   mailHidePromotions: boolean;
   /** The Email pill's sources: the server over IMAP (mail.rs), the classic Outlook on this PC (outlook.rs). */
@@ -333,6 +314,8 @@ export interface Settings {
   chatEffort: string;
   /** What the chat's CLIs may do without asking (core/providers.ts PERMISSION_MODES). */
   chatPermissionMode: string;
+  /** How far a model server's tools are kept from the computer: "high" or "low" (core/providers.ts parseSandboxLevel). */
+  localSandbox: "high" | "low";
   /** A quiet line next to the chat's model picker with what the provider has left (core/chat-usage.ts). */
   chatShowUsage: boolean;
   /**
@@ -350,6 +333,12 @@ export interface Settings {
   chatWebSearch: boolean;
   /** A local model's chat compacts itself before a question once its context is over 80 % (settings.rs). */
   chatAutoCompact: boolean;
+  /**
+   * Whether an image line in the chat's answers is downloaded and shown at once
+   * (views/rich/image.ts, web_image.rs). Off: the card shows only its site and a
+   * way to open it in the browser. From Settings → Security, on by default.
+   */
+  webImages: boolean;
   /** What the AI may do with the email, from Settings → Security: "send" (read, and send with a click on each email's card), "read" or "none" (mail.rs access). */
   aiMailAccess: string;
   /** The same for the calendar's events. */
@@ -370,19 +359,8 @@ export interface Settings {
   backgroundSessions: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
-  /**
-   * Lumo's outfit: "auto" (dresses for the season), "none" or an outfit id.
-   * Read it through parseOutfit.
-   */
-  lumoOutfit: string;
   /** How much Lumo moves on his own; read it through parseMotion. */
   lumoMotion: string;
-  /**
-   * Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a ring
-   * of light), "punto", "goccia" or "lucciola" (the firefly). Read it through
-   * parseLook (character/wardrobe.ts).
-   */
-  lumoCharacter: string;
   /**
    * The mouse Claude wears while it uses the computer, picked in the wardrobe:
    * "direct" (a dark arrow) or "lucciola" (a butter one). Read it through
@@ -405,17 +383,10 @@ export interface Settings {
   updateCheckOnOpen: boolean;
   /** Settings → Updates → Beta versions: the check looks at the beta build too. Off unless turned on. */
   updateBeta: boolean;
-  /** The new look: Lumo in the open island's top bar, one surface, his light
-   * along the island's edge (src/look-new.css). On by default (Rust's
-   * settings.rs decides it, before the island first draws); Settings → Island
-   * → Previous look brings the usual look back as it was. Off here only for
-   * the tests, which are of the usual look unless they say. */
-  islandNewLook: boolean;
   /** The new look's light along the island's edge, picked in the wardrobe:
    * "full", "soft", "line" or "glow" (look-new.css, parseEdgeLight). */
   islandEdgeLight: string;
-  /** The new look's home shows the live activities (its "⋯" menu puts them
-   * away), whether or not the usual look's panel is folded. */
+  /** The home shows the live activities (its "⋯" menu puts them away). */
   homeActivities: boolean;
   /** Gemini Live (Settings → Voice): "gemini-3.8-live" or its Extended Thinking. */
   liveModel: string;
@@ -456,19 +427,6 @@ export const DEFAULT_SETTINGS: Settings = {
   islandAutoHide: false,
   compactActivity: true,
   compactMedia: true,
-  activitiesPanel: true,
-  activitiesFolded: false,
-  activitiesSide: "left",
-  activitiesWidth: 264,
-  activitiesHeight: 0,
-  activitiesDetached: false,
-  activitiesX: 0,
-  activitiesY: 0,
-  agentPlanMoved: false,
-  agentPlanX: 0,
-  agentPlanY: 0,
-  agentPlanWidth: 0,
-  agentPlanHeight: 0,
   autostart: false,
   hooksInstalled: false,
   model: "claude-opus-5-5",
@@ -479,7 +437,6 @@ export const DEFAULT_SETTINGS: Settings = {
   hiddenPlanPills: [],
   planUsageOnline: false,
   quickApprovals: true,
-  activitiesFollowIsland: true,
   mailHidePromotions: false,
   mailImap: true,
   mailOutlook: false,
@@ -493,6 +450,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatModels: {},
   chatEffort: "",
   chatPermissionMode: "default",
+  localSandbox: "high",
   chatShowUsage: false,
   chatShareExplorer: false,
   chatShareOpen: true,
@@ -500,6 +458,7 @@ export const DEFAULT_SETTINGS: Settings = {
   chatComputerUse: false,
   chatWebSearch: false,
   chatAutoCompact: true,
+  webImages: true,
   aiMailAccess: "read",
   aiCalendarAccess: "read",
   aiGithubAccess: "none",
@@ -511,16 +470,13 @@ export const DEFAULT_SETTINGS: Settings = {
   unslothStopAfter: "15",
   backgroundSessions: "grouped",
   shortcuts: {},
-  lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
-  lumoCharacter: DEFAULT_LOOK,
   computerCursor: DEFAULT_COMPUTER_CURSOR,
   computerAim: true,
   pillColors: {},
   language: "",
   updateCheckOnOpen: true,
   updateBeta: false,
-  islandNewLook: false,
   islandEdgeLight: "full",
   homeActivities: true,
   liveModel: "gemini-3.8-live",
@@ -574,14 +530,12 @@ class AppState {
   chatAsk: string | null = null;
   /** The pull requests Lumo listens to for the chat (core/listen.ts, listen.rs). */
   listening: ListenWatch[] = [];
-  /** The live activities can show beside the open island (an edge with room for them). */
-  activitiesRoom = false;
-  /** The Plan island's icon shows in the chat: there are plans to look at (island/plan.ts). */
+  /** The plan icon shows in the chat: there are plans to look at (island/plan.ts). */
   planIcon = false;
-  /** The Plan island is open (its icon in the chat looks pressed). */
+  /** The plan is open, not folded into its icon (the icon looks pressed). */
   planOpen = false;
   /**
-   * Every plan the Plan island holds, the newest first, those under way then
+   * Every plan island/plan.ts holds, the newest first, those under way then
    * those done (island/plan.ts): the new look draws a chat's own in that chat
    * (views/plan-strip.ts) and the ones under way on the home.
    */
@@ -682,10 +636,6 @@ class AppState {
   /** Never reset, so an id can never point at a newer diff than the one tapped. */
   private nextDiffId = 0;
 
-  /** Outfit shown on Lumo while the pointer rests on a wardrobe button. */
-  wardrobePreview: Outfit | null = null;
-  /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
-  lookPreview: LumoLook | null = null;
   /** The new look's edge light tried on in the wardrobe; null = the chosen one. */
   edgePreview: EdgeLight | null = null;
 
@@ -1001,13 +951,13 @@ class AppState {
 
   /** Remembers the tab `view` belongs to; any other view leaves it as it was. */
   noteTab(view: IslandViewName) {
-    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "empty" || view === "home") this.tabNoted = true;
+    if (view === "tools" || view === "prompt" || view === "live" || view === "overview" || view === "home") this.tabNoted = true;
     if (view === "tools" || (view === "prompt" && this.chatSlot === "forge")) {
       this.lastTab = "tools";
       this.toolsInWorkshop = view === "prompt";
     }
     else if (view === "prompt" || view === "live") this.lastTab = "chat";
-    else if (view === "overview" || view === "empty" || view === "home") this.lastTab = "agents";
+    else if (view === "overview" || view === "home") this.lastTab = "agents";
   }
 
   /**
@@ -1017,25 +967,23 @@ class AppState {
    */
   defaultView(): IslandViewName {
     if (this.pendingApproval) {
-      if (planAskInChat(this.pendingApproval, this.settings.islandNewLook === true)) return "prompt";
+      if (planAskInChat(this.pendingApproval)) return "prompt";
       return this.pendingApproval.questions ? "question" : "approval";
     }
-    // The new look: a file dropped and not yet asked about waits in the chat,
-    // so the island opens there rather than on the home.
-    if (this.settings.islandNewLook === true && this.droppedFile && !this.droppedFile.sent) return "prompt";
-    // The new look has no tabs: until a view of its own was open, it opens on
-    // the list (what waits for you, the sessions); then where it was left.
-    if (this.settings.islandNewLook === true && !this.tabNoted) return this.liveActive ? "live" : this.agentsView();
+    // A file dropped and not yet asked about waits in the chat, so the island
+    // opens there rather than on the home.
+    if (this.droppedFile && !this.droppedFile.sent) return "prompt";
+    // There are no tabs: until a view of its own was open, the island opens on
+    // the home (what waits for you, the sessions); then where it was left.
+    if (!this.tabNoted) return this.liveActive ? "live" : this.agentsView();
     if (this.lastTab === "agents") return this.agentsView();
     if (this.lastTab === "tools") return this.toolsInWorkshop && this.chatSlot === "forge" ? "prompt" : "tools";
     return this.liveActive ? "live" : "prompt";
   }
 
-  /** The Agents tab: the coding sessions and pills, or the empty card. */
+  /** The home: it holds the sessions, the empty case and the rest. */
   agentsView(): IslandViewName {
-    // The new look's list holds the sessions, the empty case and the rest.
-    if (this.settings.islandNewLook === true) return "home";
-    return this.tasks.length === 0 ? "empty" : "overview";
+    return "home";
   }
 
   /** What the Agents tab shows on its badge: a session waiting on you, or one at work. */
