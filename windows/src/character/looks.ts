@@ -1,55 +1,22 @@
-// Lumo's round looks, drawn in code: Filo, a ring of light with lit eyes (his
-// look by default), Punto, a dot of light, and Goccia, a soft drop — variants
-// 05, 01 and 02 of the "Punto" concept. Lucciola, the firefly, is lumo.ts.
+// Lumo as he looks: Filo, a ring of light with lit eyes (variant 05 of the
+// "Punto" concept), drawn in code. The agents' minis are lumo.ts.
 //
 // Body space as in engine.ts: origin at the body centre, y down, R the size
-// unit (the engine's R = W × 0.3, so a round look is as wide as the firefly).
-// The light takes the state's colour: warm at rest, blue while an agent works,
-// orange when it waits for you, red on an error, green when it is done.
+// unit (the engine's R = W × 0.3). The light takes the state's colour: warm at
+// rest, blue while an agent works, orange when it waits for you, red on an
+// error, green when it is done.
 
 import { lerp } from "../core/anim";
 import { rgba, type RGB } from "./lumo";
-import { ease, poolOfLight } from "./motion";
-import type { LumoLook } from "./wardrobe";
-
-export type RoundLook = Exclude<LumoLook, "lucciola">;
-
-export function isRoundLook(look: LumoLook): look is RoundLook {
-  return look !== "lucciola";
-}
+import { ease } from "./motion";
 
 /** The light at rest: a warm glow (#FFE09E). */
 export const LOOK_IDLE: RGB = [1, 0.88, 0.62];
 const WHITE: RGB = [1, 1, 1];
-const INK = "rgb(26,20,18)";
 const TAU = Math.PI * 2;
 
-/**
- * The outline, in units of R: half width, half heights above and below the
- * centre, the superellipse exponent, and how far the centre sits below the
- * body's origin (Goccia's flat base makes it shorter than it is wide).
- */
-export interface LookShape {
-  rx: number;
-  top: number;
-  bottom: number;
-  exp: number;
-  dy: number;
-}
-
-export const LOOK_SHAPE: Record<RoundLook, LookShape> = {
-  filo: { rx: 1, top: 1, bottom: 1, exp: 2, dy: 0 },
-  punto: { rx: 1, top: 1, bottom: 1, exp: 2, dy: 0 },
-  // The concept's 1.1 × (0.98 + 0.8) drop, scaled to the same width.
-  goccia: { rx: 1, top: 0.89, bottom: 0.73, exp: 2.35, dy: 0.08 },
-};
-
 /** The eyes: centre (± x, y) and size, in units of R. */
-export const LOOK_EYES: Record<RoundLook, { x: number; y: number; w: number; h: number }> = {
-  filo: { x: 0.3, y: -0.02, w: 0.19, h: 0.4 },
-  punto: { x: 0.3, y: -0.02, w: 0.2, h: 0.42 },
-  goccia: { x: 0.29, y: 0.115, w: 0.18, h: 0.36 },
-};
+export const LOOK_EYES = { x: 0.3, y: -0.02, w: 0.19, h: 0.4 } as const;
 
 export interface LookPose {
   R: number;
@@ -68,11 +35,6 @@ export interface LookPose {
   small: boolean;
   /** 0…1: the halo and the ripple fade with it (the drop sequence's box). */
   presence: number;
-  /**
-   * How far the body is from its place at rest, in units of R (a hop, a
-   * shake): Goccia's pool of light stays on the floor and shrinks as it lifts.
-   */
-  floor?: { dx: number; dy: number };
 }
 
 export const mixRGB = (a: RGB, b: RGB, k: number): RGB => [
@@ -89,25 +51,21 @@ export function pxScale(x: CanvasRenderingContext2D): number {
 // ── Outline ───────────────────────────────────────────────────────────────────
 
 /**
- * The look's outline. With `morph` > 0 each point slides towards `box(ca, sa)`
- * (the drop sequence turns him into a box), the centre back to the origin.
+ * The ring's outline, a circle of radius R. With `morph` > 0 each point slides
+ * towards `box(ca, sa)` (the drop sequence turns him into a box).
  */
 export function lookBodyPath(
-  look: RoundLook, R: number, morph = 0,
+  R: number, morph = 0,
   box?: (ca: number, sa: number) => { x: number; y: number },
 ): Path2D {
-  const s = LOOK_SHAPE[look];
-  const e = 2 / s.exp;
   const p = new Path2D();
   const n = 72;
   for (let i = 0; i <= n; i++) {
     const a = (i / n) * TAU;
-    const ca = Math.cos(a);
-    const sa = Math.sin(a);
-    let px = s.rx * R * Math.sign(ca) * Math.pow(Math.abs(ca), e);
-    let py = (sa < 0 ? s.top : s.bottom) * R * Math.sign(sa) * Math.pow(Math.abs(sa), e) + s.dy * R;
+    let px = R * Math.cos(a);
+    let py = R * Math.sin(a);
     if (box && morph >= 0.005) {
-      const b = box(ca, sa);
+      const b = box(Math.cos(a), Math.sin(a));
       px = lerp(px, b.x, morph);
       py = lerp(py, b.y, morph);
     }
@@ -146,80 +104,45 @@ function ripple(x: CanvasRenderingContext2D, P: LookPose, r0: number, r1: number
 }
 
 /** What shines around him, drawn before the body: the ripple and the halo. */
-export function drawLookBehind(x: CanvasRenderingContext2D, look: RoundLook, P: LookPose) {
+export function drawLookBehind(x: CanvasRenderingContext2D, P: LookPose) {
   const { R } = P;
-  const cy = LOOK_SHAPE[look].dy * R;
   x.save();
-  switch (look) {
-    case "filo":
-      ripple(x, P, 1.05, 1.75, cy);
-      halo(x, 0, cy, R * 1.3, P.c, (0.08 + 0.2 * P.shine) * P.presence);
-      break;
-    case "punto":
-      ripple(x, P, 1.0, 1.72, cy);
-      halo(x, 0, cy, R * (P.small ? 1.2 : 1.34) * (1 + 0.06 * P.pulse), P.c, (0.22 + 0.45 * P.shine) * P.presence);
-      break;
-    case "goccia":
-      ripple(x, P, 1.0, 1.7, cy);
-      halo(x, 0, cy, R * (P.small ? 1.2 : 1.34) * (1 + 0.06 * P.pulse), P.c, (0.2 + 0.42 * P.shine) * P.presence);
-      if (!P.small) {
-        // A little pool of light on the floor under it, left there when it hops.
-        const f = P.floor ?? { dx: 0, dy: 0 };
-        const pool = poolOfLight(f.dy);
-        x.translate(-f.dx * R, R * (LOOK_SHAPE.goccia.dy + LOOK_SHAPE.goccia.bottom + 0.09 - f.dy));
-        x.scale(1, 0.16);
-        halo(x, 0, 0, R * 0.95 * pool.r, P.c, (0.32 + 0.3 * P.shine) * P.presence * pool.a);
-      }
-      break;
-  }
+  ripple(x, P, 1.05, 1.75, 0);
+  halo(x, 0, 0, R * 1.3, P.c, (0.08 + 0.2 * P.shine) * P.presence);
   x.restore();
 }
 
-/** The body: Filo's ring of light, or Punto's and Goccia's lit fill. */
-export function drawLookBody(x: CanvasRenderingContext2D, look: RoundLook, P: LookPose, body: Path2D) {
+/** The body: a ring of light, a faint glow filling it. */
+export function drawLookBody(x: CanvasRenderingContext2D, P: LookPose, body: Path2D) {
   const { R, c } = P;
-  const cy = LOOK_SHAPE[look].dy * R;
   x.save();
-  if (look === "filo") {
-    const lw = Math.max(P.small ? 1.8 : 1.4, R * 0.11);
-    // A faint glow filling the ring, brighter at the rim.
-    const ig = x.createRadialGradient(0, cy, 0, 0, cy, R);
-    ig.addColorStop(0, rgba(c, 0.04 + 0.06 * P.shine));
-    ig.addColorStop(0.75, rgba(c, 0.08 + 0.1 * P.shine));
-    ig.addColorStop(1, rgba(c, 0.2 + 0.2 * P.shine));
-    x.fillStyle = ig;
-    x.fill(body);
-    x.strokeStyle = rgba(mixRGB(c, WHITE, 0.3 + 0.2 * P.shine));
-    x.lineWidth = lw;
-    x.lineJoin = "round";
-    x.shadowColor = rgba(c, 0.9);
-    x.shadowBlur = Math.max(4, R * 0.32) * (0.6 + 0.7 * P.shine) * pxScale(x);
-    x.stroke(body);
-  } else {
-    // A hot white core fading into the light's colour.
-    const g = look === "goccia"
-      ? x.createRadialGradient(-0.29 * R, cy - 0.36 * R, R * 0.05, 0, cy - 0.05 * R, R * 0.95)
-      : x.createRadialGradient(-0.3 * R, -0.35 * R, R * 0.05, 0, 0, R);
-    g.addColorStop(0, "rgba(255,255,250,1)");
-    g.addColorStop(0.55, rgba(mixRGB(c, WHITE, 0.55)));
-    g.addColorStop(1, rgba(mixRGB(c, WHITE, look === "goccia" ? 0.1 : 0.12)));
-    x.fillStyle = g;
-    x.fill(body);
-  }
+  const lw = Math.max(P.small ? 1.8 : 1.4, R * 0.11);
+  // A faint glow filling the ring, brighter at the rim.
+  const ig = x.createRadialGradient(0, 0, 0, 0, 0, R);
+  ig.addColorStop(0, rgba(c, 0.04 + 0.06 * P.shine));
+  ig.addColorStop(0.75, rgba(c, 0.08 + 0.1 * P.shine));
+  ig.addColorStop(1, rgba(c, 0.2 + 0.2 * P.shine));
+  x.fillStyle = ig;
+  x.fill(body);
+  x.strokeStyle = rgba(mixRGB(c, WHITE, 0.3 + 0.2 * P.shine));
+  x.lineWidth = lw;
+  x.lineJoin = "round";
+  x.shadowColor = rgba(c, 0.9);
+  x.shadowBlur = Math.max(4, R * 0.32) * (0.6 + 0.7 * P.shine) * pxScale(x);
+  x.stroke(body);
   x.restore();
 }
 
 /** Rosy cheeks (love, proud, happy), under the eyes. */
-export function drawLookBlush(x: CanvasRenderingContext2D, look: RoundLook, P: LookPose, body: Path2D, v: number) {
+export function drawLookBlush(x: CanvasRenderingContext2D, P: LookPose, body: Path2D, v: number) {
   if (v <= 0.01) return;
   const { R } = P;
-  const e = LOOK_EYES[look];
   x.save();
   x.clip(body);
-  x.fillStyle = `rgba(255,120,150,${(look === "filo" ? 0.42 : 0.5) * v})`;
+  x.fillStyle = `rgba(255,120,150,${0.42 * v})`;
   for (const sd of [-1, 1]) {
     x.beginPath();
-    x.ellipse(sd * R * 0.56, R * (e.y + 0.26), R * 0.16, R * 0.09, 0, 0, TAU);
+    x.ellipse(sd * R * 0.56, R * (LOOK_EYES.y + 0.26), R * 0.16, R * 0.09, 0, 0, TAU);
     x.fill();
   }
   x.restore();
@@ -248,27 +171,26 @@ export interface LookEyes {
 }
 
 /** Where each eye's centre is, in body space. */
-export function lookEyeCentres(look: RoundLook, R: number, e: Pick<LookEyes, "lx" | "ly" | "morph">): { x: number; y: number }[] {
-  const o = LOOK_EYES[look];
+export function lookEyeCentres(R: number, e: Pick<LookEyes, "lx" | "ly" | "morph">): { x: number; y: number }[] {
+  const o = LOOK_EYES;
   const ox = e.lx * 0.1 * R;
   const oy = e.ly * 0.075 * R + e.morph * 0.2 * R;
   return [-1, 1].map((sd) => ({ x: sd * o.x * R + ox, y: o.y * R + oy }));
 }
 
-/** The eyes' ink: lit in the ring (Filo), dark on the lit dot and drop. */
-export function lookInk(look: RoundLook, c: RGB): string {
-  return look === "filo" ? rgba(mixRGB(c, WHITE, 0.62)) : INK;
+/** The eyes' ink: lit, a paler shade of the light. */
+export function lookInk(c: RGB): string {
+  return rgba(mixRGB(c, WHITE, 0.62));
 }
 
-export function drawLookEyes(x: CanvasRenderingContext2D, look: RoundLook, P: LookPose, e: LookEyes) {
+export function drawLookEyes(x: CanvasRenderingContext2D, P: LookPose, e: LookEyes) {
   const { R } = P;
-  const o = LOOK_EYES[look];
+  const o = LOOK_EYES;
   const w = Math.max(o.w * R * e.es, P.small ? 2.2 : 0);
   const h = Math.max(o.h * R * e.es, P.small ? 4.6 : 0);
-  const ink = lookInk(look, P.c);
-  const lit = look === "filo";
-  const blur = lit ? Math.max(3, w * 1.1) * pxScale(x) : 0;
-  const centres = lookEyeCentres(look, R, e);
+  const ink = lookInk(P.c);
+  const blur = Math.max(3, w * 1.1) * pxScale(x);
+  const centres = lookEyeCentres(R, e);
   x.save();
   if (Math.abs(e.roll) > 0.001) x.rotate(e.roll);
   centres.forEach((c, i) => {
@@ -277,10 +199,8 @@ export function drawLookEyes(x: CanvasRenderingContext2D, look: RoundLook, P: Lo
     x.translate(c.x, c.y);
     x.fillStyle = ink;
     x.strokeStyle = ink;
-    if (lit) {
-      x.shadowColor = ink;
-      x.shadowBlur = blur;
-    }
+    x.shadowColor = ink;
+    x.shadowBlur = blur;
     drawLookEye(x, e.shape, w, h, sd, e.open, P, ink);
     x.restore();
   });
@@ -409,16 +329,6 @@ export function drawLookEye(
       x.fill();
     }
   }
-}
-
-// ── A still Lumo (wardrobe buttons) ───────────────────────────────────────────
-
-/** The look at rest, centred on the origin: light, body and open eyes. */
-export function drawLookStill(x: CanvasRenderingContext2D, look: RoundLook, R: number, c: RGB = LOOK_IDLE) {
-  const P: LookPose = { R, t: 0, c, shine: 0.55, pulse: 0, ripple: 0, rp: 0, small: R < 20, presence: 1 };
-  drawLookBehind(x, look, P);
-  drawLookBody(x, look, P, lookBodyPath(look, R));
-  drawLookEyes(x, look, P, { shape: "pill", lx: 0, ly: 0, open: 1, es: 1, roll: 0, morph: 0 });
 }
 
 // ── Paths ─────────────────────────────────────────────────────────────────────

@@ -1149,21 +1149,9 @@ html.look-new .home-right.three .home-tiles {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
-/* ── Wardrobe: the island's edge instead of Lumo's outfits and style ────────
-   (views/wardrobe.ts). The new look draws Lumo as two eyes, so what is left
-   to dress is the light along the island; Claude's mouse stays under it. */
-
-.wardrobe-edges {
-  display: none;
-}
-
-html.look-new .wardrobe-parts {
-  display: none;
-}
-
-html.look-new .wardrobe-edges {
-  display: block;
-}
+/* ── Wardrobe: the island's edge ───────────────────────────────────────────
+   (views/wardrobe.ts). Lumo is two eyes, so what is left to dress is the
+   light along the island; Claude's mouse stays under it. */
 
 html.look-new .edge-grid {
   display: grid;

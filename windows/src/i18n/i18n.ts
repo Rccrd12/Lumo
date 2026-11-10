@@ -193,7 +193,7 @@ export function tn(one: string, other: string, count: number, vars?: Vars): stri
 
 /**
  * Marks a literal as a key without translating it, for tables built at load
- * time (pill categories, outfit names…): the code translates it with `t()`
+ * time (pill categories, mouse names…): the code translates it with `t()`
  * where it is shown. The i18n test finds the keys through it.
  */
 export function N_<T extends string>(key: T): T {

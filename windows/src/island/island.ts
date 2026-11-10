@@ -18,7 +18,7 @@ import { BotEngine, hexToRGB } from "../character/engine";
 import { LOOK_IDLE } from "../character/looks";
 import { Greeting, LIGHT_GREET_SMILE, lightGreetFrame } from "../character/greeting";
 import { syncMiniBotStates, tickMiniBots } from "../character/minibots";
-import { SeasonCache, parseComputerCursor, parseLook, parseOutfit, type LumoLook } from "../character/wardrobe";
+import { parseComputerCursor } from "../character/wardrobe";
 import { UploadCanvas } from "../upload/canvas";
 import { dropName } from "../upload/files";
 import { buildPicture } from "../views/picture";
@@ -201,7 +201,6 @@ export class Island {
   private greetingShown = false;
   /** The new look's opening has smiled (LIGHT_GREET_SMILE). */
   private greetSmiled = false;
-  private seasons = new SeasonCache();
 
   private running = false;
   private lastFrame = 0;
@@ -419,26 +418,6 @@ export class Island {
       },
       openSettingsWindow: () => void Bridge.openSettingsWindow(),
       blip: () => Sound.play("blip"),
-      chooseOutfit: (selection) => {
-        if (parseOutfit(State.settings.lumoOutfit) === selection) return;
-        State.settings.lumoOutfit = selection;
-        void Bridge.saveSettings(State.settings);
-        Sound.play("pop");
-        this.engine.triggerEmote("proud");
-        State.notify();
-      },
-      previewOutfit: (outfit) => {
-        State.wardrobePreview = outfit;
-        State.notify();
-      },
-      chooseLook: (look) => {
-        if (parseLook(State.settings.lumoCharacter) === look) return;
-        State.settings.lumoCharacter = look;
-        void Bridge.saveSettings(State.settings);
-        Sound.play("pop");
-        this.engine.triggerEmote("happy");
-        State.notify();
-      },
       chooseComputerCursor: (cursor) => {
         if (parseComputerCursor(State.settings.computerCursor) === cursor) return;
         State.settings.computerCursor = cursor;
@@ -455,10 +434,6 @@ export class Island {
       showPlan: () => this.plan.toggle(),
       forgetChatPlan: (chatId) => this.plan.forgetChat(chatId),
       restartChatPlan: (chatId) => this.plan.restartChat(chatId),
-      previewLook: (look) => {
-        State.lookPreview = look;
-        State.notify();
-      },
     };
 
     this.wakeStrip = h("div", { id: "wake-strip" });
@@ -2077,27 +2052,10 @@ export class Island {
         this.engine.slotHVel = 0;
       }
     }
-    // Only the main Lumo is dressed — the one of the main tool's pill (Settings →
-    // Active pills) or an integration's, where he stays himself — unless the
-    // wardrobe is open.
-    // In the wardrobe the hovered outfit swaps in at once, without the drop-in.
-    const inWardrobe = State.mode === "expanded" && State.view === "wardrobe";
-    const mainFocused =
-      State.focusId == null || State.focusId === State.mainPillId || State.focusTask?.isIntegration === true;
-    const showOutfit = mainFocused || State.mode !== "expanded" || inWardrobe;
-    const outfit = State.wardrobePreview ?? this.seasons.get(parseOutfit(State.settings.lumoOutfit));
-    this.engine.setOutfit(showOutfit ? outfit : "none", !inWardrobe);
-    this.engine.look = this.look();
-
     this.engine.update(dt);
     ctx.setTransform(dpr, 0, 0, dpr, BOT_SIDE * dpr, 0);
     ctx.clearRect(-BOT_SIDE, 0, wCss, hCss);
     this.engine.draw(ctx, w, hCss);
-  }
-
-  /** Lumo's look: the one tried on in the wardrobe, else the chosen one. */
-  private look(): LumoLook {
-    return State.lookPreview ?? parseLook(State.settings.lumoCharacter);
   }
 
   /** BotCanvasView.lookX / lookY — tanh of the distance to the bot. */
@@ -2145,8 +2103,6 @@ export class Island {
     if (this.greetingShown && !greetingActive) this.greeting.leave();
     this.greetingShown = greetingActive;
     // A wardrobe try-on never outlives the wardrobe.
-    if (State.wardrobePreview && !(expanded && State.view === "wardrobe")) State.wardrobePreview = null;
-    if (State.lookPreview && !(expanded && State.view === "wardrobe")) State.lookPreview = null;
     if (State.edgePreview && !(expanded && State.view === "wardrobe")) State.edgePreview = null;
 
     this.header.sync();

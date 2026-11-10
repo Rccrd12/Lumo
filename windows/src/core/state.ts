@@ -15,7 +15,7 @@ import type { Bindings } from "./shortcuts";
 import type { SharedContext } from "./bridge";
 import type { EdgeLight } from "./layout";
 import type { BackgroundInfo } from "./background";
-import { DEFAULT_COMPUTER_CURSOR, DEFAULT_LOOK, DEFAULT_OUTFIT, type LumoLook, type Outfit } from "../character/wardrobe";
+import { DEFAULT_COMPUTER_CURSOR } from "../character/wardrobe";
 import { pillColor } from "./pill-colors";
 import { effectiveEffort, type Effort } from "./energy";
 import { WORKSHOP_PREFIX, type ToolInfo } from "./tools";
@@ -378,19 +378,8 @@ export interface Settings {
   backgroundSessions: string;
   /** Global shortcuts the user changed, by action id (see core/shortcuts.ts). */
   shortcuts: Bindings;
-  /**
-   * Lumo's outfit: "auto" (dresses for the season), "none" or an outfit id.
-   * Read it through parseOutfit.
-   */
-  lumoOutfit: string;
   /** How much Lumo moves on his own; read it through parseMotion. */
   lumoMotion: string;
-  /**
-   * Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a ring
-   * of light), "punto", "goccia" or "lucciola" (the firefly). Read it through
-   * parseLook (character/wardrobe.ts).
-   */
-  lumoCharacter: string;
   /**
    * The mouse Claude wears while it uses the computer, picked in the wardrobe:
    * "direct" (a dark arrow) or "lucciola" (a butter one). Read it through
@@ -515,9 +504,7 @@ export const DEFAULT_SETTINGS: Settings = {
   unslothStopAfter: "15",
   backgroundSessions: "grouped",
   shortcuts: {},
-  lumoOutfit: DEFAULT_OUTFIT,
   lumoMotion: "calm",
-  lumoCharacter: DEFAULT_LOOK,
   computerCursor: DEFAULT_COMPUTER_CURSOR,
   computerAim: true,
   pillColors: {},
@@ -685,10 +672,6 @@ class AppState {
   /** Never reset, so an id can never point at a newer diff than the one tapped. */
   private nextDiffId = 0;
 
-  /** Outfit shown on Lumo while the pointer rests on a wardrobe button. */
-  wardrobePreview: Outfit | null = null;
-  /** A look tried on in the wardrobe (the pointer rests on it); null = the chosen one. */
-  lookPreview: LumoLook | null = null;
   /** The new look's edge light tried on in the wardrobe; null = the chosen one. */
   edgePreview: EdgeLight | null = null;
 

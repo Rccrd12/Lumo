@@ -17,7 +17,6 @@ const TAU = Math.PI * 2;
 
 export const ease = (k: number) => (k <= 0 ? 0 : k >= 1 ? 1 : k * k * (3 - 2 * k));
 const mod = (v: number, m: number) => ((v % m) + m) % m;
-const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
 
 /** Seconds over which one state's pose eases into the next one's. */
 export const BLEND_S = 0.38;
@@ -66,8 +65,6 @@ export interface StateMotion {
   /** Offset of the whole body, in units of R (the error's shake, the finish's hop). */
   dx: number;
   dy: number;
-  /** −1…1: Goccia's stretch (−) and squash (+) on its flat base. */
-  squash: number;
   /** 0…1: the "your turn" heartbeat. */
   pulse: number;
   /** 0…1: the ripple ring's strength, and its phase 0…1. */
@@ -75,7 +72,7 @@ export interface StateMotion {
   rp: number;
 }
 
-const REST: StateMotion = { scale: 1, dx: 0, dy: 0, squash: 0, shine: 0.5, pulse: 0, ripple: 0, rp: 0 };
+const REST: StateMotion = { scale: 1, dx: 0, dy: 0, shine: 0.5, pulse: 0, ripple: 0, rp: 0 };
 
 /** The pose of `state`, `local` seconds after it began. */
 export function stateMotion(state: BotStateName, local: number, t: number, amb: number): StateMotion {
@@ -96,7 +93,6 @@ export function stateMotion(state: BotStateName, local: number, t: number, amb: 
       m.shine = 0.78 + 0.2 * Math.sin(ph) * lit;
       m.scale = 1 + 0.015 * Math.sin(ph) * amb;
       m.dy = -0.07 * Math.sin(ph) * amb;
-      m.squash = -0.5 * Math.sin(ph) * amb;
       break;
     }
     case "waiting": {
@@ -105,7 +101,6 @@ export function stateMotion(state: BotStateName, local: number, t: number, amb: 
       m.shine = 0.55 + 0.45 * m.pulse;
       m.scale = 1 + 0.07 * m.pulse;
       m.dy = -0.04 * m.pulse;
-      m.squash = -0.5 * m.pulse;
       m.ripple = 1;
       m.rp = ripplePhase(t);
       break;
@@ -120,11 +115,9 @@ export function stateMotion(state: BotStateName, local: number, t: number, amb: 
       break;
     }
     case "finished": {
-      // A hop, a squash on landing, a burst of light, then a soft glow.
+      // A hop, a burst of light, then a soft glow.
       const h = hop(local);
-      const land = local > 0.45 && local < 0.75 ? Math.sin((Math.PI * (local - 0.45)) / 0.3) : 0;
       m.dy = -0.2 * h;
-      m.squash = -0.6 * h + 0.8 * land;
       m.shine = 0.62 + 0.08 * Math.sin((TAU * local) / 3) * lit + 0.35 * flashOf("finished", local);
       break;
     }
@@ -176,7 +169,6 @@ export function blendMotion(a: StateMotion, b: StateMotion, k: number): StateMot
     scale: lerp(a.scale, b.scale, k),
     dx: lerp(a.dx, b.dx, k),
     dy: lerp(a.dy, b.dy, k),
-    squash: lerp(a.squash, b.squash, k),
     pulse: lerp(a.pulse, b.pulse, k),
     ripple: lerp(a.ripple, b.ripple, k),
     // A ripple on its way out keeps travelling as it fades.
@@ -209,74 +201,4 @@ export function stateGaze(state: BotStateName): number | null {
     default:
       return null;
   }
-}
-
-// ── The firefly's antenna lights (Lucciola) ───────────────────────────────────
-
-/** The two lights at his antennae's tips: spread and lift (units of R), brightness, sparkle. */
-export interface TipLights {
-  /** Spread outwards and offset downwards, in units of R. */
-  sx: number;
-  sy: number;
-  /** 0…1, left then right. */
-  a: [number, number];
-  /** 0…1: the four-point sparkle when he is done. */
-  sp: number;
-}
-
-export const TIPS_REST: TipLights = { sx: 0, sy: 0, a: [1, 1], sp: 0 };
-
-/**
- * They twinkle in turn at rest, twinkle quickly and trail the bob while an
- * agent works, perk up with the heartbeat when he waits, droop and dim on an
- * error, and sparkle when he is done.
- */
-export function tipLights(state: BotStateName, local: number, t: number, amb: number): TipLights {
-  const lit = Math.min(1, amb);
-  switch (motionKind(state)) {
-    case "idle": {
-      const tw = Math.sin((TAU * t) / 3.1) * lit;
-      return { sx: 0, sy: 0.03 * Math.sin((TAU * t) / 4.2 - 1) * lit, a: [0.75 + 0.25 * tw, 0.75 - 0.25 * tw], sp: 0 };
-    }
-    case "working": {
-      const ph = (TAU * t) / (state === "thinking" ? 2.2 : 1.5);
-      const tw = Math.sin(t * 7) * lit;
-      return { sx: 0, sy: -0.06 * Math.sin(ph - 0.9) * lit, a: [0.7 + 0.3 * tw, 0.7 - 0.3 * tw], sp: 0 };
-    }
-    case "waiting": {
-      const p = heartbeat(t, 0.16, 0.4, 0.08);
-      return { sx: 0.08 * p, sy: -0.1 * p, a: [0.55 + 0.45 * p, 0.55 + 0.45 * p], sp: 0 };
-    }
-    case "error":
-      return { sx: 0.12, sy: 0.15, a: [0.4, 0.4], sp: 0 };
-    case "finished": {
-      // Every 2.6 s while he moves on his own; only the first one otherwise.
-      const u = amb > 0 ? mod(local, 2.6) : local;
-      return { sx: 0.04, sy: -0.04, a: [1, 1], sp: Math.exp(-(((u - 0.35) / 0.18) ** 2)) };
-    }
-    default:
-      return { ...TIPS_REST, a: [1, 1] };
-  }
-}
-
-export function blendTips(a: TipLights, b: TipLights, k: number): TipLights {
-  if (k >= 1) return b;
-  return {
-    sx: lerp(a.sx, b.sx, k),
-    sy: lerp(a.sy, b.sy, k),
-    a: [lerp(a.a[0], b.a[0], k), lerp(a.a[1], b.a[1], k)],
-    sp: b.sp * k,
-  };
-}
-
-// ── Goccia's pool of light ────────────────────────────────────────────────────
-
-/**
- * The pool of light under Goccia stays on the floor while the drop moves: it
- * shrinks and fades as the drop lifts (`dy` < 0, units of R). Its radius and
- * strength, as factors of the pool at rest.
- */
-export function poolOfLight(dy: number): { lift: number; r: number; a: number } {
-  const lift = clamp01(-dy * 3);
-  return { lift, r: (1.05 - 0.25 * lift) / 1.05, a: 1 - 0.5 * lift };
 }
