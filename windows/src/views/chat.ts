@@ -3695,12 +3695,23 @@ export function buildPrompt(
     }
     // Nearly full: the chat is compacted first, the question waiting in the field.
     const full = editing == null ? autoCompactAt() : null;
+    // The chat the question was asked in. Compacting, rewinding or reading
+    // the screen first takes time, and another chat opened meanwhile must
+    // not get the question.
+    const askedIn = State.chatId;
     if (full != null) {
       preparing = true;
       try {
         await compactChat(full);
       } finally {
         preparing = false;
+      }
+      if (State.chatId !== askedIn) {
+        if (queuedText != null && !queued.has(askedIn)) {
+          queued.set(askedIn, query);
+          drawQueue();
+        }
+        return;
       }
     }
     if (picker.isOpen) picker.close();
@@ -3729,6 +3740,17 @@ export function buildPrompt(
       const waiting = screen;
       const shared = auto ? waiting : await withAuto(waiting);
       if (!auto && (shared.folders?.length ?? 0) > 0) await attachNamed(shared.folders ?? [], query);
+      // Another chat came on screen meanwhile: the question goes back to the
+      // field rather than into it.
+      if (State.chatId !== askedIn) {
+        if (typed && !input.value.trim()) setInput(query);
+        // A question that waited above the field waits there again.
+        else if (queuedText != null && !queued.has(askedIn)) {
+          queued.set(askedIn, query);
+          drawQueue();
+        }
+        return;
+      }
 
       // The file goes with the first question asked after it was added, once.
       const file = auto ? null : State.droppedFile;

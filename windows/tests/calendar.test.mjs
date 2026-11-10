@@ -10,7 +10,16 @@ const ics = (...events) => ["BEGIN:VCALENDAR", ...events.flatMap((e) => ["BEGIN:
 
 test("dates: UTC, local and whole days", () => {
   assert.deepEqual(parseIcsDate("20261009T140000Z"), { time: Date.UTC(2026, 9, 9, 14), allDay: false });
-  assert.deepEqual(parseIcsDate("20261009T140000", { TZID: "Europe/Rome" }), { time: local(2026, 10, 9, 14), allDay: false });
+  // A zone of its own: that zone's 14:00, whatever this computer's zone is.
+  assert.deepEqual(parseIcsDate("20261009T140000", { TZID: "Europe/Rome" }), { time: Date.UTC(2026, 9, 9, 12), allDay: false });
+  assert.deepEqual(parseIcsDate("20260115T090000", { TZID: "America/New_York" }), { time: Date.UTC(2026, 0, 15, 14), allDay: false });
+  // As Outlook writes it, Windows's name.
+  assert.deepEqual(parseIcsDate("20260115T090000", { TZID: "W. Europe Standard Time" }), { time: Date.UTC(2026, 0, 15, 8), allDay: false });
+  // A zone nobody knows: local time.
+  assert.deepEqual(parseIcsDate("20261009T140000", { TZID: "Mars/Olympus" }), { time: local(2026, 10, 9, 14), allDay: false });
+  // Around a change of time: 2026-03-29 in Rome, 01:30 before it, 03:30 after.
+  assert.equal(parseIcsDate("20260329T013000", { TZID: "Europe/Rome" }).time, Date.UTC(2026, 2, 29, 0, 30));
+  assert.equal(parseIcsDate("20260329T033000", { TZID: "Europe/Rome" }).time, Date.UTC(2026, 2, 29, 1, 30));
   assert.deepEqual(parseIcsDate("20261009", { VALUE: "DATE" }), { time: local(2026, 10, 9), allDay: true });
   assert.equal(parseIcsDate("tomorrow"), null);
 });
