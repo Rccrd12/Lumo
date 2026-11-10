@@ -252,13 +252,27 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
     tick(0);
     emit(app, Status { installed: true, state: "starting", owned: true, seconds: 0 });
     loop {
-        tokio::time::sleep(START_POLL).await;
+        // Asking can take a few seconds (on Windows a port not open yet takes
+        // about 2 s to refuse): the seconds go on meanwhile, one at a time.
+        let up = ticking(
+            async move {
+                tokio::time::sleep(START_POLL).await;
+                answers(port).await
+            },
+            began,
+            &mut said,
+            |seconds| {
+                tick(seconds);
+                emit(app, Status { installed: true, state: "starting", owned: true, seconds });
+            },
+        )
+        .await;
         if owned_ended() {
             crate::log::line("[unsloth] ended while starting");
             emit(app, Status { installed: true, state: "off", owned: false, seconds: 0 });
             return Err(t("Unsloth Studio stopped while starting. Open it once from its own shortcut to see why."));
         }
-        if answers(port).await {
+        if up {
             owned(|o| {
                 if let Some(own) = o {
                     own.ready = true;
@@ -270,16 +284,27 @@ async fn start(app: &AppHandle, port: u16, mut tick: impl FnMut(u64)) -> Result<
             watch_idle(app.clone());
             return Ok(());
         }
-        let seconds = began.elapsed().as_secs();
-        if seconds != said {
-            said = seconds;
-            tick(seconds);
-            emit(app, Status { installed: true, state: "starting", owned: true, seconds });
-        }
         if began.elapsed() > START_LIMIT {
             crate::log::line("[unsloth] gave up starting");
             stop_owned(app).await;
             return Err(t("Unsloth Studio didn't start within 3 minutes. Open it once from its own shortcut to see why."));
+        }
+    }
+}
+
+/// `asked`, and every whole second since `began` while it is going: `second`
+/// hears 1, 2, 3… as they come, however long `asked` takes. `said` is the last
+/// second it heard.
+async fn ticking<T>(asked: impl std::future::Future<Output = T>, began: Instant, said: &mut u64, mut second: impl FnMut(u64)) -> T {
+    let mut asked = std::pin::pin!(asked);
+    loop {
+        let next = tokio::time::Instant::from_std(began + Duration::from_secs(*said + 1));
+        match tokio::time::timeout_at(next, &mut asked).await {
+            Ok(done) => return done,
+            Err(_) => {
+                *said = began.elapsed().as_secs().max(*said + 1);
+                second(*said);
+            }
         }
     }
 }
@@ -381,6 +406,31 @@ mod tests {
         assert_eq!(local_port("http://192.168.1.20:8888"), None);
         assert_eq!(local_port("https://llm.example.com"), None);
         assert_eq!(local_port(""), None);
+    }
+
+    #[test]
+    fn the_seconds_go_on_one_at_a_time_while_the_server_is_asked() {
+        let rt = tokio::runtime::Builder::new_current_thread().enable_time().build().unwrap();
+        let began = Instant::now();
+        let mut said = 0;
+        let mut heard = Vec::new();
+        // An answer that takes 2.3 s, as a port not open yet does on Windows.
+        let up = rt.block_on(ticking(
+            async {
+                tokio::time::sleep(Duration::from_millis(2300)).await;
+                false
+            },
+            began,
+            &mut said,
+            |s| heard.push(s),
+        ));
+        assert!(!up);
+        assert_eq!(heard, vec![1, 2]);
+        assert_eq!(said, 2);
+        // The next ask goes on from there: 3, not 1 again.
+        rt.block_on(ticking(async { tokio::time::sleep(Duration::from_millis(900)).await }, began, &mut said, |s| heard.push(s)));
+        assert_eq!(heard[..3], [1, 2, 3]);
+        assert!(heard.windows(2).all(|w| w[1] == w[0] + 1));
     }
 
     #[test]

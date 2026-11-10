@@ -11,6 +11,7 @@
 - **Fixed**: a beta could take a pull request's newest commit before its checks had passed on it; it now waits for them
 - **Fixed**: pressing Esc to stop Claude using the computer froze Lumo until Windows closed it; Claude now stops, and Esc is yours again at once
 - **Fixed**: editing a question in the chat drops the plan its answer made from the Plan island, so the new answer's plan starts on its own instead of adding its steps (and ticks) to the old one
+- **Fixed**: the seconds of "Starting Unsloth Studio…" in the chat's picker and in Settings go up one at a time, instead of two or three at once while Lumo waited for the server to answer
 
 ## Windows 0.20.1 — November 9, 2026
 
