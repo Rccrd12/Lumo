@@ -754,6 +754,14 @@ body {
   animation-play-state: paused;
 }
 
+/* The same for the whole page while the island is hidden (island.ts
+   markHidden): nothing can be seen, so nothing may keep it repainting. */
+.island-hidden *,
+.island-hidden *::before,
+.island-hidden *::after {
+  animation-play-state: paused !important;
+}
+
 /* ── Cards ──────────────────────────────────────────────────────────────── */
 
 .card {

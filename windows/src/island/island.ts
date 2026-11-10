@@ -107,6 +107,12 @@ const UPLOAD_SETTLE = 0.45;
 const UPLOADED_NOTE_MS = 2600;
 const UPLOAD_COLOR = "#34D399";
 
+/**
+ * A hidden island pauses every CSS animation in the page (style.css,
+ * `.island-hidden`): an infinite one left running in a closed island's piece (a
+ * shimmer, a ping) would keep the webview repainting with nothing to see.
+ */
+const markHidden = () => document.documentElement.classList.toggle("island-hidden", State.mode === "hidden");
 const modeOrder = (m: IslandMode) => (m === "hidden" ? 0 : m === "compact" ? 1 : 2);
 
 export class Island {
@@ -538,6 +544,7 @@ export class Island {
     if (mode === prev) return;
     this.menu?.close();
     State.mode = mode;
+    markHidden();
     if (mode === "expanded") Sound.play("open");
     if (prev === "expanded") {
       Sound.play("close");
@@ -2053,6 +2060,7 @@ export class Island {
     document.documentElement.style.setProperty("--icon-scale", String(State.settings.iconScale || 1));
     // The island's look (look-new.css) hangs on this class.
     document.documentElement.classList.add("look-new");
+    markHidden();
     this.applyDock();
     // A resize saved or undone with a double click, or the island sent back to
     // the top (Settings, tray), or a new closed island width: grow, shrink or

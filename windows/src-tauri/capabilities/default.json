@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "What Lumo's windows are allowed to do. Everything that touches the OS goes through Lumo's own commands.",
   "windows": ["island", "settings", "computer"],
-  "permissions": ["core:default", "autostart:default"]
+  "permissions": ["core:default"]
 }
