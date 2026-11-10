@@ -43,6 +43,9 @@ const ACTING_OPTIONS: Record<string, RegExp> = {
   date: /^(-s|--set)(=|$)/,
 };
 
+/** git's options before the subcommand that change nothing ("-C <dir>" is read on its own). */
+const GIT_QUIET_OPTIONS = new Set(["--no-pager", "-P", "--no-optional-locks", "--literal-pathspecs"]);
+
 /** `git branch` arguments that only list. */
 const BRANCH_LISTING = new Set(["-a", "-r", "-v", "-vv", "--all", "--remotes", "--list", "--show-current"]);
 
@@ -53,11 +56,21 @@ function looks(segment: string): boolean {
   // "C:\Windows\System32\where.exe" or "/usr/bin/ls" → "where", "ls".
   const name = words[0].split(/[\\/]/).pop()!.toLowerCase().replace(/\.exe$/, "");
   if (name === "git") {
-    const sub = words.slice(1).find((w) => !w.startsWith("-"))?.toLowerCase() ?? "";
-    const rest = words.slice(words.indexOf(sub) + 1);
+    // Options before the subcommand: only the few that change nothing. "-c",
+    // "--config-env", "--exec-path" and the like can make git run a program
+    // ("git -ccore.pager=… log"), and "--git-dir"/"--work-tree" point it elsewhere.
+    let at = 1;
+    while (at < words.length && words[at].startsWith("-")) {
+      const option = words[at];
+      if (option === "-C") at += 2;
+      else if (GIT_QUIET_OPTIONS.has(option)) at += 1;
+      else return false;
+    }
+    const sub = words[at]?.toLowerCase() ?? "";
+    const rest = words.slice(at + 1);
     // "git branch new" makes a branch: only the listing forms look.
     if (sub === "branch") return rest.every((w) => BRANCH_LISTING.has(w));
-    if (sub === "remote") return words.length === 2 || (words.length === 3 && words[2] === "-v");
+    if (sub === "remote") return rest.length === 0 || (rest.length === 1 && rest[0] === "-v");
     // "git reflog expire" and "git reflog delete" rewrite the reflog.
     if (sub === "reflog" && rest.some((w) => w === "expire" || w === "delete")) return false;
     // "git grep -O<program>" opens the matches in that program.

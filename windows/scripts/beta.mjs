@@ -11,8 +11,11 @@
 //       checks fail or are still running is left out this time, with why. One
 //       that does not merge is left out and the state says what it conflicts
 //       with (main, another pull request, or the other changes together).
-//       Pull requests from forks never take part, nor those that change nothing
-//       in the app (only its tests, screenshots or notes). When nothing is
+//       Only pull requests the repository's owner opened from a branch of this
+//       repository take part: never one from a fork, nor one a bot or another
+//       collaborator opened (Dependabot's branches live in this repository
+//       too), nor one that changes nothing in the app (only its tests,
+//       screenshots or notes). When nothing is
 //       left that the release does not have, the step says so (`changes`) and
 //       the workflow takes the beta down instead of publishing one.
 //   node scripts/beta.mjs version <run number>
@@ -174,18 +177,33 @@ function mergesCleanly(a, b) {
   return tryGit(["merge-tree", "--write-tree", "--quiet", a, b]);
 }
 
+/**
+ * The pull requests that may go in the beta: opened by `owner` from a branch of
+ * the repository itself, oldest first.
+ */
+export function betaCandidates(prs, owner) {
+  const who = owner.toLowerCase();
+  return prs
+    .filter((pr) => !pr.isCrossRepository && typeof pr.author?.login === "string" && pr.author.login.toLowerCase() === who)
+    .sort((a, b) => a.number - b.number);
+}
+
 function openPullRequests() {
   const repo = process.env.GITHUB_REPOSITORY;
   if (!repo) throw new Error("GITHUB_REPOSITORY is not set");
+  const owner = process.env.GITHUB_REPOSITORY_OWNER || repo.split("/")[0];
   const out = execFileSync(
     "gh",
     ["pr", "list", "--repo", repo, "--base", "main", "--state", "open", "--limit", "100",
-      "--json", "number,title,updatedAt,headRefOid,isCrossRepository,statusCheckRollup"],
+      "--json", "number,title,updatedAt,headRefOid,isCrossRepository,author,statusCheckRollup"],
     { encoding: "utf8" },
   );
-  return JSON.parse(out)
-    .filter((pr) => !pr.isCrossRepository)
-    .sort((a, b) => a.number - b.number);
+  const prs = JSON.parse(out);
+  const kept = betaCandidates(prs, owner);
+  for (const pr of prs) {
+    if (!kept.includes(pr)) console.log(`#${pr.number} skipped (not opened by ${owner} from this repository)`);
+  }
+  return kept;
 }
 
 function merge(statePath) {
