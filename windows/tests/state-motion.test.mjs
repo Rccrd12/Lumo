@@ -1,11 +1,11 @@
 // How Lumo moves and shines in each state — the "Punto" concept's poses ported
-// to the app (src/character/motion.ts), and the engine reading them for every look.
+// to the app (src/character/motion.ts), and the engine reading them.
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
 import {
-  BLEND_S, blendMotion, blendTips, finishedSmiles, flashOf, heartbeat, hop, motionKind, poolOfLight,
-  ripplePhase, settleTime, stateGaze, stateMotion, tipLights,
+  BLEND_S, blendMotion, finishedSmiles, flashOf, heartbeat, hop, motionKind,
+  ripplePhase, settleTime, stateGaze, stateMotion,
 } from "../src/character/motion.ts";
 import { BotEngine } from "../src/character/engine.ts";
 
@@ -49,7 +49,6 @@ test("working he pulses brighter and bobs every 1.5 s", () => {
   const top = stateMotion("working", 0, 1.5 / 4, 1);
   near(top.dy, -0.07, 1e-9, "up");
   near(top.shine, 0.98, 1e-9);
-  near(top.squash, -0.5, 1e-9, "Goccia stretches as it rises");
   const again = stateMotion("working", 0, 1.5 / 4 + 1.5, 1);
   near(again.dy, top.dy, 1e-9, "a 1.5 s period");
   zero(stateMotion("working", 0, 1.5 / 4, 0).dy, "still with motion off");
@@ -113,16 +112,13 @@ test("the flash fades fast on an error, slower when it is done", () => {
   assert.equal(flashOf("working", 0), 0);
 });
 
-// ── Finished: a hop, a squash on landing, ^^ ─────────────────────────────────
+// ── Finished: a hop, ^^ ──────────────────────────────────────────────────────
 
-test("done, he hops 0.2 R in half a second and squashes on landing", () => {
+test("done, he hops 0.2 R in half a second", () => {
   near(hop(0.25), 1, 1e-9);
   assert.equal(hop(0.5), 0);
   assert.equal(hop(1), 0);
   near(stateMotion("finished", 0.25, 0, 1).dy, -0.2, 1e-9, "top of the hop");
-  assert.ok(stateMotion("finished", 0.2, 0, 1).squash < -0.4, "stretched in the air");
-  assert.ok(stateMotion("finished", 0.6, 0, 1).squash > 0.7, "squashed on landing");
-  zero(stateMotion("finished", 0.8, 0, 1).squash);
   zero(stateMotion("finished", 0.8, 0, 1).dy);
   near(stateMotion("finished", 0, 0, 1).shine, 0.97, 1e-9, "a burst of light");
   // Then a soft glow that swells and ebbs every 3 s while he moves on his own.
@@ -168,72 +164,7 @@ test("one state's pose eases into the next one's", () => {
   assert.equal(mid.rp, a.rp, "the ripple keeps travelling as it fades");
 });
 
-// ── The firefly's antenna lights ─────────────────────────────────────────────
-
-test("the firefly's antenna lights twinkle in turn at rest", () => {
-  for (const t of range(0, 3.1, 0.1)) {
-    const l = tipLights("idle", 0, t, 1);
-    near(l.a[0] + l.a[1], 1.5, 1e-9);
-  }
-  const l = tipLights("idle", 0, 3.1 / 4, 1);
-  near(l.a[0], 1, 1e-9);
-  near(l.a[1], 0.5, 1e-9);
-  const still = tipLights("idle", 0, 3.1 / 4, 0);
-  assert.deepEqual(still.a, [0.75, 0.75], "steady with motion off");
-});
-
-test("working, they twinkle quickly and trail the bob", () => {
-  const vals = range(0, 1.5, 0.02).map((t) => tipLights("working", 0, t, 1));
-  assert.ok(Math.max(...vals.map((v) => v.a[0])) > 0.95);
-  assert.ok(Math.min(...vals.map((v) => v.a[0])) < 0.45);
-  assert.ok(Math.max(...vals.map((v) => Math.abs(v.sy))) > 0.05);
-  // The lift lags the body's bob (stateMotion's dy) by about 0.9 rad.
-  const body = (t) => stateMotion("working", 0, t, 1).dy;
-  const tips = (t) => tipLights("working", 0, t, 1).sy;
-  const peak = (f) => range(0, 1.5, 0.005).reduce((b, t) => (f(t) < f(b) ? t : b), 0);
-  near(peak(tips) - peak(body), (0.9 / (Math.PI * 2)) * 1.5, 0.02, "lag");
-});
-
-test("waiting, they perk up with the heartbeat; on an error they droop and dim", () => {
-  const beat = tipLights("approval", 0, 0.16, 0);
-  near(beat.a[0], 1, 1e-9);
-  assert.ok(beat.sy < -0.09 && beat.sx > 0.07, "up and apart");
-  const rest = tipLights("approval", 0, 0.8, 0);
-  assert.ok(rest.a[0] < 0.6);
-  const err = tipLights("error", 1, 0, 1);
-  assert.ok(err.sy > 0.1, "lower");
-  assert.ok(err.a[0] < 0.5 && err.a[1] < 0.5, "dimmer");
-});
-
-test("done, they sparkle, again every 2.6 s while he moves on his own", () => {
-  near(tipLights("finished", 0.35, 0, 1).sp, 1, 1e-9);
-  assert.ok(tipLights("finished", 1.2, 0, 1).sp < 0.01);
-  near(tipLights("finished", 0.35 + 2.6, 0, 1).sp, 1, 1e-9);
-  assert.ok(tipLights("finished", 0.35 + 2.6, 0, 0).sp < 0.01, "only once with motion off");
-  assert.equal(tipLights("working", 0.35, 0, 1).sp, 0);
-});
-
-test("the lights ease from one state to the next, a sparkle only as it arrives", () => {
-  const a = tipLights("error", 2, 0, 1);
-  const b = tipLights("finished", 0.35, 0, 1);
-  const mid = blendTips(a, b, 0.5);
-  near(mid.sy, (a.sy + b.sy) / 2);
-  near(mid.sp, 0.5);
-  assert.equal(blendTips(a, b, 1), b);
-});
-
-// ── Goccia's pool of light ───────────────────────────────────────────────────
-
-test("Goccia's pool of light shrinks and fades as the drop lifts", () => {
-  assert.deepEqual(poolOfLight(0), { lift: 0, r: 1, a: 1 });
-  assert.deepEqual(poolOfLight(0.05), { lift: 0, r: 1, a: 1 }, "sinking does not grow it");
-  const up = poolOfLight(-0.2);
-  near(up.lift, 0.6);
-  assert.ok(up.r < 0.9 && up.a < 0.75);
-  near(poolOfLight(-1).a, 0.5, 1e-9, "never gone");
-});
-
-// ── The engine, every look ───────────────────────────────────────────────────
+// ── The engine ────────────────────────────────────────────────────────────────
 
 let clock = 5000;
 const realNow = performance.now;
@@ -249,7 +180,6 @@ test("the engine plays the concept's poses, eased from state to state", (t) => {
   t.after(() => Object.defineProperty(performance, "now", { value: realNow, configurable: true, writable: true }));
 
   const e = new BotEngine();
-  e.look = "punto";
   e.ambient = 1;
   e.setState("error", true);
   let shake = 0;
@@ -258,7 +188,7 @@ test("the engine plays the concept's poses, eased from state to state", (t) => {
     shake = Math.max(shake, Math.abs(e.statePose().dx));
     assert.equal(e.ox, 0, "with no tween of its own");
   }
-  assert.ok(shake > 0.03, `a round look shakes (${shake})`);
+  assert.ok(shake > 0.03, `Filo shakes (${shake})`);
   step(e, 1);
   zero(e.statePose().dx);
 
@@ -281,16 +211,6 @@ test("the engine plays the concept's poses, eased from state to state", (t) => {
   assert.ok(e.statePose().ripple > 0.3, "the ripple fades out");
   step(e, BLEND_S);
   assert.equal(e.statePose().ripple, 0);
-
-  // The firefly's antenna lights follow the state too.
-  const f = new BotEngine();
-  f.look = "lucciola";
-  f.setState("error", true);
-  step(f, 1);
-  assert.ok(f.tipPose().sy > 0.1, "droop");
-  f.setState("approval");
-  step(f, 1);
-  assert.equal(f.busy, true, "his tail beats while he waits");
 
   // The agents' minis keep their own eyes.
   const mini = new BotEngine();

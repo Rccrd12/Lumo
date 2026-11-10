@@ -3,19 +3,15 @@
 import { Ease, lerp, type EaseFn } from "../core/anim";
 import { Sound } from "../core/sound";
 import type { BotEmoteName, BotStateName } from "../core/layout";
+import { LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_RX, LUMO_RY, LUMO_TOP, rgba } from "./lumo";
 import {
-  LUMO_BOTTOM, LUMO_EXP, LUMO_EYE, LUMO_GLOW, LUMO_RX, LUMO_RY, LUMO_TOP, drawLumoBehind, drawLumoFront, rgba, type LumoPose,
-} from "./lumo";
-import {
-  LOOK_IDLE, LOOK_SHAPE, drawLookBehind, drawLookBlush, drawLookBody, drawLookEyes, heartPath, lookBodyPath, starPath,
-  type LookPose, type RoundLook,
+  LOOK_IDLE, drawLookBehind, drawLookBlush, drawLookBody, drawLookEyes, heartPath, lookBodyPath, starPath,
+  type LookPose,
 } from "./looks";
 import {
-  BLEND_S, FACE_K, blendMotion, blendTips, ease, finishedSmiles, flashOf, motionKind, settleTime,
-  stateGaze, stateMotion, tipLights, type StateMotion, type TipLights,
+  BLEND_S, FACE_K, blendMotion, ease, finishedSmiles, flashOf, motionKind, settleTime,
+  stateGaze, stateMotion, type StateMotion,
 } from "./motion";
-import { drawOutfitBehind, drawOutfitFront, makeHead, roundHead } from "./outfits";
-import { DEFAULT_LOOK, type LumoLook, type Outfit } from "./wardrobe";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -45,8 +41,7 @@ interface Tween {
 
 type PropKey =
   | "yaw" | "pitch" | "roll" | "tilt" | "open" | "sx" | "sy"
-  | "oy" | "ox" | "tint" | "morph" | "hands" | "blush" | "es" | "badgeS"
-  | "outfitPresence";
+  | "oy" | "ox" | "tint" | "morph" | "hands" | "blush" | "es" | "badgeS";
 
 interface BotStateCfg {
   color: RGB;
@@ -157,33 +152,12 @@ export class BotEngine {
   sx = 1; sy = 1; oy = 0; ox = 0;
   tint = 0; morph = 0; hands = 0; blush = 0; es = 1; badgeS = 0;
 
-  /**
-   * His look (wardrobe.ts LUMO_LOOKS): a round one (looks.ts) or the firefly
-   * (lumo.ts). The main character only: the agents' minis keep their shape.
-   */
-  look: LumoLook = DEFAULT_LOOK;
-  /** A round look's light: the state's colour, warm at rest (eased like `col`). */
+  /** His light: the state's colour, warm at rest (eased like `col`). */
   glow: RGB = LOOK_IDLE;
   /** When the state began, and the one before it (its pose eases into this one's). */
   private stateAt = now();
   private prevState: BotStateName = "idle";
   private prevStateAt = now();
-
-  // Outfit (the main Lumo only — minis never wear one). `outfit` is what is
-  // drawn; it changes only once the previous one has left.
-  outfit: Outfit = "none";
-  /** 0 = gone, 1 = fully on. */
-  outfitPresence = 0;
-  private outfitTarget: Outfit = "none";
-
-  // Spring lag of the soft parts (pompoms, hat tips, scarf end), −1…1.
-  physDx = 0;
-  physDy = 0;
-  private physVx = 0;
-  private physVy = 0;
-  private prevYaw = 0;
-  private prevOy = 0;
-  private prevRoll = 0;
 
   // Targets
   tgYaw = 0; tgPitch = 0; tgTilt = 0; tgSy = 1; tgSx = 1; tgEs = 1;
@@ -261,12 +235,12 @@ export class BotEngine {
 
     switch (next) {
       case "finished":
-        // A round look hops, lands and lights up (stateMotion); the firefly rolls.
+        // Filo hops and lights up (stateMotion); a mini rolls.
         if (!this.round) this.doRoll(950, 1);
         setTimeout(() => this.emit("spark", 5), 500);
         break;
       case "error":
-        // A round look shakes once, dying out (stateMotion); the firefly jolts.
+        // Filo shakes once, dying out (stateMotion); a mini jolts.
         if (!this.round) {
           this.anim("ox", [
             [0.08, 50, Ease.out], [-0.08, 70, Ease.inOut],
@@ -320,28 +294,19 @@ export class BotEngine {
     return blendMotion(stateMotion(this.prevState, now() - this.prevStateAt, t, amb), b, k);
   }
 
-  /** The firefly's antenna lights in its state, eased from the previous state's. */
-  tipPose(t = now() - this.t0): TipLights {
-    const amb = this.loopAmount;
-    const b = tipLights(this.state, this.stateTime, t, amb);
-    const k = this.blendK;
-    if (k >= 1) return b;
-    return blendTips(tipLights(this.prevState, now() - this.prevStateAt, t, amb), b, k);
-  }
-
-  /** Drawn as a round look (looks.ts) rather than the firefly. */
   /**
    * In the open island's top bar and on the closed island:
-   * no body, hands, outfit, badge or particles — the island is his body and
+   * no body, hands, badge or particles — the island is his body and
    * its edge his light — only his eyes, lit, in the state's colour.
    */
   eyesOnly = false;
 
+  /** The main Lumo is Filo, a ring of light (looks.ts); the agents' minis are little balls (lumo.ts). */
   get round(): boolean {
-    return !this.isMini && this.look !== "lucciola";
+    return !this.isMini;
   }
 
-  /** What a round look's light eases towards: a plan's colour, the state's, or warm at rest. */
+  /** What his light eases towards: a plan's colour, the state's, or warm at rest. */
   private get glowTarget(): RGB {
     return this.bodyColor ?? (this.state === "idle" ? LOOK_IDLE : this.cfg.color);
   }
@@ -365,7 +330,6 @@ export class BotEngine {
   }
 
   squash() {
-    this.physVy += 0.6;
     this.anim("sy", [[0.78, 70, Ease.out], [1.1, 130, Ease.out], [1, 170, Ease.inOut]]);
     this.anim("sx", [[1.16, 70, Ease.out], [0.95, 130, Ease.out], [1, 170, Ease.inOut]]);
   }
@@ -390,8 +354,6 @@ export class BotEngine {
     const t = now();
     Sound.play("slap");
     this.squash();
-    this.physVy -= 1.2;
-    this.physVx += Math.random() < 0.5 ? 0.7 : -0.7;
     this.eyeOverride = "line";
     this.eyeOverrideUntil = t + 0.8;
     setTimeout(() => Sound.play("annoyed"), 60);
@@ -408,7 +370,6 @@ export class BotEngine {
     const tok = ++this.greetToken;
     this.waveStart = t + 0.45;
     this.waveUntil = t + 1.55;
-    this.physVx += 0.2;
 
     this.eyeOverride = "happy";
     this.eyeOverrideUntil = t + 2.0;
@@ -538,37 +499,6 @@ export class BotEngine {
     this.morph = 0;
   }
 
-  /**
-   * Dresses Lumo. Animated: the old outfit leaves (180 ms), the new one drops
-   * in (350 ms) and Lumo does a little squash.
-   */
-  setOutfit(next: Outfit, animated = true) {
-    if (next === this.outfitTarget) return;
-    this.outfitTarget = next;
-    this.tweens.delete("outfitPresence");
-    this.locks.delete("outfitPresence");
-    const enter = () => {
-      this.outfit = next;
-      this.anim("outfitPresence", [[1, 350, Ease.inOut]], () => this.squash());
-    };
-    if (!animated) {
-      this.outfit = next;
-      this.outfitPresence = next !== "none" ? 1 : 0;
-    } else if (next === "none") {
-      this.anim("outfitPresence", [[0, 180, Ease.inOut]], () => { this.outfit = "none"; });
-    } else if (this.outfit === "none") {
-      this.outfitPresence = 0;
-      enter();
-    } else {
-      this.anim("outfitPresence", [[0, 180, Ease.inOut]], enter);
-    }
-  }
-
-  /** Wearing something visible: the body then turns as one piece when it rolls. */
-  private get rigidRoll(): boolean {
-    return !this.isMini && this.outfit !== "none" && this.outfitPresence > 0.05;
-  }
-
   /** He moves on his own: the island keeps drawing him, at a gentler frame rate. */
   get ambientActive(): boolean {
     return !this.isMini && !this.still && this.ambient > 0 && this.state !== "sleeping" && this.morph < 0.05;
@@ -591,13 +521,12 @@ export class BotEngine {
       Math.abs(this.col[0] - this.colT[0]) > 0.003 ||
       Math.abs(this.col[1] - this.colT[1]) > 0.003 ||
       Math.abs(this.col[2] - this.colT[2]) > 0.003 ||
-      (this.outfit !== "none" && (Math.abs(this.physVx) > 0.01 || Math.abs(this.physVy) > 0.01)) ||
       // The main character: the heartbeat and ripple while something waits for
       // you, what happens as a state begins (shake, hop, flash, sparkle) and the
       // ease from one state's pose to the next.
       (!this.isMini && ((!this.still && motionKind(this.state) === "waiting") ||
         this.stateTime < Math.max(settleTime(this.state), this.blendK < 1 ? BLEND_S : 0))) ||
-      // A round look's light still easing to the state's colour.
+      // His light still easing to the state's colour.
       (this.round && (
         Math.abs(this.glow[0] - this.glowTarget[0]) > 0.003 ||
         Math.abs(this.glow[1] - this.glowTarget[1]) > 0.003 ||
@@ -656,7 +585,7 @@ export class BotEngine {
     const wander = amb > 0 && !this.cfg.look && !this.cfg.scans && n - this.lastLook.at > 3;
     this.glanceW += ((wander ? 1 : 0) - this.glanceW) * (1 - Math.pow(0.2, dt));
     if (wander && this.round && this.state === "working") {
-      // A round look reads while an agent works: its eyes run along a line.
+      // Filo reads while an agent works: his eyes run along a line.
       this.glance = { x: Math.sin(t * 2.3) * 0.75, y: -0.5, next: n + 0.6 };
     } else if (wander && n > this.glance.next) {
       const reach = Math.min(1, 0.45 * amb);
@@ -701,7 +630,7 @@ export class BotEngine {
     }
 
     const hover = Math.sin(t * 1.5) * 0.03 * amb;
-    // A round look's waiting is its heartbeat (motion.ts), not a bounce.
+    // Filo's waiting is his heartbeat (motion.ts), not a bounce.
     const bounce = (this.cfg.bounces && !this.round && !this.still ? -Math.abs(Math.sin(t * 5.2)) * 0.07 : 0) + hover;
     const kGen = 1 - Math.pow(0.0008, dt);
     if (!this.locks.has("oy")) this.oy += (bounce - this.oy) * kGen;
@@ -764,24 +693,6 @@ export class BotEngine {
     this.slotHVel += acc * dt;
     this.slotH = Math.max(0, this.slotH + this.slotHVel * dt);
 
-    // Soft-part spring: lags behind head turns, hops and rolls (stiffness 60, damping 9).
-    if (dt > 0) {
-      const yawVel = (this.yaw - this.prevYaw) / dt;
-      const oyVel = (this.oy - this.prevOy) / dt;
-      // A finished roll snaps from 2π·turns back to 0: that jump is not motion.
-      const dRoll = this.roll - this.prevRoll;
-      const rollVel = Math.abs(dRoll) > Math.PI ? 0 : dRoll / dt;
-      const centrifugal = this.rigidRoll ? rollVel * 0.18 : 0;
-      const tDx = Math.max(-1, Math.min(1, -yawVel * 0.35 - this.tilt * 2 + centrifugal));
-      const tDy = Math.max(-1, Math.min(1, oyVel * 0.5));
-      this.physVx += (60 * (tDx - this.physDx) - 9 * this.physVx) * dt;
-      this.physVy += (60 * (tDy - this.physDy) - 9 * this.physVy) * dt;
-      this.physDx += this.physVx * dt;
-      this.physDy += this.physVy * dt;
-    }
-    this.prevYaw = this.yaw;
-    this.prevOy = this.oy;
-    this.prevRoll = this.roll;
 
     this.lastTime = n;
   }
@@ -827,13 +738,8 @@ export class BotEngine {
    * `w`×`h` CSS pixels (the caller has already applied the DPR transform).
    */
   draw(x: CanvasRenderingContext2D, W: number, H: number) {
-    // The new look's notch: whatever his look, only Filo's lit eyes.
-    if (this.eyesOnly) {
-      this.drawRound(x, W, H, "filo");
-      return;
-    }
     if (this.round) {
-      this.drawRound(x, W, H, this.look as RoundLook);
+      this.drawRound(x, W, H);
       return;
     }
     const R = W * 0.3;
@@ -842,30 +748,13 @@ export class BotEngine {
     const cx = W / 2 + this.ox * R;
     const cy = H / 2 + this.particleOverhang / 2 + this.oy * R + R * 0.06;
 
-    // With an outfit on, a roll turns the whole character — hat included — as
-    // one piece instead of rolling the eyes over the body.
     x.save();
-    if (this.rigidRoll && Math.abs(this.roll) > 0.001) {
-      x.translate(cx, cy);
-      x.rotate(this.roll);
-      x.translate(-cx, -cy);
-    }
-
     this.drawHandsBehind(x, R, rx, ry, cx, cy);
 
     x.save();
     x.translate(cx, cy);
     if (this.tilt !== 0) x.rotate(this.tilt);
     x.scale(this.sx, this.sy);
-
-    const dressed = !this.isMini && this.outfit !== "none";
-    const head = dressed ? makeHead(R, this.yaw, this.pitch, this.physDx, this.physDy) : null;
-    const outfitState = { presence: this.outfitPresence, morph: this.morph };
-    if (head) drawOutfitBehind(x, this.outfit, head, outfitState);
-
-    // The firefly's wings and lantern, behind him (not on the agents' minis).
-    const lumo = this.isMini ? null : this.lumoPose(R, rx, ry);
-    if (lumo) drawLumoBehind(x, lumo);
 
     const body = this.bodyPath(rx, ry, R);
     this.drawBody(x, body, R, rx, ry);
@@ -886,10 +775,6 @@ export class BotEngine {
 
     this.drawEyes(x, body, R, rx, ry);
     if (this.morph > 0.05) this.drawMouth(x, body, R);
-    if (lumo) drawLumoFront(x, lumo);
-
-    if (head) drawOutfitFront(x, this.outfit, head, outfitState);
-
     x.restore();
     x.restore();
 
@@ -897,36 +782,6 @@ export class BotEngine {
       this.drawBadge(x, this.badge, R, cx, cy);
     }
     this.drawParticles(x, R, cx, cy);
-  }
-
-  /** Lumo's light follows the state's colour while he works, and his wings buzz. */
-  private lumoPose(R: number, rx: number, ry: number): LumoPose {
-    const k = Math.min(1, this.tint / 0.72);
-    const glow: RGB = [
-      LUMO_GLOW[0] + (this.col[0] - LUMO_GLOW[0]) * k,
-      LUMO_GLOW[1] + (this.col[1] - LUMO_GLOW[1]) * k,
-      LUMO_GLOW[2] + (this.col[2] - LUMO_GLOW[2]) * k,
-    ];
-    const asleep = this.state === "sleeping";
-    const t = now() - this.t0;
-    // The same pose as a round look's (motion.ts): his tail flashes on an error
-    // and when it is done, and beats and sends out a ripple when he waits; his
-    // antenna lights twinkle, perk up, droop or sparkle with the state.
-    const m = this.statePose(t);
-    return {
-      R, rx, ry,
-      t,
-      glow,
-      shine: asleep ? 0.1 : Math.min(1, 0.35 + 0.65 * k + 0.6 * this.flash),
-      flap: asleep ? 0 : this.cfg.tint > 0 ? 1 : 0.25,
-      lagX: this.physDx,
-      lagY: this.physDy,
-      presence: 1 - this.morph,
-      beat: m.pulse,
-      ripple: m.ripple,
-      rp: m.rp,
-      tips: this.tipPose(t),
-    };
   }
 
   private bodyPath(rx: number, ry: number, R: number): Path2D {
@@ -1028,8 +883,7 @@ export class BotEngine {
 
     for (const sd of [-1, 1]) {
       const eyeYaw = sd * EYE_SP + this.yaw;
-      // Rolling with an outfit on, the whole body turns: the eyes must not roll again.
-      let eyePitch = EYE_P + this.pitch + (this.rigidRoll ? 0 : this.roll);
+      let eyePitch = EYE_P + this.pitch + this.roll;
       eyePitch = (((eyePitch + Math.PI) % (Math.PI * 2)) + Math.PI * 2) % (Math.PI * 2) - Math.PI;
       const cp = Math.cos(eyePitch);
       if (Math.cos(eyeYaw) * cp <= 0.04) continue;
@@ -1207,17 +1061,21 @@ export class BotEngine {
     x.restore();
   }
 
-  // ── Round looks (looks.ts) ─────────────────────────────────────────────────
+  // ── Filo, the ring of light (looks.ts) ─────────────────────────────────────
 
-  /** A round look's outline, turning into the box while a file is dropped. */
-  private roundBodyPath(look: RoundLook, R: number): Path2D {
+  /** His outline, turning into the box while a file is dropped. */
+  private roundBodyPath(R: number): Path2D {
     const tw = R * 1.0;
     const th = R * 0.94;
     const tr = R * 0.42;
-    return lookBodyPath(look, R, this.morph, (ca, sa) => rrPoint(ca, sa, tw, th, tr));
+    return lookBodyPath(R, this.morph, (ca, sa) => rrPoint(ca, sa, tw, th, tr));
   }
 
-  private drawRound(x: CanvasRenderingContext2D, W: number, H: number, look: RoundLook) {
+  /**
+   * Filo. With `eyesOnly` (the open island's top bar, the closed island) only
+   * his lit eyes: the island is his body and its edge his light.
+   */
+  private drawRound(x: CanvasRenderingContext2D, W: number, H: number) {
     const R = W * 0.3;
     // How it moves and shines in its state (motion.ts): it breathes at rest,
     // pulses and bobs while an agent works, beats twice and sends out a ripple
@@ -1229,12 +1087,6 @@ export class BotEngine {
     const cy = H / 2 + this.particleOverhang / 2 + (this.oy + m.dy) * R;
 
     x.save();
-    if (this.rigidRoll && Math.abs(this.roll) > 0.001) {
-      x.translate(cx, cy);
-      x.rotate(this.roll);
-      x.translate(-cx, -cy);
-    }
-
     const bare = this.eyesOnly;
     if (!bare) this.drawHandsBehind(x, R, R, R, cx, cy, this.glow);
 
@@ -1242,43 +1094,26 @@ export class BotEngine {
     x.translate(cx, cy);
     if (this.tilt !== 0) x.rotate(this.tilt);
     x.scale(this.sx * m.scale, this.sy * m.scale);
-    if (look === "goccia" && Math.abs(m.squash) > 0.001) {
-      // The drop squashes and stretches on its flat base.
-      const base = R * (LOOK_SHAPE.goccia.dy + LOOK_SHAPE.goccia.bottom);
-      const sq = Math.max(-1, Math.min(1, m.squash)) * 0.09;
-      x.translate(0, base);
-      x.scale(1 + sq, 1 - sq);
-      x.translate(0, -base);
-    }
 
     const P: LookPose = {
       R, t, c: this.glow, shine: m.shine, pulse: m.pulse,
       ripple: m.ripple * (1 - this.morph), rp: m.rp, small: R < 20, presence: 1 - this.morph,
-      // Goccia's pool of light stays on the floor while the drop moves.
-      floor: { dx: this.ox + m.dx, dy: this.oy + m.dy },
     };
-    // Eyes: a round look's slide (−1…1) rather than turn with the head.
+    // Eyes: they slide (−1…1) rather than turn with the head.
     const lx = Math.max(-1.2, Math.min(1.2, this.yaw / 0.62));
     const ly = Math.max(-1.2, Math.min(1.2, -this.pitch / 0.5));
 
-    const dressed = !bare && this.outfit !== "none";
-    const head = dressed ? roundHead(look, R, this.yaw, this.pitch, this.physDx, this.physDy, { lx, ly, es: this.es }) : null;
-    const outfitState = { presence: this.outfitPresence, morph: this.morph };
-    if (head) drawOutfitBehind(x, this.outfit, head, outfitState);
-
-    const body = this.roundBodyPath(look, R);
+    const body = this.roundBodyPath(R);
     if (!bare) {
-      drawLookBehind(x, look, P);
-      drawLookBody(x, look, P, body);
-      drawLookBlush(x, look, P, body, this.blush * (1 - this.morph));
+      drawLookBehind(x, P);
+      drawLookBody(x, P, body);
+      drawLookBlush(x, P, body, this.blush * (1 - this.morph));
     }
-    drawLookEyes(x, look, P, {
+    drawLookEyes(x, P, {
       shape: this.eyeShape(), lx, ly, open: this.open, es: this.es,
-      roll: this.rigidRoll ? 0 : this.roll, morph: this.morph,
+      roll: this.roll, morph: this.morph,
     });
     if (this.morph > 0.05) this.drawMouth(x, body, R);
-
-    if (head) drawOutfitFront(x, this.outfit, head, outfitState);
 
     x.restore();
     x.restore();
@@ -1344,7 +1179,7 @@ export class BotEngine {
       if (handRot !== 0) x.rotate(handRot);
       const g = x.createLinearGradient(hew * 0.7, -heh * 0.85, -hew * 0.8, heh * 0.9);
       if (light) {
-        // A round look's hands are two little lights of its colour.
+        // Filo's hands are two little lights of his colour.
         g.addColorStop(0, rgba(mix3(light, [1, 1, 1], 0.6)));
         g.addColorStop(1, rgba(light));
       } else if (this.bodyColor) {

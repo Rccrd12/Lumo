@@ -1400,8 +1400,7 @@ own window.
   - Tray → Pause doesn't stop the history (it stays on the machine anyway);
     switch it off in Settings → General.
 - The wardrobe opens with a right-click on Lumo, from the tray menu, or with
-  its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
-  is cut by the top edge of the screen.
+  its global shortcut (`Ctrl+Alt+G` by default).
 - Languages: chosen in Settings, independently of the system, and applied
   without a restart. Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep

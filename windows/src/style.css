@@ -5936,14 +5936,6 @@ img.zoomable {
   text-overflow: ellipsis;
 }
 
-/* Two parts side by side, each under its title: the outfits, and Lumo's style. */
-.wardrobe-parts {
-  display: flex;
-  align-items: stretch;
-  gap: 14px;
-  min-width: 0;
-}
-
 .wardrobe-part {
   display: flex;
   flex-direction: column;
@@ -5957,11 +5949,6 @@ img.zoomable {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-}
-
-.wardrobe-divider {
-  flex: 0 0 1px;
-  background: rgba(255, 255, 255, 0.07);
 }
 
 .wardrobe-grid {
@@ -5997,7 +5984,7 @@ img.zoomable {
   pointer-events: none;
 }
 
-/* Computer use, under the two parts: its title beside its buttons. */
+/* Computer use, under the edge lights: its title beside its buttons. */
 .wardrobe-extra {
   padding-top: 10px;
   border-top: 1px solid rgba(255, 255, 255, 0.07);

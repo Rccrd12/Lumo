@@ -169,42 +169,6 @@
    "id": "Menanyakan Codex…",
    "it": "Chiedo a Codex…"
   },
-  "Auto (seasons)": {
-   "zh-Hans": "自动（随季节）",
-   "hi": "ऑटो (मौसम के अनुसार)",
-   "es": "Auto (estaciones)",
-   "ar": "تلقائي (حسب المواسم)",
-   "fr": "Auto (saisons)",
-   "bn": "অটো (ঋতু অনুযায়ী)",
-   "pt-BR": "Auto (estações)",
-   "ru": "Авто (по сезону)",
-   "id": "Otomatis (musim)",
-   "it": "Auto (stagioni)"
-  },
-  "Auto · follows the seasons (now: {outfit})": {
-   "zh-Hans": "自动 · 随季节变化（当前：{outfit}）",
-   "hi": "ऑटो · मौसम के साथ बदलता है (अभी: {outfit})",
-   "es": "Auto · sigue las estaciones (ahora: {outfit})",
-   "ar": "تلقائي · يتبع المواسم (الآن: {outfit})",
-   "fr": "Auto · suit les saisons (en ce moment : {outfit})",
-   "bn": "অটো · ঋতু অনুযায়ী বদলায় (এখন: {outfit})",
-   "pt-BR": "Auto · acompanha as estações (agora: {outfit})",
-   "ru": "Авто · по сезону (сейчас: {outfit})",
-   "id": "Otomatis · mengikuti musim (sekarang: {outfit})",
-   "it": "Auto · segue le stagioni (ora: {outfit})"
-  },
-  "Auto · {outfit}": {
-   "zh-Hans": "自动 · {outfit}",
-   "hi": "ऑटो · {outfit}",
-   "es": "Auto · {outfit}",
-   "ar": "تلقائي · {outfit}",
-   "fr": "Auto · {outfit}",
-   "bn": "অটো · {outfit}",
-   "pt-BR": "Auto · {outfit}",
-   "ru": "Авто · {outfit}",
-   "id": "Otomatis · {outfit}",
-   "it": "Auto · {outfit}"
-  },
   "Back": {
    "zh-Hans": "返回",
    "hi": "वापस",
@@ -2077,18 +2041,6 @@
    "id": "Mulai ulang OpenCode untuk memuat plugin.",
    "it": "Riavvia OpenCode per caricare il plugin."
   },
-  "Round glasses": {
-   "zh-Hans": "圆框眼镜",
-   "hi": "गोल चश्मा",
-   "es": "Gafas redondas",
-   "ar": "نظارة دائرية",
-   "fr": "Lunettes rondes",
-   "bn": "গোল চশমা",
-   "pt-BR": "Óculos redondos",
-   "ru": "Круглые очки",
-   "id": "Kacamata bulat",
-   "it": "Occhiali rotondi"
-  },
   "Saturday": {
    "zh-Hans": "星期六",
    "hi": "शनिवार",
@@ -2160,18 +2112,6 @@
    "ru": "Сохранение…",
    "id": "Menyimpan…",
    "it": "Salvataggio…"
-  },
-  "Scarf": {
-   "zh-Hans": "围巾",
-   "hi": "मफ़लर",
-   "es": "Bufanda",
-   "ar": "وشاح",
-   "fr": "Écharpe",
-   "bn": "মাফলার",
-   "pt-BR": "Cachecol",
-   "ru": "Шарф",
-   "id": "Syal",
-   "it": "Sciarpa"
   },
   "Secret key": {
    "zh-Hans": "私密密钥",
@@ -4793,42 +4733,6 @@
    "id": "Hanya folder yang dibagikan dari tombol layar yang bisa dibaca.",
    "it": "Si può leggere solo una cartella condivisa con il pulsante dello schermo."
   },
-  "Leaf": {
-   "zh-Hans": "叶子",
-   "hi": "पत्ती",
-   "es": "Hoja",
-   "ar": "ورقة",
-   "fr": "Feuille",
-   "bn": "পাতা",
-   "pt-BR": "Folha",
-   "ru": "Листик",
-   "id": "Daun",
-   "it": "Foglia"
-  },
-  "Bow tie": {
-   "zh-Hans": "领结",
-   "hi": "बो टाई",
-   "es": "Pajarita",
-   "ar": "ربطة عنق فراشة",
-   "fr": "Nœud papillon",
-   "bn": "বো টাই",
-   "pt-BR": "Gravata-borboleta",
-   "ru": "Бабочка",
-   "id": "Dasi kupu-kupu",
-   "it": "Papillon"
-  },
-  "Headphones": {
-   "zh-Hans": "耳机",
-   "hi": "हेडफ़ोन",
-   "es": "Auriculares",
-   "ar": "سماعات رأس",
-   "fr": "Casque audio",
-   "bn": "হেডফোন",
-   "pt-BR": "Fones de ouvido",
-   "ru": "Наушники",
-   "id": "Headphone",
-   "it": "Cuffie"
-  },
   "Calm": {
    "zh-Hans": "平静",
    "hi": "शांत",
@@ -5128,90 +5032,6 @@
    "ru": "Работает с вашим аккаунтом Google. Ключ не нужен.",
    "id": "Memakai akun Google Anda. Tidak perlu kunci.",
    "it": "Usa il tuo account Google. Nessuna chiave necessaria."
-  },
-  "Filo · a ring of light": {
-   "zh-Hans": "Filo · 一圈光环",
-   "hi": "Filo · रोशनी का घेरा",
-   "es": "Filo · un anillo de luz",
-   "ar": "Filo · حلقة من الضوء",
-   "fr": "Filo · un anneau de lumière",
-   "bn": "Filo · আলোর বলয়",
-   "pt-BR": "Filo · um anel de luz",
-   "ru": "Filo · кольцо света",
-   "id": "Filo · cincin cahaya",
-   "it": "Filo · un anello di luce"
-  },
-  "Punto · a dot of light": {
-   "zh-Hans": "Punto · 一点光",
-   "hi": "Punto · रोशनी का बिंदु",
-   "es": "Punto · un punto de luz",
-   "ar": "Punto · نقطة من الضوء",
-   "fr": "Punto · un point de lumière",
-   "bn": "Punto · আলোর বিন্দু",
-   "pt-BR": "Punto · um ponto de luz",
-   "ru": "Punto · точка света",
-   "id": "Punto · titik cahaya",
-   "it": "Punto · un punto di luce"
-  },
-  "Goccia · a soft drop": {
-   "zh-Hans": "Goccia · 一颗柔软的水滴",
-   "hi": "Goccia · एक नरम बूँद",
-   "es": "Goccia · una gota suave",
-   "ar": "Goccia · قطرة ناعمة",
-   "fr": "Goccia · une goutte toute douce",
-   "bn": "Goccia · একটি নরম ফোঁটা",
-   "pt-BR": "Goccia · uma gota macia",
-   "ru": "Goccia · мягкая капля",
-   "id": "Goccia · tetesan lembut",
-   "it": "Goccia · una goccia morbida"
-  },
-  "Lucciola · the firefly": {
-   "zh-Hans": "Lucciola · 萤火虫",
-   "hi": "Lucciola · जुगनू",
-   "es": "Lucciola · la luciérnaga",
-   "ar": "Lucciola · اليراعة",
-   "fr": "Lucciola · la luciole",
-   "bn": "Lucciola · জোনাকি",
-   "pt-BR": "Lucciola · o vaga-lume",
-   "ru": "Lucciola · светлячок",
-   "id": "Lucciola · kunang-kunang",
-   "it": "Lucciola · la lucciola"
-  },
-  "Lumo's style": {
-   "zh-Hans": "Lumo 的风格",
-   "hi": "Lumo की शैली",
-   "es": "El estilo de Lumo",
-   "ar": "أسلوب Lumo",
-   "fr": "Le style de Lumo",
-   "bn": "Lumo-র স্টাইল",
-   "pt-BR": "O estilo do Lumo",
-   "ru": "Стиль Lumo",
-   "id": "Gaya Lumo",
-   "it": "Lo stile di Lumo"
-  },
-  "Outfits": {
-   "zh-Hans": "服饰",
-   "hi": "पोशाकें",
-   "es": "Atuendos",
-   "ar": "الأزياء",
-   "fr": "Tenues",
-   "bn": "পোশাক",
-   "pt-BR": "Roupas",
-   "ru": "Наряды",
-   "id": "Pakaian",
-   "it": "Outfit"
-  },
-  "Lumo's look": {
-   "zh-Hans": "Lumo 的外观",
-   "hi": "Lumo का रूप",
-   "es": "El aspecto de Lumo",
-   "ar": "مظهر Lumo",
-   "fr": "Apparence de Lumo",
-   "bn": "Lumo-র চেহারা",
-   "pt-BR": "Visual do Lumo",
-   "ru": "Облик Lumo",
-   "id": "Tampilan Lumo",
-   "it": "Aspetto di Lumo"
   },
   "Plan usage: not reported yet": {
    "zh-Hans": "套餐用量：尚未报告",

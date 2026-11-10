@@ -13,7 +13,6 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, aiReads, parseCloseMode, parseMotion, type Settings } from "../core/state";
-import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../character/wardrobe";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -1883,15 +1882,6 @@ function islandSection(): HTMLElement {
     void save();
   });
 
-  // His look, as in the wardrobe.
-  const look = h("select", {}) as HTMLSelectElement;
-  for (const value of LUMO_LOOKS) look.append(h("option", { value, text: t(LOOK_KEYS[value]) }));
-  look.value = parseLook(settings.lumoCharacter);
-  look.addEventListener("change", () => {
-    settings.lumoCharacter = look.value;
-    void save();
-  });
-
   return h(
     "section",
     {},
@@ -1899,7 +1889,6 @@ function islandSection(): HTMLElement {
     ...behaviourRows(),
     group("Lumo"),
     setting(t("Lumo moves"), null, motion),
-    setting(t("Lumo's look"), null, look),
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),

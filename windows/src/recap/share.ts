@@ -2,8 +2,6 @@
 // Lumo comes from the island's own engine.
 
 import { BotEngine } from "../character/engine";
-import { parseLook } from "../character/wardrobe";
-import { State } from "../core/state";
 import { formatCount, formatDuration, weekRangeLabel, type WeeklySummary } from "./summary";
 import { t } from "../i18n/i18n";
 import { SCRIPT_FONTS } from "../core/fonts";
@@ -136,7 +134,6 @@ function badge(x: Ctx, left: number, top: number, w: number, label: string, valu
 function drawLumo(x: Ctx, cx: number, top: number, size: number) {
   const engine = new BotEngine();
   engine.ambient = 0; // a still picture
-  engine.look = parseLook(State.settings.lumoCharacter);
   engine.setState("idle", true);
   engine.update(1 / 60);
   x.save();

@@ -1,22 +1,18 @@
-// Wardrobe view, opened with a right-click on Lumo or from the tray menu. Resting the pointer on a button
-// tries the outfit on Lumo; a click keeps it. Two parts side by side, each
-// with its title: the outfits, and Lumo's style — his look, picked the same
-// way: Filo, Punto, Goccia or Lucciola (Windows only). Under them, on a line of
-// its own, computer use: the mouse Claude wears (the dark arrow or Lucciola's)
-// and the Aim switch.
+// Wardrobe view, opened with a right-click on Lumo or from the tray menu. Two
+// parts, each with its title: the island's edge light (resting the pointer on
+// one shows it on the island, a click keeps it), and under it computer use:
+// the mouse Claude wears (the dark arrow or Lucciola's) and the Aim switch.
 
 import { h } from "./dom";
 import { State } from "../core/state";
 import { Bridge } from "../core/bridge";
 import { EDGE_LIGHTS, parseEdgeLight, type EdgeLight } from "../core/layout";
-import { drawLookIcon, drawWardrobeIcon } from "../character/outfits";
 import {
-  AIM_KEY, COMPUTER_CURSORS, COMPUTER_CURSOR_KEYS, LOOK_KEYS, LUMO_LOOKS, OUTFIT_KEYS, OUTFIT_SELECTIONS,
-  WARDROBE_STRINGS, parseComputerCursor, parseLook, parseOutfit, resolveOutfit, seasonalOutfit, wardrobeHeader,
-  type ComputerCursor, type CursorHover, type LookHover, type LumoLook, type Outfit, type OutfitSelection,
+  AIM_KEY, COMPUTER_CURSORS, COMPUTER_CURSOR_KEYS, cursorName, parseComputerCursor,
+  type ComputerCursor, type CursorHover,
 } from "../character/wardrobe";
 import type { ViewActions, ViewHost } from "./views";
-import { language, tl, type Msg } from "../i18n/i18n";
+import { tl, type Msg } from "../i18n/i18n";
 
 const ICON = 28;
 
@@ -94,8 +90,6 @@ function drawAimIcon(ctx: CanvasRenderingContext2D, size: number) {
 
 export function buildWardrobe(actions: ViewActions): ViewHost {
   const note = h("span", { class: "wardrobe-note" });
-  const grid = h("div", { class: "wardrobe-grid" });
-  const looks = h("div", { class: "wardrobe-grid" });
   const mice = h("div", { class: "wardrobe-grid" });
   const edges = h("div", { class: "edge-grid" });
   /** One part of the wardrobe: its title over its buttons. */
@@ -116,87 +110,25 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
         "div",
         { class: "stack wardrobe-stack" },
         h("div", { class: "wardrobe-head" }, h("span", { class: "wardrobe-title", text: tl("Wardrobe") }), note),
-        h(
-          "div",
-          { class: "wardrobe-parts" },
-          part(tl("Outfits"), grid, "outfits"),
-          h("div", { class: "wardrobe-divider", "aria-hidden": "true" }),
-          part(tl("Lumo's style"), looks, "looks"),
-        ),
-        // The new look draws Lumo as two eyes: the island's edge is what to
-        // pick instead of his outfits and style (look-new.css shows it, hides them).
         h("div", { class: "wardrobe-edges", role: "group", "aria-label": tl("Island edge") },
           h("span", { class: "wardrobe-label", text: tl("Island edge") }), edges),
-        // Claude's mouse on a line of its own, under the two: they keep their room.
+        // Claude's mouse on a line of its own, under the edge lights.
         h("div", { class: "wardrobe-extra" }, part(tl("Computer use"), mice, "computer")),
       ),
     ),
   );
 
-  let hovered: OutfitSelection | LookHover | CursorHover | null = null;
+  let hovered: CursorHover | null = null;
   let edgeHovered: EdgeLight | null = null;
-  let drawnSeason: Outfit | null = null;
-  let drawnLanguage = language();
-  let drawnLook: LumoLook | null = null;
   /** The screen's scale the icons were drawn for: another display needs them again. */
   let drawnDpr = 0;
-  const items = new Map<OutfitSelection, { button: HTMLButtonElement; canvas: HTMLCanvasElement }>();
 
   const updateNote = () => {
-    // The edge light rested on, else the one picked.
-    note.textContent = !hovered
-      ? String(EDGE_NAMES[edgeHovered ?? parseEdgeLight(State.settings.islandEdgeLight)])
-      : wardrobeHeader(hovered, parseOutfit(State.settings.lumoOutfit), new Date());
+    // The mouse rested on, else the edge light rested on, else the one picked.
+    note.textContent = hovered
+      ? cursorName(hovered)
+      : String(EDGE_NAMES[edgeHovered ?? parseEdgeLight(State.settings.islandEdgeLight)]);
   };
-
-  for (const sel of OUTFIT_SELECTIONS) {
-    const canvas = h("canvas");
-    const button = h(
-      "button",
-      { class: "wardrobe-item", title: tl(OUTFIT_KEYS[sel]), "aria-label": tl(OUTFIT_KEYS[sel]) },
-      canvas,
-    );
-    button.addEventListener("mouseenter", () => {
-      hovered = sel;
-      actions.previewOutfit(resolveOutfit(sel, new Date()));
-      updateNote();
-    });
-    button.addEventListener("mouseleave", () => {
-      if (hovered !== sel) return;
-      hovered = null;
-      actions.previewOutfit(null);
-      updateNote();
-    });
-    button.addEventListener("click", () => actions.chooseOutfit(sel));
-    items.set(sel, { button, canvas });
-    grid.append(button);
-  }
-
-  const lookItems = new Map<LumoLook, HTMLButtonElement>();
-  const lookCanvases = new Map<LumoLook, HTMLCanvasElement>();
-  for (const look of LUMO_LOOKS) {
-    const canvas = h("canvas");
-    const button = h(
-      "button",
-      { class: "wardrobe-item", title: tl(LOOK_KEYS[look]), "aria-label": tl(LOOK_KEYS[look]) },
-      canvas,
-    );
-    button.addEventListener("mouseenter", () => {
-      hovered = { look };
-      actions.previewLook(look);
-      updateNote();
-    });
-    button.addEventListener("mouseleave", () => {
-      if (!hovered || typeof hovered !== "object" || !("look" in hovered) || hovered.look !== look) return;
-      hovered = null;
-      actions.previewLook(null);
-      updateNote();
-    });
-    button.addEventListener("click", () => actions.chooseLook(look));
-    lookCanvases.set(look, canvas);
-    lookItems.set(look, button);
-    looks.append(button);
-  }
 
   /** The edge lights: resting on one shows it on the island, a click keeps it. */
   const edgeItems = new Map<EdgeLight, HTMLButtonElement>();
@@ -237,7 +169,7 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
       updateNote();
     });
     button.addEventListener("mouseleave", () => {
-      if (!hovered || typeof hovered !== "object" || !("cursor" in hovered) || hovered.cursor !== cursor) return;
+      if (hovered?.cursor !== cursor) return;
       hovered = null;
       updateNote();
     });
@@ -248,49 +180,19 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
     mice.append(button);
   }
 
-  /**
-   * Icons are drawn again only when they change: "auto" with the season and its
-   * badge's language, all of them with the look they are worn on, and with the
-   * scale of the display the island moved to.
-   */
+  /** The mice's pictures, drawn again on a display of another scale. */
   const drawIcons = () => {
-    const season = seasonalOutfit(new Date());
-    const look = parseLook(State.settings.lumoCharacter);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
-    const rescaled = dpr !== drawnDpr;
-    if (season === drawnSeason && drawnLanguage === language() && look === drawnLook && !rescaled) return;
-    const first = drawnSeason == null || look !== drawnLook || rescaled;
-    drawnSeason = season;
-    drawnLanguage = language();
-    drawnLook = look;
+    if (dpr === drawnDpr) return;
     drawnDpr = dpr;
-    if (rescaled) {
-      for (const [l, canvas] of lookCanvases) {
-        canvas.width = Math.round(ICON * dpr);
-        canvas.height = Math.round(ICON * dpr);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        drawLookIcon(ctx, ICON, l);
-      }
-      for (const [cursor, { canvas }] of mouseItems) {
-        canvas.width = Math.round(ICON * dpr);
-        canvas.height = Math.round(ICON * dpr);
-        const ctx = canvas.getContext("2d");
-        if (!ctx) continue;
-        ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-        if (cursor === "aim") drawAimIcon(ctx, ICON);
-        else drawCursorIcon(ctx, ICON, cursor);
-      }
-    }
-    for (const [sel, { canvas }] of items) {
-      if (!first && sel !== "auto") continue;
+    for (const [cursor, { canvas }] of mouseItems) {
       canvas.width = Math.round(ICON * dpr);
       canvas.height = Math.round(ICON * dpr);
       const ctx = canvas.getContext("2d");
       if (!ctx) continue;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawWardrobeIcon(ctx, ICON, sel, season, WARDROBE_STRINGS.autoBadge, look);
+      if (cursor === "aim") drawAimIcon(ctx, ICON);
+      else drawCursorIcon(ctx, ICON, cursor);
     }
   };
 
@@ -298,12 +200,6 @@ export function buildWardrobe(actions: ViewActions): ViewHost {
     el,
     sync() {
       drawIcons();
-      // The island drops the preview when the view closes: so does the hover.
-      if (State.wardrobePreview == null && State.lookPreview == null) hovered = null;
-      const current = parseOutfit(State.settings.lumoOutfit);
-      for (const [sel, { button }] of items) button.classList.toggle("on", sel === current);
-      const look = parseLook(State.settings.lumoCharacter);
-      for (const [l, button] of lookItems) button.classList.toggle("on", l === look);
       const edge = parseEdgeLight(State.settings.islandEdgeLight);
       for (const [e, button] of edgeItems) button.classList.toggle("on", e === edge);
       if (State.edgePreview == null) edgeHovered = null;

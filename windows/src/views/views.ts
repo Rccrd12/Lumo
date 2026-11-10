@@ -32,7 +32,7 @@ import { buildHome } from "./home";
 import { buildBackgroundDetail } from "./background";
 import { showGitHubSection } from "./github";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
-import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
+import type { ComputerCursor } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 
 export interface ViewActions {
@@ -58,14 +58,6 @@ export interface ViewActions {
   setVolume(v: number): void;
   openSettingsWindow(): void;
   blip(): void;
-  /** Wardrobe click: keeps the outfit ("auto" and "none" included). */
-  chooseOutfit(selection: OutfitSelection): void;
-  /** Wardrobe hover: shows an outfit on Lumo without keeping it; null ends it. */
-  previewOutfit(outfit: Outfit | null): void;
-  /** Wardrobe click on a look: keeps it. */
-  chooseLook(look: LumoLook): void;
-  /** Wardrobe hover on a look: shows it without keeping it; null ends it. */
-  previewLook(look: LumoLook | null): void;
   /** Wardrobe click on Claude's mouse (computer use): keeps it. */
   chooseComputerCursor(cursor: ComputerCursor): void;
   /** Wardrobe click on Aim: the corners before a click, on or off. */
