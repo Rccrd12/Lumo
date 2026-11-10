@@ -9,7 +9,8 @@
 // else in Lumo uses its own.
 //
 // At launch, before anything reads a folder or a WebView starts:
-//   * the folders move to Lumo's (`folders`), the log is renamed;
+//   * the folders move to Lumo's (`folders`), the log is renamed, the user's
+//     own status line saved beside the old relay is copied beside Lumo's;
 //   * the keys move to Lumo's keychain service (`keys`).
 // While an agent's config still runs the relay from the old folder (hooks
 // installed before, which only the user may rewrite: Settings → Agents →
@@ -121,6 +122,24 @@ pub fn folders() {
     }
     let work = crate::claude_code::work_dir();
     take_over(&platform::home_dir().join(OLD_TITLE), &work, &[]);
+    if let Some(bin) = old_bin() {
+        status_line_previous(&bin, &crate::hooks::status_line_previous_path());
+    }
+}
+
+/// The user's own status line, kept beside the old relay while it stood in for
+/// it: copied beside Lumo's relay (never over one already there), so removing
+/// the relay from Settings puts it back. Copied, not moved: the old relay,
+/// which settings.json may still run, reads it from its own folder.
+fn status_line_previous(old_bin: &Path, new: &Path) {
+    let old = old_bin.join("statusline-previous.json");
+    if new.exists() || !old.is_file() {
+        return;
+    }
+    if let Some(dir) = new.parent() {
+        let _ = std::fs::create_dir_all(dir);
+    }
+    let _ = std::fs::copy(&old, new);
 }
 
 // ── Keys ──────────────────────────────────────────────────────────────────────
@@ -245,6 +264,22 @@ mod tests {
         std::fs::create_dir_all(a.join("EBWebView")).unwrap();
         take_over(&a, &b, &[]);
         assert!(b.join("EBWebView").is_dir() && !a.exists());
+        let _ = std::fs::remove_dir_all(&base);
+    }
+
+    #[test]
+    fn the_saved_status_line_follows_the_relay_and_never_replaces_one() {
+        let base = std::env::temp_dir().join(format!("lumo-migrate-sl-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&base);
+        let (old, new) = (base.join("old-bin"), base.join("new").join("bin").join("statusline-previous.json"));
+        std::fs::create_dir_all(&old).unwrap();
+        std::fs::write(old.join("statusline-previous.json"), r#"{"type":"command","command":"mine"}"#).unwrap();
+        status_line_previous(&old, &new);
+        assert_eq!(std::fs::read_to_string(&new).unwrap(), r#"{"type":"command","command":"mine"}"#);
+        assert!(old.join("statusline-previous.json").is_file(), "the old relay still reads it");
+        std::fs::write(&new, "kept").unwrap();
+        status_line_previous(&old, &new);
+        assert_eq!(std::fs::read_to_string(&new).unwrap(), "kept");
         let _ = std::fs::remove_dir_all(&base);
     }
 

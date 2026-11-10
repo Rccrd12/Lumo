@@ -217,7 +217,7 @@ fn without_ours(existing: &Value) -> Result<Value, String> {
         }
     }
     if out.is_empty() {
-        root.remove("hooks");
+        root.shift_remove("hooks");
     } else {
         root.insert("hooks".into(), Value::Object(out));
     }
@@ -343,7 +343,7 @@ fn status_line_settings(current: &Value, install: bool, previous: Option<&Value>
     }
     match status_line_after(root.get("statusLine"), install, previous) {
         Some(sl) => root.insert("statusLine".into(), sl),
-        None => root.remove("statusLine"),
+        None => root.shift_remove("statusLine"),
     };
     Ok(Value::Object(root))
 }
@@ -553,6 +553,19 @@ mod tests {
         assert_eq!(status_line_settings(&theirs, false, Some(&previous)).unwrap()["statusLine"], theirs["statusLine"]);
         // A statusLine we do not understand is refused, never replaced.
         assert!(status_line_settings(&json!({ "statusLine": "echo hi" }), true, None).is_err());
+    }
+
+    #[test]
+    fn removing_keeps_the_other_keys_in_their_order() {
+        let keys = |v: &Value| v.as_object().unwrap().keys().cloned().collect::<Vec<_>>();
+        let mut with = status_line_settings(&json!({ "model": "opus", "theme": "dark" }), true, None).unwrap();
+        with.as_object_mut().unwrap().insert("permissions".into(), json!({}));
+        with.as_object_mut().unwrap().insert("env".into(), json!({}));
+        let after = status_line_settings(&with, false, None).unwrap();
+        assert_eq!(keys(&after), ["model", "theme", "permissions", "env"]);
+
+        let hooks = json!({ "a": 1, "hooks": merged(&json!({})).unwrap()["hooks"].clone(), "b": 2, "c": 3 });
+        assert_eq!(keys(&without_ours(&hooks).unwrap()), ["a", "b", "c"]);
     }
 
     #[test]

@@ -17410,6 +17410,18 @@
    "ru": "Загрузка изображения…",
    "id": "Memuat gambar…",
    "it": "Carico l'immagine…"
+  },
+  "Lumo also writes the rest of the file in its own layout (indentation, spacing, line ends); the lines below show only what changes in the content.": {
+   "zh-Hans": "Lumo 还会按自己的格式重写文件的其余部分（缩进、空格、换行符）；下面各行只显示内容上的变化。",
+   "hi": "Lumo फ़ाइल का बाकी हिस्सा भी अपने ढंग (इंडेंटेशन, स्पेसिंग, लाइन के अंत) में लिखता है; नीचे की पंक्तियाँ केवल सामग्री में होने वाले बदलाव दिखाती हैं।",
+   "es": "Lumo también escribe el resto del archivo con su propio formato (sangría, espacios, finales de línea); las líneas de abajo solo muestran lo que cambia en el contenido.",
+   "ar": "يكتب Lumo أيضًا بقية الملف بتنسيقه الخاص (المسافات البادئة والمسافات ونهايات الأسطر)؛ الأسطر أدناه تعرض فقط ما يتغير في المحتوى.",
+   "fr": "Lumo réécrit aussi le reste du fichier à sa façon (indentation, espaces, fins de ligne) ; les lignes ci-dessous ne montrent que ce qui change dans le contenu.",
+   "bn": "Lumo ফাইলের বাকি অংশও নিজের বিন্যাসে (ইন্ডেন্টেশন, স্পেস, লাইনের শেষ) লেখে; নিচের লাইনগুলো শুধু বিষয়বস্তুর পরিবর্তন দেখায়।",
+   "pt-BR": "O Lumo também grava o resto do arquivo no próprio formato (recuo, espaços, finais de linha); as linhas abaixo mostram só o que muda no conteúdo.",
+   "ru": "Lumo также записывает остальную часть файла в своём формате (отступы, пробелы, концы строк); строки ниже показывают только изменения содержимого.",
+   "id": "Lumo juga menulis sisa file dengan tata letaknya sendiri (indentasi, spasi, akhir baris); baris di bawah hanya menunjukkan perubahan isi.",
+   "it": "Lumo riscrive anche il resto del file con la sua impaginazione (rientri, spazi, fine riga); le righe qui sotto mostrano solo ciò che cambia nel contenuto."
   }
  }
 }

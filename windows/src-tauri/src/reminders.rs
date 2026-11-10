@@ -4,8 +4,9 @@
 // that came due while Lumo was not running rings as soon as it starts again.
 //
 // One thread sleeps until the next one is due (or the list changes) and then
-// tells the island (`reminder-due`), which rings and shows it. It wakes for
-// nothing else, so it costs nothing while it waits.
+// tells the island (`reminder-due`), which rings and shows it. With none set
+// it wakes for nothing else; with one waiting it also looks once a minute, so a
+// computer waking from sleep never rings it late.
 
 use serde::{Deserialize, Serialize};
 use std::path::PathBuf;
@@ -188,6 +189,18 @@ pub fn cancel(id: u32) -> bool {
     gone
 }
 
+/// The longest the thread sleeps while a reminder waits. The wait is counted
+/// on a clock that stops while the computer sleeps, and the wall clock can be
+/// put forward: looking again at least this often rings a reminder that came due
+/// meanwhile within a minute of the computer waking, not up to an hour later.
+const RECHECK: Duration = Duration::from_secs(60);
+
+/// How long to sleep before looking again, with the next reminder due at
+/// `next`; `None` with none waiting (only a change wakes the thread).
+fn next_wait(next: Option<u64>, now: u64) -> Option<Duration> {
+    next.map(|at| Duration::from_millis(at.saturating_sub(now).max(1)).min(RECHECK))
+}
+
 /// The thread that rings them.
 pub fn start(app: AppHandle) {
     let started = now_ms();
@@ -215,12 +228,10 @@ pub fn start(app: AppHandle) {
             }
             let version = s.version;
             // Asleep until the next is due, or the list changes; with none, until it changes.
-            let wait =
-                s.list.iter().map(|r| r.at).min().map(|at| Duration::from_millis(at.saturating_sub(now_ms()).max(1)));
-            // Waking once an hour at most keeps a clock change (or a sleep) from
-            // pushing a reminder late.
-            let wait = wait.unwrap_or(Duration::from_secs(3600)).min(Duration::from_secs(3600));
-            let _ = CHANGED.wait_timeout_while(s, wait, |s| s.version == version);
+            match next_wait(s.list.iter().map(|r| r.at).min(), now_ms()) {
+                Some(wait) => drop(CHANGED.wait_timeout_while(s, wait, |s| s.version == version)),
+                None => drop(CHANGED.wait_while(s, |s| s.version == version)),
+            }
         }
     });
 }
@@ -265,6 +276,14 @@ mod tests {
         assert_eq!(due.iter().map(|d| (d.reminder.id, d.missed)).collect::<Vec<_>>(), [(1, true), (2, false)]);
         assert_eq!(list, [r(3, 1100 * H)], "the stale one is dropped, the later one stays");
         assert!(take_due(&mut list, 1050 * H, started).is_empty());
+    }
+
+    #[test]
+    fn the_thread_looks_again_within_a_minute_and_sleeps_with_none() {
+        assert_eq!(next_wait(None, 1_000), None);
+        assert_eq!(next_wait(Some(1_500), 1_000), Some(Duration::from_millis(500)));
+        assert_eq!(next_wait(Some(500), 1_000), Some(Duration::from_millis(1)), "overdue: at once");
+        assert_eq!(next_wait(Some(10 * 3_600_000), 0), Some(RECHECK), "hours away: a minute at most");
     }
 
     #[test]
