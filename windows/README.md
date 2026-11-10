@@ -59,7 +59,8 @@ repository's GitHub releases are accepted, and only one that matches, byte for
 byte, the SHA-256 GitHub published for it is run.
 
 **Beta versions** (off unless you turn it on) also offers the beta: one build
-with main and every open pull request of the repository merged into it, so
+with main and every open pull request the repository's owner opened from one
+of its branches merged into it, so
 changes can be tried before they are released, with no terminal and no
 branch to check out. The **Windows beta** workflow
 (`.github/workflows/windows-beta.yml`, steps in `windows/scripts/beta.mjs`)
