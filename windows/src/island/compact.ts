@@ -537,7 +537,7 @@ const NEW_LOOK_EYES_ROOM = 5;
 
 function newLookEyesRoom(): number {
   const dock = State.settings.islandDock;
-  return State.settings.islandNewLook === true && dock !== "left" && dock !== "right" ? NEW_LOOK_EYES_ROOM : 0;
+  return dock !== "left" && dock !== "right" ? NEW_LOOK_EYES_ROOM : 0;
 }
 
 /** Sizes within a pixel are the same: a timer's digits do not resize the island. */

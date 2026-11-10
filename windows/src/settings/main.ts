@@ -13,7 +13,6 @@ import {
   recordPress, type Binding,
 } from "../core/shortcuts";
 import { DEFAULT_SETTINGS, aiReads, parseCloseMode, parseMotion, type Settings } from "../core/state";
-import { LOOK_KEYS, LUMO_LOOKS, parseLook } from "../character/wardrobe";
 import {
   MAX_DECLARED, PILL_CATEGORIES, availablePills, chooseMainPill, mainPillChoices,
   sanitizeDeclared, toggleDeclared, type PillDefinition,
@@ -792,6 +791,12 @@ const WEB_SETTINGS = {
   get label() { return t("Search the web for the AI"); },
 };
 
+/** The images in the chat's answers (views/rich/image.ts, web_image.rs). */
+const WEB_IMAGES = {
+  get label() { return t("Images from the web"); },
+  get hint() { return t("An image in an answer is downloaded and shown at once, from public https sites only. Off: just its site and a button to open it in the browser."); },
+};
+
 const COMPUTER_SETTINGS = {
   get label() { return t("Let Claude use the computer"); },
   get claudeOnly() { return t("In the chat, pick Claude Code as the provider to use it."); },
@@ -846,6 +851,9 @@ function securitySection(): HTMLElement {
     note,
     setting(WEB_SETTINGS.label, SECURITY.webHint,
       toggle(settings.chatWebSearch === true, (on) => { settings.chatWebSearch = on; void save(); }),
+    ),
+    setting(WEB_IMAGES.label, WEB_IMAGES.hint,
+      toggle(settings.webImages !== false, (on) => { settings.webImages = on; void save(); }),
     ),
     group(SECURITY.sees),
     h("p", { class: "hint group-hint", text: SECURITY.seesHint }),
@@ -1874,15 +1882,6 @@ function islandSection(): HTMLElement {
     void save();
   });
 
-  // His look, as in the wardrobe.
-  const look = h("select", {}) as HTMLSelectElement;
-  for (const value of LUMO_LOOKS) look.append(h("option", { value, text: t(LOOK_KEYS[value]) }));
-  look.value = parseLook(settings.lumoCharacter);
-  look.addEventListener("change", () => {
-    settings.lumoCharacter = look.value;
-    void save();
-  });
-
   return h(
     "section",
     {},
@@ -1890,10 +1889,6 @@ function islandSection(): HTMLElement {
     ...behaviourRows(),
     group("Lumo"),
     setting(t("Lumo moves"), null, motion),
-    setting(t("Lumo's look"), null, look),
-    setting(t("Previous look"),
-      t("Lumo in the open island's left column, with the tabs, as before 0.18.0."),
-      toggle(settings.islandNewLook !== true, (v) => { settings.islandNewLook = !v; applyLook(); void save(); })),
     group(t("Position and size")),
     setting(t("Island lives on"), null, screen),
     setting(t("Island size"), null, size),
@@ -1957,10 +1952,6 @@ function behaviourRows(): HTMLElement[] {
       t("reads and commands that only look (ls, git status…) are answered from the closed island; anything else opens the full card"),
       toggle(settings.quickApprovals !== false, (v) => { settings.quickApprovals = v; void save(); })),
     group(t("Live Activities")),
-    setting(t("Live Activities"), t("beside the open island: timers, the music, the calendar and the newest emails"),
-      toggle(settings.activitiesPanel !== false, (v) => { settings.activitiesPanel = v; void save(); })),
-    setting(t("Follow the island's height"), t("as tall as the open island, growing and shrinking with it when you resize it; off, they keep the height you give them"),
-      toggle(settings.activitiesFollowIsland !== false, (v) => { settings.activitiesFollowIsland = v; void save(); })),
     calendarRow(),
   ];
 }
@@ -2398,13 +2389,12 @@ async function main() {
     const after = `${settings.chatProvider}|${settings.ollamaUrl}|${settings.lmstudioUrl}|${settings.unslothUrl}|${settings.customUrl}`;
     if (before !== after) localRedraw?.();
     applyLanguage();
-    applyLook();
   });
 }
 
-/** Inside the island, the new look's Settings (settings.css, html.look-new): as the island it is in. */
+/** Inside the island, Settings take the island's look (settings.css, html.look-new). */
 function applyLook() {
-  document.documentElement.classList.toggle("look-new", embedded && settings.islandNewLook === true);
+  if (embedded) document.documentElement.classList.add("look-new");
 }
 
 /** Reads what the sections show and draws them all. */

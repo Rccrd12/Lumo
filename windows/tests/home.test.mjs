@@ -22,7 +22,7 @@ function emptyActivities() {
 }
 
 function resetState() {
-  State.settings = { ...DEFAULT_SETTINGS, islandNewLook: true };
+  State.settings = { ...DEFAULT_SETTINGS };
   State.tasks = [
     {
       id: "integration_claude",

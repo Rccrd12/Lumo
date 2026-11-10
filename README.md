@@ -25,8 +25,6 @@ The full documentation of the app is in [`windows/README.md`](windows/README.md)
 
 Meet **Lumo**: two bright eyes at the top of your screen. The island they live in peeks out of the edge when you need it, its light running along the border in the colour of what is going on, and it tells you the moment Claude Code needs you. Open it and everything is on one home: what waits for you, the sessions at work, your timers, music, calendar and email, and the field to the chat.
 
-> Lumo 0.18 brought a new look. The one before it, with the ring of light and the tabs, is still there: **Settings → Island → Previous look**.
-
 ## Features
 
 ### Your agents
@@ -91,7 +89,7 @@ Meet **Lumo**: two bright eyes at the top of your screen. The island they live i
 
 - 🫥 **Invisible when idle** — hides away when nothing is running, peeks out when you hover the top edge of the screen. Its opening is the island's light coming on.
 - 🧲 **Docks anywhere** — drag it to the top, bottom, left or right edge, resize it, zoom it; the home goes narrower than the other views.
-- 👗 **The wardrobe** — right-click Lumo and pick the light along the island's edge (Full light, Soft light, Line only, Glow only) and Claude's mouse for computer use. In the previous look, Lumo's outfits and styles (a ring of light, a dot, a soft drop, a firefly), dressed for the seasons on his own.
+- 👗 **The wardrobe** — right-click Lumo and pick the light along the island's edge (Full light, Soft light, Line only, Glow only) and Claude's mouse for computer use.
 - ⚙️ **Settings in the island** — the search and the sections on top, always in sight while scrolling.
 - ⌨️ **Keyboard shortcuts** — open the chat, jump to an alert or a terminal, switch pills, mute or open the wardrobe from anywhere; all customizable in Settings → Shortcuts.
 - 📅 **Weekly recap** — every Monday Lumo sums up the past week: time coding, sessions, files, lines changed, commands, permissions, top agent and project. Share it as a 1080 × 1920 image — project names optional. All local.
@@ -112,7 +110,7 @@ Windows builds are in Releases under the `windows-v*` tags; the newest build is 
 
 | Windows | Date | Highlights |
 |---------|------|------------|
-| [0.20.2](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.2) | Nov 9, 2026 | Copilot CLI's and Cursor CLI's deletions and moves named on their cards, the agents' sign-ins never read by Gemini Live nor copied into a chat's folder, no update without GitHub's SHA-256, Unsloth Studio ends with Lumo even after a crash, a beta only with commits whose checks passed |
+| [0.21.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.21.0) | Nov 10, 2026 | Rich cards in the chat's answers (callouts, steps, side-by-side cards, calculator and function plot, quiz, data chart, timeline, checklist, diff) and images from the web, answers written in ink, Copy, Retry, Edit and when under each message, permissions and a Windows sandbox for local models, which also plan on their own, Outlook read with no security prompt, usage orange from 75 % and red from 90 %, one look (the one from before 0.18 gone, with the outfits, Lumo's other styles and the live activities' and the plan's own windows), Copilot CLI's and Cursor CLI's deletions and moves named on their cards, the agents' sign-ins never read by Gemini Live nor copied into a chat's folder, no update without GitHub's SHA-256, releases scanned with Microsoft Defender, Unsloth Studio ends with Lumo even after a crash |
 | [0.20.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.1) | Nov 9, 2026 | Sessions another program starts in the background share one row, with no sound or alert for each (`LUMO_BACKGROUND`, `LUMO_BATCH_TOTAL`), sounds at most once every 1.5 s, your questions in Markdown and TeX like the answers, each Unsloth Studio model once in the picker |
 | [0.20.0](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.20.0) | Nov 8, 2026 | A card answered in the terminal goes away, Claude Desktop's, Antigravity's and OpenCode's requests on the island, email from the classic Outlook on the PC with no password and from several IMAP accounts, Copilot CLI and Cursor CLI in the chat, Security in a tab of its own, sessions by their title, approve a plan and let it edit files, `CLAUDE_CONFIG_DIR`, Unsloth Studio started and stopped by itself, open PRs that only wait in one row on the home, updates checked against GitHub's SHA-256 |
 | [0.19.1](https://github.com/Rccrd12/Lumo/releases/tag/windows-v0.19.1) | Nov 8, 2026 | Menus with their text centred, and no beta offered when it holds nothing the release does not |
@@ -240,7 +238,7 @@ Every global shortcut can be changed or turned off in **Settings… → Shortcut
 
 - No telemetry, no account. The only update check is one request to GitHub when Lumo opens (off in Settings → Updates), and nothing is downloaded without your click.
 - Keys live in Windows Credential Manager, never on disk and never in the interface.
-- The only network requests Lumo makes are to the services you configure yourself.
+- The only network requests Lumo makes are to the services you configure yourself, and to the sites of the images in chat answers: such an image is downloaded by Lumo at once (https and public addresses only, image files only, 8 MB at most), and the site sees your IP address and the image's full address, which the AI writes and could fill with words from your chat. Settings → Security → Images from the web turns it off.
 - Screenshots are taken only when you ask, and shown to you before anything is sent. The names of the windows and documents you have open go with a chat question unless you turn it off in Settings → Security, where you also choose whether the AI may read your email and calendar.
 - Email and the calendar are only read unless you allow more in Settings → Security; then every email sent, moved or deleted waits for your click on its card. GitHub reaches the chat only once you turn it on there.
 - The log and the weekly recap history stay on your machine.

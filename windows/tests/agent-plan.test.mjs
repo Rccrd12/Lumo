@@ -1,5 +1,5 @@
-// The Plan island: the plan an agent follows, read off its tool calls
-// (src/core/agent-plan.ts), and the island that opens with it (src/island/plan.ts),
+// The plan an agent follows, read off its tool calls (src/core/agent-plan.ts),
+// and what opens with it in the chat and on the home (src/island/plan.ts),
 // driven through the real hooks.
 
 import { afterEach, beforeEach, mock, test } from "node:test";
@@ -11,6 +11,7 @@ import {
 import { IslandPlan } from "../src/island/plan.ts";
 import { liveSessions, registerHookHandlers } from "../src/island/hooks.ts";
 import { DEFAULT_SETTINGS, State } from "../src/core/state.ts";
+import { Sound } from "../src/core/sound.ts";
 
 const todos = (...items) => ({ todos: items.map(([content, status]) => ({ content, status, activeForm: content })) });
 const owner = (sessionId = "s1") => ({ pillId: "integration_claude", sessionId, agent: "Claude Code", color: "#fff", project: "Lumo" });
@@ -173,176 +174,110 @@ test("the plan shown: the one under way moved on last, else the one just finishe
 
 // ── The island, through the hooks ─────────────────────────────────────────────
 
-/** The view drawn beside the island: what it was asked to do. */
-class Classes {
-  set = new Set();
-  add(c) { this.set.add(c); }
-  remove(c) { this.set.delete(c); }
-  contains(c) { return this.set.has(c); }
-  toggle(c, on = !this.set.has(c)) {
-    if (on) this.set.add(c);
-    else this.set.delete(c);
-    return on;
-  }
-}
-const panel = {
-  hooks: null,
-  el: { style: {}, classList: new Classes(), offsetWidth: 0, getBoundingClientRect: () => ({ left: 0, top: 0, width: 280, height: 300 }) },
-  drawn: null,
-  flights: 0,
-  folds: 0,
-  render(data) { this.drawn = data; },
-  reveal() {},
-  async flyIn() { this.flights++; },
-  // Its "–" or its icon: it folds, then says so.
-  async fold() {
-    this.folds++;
-    this.hooks.act({ kind: "fold" });
-  },
-};
+const played = [];
+mock.method(Sound, "play", (name) => played.push(name));
 
 const island = { alert() {}, setView() {}, reveal() {}, dropPin() {}, quickApproval: () => false };
-island.plan = new IslandPlan({
-  openSettings() {}, refreshAll() {},
-  makeView(hooks) {
-    panel.hooks = hooks;
-    return panel;
-  },
-  iconPoint: () => null,
-  movable: true,
-  side: () => "right",
-  changed() {},
-});
+island.plan = new IslandPlan({ changed() {} });
 registerHookHandlers(island);
 
 const hook = (payload) => emit("hook", payload);
 const tool = (tool_name, tool_input, session_id = "s1") =>
   hook({ hook_event_name: "PreToolUse", session_id, cwd: "C:\\code\\Lumo", tool_name, tool_input });
-/** A frame of the island (island.ts planPlace): beside it while it is open, in its own window always. */
-const frame = () => {
-  const plan = island.plan;
-  plan.place(plan.wanted && (plan.detached || State.mode === "expanded"), 0, 0, 300);
-};
-const beside = () => {
-  frame();
-  return panel.el.classList.contains("shown");
-};
-const windowShows = () => sent("plan_show").map((a) => a.show);
+/** Open: the chat's strip and the home show it, and its icon reads pressed (State.planOpen). */
+const open = () => State.planOpen;
 
 beforeEach(() => {
   mock.timers.enable({ apis: ["setTimeout"] });
   calls.length = 0;
+  played.length = 0;
   State.tasks = [];
   State.mode = "expanded";
   State.paused = false;
   State.settings = { ...DEFAULT_SETTINGS };
   liveSessions.clear();
-  panel.flights = 0;
-  panel.folds = 0;
 });
 
 afterEach(() => {
   hook({ hook_event_name: "SessionEnd", session_id: "s1", cwd: "C:\\code\\Lumo" });
   hook({ hook_event_name: "SessionEnd", session_id: "s2", cwd: "C:\\code\\Lumo" });
-  // Plans done are kept: each test starts with the island folded.
-  emit("plan-action", { kind: "fold" });
+  // Plans done are kept: each test starts with them folded.
+  if (State.planOpen) island.plan.toggle();
   State.settings = { ...DEFAULT_SETTINGS };
-  frame();
   mock.timers.runAll();
   mock.timers.reset();
 });
 
-test("shut until an agent makes a plan; then it comes out of its icon beside the open island", () => {
+test("shut until an agent makes a plan; then it opens, with a sound while the island is open", () => {
   tool("Bash", { command: "ls" });
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
+  assert.equal(State.planIcon, false);
   tool("TodoWrite", todos(["Read", "in_progress"], ["Fix", "pending"]));
-  assert.equal(beside(), true);
-  assert.equal(panel.flights, 1);
-  assert.deepEqual(windowShows(), [], "drawn in the island's page, not in a window");
-  assert.equal(panel.drawn.plan.agent, "Claude Code");
-  assert.equal(panel.drawn.plan.project, "Lumo");
-  assert.deepEqual(panel.drawn.plan.steps.map((s) => s.status), ["active", "pending"]);
-  // It moves on with the agent, without coming out again.
+  assert.equal(open(), true);
+  assert.equal(State.planIcon, true);
+  assert.deepEqual(played, ["open"]);
+  assert.equal(island.plan.current.agent, "Claude Code");
+  assert.equal(island.plan.current.project, "Lumo");
+  assert.deepEqual(island.plan.current.steps.map((s) => s.status), ["active", "pending"]);
+  assert.equal(State.plans[0].key, island.plan.current.key, "the chat and the home are given it");
+  // It moves on with the agent, without opening again.
   tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
-  assert.equal(beside(), true);
-  assert.equal(panel.flights, 1);
-  assert.deepEqual(panel.drawn.plan.steps.map((s) => s.status), ["done", "active"]);
+  assert.equal(open(), true);
+  assert.deepEqual(played, ["open"]);
+  assert.deepEqual(island.plan.current.steps.map((s) => s.status), ["done", "active"]);
 });
 
-test("the \"–\" folds it into its icon, which brings it back", () => {
+test("its icon folds it, and brings it back; a new plan opens it again", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), true);
-  assert.equal(State.planIcon, true, "the icon shows while it is open");
-  assert.equal(State.planOpen, true);
-  emit("plan-action", { kind: "fold" });
-  assert.equal(beside(), false);
-  assert.equal(State.planIcon, true);
-  assert.equal(State.planOpen, false);
+  assert.equal(open(), true);
+  island.plan.toggle();
+  assert.equal(open(), false);
+  assert.equal(State.planIcon, true, "the icon stays while there are plans");
   // Folded, it stays folded while the plan moves on…
   tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
   island.plan.toggle();
-  assert.equal(beside(), true);
-  assert.equal(panel.flights, 2, "out of its icon");
-  assert.equal(State.planOpen, true);
+  assert.equal(open(), true);
   // …and a new plan opens it again.
-  emit("plan-action", { kind: "fold" });
-  assert.equal(beside(), false);
-  tool("TodoWrite", todos(["Something else", "pending"]), "s2");
-  assert.equal(beside(), true);
-});
-
-test("its icon clicked while it is open folds it, with its animation", () => {
-  tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), true);
   island.plan.toggle();
-  assert.equal(panel.folds, 1);
-  assert.equal(State.planOpen, false);
-  assert.equal(State.planIcon, true);
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
+  tool("TodoWrite", todos(["Something else", "pending"]), "s2");
+  assert.equal(open(), true);
 });
 
 test("a plan done stays a moment, then folds into its icon, which opens it again", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
   tool("TodoWrite", todos(["Read", "completed"]));
-  assert.equal(beside(), true);
+  assert.equal(open(), true);
   mock.timers.tick(8_000);
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
   assert.equal(State.planIcon, true);
   assert.deepEqual(island.plan.current.steps, [{ text: "Read", status: "done" }]);
   island.plan.unfold();
-  assert.equal(beside(), true);
-  assert.equal(panel.drawn.live, false);
+  assert.equal(open(), true);
+  assert.equal(island.plan.book.get(island.plan.current.key), undefined, "with those done, no longer under way");
 });
 
 test("the session ending puts its plan with those done", () => {
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), true);
+  assert.equal(open(), true);
   hook({ hook_event_name: "SessionEnd", session_id: "s1", cwd: "C:\\code\\Lumo" });
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
   assert.equal(State.planIcon, true);
   assert.equal(island.plan.current.steps[0].text, "Read");
 });
 
-test("its arrows go back through the plans done, and a new plan comes first", () => {
+test("plans done are kept, and a new plan comes first", () => {
   tool("TodoWrite", todos(["First", "completed"]), "s1");
   mock.timers.tick(8_000);
   tool("TodoWrite", todos(["Second", "completed"]), "s2");
   mock.timers.tick(8_000);
   island.plan.unfold();
   assert.equal(island.plan.current.steps[0].text, "Second");
-  assert.ok(island.plan.data().count >= 2);
-  emit("plan-action", { kind: "older" });
-  assert.equal(island.plan.current.steps[0].text, "First");
-  assert.equal(island.plan.data().index, 1);
-  emit("plan-action", { kind: "newer" });
-  assert.equal(island.plan.current.steps[0].text, "Second");
-  emit("plan-action", { kind: "older" });
-  // A new plan shows at once, whatever was looked at.
+  assert.ok(island.plan.plans().length >= 2);
   tool("TodoWrite", todos(["Third", "in_progress"]), "s1");
   assert.equal(island.plan.current.steps[0].text, "Third");
-  assert.equal(island.plan.data().index, 0);
-  assert.equal(island.plan.data().live, true);
+  assert.equal(State.plans[0].steps[0].text, "Third");
 });
 
 test("a terminal's TaskCreate counts once done, with the id the relay kept", () => {
@@ -357,67 +292,38 @@ test("a terminal's TaskCreate counts once done, with the id the relay kept", () 
   assert.deepEqual(island.plan.current.steps, [{ text: "Game", status: "pending" }, { text: "UI", status: "active" }]);
 });
 
-test("beside the island, it fades out with the island and back in when it opens", () => {
-  tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), true);
-  State.mode = "hidden";
-  assert.equal(beside(), false);
-  assert.equal(State.planOpen, true, "not folded: its icon still reads open");
-  tool("TodoWrite", todos(["Read", "completed"], ["Fix", "in_progress"]));
-  State.mode = "expanded";
-  assert.equal(beside(), true);
-  assert.equal(panel.flights, 1, "with the island, not out of its icon again");
-  assert.deepEqual(panel.drawn.plan.steps.map((s) => s.status), ["done", "active"]);
-});
-
-test("beside the closed island, a new plan waits for it to open", () => {
+test("made while the island is closed, it opens without a sound, ready for when the island does", () => {
   State.mode = "hidden";
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), false);
+  assert.equal(open(), true);
   assert.equal(State.planIcon, true);
-  State.mode = "expanded";
-  assert.equal(beside(), true);
-  assert.equal(panel.flights, 0);
+  assert.deepEqual(played, []);
 });
 
-test("in its own window, it stays when the island closes, until its \"–\"", () => {
+test("no window of its own: nothing asks Rust for one, whatever an old settings.json said", () => {
+  // agentPlanMoved, from a settings.json of before, is no longer read.
   State.settings = { ...State.settings, agentPlanMoved: true };
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), false, "not beside the island");
-  assert.deepEqual(windowShows(), [true]);
-  State.mode = "hidden";
-  frame();
-  assert.deepEqual(windowShows(), [true]);
-  emit("plan-action", { kind: "fold" });
-  frame();
-  assert.deepEqual(windowShows(), [true, false]);
-});
-
-test("taken off the island, it shows in its window before the page lets go of it", () => {
-  tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), true);
-  State.settings = { ...State.settings, agentPlanMoved: true };
-  frame();
-  assert.deepEqual(windowShows(), [true]);
-  assert.equal(panel.el.classList.contains("shown"), true, "still drawn here");
-  emit("plan-painted", null);
-  assert.equal(panel.el.classList.contains("shown"), false);
+  assert.equal(open(), true);
+  assert.deepEqual(sent("plan_show"), []);
+  assert.deepEqual(sent("plan_prepare"), []);
+  assert.equal(calls.some(([cmd]) => /^(plan|activities)_/.test(cmd)), false);
 });
 
 test("paused, it stays shut", () => {
   State.paused = true;
   tool("TodoWrite", todos(["Read", "in_progress"]));
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
 });
 
 test("the island chat's Claude Code sends its plan through the chat, and it opens", () => {
   emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "in_progress"], ["Write game.py", "pending"]) });
-  assert.equal(beside(), true);
+  assert.equal(open(), true);
   assert.equal(island.plan.current.pillId, "chat");
   assert.equal(island.plan.current.agent, "Claude Code");
   emit("chat-plan", { tool: "TodoWrite", input: todos(["Create the Snake folder", "completed"], ["Write game.py", "completed"]) });
   mock.timers.tick(8_000);
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
 });
 
 test("a question of the chat edited: the plan its answer made goes, and the next one starts alone", () => {
@@ -425,16 +331,16 @@ test("a question of the chat edited: the plan its answer made goes, and the next
   send("TaskCreate", { subject: "Take a screenshot of the desktop", taskId: "1" });
   send("TaskCreate", { subject: "Open Chrome", taskId: "2" });
   send("TaskUpdate", { taskId: "1", status: "in_progress" });
-  assert.equal(beside(), true);
+  assert.equal(open(), true);
   island.plan.restartChat("edited-chat");
   assert.equal(island.plan.book.get("chat|edited-chat"), undefined);
-  assert.equal(beside(), false);
+  assert.equal(open(), false);
   // Not kept with those done: the answer that made it is gone.
   assert.equal(island.plan.plans().some((p) => p.key === "chat|edited-chat"), false);
   // The new answer's plan opens on its own.
   send("TaskCreate", { subject: "Open Chrome and check it", taskId: "1" });
   send("TaskUpdate", { taskId: "1", status: "in_progress" });
-  assert.equal(beside(), true);
+  assert.equal(open(), true);
   assert.deepEqual(island.plan.current.steps, [{ text: "Open Chrome and check it", status: "active" }]);
   island.plan.forgetChat("edited-chat");
 });
@@ -453,7 +359,7 @@ test("a local or API model's update_plan carries its own chat id and speaker", (
     agent: "Unsloth Studio",
     color: "#34D399",
   });
-  assert.equal(beside(), true);
+  assert.equal(open(), true);
   assert.equal(island.plan.current.key, "chat|bg-chat-99");
   assert.equal(island.plan.current.agent, "Unsloth Studio");
   assert.equal(island.plan.current.color, "#34D399");

@@ -270,7 +270,7 @@ pub async fn send(
                     crate::claude_code::Activity::new("tool", crate::claude_code::pretty_tool(name))
                 };
                 chat.events().activity(app, act);
-                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, false).await;
+                let (text, _) = crate::tools::call_for_chat(app, chat.id(), name, input, crate::tools::Asking::Untrusted, false).await;
                 turn_messages.push(json!({ "role": "tool", "tool_call_id": call["id"], "content": text }));
             }
             if let Some(messages) = body["messages"].as_array_mut() {

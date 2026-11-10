@@ -25,22 +25,20 @@ import { buildRecap } from "./recap";
 import { buildWardrobe } from "./wardrobe";
 import { buildSettingsFrame } from "./settings-frame";
 import { buildLive, openVoiceSettings } from "./live";
-import { TOOLS_STRINGS, buildTools } from "./tools";
+import { buildTools } from "./tools";
 import { isWorkshopChat } from "../core/tools";
 import { Live } from "../live/session";
 import { buildHome } from "./home";
 import { buildBackgroundDetail } from "./background";
 import { showGitHubSection } from "./github";
 import type { ActivitiesAction, ActivitiesData } from "./activities-view";
-import type { ComputerCursor, LumoLook, Outfit, OutfitSelection } from "../character/wardrobe";
+import type { ComputerCursor } from "../character/wardrobe";
 import { N_, language, t, tl, type Msg } from "../i18n/i18n";
 
 export interface ViewActions {
   setView(v: IslandViewName): void;
   /** "Cancel" on a dropped file: forgets it and goes back home. */
   collapse(): void;
-  /** The header's –: the island slips into its edge until the mouse comes there. */
-  hide(): void;
   /** Folds a waiting card to the compact island without answering it. */
   foldApproval(): void;
   setFocus(id: string): void;
@@ -57,24 +55,13 @@ export interface ViewActions {
   answer(answers: Record<string, string | string[]>, requestId: string): void;
   /** Hands the pending request back to the terminal. */
   answerInTerminal(): void;
-  toggleSound(): void;
   setVolume(v: number): void;
   openSettingsWindow(): void;
   blip(): void;
-  /** Wardrobe click: keeps the outfit ("auto" and "none" included). */
-  chooseOutfit(selection: OutfitSelection): void;
-  /** Wardrobe hover: shows an outfit on Lumo without keeping it; null ends it. */
-  previewOutfit(outfit: Outfit | null): void;
-  /** Wardrobe click on a look: keeps it. */
-  chooseLook(look: LumoLook): void;
-  /** Wardrobe hover on a look: shows it without keeping it; null ends it. */
-  previewLook(look: LumoLook | null): void;
   /** Wardrobe click on Claude's mouse (computer use): keeps it. */
   chooseComputerCursor(cursor: ComputerCursor): void;
   /** Wardrobe click on Aim: the corners before a click, on or off. */
   setComputerAim(on: boolean): void;
-  /** The folded live activities' icon: they come back beside the island. */
-  showActivities(): void;
   /** The folded Plan island's icon: it comes back. */
   showPlan(): void;
   /** A chat deleted from Past chats: its plans go too. */
@@ -157,43 +144,8 @@ function stack(padLeft: number, padRight: number, ...children: Node[]): HTMLElem
 // ── Header ────────────────────────────────────────────────────────────────────
 
 export function buildHeader(actions: ViewActions): ViewHost {
-  // The chat is home; the coding agents and pills have their own tab, with a
-  // dot while a session works (or waits on you).
-  // The chat view shows the chat again, not the tool workshop.
-  const tabChat = h("button", {
-    class: "tab", title: tl("Chat"),
-    onclick: () => {
-      State.useSlot("chat");
-      go("prompt");
-    },
-  }, svg(ICONS.bubble, 13));
-  const agentsBadge = h("i", { class: "tab-badge" });
-  const tabAgents = h("button", { class: "tab", title: tl("Agents"), onclick: () => go(State.agentsView()) },
-    svg(ICONS.code, 13, { stroke: 2 }), agentsBadge);
-  // The user's own tools (views/tools.ts), between the agents and the "+";
-  // lit in the tool workshop too, which is theirs.
-  const tabTools = h("button", { class: "tab tab-tools", title: tl(TOOLS_STRINGS.tab), onclick: () => go("tools") },
-    svg(ICONS.wrench, 12, { stroke: 1.9 }));
-  const tabDrop = h("button", { class: "tab tab-drop", title: tl("Drop"), onclick: () => go("upload") }, svg(ICONS.plus, 13));
-  // The live activities, folded (island/activities.ts): left of the "+".
-  const tabActivities = h("button", {
-    class: "tab tab-activities", title: tl("Live Activities"),
-    onclick: () => {
-      actions.blip();
-      actions.showActivities();
-    },
-  }, svg(ICONS.activities, 12, { stroke: 1.9 }));
-
-  const gearBtn = h("button", { title: tl("Settings"), onclick: () => go("settings") }, svg(ICONS.gear, 14));
-  const soundBtn = h("button", { title: tl("Mute"), onclick: () => actions.toggleSound() }, svg(ICONS.speakerOn, 14));
-  // Slips the island into the edge of the screen it hangs from, like Hide
-  // when unused; the mouse on that piece of the edge brings it back.
-  const hideBtn = h("button", { class: "hide-btn", title: tl("Hide in the edge of the screen"), onclick: () => actions.hide() },
-    svg(ICONS.minus, 13, { stroke: 2 }));
-  // Closes Lumo altogether; it opens again from the Start menu.
-  const quitBtn = h("button", { class: "quit-btn", title: tl("Quit"), onclick: () => void Bridge.quit() },
-    svg(ICONS.power, 13, { stroke: 2 }));
-  // The new look gathers the four above in a menu (look-new.css shows it, hides them).
+  // Settings, the sound, Hide and Quit are in the "⋯" menu, as the views are
+  // on the home: away from it, the arrow goes back to it.
   const moreBtn = h("button", {
     class: "more-btn", title: tl("More"),
     onclick: (e: Event) => {
@@ -201,10 +153,9 @@ export function buildHeader(actions: ViewActions): ViewHost {
       actions.moreMenu(r.right, r.bottom + 4);
     },
   }, svg(ICONS.ellipsis, 16));
-  // The new look has no tabs: away from home, this goes back to it (look-new.css shows it).
   const backBtn = h("button", { class: "tab back-btn", title: tl("Back"), onclick: () => go(State.agentsView()) },
     svg(ICONS.chevronLeft, 14, { stroke: 2 }));
-  // Plan usage pills (off by default): before the gear, Claude first.
+  // Plan usage pills (off by default): before the "⋯", Claude first.
   const claudePill = buildPlanPill("claude");
   const codexPill = buildPlanPill("codex");
   const antigravityPill = buildPlanPill("antigravity");
@@ -220,36 +171,15 @@ export function buildHeader(actions: ViewActions): ViewHost {
   const el = h(
     "div",
     { id: "header" },
-    h("div", { class: "tabs" }, backBtn, tabChat, tabAgents, tabTools, tabActivities, tabDrop),
-    h("div", { class: "header-actions" }, planPills, gearBtn, soundBtn, hideBtn, quitBtn, moreBtn),
+    h("div", { class: "tabs" }, backBtn),
+    h("div", { class: "header-actions" }, planPills, moreBtn),
   );
   const headerActions = el.lastElementChild as HTMLElement;
 
   return {
     el,
     sync() {
-      const v = State.view;
-      const forge = v === "prompt" && State.chatSlot === "forge";
-      tabChat.classList.toggle("on", v === "prompt" && !forge);
-      tabTools.classList.toggle("on", v === "tools" || forge);
-      tabAgents.classList.toggle("on", v === "overview" || v === "empty");
-      const activity = State.agentsActivity;
-      agentsBadge.className = activity ? `tab-badge ${activity}` : "tab-badge";
-      tabDrop.classList.toggle("on", v === "upload");
-      backBtn.classList.toggle("away", v !== "home");
-      const folded = State.activitiesRoom && State.settings.activitiesPanel !== false && State.settings.activitiesFolded === true;
-      if (folded && tabActivities.style.display === "none") {
-        // It just landed: a little pop.
-        tabActivities.classList.remove("pop");
-        void tabActivities.offsetWidth;
-        tabActivities.classList.add("pop");
-      }
-      tabActivities.style.display = folded ? "" : "none";
-      gearBtn.classList.toggle("on", v === "settings");
-      clear(gearBtn);
-      gearBtn.append(svg(v === "settings" ? ICONS.gearFill : ICONS.gear, 14));
-      clear(soundBtn);
-      soundBtn.append(svg(State.settings.soundEnabled ? ICONS.speakerOn : ICONS.speakerOff, 14));
+      backBtn.classList.toggle("away", State.view !== "home");
       syncPlanPills();
     },
   };
@@ -608,24 +538,6 @@ function lighten(hex: string, amount: number): string {
   return `rgb(${c[0]},${c[1]},${c[2]})`;
 }
 
-// ── Empty ─────────────────────────────────────────────────────────────────────
-
-function buildEmpty(actions: ViewActions): ViewHost {
-  const body = h(
-    "div",
-    { class: "stack", style: "padding:0 18px 0 118px;flex-direction:row;align-items:center;gap:16px" },
-    h(
-      "div",
-      { style: "display:flex;flex-direction:column;gap:5px" },
-      h("div", { class: "title", text: tl("Nothing running right now.") }),
-      h("div", { class: "sub", text: tl("Drop a file or window, or ask me anything.") }),
-    ),
-    h("div", { class: "grow" }),
-    btn(tl("Ask Claude"), "primary", () => actions.setView("prompt")),
-  );
-  return { el: h("div", { class: "view" }, card(null, body)), sync() {} };
-}
-
 // ── Approval ──────────────────────────────────────────────────────────────────
 
 /** How long a fresh permission card ignores clicks on its buttons. */
@@ -790,8 +702,8 @@ function buildApproval(actions: ViewActions): ViewHost {
       }
       const pending = State.pendingApproval;
       const email = pending?.email ?? null;
-      // The new look draws a plan asking to start as its steps, with its own words on the buttons.
-      const plan = !email && State.settings.islandNewLook === true && pending?.plan?.length ? pending.plan : null;
+      // A plan asking to start shows as its steps, with its own words on the buttons.
+      const plan = !email && pending?.plan?.length ? pending.plan : null;
       clear(who);
       who.append(requestWho(email ? t(EMAIL_TEXT.wants) : plan ? t(PLAN_ASK_TEXT.wants) : t("needs permission")));
       if ((plan ? req : null) !== planFor) {
@@ -818,8 +730,8 @@ function buildApproval(actions: ViewActions): ViewHost {
       // name of the tool asking.
       const target = pending?.command || pending?.tool || "…";
       const tool = pending?.tool ?? "";
-      // In the new look the tool's name stands apart, in Lumo's amber, from what it runs on.
-      if (State.settings.islandNewLook === true && tool && target.startsWith(`${tool} · `)) {
+      // The tool's name stands apart, in Lumo's amber, from what it runs on.
+      if (tool && target.startsWith(`${tool} · `)) {
         clear(code);
         code.append(h("span", { class: "code-tool", text: tool }), target.slice(tool.length + 3));
       } else {
@@ -837,7 +749,7 @@ function buildApproval(actions: ViewActions): ViewHost {
       // In its place on a plan asking to start, from a session (the island's chat has its own way).
       planEdits.style.display = plan && !pending?.fromChat ? "" : "none";
       answerThere.style.display = pending?.answerIn && !plan ? "" : "none";
-      rememberedNote.style.display = pending?.remembered === true && !plan && State.settings.islandNewLook === true ? "" : "none";
+      rememberedNote.style.display = pending?.remembered === true && !plan ? "" : "none";
       const answerWords = pending?.answerIn ? t("Reply in {agent}", { agent: pending.answerIn }) : "";
       if (answerThere.firstElementChild && answerThere.firstElementChild.textContent !== answerWords) answerThere.firstElementChild.textContent = answerWords;
 
@@ -1102,7 +1014,6 @@ export function buildViews(
 ): Map<IslandViewName, ViewHost> {
   const map = new Map<IslandViewName, ViewHost>();
   map.set("overview", buildOverview(actions));
-  map.set("empty", buildEmpty(actions));
   map.set("approval", buildApproval(actions));
   map.set("question", buildQuestion(actions));
   map.set("error", buildError(actions));

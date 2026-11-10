@@ -21,16 +21,18 @@
 // as far as it got. A question sent while the answer is written (the Stop
 // button turns back into the arrow as soon as something is typed) leaves the
 // field and waits just above it, where it can be edited or cancelled; it goes
-// once the answer ends, or comes back to the field after Stop. Each message
-// has Copy under the mouse, each question Edit: sending the edited text
-// replaces it and drops what followed, here and in Rust (chat.rs rewind); sent
-// mid-answer, it stops that answer first.
+// once the answer ends, or comes back to the field after Stop. Under each
+// message, a line of actions as in Claude's app (under the mouse, always under
+// the last answer): Copy, and when it was sent; each question has Edit:
+// sending the edited text replaces it and drops what followed, here and in
+// Rust (chat.rs rewind); sent mid-answer, it stops that answer first. The last
+// question and its answer have Retry: the question goes again, unchanged.
 //
 // The screen button next to the paperclip adds what is on the user's screen,
-// only when they ask: "Open windows" or "Browser tabs" (Edge, Chrome), which
-// list them to pick one or all, each going with what it shows (share.rs); a
+// only when they ask (views/share-panel.ts): the open windows or the browser
+// tabs (Edge, Chrome), one or all, each going with what it shows (share.rs); a
 // screenshot of one display or all of them, shown first with Send / Cancel
-// (core/screen.ts); or the folder open in File Explorer: its listing goes with
+// (core/screen.ts); or a folder open in File Explorer: its listing goes with
 // the question, and a file of it the question names is attached as if picked
 // with the paperclip.
 //
@@ -73,7 +75,7 @@
 
 import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
-import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
+import { checklistsIn, copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
@@ -85,29 +87,34 @@ import {
   type OpenWindow, type ScreenContext, type ScreenDisplay, type ScreenShot, type UnslothStudio, UNSLOTH_STUDIO_EVENT,
 } from "../core/bridge";
 import {
-  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, permissionModesFor, pickModel, providerDef, setLocalCaps,
-  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef,
+  activeModel, capsContext, capsWords, effortFor, effortsFor, hasPermissions, isCliProvider, localCapsOf, parsePermissionMode, parseSandboxLevel, permissionModesFor, pickModel, providerDef, setLocalCaps,
+  anyProviderReady, visibleProviders, withModel, type PermissionMode, type ProviderDef, type SandboxLevel,
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
-import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
+import {
+  chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
+} from "../core/chats";
+import {
+  checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
+} from "../core/checklists";
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
-import { planColor } from "../core/plan";
+import { ageLabel } from "../core/plan";
 import { refreshAntigravityPlanUsage, refreshClaudePlanOnline } from "./usage";
 import { OPENROUTER_STALE_MS, USAGE_TEXT, usageLine, type ChatUsage, type SeenUsage, type UsageLine } from "../core/chat-usage";
 import {
-  ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, entryLabel, itemPreview, keepShots,
-  afterSent, autoShare, folderPicks, foldersByThemselves, menuEntries, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
-  shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type MenuEntry, type PickEntry,
+  ITEM_STRINGS, PREVIEW_STRINGS, SCREEN_STRINGS, withSelection, emptyScreen, filePreview, formatSize, itemPreview, keepShots,
+  afterSent, autoShare, folderPicks, foldersByThemselves, nextScreen, noImagesReason, screenItems, screenLabel, screenPayload, seesImages, short,
+  shotPaths, tabPicks, tabsByThemselves, windowPicks, withFolders, withTabs, withWindows, withoutItem, type ExplorerPeek, type ItemKind, type PickEntry,
   type PendingScreen, type PreviewBlock, type ScreenItem,
 } from "../core/screen";
 import { MAX_PASTE_BYTES, PASTE_STRINGS, pasteAction, pastedFiles, pastedName } from "../core/paste";
 import { COMPUTER_TEXT } from "../core/computer";
 import { closePicture } from "./picture";
 import type { ViewHost } from "./views";
-import { N_, t, tl, tn } from "../i18n/i18n";
+import { N_, dayMonth, language, t, tl, tn } from "../i18n/i18n";
 import { LIVE_STRINGS } from "../live/strings";
 import { type CopyDiff, type CopyView, type Pair, type Segment, copyView, counts, pairs, wordMarks } from "../core/copy-diff";
 import { COMPACT_TEXT, UPLOADED_TEXT, compactNotice, compactTimer, parseDuration, speakerName, takeTimers } from "../core/compact";
@@ -165,6 +172,8 @@ const STRINGS = {
   recommended: N_("Recommended"),
   autoHint: N_("Auto: Claude Code picks the effort its model is made for."),
   permissions: N_("Permissions"),
+  sandbox: N_("Sandbox"),
+  isolate: N_("How to isolate code?"),
   welcome: N_("What can I do for you?"),
   askFile: N_("Ask about a file"),
   lookScreen: N_("Look at my screen"),
@@ -173,6 +182,7 @@ const STRINGS = {
   stop: N_("Stop"),
   stopped: N_("Stopped"),
   edit: N_("Edit"),
+  retry: N_("Retry"),
   editing: N_("Editing a message"),
   editingHint: N_("Sending replaces this message and everything after it."),
   queued: N_("Queued"),
@@ -220,8 +230,8 @@ const EFFORT_NAMES: Record<string, string> = {
   max: N_("Max"),
 };
 
-/** Each permission mode: its name and what it lets through. */
-const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = {
+/** Each permission mode of the CLIs: its name and what it lets through. */
+const PERMISSION_TEXT: Record<Exclude<PermissionMode, "off">, { name: string; note: string }> = {
   default: { name: N_("Ask every time"), note: N_("Asks before each action that needs a permission.") },
   auto: { name: N_("Auto"), note: N_("The AI decides what is safe to do without asking, and asks for the rest.") },
   plan: { name: N_("Plan only"), note: N_("Reads and plans, and changes nothing.") },
@@ -231,12 +241,39 @@ const PERMISSION_TEXT: Record<PermissionMode, { name: string; note: string }> = 
 const AGY_AUTO_NOTE = N_("Runs every command and changes any file without asking.");
 /** Auto with Copilot CLI or Cursor CLI: an action allowed once is allowed for the rest of the chat (acp_chat.rs). */
 const ACP_AUTO_NOTE = N_("Asks when the CLI asks. What you allow is allowed for the rest of the chat.");
-/** The modes with a local model, whose only actions are the user's tools (local_chat.rs). */
-const LOCAL_NOTES: Record<PermissionMode, string> = {
-  default: N_("Asks before each of your tools runs, even one you trust."),
-  auto: N_("Runs the tools you trust without asking, and asks for the rest."),
-  plan: N_("Gets none of your tools: it only answers and plans."),
+/** The modes with a local model, whose actions are the user's tools and the web (local_chat.rs). */
+const LOCAL_TEXT: Record<PermissionMode, { name: string; note: string }> = {
+  default: { name: N_("Ask for approval"), note: N_("Asks before using tools or the internet.") },
+  auto: { name: N_("Approve for me"), note: N_("Only asks for risky actions.") },
+  off: { name: N_("Run automatically"), note: N_("Never asks. Code stays in the sandbox.") },
+  plan: { name: PERMISSION_TEXT.plan.name, note: N_("Gets none of your tools: it only answers and plans.") },
 };
+
+/** A mode's name and note with `provider`. */
+function modeText(provider: ProviderDef, mode: PermissionMode): { name: string; note: string } {
+  if (provider.urlField || mode === "off") return LOCAL_TEXT[mode];
+  const text = PERMISSION_TEXT[mode];
+  if (mode === "auto" && provider.id === "antigravity-cli") return { ...text, note: AGY_AUTO_NOTE };
+  if (mode === "auto" && (provider.id === "copilot-cli" || provider.id === "cursor-cli")) return { ...text, note: ACP_AUTO_NOTE };
+  return text;
+}
+
+/**
+ * How far a local model's tools are kept from the computer (Settings.localSandbox).
+ * Its "Low" and "High" are not the effort's: other languages may say them
+ * another way (Italian: Bassa, not Basso), so their keys carry the context
+ * before a "|" (`tc`).
+ */
+const SANDBOX_TEXT: Record<SandboxLevel, { name: string; note: string; color: string }> = {
+  low: { name: N_("sandbox|Low"), note: N_("Only Lumo's protections. Risky code asks first."), color: "#f5a524" },
+  high: { name: N_("sandbox|High"), note: N_("Tools also run in the Windows sandbox."), color: "#4ade80" },
+};
+
+/** A key with its context ("sandbox|Low"): its translation, else its English after the "|". */
+function tc(key: string): string {
+  const text = t(key);
+  return text === key ? key.slice(key.indexOf("|") + 1) : text;
+}
 
 /** What the effort says, in the interface language. */
 function effortLabel(effort: string): string {
@@ -259,61 +296,144 @@ const TABS_WAIT_MS = 1200;
 /** How a message is drawn: `onEdit` puts a question back in the text field. */
 interface BubbleOptions {
   onEdit?: (message: ChatMessage) => void;
+  /** Retry, on the last question and its answer while nothing is answered: the question goes again. */
+  onRetry?: () => void;
+  /** Its actions stay in sight without the mouse: the last answer, or a question left without one. */
+  shown?: boolean;
   /** The question being edited, and what sending it would drop. */
   editing?: boolean;
   dropped?: boolean;
   /** A tool workshop's answer: the draft's blocks show as one line naming it. */
   workshop?: boolean;
+  /** Which message it is (core/checklists.ts messageScope): its cards keep their own state. */
+  scope?: string;
+}
+
+/** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
+let sendFromCard: ((text: string) => void) | undefined;
+
+/** The "2 min ago" under the messages on screen, kept fresh as the chat is drawn and hovered. */
+let sentTimes: { el: HTMLElement; at: number }[] = [];
+
+/** "just now", "12 min ago", "3 h ago", then the day: when a message was sent or answered. */
+export function sentAgo(at: number, now = Date.now()): string {
+  if (now - at < 86_400_000) return ageLabel(at, now);
+  const d = new Date(at);
+  return dayMonth(d.getMonth(), d.getDate());
+}
+
+function refreshTimes(times = sentTimes, now = Date.now()) {
+  for (const { el, at } of times) {
+    const text = sentAgo(at, now);
+    if (el.textContent !== text) el.textContent = text;
+  }
+}
+
+/** A message's action button: an icon, its name under the mouse. */
+function msgAction(cls: string, name: string, icon: SVGElement, run: () => void): HTMLElement {
+  const btn = h("button", { class: `msg-action ${cls}`, title: tl(name), "aria-label": tl(name) }, icon);
+  btn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    run();
+  });
+  return btn;
 }
 
 /**
- * One message, rendered as Markdown on both sides. Its Copy (and, on a
- * question, Edit) buttons show under the mouse; Copy takes the text as it was
- * written, Markdown included.
+ * One message, rendered as Markdown on both sides, its actions on a line
+ * under it as in Claude's app: under an answer Copy, Retry and when it came;
+ * under a question when it was sent, Retry, Edit and Copy. They show under
+ * the mouse, and always under the last answer (or a question whose answer
+ * failed). Retry is only on the last question and its answer: anywhere else
+ * it would drop what follows unseen, which Edit shows first. Copy takes the
+ * text as it was written, Markdown included.
  */
 function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
-  const actions = h("div", { class: "msg-actions" }, copyButton(message.content, "msg-action"));
   const state = opts.editing ? " editing" : opts.dropped ? " dropped" : "";
-  if (message.role === "user") {
-    if (opts.onEdit) {
-      const onEdit = opts.onEdit;
-      const edit = h("button", { class: "msg-action", title: tl(STRINGS.edit), "aria-label": tl(STRINGS.edit) }, svg(ICONS.pencil, 11, { stroke: 1.8 }));
-      edit.addEventListener("click", (e) => {
-        e.stopPropagation();
-        onEdit(message);
-      });
-      actions.append(edit);
-    }
-    return h(
-      "div",
-      { class: `chat-row user with-actions${state}` },
-      actions,
-      sentBubble(message.content),
-    );
-  }
   // The answer failed: what went wrong stays under the question.
-  if (message.failed) {
+  if (message.role === "assistant" && message.failed) {
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
   }
-  const reply = h("div", { class: "reply" });
-  drawReply(reply, message.content, !!opts.workshop);
-  // A stopped answer says so on a line of its own, Copy beside it; otherwise
-  // Copy floats over the answer's bottom right corner and takes no room.
-  const foot = message.stopped
-    ? h("div", { class: "reply-foot" }, h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }), actions)
-    : h("div", { class: "reply-foot floating" }, actions);
-  const copies = message.copies?.length ? copiesBox(message.copies) : null;
-  return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, foot));
+  const copy = copyButton(message.content, "msg-action msg-copy", 12);
+  const retry = opts.onRetry ? msgAction("msg-retry", STRINGS.retry, svg(ICONS.arrowClockwise, 12, { stroke: 1.9 }), opts.onRetry) : null;
+  const times: typeof sentTimes = [];
+  let when: HTMLElement | null = null;
+  if (message.at != null) {
+    const at = message.at;
+    when = h("span", { class: "msg-time", text: sentAgo(at), title: new Date(at).toLocaleString(language()) });
+    times.push({ el: when, at });
+    sentTimes.push(...times);
+  }
+  const bar = h("div", { class: opts.shown ? "msg-actions shown" : "msg-actions" });
+  let row: HTMLElement;
+  if (message.role === "user") {
+    const onEdit = opts.onEdit;
+    const edit = onEdit ? msgAction("msg-edit", STRINGS.edit, svg(ICONS.pencil, 12, { stroke: 1.8 }), () => onEdit(message)) : null;
+    bar.append(...[when, retry, edit, copy].filter((x): x is HTMLElement => x != null));
+    row = h("div", { class: `chat-row user${state}` }, sentBubble(message.content), bar);
+  } else {
+    const reply = h("div", { class: "reply" });
+    drawReply(reply, message.content, !!opts.workshop, opts.scope);
+    // A stopped answer says so on the same line.
+    const stopped = message.stopped ? h("span", { class: "msg-stopped", text: tl(STRINGS.stopped) }) : null;
+    bar.append(...[copy, retry, stopped, when].filter((x): x is HTMLElement => x != null));
+    const copies = message.copies?.length ? copiesBox(message.copies) : null;
+    row = h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, reply, copies, bar));
+  }
+  // Hovered after a while: its time says how long ago it is now.
+  if (times.length) row.addEventListener("mouseenter", () => refreshTimes(times));
+  return row;
 }
 
 /**
- * A question as sent: Markdown and TeX as in the answers, inside its bubble.
- * The prompt box stays plain text; Copy and Edit take what was written.
+ * A question as sent: Markdown and TeX as in the answers, inside its bubble,
+ * but none of the answers' cards (plainQuestion). The prompt box stays plain
+ * text; Copy and Edit take what was written.
  */
 function sentBubble(text: string): HTMLElement {
   const el = h("div", { class: "bubble md" });
-  renderMarkdown(el, text);
+  renderMarkdown(el, plainQuestion(text));
+  unmark(el);
   return el;
+}
+
+/** Takes plainQuestion's marks back out of the drawn text, so a selection copies what was written. */
+function unmark(node: Node): void {
+  if (node.nodeType === 3) {
+    const text = node as Text;
+    if (text.data.includes(NOT_A_CARD)) text.data = text.data.split(NOT_A_CARD).join("");
+    return;
+  }
+  for (const child of Array.from(node.childNodes)) unmark(child);
+}
+
+/** An invisible mark that keeps a line from being read as a card. */
+const NOT_A_CARD = "\u2060";
+
+/**
+ * A question's Markdown with what would make a card in an answer kept as
+ * the text it was before the cards: a task list (`- [ ] a`) stays a list of
+ * bullets, an image line (`![a](https://…)`) a line of text, never fetched,
+ * an alert (`> [!NOTE]`) a quote, and a ```diff or ```lumo-… block code. An
+ * invisible mark goes before what the cards look for, outside code blocks.
+ */
+export function plainQuestion(text: string): string {
+  let code = false;
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("```")) {
+        code = !code;
+        return code ? `\`\`\`${NOT_A_CARD}${line.slice(3)}` : line;
+      }
+      if (code) return line;
+      return line
+        .replace(/^(\s*)(?=!\[)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*>\s*)(?=\[!)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*[-*+][ \t]+)(?=\[[ xX]\])/, `$1${NOT_A_CARD}`);
+    })
+    .join("\n");
 }
 
 /** What the copies' box under an answer says (workspace.rs). */
@@ -695,32 +815,81 @@ function typingDots(label: string): HTMLElement {
 }
 
 /**
- * An answer as far as it is written, without Lumo's lines; in the tool
- * workshop, the tool's blocks give way to a line saying it is being written.
+ * A finished answer's text, in its bubble. `scope`: the message it is, so its
+ * cards keep their state. `streaming`: the ink is still uncovering it (the
+ * text is cut short), so a card not closed yet waits and none can send.
  */
-/** A finished answer's text, in its bubble. */
-function drawReply(reply: HTMLElement, content: string, workshop: boolean) {
+function drawReply(reply: HTMLElement, content: string, workshop: boolean, scope?: string, streaming = false) {
   if (workshop) {
     const shown = stripDraft(content);
-    renderMarkdown(reply, shown.text);
+    renderMarkdown(reply, shown.text, { scope, streaming });
     const draft = shown.draft ? draftIn(content) : null;
     if (draft) reply.append(draftChip(draft.name));
   } else {
-    renderAnswer(reply, content);
+    renderAnswer(reply, content, { scope, streaming, send: streaming ? undefined : sendFromCard });
   }
 }
 
-function drawAnswer(into: HTMLElement, text: string, workshop: boolean) {
+/**
+ * An answer as far as it is written, without Lumo's lines; in the tool
+ * workshop, the tool's blocks give way to a line saying it is being written.
+ * `scope`: the message it will be, so its cards keep their state when the
+ * finished answer replaces it.
+ */
+function drawAnswer(into: HTMLElement, text: string, workshop: boolean, scope: string) {
   const shown = takeListens(takeTimers(text).text).text;
   if (!workshop) {
-    renderAnswer(into, shown);
+    renderAnswer(into, shown, { streaming: true, scope });
     return;
   }
   const words = stripDraft(shown);
-  renderMarkdown(into, words.text);
+  renderMarkdown(into, words.text, { streaming: true, scope });
   if (words.writing || words.draft) {
     into.append(h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) })));
   }
+}
+
+/** The checklists read from each answer's text, so a redraw doesn't read them again. */
+const answerLists = new Map<string, Checklist[]>();
+const ANSWER_LISTS_LIMIT = 200;
+
+function listsOfAnswer(text: string): Checklist[] {
+  let lists = answerLists.get(text);
+  if (!lists) {
+    lists = checklistsIn(text);
+    if (answerLists.size >= ANSWER_LISTS_LIMIT) answerLists.clear();
+    answerLists.set(text, lists);
+  }
+  return lists;
+}
+
+/**
+ * Tells core/checklists.ts which checklists `chatId`'s answers hold, the one
+ * being written included, before they are drawn: a list written again
+ * further down shows as updated there. In the tool workshop, only from what
+ * its answers show: the tool's blocks are not drawn.
+ */
+function noteChecklists(chatId: string, history: ChatMessage[], writing?: string) {
+  const workshop = isWorkshopChat(chatId);
+  const shown = (text: string) => (workshop ? stripDraft(text).text : text);
+  const writ = writing ? checklistsIn(shown(writing), true) : undefined;
+  noteChatChecklists(chatId, listsInChat(history, (text) => listsOfAnswer(shown(text)), writ));
+}
+
+/**
+ * What the user ticked in `chatId`'s checklists, when it differs from what
+ * the AI last wrote and it was not told yet: lines to send with the question
+ * (never shown in its bubble, nor in Copy or Edit), and what to remember as
+ * told once the question went (checklistsTold).
+ */
+function checklistsToTell(chatId: string, history: ChatMessage[]): { text: string; told: Record<string, string> } {
+  noteChecklists(chatId, history);
+  return checklistNote(lineagesOf(chatId), chatChecklists(chatId));
+}
+
+/** The AI got the question and its checklist lines: they are not sent again. */
+function checklistsTold(chatId: string, told: Record<string, string>) {
+  if (Object.keys(told).length) setChatChecklists(chatId, withTold(chatChecklists(chatId), told));
 }
 
 /** A chip above the chat (the message being edited), with a way to leave it. */
@@ -1556,8 +1725,8 @@ export function buildPrompt(
     onclick: () => showPlan(),
   }, svg(ICONS.plan, 13, { stroke: 1.8 }));
   planBtn.style.display = "none";
-  // The new look's plan: a chip beside the model in place of the icon, its
-  // steps rising over the chat from this row (plan-strip.ts). Hidden in the usual look.
+  // The plan: a chip beside the model in place of the icon, its steps rising
+  // over the chat from this row (plan-strip.ts).
   const planStrip = buildPlanStrip(() => showPlan());
   // The new look's plan asking to start, from this chat (concept C1): its steps
   // over the field, Approve and Keep planning; what is typed in the field
@@ -1582,7 +1751,7 @@ export function buildPrompt(
   /** The plan this chat asks to start, if one is waiting for an answer. */
   const planAsking = () => {
     const req = State.pendingApproval;
-    return State.chatSlot !== "forge" && planAskInChat(req, State.settings.islandNewLook === true) ? req : null;
+    return State.chatSlot !== "forge" && planAskInChat(req) ? req : null;
   };
   function drawPlanAsk() {
     const req = planAsking();
@@ -1627,9 +1796,11 @@ export function buildPrompt(
   function panelChanged() {
     const open = picker.isOpen || ["browsing", "filing", "screening", "authorizing", "metering", "commanding", "hearing"].some((c) => body.classList.contains(c));
     const hearing = body.classList.contains("hearing");
-    // The new look's usage menu holds the context and the limits: as much room as Listening.
-    const tall = State.settings.islandNewLook === true && ((body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
-      || body.classList.contains("screening"));
+    // The usage menu holds the context and the limits: as much room as Listening.
+    // A local model's four modes want more room than the CLIs' three.
+    const tall = (body.classList.contains("metering") && usageList.querySelector(".usage-ctx") != null)
+      || body.classList.contains("screening")
+      || (body.classList.contains("authorizing") && providerDef(State.settings.chatProvider).urlField !== null);
     if (open === State.chatPanelOpen && hearing === State.listeningOpen && tall === State.chatPanelTall) return;
     State.chatPanelOpen = open;
     State.listeningOpen = hearing;
@@ -1666,10 +1837,11 @@ export function buildPrompt(
   const screenList = h("div", { class: "picker-list" });
   const screenEl = h("div", { class: "picker screen-panel" }, screenTitle, screenList);
   const permList = h("div", { class: "picker-list" });
-  const permEl = h("div", { class: "picker permissions" }, h("div", { class: "picker-title", text: t(STRINGS.permissions) }), permList);
+  const permHead = h("div", { class: "picker-title", text: t(STRINGS.permissions) });
+  const permEl = h("div", { class: "picker permissions" }, permHead, permList);
   const usageTitle = h("div", { class: "picker-title" });
   const usageList = h("div", { class: "picker-list usage-list" });
-  const usagePanel = h("div", { class: "picker usage-panel" }, usageTitle, usageList);
+  const usagePanel = h("div", { class: "picker usage-panel usage-new" }, usageTitle, usageList);
   // What Lumo is listening to, and what it heard; a row of another chat opens it.
   const listening = buildListeningPanel({
     goToChat: (chatId) => {
@@ -1777,15 +1949,15 @@ export function buildPrompt(
    * words, written from the start; otherwise an answer already under way
    * shows as far as it got at once, and only what comes next is written.
    */
-  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean) {
+  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string) {
     const workshop = isWorkshopChat(chat);
     if (!inkWorks()) {
-      drawAnswer(into, text, workshop);
+      drawAnswer(into, text, workshop, scope);
       return;
     }
     if (fresh || !ink || inkChat !== chat) {
       ink?.stop();
-      ink = new Ink((el, words) => drawAnswer(el, words, workshop));
+      ink = new Ink((el, words) => drawAnswer(el, words, workshop, scope));
       inkChat = chat;
       ink.update(text);
       if (!fresh) ink.skip();
@@ -1846,48 +2018,27 @@ export function buildPrompt(
     const line = usageLineShown;
     // A local model's ring is its context: the menu says only that.
     const local = providerDef(State.settings.chatProvider).urlField !== null;
-    usageTitle.textContent = line && local ? line.title : line ? `${USAGE_TEXT.title} · ${line.title.split("\n").pop() ?? ""}` : USAGE_TEXT.title;
+    usageTitle.textContent = USAGE_TEXT.title;
     clear(usageList);
     if (!line) return;
-    // The new look: the context as one split bar, then the limits as bars (views/usage-panel.ts).
-    const newLook = State.settings.islandNewLook === true;
-    usagePanel.classList.toggle("usage-new", newLook);
-    if (newLook) {
-      usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
-      const report = lastContextReport(State.chatHistory);
-      // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
-      const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
-      // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
-      const agy = State.settings.chatProvider === "antigravity-cli";
-      const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
-      const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
-      drawNewUsage(usageList, {
-        line, local, report, fill,
-        askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
-          closeUsage();
-          void submit("/context");
-        } : null,
-      });
-      // Taller while it holds the context (the menu may be open as /context lands).
-      if (body.classList.contains("metering")) panelChanged();
-    } else if (line.rows.length === 0) {
-      usageList.append(h("div", { class: "picker-status", text: line.text }));
-      return;
-    }
-    if (!newLook) for (const [i, row] of line.rows.entries()) {
-      const fill = h("i", { class: "usage-fill" });
-      fill.style.width = `${Math.max(0, Math.min(100, row.pct ?? 0))}%`;
-      fill.style.background = row.pct == null ? "" : planColor(row.pct);
-      usageList.append(h("div", { class: "usage-row" },
-        h("div", { class: "usage-row-head" },
-          h("span", { class: "usage-label", text: row.label }),
-          h("span", { class: "usage-value", text: row.value })),
-        h("span", { class: "usage-bar" }, fill),
-        row.reset ? h("span", { class: "usage-reset", text: row.reset }) : null,
-        // How to get the 5 hours up to date: under them, where it is seen.
-        i === 0 && line.note ? h("span", { class: "usage-note", text: line.note }) : null,
-      ));
-    }
+    // The context as one split bar, then the limits as bars (views/usage-panel.ts).
+    usageTitle.textContent = local ? t(CONTEXT_STRINGS.title) : USAGE_TEXT.title;
+    const report = lastContextReport(State.chatHistory);
+    // Claude Code's answers say how full the conversation is (claude_code.rs, chat-usage).
+    const filled = local ? null : seenContext.get(State.chatId)?.context ?? null;
+    // Antigravity CLI says only the tokens: its model's window comes from its name, and the figure is about.
+    const agy = State.settings.chatProvider === "antigravity-cli";
+    const total = filled ? (filled.total > 0 ? filled.total : agy ? agyContextWindow(activeModel(State.settings)) ?? 0 : 0) : 0;
+    const fill = filled && total > 0 ? { used: filled.used, total, estimate: agy } : null;
+    drawNewUsage(usageList, {
+      line, local, report, fill,
+      askContext: State.settings.chatProvider === "claude-code" && !report?.fresh ? () => {
+        closeUsage();
+        void submit("/context");
+      } : null,
+    });
+    // Taller while it holds the context (the menu may be open as /context lands).
+    if (body.classList.contains("metering")) panelChanged();
     // A local model's context: /compact from here, under its bar.
     if (local && State.chatHistory.length > 0) {
       const compact = h("button", { class: "usage-compact", title: t(SLASH_STRINGS.compact), onclick: () => void compactChat() },
@@ -2035,6 +2186,17 @@ export function buildPrompt(
   }
 
   /**
+   * Retry on the last question or its answer: the question goes again as it
+   * was written, as if edited and sent unchanged; its answer leaves the chat.
+   * What is typed in the field stays there.
+   */
+  function retry(message: ChatMessage) {
+    if (preparing || answering() || editing != null) return;
+    editing = message.id;
+    void submit(undefined, message.content);
+  }
+
+  /**
    * Sending an edited question: it and everything after it leave the chat,
    * here and in Rust (chat.rs rewind), before the new text is sent. The Claude
    * Code session is left behind too: the next turn starts a fresh one with the
@@ -2065,38 +2227,106 @@ export function buildPrompt(
   // ── Permissions ───────────────────────────────────────────────────────────
   //
   // What Claude Code or Antigravity CLI may do without a card, from the next
-  // message on: each turn starts the CLI again with that mode.
+  // message on: each turn starts the CLI again with that mode. A local model
+  // has a fourth mode, and its sandbox's level behind the chip in the title.
+
+  /** What the panel shows with a local model: the modes, or the sandbox's levels. */
+  let permView: "modes" | "sandbox" = "modes";
 
   function drawPermissions() {
     clear(permList);
     const p = providerDef(State.settings.chatProvider);
+    if (p.urlField && permView === "sandbox") {
+      drawSandbox(p);
+      return;
+    }
+    drawPermHead(p);
     const current = parsePermissionMode(State.settings.chatPermissionMode, p.id);
     for (const mode of permissionModesFor(p.id)) {
       const on = mode === current;
+      const text = modeText(p, mode);
       const row = h(
         "button",
         { class: on ? "picker-model perm-row on" : "picker-model perm-row", style: `--accent:${p.accent}` },
         h(
           "span",
           { class: "perm-text" },
-          h("span", { class: "picker-model-name", text: t(PERMISSION_TEXT[mode].name) }),
-          h("span", {
-            class: "perm-note",
-            text: t(p.urlField ? LOCAL_NOTES[mode]
-              : mode === "auto" && p.id === "antigravity-cli" ? AGY_AUTO_NOTE
-              : mode === "auto" && (p.id === "copilot-cli" || p.id === "cursor-cli") ? ACP_AUTO_NOTE
-              : PERMISSION_TEXT[mode].note),
-          }),
+          h("span", { class: "picker-model-name", text: t(text.name) }),
+          h("span", { class: "perm-note", text: t(text.note) }),
         ),
         on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
       );
       row.addEventListener("click", () => {
-        if (mode !== current) {
+        // The stored mode, not the one shown: one setting serves every provider,
+        // and a CLI shows a local model's "off" as "default".
+        if (State.settings.chatPermissionMode !== mode) {
           State.settings = { ...State.settings, chatPermissionMode: mode };
           saveSettings();
           Sound.play("blip");
         }
         closePermissions();
+        State.notify();
+      });
+      permList.append(row);
+    }
+  }
+
+  /** The panel's title: with a local model, the sandbox's chip beside it. */
+  function drawPermHead(p: ProviderDef) {
+    clear(permHead);
+    if (!p.urlField) {
+      permHead.className = "picker-title";
+      permHead.textContent = t(STRINGS.permissions);
+      return;
+    }
+    const level = SANDBOX_TEXT[parseSandboxLevel(State.settings.localSandbox)];
+    const chip = h(
+      "button",
+      { class: "sandbox-chip" },
+      h("span", { text: t(STRINGS.sandbox) }),
+      h("span", { class: "sandbox-level", style: `color:${level.color}`, text: tc(level.name) }),
+      svg(ICONS.chevronRight, 9, { stroke: 2.2 }),
+    );
+    chip.addEventListener("click", () => {
+      permView = "sandbox";
+      drawPermissions();
+    });
+    permHead.className = "picker-title perm-head";
+    permHead.append(h("span", { text: t(STRINGS.permissions) }), chip);
+  }
+
+  /** The sandbox's levels, under a way back to the modes. */
+  function drawSandbox(p: ProviderDef) {
+    clear(permHead);
+    const back = h("button", { class: "perm-back" }, svg(ICONS.chevronLeft, 10, { stroke: 2.2 }), h("span", { text: t(STRINGS.isolate) }));
+    back.addEventListener("click", () => {
+      permView = "modes";
+      drawPermissions();
+    });
+    permHead.className = "picker-title perm-head";
+    permHead.append(back);
+    const current = parseSandboxLevel(State.settings.localSandbox);
+    for (const level of ["low", "high"] as const) {
+      const on = level === current;
+      const row = h(
+        "button",
+        { class: on ? "picker-model perm-row on" : "picker-model perm-row", style: `--accent:${p.accent}` },
+        h(
+          "span",
+          { class: "perm-text" },
+          h("span", { class: "picker-model-name", text: tc(SANDBOX_TEXT[level].name) }),
+          h("span", { class: "perm-note", text: t(SANDBOX_TEXT[level].note) }),
+        ),
+        on ? svg(ICONS.check, 11, { stroke: 2.2 }) : null,
+      );
+      row.addEventListener("click", () => {
+        if (State.settings.localSandbox !== level) {
+          State.settings = { ...State.settings, localSandbox: level };
+          saveSettings();
+          Sound.play("blip");
+        }
+        permView = "modes";
+        drawPermissions();
         State.notify();
       });
       permList.append(row);
@@ -2117,7 +2347,7 @@ export function buildPrompt(
     if (!cli) closePermissions();
     const mode = parsePermissionMode(State.settings.chatPermissionMode, State.settings.chatProvider);
     permBtn.classList.toggle("lit", mode !== "default");
-    permBtn.title = `${t(STRINGS.permissions)} · ${t(PERMISSION_TEXT[mode].name)}`;
+    permBtn.title = `${t(STRINGS.permissions)} · ${t(modeText(providerDef(State.settings.chatProvider), mode).name)}`;
     permBtn.setAttribute("aria-label", permBtn.title);
   }
 
@@ -2135,6 +2365,7 @@ export function buildPrompt(
     closeScreen();
     closeUsage();
     closeListening();
+    permView = "modes";
     drawPermissions();
     body.classList.add("authorizing");
     permBtn.classList.add("open");
@@ -2511,64 +2742,24 @@ export function buildPrompt(
     const tabList = await Promise.race([tabs, late]);
     window.clearTimeout(timer);
     if (ticket !== screenTicket) return;
-    // The new look: pills and tiles (views/share-panel.ts), with the windows listed too.
-    if (State.settings.islandNewLook === true) {
-      let windows: OpenWindow[] = [];
-      try {
-        windows = (await Bridge.screenWindows()) ?? [];
-      } catch {
-        // The Windows pill then says none is open.
-      }
-      if (ticket !== screenTicket) return;
-      drawShareTiles(displays, explorer, tabList ?? [], windows, problem);
-      // Drawn without the tabs: they join once they come, if the menu is still there.
-      if (tabList === null) {
-        void tabs.then((list) => {
-          if (ticket === screenTicket && list.length > 0) drawShareTiles(displays, explorer, list, windows, problem);
-        });
-      }
-      return;
+    // Pills and tiles (views/share-panel.ts), with the windows listed too.
+    let windows: OpenWindow[] = [];
+    try {
+      windows = (await Bridge.screenWindows()) ?? [];
+    } catch {
+      // The Windows pill then says none is open.
     }
-    drawScreenEntries(displays, explorer, tabList ?? [], problem);
-    // Drawn without them: they join the menu once they come, if it is still there.
+    if (ticket !== screenTicket) return;
+    drawShareTiles(displays, explorer, tabList ?? [], windows, problem);
+    // Drawn without the tabs: they join once they come, if the menu is still there.
     if (tabList === null) {
       void tabs.then((list) => {
-        if (ticket === screenTicket && list.length > 0) drawScreenEntries(displays, explorer, list, problem);
+        if (ticket === screenTicket && list.length > 0) drawShareTiles(displays, explorer, list, windows, problem);
       });
     }
   }
 
-  function drawScreenEntries(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], problem: string) {
-    clear(screenList);
-    const images = seesImages(providerDef(State.settings.chatProvider));
-    for (const entry of menuEntries(displays, explorer, tabList)) {
-      const shot = entry.kind === "display" || entry.kind === "all";
-      const off = shot && !images;
-      const detail =
-        entry.kind === "display" ? `${entry.width} × ${entry.height}`
-        : entry.kind === "explorer" ? entry.folder.name
-        : entry.kind === "explorers" ? String(entry.folders.length)
-        : entry.kind === "tabs" ? String(entry.count)
-        : "";
-      const opens = entry.kind === "windows" || entry.kind === "tabs" || entry.kind === "explorers";
-      const row = h(
-        "button",
-        { class: "picker-model screen-entry", disabled: off },
-        h("span", { class: "picker-model-name", text: entryLabel(entry) }),
-        detail ? h("span", { class: "history-date", text: detail }) : null,
-        // A second list opens from it.
-        opens ? svg(ICONS.chevronRight, 9, { stroke: 2 }) : null,
-      );
-      if (entry.kind === "explorer") row.title = entry.folder.path;
-      if (!off) row.addEventListener("click", () => void pickEntry(entry));
-      screenList.append(row);
-    }
-    if (problem) screenStatus(problem);
-    else if (displays.length > 0 && !images) screenStatus(noImagesReason(providerDef(State.settings.chatProvider)));
-    screenStatus(t(SCREEN_STRINGS.nothingYet));
-  }
-
-  /** The kind of things the new look's Share menu shows: the last one picked. */
+  /** The kind of things the Share menu shows: the last one picked. */
   let shareKind: ShareKindId = "windows";
 
   function drawShareTiles(displays: ScreenDisplay[], explorer: ExplorerPeek, tabList: BrowserTab[], windows: OpenWindow[], problem: string) {
@@ -2577,9 +2768,9 @@ export function buildPrompt(
       picks.map((pick) => ({ key: String(pick.id), label: pick.label, detail: pick.detail, title: [pick.title || pick.label, pick.detail].filter(Boolean).join("\n"), all: pick.id == null, go: () => go(pick) }));
     const screens: ShareItem[] = displays.map((d) => ({
       key: `d${d.index}`, label: screenLabel(d.index), detail: `${d.width} × ${d.height}`, title: `${screenLabel(d.index)} · ${d.width} × ${d.height}`, disabled: !images,
-      go: () => void pickEntry({ kind: "display", index: d.index, width: d.width, height: d.height }),
+      go: () => void shareScreen(d.index),
     }));
-    if (displays.length > 1) screens.unshift({ key: "all", label: t(SCREEN_STRINGS.allScreens), title: t(SCREEN_STRINGS.allScreens), all: true, disabled: !images, go: () => void pickEntry({ kind: "all" }) });
+    if (displays.length > 1) screens.unshift({ key: "all", label: t(SCREEN_STRINGS.allScreens), title: t(SCREEN_STRINGS.allScreens), all: true, disabled: !images, go: () => void shareScreen(null) });
     const folders = explorer.problem ? [] : explorer.folders;
     const kinds: ShareKind[] = [
       { id: "windows", count: windows.length, items: fromPicks(windowPicks(windows), (pick) => void shareWindows(pick, windows)), empty: t(SCREEN_STRINGS.noWindows) },
@@ -2591,50 +2782,12 @@ export function buildPrompt(
     drawShareGrid(screenList, kinds, shareKind, (id) => { shareKind = id; }, notes, t(SCREEN_STRINGS.nothingYet));
   }
 
-  /** The second list: "All …", then each window or tab, under a way back. */
-  function drawPicks(title: string, picks: PickEntry[], onPick: (pick: PickEntry) => void) {
-    screenTitle.textContent = title;
-    clear(screenList);
-    const back = h("button", { class: "picker-model screen-entry screen-back" },
-      svg(ICONS.chevronLeft, 9, { stroke: 2 }),
-      h("span", { class: "picker-model-name", text: t(SCREEN_STRINGS.back) }));
-    back.addEventListener("click", () => void drawScreenMenu());
-    screenList.append(back);
-    for (const pick of picks) {
-      const row = h(
-        "button",
-        { class: `picker-model screen-entry screen-pick${pick.id == null ? " screen-pick-all" : ""}` },
-        h("span", { class: "picker-model-name", text: pick.label }),
-        pick.detail ? h("span", { class: "history-date", text: pick.detail }) : null,
-      );
-      if (pick.title) row.title = pick.title;
-      row.addEventListener("click", () => onPick(pick));
-      screenList.append(row);
-    }
-  }
-
   /** Something was added from the menu: the panel goes, the chip shows. */
   function added() {
     closeScreen();
     Sound.play("attach");
     State.notify();
     input.focus();
-  }
-
-  async function openWindows() {
-    const ticket = ++screenTicket;
-    clear(screenList);
-    let list: OpenWindow[];
-    try {
-      list = await Bridge.screenWindows();
-    } catch (err) {
-      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
-      return;
-    }
-    if (ticket !== screenTicket) return;
-    const picks = windowPicks(list);
-    drawPicks(t(SCREEN_STRINGS.windows), picks, (pick) => void shareWindows(pick, list));
-    if (picks.length === 0) screenStatus(t(SCREEN_STRINGS.noWindows));
   }
 
   /** One window (with a picture of it, for who sees images) or all of them, with what they show. */
@@ -2667,20 +2820,6 @@ export function buildPrompt(
         screenStatus(String(err).replace(/^Error:\s*/, ""));
       }
     }
-  }
-
-  async function openTabs() {
-    const ticket = ++screenTicket;
-    clear(screenList);
-    let list: BrowserTab[];
-    try {
-      list = await Bridge.screenTabs();
-    } catch (err) {
-      if (ticket === screenTicket) screenStatus(String(err).replace(/^Error:\s*/, ""));
-      return;
-    }
-    if (ticket !== screenTicket) return;
-    drawPicks(t(SCREEN_STRINGS.tabs), tabPicks(list), (pick) => void shareTabs(pick));
   }
 
   /** One tab or all of them, each with its page's text. */
@@ -2719,21 +2858,14 @@ export function buildPrompt(
     }
   }
 
-  async function pickEntry(entry: MenuEntry) {
-    if (entry.kind === "windows") return openWindows();
-    if (entry.kind === "tabs") return openTabs();
-    if (entry.kind === "explorer") return shareFolders([entry.folder.path]);
-    if (entry.kind === "explorers") {
-      ++screenTicket;
-      drawPicks(t(SCREEN_STRINGS.explorers), folderPicks(entry.folders), (pick) => void shareFolders(typeof pick.id === "string" ? [pick.id] : []));
-      return;
-    }
+  /** A picture of one screen, or of all of them (`null`), to confirm before it is added. */
+  async function shareScreen(index: number | null) {
     const ticket = ++screenTicket;
     clear(screenList);
     screenStatus(t(SCREEN_STRINGS.capturing));
     let shots: ScreenShot[];
     try {
-      shots = await Bridge.screenCapture(entry.kind === "display" ? entry.index : null);
+      shots = await Bridge.screenCapture(index);
     } catch (err) {
       if (ticket !== screenTicket) return;
       clear(screenList);
@@ -2970,9 +3102,9 @@ export function buildPrompt(
       State.chatSession = run.session;
     } else {
       // Rust takes every turn back as it is (chat_restore): each one's place there is its place here.
-      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i }));
+      State.chatHistory = c.turns.map((turn, i) => ({ id: nextId++, role: turn.role, content: turn.content, turn: i, at: typeof turn.at === "number" ? turn.at : undefined }));
       State.chatSession = c.session;
-      void Bridge.chatRestore(c.id, c.turns, c.session, compactOf(c.id));
+      void Bridge.chatRestore(c.id, c.turns.map(({ role, content }) => ({ role, content })), c.session, compactOf(c.id));
     }
     State.chatId = c.id;
     State.droppedFile = null;
@@ -3152,7 +3284,7 @@ export function buildPrompt(
    */
   function remember(run: Run) {
     if (run.forgotten) return;
-    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+    const turns = run.history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content, at: m.at }));
     if (turns.length === 0) return;
     saveChat({
       id: run.chatId,
@@ -3355,7 +3487,8 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    writeAnswer(chat, live, text, fresh);
+    noteChecklists(chat, run.history, text);
+    writeAnswer(chat, live, text, fresh, messageScope(chat, nextMessage(run.history)));
     follow();
   });
 
@@ -3434,10 +3567,11 @@ export function buildPrompt(
   let queueShown = "";
 
   /** The question leaves the field and waits above it; a second one joins it. */
-  function enqueue(run: Run, text: string) {
+  function enqueue(run: Run, text: string, typed: boolean) {
     const before = queued.get(run.chatId);
     queued.set(run.chatId, before ? `${before}\n${text}` : text);
-    setInput("");
+    // A card's button leaves what is being typed in the field.
+    if (typed) setInput("");
     Sound.play("blip");
     drawQueue();
     drawSend();
@@ -3516,6 +3650,15 @@ export function buildPrompt(
    * and the screen alone. `queuedText`: the question that waited above the
    * field, sent as if typed, leaving what is typed now where it is.
    */
+  sendFromCard = (text) => {
+    // Not while a question is edited: sending it drops what follows it.
+    if (editing != null || preparing) return;
+    // While an answer is written, it waits above the field like a question typed.
+    const current = answering();
+    if (current) enqueue(current, text, false);
+    else void submit(text);
+  };
+
   async function submit(auto?: string, queuedText?: string) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
@@ -3549,7 +3692,7 @@ export function buildPrompt(
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
     if (current) {
-      if (!auto && editing == null) enqueue(current, query);
+      if (!auto && editing == null) enqueue(current, query, typed);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;
@@ -3609,7 +3752,7 @@ export function buildPrompt(
       noteSentCopies(chatId, sent.map((f) => f.path));
       // Where the question goes in Rust's conversation: after every turn recorded.
       const turn = history.reduce((n, m) => (m.turn != null ? Math.max(n, m.turn + 1) : n), 0);
-      question = { id: nextId++, role: "user", content: query };
+      question = { id: nextId++, role: "user", content: query, at: Date.now() };
       history.push(question);
 
       // What went with it leaves the field, which is ready for the next question.
@@ -3666,36 +3809,26 @@ export function buildPrompt(
 
     let outcome: "finished" | "error" | null = null;
     try {
-      const reply = await Bridge.chatSend(run.chatId, asked, context, screenContext);
+      // What the user ticked in the chat's checklists goes with the question,
+      // unseen. Not with a command the CLI runs (Claude Code's "/compact",
+      // agy's "/usage"), which would take it as its own words: it goes with
+      // the next question.
+      const command = !called && asked.trim().startsWith("/");
+      const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
+      if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
-      // A timer the answer asked for starts now; its line is not shown.
-      const timed = takeTimers(reply.text);
-      for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
-      // What it asked Lumo to listen for, on GitHub or this PC, and to stop listening to.
-      const answered = takeListens(timed.text);
-      for (const stop of answered.stops) {
-        if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
-        else void Bridge.listenCancelLocal(stop.source, stop.target);
-      }
-      const addOne = (ask: ListenAsk) => ask.source === "github.pr"
-        ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId, ask.mode)
-        : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, run.chatId, ask.mode, ask.amount);
-      const added = await Promise.all(answered.listens.map(addOne));
-      // A line Lumo could not read or start is said, never just dropped.
-      const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
-      const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
-      const content = unheard.length
-        ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
-        : answered.text;
+      const content = await lumoLines(run.chatId, reply.text);
       if (recorded) {
         for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name, Date.now(), question.turn ?? run.turn);
         run.history.push({
           id: nextId++,
           role: "assistant",
           content,
+          at: Date.now(),
           stopped: reply.stopped || undefined,
           turn: reply.turns != null ? reply.turns - 1 : undefined,
           copies: run.copies?.size ? [...run.copies].map(([path, made]) => ({ chat: run.chatId, path, made: made || undefined })) : undefined,
@@ -3723,7 +3856,7 @@ export function buildPrompt(
       const problem = String(err).replace(/^Error:\s*/, "").trim() || t(COMPACT_TEXT.failed, { helper: runSpeaker(run).who });
       // Said in the chat, under the question, so it is still there when the
       // island opens again; the note says it too when the chat isn't on screen.
-      run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true });
+      run.history.push({ id: nextId++, role: "assistant", content: problem, failed: true, at: Date.now() });
       if (!(State.mode === "expanded" && State.view === "prompt")) {
         State.noteMessage = problem;
         State.view = "note";
@@ -3754,6 +3887,74 @@ export function buildPrompt(
       if (heard.length) window.setTimeout(() => runHeard(), 0);
     }
   }
+
+  /**
+   * What Lumo does for the lines an answer of `chatId` wrote for it, which go
+   * from its text: a timer starts, and what it asked Lumo to listen for, on
+   * GitHub or this PC, is listened to (or no longer). A line Lumo could not
+   * read or start is said at the end.
+   */
+  async function lumoLines(chatId: string, text: string): Promise<string> {
+    // A timer the answer asked for starts now; its line is not shown.
+    const timed = takeTimers(text);
+    for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
+    // What it asked Lumo to listen for, on GitHub or this PC, and to stop listening to.
+    const answered = takeListens(timed.text);
+    for (const stop of answered.stops) {
+      if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
+      else void Bridge.listenCancelLocal(stop.source, stop.target);
+    }
+    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
+      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
+      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
+    const added = await Promise.all(answered.listens.map(addOne));
+    // A line Lumo could not read or start is said, never just dropped.
+    const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
+    const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
+    return unheard.length
+      ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
+      : answered.text;
+  }
+
+  // ── What Claude Code writes by itself ─────────────────────────────────────
+
+  /**
+   * Claude Code answered by itself between two questions (a command it left
+   * running in the background ended, an agent it started reported): its
+   * answer joins the chat's last one, as Rust's conversation has it (chat.rs
+   * `add_own`), whether the chat is on screen, being answered or only in Past
+   * chats, and the closed island says so. Not in a chat that left that session.
+   */
+  async function ownAnswer(chatId: string, text: string, session: string | null) {
+    const content = await lumoLines(chatId, text);
+    if (!content) return;
+    const saved = loadChats().find((c) => c.id === chatId);
+    const run = runs.get(chatId);
+    const onScreen = chatId === State.chatId;
+    const history = run?.history ?? (onScreen ? State.chatHistory : null);
+    const known = run ? run.session : onScreen ? State.chatSession : saved?.session ?? null;
+    if (session && known && known !== session) return;
+    if (history) {
+      if (!joinOwnAnswer(history, content)) return;
+      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+      if (run) remember(run);
+      else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns });
+      if (onScreen) renderedCount = -1;
+    } else {
+      if (!saved) return;
+      const turns = saved.turns.map((turn) => ({ ...turn }));
+      if (!joinOwnAnswer(turns, content)) return;
+      saveChat({ ...saved, updatedAt: Date.now(), turns });
+      if (body.classList.contains("browsing")) drawHistory();
+    }
+    Sound.play("finish");
+    noticeAway(COMPACT_TEXT.answered);
+    State.notify();
+  }
+
+  void onEvent<{ chat: string; text: string; session: string | null }>("chat-own-answer", (own) => {
+    if (own?.chat && own.text) void ownAnswer(own.chat, own.text, own.session ?? null);
+  });
 
   // ── Listening to GitHub ───────────────────────────────────────────────────
 
@@ -4140,14 +4341,13 @@ export function buildPrompt(
       }
       micBtn.hidden = workshop;
       takeShare();
-      // The new look: only this chat's own plan, as a chip while it is open,
-      // as the icon once put away; another chat's or a terminal's plan is not
-      // this chat's (they show on the home).
-      const newLook = State.settings.islandNewLook === true;
-      const ownPlan = newLook && !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
+      // Only this chat's own plan, as a chip while it is open, as the icon
+      // once put away; another chat's or a terminal's plan is not this chat's
+      // (they show on the home).
+      const ownPlan = !workshop ? State.plans.find((p) => p.key === planKey("chat", String(State.chatId ?? ""))) ?? null : null;
       drawPlanAsk();
       planStrip.sync(State.planOpen ? ownPlan : null);
-      const planIconShown = (newLook ? ownPlan != null : State.planIcon) && planStrip.chip.hidden;
+      const planIconShown = ownPlan != null && planStrip.chip.hidden;
       // The home asked for a chat (its plan's row): that one comes on screen.
       if (State.chatToOpen != null) {
         const id = State.chatToOpen;
@@ -4314,8 +4514,26 @@ export function buildPrompt(
         if (count === 0) log.append(workshop ? forgeWelcome() : welcome());
         // What an edit would drop shows faded.
         const at = editing == null ? -1 : State.chatHistory.findIndex((m) => m.id === editing);
-        State.chatHistory.forEach((m, i) => {
-          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop }));
+        // Which checklists are lists written again further down, before any is drawn.
+        noteChecklists(State.chatId, State.chatHistory, run?.text);
+        let place = 0;
+        sentTimes = [];
+        // Retry is on the last question and its answer, once nothing is answered or edited.
+        const history = State.chatHistory;
+        const lastAsked = history.map((m) => m.role).lastIndexOf("user");
+        const asked = lastAsked >= 0 && !run && editing == null ? history[lastAsked] : null;
+        // No answer under the last question (it failed, or was stopped before a word): its actions stay in sight.
+        const unanswered = asked != null && (lastAsked === history.length - 1 || !!history[lastAsked + 1]?.failed);
+        history.forEach((m, i) => {
+          // A message's scope is its place among those kept with the chat, as the checklists count them.
+          const scope = messageScope(State.chatId, m.failed ? -1 : place++);
+          const retries = asked != null && (i === lastAsked || (i === lastAsked + 1 && !m.failed));
+          const last = i === history.length - 1 && m.role === "assistant" && !run;
+          const shown = editing == null && (unanswered ? i === lastAsked : last);
+          log.append(bubble(m, {
+            onEdit: startEdit, onRetry: retries && asked ? () => retry(asked) : undefined, shown,
+            editing: i === at, dropped: at >= 0 && i > at, workshop, scope,
+          }));
         });
         // An answer just finished: the ink goes on in its bubble until all is uncovered.
         const last = State.chatHistory[State.chatHistory.length - 1];
@@ -4323,13 +4541,14 @@ export function buildPrompt(
         const lastReply = log.lastElementChild?.querySelector<HTMLElement>(".reply");
         if (inked && last?.role === "assistant" && !last.failed && lastReply) {
           inked.update(last.content, true);
-          inked.mount(lastReply, (el, words) => drawReply(el, words, workshop));
+          const scope = messageScope(State.chatId, place - 1);
+          inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
         } else if (!run) dropInk();
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          writeAnswer(run.chatId, live, run.text, false);
+          writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place));
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
         // The chat stays where it was read, or at its end when it is stuck
@@ -4338,7 +4557,7 @@ export function buildPrompt(
         log.scrollTop = stuck ? log.scrollHeight : kept;
         openedChat = false;
         drawToEnd();
-      }
+      } else refreshTimes();
 
       micBtn.classList.toggle("lit", State.liveActive);
       drawModelButton();

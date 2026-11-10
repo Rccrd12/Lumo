@@ -1,5 +1,6 @@
-/* The Plan island (views/plan-view.ts), beside the island and in its own
-   window: the live activities' panel, with the agent's steps in it. */
+/* The Plan island's look: the panel is gone, but the chat's plan
+   strip (views/plan-strip.ts) draws its steps with these rules, under
+   .agent-plan (look-new.css adjusts them there). */
 
 .agent-plan {
   position: relative;
@@ -348,7 +349,7 @@
   transition: box-shadow 0.3s ease, background 0.3s ease;
 }
 
-/* Under way: a ring and its dot, one drawing (views/plan-view.ts litRing). */
+/* Under way: a ring and its dot, one drawing (views/plan-strip.ts planMarker). */
 .agent-plan .plan-mark.active {
   box-shadow: none;
 }

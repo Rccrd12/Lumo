@@ -1,16 +1,14 @@
-// Dev harness: Lumo in every state, a few emotes and every outfit, big enough
-// to judge the drawing. `npm run dev`, then open /dev/lumo-preview.html.
-// `?size=40` draws them small, as in the island; `?look=punto` (goccia,
-// lucciola) another of his looks than Filo. Not shipped in the app.
+// Dev harness: Lumo in every state and a few emotes, big enough to judge the
+// drawing. `npm run dev`, then open /dev/lumo-preview.html. `?size=40` draws
+// them small, as in the island; `?mini` draws the agents' minis instead. Not
+// shipped in the app.
 
 import { BotEngine } from "../src/character/engine";
-import { OUTFIT_SELECTIONS, parseLook, type Outfit } from "../src/character/wardrobe";
-const OUTFITS = OUTFIT_SELECTIONS.filter((o): o is Outfit => o !== "auto" && o !== "none");
 import type { BotEmoteName, BotStateName } from "../src/core/layout";
 
 const params = new URLSearchParams(location.search);
 const size = Number(params.get("size") ?? 150);
-const look = parseLook(params.get("look"));
+const mini = params.has("mini");
 const grid = document.getElementById("grid")!;
 const engines: { e: BotEngine; c: HTMLCanvasElement }[] = [];
 
@@ -22,7 +20,10 @@ function add(label: string, setup: (e: BotEngine) => void) {
   c.style.width = `${size}px`;
   c.style.height = `${size * 1.3}px`;
   const e = new BotEngine();
-  e.look = look;
+  if (mini) {
+    e.isMini = true;
+    e.bodyColor = [0.85, 0.47, 0.34];
+  }
   e.particleOverhang = size * 0.3;
   setup(e);
   const f = document.createElement("figure");
@@ -37,7 +38,6 @@ const states: BotStateName[] = [
 for (const s of states) add(s, (e) => e.setState(s, true));
 const emotes: BotEmoteName[] = ["love", "happy", "wink", "surprised", "proud", "yawn", "annoyed"];
 for (const m of emotes) add(m, (e) => e.setPermanentEmote(m));
-for (const o of OUTFITS) add(`outfit ${o}`, (e) => e.setOutfit(o, false));
 
 function loop() {
   for (const { e, c } of engines) {

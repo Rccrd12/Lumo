@@ -1,7 +1,6 @@
-/* The new look, on by default (Settings → Island → Previous look turns it
-   off). Everything here hangs on the
-   `look-new` class island.ts puts on <html> while it is on, so turning it off
-   is the usual look again, as it ships: this file changes nothing else.
+/* The island's look (since 0.18; the one before it is gone since 0.21.0).
+   Everything here hangs on the `look-new` class island.ts puts on <html>, over
+   style.css.
 
    The idea (concepts/redesign): Lumo leaves the left column for the middle of
    the top bar (layout.ts newLookBot), the views take the whole width on one
@@ -938,36 +937,6 @@ html.look-new .question-text {
   margin-top: 2px;
 }
 
-/* ── One island: the Plan inside it, beside the chat ────────────────────────
-   island.ts sideInside puts it in the island's right-hand side, under the
-   top bar, and says how much room it takes in --side-room. (The live
-   activities are the home's tiles, views/home.ts.) */
-
-html.look-new .chat-body {
-  margin-right: var(--side-room, 0px);
-}
-
-html.look-new #plan.agent-plan {
-  background: #111214;
-  border-radius: 14px;
-  box-shadow: none;
-}
-
-/* Drawn before the island in the page (island.ts), so lifted above it. */
-html.look-new #plan {
-  z-index: 3;
-}
-
-/* No grips: inside the island it is not moved or resized. */
-html.look-new #plan .act-grip,
-html.look-new #plan [class*="grip"] {
-  display: none;
-}
-
-html.look-new #plan .plan-head {
-  cursor: default;
-}
-
 /* No timer running: three to start. */
 html.look-new .tile-chips {
   display: flex;
@@ -1150,21 +1119,9 @@ html.look-new .home-right.three .home-tiles {
   grid-template-columns: 1fr 1fr 1fr;
 }
 
-/* ── Wardrobe: the island's edge instead of Lumo's outfits and style ────────
-   (views/wardrobe.ts). The new look draws Lumo as two eyes, so what is left
-   to dress is the light along the island; Claude's mouse stays under it. */
-
-.wardrobe-edges {
-  display: none;
-}
-
-html.look-new .wardrobe-parts {
-  display: none;
-}
-
-html.look-new .wardrobe-edges {
-  display: block;
-}
+/* ── Wardrobe: the island's edge ───────────────────────────────────────────
+   (views/wardrobe.ts). Lumo is two eyes, so what is left to dress is the
+   light along the island; Claude's mouse stays under it. */
 
 html.look-new .edge-grid {
   display: grid;
@@ -1246,8 +1203,7 @@ html.look-new .chat-body .picker ::-webkit-scrollbar {
 
 /* ── The plan in the chat: a chip beside the model (views/plan-strip.ts) ──────
    Folded it takes no row of its own; open, the steps rise over the chat from
-   the model row. The usual look keeps the Plan island beside the island, so
-   none of this shows there. */
+   the model row. */
 
 .plan-chip,
 .plan-strip-list {
@@ -2007,8 +1963,7 @@ html.look-new .usage-ask-context.small {
 }
 
 /* ── GitHub's lists (views/github.ts listDetail): rows like the home's ──────
-   The usual look's lists are three 20 px rows in a small card; here they fill
-   the card, each PR on a row of its own, its reference over its title and how
+   They fill the card, each PR on a row of its own, its reference over its title and how
    its checks went on the right, and scroll past what fits. */
 
 /* As wide as the island, whatever a title's length: a long one is cut short with "…". */

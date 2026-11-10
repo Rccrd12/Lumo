@@ -6,7 +6,7 @@
 
 import { h, svg } from "./dom";
 import { ICONS } from "./icons";
-import { renderMarkdown } from "./markdown";
+import { renderMarkdown, type MarkdownOptions } from "./markdown";
 import {
   BUFFER, CONTEXT_CATEGORIES, CONTEXT_STRINGS, formatTokens, isDeferred, parseContextReport, serverName, usedPercent,
   type ContextCategory, type ContextReport,
@@ -15,13 +15,16 @@ import { antigravityLine, USAGE_TEXT } from "../core/chat-usage";
 import { PLAN_TEXT, antigravityUsageOfText, planColor } from "../core/plan";
 import { t, tn } from "../i18n/i18n";
 
-/** An answer: a card for /context or Antigravity's /usage, Markdown for anything else. */
-export function renderAnswer(into: HTMLElement, text: string) {
+/**
+ * An answer: a card for /context or Antigravity's /usage, Markdown for
+ * anything else (`opts`: whether it is still being written, and which message it is).
+ */
+export function renderAnswer(into: HTMLElement, text: string, opts: MarkdownOptions = {}) {
   const report = parseContextReport(text);
   const usage = report ? null : antigravityUsageOfText(text);
   if (report) into.append(contextCard(report));
   else if (usage) into.append(usageCard(antigravityLine(usage, Date.now()).rows));
-  else renderMarkdown(into, text);
+  else renderMarkdown(into, text, opts);
 }
 
 /** Antigravity CLI's limits as the usage menu shows them: each with its bar and its reset. */

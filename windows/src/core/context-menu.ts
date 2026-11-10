@@ -1,5 +1,5 @@
 // The right-click menu's own items (src/views/context-menu.ts draws it, the
-// island and its live activities window open it). Refresh and the text
+// island opens it). Refresh and the text
 // actions are always there when they apply; the rest is picked in Settings →
 // General → Right-click menu, kept in `contextMenu` (settings.rs).
 //

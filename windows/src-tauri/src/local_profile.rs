@@ -294,6 +294,10 @@ fn date_words(year: i64, month: u32, day: u32) -> String {
     format!("{} {day} {name} {year}", DAYS[weekday as usize])
 }
 
+/// The rich blocks shown once, for a local model: here the prompt goes over
+/// HTTP, never on a command line, so it may hold line breaks and backticks.
+const LOCAL_RICH_EXAMPLE: &str = " Every rich block starts with three backticks and its name and ends with three backticks, each on a line of its own. For example:\n```lumo-cards Coffees\n## Espresso\nsub: The base\nicon: ☕ amber\n- Volume: 25-30 ml\n- Strength: high\nShort and dense.\n## Cappuccino\nsub: For the morning\nicon: 🥛 pink\n- Milk: steamed, with foam\nCocoa on top.\n```\nThe others are written the same way, with the lines their description gives. Use them without being asked; if the user asks what you can show, describe them in plain words, never by these names.";
+
 pub fn system_prompt(p: &Prompt) -> String {
     let who = match p.first_name {
         Some(name) => format!("You are Lumo, {name}'s assistant at the top of their screen."),
@@ -303,6 +307,12 @@ pub fn system_prompt(p: &Prompt) -> String {
         "{who} Answer in the user's language, with light Markdown (short paragraphs, lists, **bold**, `code`, fenced code); no tables or big headings, the window is small. \
 Lumo may give you the windows and documents open on the user's computer: use them. Write math as $…$ or $$…$$."
     );
+    // The chat's rich blocks, as every provider is told them: the calculator
+    // and the plot too, which a local model can fill in as well as any.
+    out.push_str(crate::chat::rich_note!());
+    // A small model follows an example better than a description: the fence
+    // and the ## names it tends to leave out, shown once.
+    out.push_str(LOCAL_RICH_EXAMPLE);
     // A local model knows only up to its training: "yesterday" means nothing to it otherwise.
     if !p.today.is_empty() {
         out.push_str(&format!(" Today is {}.", p.today));
@@ -340,7 +350,7 @@ Lumo may give you the windows and documents open on the user's computer: use the
         out.push_str(" To be told when something happens (a pull request's checks, a file or download, a program, a web page, an email), call listen with what to do then, and never wait, sleep or poll yourself; Lumo writes to you in this chat when it happens.");
     }
     if p.groups.contains(&Group::Plan) {
-        out.push_str(" For a job of more than one step, call update_plan with every step (first in_progress, others pending), and call update_plan again as each step finishes.");
+        out.push_str(" Whenever a job takes more than one step (creating or changing files, several tools in a row), call update_plan before any other tool, with every step (first in_progress, others pending), even if the user didn't ask for a plan; then call update_plan again as each step finishes. A question you just answer needs no plan.");
     }
     if p.tools {
         out.push_str(p.catalog);
@@ -364,6 +374,29 @@ mod tests {
         assert_eq!(date_words(2024, 2, 29), "Thursday 29 February 2024");
         assert_eq!(date_words(2000, 1, 1), "Saturday 1 January 2000");
         assert_eq!(date_words(2026, 13, 1), "");
+    }
+
+    #[test]
+    fn a_local_model_is_told_the_rich_blocks_too() {
+        let p = system_prompt(&Prompt {
+            first_name: None,
+            today: "",
+            tools: false,
+            web: false,
+            timer: false,
+            workspace: false,
+            groups: &[],
+            catalog: "",
+            mail: "",
+            plan: false,
+            workshop: false,
+        });
+        assert!(p.contains(crate::chat::rich_note!()));
+        // The calculator and the plot included: the user wants them here too.
+        assert!(p.contains("lumo-calc") && p.contains("lumo-plot"));
+        // And one written out, fence and all: a small model copies it.
+        assert!(p.contains("```lumo-cards Coffees\n## Espresso\nsub: The base\n"));
+        assert!(p.contains("never by these names"));
     }
 
     fn tool(id: &str) -> (String, String, Value) {

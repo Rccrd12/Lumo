@@ -58,28 +58,10 @@ pub struct Settings {
     pub compact_activity: bool,
     /// The closed island shows the music playing, with its buttons (media.rs).
     pub compact_media: bool,
-    /// The live activities (src/island/activities.ts): on or off.
-    pub activities_panel: bool,
-    /// Folded into their icon in the open island's top bar.
-    pub activities_folded: bool,
-    /// Beside the island: "left" or "right".
-    pub activities_side: String,
-    /// Their size in page pixels; a height of 0 follows the island.
-    pub activities_width: f64,
-    pub activities_height: f64,
-    /// Moved off the island into a window of their own (activities.rs), at
-    /// this physical desktop position. Windows only.
-    pub activities_detached: bool,
-    pub activities_x: f64,
-    pub activities_y: f64,
-    /// The Plan island's window (plan_island.rs): moved by hand to this
-    /// physical desktop position (else right of the island), and its size in
-    /// page pixels (0 = the default one). Owned by Rust, like the above.
-    pub agent_plan_moved: bool,
-    pub agent_plan_x: f64,
-    pub agent_plan_y: f64,
-    pub agent_plan_width: f64,
-    pub agent_plan_height: f64,
+    // The live activities' panel beside the island and the Plan island, with
+    // their windows of their own and their switches in Settings → Island,
+    // are gone: their keys in a file from before are left out
+    // (`a_file_from_before_the_windows_went_still_loads`).
     pub autostart: bool,
     pub hooks_installed: bool,
     /// Claude model used by the chat. Changeable in the settings window.
@@ -105,9 +87,6 @@ pub struct Settings {
     /// Simple permission requests (reads, commands that only look) are
     /// answered on the closed island, without opening it (src/core/approvals.ts).
     pub quick_approvals: bool,
-    /// The live activities beside the island are as tall as it, and follow it
-    /// when it is resized (Settings → Island).
-    pub activities_follow_island: bool,
     /// The Email pill leaves out the promotional emails (mail.rs): Gmail's
     /// Promotions category, elsewhere the emails with an unsubscribe link.
     /// Off until the user turns it on.
@@ -151,6 +130,11 @@ pub struct Settings {
     /// change nothing). Picked from the chat's field; anything else reads as
     /// "default".
     pub chat_permission_mode: String,
+    /// How the local chat's Run automatically and the user's tools are held
+    /// (the shield's Sandbox): "high" also runs a tool in the Windows sandbox
+    /// when it can (sandbox.rs), "low" under Lumo's guard only. Anything else
+    /// reads as "high".
+    pub local_sandbox: String,
     /// A quiet line next to the chat's model picker with what the provider has
     /// left (chat_usage.rs): the Claude plan for Claude Code, the rate limits
     /// Anthropic and OpenAI answer with, OpenRouter's key credits. Off until
@@ -177,6 +161,12 @@ pub struct Settings {
     /// A local model's chat is compacted by itself before a question, once
     /// its context is over 80 % full (the ring's last numbers). On by default.
     pub chat_auto_compact: bool,
+    /// Whether an image line in the chat's answers (`![alt](https://…)`) is
+    /// downloaded and shown at once (web_image.rs, with its checks). Off, the
+    /// card shows only the site and a way to open it in the browser, and
+    /// nothing is downloaded. On by default (Settings → Security). A file from
+    /// before keeps its old `webImageSites` list unread: it no longer matters.
+    pub web_images: bool,
     /// What the AI may do with the user's email (Settings → General →
     /// Security): "read" (the chat and Gemini Live read it, Lumo's email tools
     /// for Antigravity CLI) or "none" (nothing of the mailbox reaches any AI).
@@ -234,18 +224,9 @@ pub struct Settings {
     /// Global shortcuts the user changed, by action id; the others keep their
     /// default (see shortcuts.rs).
     pub shortcuts: crate::shortcuts::Bindings,
-    /// Lumo's outfit, picked in the wardrobe: "auto" (dresses for the
-    /// season), "none" or an outfit id. The island reads anything it doesn't
-    /// know as "auto", so the value is stored as it comes. Before 0.14.0 it
-    /// had another key, which migrate.rs reads.
-    pub lumo_outfit: String,
     /// How much Lumo moves on his own: "still", "calm" or "lively". Kept as
     /// it comes; src/core/state.ts reads anything else as "calm".
     pub lumo_motion: String,
-    /// Lumo's look, picked in the wardrobe or Settings → Island: "filo" (a
-    /// ring of light), "punto", "goccia" or "lucciola" (the firefly). Kept as
-    /// it comes; src/character/wardrobe.ts reads anything else as "filo".
-    pub lumo_character: String,
     /// The mouse Claude wears while it uses the computer, picked in the
     /// wardrobe: "direct" (a dark arrow with a white edge) or "lucciola" (a
     /// butter one with a light in its tail). Kept as it comes; computer.rs
@@ -256,11 +237,11 @@ pub struct Settings {
     pub computer_aim: bool,
     /// A colour of the user's own for a pill's Lumo, by pill ID ("#RRGGBB"),
     /// picked in Settings → Active pills. Empty means the catalog's colours.
-    /// Kept as it comes, like `lumo_outfit`: src/core/pill-colors.ts reads
+    /// Kept as it comes, like `lumo_motion`: src/core/pill-colors.ts reads
     /// whatever is not a colour as "no choice".
     pub pill_colors: BTreeMap<String, String>,
     /// Interface language: "" follows the system, else one of i18n::LANGUAGES
-    /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `lumo_outfit`: a
+    /// ("fr", "pt-BR", "zh-Hans"…). Kept as it comes, like `lumo_motion`: a
     /// code this build doesn't know reads as "".
     pub language: String,
     /// When Lumo opens, ask GitHub once whether a newer Windows release is out
@@ -270,15 +251,11 @@ pub struct Settings {
     /// channel's build (updater.rs), main with every open pull request. Off
     /// unless turned on.
     pub update_beta: bool,
-    /// The new look (src/look-new.css): Lumo in the open island's top bar, his
-    /// light along its edge. On by default since 0.18.0, a file from before
-    /// included; Settings → Island → Previous look turns it off.
-    pub island_new_look: bool,
-    /// The new look's light along the island's edge, picked in the wardrobe:
+    /// Lumo's light along the island's edge, picked in the wardrobe:
     /// "full", "soft", "line" or "glow" (src/look-new.css). Anything else is "full".
     pub island_edge_light: String,
-    /// The new look's home shows the live activities as tiles; its "⋯" menu
-    /// puts them away. Apart from the usual look's panel (`activities_folded`).
+    /// The home shows the live activities as tiles; its "⋯" menu and the
+    /// right-click menu's Live Activities put them away.
     pub home_activities: bool,
 }
 
@@ -317,19 +294,6 @@ impl Default for Settings {
             island_auto_hide: false,
             compact_activity: true,
             compact_media: true,
-            activities_panel: true,
-            activities_folded: false,
-            activities_side: "left".into(),
-            activities_width: crate::activities::DEFAULT_WIDTH,
-            activities_height: 0.0,
-            activities_detached: false,
-            activities_x: 0.0,
-            activities_y: 0.0,
-            agent_plan_moved: false,
-            agent_plan_x: 0.0,
-            agent_plan_y: 0.0,
-            agent_plan_width: 0.0,
-            agent_plan_height: 0.0,
             autostart: false,
             hooks_installed: false,
             model: default_model(),
@@ -340,7 +304,6 @@ impl Default for Settings {
             hidden_plan_pills: Vec::new(),
             plan_usage_online: false,
             quick_approvals: true,
-            activities_follow_island: true,
             mail_hide_promotions: false,
             mail_imap: true,
             mail_outlook: false,
@@ -354,6 +317,7 @@ impl Default for Settings {
             chat_models: BTreeMap::new(),
             chat_effort: String::new(),
             chat_permission_mode: "default".into(),
+            local_sandbox: "high".into(),
             chat_show_usage: false,
             chat_share_explorer: false,
             chat_share_open: true,
@@ -361,6 +325,7 @@ impl Default for Settings {
             chat_computer_use: false,
             chat_web_search: false,
             chat_auto_compact: true,
+            web_images: true,
             ai_mail_access: "read".into(),
             ai_calendar_access: "read".into(),
             ai_github_access: "none".into(),
@@ -379,16 +344,13 @@ impl Default for Settings {
             unsloth_stop_after: "15".into(),
             background_sessions: "grouped".into(),
             shortcuts: Default::default(),
-            lumo_outfit: "auto".into(),
             lumo_motion: "calm".into(),
-            lumo_character: "filo".into(),
             computer_cursor: "direct".into(),
             computer_aim: true,
             pill_colors: BTreeMap::new(),
             language: String::new(),
             update_check_on_open: true,
             update_beta: false,
-            island_new_look: true,
             island_edge_light: "full".into(),
             home_activities: true,
         }
@@ -445,10 +407,9 @@ fn parse(bytes: &[u8]) -> Option<Settings> {
     if text.iter().all(u8::is_ascii_whitespace) {
         return Some(Settings::default());
     }
-    let Value::Object(mut fields) = serde_json::from_slice(text).ok()? else {
+    let Value::Object(fields) = serde_json::from_slice(text).ok()? else {
         return None;
     };
-    crate::migrate::settings_fields(&mut fields);
     let whole = serde_json::from_value(Value::Object(fields.clone()));
     Some(whole.unwrap_or_else(|_| salvage(fields)))
 }
@@ -663,19 +624,6 @@ mod tests {
   "islandAutoHide": true,
   "compactActivity": false,
   "compactMedia": false,
-  "activitiesPanel": false,
-  "activitiesFolded": true,
-  "activitiesSide": "right",
-  "activitiesWidth": 300.0,
-  "activitiesHeight": 360.0,
-  "activitiesDetached": true,
-  "activitiesX": 120.0,
-  "activitiesY": 80.0,
-  "agentPlanMoved": true,
-  "agentPlanX": 300.0,
-  "agentPlanY": 60.0,
-  "agentPlanWidth": 320.0,
-  "agentPlanHeight": 380.0,
   "autostart": true,
   "hooksInstalled": true,
   "model": "some-model",
@@ -686,7 +634,6 @@ mod tests {
   "hiddenPlanPills": ["codex"],
   "planUsageOnline": true,
   "quickApprovals": false,
-  "activitiesFollowIsland": false,
   "mailHidePromotions": true,
   "mailImap": false,
   "mailOutlook": true,
@@ -700,6 +647,7 @@ mod tests {
   "chatModels": { "ollama": "llama3.2", "openai": "gpt-x" },
   "chatEffort": "high",
   "chatPermissionMode": "plan",
+  "localSandbox": "low",
   "chatShowUsage": true,
   "chatShareExplorer": true,
   "chatShareOpen": false,
@@ -707,6 +655,7 @@ mod tests {
   "chatComputerUse": true,
   "chatWebSearch": true,
   "chatAutoCompact": false,
+  "webImages": false,
   "aiMailAccess": "none",
   "aiCalendarAccess": "none",
   "aiGithubAccess": "read",
@@ -725,16 +674,13 @@ mod tests {
   "unslothStopAfter": "exit",
   "backgroundSessions": "hidden",
   "shortcuts": { "openChat": { "keys": "Ctrl+Shift+K", "enabled": false } },
-  "lumoOutfit": "witchHat",
   "lumoMotion": "lively",
-  "lumoCharacter": "goccia",
   "computerCursor": "lucciola",
   "computerAim": false,
   "pillColors": { "integration_claude": "#2DD4BF" },
   "language": "pt-BR",
   "updateCheckOnOpen": false,
   "updateBeta": true,
-  "islandNewLook": true,
   "islandEdgeLight": "soft",
   "homeActivities": false
 }"##;
@@ -827,14 +773,6 @@ mod tests {
     }
 
     #[test]
-    fn a_file_from_before_the_wardrobe_dresses_lumo_for_the_seasons() {
-        let loaded = parse(&custom_with("lumoOutfit", None)).unwrap();
-        assert_eq!(loaded.lumo_outfit, "auto");
-        assert_eq!(loaded.model, "some-model");
-        assert!(!loaded.sound_enabled);
-    }
-
-    #[test]
     fn a_file_from_before_the_explorer_setting_shares_nothing_by_itself() {
         let loaded = parse(&custom_with("chatShareExplorer", None)).unwrap();
         assert!(!loaded.chat_share_explorer);
@@ -846,7 +784,7 @@ mod tests {
     fn a_file_from_before_the_colours_paints_every_pill_as_the_catalog_says() {
         let loaded = parse(&custom_with("pillColors", None)).unwrap();
         assert!(loaded.pill_colors.is_empty());
-        assert_eq!(loaded.lumo_outfit, "witchHat");
+        assert_eq!(loaded.lumo_motion, "lively");
     }
 
     #[test]
@@ -861,14 +799,6 @@ mod tests {
     }
 
     #[test]
-    fn a_file_from_before_the_looks_shows_lumo_as_filo() {
-        let loaded = parse(&custom_with("lumoCharacter", None)).unwrap();
-        assert_eq!(loaded.lumo_character, "filo");
-        assert_eq!(loaded.lumo_motion, "lively");
-        assert_eq!(Settings::default().lumo_character, "filo");
-    }
-
-    #[test]
     fn a_file_from_before_the_computer_cursors_wears_the_dark_arrow_and_aims() {
         let s: Settings = serde_json::from_str(r#"{"chatComputerUse":true}"#).unwrap();
         assert_eq!(s.computer_cursor, "direct");
@@ -879,21 +809,8 @@ mod tests {
     }
 
     #[test]
-    fn a_look_this_build_does_not_know_is_kept_as_written() {
-        // A newer build may add looks: the island shows Filo for it, but
-        // going back to that build must find the choice still there.
-        let loaded = parse(&custom_with("lumoCharacter", Some(json!("perla")))).unwrap();
-        assert_eq!(loaded.lumo_character, "perla");
-        assert_eq!(loaded.lumo_outfit, "witchHat");
-    }
-
-    #[test]
-    fn an_outfit_this_build_does_not_know_is_kept_as_written() {
-        // A newer build may add outfits: the island shows "auto" for it, but
-        // the choice must survive a save made by this one.
-        let loaded = parse(&custom_with("lumoOutfit", Some(json!("topHat")))).unwrap();
-        assert_eq!(loaded.lumo_outfit, "topHat");
-        // The language too: "" (follow the system) when absent, as it comes otherwise.
+    fn a_language_this_build_does_not_know_is_kept_as_written() {
+        // "" (follow the system) when absent, as it comes otherwise.
         assert_eq!(parse(&custom_with("language", None)).unwrap().language, "");
         assert_eq!(parse(&custom_with("language", Some(json!("xx")))).unwrap().language, "xx");
     }
@@ -919,11 +836,62 @@ mod tests {
     }
 
     #[test]
-    fn the_new_look_is_on_until_the_previous_one_is_picked() {
-        assert!(parse(&custom_with("islandNewLook", None)).unwrap().island_new_look);
-        assert!(Settings::default().island_new_look);
-        assert!(parse(CUSTOM.as_bytes()).unwrap().island_new_look);
-        assert!(!parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap().island_new_look);
+    fn a_file_that_picked_the_previous_look_still_loads() {
+        // Settings → Island → Previous look is gone (0.21.0): its key is left
+        // over in a file from before, and the rest of that file is kept.
+        let s = parse(&custom_with("islandNewLook", Some(json!(false)))).unwrap();
+        assert_eq!(s.island_edge_light, "soft");
+        assert!(!s.home_activities);
+    }
+
+    #[test]
+    fn a_file_from_before_the_windows_went_still_loads() {
+        // A settings.json from 0.17: the live activities and the Plan island
+        // moved into windows of their own, folded, put on the right and
+        // resized, and their switches in Settings → Island off. Those windows
+        // and switches are gone: the file loads without an error, everything
+        // else in it is kept, and its next save leaves the old keys out, so
+        // nothing can bring a window back.
+        let mut object = custom().as_object().unwrap().clone();
+        for (key, value) in [
+            ("activitiesPanel", json!(false)),
+            ("activitiesFollowIsland", json!(false)),
+            ("activitiesDetached", json!(true)),
+            ("activitiesX", json!(120.0)),
+            ("activitiesY", json!(80.0)),
+            ("activitiesFolded", json!(true)),
+            ("activitiesSide", json!("right")),
+            ("activitiesWidth", json!(300.0)),
+            ("activitiesHeight", json!(360.0)),
+            ("agentPlanMoved", json!(true)),
+            ("agentPlanX", json!(300.0)),
+            ("agentPlanY", json!(60.0)),
+            ("agentPlanWidth", json!(320.0)),
+            ("agentPlanHeight", json!(380.0)),
+        ] {
+            object.insert(key.to_string(), value);
+        }
+        let s = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
+        assert_eq!(shown(&s), custom());
+        assert!(!s.home_activities);
+        assert_eq!(s.island_width, 900.0);
+        let saved = shown(&s);
+        for key in ["activitiesDetached", "activitiesX", "agentPlanMoved", "agentPlanY", "activitiesFolded", "agentPlanWidth", "activitiesPanel", "activitiesFollowIsland"] {
+            assert!(saved.get(key).is_none(), "{key} is not written again");
+        }
+        // The window keeps the same room beside the island it had by default.
+        assert_eq!(crate::island::Placement::of(&s).beside, crate::island::Placement::of(&Settings::default()).beside);
+    }
+
+    #[test]
+    fn a_file_that_dressed_lumo_or_picked_his_look_still_loads() {
+        // The wardrobe's outfits and Lumo's looks are gone (0.21.0): their keys
+        // are left over in a file from before, and the rest of that file is kept.
+        for (key, value) in [("lumoOutfit", "scarf"), ("lumoCharacter", "goccia")] {
+            let s = parse(&custom_with(key, Some(json!(value)))).unwrap();
+            assert_eq!(s.lumo_motion, "lively", "{key}");
+            assert_eq!(s.computer_cursor, "lucciola", "{key}");
+        }
     }
 
     #[test]
@@ -938,6 +906,28 @@ mod tests {
         assert!(parse(&custom_with("homeActivities", None)).unwrap().home_activities);
         assert!(Settings::default().home_activities);
         assert!(!parse(CUSTOM.as_bytes()).unwrap().home_activities);
+    }
+
+    #[test]
+    fn images_from_the_web_show_until_they_are_turned_off() {
+        assert!(parse(&custom_with("webImages", None)).unwrap().web_images);
+        assert!(Settings::default().web_images);
+        assert!(!parse(CUSTOM.as_bytes()).unwrap().web_images);
+    }
+
+    #[test]
+    fn a_file_with_the_old_list_of_image_sites_still_loads_whole() {
+        // Before images loaded by themselves, each site was let in by hand.
+        let mut object = custom().as_object().unwrap().clone();
+        object.remove("webImages");
+        object.insert("webImageSites".into(), json!(["upload.wikimedia.org"]));
+        let mut s = parse(&serde_json::to_vec(&object).unwrap()).unwrap();
+        // The old list is dropped, the new switch takes its default (on), and
+        // every other setting is the file's own.
+        assert!(s.web_images);
+        assert_eq!(shown(&s).get("webImageSites"), None);
+        s.web_images = false;
+        assert_eq!(shown(&s), shown(&parse(CUSTOM.as_bytes()).unwrap()));
     }
 
     #[test]
@@ -1159,19 +1149,6 @@ mod tests {
                 "islandAutoHide",
                 "compactActivity",
                 "compactMedia",
-                "activitiesPanel",
-                "activitiesFolded",
-                "activitiesSide",
-                "activitiesWidth",
-                "activitiesHeight",
-                "activitiesDetached",
-                "activitiesX",
-                "activitiesY",
-                "agentPlanMoved",
-                "agentPlanX",
-                "agentPlanY",
-                "agentPlanWidth",
-                "agentPlanHeight",
                 "autostart",
                 "hooksInstalled",
                 "model",
@@ -1182,7 +1159,6 @@ mod tests {
                 "hiddenPlanPills",
                 "planUsageOnline",
                 "quickApprovals",
-                "activitiesFollowIsland",
                 "mailHidePromotions",
                 "mailImap",
                 "mailOutlook",
@@ -1196,6 +1172,7 @@ mod tests {
                 "chatModels",
                 "chatEffort",
                 "chatPermissionMode",
+                "localSandbox",
                 "chatShowUsage",
                 "chatShareExplorer",
                 "chatShareOpen",
@@ -1203,6 +1180,7 @@ mod tests {
                 "chatComputerUse",
                 "chatWebSearch",
                 "chatAutoCompact",
+                "webImages",
                 "aiMailAccess",
                 "aiCalendarAccess",
                 "aiGithubAccess",
@@ -1221,16 +1199,13 @@ mod tests {
                 "unslothStopAfter",
                 "backgroundSessions",
                 "shortcuts",
-                "lumoOutfit",
                 "lumoMotion",
-                "lumoCharacter",
                 "computerCursor",
                 "computerAim",
                 "pillColors",
                 "language",
                 "updateCheckOnOpen",
                 "updateBeta",
-                "islandNewLook",
                 "islandEdgeLight",
                 "homeActivities",
             ]

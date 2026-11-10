@@ -15,7 +15,7 @@ const { buildPrompt } = await import("../src/views/chat.ts");
 const { DEFAULT_SETTINGS, State } = await import("../src/core/state.ts");
 const { providerDef, setLocalCaps } = await import("../src/core/providers.ts");
 const {
-  afterSent, emptyScreen, entryLabel, hasScreen, hostOf, itemPreview, keepShots, menuEntries, nextScreen, screenItems, screenPayload,
+  afterSent, emptyScreen, hasScreen, hostOf, itemPreview, keepShots, nextScreen, screenItems, screenPayload,
   seesImages, short, shotPaths, tabPicks, windowPicks, withTabs, withWindows, withoutFolder, withoutItem, folderPicks, foldersByThemselves,
   tabsByThemselves, withFolders, autoShare,
 } = await import("../src/core/screen.ts");
@@ -70,26 +70,9 @@ const shot = (display) => ({
 
 // ── Pure parts ────────────────────────────────────────────────────────────────
 
-test("the menu: open windows, one entry per screen, all screens only when there are several", () => {
-  assert.deepEqual(menuEntries([]).map(entryLabel), ["Open windows"]);
-  assert.deepEqual(menuEntries(DISPLAYS.slice(0, 1)).map(entryLabel), ["Open windows", "Screen 1"]);
-  assert.deepEqual(menuEntries(DISPLAYS).map(entryLabel), ["Open windows", "Screen 1", "Screen 2", "All screens"]);
-});
-
 const MUSIC = { path: "C:\\Users\\me\\Music", name: "Music", entries: [], omitted: 0 };
 
-test("the File Explorer entry comes last, and only when a folder is open", () => {
-  const [, found] = menuEntries([], { folders: [PEEKED], problem: "" });
-  assert.deepEqual(found, { kind: "explorer", folder: PEEKED });
-  assert.equal(entryLabel(found), "Folder open in File Explorer");
-  assert.deepEqual(menuEntries([], { folders: [], problem: "" }).map(entryLabel), ["Open windows"], "none open: no entry");
-  assert.deepEqual(menuEntries([], { folders: [PEEKED], problem: "The screen couldn't be read." }).map(entryLabel), ["Open windows"]);
-});
-
-test("several folders open: one entry opens a second list, all of them or one", () => {
-  const [, found] = menuEntries([], { folders: [PEEKED, MUSIC], problem: "" });
-  assert.deepEqual(found, { kind: "explorers", folders: [PEEKED, MUSIC] });
-  assert.equal(entryLabel(found), "Folders open in File Explorer");
+test("several folders open: all of them or one", () => {
   assert.deepEqual(folderPicks([PEEKED, MUSIC]).map((p) => [p.id, p.label, p.detail]), [
     [null, "All folders", "2"],
     [PEEKED.path, "PDFs", PEEKED.path],
@@ -99,13 +82,7 @@ test("several folders open: one entry opens a second list, all of them or one", 
   assert.deepEqual(withFolders([FOLDER, MUSIC], [{ ...MUSIC, omitted: 2 }]).map((f) => [f.name, f.omitted]), [["PDFs", 0], ["Music", 2]]);
 });
 
-test("the browser tabs come after the windows, only when a browser has some open", () => {
-  assert.deepEqual(menuEntries(DISPLAYS, undefined, TABS).map(entryLabel), ["Open windows", "Browser tabs", "Screen 1", "Screen 2", "All screens"]);
-  assert.deepEqual(menuEntries(DISPLAYS, undefined, TABS)[1], { kind: "tabs", count: 2 });
-  assert.deepEqual(menuEntries([], undefined, []).map(entryLabel), ["Open windows"]);
-});
-
-test("the second list: all of them first, then each window or tab", () => {
+test("the picks: all of them first, then each window or tab", () => {
   const windows = windowPicks(WINDOWS);
   assert.deepEqual(windows.map((p) => [p.id, p.label, p.detail]), [
     [null, "All windows", "2"],
@@ -269,16 +246,20 @@ const $ = (cls) => view.el.querySelector(cls);
 /** The attachments' rows, and their names. */
 const rows = () => view.el.find(".attach-row");
 const names = () => rows().map((r) => r.find(".attach-name")[0].textContent);
-const entries = () => view.el.find(".screen-entry");
+/** The Share menu: a pill for each kind of thing, the tiles of the kind picked, and Send. */
+const pills = () => view.el.find(".share-kind");
+const pillNames = () => pills().map((p) => p.textContent);
+const tiles = () => view.el.find(".share-tile");
+const tileName = (tile) => tile.find(".share-name")[0].textContent;
+const tileNames = () => tiles().map(tileName);
+const tile = (name) => tiles().find((x) => tileName(x) === name);
 const nothingCaptured = () =>
-  sent("screen_capture").length === 0 && sent("screen_windows").length === 0 && sent("screen_explorer_share").length === 0 &&
+  sent("screen_capture").length === 0 && sent("screen_explorer_share").length === 0 &&
   sent("screen_window_share").length === 0 && sent("screen_tab_share").length === 0;
-const label = (row) => row.find(".picker-model-name")[0].textContent;
-const explorerEntry = () => entries().find((e) => e.find(".picker-model-name")[0].textContent === "Folder open in File Explorer");
 
 /** Real time until the menu is drawn: a few milliseconds are not always enough on a busy CI runner. */
 async function untilDrawn(realTimeout) {
-  for (let i = 0; i < 400 && entries().length === 0; i++) await new Promise((resolve) => realTimeout(resolve, 5));
+  for (let i = 0; i < 400 && pills().length === 0; i++) await new Promise((resolve) => realTimeout(resolve, 5));
 }
 
 async function openMenu() {
@@ -286,17 +267,29 @@ async function openMenu() {
   await flush();
 }
 
-test("opening the menu only asks which screens there are", async () => {
+/** Shows the kind whose pill starts with `name` ("Screens", "Tabs"…). */
+function pickKind(name) {
+  pills().find((p) => p.textContent.startsWith(name)).fire("click");
+}
+
+/** Picks the tile, then Send: only then is it captured or read. */
+async function share(name) {
+  tile(name).fire("click");
+  $(".share-send").fire("click");
+  await flush();
+}
+
+test("opening the menu only asks what there is, and takes nothing before Send", async () => {
   await openMenu();
   assert.ok($(".chat-body").classList.contains("screening"));
-  assert.deepEqual(
-    entries().map((e) => e.find(".picker-model-name")[0].textContent),
-    ["Open windows", "Browser tabs", "Screen 1", "Screen 2", "All screens", "Folder open in File Explorer"],
-  );
+  assert.deepEqual(pillNames(), ["Open windows · 2", "Screens · 2", "Tabs · 2", "Folders · 1"]);
+  assert.deepEqual(tileNames(), ["All windows", "main.rs — lumo", "Inbox"], "the windows first");
   assert.equal(sent("screen_displays").length, 1);
-  assert.equal(sent("screen_explorer_peek_all").length, 1, "the folders' names, for the label");
-  assert.equal(sent("screen_tabs").length, 1, "the tabs' titles, for the entry");
-  assert.ok(nothingCaptured(), "nothing until an entry is clicked");
+  assert.equal(sent("screen_windows").length, 1, "the windows' titles, for the tiles");
+  assert.equal(sent("screen_explorer_peek_all").length, 1, "the folders' names, for the tiles");
+  assert.equal(sent("screen_tabs").length, 1, "the tabs' titles, for the tiles");
+  tile("main.rs — lumo").fire("click");
+  assert.ok(nothingCaptured(), "a tile picked is not sent yet");
   $(".screen-btn").fire("click");
   assert.ok(!$(".chat-body").classList.contains("screening"));
   assert.ok(nothingCaptured());
@@ -304,8 +297,9 @@ test("opening the menu only asks which screens there are", async () => {
 
 test("a screenshot is previewed, kept on Attach and goes with the next question once", async () => {
   await openMenu();
-  entries()[2].fire("click"); // Screen 1
-  await flush();
+  pickKind("Screens");
+  assert.deepEqual(tileNames(), ["All screens", "Screen 1", "Screen 2"]);
+  await share("Screen 1");
   assert.deepEqual(sent("screen_capture"), [{ display: 0 }]);
   const img = view.el.find("IMG")[0];
   assert.equal(img.getAttribute("src"), shot(0).preview);
@@ -332,8 +326,8 @@ test("a screenshot is previewed, kept on Attach and goes with the next question 
 
 test("Cancel deletes the screenshots and adds nothing", async () => {
   await openMenu();
-  entries()[4].fire("click"); // All screens
-  await flush();
+  pickKind("Screens");
+  await share("All screens");
   assert.deepEqual(sent("screen_capture"), [{ display: null }]);
   assert.equal(view.el.find("IMG").length, 2);
   view.el.find(".btn").find((b) => b.textContent === "Cancel").fire("click");
@@ -348,8 +342,8 @@ test("Cancel deletes the screenshots and adds nothing", async () => {
 
 test("closing the panel during a preview deletes it too", async () => {
   await openMenu();
-  entries()[3].fire("click"); // Screen 2
-  await flush();
+  pickKind("Screens");
+  await share("Screen 2");
   $(".screen-btn").fire("click");
   assert.deepEqual(sent("screen_discard"), [{ paths: [shot(1).path] }]);
 });
@@ -357,8 +351,8 @@ test("closing the panel during a preview deletes it too", async () => {
 test("Attach never sends: a question typed before stays, and goes with the screenshots on Enter", async () => {
   $(".chat-input").value = "explain this error";
   await openMenu();
-  entries()[4].fire("click");
-  await flush();
+  pickKind("Screens");
+  await share("All screens");
   view.el.find(".btn").find((b) => b.textContent === "Attach").fire("click");
   await flush();
   view.sync();
@@ -373,16 +367,10 @@ test("Attach never sends: a question typed before stays, and goes with the scree
   assert.deepEqual(turn.screen.shots.map((s) => s.name), ["Screen 1", "Screen 2"]);
 });
 
-test("open windows: a second list, one window goes with its text and its picture", async () => {
+test("open windows: one window goes with its text and its picture", async () => {
   await openMenu();
-  entries()[0].fire("click");
-  await flush();
-  assert.equal(sent("screen_windows").length, 1);
-  assert.equal(sent("screen_window_share").length, 0, "nothing read before a pick");
-  assert.deepEqual(entries().map(label), ["Back", "All windows", "main.rs — lumo", "Inbox"]);
-
-  entries()[2].fire("click"); // main.rs — lumo
-  await flush();
+  assert.equal(sent("screen_window_share").length, 0, "nothing read before Send");
+  await share("main.rs — lumo");
   await flush();
   view.sync();
   assert.deepEqual(sent("screen_window_share"), [{ ids: [101] }]);
@@ -402,10 +390,7 @@ test("open windows: a second list, one window goes with its text and its picture
 
 test("all windows go with their text, without pictures; a minimized one has no picture", async () => {
   await openMenu();
-  entries()[0].fire("click");
-  await flush();
-  entries()[1].fire("click"); // All windows
-  await flush();
+  await share("All windows");
   view.sync();
   assert.deepEqual(sent("screen_window_share"), [{ ids: [] }]);
   assert.equal(sent("screen_window_shot").length, 0);
@@ -418,10 +403,7 @@ test("all windows go with their text, without pictures; a minimized one has no p
   assert.equal(rows().length, 0);
 
   await openMenu();
-  entries()[0].fire("click");
-  await flush();
-  entries()[3].fire("click"); // Inbox, minimized
-  await flush();
+  await share("Inbox"); // minimized
   assert.deepEqual(sent("screen_window_share")[1], { ids: [202] });
   assert.equal(sent("screen_window_shot").length, 0, "nothing to see of a minimized window");
 });
@@ -430,42 +412,25 @@ test("a local model that doesn't see gets a window's text but no picture of it",
   State.settings = { ...State.settings, chatProvider: "ollama", ollamaUrl: "http://localhost:11434" };
   setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
   await openMenu();
-  entries()[0].fire("click");
-  await flush();
-  entries()[2].fire("click");
-  await flush();
+  await share("main.rs — lumo");
   assert.deepEqual(sent("screen_window_share"), [{ ids: [101] }]);
   assert.equal(sent("screen_window_shot").length, 0);
   setLocalCaps("ollama", null);
 });
 
-test("Back returns to the first list", async () => {
-  await openMenu();
-  entries()[0].fire("click");
-  await flush();
-  entries()[0].fire("click"); // Back
-  await flush();
-  assert.equal(entries().map(label)[0], "Open windows");
-  assert.ok(nothingCaptured() || sent("screen_window_share").length === 0);
-});
-
 test("browser tabs: one tab or all of them go with their pages' text", async () => {
   await openMenu();
-  entries()[1].fire("click"); // Browser tabs
-  await flush();
-  assert.deepEqual(entries().map(label), ["Back", "All tabs", "Rccrd12/Lumo", "Luce – Wikipedia"]);
-  assert.equal(sent("screen_tab_share").length, 0, "nothing read before a pick");
-  entries()[2].fire("click");
-  await flush();
+  pickKind("Tabs");
+  assert.deepEqual(tileNames(), ["All tabs", "Rccrd12/Lumo", "Luce – Wikipedia"]);
+  assert.equal(sent("screen_tab_share").length, 0, "nothing read before Send");
+  await share("Rccrd12/Lumo");
   view.sync();
   assert.deepEqual(sent("screen_tab_share"), [{ ids: ["Edge|Default|1"] }]);
   assert.deepEqual(names(), ["Rccrd12/Lumo"]);
 
   await openMenu();
-  entries()[1].fire("click");
-  await flush();
-  entries()[1].fire("click"); // All tabs
-  await flush();
+  assert.deepEqual(tileNames(), ["All tabs", "Rccrd12/Lumo", "Luce – Wikipedia"], "the kind picked last");
+  await share("All tabs");
   view.sync();
   assert.deepEqual(sent("screen_tab_share")[1], { ids: [] });
   assert.deepEqual(names(), ["Rccrd12/Lumo", "Luce – Wikipedia"], "the same tab once, one row each");
@@ -479,7 +444,7 @@ test("browser tabs: one tab or all of them go with their pages' text", async () 
   ]);
 });
 
-test("browsers slow to list their tabs never hold the menu: the entry joins it when they answer", async () => {
+test("browsers slow to list their tabs never hold the menu: their pill joins it when they answer", async () => {
   let answer;
   answers.screen_tabs = () => new Promise((resolve) => { answer = resolve; });
   const realTimeout = globalThis.setTimeout;
@@ -491,11 +456,10 @@ test("browsers slow to list their tabs never hold the menu: the entry joins it w
   } finally {
     globalThis.setTimeout = realTimeout;
   }
-  assert.ok(!entries().map(label).includes("Browser tabs"), "drawn without them");
-  assert.equal(entries().map(label)[0], "Open windows");
+  assert.deepEqual(pillNames(), ["Open windows · 2", "Screens · 2", "Folders · 1"], "drawn without them");
   answer(TABS);
   await flush();
-  assert.deepEqual(entries().map(label).slice(0, 2), ["Open windows", "Browser tabs"]);
+  assert.deepEqual(pillNames(), ["Open windows · 2", "Screens · 2", "Tabs · 2", "Folders · 1"]);
 });
 
 test("tabs that answer after the menu moved on don't redraw it", async () => {
@@ -509,34 +473,34 @@ test("tabs that answer after the menu moved on don't redraw it", async () => {
   } finally {
     globalThis.setTimeout = realTimeout;
   }
-  entries()[0].fire("click"); // Open windows
-  await flush();
+  pickKind("Screens");
+  await share("Screen 1");
   answer(TABS);
   await flush();
-  assert.equal(entries().map(label)[0], "Back", "still the window list");
+  assert.equal(pills().length, 0, "still the screenshot's preview");
+  assert.equal(view.el.find("IMG").length, 1);
 });
 
-test("no browser open: no tabs entry", async () => {
+test("no browser open: no tabs pill", async () => {
   answers.screen_tabs = [];
   await openMenu();
-  assert.ok(!entries().map(label).includes("Browser tabs"));
+  assert.ok(!pillNames().some((p) => p.startsWith("Tabs")));
   answers.screen_tabs = () => Promise.reject(new Error("Not available."));
   $(".screen-btn").fire("click");
   await openMenu();
-  assert.ok(!entries().map(label).includes("Browser tabs"));
+  assert.ok(!pillNames().some((p) => p.startsWith("Tabs")));
 });
 
 test("a local model that doesn't see can't take a screenshot: the screens are greyed out and say why", async () => {
   State.settings = { ...State.settings, chatProvider: "ollama", ollamaUrl: "http://localhost:11434" };
   setLocalCaps("ollama", { vision: false, tools: null, reasoning: [], maxContext: 0, loadedContext: 0 });
   await openMenu();
-  const rows = entries();
-  assert.equal(rows[0].getAttribute("disabled"), null, "the window list is text: fine");
-  assert.equal(rows[2].getAttribute("disabled"), "");
-  rows[2].fire("click");
-  await flush();
-  assert.equal(sent("screen_capture").length, 0);
+  assert.equal(tile("main.rs — lumo").getAttribute("disabled"), null, "a window is text: fine");
+  pickKind("Screens");
+  assert.equal(tile("Screen 1").getAttribute("disabled"), "");
+  assert.equal(tile("All screens").getAttribute("disabled"), "");
   assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "This model doesn't see pictures. Pick one that does, or ask without the screenshot."));
+  assert.equal(sent("screen_capture").length, 0);
   setLocalCaps("ollama", null);
 });
 
@@ -545,16 +509,17 @@ test("when the screen can't be read the menu says so, and nothing else happens",
   answers.screen_windows = () => Promise.reject(new Error("The screen couldn't be read."));
   await openMenu();
   assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "The screen couldn't be read."));
-  entries()[0].fire("click");
-  await flush();
-  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "The screen couldn't be read."));
+  assert.ok(!pillNames().some((p) => p.startsWith("Screens")), "no screens to pick");
+  assert.deepEqual(tileNames(), [], "no window either");
+  assert.ok(view.el.find(".picker-status").some((s) => s.textContent === "No window is open."));
   assert.equal(rows().length, 0);
+  assert.ok(nothingCaptured());
 });
 
 test("a new chat deletes screenshots that were never sent", async () => {
   await openMenu();
-  entries()[2].fire("click");
-  await flush();
+  pickKind("Screens");
+  await share("Screen 1");
   view.el.find(".btn").find((b) => b.textContent === "Attach").fire("click");
   view.el.find(".tool-btn")[0].fire("click"); // New chat
   assert.deepEqual(sent("screen_discard"), [{ paths: [shot(0).path] }]);
@@ -660,15 +625,15 @@ test("the page from the shortcut waits as a tab chip and goes with the next ques
 
 // ── The folder open in File Explorer ─────────────────────────────────────────
 
-test("the File Explorer entry names the folder, and only a click lists it", async () => {
+test("the folders open in File Explorer are named, and only Send lists one", async () => {
   await openMenu();
-  const row = explorerEntry();
-  assert.equal(row.getAttribute("disabled"), null);
-  assert.equal(row.find(".history-date")[0].textContent, "PDFs");
+  pickKind("Folders");
+  assert.deepEqual(tileNames(), ["All folders", "PDFs"]);
+  assert.equal(tile("PDFs").getAttribute("disabled"), null);
+  assert.equal(tile("PDFs").find(".share-detail")[0].textContent, FOLDER.path);
   assert.equal(sent("screen_explorer_share").length, 0, "nothing listed yet");
 
-  row.fire("click");
-  await flush();
+  await share("PDFs");
   view.sync();
   assert.deepEqual(sent("screen_explorer_share"), [{ paths: [FOLDER.path] }]);
   assert.ok(!$(".chat-body").classList.contains("screening"));
@@ -686,22 +651,22 @@ test("the File Explorer entry names the folder, and only a click lists it", asyn
   assert.equal(sent("explorer_attach").length, 0);
 });
 
-test("no File Explorer window, or it can't be read: no entry for it", async () => {
+test("no File Explorer window, or it can't be read: no pill for it", async () => {
   answers.screen_explorer_peek_all = [];
   await openMenu();
-  assert.equal(explorerEntry(), undefined);
+  assert.ok(!pillNames().some((p) => p.startsWith("Folders")));
   assert.equal(sent("screen_explorer_share").length, 0);
 
   $(".screen-btn").fire("click");
   answers.screen_explorer_peek_all = () => Promise.reject(new Error("The screen couldn't be read."));
   await openMenu();
-  assert.equal(explorerEntry(), undefined);
+  assert.ok(!pillNames().some((p) => p.startsWith("Folders")));
 });
 
 async function shareFolder() {
   await openMenu();
-  explorerEntry().fire("click");
-  await flush();
+  pickKind("Folders");
+  await share("PDFs");
 }
 
 test("several folders open: all of them, or one, go with the question, and the file each names is attached", async () => {
@@ -710,14 +675,11 @@ test("several folders open: all of them, or one, go with the question, and the f
   answers.explorer_attach = (args) => (args.folder === MUSIC.path && /song/.test(args.query) ? { name: "song.mp3", path: "C:\\Lumo\\inbox\\song.mp3" }
     : args.folder === FOLDER.path && /file\.pdf/.test(args.query) ? COPIED : null);
   await openMenu();
-  const several = entries().find((e) => e.find(".picker-model-name")[0].textContent === "Folders open in File Explorer");
-  assert.equal(several.find(".history-date")[0].textContent, "2");
-  several.fire("click");
-  await flush();
-  assert.deepEqual(entries().slice(1).map(label), ["All folders", "PDFs", "Music"], "Back, then the folders");
-  assert.equal(sent("screen_explorer_share").length, 0, "nothing listed before a pick");
-  entries()[1].fire("click"); // All folders
-  await flush();
+  assert.ok(pillNames().includes("Folders · 2"));
+  pickKind("Folders");
+  assert.deepEqual(tileNames(), ["All folders", "PDFs", "Music"]);
+  assert.equal(sent("screen_explorer_share").length, 0, "nothing listed before Send");
+  await share("All folders");
   view.sync();
   assert.deepEqual(sent("screen_explorer_share"), [{ paths: [] }]);
   assert.deepEqual(names(), ["PDFs", "Music"]);
@@ -737,10 +699,8 @@ test("the attachments keep what comes from the computer in a folder of its own, 
   State.droppedFile = { name: "contract.docx", path: "C:\\Lumo\\inbox\\contract.docx" };
   await shareFolder();
   await openMenu();
-  entries()[1].fire("click"); // Browser tabs
-  await flush();
-  entries()[1].fire("click"); // All tabs
-  await flush();
+  pickKind("Tabs");
+  await share("All tabs");
   view.sync();
   const groups = view.el.find(".attach-group");
   assert.equal(groups.length, 1, "one folder: Computer");
@@ -1004,10 +964,8 @@ test("an attachment's preview is exactly what goes: the picture, text read, the 
 
 test("a click on an attachment shows what it sends; Close keeps it, Remove takes it back, both back to the attachments", async () => {
   await openMenu();
-  entries()[1].fire("click"); // Browser tabs
-  await flush();
-  entries()[2].fire("click"); // Rccrd12/Lumo
-  await flush();
+  pickKind("Tabs");
+  await share("Rccrd12/Lumo");
   view.sync();
   const chip = () => rows()[0];
   $(".files-btn").fire("click");

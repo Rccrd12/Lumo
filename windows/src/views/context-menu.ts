@@ -1,7 +1,7 @@
 // Lumo's own right-click menu, instead of the webview's: Refresh, the text
 // actions where they apply (Cut, Copy, Paste, Select all), and the items
-// picked in Settings (core/context-menu.ts). The island, its live activities
-// window and the Settings window each open it with what they offer.
+// picked in Settings (core/context-menu.ts). The island and the Settings
+// window each open it with what they offer.
 //
 // A plain list of buttons in the page, kept inside the window. Clicking an
 // item never takes the focus from the field it acts on (mousedown is held

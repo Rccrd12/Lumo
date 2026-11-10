@@ -2,7 +2,7 @@
 
 import { beforeEach, test } from "node:test";
 import assert from "node:assert/strict";
-import { MAX_CHATS, chatTitle, compactOf, deleteChat, loadChats, saveChat, setCompact } from "../src/core/chats.ts";
+import { MAX_CHATS, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, setCompact } from "../src/core/chats.ts";
 
 const mem = new Map();
 globalThis.localStorage = {
@@ -75,4 +75,21 @@ test("a compacted chat keeps its summary until it is deleted", () => {
   assert.deepEqual(compactOf("b"), { upto: 4, summary: "T" });
   setCompact("b", null);
   assert.equal(compactOf("b"), null);
+});
+
+test("what Claude Code writes by itself joins the last answer, before a question still waiting", () => {
+  const turns = [
+    { role: "user", content: "Measure it and tell me when it is done" },
+    { role: "assistant", content: "Started: I'll write when it ends." },
+    { role: "user", content: "Done yet?" },
+  ];
+  assert.equal(joinOwnAnswer(turns, "Done: 42 ms."), true);
+  assert.equal(turns[1].content, "Started: I'll write when it ends.\n\nDone: 42 ms.");
+  assert.equal(turns.length, 3, "still question, answer, question");
+  // A failed answer is never saved: the one before it takes it.
+  const failed = [{ role: "user", content: "a" }, { role: "assistant", content: "A" }, { role: "user", content: "b" }, { role: "assistant", content: "Error", failed: true }];
+  joinOwnAnswer(failed, "B");
+  assert.equal(failed[1].content, "A\n\nB");
+  assert.equal(failed[3].content, "Error");
+  assert.equal(joinOwnAnswer([{ role: "user", content: "a" }], "B"), false);
 });

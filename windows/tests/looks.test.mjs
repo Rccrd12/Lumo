@@ -1,18 +1,11 @@
-// Lumo's looks: Filo (a ring of light, the default), Punto, Goccia and Lucciola
-// (the firefly). The setting, the renderer it picks, and every state, emote
-// and outfit drawn in every look without throwing (src/character/looks.ts, engine.ts).
+// Lumo is Filo, a ring of light; the agents' minis are little balls. Every
+// state, emote and eye drawn in both without throwing (src/character/looks.ts,
+// engine.ts).
 
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
-  DEFAULT_LOOK, LOOK_LABELS, LUMO_LOOKS, OUTFIT_SELECTIONS, parseLook, wardrobeHeader,
-} from "../src/character/wardrobe.ts";
 import { DEFAULT_SETTINGS } from "../src/core/state.ts";
 import { BOT_STATES, BotEngine } from "../src/character/engine.ts";
-import { isRoundLook } from "../src/character/looks.ts";
-import { drawLookIcon, drawWardrobeIcon } from "../src/character/outfits.ts";
-import { Greeting, GREETING_END, greetingPose, lumoBounds } from "../src/character/greeting.ts";
-import { drawLookDropping } from "../src/character/looks.ts";
 
 // ── A canvas that only records ────────────────────────────────────────────────
 
@@ -81,30 +74,25 @@ const quietSoon = (e) => {
 
 const STATES = Object.keys(BOT_STATES);
 const EMOTES = ["love", "surprised", "proud", "wink", "yawn", "happy", "annoyed"];
-const OUTFITS = OUTFIT_SELECTIONS.filter((o) => o !== "auto" && o !== "none");
+/** Lumo himself, or one of the agents' minis. */
+const KINDS = ["filo", "mini"];
+function engine(kind) {
+  const e = new BotEngine();
+  if (kind === "mini") {
+    e.isMini = true;
+    e.bodyColor = [0.5, 0.2, 0.9];
+  }
+  return e;
+}
 
-// ── The setting ───────────────────────────────────────────────────────────────
+// ── No look to pick ───────────────────────────────────────────────────────────
 
-test("Lumo is Filo unless another look was chosen", () => {
-  assert.equal(DEFAULT_LOOK, "filo");
-  assert.equal(DEFAULT_SETTINGS.lumoCharacter, "filo");
-  assert.deepEqual([...LUMO_LOOKS], ["filo", "punto", "goccia", "lucciola"]);
-  for (const look of LUMO_LOOKS) assert.equal(parseLook(look), look);
-  for (const raw of [undefined, null, "", "perla", "Filo", 3, {}]) assert.equal(parseLook(raw), "filo");
+test("there is no look nor outfit to pick any more", () => {
+  assert.equal("lumoCharacter" in DEFAULT_SETTINGS, false);
+  assert.equal("lumoOutfit" in DEFAULT_SETTINGS, false);
 });
 
-test("only the firefly is not a round look", () => {
-  assert.deepEqual(LUMO_LOOKS.filter(isRoundLook), ["filo", "punto", "goccia"]);
-});
-
-test("the wardrobe header names a hovered look", () => {
-  const d = new Date(2026, 7, 1, 12);
-  assert.equal(wardrobeHeader({ look: "goccia" }, "none", d), LOOK_LABELS.goccia);
-  assert.equal(wardrobeHeader({ look: "lucciola" }, "auto", d), "Lucciola · the firefly");
-  assert.equal(wardrobeHeader(null, "none", d), "None");
-});
-
-// ── The renderer the look picks ───────────────────────────────────────────────
+// ── Lumo and the minis ────────────────────────────────────────────────────────
 
 /** Draws one frame of `e` and returns what was called. */
 function frame(e, W = 60, H = 80) {
@@ -113,22 +101,17 @@ function frame(e, W = 60, H = 80) {
   return ctx.calls;
 }
 
-test("the look decides how the engine draws him; the agents' minis keep their shape", () => {
+test("Lumo is drawn as Filo's ring of light; the agents' minis keep their shape", () => {
   const e = new BotEngine();
-  assert.equal(e.look, "filo");
   assert.equal(e.round, true);
-  // The firefly's lantern is an ellipse on the canvas; a round look at rest has none.
+  // Filo at rest has no ellipse on the canvas.
   assert.equal(frame(e).get("ellipse") ?? 0, 0);
-  e.look = "lucciola";
-  assert.equal(e.round, false);
-  assert.ok((frame(e).get("ellipse") ?? 0) > 0, "the firefly's tail");
-  const mini = new BotEngine();
-  mini.isMini = true;
-  mini.bodyColor = [0.5, 0.2, 0.9];
+  const mini = engine("mini");
   assert.equal(mini.round, false);
+  frame(mini);
 });
 
-test("a round look takes the state's colour, warm at rest", () => {
+test("Filo takes the state's colour, warm at rest", () => {
   const e = new BotEngine();
   e.ambient = 0;
   step(e, 2);
@@ -141,14 +124,13 @@ test("a round look takes the state's colour, warm at rest", () => {
   assert.ok(e.glow[0] > 0.9 && e.glow[1] < 0.4, `red: ${e.glow}`);
 });
 
-// ── Every state, emote and outfit, in every look ──────────────────────────────
+// ── Every state, emote and eye ────────────────────────────────────────────────
 
-for (const look of LUMO_LOOKS) {
-  test(`${look}: every state draws, from the closed island to the big views`, () => {
+for (const kind of KINDS) {
+  test(`${kind}: every state draws, from the closed island to the big views`, () => {
     for (const W of [20 / 0.6, 56 / 0.6, 150]) {
       for (const s of STATES) {
-        const e = new BotEngine();
-        e.look = look;
+        const e = engine(kind);
         e.particleOverhang = 20;
         e.setState(s, true);
         for (let i = 0; i < 6; i++) {
@@ -159,9 +141,8 @@ for (const look of LUMO_LOOKS) {
     }
   });
 
-  test(`${look}: every emote and eye draws`, () => {
-    const e = new BotEngine();
-    e.look = look;
+  test(`${kind}: every emote and eye draws`, () => {
+    const e = engine(kind);
     for (const m of EMOTES) {
       e.triggerEmote(m, 0.5);
       step(e, 0.1);
@@ -179,21 +160,16 @@ for (const look of LUMO_LOOKS) {
     }
   });
 
-  test(`${look}: every outfit, the box a file is dropped into, a poke and a wave`, () => {
-    for (const o of OUTFITS) {
-      const e = new BotEngine();
-      e.look = look;
-      e.setOutfit(o, false);
-      e.lookX = 0.8;
-      e.lookY = -0.5;
-      step(e, 0.3);
-      frame(e);
-      e.setState("dizzy");
-      step(e, 0.5);
-      frame(e);
-    }
-    const e = new BotEngine();
-    e.look = look;
+  test(`${kind}: looking around, dizzy, the box a file is dropped into, a poke and a wave`, () => {
+    const d = engine(kind);
+    d.lookX = 0.8;
+    d.lookY = -0.5;
+    step(d, 0.3);
+    frame(d);
+    d.setState("dizzy");
+    step(d, 0.5);
+    frame(d);
+    const e = engine(kind);
     e.animateMorph(1, 100);
     step(e, 0.2);
     e.slotHTarget = 0.42;
@@ -203,50 +179,35 @@ for (const look of LUMO_LOOKS) {
     step(e, 0.3);
     frame(e);
     e.resetMorph();
+    e.slap();
+    e.greet();
     e.bodyColor = [0.2, 0.6, 0.4];
     step(e, 0.2);
     frame(e);
   });
-
-  test(`${look}: the wardrobe's buttons draw`, () => {
-    drawLookIcon(fakeContext(), 28, look);
-    for (const sel of OUTFIT_SELECTIONS) drawWardrobeIcon(fakeContext(), 28, sel, "leaf", "AUTO", look);
-  });
-
-  test(`${look}: the greeting blooms into him, inside the island`, () => {
-    const g = new Greeting();
-    g.look = look;
-    for (let t = 0; t < GREETING_END + 1; t += 0.05) {
-      const b = lumoBounds(greetingPose(t), look);
-      if (b) {
-        assert.ok(b.bottom <= 150 && b.top >= 0, `t=${t}: ${JSON.stringify(b)}`);
-        assert.ok(b.left >= 0 && b.right <= 640, `t=${t}: ${JSON.stringify(b)}`);
-      }
-    }
-    g.draw(fakeContext());
-  });
-
-  if (isRoundLook(look)) {
-    test(`${look}: the drop sequence draws him turning into the box`, () => {
-      for (const [morph, eye] of [[0, "pill"], [0.5, "cup"], [1, "cup"], [1, "content"]]) {
-        drawLookDropping(fakeContext(), look, {
-          x: 100, y: 90, d: 60, sx: 1, sy: 1, tilt: 0, hop: 0, t: 1.2, morph, mouth: 0.3, eye, lookX: 0.4, lookY: -0.3,
-        });
-      }
-    });
-  }
 }
 
-// ── Frames: nothing more than the firefly asks for ───────────────────────────
+test("the closed island and the open island's top bar: only Filo's eyes", () => {
+  const e = new BotEngine();
+  e.eyesOnly = true;
+  e.setState("working", true);
+  step(e, 0.3);
+  const calls = frame(e, 20 / 0.6, 40);
+  // No ring of light: nothing is stroked round him, no halo is filled behind him.
+  assert.equal(calls.get("stroke") ?? 0, 0);
+  assert.ok((calls.get("fill") ?? 0) > 0, "his eyes");
+});
 
-test("a round look at rest asks for no frames when Lumo only moves when something happens", () => {
+// ── Frames ────────────────────────────────────────────────────────────────────
+
+test("Filo at rest asks for no frames when Lumo only moves when something happens", () => {
   const e = new BotEngine();
   e.ambient = 0;
   e.setState("working", true);
   step(e, 4);
   e.setState("idle");
   step(e, 2);
-  // Only the blinks (a fifth of a second every few seconds) ask for frames, as for the firefly.
+  // Only the blinks (a fifth of a second every few seconds) ask for frames.
   let busy = 0;
   for (let i = 0; i < 300; i++) {
     step(e, 1 / 30);
@@ -254,26 +215,23 @@ test("a round look at rest asks for no frames when Lumo only moves when somethin
   }
   assert.ok(busy < 300 * 0.25, `busy ${busy} frames out of 300`);
   assert.equal(e.ambientActive, false);
-  // Calm: the island keeps drawing him at its gentle rate, as for the firefly.
+  // Calm: the island keeps drawing him at its gentle rate.
   e.ambient = 1;
   assert.equal(e.ambientActive, true);
 });
 
-test("every look keeps its heartbeat going while something waits for you", () => {
-  for (const look of LUMO_LOOKS) {
-    const e = new BotEngine();
-    e.look = look;
-    e.ambient = 0;
-    e.setState("question", true);
-    step(e, 3);
-    assert.equal(e.busy, true, look);
-    e.setState("idle");
-    step(e, 1);
-    assert.ok(quietSoon(e), `${look} settles at rest`);
-  }
+test("his heartbeat keeps going while something waits for you", () => {
+  const e = new BotEngine();
+  e.ambient = 0;
+  e.setState("question", true);
+  step(e, 3);
+  assert.equal(e.busy, true);
+  e.setState("idle");
+  step(e, 1);
+  assert.ok(quietSoon(e), "settles at rest");
 });
 
-test("an error and a finish light a round look up, then settle", () => {
+test("an error and a finish light Filo up, then settle", () => {
   const e = new BotEngine();
   e.ambient = 0;
   e.setState("error", true);
@@ -290,9 +248,8 @@ test("an error and a finish light a round look up, then settle", () => {
   assert.ok(quietSoon(e), "then still");
 });
 
-test("the firefly still jolts on an error and rolls when it is done", () => {
-  const e = new BotEngine();
-  e.look = "lucciola";
+test("the agents' minis still jolt on an error and roll when they are done", () => {
+  const e = engine("mini");
   e.ambient = 0;
   e.setState("error", true);
   step(e, 0.06);

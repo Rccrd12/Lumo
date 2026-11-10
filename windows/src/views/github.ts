@@ -116,9 +116,8 @@ function ciDot(ci: GitHubPR["ci"]): HTMLElement {
   return el;
 }
 
-// A row's reference and title sit in .gh-text: one line in the usual look
-// (display: contents), two in the new look, like the home's rows (look-new.css).
-// The new look also says how the checks went (.gh-pr-word), as the home does.
+// A row's reference and title sit in .gh-text: two lines, like the home's rows
+// (look-new.css). It also says how the checks went (.gh-pr-word), as the home does.
 function prRow(pr: GitHubPR, showCI: boolean): HTMLElement {
   const word = showCI && !pr.isDraft ? ciWord(pr.ci) : null;
   return h(

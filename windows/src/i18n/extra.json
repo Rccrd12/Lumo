@@ -169,42 +169,6 @@
    "id": "Menanyakan Codex…",
    "it": "Chiedo a Codex…"
   },
-  "Auto (seasons)": {
-   "zh-Hans": "自动（随季节）",
-   "hi": "ऑटो (मौसम के अनुसार)",
-   "es": "Auto (estaciones)",
-   "ar": "تلقائي (حسب المواسم)",
-   "fr": "Auto (saisons)",
-   "bn": "অটো (ঋতু অনুযায়ী)",
-   "pt-BR": "Auto (estações)",
-   "ru": "Авто (по сезону)",
-   "id": "Otomatis (musim)",
-   "it": "Auto (stagioni)"
-  },
-  "Auto · follows the seasons (now: {outfit})": {
-   "zh-Hans": "自动 · 随季节变化（当前：{outfit}）",
-   "hi": "ऑटो · मौसम के साथ बदलता है (अभी: {outfit})",
-   "es": "Auto · sigue las estaciones (ahora: {outfit})",
-   "ar": "تلقائي · يتبع المواسم (الآن: {outfit})",
-   "fr": "Auto · suit les saisons (en ce moment : {outfit})",
-   "bn": "অটো · ঋতু অনুযায়ী বদলায় (এখন: {outfit})",
-   "pt-BR": "Auto · acompanha as estações (agora: {outfit})",
-   "ru": "Авто · по сезону (сейчас: {outfit})",
-   "id": "Otomatis · mengikuti musim (sekarang: {outfit})",
-   "it": "Auto · segue le stagioni (ora: {outfit})"
-  },
-  "Auto · {outfit}": {
-   "zh-Hans": "自动 · {outfit}",
-   "hi": "ऑटो · {outfit}",
-   "es": "Auto · {outfit}",
-   "ar": "تلقائي · {outfit}",
-   "fr": "Auto · {outfit}",
-   "bn": "অটো · {outfit}",
-   "pt-BR": "Auto · {outfit}",
-   "ru": "Авто · {outfit}",
-   "id": "Otomatis · {outfit}",
-   "it": "Auto · {outfit}"
-  },
   "Back": {
    "zh-Hans": "返回",
    "hi": "वापस",
@@ -949,18 +913,6 @@
    "id": "Selesai. Angkanya muncul setelah balasan berikutnya dari sesi Claude Code.",
    "it": "Fatto. I numeri compaiono dopo la prossima risposta di una sessione di Claude Code."
   },
-  "Drop": {
-   "zh-Hans": "拖放",
-   "hi": "छोड़ें",
-   "es": "Soltar",
-   "ar": "إفلات",
-   "fr": "Déposer",
-   "bn": "ড্রপ",
-   "pt-BR": "Soltar",
-   "ru": "Перетащить",
-   "id": "Letakkan",
-   "it": "Rilascia"
-  },
   "Enter the server address first.": {
    "zh-Hans": "请先输入服务器地址。",
    "hi": "पहले सर्वर का पता दर्ज करें।",
@@ -1416,18 +1368,6 @@
    "ru": "Понедельник",
    "id": "Senin",
    "it": "Lunedì"
-  },
-  "Mute": {
-   "zh-Hans": "静音",
-   "hi": "म्यूट",
-   "es": "Silenciar",
-   "ar": "كتم الصوت",
-   "fr": "Couper le son",
-   "bn": "মিউট",
-   "pt-BR": "Silenciar",
-   "ru": "Без звука",
-   "id": "Bisukan",
-   "it": "Disattiva audio"
   },
   "Mute or unmute Lumo": {
    "zh-Hans": "静音或取消静音 Lumo",
@@ -2101,18 +2041,6 @@
    "id": "Mulai ulang OpenCode untuk memuat plugin.",
    "it": "Riavvia OpenCode per caricare il plugin."
   },
-  "Round glasses": {
-   "zh-Hans": "圆框眼镜",
-   "hi": "गोल चश्मा",
-   "es": "Gafas redondas",
-   "ar": "نظارة دائرية",
-   "fr": "Lunettes rondes",
-   "bn": "গোল চশমা",
-   "pt-BR": "Óculos redondos",
-   "ru": "Круглые очки",
-   "id": "Kacamata bulat",
-   "it": "Occhiali rotondi"
-  },
   "Saturday": {
    "zh-Hans": "星期六",
    "hi": "शनिवार",
@@ -2184,18 +2112,6 @@
    "ru": "Сохранение…",
    "id": "Menyimpan…",
    "it": "Salvataggio…"
-  },
-  "Scarf": {
-   "zh-Hans": "围巾",
-   "hi": "मफ़लर",
-   "es": "Bufanda",
-   "ar": "وشاح",
-   "fr": "Écharpe",
-   "bn": "মাফলার",
-   "pt-BR": "Cachecol",
-   "ru": "Шарф",
-   "id": "Syal",
-   "it": "Sciarpa"
   },
   "Secret key": {
    "zh-Hans": "私密密钥",
@@ -4781,18 +4697,6 @@
    "id": "Buka di jendela",
    "it": "Apri in una finestra"
   },
-  "Folder open in File Explorer": {
-   "zh-Hans": "文件资源管理器中打开的文件夹",
-   "hi": "फ़ाइल एक्सप्लोरर में खुला फ़ोल्डर",
-   "es": "Carpeta abierta en el Explorador de archivos",
-   "ar": "المجلد المفتوح في مستكشف الملفات",
-   "fr": "Dossier ouvert dans l'Explorateur de fichiers",
-   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার",
-   "pt-BR": "Pasta aberta no Explorador de Arquivos",
-   "ru": "Папка, открытая в Проводнике",
-   "id": "Folder yang terbuka di File Explorer",
-   "it": "Cartella aperta in Esplora file"
-  },
   "No folder is open in File Explorer.": {
    "zh-Hans": "文件资源管理器中没有打开的文件夹。",
    "hi": "फ़ाइल एक्सप्लोरर में कोई फ़ोल्डर खुला नहीं है।",
@@ -4828,42 +4732,6 @@
    "ru": "Можно читать только папку, которой поделились кнопкой экрана.",
    "id": "Hanya folder yang dibagikan dari tombol layar yang bisa dibaca.",
    "it": "Si può leggere solo una cartella condivisa con il pulsante dello schermo."
-  },
-  "Leaf": {
-   "zh-Hans": "叶子",
-   "hi": "पत्ती",
-   "es": "Hoja",
-   "ar": "ورقة",
-   "fr": "Feuille",
-   "bn": "পাতা",
-   "pt-BR": "Folha",
-   "ru": "Листик",
-   "id": "Daun",
-   "it": "Foglia"
-  },
-  "Bow tie": {
-   "zh-Hans": "领结",
-   "hi": "बो टाई",
-   "es": "Pajarita",
-   "ar": "ربطة عنق فراشة",
-   "fr": "Nœud papillon",
-   "bn": "বো টাই",
-   "pt-BR": "Gravata-borboleta",
-   "ru": "Бабочка",
-   "id": "Dasi kupu-kupu",
-   "it": "Papillon"
-  },
-  "Headphones": {
-   "zh-Hans": "耳机",
-   "hi": "हेडफ़ोन",
-   "es": "Auriculares",
-   "ar": "سماعات رأس",
-   "fr": "Casque audio",
-   "bn": "হেডফোন",
-   "pt-BR": "Fones de ouvido",
-   "ru": "Наушники",
-   "id": "Headphone",
-   "it": "Cuffie"
   },
   "Calm": {
    "zh-Hans": "平静",
@@ -5164,90 +5032,6 @@
    "ru": "Работает с вашим аккаунтом Google. Ключ не нужен.",
    "id": "Memakai akun Google Anda. Tidak perlu kunci.",
    "it": "Usa il tuo account Google. Nessuna chiave necessaria."
-  },
-  "Filo · a ring of light": {
-   "zh-Hans": "Filo · 一圈光环",
-   "hi": "Filo · रोशनी का घेरा",
-   "es": "Filo · un anillo de luz",
-   "ar": "Filo · حلقة من الضوء",
-   "fr": "Filo · un anneau de lumière",
-   "bn": "Filo · আলোর বলয়",
-   "pt-BR": "Filo · um anel de luz",
-   "ru": "Filo · кольцо света",
-   "id": "Filo · cincin cahaya",
-   "it": "Filo · un anello di luce"
-  },
-  "Punto · a dot of light": {
-   "zh-Hans": "Punto · 一点光",
-   "hi": "Punto · रोशनी का बिंदु",
-   "es": "Punto · un punto de luz",
-   "ar": "Punto · نقطة من الضوء",
-   "fr": "Punto · un point de lumière",
-   "bn": "Punto · আলোর বিন্দু",
-   "pt-BR": "Punto · um ponto de luz",
-   "ru": "Punto · точка света",
-   "id": "Punto · titik cahaya",
-   "it": "Punto · un punto di luce"
-  },
-  "Goccia · a soft drop": {
-   "zh-Hans": "Goccia · 一颗柔软的水滴",
-   "hi": "Goccia · एक नरम बूँद",
-   "es": "Goccia · una gota suave",
-   "ar": "Goccia · قطرة ناعمة",
-   "fr": "Goccia · une goutte toute douce",
-   "bn": "Goccia · একটি নরম ফোঁটা",
-   "pt-BR": "Goccia · uma gota macia",
-   "ru": "Goccia · мягкая капля",
-   "id": "Goccia · tetesan lembut",
-   "it": "Goccia · una goccia morbida"
-  },
-  "Lucciola · the firefly": {
-   "zh-Hans": "Lucciola · 萤火虫",
-   "hi": "Lucciola · जुगनू",
-   "es": "Lucciola · la luciérnaga",
-   "ar": "Lucciola · اليراعة",
-   "fr": "Lucciola · la luciole",
-   "bn": "Lucciola · জোনাকি",
-   "pt-BR": "Lucciola · o vaga-lume",
-   "ru": "Lucciola · светлячок",
-   "id": "Lucciola · kunang-kunang",
-   "it": "Lucciola · la lucciola"
-  },
-  "Lumo's style": {
-   "zh-Hans": "Lumo 的风格",
-   "hi": "Lumo की शैली",
-   "es": "El estilo de Lumo",
-   "ar": "أسلوب Lumo",
-   "fr": "Le style de Lumo",
-   "bn": "Lumo-র স্টাইল",
-   "pt-BR": "O estilo do Lumo",
-   "ru": "Стиль Lumo",
-   "id": "Gaya Lumo",
-   "it": "Lo stile di Lumo"
-  },
-  "Outfits": {
-   "zh-Hans": "服饰",
-   "hi": "पोशाकें",
-   "es": "Atuendos",
-   "ar": "الأزياء",
-   "fr": "Tenues",
-   "bn": "পোশাক",
-   "pt-BR": "Roupas",
-   "ru": "Наряды",
-   "id": "Pakaian",
-   "it": "Outfit"
-  },
-  "Lumo's look": {
-   "zh-Hans": "Lumo 的外观",
-   "hi": "Lumo का रूप",
-   "es": "El aspecto de Lumo",
-   "ar": "مظهر Lumo",
-   "fr": "Apparence de Lumo",
-   "bn": "Lumo-র চেহারা",
-   "pt-BR": "Visual do Lumo",
-   "ru": "Облик Lumo",
-   "id": "Tampilan Lumo",
-   "it": "Aspetto di Lumo"
   },
   "Plan usage: not reported yet": {
    "zh-Hans": "套餐用量：尚未报告",
@@ -6425,18 +6209,6 @@
    "id": "Perkecil",
    "it": "Riduci"
   },
-  "Start": {
-   "zh-Hans": "开始",
-   "hi": "शुरू करें",
-   "es": "Iniciar",
-   "ar": "ابدأ",
-   "fr": "Lancer",
-   "bn": "শুরু",
-   "pt-BR": "Iniciar",
-   "ru": "Старт",
-   "id": "Mulai",
-   "it": "Avvia"
-  },
   "15m pasta": {
    "zh-Hans": "15m 面条",
    "hi": "15m पास्ता",
@@ -6497,30 +6269,6 @@
    "id": "Tidak ada dalam beberapa hari ke depan",
    "it": "Niente nei prossimi giorni"
   },
-  "Paste your calendar's iCal address in Settings → Island to see what's next.": {
-   "zh-Hans": "在“设置 → 岛”中粘贴日历的 iCal 地址，即可查看接下来的安排。",
-   "hi": "आगे क्या है देखने के लिए सेटिंग्स → आइलैंड में अपने कैलेंडर का iCal पता चिपकाएँ।",
-   "es": "Pega la dirección iCal de tu calendario en Ajustes → Isla para ver lo que viene.",
-   "ar": "الصق عنوان iCal لتقويمك في الإعدادات ← الجزيرة لترى ما هو قادم.",
-   "fr": "Colle l'adresse iCal de ton calendrier dans Réglages → Île pour voir ce qui arrive.",
-   "bn": "সামনে কী আছে দেখতে সেটিংস → আইল্যান্ডে আপনার ক্যালেন্ডারের iCal ঠিকানা পেস্ট করুন।",
-   "pt-BR": "Cole o endereço iCal da sua agenda em Configurações → Ilha para ver o que vem por aí.",
-   "ru": "Вставьте iCal-адрес календаря в Настройки → Остров, чтобы видеть, что впереди.",
-   "id": "Tempel alamat iCal kalendermu di Pengaturan → Pulau untuk melihat yang akan datang.",
-   "it": "Incolla l'indirizzo iCal del tuo calendario in Impostazioni → Isola per vedere cosa ti aspetta."
-  },
-  "Turn on the Email pill in Settings to see new emails here.": {
-   "zh-Hans": "在设置中打开“电子邮件”胶囊，即可在此看到新邮件。",
-   "hi": "यहाँ नए ईमेल देखने के लिए सेटिंग्स में ईमेल पिल चालू करें।",
-   "es": "Activa la píldora Correo en Ajustes para ver aquí los correos nuevos.",
-   "ar": "فعّل حبة البريد الإلكتروني في الإعدادات لترى الرسائل الجديدة هنا.",
-   "fr": "Active la pastille E-mail dans les Réglages pour voir les nouveaux e-mails ici.",
-   "bn": "এখানে নতুন ইমেল দেখতে সেটিংসে ইমেল পিল চালু করুন।",
-   "pt-BR": "Ative a pílula E-mail nas Configurações para ver os e-mails novos aqui.",
-   "ru": "Включите плашку «Почта» в настройках, чтобы видеть здесь новые письма.",
-   "id": "Aktifkan pil Email di Pengaturan untuk melihat email baru di sini.",
-   "it": "Attiva la pillola Email nelle Impostazioni per vedere qui le nuove email."
-  },
   "Today": {
    "zh-Hans": "今天",
    "hi": "आज",
@@ -6556,18 +6304,6 @@
    "ru": "Весь день",
    "id": "Sepanjang hari",
    "it": "Tutto il giorno"
-  },
-  "beside the open island: timers, the music, the calendar and the newest emails": {
-   "zh-Hans": "在展开的岛旁边：计时器、音乐、日历和最新邮件",
-   "hi": "खुले आइलैंड के बगल में: टाइमर, संगीत, कैलेंडर और नए ईमेल",
-   "es": "junto a la isla abierta: temporizadores, la música, el calendario y los correos más recientes",
-   "ar": "بجانب الجزيرة المفتوحة: المؤقتات والموسيقى والتقويم وأحدث الرسائل",
-   "fr": "à côté de l'île ouverte : minuteurs, musique, calendrier et derniers e-mails",
-   "bn": "খোলা আইল্যান্ডের পাশে: টাইমার, গান, ক্যালেন্ডার আর নতুন ইমেল",
-   "pt-BR": "ao lado da ilha aberta: timers, a música, a agenda e os e-mails mais recentes",
-   "ru": "рядом с открытым островом: таймеры, музыка, календарь и новые письма",
-   "id": "di samping pulau yang terbuka: timer, musik, kalender, dan email terbaru",
-   "it": "accanto all'isola aperta: timer, musica, calendario e le email più recenti"
   },
   "The calendar's secret iCal address. Google Calendar: Settings → your calendar → Integrate calendar → Secret address in iCal format. It stays in the {store}, and Lumo only reads it.": {
    "zh-Hans": "日历的私密 iCal 地址。Google 日历：设置 → 你的日历 → 集成日历 → iCal 格式的私密地址。它保存在{store}中，Lumo 只会读取。",
@@ -6628,30 +6364,6 @@
    "ru": "Неверный адрес или пароль приложения.",
    "id": "Alamat atau sandi aplikasi salah.",
    "it": "L'indirizzo o la password per le app non sono corretti."
-  },
-  "Ignore": {
-   "zh-Hans": "忽略",
-   "hi": "अनदेखा करें",
-   "es": "Ignorar",
-   "ar": "تجاهل",
-   "fr": "Ignorer",
-   "bn": "উপেক্ষা করুন",
-   "pt-BR": "Ignorar",
-   "ru": "Скрыть",
-   "id": "Abaikan",
-   "it": "Ignora"
-  },
-  "Open this email": {
-   "zh-Hans": "打开这封邮件",
-   "hi": "यह ईमेल खोलें",
-   "es": "Abrir este correo",
-   "ar": "فتح هذه الرسالة",
-   "fr": "Ouvrir cet e-mail",
-   "bn": "এই ইমেলটি খুলুন",
-   "pt-BR": "Abrir este e-mail",
-   "ru": "Открыть это письмо",
-   "id": "Buka email ini",
-   "it": "Apri questa email"
   },
   "{pct}% used": {
    "zh-Hans": "已用 {pct}%",
@@ -7320,30 +7032,6 @@
    "ru": "Меню правой кнопки",
    "id": "Menu klik kanan",
    "it": "Menu del tasto destro"
-  },
-  "Follow the island's height": {
-   "zh-Hans": "跟随岛的高度",
-   "hi": "आइलैंड की ऊँचाई के साथ चलें",
-   "es": "Seguir la altura de la isla",
-   "ar": "اتّباع ارتفاع الجزيرة",
-   "fr": "Suivre la hauteur de l'île",
-   "bn": "আইল্যান্ডের উচ্চতা অনুসরণ করুন",
-   "pt-BR": "Acompanhar a altura da ilha",
-   "ru": "Следовать высоте острова",
-   "id": "Ikuti tinggi pulau",
-   "it": "Segui l'altezza dell'isola"
-  },
-  "as tall as the open island, growing and shrinking with it when you resize it; off, they keep the height you give them": {
-   "zh-Hans": "与打开的岛一样高，调整岛的大小时随之变高或变矮；关闭时保持你设定的高度",
-   "hi": "खुले आइलैंड जितनी ऊँची, उसका आकार बदलने पर उसके साथ बढ़ती और घटती हैं; बंद होने पर वही ऊँचाई रखती हैं जो आप दें",
-   "es": "tan altas como la isla abierta, crecen y se encogen con ella al redimensionarla; desactivado, mantienen la altura que les des",
-   "ar": "بارتفاع الجزيرة المفتوحة، تكبر وتصغر معها عند تغيير حجمها؛ عند الإيقاف تحتفظ بالارتفاع الذي تحدده",
-   "fr": "aussi hautes que l'île ouverte, elles grandissent et rétrécissent avec elle quand tu la redimensionnes ; désactivé, elles gardent la hauteur que tu leur donnes",
-   "bn": "খোলা আইল্যান্ডের সমান উঁচু, আকার বদলালে সঙ্গে বাড়ে-কমে; বন্ধ থাকলে আপনার দেওয়া উচ্চতা রাখে",
-   "pt-BR": "tão altas quanto a ilha aberta, crescem e encolhem com ela ao redimensioná-la; desativado, mantêm a altura que você der",
-   "ru": "той же высоты, что и открытый остров, растут и уменьшаются вместе с ним при изменении размера; если выключено, сохраняют заданную вами высоту",
-   "id": "setinggi pulau yang terbuka, ikut membesar dan mengecil saat Anda mengubah ukurannya; jika mati, tetap pada tinggi yang Anda atur",
-   "it": "alte quanto l'isola aperta, crescono e si riducono con lei quando la ridimensioni; se spento, mantengono l'altezza che dai loro"
   },
   "All windows": {
    "zh-Hans": "所有窗口",
@@ -10847,18 +10535,6 @@
    "id": "Daftar skill Anda",
    "it": "Elenca le tue skill"
   },
-  "Folders open in File Explorer": {
-   "zh-Hans": "文件资源管理器中打开的文件夹",
-   "hi": "फ़ाइल एक्सप्लोरर में खुले फ़ोल्डर",
-   "es": "Carpetas abiertas en el Explorador de archivos",
-   "ar": "المجلدات المفتوحة في مستكشف الملفات",
-   "fr": "Dossiers ouverts dans l'Explorateur de fichiers",
-   "bn": "ফাইল এক্সপ্লোরারে খোলা ফোল্ডার",
-   "pt-BR": "Pastas abertas no Explorador de Arquivos",
-   "ru": "Папки, открытые в проводнике",
-   "id": "Folder yang terbuka di File Explorer",
-   "it": "Cartelle aperte in Esplora file"
-  },
   "All folders": {
    "zh-Hans": "所有文件夹",
    "hi": "सभी फ़ोल्डर",
@@ -14099,29 +13775,77 @@
    "id": "Mendaftar {name}",
    "it": "Elenca {name}"
   },
-  "Asks before each of your tools runs, even one you trust.": {
-   "zh-Hans": "运行你的每个工具前都会询问，即使是你信任的工具。",
-   "hi": "आपके हर टूल के चलने से पहले पूछता है, भरोसेमंद टूल के लिए भी।",
-   "es": "Pregunta antes de que se ejecute cada una de tus herramientas, incluso las de confianza.",
-   "ar": "يسأل قبل تشغيل كل أداة من أدواتك، حتى الموثوقة منها.",
-   "fr": "Demande avant chaque exécution de vos outils, même ceux de confiance.",
-   "bn": "আপনার প্রতিটি টুল চালানোর আগে জিজ্ঞেস করে, বিশ্বস্ত টুলের ক্ষেত্রেও।",
-   "pt-BR": "Pergunta antes de cada uma das suas ferramentas rodar, mesmo as confiáveis.",
-   "ru": "Спрашивает перед запуском каждого вашего инструмента, даже доверенного.",
-   "id": "Bertanya sebelum setiap alat Anda dijalankan, bahkan yang Anda percayai.",
-   "it": "Chiede prima di ogni tuo strumento, anche quelli di cui ti fidi."
+  "Ask for approval": {
+   "zh-Hans": "请求批准",
+   "hi": "अनुमति माँगें",
+   "es": "Pedir aprobación",
+   "ar": "طلب الموافقة",
+   "fr": "Demander l'approbation",
+   "bn": "অনুমোদন চান",
+   "pt-BR": "Pedir aprovação",
+   "ru": "Запрашивать одобрение",
+   "id": "Minta persetujuan",
+   "it": "Chiedi l'approvazione"
   },
-  "Runs the tools you trust without asking, and asks for the rest.": {
-   "zh-Hans": "直接运行你信任的工具，其余的会先询问。",
-   "hi": "भरोसेमंद टूल बिना पूछे चलाता है, बाकी के लिए पूछता है।",
-   "es": "Ejecuta sin preguntar las herramientas de confianza y pregunta por el resto.",
-   "ar": "يشغّل الأدوات الموثوقة دون سؤال، ويسأل عن الباقي.",
-   "fr": "Lance sans demander les outils de confiance, et demande pour les autres.",
-   "bn": "বিশ্বস্ত টুল না জিজ্ঞেস করেই চালায়, বাকিগুলোর জন্য জিজ্ঞেস করে।",
-   "pt-BR": "Roda sem perguntar as ferramentas confiáveis e pergunta pelas outras.",
-   "ru": "Запускает доверенные инструменты без вопросов, об остальных спрашивает.",
-   "id": "Menjalankan alat yang Anda percayai tanpa bertanya, dan bertanya untuk sisanya.",
-   "it": "Usa senza chiedere gli strumenti di cui ti fidi, e chiede per gli altri."
+  "Asks before using tools or the internet.": {
+   "zh-Hans": "使用工具或联网前先询问。",
+   "hi": "टूल या इंटरनेट इस्तेमाल करने से पहले पूछता है।",
+   "es": "Pregunta antes de usar herramientas o internet.",
+   "ar": "يسأل قبل استخدام الأدوات أو الإنترنت.",
+   "fr": "Demande avant d'utiliser des outils ou Internet.",
+   "bn": "টুল বা ইন্টারনেট ব্যবহারের আগে জিজ্ঞাসা করে।",
+   "pt-BR": "Pergunta antes de usar ferramentas ou a internet.",
+   "ru": "Спрашивает перед использованием инструментов или интернета.",
+   "id": "Bertanya sebelum memakai alat atau internet.",
+   "it": "Chiede prima di usare strumenti o internet."
+  },
+  "Approve for me": {
+   "zh-Hans": "替我批准",
+   "hi": "मेरे लिए स्वीकृत करें",
+   "es": "Aprobar por mí",
+   "ar": "الموافقة نيابةً عني",
+   "fr": "Approuver pour moi",
+   "bn": "আমার হয়ে অনুমোদন করুন",
+   "pt-BR": "Aprovar por mim",
+   "ru": "Одобрять за меня",
+   "id": "Setujui untuk saya",
+   "it": "Approva per me"
+  },
+  "Only asks for risky actions.": {
+   "zh-Hans": "只在有风险的操作时询问。",
+   "hi": "सिर्फ़ जोखिम भरे कामों के लिए पूछता है।",
+   "es": "Solo pregunta en las acciones arriesgadas.",
+   "ar": "يسأل عن الإجراءات الخطرة فقط.",
+   "fr": "Ne demande que pour les actions risquées.",
+   "bn": "শুধু ঝুঁকিপূর্ণ কাজের জন্য জিজ্ঞাসা করে।",
+   "pt-BR": "Só pergunta nas ações arriscadas.",
+   "ru": "Спрашивает только о рискованных действиях.",
+   "id": "Hanya bertanya untuk tindakan berisiko.",
+   "it": "Chiede solo per le azioni rischiose."
+  },
+  "Run automatically": {
+   "zh-Hans": "自动运行",
+   "hi": "अपने-आप चलाएँ",
+   "es": "Ejecutar automáticamente",
+   "ar": "التشغيل تلقائيًا",
+   "fr": "Exécuter automatiquement",
+   "bn": "স্বয়ংক্রিয়ভাবে চালান",
+   "pt-BR": "Executar automaticamente",
+   "ru": "Выполнять автоматически",
+   "id": "Jalankan otomatis",
+   "it": "Esegui in automatico"
+  },
+  "Never asks. Code stays in the sandbox.": {
+   "zh-Hans": "从不询问。代码留在沙盒中。",
+   "hi": "कभी नहीं पूछता। कोड सैंडबॉक्स में रहता है।",
+   "es": "Nunca pregunta. El código se queda en el sandbox.",
+   "ar": "لا يسأل أبدًا. تبقى الشيفرة داخل بيئة العزل.",
+   "fr": "Ne demande jamais. Le code reste dans la sandbox.",
+   "bn": "কখনো জিজ্ঞাসা করে না। কোড স্যান্ডবক্সেই থাকে।",
+   "pt-BR": "Nunca pergunta. O código fica na sandbox.",
+   "ru": "Никогда не спрашивает. Код остаётся в песочнице.",
+   "id": "Tidak pernah bertanya. Kode tetap di sandbox.",
+   "it": "Non chiede mai. Il codice resta nella sandbox."
   },
   "Gets none of your tools: it only answers and plans.": {
    "zh-Hans": "不使用你的任何工具：只回答和规划。",
@@ -14134,6 +13858,78 @@
    "ru": "Не получает ваших инструментов: только отвечает и планирует.",
    "id": "Tidak mendapat alat Anda: hanya menjawab dan merencanakan.",
    "it": "Non riceve nessuno dei tuoi strumenti: risponde e pianifica soltanto."
+  },
+  "Sandbox": {
+   "zh-Hans": "沙盒",
+   "hi": "सैंडबॉक्स",
+   "es": "Sandbox",
+   "ar": "العزل",
+   "fr": "Sandbox",
+   "bn": "স্যান্ডবক্স",
+   "pt-BR": "Sandbox",
+   "ru": "Песочница",
+   "id": "Sandbox",
+   "it": "Sandbox"
+  },
+  "How to isolate code?": {
+   "zh-Hans": "如何隔离代码？",
+   "hi": "कोड को कैसे अलग रखें?",
+   "es": "¿Cómo aislar el código?",
+   "ar": "كيف تُعزل الشيفرة؟",
+   "fr": "Comment isoler le code ?",
+   "bn": "কোড কীভাবে আলাদা রাখবেন?",
+   "pt-BR": "Como isolar o código?",
+   "ru": "Как изолировать код?",
+   "id": "Bagaimana mengisolasi kode?",
+   "it": "Come isolare il codice?"
+  },
+  "sandbox|Low": {
+   "zh-Hans": "低",
+   "hi": "कम",
+   "es": "Bajo",
+   "ar": "منخفض",
+   "fr": "Faible",
+   "bn": "কম",
+   "pt-BR": "Baixa",
+   "ru": "Низкая",
+   "id": "Rendah",
+   "it": "Bassa"
+  },
+  "Only Lumo's protections. Risky code asks first.": {
+   "zh-Hans": "只有 Lumo 自己的保护。有风险的代码会先询问。",
+   "hi": "सिर्फ़ Lumo की सुरक्षा। जोखिम भरा कोड पहले पूछता है।",
+   "es": "Solo las protecciones de Lumo. El código arriesgado pregunta antes.",
+   "ar": "حماية Lumo فقط. الشيفرة الخطرة تسأل أولًا.",
+   "fr": "Seulement les protections de Lumo. Le code risqué demande d'abord.",
+   "bn": "শুধু Lumo-র সুরক্ষা। ঝুঁকিপূর্ণ কোড আগে জিজ্ঞাসা করে।",
+   "pt-BR": "Só as proteções do Lumo. Código arriscado pergunta antes.",
+   "ru": "Только защита Lumo. Рискованный код сначала спрашивает.",
+   "id": "Hanya perlindungan Lumo. Kode berisiko bertanya dulu.",
+   "it": "Solo le protezioni di Lumo. Il codice rischioso chiede prima."
+  },
+  "sandbox|High": {
+   "zh-Hans": "高",
+   "hi": "उच्च",
+   "es": "Alto",
+   "ar": "مرتفع",
+   "fr": "Élevée",
+   "bn": "বেশি",
+   "pt-BR": "Alta",
+   "ru": "Высокая",
+   "id": "Tinggi",
+   "it": "Alta"
+  },
+  "Tools also run in the Windows sandbox.": {
+   "zh-Hans": "工具还会在 Windows 沙盒中运行。",
+   "hi": "टूल Windows सैंडबॉक्स में भी चलते हैं।",
+   "es": "Las herramientas también se ejecutan en el sandbox de Windows.",
+   "ar": "تعمل الأدوات أيضًا داخل بيئة العزل في Windows.",
+   "fr": "Les outils tournent aussi dans la sandbox de Windows.",
+   "bn": "টুলগুলো Windows স্যান্ডবক্সেও চলে।",
+   "pt-BR": "As ferramentas também rodam na sandbox do Windows.",
+   "ru": "Инструменты также работают в песочнице Windows.",
+   "id": "Alat juga berjalan di sandbox Windows.",
+   "it": "Gli strumenti girano anche nella sandbox di Windows."
   },
   "Loading the model…": {
    "zh-Hans": "正在加载模型…",
@@ -15164,30 +14960,6 @@
    "ru": "около {used} из {total}",
    "id": "sekitar {used} dari {total}",
    "it": "circa {used} su {total}"
-  },
-  "Previous look": {
-   "zh-Hans": "旧外观",
-   "hi": "पुराना रूप",
-   "es": "Aspecto anterior",
-   "ar": "المظهر السابق",
-   "fr": "Ancien look",
-   "bn": "আগের চেহারা",
-   "pt-BR": "Visual anterior",
-   "ru": "Прежний вид",
-   "id": "Tampilan sebelumnya",
-   "it": "Look precedente"
-  },
-  "Lumo in the open island's left column, with the tabs, as before 0.18.0.": {
-   "zh-Hans": "Lumo 在展开岛的左栏，带标签页，和 0.18.0 之前一样。",
-   "hi": "Lumo खुले आइलैंड के बाएँ कॉलम में, टैब के साथ, जैसा 0.18.0 से पहले था।",
-   "es": "Lumo en la columna izquierda de la isla abierta, con las pestañas, como antes de la 0.18.0.",
-   "ar": "يكون Lumo في العمود الأيسر للجزيرة المفتوحة، مع علامات التبويب، كما كان قبل 0.18.0.",
-   "fr": "Lumo dans la colonne de gauche de l'île ouverte, avec les onglets, comme avant la 0.18.0.",
-   "bn": "Lumo খোলা আইল্যান্ডের বাঁ কলামে, ট্যাবসহ, যেমন 0.18.0-এর আগে ছিল।",
-   "pt-BR": "O Lumo na coluna esquerda da ilha aberta, com as abas, como antes da 0.18.0.",
-   "ru": "Lumo в левой колонке открытого острова, с вкладками, как до 0.18.0.",
-   "id": "Lumo di kolom kiri pulau yang terbuka, dengan tab, seperti sebelum 0.18.0.",
-   "it": "Lumo nella colonna a sinistra dell'isola aperta, con le schede, come prima della 0.18.0."
   },
   "Beta versions": {
    "zh-Hans": "测试版",
@@ -16788,6 +16560,856 @@
    "ru": "GitHub не указал SHA-256 этого установщика, поэтому Lumo его не установил.",
    "id": "GitHub tidak memberikan SHA-256 untuk penginstal ini, jadi Lumo tidak memasangnya.",
    "it": "GitHub non ha indicato lo SHA-256 di questo programma di installazione, quindi Lumo non l'ha installato."
+  },
+  "{count} cards": {
+   "zh-Hans": "{count} 张卡片",
+   "hi": "{count} कार्ड",
+   "es": "{count} fichas",
+   "ar": "البطاقات: {count}",
+   "fr": "{count} fiches",
+   "bn": "{count}টি কার্ড",
+   "pt-BR": "{count} cartões",
+   "ru": "Карточек: {count}",
+   "id": "{count} kartu",
+   "it": "{count} schede"
+  },
+  "Next card": {
+   "zh-Hans": "下一张卡片",
+   "hi": "अगला कार्ड",
+   "es": "Ficha siguiente",
+   "ar": "البطاقة التالية",
+   "fr": "Fiche suivante",
+   "bn": "পরের কার্ড",
+   "pt-BR": "Próximo cartão",
+   "ru": "Следующая карточка",
+   "id": "Kartu berikutnya",
+   "it": "Scheda successiva"
+  },
+  "Previous card": {
+   "zh-Hans": "上一张卡片",
+   "hi": "पिछला कार्ड",
+   "es": "Ficha anterior",
+   "ar": "البطاقة السابقة",
+   "fr": "Fiche précédente",
+   "bn": "আগের কার্ড",
+   "pt-BR": "Cartão anterior",
+   "ru": "Предыдущая карточка",
+   "id": "Kartu sebelumnya",
+   "it": "Scheda precedente"
+  },
+  "Note": {
+   "zh-Hans": "注意",
+   "hi": "नोट",
+   "es": "Nota",
+   "ar": "ملاحظة",
+   "fr": "Remarque",
+   "bn": "নোট",
+   "pt-BR": "Nota",
+   "ru": "Примечание",
+   "id": "Catatan",
+   "it": "Nota"
+  },
+  "Tip": {
+   "zh-Hans": "提示",
+   "hi": "सुझाव",
+   "es": "Consejo",
+   "ar": "نصيحة",
+   "fr": "Astuce",
+   "bn": "টিপ",
+   "pt-BR": "Dica",
+   "ru": "Совет",
+   "id": "Tips",
+   "it": "Suggerimento"
+  },
+  "Important": {
+   "zh-Hans": "重要",
+   "hi": "महत्वपूर्ण",
+   "es": "Importante",
+   "ar": "مهم",
+   "fr": "Important",
+   "bn": "গুরুত্বপূর্ণ",
+   "pt-BR": "Importante",
+   "ru": "Важно",
+   "id": "Penting",
+   "it": "Importante"
+  },
+  "Warning": {
+   "zh-Hans": "警告",
+   "hi": "चेतावनी",
+   "es": "Atención",
+   "ar": "تحذير",
+   "fr": "Attention",
+   "bn": "সতর্কতা",
+   "pt-BR": "Atenção",
+   "ru": "Внимание",
+   "id": "Peringatan",
+   "it": "Attenzione"
+  },
+  "Caution": {
+   "zh-Hans": "危险",
+   "hi": "सावधान",
+   "es": "Peligro",
+   "ar": "خطر",
+   "fr": "Danger",
+   "bn": "বিপদ",
+   "pt-BR": "Perigo",
+   "ru": "Осторожно",
+   "id": "Bahaya",
+   "it": "Pericolo"
+  },
+  "Steps": {
+   "zh-Hans": "步骤",
+   "hi": "चरण",
+   "es": "Pasos",
+   "ar": "الخطوات",
+   "fr": "Étapes",
+   "bn": "ধাপ",
+   "pt-BR": "Passos",
+   "ru": "Шаги",
+   "id": "Langkah",
+   "it": "Passaggi"
+  },
+  "Comparison": {
+   "zh-Hans": "对比",
+   "hi": "तुलना",
+   "es": "Comparación",
+   "ar": "مقارنة",
+   "fr": "Comparaison",
+   "bn": "তুলনা",
+   "pt-BR": "Comparação",
+   "ru": "Сравнение",
+   "id": "Perbandingan",
+   "it": "Confronto"
+  },
+  "Calculator": {
+   "zh-Hans": "计算器",
+   "hi": "कैलकुलेटर",
+   "es": "Calculadora",
+   "ar": "حاسبة",
+   "fr": "Calculatrice",
+   "bn": "ক্যালকুলেটর",
+   "pt-BR": "Calculadora",
+   "ru": "Калькулятор",
+   "id": "Kalkulator",
+   "it": "Calcolatore"
+  },
+  "Chart": {
+   "zh-Hans": "图表",
+   "hi": "चार्ट",
+   "es": "Gráfico",
+   "ar": "رسم بياني",
+   "fr": "Graphique",
+   "bn": "চার্ট",
+   "pt-BR": "Gráfico",
+   "ru": "График",
+   "id": "Grafik",
+   "it": "Grafico"
+  },
+  "Couldn't load the image": {
+   "zh-Hans": "无法加载图片",
+   "hi": "तस्वीर लोड नहीं हो सकी",
+   "es": "No se pudo cargar la imagen",
+   "ar": "تعذّر تحميل الصورة",
+   "fr": "Impossible de charger l'image",
+   "bn": "ছবিটি লোড করা যায়নি",
+   "pt-BR": "Não foi possível carregar a imagem",
+   "ru": "Не удалось загрузить изображение",
+   "id": "Gambar tidak dapat dimuat",
+   "it": "Impossibile caricare l'immagine"
+  },
+  "Try again": {
+   "zh-Hans": "重试",
+   "hi": "फिर से कोशिश करें",
+   "es": "Reintentar",
+   "ar": "إعادة المحاولة",
+   "fr": "Réessayer",
+   "bn": "আবার চেষ্টা করুন",
+   "pt-BR": "Tentar de novo",
+   "ru": "Повторить",
+   "id": "Coba lagi",
+   "it": "Riprova"
+  },
+  "Open in the browser": {
+   "zh-Hans": "在浏览器中打开",
+   "hi": "ब्राउज़र में खोलें",
+   "es": "Abrir en el navegador",
+   "ar": "فتح في المتصفح",
+   "fr": "Ouvrir dans le navigateur",
+   "bn": "ব্রাউজারে খুলুন",
+   "pt-BR": "Abrir no navegador",
+   "ru": "Открыть в браузере",
+   "id": "Buka di peramban",
+   "it": "Apri nel browser"
+  },
+  "Image from {site}": {
+   "zh-Hans": "来自 {site} 的图片",
+   "hi": "{site} की तस्वीर",
+   "es": "Imagen de {site}",
+   "ar": "صورة من {site}",
+   "fr": "Image de {site}",
+   "bn": "{site} থেকে ছবি",
+   "pt-BR": "Imagem de {site}",
+   "ru": "Изображение с {site}",
+   "id": "Gambar dari {site}",
+   "it": "Immagine da {site}"
+  },
+  "Images from the web": {
+   "zh-Hans": "网络图片",
+   "hi": "वेब से तस्वीरें",
+   "es": "Imágenes de la web",
+   "ar": "صور من الويب",
+   "fr": "Images du web",
+   "bn": "ওয়েব থেকে ছবি",
+   "pt-BR": "Imagens da web",
+   "ru": "Изображения из интернета",
+   "id": "Gambar dari web",
+   "it": "Immagini dal web"
+  },
+  "Previous step": {
+   "zh-Hans": "上一步",
+   "hi": "पिछला चरण",
+   "es": "Paso anterior",
+   "ar": "الخطوة السابقة",
+   "fr": "Étape précédente",
+   "bn": "আগের ধাপ",
+   "pt-BR": "Passo anterior",
+   "ru": "Предыдущий шаг",
+   "id": "Langkah sebelumnya",
+   "it": "Passaggio precedente"
+  },
+  "Next step": {
+   "zh-Hans": "下一步",
+   "hi": "अगला चरण",
+   "es": "Paso siguiente",
+   "ar": "الخطوة التالية",
+   "fr": "Étape suivante",
+   "bn": "পরের ধাপ",
+   "pt-BR": "Próximo passo",
+   "ru": "Следующий шаг",
+   "id": "Langkah berikutnya",
+   "it": "Passaggio successivo"
+  },
+  "All steps": {
+   "zh-Hans": "全部步骤",
+   "hi": "सभी चरण",
+   "es": "Todos los pasos",
+   "ar": "كل الخطوات",
+   "fr": "Toutes les étapes",
+   "bn": "সব ধাপ",
+   "pt-BR": "Todos os passos",
+   "ru": "Все шаги",
+   "id": "Semua langkah",
+   "it": "Tutti i passaggi"
+  },
+  "Step {n}": {
+   "zh-Hans": "第 {n} 步",
+   "hi": "चरण {n}",
+   "es": "Paso {n}",
+   "ar": "الخطوة {n}",
+   "fr": "Étape {n}",
+   "bn": "ধাপ {n}",
+   "pt-BR": "Passo {n}",
+   "ru": "Шаг {n}",
+   "id": "Langkah {n}",
+   "it": "Passaggio {n}"
+  },
+  "Where it starts": {
+   "zh-Hans": "从这里开始",
+   "hi": "यहाँ से शुरू",
+   "es": "Aquí empieza",
+   "ar": "من هنا نبدأ",
+   "fr": "Point de départ",
+   "bn": "এখান থেকে শুরু",
+   "pt-BR": "Começa aqui",
+   "ru": "Отсюда начинаем",
+   "id": "Mulai dari sini",
+   "it": "Si parte da qui"
+  },
+  "Bars": {
+   "zh-Hans": "条形",
+   "hi": "बार",
+   "es": "Barras",
+   "ar": "أعمدة",
+   "fr": "Barres",
+   "bn": "বার",
+   "pt-BR": "Barras",
+   "ru": "Столбцы",
+   "id": "Batang",
+   "it": "Barre"
+  },
+  "Lines": {
+   "zh-Hans": "折线",
+   "hi": "रेखाएँ",
+   "es": "Líneas",
+   "ar": "خطوط",
+   "fr": "Lignes",
+   "bn": "রেখা",
+   "pt-BR": "Linhas",
+   "ru": "Линии",
+   "id": "Garis",
+   "it": "Linee"
+  },
+  "Table": {
+   "zh-Hans": "表格",
+   "hi": "तालिका",
+   "es": "Tabla",
+   "ar": "جدول",
+   "fr": "Tableau",
+   "bn": "সারণি",
+   "pt-BR": "Tabela",
+   "ru": "Таблица",
+   "id": "Tabel",
+   "it": "Tabella"
+  },
+  "Show as a chart": {
+   "zh-Hans": "以图表显示",
+   "hi": "चार्ट के रूप में दिखाएँ",
+   "es": "Mostrar como gráfico",
+   "ar": "العرض كمخطط",
+   "fr": "Afficher en graphique",
+   "bn": "চার্ট হিসেবে দেখান",
+   "pt-BR": "Mostrar como gráfico",
+   "ru": "Показать графиком",
+   "id": "Tampilkan sebagai grafik",
+   "it": "Mostra come grafico"
+  },
+  "Show as a table": {
+   "zh-Hans": "以表格显示",
+   "hi": "तालिका के रूप में दिखाएँ",
+   "es": "Mostrar como tabla",
+   "ar": "العرض كجدول",
+   "fr": "Afficher en tableau",
+   "bn": "সারণি হিসেবে দেখান",
+   "pt-BR": "Mostrar como tabela",
+   "ru": "Показать таблицей",
+   "id": "Tampilkan sebagai tabel",
+   "it": "Mostra come tabella"
+  },
+  "Checklist": {
+   "zh-Hans": "清单",
+   "hi": "चेकलिस्ट",
+   "es": "Lista de tareas",
+   "ar": "قائمة مهام",
+   "fr": "Liste de tâches",
+   "bn": "চেকলিস্ট",
+   "pt-BR": "Checklist",
+   "ru": "Чек-лист",
+   "id": "Daftar periksa",
+   "it": "Checklist"
+  },
+  "Completed · {done}/{total}": {
+   "zh-Hans": "已完成 · {done}/{total}",
+   "hi": "पूरी हुई · {done}/{total}",
+   "es": "Completada · {done}/{total}",
+   "ar": "اكتملت · {done}/{total}",
+   "fr": "Terminée · {done}/{total}",
+   "bn": "সম্পন্ন · {done}/{total}",
+   "pt-BR": "Concluída · {done}/{total}",
+   "ru": "Готово · {done}/{total}",
+   "id": "Selesai · {done}/{total}",
+   "it": "Completata · {done}/{total}"
+  },
+  "Updated below": {
+   "zh-Hans": "已在下方更新",
+   "hi": "नीचे अपडेट की गई",
+   "es": "Actualizada más abajo",
+   "ar": "حُدّثت في الأسفل",
+   "fr": "Mise à jour plus bas",
+   "bn": "নিচে হালনাগাদ করা হয়েছে",
+   "pt-BR": "Atualizada mais abaixo",
+   "ru": "Обновлён ниже",
+   "id": "Diperbarui di bawah",
+   "it": "Aggiornata più sotto"
+  },
+  "Mark as done": {
+   "zh-Hans": "标记为完成",
+   "hi": "पूरा चिह्नित करें",
+   "es": "Marcar como hecha",
+   "ar": "تحديد كمنجز",
+   "fr": "Marquer comme fait",
+   "bn": "সম্পন্ন হিসেবে চিহ্নিত করুন",
+   "pt-BR": "Marcar como feito",
+   "ru": "Отметить как выполненное",
+   "id": "Tandai selesai",
+   "it": "Segna come fatto"
+  },
+  "Mark as not done": {
+   "zh-Hans": "标记为未完成",
+   "hi": "अधूरा चिह्नित करें",
+   "es": "Marcar como pendiente",
+   "ar": "تحديد كغير منجز",
+   "fr": "Marquer comme non fait",
+   "bn": "অসম্পূর্ণ হিসেবে চিহ্নিত করুন",
+   "pt-BR": "Marcar como não feito",
+   "ru": "Отметить как невыполненное",
+   "id": "Tandai belum selesai",
+   "it": "Segna come da fare"
+  },
+  "Show the list": {
+   "zh-Hans": "显示清单",
+   "hi": "सूची दिखाएँ",
+   "es": "Mostrar la lista",
+   "ar": "إظهار القائمة",
+   "fr": "Afficher la liste",
+   "bn": "তালিকা দেখান",
+   "pt-BR": "Mostrar a lista",
+   "ru": "Показать список",
+   "id": "Tampilkan daftar",
+   "it": "Mostra la lista"
+  },
+  "Hide the list": {
+   "zh-Hans": "隐藏清单",
+   "hi": "सूची छिपाएँ",
+   "es": "Ocultar la lista",
+   "ar": "إخفاء القائمة",
+   "fr": "Masquer la liste",
+   "bn": "তালিকা লুকান",
+   "pt-BR": "Ocultar a lista",
+   "ru": "Скрыть список",
+   "id": "Sembunyikan daftar",
+   "it": "Nascondi la lista"
+  },
+  "Code change": {
+   "zh-Hans": "代码修改",
+   "hi": "कोड बदलाव",
+   "es": "Cambio de código",
+   "ar": "تعديل في الكود",
+   "fr": "Modification",
+   "bn": "কোড পরিবর্তন",
+   "pt-BR": "Alteração",
+   "ru": "Правка",
+   "id": "Perubahan kode",
+   "it": "Modifica"
+  },
+  "Unified": {
+   "zh-Hans": "合并",
+   "hi": "एकीकृत",
+   "es": "Unificado",
+   "ar": "موحَّد",
+   "fr": "Unifié",
+   "bn": "একীভূত",
+   "pt-BR": "Unificado",
+   "ru": "Вместе",
+   "id": "Gabung",
+   "it": "Unito"
+  },
+  "Side by side": {
+   "zh-Hans": "并排",
+   "hi": "अगल-बगल",
+   "es": "En paralelo",
+   "ar": "جنبًا إلى جنب",
+   "fr": "Côte à côte",
+   "bn": "পাশাপাশি",
+   "pt-BR": "Lado a lado",
+   "ru": "Рядом",
+   "id": "Berdampingan",
+   "it": "Affiancato"
+  },
+  "Show the change in one column": {
+   "zh-Hans": "在一列中显示修改",
+   "hi": "बदलाव एक कॉलम में दिखाएँ",
+   "es": "Mostrar el cambio en una columna",
+   "ar": "عرض التعديل في عمود واحد",
+   "fr": "Afficher la modification sur une colonne",
+   "bn": "পরিবর্তনটি এক কলামে দেখান",
+   "pt-BR": "Mostrar a alteração em uma coluna",
+   "ru": "Показать правку в одной колонке",
+   "id": "Tampilkan perubahan dalam satu kolom",
+   "it": "Mostra la modifica in una colonna"
+  },
+  "Show before and after side by side": {
+   "zh-Hans": "并排显示修改前后",
+   "hi": "पहले और बाद को अगल-बगल दिखाएँ",
+   "es": "Mostrar antes y después en paralelo",
+   "ar": "عرض ما قبل وما بعد جنبًا إلى جنب",
+   "fr": "Afficher avant et après côte à côte",
+   "bn": "আগে ও পরে পাশাপাশি দেখান",
+   "pt-BR": "Mostrar antes e depois lado a lado",
+   "ru": "Показать «до» и «после» рядом",
+   "id": "Tampilkan sebelum dan sesudah berdampingan",
+   "it": "Mostra prima e dopo affiancati"
+  },
+  "Image": {
+   "zh-Hans": "图片",
+   "hi": "चित्र",
+   "es": "Imagen",
+   "ar": "صورة",
+   "fr": "Image",
+   "bn": "ছবি",
+   "pt-BR": "Imagem",
+   "ru": "Изображение",
+   "id": "Gambar",
+   "it": "Immagine"
+  },
+  "An image in an answer is downloaded and shown at once, from public https sites only. Off: just its site and a button to open it in the browser.": {
+   "zh-Hans": "回答中的图片会立即下载并显示，仅限公开的 https 网站。关闭后：只显示其网站和一个在浏览器中打开的按钮。",
+   "hi": "उत्तर में मौजूद चित्र तुरंत डाउनलोड होकर दिखता है, केवल सार्वजनिक https साइटों से। बंद होने पर: सिर्फ़ उसकी साइट और उसे ब्राउज़र में खोलने का बटन।",
+   "es": "Una imagen de una respuesta se descarga y se muestra al momento, solo desde sitios https públicos. Desactivado: solo su sitio y un botón para abrirla en el navegador.",
+   "ar": "تُنزَّل الصورة الموجودة في الإجابة وتُعرض فورًا، من مواقع https العامة فقط. عند الإيقاف: موقعها فقط وزر لفتحها في المتصفح.",
+   "fr": "Une image dans une réponse est téléchargée et affichée tout de suite, depuis des sites https publics uniquement. Désactivé : seulement son site et un bouton pour l'ouvrir dans le navigateur.",
+   "bn": "উত্তরের ছবি সঙ্গে সঙ্গে ডাউনলোড হয়ে দেখানো হয়, শুধু সর্বজনীন https সাইট থেকে। বন্ধ থাকলে: শুধু তার সাইট আর ব্রাউজারে খোলার একটি বোতাম।",
+   "pt-BR": "Uma imagem em uma resposta é baixada e mostrada na hora, apenas de sites https públicos. Desligado: só o site dela e um botão para abri-la no navegador.",
+   "ru": "Изображение в ответе сразу загружается и показывается, только с общедоступных https-сайтов. Выключено: только его сайт и кнопка, чтобы открыть его в браузере.",
+   "id": "Gambar dalam jawaban langsung diunduh dan ditampilkan, hanya dari situs https publik. Nonaktif: hanya situsnya dan tombol untuk membukanya di browser.",
+   "it": "Un'immagine in una risposta viene scaricata e mostrata subito, solo da siti https pubblici. Disattivato: solo il suo sito e un pulsante per aprirla nel browser."
+  },
+  "Quiz": {
+   "zh-Hans": "测验",
+   "hi": "क्विज़",
+   "es": "Quiz",
+   "ar": "اختبار",
+   "fr": "Quiz",
+   "bn": "কুইজ",
+   "pt-BR": "Quiz",
+   "ru": "Тест",
+   "id": "Kuis",
+   "it": "Quiz"
+  },
+  "Pick an answer · keys 1–{n}": {
+   "zh-Hans": "选择一个答案 · 按键 1–{n}",
+   "hi": "एक उत्तर चुनें · कुंजियाँ 1–{n}",
+   "es": "Elige una respuesta · teclas 1–{n}",
+   "ar": "اختر إجابة · المفاتيح 1–{n}",
+   "fr": "Choisissez une réponse · touches 1–{n}",
+   "bn": "একটি উত্তর বেছে নিন · কী 1–{n}",
+   "pt-BR": "Escolha uma resposta · teclas 1–{n}",
+   "ru": "Выберите ответ · клавиши 1–{n}",
+   "id": "Pilih jawaban · tombol 1–{n}",
+   "it": "Scegli una risposta · tasti 1–{n}"
+  },
+  "Answer {letter}": {
+   "zh-Hans": "答案 {letter}",
+   "hi": "उत्तर {letter}",
+   "es": "Respuesta {letter}",
+   "ar": "الإجابة {letter}",
+   "fr": "Réponse {letter}",
+   "bn": "উত্তর {letter}",
+   "pt-BR": "Resposta {letter}",
+   "ru": "Ответ {letter}",
+   "id": "Jawaban {letter}",
+   "it": "Risposta {letter}"
+  },
+  "Right.": {
+   "zh-Hans": "正确。",
+   "hi": "सही।",
+   "es": "Correcto.",
+   "ar": "صحيح.",
+   "fr": "Exact.",
+   "bn": "ঠিক।",
+   "pt-BR": "Certo.",
+   "ru": "Верно.",
+   "id": "Benar.",
+   "it": "Giusto."
+  },
+  "Not {letter}.": {
+   "zh-Hans": "不是 {letter}。",
+   "hi": "{letter} नहीं।",
+   "es": "No es la {letter}.",
+   "ar": "ليست {letter}.",
+   "fr": "Ce n'est pas la {letter}.",
+   "bn": "{letter} নয়।",
+   "pt-BR": "Não é a {letter}.",
+   "ru": "Не {letter}.",
+   "id": "Bukan {letter}.",
+   "it": "Non è la {letter}."
+  },
+  "Not {letter}: it's {right}.": {
+   "zh-Hans": "不是 {letter}，是 {right}。",
+   "hi": "{letter} नहीं, {right} है।",
+   "es": "No es la {letter}: es la {right}.",
+   "ar": "ليست {letter}، بل {right}.",
+   "fr": "Ce n'est pas la {letter} : c'est la {right}.",
+   "bn": "{letter} নয়, {right}।",
+   "pt-BR": "Não é a {letter}: é a {right}.",
+   "ru": "Не {letter}, а {right}.",
+   "id": "Bukan {letter}, tapi {right}.",
+   "it": "Non è la {letter}: è la {right}."
+  },
+  "See the result": {
+   "zh-Hans": "查看结果",
+   "hi": "नतीजा देखें",
+   "es": "Ver el resultado",
+   "ar": "عرض النتيجة",
+   "fr": "Voir le résultat",
+   "bn": "ফলাফল দেখুন",
+   "pt-BR": "Ver o resultado",
+   "ru": "Показать результат",
+   "id": "Lihat hasil",
+   "it": "Vedi il risultato"
+  },
+  "Finished": {
+   "zh-Hans": "已完成",
+   "hi": "पूरा हुआ",
+   "es": "Terminado",
+   "ar": "انتهى",
+   "fr": "Terminé",
+   "bn": "শেষ",
+   "pt-BR": "Terminado",
+   "ru": "Готово",
+   "id": "Selesai",
+   "it": "Finito"
+  },
+  "Perfect: all right.": {
+   "zh-Hans": "完美：全部答对。",
+   "hi": "बढ़िया: सब सही।",
+   "es": "Perfecto: todas bien.",
+   "ar": "ممتاز: كلها صحيحة.",
+   "fr": "Parfait : tout juste.",
+   "bn": "চমৎকার: সবগুলো ঠিক।",
+   "pt-BR": "Perfeito: todas certas.",
+   "ru": "Отлично: всё верно.",
+   "id": "Sempurna: semua benar.",
+   "it": "Perfetto: tutte giuste."
+  },
+  "Good: just one wrong.": {
+   "zh-Hans": "不错：只错了一题。",
+   "hi": "अच्छा: बस एक गलत।",
+   "es": "Bien: solo una mal.",
+   "ar": "جيد: خطأ واحد فقط.",
+   "fr": "Bien : une seule fausse.",
+   "bn": "ভালো: শুধু একটি ভুল।",
+   "pt-BR": "Bom: só uma errada.",
+   "ru": "Хорошо: всего одна ошибка.",
+   "id": "Bagus: hanya satu salah.",
+   "it": "Bene: una sola sbagliata."
+  },
+  "Right answers: {score} of {total}.": {
+   "zh-Hans": "答对：{score} / {total}。",
+   "hi": "सही उत्तर: {total} में से {score}।",
+   "es": "Respuestas correctas: {score} de {total}.",
+   "ar": "الإجابات الصحيحة: {score} من {total}.",
+   "fr": "Bonnes réponses : {score} sur {total}.",
+   "bn": "সঠিক উত্তর: {total}-এর মধ্যে {score}।",
+   "pt-BR": "Respostas certas: {score} de {total}.",
+   "ru": "Верных ответов: {score} из {total}.",
+   "id": "Jawaban benar: {score} dari {total}.",
+   "it": "Risposte giuste: {score} su {total}."
+  },
+  "and {n} more": {
+   "zh-Hans": "还有 {n} 题",
+   "hi": "और {n}",
+   "es": "y {n} más",
+   "ar": "و{n} أخرى",
+   "fr": "et {n} de plus",
+   "bn": "আরও {n}টি",
+   "pt-BR": "e mais {n}",
+   "ru": "и ещё {n}",
+   "id": "dan {n} lagi",
+   "it": "e altre {n}"
+  },
+  "Retry the wrong one": {
+   "zh-Hans": "重做答错的题",
+   "hi": "गलत वाला फिर से करें",
+   "es": "Repetir la incorrecta",
+   "ar": "أعد الخاطئة",
+   "fr": "Refaire la fausse",
+   "bn": "ভুলটি আবার করুন",
+   "pt-BR": "Refazer a errada",
+   "ru": "Повторить ошибку",
+   "id": "Ulangi yang salah",
+   "it": "Rifai la sbagliata"
+  },
+  "Retry the wrong ones": {
+   "zh-Hans": "重做答错的题",
+   "hi": "गलत वाले फिर से करें",
+   "es": "Repetir las incorrectas",
+   "ar": "أعد الخاطئة",
+   "fr": "Refaire les fausses",
+   "bn": "ভুলগুলো আবার করুন",
+   "pt-BR": "Refazer as erradas",
+   "ru": "Повторить ошибки",
+   "id": "Ulangi yang salah",
+   "it": "Rifai le sbagliate"
+  },
+  "Start over": {
+   "zh-Hans": "重新开始",
+   "hi": "फिर से शुरू करें",
+   "es": "Empezar de nuevo",
+   "ar": "البدء من جديد",
+   "fr": "Recommencer",
+   "bn": "আবার শুরু করুন",
+   "pt-BR": "Recomeçar",
+   "ru": "Начать заново",
+   "id": "Mulai lagi",
+   "it": "Ricomincia"
+  },
+  "{n} more questions": {
+   "zh-Hans": "再来 {n} 道题",
+   "hi": "{n} और प्रश्न",
+   "es": "{n} preguntas más",
+   "ar": "{n} أسئلة أخرى",
+   "fr": "{n} questions de plus",
+   "bn": "আরও {n}টি প্রশ্ন",
+   "pt-BR": "Mais {n} perguntas",
+   "ru": "Ещё вопросов: {n}",
+   "id": "{n} pertanyaan lagi",
+   "it": "Altre {n} domande"
+  },
+  "Quiz me with {n} more questions on the same subject.": {
+   "zh-Hans": "就同一主题再出 {n} 道题考考我。",
+   "hi": "इसी विषय पर मुझसे {n} और प्रश्न पूछो।",
+   "es": "Hazme {n} preguntas más sobre el mismo tema.",
+   "ar": "اختبرني بـ {n} أسئلة أخرى في الموضوع نفسه.",
+   "fr": "Pose-moi {n} questions de plus sur le même sujet.",
+   "bn": "একই বিষয়ে আমাকে আরও {n}টি প্রশ্ন করো।",
+   "pt-BR": "Faça mais {n} perguntas sobre o mesmo assunto.",
+   "ru": "Задай мне ещё вопросы на ту же тему (вопросов: {n}).",
+   "id": "Uji aku dengan {n} pertanyaan lagi tentang topik yang sama.",
+   "it": "Fammi altre {n} domande sullo stesso argomento."
+  },
+  "Timeline": {
+   "zh-Hans": "时间线",
+   "hi": "समयरेखा",
+   "es": "Cronología",
+   "ar": "الخط الزمني",
+   "fr": "Chronologie",
+   "bn": "সময়রেখা",
+   "pt-BR": "Linha do tempo",
+   "ru": "Хронология",
+   "id": "Linimasa",
+   "it": "Linea del tempo"
+  },
+  "Click a point to read what happened · ← → to move": {
+   "zh-Hans": "点击一个点，查看发生了什么 · ← → 切换",
+   "hi": "क्या हुआ, यह पढ़ने के लिए किसी बिंदु पर क्लिक करें · ← → से आगे-पीछे जाएँ",
+   "es": "Haz clic en un punto para leer qué pasó · ← → para moverte",
+   "ar": "انقر على نقطة لتقرأ ما حدث · ← → للتنقل",
+   "fr": "Cliquez sur un point pour lire ce qui s'est passé · ← → pour naviguer",
+   "bn": "কী ঘটেছিল পড়তে একটি বিন্দুতে ক্লিক করুন · ← → দিয়ে সরান",
+   "pt-BR": "Clique em um ponto para ler o que aconteceu · ← → para navegar",
+   "ru": "Нажмите на точку, чтобы прочитать, что произошло · ← → для перехода",
+   "id": "Klik sebuah titik untuk membaca apa yang terjadi · ← → untuk berpindah",
+   "it": "Tocca un punto per leggere cosa è successo · ← → per scorrere"
+  },
+  "Previous event": {
+   "zh-Hans": "上一个事件",
+   "hi": "पिछली घटना",
+   "es": "Evento anterior",
+   "ar": "الحدث السابق",
+   "fr": "Événement précédent",
+   "bn": "আগের ঘটনা",
+   "pt-BR": "Evento anterior",
+   "ru": "Предыдущее событие",
+   "id": "Peristiwa sebelumnya",
+   "it": "Evento precedente"
+  },
+  "Next event": {
+   "zh-Hans": "下一个事件",
+   "hi": "अगली घटना",
+   "es": "Evento siguiente",
+   "ar": "الحدث التالي",
+   "fr": "Événement suivant",
+   "bn": "পরের ঘটনা",
+   "pt-BR": "Próximo evento",
+   "ru": "Следующее событие",
+   "id": "Peristiwa berikutnya",
+   "it": "Evento successivo"
+  },
+  "phase {n} of {total}": {
+   "zh-Hans": "第 {n} 阶段，共 {total} 个",
+   "hi": "चरण {n} / {total}",
+   "es": "fase {n} de {total}",
+   "ar": "المرحلة {n} من {total}",
+   "fr": "phase {n} sur {total}",
+   "bn": "ধাপ {n} / {total}",
+   "pt-BR": "fase {n} de {total}",
+   "ru": "этап {n} из {total}",
+   "id": "fase {n} dari {total}",
+   "it": "fase {n} di {total}"
+  },
+  "today": {
+   "zh-Hans": "今天",
+   "hi": "आज",
+   "es": "hoy",
+   "ar": "اليوم",
+   "fr": "aujourd'hui",
+   "bn": "আজ",
+   "pt-BR": "hoje",
+   "ru": "сегодня",
+   "id": "hari ini",
+   "it": "oggi"
+  },
+  "{year} BC": {
+   "zh-Hans": "公元前 {year} 年",
+   "hi": "{year} ई.पू.",
+   "es": "{year} a. C.",
+   "ar": "{year} ق.م",
+   "fr": "{year} av. J.-C.",
+   "bn": "খ্রিস্টপূর্ব {year}",
+   "pt-BR": "{year} a.C.",
+   "ru": "{year} до н. э.",
+   "id": "{year} SM",
+   "it": "{year} a.C."
+  },
+  "{count} days left": {
+   "zh-Hans": {
+    "other": "还剩 {count} 天"
+   },
+   "hi": {
+    "one": "{count} दिन बाकी",
+    "other": "{count} दिन बाकी"
+   },
+   "es": {
+    "one": "falta {count} día",
+    "other": "faltan {count} días"
+   },
+   "ar": {
+    "zero": "لم يبقَ أي يوم",
+    "one": "بقي يوم واحد",
+    "two": "بقي يومان",
+    "few": "بقيت {count} أيام",
+    "many": "بقي {count} يومًا",
+    "other": "بقي {count} يوم"
+   },
+   "fr": {
+    "one": "{count} jour restant",
+    "other": "{count} jours restants"
+   },
+   "bn": {
+    "one": "{count} দিন বাকি",
+    "other": "{count} দিন বাকি"
+   },
+   "pt-BR": {
+    "one": "falta {count} dia",
+    "other": "faltam {count} dias"
+   },
+   "ru": {
+    "one": "остался {count} день",
+    "few": "осталось {count} дня",
+    "many": "осталось {count} дней",
+    "other": "осталось {count} дня"
+   },
+   "id": {
+    "other": "{count} hari lagi"
+   },
+   "it": {
+    "one": "manca {count} giorno",
+    "other": "mancano {count} giorni"
+   }
+  },
+  "Writing it…": {
+   "zh-Hans": "正在写…",
+   "hi": "लिखा जा रहा है…",
+   "es": "Escribiendo…",
+   "ar": "جارٍ الكتابة…",
+   "fr": "En cours d'écriture…",
+   "bn": "লেখা হচ্ছে…",
+   "pt-BR": "Escrevendo…",
+   "ru": "Пишется…",
+   "id": "Sedang ditulis…",
+   "it": "Lo sto scrivendo…"
+  },
+  "Loading the image…": {
+   "zh-Hans": "正在加载图片…",
+   "hi": "तस्वीर लोड हो रही है…",
+   "es": "Cargando la imagen…",
+   "ar": "جارٍ تحميل الصورة…",
+   "fr": "Chargement de l'image…",
+   "bn": "ছবি লোড হচ্ছে…",
+   "pt-BR": "Carregando a imagem…",
+   "ru": "Загрузка изображения…",
+   "id": "Memuat gambar…",
+   "it": "Carico l'immagine…"
   }
  }
 }

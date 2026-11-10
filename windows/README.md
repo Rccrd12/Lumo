@@ -107,9 +107,8 @@ tile's edge, the music, the calendar, the email), the services and the plans'
 usage, and the field to the chat. The chat is one field, with **+** for the
 rest and past chats in the top bar; **…** at the top right holds Settings,
 Sounds, Keep the island open, Wardrobe, Hide in the edge of the screen and
-Quit. **Settings → Island → Previous look** brings back the look of 0.17,
-with the ring of light and the tabs, exactly as it was. Most of what follows
-works the same in both looks.
+Quit. The look of 0.17, with the ring of light and the tabs, is gone since
+0.21.0.
 
 | What you do | What happens |
 |---|---|
@@ -117,12 +116,12 @@ works the same in both looks.
 | Click the small island | It opens |
 | Click Lumo | It gets annoyed for a moment |
 | Rest the pointer on Lumo for two seconds | Hearts |
-| Right-click Lumo | The wardrobe. In the new look it picks the light along the island's edge (**Full light**, **Soft light**, **Line only**, **Glow only**) and Claude's mouse for computer use. In the previous look: rest the pointer on an outfit to try it on, click to keep it. **Auto** dresses him for the season (the scarf in winter, the leaf in spring). Next to the outfits, **Lumo's style** picks his look the same way: **Filo**, a ring of light whose colour tells what is going on (the default), **Punto**, a dot of light, **Goccia**, a soft drop, or **Lucciola**, the firefly; also in Settings → Island → Lumo's look |
+| Right-click Lumo | The wardrobe: it picks the light along the island's edge (**Full light**, **Soft light**, **Line only**, **Glow only**) and Claude's mouse for computer use |
 | Drag a file onto the island | Lumo turns into a box, swallows it, then offers to answer questions about it |
 | Click a file in the session ticker | Its diff opens in the island; ↗ opens the file in VS Code, ‹ or `Esc` goes back |
 | Drag the island by its top bar (the closed island from anywhere, or `Alt` + drag anywhere) | Picks it up; let go and it docks on the nearest edge of the screen under the mouse: top, bottom, or upright on the left or right side, centred when dropped near the middle of the edge. **Put the island back in the centre** (tray menu or Settings) brings it home to the top |
-| – at the top right of the open island, next to the power button | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
-| Power button at the top right of the open island | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
+| **…** → Hide in the edge of the screen | Hides the island into the edge of the screen it hangs from, as **Hide when unused** does; bring the mouse to that piece of the edge and it comes back. A request waiting for your answer is folded instead, never hidden |
+| **…** → Quit | Quits Lumo altogether, tray icon included (open it again from the Start menu) |
 | Drag an edge or a corner of the open island | Resizes it (560–1200 px wide, up to 640 px tall); along the edge it hangs from, both sides move together so it stays in place. A double click on the grip puts the usual size back |
 | In the open island: `Ctrl +` / `Ctrl −` / `Ctrl 0` | A bigger or smaller island, or the usual size (also **Settings… → Island → Island size**, 80–160 %, 115 % by default). **Icon size** (100–150 %, 125 % by default) sits next to it |
 | `Esc` | Closes the island |
@@ -134,6 +133,7 @@ works the same in both looks.
 | `Ctrl+Alt+B` | **Ask about the page in the browser**: opens the chat with the page on screen in the front-most Edge or Chrome window, read with your login (its text and address), waiting in the attachments. A tab that shows a file (a PDF opened from the disk or the web) attaches that file instead of the text the viewer shows |
 | The folder beside the past chats | **Everything attached** to your next question, with a number on the folder for how many (none, no number), so the chat keeps its whole height. One row each — every file, screenshot, window, tab, folder and selected text on its own, even two of the same screen; what comes from the computer (screenshots, windows, tabs, folders, selected text) sits in a **Computer** folder, with how many it holds on its right, that a click opens — with its picture or its kind's icon, its name, what it is ("Screenshot", "Window · Code", "File · PDF") and a × that takes back that one only; **Remove all** when there are several. A click on a row shows **what goes with your question**: the screenshot or attached picture shown big, the text read from a window or a tab (and how it was read), the selected text, the folder's listing, a file's name and path. **Close** keeps it, **Remove** takes it back, and either brings the attachments back. A click on a picture there fills the whole island with it (Lumo steps aside until a click or `Esc`) |
 | **Chat files**, beside the attachments' title | The files of the chat you are in, kept with it (in Past chats too): what you attached once it went, and the files Claude Code (its subagents too), Codex or Antigravity CLI read, edited or created while answering, in a folder for each: **Attached**, **Read by the AI**, **Edited by the AI**, **Created by the AI** (a file attached and then read is in both; only the folders with something in them show, with how many on their right). Each row has the folder the file is in, and a × (or **Remove from the chat's context** in its right click) that takes it out of the chat: the AI is told with your next question to leave it alone, and a fresh Claude Code session isn't given it again. Editing a message takes out the files of the messages after it, and what the AI read or wrote for them. A click opens a file in its app (a picture shows in its preview); a program or a script is only shown in File Explorer, never run. A right click: **Open**, **Open file location**, **Copy path**. A file deleted or moved since says No longer found |
+| Under a message in the chat | Its actions, as in Claude's app, under the mouse (always under the last answer): under an answer **Copy**, **Retry** and when it came ("2 min ago"); under a question when you sent it, **Retry**, **Edit** and **Copy**. **Copy** takes the text as written, Markdown included. **Edit** puts the question back in the field: sending it replaces it and drops what followed. **Retry** is on the last question and its answer only: the question goes again, unchanged, in place of its answer; when an answer failed, it stays in sight under the question. Chats saved before 0.21.0 have no times |
 | Settings: the search field above the list of sections | Shows the matching settings, shortcuts and pills of every section at once ("lingua", "suono", "ctrl+alt"); accents, case and singular or plural aside. `Esc` empties it |
 | In the chat: the screen button → **Folder open in File Explorer** | Shares the folder of the File Explorer window you used last; with several folders open (windows or tabs), **Folders open in File Explorer** lists them, to share one or all. Their files and subfolders (names, sizes, dates) go with your next question, and a file of it you name ("read file.pdf") is attached as if picked with the paperclip (Windows) |
 | `Ctrl+Alt+A` | Jumps to the waiting permission or question |
@@ -200,26 +200,18 @@ always the mains-power choice.
 
 ### Live activities
 
-<img src="screenshots/activities.png" width="640" alt="The previous look: the open island with the live activities beside it">
+They are tiles on the home: **Timer** (the running ones, with their ring
+round the tile's edge, or 1, 5, 10 or 25 minutes in one click, or type
+`15m pasta`), **Music** (what plays, with previous, play/pause and next),
+**Calendar** (the next events) and **Email** (the newest unread; a click opens
+the inbox in Gmail or Outlook). **Live Activities** in the **…** menu and in
+the right-click menu puts them away, and brings them back.
 
-In the new look they are tiles on the home instead; what follows is the previous look.
-
-Beside the open island (on the top and bottom edges) a second island holds
-what goes on and what can be started: **Timer** (the running ones, 1, 5, 10
-or 25 minutes in one click, or type `15m pasta`), **Music** (what plays, with
-previous, play/pause and next), **Calendar** (the next events) and **Email**
-(the newest unread: a click on one opens it, with Summarize, Draft a reply and
-the eye, which puts it away so the next one moves up; a click elsewhere on the
-box opens the inbox in Gmail or Outlook). Its **–** (top right)
-folds it, with a flight, into an icon left of the **+** in the island's top
-bar; that icon brings it back. Settings → Island → **Live Activities** turns
-it off.
-
-On Windows it can be moved and resized like the island: drag its top bar and
-it comes off the island into a window of its own, which stays wherever you
-leave it (it shows while the island is open); drop it against the island's
-left or right side and it joins it there. Its edges and bottom corners resize
-it.
+Up to 0.20.1 they were also a panel beside the open island that could be
+dragged off into a window of its own. Both are gone since 0.21.0: if you had
+moved them out of the island, that window no longer opens, and they are on
+the home like everyone's. Settings → Island → Live Activities and Follow the
+island's height, which only that panel read, are gone with it.
 
 The calendar is read from its **secret iCal address**, pasted in Settings →
 Island → Calendar (Google Calendar: Settings → your calendar → Integrate
@@ -228,17 +220,18 @@ too). It stays in the system keychain, and is fetched every 15 minutes, only
 read.
 
 Settings → Island → **Say what's going on** and **Show the music playing**
-turn them off. While the island is hidden nothing is asked or counted: the
-music is only asked about while the closed island is on screen.
+turn them off on the closed island. While the island is hidden nothing is
+asked or counted: the music is only asked about while the closed island is on
+screen.
 
 ### Plan
 
-A third island beside the main one, with the plan an agent follows. It is
-shut and out of reach until an agent makes one: give an agent a job and, as
-soon as it writes its to-do list (Claude Code's TodoWrite or the plan it leaves
+The plan an agent follows, step by step. It is shut and out of reach until
+an agent makes one: give an agent a job and, as soon as it writes its to-do
+list (Claude Code's TodoWrite or the plan it leaves
 Plan Mode with; Codex's `update_plan`, Gemini CLI's `write_todos` and
-OpenCode's `todowrite` when their hooks pass those calls on), the island
-opens with it. Each step shows where it
+OpenCode's `todowrite` when their hooks pass those calls on), it shows.
+Each step shows where it
 stands (to do, under way, done, dropped), with who follows the plan, in which
 folder, and how far along it is; it moves on live as the agent works. Nothing is
 asked of the agents: the plan is read off the hooks Lumo already has. In the
@@ -246,22 +239,28 @@ island's own chat, Claude Code (its task list) and Antigravity CLI (Lumo's own
 `update_plan` tool, which Lumo gives it) are asked to write their plan for any
 job of more than one step, and to move it on as each step starts and ends; the
 island shows it the same way. The chats with an API key (Anthropic,
-OpenAI, Google, OpenRouter, local models) only answer and do no steps, so they
-have no plan.
+OpenAI, Google, OpenRouter) get the same `update_plan` tool when the question
+asks for a plan or the chat is on Plan only; the local models get it always,
+and are asked to make a plan for any job of more than one step (one that goes
+on changing files for two rounds with no plan is asked for one). A local
+model is kept at it: when its tools go past the step the plan shows, Lumo
+reminds it; when it answers with the plan behind the work, Lumo asks it once,
+unseen, to put each step where it stands (the answer stays as it was); a list of steps it writes right before its
+first tools becomes the plan, and it is told so; and each new question in a
+chat whose plan isn't done says where the plan stands.
 
-It behaves exactly as the live activities do, on the side of the main island
-they leave free (the right, or the left when they are on the right). Beside
-the island it fades in and out with it and follows it as it opens, closes and
-resizes, as tall as it while the live activities follow the island's height
-(Settings → Island); a plan made while the island is closed shows when it
-opens. Dragged by its top bar it comes off into a window of its own that stays
-on screen, wherever you leave it, until its **–**; let go against the island's
-side it joins it again. It is resized from its edges and bottom corners. Its
-**–** folds it into its icon in the chat, left of the usage ring, which shows
-while there are plans and opens or folds it; a new plan opens it again. A finished plan stays a few seconds, then the island folds into its
-icon, as it does when the session ends. The plans done are kept (the newest
-twenty, until Lumo quits): the icon opens the island on the newest, and its
-arrows go back through the older ones.
+Each chat shows its own plan: a chip beside the model says how far along it
+is and opens its steps over the chat, and the home lists the plans under way.
+A plan made while the island is closed is there when it opens. Its **–**
+folds it into an icon left of the usage ring, which brings it back; a new
+plan opens it again. A finished plan stays a few seconds, then folds into its
+icon, as it does when the session ends. The plans done are kept (the newest twenty, until Lumo
+quits).
+
+Up to 0.20.1 the plan was also a third island beside the main one, the Plan
+island, which could be dragged off into a window of its own. Both are gone
+since 0.21.0: if you had moved it out of the island, that window no longer
+opens, and the plan is in the chat and on the home like everyone's.
 
 ### Keyboard shortcuts
 
@@ -477,7 +476,7 @@ not at all. A program that sets `LUMO_BATCH_TOTAL` (how many questions in all) g
 ### Plan usage
 
 The island's header can show your plan limits: a small pill
-("Claude 73%", green below 50 %, orange up to 80 %, red above) for the 5-hour and
+("Claude 73%", green below 75 %, orange up to 90 %, red above) for the 5-hour and
 weekly Claude limits, another for Codex and one for Antigravity CLI. Click one for
 the details and the reset times. All are off by default; turn them on in
 **Settings… → Agents → Plan usage**.
@@ -576,6 +575,14 @@ started: an Unsloth Studio you opened stays on. Answers stream in as they are
 written, and the `<think>` blocks of reasoning models stay hidden. Local
 models get the same tools as the API providers, the chat's permission modes
 and `/compact`; the tools not loaded are in a catalog the model loads by name.
+With a local model the shield offers **Ask for approval** (a card for every
+call of your tools and every web search or page read), **Approve for me** (a
+trusted tool asks only for risky calls), **Run automatically** (a trusted tool
+never asks when it can run in the Windows sandbox, and otherwise asks as
+Approve for me does) and **Plan only**. A tool left on **Ask every time** in
+the Tools tab always asks, whatever the mode. The **Sandbox** chip beside the title picks how far your tools are kept
+from the computer: **High**, the default, also runs them in a Windows
+AppContainer; **Low** keeps only Lumo's own guard rails.
 Next to the dots the chat says what the model is doing, in the same words as
 every provider (Thinking… with its seconds, Using a tool), plus reading the
 prompt, trying again after its server dropped the request, or sent back once
@@ -641,7 +648,11 @@ goes where you told Lumo to send it. The gateway's host is written to the log
 once; the key never is.
 
 No telemetry. The only network requests Lumo makes are to the services you
-configure yourself.
+configure yourself, and to the sites of the images in chat answers: Lumo
+downloads such an image at once (https and public addresses only, image files
+only, 8 MB at most), so its site sees your IP address and the image's full
+address, which the AI writes and could fill with words from your chat.
+**Settings → Security → Images from the web** turns it off.
 
 ### Chat with your Claude plan (Claude Code)
 
@@ -661,7 +672,12 @@ even before the hooks of **Settings… → Agents → Claude Code** are installe
 nobody clicks, Claude Code denies the action: nothing is ever allowed on its own. The conversation continues the same Claude Code session
 until **New chat**, in one Claude Code process kept for the chat between
 messages (so each answer starts faster); **Stop** interrupts the answer without
-ending it, and the process ends after 10 minutes without a message. A message
+ending it, and the process ends after 10 minutes without a message (up to 3
+hours while a command or an agent it started runs in the background). When
+Claude Code answers by itself between two messages (a command it left running
+in the background ends, an agent it started reports), that answer joins its
+last one in the chat, is saved with it, and the closed island says so; a
+message sent meanwhile goes once it is written. A message
 sent while Claude is still answering waits in the field and goes as soon as the
 answer ends. Install Claude Code and run `claude` once in a terminal to
 sign in before using it. Its **Effort** is a slider under the models, from
@@ -802,6 +818,55 @@ and `\(…\)` inside the text, `$$…$$` and `\[…\]` on lines of their own,
 with Greek letters, fractions, roots, vectors, ℝ and friends, sums, integrals
 and matrices. "$5 and $10" stays money.
 
+### Rich cards in answers
+
+Where it helps, and sparingly, an answer can hold a card instead of plain
+text, laid out wide and low for the island. Every provider is told the
+formats in about 480 tokens (`rich_note` in `src-tauri/src/chat.rs`), local
+models included, and the chat draws them (`src/views/rich/`):
+
+- **Callouts**: a quote that starts `> [!NOTE]`, `[!TIP]`, `[!IMPORTANT]`,
+  `[!WARNING]` or `[!CAUTION]`, as on GitHub, for a key rule or a warning.
+- **Checklists**: a task list (`- [ ] item`), or a ` ```lumo-checklist `
+  block that gives it a title. Tick the boxes as you go: the ticks are saved
+  with the chat, and the assistant learns what you ticked with your next
+  message. When it writes the list again with the same title, the new one is
+  the list you tick and the old one shows as updated.
+- **Code changes**: a ` ```diff ` block, with the file's path after `diff`,
+  drawn as the agents' diffs are: lines added and removed, in one column or
+  before and after side by side, and a button that copies the new version.
+  Lumo never writes the file.
+- **Steps** (` ```lumo-steps `): a derivation or a procedure one step at a
+  time, with buttons to go back and forth and a list of every step.
+- **Comparison cards** (` ```lumo-cards `): two to eight things side by side,
+  each with its icon, a few values and a line of text.
+- **Calculator** (` ```lumo-calc `): a formula with its inputs on sliders and
+  its results worked out as you move them.
+- **Function plot** (` ```lumo-plot `): one to three curves that follow the
+  sliders of their parameters, their values under the pointer.
+- **Quiz** (` ```lumo-quiz `): up to ten multiple-choice questions, one at a
+  time. Answer with a click or the keys 1 to 6; Lumo marks it at once and
+  explains, then gives the score and asks the missed ones again if you like.
+- **Data chart** (` ```lumo-chart `): numbers as horizontal bars or as lines,
+  up to four series, each value under the pointer, and the same numbers as a
+  table one click away.
+- **Timeline** (` ```lumo-timeline `): dates from left to right. Single dates
+  are events, each opened with a click or the arrow keys; date ranges make a
+  plan, its phases done, current or to do against today's date on your PC,
+  with its deadlines and the days left.
+- **Images from the web**: a line that is only `![alt](https://…)` shows
+  the image at once, with its site, its alt text and a button to open it in
+  the browser. The image is downloaded by Lumo itself, never by the island:
+  https and public addresses only (never this PC or the local network,
+  redirects checked the same way), PNG, JPEG, GIF, WebP or AVIF, 8 MB at most,
+  4 downloads at a time and the first 12 images of an answer (the ones after
+  are drawn as when images are off). The site receives the image's full
+  address, which the AI writes. **Settings → Security → Images from the
+  web** turns it off: the card then shows only the site and the button, and
+  nothing is downloaded.
+
+A block the chat can't read is shown as it was written, as code.
+
 ### Show the chat your screen
 
 The screen button next to the paperclip lets the assistant see what you have
@@ -914,8 +979,8 @@ touched), with the tools of Claude's own computer use: `screenshot`, `zoom`,
   the one Claude asks for). Screenshots are sent at 1456 px on the long edge
   at most, about 1.15 megapixels; Lumo turns Claude's coordinates back into
   your screen's, whatever its scaling.
-- Lumo's island and live activities are left out of the screenshots and let
-  clicks through while Claude clicks; nothing is typed while the keyboard is
+- Lumo's island is left out of the screenshots and lets clicks through while
+  Claude clicks; nothing is typed while the keyboard is
   in the island (Claude has to click the window first).
 - Claude is told never to type passwords or payment details, never to buy,
   send, delete or accept terms unless you asked for exactly that, and to treat
@@ -1069,8 +1134,10 @@ and says so. These are guard rails for honest tools that overreach, read
 together with the review, not a sandbox for code written to escape it.
 
 **Each call asks you.** Every call of a tool is an Allow / Deny card on the
-island, whoever makes it, with the supervisor's words for what the tool does.
-In a tool's detail, **Trust it** lets agents use it without asking: only
+island, whoever makes it, with the supervisor's words for what the tool does,
+unless you **Trust it**; a local model's **Approve for me** and **Run
+automatically**, on the chat's shield, then decide which of those calls still
+ask (see the local models above). In a tool's detail, **Trust it** lets agents use it without asking: only
 offered for a reviewed tool that isn't dangerous, does nothing it didn't
 declare, and that Lumo can hold to what it declared. A change that asks for
 more takes the trust back.
@@ -1194,7 +1261,7 @@ names it through `mainBinaryName` in `src-tauri/tauri.windows.conf.json`). There
 window in the taskbar and no console: the island at the top of the screen and the
 Lumo in the notification area are the whole app, and Quit lives in its menu.
 
-The 23 sounds live in `assets/sounds/`. They are synthesised from code by
+The 22 sounds live in `assets/sounds/`. They are synthesised from code by
 `scripts/gen-sounds.mjs` (`npm run sounds` rewrites them, byte for byte the
 same). The path is declared once, in `SOUNDS_DIR` at the top of
 `vite.config.ts`, which serves them in development and copies them into
@@ -1339,8 +1406,7 @@ own window.
   - Tray → Pause doesn't stop the history (it stays on the machine anyway);
     switch it off in Settings → General.
 - The wardrobe opens with a right-click on Lumo, from the tray menu, or with
-  its global shortcut (`Ctrl+Alt+G` by default). In the compact island a tall hat
-  is cut by the top edge of the screen.
+  its global shortcut (`Ctrl+Alt+G` by default).
 - Languages: chosen in Settings, independently of the system, and applied
   without a restart. Arabic turns
   the island's text right to left but not its layout: Lumo and the pills keep

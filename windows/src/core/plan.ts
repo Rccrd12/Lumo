@@ -245,11 +245,14 @@ export function mergeWindow(next: PlanWindow | undefined, prev: PlanWindow | und
   return next;
 }
 
-/** Green below 50 %, orange up to 80 %, red above, grey without data. */
+/**
+ * Green below 75 %, orange up to 90 %, red above, grey without data: orange
+ * only once the margin is getting short, red when the limit is close.
+ */
 export function planColor(pct: number | null): string {
   if (pct == null) return "#6B7079";
-  if (pct < 50) return "#22C55E";
-  if (pct < 80) return "#F59E0B";
+  if (pct < 75) return "#22C55E";
+  if (pct < 90) return "#F59E0B";
   return "#F4505E";
 }
 
