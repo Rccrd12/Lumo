@@ -91,7 +91,7 @@ import {
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
 import {
-  chatChecklists, chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
+  chatChecklists, chatTitle, compactOf, deleteChat, joinOwnAnswer, loadChats, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
 } from "../core/chats";
 import {
   checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
@@ -3882,25 +3882,7 @@ export function buildPrompt(
       const recorded = !reply.stopped || reply.text !== "";
       if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
-      // A timer the answer asked for starts now; its line is not shown.
-      const timed = takeTimers(reply.text);
-      for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
-      // What it asked Lumo to listen for, on GitHub or this PC, and to stop listening to.
-      const answered = takeListens(timed.text);
-      for (const stop of answered.stops) {
-        if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
-        else void Bridge.listenCancelLocal(stop.source, stop.target);
-      }
-      const addOne = (ask: ListenAsk) => ask.source === "github.pr"
-        ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, run.chatId, ask.mode)
-        : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, run.chatId, ask.mode, ask.amount);
-      const added = await Promise.all(answered.listens.map(addOne));
-      // A line Lumo could not read or start is said, never just dropped.
-      const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
-      const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
-      const content = unheard.length
-        ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
-        : answered.text;
+      const content = await lumoLines(run.chatId, reply.text);
       if (recorded) {
         for (const f of sent) addChatFile(run.chatId, "attached", f.path, f.name, Date.now(), question.turn ?? run.turn);
         run.history.push({
@@ -3965,6 +3947,74 @@ export function buildPrompt(
       if (heard.length) window.setTimeout(() => runHeard(), 0);
     }
   }
+
+  /**
+   * What Lumo does for the lines an answer of `chatId` wrote for it, which go
+   * from its text: a timer starts, and what it asked Lumo to listen for, on
+   * GitHub or this PC, is listened to (or no longer). A line Lumo could not
+   * read or start is said at the end.
+   */
+  async function lumoLines(chatId: string, text: string): Promise<string> {
+    // A timer the answer asked for starts now; its line is not shown.
+    const timed = takeTimers(text);
+    for (const timer of timed.timers) compactTimer(timer.ms, timer.label);
+    // What it asked Lumo to listen for, on GitHub or this PC, and to stop listening to.
+    const answered = takeListens(timed.text);
+    for (const stop of answered.stops) {
+      if (stop.source === "github.pr") void Bridge.listenCancel(stop.repo, stop.number);
+      else void Bridge.listenCancelLocal(stop.source, stop.target);
+    }
+    const addOne = (ask: ListenAsk) => ask.source === "github.pr"
+      ? Bridge.listenAdd(ask.repo, ask.number, ask.until, ask.task, chatId, ask.mode)
+      : Bridge.listenAddLocal(ask.source, ask.target, ask.until, ask.text, ask.task, chatId, ask.mode, ask.amount);
+    const added = await Promise.all(answered.listens.map(addOne));
+    // A line Lumo could not read or start is said, never just dropped.
+    const named = (a: ListenAsk) => (a.source === "github.pr" ? `${a.repo}#${a.number} ${a.until}` : `${a.target} ${a.until}`);
+    const unheard = [...answered.unread, ...answered.listens.filter((_, i) => !added[i]).map(named)];
+    return unheard.length
+      ? `${answered.text}\n\n_${t(LISTEN_STRINGS.unread, { what: unheard.join(", ") })}_`.trim()
+      : answered.text;
+  }
+
+  // ── What Claude Code writes by itself ─────────────────────────────────────
+
+  /**
+   * Claude Code answered by itself between two questions (a command it left
+   * running in the background ended, an agent it started reported): its
+   * answer joins the chat's last one, as Rust's conversation has it (chat.rs
+   * `add_own`), whether the chat is on screen, being answered or only in Past
+   * chats, and the closed island says so. Not in a chat that left that session.
+   */
+  async function ownAnswer(chatId: string, text: string, session: string | null) {
+    const content = await lumoLines(chatId, text);
+    if (!content) return;
+    const saved = loadChats().find((c) => c.id === chatId);
+    const run = runs.get(chatId);
+    const onScreen = chatId === State.chatId;
+    const history = run?.history ?? (onScreen ? State.chatHistory : null);
+    const known = run ? run.session : onScreen ? State.chatSession : saved?.session ?? null;
+    if (session && known && known !== session) return;
+    if (history) {
+      if (!joinOwnAnswer(history, content)) return;
+      const turns = history.filter((m) => !m.failed).map((m) => ({ role: m.role, content: m.content }));
+      if (run) remember(run);
+      else if (saved) saveChat({ ...saved, title: chatTitle(turns), updatedAt: Date.now(), turns });
+      if (onScreen) renderedCount = -1;
+    } else {
+      if (!saved) return;
+      const turns = saved.turns.map((turn) => ({ ...turn }));
+      if (!joinOwnAnswer(turns, content)) return;
+      saveChat({ ...saved, updatedAt: Date.now(), turns });
+      if (body.classList.contains("browsing")) drawHistory();
+    }
+    Sound.play("finish");
+    noticeAway(COMPACT_TEXT.answered);
+    State.notify();
+  }
+
+  void onEvent<{ chat: string; text: string; session: string | null }>("chat-own-answer", (own) => {
+    if (own?.chat && own.text) void ownAnswer(own.chat, own.text, own.session ?? null);
+  });
 
   // ── Listening to GitHub ───────────────────────────────────────────────────
 

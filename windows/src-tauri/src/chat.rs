@@ -408,6 +408,22 @@ impl Chat {
         }
     }
 
+    /// Claude Code answered by itself between two turns of `session` (a command
+    /// it left running in the background ended): its answer joins the last
+    /// one, so the turns still go question, answer (the island joins it the
+    /// same way, src/core/chats.ts `joinOwnAnswer`). Nothing once the chat left
+    /// that session (a new chat, an edited message) or `provider`.
+    pub fn add_own(&self, provider: &str, session: Option<&str>, answer: &str) {
+        let mut c = self.inner.lock().unwrap();
+        if session.is_none() || c.cli_session.as_deref() != session || c.cli_owner.as_deref() != Some(provider) {
+            return;
+        }
+        join_own(&mut c.plain, answer);
+        if c.owner.as_deref() == Some(provider) {
+            join_own(&mut c.native, answer);
+        }
+    }
+
     /// Records a finished turn: the user message and the answer in the
     /// provider's format, and their plain text. Only a successful turn is
     /// recorded, so the history always matches what the model saw.
@@ -421,6 +437,14 @@ impl Chat {
         c.plain.push(json!({ "role": "user", "content": user_text }));
         c.plain.push(json!({ "role": "assistant", "content": answer }));
     }
+}
+
+/// `answer` added to the last turn when it is an answer in plain text.
+fn join_own(turns: &mut [Value], answer: &str) {
+    let Some(last) = turns.last_mut().filter(|t| t["role"] == "assistant") else { return };
+    let Some(before) = last["content"].as_str() else { return };
+    let joined = if before.trim().is_empty() { answer.to_string() } else { format!("{before}\n\n{answer}") };
+    last["content"] = Value::String(joined);
 }
 
 /// The line in front of a question about the files the user took out of the
@@ -450,6 +474,11 @@ pub struct ChatEvents {
 }
 
 impl ChatEvents {
+    /// The events of the chat `chat`, with no `Chat` at hand.
+    pub fn new(chat: &str) -> Self {
+        ChatEvents { chat: chat.to_string() }
+    }
+
     /// The text of the answer written so far.
     pub fn delta(&self, app: &AppHandle, text: &str) {
         let _ = app.emit_to(WINDOW_LABEL, "chat-delta", json!({ "chat": self.chat, "text": text }));
@@ -483,6 +512,11 @@ impl Chats {
     pub fn get(&self, id: &str) -> Arc<Chat> {
         let mut map = self.map.lock().unwrap();
         map.entry(id.to_string()).or_insert_with(|| Arc::new(Chat::new(id))).clone()
+    }
+
+    /// The chat with this id, if Rust still holds it.
+    pub fn find(&self, id: &str) -> Option<Arc<Chat>> {
+        self.map.lock().unwrap().get(id).cloned()
     }
 
     /// The chat on screen is now `id`: the others are forgotten once no
@@ -1134,6 +1168,29 @@ mod tests {
         assert_eq!(chat.cli_session_for("antigravity-cli"), None);
         chat.restore(vec![], None, None);
         assert_eq!(chat.cli_session(), None);
+    }
+
+    #[test]
+    fn what_claude_code_writes_by_itself_joins_the_last_answer_of_its_session() {
+        let chat = Chat::default();
+        let t = chat.begin("claude-code");
+        let (u, r) = qa("Measure it, and tell me when it is done", "Started: I'll write when it ends.");
+        chat.commit(&t, u, r, "Measure it, and tell me when it is done", "Started: I'll write when it ends.");
+        chat.set_cli_session(&t, "s1");
+        // Another session's (a chat started again since) is not this chat's.
+        chat.add_own("claude-code", Some("s0"), "stale");
+        chat.add_own("claude-code", None, "stale");
+        chat.add_own("codex", Some("s1"), "stale");
+        chat.add_own("claude-code", Some("s1"), "Done: 42 ms.");
+        let t = chat.begin("claude-code");
+        assert_eq!(chat.turns(), 2, "still a question and its answer");
+        assert_eq!(t.history[1]["content"], "Started: I'll write when it ends.\n\nDone: 42 ms.");
+        // Another provider then gets it in its plain turns too.
+        assert_eq!(chat.begin("openai").history[1]["content"], "Started: I'll write when it ends.\n\nDone: 42 ms.");
+        // After an edit, nothing joins.
+        chat.rewind(0);
+        chat.add_own("claude-code", Some("s1"), "late");
+        assert_eq!(chat.turns(), 0);
     }
 
     fn qa(q: &str, a: &str) -> (Value, Value) {

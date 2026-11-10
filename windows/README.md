@@ -680,7 +680,12 @@ even before the hooks of **Settings… → Agents → Claude Code** are installe
 nobody clicks, Claude Code denies the action: nothing is ever allowed on its own. The conversation continues the same Claude Code session
 until **New chat**, in one Claude Code process kept for the chat between
 messages (so each answer starts faster); **Stop** interrupts the answer without
-ending it, and the process ends after 10 minutes without a message. A message
+ending it, and the process ends after 10 minutes without a message (up to 3
+hours while a command or an agent it started runs in the background). When
+Claude Code answers by itself between two messages (a command it left running
+in the background ends, an agent it started reports), that answer joins its
+last one in the chat, is saved with it, and the closed island says so; a
+message sent meanwhile goes once it is written. A message
 sent while Claude is still answering waits in the field and goes as soon as the
 answer ends. Install Claude Code and run `claude` once in a terminal to
 sign in before using it. Its **Effort** is a slider under the models, from
