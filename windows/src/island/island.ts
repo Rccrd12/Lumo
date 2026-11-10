@@ -1955,12 +1955,12 @@ export class Island {
       ? computerCompact("top").bot
       : botPosition(State.mode, State.view, this.height.value, State.uploadProgress, this.width.value,
         State.uploadNames.length > 1));
-    // Only his eyes, open or closed island alike (the island is his body).
-    this.engine.eyesOnly = State.mode !== "hidden" && !this.onlyLumo
-      && (notch != null || State.mode === "compact");
+    // Only his eyes, open or closed island alike (the island is his body),
+    // and in the short pill while Claude uses the computer, in its middle.
+    this.engine.eyesOnly = State.mode !== "hidden" && (notch != null || State.mode === "compact");
     if (this.engine.eyesOnly && State.mode === "compact") {
       p.diameter = NEW_LOOK_COMPACT_DIAMETER;
-      p.cx += 4;
+      if (!this.onlyLumo) p.cx += 4;
     }
     // The new look's light along the island's edge (look-new.css), in Lumo's colour.
     const light = State.mode === "hidden" ? "transparent" : edgeLightColor(State.shownState);
