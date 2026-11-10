@@ -68,7 +68,8 @@ Every action that needs a permission is approved by the user in the island, so a
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
-    crate::chat::math_note!()
+    crate::chat::math_note!(),
+    crate::chat::rich_note!()
 );
 
 /// Added instead when the chat may use the computer (Settings → Chat → Let
@@ -83,7 +84,8 @@ When the user shares the folder open in File Explorer, its path and listing are 
 Lumo shows the user your plan on its Plan island. So whenever the user gives you a job that takes more than one step (writing code, creating or changing files, running several commands), your very first tool call must be TaskCreate, once for each step of your plan (or TodoWrite with the whole list, when that is the tool you have; load them with ToolSearch first if they are deferred), before any other tool. Then, as you work, mark each step in_progress when you start it and completed when it is done (TaskUpdate). Do this even for small jobs, and never write the plan as text instead. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
-    crate::chat::math_note!()
+    crate::chat::math_note!(),
+    crate::chat::rich_note!()
 );
 
 /// Lumo's computer use tools that only look: Claude Code runs them without asking.
@@ -1775,6 +1777,8 @@ mod tests {
         }
         assert!(APPEND_PROMPT.contains("set_timer") && APPEND_PROMPT.contains("Lumo's listen tool") && APPEND_PROMPT.contains("[[listen"));
         assert!(COMPUTER_PROMPT.contains("set_timer"));
+        // The chat's rich blocks, with or without the computer.
+        assert!(APPEND_PROMPT.contains(crate::chat::rich_note!()) && COMPUTER_PROMPT.contains(crate::chat::rich_note!()));
     }
 
     #[test]

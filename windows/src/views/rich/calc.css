@@ -1,0 +1,249 @@
+/* The ```lumo-calc and ```lumo-plot cards (views/rich/calc.ts): sliders
+   with a track filled up to the thumb, the calculator's results in small
+   boxes beside them, the chart a low strip of canvas over its sliders. */
+
+/* The formula on the right of the top line, small and quiet. One too long
+   for its room fades out at the card's edge instead of being cut through a
+   letter: the fade covers only the line's own right padding, which this box
+   takes over, so a formula that fits ends where it would and never fades. */
+.rc-head-tex {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 55%;
+  overflow: hidden;
+  white-space: nowrap;
+  margin-right: -8px;
+  padding-right: 8px;
+  font-size: 13px;
+  color: #b0b5be;
+  -webkit-mask-image: linear-gradient(to left, transparent, #000 8px);
+  mask-image: linear-gradient(to left, transparent, #000 8px);
+}
+
+/* ── Sliders ───────────────────────────────────────────────────────────── */
+
+.rc-slider {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  min-width: 0;
+}
+
+.rc-slider-top {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font: 400 11.5px var(--font);
+  color: #8e939c;
+}
+
+.rc-slider-sym {
+  flex: none;
+  min-width: 12px;
+  font-size: 13px;
+  color: #e8e9ec;
+}
+
+.rc-slider-name {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-slider-val {
+  flex: none;
+  font: 600 11.5px var(--font);
+  color: #e8e9ec;
+  font-variant-numeric: tabular-nums;
+  background: rgba(255, 255, 255, 0.06);
+  border-radius: 6px;
+  padding: 1px 7px;
+}
+
+/* Spelled out enough to win over the app's own range rule (style.css): a
+   line of 3px under a track of 4px, the filled part in the accent. The
+   input reaches 5px over the line and 6px under it, so the thumb is easy to
+   catch, and its margins give that room back to the layout. */
+.rc-card input.rc-range {
+  -webkit-appearance: none;
+  appearance: none;
+  display: block;
+  box-sizing: content-box;
+  width: 100%;
+  min-width: 0;
+  height: 3px;
+  padding: 5px 0 6px;
+  margin: -5px 0 -6px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2) content-box;
+  cursor: pointer;
+}
+
+.rc-card input.rc-range::-webkit-slider-runnable-track {
+  height: 4px;
+  border-radius: 2px;
+  background: linear-gradient(90deg, var(--rc-accent) var(--p, 0%), rgba(255, 255, 255, 0.1) var(--p, 0%));
+}
+
+.rc-card input.rc-range::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 11px;
+  height: 11px;
+  margin-top: -5px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 0 0 3px rgba(143, 199, 255, 0.25);
+  transition: box-shadow 0.12s ease;
+}
+
+.rc-card input.rc-range:hover::-webkit-slider-thumb {
+  box-shadow: 0 0 0 4px rgba(143, 199, 255, 0.32);
+}
+
+.rc-card input.rc-range:focus {
+  outline: none;
+}
+
+/* The keyboard's ring hugs the thumb, so at the end of the track it stays
+   clear of the value above it. */
+.rc-card input.rc-range:focus-visible::-webkit-slider-thumb {
+  box-shadow: 0 0 0 2px var(--rc-accent), 0 0 0 4px rgba(143, 199, 255, 0.25);
+}
+
+/* ── Calculator ────────────────────────────────────────────────────────── */
+
+.rc-calc-body {
+  display: flex;
+  gap: 14px;
+  padding: 8px 12px 12px;
+  min-width: 0;
+}
+
+.rc-calc-in {
+  flex: 1 1 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rc-calc-out {
+  flex: 0 0 168px;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  align-content: start;
+  gap: 6px;
+  min-width: 0;
+}
+
+/* More than three results: two columns, so the card stays low. */
+.rc-calc-out.two {
+  flex-basis: 272px;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.rc-out {
+  min-width: 0;
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  padding: 7px 10px 8px;
+}
+
+.rc-out-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  font: 400 11px var(--font);
+  color: var(--dim-3);
+}
+
+.rc-out-sym {
+  flex: none;
+  display: flex;
+}
+
+.rc-out-sym math {
+  font-size: 12.5px;
+  color: #b0b5be;
+}
+
+.rc-out-label {
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-out-row {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  min-width: 0;
+  white-space: nowrap;
+}
+
+/* The number is never cut (7.2E6 cut to 7.2… would read as 7): the unit
+   gives up its room first. */
+.rc-out-num {
+  flex: none;
+  font: 600 20px var(--font);
+  color: var(--ink-2);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.rc-out-unit {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font: 500 12px var(--font);
+  color: var(--rc-accent);
+}
+
+/* ── Chart ─────────────────────────────────────────────────────────────── */
+
+/* The chart stops a little short of the card's right edge, under the end
+   of the sliders' values rather than their edge, as in the card's design. */
+.rc-plot-frame {
+  padding: 8px 36px 0 12px;
+  min-width: 0;
+}
+
+.rc-plot-canvas {
+  display: block;
+  width: 100%;
+  height: 92px;
+  border-radius: 6px;
+  cursor: crosshair;
+}
+
+.rc-plot-in {
+  display: flex;
+  gap: 18px;
+  padding: 8px 12px 12px;
+  min-width: 0;
+}
+
+.rc-plot-in > .rc-slider {
+  flex: 1 1 0;
+}
+
+/* Three or four sliders wrap to a second row when the island is narrow. */
+.rc-plot-in.many {
+  flex-wrap: wrap;
+  row-gap: 6px;
+}
+
+.rc-plot-in.many > .rc-slider {
+  min-width: 120px;
+}
+
+/* A chart with no sliders still ends with the card's padding. */
+.rc-plot > .rc-plot-frame:last-child {
+  padding-bottom: 12px;
+}

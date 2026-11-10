@@ -1,0 +1,275 @@
+/* The diff card (diff-card.ts): a ```diff block in an answer. Its greens and
+   reds are those of the agents' diffs (style.css, .diff-line). */
+
+/* The path. When it is too long the folder is cut first, so that the file's
+   name stays in sight; the title holds it whole. */
+.rc-diff-path {
+  display: flex;
+  min-width: 0;
+  font: 500 11.5px var(--mono);
+  font-variant-ligatures: none;
+  color: #e8e9ec;
+  white-space: nowrap;
+}
+
+.rc-diff-path > span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* The folder is cut at its start ("…/nested/folder/"): the folders nearest
+   the file are the ones that tell it apart. */
+.rc-diff-path .dir {
+  flex: 0 1000 auto;
+  min-width: 2.5em;
+  direction: rtl;
+  color: var(--dim-3);
+}
+
+/* The name never shrinks while the folder can; past that it is cut too. */
+.rc-diff-path .name {
+  flex: none;
+  max-width: 100%;
+}
+
+.rc-diff-path .dir + .name {
+  max-width: calc(100% - 2.5em);
+}
+
+.rc-diff-plus,
+.rc-diff-minus {
+  flex: none;
+  font: 600 10.5px var(--mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-diff-plus {
+  color: var(--green-2);
+}
+
+.rc-diff-minus {
+  color: var(--red-text);
+  margin-right: 4px;
+}
+
+/* Unified / Side by side. */
+.rc-diff-view {
+  flex: none;
+  display: inline-flex;
+  background: rgba(255, 255, 255, 0.05);
+  border-radius: 7px;
+  padding: 2px;
+  gap: 1px;
+}
+
+.rc-diff-view button {
+  font: 500 10.5px var(--font);
+  color: #7d838e;
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  cursor: pointer;
+}
+
+.rc-diff-view button:hover:not(.on) {
+  color: #c9ccd2;
+}
+
+.rc-diff-view button.on {
+  background: rgba(255, 255, 255, 0.11);
+  color: #e8e9ec;
+  cursor: default;
+}
+
+.rc-diff-view button:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 0;
+}
+
+/* The copy button sits with the card's buttons, their shape. */
+.rc-diff .rc-head .md-copy {
+  flex: none;
+  border-radius: 7px;
+  color: #c9ccd2;
+}
+
+.rc-diff .rc-head .md-copy:hover {
+  background: rgba(255, 255, 255, 0.11);
+}
+
+.rc-diff .rc-head .md-copy.done {
+  color: var(--green);
+}
+
+/* svg() sizes its icons inline (11px for the copy icon): the card's are 12px. */
+.rc-diff .rc-head .md-copy svg {
+  width: 12px !important;
+  height: 12px !important;
+}
+
+/* The lines. A long change scrolls inside the card rather than filling the
+   chat, and in one column a long line scrolls sideways. */
+.rc-diff-body {
+  margin: 8px 0;
+  padding: 2px 0;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+  max-height: 360px;
+  overflow: auto;
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.12) transparent;
+}
+
+/* As wide as the longest row, and at least the card: every row's colour
+   reaches the end however far it scrolls. */
+.rc-diff-rows {
+  width: max-content;
+  min-width: 100%;
+}
+
+.rc-diff-rows .rc-dl .dt {
+  overflow: visible;
+  text-overflow: clip;
+}
+
+/* While more lines are below, the bottom fades out. The fade follows the
+   scroll itself (a scroll timeline, no timer), and a change that fits has no
+   timeline, so no fade. */
+@property --rc-diff-fade {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+
+@keyframes rc-diff-fade {
+  0%,
+  85% {
+    --rc-diff-fade: 28px;
+  }
+  100% {
+    --rc-diff-fade: 0px;
+  }
+}
+
+@supports (animation-timeline: scroll()) {
+  .rc-diff-body {
+    mask-image: linear-gradient(to bottom, #000 calc(100% - var(--rc-diff-fade)), transparent);
+    animation: rc-diff-fade linear both;
+    animation-timeline: scroll(self block);
+  }
+}
+
+.rc-diff-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+}
+
+.rc-diff-col {
+  min-width: 0;
+  padding-top: 2px;
+}
+
+.rc-diff-col + .rc-diff-col {
+  border-left: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.rc-diff-cap {
+  display: block;
+  font: 600 9.5px var(--font);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #5f646d;
+  padding: 2px 10px 3px;
+}
+
+.rc-dl {
+  display: flex;
+  height: 17px;
+  font: 400 11px/17px var(--mono);
+  font-variant-ligatures: none;
+  color: #9aa0aa;
+  white-space: pre;
+}
+
+.rc-dl .dn {
+  flex: 0 0 26px;
+  text-align: end;
+  color: #3f444c;
+  padding-right: 6px;
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Wider numbers keep a few pixels from the card's edge. */
+.rc-diff-w4 .rc-dl .dn {
+  flex-basis: 36px;
+}
+
+.rc-diff-w5 .rc-dl .dn {
+  flex-basis: 42px;
+}
+
+.rc-diff-w6 .rc-dl .dn {
+  flex-basis: 48px;
+}
+
+.rc-diff-w7 .rc-dl .dn {
+  flex-basis: 54px;
+}
+
+.rc-dl .ds {
+  flex: 0 0 14px;
+  color: #4b5563;
+}
+
+.rc-dl .dt {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  padding-right: 8px;
+  user-select: text;
+}
+
+.rc-diff-split .rc-dl .dt {
+  padding-left: 4px;
+}
+
+.rc-dl.add {
+  background: rgba(34, 197, 94, 0.11);
+  color: #a7f3c4;
+}
+
+.rc-dl.add .ds,
+.rc-dl.add .dn {
+  color: var(--green-2);
+}
+
+.rc-dl.del {
+  background: rgba(244, 80, 94, 0.11);
+  color: #fcb4b4;
+}
+
+.rc-dl.del .ds,
+.rc-dl.del .dn {
+  color: var(--red-text);
+}
+
+/* An empty row facing a line on the other side. */
+.rc-dl.void {
+  background: repeating-linear-gradient(135deg, rgba(255, 255, 255, 0.025) 0 4px, transparent 4px 8px);
+}
+
+/* Between two runs of lines (or two files): a dim row. */
+.rc-dl.gap {
+  margin: 2px 0;
+  background: rgba(255, 255, 255, 0.025);
+  color: #5f646d;
+}
+
+.rc-dl.gap .dt {
+  padding-left: 10px;
+  font-size: 10.5px;
+  user-select: none;
+}

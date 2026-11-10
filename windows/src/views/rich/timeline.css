@@ -1,0 +1,297 @@
+/* The ```lumo-timeline card (views/rich/timeline.ts): events as points on a
+   line, their names above and below it in turn, the open one's detail under
+   it; or a plan, a bar per phase under a row of dates, with its deadline and
+   today's line. */
+
+.rc-tl:focus-visible {
+  outline: 1px solid rgba(143, 199, 255, 0.45);
+  outline-offset: 1px;
+}
+
+/* ── Events ──────────────────────────────────────────────────────────────── */
+
+.rc-tl-track {
+  position: relative;
+  height: 104px;
+  margin: 4px 0 0;
+}
+
+.rc-tl-line {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 52px;
+  height: 2px;
+  background: linear-gradient(90deg, rgba(143, 199, 255, 0.05), rgba(143, 199, 255, 0.35) 8%, rgba(143, 199, 255, 0.35) 92%, rgba(143, 199, 255, 0.05));
+}
+
+/* A point: as wide as its dot, centred on its date, its stem and name hung around it. */
+.rc-tl-ev {
+  position: absolute;
+  top: 0;
+  height: 104px;
+  width: 10px;
+  padding: 0;
+  margin: 0 0 0 -5px;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.rc-tl-ev:focus {
+  outline: none;
+}
+
+.rc-tl-dot {
+  position: absolute;
+  left: 0;
+  top: 48px;
+  width: 10px;
+  height: 10px;
+  border-radius: 5px;
+  background: #0e0f11;
+  border: 2px solid var(--rc-accent);
+  box-sizing: border-box;
+}
+
+.rc-tl-ev:hover .rc-tl-dot {
+  background: rgba(143, 199, 255, 0.35);
+}
+
+.rc-tl-ev:focus-visible .rc-tl-dot {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 2px;
+}
+
+.rc-tl-ev::before {
+  content: "";
+  position: absolute;
+  left: 4.5px;
+  width: 1px;
+  background: rgba(143, 199, 255, 0.25);
+}
+
+.rc-tl-ev.up::before {
+  top: 32px;
+  height: 16px;
+}
+
+.rc-tl-ev.down::before {
+  top: 58px;
+  height: 16px;
+}
+
+.rc-tl-lab {
+  position: absolute;
+  left: 5px;
+  transform: translateX(calc(-50% + var(--dx, 0px)));
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  white-space: nowrap;
+  font: 400 11px var(--font);
+  line-height: normal;
+  color: #9398a1;
+}
+
+/* A name too long for the card ends in an ellipsis; the point's title has it whole. */
+.rc-tl-lab span {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-tl-lab b {
+  font: 600 12px var(--font);
+  color: var(--rc-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-tl-ev.up .rc-tl-lab {
+  top: 2px;
+}
+
+.rc-tl-ev.down .rc-tl-lab {
+  top: 74px;
+  flex-direction: column-reverse;
+}
+
+.rc-tl-ev.sel .rc-tl-dot {
+  background: var(--rc-accent);
+  box-shadow: 0 0 0 4px rgba(143, 199, 255, 0.18), 0 0 10px rgba(143, 199, 255, 0.8);
+}
+
+.rc-tl-ev.sel .rc-tl-lab span {
+  color: #f1f2f4;
+  font-weight: 600;
+}
+
+.rc-tl-ev.dim .rc-tl-lab {
+  opacity: 0.55;
+}
+
+/* Too close to the one before on its side: only the date, or only the dot. */
+.rc-tl-ev.short .rc-tl-lab span,
+.rc-tl-ev.bare .rc-tl-lab {
+  visibility: hidden;
+}
+
+.rc-tl-detail {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 8px 8px;
+  padding: 7px 8px 7px 10px;
+  background: #141518;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 9px;
+  font: 400 12px/1.45 var(--font);
+  color: #9aa0aa;
+  min-height: 24px;
+}
+
+.rc-tl-detail > [hidden] {
+  display: none;
+}
+
+.rc-tl-detail b,
+.rc-tl-detail strong {
+  color: #f1f2f4;
+  font-weight: 600;
+}
+
+.rc-tl-detail.hint {
+  justify-content: center;
+  text-align: center;
+  color: #5f646d;
+  font-size: 11px;
+  background: transparent;
+  border-style: dashed;
+}
+
+.rc-tl-year {
+  flex: none;
+  font: 700 15px var(--font);
+  color: var(--rc-accent);
+  font-variant-numeric: tabular-nums;
+}
+
+.rc-tl-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  user-select: text;
+}
+
+/* ── Plan ────────────────────────────────────────────────────────────────── */
+
+.rc-tl-plan {
+  position: relative;
+  margin: 4px 0 6px;
+}
+
+.rc-tl-tick {
+  position: absolute;
+  top: 2px;
+  bottom: 4px;
+  font: 400 10px var(--font);
+  line-height: normal;
+  color: #5f646d;
+  padding-left: 4px;
+  border-left: 1px solid rgba(255, 255, 255, 0.07);
+  box-sizing: border-box;
+  white-space: nowrap;
+}
+
+.rc-tl-bar {
+  position: absolute;
+  height: 18px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  box-sizing: border-box;
+  font: 500 11px var(--font);
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.rc-tl-bar span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-tl-bar.done {
+  background: rgba(143, 199, 255, 0.13);
+  color: var(--rc-accent);
+}
+
+.rc-tl-bar.cur {
+  background: var(--rc-accent);
+  color: #0b1a2a;
+  font-weight: 600;
+  box-shadow: 0 0 10px rgba(143, 199, 255, 0.35);
+}
+
+.rc-tl-bar.todo {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #b0b5be;
+}
+
+/* A deadline: a diamond, its name on the side away from the card's edge. */
+.rc-tl-mile {
+  position: absolute;
+  display: flex;
+  flex-direction: row-reverse;
+  align-items: center;
+  gap: 6px;
+  height: 18px;
+  font: 600 11px var(--font);
+  white-space: nowrap;
+  color: #f5a524;
+}
+
+.rc-tl-mile.right {
+  flex-direction: row;
+}
+
+.rc-tl-mile span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.rc-tl-mile i {
+  flex: none;
+  width: 10px;
+  height: 10px;
+  background: #f5a524;
+  transform: rotate(45deg);
+  border-radius: 2px;
+  box-shadow: 0 0 8px rgba(245, 165, 36, 0.6);
+}
+
+.rc-tl-today {
+  position: absolute;
+  top: 14px;
+  bottom: 0;
+  width: 0;
+  border-left: 1.5px dashed rgba(255, 255, 255, 0.5);
+  pointer-events: none;
+}
+
+.rc-tl-today span {
+  position: absolute;
+  bottom: -2px;
+  left: 4px;
+  font: 600 9.5px var(--font);
+  line-height: normal;
+  color: #e8e9ec;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}

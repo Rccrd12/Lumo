@@ -243,6 +243,13 @@ interface Piece {
 
 const clamp = (x: number) => (x < 0 ? 0 : x > 1 ? 1 : x);
 
+/**
+ * The letters' spans laid so far. A card, image or callout stays the same
+ * node from one draw to the next (markdown.ts), so its letters may already be
+ * in spans: they are counted again as they are, never wrapped a second time.
+ */
+const laid = new WeakSet<Element>();
+
 /** One answer being written, drawn into one element at a time. */
 export class Ink {
   private into: HTMLElement | null = null;
@@ -384,6 +391,7 @@ export class Ink {
                 const s = document.createElement("span");
                 s.textContent = ch;
                 s.style.opacity = "0";
+                laid.add(s);
                 frag.append(s);
                 pieces.push({ el: s, at: count, kind: "letter", weight: 1 });
               }
@@ -395,6 +403,13 @@ export class Ink {
         }
         if (child.nodeType !== 1) continue;
         const el = child as Element;
+        if (laid.has(el)) {
+          // A letter laid in an earlier draw: past the edge it shows, otherwise the edge paints it again.
+          if (count < from) (el as HTMLElement).style.opacity = "";
+          else pieces.push({ el, at: count, kind: "letter", weight: 1 });
+          count++;
+          continue;
+        }
         const tag = el.tagName.toLowerCase();
         if (tag === "button" || tag === "svg") continue;
         if (tag === "math" || el.classList.contains("md-math") || el.classList.contains("md-code")) {
@@ -402,16 +417,27 @@ export class Ink {
           const weight = el.classList.contains("md-code") ? Math.max(1, (el.textContent ?? "").length) : display ? DISPLAY_WEIGHT : INLINE_WEIGHT;
           const swept = display ? el.querySelector("math") ?? el : el;
           if (count + weight > from) pieces.push({ el: swept, at: count, kind: "sweep", weight });
+          else Ink.clear(swept);
           count += weight;
           continue;
         }
-        if (el.classList.contains("md-pre") && count + 6 > from) pieces.push({ el, at: count, kind: "box", weight: 6 });
+        if (el.classList.contains("md-pre")) {
+          if (count + 6 > from) pieces.push({ el, at: count, kind: "box", weight: 6 });
+          else (el as HTMLElement).style.opacity = "";
+        }
         walk(el);
       }
     };
     walk(into);
     this.letters = count;
     this.pieces = pieces;
+  }
+
+  /** What paint left on a node the edge is now past (a node kept from an earlier draw). */
+  private static clear(el: Element) {
+    const style = (el as HTMLElement).style;
+    style.removeProperty("-webkit-mask-image");
+    style.removeProperty("mask-image");
   }
 
   private paint() {

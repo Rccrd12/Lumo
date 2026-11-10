@@ -88,7 +88,8 @@ Lumo may also list the windows and the documents open on the user's computer, wi
 Lumo shows the user your plan on its Plan island: whenever the user gives you a job that takes more than one step, keep your plan up to date with your plan tool as you go, and do not write the plan in your answer. ",
     crate::chat::timer_tool_note!(),
     crate::chat::listen_tool_note!(),
-    crate::chat::math_note!()
+    crate::chat::math_note!(),
+    crate::chat::rich_note!()
 );
 
 /// In front of a question asked in Plan only.
@@ -1083,6 +1084,12 @@ mod tests {
     fn feed(run: &mut Run, line: &str) -> bool {
         let v: Value = serde_json::from_str(line).unwrap();
         run.feed(v["method"].as_str().unwrap(), &v["params"])
+    }
+
+    #[test]
+    fn the_instructions_teach_the_chats_rich_blocks() {
+        assert!(INSTRUCTIONS.contains(crate::chat::rich_note!()));
+        assert!(INSTRUCTIONS.contains(crate::chat::math_note!()));
     }
 
     #[test]

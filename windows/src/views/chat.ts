@@ -73,7 +73,7 @@
 
 import { h, svg, clear, gentleWheel } from "./dom";
 import { ICONS } from "./icons";
-import { copyButton, renderMarkdown, writeClipboard } from "./markdown";
+import { checklistsIn, copyButton, renderMarkdown, writeClipboard } from "./markdown";
 import type { MenuEntry as MenuItem } from "./context-menu";
 import { ownMenu } from "./own-menu";
 import { renderAnswer } from "./context-card";
@@ -90,7 +90,12 @@ import {
 } from "../core/providers";
 import { Sound } from "../core/sound";
 import { State, planAskInChat, type ActiveChatRun, type ChatMessage } from "../core/state";
-import { chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setCompact, type ChatHit, type SavedChat } from "../core/chats";
+import {
+  chatChecklists, chatTitle, compactOf, deleteChat, loadChats, saveChat, searchChats, setChatChecklists, setCompact, type ChatHit, type SavedChat,
+} from "../core/chats";
+import {
+  checklistNote, lineagesOf, listsInChat, messageScope, nextMessage, noteChatChecklists, withTold, type Checklist,
+} from "../core/checklists";
 import {
   addChatFile, aiKind, chatCopies, chatFiles, dropChatFiles, keptCopies, noteSentCopies, filesByKind, removeChatFile, rewindChatFiles, type ChatFile, type ChatFileKind,
 } from "../core/chat-files";
@@ -264,6 +269,8 @@ interface BubbleOptions {
   dropped?: boolean;
   /** A tool workshop's answer: the draft's blocks show as one line naming it. */
   workshop?: boolean;
+  /** Which message it is (core/checklists.ts messageScope): its cards keep their own state. */
+  scope?: string;
 }
 
 /**
@@ -271,6 +278,9 @@ interface BubbleOptions {
  * question, Edit) buttons show under the mouse; Copy takes the text as it was
  * written, Markdown included.
  */
+/** Sends a message as if typed, for a card's button (the quiz's next questions): set once the chat is built. */
+let sendFromCard: ((text: string) => void) | undefined;
+
 function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
   const actions = h("div", { class: "msg-actions" }, copyButton(message.content, "msg-action"));
   const state = opts.editing ? " editing" : opts.dropped ? " dropped" : "";
@@ -296,7 +306,7 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
     return h("div", { class: `chat-row${state}` }, h("div", { class: "reply-wrap" }, h("div", { class: "msg-failed", text: message.content })));
   }
   const reply = h("div", { class: "reply" });
-  drawReply(reply, message.content, !!opts.workshop);
+  drawReply(reply, message.content, !!opts.workshop, opts.scope);
   // A stopped answer says so on a line of its own, Copy beside it; otherwise
   // Copy floats over the answer's bottom right corner and takes no room.
   const foot = message.stopped
@@ -307,13 +317,54 @@ function bubble(message: ChatMessage, opts: BubbleOptions = {}): HTMLElement {
 }
 
 /**
- * A question as sent: Markdown and TeX as in the answers, inside its bubble.
- * The prompt box stays plain text; Copy and Edit take what was written.
+ * A question as sent: Markdown and TeX as in the answers, inside its bubble,
+ * but none of the answers' cards (plainQuestion). The prompt box stays plain
+ * text; Copy and Edit take what was written.
  */
 function sentBubble(text: string): HTMLElement {
   const el = h("div", { class: "bubble md" });
-  renderMarkdown(el, text);
+  renderMarkdown(el, plainQuestion(text));
+  unmark(el);
   return el;
+}
+
+/** Takes plainQuestion's marks back out of the drawn text, so a selection copies what was written. */
+function unmark(node: Node): void {
+  if (node.nodeType === 3) {
+    const text = node as Text;
+    if (text.data.includes(NOT_A_CARD)) text.data = text.data.split(NOT_A_CARD).join("");
+    return;
+  }
+  for (const child of Array.from(node.childNodes)) unmark(child);
+}
+
+/** An invisible mark that keeps a line from being read as a card. */
+const NOT_A_CARD = "\u2060";
+
+/**
+ * A question's Markdown with what would make a card in an answer kept as
+ * the text it was before the cards: a task list (`- [ ] a`) stays a list of
+ * bullets, an image line (`![a](https://…)`) a line of text, never fetched,
+ * an alert (`> [!NOTE]`) a quote, and a ```diff or ```lumo-… block code. An
+ * invisible mark goes before what the cards look for, outside code blocks.
+ */
+export function plainQuestion(text: string): string {
+  let code = false;
+  return text
+    .replace(/\r\n?/g, "\n")
+    .split("\n")
+    .map((line) => {
+      if (line.startsWith("```")) {
+        code = !code;
+        return code ? `\`\`\`${NOT_A_CARD}${line.slice(3)}` : line;
+      }
+      if (code) return line;
+      return line
+        .replace(/^(\s*)(?=!\[)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*>\s*)(?=\[!)/, `$1${NOT_A_CARD}`)
+        .replace(/^(\s*[-*+][ \t]+)(?=\[[ xX]\])/, `$1${NOT_A_CARD}`);
+    })
+    .join("\n");
 }
 
 /** What the copies' box under an answer says (workspace.rs). */
@@ -687,32 +738,81 @@ function typingDots(label: string): HTMLElement {
 }
 
 /**
- * An answer as far as it is written, without Lumo's lines; in the tool
- * workshop, the tool's blocks give way to a line saying it is being written.
+ * A finished answer's text, in its bubble. `scope`: the message it is, so its
+ * cards keep their state. `streaming`: the ink is still uncovering it (the
+ * text is cut short), so a card not closed yet waits and none can send.
  */
-/** A finished answer's text, in its bubble. */
-function drawReply(reply: HTMLElement, content: string, workshop: boolean) {
+function drawReply(reply: HTMLElement, content: string, workshop: boolean, scope?: string, streaming = false) {
   if (workshop) {
     const shown = stripDraft(content);
-    renderMarkdown(reply, shown.text);
+    renderMarkdown(reply, shown.text, { scope, streaming });
     const draft = shown.draft ? draftIn(content) : null;
     if (draft) reply.append(draftChip(draft.name));
   } else {
-    renderAnswer(reply, content);
+    renderAnswer(reply, content, { scope, streaming, send: streaming ? undefined : sendFromCard });
   }
 }
 
-function drawAnswer(into: HTMLElement, text: string, workshop: boolean) {
+/**
+ * An answer as far as it is written, without Lumo's lines; in the tool
+ * workshop, the tool's blocks give way to a line saying it is being written.
+ * `scope`: the message it will be, so its cards keep their state when the
+ * finished answer replaces it.
+ */
+function drawAnswer(into: HTMLElement, text: string, workshop: boolean, scope: string) {
   const shown = takeListens(takeTimers(text).text).text;
   if (!workshop) {
-    renderAnswer(into, shown);
+    renderAnswer(into, shown, { streaming: true, scope });
     return;
   }
   const words = stripDraft(shown);
-  renderMarkdown(into, words.text);
+  renderMarkdown(into, words.text, { streaming: true, scope });
   if (words.writing || words.draft) {
     into.append(h("div", { class: "forge-writing" }, h("i"), h("span", { text: t(FORGE_STRINGS.writing) })));
   }
+}
+
+/** The checklists read from each answer's text, so a redraw doesn't read them again. */
+const answerLists = new Map<string, Checklist[]>();
+const ANSWER_LISTS_LIMIT = 200;
+
+function listsOfAnswer(text: string): Checklist[] {
+  let lists = answerLists.get(text);
+  if (!lists) {
+    lists = checklistsIn(text);
+    if (answerLists.size >= ANSWER_LISTS_LIMIT) answerLists.clear();
+    answerLists.set(text, lists);
+  }
+  return lists;
+}
+
+/**
+ * Tells core/checklists.ts which checklists `chatId`'s answers hold, the one
+ * being written included, before they are drawn: a list written again
+ * further down shows as updated there. In the tool workshop, only from what
+ * its answers show: the tool's blocks are not drawn.
+ */
+function noteChecklists(chatId: string, history: ChatMessage[], writing?: string) {
+  const workshop = isWorkshopChat(chatId);
+  const shown = (text: string) => (workshop ? stripDraft(text).text : text);
+  const writ = writing ? checklistsIn(shown(writing), true) : undefined;
+  noteChatChecklists(chatId, listsInChat(history, (text) => listsOfAnswer(shown(text)), writ));
+}
+
+/**
+ * What the user ticked in `chatId`'s checklists, when it differs from what
+ * the AI last wrote and it was not told yet: lines to send with the question
+ * (never shown in its bubble, nor in Copy or Edit), and what to remember as
+ * told once the question went (checklistsTold).
+ */
+function checklistsToTell(chatId: string, history: ChatMessage[]): { text: string; told: Record<string, string> } {
+  noteChecklists(chatId, history);
+  return checklistNote(lineagesOf(chatId), chatChecklists(chatId));
+}
+
+/** The AI got the question and its checklist lines: they are not sent again. */
+function checklistsTold(chatId: string, told: Record<string, string>) {
+  if (Object.keys(told).length) setChatChecklists(chatId, withTold(chatChecklists(chatId), told));
 }
 
 /** A chip above the chat (the message being edited), with a way to leave it. */
@@ -1769,15 +1869,15 @@ export function buildPrompt(
    * words, written from the start; otherwise an answer already under way
    * shows as far as it got at once, and only what comes next is written.
    */
-  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean) {
+  function writeAnswer(chat: string, into: HTMLElement, text: string, fresh: boolean, scope: string) {
     const workshop = isWorkshopChat(chat);
     if (!inkWorks()) {
-      drawAnswer(into, text, workshop);
+      drawAnswer(into, text, workshop, scope);
       return;
     }
     if (fresh || !ink || inkChat !== chat) {
       ink?.stop();
-      ink = new Ink((el, words) => drawAnswer(el, words, workshop));
+      ink = new Ink((el, words) => drawAnswer(el, words, workshop, scope));
       inkChat = chat;
       ink.update(text);
       if (!fresh) ink.skip();
@@ -3347,7 +3447,8 @@ export function buildPrompt(
       live = h("div", { class: "reply" });
       log.append(h("div", { class: "chat-row" }, live));
     }
-    writeAnswer(chat, live, text, fresh);
+    noteChecklists(chat, run.history, text);
+    writeAnswer(chat, live, text, fresh, messageScope(chat, nextMessage(run.history)));
     follow();
   });
 
@@ -3426,10 +3527,11 @@ export function buildPrompt(
   let queueShown = "";
 
   /** The question leaves the field and waits above it; a second one joins it. */
-  function enqueue(run: Run, text: string) {
+  function enqueue(run: Run, text: string, typed: boolean) {
     const before = queued.get(run.chatId);
     queued.set(run.chatId, before ? `${before}\n${text}` : text);
-    setInput("");
+    // A card's button leaves what is being typed in the field.
+    if (typed) setInput("");
     Sound.play("blip");
     drawQueue();
     drawSend();
@@ -3508,6 +3610,15 @@ export function buildPrompt(
    * and the screen alone. `queuedText`: the question that waited above the
    * field, sent as if typed, leaving what is typed now where it is.
    */
+  sendFromCard = (text) => {
+    // Not while a question is edited: sending it drops what follows it.
+    if (editing != null || preparing) return;
+    // While an answer is written, it waits above the field like a question typed.
+    const current = answering();
+    if (current) enqueue(current, text, false);
+    else void submit(text);
+  };
+
   async function submit(auto?: string, queuedText?: string) {
     const query = auto ?? queuedText ?? input.value.trim();
     const typed = auto == null && queuedText == null;
@@ -3541,7 +3652,7 @@ export function buildPrompt(
     // field and goes once it is done, but an edited one stops it and replaces it.
     const current = answering();
     if (current) {
-      if (!auto && editing == null) enqueue(current, query);
+      if (!auto && editing == null) enqueue(current, query, typed);
       if (auto || editing == null) return;
       const here = State.chatId;
       preparing = true;
@@ -3658,10 +3769,17 @@ export function buildPrompt(
 
     let outcome: "finished" | "error" | null = null;
     try {
-      const reply = await Bridge.chatSend(run.chatId, asked, context, screenContext);
+      // What the user ticked in the chat's checklists goes with the question,
+      // unseen. Not with a command the CLI runs (Claude Code's "/compact",
+      // agy's "/usage"), which would take it as its own words: it goes with
+      // the next question.
+      const command = !called && asked.trim().startsWith("/");
+      const ticked = auto || command ? null : checklistsToTell(run.chatId, run.history);
+      const reply = await Bridge.chatSend(run.chatId, ticked?.text ? `${asked}\n\n${ticked.text}` : asked, context, screenContext);
       // Stopped before anything was written: the question stays, unanswered,
       // and Rust kept nothing of it (the file goes with the next one).
       const recorded = !reply.stopped || reply.text !== "";
+      if (recorded && ticked) checklistsTold(run.chatId, ticked.told);
       if (recorded && reply.turns != null) question.turn = reply.turns - 2;
       // A timer the answer asked for starts now; its line is not shown.
       const timed = takeTimers(reply.text);
@@ -4306,8 +4424,13 @@ export function buildPrompt(
         if (count === 0) log.append(workshop ? forgeWelcome() : welcome());
         // What an edit would drop shows faded.
         const at = editing == null ? -1 : State.chatHistory.findIndex((m) => m.id === editing);
+        // Which checklists are lists written again further down, before any is drawn.
+        noteChecklists(State.chatId, State.chatHistory, run?.text);
+        let place = 0;
         State.chatHistory.forEach((m, i) => {
-          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop }));
+          // A message's scope is its place among those kept with the chat, as the checklists count them.
+          const scope = messageScope(State.chatId, m.failed ? -1 : place++);
+          log.append(bubble(m, { onEdit: startEdit, editing: i === at, dropped: at >= 0 && i > at, workshop, scope }));
         });
         // An answer just finished: the ink goes on in its bubble until all is uncovered.
         const last = State.chatHistory[State.chatHistory.length - 1];
@@ -4315,13 +4438,14 @@ export function buildPrompt(
         const lastReply = log.lastElementChild?.querySelector<HTMLElement>(".reply");
         if (inked && last?.role === "assistant" && !last.failed && lastReply) {
           inked.update(last.content, true);
-          inked.mount(lastReply, (el, words) => drawReply(el, words, workshop));
+          const scope = messageScope(State.chatId, place - 1);
+          inked.mount(lastReply, (el, words) => drawReply(el, words, workshop, scope, words.length < last.content.length));
         } else if (!run) dropInk();
         // The answer being written: its text so far, then the dots while it works.
         if (run?.text) {
           live = h("div", { class: "reply" });
           log.append(h("div", { class: "chat-row" }, live));
-          writeAnswer(run.chatId, live, run.text, false);
+          writeAnswer(run.chatId, live, run.text, false, messageScope(State.chatId, place));
         }
         if (run && (!run.text || run.dots)) log.append(typingDots(runLabel(run)));
         // The chat stays where it was read, or at its end when it is stuck

@@ -1,0 +1,277 @@
+/* The ```lumo-cards block (views/rich/cards.ts): small cards side by side,
+   sharing the width when they fit, scrolling sideways when they don't. */
+
+.rc-cards {
+  padding-bottom: 10px;
+}
+
+.rc-cards .rc-head {
+  padding-right: 12px;
+}
+
+/* The count says there are more than show: only while the row overflows. */
+.rc-cards:not(.more) .rc-cards-count {
+  display: none;
+}
+
+.rc-cards-clip {
+  position: relative;
+  margin-top: 8px;
+  min-width: 0;
+}
+
+/* The cards keep their order in every language; the text in them follows its own. */
+.rc-cards-row {
+  direction: ltr;
+  display: flex;
+  gap: 8px;
+  padding: 0 10px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  scroll-padding: 0 10px;
+  scrollbar-width: none;
+  overscroll-behavior-x: contain;
+}
+
+.rc-cards-row::-webkit-scrollbar {
+  display: none;
+}
+
+/* The card's frame; what it holds scrolls inside it when taller than the row allows. */
+.rc-mini {
+  flex: 1 0 176px;
+  min-width: 0;
+  max-height: 180px;
+  box-sizing: border-box;
+  overflow: hidden;
+  scroll-snap-align: start;
+  background: var(--card);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  border-radius: 10px;
+  display: flex;
+  flex-direction: column;
+}
+
+.rc-mini-in {
+  flex: 0 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  padding: 10px 11px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.rc-mini-in::-webkit-scrollbar {
+  display: none;
+}
+
+/* More below than shows: what the card holds fades out at its bottom, as the
+   row does at its edges; the card's frame stays. */
+.rc-mini.clipped .rc-mini-in {
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 24px), transparent);
+}
+
+/* Its parts never squeeze: past the room there is, they scroll. */
+.rc-mini-in > * {
+  flex: none;
+}
+
+.rc-mini-top {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-bottom: 3px;
+  min-width: 0;
+}
+
+.rc-mini-titles {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.rc-mini-title {
+  font: 600 12.5px var(--font);
+  color: var(--ink-2);
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+
+.rc-mini-sub {
+  font: 400 10.5px var(--font);
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+
+/* A row of data: its name on the left, its value on the right, a hairline above. */
+.rc-field {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  font: 400 11.5px var(--font);
+  padding-top: 4px;
+  border-top: 1px solid rgba(255, 255, 255, 0.05);
+}
+
+.rc-field-key {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: var(--dim-3);
+  overflow-wrap: anywhere;
+}
+
+.rc-field-val {
+  flex: 0 1 auto;
+  min-width: 0;
+  color: #d6d9de;
+  text-align: end;
+  overflow-wrap: anywhere;
+}
+
+.rc-mini-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 2px;
+  font: 400 11.5px/1.45 var(--font);
+  color: var(--dim);
+}
+
+.rc-mini-line {
+  display: block;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+  text-align: start;
+}
+
+.rc-mini strong {
+  color: #e8e9ec;
+}
+
+.rc-mini .md-code {
+  font-size: 10.5px;
+}
+
+/* ── Icons, drawn in code ───────────────────────────────────────────────── */
+
+.rc-planet {
+  --c: #c9c2b8;
+  position: relative;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--c), color-mix(in srgb, var(--c) 45%, #000) 70%);
+  box-shadow: 0 0 10px color-mix(in srgb, var(--c) 35%, transparent);
+}
+
+/* A ring reaches past the sphere: room for it beside the title. */
+.rc-planet.ring {
+  margin: 0 4px;
+}
+
+.rc-planet.ring::after {
+  content: "";
+  position: absolute;
+  left: -7px;
+  right: -7px;
+  top: 10px;
+  height: 6px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(240, 220, 170, 0.7);
+  transform: rotate(-14deg);
+}
+
+.rc-mono {
+  --c: #8fc7ff;
+  flex: none;
+  width: 26px;
+  height: 26px;
+  box-sizing: border-box;
+  border-radius: 8px;
+  display: grid;
+  place-items: center;
+  font: 700 12px var(--font);
+  white-space: nowrap;
+  color: var(--c);
+  background: color-mix(in srgb, var(--c) 14%, var(--card-flat));
+  border: 1px solid color-mix(in srgb, var(--c) 30%, transparent);
+}
+
+.rc-mono.emoji {
+  font-size: 14px;
+  font-weight: 400;
+}
+
+/* ── Fades and buttons at the edges ─────────────────────────────────────── */
+
+.rc-cards-clip::before,
+.rc-cards-clip::after {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 48px;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.rc-cards-clip::before {
+  left: 0;
+  background: linear-gradient(270deg, transparent, var(--card-flat) 85%);
+}
+
+.rc-cards-clip::after {
+  right: 0;
+  background: linear-gradient(90deg, transparent, var(--card-flat) 85%);
+}
+
+.rc-cards.more .rc-cards-clip:not(.at-start)::before,
+.rc-cards.more .rc-cards-clip:not(.at-end)::after {
+  opacity: 1;
+}
+
+.rc-cards-btn {
+  position: absolute;
+  top: 50%;
+  translate: 0 -50%;
+  z-index: 1;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: 12px;
+  display: none;
+  place-items: center;
+  color: #e8e9ec;
+  background: #23252a;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+}
+
+.rc-cards-btn:hover {
+  background: #2e3137;
+}
+
+.rc-cards-btn:focus-visible {
+  outline: 1px solid var(--rc-accent);
+  outline-offset: 1px;
+}
+
+.rc-cards-btn.prev {
+  left: 8px;
+}
+
+.rc-cards-btn.next {
+  right: 8px;
+}
+
+.rc-cards.more .rc-cards-clip:not(.at-start) .rc-cards-btn.prev,
+.rc-cards.more .rc-cards-clip:not(.at-end) .rc-cards-btn.next {
+  display: grid;
+}

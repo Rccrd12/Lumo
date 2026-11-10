@@ -76,6 +76,7 @@ mod tray;
 mod typing;
 mod unsloth_studio;
 mod updater;
+mod web_image;
 mod web_search;
 mod webview_drop;
 mod webview_memory;
@@ -1425,6 +1426,7 @@ pub fn run() {
             recap::recap_save_png,
             recap::recap_reveal_saved,
             updater::update_check,
+            web_image::web_image,
             updater::update_install,
             tools::tools_list,
             tools::tools_save,
