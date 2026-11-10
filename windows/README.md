@@ -108,7 +108,7 @@ usage, and the field to the chat. The chat is one field, with **+** for the
 rest and past chats in the top bar; **…** at the top right holds Settings,
 Sounds, Keep the island open, Wardrobe, Hide in the edge of the screen and
 Quit. The look of 0.17, with the ring of light and the tabs, is gone since
-0.20.2.
+0.21.0.
 
 | What you do | What happens |
 |---|---|
@@ -208,7 +208,7 @@ the inbox in Gmail or Outlook). **Live Activities** in the **…** menu and in
 the right-click menu puts them away, and brings them back.
 
 Up to 0.20.1 they were also a panel beside the open island that could be
-dragged off into a window of its own. Both are gone since 0.20.2: if you had
+dragged off into a window of its own. Both are gone since 0.21.0: if you had
 moved them out of the island, that window no longer opens, and they are on
 the home like everyone's. Settings → Island → Live Activities and Follow the
 island's height, which only that panel read, are gone with it.
@@ -259,7 +259,7 @@ quits).
 
 Up to 0.20.1 the plan was also a third island beside the main one, the Plan
 island, which could be dragged off into a window of its own. Both are gone
-since 0.20.2: if you had moved it out of the island, that window no longer
+since 0.21.0: if you had moved it out of the island, that window no longer
 opens, and the plan is in the chat and on the home like everyone's.
 
 ### Keyboard shortcuts
