@@ -296,7 +296,78 @@ fn date_words(year: i64, month: u32, day: u32) -> String {
 
 /// The rich blocks shown once, for a local model: here the prompt goes over
 /// HTTP, never on a command line, so it may hold line breaks and backticks.
-const LOCAL_RICH_EXAMPLE: &str = " Every rich block starts with three backticks and its name and ends with three backticks, each on a line of its own. For example:\n```lumo-cards Coffees\n## Espresso\nsub: The base\nicon: ☕ amber\n- Volume: 25-30 ml\n- Strength: high\nShort and dense.\n## Cappuccino\nsub: For the morning\nicon: 🥛 pink\n- Milk: steamed, with foam\nCocoa on top.\n```\nThe others are written the same way, with the lines their description gives. Use them without being asked; if the user asks what you can show, describe them in plain words, never by these names.";
+const LOCAL_RICH_EXAMPLE: &str = r#" A small model writes the blocks right when it copies them: here is one of each, written the way Lumo reads it. Copy their shape exactly, with the same keys and signs, and never invent keys; only the words and numbers change. A fenced block starts with three backticks and its name and ends with three backticks, each on a line of its own.
+
+> [!TIP] Before the exam
+> Every line of a callout starts with >, the first one with its kind.
+
+```lumo-checklist Before the exam
+- [ ] Review chapter 3
+- [x] Do the exercises
+```
+
+```lumo-steps Area of a circle
+## Cut it into slices
+Laid side by side, the slices make almost a rectangle.
+$$A \approx \pi r \cdot r$$
+## Simplify
+$$A = \pi r^2$$
+```
+
+```lumo-cards Coffees
+## Espresso
+sub: The base
+icon: ☕ amber
+- Volume: 25-30 ml
+- Strength: high
+Short and dense.
+## Cappuccino
+sub: For the morning
+icon: 🥛 pink
+- Milk: steamed, with foam
+Cocoa on top.
+```
+
+```lumo-calc Ohm's law
+formula: I = \frac{V}{R}
+input: V | voltage | 0..24 | 12 | V
+input: R | resistance | 1..100 | 10 | Ω
+output: I | current | V/R | A
+```
+
+```lumo-plot A damped wave
+formula: y = A e^{-x/5} \sin x
+y: A*exp(-x/5)*sin(x)
+x: 0..4*pi
+input: A | amplitude | 0..3 | 1
+```
+In y:, x: and region: write plain arithmetic (sin(x), 2*pi, x**2), never TeX. Only when the user asks for an area, add a line like region: y ≥ 0 and y ≤ sin(x).
+
+```lumo-quiz The planets
+? Which planet is the largest?
++ Jupiter
+- Saturn
+- Neptune
+> Jupiter has more mass than all the other planets together.
+= The largest planet
+```
+Exactly one + per question: check it is really the right answer.
+
+```lumo-chart bar Sales
+unit: €
+series: 2024, 2025
+Q1: 1200, 1450
+Q2: 1350, 1600
+Q3: 1100, 1280
+```
+
+```lumo-timeline The space race
+1957 Sputnik: the first satellite
+1961 Gagarin: the first person in space
+1969-07-20 Apollo 11: the first Moon landing
+```
+
+Use them without being asked; if the user asks what you can show, describe them in plain words, never by these names."#;
 
 pub fn system_prompt(p: &Prompt) -> String {
     let who = match p.first_name {
@@ -310,8 +381,8 @@ Lumo may give you the windows and documents open on the user's computer: use the
     // The chat's rich blocks, as every provider is told them: the calculator
     // and the plot too, which a local model can fill in as well as any.
     out.push_str(crate::chat::rich_note!());
-    // A small model follows an example better than a description: the fence
-    // and the ## names it tends to leave out, shown once.
+    // A small model follows an example better than a description: one of
+    // each block, as Lumo reads it (tests/rich-prompt.test.mjs draws them all).
     out.push_str(LOCAL_RICH_EXAMPLE);
     // A local model knows only up to its training: "yesterday" means nothing to it otherwise.
     if !p.today.is_empty() {
@@ -396,9 +467,14 @@ mod tests {
         assert!(p.contains("lumo-calc") && p.contains("lumo-plot"));
         // The region told as a set of points, a curve in its conditions: a
         // small model wrote y ≥ 0 and x ≤ 3.14 for the area under sin(x).
-        assert!(p.contains("region: only for an area asked for, where all its conditions hold, as 0 ≤ y ≤ sin(x) under a curve"));
+        assert!(p.contains("region: only when an area is asked for, the points where all its conditions hold, as y ≥ 0 and y ≤ sin(x) for the area under a curve"));
         // And one written out, fence and all: a small model copies it.
         assert!(p.contains("```lumo-cards Coffees\n## Espresso\nsub: The base\n"));
+        // One of each block, written out: what they got wrong when only told.
+        for fence in ["> [!TIP]", "```lumo-checklist", "```lumo-steps", "```lumo-calc", "```lumo-plot", "```lumo-quiz", "```lumo-chart", "```lumo-timeline"] {
+            assert!(p.contains(fence), "{fence}");
+        }
+        assert!(p.contains("input: V | voltage | 0..24 | 12 | V") && p.contains("Q1: 1200, 1450") && p.contains("never TeX"));
         assert!(p.contains("never by these names"));
     }
 

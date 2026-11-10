@@ -870,7 +870,12 @@ models included, and the chat draws them (`src/views/rich/`):
   web** turns it off: the card then shows only the site and the button, and
   nothing is downloaded.
 
-A block the chat can't read is shown as it was written, as code.
+A block the chat can't read is shown as it was written, as code. The
+blocks forgive the ways small local models slip: a callout without its `>`,
+formulas in TeX, a calculator written a field a line, a chart row written
+`label: Q1 | 10, 12`, two right answers in a quiz (either counts). The local
+models are also shown one example of each block, which they copy far better
+than a description.
 
 ### Show the chat your screen
 

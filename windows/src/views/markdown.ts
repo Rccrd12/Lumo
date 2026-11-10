@@ -56,6 +56,13 @@ const isBullet = (s: string) => /^[-*+] /.test(s);
 const ordered = (s: string) => /^(\d+)\.\s+/.exec(s);
 const isQuote = (s: string) => s.startsWith("> ") || s === ">";
 const isTableRow = (s: string) => s.startsWith("|") && s.length > 1;
+/**
+ * `[!NOTE] text` with no `>` before it, as small local models write it: the
+ * text after it and the lines under it, to a blank line, are its body.
+ */
+const LOOSE_CALLOUT = new RegExp(`^(?:\\*\\*)?\\[!(${CALLOUT_TYPES.join("|")})\\](?:\\*\\*)?[ \\t]*(.*)$`, "i");
+/** A line that ends a loose callout's text: a list item, a heading, a quote, a table row, a fence. */
+const LOOSE_CALLOUT_END = /^\s*(?:[-*+•]\s|\d+[.)]\s|#|>|\||```)/;
 /** `> [!TIP]`, `>[!warning] A title`: the alert's kind and title. */
 const CALLOUT = new RegExp(`^>\\s*\\[!(${CALLOUT_TYPES.join("|")})\\][ \\t]*(.*)$`, "i");
 /**
@@ -278,6 +285,18 @@ export function parseMarkdown(input: string, partial = false): Block[] {
       const body: string[] = [];
       for (i++; i < lines.length && lines[i].trim().startsWith(">"); i++) body.push(lines[i].trim().replace(/^> ?/, ""));
       blocks.push({ kind: "callout", type: alert[1].toLowerCase() as CalloutType, title: alert[2].trim(), body: body.join("\n") });
+      continue;
+    }
+    const bare = LOOSE_CALLOUT.exec(stripped);
+    // With no text, on its line or under it, it is no callout: left as written.
+    if (bare && (bare[2].replace(/\*\*$/, "").trim() || (lines[i + 1]?.trim() && !LOOSE_CALLOUT_END.test(lines[i + 1])))) {
+      // Bold around the whole line: the closing ** goes too.
+      const first = /^\*\*/.test(stripped) ? bare[2].trim().replace(/\*\*$/, "").trim() : bare[2].trim();
+      const body = first ? [first] : [];
+      // Its text runs to a blank line or another block: a list, a heading, a
+      // quote, a table or a fence stays its own (a task list, a checklist).
+      for (i++; i < lines.length && lines[i].trim() && !LOOSE_CALLOUT_END.test(lines[i]); i++) body.push(lines[i].trim());
+      blocks.push({ kind: "callout", type: bare[1].toLowerCase() as CalloutType, title: "", body: body.join("\n") });
       continue;
     }
     // The last line of a text still being written may be an address cut

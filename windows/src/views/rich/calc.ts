@@ -240,6 +240,55 @@ interface Line {
   value: string;
 }
 
+/** The keys of an input or output written a field a line (`symbol: r`, `min: 1`…). */
+const FIELD_KEYS = new Set(["symbol", "sym", "id", "name", "label", "min", "max", "range", "value", "default", "initial", "unit", "units", "step", "expression", "expr"]);
+const GROUP_KEYS = new Set(["inputs", "sliders", "params", "parameters", "variables", "outputs", "results"]);
+
+/**
+ * An input or output written a field a line, as small local models write
+ * them (`inputs:`, then `symbol: r`, `name: Raggio`, `min: 1`, `max: 100`,
+ * `value: 5`, `unit: cm`; `outputs:`, then `symbol: A`, `expression:
+ * pi*r**2`): each group, from its symbol, as the one line the note teaches.
+ */
+function fieldwise(found: Line[]): Line[] {
+  // Only a block with no input or output on a line of its own: a stray
+  // `symbol:` beside them is no field.
+  if (!found.some((l) => l.key === "symbol" || l.key === "sym")) return found;
+  if (found.some((l) => (INPUT_KEYS.has(l.key) || OUTPUT_KEYS.has(l.key)) && l.value.trim())) return found;
+  const out: Line[] = [];
+  let group: Map<string, string> | null = null;
+  let outputs = false;
+  const flush = () => {
+    if (!group) return;
+    const f = (...keys: string[]) => keys.map((k) => group!.get(k)).find((v) => v !== undefined && v !== "") ?? "";
+    const symbol = f("symbol", "sym", "id") || f("name");
+    const label = f("symbol", "sym", "id") ? f("name", "label") : f("label");
+    const expression = f("expression", "expr");
+    const range = f("range") || (f("min") && f("max") ? `${f("min")}..${f("max")}` : "");
+    if (expression || (outputs && !range)) out.push({ key: "output", value: [symbol, label, expression || f("value"), f("unit", "units")].join(" | ") });
+    else {
+      const step = f("step");
+      out.push({ key: "input", value: [symbol, label, range + (step ? ` step ${step}` : ""), f("value", "default", "initial"), f("unit", "units")].join(" | ") });
+    }
+    group = null;
+  };
+  for (const line of found) {
+    if (GROUP_KEYS.has(line.key) && /^[|>-]?$/.test(line.value.trim())) {
+      flush();
+      outputs = line.key === "outputs" || line.key === "results";
+    } else if (line.key === "symbol" || line.key === "sym" || line.key === "id") {
+      flush();
+      group = new Map([[line.key, line.value]]);
+    } else if (group && FIELD_KEYS.has(line.key) && !group.has(line.key)) group.set(line.key, line.value);
+    else {
+      flush();
+      out.push(line);
+    }
+  }
+  flush();
+  return out;
+}
+
 function lines(body: string): Line[] {
   const out: Line[] = [];
   for (const raw of body.replace(/\r\n?/g, "\n").split("\n")) {
@@ -403,7 +452,7 @@ function inputsOf(found: Line[], max: number): Input[] | null {
 
 /** Reads a lumo-calc block; null when it is no calculator (see the top of the file). */
 export function parseCalc(title: string, body: string): Calc | null {
-  const found = lines(body);
+  const found = fieldwise(lines(body));
   const inputs = inputsOf(found, MAX_CALC_INPUTS);
   if (!inputs || !inputs.length) return null;
   const known = new Set(inputs.map((i) => i.name));
@@ -425,7 +474,7 @@ export function parseCalc(title: string, body: string): Calc | null {
 
 /** Reads a lumo-plot block; null when it is no chart (see the top of the file). */
 export function parsePlot(title: string, body: string): Plot | null {
-  const found = lines(body);
+  const found = fieldwise(lines(body));
   const inputs = inputsOf(found, MAX_PLOT_INPUTS);
   if (!inputs || inputs.some((i) => i.name === "x")) return null;
   const known = new Set(["x", ...inputs.map((i) => i.name)]);

@@ -99,3 +99,59 @@ test("image", () => {
   const b = one("![Saturn seen by Cassini](https://upload.wikimedia.org/wikipedia/commons/c/c7/Saturn_during_Equinox.jpg)");
   assert.equal(b.kind, "image");
 });
+
+test("the local models' examples, one of each block, are all drawn as written", async () => {
+  const { readFileSync } = await import("node:fs");
+  const rust = readFileSync(new URL("../src-tauri/src/local_profile.rs", import.meta.url), "utf8");
+  const m = /const LOCAL_RICH_EXAMPLE: &str = r#"([\s\S]*?)"#;/.exec(rust);
+  assert.ok(m, "the example is a raw string in local_profile.rs");
+  const parsers = { steps: parseSteps, cards: parseCards, calc: parseCalc, plot: parsePlot, quiz: parseQuiz, chart: parseChart, timeline: parseTimeline, checklist: parseChecklist };
+  const blocks = parseMarkdown(m[1]);
+  const kinds = new Set();
+  for (const b of blocks) {
+    if (b.kind === "code") assert.fail(`shown as code: ${b.lang}\n${b.code}`);
+    if (b.kind === "callout") kinds.add("callout");
+    if (b.kind !== "rich") continue;
+    assert.ok(parsers[b.type](b.title, b.body), `${b.type} ${b.title}`);
+    kinds.add(b.type);
+  }
+  assert.deepEqual([...kinds].sort(), ["calc", "callout", "cards", "chart", "checklist", "plot", "quiz", "steps", "timeline"]);
+});
+
+test("what a local model wrote when only told the syntax is drawn all the same", () => {
+  // A callout without its >, its text on the line or under it.
+  const one = parseMarkdown("[!NOTE] Move the slider to see the area change.");
+  assert.equal(one[0].kind, "callout"); assert.equal(one[0].type, "note"); assert.equal(one[0].body, "Move the slider to see the area change.");
+  const two = parseMarkdown("[!NOTE]\nThese blocks combine.\nAsk for more.\n\nAfter.");
+  assert.equal(two[0].kind, "callout"); assert.equal(two[0].body, "These blocks combine.\nAsk for more."); assert.equal(two[1].kind, "paragraph");
+  // A chart row as label: name | values, and a stray label line per series.
+  const sales = parseChart("Sales", "unit: €\nseries: 2024, 2025\nlabel: Q1 | 1200, 1450\nlabel: Q2 | 1350, 1600\nlabel: Q3 | 1100, 1280");
+  assert.deepEqual(sales.labels, ["Q1", "Q2", "Q3"]); assert.deepEqual(sales.series[1].values, [1450, 1600, 1280]);
+  const months = parseChart("", "series: A, B\nlabel: Value for A\nlabel: Value for B\nGen: 20, 15\nFeb: 25, 18\nMar: 30, 22");
+  assert.deepEqual(months.labels, ["Gen", "Feb", "Mar"]); assert.deepEqual(months.series.map((s) => s.name), ["A", "B"]);
+  // A calculator a field a line.
+  const calc = parseCalc("Area", "formula: A = π * r^2\ninputs: |\nsymbol: r\nname: Raggio\nmin: 1\nmax: 100\nvalue: 5\nunit: cm\noutputs: |\nsymbol: A\nname: Area\nexpression: pi*r**2\nunit: cm²");
+  assert.ok(calc);
+  assert.deepEqual([calc.inputs[0].name, calc.inputs[0].label, calc.inputs[0].min, calc.inputs[0].max, calc.inputs[0].value, calc.inputs[0].unit], ["r", "Raggio", 1, 100, 5, "cm"]);
+  assert.deepEqual([calc.outputs[0].name, calc.outputs[0].label, calc.outputs[0].unit], ["A", "Area", "cm²"]);
+  // Two answers marked right: either counts.
+  const quiz = parseQuiz("Geometry", "? The area of a square?\n- L * 4\n+ L * L\n- L + L\n+ L ** 2\n= Square");
+  assert.ok(quiz); assert.deepEqual(quiz.questions[0].rights, [1, 3]);
+});
+
+test("the forgiving readings leave what read right before as it was", () => {
+  // A loose callout ends where another block starts: a task list stays a checklist, a heading a heading.
+  assert.deepEqual(parseMarkdown("[!TIP] Before you start:\n- [ ] Install Node").map((b) => b.kind), ["callout", "checklist"]);
+  assert.equal(checklistsIn("[!TIP] Before you start:\n- [ ] Install Node").length, 1);
+  assert.deepEqual(parseMarkdown("[!WARNING] Back up first.\n## Next\nText").map((b) => b.kind), ["callout", "heading", "paragraph"]);
+  assert.equal(parseMarkdown("**[!NOTE] Remember this**")[0].body, "Remember this");
+  assert.deepEqual(parseMarkdown("[!TIP]\n- [ ] x").map((b) => b.kind), ["paragraph", "checklist"], "no text: no callout");
+  // A series called X, a bar called X, labels that are years.
+  assert.deepEqual(parseChart("", "x: Q1, Q2, Q3\nFacebook: 10, 20, 30\nX: 5, 6, 7").series.map((s) => s.name), ["Facebook", "X"]);
+  assert.deepEqual(parseChart("", "Chrome: 65%\nSafari: 18%\nX: 2%").labels, ["Chrome", "Safari", "X"]);
+  assert.deepEqual(parseChart("", "label: 2021 | 2022 | 2023\nNorth: 1 | 2 | 3\nSouth: 4 | 5 | 6").labels, ["2021", "2022", "2023"]);
+  assert.deepEqual(parseChart("", "x: 2023,2024\nNorth: 5, 7\nSouth: 3, 4").labels, ["2023", "2024"]);
+  assert.deepEqual(parseChart("", "labels: Q1 | Q2 | Q3\nvalue: 10 | 20 | 30").series[0].values, [10, 20, 30]);
+  // A stray symbol: line beside one-line inputs is no field.
+  assert.ok(parseCalc("Ohm", "input: V | voltage | 0..24 | 12 | V\ninput: I | current | 0.1..5 | 1 | A\noutput: R | resistance | V / I | Ω\nsymbol: Ω = ohm"));
+});
